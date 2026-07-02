@@ -51,7 +51,6 @@ from .hints import (
     SHARED_HINTS,
     apply_accelerators,
     install_view_tab_tooltips,
-    set_icon_button_a11y,
     set_tooltip,
 )
 from .dispatch import idle_on_main
@@ -223,11 +222,6 @@ class MainWindow(Adw.ApplicationWindow):
         install_view_tab_tooltips(switcher)
         header.set_title_widget(switcher)
 
-        self.log_toggle = Gtk.ToggleButton(icon_name="utilities-terminal-symbolic")
-        set_icon_button_a11y(self.log_toggle, "Show or hide the processing log")
-        self.log_toggle.connect("toggled", self._on_log_toggle)
-        header.pack_end(self.log_toggle)
-
         menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic")
         set_tooltip(menu_button, "Main menu")
         menu_button.set_menu_model(self._build_primary_menu())
@@ -288,7 +282,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._audio_tools_page = AudioToolsPage(self, self.context)
 
         # Runnable mode pages only; the shared console lives in the collapsible
-        # log panel toggled from the header and auto-expanded when a run starts.
+        # log panel and auto-expands when a run starts.
         self.content_stack = Adw.ViewStack()
         self.content_stack.add_titled_with_icon(
             separation_page, "separation", "Separation", "audio-x-generic-symbolic"
@@ -419,18 +413,11 @@ class MainWindow(Adw.ApplicationWindow):
     def _sync_log_panel_expanded(self, expanded: bool) -> None:
         if self.log_panel.get_expanded() != expanded:
             self.log_panel.set_expanded(expanded)
-        if self.log_toggle.get_active() != expanded:
-            self.log_toggle.set_active(expanded)
 
     def _reveal_log_panel(self, revealed: bool) -> None:
         self._sync_log_panel_expanded(revealed)
 
-    def _on_log_toggle(self, toggle: Gtk.ToggleButton) -> None:
-        self._sync_log_panel_expanded(toggle.get_active())
-
     def _on_log_panel_expanded_changed(self, expanded: bool) -> None:
-        if self.log_toggle.get_active() != expanded:
-            self.log_toggle.set_active(expanded)
         self._sync_options_bottom_clearance()
 
     def _start_pulse(self) -> None:
@@ -515,7 +502,6 @@ class MainWindow(Adw.ApplicationWindow):
         self._hint_manager.register(self.gpu_row, SHARED_HINTS["gpu_conversion"])
         self._hint_manager.register(self.sample_row, SHARED_HINTS["sample_mode"])
         self._hint_manager.register(self.console, SHARED_HINTS["console"])
-        self._hint_manager.register(self.log_toggle, "Status messages and progress output from the current run")
         self._hint_manager.register(self.method_row, SHARED_HINTS["process_method"])
         self._hint_manager.register(self.format_row, OUTPUT_FORMAT_HINT)
         self._hint_manager.register(self.input_row, INPUT_FOLDER_ENTRY_HELP)
