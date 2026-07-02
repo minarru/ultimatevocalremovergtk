@@ -1,0 +1,146 @@
+# =============================================================================
+# Flatpak manifest SKELETON for Ultimate Vocal Remover (GTK4 / libadwaita).
+#
+# This is a DESIGN SKETCH, not a build-ready manifest. Everything marked TODO
+# needs a real value (URLs + sha256, an AppStream metainfo file, an icon, and -
+# for the bundled-deps path - a generated python3-requirements.json).
+#
+# Two strategies for the heavy ML/CUDA stack are described inline below:
+#   Option A  - bundle every wheel offline (reproducible; Flathub-style; huge).
+#   Option B  - ship a slim package and pip-install the ML stack on first run
+#               into the per-app data dir (recommended here; pairs with the
+#               paths.py writable-data refactor).
+#
+# Build (after filling in the TODOs), e.g.:
+#   flatpak install flathub org.gnome.Sdk//47 org.gnome.Platform//47
+#   flatpak-builder --user --install --force-clean build-dir \
+#       packaging/org.uvr.UltimateVocalRemover.yaml
+#
+# For Option A, generate the pinned wheel module with flatpak-builder-tools:
+#   flatpak-pip-generator --runtime=org.gnome.Sdk//47 -r requirements.txt \
+#       -o packaging/python3-requirements
+# =============================================================================
+app-id: org.uvr.UltimateVocalRemover
+runtime: org.gnome.Platform
+# TODO: pick the GNOME runtime version whose GTK4/libadwaita match your target.
+runtime-version: '47'
+sdk: org.gnome.Sdk
+command: uvr
+
+finish-args:
+  # --- Display / GPU rendering -----------------------------------------------
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # --- NVIDIA CUDA compute (GPU separations) ---------------------------------
+  # The matching org.freedesktop.Platform.GL.nvidia-<driver> extension is pulled
+  # automatically with --device=dri and supplies the HOST-matching libcuda.so /
+  # NVIDIA userspace libs into the sandbox. The CUDA *toolkit* libs themselves
+  # come from the nvidia-*-cu12 / -cu13 wheels (bundled or first-run installed);
+  # uvr_core/cuda_runtime_fix.py still ctypes-preloads the cu12 set.
+  # --device=all exposes /dev/nvidia*; narrow if your flatpak supports it.
+  - --device=all
+
+  # --- Audio -----------------------------------------------------------------
+  # Completion/failure chimes (playsound) + general audio.
+  - --socket=pulseaudio
+
+  # --- Network ---------------------------------------------------------------
+  # Download Center (models) and, for Option B, the first-run dependency pull.
+  - --share=network
+
+  # --- Files -----------------------------------------------------------------
+  # Prefer portals: the native Gtk.FileDialog picker grants access to
+  # user-selected input files / output folders WITHOUT broad filesystem holes.
+  # Widen only if batch/folder workflows need it, e.g.:
+  #   - --filesystem=xdg-music
+  #   - --filesystem=xdg-download
+  # - --filesystem=home   # last resort; reduces sandboxing
+
+  # --- App data root ---------------------------------------------------------
+  # Requires the paths.py refactor to honor this (writable data must NOT live in
+  # the read-only /app). Defaults to ~/.var/app/<id>/data when unset.
+  # - --env=UVR_DATA_DIR=
+
+modules:
+  # ---------------------------------------------------------------------------
+  # Native helpers the ML stack shells out to (absent from the GNOME runtime).
+  # ---------------------------------------------------------------------------
+  - name: libsndfile
+    buildsystem: cmake-ninja
+    sources:
+      - type: archive
+        url: https://github.com/libsndfile/libsndfile/releases/download/X.Y.Z/libsndfile-X.Y.Z.tar.xz  # TODO
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"  # TODO
+
+  - name: rubberband
+    buildsystem: meson
+    config-opts:
+      - -Dcmdline=true     # provides the `rubberband` CLI used by pyrubberband
+    sources:
+      - type: archive
+        url: https://breakfastquay.com/files/releases/rubberband-X.Y.Z.tar.bz2  # TODO
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"  # TODO
+
+  - name: ffmpeg
+    # Heavy; trim to just the demuxers/encoders UVR actually needs.
+    buildsystem: autotools
+    config-opts:
+      - --enable-gpl
+      - --disable-doc
+      - --enable-ffmpeg
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-X.Y.tar.xz  # TODO
+        sha256: "0000000000000000000000000000000000000000000000000000000000000000"  # TODO
+
+  # ---------------------------------------------------------------------------
+  # Python dependencies.
+  #
+  # OPTION A (reproducible, offline): include the generated pinned-wheel module.
+  # WARNING: this is several GB (torch + onnxruntime + nvidia-*-cu12/cu13).
+  # - python3-requirements.json   # TODO: generate via flatpak-pip-generator
+  #
+  # OPTION B (slim, deferred): install NOTHING heavy here. The GTK UI boots
+  # torch-free (uvr_core/job_runner.py imports `separate` -> torch/onnxruntime
+  # lazily, only when a job runs), so the app can show a first-run "install
+  # dependencies" screen and pip-install requirements.txt into
+  #   $UVR_DATA_DIR/runtime  (default ~/.var/app/<id>/data/runtime)
+  # then prepend it to sys.path. Keeps the .flatpak small and avoids
+  # redistributing proprietary CUDA. (Flathub discourages runtime downloads;
+  # fine for a self-hosted / sideloaded .flatpak.)
+  # ---------------------------------------------------------------------------
+
+  # ---------------------------------------------------------------------------
+  # The application itself.
+  # ---------------------------------------------------------------------------
+  - name: ultimate-vocal-remover
+    buildsystem: simple
+    build-commands:
+      # App code (read-only) -> /app/share/uvr
+      - mkdir -p /app/share/uvr
+      - cp -r uvr_gtk uvr_core lib_v5 data separate.py __version__.py requirements.txt /app/share/uvr/
+      # Thin launcher -> /app/bin/uvr
+      - |
+        cat > /app/bin/uvr <<'SH'
+        #!/bin/sh
+        export PYTHONPATH="/app/share/uvr:${PYTHONPATH}"
+        exec python3 -m uvr_gtk "$@"
+        SH
+      - chmod 755 /app/bin/uvr
+      # Desktop entry + icon + AppStream metadata.
+      # NOTE: the committed .desktop uses absolute dev paths; the Flatpak one
+      # must use `Exec=uvr` and `Icon=org.uvr.UltimateVocalRemover`. Provide a
+      # flatpak-specific copy (packaging/org.uvr.UltimateVocalRemover.flatpak.desktop)
+      # or rewrite at build time.
+      - install -Dm644 packaging/org.uvr.UltimateVocalRemover.flatpak.desktop
+          /app/share/applications/org.uvr.UltimateVocalRemover.desktop
+      - install -Dm644 packaging/org.uvr.UltimateVocalRemover.png
+          /app/share/icons/hicolor/256x256/apps/org.uvr.UltimateVocalRemover.png   # TODO: provide icon
+      - install -Dm644 packaging/org.uvr.UltimateVocalRemover.metainfo.xml
+          /app/share/metainfo/org.uvr.UltimateVocalRemover.metainfo.xml   # TODO: write AppStream metainfo
+    sources:
+      - type: dir
+        path: ..   # repo root, relative to this manifest in packaging/

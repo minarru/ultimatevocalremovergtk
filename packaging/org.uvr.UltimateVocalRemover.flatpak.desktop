@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Ultimate Vocal Remover
+GenericName=Vocal Remover
+Comment=Separate vocals and instruments from audio using AI models
+Exec=uvr
+Icon=org.uvr.UltimateVocalRemover
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=audio;vocal;stem;separation;karaoke;instrumental;
+StartupNotify=true
+StartupWMClass=org.uvr.UltimateVocalRemover

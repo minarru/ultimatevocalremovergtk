@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metainfo STUB for Ultimate Vocal Remover (GTK4 / libadwaita).
+
+  TODO before Flathub submission:
+    * Add real <screenshots> entries with publicly hosted image URLs.
+    * Finalize <project_license>: UVR ships an MIT-based license; "MIT" is used
+      here as a placeholder SPDX id and must be confirmed/replaced.
+    * Confirm the <developer> / <update_contact> details.
+-->
+<component type="desktop-application">
+  <id>org.uvr.UltimateVocalRemover</id>
+
+  <name>Ultimate Vocal Remover</name>
+  <summary>Separate vocals and instruments from audio using AI models</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <!-- TODO: UVR uses an MIT-based license; confirm exact SPDX id before submission. -->
+  <project_license>MIT</project_license>
+
+  <description>
+    <p>
+      Ultimate Vocal Remover is a desktop application for AI-powered audio source
+      separation. It splits a song into stems (vocals, instrumental, drums, bass
+      and more) using VR, MDX-Net and Demucs models, with optional ensembling and
+      GPU acceleration.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">org.uvr.UltimateVocalRemover.desktop</launchable>
+
+  <url type="homepage">https://github.com/Anjok07/ultimatevocalremovergui</url>
+
+  <releases>
+    <!-- TODO: update the release date to the actual v5.6.0 release date. -->
+    <release version="v5.6.0" date="2023-09-29"/>
+  </releases>
+</component>

@@ -1,0 +1,19 @@
+[Icon Theme]
+Name=UVR
+Comment=Ultimate Vocal Remover bundled icons
+Hidden=true
+Directories=scalable/devices,scalable/actions
+
+[scalable/devices]
+Context=Devices
+Size=16
+Type=Scalable
+MinSize=1
+MaxSize=512
+
+[scalable/actions]
+Context=Actions
+Size=16
+Type=Scalable
+MinSize=1
+MaxSize=512

@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+
+# Virtual environments
+.venv/
+.venv.*/
+venv/
+
+# Runtime / portable-mode artifacts (see uvr_core/paths.py)
+data.pkl
+ensemble_temps/
+temp_sample_clips/
+uvr_gtk/data/icons/
+
+# IDE
+.idea/
+
+# Generated GResource manifest (rebuilt by resources/compile_resources.sh)
+resources/uvr.gresource.xml
