@@ -9,8 +9,12 @@ __pycache__/
 .venv.*/
 venv/
 
-# ML Models
-models/
+# Downloaded ML weights — metadata/json/yaml stay in git (see upstream v5.6.0_roformer branch)
+models/**/*.pth
+models/**/*.ckpt
+models/**/*.onnx
+models/**/*.th
+!models/VR_Models/UVR-DeNoise-Lite.pth
 
 # Runtime / portable-mode artifacts (see uvr_core/paths.py)
 data.pkl
