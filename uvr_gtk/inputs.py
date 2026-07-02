@@ -22,11 +22,7 @@ from .errorlog import set_error_log
 from .hints import set_tooltip
 from .markup import set_row_subtitle, set_row_title
 
-
-def _idle(func, *args):
-    GLib.idle_add(lambda: (func(*args), GLib.SOURCE_REMOVE)[1])
-
-
+from .dispatch import idle_on_main
 def _fmt_duration(seconds: float) -> str:
     seconds = int(seconds)
     minutes, secs = divmod(seconds, 60)
@@ -201,10 +197,10 @@ class ViewInputs:
         broken = []
         for path in paths:
             is_valid, info = inspect_audio(path)
-            _idle(self._apply_result, path, is_valid, info)
+            idle_on_main(self._apply_result, path, is_valid, info)
             if not is_valid:
                 broken.append((path, info))
-        _idle(self._verify_done, broken)
+        idle_on_main(self._verify_done, broken)
 
     def _apply_result(self, path, is_valid, info) -> None:
         row = self._rows.get(path)

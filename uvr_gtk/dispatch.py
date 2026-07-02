@@ -13,6 +13,16 @@ from gi.repository import GLib
 from uvr_core import JobCallbacks
 
 
+def idle_on_main(func: Callable, *args, **kwargs) -> None:
+    """Schedule ``func(*args, **kwargs)`` once on the GTK main loop."""
+
+    def invoke():
+        func(*args, **kwargs)
+        return GLib.SOURCE_REMOVE
+
+    GLib.idle_add(invoke)
+
+
 def main_thread(func: Callable) -> Callable:
     """Return a wrapper that schedules ``func`` to run once on the main loop."""
 

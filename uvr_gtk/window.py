@@ -25,10 +25,9 @@ and help-hint tooltips installed from :mod:`uvr_gtk.hints`.
 """
 
 import os
-import time
 from typing import Optional
 
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, Gio, Gtk
 
 from data.constants import (
     FLAC,
@@ -37,31 +36,34 @@ from data.constants import (
     MP3,
     OUTPUT_FOLDER_ENTRY_HELP,
     SAMPLE_MODE_CHECKBOX,
-    STOP_PROCESS_CONFIRM,
-    STOP_PROCESSING,
     WAV,
 )
 
-_OPEN_FOLDER_LABEL = "Open Folder"
-_OPEN_FOLDER_ERROR = "Couldn't open the output folder: {message}"
-_NOTIFY_COMPLETE_TITLE = "{label} complete"
-_NOTIFY_COMPLETE_BODY = "Saved to {folder}"
-_NOTIFY_COMPLETE_BODY_PLAIN = "Processing finished."
-_NOTIFY_FAILED_TITLE = "{label} failed"
-_NOTIFY_FAILED_BODY = "Open the app to see the error log."
-_NOTIFY_ICONS = {
-    "uvr-complete": "emblem-ok-symbolic",
-    "uvr-failed": "dialog-error-symbolic",
-}
-_PROGRESS_STARTING = "Starting…"
-_PROGRESS_DONE = "Done"
+from . import APP_TITLE
+from .audio_tools import AudioToolsPage
+from .context import AppContext
+from .ensemble import EnsemblePage
+from .hints import (
+    HelpHintManager,
+    OUTPUT_FORMAT_HINT,
+    SHARED_HINTS,
+    apply_accelerators,
+    install_view_tab_tooltips,
+    set_icon_button_a11y,
+    set_tooltip,
+)
+from .run_control import RunController
+from .shared_settings import apply_shared_file_options
+from .views import METHOD_VIEWS
+from .widgets.columns import build_columns_box, set_columns_narrow, wrap_options_scroller
+from .widgets.file_chooser import InputFilesRow, OutputFolderRow
+from .widgets.log_panel import OVERLAY_MARGIN_BOTTOM, LogPanel
+from .widgets.rows import get_combo_value, make_combo_row, make_switch_row, set_combo_value
 
 #: Cadence (ms) and step of the indeterminate progress pulse shown before the
-#: first real fractional update arrives, and the epsilon under which a fraction
-#: is still treated as "no real progress yet".
+#: first real fractional update arrives.
 _PULSE_INTERVAL_MS = 120
 _PULSE_STEP = 0.08
-_PROGRESS_EPSILON = 0.001
 
 #: Toast shown after copying the log to the clipboard.
 _LOG_COPIED_TOAST = "Log copied"
@@ -71,25 +73,6 @@ _LOG_COPIED_TOAST = "Log copied"
 _REASON_INPUT = "Select an input audio file"
 _REASON_OUTPUT = "Choose an output folder"
 _REASON_MODEL = "Choose a model"
-
-from . import APP_ID, APP_TITLE
-from .audio_tools import AudioToolsPage
-from .context import AppContext
-from .dispatch import gtk_job_callbacks
-from .ensemble import EnsemblePage
-from .hints import (
-    HelpHintManager,
-    OUTPUT_FORMAT_HINT,
-    SHARED_HINTS,
-    apply_accelerators,
-    install_view_tab_tooltips,
-    set_tooltip,
-)
-from .views import METHOD_VIEWS
-from .widgets.columns import build_columns_box, set_columns_narrow, wrap_options_scroller
-from .widgets.file_chooser import InputFilesRow, OutputFolderRow
-from .widgets.log_panel import LogPanel
-from .widgets.rows import get_combo_value, make_combo_row, make_switch_row, set_combo_value
 
 
 class _SeparationTarget:
@@ -156,6 +139,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._views_by_stack = {view.stack_name: view for view in self._views}
         self._views_by_method = {view.method_key: view for view in self._views}
         self._views_by_title = {view.title: view for view in self._views}
+        self.context.install_unrecognized_model_hook(lambda: self)
 
         self._install_actions()
 
@@ -163,29 +147,25 @@ class MainWindow(Adw.ApplicationWindow):
         # into the responsive columns by ``_populate_columns``.
         self._current_view = None
 
-        self._pulse_source_id = None
-
         page = self._build_content()
-        self.log_panel = LogPanel()
+        self.log_panel = LogPanel(on_expanded_changed=self._on_log_panel_expanded_changed)
         self.console = self.log_panel.console
-        self.progressbar = self.log_panel.progressbar
         self.start_button = self.log_panel.start_button
         self.stop_button = self.log_panel.stop_button
         self.log_copy_button = self.log_panel.log_copy_button
         self.log_clear_button = self.log_panel.log_clear_button
-        self.progressbar.set_pulse_step(_PULSE_STEP)
+        self.log_panel.set_progress_pulse_step(_PULSE_STEP)
         self.start_button.connect("clicked", self._on_start)
         self.stop_button.connect("clicked", self._on_stop)
         self.log_copy_button.connect("clicked", self._on_log_copy)
         self.log_clear_button.connect("clicked", self._on_log_clear)
-        self.log_panel.expand_button.connect("toggled", self._on_log_panel_expand_toggled)
 
         root = Gtk.Overlay()
         root.set_child(page)
         root.add_overlay(self.log_panel)
         self.log_panel.set_halign(Gtk.Align.CENTER)
         self.log_panel.set_valign(Gtk.Align.END)
-        self.log_panel.set_margin_bottom(12)
+        self.log_panel.set_margin_bottom(OVERLAY_MARGIN_BOTTOM)
 
         toolbar_view = Adw.ToolbarView()
         toolbar_view.add_top_bar(self._build_header())
@@ -221,7 +201,7 @@ class MainWindow(Adw.ApplicationWindow):
         header.set_title_widget(switcher)
 
         self.log_toggle = Gtk.ToggleButton(icon_name="utilities-terminal-symbolic")
-        set_tooltip(self.log_toggle, "Show or hide the processing log")
+        set_icon_button_a11y(self.log_toggle, "Show or hide the processing log")
         self.log_toggle.connect("toggled", self._on_log_toggle)
         header.pack_end(self.log_toggle)
 
@@ -305,9 +285,9 @@ class MainWindow(Adw.ApplicationWindow):
         ]
 
         # Shared Start/Stop dispatch to the run target of the visible tab.
-        # ``_running_target`` pins the dispatch to whatever actually started, so
-        # Stop and error reporting stay correct even if the user switches tabs
-        # mid-run.
+        # ``RunController.running_target`` pins the dispatch to whatever actually
+        # started, so Stop and error reporting stay correct even if the user
+        # switches tabs mid-run.
         self._separation_target = _SeparationTarget(self)
         self._targets = {
             "separation": self._separation_target,
@@ -315,11 +295,7 @@ class MainWindow(Adw.ApplicationWindow):
             "audio_tools": self._audio_tools_page,
         }
         self._run_target = self._separation_target
-        self._running_target = None
-        self._stop_confirm_dialog = None
-        self._run_output_dir = ""
-        self._run_label = "Processing"
-        self._run_started_at = 0.0
+        self._run_controller = RunController(self)
         self.content_stack.connect("notify::visible-child", self._on_visible_child)
 
         self.content_stack.set_vexpand(True)
@@ -401,24 +377,15 @@ class MainWindow(Adw.ApplicationWindow):
     def _on_log_toggle(self, toggle: Gtk.ToggleButton) -> None:
         self._sync_log_panel_expanded(toggle.get_active())
 
-    def _on_log_panel_expand_toggled(self, button: Gtk.ToggleButton) -> None:
-        if self.log_toggle.get_active() != button.get_active():
-            self.log_toggle.set_active(button.get_active())
+    def _on_log_panel_expanded_changed(self, expanded: bool) -> None:
+        if self.log_toggle.get_active() != expanded:
+            self.log_toggle.set_active(expanded)
 
     def _start_pulse(self) -> None:
-        if self._pulse_source_id is not None:
-            return
-        self.progressbar.pulse()
-        self._pulse_source_id = GLib.timeout_add(_PULSE_INTERVAL_MS, self._on_pulse_tick)
-
-    def _on_pulse_tick(self) -> bool:
-        self.progressbar.pulse()
-        return GLib.SOURCE_CONTINUE
+        self.log_panel.start_progress_pulse(_PULSE_INTERVAL_MS)
 
     def _stop_pulse(self) -> None:
-        if self._pulse_source_id is not None:
-            GLib.source_remove(self._pulse_source_id)
-            self._pulse_source_id = None
+        self.log_panel.stop_progress_pulse()
 
     def _on_log_clear(self, _button: Gtk.Button) -> None:
         self.console.clear()
@@ -539,18 +506,15 @@ class MainWindow(Adw.ApplicationWindow):
         return self._current_view or self._views[0]
 
     def _sync_shared_from_settings(self) -> None:
-        """Re-read the cross-tab shared keys into the separation widgets.
-
-        Input file(s), output folder and the output/format/GPU/sample options
-        are shared across every mode; re-reading them when the separation tab
-        becomes active keeps a selection made on another tab in view.
-        """
-        self.input_row.set_paths(self.settings.get("input_paths") or [], notify=False)
-        self.output_row.set_path(self.settings.get("export_path") or "", notify=False)
-        set_combo_value(self.format_row, self.settings.get("save_format", WAV))
-        self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
-        self.sample_row.set_title(SAMPLE_MODE_CHECKBOX(self.settings.get("model_sample_mode_duration", 30)))
-        self.sample_row.set_active(bool(self.settings.get("model_sample_mode")))
+        """Re-read the cross-tab shared keys into the separation widgets."""
+        apply_shared_file_options(
+            self.settings,
+            input_row=self.input_row,
+            output_row=self.output_row,
+            format_row=self.format_row,
+            gpu_row=self.gpu_row,
+            sample_row=self.sample_row,
+        )
 
     def _activate_separation(self) -> None:
         self.settings.set("chosen_process_method", self._active_view().method_key)
@@ -639,27 +603,7 @@ class MainWindow(Adw.ApplicationWindow):
     # -- Run control ------------------------------------------------------------
 
     def _on_start(self, _button: Gtk.Button) -> None:
-        # The Start button stays clickable while idle; surface the precise
-        # reason as a toast (and don't start) when the active target isn't ready.
-        target = self._run_target
-        try:
-            reason = target.start_blocked_reason()
-        except Exception:  # noqa: BLE001 - readiness check must never break the UI
-            reason = None
-        if reason is not None:
-            self._toast(reason)
-            return
-
-        # Build the shared callbacks (progress bar + single console + shared
-        # completion/error handlers) once and hand them to the active run target.
-        callbacks = gtk_job_callbacks(
-            on_progress=self._on_progress,
-            on_console=self.console.append,
-            on_complete=self._on_complete,
-            on_stopped=self._on_stopped,
-            on_error=self._on_error,
-        )
-        target.start(callbacks)
+        self._run_controller.handle_start(self._run_target)
 
     def _separation_blocked_reason(self) -> Optional[str]:
         """First reason the separation run can't start, or ``None`` when ready."""
@@ -673,10 +617,7 @@ class MainWindow(Adw.ApplicationWindow):
         return None
 
     def _start_separation(self, callbacks) -> None:
-        """Separation run-target body (launch on the shared widgets).
-
-        Readiness is validated by :meth:`_on_start` before dispatch.
-        """
+        """Separation run-target body (launch on the shared widgets)."""
         self._flush_settings()
 
         input_paths = list(self.input_row.paths)
@@ -689,196 +630,21 @@ class MainWindow(Adw.ApplicationWindow):
             self.fail_to_start(f"Unable to start separation: {exc}", exc)
 
     def begin_run(self, target) -> None:
-        """Shared "a run has started" bookkeeping for any run target.
-
-        Clears the single console, resets the progress bar, flips Start/Stop and
-        surfaces the live log. ``target`` is pinned as the running target so Stop
-        and error reporting stay correct even if the user switches tabs mid-run.
-        """
-        self._running_target = target
-        self._run_output_dir = self.settings.get("export_path") or ""
-        self._run_label = self._run_label_for(target)
-        self._run_started_at = time.monotonic()
-        self.console.clear()
-        self.progressbar.set_fraction(0.0)
-        self.progressbar.set_text(_PROGRESS_STARTING)
-        self._start_pulse()
-        self._set_running(True)
-        # Expand the log panel so live output is in view.
-        self._reveal_log_panel(True)
-
-    def _run_label_for(self, target) -> str:
-        if target is self._separation_target:
-            return "Separation"
-        if target is self._ensemble_page:
-            return "Ensemble"
-        if target is self._audio_tools_page:
-            return "Audio tools"
-        return "Processing"
+        """Shared run-start hook used by every embedded mode page."""
+        self._run_controller.begin_run(target)
 
     def fail_to_start(self, message: str, exc: BaseException) -> None:
-        """Recover the UI when a run target could not even launch its worker."""
-        self._stop_pulse()
-        self._set_running(False)
-        self.console.append(f"\n{message}\n")
-        self._report_error(message, exc)
-        self._running_target = None
+        """Shared run-start failure hook used by every embedded mode page."""
+        self._run_controller.fail_to_start(message, exc)
 
     def _on_start_action(self, _action: Gio.SimpleAction, _param) -> None:
-        if self.start_button.get_sensitive():
-            self._on_start(self.start_button)
+        self._run_controller.handle_start_action()
 
     def _on_stop_action(self, _action: Gio.SimpleAction, _param) -> None:
-        if self.stop_button.get_sensitive():
-            self._on_stop(self.stop_button)
+        self._run_controller.handle_stop_action()
 
     def _on_stop(self, _button: Gtk.Button) -> None:
-        if not self.stop_button.get_sensitive():
-            return
-        if self._stop_confirm_dialog is not None:
-            return
-        self._present_stop_confirm()
-
-    def _present_stop_confirm(self) -> None:
-        heading, body = STOP_PROCESS_CONFIRM
-        dialog = Adw.AlertDialog(heading=heading, body=body)
-        dialog.add_response("cancel", "Cancel")
-        dialog.add_response("stop", "Stop")
-        dialog.set_response_appearance("stop", Adw.ResponseAppearance.DESTRUCTIVE)
-        dialog.set_default_response("cancel")
-        dialog.set_close_response("cancel")
-
-        target = self._running_target
-        if target is not None and hasattr(target, "pause"):
-            target.pause()
-
-        def on_response(_dlg, response: str) -> None:
-            self._stop_confirm_dialog = None
-            if response == "stop":
-                self._confirm_stop()
-            elif target is not None and hasattr(target, "unpause"):
-                target.unpause()
-
-        self._stop_confirm_dialog = dialog
-        dialog.connect("response", on_response)
-        dialog.present(self)
-
-    def _confirm_stop(self) -> None:
-        target = self._running_target
-        if target is None:
-            return
-        self.console.append(f"\n{STOP_PROCESSING}\n")
-        target.stop()
-        self._finish_run_ui(stopped=True)
-
-    def _finish_run_ui(self, *, stopped: bool = False) -> None:
-        self._stop_pulse()
-        self._set_running(False)
-        self._running_target = None
-        self.progressbar.set_fraction(0.0)
-        self.progressbar.set_text("Stopped" if stopped else "")
-
-    def _on_stopped(self) -> None:
-        """Worker reported a cooperative stop (between files/models)."""
-        self._finish_run_ui(stopped=True)
-
-    def _on_complete(self) -> None:
-        self._stop_pulse()
-        self._set_running(False)
-        self.progressbar.set_fraction(1.0)
-        self.progressbar.set_text(_PROGRESS_DONE)
-        self._running_target = None
-        output_dir = self._run_output_dir
-        self._show_complete_toast(output_dir)
-        self._send_completion_notification(output_dir)
-
-    def _on_error(self, exc: BaseException) -> None:
-        self._stop_pulse()
-        self._set_running(False)
-        self.progressbar.set_text("")
-        self._report_error(f"Process failed: {exc}", exc)
-        self._send_failure_notification()
-        self._running_target = None
-
-    def _show_complete_toast(self, output_dir: str) -> None:
-        toast = Adw.Toast.new("Process complete.")
-        if output_dir and os.path.isdir(output_dir):
-            toast.set_button_label(_OPEN_FOLDER_LABEL)
-            toast.connect("button-clicked", self._on_open_output_folder, output_dir)
-        self.toast_overlay.add_toast(toast)
-
-    def _on_open_output_folder(self, _toast: Adw.Toast, output_dir: str) -> None:
-        launcher = Gtk.FileLauncher.new(Gio.File.new_for_path(output_dir))
-        launcher.launch(self, None, self._on_output_folder_launched)
-
-    def _on_output_folder_launched(self, launcher: Gtk.FileLauncher, result) -> None:
-        try:
-            launcher.launch_finish(result)
-        except GLib.Error as exc:
-            self._toast(_OPEN_FOLDER_ERROR.format(message=exc.message))
-
-    def _send_completion_notification(self, output_dir: str) -> None:
-        title = _NOTIFY_COMPLETE_TITLE.format(label=self._run_label)
-        if output_dir:
-            body = _NOTIFY_COMPLETE_BODY.format(folder=os.path.basename(os.path.normpath(output_dir)))
-        else:
-            body = _NOTIFY_COMPLETE_BODY_PLAIN
-        self._send_notification("uvr-complete", title, body)
-
-    def _send_failure_notification(self) -> None:
-        title = _NOTIFY_FAILED_TITLE.format(label=self._run_label)
-        self._send_notification("uvr-failed", title, _NOTIFY_FAILED_BODY)
-
-    def _send_notification(self, ident: str, title: str, body: str) -> None:
-        try:
-            app = self.get_application()
-            if app is None:
-                return
-            notification = Gio.Notification.new(title)
-            notification.set_body(body)
-            icon_name = _NOTIFY_ICONS.get(ident, APP_ID)
-            try:
-                notification.set_icon(Gio.ThemedIcon.new(icon_name))
-            except Exception:  # noqa: BLE001 - icon is best-effort
-                pass
-            app.send_notification(ident, notification)
-        except Exception:  # noqa: BLE001 - notifications must never break a run
-            pass
-
-    def _on_progress(self, fraction: float) -> None:
-        if fraction > _PROGRESS_EPSILON:
-            self._stop_pulse()
-            self.progressbar.set_fraction(fraction)
-            self.progressbar.set_text(self._progress_text(fraction))
-
-    def _progress_text(self, fraction: float) -> str:
-        percent = int(round(fraction * 100))
-        elapsed = max(0.0, time.monotonic() - self._run_started_at)
-        parts = [f"{percent}%", f"{self._format_mmss(elapsed)} elapsed"]
-        if fraction > 0.01 and fraction < 1.0:
-            remaining = elapsed * (1.0 - fraction) / fraction
-            parts.append(f"~{self._format_mmss(remaining)} left")
-        return " · ".join(parts)
-
-    @staticmethod
-    def _format_mmss(seconds: float) -> str:
-        total = int(seconds)
-        return f"{total // 60}:{total % 60:02d}"
-
-    def _report_error(self, message: str, exc: BaseException) -> None:
-        from .errorlog import log_error
-
-        target = self._running_target or self._run_target
-        key = target.error_key if target is not None else self._active_view().method_key
-        log_error(key, exc)
-        toast = Adw.Toast.new(message)
-        toast.set_button_label("Error Log")
-        toast.set_action_name("win.error_log")
-        self.toast_overlay.add_toast(toast)
-
-    def _set_running(self, running: bool) -> None:
-        self.start_button.set_sensitive(not running)
-        self.stop_button.set_sensitive(running)
+        self._run_controller.handle_stop()
 
     # -- Misc -------------------------------------------------------------------
 

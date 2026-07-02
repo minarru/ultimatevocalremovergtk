@@ -167,8 +167,6 @@ class MethodView:
         self.build_stem_options(self.stem_group)
         self.groups.append(self.stem_group)
 
-        self._install_unrecognized_hook()
-
     # -- Model dropdown ---------------------------------------------------------
 
     def list_models(self) -> List[str]:
@@ -633,14 +631,6 @@ class MethodView:
                 return root
         app = Gio.Application.get_default()
         return app.get_active_window() if app is not None else None
-
-    def _install_unrecognized_hook(self) -> None:
-        """Route unrecognized-model parameter resolution to the GTK dialog."""
-        from ..dialogs.model_params import make_unrecognized_handler
-
-        self.context.repo.on_unrecognized_model = make_unrecognized_handler(
-            self.context, lambda: self._window_root()
-        )
 
     def _on_change_defaults(self, _button) -> None:
         from ..dialogs.model_params import show_change_defaults_dialog

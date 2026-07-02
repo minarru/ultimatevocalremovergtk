@@ -70,6 +70,7 @@ from data.constants import (
 )
 
 from ..hints import HelpHintManager, OUTPUT_FORMAT_HINT
+from ..shared_settings import apply_shared_file_options
 from ..markup import set_row_subtitle
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
@@ -481,19 +482,16 @@ class AudioToolsPage:
         self._refresh_dual_rows()
 
     def _sync_shared_from_settings(self) -> None:
-        """Re-read the keys shared across tabs (inputs / output / format).
-
-        Keeps the single-input tool rows and the output folder in step with a
-        selection made on another tab. Guarded so it never writes back.
-        """
+        """Re-read the keys shared across tabs (inputs / output / format)."""
         self._loading = True
         try:
-            inputs = self.settings.get("input_paths") or []
-            for row in (self.me_inputs_row, self.ts_inputs_row, self.ps_inputs_row, self.ap_inputs_row):
-                row.set_paths(inputs, notify=False)
-            self.output_row.set_path(self.settings.get("export_path") or "", notify=False)
-            set_combo_value(self.format_row, self.settings.get("save_format", WAV))
-            self.apollo_gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
+            apply_shared_file_options(
+                self.settings,
+                input_rows=(self.me_inputs_row, self.ts_inputs_row, self.ps_inputs_row, self.ap_inputs_row),
+                output_row=self.output_row,
+                format_row=self.format_row,
+                gpu_row=self.apollo_gpu_row,
+            )
         finally:
             self._loading = False
 

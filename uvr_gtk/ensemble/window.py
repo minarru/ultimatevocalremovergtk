@@ -63,6 +63,7 @@ from uvr_core import (
 
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
+from ..shared_settings import apply_shared_file_options
 from ..widgets.rows import (
     get_combo_value,
     make_combo_row,
@@ -300,19 +301,17 @@ class EnsemblePage:
         self._rebuild_model_list(self.settings.get("selected_models") or [])
 
     def _sync_shared_from_settings(self) -> None:
-        """Re-read the keys shared across tabs (inputs / output / format / ...).
-
-        Lets a file or output folder picked on another tab follow the user onto
-        the ensemble tab. Guarded so it never writes spurious settings back.
-        """
+        """Re-read the keys shared across tabs (inputs / output / format / ...)."""
         self._loading = True
         try:
-            self.input_row.set_paths(self.settings.get("input_paths") or [], notify=False)
-            self.output_row.set_path(self.settings.get("export_path") or "", notify=False)
-            set_combo_value(self.format_row, self.settings.get("save_format", WAV))
-            self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
-            self.sample_row.set_title(SAMPLE_MODE_CHECKBOX(self.settings.get("model_sample_mode_duration", 30)))
-            self.sample_row.set_active(bool(self.settings.get("model_sample_mode")))
+            apply_shared_file_options(
+                self.settings,
+                input_row=self.input_row,
+                output_row=self.output_row,
+                format_row=self.format_row,
+                gpu_row=self.gpu_row,
+                sample_row=self.sample_row,
+            )
         finally:
             self._loading = False
 

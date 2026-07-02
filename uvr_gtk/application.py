@@ -91,7 +91,7 @@ _CSS = b"""
 }
 
 .uvr-log-body {
-  min-height: 200px;
+  min-height: 200px; /* keep in sync with _LOG_BODY_HEIGHT in log_panel.py */
 }
 
 .uvr-log-console {

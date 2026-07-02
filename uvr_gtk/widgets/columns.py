@@ -9,9 +9,11 @@ wide/narrow flip) identical, and lets :class:`uvr_gtk.window.MainWindow` drive
 every page's ``columns_box`` from one breakpoint handler.
 """
 
+from typing import Optional
+
 from gi.repository import Adw, Gtk
 
-from .log_panel import LOG_PANEL_BOTTOM_INSET
+from .log_panel import LogPanel
 
 #: Clamp width shared by every two-column options surface.
 DEFAULT_MAX_WIDTH = 1180
@@ -58,7 +60,7 @@ def build_columns_box(left_groups=(), right_groups=()):
 def wrap_options_scroller(
     columns_box: Gtk.Widget,
     maximum_size: int = DEFAULT_MAX_WIDTH,
-    bottom_inset: int = LOG_PANEL_BOTTOM_INSET,
+    bottom_inset: Optional[int] = None,
 ) -> Gtk.ScrolledWindow:
     """Wrap a ``columns_box`` in the shared clamp + vertical scroller.
 
@@ -67,8 +69,11 @@ def wrap_options_scroller(
     clip it, so a sane minimum is pinned (single-column content reflows to fit).
 
     ``bottom_inset`` adds scrollable padding below the option groups so the
-  last rows are not hidden behind the floating log panel overlay.
+  last rows are not hidden behind the floating log panel overlay. When omitted,
+  the inset is derived from :meth:`LogPanel.default_bottom_inset`.
     """
+    if bottom_inset is None:
+        bottom_inset = LogPanel.default_bottom_inset()
     if bottom_inset:
         columns_box.set_margin_bottom(columns_box.get_margin_bottom() + bottom_inset)
     clamp = Adw.Clamp(child=columns_box, maximum_size=maximum_size)

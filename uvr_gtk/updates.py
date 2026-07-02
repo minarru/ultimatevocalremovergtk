@@ -29,11 +29,7 @@ def _get_manager(app_context) -> DownloadManager:
         setattr(app_context, "_download_manager", manager)
     return manager
 
-
-def _idle(func, *args):
-    GLib.idle_add(lambda: (func(*args), GLib.SOURCE_REMOVE)[1])
-
-
+from .dispatch import idle_on_main
 class UpdateView:
     def __init__(self, parent, app_context=None):
         self.parent = parent
@@ -79,7 +75,7 @@ class UpdateView:
     def _check_worker(self) -> None:
         self.manager.refresh()
         status = self.manager.update_status()
-        _idle(self._check_done, status)
+        idle_on_main(self._check_done, status)
 
     def _check_done(self, status) -> None:
         self.update_button.set_sensitive(True)

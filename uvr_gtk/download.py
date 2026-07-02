@@ -51,11 +51,7 @@ def _get_manager(app_context) -> DownloadManager:
         setattr(app_context, "_download_manager", manager)
     return manager
 
-
-def _idle(func, *args):
-    GLib.idle_add(lambda: (func(*args), GLib.SOURCE_REMOVE)[1])
-
-
+from .dispatch import idle_on_main
 class DownloadCenter:
     def __init__(self, parent, app_context, on_models_changed=None):
         self.parent = parent
@@ -167,7 +163,7 @@ class DownloadCenter:
         # UVR's is_auto_update_model_params behaviour on a successful check).
         if is_online and self.settings.get("is_auto_update_model_params", True):
             self.manager.update_model_settings()
-        _idle(self._refresh_done, is_online)
+        idle_on_main(self._refresh_done, is_online)
 
     def _refresh_done(self, is_online: bool) -> None:
         self._busy = False
@@ -223,17 +219,17 @@ class DownloadCenter:
         try:
             result = self.manager.download(
                 jobs,
-                on_progress=lambda f: _idle(self._set_progress, f),
-                on_info=lambda text: _idle(self._set_info, text),
+                on_progress=lambda f: idle_on_main(self._set_progress, f),
+                on_info=lambda text: idle_on_main(self._set_info, text),
                 stop_event=self._stop_event,
             )
         except Exception as exc:  # noqa: BLE001 - surfaced via the error log + UI
             from .errorlog import log_error
 
             log_error("Downloading Item", exc)
-            _idle(self._download_done, "failed", str(type(exc).__name__))
+            idle_on_main(self._download_done, "failed", str(type(exc).__name__))
             return
-        _idle(self._download_done, result, None)
+        idle_on_main(self._download_done, result, None)
 
     def _download_done(self, result: str, error_name) -> None:
         self._busy = False

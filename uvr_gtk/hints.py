@@ -77,6 +77,13 @@ def set_tooltip(widget, text: Optional[str]) -> None:
     widget.set_tooltip_text(format_hint(text))
 
 
+def set_icon_button_a11y(widget, text: Optional[str]) -> None:
+    """Set tooltip and accessible label for an icon-only button."""
+    set_tooltip(widget, text)
+    label = format_hint(text) if text else ""
+    widget.update_property([Gtk.AccessibleProperty.LABEL], [label])
+
+
 def add_help_hint(widget, text: str, settings=None) -> None:
     """Set ``widget``'s tooltip to ``text``.
 
