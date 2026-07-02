@@ -343,8 +343,6 @@ class PreferencesDialog(Adw.PreferencesDialog):
         value = _COLOR_SCHEME_OPTIONS[index][1]
         self.settings.set("color_scheme", value)
         self._persist()
-        from ..hints import set_tooltip
-
         apply_color_scheme(value)
 
     def _on_combo_changed(self, row, _pspec, key) -> None:
