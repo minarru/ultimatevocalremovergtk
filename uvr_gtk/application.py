@@ -55,11 +55,11 @@ _CSS = b"""
 
 .uvr-log-expander-arrow image {
   transition: -gtk-icon-transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
-  -gtk-icon-transform: rotate(180deg);
+  -gtk-icon-transform: rotate(0deg);
 }
 
 .uvr-log-expander-arrow:checked image {
-  -gtk-icon-transform: rotate(0deg);
+  -gtk-icon-transform: rotate(180deg);
 }
 
 .uvr-run-controls {
