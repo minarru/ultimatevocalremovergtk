@@ -9,11 +9,54 @@ __pycache__/
 .venv.*/
 venv/
 
-# Downloaded ML weights — metadata/json/yaml stay in git (see upstream v5.6.0_roformer branch)
-models/**/*.pth
-models/**/*.ckpt
-models/**/*.onnx
-models/**/*.th
+# models/ — ignore everything except the bundled metadata shipped upstream
+# (v5.6.0_roformer_add+directml). Downloaded weights and per-model yaml
+# configs stay local. Parent directories must be un-ignored for negated files.
+models/*
+!models/Apollo_Models/
+models/Apollo_Models/*
+!models/Apollo_Models/model_configs/
+models/Apollo_Models/model_configs/*
+!models/Apollo_Models/model_configs/apollo.yaml
+!models/Apollo_Models/model_configs/config_apollo_uni.yaml
+!models/Apollo_Models/model_data/
+models/Apollo_Models/model_data/*
+!models/Apollo_Models/model_data/5f740abe31e74c49d0a3b46613888b6d.json
+!models/Apollo_Models/model_data/6ac70f3230878a7084e084f49ab820ed.json
+!models/Apollo_Models/model_data/d687711d32baa00b50bc06391a0dc6c9.json
+!models/Demucs_Models/
+models/Demucs_Models/*
+!models/Demucs_Models/model_data/
+models/Demucs_Models/model_data/*
+!models/Demucs_Models/model_data/model_name_mapper.json
+!models/Demucs_Models/v3_v4_repo/
+models/Demucs_Models/v3_v4_repo/*
+!models/Demucs_Models/v3_v4_repo/demucs_models.txt
+!models/MDX_Net_Models/
+models/MDX_Net_Models/*
+!models/MDX_Net_Models/model_data/
+models/MDX_Net_Models/model_data/*
+!models/MDX_Net_Models/model_data/model_data.json
+!models/MDX_Net_Models/model_data/model_name_mapper.json
+!models/MDX_Net_Models/model_data/mdx_c_configs/
+models/MDX_Net_Models/model_data/mdx_c_configs/*
+!models/MDX_Net_Models/model_data/mdx_c_configs/model1.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/model2.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/model3.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/modelA.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/modelB.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/model_2_stem_061321.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/model_2_stem_full_band.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/model_2_stem_full_band_2.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/model_2_stem_full_band_3.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/model_2_stem_full_band_4.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/model_2_stem_full_band_8k.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/sndfx.yaml
+!models/VR_Models/
+models/VR_Models/*
+!models/VR_Models/model_data/
+models/VR_Models/model_data/*
+!models/VR_Models/model_data/model_data.json
 !models/VR_Models/UVR-DeNoise-Lite.pth
 
 # Runtime / portable-mode artifacts (see uvr_core/paths.py)
@@ -21,6 +64,9 @@ data.pkl
 ensemble_temps/
 temp_sample_clips/
 uvr_gtk/data/icons/
+
+# Scripts only used locally
+scripts/
 
 # Generated GResource manifest (rebuilt by resources/compile_resources.sh)
 resources/uvr.gresource.xml
