@@ -1,0 +1,46 @@
+"""Shared audio export helpers for separation and audio tools."""
+
+import os
+
+from data.constants import WAV
+
+from .settings import SettingsModel
+
+
+def resolve_wav_type_set(settings: SettingsModel) -> str:
+    """Reproduce ``MainWindow.process_check_wav_type``."""
+    wav_type = settings.get("wav_type_set")
+    save_format_sel = settings.get("save_format")
+    if wav_type == "32-bit Float":
+        return "FLOAT"
+    if wav_type == "64-bit Float":
+        return "FLOAT" if save_format_sel != WAV else "DOUBLE"
+    return wav_type
+
+
+def save_format(audio_path: str, save_format_sel: str, mp3_bit_set: str) -> None:
+    """Torch-free port of ``separate.save_format``.
+
+    Converts an exported WAV to FLAC/MP3 via ``pydub`` when the chosen output
+    format is not WAV, then removes the intermediate WAV.
+    """
+    from data.constants import FLAC, MP3
+
+    if save_format_sel == WAV:
+        return
+
+    from pydub import AudioSegment
+
+    audio_segment = AudioSegment.from_wav(audio_path)
+    if save_format_sel == FLAC:
+        audio_segment.export(audio_path.replace(".wav", ".flac"), format="flac")
+    elif save_format_sel == MP3:
+        mp3_path = audio_path.replace(".wav", ".mp3")
+        try:
+            audio_segment.export(mp3_path, format="mp3", bitrate=mp3_bit_set, codec="libmp3lame")
+        except Exception:  # noqa: BLE001 - fall back to default codec like UVR
+            audio_segment.export(mp3_path, format="mp3", bitrate=mp3_bit_set)
+    try:
+        os.remove(audio_path)
+    except OSError:
+        pass

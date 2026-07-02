@@ -223,7 +223,6 @@ class PreferencesDialog(Adw.PreferencesDialog):
             ("is_add_model_name", "Model test mode", "Append the model name to output file names."),
             ("is_create_model_folder", "Generate model folder", "Save outputs inside a per-model subfolder."),
             ("is_accept_any_input", "Accept any input", "Allow any input file type, not just common audio."),
-            ("is_task_complete", "Notification chimes", "Play a chime when processing finishes or fails."),
             ("is_normalization", "Normalize output", "Normalize the loudness of saved audio."),
         ):
             row = Adw.SwitchRow(title=title, subtitle=subtitle)

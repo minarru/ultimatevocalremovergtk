@@ -6,9 +6,9 @@ completion are delivered through plain callbacks. The runner deliberately knows
 nothing about GTK; the ``uvr_gtk`` layer wraps these callbacks with
 ``GLib.idle_add`` (see :mod:`uvr_gtk.dispatch`) so they run on the main loop.
 
-Phase 0 wires the **non-ensemble, primary-model** path end to end so the app is
-runnable. Ensemble output combination, sample mode, secondary models and the
-audio tools are added in later phases.
+Supports single-model separation, ensemble runs, sample mode, and secondary /
+vocal-splitter / Demucs pre-process machinery. Audio tools live in
+:mod:`uvr_core.audio_tools`.
 """
 
 import os
@@ -37,12 +37,13 @@ from data.constants import (
 )
 
 from . import paths
+from .audio_io import resolve_wav_type_set
 from .model_data import (
     ModelData,
     ModelRepository,
-    _resolve_wav_type_set,
     assemble_model_data,
 )
+from .sample_mode import prepare_input_paths
 from .settings import SettingsModel
 from .run_control import ProcessStopped, check_stopped, pausable_callback
 
@@ -127,7 +128,10 @@ class JobRunner:
 
         self._is_stopped = False
         self._is_paused = False
-        self._thread = KThread(target=self._run, args=(list(input_paths), callbacks))
+        self._thread = KThread(
+            target=self._run,
+            args=(prepare_input_paths(self.settings, input_paths), callbacks),
+        )
         self._thread.start()
 
     def start_ensemble(self, input_paths: Sequence[str], callbacks: JobCallbacks) -> None:
@@ -138,7 +142,10 @@ class JobRunner:
 
         self._is_stopped = False
         self._is_paused = False
-        self._thread = KThread(target=self._run_ensemble, args=(list(input_paths), callbacks))
+        self._thread = KThread(
+            target=self._run_ensemble,
+            args=(prepare_input_paths(self.settings, input_paths), callbacks),
+        )
         self._thread.start()
 
     def pause(self) -> None:
@@ -297,7 +304,7 @@ class JobRunner:
                         "set_progress_bar": set_progress_bar,
                         "write_to_console": write_to_console,
                         "process_iteration": pausable_callback(self, self._process_iteration),
-                        "check_run_control": pausable_callback(self, lambda: None),
+                        "check_run_control": pausable_callback(self, lambda: check_stopped(self)),
                         "cached_source_callback": self._cached_source_callback,
                         "cached_model_source_holder": self._cached_model_source_holder,
                         "list_all_models": self.all_models,
@@ -414,7 +421,7 @@ class JobRunner:
                         "set_progress_bar": set_progress_bar,
                         "write_to_console": write_to_console,
                         "process_iteration": pausable_callback(self, self._process_iteration),
-                        "check_run_control": pausable_callback(self, lambda: None),
+                        "check_run_control": pausable_callback(self, lambda: check_stopped(self)),
                         "cached_source_callback": self._cached_source_callback,
                         "cached_model_source_holder": self._cached_model_source_holder,
                         "list_all_models": self.all_models,
@@ -525,7 +532,7 @@ class Ensembler:
         self.ensemble_secondary_stem = ensemble_main_stem_pair[2]
         self.is_normalization = settings.get("is_normalization")
         self.is_wav_ensemble = settings.get("is_wav_ensemble")
-        self.wav_type_set = _resolve_wav_type_set(settings)
+        self.wav_type_set = resolve_wav_type_set(settings)
         self.mp3_bit_set = settings.get("mp3_bit_set")
         self.save_format = settings.get("save_format")
         if not is_manual_ensemble:

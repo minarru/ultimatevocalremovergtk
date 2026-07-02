@@ -44,7 +44,6 @@ finish-args:
   - --device=all
 
   # --- Audio -----------------------------------------------------------------
-  # Completion/failure chimes (playsound) + general audio.
   - --socket=pulseaudio
 
   # --- Network ---------------------------------------------------------------

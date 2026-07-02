@@ -13,6 +13,7 @@ auto-save and app close.
 """
 
 import copy
+import os
 import pickle
 from typing import Any, Dict, Optional
 
@@ -40,17 +41,26 @@ class SettingsModel:
         try:
             with open(path, "rb") as data_file:
                 stored = pickle.load(data_file)
-            if not isinstance(stored, dict):
-                stored = {}
+            stored = cls._sanitize_stored(stored)
         except (ValueError, EOFError, FileNotFoundError, pickle.UnpicklingError):
             stored = {}
         return cls(stored, path=path)
 
+    @staticmethod
+    def _sanitize_stored(stored: Any) -> Dict[str, Any]:
+        """Drop unknown keys so tampered pickles cannot inject arbitrary settings."""
+        if not isinstance(stored, dict):
+            return {}
+        allowed = set(DEFAULT_DATA.keys())
+        return {key: value for key, value in stored.items() if key in allowed}
+
     def save(self, path: Optional[str] = None) -> None:
         """Persist the full settings dict as pickle, like ``save_data``."""
         target = path or self.path
-        with open(target, "wb") as data_file:
+        tmp_path = f"{target}.tmp"
+        with open(tmp_path, "wb") as data_file:
             pickle.dump(self._data, data_file)
+        os.replace(tmp_path, target)
 
     def get(self, key: str, default: Any = None) -> Any:
         return self._data.get(key, default)

@@ -16,23 +16,17 @@ by the ``Ensembler`` in :mod:`uvr_core.job_runner`. Nothing here imports
 
 import hashlib
 import json
+import logging
 import os
 from typing import Dict, List, Optional
 
 from data.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
 
 from . import paths
+from .audio_io import resolve_wav_type_set
 from .settings import SettingsModel
 
-
-def _resolve_wav_type_set(settings: SettingsModel) -> str:
-    """Reproduce ``MainWindow.process_check_wav_type``."""
-    wav_type = settings.get("wav_type_set")
-    if wav_type == "32-bit Float":
-        return "FLOAT"
-    if wav_type == "64-bit Float":
-        return "FLOAT" if settings.get("save_format") != WAV else "DOUBLE"
-    return wav_type
+logger = logging.getLogger(__name__)
 
 
 def load_model_hash_data(dictionary: str) -> dict:
@@ -192,7 +186,8 @@ class ModelRepository:
         """
         try:
             return ModelData(settings, self, model_name, process_method, is_dry_check=True)
-        except Exception:
+        except (FileNotFoundError, ValueError, KeyError, OSError, json.JSONDecodeError) as exc:
+            logger.debug("resolve_model_dry failed for %r: %s", model_name, exc)
             return None
 
     def stem_labels_for_model(self, settings: "SettingsModel", process_method: str, model_name: str):
@@ -271,7 +266,8 @@ class ModelData:
         self.mdxnet_stem_select = settings.get("mdx_stems")
         self.mdxnet_stems_selected = settings.get("mdx_stems_selected") or []
         self.overlap = float(settings.get("overlap")) if settings.get("overlap") != DEFAULT else 0.25
-        self.overlap_mdx = float(settings.get("overlap_mdx")) if settings.get("overlap_mdx") != DEFAULT else settings.get("overlap_mdx")
+        overlap_mdx_val = settings.get("overlap_mdx")
+        self.overlap_mdx = float(overlap_mdx_val) if overlap_mdx_val != DEFAULT else 0.25
         self.overlap_mdx23 = int(float(settings.get("overlap_mdx23")))
         self.semitone_shift = float(settings.get("semitone_shift"))
         self.is_pitch_change = False if self.semitone_shift == 0 else True
@@ -291,7 +287,7 @@ class ModelData:
         self.mdx_stem_count = 1
         self.compensate = None
         self.mdx_n_fft_scale_set = None
-        self.wav_type_set = _resolve_wav_type_set(settings)
+        self.wav_type_set = resolve_wav_type_set(settings)
         self.device_set = device_set.split(":")[-1].strip() if ":" in device_set else device_set
         self.mp3_bit_set = settings.get("mp3_bit_set")
         self.save_format = settings.get("save_format")
@@ -326,7 +322,6 @@ class ModelData:
         self.model_capacity = 32, 128
         self.is_vr_51_model = False
         self.is_demucs_pre_proc_model_inst_mix = False
-        self.manual_download_Button = None
         self.secondary_model_4_stem = []
         self.secondary_model_4_stem_scale = []
         self.secondary_model_4_stem_names = []
@@ -433,7 +428,7 @@ class ModelData:
                                 import yaml
                                 from ml_collections import ConfigDict
                                 with open(config_path) as f:
-                                    config = ConfigDict(yaml.load(f, Loader=yaml.FullLoader))
+                                    config = ConfigDict(yaml.safe_load(f))
                             except ImportError:
                                 # yaml / ml_collections are part of the (lazy) ML
                                 # stack; without them an MDX-C model can't be
@@ -831,7 +826,19 @@ def assemble_model_data(
     """
     if arch_type == ENSEMBLE_MODE:
         selected = settings.get("selected_models") or []
-        return [ModelData(settings, repo, name) for name in selected]
+        models = [ModelData(settings, repo, name) for name in selected]
+        valid = [model for model in models if model.model_status]
+        skipped = len(models) - len(valid)
+        if skipped:
+            logger.warning(
+                "%d ensemble member(s) could not be resolved and were skipped",
+                skipped,
+            )
+        if len(valid) < 2 and len(selected) >= 2:
+            raise ValueError(
+                "Too few valid ensemble members; check that selected models are installed."
+            )
+        return valid
     if arch_type == ENSEMBLE_CHECK:
         return [ModelData(settings, repo, model)]
     if arch_type in (VR_ARCH_TYPE, VR_ARCH_PM):

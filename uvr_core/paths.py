@@ -9,7 +9,7 @@ Paths are split into two groups so the app can run from a read-only install
 separate, user-writable location:
 
 * Read-only **bundled data** lives under :data:`data/` (constants, changelog,
-  chimes, download cache JSON).
+  download cache JSON).
 * Writable **runtime data** resolves relative to :data:`DATA_DIR` (models, model
   data caches, downloaded aux models, temp dirs and the settings pickle).
 
@@ -33,8 +33,6 @@ CHANGE_LOG_PATH = os.path.join(BUNDLED_DATA_DIR, "change_log.txt")
 DOWNLOAD_MODEL_CACHE_PATH = os.path.join(BUNDLED_DATA_DIR, "model_manual_download.json")
 VR_PARAM_DIR = os.path.join(BASE_PATH, "lib_v5", "vr_network", "modelparams")
 MDX_MIXER_PATH = os.path.join(BASE_PATH, "lib_v5", "mixer.ckpt")
-COMPLETE_CHIME = os.path.join(BUNDLED_DATA_DIR, "assets", "complete_chime.wav")
-FAIL_CHIME = os.path.join(BUNDLED_DATA_DIR, "assets", "fail_chime.wav")
 
 # Read-only seed tree shipped inside the install dir. When ``DATA_DIR`` is
 # relocated (read-only install), :func:`ensure_data_dir` copies the bundled
@@ -55,7 +53,6 @@ def _resolve_data_dir() -> str:
 
 # --- Writable runtime data ---------------------------------------------------
 DATA_DIR = _resolve_data_dir()
-os.makedirs(DATA_DIR, exist_ok=True)
 
 MODELS_DIR = os.path.join(DATA_DIR, "models")
 VR_MODELS_DIR = os.path.join(MODELS_DIR, "VR_Models")
@@ -144,6 +141,7 @@ def ensure_data_dir() -> None:
     this only ensures the directories exist; ``BUNDLED_MODELS_DIR`` and
     ``MODELS_DIR`` are identical so no seeding/copying onto itself occurs.
     """
+    os.makedirs(DATA_DIR, exist_ok=True)
     _migrate_legacy_data_layout()
     for directory in (
         MODELS_DIR,

@@ -81,18 +81,15 @@ def _latest_version_key() -> str:
     return "current_version"
 
 
-def _ssl_context() -> Optional[ssl.SSLContext]:
-    """Match UVR's non-Windows behaviour of using an unverified TLS context."""
-    if OPERATING_SYSTEM == "Windows":
-        return None
-    return ssl._create_unverified_context()
+def _ssl_context() -> ssl.SSLContext:
+    """Return a TLS context; set ``UVR_INSECURE_DOWNLOADS=1`` to disable verification."""
+    if os.environ.get("UVR_INSECURE_DOWNLOADS") == "1":
+        return ssl._create_unverified_context()
+    return ssl.create_default_context()
 
 
 def _urlopen(url: str):
-    context = _ssl_context()
-    if context is not None:
-        return urllib.request.urlopen(url, context=context)
-    return urllib.request.urlopen(url)
+    return urllib.request.urlopen(url, context=_ssl_context())
 
 
 def vip_downloads(password: str, link_type: Tuple[bytes, bytes] = VIP_REPO) -> str:
@@ -347,38 +344,49 @@ class DownloadManager:
     def _download_file(self, url, save_path, index, total, on_progress, stop_event) -> None:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         tmp_path = f"{save_path}.part"
-        with _urlopen(url) as response:
-            length_header = response.getheader("Content-Length")
-            file_total = int(length_header) if length_header and length_header.isdigit() else 0
-            downloaded = 0
-            with open(tmp_path, "wb") as out_file:
-                while True:
-                    if stop_event is not None and stop_event.is_set():
-                        out_file.close()
-                        if os.path.isfile(tmp_path):
-                            try:
-                                os.remove(tmp_path)
-                            except OSError:
-                                pass
-                        return
-                    chunk = response.read(64 * 1024)
-                    if not chunk:
-                        break
-                    out_file.write(chunk)
-                    downloaded += len(chunk)
-                    if on_progress and file_total:
-                        file_fraction = downloaded / file_total
-                        overall = (index + file_fraction) / total
-                        on_progress(max(0.0, min(1.0, overall)))
-        os.replace(tmp_path, save_path)
+        try:
+            with _urlopen(url) as response:
+                length_header = response.getheader("Content-Length")
+                file_total = int(length_header) if length_header and length_header.isdigit() else 0
+                downloaded = 0
+                with open(tmp_path, "wb") as out_file:
+                    while True:
+                        if stop_event is not None and stop_event.is_set():
+                            out_file.close()
+                            if os.path.isfile(tmp_path):
+                                try:
+                                    os.remove(tmp_path)
+                                except OSError:
+                                    pass
+                            return
+                        chunk = response.read(64 * 1024)
+                        if not chunk:
+                            break
+                        out_file.write(chunk)
+                        downloaded += len(chunk)
+                        if on_progress and file_total:
+                            file_fraction = downloaded / file_total
+                            overall = (index + file_fraction) / total
+                            on_progress(max(0.0, min(1.0, overall)))
+            os.replace(tmp_path, save_path)
+        except Exception:
+            if os.path.isfile(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+            raise
 
     # -- Model-data mapper refresh ----------------------------------------------
 
-    def update_model_settings(self) -> bool:
+    def update_model_settings(self, repo=None) -> bool:
         """Download and persist the four model-data mapper JSON files.
 
         Port of ``download_model_settings``; on any failure existing local files
         are left untouched. Returns ``True`` on a successful refresh.
+
+        When ``repo`` is supplied, its stem-check cache is invalidated after a
+        successful refresh so model lists reflect the new mapper data.
         """
         try:
             fetched = []
@@ -395,6 +403,8 @@ class DownloadManager:
                     out_file.write(json.dumps(data, indent=4))
             except OSError:
                 continue
+        if repo is not None:
+            repo.invalidate_stem_check()
         return True
 
     # -- Update check -----------------------------------------------------------

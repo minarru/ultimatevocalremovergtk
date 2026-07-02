@@ -32,15 +32,15 @@ from data.constants import (
     MATCH_INPUTS,
     PHASE_SHIFTS_OPT,
     PITCH_TEXT,
+    PROCESS_STOPPED_BY_USER,
+    STOP_PROCESSING,
     TIME_STRETCH,
     TIME_TEXT,
     TIME_WINDOW_MAPPER,
-    PROCESS_STOPPED_BY_USER,
-    STOP_PROCESSING,
     VOLUME_MAPPER,
-    WAV,
 )
 
+from .audio_io import resolve_wav_type_set, save_format
 from .job_runner import JobCallbacks
 from .run_control import ProcessStopped, check_stopped, pausable_callback
 from .settings import SettingsModel
@@ -49,54 +49,6 @@ from .settings import SettingsModel
 SINGLE_INPUT_TOOLS = (MANUAL_ENSEMBLE, TIME_STRETCH, CHANGE_PITCH, APOLLO_RESTORE)
 #: Tools that operate on (file_a, file_b) input pairs.
 DUAL_INPUT_TOOLS = (ALIGN_INPUTS, MATCH_INPUTS)
-
-
-def resolve_wav_type_set(settings: SettingsModel) -> str:
-    """Port of ``MainWindow.process_check_wav_type``.
-
-    Maps the user-facing ``wav_type_set`` selection to the ``soundfile`` subtype
-    string the backend writes with, honouring the WAV/non-WAV double-precision
-    special case.
-    """
-    wav_type = settings.get("wav_type_set")
-    save_format = settings.get("save_format")
-    if wav_type == "32-bit Float":
-        return "FLOAT"
-    if wav_type == "64-bit Float":
-        return "FLOAT" if save_format != WAV else "DOUBLE"
-    return wav_type
-
-
-def save_format(audio_path: str, save_format_sel: str, mp3_bit_set: str) -> None:
-    """Local, torch-free port of ``separate.save_format``.
-
-    Converts an exported WAV to FLAC/MP3 via ``pydub`` (lazily imported) when the
-    chosen output format is not WAV, then removes the intermediate WAV. Importing
-    ``separate.save_format`` would drag in the whole ML stack, so the trivial
-    conversion is reimplemented here to keep the audio tools usable on their own.
-    """
-    if save_format_sel == WAV:
-        return
-
-    import pydub  # lazy: only needed for non-WAV export
-
-    musfile = pydub.AudioSegment.from_wav(audio_path)
-
-    from data.constants import FLAC, MP3
-
-    if save_format_sel == FLAC:
-        musfile.export(audio_path.replace(".wav", ".flac"), format="flac")
-    elif save_format_sel == MP3:
-        mp3_path = audio_path.replace(".wav", ".mp3")
-        try:
-            musfile.export(mp3_path, format="mp3", bitrate=mp3_bit_set, codec="libmp3lame")
-        except Exception:  # noqa: BLE001 - fall back to default codec like UVR
-            musfile.export(mp3_path, format="mp3", bitrate=mp3_bit_set)
-
-    try:
-        os.remove(audio_path)
-    except OSError:
-        pass
 
 
 class AudioTools:

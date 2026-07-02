@@ -12,6 +12,7 @@ Importing this package must never import ``tkinter``; heavy ML dependencies
 (``torch``, ``separate.py``) are imported lazily inside the methods that use them.
 """
 
+from .audio_tools import AudioToolRunner
 from .gpu import available_cuda_devices
 from .job_runner import Ensembler, JobCallbacks, JobRunner
 from .paths import DATA_DIR, ensure_data_dir
@@ -34,6 +35,7 @@ __all__ = [
     "assemble_model_data",
     "JobRunner",
     "JobCallbacks",
+    "AudioToolRunner",
     "Ensembler",
     "ENSEMBLE_CACHE_DIR",
     "list_saved_ensembles",

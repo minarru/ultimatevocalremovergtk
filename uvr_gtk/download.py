@@ -162,7 +162,7 @@ class DownloadCenter:
         # Auto-refresh the model-data mappers when the user opted in (matches
         # UVR's is_auto_update_model_params behaviour on a successful check).
         if is_online and self.settings.get("is_auto_update_model_params", True):
-            self.manager.update_model_settings()
+            self.manager.update_model_settings(self.context.repo)
         idle_on_main(self._refresh_done, is_online)
 
     def _refresh_done(self, is_online: bool) -> None:

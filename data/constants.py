@@ -651,7 +651,6 @@ DEFAULT_DATA = {
         'is_auto_update_model_params': True,#
         'is_add_model_name': False,
         'is_accept_any_input': False,
-        'is_task_complete': False,
         'is_normalization': False,
         'is_use_opencl': False,
         'is_wav_ensemble': False,
@@ -769,7 +768,6 @@ SETTING_CHECK = ('vr_model',
                'is_auto_update_model_params',#
                'is_add_model_name',
                "is_accept_any_input",
-               'is_task_complete',
                'is_create_model_folder',
                'mp3_bit_set',#
                'semitone_shift',#
@@ -1106,7 +1104,6 @@ IS_ACCEPT_ANY_INPUT_HELP = (
     'Allows all types of inputs when enabled, even non-audio formats.\n'
     'For experimental use only. Not recommended for regular use.'
 )
-IS_TASK_COMPLETE_HELP = 'Plays a chime upon process completion or failure when activated.'
 DELETE_YOUR_SETTINGS_HELP = (
     'Contains your saved settings. Confirmation will be requested before deleting a selected setting.'
 )

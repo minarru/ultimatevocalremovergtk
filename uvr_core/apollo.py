@@ -102,7 +102,8 @@ class ApolloModelData:
                         f.seek(-10000 * 1024, 2)
                         model_hash = hashlib.md5(f.read()).hexdigest()
                 except Exception:
-                    model_hash = hashlib.md5(open(self.apollo_model_location, "rb").read()).hexdigest()
+                    with open(self.apollo_model_location, "rb") as fallback_file:
+                        model_hash = hashlib.md5(fallback_file.read()).hexdigest()
                 cache.update({self.apollo_model_location: model_hash})
         else:
             model_status = False

@@ -103,7 +103,6 @@ pandas==3.0.4
 patsy==1.0.2
 pillow==12.2.0
 platformdirs==4.10.0
-playsound==1.2.2
 pooch==1.9.0
 propcache==0.5.2
 protobuf==7.35.1
