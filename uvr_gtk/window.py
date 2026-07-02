@@ -36,6 +36,8 @@ from data.constants import (
     MP3,
     OUTPUT_FOLDER_ENTRY_HELP,
     SAMPLE_MODE_CHECKBOX,
+    VR_ARCH_PM,
+    VR_ARCH_TYPE,
     WAV,
 )
 
@@ -52,6 +54,7 @@ from .hints import (
     set_icon_button_a11y,
     set_tooltip,
 )
+from .dispatch import idle_on_main
 from .run_control import RunController
 from .shared_settings import apply_shared_file_options
 from .views import METHOD_VIEWS
@@ -73,6 +76,12 @@ _LOG_COPIED_TOAST = "Log copied"
 _REASON_INPUT = "Select an input audio file"
 _REASON_OUTPUT = "Choose an output folder"
 _REASON_MODEL = "Choose a model"
+
+# Tk / legacy settings may store the short process-method label instead of the
+# Gtk view key (e.g. ``VR Arc`` vs ``VR Architecture``).
+_METHOD_SETTING_ALIASES = {
+    VR_ARCH_TYPE: VR_ARCH_PM,
+}
 
 
 class _SeparationTarget:
@@ -146,6 +155,9 @@ class MainWindow(Adw.ApplicationWindow):
         # The currently selected method view, whose option groups are placed
         # into the responsive columns by ``_populate_columns``.
         self._current_view = None
+        self._columns_ready = False
+        self._syncing_method_combo = False
+        self._options_scroller = None
 
         page = self._build_content()
         self.log_panel = LogPanel(on_expanded_changed=self._on_log_panel_expanded_changed)
@@ -187,6 +199,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._apply_accelerators()
 
         self._load_from_settings()
+        self.connect("map", self._on_window_mapped)
         self.connect("close-request", self._on_close_request)
 
     # -- Construction -----------------------------------------------------------
@@ -239,6 +252,7 @@ class MainWindow(Adw.ApplicationWindow):
         # other page's column box together). The columns are repopulated as the
         # active method changes, so the column references are kept.
         self._columns_box, self._col_start, self._col_end = build_columns_box()
+        self._columns_ready = True
         self._populate_columns()
 
         # Proactive empty-state hint: a full-width banner above the two columns,
@@ -253,10 +267,10 @@ class MainWindow(Adw.ApplicationWindow):
         self._sep_banner.add_css_class("app-banner")
         self._sep_banner.connect("button-clicked", self._on_sep_banner_clicked)
         separation_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        separation_page.set_valign(Gtk.Align.START)
+        separation_page.set_vexpand(True)
         separation_page.append(self._sep_banner)
-        scroller = wrap_options_scroller(self._columns_box)
-        separation_page.append(scroller)
+        self._options_scroller = wrap_options_scroller(self._columns_box)
+        separation_page.append(self._options_scroller)
 
         # Ensemble Mode and Audio Tools are embedded as sibling pages that reuse
         # the same responsive two-column layout and the shared run controls.
@@ -338,12 +352,31 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _show_method(self, view) -> None:
         """Make ``view`` the active method and refresh the column layout."""
-        if view is self._current_view:
-            return
         self._current_view = view
+        if not self._columns_ready:
+            return
         view._sync_only_active()
         self._populate_columns()
         self._update_sep_banner()
+        self._refresh_separation_layout()
+
+    def _refresh_separation_layout(self) -> None:
+        """Force the options scroller to remeasure after column reparenting."""
+        if self._current_view is None or self._options_scroller is None:
+            return
+        self._columns_box.queue_resize()
+        self._options_scroller.queue_resize()
+        clamp = self._options_scroller.get_child()
+        if clamp is not None:
+            clamp.queue_resize()
+
+    def _on_window_mapped(self, *_args) -> None:
+        def refresh() -> None:
+            if self._current_view is not None:
+                self._populate_columns()
+                self._refresh_separation_layout()
+
+        idle_on_main(refresh)
 
     def _update_sep_banner(self) -> None:
         """Reveal the empty-state banner when the active method has no models."""
@@ -488,12 +521,18 @@ class MainWindow(Adw.ApplicationWindow):
         self.sample_row.set_active(bool(self.settings.get("model_sample_mode")))
 
         method = self.settings.get("chosen_process_method", MDX_ARCH_TYPE)
+        method = _METHOD_SETTING_ALIASES.get(method, method)
         view = self._views_by_method.get(method) or self._views_by_method.get(MDX_ARCH_TYPE) or self._views[0]
-        set_combo_value(self.method_row, view.title)
-        # ``set_combo_value`` only emits ``notify::selected`` when the index
-        # actually changes, so populate the columns explicitly here too.
+        self._syncing_method_combo = True
+        try:
+            set_combo_value(self.method_row, view.title)
+        finally:
+            self._syncing_method_combo = False
+        # Always repopulate: the combo may already match ``view`` (so
+        # ``notify::selected`` does not fire) and an earlier partial populate
+        # can leave method-specific groups out of the column tree.
         self._show_method(view)
-        self._update_sep_banner()
+        idle_on_main(self._refresh_separation_layout)
 
         # The embedded mode pages load their own slice of the settings model.
         self._ensemble_page.load()
@@ -519,6 +558,9 @@ class MainWindow(Adw.ApplicationWindow):
     def _activate_separation(self) -> None:
         self.settings.set("chosen_process_method", self._active_view().method_key)
         self._sync_shared_from_settings()
+        if self._current_view is not None:
+            self._populate_columns()
+            self._refresh_separation_layout()
 
     def _on_visible_child(self, *_args) -> None:
         """Track the run target as the visible tab changes.
@@ -547,6 +589,8 @@ class MainWindow(Adw.ApplicationWindow):
         """
 
     def _on_method_selected(self, *_args) -> None:
+        if self._syncing_method_combo or not self._columns_ready:
+            return
         title = get_combo_value(self.method_row)
         view = self._views_by_title.get(title)
         if view is None:

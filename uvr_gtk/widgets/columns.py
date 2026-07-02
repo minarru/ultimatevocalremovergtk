@@ -69,18 +69,24 @@ def wrap_options_scroller(
     clip it, so a sane minimum is pinned (single-column content reflows to fit).
 
     ``bottom_inset`` adds scrollable padding below the option groups so the
-  last rows are not hidden behind the floating log panel overlay. When omitted,
-  the inset is derived from :meth:`LogPanel.default_bottom_inset`.
+    last rows are not hidden behind the floating log panel overlay. When omitted,
+    the inset is derived from :meth:`LogPanel.default_bottom_inset`.
+
+    ``propagate_natural_height`` stays off so dynamically reparented option
+    groups (the separation page rebuilds its columns on method change) still
+    receive a usable viewport height inside :class:`Adw.ViewStack`.
     """
     if bottom_inset is None:
         bottom_inset = LogPanel.default_bottom_inset()
     if bottom_inset:
         columns_box.set_margin_bottom(columns_box.get_margin_bottom() + bottom_inset)
     clamp = Adw.Clamp(child=columns_box, maximum_size=maximum_size)
+    clamp.set_vexpand(True)
     scroller = Gtk.ScrolledWindow()
     scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-    scroller.set_propagate_natural_height(True)
+    scroller.set_propagate_natural_height(False)
     scroller.set_vexpand(True)
+    scroller.set_hexpand(True)
     scroller.set_min_content_width(360)
     scroller.set_child(clamp)
     return scroller

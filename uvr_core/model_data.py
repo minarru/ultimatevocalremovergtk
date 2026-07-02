@@ -28,6 +28,37 @@ from .settings import SettingsModel
 
 logger = logging.getLogger(__name__)
 
+_MDX_C_YAML_LOADER = None
+
+
+def load_mdx_c_config(path: str) -> dict:
+    """Load a bundled MDX-C / Roformer yaml config.
+
+    Shipped configs use ``!!python/tuple`` for a few list fields; this extends
+    :class:`yaml.SafeLoader` with only that tag so we avoid ``FullLoader`` while
+    still parsing the trusted local files under ``mdx_c_configs/``.
+    """
+    import yaml
+
+    global _MDX_C_YAML_LOADER
+    if _MDX_C_YAML_LOADER is None:
+
+        class MdxCYamlLoader(yaml.SafeLoader):
+            pass
+
+        def _construct_python_tuple(loader, node):
+            return tuple(loader.construct_sequence(node))
+
+        yaml.add_constructor(
+            "tag:yaml.org,2002:python/tuple",
+            _construct_python_tuple,
+            Loader=MdxCYamlLoader,
+        )
+        _MDX_C_YAML_LOADER = MdxCYamlLoader
+
+    with open(path) as config_file:
+        return yaml.load(config_file, Loader=_MDX_C_YAML_LOADER)
+
 
 def load_model_hash_data(dictionary: str) -> dict:
     """Load one of the model-data / name-mapper JSON files."""
@@ -425,14 +456,20 @@ class ModelData:
                         config_path = os.path.join(paths.MDX_C_CONFIG_PATH, self.model_data["config_yaml"])
                         if os.path.isfile(config_path):
                             try:
-                                import yaml
                                 from ml_collections import ConfigDict
-                                with open(config_path) as f:
-                                    config = ConfigDict(yaml.safe_load(f))
+
+                                config = ConfigDict(load_mdx_c_config(config_path))
                             except ImportError:
                                 # yaml / ml_collections are part of the (lazy) ML
                                 # stack; without them an MDX-C model can't be
                                 # configured, so treat it as unavailable here.
+                                config = None
+                            except Exception as exc:
+                                logger.debug(
+                                    "MDX-C config %r failed to load: %s",
+                                    config_path,
+                                    exc,
+                                )
                                 config = None
                             if config is None:
                                 self.model_status = False
