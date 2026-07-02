@@ -142,7 +142,6 @@ class AudioToolsPage:
             right_groups=(shared_group,),
         )
         self.widget = wrap_options_scroller(self.columns_box)
-        self.widget.set_valign(Gtk.Align.START)
 
     @property
     def runner(self):

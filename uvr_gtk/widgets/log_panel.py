@@ -171,7 +171,9 @@ class LogPanel(Gtk.Box):
     @classmethod
     def default_bottom_inset(cls) -> int:
         """Scroll padding so option columns clear the collapsed floating panel."""
-        return cls._collapsed_body_height(include_progress=True) + OVERLAY_MARGIN_BOTTOM
+        # Progress is hidden until a run starts; reserve it only when visible
+        # (see :meth:`collapsed_overlay_height`).
+        return cls._collapsed_body_height(include_progress=False) + OVERLAY_MARGIN_BOTTOM
 
     def collapsed_overlay_height(self) -> int:
         """Minimum panel height when the log revealer is closed."""

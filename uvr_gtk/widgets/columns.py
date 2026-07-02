@@ -17,6 +17,13 @@ from .log_panel import LogPanel
 
 #: Clamp width shared by every two-column options surface.
 DEFAULT_MAX_WIDTH = 1180
+#: Breathing room between the last preference row and the floating log panel.
+_OPTIONS_CLEARANCE_GAP = 8
+
+
+def set_options_bottom_clearance(columns_box: Gtk.Box, clearance_px: int) -> None:
+    """Reserve scroll space below option columns for the floating log panel."""
+    columns_box.set_margin_bottom(clearance_px + _OPTIONS_CLEARANCE_GAP)
 
 
 def make_column() -> Gtk.Box:
@@ -61,8 +68,11 @@ def wrap_options_scroller(
     columns_box: Gtk.Widget,
     maximum_size: int = DEFAULT_MAX_WIDTH,
     bottom_inset: Optional[int] = None,
-) -> Gtk.ScrolledWindow:
+) -> Gtk.Box:
     """Wrap a ``columns_box`` in the shared clamp + vertical scroller.
+
+    Returns a vertical ``Gtk.Box`` that fills the :class:`Adw.ViewStack` page
+    slot; the scroller is its only child and also expands vertically.
 
     With a horizontal policy of ``NEVER`` the scroller would otherwise report a
     near-zero minimum width, letting the window shrink below the content and
@@ -79,7 +89,7 @@ def wrap_options_scroller(
     if bottom_inset is None:
         bottom_inset = LogPanel.default_bottom_inset()
     if bottom_inset:
-        columns_box.set_margin_bottom(columns_box.get_margin_bottom() + bottom_inset)
+        set_options_bottom_clearance(columns_box, bottom_inset)
     clamp = Adw.Clamp(child=columns_box, maximum_size=maximum_size)
     clamp.set_vexpand(True)
     scroller = Gtk.ScrolledWindow()
@@ -89,7 +99,22 @@ def wrap_options_scroller(
     scroller.set_hexpand(True)
     scroller.set_min_content_width(360)
     scroller.set_child(clamp)
-    return scroller
+
+    page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+    page.set_vexpand(True)
+    page.set_hexpand(True)
+    page.append(scroller)
+    return page
+
+
+def options_scroller(page: Gtk.Widget) -> Gtk.ScrolledWindow:
+    """Return the ``Gtk.ScrolledWindow`` inside a :func:`wrap_options_scroller` page."""
+    if isinstance(page, Gtk.ScrolledWindow):
+        return page
+    child = page.get_first_child()
+    if isinstance(child, Gtk.ScrolledWindow):
+        return child
+    raise TypeError(f"expected options page from wrap_options_scroller, got {type(page)!r}")
 
 
 def set_columns_narrow(columns_box: Gtk.Box, narrow: bool) -> None:

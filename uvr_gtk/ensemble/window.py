@@ -123,7 +123,6 @@ class EnsemblePage:
             right_groups=(stems_group, output_group, advanced_group),
         )
         self.widget = wrap_options_scroller(self.columns_box)
-        self.widget.set_valign(Gtk.Align.START)
 
     # -- Construction -----------------------------------------------------------
 

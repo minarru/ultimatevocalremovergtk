@@ -49,8 +49,7 @@ _CSS = b"""
   background-color: @window_bg_color;
   color: @card_fg_color;
   border: 1px solid alpha(@borders, 0.45);
-  box-shadow: 0 -1px 0 alpha(@borders, 0.4),
-              0 2px 6px alpha(@shade_color, 0.08),
+  box-shadow: 0 2px 6px alpha(@shade_color, 0.08),
               0 8px 24px alpha(@shade_color, 0.16);
 }
 

@@ -58,7 +58,13 @@ from .dispatch import idle_on_main
 from .run_control import RunController
 from .shared_settings import apply_shared_file_options
 from .views import METHOD_VIEWS
-from .widgets.columns import build_columns_box, set_columns_narrow, wrap_options_scroller
+from .widgets.columns import (
+    build_columns_box,
+    options_scroller,
+    set_columns_narrow,
+    set_options_bottom_clearance,
+    wrap_options_scroller,
+)
 from .widgets.file_chooser import InputFilesRow, OutputFolderRow
 from .widgets.log_panel import OVERLAY_MARGIN_BOTTOM, LogPanel
 from .widgets.rows import get_combo_value, make_combo_row, make_switch_row, set_combo_value
@@ -157,7 +163,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._current_view = None
         self._columns_ready = False
         self._syncing_method_combo = False
-        self._options_scroller = None
+        self._options_page = None
 
         page = self._build_content()
         self.log_panel = LogPanel(on_expanded_changed=self._on_log_panel_expanded_changed)
@@ -171,6 +177,10 @@ class MainWindow(Adw.ApplicationWindow):
         self.stop_button.connect("clicked", self._on_stop)
         self.log_copy_button.connect("clicked", self._on_log_copy)
         self.log_clear_button.connect("clicked", self._on_log_clear)
+        self.log_panel._progress_section.connect(
+            "notify::visible", lambda *_: self._sync_options_bottom_clearance()
+        )
+        self.log_panel.connect("notify::height", lambda *_: self._sync_options_bottom_clearance())
 
         root = Gtk.Overlay()
         root.set_child(page)
@@ -269,8 +279,8 @@ class MainWindow(Adw.ApplicationWindow):
         separation_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         separation_page.set_vexpand(True)
         separation_page.append(self._sep_banner)
-        self._options_scroller = wrap_options_scroller(self._columns_box)
-        separation_page.append(self._options_scroller)
+        self._options_page = wrap_options_scroller(self._columns_box)
+        separation_page.append(self._options_page)
 
         # Ensemble Mode and Audio Tools are embedded as sibling pages that reuse
         # the same responsive two-column layout and the shared run controls.
@@ -362,11 +372,12 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _refresh_separation_layout(self) -> None:
         """Force the options scroller to remeasure after column reparenting."""
-        if self._current_view is None or self._options_scroller is None:
+        if self._current_view is None or self._options_page is None:
             return
         self._columns_box.queue_resize()
-        self._options_scroller.queue_resize()
-        clamp = self._options_scroller.get_child()
+        scroller = options_scroller(self._options_page)
+        scroller.queue_resize()
+        clamp = scroller.get_child()
         if clamp is not None:
             clamp.queue_resize()
 
@@ -375,8 +386,15 @@ class MainWindow(Adw.ApplicationWindow):
             if self._current_view is not None:
                 self._populate_columns()
                 self._refresh_separation_layout()
+            self._sync_options_bottom_clearance()
 
         idle_on_main(refresh)
+
+    def _sync_options_bottom_clearance(self) -> None:
+        """Keep scroll padding tight to the collapsed log panel height."""
+        clearance = self.log_panel.collapsed_overlay_height()
+        for columns_box in self._column_boxes:
+            set_options_bottom_clearance(columns_box, clearance)
 
     def _update_sep_banner(self) -> None:
         """Reveal the empty-state banner when the active method has no models."""
@@ -413,6 +431,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _on_log_panel_expanded_changed(self, expanded: bool) -> None:
         if self.log_toggle.get_active() != expanded:
             self.log_toggle.set_active(expanded)
+        self._sync_options_bottom_clearance()
 
     def _start_pulse(self) -> None:
         self.log_panel.start_progress_pulse(_PULSE_INTERVAL_MS)
