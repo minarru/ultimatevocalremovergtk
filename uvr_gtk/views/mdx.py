@@ -33,6 +33,7 @@ from data.constants import (
 from gi.repository import Adw, Gtk
 
 from .base import MethodView, register_method_view
+from ..help_text import MDX_OVERLAP_HINT, MDX_STEMS_HINT
 from ..hints import set_tooltip
 from ..widgets.rows import (
     get_scale_row_value,
@@ -42,18 +43,6 @@ from ..widgets.rows import (
     set_combo_value,
     set_scale_row_value,
 )
-
-_OVERLAP_HELP = (
-    "Overlap between prediction windows. The available values follow the selected "
-    "model: classic MDX-Net uses the Default/0.25-0.99 scale, while MDX23C models "
-    "use 2-50"
-)
-
-_MDX_STEMS_HELP = (
-    "Choose which stems to save. Applies to multi-stem MDX23C models; "
-    "for 2-stem models the 'Only' toggles above apply"
-)
-
 # Full stem universe presented in the UI. The backend intersects this with the
 # selected model's actual stems, so checking a stem a model does not produce is
 # simply ignored (resolving per-model stems here would require model hashing).
@@ -92,7 +81,7 @@ class MDXView(MethodView):
         self.overlap_row = make_discrete_scale_row("Overlap", [str(v) for v in MDX_OVERLAP])
         self.overlap_row._uvr_scale.connect("value-changed", self._on_overlap_changed)
         group.add(self.overlap_row)
-        self.hints.register(self.overlap_row, _OVERLAP_HELP)
+        self.hints.register(self.overlap_row, MDX_OVERLAP_HINT)
 
     def _overlap_key(self):
         return "overlap_mdx23" if self._overlap_is_mdx_c else "overlap_mdx"
@@ -147,7 +136,7 @@ class MDXView(MethodView):
         self._stem_box.set_margin_end(12)
         self._stem_box.set_visible(False)
         group.add(self._stem_box)
-        self.hints.register(self._stem_box, _MDX_STEMS_HELP)
+        self.hints.register(self._stem_box, MDX_STEMS_HINT)
 
     def _stored_selected_stems(self):
         selected = self.settings.get("mdx_stems_selected") or []
@@ -196,7 +185,7 @@ class MDXView(MethodView):
         try:
             for stem in ordered:
                 button = Gtk.ToggleButton(label=stem, valign=Gtk.Align.CENTER)
-                set_tooltip(button, _MDX_STEMS_HELP)
+                set_tooltip(button, MDX_STEMS_HINT)
                 button.set_active(stem in selected)
                 button.connect("toggled", self._on_stem_switch)
                 self._stem_box.append(button)

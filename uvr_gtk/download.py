@@ -32,6 +32,7 @@ from data.constants import (
 from uvr_core.downloads import DownloadManager
 
 from .dialogs.utils import configure_dialog_width, fill_dialog_width, present_modal_dialog, set_dialog_content
+from .help_text import VIP_DOWNLOAD_CODE_HINT
 from .hints import set_tooltip
 from .widgets.rows import get_combo_value, make_combo_row, set_combo_values, use_wrapping_list
 
@@ -76,7 +77,7 @@ class DownloadCenter:
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
         self.key_button = Gtk.Button(icon_name="dialog-password-symbolic")
-        set_tooltip(self.key_button, "Enter VIP download code")
+        set_tooltip(self.key_button, VIP_DOWNLOAD_CODE_HINT)
         self.key_button.connect("clicked", self._on_vip_code)
         header.pack_start(self.key_button)
         toolbar.add_top_bar(header)

@@ -14,10 +14,8 @@ from data.constants import (
     SHIFTS_HELP,
 )
 
+from ..help_text import DEMUCS_CHUNK_HINT
 from .base import MethodView, register_method_view
-
-_CHUNK_DEMUCS_HELP = "Process the audio in chunks to reduce memory usage (legacy option)"
-
 
 @register_method_view
 class DemucsView(MethodView):
@@ -59,5 +57,5 @@ class DemucsView(MethodView):
             hint=OVERLAP_HELP,
         )
         self.add_advanced_switch("is_split_mode", "Split mode", hint=IS_SPLIT_MODE_HELP)
-        self.add_advanced_switch("is_chunk_demucs", "Enable chunks", hint=_CHUNK_DEMUCS_HELP)
+        self.add_advanced_switch("is_chunk_demucs", "Enable chunks", hint=DEMUCS_CHUNK_HINT)
         self.add_advanced_switch("is_demucs_combine_stems", "Combine stems", hint=IS_DEMUCS_COMBINE_STEMS_HELP)

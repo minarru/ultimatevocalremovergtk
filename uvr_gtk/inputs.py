@@ -19,6 +19,11 @@ from gi.repository import Adw, GLib, Gtk
 from data.constants import AUDIO_INPUT_TOTAL_TEXT, VERIFY_INPUTS_TEXT
 
 from .errorlog import set_error_log
+from .help_text import (
+    ADD_INPUT_FILES_HINT,
+    CLEAR_ALL_INPUTS_HINT,
+    REMOVE_INPUT_HINT,
+)
 from .hints import set_tooltip
 from .markup import set_row_subtitle, set_row_title
 
@@ -87,12 +92,12 @@ class ViewInputs:
         header = Adw.HeaderBar()
 
         add_button = Gtk.Button(icon_name="list-add-symbolic")
-        set_tooltip(add_button, "Add input files")
+        set_tooltip(add_button, ADD_INPUT_FILES_HINT)
         add_button.connect("clicked", self._on_add)
         header.pack_start(add_button)
 
         clear_button = Gtk.Button(icon_name="edit-clear-all-symbolic")
-        set_tooltip(clear_button, "Clear all inputs")
+        set_tooltip(clear_button, CLEAR_ALL_INPUTS_HINT)
         clear_button.connect("clicked", self._on_clear)
         header.pack_start(clear_button)
 
@@ -140,7 +145,7 @@ class ViewInputs:
             set_row_subtitle(row, path)
             remove_button = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
             remove_button.add_css_class("flat")
-            set_tooltip(remove_button, "Remove this input")
+            set_tooltip(remove_button, REMOVE_INPUT_HINT)
             remove_button.connect("clicked", lambda _b, p=path: self._remove_path(p))
             row.add_suffix(remove_button)
             self._files_group.add(row)

@@ -17,15 +17,18 @@ from typing import Dict, List, Optional
 
 from gi.repository import Adw, Gtk
 
-from data.constants import (
+from uvr_gtk.help_text import (
     AUDIO_TOOLS_HELP,
     COMMAND_TEXT_HELP,
     IS_GPU_CONVERSION_HELP,
     MODEL_SAMPLE_MODE_HELP,
+    OUTPUT_FORMAT_HINT,
+    PROCESS_METHOD_HINT,
     SAVE_CURRENT_SETTINGS_HELP,
     SAVE_STEM_ONLY_HELP,
     SETTINGS_HELP,
     STOP_HELP,
+    VIEW_TAB_HINTS,
 )
 
 
@@ -66,35 +69,6 @@ class HelpHintManager:
         """Re-apply every registered tooltip (e.g. after rebuilding rows)."""
         for widget, text in self._registry:
             set_tooltip(widget, text)
-
-
-# GTK-specific: the process-method dropdown only lists VR / MDX / Demucs.
-PROCESS_METHOD_HINT = (
-    "Choose the separation algorithm:\n"
-    "\n"
-    "• VR Architecture — magnitude spectrogram source separation\n"
-    "• MDX-Net — hybrid spectrogram network\n"
-    "• Demucs v3/4 — hybrid spectrogram network (multi-stem capable)"
-)
-
-# Shown on the header view-switcher tabs (not on the process-method dropdown).
-VIEW_TAB_HINTS: Dict[str, str] = {
-    "separation": (
-        "Separate vocals, instrumentals, and other stems using VR, MDX-Net, or Demucs models"
-    ),
-    "ensemble": (
-        "Combine outputs from multiple models and algorithms for higher-quality results"
-    ),
-    "audio_tools": (
-        "Time stretch, change pitch, align tracks, matchering, manual ensemble, "
-        "and Apollo audio restoration"
-    ),
-}
-
-OUTPUT_FORMAT_HINT = (
-    "Choose the audio format for saved output files (WAV, FLAC, or MP3)"
-)
-
 
 # Curated reuse of UVR help-hint text for shared main-window controls.
 SHARED_HINTS: Dict[str, str] = {

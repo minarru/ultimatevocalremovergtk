@@ -45,6 +45,7 @@ from . import APP_TITLE
 from .audio_tools import AudioToolsPage
 from .context import AppContext
 from .ensemble import EnsemblePage
+from .help_text import MAIN_MENU_HINT, VIEW_INPUTS_BUTTON_HINT
 from .hints import (
     HelpHintManager,
     OUTPUT_FORMAT_HINT,
@@ -223,7 +224,7 @@ class MainWindow(Adw.ApplicationWindow):
         header.set_title_widget(switcher)
 
         menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic")
-        set_tooltip(menu_button, "Main menu")
+        set_tooltip(menu_button, MAIN_MENU_HINT)
         menu_button.set_menu_model(self._build_primary_menu())
         header.pack_end(menu_button)
 
@@ -440,7 +441,7 @@ class MainWindow(Adw.ApplicationWindow):
         group = Adw.PreferencesGroup(title="Files")
         view_inputs_button = Gtk.Button(icon_name="view-list-symbolic", valign=Gtk.Align.CENTER)
         view_inputs_button.add_css_class("flat")
-        set_tooltip(view_inputs_button, "View or verify selected inputs")
+        set_tooltip(view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
         view_inputs_button.set_action_name("win.view_inputs")
         group.set_header_suffix(view_inputs_button)
         self.input_row = InputFilesRow(self._on_inputs_changed)

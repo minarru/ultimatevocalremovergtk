@@ -20,6 +20,13 @@ from data.constants import (
     VOCAL_STEM,
 )
 
+from ..help_text import (
+    STEM_ONLY_ALL_HINT,
+    primary_stem_only_tooltip,
+    secondary_stem_only_tooltip,
+    stem_only_tooltip,
+)
+
 _TOGGLE_ALL = "all"
 
 # Stable display order for "<stem> Only" entries.
@@ -52,23 +59,6 @@ class StemOnlyOption:
     icon_name: Optional[str]
     settings_key: Optional[str]
 
-
-def _stem_only_tooltip(stem: str) -> str:
-    return f"Export only the {stem} stem; the other output file is skipped"
-
-
-def _all_stems_tooltip() -> str:
-    return "Export every stem this model produces (default)"
-
-
-def _primary_stem_tooltip() -> str:
-    return "Export only the model's primary stem; skip the secondary output"
-
-
-def _secondary_stem_tooltip() -> str:
-    return "Export only the model's secondary stem; skip the primary output"
-
-
 def build_stem_only_options(
     *,
     primary_stem: Optional[str],
@@ -78,7 +68,7 @@ def build_stem_only_options(
 ) -> List[StemOnlyOption]:
     """Build toggle entries for All Stems + each stem's Only option."""
     options = [
-        StemOnlyOption(_TOGGLE_ALL, _all_stems_tooltip(), ALL_STEMS, ALL_STEMS_ICON, None),
+        StemOnlyOption(_TOGGLE_ALL, STEM_ONLY_ALL_HINT, ALL_STEMS, ALL_STEMS_ICON, None),
     ]
     if primary_stem and secondary_stem:
         entries = [
@@ -90,7 +80,7 @@ def build_stem_only_options(
             options.append(
                 StemOnlyOption(
                     key,
-                    _stem_only_tooltip(stem),
+                    stem_only_tooltip(stem),
                     stem,
                     stem_only_icon(stem),
                     key,
@@ -100,7 +90,7 @@ def build_stem_only_options(
         options.append(
             StemOnlyOption(
                 primary_key,
-                _primary_stem_tooltip(),
+                primary_stem_only_tooltip(),
                 PRIMARY_STEM,
                 None,
                 primary_key,
@@ -109,7 +99,7 @@ def build_stem_only_options(
         options.append(
             StemOnlyOption(
                 secondary_key,
-                _secondary_stem_tooltip(),
+                secondary_stem_only_tooltip(),
                 SECONDARY_STEM,
                 None,
                 secondary_key,

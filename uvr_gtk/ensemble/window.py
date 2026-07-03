@@ -51,8 +51,12 @@ from data.constants import (
     WAV,
 )
 
-#: Shared with the main separation window's "Output format" combo (kept in sync).
 from ..dialogs.utils import present_modal_dialog, set_dialog_content
+from ..help_text import (
+    ENSEMBLE_DELETE_BUTTON_HINT,
+    ENSEMBLE_SAVE_BUTTON_HINT,
+    ENSEMBLE_SAVED_PRESET_HINT,
+)
 from ..hints import OUTPUT_FORMAT_HINT, set_tooltip
 from uvr_core import (
     delete_ensemble,
@@ -138,14 +142,14 @@ class EnsemblePage:
         group = Adw.PreferencesGroup(title="Ensemble options")
 
         self.saved_row = make_combo_row("Saved ensemble", [CHOOSE_ENSEMBLE_OPTION])
-        set_tooltip(self.saved_row,"Load a previously saved ensemble preset, or save / delete one with the buttons")
+        set_tooltip(self.saved_row, ENSEMBLE_SAVED_PRESET_HINT)
         self.saved_row.connect("notify::selected", self._on_saved_selected)
         save_button = Gtk.Button(icon_name="document-save-symbolic", valign=Gtk.Align.CENTER)
-        set_tooltip(save_button,"Save current ensemble")
+        set_tooltip(save_button, ENSEMBLE_SAVE_BUTTON_HINT)
         save_button.add_css_class("flat")
         save_button.connect("clicked", self._on_save_clicked)
         delete_button = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
-        set_tooltip(delete_button,"Delete selected saved ensemble")
+        set_tooltip(delete_button, ENSEMBLE_DELETE_BUTTON_HINT)
         delete_button.add_css_class("flat")
         delete_button.connect("clicked", self._on_delete_clicked)
         self.saved_row.add_suffix(save_button)

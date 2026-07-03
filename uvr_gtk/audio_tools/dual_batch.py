@@ -14,6 +14,12 @@ from typing import Callable, List, Sequence, Tuple
 from gi.repository import Adw, Gdk, GLib, Gtk
 
 from ..dialogs.utils import present_modal_dialog, set_form_dialog_content
+from ..help_text import (
+    DUAL_BATCH_CLEAR_HINT,
+    DUAL_BATCH_MOVE_DOWN_HINT,
+    DUAL_BATCH_MOVE_UP_HINT,
+    DUAL_BATCH_REMOVE_HINT,
+)
 from ..hints import set_tooltip
 from ..markup import set_row_subtitle, set_row_title
 
@@ -44,16 +50,16 @@ class _FileColumn(Gtk.Box):
         add_button = Gtk.Button(label="Add files", hexpand=True)
         add_button.connect("clicked", self._on_add_clicked)
         self.up_button = Gtk.Button(icon_name="go-up-symbolic")
-        set_tooltip(self.up_button, "Move selected up")
+        set_tooltip(self.up_button, DUAL_BATCH_MOVE_UP_HINT)
         self.up_button.connect("clicked", lambda *_a: self._move_selected(-1))
         self.down_button = Gtk.Button(icon_name="go-down-symbolic")
-        set_tooltip(self.down_button, "Move selected down")
+        set_tooltip(self.down_button, DUAL_BATCH_MOVE_DOWN_HINT)
         self.down_button.connect("clicked", lambda *_a: self._move_selected(1))
         self.remove_button = Gtk.Button(icon_name="list-remove-symbolic")
-        set_tooltip(self.remove_button, "Remove selected")
+        set_tooltip(self.remove_button, DUAL_BATCH_REMOVE_HINT)
         self.remove_button.connect("clicked", self._on_remove_clicked)
         clear_button = Gtk.Button(icon_name="edit-clear-all-symbolic")
-        set_tooltip(clear_button, "Clear all")
+        set_tooltip(clear_button, DUAL_BATCH_CLEAR_HINT)
         clear_button.connect("clicked", lambda *_a: self.clear())
         button_box.append(add_button)
         button_box.append(self.up_button)

@@ -69,6 +69,11 @@ from data.constants import (
     WAV_TYPE,
 )
 
+from ..help_text import (
+    MANUAL_ENSEMBLE_ALGORITHM_HINT,
+    PLAYBACK_RATE_HINT,
+    WAV_TYPE_HINT,
+)
 from ..hints import HelpHintManager, OUTPUT_FORMAT_HINT
 from ..shared_settings import apply_shared_file_options
 from ..markup import set_row_subtitle
@@ -189,7 +194,7 @@ class AudioToolsPage:
         group.add(self.me_inputs_row)
 
         self.algorithm_row = make_combo_row("Algorithm", MANUAL_ENSEMBLE_OPTIONS)
-        self.hints.register(self.algorithm_row, "Choose how the selected files are combined (e.g. Min/Max, Average, or Combine Inputs)")
+        self.hints.register(self.algorithm_row, MANUAL_ENSEMBLE_ALGORITHM_HINT)
         self.algorithm_row.connect("notify::selected", lambda *_a: self._set("choose_algorithm", get_combo_value(self.algorithm_row)))
         group.add(self.algorithm_row)
 
@@ -209,7 +214,7 @@ class AudioToolsPage:
         group.add(self.ts_inputs_row)
 
         self.time_rate_row = self._make_spin("Rate", 0.1, 10.0, 0.1, digits=2)
-        self.hints.register(self.time_rate_row, "Playback rate multiplier: values below 1 slow the track down, values above 1 speed it up")
+        self.hints.register(self.time_rate_row, PLAYBACK_RATE_HINT)
         self.time_rate_row.connect("notify::value", lambda *_a: self._set("time_stretch_rate", round(self.time_rate_row.get_value(), 2)))
         group.add(self.time_rate_row)
 
@@ -410,7 +415,7 @@ class AudioToolsPage:
         group.add(self.format_row)
 
         self.wav_type_row = make_combo_row("WAV type", WAV_TYPE)
-        self.hints.register(self.wav_type_row, "Bit depth / sample encoding used when saving WAV output")
+        self.hints.register(self.wav_type_row, WAV_TYPE_HINT)
         self.wav_type_row.connect("notify::selected", lambda *_a: self._set("wav_type_set", get_combo_value(self.wav_type_row)))
         group.add(self.wav_type_row)
 

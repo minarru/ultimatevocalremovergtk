@@ -49,6 +49,7 @@ from uvr_core.gpu import available_cuda_devices
 from uvr_core.paths import SETTINGS_CACHE_DIR
 
 from .application import apply_color_scheme
+from .help_text import REMOVE_PROFILE_HINT
 from .hints import set_tooltip
 from .widgets.rows import get_combo_value, make_combo_row, set_combo_value, set_row_icon
 
@@ -166,7 +167,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         load_button = Gtk.Button(label="Load", valign=Gtk.Align.CENTER)
         load_button.connect("clicked", self._on_load_profile)
         remove_button = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
-        set_tooltip(remove_button, "Remove profile")
+        set_tooltip(remove_button, REMOVE_PROFILE_HINT)
         remove_button.add_css_class("destructive-action")
         remove_button.connect("clicked", self._on_remove_profile)
         self.profile_combo.add_suffix(load_button)

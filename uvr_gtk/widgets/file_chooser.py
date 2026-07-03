@@ -11,6 +11,12 @@ from typing import Callable, List, Sequence
 
 from gi.repository import Adw, Gdk, GLib, Gtk
 
+from ..help_text import (
+    CLEAR_INPUT_FILES_HINT,
+    REMOVE_FROM_LIST_HINT,
+    SELECT_INPUT_FILES_HINT,
+    SELECT_OUTPUT_FOLDER_HINT,
+)
 from ..hints import set_tooltip
 from ..markup import set_row_subtitle, set_row_title
 
@@ -37,13 +43,13 @@ class InputFilesRow(Adw.ExpanderRow):
         self.add_prefix(icon)
 
         self._clear_button = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
-        set_tooltip(self._clear_button, "Clear all input files")
+        set_tooltip(self._clear_button, CLEAR_INPUT_FILES_HINT)
         self._clear_button.add_css_class("flat")
         self._clear_button.connect("clicked", self._on_clear_clicked)
         self.add_suffix(self._clear_button)
 
         button = Gtk.Button(icon_name="document-open-symbolic", valign=Gtk.Align.CENTER)
-        set_tooltip(button, "Select input audio files")
+        set_tooltip(button, SELECT_INPUT_FILES_HINT)
         button.add_css_class("flat")
         button.connect("clicked", self._on_clicked)
         self.add_suffix(button)
@@ -94,7 +100,7 @@ class InputFilesRow(Adw.ExpanderRow):
             set_row_subtitle(row, path)
             row.set_tooltip_text(path)
             remove = Gtk.Button(icon_name="window-close-symbolic", valign=Gtk.Align.CENTER)
-            set_tooltip(remove, "Remove from list")
+            set_tooltip(remove, REMOVE_FROM_LIST_HINT)
             remove.add_css_class("flat")
             remove.connect("clicked", self._on_remove_clicked, path)
             row.add_suffix(remove)
@@ -145,7 +151,7 @@ class OutputFolderRow(Adw.ActionRow):
         self.path: str = ""
 
         button = Gtk.Button(icon_name="document-open-symbolic", valign=Gtk.Align.CENTER)
-        set_tooltip(button, "Select output folder")
+        set_tooltip(button, SELECT_OUTPUT_FOLDER_HINT)
         button.add_css_class("flat")
         button.connect("clicked", self._on_clicked)
         self.add_suffix(button)
