@@ -82,8 +82,6 @@ SETTINGS_HELP = "Accesses the main settings and the \"Download Center.\""
 
 COMMAND_TEXT_HELP = "Shows the status and progress of ongoing tasks"
 
-SAVE_CURRENT_SETTINGS_HELP = "Load or save the app's settings"
-
 PITCH_SHIFT_HELP = """Choose the pitch for processing tracks:
 
 • Whole numbers indicate semitones

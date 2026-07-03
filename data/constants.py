@@ -10,7 +10,6 @@ is_macos = False
 
 CPU = 'cpu'
 CUDA_DEVICE = 'cuda'
-DIRECTML_DEVICE = "privateuseone"
 
 #MAIN_FONT_NAME = "Century Gothic"
 OPT_SEPARATOR_SAVE = '─'*25
@@ -653,7 +652,6 @@ DEFAULT_DATA = {
         'is_add_model_name': False,
         'is_accept_any_input': False,
         'is_normalization': False,
-        'is_use_opencl': False,
         'is_wav_ensemble': False,
         'is_create_model_folder': False,
         'mp3_bit_set': '320k',#
@@ -675,7 +673,6 @@ DEFAULT_DATA = {
         'fileTwoEntry_Full': '',
         'DualBatch_inputPaths': [],
         'model_hash_table': {},
-        'help_hints_var': True,
         'set_vocal_splitter': NO_MODEL,
         'is_set_vocal_splitter': False,#
         'is_save_inst_set_vocal_splitter': False,#
@@ -686,120 +683,6 @@ DEFAULT_DATA = {
         'window_height': 720,
         'window_maximized': False
 }
-
-SETTING_CHECK = ('vr_model',
-               'aggression_setting',
-               'window_size',
-               'mdx_segment_size',
-               'batch_size',
-               'crop_size',
-               'is_tta',
-               'is_output_image',
-               'is_post_process',
-               'is_high_end_process',
-               'post_process_threshold',
-               'vr_voc_inst_secondary_model',
-               'vr_other_secondary_model',
-               'vr_bass_secondary_model',
-               'vr_drums_secondary_model',
-               'vr_is_secondary_model_activate',
-               'vr_voc_inst_secondary_model_scale',
-               'vr_other_secondary_model_scale',
-               'vr_bass_secondary_model_scale',
-               'vr_drums_secondary_model_scale',
-               'demucs_model',
-               'segment',
-               'overlap',
-               'overlap_mdx',
-               'shifts',
-               'chunks_demucs',
-               'margin_demucs',
-               'is_chunk_demucs',
-               'is_primary_stem_only_Demucs',
-               'is_secondary_stem_only_Demucs',
-               'is_split_mode',
-               'is_demucs_combine_stems',#
-               'is_mdx23_combine_stems',#
-               'demucs_voc_inst_secondary_model',
-               'demucs_other_secondary_model',
-               'demucs_bass_secondary_model',
-               'demucs_drums_secondary_model',
-               'demucs_is_secondary_model_activate',
-               'demucs_voc_inst_secondary_model_scale',
-               'demucs_other_secondary_model_scale',
-               'demucs_bass_secondary_model_scale',
-               'demucs_drums_secondary_model_scale',
-               'demucs_stems',
-               'mdx_net_model',
-               'chunks',
-               'margin',
-               'compensate',
-               'is_denoise',#
-               'denoise_option',#
-               'phase_option',#
-               'phase_shifts',#
-               'is_save_align',#,
-               'is_match_silence',
-               'is_spec_match',#,
-               'is_match_frequency_pitch',#
-               'is_mdx_c_seg_def',
-               'is_invert_spec',#
-               'is_deverb_vocals',#
-               'deverb_vocal_opt',#
-               'voc_split_save_opt',#
-               'mdx_batch_size',
-               'mdx_voc_inst_secondary_model',
-               'mdx_other_secondary_model',
-               'mdx_bass_secondary_model',
-               'mdx_drums_secondary_model',
-               'mdx_is_secondary_model_activate',
-               'mdx_voc_inst_secondary_model_scale',
-               'mdx_other_secondary_model_scale',
-               'mdx_bass_secondary_model_scale',
-               'mdx_drums_secondary_model_scale',
-               'is_save_all_outputs_ensemble',
-               'is_append_ensemble_name',
-               'chosen_audio_tool',
-               'choose_algorithm',
-               'time_stretch_rate',
-               'pitch_rate',
-               'is_time_correction',
-               'is_primary_stem_only',
-               'is_secondary_stem_only',
-               'is_testing_audio',#
-               'is_auto_update_model_params',#
-               'is_add_model_name',
-               "is_accept_any_input",
-               'is_create_model_folder',
-               'mp3_bit_set',#
-               'flac_bit_set',#
-               'semitone_shift',#
-               'save_format',
-               'wav_type_set',
-               'device_set',
-               'user_code',
-               'is_gpu_conversion',
-               'is_normalization',
-               'is_use_opencl',
-               'is_wav_ensemble',
-               'help_hints_var',
-               'set_vocal_splitter',
-               'is_set_vocal_splitter',#
-               'is_save_inst_set_vocal_splitter',#
-               'model_sample_mode',
-               'model_sample_mode_duration',
-               'time_window',
-               'intro_analysis',
-               'db_analysis',
-               'fileOneEntry',
-               'fileOneEntry_Full',
-               'fileTwoEntry',
-               'fileTwoEntry_Full',
-               'DualBatch_inputPaths',
-               'apollo_overlap',
-               'apollo_chunk_size',
-               'apollo_model'
-               )
 
 NEW_LINES = "\n\n"
 NEW_LINE = "\n"
@@ -1089,7 +972,6 @@ DOWNLOAD_CENTER_TEXT = 'Download Center'
 DOWNLOAD_CODE_TEXT = 'Download Code'
 DOWNLOAD_LINKS_TEXT = 'Download Link(s)'
 DOWNLOAD_UPDATE_IN_APPLICATION_TEXT = 'Download Update in Application'
-ENABLE_HELP_HINTS_TEXT = 'Enable Help Hints'
 ENABLE_TTA_TEXT = 'Enable TTA'
 ENABLE_VOCAL_SPLIT_MODE_TEXT = 'Enable Vocal Split Mode'
 ENSEMBLE_NAME_TEXT = 'Ensemble Name'
@@ -1118,7 +1000,6 @@ NAME_SETTINGS_TEXT = 'Name Settings'
 NO_DEFINED_PARAMETERS_FOUND_TEXT = 'No Defined Parameters Found'
 NO_TEXT = 'No'
 NORMALIZE_OUTPUT_TEXT = 'Normalize Output'
-USE_OPENCL_TEXT = 'Use OpenCL'
 NOT_ENOUGH_MODELS_TEXT = 'Not Enough Models'
 NOTIFICATION_CHIMES_TEXT = 'Notification Chimes'
 OPEN_APPLICATION_DIRECTORY_TEXT = 'Open Application Directory'
@@ -1140,7 +1021,6 @@ SAMPLE_CLIP_DURATION_TEXT = 'Sample Clip Duration'
 SAVE_ALIGNED_TRACK_TEXT = 'Save Aligned Track'
 SAVE_ALL_OUTPUTS_TEXT = 'Save All Outputs'
 SAVE_CURRENT_ENSEMBLE_TEXT = 'Save Current Ensemble'
-SAVE_CURRENT_SETTINGS_TEXT = 'Save Current Settings'
 SAVE_INSTRUMENTAL_MIXTURE_TEXT = 'Save Instrumental Mixture'
 SAVE_SPLIT_VOCAL_INSTRUMENTALS_TEXT = 'Save Split Vocal Instrumentals'
 SECONDARY_MODEL_TEXT = 'Secondary Model'

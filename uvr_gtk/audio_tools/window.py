@@ -136,7 +136,7 @@ class AudioToolsPage:
         # Same per-view help-hint manager the separation method views use
         # (see ``uvr_gtk.views.base.MethodView``), so Audio Tools tooltips are
         # registered through the identical ``HelpHintManager`` path.
-        self.hints = HelpHintManager(self.settings)
+        self.hints = HelpHintManager()
 
         select_group = self._build_select_group()
         self.tool_stack = self._build_tool_stack()

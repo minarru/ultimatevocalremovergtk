@@ -204,7 +204,7 @@ class MainWindow(Adw.ApplicationWindow):
         narrow.connect("unapply", self._on_breakpoint_wide)
         self.add_breakpoint(narrow)
 
-        self._hint_manager = HelpHintManager(self.settings)
+        self._hint_manager = HelpHintManager()
         self._register_hints()
         self._apply_accelerators()
 

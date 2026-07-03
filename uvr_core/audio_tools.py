@@ -82,7 +82,7 @@ class AudioTools:
         self.phase_shifts = PHASE_SHIFTS_OPT[settings.get("phase_shifts")]
 
         # Apollo restore options. Device selection follows the local CUDA/CPU
-        # convention used by separate.py / model_data.py (no DirectML).
+        # convention used by separate.py / model_data.py.
         from uvr_core import paths
 
         self.apollo_model = settings.get("apollo_model")

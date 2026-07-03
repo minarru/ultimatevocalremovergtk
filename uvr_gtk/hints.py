@@ -24,7 +24,6 @@ from uvr_gtk.help_text import (
     MODEL_SAMPLE_MODE_HELP,
     OUTPUT_FORMAT_HINT,
     PROCESS_METHOD_HINT,
-    SAVE_CURRENT_SETTINGS_HELP,
     SAVE_STEM_ONLY_HELP,
     SETTINGS_HELP,
     STOP_HELP,
@@ -43,11 +42,10 @@ def set_icon_button_a11y(widget, text: Optional[str]) -> None:
     widget.update_property([Gtk.AccessibleProperty.LABEL], [text or ""])
 
 
-def add_help_hint(widget, text: str, settings=None) -> None:
+def add_help_hint(widget, text: str) -> None:
     """Set ``widget``'s tooltip to ``text``.
 
     A lightweight, stateless helper for views that don't need the manager.
-    ``settings`` is accepted for call-site compatibility and ignored.
     """
     set_tooltip(widget, text)
 
@@ -55,8 +53,7 @@ def add_help_hint(widget, text: str, settings=None) -> None:
 class HelpHintManager:
     """Tracks help-hint widgets and applies their tooltips."""
 
-    def __init__(self, settings=None):
-        self.settings = settings
+    def __init__(self):
         self._registry: List = []
 
     def register(self, widget, text: str):
@@ -75,7 +72,6 @@ SHARED_HINTS: Dict[str, str] = {
     "stop": STOP_HELP,
     "settings": SETTINGS_HELP,
     "console": COMMAND_TEXT_HELP,
-    "saved_settings": SAVE_CURRENT_SETTINGS_HELP,
     "process_method": PROCESS_METHOD_HINT,
     "gpu_conversion": IS_GPU_CONVERSION_HELP,
     "stem_only": SAVE_STEM_ONLY_HELP,

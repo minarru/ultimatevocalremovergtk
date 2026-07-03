@@ -126,7 +126,7 @@ class MethodView:
         self._spin_rows = {}
         self._model_combos = []
         self._model_combos_populated = False
-        self.hints = HelpHintManager(self.settings)
+        self.hints = HelpHintManager()
 
         # The window distributes these groups across one or two responsive
         # columns (see ``MainWindow._populate_columns``); ``self.groups`` is the

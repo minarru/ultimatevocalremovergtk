@@ -48,24 +48,8 @@ import gc
 if TYPE_CHECKING:
     from uvr_core.model_data import ModelData
 
-# if not is_macos:
-#     import torch_directml
-
 mps_available = torch.backends.mps.is_available() if is_macos else False
 cuda_available = torch.cuda.is_available()
-
-# def get_gpu_info():
-#     directml_device, directml_available = DIRECTML_DEVICE, False
-    
-#     if not is_macos:
-#         directml_available = torch_directml.is_available()
-
-#         if directml_available:
-#             directml_device = str(torch_directml.device()).partition(":")[0]
-
-#     return directml_device, directml_available
-
-# DIRECTML_DEVICE, directml_available = get_gpu_info()
 
 def clear_gpu_cache():
     gc.collect()
@@ -186,9 +170,7 @@ class SeperateAttributes:
         self.is_save_vocal_only = model_data.is_save_vocal_only
         self.device = cpu
         self.run_type = ['CPUExecutionProvider']
-        self.is_opencl = False
         self.device_set = model_data.device_set
-        self.is_use_opencl = model_data.is_use_opencl
         # Roformer (BS-Roformer / Mel-Band Roformer) support. These models are
         # MDX-C-style nets selected via the model's yaml config; ``is_roformer``
         # comes from the model-data JSON and the config itself drives which
@@ -214,12 +196,9 @@ class SeperateAttributes:
             else:
                 device_prefix = None
                 if self.device_set != DEFAULT:
-                    device_prefix = CUDA_DEVICE#DIRECTML_DEVICE if self.is_use_opencl and directml_available else CUDA_DEVICE
+                    device_prefix = CUDA_DEVICE
 
-                # if directml_available and self.is_use_opencl:
-                #     self.device = torch_directml.device() if not device_prefix else f'{device_prefix}:{self.device_set}'
-                #     self.is_other_gpu = True
-                if cuda_available:# and not self.is_use_opencl:
+                if cuda_available:
                     self.device = CUDA_DEVICE if not device_prefix else f'{device_prefix}:{self.device_set}'
                     self.run_type = ['CUDAExecutionProvider']
 
