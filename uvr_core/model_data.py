@@ -96,6 +96,9 @@ class ModelRepository:
         self.reload_mappers()
 
     def reload_mappers(self) -> None:
+        from .debug_log import debug
+
+        debug("model", "reload_mappers")
         for attr, path in (
             ("vr_hash_MAPPER", paths.VR_HASH_JSON),
             ("mdx_hash_MAPPER", paths.MDX_HASH_JSON),
@@ -163,6 +166,9 @@ class ModelRepository:
         return model_data
 
     def invalidate_stem_check(self) -> None:
+        from .debug_log import debug
+
+        debug("model", "invalidate_stem_check")
         self._stem_check_cache = None
 
     def model_list(

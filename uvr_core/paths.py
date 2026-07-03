@@ -141,6 +141,12 @@ def ensure_data_dir() -> None:
     this only ensures the directories exist; ``BUNDLED_MODELS_DIR`` and
     ``MODELS_DIR`` are identical so no seeding/copying onto itself occurs.
     """
+    from .debug_log import debug
+
+    debug(
+        "settings",
+        f"ensure_data_dir DATA_DIR={DATA_DIR} bundled_relocated={BUNDLED_MODELS_DIR != MODELS_DIR}",
+    )
     os.makedirs(DATA_DIR, exist_ok=True)
     _migrate_legacy_data_layout()
     for directory in (
@@ -167,6 +173,8 @@ def ensure_data_dir() -> None:
     # Only seed when the writable tree is relocated away from the bundled one.
     if BUNDLED_MODELS_DIR == MODELS_DIR:
         return
+
+    debug("settings", "ensure_data_dir seeding bundled model data")
 
     _seed_bundled_file(
         os.path.join(BUNDLED_MODELS_DIR, "VR_Models", "model_data", "model_data.json"),

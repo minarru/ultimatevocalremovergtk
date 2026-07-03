@@ -22,7 +22,8 @@ A startup line is emitted when tracing is active; dialog timing lines appear
 after you confirm Stop.
 
 Recognised components: ``ui``, ``dispatch``, ``console``, ``worker``,
-``separate``, ``cleanup``, ``model``, ``audio``, ``download``.
+``separate``, ``cleanup``, ``model``, ``audio``, ``download``, ``error``,
+``settings``.
 ``1`` / ``all`` enables every component.
 
 ``UVR_DEBUG_VERBOSE=1`` enables chatty logs (every progress tick, scroll
@@ -62,6 +63,8 @@ _COMPONENT_COLORS = {
     "model": "\033[96m",  # bright cyan
     "audio": "\033[95m",  # bright magenta
     "download": "\033[94m",  # bright blue
+    "error": "\033[91m",  # bright red
+    "settings": "\033[97m",  # bright white
 }
 _DEFAULT_COMPONENT = "\033[37m"  # white
 

@@ -17,6 +17,7 @@ shares the same :attr:`~uvr_core.ModelRepository.on_unrecognized_model` handler.
 from typing import Callable, Optional
 
 from uvr_core import ModelRepository, SettingsModel
+from uvr_core.debug_log import debug
 
 
 class AppContext:
@@ -59,8 +60,15 @@ class AppContext:
             self._runner = JobRunner(self.settings, self.repo)
         return self._runner
 
-    def save_settings(self) -> None:
-        self.settings.save()
+    def save_settings(self, *, trigger: str = "unspecified") -> None:
+        path = self.settings.path
+        debug("settings", f"save_settings trigger={trigger} path={path}")
+        try:
+            self.settings.save()
+            debug("settings", f"save_settings ok keys={len(self.settings.to_dict())}")
+        except OSError as exc:
+            debug("settings", f"save_settings failed error={type(exc).__name__}: {exc}")
+            raise
 
     def stop_all_workers(self, *, force: bool = False) -> None:
         """Cooperatively stop (or force-terminate) every started worker."""

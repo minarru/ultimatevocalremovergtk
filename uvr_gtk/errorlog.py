@@ -33,9 +33,13 @@ _ACTIVE_ERROR_DIALOG: Optional[Adw.Dialog] = None
 
 def set_error_log(text: str) -> None:
     """Replace the current error log (mirrors ``error_log_var.set``)."""
+    from uvr_core.debug_log import debug, preview_text
+
     global _ERROR_LOG
     with _LOCK:
         _ERROR_LOG = text or ""
+    if text:
+        debug("error", f"set_error_log {preview_text(text, max_len=120)!r}")
 
 
 def log_error(process_method: str, exception: BaseException) -> str:
@@ -44,8 +48,14 @@ def log_error(process_method: str, exception: BaseException) -> str:
     Thread-safe so worker threads can record errors directly; returns the
     formatted text.
     """
+    from uvr_core.debug_log import debug, preview_text
+
     formatted = error_text(process_method, exception)
     set_error_log(formatted)
+    debug(
+        "error",
+        f"log_error method={process_method!r} error={type(exception).__name__}: {exception}",
+    )
     return formatted
 
 
@@ -69,6 +79,7 @@ def present_error_dialog(
     global _ACTIVE_ERROR_DIALOG
 
     if _ACTIVE_ERROR_DIALOG is not None:
+        debug("error", f"present_error_dialog suppressed heading={heading!r} (dialog already open)")
         return
 
     log_text = formatted_log if formatted_log is not None else get_error_log()

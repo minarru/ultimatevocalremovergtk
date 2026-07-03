@@ -31,6 +31,8 @@ from data.constants import (
 )
 from uvr_core.downloads import DownloadManager
 
+from uvr_core.debug_log import debug
+
 from .dialogs.utils import configure_dialog_width, fill_dialog_width, present_modal_dialog, set_dialog_content
 from .help_text import VIP_DOWNLOAD_CODE_HINT
 from .hints import set_tooltip
@@ -153,28 +155,37 @@ class DownloadCenter:
     def start_refresh(self) -> None:
         if self._busy:
             return
+        debug("download", "ui refresh start")
         self._busy = True
         self._set_info("Refreshing model list\u2026")
         self._set_controls_sensitive(False)
         threading.Thread(target=self._refresh_worker, daemon=True).start()
 
     def _refresh_worker(self) -> None:
+        debug("download", "ui refresh worker")
         is_online = self.manager.refresh()
+        mapper_ok = None
         # Auto-refresh the model-data mappers when the user opted in (matches
         # UVR's is_auto_update_model_params behaviour on a successful check).
         if is_online and self.settings.get("is_auto_update_model_params", True):
-            self.manager.update_model_settings(self.context.repo)
+            mapper_ok = self.manager.update_model_settings(self.context.repo)
+            debug("download", f"ui auto update_model_settings ok={mapper_ok}")
         idle_on_main(self._refresh_done, is_online)
 
     def _refresh_done(self, is_online: bool) -> None:
         self._busy = False
         if not is_online:
+            debug("download", "ui refresh done offline")
             self._set_info(NO_CONNECTION)
             self._set_controls_sensitive(False)
             self.refresh_button.set_sensitive(True)
             set_combo_values(self.model_row, [NO_CONNECTION])
             return
         self._available = self.manager.available_downloads()
+        counts = {
+            arch: len(models) for arch, models in self._available.items()
+        }
+        debug("download", f"ui refresh done online available={counts}")
         self._set_controls_sensitive(True)
         self._populate_models()
         self._set_info("Ready.")
@@ -257,6 +268,7 @@ class DownloadCenter:
 
     def _on_stop(self, _button) -> None:
         if self._stop_event is not None:
+            debug("download", "ui download stop requested")
             self._stop_event.set()
         self.stop_button.set_sensitive(False)
         self._set_info("Stopping\u2026")
@@ -267,6 +279,7 @@ class DownloadCenter:
         open_vip_code_dialog(self.window, self.context, on_validated=self._on_vip_validated)
 
     def _on_vip_validated(self, unlocked: bool) -> None:
+        debug("download", f"ui vip_validated unlocked={unlocked}")
         if unlocked and self._available:
             self._available = self.manager.available_downloads()
             self._populate_models()
@@ -332,10 +345,11 @@ def open_vip_code_dialog(parent, app_context, on_validated=None):
         unlocked = manager.validate_vip_code(code)
         if unlocked:
             settings.set("user_code", code)
-            app_context.save_settings()
+            app_context.save_settings(trigger="vip")
             toast("VIP models added")
         else:
             toast("Incorrect code")
+        debug("download", f"ui vip_code_confirm unlocked={unlocked}")
         if on_validated is not None:
             on_validated(unlocked)
 

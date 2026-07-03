@@ -114,6 +114,7 @@ _CSS = b"""
 class UVRApplication(Adw.Application):
     def __init__(self):
         super().__init__(application_id=APP_ID)
+        self._did_activate = False
 
     def do_startup(self):
         Adw.Application.do_startup(self)
@@ -151,6 +152,7 @@ class UVRApplication(Adw.Application):
         )
 
     def do_activate(self):
+        self._did_activate = True
         register_gresources()
         from uvr_core.separate_import import warm_import_separate_engines
 
@@ -174,6 +176,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     status = app.run(list(argv) if argv is not None else sys.argv)
 
     if enabled():
+        if not app._did_activate:
+            debug("ui", "duplicate instance rejected (single-instance, activate not called)")
         debug("ui", f"uvr_gtk exit status={status}")
 
     from .shutdown import finalize_process_exit

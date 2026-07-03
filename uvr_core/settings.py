@@ -19,6 +19,7 @@ from typing import Any, Dict, Optional
 
 from data.constants import DEFAULT_DATA
 
+from .debug_log import debug
 from .paths import SETTINGS_DATA_FILE
 
 
@@ -42,8 +43,14 @@ class SettingsModel:
             with open(path, "rb") as data_file:
                 stored = pickle.load(data_file)
             stored = cls._sanitize_stored(stored)
-        except (ValueError, EOFError, FileNotFoundError, pickle.UnpicklingError):
+            source = "pickle"
+        except (ValueError, EOFError, FileNotFoundError, pickle.UnpicklingError) as exc:
             stored = {}
+            source = f"defaults ({type(exc).__name__})"
+        debug(
+            "settings",
+            f"load_settings source={source} path={path} keys={len(stored)}",
+        )
         return cls(stored, path=path)
 
     @staticmethod
@@ -58,9 +65,13 @@ class SettingsModel:
         """Persist the full settings dict as pickle, like ``save_data``."""
         target = path or self.path
         tmp_path = f"{target}.tmp"
-        with open(tmp_path, "wb") as data_file:
-            pickle.dump(self._data, data_file)
-        os.replace(tmp_path, target)
+        try:
+            with open(tmp_path, "wb") as data_file:
+                pickle.dump(self._data, data_file)
+            os.replace(tmp_path, target)
+        except OSError as exc:
+            debug("settings", f"save failed path={target} error={type(exc).__name__}: {exc}")
+            raise
 
     def get(self, key: str, default: Any = None) -> Any:
         return self._data.get(key, default)

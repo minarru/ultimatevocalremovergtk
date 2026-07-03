@@ -628,7 +628,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _finalize_close(self, deferred: bool) -> None:
         self._flush_settings()
         self._save_geometry()
-        self.context.save_settings()
+        self.context.save_settings(trigger="close")
 
     def _save_geometry(self) -> None:
         # Only record the un-maximized size so a later un-maximize restores a
@@ -717,12 +717,18 @@ class MainWindow(Adw.ApplicationWindow):
 
         open_download_center(self, self.context, on_models_changed=self._refresh_models)
 
-    def _refresh_models(self) -> None:
+    def _refresh_models(self, *, source: str = "download_center") -> None:
+        from uvr_core.debug_log import debug
+
+        debug("ui", f"refresh_models source={source}")
         # New model files may add hash/name mappings and change stem filtering.
         self.context.repo.reload_mappers()
         self.context.repo.invalidate_stem_check()
         for view in self._views:
             view.refresh_models()
+            method = getattr(view, "method_key", type(view).__name__)
+            model_count = len(getattr(view, "list_models", lambda: [])())
+            debug("model", f"refresh_models view={method} models={model_count}")
         self._update_sep_banner()
 
     def _on_about(self, _action: Gio.SimpleAction, _param) -> None:

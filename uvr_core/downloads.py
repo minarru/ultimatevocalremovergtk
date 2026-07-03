@@ -47,6 +47,7 @@ from data.constants import (
 )
 
 from . import paths
+from .debug_log import debug
 
 try:  # The version constants live at the repo root (reused verbatim from UVR).
     from __version__ import PATCH, PATCH_LINUX, PATCH_MAC, VERSION
@@ -147,12 +148,14 @@ class DownloadManager:
         download lists and the latest-version string are populated; on any
         failure the manager flips to the offline state.
         """
+        debug("download", "refresh start")
         try:
             with _urlopen(DOWNLOAD_CHECKS) as response:
                 self.online_data = json.load(response)
             self.is_online = True
-        except Exception:
+        except Exception as exc:
             self.is_online = False
+            debug("download", f"refresh offline error={type(exc).__name__}: {exc}")
             return False
 
         try:
@@ -164,6 +167,14 @@ class DownloadManager:
 
         self.latest_version = self.online_data.get(_latest_version_key(), "")
         self._rebuild_catalogues()
+        debug(
+            "download",
+            "refresh online "
+            f"vr={len(self.vr_download_list)} "
+            f"mdx={len(self.mdx_download_list)} "
+            f"demucs={len(self.demucs_download_list)} "
+            f"latest={self.latest_version!r}",
+        )
         return True
 
     def _rebuild_catalogues(self) -> None:
@@ -194,6 +205,7 @@ class DownloadManager:
         unlocked = self.decoded_vip_link != NO_CODE
         if unlocked and self.online_data:
             self._rebuild_catalogues()
+        debug("download", f"vip_validate unlocked={unlocked}")
         return unlocked
 
     # -- Download lists ---------------------------------------------------------
@@ -326,6 +338,7 @@ class DownloadManager:
         any_downloaded = False
         for index, (url, save_path) in enumerate(jobs):
             if stop_event is not None and stop_event.is_set():
+                debug("download", "download stopped by user")
                 return "stopped"
             if on_info:
                 on_info(f"Downloading Item {index + 1}/{total}...")
@@ -395,12 +408,17 @@ class DownloadManager:
         When ``repo`` is supplied, its stem-check cache is invalidated after a
         successful refresh so model lists reflect the new mapper data.
         """
+        debug("download", "update_model_settings start")
         try:
             fetched = []
             for url, _dest in _MODEL_DATA_URLS:
                 with _urlopen(url) as response:
                     fetched.append(json.load(response))
-        except Exception:
+        except Exception as exc:
+            debug(
+                "download",
+                f"update_model_settings fetch failed error={type(exc).__name__}: {exc}",
+            )
             return False
 
         for (url, dest), data in zip(_MODEL_DATA_URLS, fetched):
@@ -412,6 +430,10 @@ class DownloadManager:
                 continue
         if repo is not None:
             repo.invalidate_stem_check()
+        debug(
+            "download",
+            f"update_model_settings ok invalidate_stem={repo is not None}",
+        )
         return True
 
     # -- Update check -----------------------------------------------------------
