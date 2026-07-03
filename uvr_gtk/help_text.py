@@ -566,6 +566,7 @@ PLAYBACK_RATE_HINT = (
     "Playback rate multiplier: values below 1 slow the track down, values above 1 speed it up"
 )
 WAV_TYPE_HINT = "Bit depth / sample encoding used when saving WAV output"
+FLAC_BIT_DEPTH_HINT = "Bit depth used when saving FLAC output (16-bit or 24-bit)"
 
 # --- Main window chrome ---
 

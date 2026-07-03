@@ -640,6 +640,7 @@ class Ensembler:
         self.is_wav_ensemble = settings.get("is_wav_ensemble")
         self.wav_type_set = resolve_wav_type_set(settings)
         self.mp3_bit_set = settings.get("mp3_bit_set")
+        self.flac_bit_set = settings.get("flac_bit_set", "16-bit")
         self.save_format = settings.get("save_format")
         if not is_manual_ensemble:
             os.makedirs(self.ensemble_folder_name, exist_ok=True)
@@ -673,11 +674,11 @@ class Ensembler:
                 stem_save_path,
                 is_wave=self.is_wav_ensemble,
             )
-            _save_format(stem_save_path, self.save_format, self.mp3_bit_set)
+            _save_format(stem_save_path, self.save_format, self.mp3_bit_set, self.flac_bit_set)
 
         if self.is_save_all_outputs_ensemble:
             for stem_output in stem_outputs:
-                _save_format(stem_output, self.save_format, self.mp3_bit_set)
+                _save_format(stem_output, self.save_format, self.mp3_bit_set, self.flac_bit_set)
         else:
             for stem_output in stem_outputs:
                 try:

@@ -338,6 +338,7 @@ class ModelData:
         self.wav_type_set = resolve_wav_type_set(settings)
         self.device_set = device_set.split(":")[-1].strip() if ":" in device_set else device_set
         self.mp3_bit_set = settings.get("mp3_bit_set")
+        self.flac_bit_set = settings.get("flac_bit_set", "16-bit")
         self.save_format = settings.get("save_format")
         self.is_invert_spec = settings.get("is_invert_spec")
         self.is_mixer_mode = False

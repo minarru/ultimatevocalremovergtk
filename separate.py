@@ -137,6 +137,7 @@ class SeperateAttributes:
         self.model_basename = model_data.model_basename
         self.wav_type_set = model_data.wav_type_set
         self.mp3_bit_set = model_data.mp3_bit_set
+        self.flac_bit_set = model_data.flac_bit_set
         self.save_format = model_data.save_format
         self.is_gpu_conversion = model_data.is_gpu_conversion
         self.is_normalization = model_data.is_normalization
@@ -426,7 +427,7 @@ class SeperateAttributes:
             sf.write(path, source, samplerate, subtype=self.wav_type_set)
 
             if is_not_ensemble:
-                save_format(path, self.save_format, self.mp3_bit_set)
+                save_format(path, self.save_format, self.mp3_bit_set, self.flac_bit_set)
 
         def save_voc_split_instrumental(stem_name, stem_source, is_inst_invert=False):
             inst_stem_name = "Instrumental (With Lead Vocals)" if stem_name == LEAD_VOCAL_STEM else "Instrumental (With Backing Vocals)"
@@ -1566,7 +1567,7 @@ def rerun_mp3(audio_file, sample_rate=44100):
 
     return librosa.load(audio_file, duration=track_length, mono=False, sr=sample_rate)[0]
 
-def save_format(audio_path, save_format, mp3_bit_set):
+def save_format(audio_path, save_format, mp3_bit_set, flac_bit_set="16-bit"):
     
     if not save_format == WAV:
         
@@ -1578,7 +1579,13 @@ def save_format(audio_path, save_format, mp3_bit_set):
         
         if save_format == FLAC:
             audio_path_flac = audio_path.replace(".wav", ".flac")
-            musfile.export(audio_path_flac, format="flac")  
+            from uvr_core.audio_io import flac_export_parameters
+
+            musfile.export(
+                audio_path_flac,
+                format="flac",
+                parameters=flac_export_parameters(flac_bit_set),
+            )
         
         if save_format == MP3:
             audio_path_mp3 = audio_path.replace(".wav", ".mp3")

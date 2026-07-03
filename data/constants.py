@@ -509,6 +509,7 @@ FLAC = 'FLAC'
 MP3 = 'MP3'
 
 MP3_BIT_RATES = ('96k', '128k', '160k', '224k', '256k', '320k')
+FLAC_BIT_DEPTHS = ('16-bit', '24-bit')
 WAV_TYPE = ('PCM_U8', 'PCM_16', 'PCM_24', 'PCM_32', '32-bit Float', '64-bit Float')
 GPU_DEVICE_NUM_OPTS = (DEFAULT, '0', '1', '2', '3', '4', '5', '6', '7', '8')
 
@@ -656,6 +657,7 @@ DEFAULT_DATA = {
         'is_wav_ensemble': False,
         'is_create_model_folder': False,
         'mp3_bit_set': '320k',#
+        'flac_bit_set': '16-bit',#
         'semitone_shift': '0',#
         'save_format': WAV,
         'wav_type_set': 'PCM_16',
@@ -770,6 +772,7 @@ SETTING_CHECK = ('vr_model',
                "is_accept_any_input",
                'is_create_model_folder',
                'mp3_bit_set',#
+               'flac_bit_set',#
                'semitone_shift',#
                'save_format',
                'wav_type_set',

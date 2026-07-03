@@ -10,7 +10,7 @@ Covered (Phase 2):
 
 * General: help-hints toggle, reset-to-default (with confirmation) and
   saved-settings profiles (save / load / remove).
-* Audio format: ``save_format`` and the WAV bit-depth / MP3 bitrate sub-options.
+* Audio format: ``save_format`` and the WAV bit-depth / MP3 bitrate / FLAC bit-depth sub-options.
 * General process settings: test-mode / model-name / model-folder / accept-any-
   input / notification-chimes / normalization toggles.
 * Hardware: GPU conversion + CUDA device selection.
@@ -36,6 +36,7 @@ from data.constants import (
     DEFAULT,
     DEFAULT_DATA,
     FLAC,
+    FLAC_BIT_DEPTHS,
     GPU_DEVICE_NUM_OPTS,
     IS_CUDA_SELECT_HELP,
     MP3,
@@ -49,7 +50,7 @@ from uvr_core.gpu import available_cuda_devices
 from uvr_core.paths import SETTINGS_CACHE_DIR
 
 from .application import apply_color_scheme
-from .help_text import REMOVE_PROFILE_HINT
+from .help_text import REMOVE_PROFILE_HINT, FLAC_BIT_DEPTH_HINT
 from .hints import set_tooltip
 from .widgets.rows import get_combo_value, make_combo_row, set_combo_value, set_row_icon
 
@@ -211,6 +212,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.mp3_bit_row.connect("notify::selected", self._on_combo_changed, "mp3_bit_set")
         group.add(self.mp3_bit_row)
 
+        self.flac_bit_row = make_combo_row("FLAC bit depth", FLAC_BIT_DEPTHS)
+        self.flac_bit_row.connect("notify::selected", self._on_combo_changed, "flac_bit_set")
+        set_tooltip(self.flac_bit_row, FLAC_BIT_DEPTH_HINT)
+        group.add(self.flac_bit_row)
+
         page.add(group)
         return page
 
@@ -291,6 +297,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             set_combo_value(self.format_row, self.settings.get("save_format", WAV))
             set_combo_value(self.wav_type_row, self.settings.get("wav_type_set", "PCM_16"))
             set_combo_value(self.mp3_bit_row, self.settings.get("mp3_bit_set", "320k"))
+            set_combo_value(self.flac_bit_row, self.settings.get("flac_bit_set", "16-bit"))
 
             for key, row in self._process_switches.items():
                 row.set_active(bool(self.settings.get(key)))

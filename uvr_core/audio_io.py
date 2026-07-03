@@ -18,7 +18,19 @@ def resolve_wav_type_set(settings: SettingsModel) -> str:
     return wav_type
 
 
-def save_format(audio_path: str, save_format_sel: str, mp3_bit_set: str) -> None:
+def flac_export_parameters(flac_bit_set: str) -> list[str]:
+    """Return ffmpeg ``-sample_fmt`` parameters for FLAC export via pydub."""
+    if flac_bit_set == "24-bit":
+        return ["-sample_fmt", "s24"]
+    return ["-sample_fmt", "s16"]
+
+
+def save_format(
+    audio_path: str,
+    save_format_sel: str,
+    mp3_bit_set: str,
+    flac_bit_set: str = "16-bit",
+) -> None:
     """Torch-free port of ``separate.save_format``.
 
     Converts an exported WAV to FLAC/MP3 via ``pydub`` when the chosen output
@@ -33,7 +45,11 @@ def save_format(audio_path: str, save_format_sel: str, mp3_bit_set: str) -> None
 
     audio_segment = AudioSegment.from_wav(audio_path)
     if save_format_sel == FLAC:
-        audio_segment.export(audio_path.replace(".wav", ".flac"), format="flac")
+        audio_segment.export(
+            audio_path.replace(".wav", ".flac"),
+            format="flac",
+            parameters=flac_export_parameters(flac_bit_set),
+        )
     elif save_format_sel == MP3:
         mp3_path = audio_path.replace(".wav", ".mp3")
         try:

@@ -69,6 +69,7 @@ class AudioTools:
         self.is_testing_audio = f"{time_stamp}_" if settings.get("is_testing_audio") else ""
         self.save_format_sel = settings.get("save_format")
         self.mp3_bit_set = settings.get("mp3_bit_set")
+        self.flac_bit_set = settings.get("flac_bit_set", "16-bit")
 
         # Align-tool options (mapped through the same constants UVR uses).
         self.align_window = TIME_WINDOW_MAPPER[settings.get("time_window")]
@@ -95,7 +96,7 @@ class AudioTools:
     # -- save_format helper bound to the current settings ----------------------
 
     def _save_format(self, save_path: str) -> None:
-        save_format(save_path, self.save_format_sel, self.mp3_bit_set)
+        save_format(save_path, self.save_format_sel, self.mp3_bit_set, self.flac_bit_set)
 
     # -- Manual ensemble (port of ``Ensembler.ensemble_manual_process``) -------
 
