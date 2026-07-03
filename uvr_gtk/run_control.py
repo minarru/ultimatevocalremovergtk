@@ -27,9 +27,9 @@ _OPEN_FOLDER_LABEL = "Open Folder"
 _OPEN_FOLDER_ERROR = "Couldn't open the output folder: {message}"
 _NOTIFY_COMPLETE_TITLE = "{label} complete"
 _NOTIFY_COMPLETE_BODY = "Saved to {folder}"
-_NOTIFY_COMPLETE_BODY_PLAIN = "Processing finished."
+_NOTIFY_COMPLETE_BODY_PLAIN = "Processing finished"
 _NOTIFY_FAILED_TITLE = "{label} failed"
-_NOTIFY_FAILED_BODY = "Open the app to see the error log."
+_NOTIFY_FAILED_BODY = "Open the app to see the error log"
 _NOTIFY_ICONS = {
     "uvr-complete": "emblem-ok-symbolic",
     "uvr-failed": "dialog-error-symbolic",
@@ -199,7 +199,9 @@ class RunController:
     def _send_completion_notification(self, output_dir: str) -> None:
         title = _NOTIFY_COMPLETE_TITLE.format(label=self._run_label)
         if output_dir:
-            body = _NOTIFY_COMPLETE_BODY.format(folder=os.path.basename(os.path.normpath(output_dir)))
+            body = _NOTIFY_COMPLETE_BODY.format(
+                folder=os.path.basename(os.path.normpath(output_dir))
+            )
         else:
             body = _NOTIFY_COMPLETE_BODY_PLAIN
         self._send_notification("uvr-complete", title, body)
@@ -244,7 +246,9 @@ class RunController:
 
         window = self._window
         target = self._running_target or window._run_target
-        key = target.error_key if target is not None else window._active_view().method_key
+        key = (
+            target.error_key if target is not None else window._active_view().method_key
+        )
         log_error(key, exc)
         toast = Adw.Toast.new(message)
         toast.set_button_label("Error Log")

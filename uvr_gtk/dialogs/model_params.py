@@ -290,8 +290,12 @@ class _ParamDialog:
             return None
         params = {"vr_model_param": param, "primary_stem": get_combo_value(self.stem_row)}
         if self.is_51_row.get_active():
-            params["nout"] = int(get_scale_row_value(self.nout_row))
-            params["nout_lstm"] = int(get_scale_row_value(self.nout_lstm_row))
+            nout = get_scale_row_value(self.nout_row)
+            nout_lstm = get_scale_row_value(self.nout_lstm_row)
+            if nout is None or nout_lstm is None:
+                return None
+            params["nout"] = int(nout)
+            params["nout_lstm"] = int(nout_lstm)
         params.update(self._karaoke_values())
         return params
 

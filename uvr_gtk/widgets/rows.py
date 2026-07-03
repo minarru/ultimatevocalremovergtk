@@ -274,7 +274,7 @@ def _configure_adjustment(
     """Reconfigure a ``Gtk.Adjustment`` with valid page-size bounds."""
     if value is None:
         value = adjustment.get_value()
-    value = max(lower, min(upper, value))
+    value = max(lower, min(upper, float(value or lower)))
     page_increment = max(step, (upper - lower) / 10) if upper > lower else step
     adjustment.configure(value, lower, upper, step, page_increment, 0)
 

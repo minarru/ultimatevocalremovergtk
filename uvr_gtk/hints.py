@@ -35,9 +35,9 @@ _KEEP_PERIOD_SUFFIXES = ("etc.", "e.g.", "i.e.", "vs.", "U.S.")
 def format_hint(text: str) -> str:
     """Normalize legacy help-hint copy for GTK tooltips.
 
-  * Strip stray leading indentation (Tk strings often pad continuation lines)
-  * Drop trailing full stops on each line
-  * Collapse runs of blank lines
+    * Strip stray leading indentation (Tk strings often pad continuation lines)
+    * Drop trailing full stops on each line
+    * Collapse runs of blank lines
     """
     if not text:
         return text
@@ -118,7 +118,7 @@ PROCESS_METHOD_HINT = (
     "\n"
     "• VR Architecture — magnitude spectrogram source separation\n"
     "• MDX-Net — hybrid spectrogram network\n"
-    "• Demucs v3 — hybrid spectrogram network (multi-stem capable)"
+    "• Demucs v3/4 — hybrid spectrogram network (multi-stem capable)"
 )
 
 # Shown on the header view-switcher tabs (not on the process-method dropdown).
@@ -135,7 +135,9 @@ VIEW_TAB_HINTS: Dict[str, str] = {
     ),
 }
 
-OUTPUT_FORMAT_HINT = "Choose the audio format for saved output files (WAV, FLAC, or MP3)"
+OUTPUT_FORMAT_HINT = (
+    "Choose the audio format for saved output files (WAV, FLAC, or MP3)"
+)
 
 
 # Curated reuse of UVR help-hint text for shared main-window controls.
@@ -152,7 +154,9 @@ SHARED_HINTS: Dict[str, str] = {
 }
 
 
-def install_view_tab_tooltips(switcher: Adw.ViewSwitcher, hints: Dict[str, str] = None) -> None:
+def install_view_tab_tooltips(
+    switcher: Adw.ViewSwitcher, hints: Optional[Dict[str, str]] = None
+) -> None:
     """Attach tooltips to the tab buttons in an ``Adw.ViewSwitcher``.
 
     ``hints`` maps ``Adw.ViewStack`` page ``name`` to tooltip text. Page order is
@@ -207,7 +211,7 @@ KEYBOARD_ACCELERATORS: Dict[str, List[str]] = {
 }
 
 
-def apply_accelerators(app, accelerators: Dict[str, List[str]] = None) -> None:
+def apply_accelerators(app, accelerators: Optional[Dict[str, List[str]]] = None) -> None:
     """Install ``accelerators`` on a :class:`Gtk.Application`.
 
     Defaults to :data:`KEYBOARD_ACCELERATORS`. Actions with an empty list are

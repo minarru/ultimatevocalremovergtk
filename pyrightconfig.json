@@ -1,0 +1,35 @@
+{
+  "include": [
+    "uvr_gtk",
+    "uvr_core",
+    "tests",
+    "data"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/.venv",
+    "**/node_modules",
+    "demucs",
+    "lib_v5",
+    "models",
+    "separate.py"
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "stubPath": "typings",
+  "pythonVersion": "3.14",
+  "pythonPlatform": "Linux",
+  "typeCheckingMode": "basic",
+  "reportMissingTypeStubs": false,
+  "reportMissingModuleSource": false,
+  "reportUninitializedInstanceVariable": false,
+  "reportUnknownMemberType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownParameterType": "none",
+  "reportMissingParameterType": "none",
+  "reportUnusedCallResult": "none",
+  "reportImplicitOverride": "none",
+  "reportPrivateUsage": "none",
+  "reportInvalidTypeForm": "none"
+}

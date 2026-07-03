@@ -34,11 +34,12 @@ class AppContext:
             self._install_unrecognized_model_hook()
 
     def _install_unrecognized_model_hook(self) -> None:
-        if self._unrecognized_hook_installed or self._get_dialog_parent is None:
+        repo = self._repo
+        if self._unrecognized_hook_installed or self._get_dialog_parent is None or repo is None:
             return
         from .dialogs.model_params import make_unrecognized_handler
 
-        self._repo.on_unrecognized_model = make_unrecognized_handler(
+        repo.on_unrecognized_model = make_unrecognized_handler(
             self, self._get_dialog_parent
         )
         self._unrecognized_hook_installed = True

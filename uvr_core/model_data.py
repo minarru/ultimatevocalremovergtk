@@ -18,7 +18,7 @@ import hashlib
 import json
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from data.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
 
@@ -60,6 +60,14 @@ def load_mdx_c_config(path: str) -> dict:
         return yaml.load(config_file, Loader=_MDX_C_YAML_LOADER)
 
 
+def _mdx_c_training(config) -> Any:
+    """Return the ``training`` section from an MDX-C yaml config object."""
+    training = getattr(config, "training", None)
+    if training is None and isinstance(config, dict):
+        training = config.get("training")
+    return training
+
+
 def load_model_hash_data(dictionary: str) -> dict:
     """Load one of the model-data / name-mapper JSON files."""
     with open(dictionary, "r") as d:
@@ -83,7 +91,7 @@ class ModelRepository:
         # Phase 3 hook: later phases set this to a callable that prompts the user
         # for parameters of an unrecognized model. Returning ``None`` (the
         # default) simply marks such models as unavailable.
-        self.on_unrecognized_model = None
+        self.on_unrecognized_model: Optional[Callable[["ModelData"], Any]] = None
         self._stem_check_cache = None
         self.reload_mappers()
 
@@ -424,7 +432,7 @@ class ModelData:
                     from lib_v5.vr_network.model_param_init import ModelParameters
                     vr_model_param = os.path.join(paths.VR_PARAM_DIR, "{}.json".format(self.model_data["vr_model_param"]))
                     self.primary_stem = self.model_data["primary_stem"]
-                    self.secondary_stem = secondary_stem(self.primary_stem)
+                    self.secondary_stem = secondary_stem(str(self.primary_stem or ""))
                     self.vr_model_param = ModelParameters(vr_model_param)
                     self.model_samplerate = self.vr_model_param.param["sr"]
                     self.primary_stem_native = self.primary_stem
@@ -475,15 +483,22 @@ class ModelData:
                                 self.model_status = False
                             else:
                                 self.mdx_c_configs = config
-                                if self.mdx_c_configs.training.target_instrument:
+                                training = _mdx_c_training(self.mdx_c_configs)
+                                target_instrument = (
+                                    getattr(training, "target_instrument", None)
+                                    if training is not None
+                                    else None
+                                )
+                                if target_instrument:
                                     self.is_target_instrument = True
-                                    target = self.mdx_c_configs.training.target_instrument
+                                    target = target_instrument
                                     self.mdx_model_stems = [target]
                                     self.primary_stem = target
                                     if self.is_roformer and self.is_ensemble_mode and target in (VOCAL_STEM, INST_STEM):
                                         self.mdxnet_stem_select = self.ensemble_primary_stem
-                                else:
-                                    self.mdx_model_stems = self.mdx_c_configs.training.instruments
+                                elif training is not None:
+                                    instruments = getattr(training, "instruments", None) or []
+                                    self.mdx_model_stems = list(instruments)
                                     self.mdx_stem_count = len(self.mdx_model_stems)
                                     if self.mdx_stem_count == 2:
                                         self.primary_stem = self.mdx_model_stems[0]
@@ -501,7 +516,7 @@ class ModelData:
                         self.primary_stem = self.model_data["primary_stem"]
                         self.primary_stem_native = self.model_data["primary_stem"]
                         self.check_if_karaokee_model()
-                    self.secondary_stem = secondary_stem(self.primary_stem)
+                    self.secondary_stem = secondary_stem(str(self.primary_stem or ""))
                 else:
                     self.model_status = False
 
@@ -670,6 +685,8 @@ class ModelData:
         return False
 
     def check_if_karaokee_model(self):
+        if not self.model_data:
+            return
         if IS_KARAOKEE in self.model_data.keys():
             self.is_karaoke = self.model_data[IS_KARAOKEE]
         if IS_BV_MODEL in self.model_data.keys():
@@ -712,7 +729,7 @@ class ModelData:
             self.demucs_source_list, self.demucs_source_map, self.demucs_stem_count = DEMUCS_4_SOURCE, DEMUCS_4_SOURCE_MAPPER, 4
         if not self.is_ensemble_mode:
             self.primary_stem = PRIMARY_STEM if self.demucs_stems == ALL_STEMS else self.demucs_stems
-            self.secondary_stem = secondary_stem(self.primary_stem)
+            self.secondary_stem = secondary_stem(str(self.primary_stem or ""))
 
     def get_model_data(self, model_hash_dir, hash_mapper: dict):
         model_settings_json = os.path.join(model_hash_dir, f"{self.model_hash}.json")
@@ -876,6 +893,8 @@ def assemble_model_data(
                 "Too few valid ensemble members; check that selected models are installed."
             )
         return valid
+    if not model:
+        raise ValueError(f"assemble_model_data requires a model name for {arch_type}")
     if arch_type == ENSEMBLE_CHECK:
         return [ModelData(settings, repo, model)]
     if arch_type in (VR_ARCH_TYPE, VR_ARCH_PM):

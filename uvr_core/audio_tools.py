@@ -306,10 +306,12 @@ class AudioToolRunner:
         self._is_paused = False
         self._is_stopped = True
         if self.is_running():
-            try:
-                self._thread.terminate()
-            except Exception:  # noqa: BLE001 - best-effort, like UVR's stop
-                pass
+            thread = self._thread
+            if thread is not None:
+                try:
+                    thread.terminate()
+                except Exception:  # noqa: BLE001 - best-effort, like UVR's stop
+                    pass
 
     # -- Worker ----------------------------------------------------------------
 

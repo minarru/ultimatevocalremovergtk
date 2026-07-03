@@ -120,7 +120,9 @@ class AudioToolsPage:
         self.settings = context.settings
         self._loading = False
         self._dual_pairs: List[Tuple[str, str]] = [
-            tuple(p) for p in (self.settings.get("DualBatch_inputPaths") or []) if len(p) == 2
+            (str(p[0]), str(p[1]))
+            for p in (self.settings.get("DualBatch_inputPaths") or [])
+            if len(p) == 2
         ]
         # Align and matchering each build their own (input one / input two) rows;
         # both reflect the same dual pairs, so they are refreshed together.
@@ -550,7 +552,7 @@ class AudioToolsPage:
         dialog.present()
 
     def _on_dual_confirmed(self, pairs: List[Tuple[str, str]]) -> None:
-        self._dual_pairs = [tuple(p) for p in pairs]
+        self._dual_pairs = [(str(a), str(b)) for a, b in pairs]
         self.settings.set("DualBatch_inputPaths", [list(p) for p in self._dual_pairs])
         if self._dual_pairs:
             first = self._dual_pairs[0]

@@ -11,7 +11,7 @@ method" ``Adw.ComboRow`` to choose between them, so additional method panels can
 be registered by appending to the registry without touching the window assembly.
 """
 
-from typing import Callable, List, Type
+from typing import Callable, List, Optional, Type
 
 from gi.repository import Adw, Gio, Gtk
 
@@ -349,9 +349,9 @@ class MethodView:
         title,
         *,
         values=None,
-        lower=None,
-        upper=None,
-        step=1,
+        lower: Optional[float] = None,
+        upper: Optional[float] = None,
+        step: float = 1,
         digits=0,
         subtitle=None,
         hint=None,
@@ -363,6 +363,8 @@ class MethodView:
         if values is not None:
             row = make_discrete_scale_row(title, values, subtitle)
         else:
+            if lower is None or upper is None:
+                raise ValueError("lower and upper are required when values is None")
             row = make_numeric_scale_row(title, lower, upper, step=step, digits=digits, subtitle=subtitle)
         row._uvr_store_float = store_float
         row._uvr_scale.connect(

@@ -160,10 +160,12 @@ class JobRunner:
         self._is_paused = False
         self._is_stopped = True
         if self.is_running():
-            try:
-                self._thread.terminate()
-            except Exception:
-                pass
+            thread = self._thread
+            if thread is not None:
+                try:
+                    thread.terminate()
+                except Exception:
+                    pass
 
     # -- Source cache helpers (ported from MainWindow) --------------------------
 
@@ -230,17 +232,23 @@ class JobRunner:
         primary/secondary model participates in the current run.
         """
         primary = [m.model_basename for m in models if m.model_basename]
-        secondary = [
-            m.secondary_model.model_basename
-            for m in models
-            if m.is_secondary_model_activated and m.secondary_model is not None
-        ]
-        pre_proc = [m.pre_proc_model.model_basename for m in models if getattr(m, "pre_proc_model", None)]
+        secondary = []
+        for m in models:
+            if not m.is_secondary_model_activated or m.secondary_model is None:
+                continue
+            name = m.secondary_model.model_basename
+            if name:
+                secondary.append(name)
+        pre_proc: List[str] = []
+        for m in models:
+            proc = getattr(m, "pre_proc_model", None)
+            if proc is not None and proc.model_basename:
+                pre_proc.append(proc.model_basename)
         demucs_4_stem: List[str] = []
         for m in models:
             if m.process_method == DEMUCS_ARCH_TYPE and getattr(m, "is_demucs_4_stem_secondaries", False):
                 demucs_4_stem.extend(n for n in m.secondary_model_4_stem_model_names_list if n)
-        self.all_models = primary + secondary + pre_proc + demucs_4_stem
+        self.all_models = [n for n in primary + secondary + pre_proc + demucs_4_stem if n]
 
     def _run(self, input_paths: List[str], callbacks: JobCallbacks) -> None:
         from separate import SeperateDemucs, SeperateMDX, SeperateMDXC, SeperateVR, clear_gpu_cache
@@ -250,6 +258,8 @@ class JobRunner:
 
         try:
             export_path = self.settings.get("export_path")
+            if not export_path:
+                raise ValueError("export_path is required")
             models = self.resolve_models()
             self.iteration = 0
             self._build_all_models(models)
@@ -293,8 +303,14 @@ class JobRunner:
 
                     model_export_path = export_path
                     if self.settings.get("is_create_model_folder"):
-                        model_export_path = os.path.join(export_path, current_model.model_basename, os.path.splitext(os.path.basename(audio_file))[0])
-                        os.makedirs(model_export_path, exist_ok=True)
+                        model_basename = current_model.model_basename
+                        if model_basename:
+                            model_export_path = os.path.join(
+                                export_path,
+                                model_basename,
+                                os.path.splitext(os.path.basename(audio_file))[0],
+                            )
+                            os.makedirs(model_export_path, exist_ok=True)
 
                     process_data = {
                         "model_data": current_model,

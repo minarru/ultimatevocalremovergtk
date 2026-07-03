@@ -525,7 +525,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.sample_row.set_title(SAMPLE_MODE_CHECKBOX(self.settings.get("model_sample_mode_duration", 30)))
         self.sample_row.set_active(bool(self.settings.get("model_sample_mode")))
 
-        method = self.settings.get("chosen_process_method", MDX_ARCH_TYPE)
+        method = self.settings.get("chosen_process_method") or MDX_ARCH_TYPE
         method = _METHOD_SETTING_ALIASES.get(method, method)
         view = self._views_by_method.get(method) or self._views_by_method.get(MDX_ARCH_TYPE) or self._views[0]
         self._syncing_method_combo = True
@@ -597,6 +597,8 @@ class MainWindow(Adw.ApplicationWindow):
         if self._syncing_method_combo or not self._columns_ready:
             return
         title = get_combo_value(self.method_row)
+        if title is None:
+            return
         view = self._views_by_title.get(title)
         if view is None:
             return

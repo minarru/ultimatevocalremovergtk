@@ -39,10 +39,11 @@ def prepare_input_paths(settings: SettingsModel, input_paths: Sequence[str]) -> 
             import soundfile as sf
 
             audio, sr = librosa.load(path, mono=False, sr=None, duration=duration)
+            sample_rate = int(sr)
             if audio.ndim == 1:
-                sf.write(clip_path, audio, sr)
+                sf.write(clip_path, audio, sample_rate)
             else:
-                sf.write(clip_path, audio.T, sr)
+                sf.write(clip_path, audio.T, sample_rate)
             prepared.append(clip_path)
         except Exception:
             prepared.append(path)

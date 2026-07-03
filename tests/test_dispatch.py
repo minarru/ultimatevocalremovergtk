@@ -46,11 +46,11 @@ class DispatchTests(unittest.TestCase):
             on_error=error,
         )
 
-        callbacks.on_progress(0.5)
-        callbacks.on_console("line")
-        callbacks.on_complete()
-        callbacks.on_stopped()
-        callbacks.on_error(RuntimeError("boom"))
+        callbacks.progress(0.5)
+        callbacks.console("line")
+        callbacks.complete()
+        callbacks.stopped()
+        callbacks.error(RuntimeError("boom"))
 
         progress.assert_called_once_with(0.5)
         console.assert_called_once_with("line")

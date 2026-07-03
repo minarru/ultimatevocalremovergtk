@@ -138,7 +138,7 @@ class ApplySharedFileOptionsTests(unittest.TestCase):
         self.assertEqual(format_row.selected, FLAC)
         self.assertTrue(gpu_row.active)
         self.assertTrue(sample_row.active)
-        self.assertIn("15", sample_row.title)
+        self.assertIn("15", sample_row.title or "")
 
 
 if __name__ == "__main__":
