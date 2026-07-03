@@ -43,6 +43,7 @@ from data.constants import (
 from .audio_io import resolve_wav_type_set, save_format
 from .job_runner import JobCallbacks
 from .run_control import ProcessStopped, check_stopped, pausable_callback
+from .inference_cleanup import release_inference_memory as _release_inference_resources
 from .settings import SettingsModel
 
 #: Tools that operate on a flat list of single input files.
@@ -302,16 +303,28 @@ class AudioToolRunner:
     def unpause(self) -> None:
         self._is_paused = False
 
-    def stop(self) -> None:
+    def stop(self, *, force: bool = False) -> None:
         self._is_paused = False
         self._is_stopped = True
-        if self.is_running():
+        if force and self.is_running():
             thread = self._thread
             if thread is not None:
                 try:
                     thread.terminate()
                 except Exception:  # noqa: BLE001 - best-effort, like UVR's stop
                     pass
+
+    def release_inference_memory(
+        self,
+        *,
+        wait_for_stop: float = 0.0,
+        force_if_alive: bool = False,
+    ) -> None:
+        _release_inference_resources(
+            self,
+            wait_for_stop=wait_for_stop,
+            force_if_alive=force_if_alive,
+        )
 
     # -- Worker ----------------------------------------------------------------
 
@@ -358,6 +371,8 @@ class AudioToolRunner:
                 return
             callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
             callbacks.error(exc)
+        finally:
+            _release_inference_resources(self)
 
     def _run_manual_ensemble(self, audio_tool, inputs, callbacks) -> None:
         if len(inputs) <= 1:

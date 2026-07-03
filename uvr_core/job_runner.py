@@ -46,6 +46,11 @@ from .model_data import (
 from .sample_mode import prepare_input_paths
 from .settings import SettingsModel
 from .run_control import ProcessStopped, check_stopped, pausable_callback
+from .inference_cleanup import (
+    clear_source_mapper,
+    release_inference_memory as _release_inference_resources,
+    release_separator,
+)
 
 _MODEL_KEY_BY_METHOD = {
     VR_ARCH_PM: "vr_model",
@@ -106,6 +111,7 @@ class JobRunner:
         self._mdx_cache_source_mapper: dict = {}
         self._demucs_cache_source_mapper: dict = {}
         self.all_models: List[str] = []
+        self._active_separator = None
 
     # -- Public control ---------------------------------------------------------
 
@@ -155,11 +161,11 @@ class JobRunner:
     def unpause(self) -> None:
         self._is_paused = False
 
-    def stop(self) -> None:
-        """Terminate the worker thread (mirrors UVR's stop button)."""
+    def stop(self, *, force: bool = False) -> None:
+        """Request a cooperative stop; only kill the worker thread when ``force``."""
         self._is_paused = False
         self._is_stopped = True
-        if self.is_running():
+        if force and self.is_running():
             thread = self._thread
             if thread is not None:
                 try:
@@ -167,9 +173,25 @@ class JobRunner:
                 except Exception:
                     pass
 
+    def release_inference_memory(
+        self,
+        *,
+        wait_for_stop: float = 0.0,
+        force_if_alive: bool = False,
+    ) -> None:
+        """Drop cached stems and return GPU memory after a run or halt."""
+        _release_inference_resources(
+            self,
+            wait_for_stop=wait_for_stop,
+            force_if_alive=force_if_alive,
+        )
+
     # -- Source cache helpers (ported from MainWindow) --------------------------
 
     def _cached_sources_clear(self) -> None:
+        clear_source_mapper(self._vr_cache_source_mapper)
+        clear_source_mapper(self._mdx_cache_source_mapper)
+        clear_source_mapper(self._demucs_cache_source_mapper)
         self._vr_cache_source_mapper = {}
         self._mdx_cache_source_mapper = {}
         self._demucs_cache_source_mapper = {}
@@ -249,6 +271,15 @@ class JobRunner:
             if m.process_method == DEMUCS_ARCH_TYPE and getattr(m, "is_demucs_4_stem_secondaries", False):
                 demucs_4_stem.extend(n for n in m.secondary_model_4_stem_model_names_list if n)
         self.all_models = [n for n in primary + secondary + pre_proc + demucs_4_stem if n]
+
+    def _run_seperator(self, seperator) -> None:
+        self._active_separator = seperator
+        try:
+            seperator.seperate()
+        finally:
+            release_separator(seperator)
+            if self._active_separator is seperator:
+                self._active_separator = None
 
     def _run(self, input_paths: List[str], callbacks: JobCallbacks) -> None:
         from separate import SeperateDemucs, SeperateMDX, SeperateMDXC, SeperateVR, clear_gpu_cache
@@ -337,7 +368,7 @@ class JobRunner:
                     else:
                         raise NotImplementedError(f"engine for '{current_model.process_method}' not available")
 
-                    seperator.seperate()
+                    self._run_seperator(seperator)
 
                 clear_gpu_cache()
 
@@ -356,6 +387,8 @@ class JobRunner:
                 return
             callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
             callbacks.error(exc)
+        finally:
+            _release_inference_resources(self)
 
     # -- Ensemble worker --------------------------------------------------------
 
@@ -377,7 +410,7 @@ class JobRunner:
         try:
             models = assemble_model_data(self.settings, self.repo, arch_type=ENSEMBLE_MODE)
             if len(models) <= 1:
-                raise RuntimeError("Select at least two models to run an ensemble.")
+                raise RuntimeError("Select at least two models to run an ensemble")
 
             ensemble = Ensembler(self.settings)
             export_path = ensemble.ensemble_folder_name
@@ -454,7 +487,7 @@ class JobRunner:
                     else:
                         raise NotImplementedError(f"engine for '{current_model.process_method}' not available")
 
-                    seperator.seperate()
+                    self._run_seperator(seperator)
                     callbacks.console("\n")
 
                 # Combine each member's stems into the final ensemble outputs.
@@ -497,6 +530,8 @@ class JobRunner:
                 return
             callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
             callbacks.error(exc)
+        finally:
+            _release_inference_resources(self)
 
 
 def _extract_stems(audio_file_base: str, export_path: str) -> List[str]:

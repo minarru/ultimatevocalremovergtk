@@ -68,9 +68,14 @@ cuda_available = torch.cuda.is_available()
 def clear_gpu_cache():
     gc.collect()
     if is_macos:
-        torch.mps.empty_cache()
-    else:
+        if mps_available:
+            torch.mps.empty_cache()
+    elif cuda_available:
+        torch.cuda.synchronize()
         torch.cuda.empty_cache()
+        ipc_collect = getattr(torch.cuda, "ipc_collect", None)
+        if callable(ipc_collect):
+            ipc_collect()
 
 warnings.filterwarnings("ignore")
 cpu = torch.device('cpu')
@@ -592,6 +597,7 @@ class SeperateMDX(SeperateAttributes):
         total_chunks = (mixture.shape[-1] + step - 1) // step
 
         for i in range(0, mixture.shape[-1], step):
+            self.check_run_control()
             total += 1
             start = i
             end = min(i + chunk_size, mixture.shape[-1])
@@ -731,7 +737,15 @@ class SeperateMDXC(SeperateAttributes):
             if len(stem_list) == 1:
                 source_primary = sources  
             else:
-                source_primary = sources[stem_list[0]] if self.is_multi_stem_ensemble and len(stem_list) == 2 else sources[self.mdxnet_stem_select]
+                if self.is_multi_stem_ensemble or len(stem_list) == 2:
+                    stem_key = stem_list[0]
+                elif self.mdxnet_stem_select == ALL_STEMS:
+                    stem_key = self.primary_stem
+                elif isinstance(sources, dict) and self.mdxnet_stem_select in sources:
+                    stem_key = self.mdxnet_stem_select
+                else:
+                    stem_key = self.primary_stem
+                source_primary = sources[stem_key]
             if self.is_secondary_model_activated and self.secondary_model:
                 self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, 
                                                                                                          self.process_data, 
@@ -753,6 +767,8 @@ class SeperateMDXC(SeperateAttributes):
                                 secondary_source += v
                                 
                         self.secondary_source = secondary_source.T 
+                    elif isinstance(sources, dict) and self.secondary_stem in sources:
+                        self.secondary_source = sources[self.secondary_stem].T
                     else:
                         self.secondary_source, raw_mix = source_primary, self.match_frequency_pitch(mix)
                         self.secondary_source = spec_utils.to_shape(self.secondary_source, raw_mix.shape)
@@ -800,59 +816,69 @@ class SeperateMDXC(SeperateAttributes):
         model = TFC_TDF_net(self.mdx_c_configs, device=self.device)
         model.load_state_dict(torch.load(self.model_path, map_location=cpu))
         model.to(self.device).eval()
+        self._inference_model = model
         mix = torch.tensor(mix, dtype=torch.float32)
 
         try:
-            S = model.num_target_instruments
-        except Exception as e:
-            S = model.module.num_target_instruments
+            try:
+                S = model.num_target_instruments
+            except Exception as e:
+                S = model.module.num_target_instruments
 
-        mdx_segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size
-        
-        batch_size = self.mdx_batch_size
-        chunk_size = self.mdx_c_configs.audio.hop_length * (mdx_segment_size - 1)
-        overlap = self.overlap_mdx23
+            mdx_segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size
+            
+            batch_size = self.mdx_batch_size
+            chunk_size = self.mdx_c_configs.audio.hop_length * (mdx_segment_size - 1)
+            overlap = self.overlap_mdx23
 
-        hop_size = chunk_size // overlap
-        mix_shape = mix.shape[1]
-        pad_size = hop_size - (mix_shape - chunk_size) % hop_size
-        mix = torch.cat([torch.zeros(2, chunk_size - hop_size), mix, torch.zeros(2, pad_size + chunk_size - hop_size)], 1)
+            hop_size = chunk_size // overlap
+            mix_shape = mix.shape[1]
+            pad_size = hop_size - (mix_shape - chunk_size) % hop_size
+            mix = torch.cat([torch.zeros(2, chunk_size - hop_size), mix, torch.zeros(2, pad_size + chunk_size - hop_size)], 1)
 
-        chunks = mix.unfold(1, chunk_size, hop_size).transpose(0, 1)
-        batches = [chunks[i : i + batch_size] for i in range(0, len(chunks), batch_size)]
-        
-        X = torch.zeros(S, *mix.shape) if S > 1 else torch.zeros_like(mix)
-        X = X.to(self.device)
+            chunks = mix.unfold(1, chunk_size, hop_size).transpose(0, 1)
+            batches = [chunks[i : i + batch_size] for i in range(0, len(chunks), batch_size)]
+            
+            X = torch.zeros(S, *mix.shape) if S > 1 else torch.zeros_like(mix)
+            X = X.to(self.device)
 
-        with torch.no_grad():
-            cnt = 0
-            for batch in batches:
-                self.running_inference_progress_bar(len(batches))
-                x = model(batch.to(self.device))
-                
-                for w in x:
-                    X[..., cnt * hop_size : cnt * hop_size + chunk_size] += w
-                    cnt += 1
+            with torch.no_grad():
+                cnt = 0
+                for batch in batches:
+                    self.check_run_control()
+                    self.running_inference_progress_bar(len(batches))
+                    x = model(batch.to(self.device))
+                    
+                    for w in x:
+                        X[..., cnt * hop_size : cnt * hop_size + chunk_size] += w
+                        cnt += 1
 
-        estimated_sources = X[..., chunk_size - hop_size:-(pad_size + chunk_size - hop_size)] / overlap
-        del X
-        pitch_fix = lambda s:self.pitch_fix(s, sr_pitched, org_mix)
+            estimated_sources = X[..., chunk_size - hop_size:-(pad_size + chunk_size - hop_size)] / overlap
+            del X
+            pitch_fix = lambda s:self.pitch_fix(s, sr_pitched, org_mix)
 
-        if S > 1:
-            sources = {k: pitch_fix(v) if self.is_pitch_change else v for k, v in zip(self.mdx_c_configs.training.instruments, estimated_sources.cpu().detach().numpy())}
-            del estimated_sources
-            if self.is_denoise_model:
-                if VOCAL_STEM in sources.keys() and INST_STEM in sources.keys():
-                    sources[VOCAL_STEM] = vr_denoiser(sources[VOCAL_STEM], self.device, model_path=self.DENOISER_MODEL)
-                    if sources[VOCAL_STEM].shape[1] != org_mix.shape[1]:
-                        sources[VOCAL_STEM] = spec_utils.match_array_shapes(sources[VOCAL_STEM], org_mix)
-                    sources[INST_STEM] = org_mix - sources[VOCAL_STEM]
-                            
-            return sources
-        else:
-            est_s = estimated_sources.cpu().detach().numpy()
-            del estimated_sources
-            return pitch_fix(est_s) if self.is_pitch_change else est_s
+            if S > 1:
+                sources = {k: pitch_fix(v) if self.is_pitch_change else v for k, v in zip(self.mdx_c_configs.training.instruments, estimated_sources.cpu().detach().numpy())}
+                del estimated_sources
+                if self.is_denoise_model:
+                    if VOCAL_STEM in sources.keys() and INST_STEM in sources.keys():
+                        sources[VOCAL_STEM] = vr_denoiser(sources[VOCAL_STEM], self.device, model_path=self.DENOISER_MODEL)
+                        if sources[VOCAL_STEM].shape[1] != org_mix.shape[1]:
+                            sources[VOCAL_STEM] = spec_utils.match_array_shapes(sources[VOCAL_STEM], org_mix)
+                        sources[INST_STEM] = org_mix - sources[VOCAL_STEM]
+                                
+                return sources
+            else:
+                est_s = estimated_sources.cpu().detach().numpy()
+                del estimated_sources
+                return pitch_fix(est_s) if self.is_pitch_change else est_s
+        finally:
+            if isinstance(mix, torch.Tensor):
+                del mix
+            model.cpu()
+            del model
+            self._inference_model = None
+            clear_gpu_cache()
 
     def demix_roformer(self, mix):
         sr_pitched = 441000
@@ -873,98 +899,111 @@ class SeperateMDXC(SeperateAttributes):
         checkpoint = torch.load(self.model_path, map_location='cpu')
         model = model if not isinstance(model, torch.nn.DataParallel) else model.module
         model.load_state_dict(checkpoint)
+        del checkpoint
         model.to(device).eval()
+        self._inference_model = model
         mix = torch.tensor(mix, dtype=torch.float32)
 
-        segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size
-        S = 1 if self.roformer_config.training.target_instrument else len(self.roformer_config.training.instruments)
-        C = self.roformer_config.audio.hop_length * (segment_size - 1)
-        N = self.overlap_mdx23
-        step = int(C // N)
-        fade_size = C // 10
-        batch_size = self.roformer_config.inference.batch_size
-        length_init = mix.shape[-1]
+        result = counter = estimated_sources = None
+        try:
+            segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size
+            S = 1 if self.roformer_config.training.target_instrument else len(self.roformer_config.training.instruments)
+            C = self.roformer_config.audio.hop_length * (segment_size - 1)
+            N = self.overlap_mdx23
+            step = int(C // N)
+            fade_size = C // 10
+            batch_size = self.roformer_config.inference.batch_size
+            length_init = mix.shape[-1]
 
-        # Padding the mix to account for border effects
-        if length_init > 2 * (C - step) and (C - step > 0):
-            mix = nn.functional.pad(mix, (C - step, C - step), mode='reflect')
-
-        # Set up windows for fade-in/out
-        fadein = torch.linspace(0, 1, fade_size).to(device)
-        fadeout = torch.linspace(1, 0, fade_size).to(device)
-        window_start = torch.ones(C).to(device)
-        window_middle = torch.ones(C).to(device)
-        window_finish = torch.ones(C).to(device)
-        window_start[-fade_size:] *= fadeout  # No fade-in at start
-        window_finish[:fade_size] *= fadein  # No fade-out at end
-        window_middle[:fade_size] *= fadein
-        window_middle[-fade_size:] *= fadeout
-
-        batch_len = int(mix.shape[1] / step)
-
-        with torch.inference_mode():
-            req_shape = (S, ) + tuple(mix.shape)
-            result = torch.zeros(req_shape, dtype=torch.float32, device=device)
-            counter = torch.zeros(req_shape, dtype=torch.float32, device=device)
-            batch_data = []
-            batch_locations = []
-
-            i = 0
-
-            while i < mix.shape[1]:
-                part = mix[:, i:i + C].to(device)
-                length = part.shape[-1]
-                if length < C:
-                    if length > C // 2 + 1:
-                        part = nn.functional.pad(part, (0, C - length), mode='reflect')
-                    else:
-                        part = nn.functional.pad(part, (0, C - length, 0, 0), mode='constant', value=0)
-
-                batch_data.append(part)
-                batch_locations.append((i, length))
-                i += step
-
-                # Process in batches
-                if len(batch_data) >= batch_size or (i >= mix.shape[1]):
-                    arr = torch.stack(batch_data, dim=0)
-                    x = model(arr)
-
-                    for j in range(len(batch_locations)):
-                        self.running_inference_progress_bar(batch_len)
-                        start, l = batch_locations[j]
-                        window = window_middle
-                        if start == 0:
-                            window = window_start
-                        elif i >= mix.shape[1]:
-                            window = window_finish
-
-                        result = self.overlap_add(result, x, l, j, start, window)
-                        counter[..., start:start + l] += window[..., :l]
-
-                    batch_data = []
-                    batch_locations = []
-
-            # Normalize by the overlap counter and remove padding
-            estimated_sources = result / counter.clamp(min=1e-10)
-
+            # Padding the mix to account for border effects
             if length_init > 2 * (C - step) and (C - step > 0):
-                estimated_sources = estimated_sources[..., (C - step):-(C - step)]
+                mix = nn.functional.pad(mix, (C - step, C - step), mode='reflect')
 
-        pitch_fix = lambda s:self.pitch_fix(s, sr_pitched, org_mix)
+            # Set up windows for fade-in/out
+            fadein = torch.linspace(0, 1, fade_size).to(device)
+            fadeout = torch.linspace(1, 0, fade_size).to(device)
+            window_start = torch.ones(C).to(device)
+            window_middle = torch.ones(C).to(device)
+            window_finish = torch.ones(C).to(device)
+            window_start[-fade_size:] *= fadeout  # No fade-in at start
+            window_finish[:fade_size] *= fadein  # No fade-out at end
+            window_middle[:fade_size] *= fadein
+            window_middle[-fade_size:] *= fadeout
 
-        if S > 1 or self.is_vocal_main_target:
-            sources = {k: pitch_fix(v) if self.is_pitch_change else v for k, v in zip(self.mdx_c_configs.training.instruments, estimated_sources.cpu().detach().numpy())}
-            if self.is_vocal_main_target:
-                if sources[VOCAL_STEM].shape[1] != org_mix.shape[1]:
-                    sources[VOCAL_STEM] = spec_utils.match_array_shapes(sources[VOCAL_STEM], org_mix)
-                sources[INST_STEM] = org_mix - sources[VOCAL_STEM]
+            batch_len = int(mix.shape[1] / step)
 
-            return sources
-        else:
-            sources = {k: v.cpu().detach().numpy() for k, v in zip([self.mdx_c_configs.training.target_instrument], estimated_sources)}
-            est_s = sources[self.mdx_c_configs.training.target_instrument]
+            with torch.inference_mode():
+                req_shape = (S, ) + tuple(mix.shape)
+                result = torch.zeros(req_shape, dtype=torch.float32, device=device)
+                counter = torch.zeros(req_shape, dtype=torch.float32, device=device)
+                batch_data = []
+                batch_locations = []
 
-            return pitch_fix(est_s) if self.is_pitch_change else est_s
+                i = 0
+
+                while i < mix.shape[1]:
+                    self.check_run_control()
+                    part = mix[:, i:i + C].to(device)
+                    length = part.shape[-1]
+                    if length < C:
+                        if length > C // 2 + 1:
+                            part = nn.functional.pad(part, (0, C - length), mode='reflect')
+                        else:
+                            part = nn.functional.pad(part, (0, C - length, 0, 0), mode='constant', value=0)
+
+                    batch_data.append(part)
+                    batch_locations.append((i, length))
+                    i += step
+
+                    # Process in batches
+                    if len(batch_data) >= batch_size or (i >= mix.shape[1]):
+                        arr = torch.stack(batch_data, dim=0)
+                        x = model(arr)
+
+                        for j in range(len(batch_locations)):
+                            self.running_inference_progress_bar(batch_len)
+                            start, l = batch_locations[j]
+                            window = window_middle
+                            if start == 0:
+                                window = window_start
+                            elif i >= mix.shape[1]:
+                                window = window_finish
+
+                            result = self.overlap_add(result, x, l, j, start, window)
+                            counter[..., start:start + l] += window[..., :l]
+
+                        batch_data = []
+                        batch_locations = []
+
+                # Normalize by the overlap counter and remove padding
+                estimated_sources = result / counter.clamp(min=1e-10)
+
+                if length_init > 2 * (C - step) and (C - step > 0):
+                    estimated_sources = estimated_sources[..., (C - step):-(C - step)]
+
+            pitch_fix = lambda s:self.pitch_fix(s, sr_pitched, org_mix)
+
+            if S > 1 or self.is_vocal_main_target:
+                sources = {k: pitch_fix(v) if self.is_pitch_change else v for k, v in zip(self.mdx_c_configs.training.instruments, estimated_sources.cpu().detach().numpy())}
+                if self.is_vocal_main_target:
+                    if sources[VOCAL_STEM].shape[1] != org_mix.shape[1]:
+                        sources[VOCAL_STEM] = spec_utils.match_array_shapes(sources[VOCAL_STEM], org_mix)
+                    sources[INST_STEM] = org_mix - sources[VOCAL_STEM]
+
+                return sources
+            else:
+                sources = {k: v.cpu().detach().numpy() for k, v in zip([self.mdx_c_configs.training.target_instrument], estimated_sources)}
+                est_s = sources[self.mdx_c_configs.training.target_instrument]
+
+                return pitch_fix(est_s) if self.is_pitch_change else est_s
+        finally:
+            for tensor in (result, counter, mix, estimated_sources):
+                if tensor is not None:
+                    del tensor
+            model.cpu()
+            del model
+            self._inference_model = None
+            clear_gpu_cache()
 
 class SeperateDemucs(SeperateAttributes):
     def seperate(self):

@@ -140,11 +140,13 @@ class LogPanel(Gtk.Box):
 
         self._start_button = Gtk.Button(label="Start Processing", hexpand=True)
         self._start_button.add_css_class("suggested-action")
+        self._start_button.set_valign(Gtk.Align.CENTER)
         action_row.append(self._start_button)
 
         self._stop_button = Gtk.Button(icon_name="process-stop-symbolic")
         self._stop_button.add_css_class("destructive-action")
         self._stop_button.set_sensitive(False)
+        self._stop_button.set_valign(Gtk.Align.CENTER)
         action_row.append(self._stop_button)
 
         body.append(action_row)
@@ -176,10 +178,7 @@ class LogPanel(Gtk.Box):
         return cls._collapsed_body_height(include_progress=False) + OVERLAY_MARGIN_BOTTOM
 
     def collapsed_overlay_height(self) -> int:
-        """Minimum panel height when the log revealer is closed."""
-        height = self.get_height()
-        if height > 0:
-            return height + OVERLAY_MARGIN_BOTTOM
+        """Bottom inset for the options scroller (always the collapsed panel height)."""
         include_progress = self._progress_section.get_visible()
         return self._collapsed_body_height(include_progress=include_progress) + OVERLAY_MARGIN_BOTTOM
 

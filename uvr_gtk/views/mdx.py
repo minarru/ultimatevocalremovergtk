@@ -115,6 +115,14 @@ class MDXView(MethodView):
     def _on_model_resolved(self, model):
         self._overlap_is_mdx_c = bool(model and getattr(model, "is_mdx_c", False))
         self._refresh_overlap()
+        stems = list(getattr(model, "mdx_model_stems", []) or []) if model else []
+        # Match upstream UVR ``update_button_states_mdx``: 2-stem models use the
+        # primary stem name in ``mdx_stems``, not ``All Stems`` (that value is
+        # only meaningful for 3+ stem MDX23C models).
+        if 0 < len(stems) < 3:
+            self.settings.set("mdx_stems", stems[0])
+        elif len(stems) >= 3 and self.settings.get("mdx_stems") not in (*stems, ALL_STEMS):
+            self.settings.set("mdx_stems", ALL_STEMS)
         self._rebuild_stem_toggles(model)
 
     def build_stem_options(self, group):

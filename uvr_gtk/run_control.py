@@ -49,6 +49,8 @@ class RunController:
         self._run_label = "Processing"
         self._run_started_at = 0.0
         self._stop_confirm_dialog: Optional[Adw.AlertDialog] = None
+        self._cleanup_target: Any = None
+        self._cleanup_attempts = 0
 
     @property
     def running_target(self) -> Any:
@@ -149,9 +151,32 @@ class RunController:
             return
         self._window.console.append(f"\n{STOP_PROCESSING}\n")
         target.stop()
-        self._finish_run_ui(stopped=True)
+        self._finish_run_ui(stopped=True, defer_cleanup=True)
+        self._schedule_inference_cleanup(target)
 
-    def _finish_run_ui(self, *, stopped: bool = False) -> None:
+    def _schedule_inference_cleanup(self, target: Any) -> None:
+        self._cleanup_target = target
+        self._cleanup_attempts = 0
+        GLib.timeout_add(50, self._poll_inference_cleanup)
+
+    def _poll_inference_cleanup(self) -> bool:
+        target = self._cleanup_target
+        if target is None:
+            return False
+        self._cleanup_attempts += 1
+        if not target.is_running():
+            self._release_inference_memory(force_if_alive=False)
+            self._cleanup_target = None
+            return False
+        if self._cleanup_attempts >= 80:
+            self._release_inference_memory(force_if_alive=True)
+            self._cleanup_target = None
+            return False
+        return True
+
+    def _finish_run_ui(self, *, stopped: bool = False, defer_cleanup: bool = False) -> None:
+        if stopped and not defer_cleanup:
+            self._release_inference_memory(wait_for_stop=0.5)
         self._window._stop_pulse()
         self._set_running(False)
         self._running_target = None
@@ -159,9 +184,11 @@ class RunController:
         self._window.log_panel.set_progress_text("Stopped" if stopped else "")
 
     def _on_stopped(self) -> None:
+        self._cleanup_target = None
         self._finish_run_ui(stopped=True)
 
     def _on_complete(self) -> None:
+        self._release_inference_memory(wait_for_stop=0.5)
         self._window._stop_pulse()
         self._set_running(False)
         self._window.log_panel.set_progress_fraction(1.0)
@@ -172,10 +199,13 @@ class RunController:
         self._send_completion_notification(output_dir)
 
     def _on_error(self, exc: BaseException) -> None:
+        self._release_inference_memory()
         self._window._stop_pulse()
         self._set_running(False)
         self._window.log_panel.set_progress_text("")
-        self._report_error(f"Process failed: {exc}", exc)
+        message = f"Process failed: {exc}"
+        self._window.console.append(f"\n{message}\n")
+        self._report_error(message, exc)
         self._send_failure_notification()
         self._running_target = None
 
@@ -242,22 +272,44 @@ class RunController:
         return " · ".join(parts)
 
     def _report_error(self, message: str, exc: BaseException) -> None:
-        from .errorlog import log_error
+        from .errorlog import log_error, present_error_dialog
 
         window = self._window
         target = self._running_target or window._run_target
         key = (
             target.error_key if target is not None else window._active_view().method_key
         )
-        log_error(key, exc)
-        toast = Adw.Toast.new(message)
-        toast.set_button_label("Error Log")
-        toast.set_action_name("win.error_log")
-        window.toast_overlay.add_toast(toast)
+        formatted = log_error(key, exc)
+        label = self._run_label_for(target) if target is not None else "Process"
+        present_error_dialog(
+            window,
+            heading=f"{label} failed",
+            exception=exc,
+            formatted_log=formatted,
+            on_copied=lambda: window._toast("Report copied to clipboard"),
+        )
 
     def _set_running(self, running: bool) -> None:
         self._window.start_button.set_sensitive(not running)
         self._window.stop_button.set_sensitive(running)
+
+    def _release_inference_memory(
+        self,
+        *,
+        wait_for_stop: float = 0.0,
+        force_if_alive: bool = False,
+    ) -> None:
+        window = self._window
+        window.context.runner.release_inference_memory(
+            wait_for_stop=wait_for_stop,
+            force_if_alive=force_if_alive,
+        )
+        page = getattr(window, "_audio_tools_page", None)
+        if page is not None:
+            page.runner.release_inference_memory(
+                wait_for_stop=wait_for_stop,
+                force_if_alive=force_if_alive,
+            )
 
 
 def _format_mmss(seconds: float) -> str:

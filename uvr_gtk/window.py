@@ -166,7 +166,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._options_page = None
 
         page = self._build_content()
-        self.log_panel = LogPanel(on_expanded_changed=self._on_log_panel_expanded_changed)
+        self.log_panel = LogPanel()
         self.console = self.log_panel.console
         self.start_button = self.log_panel.start_button
         self.stop_button = self.log_panel.stop_button
@@ -180,7 +180,6 @@ class MainWindow(Adw.ApplicationWindow):
         self.log_panel._progress_section.connect(
             "notify::visible", lambda *_: self._sync_options_bottom_clearance()
         )
-        self.log_panel.connect("notify::height", lambda *_: self._sync_options_bottom_clearance())
 
         root = Gtk.Overlay()
         root.set_child(page)
@@ -386,7 +385,7 @@ class MainWindow(Adw.ApplicationWindow):
         idle_on_main(refresh)
 
     def _sync_options_bottom_clearance(self) -> None:
-        """Keep scroll padding tight to the collapsed log panel height."""
+        """Keep scroll padding aligned with the collapsed log panel height."""
         clearance = self.log_panel.collapsed_overlay_height()
         for columns_box in self._column_boxes:
             set_options_bottom_clearance(columns_box, clearance)
@@ -417,9 +416,6 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _reveal_log_panel(self, revealed: bool) -> None:
         self._sync_log_panel_expanded(revealed)
-
-    def _on_log_panel_expanded_changed(self, expanded: bool) -> None:
-        self._sync_options_bottom_clearance()
 
     def _start_pulse(self) -> None:
         self.log_panel.start_progress_pulse(_PULSE_INTERVAL_MS)
