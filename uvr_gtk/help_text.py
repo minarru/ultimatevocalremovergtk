@@ -10,7 +10,9 @@ Style guide
 * Use ``•`` for top-level bullets and two spaces plus ``-`` for sub-bullets.
 * Separate sections with a single blank line; avoid trailing blank lines.
 * Plain text only — GTK tooltips do not render Markdown (no ``**bold**``).
-* Prefer triple-quoted multiline strings for readability.
+* Prefer single-line strings for short prose — GTK wraps at the tooltip width
+* Use ``\\n\\n`` only between distinct sections (title and body, notes, bullet lists)
+* Do not embed mid-sentence line breaks in source; each forced ``\\n`` becomes a hard wrap
 
 See :func:`validate_help_text` and ``tests/test_help_text.py``.
 """
@@ -73,6 +75,7 @@ def iter_help_strings() -> Iterator[tuple[str, str]]:
 # --- Upstream UVR hints (ported from the original Tk help strings) ---
 
 STOP_HELP = """Stops ongoing tasks
+
 • A confirmation pop-up will appear before stopping"""
 
 SETTINGS_HELP = "Accesses the main settings and the \"Download Center.\""
@@ -184,6 +187,7 @@ IS_TTA_HELP = """This option performs Test-Time-Augmentation to improve the sepa
 Note: Having this selected will increase the time it takes to complete a conversion"""
 
 IS_POST_PROCESS_HELP = """This option can potentially identify leftover instrumental artifacts within the vocal outputs
+
 This option may improve the separation of some songs
 
 Note: Selecting this option can adversely affect the conversion process, depending on the track. Because of this, it is only recommended as a last resort"""
@@ -206,14 +210,12 @@ MDX_OVERLAP_HELP = """• This option controls the amount of overlap between pre
 OVERLAP_23_HELP = """• This option controls the amount of overlap between prediction windows
   - Higher values can provide better results, but will lead to longer processing times"""
 
-IS_SEGMENT_DEFAULT_HELP = """• The segment size is set based on the value provided in a chosen model's associated
-config file (yaml)"""
+IS_SEGMENT_DEFAULT_HELP = """• The segment size is set based on the value provided in a chosen model's associated config file (yaml)"""
 
 IS_SPLIT_MODE_HELP = """• Enables "Segments"
 • Deselecting this option is only recommended for those with powerful PCs"""
 
-IS_DEMUCS_COMBINE_STEMS_HELP = """The application will create the secondary stem by combining the remaining stems
-instead of inverting the primary stem with the mixture"""
+IS_DEMUCS_COMBINE_STEMS_HELP = "The application will create the secondary stem by combining the remaining stems instead of inverting the primary stem with the mixture"
 
 COMPENSATE_HELP = """Compensates the audio of the primary stems to allow for a better secondary stem"""
 
@@ -263,6 +265,7 @@ IS_TESTING_AUDIO_HELP = "Appends a 10-digit number to saved files to avoid accid
 IS_MODEL_TESTING_AUDIO_HELP = "Appends the model name to outputs for comparison across different models"
 
 IS_ACCEPT_ANY_INPUT_HELP = """Allows all types of inputs when enabled, even non-audio formats
+
 For experimental use only. Not recommended for regular use"""
 
 DELETE_YOUR_SETTINGS_HELP = """Contains your saved settings. Confirmation will be requested before deleting a selected setting"""
@@ -277,18 +280,14 @@ IS_CREATE_MODEL_FOLDER_HELP = """Two new directories will be generated for the o
 └── Second Directory (Named after the track)
 └── Output File(s)"""
 
-MDX_DIM_T_SET_HELP = """This is an internal model setting
+MDX_DIM_T_SET_HELP = "This is an internal model setting — avoid changing it unless you're certain about it!"
 
-Avoid changing it unless you're certain about it!"""
-
-MDX_DIM_F_SET_HELP = """This is an internal model setting
-
-Avoid changing it unless you're certain about it!"""
+MDX_DIM_F_SET_HELP = "This is an internal model setting — avoid changing it unless you're certain about it!"
 
 MDX_N_FFT_SCALE_SET_HELP = "Specify the N_FFT size used during model training"
 
 POPUP_COMPENSATE_HELP = (
-    "Select the appropriate volume compensation for the chosen model\n"
+    "Select the appropriate volume compensation for the chosen model\n\n"
     f"Reminder: {COMPENSATE_HELP}"
 )
 
@@ -297,9 +296,11 @@ VR_MODEL_PARAM_HELP = "Select the required parameters to run the chosen model"
 CHOSEN_ENSEMBLE_HELP = """Default Ensemble Selections:
 • Save the current ensemble configuration
 • Clear all selected models
+
 Note: You can also select previously saved ensembles"""
 
 CHOSEN_PROCESS_METHOD_HELP = """Choose a Processing Method:
+
 Select from various AI networks and algorithms to process your track:
 
 • VR Architecture: Uses magnitude spectrograms for source separation
@@ -309,25 +310,29 @@ Select from various AI networks and algorithms to process your track:
 • Audio Tools: Additional utilities for added convenience"""
 
 INPUT_FOLDER_ENTRY_HELP = """Select Input:
+
 Choose the audio file(s) you want to process"""
 
 OUTPUT_FOLDER_ENTRY_HELP = """Select Output:
+
 Choose the directory where the processed files will be saved"""
 
 INPUT_FOLDER_BUTTON_HELP = """Open Input Folder Button:
+
 Open the directory containing the selected input audio file(s)"""
 
 OUTPUT_FOLDER_BUTTON_HELP = """Open Output Folder Button:
+
 Open the selected output folder"""
 
-CHOOSE_MODEL_HELP = """Each processing method has its own set of options and models
-Choose the model associated with the selected processing method here"""
+CHOOSE_MODEL_HELP = "Each processing method has its own set of options and models — choose the model for the selected processing method"
 
 FORMAT_SETTING_HELP = "Save Outputs As:"
 
 SECONDARY_MODEL_ACTIVATE_HELP = """When enabled, the application will perform an additional inference using the selected model(s) above"""
 
 SECONDARY_MODEL_HELP = """Choose the Secondary Model:
+
 Select the secondary model associated with the stem you want to process with the current method"""
 
 INPUT_SEC_FIELDS_HELP = "Right click here to choose your inputs!"
@@ -341,6 +346,7 @@ For example:
 • 90% - 90 percent of the main model result will be factored into the final result"""
 
 PRE_PROC_MODEL_ACTIVATE_HELP = """When enabled, the application will use the selected model to isolate the instrumental stem
+
 Subsequently, all non-vocal stems will be extracted from this generated instrumental
 
 Key Points:
@@ -368,6 +374,7 @@ APOLLO_CHUNK_SIZE_HELP = """Pick a chunk size to balance speed, resource use, an
 • Default size is 10. Quality can change based on your pick"""
 
 APOLLO_OVERLAP_HELP = """This option controls the amount of overlap between prediction windows
+
 • Higher values increase quality but slow processing and use more resources
 • Default value is 5"""
 
@@ -404,14 +411,17 @@ VR_MODEL_NOUT_HELP = ""
 VR_MODEL_NOUT_LSTM_HELP = ""
 
 IS_PHASE_HELP = """Select the phase for the secondary audio
+
 • Note: Using the "Automatic" option is strongly recommended"""
 
 IS_ALIGN_TRACK_HELP = "Enable this to save the secondary track once aligned"
 
 IS_MATCH_SILENCE_HELP = """Aligns the initial silence of the secondary audio with the primary audio
+
 • Note: Avoid using this option if the primary audio begins solely with vocals"""
 
 IS_MATCH_SPEC_HELP = """Align the secondary audio based on the primary audio's spectrogram
+
 • Note: This may enhance alignment in specific cases"""
 
 TIME_WINDOW_ALIGN_HELP = """This setting determines the window size for alignment analysis, especially for pairs with minor timing variations:
@@ -519,8 +529,7 @@ VIEW_TAB_HINTS: Dict[str, str] = {
         "Combine outputs from multiple models and algorithms for higher-quality results"
     ),
     "audio_tools": (
-        "Time stretch, change pitch, align tracks, matchering, manual ensemble, "
-        "and Apollo audio restoration"
+        "Time stretch, change pitch, align tracks, matchering, manual ensemble, and Apollo audio restoration"
     ),
 }
 
@@ -528,16 +537,15 @@ OUTPUT_FORMAT_HINT = "Choose the audio format for saved output files (WAV, FLAC,
 
 # --- Separation / method views ---
 
-MDX_OVERLAP_HINT = """
-Overlap between prediction windows. The available values follow the selected
-model: classic MDX-Net uses the Default/0.25-0.99 scale, while MDX23C models
-use 2-50
-""".strip()
+MDX_OVERLAP_HINT = (
+    "Overlap between prediction windows — available values follow the selected model: "
+    "classic MDX-Net uses the Default/0.25-0.99 scale, while MDX23C models use 2-50"
+)
 
-MDX_STEMS_HINT = """
-Choose which stems to save. Applies to multi-stem MDX23C models; for 2-stem
-models the 'Only' toggles above apply
-""".strip()
+MDX_STEMS_HINT = (
+    "Choose which stems to save — applies to multi-stem MDX23C models; "
+    "for 2-stem models the 'Only' toggles above apply"
+)
 
 DEMUCS_CHUNK_HINT = "Process the audio in chunks to reduce memory usage (legacy option)"
 
