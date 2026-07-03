@@ -56,6 +56,7 @@ from .hints import (
 )
 from .dispatch import idle_on_main
 from .run_control import RunController
+from uvr_core.debug_log import debug
 from .shared_settings import apply_shared_file_options
 from .views import METHOD_VIEWS
 from .widgets.columns import (
@@ -673,6 +674,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.begin_run(self._separation_target)
 
         try:
+            debug("ui", f"runner.start files={len(input_paths)}")
             self.context.runner.start(input_paths, callbacks)
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
             self.fail_to_start(f"Unable to start separation: {exc}", exc)

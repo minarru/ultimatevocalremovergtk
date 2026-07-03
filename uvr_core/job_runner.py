@@ -45,6 +45,8 @@ from .model_data import (
 from .sample_mode import prepare_input_paths
 from .settings import SettingsModel
 from .run_control import ProcessStopped, check_stopped, pausable_callback
+from .debug_log import debug
+from .separate_import import import_separate_engines
 from .inference_cleanup import (
     clear_source_mapper,
     release_inference_memory as _release_inference_resources,
@@ -78,6 +80,10 @@ class JobCallbacks:
             self.on_progress(max(0.0, min(1.0, fraction)))
 
     def console(self, text: str) -> None:
+        preview = text.replace("\n", "\\n")
+        if len(preview) > 72:
+            preview = preview[:69] + "..."
+        debug("worker", f"console emit {preview!r}")
         if self.on_console:
             self.on_console(text)
 
@@ -137,6 +143,7 @@ class JobRunner:
             target=self._run,
             args=(prepare_input_paths(self.settings, input_paths), callbacks),
         )
+        debug("worker", f"KThread start files={len(input_paths)}")
         self._thread.start()
 
     def start_ensemble(self, input_paths: Sequence[str], callbacks: JobCallbacks) -> None:
@@ -281,7 +288,19 @@ class JobRunner:
                 self._active_separator = None
 
     def _run(self, input_paths: List[str], callbacks: JobCallbacks) -> None:
-        from separate import SeperateDemucs, SeperateMDX, SeperateMDXC, SeperateVR, clear_gpu_cache
+        debug("worker", "_run entered")
+        import_started = time.perf_counter()
+        (
+            SeperateDemucs,
+            SeperateMDX,
+            SeperateMDXC,
+            SeperateVR,
+            clear_gpu_cache,
+        ) = import_separate_engines()
+        debug(
+            "worker",
+            f"separate engines ready elapsed={time.perf_counter() - import_started:.3f}s",
+        )
 
         stime = time.perf_counter()
         time_elapsed = lambda: f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
@@ -290,7 +309,13 @@ class JobRunner:
             export_path = self.settings.get("export_path")
             if not export_path:
                 raise ValueError("export_path is required")
+            resolve_started = time.perf_counter()
             models = self.resolve_models()
+            debug(
+                "worker",
+                f"resolve_models done count={len(models)} "
+                f"elapsed={time.perf_counter() - resolve_started:.3f}s",
+            )
             self.iteration = 0
             self._build_all_models(models)
             self.true_model_count = self._count_true_models(models)
@@ -367,7 +392,13 @@ class JobRunner:
                     else:
                         raise NotImplementedError(f"engine for '{current_model.process_method}' not available")
 
+                    engine = type(seperator).__name__
+                    debug(
+                        "worker",
+                        f"separate start engine={engine} model={current_model.model_basename!r}",
+                    )
                     self._run_seperator(seperator)
+                    debug("worker", f"separate done engine={engine}")
 
                 clear_gpu_cache()
 
@@ -399,7 +430,19 @@ class JobRunner:
         """
         import shutil
 
-        from separate import SeperateDemucs, SeperateMDX, SeperateMDXC, SeperateVR, clear_gpu_cache
+        debug("worker", "_run_ensemble entered")
+        import_started = time.perf_counter()
+        (
+            SeperateDemucs,
+            SeperateMDX,
+            SeperateMDXC,
+            SeperateVR,
+            clear_gpu_cache,
+        ) = import_separate_engines()
+        debug(
+            "worker",
+            f"separate engines ready elapsed={time.perf_counter() - import_started:.3f}s",
+        )
 
         stime = time.perf_counter()
         time_elapsed = lambda: f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'

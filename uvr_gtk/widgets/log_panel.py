@@ -9,6 +9,8 @@ from typing import Callable, Optional
 
 from gi.repository import GLib, Gtk
 
+from uvr_core.debug_log import debug
+
 from ..hints import set_icon_button_a11y
 from .console import ConsoleView
 
@@ -110,12 +112,15 @@ class LogPanel(Gtk.Box):
 
         self._log_stack = Gtk.Stack()
         self._log_stack.add_css_class("uvr-log-body")
+        self._log_stack.set_size_request(-1, _LOG_BODY_HEIGHT)
 
         empty_state = self._build_empty_state()
         self._log_stack.add_named(empty_state, "empty")
 
         self.console = ConsoleView(on_changed=self._handle_console_changed)
         self.console.add_css_class("uvr-log-console")
+        self.console.set_min_content_height(_LOG_BODY_HEIGHT)
+        self.console.set_max_content_height(_LOG_BODY_HEIGHT)
         self._log_stack.add_named(self.console, "console")
 
         log_body.append(self._log_stack)
@@ -208,6 +213,18 @@ class LogPanel(Gtk.Box):
             self._pulse_source_id = None
         self._sync_progress_section_visible()
 
+    def prepare_for_run(self) -> None:
+        """Show the console and reset scroll before worker output arrives."""
+        revealed = self._log_revealer.get_child_revealed()
+        debug("ui", f"log_panel.prepare_for_run child_revealed={revealed}")
+        self._log_stack.set_visible_child_name("console")
+        self.console._reset_scroll()
+        if self._log_revealer.get_child_revealed():
+            self.console.resume_scroll()
+            self.console.scroll_to_end_stable()
+        else:
+            self.console.defer_scroll_until_settled()
+
     def get_expanded(self) -> bool:
         return self._log_revealer.get_reveal_child()
 
@@ -259,8 +276,11 @@ class LogPanel(Gtk.Box):
 
     def _on_log_revealed(self, revealer: Gtk.Revealer, _pspec) -> None:
         if revealer.get_child_revealed():
+            debug("ui", "log_panel child revealed")
             self._apply_expanded_visibility(True)
             self._defer_collapse_visibility = False
+            self.console.resume_scroll()
+            self.console.scroll_to_end_stable()
             return
         if self._defer_collapse_visibility:
             self._apply_expanded_visibility(False)

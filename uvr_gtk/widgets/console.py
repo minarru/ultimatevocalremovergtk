@@ -11,15 +11,24 @@ from typing import Callable, Optional
 from gi.repository import GLib, Gtk
 
 from data.constants import DONE
+from uvr_core.debug_log import debug
 
 
 class ConsoleView(Gtk.ScrolledWindow):
+    #: Matches revealer slide duration in :class:`uvr_gtk.widgets.log_panel.LogPanel`.
+    _LAYOUT_SETTLE_MS = 250
+
     def __init__(self, on_changed: Optional[Callable[[bool], None]] = None):
         super().__init__()
         self.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.set_vexpand(True)
+        self.set_propagate_natural_height(False)
 
         self._on_changed = on_changed
+        self._scroll_idle_id: Optional[int] = None
+        self._reconcile_scroll_id: Optional[int] = None
+        self._viewport_idle_id: Optional[int] = None
+        self._defer_scroll = False
         self._buffer = Gtk.TextBuffer()
         self._view = Gtk.TextView(buffer=self._buffer)
         self._view.set_editable(False)
@@ -32,16 +41,63 @@ class ConsoleView(Gtk.ScrolledWindow):
         self._view.set_bottom_margin(8)
         self.set_child(self._view)
 
+        vadj = self.get_vadjustment()
+        if vadj is not None:
+            vadj.connect("notify::upper", self._on_viewport_changed)
+            vadj.connect("notify::page-size", self._on_viewport_changed)
+
+    def _on_viewport_changed(self, _adj: Gtk.Adjustment, _pspec) -> None:
+        if not self.get_mapped():
+            return
+        if self._viewport_idle_id is not None:
+            return
+        self._viewport_idle_id = GLib.idle_add(self._on_viewport_idle)
+
+    def _on_viewport_idle(self) -> bool:
+        self._viewport_idle_id = None
+        if not self.get_mapped():
+            return GLib.SOURCE_REMOVE
+        vadj = self.get_vadjustment()
+        if vadj is None:
+            return GLib.SOURCE_REMOVE
+        upper = vadj.get_upper()
+        page = vadj.get_page_size()
+        if upper <= page + 0.5 or self._defer_scroll:
+            # Pin to top when content fits or while the log panel is still opening.
+            # Do not scroll to end here — layout is often unstable during reveal.
+            if vadj.get_value() != vadj.get_lower():
+                vadj.set_value(vadj.get_lower())
+        return GLib.SOURCE_REMOVE
+
+    def defer_scroll_until_settled(self) -> None:
+        self._defer_scroll = True
+
+    def resume_scroll(self) -> None:
+        self._defer_scroll = False
+        self._reset_scroll()
+
     def append(self, text: str) -> None:
         # ``DONE`` completes the current in-progress line (no trailing newline).
         # Skip it when there is no open line, which avoids a lone " Done!" at run
         # start before the first "Running inference..." message is written.
         if text == DONE and (self.is_empty() or self.get_text().endswith("\n")):
+            debug("console", f"append skipped DONE (empty={self.is_empty()})")
             return
+
+        preview = text.replace("\n", "\\n")
+        if len(preview) > 72:
+            preview = preview[:69] + "..."
+        debug(
+            "console",
+            f"append {preview!r} defer_scroll={self._defer_scroll} mapped={self.get_mapped()}",
+        )
 
         end = self._buffer.get_end_iter()
         self._buffer.insert(end, text)
-        self._scroll_to_end()
+        if self._defer_scroll:
+            self._reset_scroll()
+        else:
+            self._scroll_to_end()
         self._notify_changed()
 
     def clear(self) -> None:
@@ -74,16 +130,50 @@ class ConsoleView(Gtk.ScrolledWindow):
         if hadj is not None:
             hadj.set_value(hadj.get_lower())
 
+    def scroll_to_end_stable(self) -> None:
+        """Scroll to the latest line, then again after layout settles."""
+        self._scroll_to_end()
+        if self._reconcile_scroll_id is not None:
+            GLib.source_remove(self._reconcile_scroll_id)
+        self._reconcile_scroll_id = GLib.timeout_add(
+            self._LAYOUT_SETTLE_MS, self._reconcile_scroll
+        )
+
     def _scroll_to_end(self) -> None:
-        GLib.idle_add(self._do_scroll)
+        if self._defer_scroll:
+            return
+        if self._scroll_idle_id is not None:
+            return
+        self._scroll_idle_id = GLib.idle_add(self._do_scroll)
 
     def _do_scroll(self) -> bool:
+        self._scroll_idle_id = None
         if not self.get_mapped():
-            GLib.idle_add(self._do_scroll)
+            self._scroll_idle_id = GLib.idle_add(self._do_scroll)
             return GLib.SOURCE_REMOVE
 
-        mark = self._buffer.create_mark(None, self._buffer.get_end_iter(), False)
-        self._view.scroll_to_mark(mark, 0.0, True, 0.0, 1.0)
-        self._buffer.delete_mark(mark)
-        self._reset_horizontal_scroll()
+        self._scroll_view_to_end()
         return GLib.SOURCE_REMOVE
+
+    def _reconcile_scroll(self) -> bool:
+        self._reconcile_scroll_id = None
+        if self.get_mapped():
+            self._scroll_view_to_end()
+        return GLib.SOURCE_REMOVE
+
+    def _scroll_view_to_end(self) -> None:
+        vadj = self.get_vadjustment()
+        if vadj is None:
+            return
+
+        upper = vadj.get_upper()
+        page = vadj.get_page_size()
+        lower = vadj.get_lower()
+        if upper <= page + 0.5:
+            # Short content in a tall viewport: stay pinned to the top instead of
+            # scrolling into blank space below the text.
+            if vadj.get_value() != lower:
+                vadj.set_value(lower)
+        else:
+            vadj.set_value(upper - page)
+        self._reset_horizontal_scroll()

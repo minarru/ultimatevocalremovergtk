@@ -11,6 +11,7 @@ from typing import Callable, Optional
 from gi.repository import GLib
 
 from uvr_core import JobCallbacks
+from uvr_core.debug_log import debug
 
 
 def idle_on_main(func: Callable, *args, **kwargs) -> None:
@@ -25,15 +26,33 @@ def idle_on_main(func: Callable, *args, **kwargs) -> None:
 
 def main_thread(func: Callable) -> Callable:
     """Return a wrapper that schedules ``func`` to run once on the main loop."""
+    label = getattr(func, "__name__", repr(func))
 
     def wrapper(*args, **kwargs):
+        debug("dispatch", f"schedule {label}({ _preview_args(args) })")
+
         def invoke():
+            debug("dispatch", f"invoke {label}({ _preview_args(args) })")
             func(*args, **kwargs)
             return GLib.SOURCE_REMOVE
 
         GLib.idle_add(invoke)
 
     return wrapper
+
+
+def _preview_args(args: tuple) -> str:
+    if not args:
+        return ""
+    first = args[0]
+    if isinstance(first, str):
+        text = first.replace("\n", "\\n")
+        if len(text) > 72:
+            text = text[:69] + "..."
+        return repr(text)
+    if isinstance(first, float):
+        return f"{first:.4f}"
+    return repr(first)
 
 
 def gtk_job_callbacks(

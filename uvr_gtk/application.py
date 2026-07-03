@@ -148,6 +148,9 @@ class UVRApplication(Adw.Application):
 
     def do_activate(self):
         register_gresources()
+        from uvr_core.separate_import import warm_import_separate_engines
+
+        warm_import_separate_engines()
         window = self.props.active_window
         if window is None:
             window = MainWindow(application=self)

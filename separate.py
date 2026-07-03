@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 from uvr_core.cuda_runtime_fix import preload_onnxruntime_cuda12
 preload_onnxruntime_cuda12()
 
+from uvr_core.debug_log import debug
+
 from demucs.apply import apply_model, demucs_segments
 from demucs.hdemucs import HDemucs
 from demucs.model_v2 import auto_load_demucs_model_v2
@@ -318,6 +320,7 @@ class SeperateAttributes:
             self.is_secondary_stem_only = False
             
     def start_inference_console_write(self):
+        debug("separate", f"start_inference_console_write model={self.model_basename}")
         if self.is_secondary_model and not self.is_pre_proc_model and not self.is_vocal_split_model:
             self.write_to_console(INFERENCE_STEP_2_SEC(self.process_method, self.model_basename))
         
@@ -328,6 +331,7 @@ class SeperateAttributes:
             self.write_to_console(INFERENCE_STEP_2_VOC_S(self.process_method, self.model_basename))
         
     def running_inference_console_write(self, is_no_write=False):
+        debug("separate", f"running_inference_console_write is_no_write={is_no_write}")
         self.write_to_console(DONE, base_text='') if not is_no_write else None
         self.set_progress_bar(0.05) if not is_no_write else None
         
@@ -508,7 +512,10 @@ class SeperateMDX(SeperateAttributes):
             mix, source = self.primary_sources
             self.load_cached_sources()
         else:
+            debug("separate", f"SeperateMDX.seperate start model={self.model_basename}")
             self.start_inference_console_write()
+            self.write_to_console(LOADING_MODEL)
+            debug("separate", "SeperateMDX loading model weights")
 
             if self.is_mdx_ckpt:
                 model_params = torch.load(self.model_path, map_location=lambda storage, loc: storage)['hyper_parameters']
@@ -524,6 +531,7 @@ class SeperateMDX(SeperateAttributes):
                     self.model_run.to(self.device).eval()
 
             self.running_inference_console_write()
+            debug("separate", "SeperateMDX model loaded, preparing mix")
             mix = prepare_mix(self.audio_file)
             
             source = self.demix(mix)
@@ -682,9 +690,12 @@ class SeperateMDXC(SeperateAttributes):
             mix, sources = self.primary_sources
             self.load_cached_sources()
         else:
+            debug("separate", f"SeperateMDXC.seperate start model={self.model_basename}")
             self.start_inference_console_write()
-            self.running_inference_console_write()
+            self.write_to_console(LOADING_MODEL)
+            debug("separate", "SeperateMDXC prepare_mix")
             mix = prepare_mix(self.audio_file)
+            debug("separate", "SeperateMDXC demix start")
             sources = self.demix(mix)
             if not self.is_vocal_split_model:
                 self.cache_source((mix, sources))
@@ -802,6 +813,7 @@ class SeperateMDXC(SeperateAttributes):
         return result
 
     def demix(self, mix):
+        debug("separate", f"demix start roformer={self.is_roformer}")
         # Roformer models use the windowed overlap-add inference; classic
         # (non-roformer) MDX-C models keep their original inference path so their
         # numerical output and stem layout are unchanged from before roformer support.
@@ -814,7 +826,9 @@ class SeperateMDXC(SeperateAttributes):
             mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
 
         model = TFC_TDF_net(self.mdx_c_configs, device=self.device)
+        debug("separate", "demix classic MDX-C torch.load start")
         model.load_state_dict(torch.load(self.model_path, map_location=cpu))
+        debug("separate", "demix classic MDX-C torch.load done")
         model.to(self.device).eval()
         self._inference_model = model
         mix = torch.tensor(mix, dtype=torch.float32)
@@ -841,6 +855,8 @@ class SeperateMDXC(SeperateAttributes):
             
             X = torch.zeros(S, *mix.shape) if S > 1 else torch.zeros_like(mix)
             X = X.to(self.device)
+
+            self.running_inference_console_write()
 
             with torch.no_grad():
                 cnt = 0
@@ -897,10 +913,12 @@ class SeperateMDXC(SeperateAttributes):
             raise ValueError('Unknown model type in the configuration.')
 
         checkpoint = torch.load(self.model_path, map_location='cpu')
+        debug("separate", "demix_roformer torch.load done")
         model = model if not isinstance(model, torch.nn.DataParallel) else model.module
         model.load_state_dict(checkpoint)
         del checkpoint
         model.to(device).eval()
+        debug("separate", "demix_roformer model on device")
         self._inference_model = model
         mix = torch.tensor(mix, dtype=torch.float32)
 
@@ -931,6 +949,8 @@ class SeperateMDXC(SeperateAttributes):
             window_middle[-fade_size:] *= fadeout
 
             batch_len = int(mix.shape[1] / step)
+
+            self.running_inference_console_write()
 
             with torch.inference_mode():
                 req_shape = (S, ) + tuple(mix.shape)
@@ -1028,6 +1048,8 @@ class SeperateDemucs(SeperateAttributes):
         mix = prepare_mix(self.audio_file)
 
         if is_no_cache:
+            debug("separate", f"SeperateDemucs loading model version={self.demucs_version}")
+            self.write_to_console(LOADING_MODEL)
             if self.demucs_version == DEMUCS_V1:
                 if str(self.model_path).endswith(".gz"):
                     self.model_path = gzip.open(self.model_path, "rb")
@@ -1238,7 +1260,10 @@ class SeperateVR(SeperateAttributes):
             y_spec, v_spec = self.primary_sources
             self.load_cached_sources()
         else:
+            debug("separate", f"SeperateVR.seperate start model={self.model_basename}")
             self.start_inference_console_write()
+            self.write_to_console(LOADING_MODEL)
+            debug("separate", "SeperateVR loading model weights")
 
             device = self.device
 

@@ -17,6 +17,8 @@ from gi.repository import Adw, Gio, GLib, Gtk
 
 from data.constants import STOP_PROCESS_CONFIRM, STOP_PROCESSING
 
+from uvr_core.debug_log import clear_run_start, debug, mark_run_start
+
 from . import APP_ID
 from .dispatch import gtk_job_callbacks
 
@@ -73,10 +75,13 @@ class RunController:
             on_stopped=self._on_stopped,
             on_error=self._on_error,
         )
+        debug("ui", f"handle_start -> {type(target).__name__}.start()")
         target.start(callbacks)
 
     def begin_run(self, target) -> None:
         """Shared bookkeeping when any run target starts its worker."""
+        mark_run_start()
+        debug("ui", f"begin_run target={type(target).__name__}")
         self._running_target = target
         self._run_output_dir = self._window.settings.get("export_path") or ""
         self._run_label = self._run_label_for(target)
@@ -87,9 +92,12 @@ class RunController:
         self._window._start_pulse()
         self._set_running(True)
         self._window._reveal_log_panel(True)
+        self._window.log_panel.prepare_for_run()
+        debug("ui", "begin_run UI ready (log revealed, prepare_for_run done)")
 
     def fail_to_start(self, message: str, exc: BaseException) -> None:
         """Recover the UI when a run target could not launch its worker."""
+        clear_run_start()
         self._window._stop_pulse()
         self._set_running(False)
         self._window.console.append(f"\n{message}\n")
@@ -159,12 +167,19 @@ class RunController:
         self._cleanup_attempts = 0
         GLib.timeout_add(50, self._poll_inference_cleanup)
 
+    def _worker_is_running(self, target: Any) -> bool:
+        window = self._window
+        page = getattr(window, "_audio_tools_page", None)
+        if target is page:
+            return page.runner.is_running()
+        return window.context.runner.is_running()
+
     def _poll_inference_cleanup(self) -> bool:
         target = self._cleanup_target
         if target is None:
             return False
         self._cleanup_attempts += 1
-        if not target.is_running():
+        if not self._worker_is_running(target):
             self._release_inference_memory(force_if_alive=False)
             self._cleanup_target = None
             return False
@@ -182,6 +197,7 @@ class RunController:
         self._running_target = None
         self._window.log_panel.set_progress_fraction(0.0)
         self._window.log_panel.set_progress_text("Stopped" if stopped else "")
+        clear_run_start()
 
     def _on_stopped(self) -> None:
         self._cleanup_target = None
@@ -194,6 +210,7 @@ class RunController:
         self._window.log_panel.set_progress_fraction(1.0)
         self._window.log_panel.set_progress_text(_PROGRESS_DONE)
         self._running_target = None
+        clear_run_start()
         output_dir = self._run_output_dir
         self._show_complete_toast(output_dir)
         self._send_completion_notification(output_dir)
@@ -208,6 +225,7 @@ class RunController:
         self._report_error(message, exc)
         self._send_failure_notification()
         self._running_target = None
+        clear_run_start()
 
     def _show_complete_toast(self, output_dir: str) -> None:
         toast = Adw.Toast.new("Process complete.")
