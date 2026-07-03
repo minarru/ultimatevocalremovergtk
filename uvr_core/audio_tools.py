@@ -33,7 +33,6 @@ from data.constants import (
     PHASE_SHIFTS_OPT,
     PITCH_TEXT,
     PROCESS_STOPPED_BY_USER,
-    STOP_PROCESSING,
     TIME_STRETCH,
     TIME_TEXT,
     TIME_WINDOW_MAPPER,
@@ -360,12 +359,10 @@ class AudioToolRunner:
             callbacks.console(f"\nProcess complete\n{time_elapsed()}\n")
             callbacks.complete()
         except ProcessStopped:
-            callbacks.console(f"\n{STOP_PROCESSING}\n")
             callbacks.console(PROCESS_STOPPED_BY_USER)
             callbacks.stopped()
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
             if self._is_stopped:
-                callbacks.console(f"\n{STOP_PROCESSING}\n")
                 callbacks.console(PROCESS_STOPPED_BY_USER)
                 callbacks.stopped()
                 return

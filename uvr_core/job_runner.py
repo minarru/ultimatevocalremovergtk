@@ -31,7 +31,6 @@ from data.constants import (
     PRIMARY_STEM,
     PROCESS_STOPPED_BY_USER,
     SECONDARY_STEM,
-    STOP_PROCESSING,
     VR_ARCH_PM,
     VR_ARCH_TYPE,
 )
@@ -376,12 +375,10 @@ class JobRunner:
             callbacks.console(f"\nProcess complete\n{time_elapsed()}\n")
             callbacks.complete()
         except ProcessStopped:
-            callbacks.console(f"\n{STOP_PROCESSING}\n")
             callbacks.console(PROCESS_STOPPED_BY_USER)
             callbacks.stopped()
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
             if self._is_stopped:
-                callbacks.console(f"\n{STOP_PROCESSING}\n")
                 callbacks.console(PROCESS_STOPPED_BY_USER)
                 callbacks.stopped()
                 return
@@ -519,12 +516,10 @@ class JobRunner:
             callbacks.console(f"\nProcess complete\n{time_elapsed()}\n")
             callbacks.complete()
         except ProcessStopped:
-            callbacks.console(f"\n{STOP_PROCESSING}\n")
             callbacks.console(PROCESS_STOPPED_BY_USER)
             callbacks.stopped()
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
             if self._is_stopped:
-                callbacks.console(f"\n{STOP_PROCESSING}\n")
                 callbacks.console(PROCESS_STOPPED_BY_USER)
                 callbacks.stopped()
                 return
