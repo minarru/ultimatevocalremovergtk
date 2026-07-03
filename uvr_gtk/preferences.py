@@ -159,7 +159,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
         profiles_group = Adw.PreferencesGroup(
             title="Saved settings profiles",
-            description="Save the current settings as a named profile, or load / remove an existing one.",
+            description="Save the current settings as a named profile, or load / remove an existing one",
         )
 
         self.profile_combo = make_combo_row("Profile", [_NO_PROFILES])
@@ -182,7 +182,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         reset_group = Adw.PreferencesGroup(title="Reset")
         reset_row = Adw.ActionRow(
             title="Reset all settings to default",
-            subtitle="Restore every option to its built-in default value.",
+            subtitle="Restore every option to its built-in default value",
         )
         reset_button = Gtk.Button(label="Reset", valign=Gtk.Align.CENTER)
         reset_button.add_css_class("destructive-action")
@@ -219,11 +219,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
         process_group = Adw.PreferencesGroup(title="General process settings")
         self._process_switches = {}
         for key, title, subtitle in (
-            ("is_testing_audio", "Settings test mode", "Prefix outputs with a timestamp for testing."),
-            ("is_add_model_name", "Model test mode", "Append the model name to output file names."),
-            ("is_create_model_folder", "Generate model folder", "Save outputs inside a per-model subfolder."),
-            ("is_accept_any_input", "Accept any input", "Allow any input file type, not just common audio."),
-            ("is_normalization", "Normalize output", "Normalize the loudness of saved audio."),
+            ("is_testing_audio", "Settings test mode", "Prefix outputs with a timestamp for testing"),
+            ("is_add_model_name", "Model test mode", "Append the model name to output file names"),
+            ("is_create_model_folder", "Generate model folder", "Save outputs inside a per-model subfolder"),
+            ("is_accept_any_input", "Accept any input", "Allow any input file type, not just common audio"),
+            ("is_normalization", "Normalize output", "Normalize the loudness of saved audio"),
         ):
             row = Adw.SwitchRow(title=title, subtitle=subtitle)
             row.connect("notify::active", self._on_bool_changed, key)
@@ -234,7 +234,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         hardware_group = Adw.PreferencesGroup(title="Hardware")
         self.gpu_row = Adw.SwitchRow(
             title="GPU conversion",
-            subtitle="Use a CUDA-capable GPU for processing when available.",
+            subtitle="Use a CUDA-capable GPU for processing when available",
         )
         self.gpu_row.connect("notify::active", self._on_bool_changed, "is_gpu_conversion")
         set_row_icon(self.gpu_row, "pci-card-symbolic")
@@ -262,7 +262,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         sample_group = Adw.PreferencesGroup(title="Sample mode")
         self.sample_mode_row = Adw.SwitchRow(
             title="Sample mode",
-            subtitle="Process only a short clip of each input.",
+            subtitle="Process only a short clip of each input",
         )
         self.sample_mode_row.connect("notify::active", self._on_bool_changed, "model_sample_mode")
         sample_group.add(self.sample_mode_row)
@@ -372,14 +372,14 @@ class PreferencesDialog(Adw.PreferencesDialog):
     def _on_save_profile(self, entry_row) -> None:
         name = entry_row.get_text().strip()
         if not _is_valid_profile_name(name):
-            self.add_toast(Adw.Toast.new("Invalid name. Use up to 25 letters, numbers, spaces or dashes."))
+            self.add_toast(Adw.Toast.new("Invalid name. Use up to 25 letters, numbers, spaces or dashes"))
             return
         self._profiles.save(name, self.settings.to_dict())
         entry_row.set_text("")
         # Profiles are listed by file-name stem (spaces become underscores),
         # mirroring UVR.py; select that canonical form after saving.
         self._refresh_profile_list(select=name.replace(" ", "_"))
-        self.add_toast(Adw.Toast.new(f'Saved profile "{name}".'))
+        self.add_toast(Adw.Toast.new(f'Saved profile "{name}"'))
 
     def _on_load_profile(self, _button) -> None:
         name = get_combo_value(self.profile_combo)
@@ -387,7 +387,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             return
         data = self._profiles.load(name)
         if data is None:
-            self.add_toast(Adw.Toast.new(f'Could not load profile "{name}".'))
+            self.add_toast(Adw.Toast.new(f'Could not load profile "{name}"'))
             return
         # Only adopt keys the settings schema knows about.
         self.settings.update({k: v for k, v in data.items() if k in DEFAULT_DATA})
@@ -395,7 +395,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._reload_widgets()
         if self._on_settings_reloaded is not None:
             self._on_settings_reloaded()
-        self.add_toast(Adw.Toast.new(f'Loaded profile "{name}".'))
+        self.add_toast(Adw.Toast.new(f'Loaded profile "{name}"'))
 
     def _on_remove_profile(self, _button) -> None:
         name = get_combo_value(self.profile_combo)
@@ -418,7 +418,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             return
         if self._profiles.remove(name):
             self._refresh_profile_list()
-            self.add_toast(Adw.Toast.new(f'Removed profile "{name}".'))
+            self.add_toast(Adw.Toast.new(f'Removed profile "{name}"'))
 
     # -- Reset ------------------------------------------------------------------
 
@@ -443,4 +443,4 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._reload_widgets()
         if self._on_settings_reloaded is not None:
             self._on_settings_reloaded()
-        self.add_toast(Adw.Toast.new("Settings reset to default."))
+        self.add_toast(Adw.Toast.new("Settings reset to default"))
