@@ -187,6 +187,7 @@ class JobRunner:
                 try:
                     thread.terminate()
                     debug("worker", "stop force thread.terminate()")
+                    thread.join(timeout=0.25)
                 except Exception:
                     pass
 

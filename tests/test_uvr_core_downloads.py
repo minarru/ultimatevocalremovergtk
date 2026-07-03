@@ -36,6 +36,19 @@ class DownloadManagerResolveTests(unittest.TestCase):
     def test_resolve_empty_selection(self):
         self.assertEqual(self.manager.resolve(NO_MODEL, VR_ARCH_TYPE), [])
 
+    def test_download_existing_file_does_not_raise(self):
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(delete=False) as handle:
+            path = handle.name
+        try:
+            result = self.manager.download(
+                [("https://example.com/missing.onnx", path)],
+            )
+            self.assertEqual(result, "exists")
+        finally:
+            os.remove(path)
+
 
 class VipDownloadsTests(unittest.TestCase):
     def test_wrong_password_returns_no_code(self):

@@ -117,6 +117,10 @@ class UVRApplication(Adw.Application):
 
     def do_startup(self):
         Adw.Application.do_startup(self)
+        from uvr_core.debug_log import debug, enabled
+
+        if enabled("ui"):
+            debug("ui", "UVR_DEBUG ui tracing enabled")
         # Provision the writable runtime-data tree (and seed bundled assets when
         # running from a read-only install) before any window/model work.
         ensure_data_dir()
@@ -158,5 +162,20 @@ class UVRApplication(Adw.Application):
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import os
+
+    from uvr_core.debug_log import announce_log_file, debug, enabled
+
+    if enabled():
+        announce_log_file()
+        debug("ui", f"uvr_gtk main pid={os.getpid()}")
+
     app = UVRApplication()
-    return app.run(list(argv) if argv is not None else sys.argv)
+    status = app.run(list(argv) if argv is not None else sys.argv)
+
+    if enabled():
+        debug("ui", f"uvr_gtk exit status={status}")
+
+    from .shutdown import finalize_process_exit
+
+    finalize_process_exit(status)

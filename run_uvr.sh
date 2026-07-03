@@ -145,5 +145,15 @@ ensure_venv() {
 install_desktop_entry || true
 ensure_venv
 
+if [[ -n "${UVR_DEBUG:-}" ]]; then
+    _uvr_debug_log="${UVR_DEBUG_LOG:-${XDG_CACHE_HOME:-${HOME}/.cache}/uvr/debug.log}"
+    if pgrep -f "${VENV_PYTHON} -m uvr_gtk" >/dev/null 2>&1; then
+        echo "UVR is already running; this launch will exit immediately (single-instance app)." >&2
+        echo "Quit the running instance first, or: tail -f ${_uvr_debug_log}" >&2
+    else
+        echo "UVR debug logging to: ${_uvr_debug_log}" >&2
+    fi
+fi
+
 cd "${HERE}"
 exec "${VENV_PYTHON}" -m uvr_gtk "$@"

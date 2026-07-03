@@ -966,6 +966,10 @@ INVALID_PARAM_MODEL_ERROR = 'Select Model Param', 'Please choose a model param o
 UNRECOGNIZED_MODEL = 'Unrecognized Model Detected', ' is an unrecognized model.\n\n' + \
                      'Would you like to select the correct parameters before continuing?'
 STOP_PROCESS_CONFIRM = 'Confirmation', 'You are about to stop all active processes.\n\nAre you sure you wish to continue?'
+QUIT_WHILE_PROCESSING_CONFIRM = (
+    'Stop Processing?',
+    'Processing is still in progress. Stop and quit the application?',
+)
 NO_ENSEMBLE_SELECTED = 'No Models Selected', 'Please select ensemble and try again.'
 PICKLE_CORRU = 'File Corrupted', 'Unable to load this ensemble.\n\n' + \
                'Would you like to remove this ensemble from your list?'

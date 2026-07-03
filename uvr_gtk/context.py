@@ -61,3 +61,8 @@ class AppContext:
 
     def save_settings(self) -> None:
         self.settings.save()
+
+    def stop_all_workers(self, *, force: bool = False) -> None:
+        """Cooperatively stop (or force-terminate) every started worker."""
+        if self._runner is not None:
+            self._runner.stop(force=force)

@@ -16,6 +16,7 @@ never touches any UI toolkit and reports progress through plain callbacks.
 import json
 import os
 import ssl
+import time
 import urllib.request
 from typing import Callable, Dict, List, Optional, Tuple
 

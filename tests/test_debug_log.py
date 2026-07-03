@@ -11,14 +11,19 @@ def _reset_debug_env():
     debug_log._ENABLED = None
     debug_log._VERBOSE = None
     debug_log._FLAGS = set()
+    debug_log._LOG_FILE_PATH = None
+    debug_log._LOG_FILE_ANNOUNCED = False
     debug_log._RUN_T0 = None
     debug_log._SEQ = 0
     old = os.environ.pop("UVR_DEBUG", None)
     old_verbose = os.environ.pop("UVR_DEBUG_VERBOSE", None)
+    old_log = os.environ.pop("UVR_DEBUG_LOG", None)
     yield
     debug_log._ENABLED = None
     debug_log._VERBOSE = None
     debug_log._FLAGS = set()
+    debug_log._LOG_FILE_PATH = None
+    debug_log._LOG_FILE_ANNOUNCED = False
     debug_log._RUN_T0 = None
     debug_log._SEQ = 0
     if old is not None:

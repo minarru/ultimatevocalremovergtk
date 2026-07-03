@@ -5,6 +5,22 @@ Enable with the ``UVR_DEBUG`` environment variable::
     UVR_DEBUG=1 python -m uvr_gtk
     UVR_DEBUG=ui,dispatch,worker,separate,cleanup python -m uvr_gtk
 
+In fish, prefix with ``env`` (inline ``VAR=val cmd`` is bash-style)::
+
+    env UVR_DEBUG=ui .venv/bin/python -m uvr_gtk
+
+Logs are written to **stderr** and mirrored to a log file (plain text, no ANSI)::
+
+    ~/.cache/uvr/debug.log
+
+Override the file with ``UVR_DEBUG_LOG=/path/to/log``. If the app is already
+running, a second launch exits immediately (GApplication single-instance) and
+will not print to your terminal — use the log file or quit the existing
+instance first.
+
+A startup line is emitted when tracing is active; dialog timing lines appear
+after you confirm Stop.
+
 Recognised components: ``ui``, ``dispatch``, ``console``, ``worker``,
 ``separate``, ``cleanup``, ``model``, ``audio``, ``download``.
 ``1`` / ``all`` enables every component.
@@ -26,6 +42,8 @@ from typing import Iterator, Optional
 _ENABLED: Optional[bool] = None
 _VERBOSE: Optional[bool] = None
 _FLAGS: set[str] = set()
+_LOG_FILE_PATH: Optional[str] = None
+_LOG_FILE_ANNOUNCED = False
 _RUN_T0: Optional[float] = None
 _SEQ: int = 0
 _TLS = threading.local()
@@ -128,6 +146,40 @@ def format_line(
     return f"{meta}{tag}{body}"
 
 
+def _log_file_path() -> Optional[str]:
+    if _ENABLED is None:
+        _parse_env()
+    if not _ENABLED:
+        return None
+    global _LOG_FILE_PATH
+    if _LOG_FILE_PATH is not None:
+        return _LOG_FILE_PATH
+    explicit = os.environ.get("UVR_DEBUG_LOG", "").strip()
+    if explicit:
+        path = explicit
+    else:
+        cache = os.environ.get(
+            "XDG_CACHE_HOME",
+            os.path.join(os.path.expanduser("~"), ".cache"),
+        )
+        path = os.path.join(cache, "uvr", "debug.log")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    _LOG_FILE_PATH = path
+    return path
+
+
+def announce_log_file() -> None:
+    """Print the debug log path once (stderr) when tracing is enabled."""
+    global _LOG_FILE_ANNOUNCED
+    if _LOG_FILE_ANNOUNCED or not enabled():
+        return
+    path = _log_file_path()
+    if path is None:
+        return
+    _LOG_FILE_ANNOUNCED = True
+    print(f"UVR debug log: {path}", file=sys.stderr, flush=True)
+
+
 def enabled(component: str = "") -> bool:
     if _ENABLED is None:
         _parse_env()
@@ -185,7 +237,24 @@ def debug(component: str, message: str, *, seq: Optional[int] = None) -> None:
         colorize=_use_color(),
         seq=seq,
     )
+    plain = format_line(
+        component,
+        message,
+        wall=wall,
+        millis=millis,
+        run_delta=run_delta,
+        thread=thread,
+        colorize=False,
+        seq=seq,
+    )
     print(line, file=sys.stderr, flush=True)
+    path = _log_file_path()
+    if path is not None:
+        try:
+            with open(path, "a", encoding="utf-8") as log_file:
+                log_file.write(plain + "\n")
+        except OSError:
+            pass
 
 
 def debug_elapsed(component: str, label: str, started: float, **ctx: object) -> None:

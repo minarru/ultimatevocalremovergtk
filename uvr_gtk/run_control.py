@@ -10,12 +10,17 @@ delegates on the window.
 from __future__ import annotations
 
 import os
+import threading
 import time
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
-from data.constants import STOP_PROCESS_CONFIRM, STOP_PROCESSING
+from data.constants import (
+    QUIT_WHILE_PROCESSING_CONFIRM,
+    STOP_PROCESS_CONFIRM,
+    STOP_PROCESSING,
+)
 
 from uvr_core.debug_log import (
     clear_run_start,
@@ -29,7 +34,7 @@ from uvr_core.debug_log import (
 from uvr_core.separate_import import engines_imported, warm_status
 
 from . import APP_ID
-from .dispatch import gtk_job_callbacks, reset_progress_log
+from .dispatch import gtk_job_callbacks, idle_on_main, reset_progress_log
 
 if TYPE_CHECKING:
     from .window import MainWindow
@@ -48,7 +53,7 @@ _NOTIFY_ICONS = {
 _PROGRESS_STARTING = "Starting…"
 _PROGRESS_DONE = "Done"
 _PROGRESS_EPSILON = 0.001
-
+_EXIT_CLEANUP_TIMEOUT_MS = 10_000
 
 class RunController:
     """Run lifecycle shared by Separation, Ensemble and Audio Tools."""
@@ -60,12 +65,53 @@ class RunController:
         self._run_label = "Processing"
         self._run_started_at = 0.0
         self._stop_confirm_dialog: Optional[Adw.AlertDialog] = None
+        self._shutdown_dialog: Optional[Adw.AlertDialog] = None
         self._cleanup_target: Any = None
         self._cleanup_attempts = 0
+        self._shutdown_target: Any = None
+        self._shutdown_attempts = 0
+        self._on_close_complete: Optional[Callable[[bool], None]] = None
+        self._close_deferred = False
+        self._exit_cleanup_pending = False
+        self._exit_cleanup_timeout_id: Optional[int] = None
+        self._exit_app: Optional[Adw.Application] = None
+        self._run_ui_suspended = False
 
     @property
     def running_target(self) -> Any:
         return self._running_target
+
+    def is_running(self) -> bool:
+        return self._running_target is not None and self._window.stop_button.get_sensitive()
+
+    def handle_close_request(self, on_complete: Callable[[bool], None]) -> bool:
+        """Handle the main window close gesture.
+
+        Returns ``True`` to defer close (dialog shown or shutdown in progress),
+        ``False`` when the window may close immediately.
+        """
+        self._on_close_complete = on_complete
+        if self._shutdown_dialog is not None:
+            return True
+        if self._stop_confirm_dialog is not None:
+            self._stop_confirm_dialog = None
+            self._run_ui_suspended = False
+            target = self._running_target
+            if target is not None and hasattr(target, "unpause"):
+                target.unpause()
+            if self.is_running():
+                self._window._start_pulse()
+        if self.is_running():
+            self._close_deferred = True
+            self._present_shutdown_confirm()
+            return True
+        on_complete = self._on_close_complete
+        self._on_close_complete = None
+        if on_complete is not None:
+            on_complete(False)
+        self._stop_all_workers(force=True)
+        self._begin_exit_cleanup()
+        return False
 
     def handle_start(self, target) -> None:
         """Validate readiness, then hand off to the active run target."""
@@ -80,7 +126,7 @@ class RunController:
 
         callbacks = gtk_job_callbacks(
             on_progress=self._on_progress,
-            on_console=self._window.console.append,
+            on_console=self._append_console,
             on_complete=self._on_complete,
             on_stopped=self._on_stopped,
             on_error=self._on_error,
@@ -152,28 +198,186 @@ class RunController:
         dialog.set_close_response("cancel")
 
         target = self._running_target
-        if target is not None and hasattr(target, "pause"):
-            target.pause()
+        self._suspend_run_ui_for_dialog()
+
+        pending: dict[str, Any] = {"run": None}
+
+        def on_closed(_dialog: Adw.AlertDialog) -> None:
+            run = pending["run"]
+            pending["run"] = None
+            if run is not None:
+                self._defer_dialog_action(run, label="stop-closed")
 
         def on_response(_dlg, response: str) -> None:
             self._stop_confirm_dialog = None
             if response == "stop":
-                self._confirm_stop()
-            elif target is not None and hasattr(target, "unpause"):
-                target.unpause()
+                captured = self._running_target or target
+                pending["run"] = lambda: self._confirm_stop(captured)
+                if captured is not None and hasattr(captured, "stop"):
+                    captured.stop()
+                self._defer_dialog_action(pending["run"], label="stop")
+                pending["run"] = None
+            else:
+                if target is not None and hasattr(target, "unpause"):
+                    resume = lambda: self._resume_after_dialog_cancel(target)
+                else:
+                    resume = self._resume_run_ui_after_dialog
+                pending["run"] = resume
+                self._defer_dialog_action(resume, label="stop-cancel")
+                pending["run"] = None
 
-        self._stop_confirm_dialog = dialog
+        dialog.connect("closed", on_closed)
         dialog.connect("response", on_response)
+        self._stop_confirm_dialog = dialog
         dialog.present(self._window)
 
-    def _confirm_stop(self) -> None:
+    def _present_shutdown_confirm(self) -> None:
+        heading, body = QUIT_WHILE_PROCESSING_CONFIRM
+        dialog = Adw.AlertDialog(heading=heading, body=body)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("quit", "Stop and Quit")
+        dialog.set_response_appearance("quit", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
         target = self._running_target
+        self._suspend_run_ui_for_dialog()
+
+        pending: dict[str, Any] = {"run": None}
+
+        def on_closed(_dialog: Adw.AlertDialog) -> None:
+            run = pending["run"]
+            pending["run"] = None
+            if run is not None:
+                self._defer_dialog_action(run, label="shutdown-closed")
+
+        def on_response(_dlg, response: str) -> None:
+            self._shutdown_dialog = None
+            if response == "quit":
+                captured = self._running_target or target
+                pending["run"] = lambda: self._confirm_shutdown_stop(captured)
+                if captured is not None and hasattr(captured, "stop"):
+                    captured.stop()
+                self._defer_dialog_action(pending["run"], label="shutdown")
+                pending["run"] = None
+            else:
+                self._close_deferred = False
+                self._on_close_complete = None
+                if target is not None and hasattr(target, "unpause"):
+                    resume = lambda: self._resume_after_dialog_cancel(target)
+                else:
+                    resume = self._resume_run_ui_after_dialog
+                pending["run"] = resume
+                self._defer_dialog_action(resume, label="shutdown-cancel")
+                pending["run"] = None
+
+        dialog.connect("closed", on_closed)
+        dialog.connect("response", on_response)
+        self._shutdown_dialog = dialog
+        dialog.present(self._window)
+
+    def _defer_dialog_action(self, callback: Callable[[], None], *, label: str = "") -> None:
+        """Run a dialog follow-up on the next main-loop tick (never block on ``closed``)."""
+
+        def run() -> bool:
+            started = time.monotonic()
+            debug("ui", f"dialog action label={label or 'dialog'}")
+            callback()
+            work_ms = (time.monotonic() - started) * 1000.0
+            if label:
+                debug("ui", f"dialog action label={label} work={work_ms:.1f}ms")
+            return GLib.SOURCE_REMOVE
+
+        GLib.idle_add(run)
+
+    def _suspend_run_ui_for_dialog(self) -> None:
+        """Pause run-driven widget updates while a confirm dialog is on screen."""
+        self._run_ui_suspended = True
+        self._window._stop_pulse()
+
+    def _resume_run_ui_after_dialog(self) -> None:
+        debug("ui", f"resume_run_ui after dialog dismissed running={self.is_running()}")
+        self._run_ui_suspended = False
+        if self.is_running():
+            self._window._start_pulse()
+
+    def _resume_after_dialog_cancel(self, target: Any) -> None:
+        if target is not None and hasattr(target, "unpause"):
+            target.unpause()
+        self._resume_run_ui_after_dialog()
+
+    def _append_console(self, text: str) -> None:
+        if self._run_ui_suspended:
+            return
+        self._window.console.append(text)
+
+    def _confirm_shutdown_stop(self, target: Any) -> None:
+        debug("ui", f"shutdown stop confirmed target={type(target).__name__ if target else None}")
+        self._run_ui_suspended = False
+        self._window._stop_pulse()
+        self._set_running(False)
+        self._running_target = None
+        self._cleanup_target = None
+        clear_run_start()
+        if target is not None:
+            if hasattr(target, "unpause"):
+                target.unpause()
+            self._window.console.append(f"\n{STOP_PROCESSING}\n")
+            target.stop()
+        self._schedule_shutdown_poll(target)
+
+    def _schedule_shutdown_poll(self, target: Any) -> None:
+        debug("cleanup", f"shutdown poll scheduled target={type(target).__name__ if target else None}")
+        self._shutdown_target = target
+        self._shutdown_attempts = 0
+        GLib.timeout_add(50, self._poll_shutdown)
+
+    def _poll_shutdown(self) -> bool:
+        target = self._shutdown_target
+        if target is None:
+            self._complete_shutdown(deferred=self._close_deferred)
+            return False
+        self._shutdown_attempts += 1
+        alive = self._worker_is_running(target)
+        if not alive:
+            debug("cleanup", f"shutdown poll attempt={self._shutdown_attempts} worker_alive=False")
+            self._shutdown_target = None
+            self._complete_shutdown(deferred=self._close_deferred)
+            return False
+        if self._shutdown_attempts >= 80:
+            debug("cleanup", f"shutdown poll attempt={self._shutdown_attempts} timeout force=True")
+            self._shutdown_target = None
+            self._complete_shutdown(deferred=self._close_deferred)
+            return False
+        if verbose():
+            debug("cleanup", f"shutdown poll attempt={self._shutdown_attempts} worker_alive=True")
+        return True
+
+    def _complete_shutdown(self, *, deferred: bool) -> None:
+        debug("ui", f"complete_shutdown deferred={deferred}")
+        self._cleanup_target = None
+        self._shutdown_target = None
+        self._window._stop_pulse()
+        self._stop_all_workers(force=True)
+        on_complete = self._on_close_complete
+        self._on_close_complete = None
+        self._close_deferred = False
+        if on_complete is not None:
+            on_complete(deferred)
+        self._begin_exit_cleanup()
+        if deferred:
+            self._window.destroy()
+
+    def _confirm_stop(self, target: Any) -> None:
         if target is None:
             return
         debug("ui", f"stop confirmed target={type(target).__name__}")
+        self._run_ui_suspended = False
+        if hasattr(target, "unpause"):
+            target.unpause()
+        self._finish_run_ui(stopped=True, defer_cleanup=True)
         self._window.console.append(f"\n{STOP_PROCESSING}\n")
         target.stop()
-        self._finish_run_ui(stopped=True, defer_cleanup=True)
         self._schedule_inference_cleanup(target)
 
     def _schedule_inference_cleanup(self, target: Any) -> None:
@@ -197,13 +401,13 @@ class RunController:
         alive = self._worker_is_running(target)
         if not alive:
             debug("cleanup", f"poll attempt={self._cleanup_attempts} worker_alive=False releasing")
-            self._release_inference_memory(force_if_alive=False)
             self._cleanup_target = None
+            self._schedule_release_inference_memory(force_if_alive=False)
             return False
         if self._cleanup_attempts >= 80:
             debug("cleanup", f"poll attempt={self._cleanup_attempts} timeout force=True")
-            self._release_inference_memory(force_if_alive=True)
             self._cleanup_target = None
+            self._schedule_release_inference_memory(force_if_alive=True)
             return False
         if verbose():
             debug("cleanup", f"poll attempt={self._cleanup_attempts} worker_alive=True")
@@ -212,7 +416,7 @@ class RunController:
     def _finish_run_ui(self, *, stopped: bool = False, defer_cleanup: bool = False) -> None:
         debug("ui", f"finish_run_ui stopped={stopped} defer_cleanup={defer_cleanup}")
         if stopped and not defer_cleanup:
-            self._release_inference_memory(wait_for_stop=0.5)
+            self._schedule_release_inference_memory(wait_for_stop=0.5)
         self._window._stop_pulse()
         self._set_running(False)
         self._running_target = None
@@ -227,7 +431,6 @@ class RunController:
 
     def _on_complete(self) -> None:
         debug("ui", f"on_complete output_dir={os.path.basename(self._run_output_dir or '') or '(none)'}")
-        self._release_inference_memory(wait_for_stop=0.5)
         self._window._stop_pulse()
         self._set_running(False)
         self._window.log_panel.set_progress_fraction(1.0)
@@ -237,10 +440,10 @@ class RunController:
         output_dir = self._run_output_dir
         self._show_complete_toast(output_dir)
         self._send_completion_notification(output_dir)
+        self._schedule_release_inference_memory(wait_for_stop=0.5)
 
     def _on_error(self, exc: BaseException) -> None:
         debug("ui", f"on_error error={type(exc).__name__}: {exc}")
-        self._release_inference_memory()
         self._window._stop_pulse()
         self._set_running(False)
         self._window.log_panel.set_progress_text("")
@@ -250,6 +453,7 @@ class RunController:
         self._send_failure_notification()
         self._running_target = None
         clear_run_start()
+        self._schedule_release_inference_memory()
 
     def _show_complete_toast(self, output_dir: str) -> None:
         toast = Adw.Toast.new("Process complete.")
@@ -299,6 +503,8 @@ class RunController:
             pass
 
     def _on_progress(self, fraction: float) -> None:
+        if self._run_ui_suspended:
+            return
         if fraction > _PROGRESS_EPSILON:
             self._window._stop_pulse()
             self._window.log_panel.set_progress_fraction(fraction)
@@ -334,6 +540,93 @@ class RunController:
     def _set_running(self, running: bool) -> None:
         self._window.start_button.set_sensitive(not running)
         self._window.stop_button.set_sensitive(running)
+
+    def _stop_all_workers(self, *, force: bool = False) -> None:
+        debug("ui", f"stop_all_workers force={force}")
+        self._window.context.stop_all_workers(force=force)
+        page = getattr(self._window, "_audio_tools_page", None)
+        if page is not None:
+            runner = getattr(page, "_runner", None)
+            if runner is not None:
+                runner.stop(force=force)
+
+    def _begin_exit_cleanup(self) -> None:
+        if self._exit_cleanup_pending:
+            return
+        self._exit_cleanup_pending = True
+        app = self._window.get_application()
+        self._exit_app = app
+        if app is not None:
+            app.hold()
+        else:
+            debug("ui", "exit cleanup begin: window has no application ref")
+        if self._exit_cleanup_timeout_id is not None:
+            GLib.source_remove(self._exit_cleanup_timeout_id)
+        self._exit_cleanup_timeout_id = GLib.timeout_add(
+            _EXIT_CLEANUP_TIMEOUT_MS,
+            self._on_exit_cleanup_timeout,
+        )
+        self._schedule_release_inference_memory(
+            force_if_alive=True,
+            on_done=self._finish_exit_cleanup,
+        )
+
+    def _on_exit_cleanup_timeout(self) -> bool:
+        self._exit_cleanup_timeout_id = None
+        if not self._exit_cleanup_pending:
+            return False
+        debug("cleanup", "exit cleanup timed out; forcing worker stop and quit")
+        self._stop_all_workers(force=True)
+        self._finish_exit_cleanup()
+        return False
+
+    def _finish_exit_cleanup(self) -> None:
+        if not self._exit_cleanup_pending:
+            return
+        self._exit_cleanup_pending = False
+        if self._exit_cleanup_timeout_id is not None:
+            GLib.source_remove(self._exit_cleanup_timeout_id)
+            self._exit_cleanup_timeout_id = None
+        app = self._exit_app or self._window.get_application()
+        self._exit_app = None
+        if app is not None:
+            debug("ui", "exit cleanup finish: release and quit")
+            app.release()
+            app.quit()
+        else:
+            debug("ui", "exit cleanup finish: no application ref; forcing process exit")
+            from .shutdown import finalize_process_exit
+
+            finalize_process_exit(0)
+
+    def _schedule_release_inference_memory(
+        self,
+        *,
+        wait_for_stop: float = 0.0,
+        force_if_alive: bool = False,
+        on_done: Optional[Callable[[], None]] = None,
+    ) -> None:
+        debug(
+            "cleanup",
+            "schedule_release_inference_memory "
+            f"wait_for_stop={wait_for_stop} force_if_alive={force_if_alive}",
+        )
+
+        def worker() -> None:
+            try:
+                self._release_inference_memory(
+                    wait_for_stop=wait_for_stop,
+                    force_if_alive=force_if_alive,
+                )
+            finally:
+                if on_done is not None:
+                    idle_on_main(on_done)
+
+        threading.Thread(
+            target=worker,
+            name="uvr-inference-cleanup",
+            daemon=True,
+        ).start()
 
     def _release_inference_memory(
         self,

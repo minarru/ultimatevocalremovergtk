@@ -623,10 +623,12 @@ class MainWindow(Adw.ApplicationWindow):
         self.settings.set("model_sample_mode", self.sample_row.get_active())
 
     def _on_close_request(self, *_args) -> bool:
+        return self._run_controller.handle_close_request(self._finalize_close)
+
+    def _finalize_close(self, deferred: bool) -> None:
         self._flush_settings()
         self._save_geometry()
         self.context.save_settings()
-        return False
 
     def _save_geometry(self) -> None:
         # Only record the un-maximized size so a later un-maximize restores a

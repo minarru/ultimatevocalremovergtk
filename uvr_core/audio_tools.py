@@ -319,6 +319,7 @@ class AudioToolRunner:
             if thread is not None:
                 try:
                     thread.terminate()
+                    thread.join(timeout=0.25)
                 except Exception:  # noqa: BLE001 - best-effort, like UVR's stop
                     pass
 

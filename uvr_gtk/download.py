@@ -225,6 +225,9 @@ class DownloadCenter:
                 stop_event=self._stop_event,
             )
         except Exception as exc:  # noqa: BLE001 - surfaced via the error log + UI
+            from uvr_core.debug_log import debug
+
+            debug("download", f"download failed error={type(exc).__name__}: {exc}")
             from .errorlog import log_error
 
             log_error("Downloading Item", exc)
