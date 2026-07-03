@@ -16,7 +16,7 @@ from data.constants import (
 
 from .base import MethodView, register_method_view
 
-_CHUNK_DEMUCS_HELP = "Process the audio in chunks to reduce memory usage (legacy option)."
+_CHUNK_DEMUCS_HELP = "Process the audio in chunks to reduce memory usage (legacy option)"
 
 
 @register_method_view

@@ -138,7 +138,7 @@ class EnsemblePage:
         group = Adw.PreferencesGroup(title="Ensemble options")
 
         self.saved_row = make_combo_row("Saved ensemble", [CHOOSE_ENSEMBLE_OPTION])
-        set_tooltip(self.saved_row,"Load a previously saved ensemble preset, or save / delete one with the buttons.")
+        set_tooltip(self.saved_row,"Load a previously saved ensemble preset, or save / delete one with the buttons")
         self.saved_row.connect("notify::selected", self._on_saved_selected)
         save_button = Gtk.Button(icon_name="document-save-symbolic", valign=Gtk.Align.CENTER)
         set_tooltip(save_button,"Save current ensemble")

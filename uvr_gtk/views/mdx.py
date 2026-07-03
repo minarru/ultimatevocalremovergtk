@@ -46,12 +46,12 @@ from ..widgets.rows import (
 _OVERLAP_HELP = (
     "Overlap between prediction windows. The available values follow the selected "
     "model: classic MDX-Net uses the Default/0.25-0.99 scale, while MDX23C models "
-    "use 2-50."
+    "use 2-50"
 )
 
 _MDX_STEMS_HELP = (
     "Choose which stems to save. Applies to multi-stem MDX23C models; "
-    "for 2-stem models the 'Only' toggles above apply."
+    "for 2-stem models the 'Only' toggles above apply"
 )
 
 # Full stem universe presented in the UI. The backend intersects this with the

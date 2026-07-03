@@ -28,60 +28,16 @@ from data.constants import (
     STOP_HELP,
 )
 
-#: Suffixes where a trailing full stop should be kept.
-_KEEP_PERIOD_SUFFIXES = ("etc.", "e.g.", "i.e.", "vs.", "U.S.")
-
-
-def format_hint(text: str) -> str:
-    """Normalize legacy help-hint copy for GTK tooltips.
-
-    * Strip stray leading indentation (Tk strings often pad continuation lines)
-    * Drop trailing full stops on each line
-    * Collapse runs of blank lines
-    """
-    if not text:
-        return text
-
-    lines: List[str] = []
-    for raw_line in text.splitlines():
-        line = raw_line.rstrip()
-        if not line.strip():
-            if lines and lines[-1] != "":
-                lines.append("")
-            continue
-
-        stripped = line.lstrip()
-        if stripped.startswith(("-", "–", "—")):
-            line = f"  {stripped}"
-        elif stripped.startswith("•"):
-            line = stripped
-        else:
-            line = stripped
-
-        if line.endswith(".") and not line.endswith("..."):
-            if not any(line.endswith(suffix) for suffix in _KEEP_PERIOD_SUFFIXES):
-                line = line[:-1]
-
-        lines.append(line)
-
-    while lines and lines[-1] == "":
-        lines.pop()
-    return "\n".join(lines)
-
 
 def set_tooltip(widget, text: Optional[str]) -> None:
-    """Apply a formatted tooltip to ``widget`` (clears when ``text`` is empty)."""
-    if not text:
-        widget.set_tooltip_text(None)
-        return
-    widget.set_tooltip_text(format_hint(text))
+    """Apply a tooltip to ``widget`` (clears when ``text`` is empty)."""
+    widget.set_tooltip_text(text or None)
 
 
 def set_icon_button_a11y(widget, text: Optional[str]) -> None:
     """Set tooltip and accessible label for an icon-only button."""
     set_tooltip(widget, text)
-    label = format_hint(text) if text else ""
-    widget.update_property([Gtk.AccessibleProperty.LABEL], [label])
+    widget.update_property([Gtk.AccessibleProperty.LABEL], [text or ""])
 
 
 def add_help_hint(widget, text: str, settings=None) -> None:

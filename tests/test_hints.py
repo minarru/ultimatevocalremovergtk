@@ -1,20 +1,27 @@
 import unittest
 
-from uvr_gtk.hints import format_hint
+from uvr_gtk.hints import set_tooltip
 
 
-class FormatHintTests(unittest.TestCase):
-    def test_strips_trailing_period(self):
-        self.assertEqual(format_hint("Save output."), "Save output")
+class _TooltipWidget:
+    def __init__(self):
+        self.tooltip = "unset"
 
-    def test_keeps_etc_suffix(self):
-        self.assertEqual(format_hint("Use wav, flac, etc."), "Use wav, flac, etc.")
+    def set_tooltip_text(self, text):
+        self.tooltip = text
 
-    def test_collapses_blank_lines(self):
-        self.assertEqual(format_hint("Line one\n\n\nLine two"), "Line one\n\nLine two")
 
-    def test_bullet_lines_preserved(self):
-        self.assertEqual(format_hint("• First\n• Second"), "• First\n• Second")
+class SetTooltipTests(unittest.TestCase):
+    def test_clears_empty_text(self):
+        widget = _TooltipWidget()
+        set_tooltip(widget, "")
+        self.assertIsNone(widget.tooltip)
+
+    def test_applies_text_unchanged(self):
+        widget = _TooltipWidget()
+        text = "Line one\n\n• Bullet"
+        set_tooltip(widget, text)
+        self.assertEqual(widget.tooltip, text)
 
 
 if __name__ == "__main__":
