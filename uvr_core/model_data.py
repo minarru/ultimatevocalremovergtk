@@ -305,6 +305,7 @@ class ModelData:
         self.is_denoise_model = True if settings.get("denoise_option") == DENOISE_M and os.path.isfile(paths.DENOISER_MODEL_PATH) else False
         self.is_gpu_conversion = 0 if settings.get("is_gpu_conversion") else -1
         self.is_normalization = settings.get("is_normalization")
+        self.is_use_directml = bool(settings.get("is_use_directml"))
         self.is_primary_stem_only = settings.get("is_primary_stem_only")
         self.is_secondary_stem_only = settings.get("is_secondary_stem_only")
         self.is_denoise = True if settings.get("denoise_option") != DENOISE_NONE else False

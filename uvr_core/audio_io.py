@@ -43,6 +43,9 @@ def save_format(
 
     from pydub import AudioSegment
 
+    from .external_tools import configure_pydub_ffmpeg
+
+    configure_pydub_ffmpeg()
     audio_segment = AudioSegment.from_wav(audio_path)
     if save_format_sel == FLAC:
         audio_segment.export(

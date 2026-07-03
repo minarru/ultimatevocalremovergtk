@@ -13,7 +13,7 @@ Importing this package must never import ``tkinter``; heavy ML dependencies
 """
 
 from .audio_tools import AudioToolRunner
-from .gpu import available_cuda_devices
+from .gpu import available_cuda_devices, list_gpu_devices
 from .job_runner import Ensembler, JobCallbacks, JobRunner
 from .paths import DATA_DIR, ensure_data_dir
 from .model_data import (
@@ -45,4 +45,5 @@ __all__ = [
     "ensure_data_dir",
     "DATA_DIR",
     "available_cuda_devices",
+    "list_gpu_devices",
 ]

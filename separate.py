@@ -1,13 +1,8 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-# Preload the CUDA-12 runtime libs that onnxruntime-gpu needs before it is imported
-# below, so MDX/ONNX gets the GPU (CUDAExecutionProvider) instead of silently falling
-# back to CPU. See uvr_core/cuda_runtime_fix.py for the full rationale.
-from uvr_core.cuda_runtime_fix import preload_onnxruntime_cuda12
-preload_onnxruntime_cuda12()
-
-from uvr_core.debug_log import trace_phase
+from uvr_core.debug_log import debug, trace_phase
+from uvr_core.gpu_backend import clear_torch_cache, resolve_inference_backend
 
 from demucs.apply import apply_model, demucs_segments
 from demucs.hdemucs import HDemucs
@@ -48,23 +43,16 @@ import gc
 if TYPE_CHECKING:
     from uvr_core.model_data import ModelData
 
-mps_available = torch.backends.mps.is_available() if is_macos else False
-cuda_available = torch.cuda.is_available()
-
-def clear_gpu_cache():
-    gc.collect()
-    if is_macos:
-        if mps_available:
-            torch.mps.empty_cache()
-    elif cuda_available:
-        torch.cuda.synchronize()
-        torch.cuda.empty_cache()
-        ipc_collect = getattr(torch.cuda, "ipc_collect", None)
-        if callable(ipc_collect):
-            ipc_collect()
+cpu = torch.device('cpu')
 
 warnings.filterwarnings("ignore")
-cpu = torch.device('cpu')
+
+def clear_gpu_cache(backend_name: str | None = None):
+    if backend_name is None:
+        for name in ("mps", "cuda", "directml"):
+            clear_torch_cache(is_macos=is_macos, backend_name=name)
+    else:
+        clear_torch_cache(is_macos=is_macos, backend_name=backend_name)
 
 class SeperateAttributes:
     def __init__(self, model_data: ModelData, 
@@ -171,6 +159,22 @@ class SeperateAttributes:
         self.device = cpu
         self.run_type = ['CPUExecutionProvider']
         self.device_set = model_data.device_set
+        self._backend_name = "cpu"
+        backend = resolve_inference_backend(
+            is_gpu_conversion=self.is_gpu_conversion,
+            device_set=self.device_set,
+            is_use_directml=model_data.is_use_directml,
+            is_macos=is_macos,
+        )
+        self.device = backend.torch_device
+        self.run_type = backend.onnx_providers
+        self.is_other_gpu = backend.is_other_gpu
+        self._backend_name = backend.backend_name
+        debug(
+            "settings",
+            f"inference backend={backend.backend_name} torch={backend.torch_device!r} "
+            f"onnx={backend.onnx_providers}",
+        )
         # Roformer (BS-Roformer / Mel-Band Roformer) support. These models are
         # MDX-C-style nets selected via the model's yaml config; ``is_roformer``
         # comes from the model-data JSON and the config itself drives which
@@ -189,18 +193,6 @@ class SeperateAttributes:
         
         if main_model_primary and self.is_multi_stem_ensemble:
             self.primary_stem, self.secondary_stem = main_model_primary, secondary_stem(main_model_primary)
-
-        if self.is_gpu_conversion >= 0:
-            if mps_available:
-                self.device, self.is_other_gpu = 'mps', True
-            else:
-                device_prefix = None
-                if self.device_set != DEFAULT:
-                    device_prefix = CUDA_DEVICE
-
-                if cuda_available:
-                    self.device = CUDA_DEVICE if not device_prefix else f'{device_prefix}:{self.device_set}'
-                    self.run_type = ['CUDAExecutionProvider']
 
         if model_data.process_method == MDX_ARCH_TYPE:
             self.is_mdx_ckpt = model_data.is_mdx_ckpt
@@ -1549,10 +1541,9 @@ def rerun_mp3(audio_file, sample_rate=44100):
 def save_format(audio_path, save_format, mp3_bit_set, flac_bit_set="16-bit"):
     
     if not save_format == WAV:
-        
-        if OPERATING_SYSTEM == 'Darwin':
-            FFMPEG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ffmpeg')
-            pydub.AudioSegment.converter = FFMPEG_PATH
+        from uvr_core.external_tools import configure_pydub_ffmpeg
+
+        configure_pydub_ffmpeg()
         
         musfile = pydub.AudioSegment.from_wav(audio_path)
         

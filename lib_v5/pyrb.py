@@ -1,19 +1,15 @@
 import os
 import subprocess
-import tempfile
-import six
-import numpy as np
-import soundfile as sf
 import sys
+import tempfile
 
-if getattr(sys, 'frozen', False):
-    BASE_PATH_RUB = sys._MEIPASS
-else:
-    BASE_PATH_RUB = os.path.dirname(os.path.abspath(__file__))
+import numpy as np
+import six
+import soundfile as sf
+
+from uvr_core.external_tools import resolve_rubberband
 
 __all__ = ['time_stretch', 'pitch_shift']
-
-__RUBBERBAND_UTIL = os.path.join(BASE_PATH_RUB, 'rubberband')
 
 if six.PY2:
     DEVNULL = open(os.devnull, 'w')
@@ -24,18 +20,22 @@ def __rubberband(y, sr, **kwargs):
 
     assert sr > 0
 
-    # Get the input and output tempfile
+    rubberband = resolve_rubberband()
+    if not rubberband:
+        raise RuntimeError(
+            'Failed to execute rubberband. Please verify that rubberband-cli '
+            'is installed or set UVR_RUBBERBAND to the executable path.'
+        )
+
     fd, infile = tempfile.mkstemp(suffix='.wav')
     os.close(fd)
     fd, outfile = tempfile.mkstemp(suffix='.wav')
     os.close(fd)
 
-    # dump the audio
     sf.write(infile, y, sr)
 
     try:
-        # Execute rubberband
-        arguments = [__RUBBERBAND_UTIL, '-q']
+        arguments = [rubberband, '-q']
 
         for key, value in six.iteritems(kwargs):
             arguments.append(str(key))
@@ -45,10 +45,8 @@ def __rubberband(y, sr, **kwargs):
 
         subprocess.check_call(arguments, stdout=DEVNULL, stderr=DEVNULL)
 
-        # Load the processed audio.
         y_out, _ = sf.read(outfile, always_2d=True)
 
-        # make sure that output dimensions matches input
         if y.ndim == 1:
             y_out = np.squeeze(y_out)
 
@@ -59,7 +57,6 @@ def __rubberband(y, sr, **kwargs):
                        exc)
 
     finally:
-        # Remove temp files
         os.unlink(infile)
         os.unlink(outfile)
 

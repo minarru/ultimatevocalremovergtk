@@ -506,7 +506,8 @@ else:
 
 • Please Note:
   - CPU processing is significantly slower than GPU processing
-  - Only Nvidia GPUs can be used for GPU processing"""
+  - NVIDIA GPUs use CUDA; on Windows, enable DirectML for AMD/Intel GPUs
+  - DirectML accelerates PyTorch models only; classic MDX ONNX models stay on CPU"""
 
 
 # --- GTK shell ---

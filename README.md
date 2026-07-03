@@ -84,11 +84,13 @@ The installer creates a `.venv` on the **system Python** with `--system-site-pac
 ./install_packages.sh
 ```
 
-**NVIDIA GPU** (swaps in `onnxruntime-gpu` for MDX/ONNX):
+**NVIDIA GPU** (installs `requirements-cuda-linux.txt` — ONNX GPU + CUDA wheels):
 
 ```bash
 ./install_packages.sh --cuda
 ```
+
+Windows optional overlays: `requirements-cuda-windows.txt`, `requirements-directml.txt`.
 
 **Specific Python interpreter:**
 

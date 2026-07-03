@@ -652,6 +652,7 @@ DEFAULT_DATA = {
         'is_add_model_name': False,
         'is_accept_any_input': False,
         'is_normalization': False,
+        'is_use_directml': False,
         'is_wav_ensemble': False,
         'is_create_model_folder': False,
         'mp3_bit_set': '320k',#
@@ -753,7 +754,7 @@ MDX_23_NAME = "MDX23C Model"
 ROFORMER_MODEL_NAME = "Roformer Model"
 
 # Liscense info
-if OPERATING_SYSTEM=="Darwin":
+if OPERATING_SYSTEM == "Darwin":
    is_macos = True
    LICENSE_OS_SPECIFIC_TEXT = '• This application is intended for those running macOS Catalina and above.\n' +\
                               '• Application functionality for systems running macOS Mojave or lower is not guaranteed.\n' +\

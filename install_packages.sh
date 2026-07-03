@@ -329,10 +329,10 @@ if [[ "${INSTALL_MODE}" == "system" ]]; then
     if [[ "${GPU_BACKEND}" == "cuda" ]]; then
         if [[ "${use_uv}" -eq 1 ]]; then
             uv pip uninstall --python "${VENV_PYTHON}" onnxruntime || true
-            uv pip install --python "${VENV_PYTHON}" onnxruntime-gpu==1.26.0
+            uv pip install --python "${VENV_PYTHON}" -r "${PROJECT_ROOT}/requirements-cuda-linux.txt"
         else
             "${VENV_PYTHON}" -m pip uninstall -y onnxruntime || true
-            "${VENV_PYTHON}" -m pip install onnxruntime-gpu==1.26.0
+            "${VENV_PYTHON}" -m pip install -r "${PROJECT_ROOT}/requirements-cuda-linux.txt"
         fi
     fi
 
@@ -366,8 +366,8 @@ else
         uv pip install --python "${VENV_PYTHON}" -r "${PROJECT_ROOT}/requirements.txt"
 
         if [[ "${GPU_BACKEND}" == "cuda" ]]; then
-            uv pip uninstall --python "${VENV_PYTHON}" onnxruntime
-            uv pip install --python "${VENV_PYTHON}" onnxruntime-gpu==1.26.0
+            uv pip uninstall --python "${VENV_PYTHON}" onnxruntime || true
+            uv pip install --python "${VENV_PYTHON}" -r "${PROJECT_ROOT}/requirements-cuda-linux.txt"
         fi
     else
         validate_python "${PYTHON_BIN}"
@@ -382,7 +382,7 @@ else
 
         if [[ "${GPU_BACKEND}" == "cuda" ]]; then
             python -m pip uninstall -y onnxruntime
-            python -m pip install onnxruntime-gpu==1.26.0
+            python -m pip install -r "${PROJECT_ROOT}/requirements-cuda-linux.txt"
         fi
     fi
 

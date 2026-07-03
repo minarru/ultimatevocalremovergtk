@@ -1,22 +1,23 @@
+"""Resolve Apollo restore device via the shared GPU backend."""
+
 import gc
 
-import torch
 import librosa
 import numpy as np
+import torch
 
 import lib_v5.apollo_model_data as models
-from data.constants import CPU, CUDA_DEVICE, DEFAULT
+from data.constants import DEFAULT
+from uvr_core.gpu_backend import clear_torch_cache, resolve_inference_backend
 
 import warnings
+
 warnings.filterwarnings("ignore")
 
-cuda_available = torch.cuda.is_available()
 
-
-def clear_gpu_cache():
+def clear_gpu_cache(is_macos: bool = False, backend_name: str = "cpu") -> None:
     gc.collect()
-    if cuda_available:
-        torch.cuda.empty_cache()
+    clear_torch_cache(is_macos=is_macos, backend_name=backend_name)
 
 
 def load_audio(file_path):
@@ -25,8 +26,6 @@ def load_audio(file_path):
 
 
 def _getWindowingArray(window_size, fade_size):
-    # IMPORTANT NOTE :
-    # no fades here in the end, only removing the failed ending of the chunk
     fadein = torch.linspace(1, 1, fade_size)
     fadeout = torch.linspace(0, 0, fade_size)
     window = torch.ones(window_size)
@@ -41,23 +40,43 @@ def dBgain(audio, volume_gain_dB):
     return gained_audio
 
 
-def check_gpu_availability(is_gpu_conversion, device_set):
-    """Resolve the inference device using the local CUDA/CPU convention.
+def check_gpu_availability(
+    is_gpu_conversion,
+    device_set,
+    *,
+    is_use_directml: bool = False,
+    is_macos: bool = False,
+):
+    """Resolve the inference device using :mod:`uvr_core.gpu_backend`."""
+    backend = resolve_inference_backend(
+        is_gpu_conversion=is_gpu_conversion,
+        device_set=device_set or DEFAULT,
+        is_use_directml=is_use_directml,
+        is_macos=is_macos,
+    )
+    return backend.torch_device
 
-    Mirrors ``separate.py``'s device selection: a negative ``is_gpu_conversion``
-    forces CPU, otherwise CUDA is used when available. ``device_set`` is the bare
-    device number (or ``"Default"``); a specific number yields ``cuda:N``.
-    """
-    if is_gpu_conversion >= 0 and cuda_available:
-        if device_set != DEFAULT:
-            return f"{CUDA_DEVICE}:{device_set}"
-        return CUDA_DEVICE
-    return CPU
 
+def restore_process(
+    input_wav,
+    ckpt_path,
+    overlap=2,
+    chunk_size=10,
+    set_progress_bar=None,
+    is_gpu_conversion=0,
+    device_set=DEFAULT,
+    extracted_params=None,
+    config=None,
+    is_use_directml=False,
+    is_macos=False,
+):
 
-def restore_process(input_wav, ckpt_path, overlap=2, chunk_size=10, set_progress_bar=None, is_gpu_conversion=0, device_set=DEFAULT, extracted_params=None, config=None):
-
-    device = check_gpu_availability(is_gpu_conversion, device_set)
+    device = check_gpu_availability(
+        is_gpu_conversion,
+        device_set,
+        is_use_directml=is_use_directml,
+        is_macos=is_macos,
+    )
 
     global progress_value
     progress_value = 0
@@ -71,7 +90,6 @@ def restore_process(input_wav, ckpt_path, overlap=2, chunk_size=10, set_progress
         global progress_value
         progress_value += 1
 
-        # Avoid division by zero
         if length <= 0:
             length = 1
 
@@ -83,7 +101,7 @@ def restore_process(input_wav, ckpt_path, overlap=2, chunk_size=10, set_progress
 
     audio_data, samplerate = load_audio(input_wav)
 
-    C = chunk_size * samplerate  # chunk_size seconds to samples
+    C = chunk_size * samplerate
     N = overlap
 
     step = C // N if overlap else C
@@ -91,14 +109,12 @@ def restore_process(input_wav, ckpt_path, overlap=2, chunk_size=10, set_progress
 
     fade_sec = 3 if chunk_size >= 3 else chunk_size
 
-    fade_size = fade_sec * 44100 # 3 seconds
+    fade_size = fade_sec * 44100
     border = C - step
 
-    # handle mono inputs correctly
     if len(audio_data.shape) == 1:
         audio_data = audio_data.unsqueeze(0)
 
-    # Pad the input if necessary
     if audio_data.shape[1] > 2 * border and (border > 0):
         audio_data = torch.nn.functional.pad(audio_data, (border, border), mode='reflect')
 
@@ -109,7 +125,7 @@ def restore_process(input_wav, ckpt_path, overlap=2, chunk_size=10, set_progress
 
     i = 0
 
-    batch_len = max(1, int(audio_data.shape[1] / step_ui))  # Ensure batch_len is at least 1
+    batch_len = max(1, int(audio_data.shape[1] / step_ui))
 
     while i < audio_data.shape[1]:
         part = audio_data[:, i:i + C]
@@ -123,9 +139,9 @@ def restore_process(input_wav, ckpt_path, overlap=2, chunk_size=10, set_progress
         out = process_chunk(part)
 
         window = windowingArray
-        if i == 0:  # First audio chunk, no fadein
+        if i == 0:
             window[:fade_size] = 1
-        elif i + C >= audio_data.shape[1]:  # Last audio chunk, no fadeout
+        elif i + C >= audio_data.shape[1]:
             window[-fade_size:] = 1
 
         result[..., i:i+length] += out[..., :length] * window[..., :length]
@@ -140,13 +156,17 @@ def restore_process(input_wav, ckpt_path, overlap=2, chunk_size=10, set_progress
     final_output = final_output.squeeze(0).numpy()
     np.nan_to_num(final_output, copy=False, nan=0.0)
 
-    # Remove padding if added earlier
     if audio_data.shape[1] > 2 * border and (border > 0):
         final_output = final_output[..., border:-border]
 
-    # Memory clearing
     model.cpu()
     del model
-    clear_gpu_cache()
+    backend = resolve_inference_backend(
+        is_gpu_conversion=is_gpu_conversion,
+        device_set=device_set or DEFAULT,
+        is_use_directml=is_use_directml,
+        is_macos=is_macos,
+    )
+    clear_gpu_cache(is_macos=is_macos, backend_name=backend.backend_name)
 
     return final_output

@@ -90,6 +90,10 @@ class AudioTools:
         self.apollo_chunk_val = int(settings.get("apollo_chunk_size"))
         self.apollo_model_location = os.path.join(paths.APOLLO_MODELS_DIR, self.apollo_model or "")
         self.is_gpu_conversion = 0 if settings.get("is_gpu_conversion") else -1
+        self.is_use_directml = bool(settings.get("is_use_directml"))
+        from data.constants import is_macos
+
+        self.is_macos = is_macos
         device_set = settings.get("device_set") or DEFAULT
         self.device_set = device_set.split(":")[-1].strip() if ":" in device_set else device_set
 
@@ -248,6 +252,8 @@ class AudioTools:
             self.device_set,
             extracted_params,
             config,
+            is_use_directml=self.is_use_directml,
+            is_macos=self.is_macos,
         )
 
         sf.write(save_path, restored_audio.T, 44100, subtype=self.wav_type_set)

@@ -9,11 +9,12 @@ In fish, prefix with ``env`` (inline ``VAR=val cmd`` is bash-style)::
 
     env UVR_DEBUG=ui .venv/bin/python -m uvr_gtk
 
-Logs are written to **stderr** and mirrored to a log file (plain text, no ANSI)::
+Logs are written to **stderr** and mirrored to a log file (plain text, no ANSI) under
+the platform cache dir (see :mod:`uvr_core.platform`), e.g. ``~/.cache/uvr/debug.log``
+on Linux.
 
-    ~/.cache/uvr/debug.log
-
-Override the file with ``UVR_DEBUG_LOG=/path/to/log``. If the app is already
+Override the file with ``UVR_DEBUG_LOG=/path/to/log`` or the cache root with
+``UVR_CACHE_DIR``. If the app is already
 running, a second launch exits immediately (GApplication single-instance) and
 will not print to your terminal — use the log file or quit the existing
 instance first.
@@ -161,11 +162,9 @@ def _log_file_path() -> Optional[str]:
     if explicit:
         path = explicit
     else:
-        cache = os.environ.get(
-            "XDG_CACHE_HOME",
-            os.path.join(os.path.expanduser("~"), ".cache"),
-        )
-        path = os.path.join(cache, "uvr", "debug.log")
+        from .platform import user_cache_dir
+
+        path = os.path.join(user_cache_dir(), "debug.log")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     _LOG_FILE_PATH = path
     return path

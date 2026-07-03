@@ -19,11 +19,14 @@ separate, user-writable location:
 2. Else :data:`BASE_PATH` when it is writable (preserves the historic
    "portable" layout for dev checkouts / tarball installs, so existing
    ``./models`` and ``./data.pkl`` keep working unchanged).
-3. Else ``${XDG_DATA_HOME:-~/.local/share}/ultimatevocalremover``.
+3. Else the OS-default user data dir from :mod:`uvr_core.platform` (XDG on Linux,
+   ``%LOCALAPPDATA%`` on Windows, ``~/Library/Application Support`` on macOS).
 """
 
 import os
 import shutil
+
+from .platform import user_data_dir
 
 BASE_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -42,13 +45,7 @@ BUNDLED_MODELS_DIR = os.path.join(BASE_PATH, "models")
 
 def _resolve_data_dir() -> str:
     """Resolve the writable runtime-data root (see module docstring)."""
-    env_dir = os.environ.get("UVR_DATA_DIR")
-    if env_dir:
-        return os.path.abspath(os.path.expanduser(env_dir))
-    if os.access(BASE_PATH, os.W_OK):
-        return BASE_PATH
-    xdg = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
-    return os.path.join(xdg, "ultimatevocalremover")
+    return user_data_dir(BASE_PATH)
 
 
 # --- Writable runtime data ---------------------------------------------------

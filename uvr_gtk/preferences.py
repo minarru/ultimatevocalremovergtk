@@ -46,7 +46,8 @@ from data.constants import (
     WAV,
     WAV_TYPE,
 )
-from uvr_core.gpu import available_cuda_devices
+from uvr_core.gpu import list_gpu_devices
+from uvr_core.platform import system_name
 from uvr_core.paths import SETTINGS_CACHE_DIR
 
 from .application import apply_color_scheme
@@ -241,16 +242,13 @@ class PreferencesDialog(Adw.PreferencesDialog):
         hardware_group = Adw.PreferencesGroup(title="Hardware")
         self.gpu_row = Adw.SwitchRow(
             title="GPU conversion",
-            subtitle="Use a CUDA-capable GPU for processing when available",
+            subtitle="Use GPU acceleration when available (CUDA, MPS, or DirectML)",
         )
         self.gpu_row.connect("notify::active", self._on_bool_changed, "is_gpu_conversion")
         set_row_icon(self.gpu_row, "pci-card-symbolic")
         hardware_group.add(self.gpu_row)
 
-        # Detect actual CUDA devices once (cheap, torch-free, never raises).
-        # Stored values stay "Default"/bare indices; only the offered list and
-        # the subtitle hint change based on what hardware is present.
-        devices = available_cuda_devices()
+        devices = list_gpu_devices()
         if devices:
             device_opts = [DEFAULT] + [idx for idx, _name in devices]
             device_subtitle = "Detected: " + ", ".join(
@@ -258,12 +256,20 @@ class PreferencesDialog(Adw.PreferencesDialog):
             )
         else:
             device_opts = list(GPU_DEVICE_NUM_OPTS)
-            device_subtitle = "No NVIDIA GPU detected"
+            device_subtitle = "No GPU detected"
 
         self.device_row = make_combo_row("GPU device", device_opts, subtitle=device_subtitle)
         set_tooltip(self.device_row, IS_CUDA_SELECT_HELP)
         self.device_row.connect("notify::selected", self._on_combo_changed, "device_set")
         hardware_group.add(self.device_row)
+
+        self.directml_row = Adw.SwitchRow(
+            title="Use DirectML",
+            subtitle="Windows AMD/Intel GPU via DirectML (PyTorch models only; MDX ONNX stays on CPU)",
+        )
+        self.directml_row.connect("notify::active", self._on_bool_changed, "is_use_directml")
+        if system_name() == "Windows":
+            hardware_group.add(self.directml_row)
         page.add(hardware_group)
 
         sample_group = Adw.PreferencesGroup(title="Sample mode")
@@ -303,6 +309,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
                 row.set_active(bool(self.settings.get(key)))
 
             self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
+            if hasattr(self, "directml_row"):
+                self.directml_row.set_active(bool(self.settings.get("is_use_directml")))
             if not set_combo_value(self.device_row, self.settings.get("device_set", DEFAULT)):
                 set_combo_value(self.device_row, DEFAULT)
 

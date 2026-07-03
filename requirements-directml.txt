@@ -1,0 +1,5 @@
+# Optional Windows DirectML overlay (AMD/Intel GPU PyTorch acceleration).
+# Install only on Windows when DirectML is needed:
+#   pip install -r requirements-directml.txt
+
+torch-directml

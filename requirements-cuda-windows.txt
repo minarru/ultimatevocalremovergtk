@@ -1,0 +1,5 @@
+# Windows NVIDIA CUDA overlay (install after requirements.txt).
+# Use PyTorch CUDA wheels from https://pytorch.org/get-started/locally/
+# then:  pip install onnxruntime-gpu==1.26.0
+
+onnxruntime-gpu==1.26.0
