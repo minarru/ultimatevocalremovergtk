@@ -173,7 +173,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         debug("ui", f"uvr_gtk main pid={os.getpid()}")
 
     app = UVRApplication()
-    status = app.run(list(argv) if argv is not None else sys.argv)
+    try:
+        status = app.run(list(argv) if argv is not None else sys.argv)
+    except KeyboardInterrupt:
+        # PyGObject calls app.quit() on SIGINT, then re-raises via
+        # default_int_handler (e.g. sysprof-cli ^C while profiling).
+        status = 130
+        if enabled("ui"):
+            debug("ui", "KeyboardInterrupt after main loop (SIGINT)")
 
     if enabled():
         if not app._did_activate:
