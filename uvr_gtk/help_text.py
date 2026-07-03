@@ -591,6 +591,11 @@ DUAL_BATCH_MOVE_DOWN_HINT = "Move selected down"
 DUAL_BATCH_REMOVE_HINT = "Remove selected"
 DUAL_BATCH_CLEAR_HINT = "Clear all"
 
+DUAL_INPUTS_HINT = (
+    "Paired audio files processed together — for align, primary is usually the mixture "
+    "and secondary is usually the instrumental"
+)
+
 # --- Stem-only toggles ---
 
 STEM_ONLY_ALL_HINT = "Export every stem this model produces (default)"

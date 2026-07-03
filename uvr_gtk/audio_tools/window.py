@@ -76,8 +76,8 @@ from ..help_text import (
 )
 from ..hints import HelpHintManager, OUTPUT_FORMAT_HINT
 from ..shared_settings import apply_shared_file_options
-from ..markup import set_row_subtitle
 from ..widgets.columns import build_columns_box, wrap_options_scroller
+from ..widgets.dual_inputs import DualInputsRow
 from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
 from ..widgets.rows import (
     get_combo_value,
@@ -129,9 +129,9 @@ class AudioToolsPage:
             for p in (self.settings.get("DualBatch_inputPaths") or [])
             if len(p) == 2
         ]
-        # Align and matchering each build their own (input one / input two) rows;
-        # both reflect the same dual pairs, so they are refreshed together.
-        self._dual_row_sets: List[Tuple[Adw.ActionRow, Adw.ActionRow]] = []
+        # Align and matchering each build their own dual-input row; both reflect
+        # the same dual pairs, so they are refreshed together.
+        self._dual_inputs_rows: List[DualInputsRow] = []
         self._runner = None
         # Same per-view help-hint manager the separation method views use
         # (see ``uvr_gtk.views.base.MethodView``), so Audio Tools tooltips are
@@ -243,23 +243,30 @@ class AudioToolsPage:
 
     def _build_align_page(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        group = Adw.PreferencesGroup(title="Align Inputs", description="Phase-align and subtract two inputs")
-        group.add(self._build_dual_rows())
 
+        inputs_group = Adw.PreferencesGroup(
+            title="Input pairs",
+            description="Primary is usually the full mix; secondary is usually the instrumental",
+        )
+        inputs_group.add(self._create_dual_inputs_row())
+        box.append(inputs_group)
+
+        settings_group = Adw.PreferencesGroup(title="Alignment settings")
         self.time_window_row = make_combo_row("Time window", list(TIME_WINDOW_MAPPER.keys()))
         self.hints.register(self.time_window_row, TIME_WINDOW_ALIGN_HELP)
         self.time_window_row.connect("notify::selected", lambda *_a: self._set("time_window", get_combo_value(self.time_window_row)))
-        group.add(self.time_window_row)
+        settings_group.add(self.time_window_row)
 
         self.intro_row = make_combo_row("Intro analysis", list(INTRO_MAPPER.keys()))
         self.hints.register(self.intro_row, INTRO_ANALYSIS_ALIGN_HELP)
         self.intro_row.connect("notify::selected", lambda *_a: self._set("intro_analysis", get_combo_value(self.intro_row)))
-        group.add(self.intro_row)
+        settings_group.add(self.intro_row)
 
         self.db_row = make_combo_row("Volume adjustment", list(VOLUME_MAPPER.keys()))
         self.hints.register(self.db_row, VOLUME_ANALYSIS_ALIGN_HELP)
         self.db_row.connect("notify::selected", lambda *_a: self._set("db_analysis", get_combo_value(self.db_row)))
-        group.add(self.db_row)
+        settings_group.add(self.db_row)
+        box.append(settings_group)
 
         advanced = Adw.ExpanderRow(title="Advanced align options")
         self.phase_option_row = make_combo_row("Secondary phase", ALIGN_PHASE_OPTIONS)
@@ -290,15 +297,18 @@ class AudioToolsPage:
         adv_group = Adw.PreferencesGroup()
         adv_group.add(advanced)
 
-        box.append(group)
         box.append(adv_group)
         return box
 
     def _build_match_page(self) -> Gtk.Widget:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        group = Adw.PreferencesGroup(title="Matchering", description="Master target(s) to a reference (requires matchering)")
-        group.add(self._build_dual_rows())
-        box.append(group)
+
+        inputs_group = Adw.PreferencesGroup(
+            title="Input pairs",
+            description="Target is mastered to match the reference track",
+        )
+        inputs_group.add(self._create_dual_inputs_row())
+        box.append(inputs_group)
         return box
 
     def _build_apollo_page(self) -> Gtk.Widget:
@@ -382,26 +392,10 @@ class AudioToolsPage:
         self.apollo_model_row.set_visible(has_models)
         self.apollo_banner.set_revealed(not has_models)
 
-    def _build_dual_rows(self) -> Gtk.Widget:
-        """Two-file display + dual/batch editor button for align/match.
-
-        Called once per dual tool; each call builds its own row pair (a widget
-        can't be shared between two parents) and registers it so all dual pages
-        stay in sync with :attr:`_dual_pairs`.
-        """
-        wrapper = Adw.PreferencesGroup()
-        file_one_row = Adw.ActionRow(title="Input one", subtitle="Not set")
-        file_two_row = Adw.ActionRow(title="Input two", subtitle="Not set")
-
-        edit_button = Gtk.Button(label="Dual / Batch editor\u2026", valign=Gtk.Align.CENTER)
-        edit_button.connect("clicked", self._on_open_dual_editor)
-        file_one_row.add_suffix(edit_button)
-        file_one_row.set_activatable_widget(edit_button)
-
-        wrapper.add(file_one_row)
-        wrapper.add(file_two_row)
-        self._dual_row_sets.append((file_one_row, file_two_row))
-        return wrapper
+    def _create_dual_inputs_row(self) -> DualInputsRow:
+        row = DualInputsRow(self._on_open_dual_editor)
+        self._dual_inputs_rows.append(row)
+        return row
 
     def _build_shared_group(self) -> Gtk.Widget:
         group = Adw.PreferencesGroup(title="Output and options")
@@ -419,7 +413,7 @@ class AudioToolsPage:
         self.wav_type_row.connect("notify::selected", lambda *_a: self._set("wav_type_set", get_combo_value(self.wav_type_row)))
         group.add(self.wav_type_row)
 
-        self.normalize_row = make_switch_row("Normalize output")
+        self.normalize_row = make_switch_row("Normalize output", "Limit peaks to prevent clipping")
         self.hints.register(self.normalize_row, IS_NORMALIZATION_HELP)
         self.normalize_row.connect("notify::active", lambda *_a: self._set("is_normalization", self.normalize_row.get_active()))
         group.add(self.normalize_row)
@@ -506,19 +500,8 @@ class AudioToolsPage:
 
     def _refresh_dual_rows(self) -> None:
         labels = _TOOL_LABELS[1] if self._current_tool() == MATCH_INPUTS else _TOOL_LABELS[0]
-        if self._dual_pairs:
-            first = self._dual_pairs[0]
-            extra = len(self._dual_pairs) - 1
-            suffix = f"  (+{extra} pair(s))" if extra else ""
-            sub_one = f"{os.path.basename(first[0])}{suffix}"
-            sub_two = f"{os.path.basename(first[1])}{suffix}"
-        else:
-            sub_one = sub_two = "Not set"
-        for file_one_row, file_two_row in self._dual_row_sets:
-            file_one_row.set_title(labels[0])
-            file_two_row.set_title(labels[1])
-            set_row_subtitle(file_one_row, sub_one)
-            set_row_subtitle(file_two_row, sub_two)
+        for row in self._dual_inputs_rows:
+            row.set_pairs(self._dual_pairs, labels)
 
     # -- Signal handlers -------------------------------------------------------
 
@@ -551,7 +534,7 @@ class AudioToolsPage:
     def _on_output_changed(self) -> None:
         self._set("export_path", self.output_row.path)
 
-    def _on_open_dual_editor(self, _button: Gtk.Button) -> None:
+    def _on_open_dual_editor(self, *_args) -> None:
         labels = _TOOL_LABELS[1] if self._current_tool() == MATCH_INPUTS else _TOOL_LABELS[0]
         dialog = DualBatchDialog(self.window, labels, self._dual_pairs, self._on_dual_confirmed)
         dialog.present()
