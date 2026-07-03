@@ -223,6 +223,7 @@ class LogPanel(Gtk.Box):
             self.console.resume_scroll()
             self.console.scroll_to_end_stable()
         else:
+            debug("ui", "log_panel.prepare_for_run defer_scroll")
             self.console.defer_scroll_until_settled()
 
     def get_expanded(self) -> bool:
@@ -276,10 +277,11 @@ class LogPanel(Gtk.Box):
 
     def _on_log_revealed(self, revealer: Gtk.Revealer, _pspec) -> None:
         if revealer.get_child_revealed():
-            debug("ui", "log_panel child revealed")
+            debug("ui", "log_panel child revealed resume_scroll")
             self._apply_expanded_visibility(True)
             self._defer_collapse_visibility = False
             self.console.resume_scroll()
+            debug("ui", "log_panel scroll_to_end_stable")
             self.console.scroll_to_end_stable()
             return
         if self._defer_collapse_visibility:

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from uvr_core.cuda_runtime_fix import preload_onnxruntime_cuda12
 preload_onnxruntime_cuda12()
 
-from uvr_core.debug_log import debug
+from uvr_core.debug_log import trace_phase
 
 from demucs.apply import apply_model, demucs_segments
 from demucs.hdemucs import HDemucs
@@ -320,7 +320,6 @@ class SeperateAttributes:
             self.is_secondary_stem_only = False
             
     def start_inference_console_write(self):
-        debug("separate", f"start_inference_console_write model={self.model_basename}")
         if self.is_secondary_model and not self.is_pre_proc_model and not self.is_vocal_split_model:
             self.write_to_console(INFERENCE_STEP_2_SEC(self.process_method, self.model_basename))
         
@@ -331,7 +330,6 @@ class SeperateAttributes:
             self.write_to_console(INFERENCE_STEP_2_VOC_S(self.process_method, self.model_basename))
         
     def running_inference_console_write(self, is_no_write=False):
-        debug("separate", f"running_inference_console_write is_no_write={is_no_write}")
         self.write_to_console(DONE, base_text='') if not is_no_write else None
         self.set_progress_bar(0.05) if not is_no_write else None
         
@@ -377,6 +375,10 @@ class SeperateAttributes:
                 self.cached_model_source_holder(DEMUCS_ARCH_TYPE, secondary_sources, self.model_basename)
            
     def process_vocal_split_chain(self, sources: dict):
+        with trace_phase("separate", "vocal_split_chain", model=self.model_basename):
+            return self._process_vocal_split_chain(sources)
+
+    def _process_vocal_split_chain(self, sources: dict):
         
         def is_valid_vocal_split_condition(master_vocal_source):
             """Checks if conditions for vocal split processing are met."""
@@ -412,10 +414,10 @@ class SeperateAttributes:
         return stem_source
     
     def final_process(self, stem_path, source, secondary_source, stem_name, samplerate):
-        source = self.process_secondary_stem(source, secondary_source)
-        self.write_audio(stem_path, source, samplerate, stem_name=stem_name)
-        
-        return {stem_name: source}
+        with trace_phase("separate", "final_process", stem=stem_name, model=self.model_basename):
+            source = self.process_secondary_stem(source, secondary_source)
+            self.write_audio(stem_path, source, samplerate, stem_name=stem_name)
+            return {stem_name: source}
     
     def write_audio(self, stem_path: str, stem_source, samplerate, stem_name=None):
         
@@ -512,33 +514,31 @@ class SeperateMDX(SeperateAttributes):
             mix, source = self.primary_sources
             self.load_cached_sources()
         else:
-            debug("separate", f"SeperateMDX.seperate start model={self.model_basename}")
-            self.start_inference_console_write()
-            self.write_to_console(LOADING_MODEL)
-            debug("separate", "SeperateMDX loading model weights")
+            with trace_phase("separate", "seperate", engine="SeperateMDX", model=self.model_basename):
+                self.start_inference_console_write()
+                self.write_to_console(LOADING_MODEL)
 
-            if self.is_mdx_ckpt:
-                model_params = torch.load(self.model_path, map_location=lambda storage, loc: storage)['hyper_parameters']
-                self.dim_c, self.hop = model_params['dim_c'], model_params['hop_length']
-                separator = MdxnetSet.ConvTDFNet(**model_params)
-                self.model_run = separator.load_from_checkpoint(self.model_path).to(self.device).eval()
-            else:
-                if self.mdx_segment_size == self.dim_t and not self.is_other_gpu:
-                    ort_ = ort.InferenceSession(self.model_path, providers=self.run_type)
-                    self.model_run = lambda spek:ort_.run(None, {'input': spek.cpu().numpy()})[0]
+                if self.is_mdx_ckpt:
+                    model_params = torch.load(self.model_path, map_location=lambda storage, loc: storage)['hyper_parameters']
+                    self.dim_c, self.hop = model_params['dim_c'], model_params['hop_length']
+                    separator = MdxnetSet.ConvTDFNet(**model_params)
+                    self.model_run = separator.load_from_checkpoint(self.model_path).to(self.device).eval()
                 else:
-                    self.model_run = ConvertModel(load(self.model_path))
-                    self.model_run.to(self.device).eval()
+                    if self.mdx_segment_size == self.dim_t and not self.is_other_gpu:
+                        ort_ = ort.InferenceSession(self.model_path, providers=self.run_type)
+                        self.model_run = lambda spek:ort_.run(None, {'input': spek.cpu().numpy()})[0]
+                    else:
+                        self.model_run = ConvertModel(load(self.model_path))
+                        self.model_run.to(self.device).eval()
 
-            self.running_inference_console_write()
-            debug("separate", "SeperateMDX model loaded, preparing mix")
-            mix = prepare_mix(self.audio_file)
-            
-            source = self.demix(mix)
-            
-            if not self.is_vocal_split_model:
-                self.cache_source((mix, source))
-            self.write_to_console(DONE, base_text='')            
+                self.running_inference_console_write()
+                mix = prepare_mix(self.audio_file)
+                
+                source = self.demix(mix)
+                
+                if not self.is_vocal_split_model:
+                    self.cache_source((mix, source))
+                self.write_to_console(DONE, base_text='')            
 
         mdx_net_cut = True if self.primary_stem in MDX_NET_FREQ_CUT and self.is_match_frequency_pitch else False
 
@@ -578,90 +578,97 @@ class SeperateMDX(SeperateAttributes):
         self.stft = STFT(self.n_fft, self.hop, self.dim_f, self.device)
 
     def demix(self, mix, is_match_mix=False):
-        self.initialize_model_settings()
-        
-        org_mix = mix
-        tar_waves_ = []
-
-        if is_match_mix:
-            chunk_size = self.hop * (256-1)
-            overlap = 0.02
-        else:
-            chunk_size = self.chunk_size
-            overlap = self.overlap_mdx
+        with trace_phase(
+            "separate",
+            "demix",
+            engine="SeperateMDX",
+            model=self.model_basename,
+            match_mix=is_match_mix,
+        ):
+            self.initialize_model_settings()
             
-            if self.is_pitch_change:
-                mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
+            org_mix = mix
+            tar_waves_ = []
 
-        gen_size = chunk_size-2*self.trim
-
-        pad = gen_size + self.trim - ((mix.shape[-1]) % gen_size)
-        mixture = np.concatenate((np.zeros((2, self.trim), dtype='float32'), mix, np.zeros((2, pad), dtype='float32')), 1)
-
-        step = self.chunk_size - self.n_fft if overlap == DEFAULT else int((1 - overlap) * chunk_size)
-        result = np.zeros((1, 2, mixture.shape[-1]), dtype=np.float32)
-        divider = np.zeros((1, 2, mixture.shape[-1]), dtype=np.float32)
-        total = 0
-        total_chunks = (mixture.shape[-1] + step - 1) // step
-
-        for i in range(0, mixture.shape[-1], step):
-            self.check_run_control()
-            total += 1
-            start = i
-            end = min(i + chunk_size, mixture.shape[-1])
-
-            chunk_size_actual = end - start
-
-            if overlap == 0:
-                window = None
+            if is_match_mix:
+                chunk_size = self.hop * (256-1)
+                overlap = 0.02
             else:
-                window = np.hanning(chunk_size_actual)
-                window = np.tile(window[None, None, :], (1, 2, 1))
+                chunk_size = self.chunk_size
+                overlap = self.overlap_mdx
+                
+                if self.is_pitch_change:
+                    mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
 
-            mix_part_ = mixture[:, start:end]
-            if end != i + chunk_size:
-                pad_size = (i + chunk_size) - end
-                mix_part_ = np.concatenate((mix_part_, np.zeros((2, pad_size), dtype='float32')), axis=-1)
+            gen_size = chunk_size-2*self.trim
 
-            mix_part = torch.tensor([mix_part_], dtype=torch.float32).to(self.device)
-            mix_waves = mix_part.split(self.mdx_batch_size)
+            pad = gen_size + self.trim - ((mix.shape[-1]) % gen_size)
+            mixture = np.concatenate((np.zeros((2, self.trim), dtype='float32'), mix, np.zeros((2, pad), dtype='float32')), 1)
+
+            step = self.chunk_size - self.n_fft if overlap == DEFAULT else int((1 - overlap) * chunk_size)
+            result = np.zeros((1, 2, mixture.shape[-1]), dtype=np.float32)
+            divider = np.zeros((1, 2, mixture.shape[-1]), dtype=np.float32)
+            total = 0
+            total_chunks = (mixture.shape[-1] + step - 1) // step
+
+            for i in range(0, mixture.shape[-1], step):
+                self.check_run_control()
+                total += 1
+                start = i
+                end = min(i + chunk_size, mixture.shape[-1])
+
+                chunk_size_actual = end - start
+
+                if overlap == 0:
+                    window = None
+                else:
+                    window = np.hanning(chunk_size_actual)
+                    window = np.tile(window[None, None, :], (1, 2, 1))
+
+                mix_part_ = mixture[:, start:end]
+                if end != i + chunk_size:
+                    pad_size = (i + chunk_size) - end
+                    mix_part_ = np.concatenate((mix_part_, np.zeros((2, pad_size), dtype='float32')), axis=-1)
+
+                mix_part = torch.tensor([mix_part_], dtype=torch.float32).to(self.device)
+                mix_waves = mix_part.split(self.mdx_batch_size)
+                
+                with torch.no_grad():
+                    for mix_wave in mix_waves:
+                        self.running_inference_progress_bar(total_chunks, is_match_mix=is_match_mix)
+
+                        tar_waves = self.run_model(mix_wave, is_match_mix=is_match_mix)
+                        
+                        if window is not None:
+                            tar_waves[..., :chunk_size_actual] *= window 
+                            divider[..., start:end] += window
+                        else:
+                            divider[..., start:end] += 1
+
+                        result[..., start:end] += tar_waves[..., :end-start]
+                
+            tar_waves = result / divider
+            tar_waves_.append(tar_waves)
+
+            tar_waves_ = np.vstack(tar_waves_)[:, :, self.trim:-self.trim]
+            tar_waves = np.concatenate(tar_waves_, axis=-1)[:, :mix.shape[-1]]
             
-            with torch.no_grad():
-                for mix_wave in mix_waves:
-                    self.running_inference_progress_bar(total_chunks, is_match_mix=is_match_mix)
+            source = tar_waves[:,0:None]
 
-                    tar_waves = self.run_model(mix_wave, is_match_mix=is_match_mix)
-                    
-                    if window is not None:
-                        tar_waves[..., :chunk_size_actual] *= window 
-                        divider[..., start:end] += window
-                    else:
-                        divider[..., start:end] += 1
+            if self.is_pitch_change and not is_match_mix:
+                source = self.pitch_fix(source, sr_pitched, org_mix)
 
-                    result[..., start:end] += tar_waves[..., :end-start]
-            
-        tar_waves = result / divider
-        tar_waves_.append(tar_waves)
+            source = source if is_match_mix else source*self.compensate
 
-        tar_waves_ = np.vstack(tar_waves_)[:, :, self.trim:-self.trim]
-        tar_waves = np.concatenate(tar_waves_, axis=-1)[:, :mix.shape[-1]]
-        
-        source = tar_waves[:,0:None]
+            if self.is_denoise_model and not is_match_mix:
+                if NO_STEM in self.primary_stem_native or self.primary_stem_native == INST_STEM:
+                    if org_mix.shape[1] != source.shape[1]:
+                        source = spec_utils.match_array_shapes(source, org_mix)
+                    source = org_mix - vr_denoiser(org_mix-source, self.device, model_path=self.DENOISER_MODEL)
+                else:
+                    source = vr_denoiser(source, self.device, model_path=self.DENOISER_MODEL)
 
-        if self.is_pitch_change and not is_match_mix:
-            source = self.pitch_fix(source, sr_pitched, org_mix)
-
-        source = source if is_match_mix else source*self.compensate
-
-        if self.is_denoise_model and not is_match_mix:
-            if NO_STEM in self.primary_stem_native or self.primary_stem_native == INST_STEM:
-                if org_mix.shape[1] != source.shape[1]:
-                    source = spec_utils.match_array_shapes(source, org_mix)
-                source = org_mix - vr_denoiser(org_mix-source, self.device, model_path=self.DENOISER_MODEL)
-            else:
-                source = vr_denoiser(source, self.device, model_path=self.DENOISER_MODEL)
-
-        return source
+            return source
 
     def run_model(self, mix, is_match_mix=False):
         
@@ -690,16 +697,14 @@ class SeperateMDXC(SeperateAttributes):
             mix, sources = self.primary_sources
             self.load_cached_sources()
         else:
-            debug("separate", f"SeperateMDXC.seperate start model={self.model_basename}")
-            self.start_inference_console_write()
-            self.write_to_console(LOADING_MODEL)
-            debug("separate", "SeperateMDXC prepare_mix")
-            mix = prepare_mix(self.audio_file)
-            debug("separate", "SeperateMDXC demix start")
-            sources = self.demix(mix)
-            if not self.is_vocal_split_model:
-                self.cache_source((mix, sources))
-            self.write_to_console(DONE, base_text='')
+            with trace_phase("separate", "seperate", engine="SeperateMDXC", model=self.model_basename):
+                self.start_inference_console_write()
+                self.write_to_console(LOADING_MODEL)
+                mix = prepare_mix(self.audio_file)
+                sources = self.demix(mix)
+                if not self.is_vocal_split_model:
+                    self.cache_source((mix, sources))
+                self.write_to_console(DONE, base_text='')
 
         stem_list = [self.mdx_c_configs.training.target_instrument] if self.mdx_c_configs.training.target_instrument and not self.is_vocal_main_target else [i for i in self.mdx_c_configs.training.instruments]
 
@@ -813,217 +818,222 @@ class SeperateMDXC(SeperateAttributes):
         return result
 
     def demix(self, mix):
-        debug("separate", f"demix start roformer={self.is_roformer}")
-        # Roformer models use the windowed overlap-add inference; classic
-        # (non-roformer) MDX-C models keep their original inference path so their
-        # numerical output and stem layout are unchanged from before roformer support.
         if self.is_roformer:
             return self.demix_roformer(mix)
 
-        sr_pitched = 441000
-        org_mix = mix
-        if self.is_pitch_change:
-            mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
+        with trace_phase(
+            "separate",
+            "demix",
+            engine="SeperateMDXC",
+            model=self.model_basename,
+            roformer=False,
+        ):
+            sr_pitched = 441000
+            org_mix = mix
+            if self.is_pitch_change:
+                mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
 
-        model = TFC_TDF_net(self.mdx_c_configs, device=self.device)
-        debug("separate", "demix classic MDX-C torch.load start")
-        model.load_state_dict(torch.load(self.model_path, map_location=cpu))
-        debug("separate", "demix classic MDX-C torch.load done")
-        model.to(self.device).eval()
-        self._inference_model = model
-        mix = torch.tensor(mix, dtype=torch.float32)
+            model = TFC_TDF_net(self.mdx_c_configs, device=self.device)
+            model.load_state_dict(torch.load(self.model_path, map_location=cpu))
+            model.to(self.device).eval()
+            self._inference_model = model
+            mix = torch.tensor(mix, dtype=torch.float32)
 
-        try:
             try:
-                S = model.num_target_instruments
-            except Exception as e:
-                S = model.module.num_target_instruments
+                try:
+                    S = model.num_target_instruments
+                except Exception as e:
+                    S = model.module.num_target_instruments
 
-            mdx_segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size
-            
-            batch_size = self.mdx_batch_size
-            chunk_size = self.mdx_c_configs.audio.hop_length * (mdx_segment_size - 1)
-            overlap = self.overlap_mdx23
+                mdx_segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size
+                
+                batch_size = self.mdx_batch_size
+                chunk_size = self.mdx_c_configs.audio.hop_length * (mdx_segment_size - 1)
+                overlap = self.overlap_mdx23
 
-            hop_size = chunk_size // overlap
-            mix_shape = mix.shape[1]
-            pad_size = hop_size - (mix_shape - chunk_size) % hop_size
-            mix = torch.cat([torch.zeros(2, chunk_size - hop_size), mix, torch.zeros(2, pad_size + chunk_size - hop_size)], 1)
+                hop_size = chunk_size // overlap
+                mix_shape = mix.shape[1]
+                pad_size = hop_size - (mix_shape - chunk_size) % hop_size
+                mix = torch.cat([torch.zeros(2, chunk_size - hop_size), mix, torch.zeros(2, pad_size + chunk_size - hop_size)], 1)
 
-            chunks = mix.unfold(1, chunk_size, hop_size).transpose(0, 1)
-            batches = [chunks[i : i + batch_size] for i in range(0, len(chunks), batch_size)]
-            
-            X = torch.zeros(S, *mix.shape) if S > 1 else torch.zeros_like(mix)
-            X = X.to(self.device)
+                chunks = mix.unfold(1, chunk_size, hop_size).transpose(0, 1)
+                batches = [chunks[i : i + batch_size] for i in range(0, len(chunks), batch_size)]
+                
+                X = torch.zeros(S, *mix.shape) if S > 1 else torch.zeros_like(mix)
+                X = X.to(self.device)
 
-            self.running_inference_console_write()
+                self.running_inference_console_write()
 
-            with torch.no_grad():
-                cnt = 0
-                for batch in batches:
-                    self.check_run_control()
-                    self.running_inference_progress_bar(len(batches))
-                    x = model(batch.to(self.device))
-                    
-                    for w in x:
-                        X[..., cnt * hop_size : cnt * hop_size + chunk_size] += w
-                        cnt += 1
+                with torch.no_grad():
+                    cnt = 0
+                    for batch in batches:
+                        self.check_run_control()
+                        self.running_inference_progress_bar(len(batches))
+                        x = model(batch.to(self.device))
+                        
+                        for w in x:
+                            X[..., cnt * hop_size : cnt * hop_size + chunk_size] += w
+                            cnt += 1
 
-            estimated_sources = X[..., chunk_size - hop_size:-(pad_size + chunk_size - hop_size)] / overlap
-            del X
-            pitch_fix = lambda s:self.pitch_fix(s, sr_pitched, org_mix)
+                estimated_sources = X[..., chunk_size - hop_size:-(pad_size + chunk_size - hop_size)] / overlap
+                del X
+                pitch_fix = lambda s:self.pitch_fix(s, sr_pitched, org_mix)
 
-            if S > 1:
-                sources = {k: pitch_fix(v) if self.is_pitch_change else v for k, v in zip(self.mdx_c_configs.training.instruments, estimated_sources.cpu().detach().numpy())}
-                del estimated_sources
-                if self.is_denoise_model:
-                    if VOCAL_STEM in sources.keys() and INST_STEM in sources.keys():
-                        sources[VOCAL_STEM] = vr_denoiser(sources[VOCAL_STEM], self.device, model_path=self.DENOISER_MODEL)
+                if S > 1:
+                    sources = {k: pitch_fix(v) if self.is_pitch_change else v for k, v in zip(self.mdx_c_configs.training.instruments, estimated_sources.cpu().detach().numpy())}
+                    del estimated_sources
+                    if self.is_denoise_model:
+                        if VOCAL_STEM in sources.keys() and INST_STEM in sources.keys():
+                            sources[VOCAL_STEM] = vr_denoiser(sources[VOCAL_STEM], self.device, model_path=self.DENOISER_MODEL)
+                            if sources[VOCAL_STEM].shape[1] != org_mix.shape[1]:
+                                sources[VOCAL_STEM] = spec_utils.match_array_shapes(sources[VOCAL_STEM], org_mix)
+                            sources[INST_STEM] = org_mix - sources[VOCAL_STEM]
+                                    
+                    return sources
+                else:
+                    est_s = estimated_sources.cpu().detach().numpy()
+                    del estimated_sources
+                    return pitch_fix(est_s) if self.is_pitch_change else est_s
+            finally:
+                if isinstance(mix, torch.Tensor):
+                    del mix
+                model.cpu()
+                del model
+                self._inference_model = None
+                clear_gpu_cache()
+
+    def demix_roformer(self, mix):
+        with trace_phase(
+            "separate",
+            "demix_roformer",
+            engine="SeperateMDXC",
+            model=self.model_basename,
+        ):
+            sr_pitched = 441000
+            org_mix = mix
+            if self.is_pitch_change:
+                mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
+
+            device = self.device
+
+            # Build the roformer architecture indicated by the model's yaml config.
+            if 'num_bands' in self.roformer_config.model:
+                model = MelBandRoformer(**self.roformer_config.model)
+            elif 'freqs_per_bands' in self.roformer_config.model:
+                model = BSRoformer(**self.roformer_config.model)
+            else:
+                raise ValueError('Unknown model type in the configuration.')
+
+            checkpoint = torch.load(self.model_path, map_location='cpu')
+            model = model if not isinstance(model, torch.nn.DataParallel) else model.module
+            model.load_state_dict(checkpoint)
+            del checkpoint
+            model.to(device).eval()
+            self._inference_model = model
+            mix = torch.tensor(mix, dtype=torch.float32)
+
+            result = counter = estimated_sources = None
+            try:
+                segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size
+                S = 1 if self.roformer_config.training.target_instrument else len(self.roformer_config.training.instruments)
+                C = self.roformer_config.audio.hop_length * (segment_size - 1)
+                N = self.overlap_mdx23
+                step = int(C // N)
+                fade_size = C // 10
+                batch_size = self.roformer_config.inference.batch_size
+                length_init = mix.shape[-1]
+
+                # Padding the mix to account for border effects
+                if length_init > 2 * (C - step) and (C - step > 0):
+                    mix = nn.functional.pad(mix, (C - step, C - step), mode='reflect')
+
+                # Set up windows for fade-in/out
+                fadein = torch.linspace(0, 1, fade_size).to(device)
+                fadeout = torch.linspace(1, 0, fade_size).to(device)
+                window_start = torch.ones(C).to(device)
+                window_middle = torch.ones(C).to(device)
+                window_finish = torch.ones(C).to(device)
+                window_start[-fade_size:] *= fadeout  # No fade-in at start
+                window_finish[:fade_size] *= fadein  # No fade-out at end
+                window_middle[:fade_size] *= fadein
+                window_middle[-fade_size:] *= fadeout
+
+                batch_len = int(mix.shape[1] / step)
+
+                self.running_inference_console_write()
+
+                with torch.inference_mode():
+                    req_shape = (S, ) + tuple(mix.shape)
+                    result = torch.zeros(req_shape, dtype=torch.float32, device=device)
+                    counter = torch.zeros(req_shape, dtype=torch.float32, device=device)
+                    batch_data = []
+                    batch_locations = []
+
+                    i = 0
+
+                    while i < mix.shape[1]:
+                        self.check_run_control()
+                        part = mix[:, i:i + C].to(device)
+                        length = part.shape[-1]
+                        if length < C:
+                            if length > C // 2 + 1:
+                                part = nn.functional.pad(part, (0, C - length), mode='reflect')
+                            else:
+                                part = nn.functional.pad(part, (0, C - length, 0, 0), mode='constant', value=0)
+
+                        batch_data.append(part)
+                        batch_locations.append((i, length))
+                        i += step
+
+                        # Process in batches
+                        if len(batch_data) >= batch_size or (i >= mix.shape[1]):
+                            arr = torch.stack(batch_data, dim=0)
+                            x = model(arr)
+
+                            for j in range(len(batch_locations)):
+                                self.running_inference_progress_bar(batch_len)
+                                start, l = batch_locations[j]
+                                window = window_middle
+                                if start == 0:
+                                    window = window_start
+                                elif i >= mix.shape[1]:
+                                    window = window_finish
+
+                                result = self.overlap_add(result, x, l, j, start, window)
+                                counter[..., start:start + l] += window[..., :l]
+
+                            batch_data = []
+                            batch_locations = []
+
+                    # Normalize by the overlap counter and remove padding
+                    estimated_sources = result / counter.clamp(min=1e-10)
+
+                    if length_init > 2 * (C - step) and (C - step > 0):
+                        estimated_sources = estimated_sources[..., (C - step):-(C - step)]
+
+                pitch_fix = lambda s:self.pitch_fix(s, sr_pitched, org_mix)
+
+                if S > 1 or self.is_vocal_main_target:
+                    sources = {k: pitch_fix(v) if self.is_pitch_change else v for k, v in zip(self.mdx_c_configs.training.instruments, estimated_sources.cpu().detach().numpy())}
+                    if self.is_vocal_main_target:
                         if sources[VOCAL_STEM].shape[1] != org_mix.shape[1]:
                             sources[VOCAL_STEM] = spec_utils.match_array_shapes(sources[VOCAL_STEM], org_mix)
                         sources[INST_STEM] = org_mix - sources[VOCAL_STEM]
-                                
-                return sources
-            else:
-                est_s = estimated_sources.cpu().detach().numpy()
-                del estimated_sources
-                return pitch_fix(est_s) if self.is_pitch_change else est_s
-        finally:
-            if isinstance(mix, torch.Tensor):
-                del mix
-            model.cpu()
-            del model
-            self._inference_model = None
-            clear_gpu_cache()
 
-    def demix_roformer(self, mix):
-        sr_pitched = 441000
-        org_mix = mix
-        if self.is_pitch_change:
-            mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
+                    return sources
+                else:
+                    sources = {k: v.cpu().detach().numpy() for k, v in zip([self.mdx_c_configs.training.target_instrument], estimated_sources)}
+                    est_s = sources[self.mdx_c_configs.training.target_instrument]
 
-        device = self.device
-
-        # Build the roformer architecture indicated by the model's yaml config.
-        if 'num_bands' in self.roformer_config.model:
-            model = MelBandRoformer(**self.roformer_config.model)
-        elif 'freqs_per_bands' in self.roformer_config.model:
-            model = BSRoformer(**self.roformer_config.model)
-        else:
-            raise ValueError('Unknown model type in the configuration.')
-
-        checkpoint = torch.load(self.model_path, map_location='cpu')
-        debug("separate", "demix_roformer torch.load done")
-        model = model if not isinstance(model, torch.nn.DataParallel) else model.module
-        model.load_state_dict(checkpoint)
-        del checkpoint
-        model.to(device).eval()
-        debug("separate", "demix_roformer model on device")
-        self._inference_model = model
-        mix = torch.tensor(mix, dtype=torch.float32)
-
-        result = counter = estimated_sources = None
-        try:
-            segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size
-            S = 1 if self.roformer_config.training.target_instrument else len(self.roformer_config.training.instruments)
-            C = self.roformer_config.audio.hop_length * (segment_size - 1)
-            N = self.overlap_mdx23
-            step = int(C // N)
-            fade_size = C // 10
-            batch_size = self.roformer_config.inference.batch_size
-            length_init = mix.shape[-1]
-
-            # Padding the mix to account for border effects
-            if length_init > 2 * (C - step) and (C - step > 0):
-                mix = nn.functional.pad(mix, (C - step, C - step), mode='reflect')
-
-            # Set up windows for fade-in/out
-            fadein = torch.linspace(0, 1, fade_size).to(device)
-            fadeout = torch.linspace(1, 0, fade_size).to(device)
-            window_start = torch.ones(C).to(device)
-            window_middle = torch.ones(C).to(device)
-            window_finish = torch.ones(C).to(device)
-            window_start[-fade_size:] *= fadeout  # No fade-in at start
-            window_finish[:fade_size] *= fadein  # No fade-out at end
-            window_middle[:fade_size] *= fadein
-            window_middle[-fade_size:] *= fadeout
-
-            batch_len = int(mix.shape[1] / step)
-
-            self.running_inference_console_write()
-
-            with torch.inference_mode():
-                req_shape = (S, ) + tuple(mix.shape)
-                result = torch.zeros(req_shape, dtype=torch.float32, device=device)
-                counter = torch.zeros(req_shape, dtype=torch.float32, device=device)
-                batch_data = []
-                batch_locations = []
-
-                i = 0
-
-                while i < mix.shape[1]:
-                    self.check_run_control()
-                    part = mix[:, i:i + C].to(device)
-                    length = part.shape[-1]
-                    if length < C:
-                        if length > C // 2 + 1:
-                            part = nn.functional.pad(part, (0, C - length), mode='reflect')
-                        else:
-                            part = nn.functional.pad(part, (0, C - length, 0, 0), mode='constant', value=0)
-
-                    batch_data.append(part)
-                    batch_locations.append((i, length))
-                    i += step
-
-                    # Process in batches
-                    if len(batch_data) >= batch_size or (i >= mix.shape[1]):
-                        arr = torch.stack(batch_data, dim=0)
-                        x = model(arr)
-
-                        for j in range(len(batch_locations)):
-                            self.running_inference_progress_bar(batch_len)
-                            start, l = batch_locations[j]
-                            window = window_middle
-                            if start == 0:
-                                window = window_start
-                            elif i >= mix.shape[1]:
-                                window = window_finish
-
-                            result = self.overlap_add(result, x, l, j, start, window)
-                            counter[..., start:start + l] += window[..., :l]
-
-                        batch_data = []
-                        batch_locations = []
-
-                # Normalize by the overlap counter and remove padding
-                estimated_sources = result / counter.clamp(min=1e-10)
-
-                if length_init > 2 * (C - step) and (C - step > 0):
-                    estimated_sources = estimated_sources[..., (C - step):-(C - step)]
-
-            pitch_fix = lambda s:self.pitch_fix(s, sr_pitched, org_mix)
-
-            if S > 1 or self.is_vocal_main_target:
-                sources = {k: pitch_fix(v) if self.is_pitch_change else v for k, v in zip(self.mdx_c_configs.training.instruments, estimated_sources.cpu().detach().numpy())}
-                if self.is_vocal_main_target:
-                    if sources[VOCAL_STEM].shape[1] != org_mix.shape[1]:
-                        sources[VOCAL_STEM] = spec_utils.match_array_shapes(sources[VOCAL_STEM], org_mix)
-                    sources[INST_STEM] = org_mix - sources[VOCAL_STEM]
-
-                return sources
-            else:
-                sources = {k: v.cpu().detach().numpy() for k, v in zip([self.mdx_c_configs.training.target_instrument], estimated_sources)}
-                est_s = sources[self.mdx_c_configs.training.target_instrument]
-
-                return pitch_fix(est_s) if self.is_pitch_change else est_s
-        finally:
-            for tensor in (result, counter, mix, estimated_sources):
-                if tensor is not None:
-                    del tensor
-            model.cpu()
-            del model
-            self._inference_model = None
-            clear_gpu_cache()
+                    return pitch_fix(est_s) if self.is_pitch_change else est_s
+            finally:
+                for tensor in (result, counter, mix, estimated_sources):
+                    if tensor is not None:
+                        del tensor
+                model.cpu()
+                del model
+                self._inference_model = None
+                clear_gpu_cache()
 
 class SeperateDemucs(SeperateAttributes):
     def seperate(self):
@@ -1048,50 +1058,56 @@ class SeperateDemucs(SeperateAttributes):
         mix = prepare_mix(self.audio_file)
 
         if is_no_cache:
-            debug("separate", f"SeperateDemucs loading model version={self.demucs_version}")
-            self.write_to_console(LOADING_MODEL)
-            if self.demucs_version == DEMUCS_V1:
-                if str(self.model_path).endswith(".gz"):
-                    self.model_path = gzip.open(self.model_path, "rb")
-                klass, args, kwargs, state = torch.load(self.model_path)
-                self.demucs = klass(*args, **kwargs)
-                self.demucs.to(self.device) 
-                self.demucs.load_state_dict(state)
-            elif self.demucs_version == DEMUCS_V2:
-                self.demucs = auto_load_demucs_model_v2(self.demucs_source_list, self.model_path)
-                self.demucs.to(self.device) 
-                self.demucs.load_state_dict(torch.load(self.model_path))
-                self.demucs.eval()
-            else:  
-                self.demucs = HDemucs(sources=self.demucs_source_list)
-                self.demucs = _gm(name=os.path.splitext(os.path.basename(self.model_path))[0], 
-                                  repo=Path(os.path.dirname(self.model_path)))
-                self.demucs = demucs_segments(self.segment, self.demucs)
-                self.demucs.to(self.device)
-                self.demucs.eval()
+            with trace_phase(
+                "separate",
+                "seperate",
+                engine="SeperateDemucs",
+                model=self.model_basename,
+                version=self.demucs_version,
+            ):
+                self.write_to_console(LOADING_MODEL)
+                if self.demucs_version == DEMUCS_V1:
+                    if str(self.model_path).endswith(".gz"):
+                        self.model_path = gzip.open(self.model_path, "rb")
+                    klass, args, kwargs, state = torch.load(self.model_path)
+                    self.demucs = klass(*args, **kwargs)
+                    self.demucs.to(self.device) 
+                    self.demucs.load_state_dict(state)
+                elif self.demucs_version == DEMUCS_V2:
+                    self.demucs = auto_load_demucs_model_v2(self.demucs_source_list, self.model_path)
+                    self.demucs.to(self.device) 
+                    self.demucs.load_state_dict(torch.load(self.model_path))
+                    self.demucs.eval()
+                else:  
+                    self.demucs = HDemucs(sources=self.demucs_source_list)
+                    self.demucs = _gm(name=os.path.splitext(os.path.basename(self.model_path))[0], 
+                                      repo=Path(os.path.dirname(self.model_path)))
+                    self.demucs = demucs_segments(self.segment, self.demucs)
+                    self.demucs.to(self.device)
+                    self.demucs.eval()
 
-            if self.pre_proc_model:
-                if self.primary_stem not in [VOCAL_STEM, INST_STEM]:
-                    is_no_write = True
-                    self.write_to_console(DONE, base_text='')
-                    mix_no_voc = process_secondary_model(self.pre_proc_model, self.process_data, is_pre_proc_model=True)
-                    inst_mix = prepare_mix(mix_no_voc[INST_STEM])
-                    self.process_iteration()
-                    self.running_inference_console_write(is_no_write=is_no_write)
-                    inst_source = self.demix_demucs(inst_mix)
-                    self.process_iteration()
+                if self.pre_proc_model:
+                    if self.primary_stem not in [VOCAL_STEM, INST_STEM]:
+                        is_no_write = True
+                        self.write_to_console(DONE, base_text='')
+                        mix_no_voc = process_secondary_model(self.pre_proc_model, self.process_data, is_pre_proc_model=True)
+                        inst_mix = prepare_mix(mix_no_voc[INST_STEM])
+                        self.process_iteration()
+                        self.running_inference_console_write(is_no_write=is_no_write)
+                        inst_source = self.demix_demucs(inst_mix)
+                        self.process_iteration()
 
-            self.running_inference_console_write(is_no_write=is_no_write) if not self.pre_proc_model else None
-            
-            if self.primary_model_name == self.model_basename and isinstance(self.primary_sources, np.ndarray) and self.pre_proc_model:
-                source = self.primary_sources
-            else:
-                source = self.demix_demucs(mix)
-            
-            self.write_to_console(DONE, base_text='')
-            
-            del self.demucs
-            clear_gpu_cache()
+                self.running_inference_console_write(is_no_write=is_no_write) if not self.pre_proc_model else None
+                
+                if self.primary_model_name == self.model_basename and isinstance(self.primary_sources, np.ndarray) and self.pre_proc_model:
+                    source = self.primary_sources
+                else:
+                    source = self.demix_demucs(mix)
+                
+                self.write_to_console(DONE, base_text='')
+                
+                del self.demucs
+                clear_gpu_cache()
             
         if isinstance(inst_source, np.ndarray):
             source_reshape = spec_utils.reshape_sources(inst_source[self.demucs_source_map[VOCAL_STEM]], source[self.demucs_source_map[VOCAL_STEM]])
@@ -1204,54 +1220,54 @@ class SeperateDemucs(SeperateAttributes):
                 return secondary_sources
     
     def demix_demucs(self, mix):
-        
-        org_mix = mix
-        
-        if self.is_pitch_change:
-            mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
-        
-        processed = {}
-        mix = torch.tensor(mix, dtype=torch.float32)
-        ref = mix.mean(0)        
-        mix = (mix - ref.mean()) / ref.std()
-        mix_infer = mix 
-        
-        with torch.no_grad():
-            if self.demucs_version == DEMUCS_V1:
-                sources = apply_model_v1(self.demucs, 
-                                            mix_infer.to(self.device), 
-                                            self.shifts, 
-                                            self.is_split_mode,
-                                            set_progress_bar=self.set_progress_bar)
-            elif self.demucs_version == DEMUCS_V2:
-                sources = apply_model_v2(self.demucs, 
-                                            mix_infer.to(self.device), 
+        with trace_phase("separate", "demix_demucs", engine="SeperateDemucs", model=self.model_basename):
+            org_mix = mix
+            
+            if self.is_pitch_change:
+                mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
+            
+            processed = {}
+            mix = torch.tensor(mix, dtype=torch.float32)
+            ref = mix.mean(0)        
+            mix = (mix - ref.mean()) / ref.std()
+            mix_infer = mix 
+            
+            with torch.no_grad():
+                if self.demucs_version == DEMUCS_V1:
+                    sources = apply_model_v1(self.demucs, 
+                                                mix_infer.to(self.device), 
+                                                self.shifts, 
+                                                self.is_split_mode,
+                                                set_progress_bar=self.set_progress_bar)
+                elif self.demucs_version == DEMUCS_V2:
+                    sources = apply_model_v2(self.demucs, 
+                                                mix_infer.to(self.device), 
+                                                self.shifts,
+                                                self.is_split_mode,
+                                                self.overlap,
+                                                set_progress_bar=self.set_progress_bar)
+                else:
+                    sources = apply_model(self.demucs, 
+                                            mix_infer[None], 
                                             self.shifts,
                                             self.is_split_mode,
                                             self.overlap,
-                                            set_progress_bar=self.set_progress_bar)
-            else:
-                sources = apply_model(self.demucs, 
-                                        mix_infer[None], 
-                                        self.shifts,
-                                        self.is_split_mode,
-                                        self.overlap,
-                                        static_shifts=1 if self.shifts == 0 else self.shifts,
-                                        set_progress_bar=self.set_progress_bar,
-                                        device=self.device)[0]
-        
-        sources = (sources * ref.std() + ref.mean()).cpu().numpy()
-        sources[[0,1]] = sources[[1,0]]
-        processed[mix] = sources[:,:,0:None].copy()
-        sources = list(processed.values())
-        sources = [s[:,:,0:None] for s in sources]
-        #sources = [self.pitch_fix(s[:,:,0:None], sr_pitched, org_mix) if self.is_pitch_change else s[:,:,0:None] for s in sources]
-        sources = np.concatenate(sources, axis=-1)
-                     
-        if self.is_pitch_change:
-            sources = np.stack([self.pitch_fix(stem, sr_pitched, org_mix) for stem in sources])
-                        
-        return sources
+                                            static_shifts=1 if self.shifts == 0 else self.shifts,
+                                            set_progress_bar=self.set_progress_bar,
+                                            device=self.device)[0]
+            
+            sources = (sources * ref.std() + ref.mean()).cpu().numpy()
+            sources[[0,1]] = sources[[1,0]]
+            processed[mix] = sources[:,:,0:None].copy()
+            sources = list(processed.values())
+            sources = [s[:,:,0:None] for s in sources]
+            #sources = [self.pitch_fix(s[:,:,0:None], sr_pitched, org_mix) if self.is_pitch_change else s[:,:,0:None] for s in sources]
+            sources = np.concatenate(sources, axis=-1)
+                         
+            if self.is_pitch_change:
+                sources = np.stack([self.pitch_fix(stem, sr_pitched, org_mix) for stem in sources])
+                            
+            return sources
 
 class SeperateVR(SeperateAttributes):        
 
@@ -1260,39 +1276,38 @@ class SeperateVR(SeperateAttributes):
             y_spec, v_spec = self.primary_sources
             self.load_cached_sources()
         else:
-            debug("separate", f"SeperateVR.seperate start model={self.model_basename}")
-            self.start_inference_console_write()
-            self.write_to_console(LOADING_MODEL)
-            debug("separate", "SeperateVR loading model weights")
+            with trace_phase("separate", "seperate", engine="SeperateVR", model=self.model_basename):
+                self.start_inference_console_write()
+                self.write_to_console(LOADING_MODEL)
 
-            device = self.device
+                device = self.device
 
-            nn_arch_sizes = [
-                31191, # default
-                33966, 56817, 123821, 123812, 129605, 218409, 537238, 537227]
-            vr_5_1_models = [56817, 218409]
-            model_size = math.ceil(os.stat(self.model_path).st_size / 1024)
-            nn_arch_size = min(nn_arch_sizes, key=lambda x:abs(x-model_size))
+                nn_arch_sizes = [
+                    31191, # default
+                    33966, 56817, 123821, 123812, 129605, 218409, 537238, 537227]
+                vr_5_1_models = [56817, 218409]
+                model_size = math.ceil(os.stat(self.model_path).st_size / 1024)
+                nn_arch_size = min(nn_arch_sizes, key=lambda x:abs(x-model_size))
 
-            if nn_arch_size in vr_5_1_models or self.is_vr_51_model:
-                self.model_run = nets_new.CascadedNet(self.mp.param['bins'] * 2, 
-                                                      nn_arch_size, 
-                                                      nout=self.model_capacity[0], 
-                                                      nout_lstm=self.model_capacity[1])
-                self.is_vr_51_model = True
-            else:
-                self.model_run = nets.determine_model_capacity(self.mp.param['bins'] * 2, nn_arch_size)
+                if nn_arch_size in vr_5_1_models or self.is_vr_51_model:
+                    self.model_run = nets_new.CascadedNet(self.mp.param['bins'] * 2, 
+                                                          nn_arch_size, 
+                                                          nout=self.model_capacity[0], 
+                                                          nout_lstm=self.model_capacity[1])
+                    self.is_vr_51_model = True
+                else:
+                    self.model_run = nets.determine_model_capacity(self.mp.param['bins'] * 2, nn_arch_size)
+                                
+                self.model_run.load_state_dict(torch.load(self.model_path, map_location=cpu)) 
+                self.model_run.to(device) 
+
+                self.running_inference_console_write()
                             
-            self.model_run.load_state_dict(torch.load(self.model_path, map_location=cpu)) 
-            self.model_run.to(device) 
-
-            self.running_inference_console_write()
-                        
-            self.check_run_control()
-            y_spec, v_spec = self.inference_vr(self.loading_mix(), device, self.aggressiveness)
-            if not self.is_vocal_split_model:
-                self.cache_source((y_spec, v_spec))
-            self.write_to_console(DONE, base_text='')
+                self.check_run_control()
+                y_spec, v_spec = self.inference_vr(self.loading_mix(), device, self.aggressiveness)
+                if not self.is_vocal_split_model:
+                    self.cache_source((y_spec, v_spec))
+                self.write_to_console(DONE, base_text='')
             
         if self.is_secondary_model_activated and self.secondary_model:
             self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, self.process_data, main_process_method=self.process_method, main_model_primary=self.primary_stem)
@@ -1365,75 +1380,76 @@ class SeperateVR(SeperateAttributes):
         return X_spec
 
     def inference_vr(self, X_spec, device, aggressiveness):
-        def _execute(X_mag_pad, roi_size):
-            X_dataset = []
-            patches = (X_mag_pad.shape[2] - 2 * self.model_run.offset) // roi_size
-            total_iterations = patches//self.batch_size if not self.is_tta else (patches//self.batch_size)*2
-            for i in range(patches):
-                start = i * roi_size
-                X_mag_window = X_mag_pad[:, :, start:start + self.window_size]
-                X_dataset.append(X_mag_window)
+        with trace_phase("separate", "inference_vr", engine="SeperateVR", model=self.model_basename):
+            def _execute(X_mag_pad, roi_size):
+                X_dataset = []
+                patches = (X_mag_pad.shape[2] - 2 * self.model_run.offset) // roi_size
+                total_iterations = patches//self.batch_size if not self.is_tta else (patches//self.batch_size)*2
+                for i in range(patches):
+                    start = i * roi_size
+                    X_mag_window = X_mag_pad[:, :, start:start + self.window_size]
+                    X_dataset.append(X_mag_window)
 
-            X_dataset = np.asarray(X_dataset)
-            self.model_run.eval()
-            with torch.no_grad():
-                mask = []
-                for i in range(0, patches, self.batch_size):
-                    self.progress_value += 1
-                    if self.progress_value >= total_iterations:
-                        self.progress_value = total_iterations
-                    self.set_progress_bar(0.1, 0.8/total_iterations*self.progress_value)
-                    X_batch = X_dataset[i: i + self.batch_size]
-                    X_batch = torch.from_numpy(X_batch).to(device)
-                    pred = self.model_run.predict_mask(X_batch)
-                    if not pred.size()[3] > 0:
+                X_dataset = np.asarray(X_dataset)
+                self.model_run.eval()
+                with torch.no_grad():
+                    mask = []
+                    for i in range(0, patches, self.batch_size):
+                        self.progress_value += 1
+                        if self.progress_value >= total_iterations:
+                            self.progress_value = total_iterations
+                        self.set_progress_bar(0.1, 0.8/total_iterations*self.progress_value)
+                        X_batch = X_dataset[i: i + self.batch_size]
+                        X_batch = torch.from_numpy(X_batch).to(device)
+                        pred = self.model_run.predict_mask(X_batch)
+                        if not pred.size()[3] > 0:
+                            raise Exception(ERROR_MAPPER[WINDOW_SIZE_ERROR])
+                        pred = pred.detach().cpu().numpy()
+                        pred = np.concatenate(pred, axis=2)
+                        mask.append(pred)
+                    if len(mask) == 0:
                         raise Exception(ERROR_MAPPER[WINDOW_SIZE_ERROR])
-                    pred = pred.detach().cpu().numpy()
-                    pred = np.concatenate(pred, axis=2)
-                    mask.append(pred)
-                if len(mask) == 0:
-                    raise Exception(ERROR_MAPPER[WINDOW_SIZE_ERROR])
-                
-                mask = np.concatenate(mask, axis=2)
-            return mask
-
-        def postprocess(mask, X_mag, X_phase):
-            is_non_accom_stem = False
-            for stem in NON_ACCOM_STEMS:
-                if stem == self.primary_stem:
-                    is_non_accom_stem = True
                     
-            mask = spec_utils.adjust_aggr(mask, is_non_accom_stem, aggressiveness)
+                    mask = np.concatenate(mask, axis=2)
+                return mask
 
-            if self.is_post_process:
-                mask = spec_utils.merge_artifacts(mask, thres=self.post_process_threshold)
+            def postprocess(mask, X_mag, X_phase):
+                is_non_accom_stem = False
+                for stem in NON_ACCOM_STEMS:
+                    if stem == self.primary_stem:
+                        is_non_accom_stem = True
+                        
+                mask = spec_utils.adjust_aggr(mask, is_non_accom_stem, aggressiveness)
 
-            y_spec = mask * X_mag * np.exp(1.j * X_phase)
-            v_spec = (1 - mask) * X_mag * np.exp(1.j * X_phase)
-        
-            return y_spec, v_spec
-        
-        X_mag, X_phase = spec_utils.preprocess(X_spec)
-        n_frame = X_mag.shape[2]
-        pad_l, pad_r, roi_size = spec_utils.make_padding(n_frame, self.window_size, self.model_run.offset)
-        X_mag_pad = np.pad(X_mag, ((0, 0), (0, 0), (pad_l, pad_r)), mode='constant')
-        X_mag_pad /= X_mag_pad.max()
-        mask = _execute(X_mag_pad, roi_size)
-        
-        if self.is_tta:
-            pad_l += roi_size // 2
-            pad_r += roi_size // 2
+                if self.is_post_process:
+                    mask = spec_utils.merge_artifacts(mask, thres=self.post_process_threshold)
+
+                y_spec = mask * X_mag * np.exp(1.j * X_phase)
+                v_spec = (1 - mask) * X_mag * np.exp(1.j * X_phase)
+            
+                return y_spec, v_spec
+            
+            X_mag, X_phase = spec_utils.preprocess(X_spec)
+            n_frame = X_mag.shape[2]
+            pad_l, pad_r, roi_size = spec_utils.make_padding(n_frame, self.window_size, self.model_run.offset)
             X_mag_pad = np.pad(X_mag, ((0, 0), (0, 0), (pad_l, pad_r)), mode='constant')
             X_mag_pad /= X_mag_pad.max()
-            mask_tta = _execute(X_mag_pad, roi_size)
-            mask_tta = mask_tta[:, :, roi_size // 2:]
-            mask = (mask[:, :, :n_frame] + mask_tta[:, :, :n_frame]) * 0.5
-        else:
-            mask = mask[:, :, :n_frame]
+            mask = _execute(X_mag_pad, roi_size)
+            
+            if self.is_tta:
+                pad_l += roi_size // 2
+                pad_r += roi_size // 2
+                X_mag_pad = np.pad(X_mag, ((0, 0), (0, 0), (pad_l, pad_r)), mode='constant')
+                X_mag_pad /= X_mag_pad.max()
+                mask_tta = _execute(X_mag_pad, roi_size)
+                mask_tta = mask_tta[:, :, roi_size // 2:]
+                mask = (mask[:, :, :n_frame] + mask_tta[:, :, :n_frame]) * 0.5
+            else:
+                mask = mask[:, :, :n_frame]
 
-        y_spec, v_spec = postprocess(mask, X_mag, X_phase)
-        
-        return y_spec, v_spec
+            y_spec, v_spec = postprocess(mask, X_mag, X_phase)
+            
+            return y_spec, v_spec
 
     def spec_to_wav(self, spec):
         if self.high_end_process.startswith('mirroring') and isinstance(self.input_high_end, np.ndarray) and self.input_high_end_h:        
@@ -1452,29 +1468,34 @@ def process_secondary_model(secondary_model: ModelData,
                             is_pre_proc_model=False, 
                             is_return_dual=True, 
                             main_model_primary=None):
+    with trace_phase(
+        "separate",
+        "secondary_model",
+        model=secondary_model.model_basename,
+        method=secondary_model.process_method,
+    ):
+        if not is_pre_proc_model:
+            process_iteration = process_data['process_iteration']
+            process_iteration()
         
-    if not is_pre_proc_model:
-        process_iteration = process_data['process_iteration']
-        process_iteration()
-    
-    if secondary_model.process_method == VR_ARCH_TYPE:
-        seperator = SeperateVR(secondary_model, process_data, main_model_primary_stem_4_stem=main_model_primary_stem_4_stem, main_process_method=main_process_method, main_model_primary=main_model_primary)
-    if secondary_model.process_method == MDX_ARCH_TYPE:
-        if secondary_model.is_mdx_c:
-            seperator = SeperateMDXC(secondary_model, process_data, main_model_primary_stem_4_stem=main_model_primary_stem_4_stem, main_process_method=main_process_method, is_return_dual=is_return_dual, main_model_primary=main_model_primary)
-        else:
-            seperator = SeperateMDX(secondary_model, process_data, main_model_primary_stem_4_stem=main_model_primary_stem_4_stem, main_process_method=main_process_method, main_model_primary=main_model_primary)
-    if secondary_model.process_method == DEMUCS_ARCH_TYPE:
-        seperator = SeperateDemucs(secondary_model, process_data, main_model_primary_stem_4_stem=main_model_primary_stem_4_stem, main_process_method=main_process_method, is_return_dual=is_return_dual, main_model_primary=main_model_primary)
-        
-    secondary_sources = seperator.seperate()
+        if secondary_model.process_method == VR_ARCH_TYPE:
+            seperator = SeperateVR(secondary_model, process_data, main_model_primary_stem_4_stem=main_model_primary_stem_4_stem, main_process_method=main_process_method, main_model_primary=main_model_primary)
+        if secondary_model.process_method == MDX_ARCH_TYPE:
+            if secondary_model.is_mdx_c:
+                seperator = SeperateMDXC(secondary_model, process_data, main_model_primary_stem_4_stem=main_model_primary_stem_4_stem, main_process_method=main_process_method, is_return_dual=is_return_dual, main_model_primary=main_model_primary)
+            else:
+                seperator = SeperateMDX(secondary_model, process_data, main_model_primary_stem_4_stem=main_model_primary_stem_4_stem, main_process_method=main_process_method, main_model_primary=main_model_primary)
+        if secondary_model.process_method == DEMUCS_ARCH_TYPE:
+            seperator = SeperateDemucs(secondary_model, process_data, main_model_primary_stem_4_stem=main_model_primary_stem_4_stem, main_process_method=main_process_method, is_return_dual=is_return_dual, main_model_primary=main_model_primary)
+            
+        secondary_sources = seperator.seperate()
 
-    if type(secondary_sources) is dict and not is_source_load and not is_pre_proc_model:
-        return gather_sources(secondary_model.primary_model_primary_stem, secondary_stem(secondary_model.primary_model_primary_stem), secondary_sources)
-    else:
-        return secondary_sources
+        if type(secondary_sources) is dict and not is_source_load and not is_pre_proc_model:
+            return gather_sources(secondary_model.primary_model_primary_stem, secondary_stem(secondary_model.primary_model_primary_stem), secondary_sources)
+        else:
+            return secondary_sources
     
-def process_chain_model(secondary_model: ModelData, 
+def process_chain_model(secondary_model: ModelData,
                         process_data, 
                         vocal_stem_path, 
                         master_vocal_source, 
@@ -1521,22 +1542,22 @@ def gather_sources(primary_stem_name, secondary_stem_name, secondary_sources: di
     return source_primary, source_secondary
         
 def prepare_mix(mix):
-    
-    audio_path = mix
+    with trace_phase("separate", "prepare_mix"):
+        audio_path = mix
 
-    if not isinstance(mix, np.ndarray):
-        mix, sr = librosa.load(mix, mono=False, sr=44100)
-    else:
-        mix = mix.T
+        if not isinstance(mix, np.ndarray):
+            mix, sr = librosa.load(mix, mono=False, sr=44100)
+        else:
+            mix = mix.T
 
-    if isinstance(audio_path, str):
-        if not np.any(mix) and audio_path.endswith('.mp3'):
-            mix = rerun_mp3(audio_path)
+        if isinstance(audio_path, str):
+            if not np.any(mix) and audio_path.endswith('.mp3'):
+                mix = rerun_mp3(audio_path)
 
-    if mix.ndim == 1:
-        mix = np.asfortranarray([mix,mix])
+        if mix.ndim == 1:
+            mix = np.asfortranarray([mix,mix])
 
-    return mix
+        return mix
 
 def rerun_mp3(audio_file, sample_rate=44100):
 

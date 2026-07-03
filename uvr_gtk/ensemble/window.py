@@ -650,6 +650,9 @@ class EnsemblePage:
         self.window.begin_run(self)
 
         try:
+            from uvr_core.debug_log import debug
+
+            debug("ui", f"ensemble start files={len(input_paths)}")
             self.context.runner.start_ensemble(input_paths, callbacks)
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
             self.window.fail_to_start(f"Unable to start ensemble: {exc}", exc)

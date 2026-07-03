@@ -17,10 +17,19 @@ from gi.repository import Adw, Gio, GLib, Gtk
 
 from data.constants import STOP_PROCESS_CONFIRM, STOP_PROCESSING
 
-from uvr_core.debug_log import clear_run_start, debug, mark_run_start
+from uvr_core.debug_log import (
+    clear_run_start,
+    debug,
+    mark_run_start,
+    next_seq,
+    preview_text,
+    set_correlation_seq,
+    verbose,
+)
+from uvr_core.separate_import import engines_imported, warm_status
 
 from . import APP_ID
-from .dispatch import gtk_job_callbacks
+from .dispatch import gtk_job_callbacks, reset_progress_log
 
 if TYPE_CHECKING:
     from .window import MainWindow
@@ -65,6 +74,7 @@ class RunController:
         except Exception:  # noqa: BLE001 - readiness check must never break the UI
             reason = None
         if reason is not None:
+            debug("ui", f"handle_start blocked reason={reason!r}")
             self._window._toast(reason)
             return
 
@@ -81,7 +91,8 @@ class RunController:
     def begin_run(self, target) -> None:
         """Shared bookkeeping when any run target starts its worker."""
         mark_run_start()
-        debug("ui", f"begin_run target={type(target).__name__}")
+        reset_progress_log()
+        debug("ui", f"begin_run target={type(target).__name__} engines_imported={engines_imported()} warm={warm_status()}")
         self._running_target = target
         self._run_output_dir = self._window.settings.get("export_path") or ""
         self._run_label = self._run_label_for(target)
@@ -97,6 +108,7 @@ class RunController:
 
     def fail_to_start(self, message: str, exc: BaseException) -> None:
         """Recover the UI when a run target could not launch its worker."""
+        debug("ui", f"fail_to_start error={type(exc).__name__}: {exc}")
         clear_run_start()
         self._window._stop_pulse()
         self._set_running(False)
@@ -117,6 +129,7 @@ class RunController:
             return
         if self._stop_confirm_dialog is not None:
             return
+        debug("ui", "handle_stop presenting confirm dialog")
         self._present_stop_confirm()
 
     def _run_label_for(self, target) -> str:
@@ -157,12 +170,14 @@ class RunController:
         target = self._running_target
         if target is None:
             return
+        debug("ui", f"stop confirmed target={type(target).__name__}")
         self._window.console.append(f"\n{STOP_PROCESSING}\n")
         target.stop()
         self._finish_run_ui(stopped=True, defer_cleanup=True)
         self._schedule_inference_cleanup(target)
 
     def _schedule_inference_cleanup(self, target: Any) -> None:
+        debug("cleanup", f"cleanup poll scheduled target={type(target).__name__}")
         self._cleanup_target = target
         self._cleanup_attempts = 0
         GLib.timeout_add(50, self._poll_inference_cleanup)
@@ -179,17 +194,23 @@ class RunController:
         if target is None:
             return False
         self._cleanup_attempts += 1
-        if not self._worker_is_running(target):
+        alive = self._worker_is_running(target)
+        if not alive:
+            debug("cleanup", f"poll attempt={self._cleanup_attempts} worker_alive=False releasing")
             self._release_inference_memory(force_if_alive=False)
             self._cleanup_target = None
             return False
         if self._cleanup_attempts >= 80:
+            debug("cleanup", f"poll attempt={self._cleanup_attempts} timeout force=True")
             self._release_inference_memory(force_if_alive=True)
             self._cleanup_target = None
             return False
+        if verbose():
+            debug("cleanup", f"poll attempt={self._cleanup_attempts} worker_alive=True")
         return True
 
     def _finish_run_ui(self, *, stopped: bool = False, defer_cleanup: bool = False) -> None:
+        debug("ui", f"finish_run_ui stopped={stopped} defer_cleanup={defer_cleanup}")
         if stopped and not defer_cleanup:
             self._release_inference_memory(wait_for_stop=0.5)
         self._window._stop_pulse()
@@ -200,10 +221,12 @@ class RunController:
         clear_run_start()
 
     def _on_stopped(self) -> None:
+        debug("ui", "on_stopped cooperative worker stop")
         self._cleanup_target = None
         self._finish_run_ui(stopped=True)
 
     def _on_complete(self) -> None:
+        debug("ui", f"on_complete output_dir={os.path.basename(self._run_output_dir or '') or '(none)'}")
         self._release_inference_memory(wait_for_stop=0.5)
         self._window._stop_pulse()
         self._set_running(False)
@@ -216,6 +239,7 @@ class RunController:
         self._send_completion_notification(output_dir)
 
     def _on_error(self, exc: BaseException) -> None:
+        debug("ui", f"on_error error={type(exc).__name__}: {exc}")
         self._release_inference_memory()
         self._window._stop_pulse()
         self._set_running(False)
@@ -317,6 +341,10 @@ class RunController:
         wait_for_stop: float = 0.0,
         force_if_alive: bool = False,
     ) -> None:
+        debug(
+            "cleanup",
+            f"release_inference_memory wait_for_stop={wait_for_stop} force_if_alive={force_if_alive}",
+        )
         window = self._window
         window.context.runner.release_inference_memory(
             wait_for_stop=wait_for_stop,

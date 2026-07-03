@@ -11,7 +11,7 @@ from typing import Callable, Optional
 from gi.repository import GLib, Gtk
 
 from data.constants import DONE
-from uvr_core.debug_log import debug
+from uvr_core.debug_log import correlation_seq, debug, preview_text, verbose
 
 
 class ConsoleView(Gtk.ScrolledWindow):
@@ -63,16 +63,21 @@ class ConsoleView(Gtk.ScrolledWindow):
         upper = vadj.get_upper()
         page = vadj.get_page_size()
         if upper <= page + 0.5 or self._defer_scroll:
-            # Pin to top when content fits or while the log panel is still opening.
-            # Do not scroll to end here — layout is often unstable during reveal.
             if vadj.get_value() != vadj.get_lower():
+                if verbose():
+                    debug(
+                        "console",
+                        f"viewport pin top upper={upper:.0f} page={page:.0f} defer={self._defer_scroll}",
+                    )
                 vadj.set_value(vadj.get_lower())
         return GLib.SOURCE_REMOVE
 
     def defer_scroll_until_settled(self) -> None:
+        debug("console", "defer_scroll=True")
         self._defer_scroll = True
 
     def resume_scroll(self) -> None:
+        debug("console", "defer_scroll=False resume_scroll")
         self._defer_scroll = False
         self._reset_scroll()
 
@@ -81,15 +86,24 @@ class ConsoleView(Gtk.ScrolledWindow):
         # Skip it when there is no open line, which avoids a lone " Done!" at run
         # start before the first "Running inference..." message is written.
         if text == DONE and (self.is_empty() or self.get_text().endswith("\n")):
-            debug("console", f"append skipped DONE (empty={self.is_empty()})")
+            if verbose():
+                debug("console", f"append skipped DONE (empty={self.is_empty()})")
             return
 
-        preview = text.replace("\n", "\\n")
-        if len(preview) > 72:
-            preview = preview[:69] + "..."
+        seq = correlation_seq()
+        extra = ""
+        if verbose():
+            vadj = self.get_vadjustment()
+            if vadj is not None:
+                extra = (
+                    f" vadj=({vadj.get_value():.0f}/{vadj.get_upper():.0f}"
+                    f" page={vadj.get_page_size():.0f})"
+                )
         debug(
             "console",
-            f"append {preview!r} defer_scroll={self._defer_scroll} mapped={self.get_mapped()}",
+            f"append {preview_text(text)!r} defer_scroll={self._defer_scroll}"
+            f" mapped={self.get_mapped()}{extra}",
+            seq=seq,
         )
 
         end = self._buffer.get_end_iter()

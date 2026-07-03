@@ -312,11 +312,15 @@ class DownloadManager:
         Returns one of ``"complete"`` / ``"stopped"`` / ``"exists"``; raises on
         network/IO error so the caller can surface it through the error log.
         """
+        from .debug_log import debug, debug_elapsed
+
         if not jobs:
             if on_info:
                 on_info(NO_MODEL)
             return "exists"
 
+        started = time.perf_counter()
+        debug("download", f"download start jobs={len(jobs)}")
         total = len(jobs)
         any_downloaded = False
         for index, (url, save_path) in enumerate(jobs):
@@ -339,7 +343,9 @@ class DownloadManager:
 
         if on_progress:
             on_progress(1.0)
-        return "complete" if any_downloaded else "exists"
+        result = "complete" if any_downloaded else "exists"
+        debug_elapsed("download", f"download done status={result}", started)
+        return result
 
     def _download_file(self, url, save_path, index, total, on_progress, stop_event) -> None:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)

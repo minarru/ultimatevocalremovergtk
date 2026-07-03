@@ -287,6 +287,12 @@ class AudioToolRunner:
             return
         from kthread import KThread
 
+        from .debug_log import debug
+
+        debug(
+            "audio",
+            f"start tool={tool!r} singles={len(single_inputs)} pairs={len(dual_pairs)}",
+        )
         self._is_stopped = False
         self._is_paused = False
         self._apollo_params = apollo_params or {}
@@ -303,6 +309,9 @@ class AudioToolRunner:
         self._is_paused = False
 
     def stop(self, *, force: bool = False) -> None:
+        from .debug_log import debug
+
+        debug("audio", f"stop force={force} alive={self.is_running()}")
         self._is_paused = False
         self._is_stopped = True
         if force and self.is_running():
@@ -334,6 +343,9 @@ class AudioToolRunner:
         dual_pairs: List[Tuple[str, str]],
         callbacks: JobCallbacks,
     ) -> None:
+        from .debug_log import debug, debug_elapsed
+
+        debug("audio", f"_run entered tool={tool!r}")
         stime = time.perf_counter()
         time_elapsed = lambda: f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
 
@@ -359,13 +371,16 @@ class AudioToolRunner:
             callbacks.console(f"\nProcess complete\n{time_elapsed()}\n")
             callbacks.complete()
         except ProcessStopped:
+            debug("audio", "_run ProcessStopped")
             callbacks.console(PROCESS_STOPPED_BY_USER)
             callbacks.stopped()
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
             if self._is_stopped:
+                debug("audio", "_run stopped during error")
                 callbacks.console(PROCESS_STOPPED_BY_USER)
                 callbacks.stopped()
                 return
+            debug("audio", f"_run failed {type(exc).__name__}: {exc}")
             callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
             callbacks.error(exc)
         finally:

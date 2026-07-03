@@ -226,6 +226,9 @@ class ModelRepository:
         try:
             return ModelData(settings, self, model_name, process_method, is_dry_check=True)
         except (FileNotFoundError, ValueError, KeyError, OSError, json.JSONDecodeError) as exc:
+            from .debug_log import debug
+
+            debug("model", f"resolve_model_dry failed model={model_name!r} error={type(exc).__name__}")
             logger.debug("resolve_model_dry failed for %r: %s", model_name, exc)
             return None
 
@@ -884,6 +887,9 @@ def assemble_model_data(
         valid = [model for model in models if model.model_status]
         skipped = len(models) - len(valid)
         if skipped:
+            from .debug_log import debug
+
+            debug("model", f"assemble_model_data skipped={skipped} valid={len(valid)}")
             logger.warning(
                 "%d ensemble member(s) could not be resolved and were skipped",
                 skipped,
@@ -892,6 +898,9 @@ def assemble_model_data(
             raise ValueError(
                 "Too few valid ensemble members; check that selected models are installed."
             )
+        from .debug_log import debug
+
+        debug("model", f"assemble_model_data ensemble members={len(valid)}")
         return valid
     if not model:
         raise ValueError(f"assemble_model_data requires a model name for {arch_type}")

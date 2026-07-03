@@ -6,6 +6,8 @@ import gc
 import time
 from typing import Any, Mapping, Optional
 
+from .debug_log import debug, debug_elapsed, verbose
+
 
 def release_torch_model(model: Any) -> None:
     """Move a torch module off the device and drop the reference when possible."""
@@ -44,6 +46,8 @@ def release_separator(separator: Any) -> None:
     """Drop a separator instance's loaded model and large cached arrays."""
     if separator is None:
         return
+    model_name = getattr(separator, "model_basename", None)
+    debug("cleanup", f"release_separator model={model_name!r}")
     release_torch_model(getattr(separator, "model_run", None))
     separator.model_run = None
     release_torch_model(getattr(separator, "_inference_model", None))
@@ -77,14 +81,23 @@ def release_inference_memory(
     force_if_alive: bool = False,
 ) -> None:
     """Clear per-run caches and return cached GPU/CPU allocator memory."""
+    started = time.perf_counter()
+    debug(
+        "cleanup",
+        f"release_inference_memory enter wait_for_stop={wait_for_stop} force={force_if_alive}",
+    )
     if runner is not None:
         is_running = getattr(runner, "is_running", None)
         stop = getattr(runner, "stop", None)
         if wait_for_stop > 0 and callable(is_running) and is_running():
+            wait_started = time.perf_counter()
             deadline = time.monotonic() + wait_for_stop
             while is_running() and time.monotonic() < deadline:
                 time.sleep(0.05)
+            if verbose():
+                debug_elapsed("cleanup", "wait_for_stop", wait_started)
         if force_if_alive and callable(is_running) and is_running() and callable(stop):
+            debug("cleanup", "force stop worker thread")
             stop(force=True)
             time.sleep(0.15)
         if not callable(is_running) or not is_running() or force_if_alive:
@@ -101,3 +114,4 @@ def release_inference_memory(
     gc.collect()
     clear_gpu_cache()
     gc.collect()
+    debug_elapsed("cleanup", "release_inference_memory done", started)

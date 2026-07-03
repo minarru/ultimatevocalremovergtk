@@ -2,15 +2,16 @@
 
 Enable with the ``UVR_DEBUG`` environment variable::
 
-    UVR_DEBUG=1 python __main__.py
-    UVR_DEBUG=ui,dispatch,worker,separate python __main__.py
+    UVR_DEBUG=1 python -m uvr_gtk
+    UVR_DEBUG=ui,dispatch,worker,separate,cleanup python -m uvr_gtk
 
 Recognised components: ``ui``, ``dispatch``, ``console``, ``worker``,
-``separate``, ``cleanup``. ``1`` / ``all`` enables every component.
+``separate``, ``cleanup``, ``model``, ``audio``, ``download``.
+``1`` / ``all`` enables every component.
 
-When stderr is a TTY, lines are colorized per component. Set ``NO_COLOR=1`` or
-``UVR_DEBUG_NOCOLOR=1`` to disable ANSI codes. Set ``UVR_DEBUG_COLOR=1`` to
-force color even when stderr is not a TTY.
+``UVR_DEBUG_VERBOSE=1`` enables chatty logs (every progress tick, scroll
+viewport detail). When stderr is a TTY, lines are colorized per component.
+Set ``NO_COLOR=1`` or ``UVR_DEBUG_NOCOLOR=1`` to disable ANSI codes.
 """
 
 from __future__ import annotations
@@ -19,11 +20,15 @@ import os
 import sys
 import threading
 import time
-from typing import Optional
+from contextlib import contextmanager
+from typing import Iterator, Optional
 
 _ENABLED: Optional[bool] = None
+_VERBOSE: Optional[bool] = None
 _FLAGS: set[str] = set()
 _RUN_T0: Optional[float] = None
+_SEQ: int = 0
+_TLS = threading.local()
 
 _RESET = "\033[0m"
 _DIM = "\033[2m"
@@ -36,6 +41,9 @@ _COMPONENT_COLORS = {
     "worker": "\033[35m",  # magenta
     "separate": "\033[34m",  # blue
     "cleanup": "\033[31m",  # red
+    "model": "\033[96m",  # bright cyan
+    "audio": "\033[95m",  # bright magenta
+    "download": "\033[94m",  # bright blue
 }
 _DEFAULT_COMPONENT = "\033[37m"  # white
 
@@ -56,6 +64,14 @@ def _parse_env() -> None:
         _FLAGS = {"all"}
 
 
+def verbose() -> bool:
+    global _VERBOSE
+    if _VERBOSE is None:
+        raw = os.environ.get("UVR_DEBUG_VERBOSE", "").strip().lower()
+        _VERBOSE = raw in {"1", "true", "yes", "on"}
+    return _VERBOSE
+
+
 def _use_color() -> bool:
     if os.environ.get("NO_COLOR") or os.environ.get("UVR_DEBUG_NOCOLOR") == "1":
         return False
@@ -73,6 +89,22 @@ def _paint(code: str, text: str, *, colorize: bool) -> str:
     return f"{code}{text}{_RESET}"
 
 
+def preview_text(text: str, max_len: int = 72) -> str:
+    preview = text.replace("\n", "\\n")
+    if len(preview) > max_len:
+        return preview[: max_len - 3] + "..."
+    return preview
+
+
+def format_ctx(**ctx: object) -> str:
+    parts = []
+    for key, value in ctx.items():
+        if value is None:
+            continue
+        parts.append(f"{key}={value!r}")
+    return " ".join(parts)
+
+
 def format_line(
     component: str,
     message: str,
@@ -82,8 +114,10 @@ def format_line(
     run_delta: str,
     thread: str,
     colorize: bool,
+    seq: Optional[int] = None,
 ) -> str:
-    meta = _paint(_DIM, f"[UVR {wall}.{millis:03d}", colorize=colorize)
+    prefix = f"#{seq} " if seq is not None else ""
+    meta = _paint(_DIM, f"[UVR {prefix}{wall}.{millis:03d}", colorize=colorize)
     if run_delta:
         meta += _paint(_BOLD + _RUN_DELTA, run_delta, colorize=colorize)
     meta += _paint(_DIM, f" {thread}]", colorize=colorize)
@@ -106,8 +140,9 @@ def enabled(component: str = "") -> bool:
 
 def mark_run_start() -> None:
     """Reset the per-run monotonic clock (call when the user starts processing)."""
-    global _RUN_T0
+    global _RUN_T0, _SEQ
     _RUN_T0 = time.monotonic()
+    _SEQ = 0
 
 
 def clear_run_start() -> None:
@@ -115,7 +150,22 @@ def clear_run_start() -> None:
     _RUN_T0 = None
 
 
-def debug(component: str, message: str) -> None:
+def next_seq() -> int:
+    """Return the next per-run correlation sequence number."""
+    global _SEQ
+    _SEQ += 1
+    return _SEQ
+
+
+def set_correlation_seq(seq: int) -> None:
+    _TLS.seq = seq
+
+
+def correlation_seq() -> Optional[int]:
+    return getattr(_TLS, "seq", None)
+
+
+def debug(component: str, message: str, *, seq: Optional[int] = None) -> None:
     if not enabled(component):
         return
     now = time.monotonic()
@@ -133,5 +183,30 @@ def debug(component: str, message: str) -> None:
         run_delta=run_delta,
         thread=thread,
         colorize=_use_color(),
+        seq=seq,
     )
     print(line, file=sys.stderr, flush=True)
+
+
+def debug_elapsed(component: str, label: str, started: float, **ctx: object) -> None:
+    elapsed = time.perf_counter() - started
+    suffix = f" {format_ctx(**ctx)}" if ctx else ""
+    debug(component, f"{label} elapsed={elapsed:.3f}s{suffix}")
+
+
+@contextmanager
+def trace_phase(component: str, phase: str, **ctx: object) -> Iterator[None]:
+    """Log phase entry, exit elapsed time, and exceptions when debug is enabled."""
+    if not enabled(component):
+        yield
+        return
+    started = time.perf_counter()
+    suffix = f" {format_ctx(**ctx)}" if ctx else ""
+    debug(component, f"phase={phase} start{suffix}")
+    try:
+        yield
+    except Exception as exc:
+        debug(component, f"phase={phase} error={type(exc).__name__}: {exc}")
+        raise
+    else:
+        debug_elapsed(component, f"phase={phase} done", started, **ctx)

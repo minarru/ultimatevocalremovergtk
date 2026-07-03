@@ -63,6 +63,9 @@ def present_error_dialog(
     on_copied: Optional[Callable[[], None]] = None,
 ) -> None:
     """Show a modal failure dialog with copy / error-log actions."""
+    from uvr_core.debug_log import debug
+
+    debug("ui", f"present_error_dialog heading={heading!r} error={type(exception).__name__}")
     global _ACTIVE_ERROR_DIALOG
 
     if _ACTIVE_ERROR_DIALOG is not None:

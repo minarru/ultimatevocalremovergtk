@@ -46,6 +46,8 @@ def import_separate_engines() -> Tuple[Any, ...]:
             "worker",
             f"separate engines imported elapsed={time.perf_counter() - started:.3f}s",
         )
+        global _warm_thread
+        _warm_thread = None
         return _engines
 
 
@@ -70,3 +72,14 @@ def warm_import_separate_engines() -> None:
 
 def engines_imported() -> bool:
     return _engines is not None
+
+
+def warm_status() -> str:
+    if _engines is not None:
+        return "done"
+    thread = _warm_thread
+    if thread is not None and thread.is_alive():
+        return "in_progress"
+    if thread is not None:
+        return "finished"
+    return "not_started"

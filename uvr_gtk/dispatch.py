@@ -7,11 +7,20 @@ so the helpers here wrap those callbacks with ``GLib.idle_add``. Later phases us
 """
 
 from typing import Callable, Optional
+import time
 
 from gi.repository import GLib
 
 from uvr_core import JobCallbacks
-from uvr_core.debug_log import debug
+from uvr_core.debug_log import correlation_seq, debug, preview_text, verbose
+
+_PROGRESS_LOG_STEP = 0.05
+_last_progress_log = -1.0
+
+
+def reset_progress_log() -> None:
+    global _last_progress_log
+    _last_progress_log = -1.0
 
 
 def idle_on_main(func: Callable, *args, **kwargs) -> None:
@@ -24,35 +33,69 @@ def idle_on_main(func: Callable, *args, **kwargs) -> None:
     GLib.idle_add(invoke)
 
 
+def _should_log_progress(fraction: float) -> bool:
+    global _last_progress_log
+    if verbose():
+        return True
+    if fraction >= 1.0 or _last_progress_log < 0:
+        _last_progress_log = fraction
+        return True
+    if fraction - _last_progress_log >= _PROGRESS_LOG_STEP:
+        _last_progress_log = fraction
+        return True
+    return False
+
+
+def _preview_args(label: str, args: tuple) -> str:
+    if not args:
+        return ""
+    first = args[0]
+    if label.startswith("_on_progress") and isinstance(first, float):
+        return f"{first:.4f}"
+    if isinstance(first, str):
+        return repr(preview_text(first))
+    if isinstance(first, float):
+        return f"{first:.4f}"
+    if isinstance(first, Exception):
+        return type(first).__name__
+    return repr(first)
+
+
 def main_thread(func: Callable) -> Callable:
     """Return a wrapper that schedules ``func`` to run once on the main loop."""
     label = getattr(func, "__name__", repr(func))
+    is_progress = label.endswith("_on_progress") or label == "_on_progress"
 
     def wrapper(*args, **kwargs):
-        debug("dispatch", f"schedule {label}({ _preview_args(args) })")
+        if is_progress and args and isinstance(args[0], float):
+            if not _should_log_progress(args[0]):
+                def invoke_quiet():
+                    func(*args, **kwargs)
+                    return GLib.SOURCE_REMOVE
+                GLib.idle_add(invoke_quiet)
+                return
+
+        seq = correlation_seq()
+        preview = _preview_args(label, args)
+        scheduled_at = time.monotonic()
+        debug("dispatch", f"schedule {label}({preview})", seq=seq)
 
         def invoke():
-            debug("dispatch", f"invoke {label}({ _preview_args(args) })")
+            latency_ms = (time.monotonic() - scheduled_at) * 1000.0
+            if is_progress:
+                debug("dispatch", f"invoke {label}({preview})", seq=seq)
+            else:
+                debug(
+                    "dispatch",
+                    f"invoke {label}({preview}) after {latency_ms:.1f}ms",
+                    seq=seq,
+                )
             func(*args, **kwargs)
             return GLib.SOURCE_REMOVE
 
         GLib.idle_add(invoke)
 
     return wrapper
-
-
-def _preview_args(args: tuple) -> str:
-    if not args:
-        return ""
-    first = args[0]
-    if isinstance(first, str):
-        text = first.replace("\n", "\\n")
-        if len(text) > 72:
-            text = text[:69] + "..."
-        return repr(text)
-    if isinstance(first, float):
-        return f"{first:.4f}"
-    return repr(first)
 
 
 def gtk_job_callbacks(

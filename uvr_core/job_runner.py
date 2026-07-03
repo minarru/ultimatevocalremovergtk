@@ -45,7 +45,7 @@ from .model_data import (
 from .sample_mode import prepare_input_paths
 from .settings import SettingsModel
 from .run_control import ProcessStopped, check_stopped, pausable_callback
-from .debug_log import debug
+from .debug_log import debug, debug_elapsed, next_seq, preview_text, set_correlation_seq
 from .separate_import import import_separate_engines
 from .inference_cleanup import (
     clear_source_mapper,
@@ -80,22 +80,24 @@ class JobCallbacks:
             self.on_progress(max(0.0, min(1.0, fraction)))
 
     def console(self, text: str) -> None:
-        preview = text.replace("\n", "\\n")
-        if len(preview) > 72:
-            preview = preview[:69] + "..."
-        debug("worker", f"console emit {preview!r}")
+        seq = next_seq()
+        set_correlation_seq(seq)
+        debug("worker", f"console emit {preview_text(text)!r}", seq=seq)
         if self.on_console:
             self.on_console(text)
 
     def complete(self) -> None:
+        debug("worker", "complete")
         if self.on_complete:
             self.on_complete()
 
     def stopped(self) -> None:
+        debug("worker", "stopped")
         if self.on_stopped:
             self.on_stopped()
 
     def error(self, exc: BaseException) -> None:
+        debug("worker", f"error {type(exc).__name__}: {exc}")
         if self.on_error:
             self.on_error(exc)
 
@@ -139,11 +141,14 @@ class JobRunner:
 
         self._is_stopped = False
         self._is_paused = False
+        prep_started = time.perf_counter()
+        prepared_paths = prepare_input_paths(self.settings, input_paths)
+        debug_elapsed("worker", "prepare_input_paths", prep_started, files=len(prepared_paths))
         self._thread = KThread(
             target=self._run,
-            args=(prepare_input_paths(self.settings, input_paths), callbacks),
+            args=(prepared_paths, callbacks),
         )
-        debug("worker", f"KThread start files={len(input_paths)}")
+        debug("worker", f"KThread start files={len(prepared_paths)}")
         self._thread.start()
 
     def start_ensemble(self, input_paths: Sequence[str], callbacks: JobCallbacks) -> None:
@@ -154,10 +159,14 @@ class JobRunner:
 
         self._is_stopped = False
         self._is_paused = False
+        prep_started = time.perf_counter()
+        prepared_paths = prepare_input_paths(self.settings, input_paths)
+        debug_elapsed("worker", "prepare_input_paths", prep_started, files=len(prepared_paths))
         self._thread = KThread(
             target=self._run_ensemble,
-            args=(prepare_input_paths(self.settings, input_paths), callbacks),
+            args=(prepared_paths, callbacks),
         )
+        debug("worker", f"KThread ensemble start files={len(prepared_paths)}")
         self._thread.start()
 
     def pause(self) -> None:
@@ -169,6 +178,7 @@ class JobRunner:
 
     def stop(self, *, force: bool = False) -> None:
         """Request a cooperative stop; only kill the worker thread when ``force``."""
+        debug("worker", f"stop requested force={force} alive={self.is_running()}")
         self._is_paused = False
         self._is_stopped = True
         if force and self.is_running():
@@ -176,6 +186,7 @@ class JobRunner:
             if thread is not None:
                 try:
                     thread.terminate()
+                    debug("worker", "stop force thread.terminate()")
                 except Exception:
                     pass
 
@@ -283,6 +294,7 @@ class JobRunner:
         try:
             seperator.seperate()
         finally:
+            debug("cleanup", f"_run_seperator finally engine={type(seperator).__name__}")
             release_separator(seperator)
             if self._active_separator is seperator:
                 self._active_separator = None
@@ -297,10 +309,7 @@ class JobRunner:
             SeperateVR,
             clear_gpu_cache,
         ) = import_separate_engines()
-        debug(
-            "worker",
-            f"separate engines ready elapsed={time.perf_counter() - import_started:.3f}s",
-        )
+        debug_elapsed("worker", "separate engines ready", import_started)
 
         stime = time.perf_counter()
         time_elapsed = lambda: f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
@@ -311,11 +320,7 @@ class JobRunner:
                 raise ValueError("export_path is required")
             resolve_started = time.perf_counter()
             models = self.resolve_models()
-            debug(
-                "worker",
-                f"resolve_models done count={len(models)} "
-                f"elapsed={time.perf_counter() - resolve_started:.3f}s",
-            )
+            debug_elapsed("worker", "resolve_models", resolve_started, count=len(models))
             self.iteration = 0
             self._build_all_models(models)
             self.true_model_count = self._count_true_models(models)
@@ -406,13 +411,16 @@ class JobRunner:
             callbacks.console(f"\nProcess complete\n{time_elapsed()}\n")
             callbacks.complete()
         except ProcessStopped:
+            debug("worker", "_run ProcessStopped")
             callbacks.console(PROCESS_STOPPED_BY_USER)
             callbacks.stopped()
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
             if self._is_stopped:
+                debug("worker", "_run stopped during error path")
                 callbacks.console(PROCESS_STOPPED_BY_USER)
                 callbacks.stopped()
                 return
+            debug("worker", f"_run failed {type(exc).__name__}: {exc}")
             callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
             callbacks.error(exc)
         finally:
@@ -439,10 +447,7 @@ class JobRunner:
             SeperateVR,
             clear_gpu_cache,
         ) = import_separate_engines()
-        debug(
-            "worker",
-            f"separate engines ready elapsed={time.perf_counter() - import_started:.3f}s",
-        )
+        debug_elapsed("worker", "separate engines ready", import_started)
 
         stime = time.perf_counter()
         time_elapsed = lambda: f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
@@ -527,13 +532,20 @@ class JobRunner:
                     else:
                         raise NotImplementedError(f"engine for '{current_model.process_method}' not available")
 
+                    engine = type(seperator).__name__
+                    debug(
+                        "worker",
+                        f"ensemble separate start engine={engine} model={current_model.model_basename!r}",
+                    )
                     self._run_seperator(seperator)
+                    debug("worker", f"ensemble separate done engine={engine}")
                     callbacks.console("\n")
 
                 # Combine each member's stems into the final ensemble outputs.
                 if current_model is not None:
                     audio_file_base = audio_file_base.replace(f"_{current_model.model_basename}", "")
                 callbacks.console(base_text + "Ensembling outputs...\n")
+                combine_started = time.perf_counter()
 
                 if is_4_stem:
                     for output_stem in _extract_stems(audio_file_base, export_path):
@@ -545,6 +557,7 @@ class JobRunner:
                         ensemble.ensemble_outputs(audio_file_base, export_path, SECONDARY_STEM)
                         ensemble.ensemble_outputs(audio_file_base, export_path, SECONDARY_STEM, is_inst_mix=True)
 
+                debug_elapsed("worker", "ensemble combine", combine_started)
                 callbacks.console("Done\n")
                 clear_gpu_cache()
 
@@ -559,13 +572,16 @@ class JobRunner:
             callbacks.console(f"\nProcess complete\n{time_elapsed()}\n")
             callbacks.complete()
         except ProcessStopped:
+            debug("worker", "_run_ensemble ProcessStopped")
             callbacks.console(PROCESS_STOPPED_BY_USER)
             callbacks.stopped()
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
             if self._is_stopped:
+                debug("worker", "_run_ensemble stopped during error path")
                 callbacks.console(PROCESS_STOPPED_BY_USER)
                 callbacks.stopped()
                 return
+            debug("worker", f"_run_ensemble failed {type(exc).__name__}: {exc}")
             callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
             callbacks.error(exc)
         finally:
@@ -629,6 +645,7 @@ class Ensembler:
 
     def ensemble_outputs(self, audio_file_base, export_path, stem, is_4_stem=False, is_inst_mix=False):
         """Combine the per-member outputs for ``stem`` with the chosen algorithm."""
+        debug("worker", f"ensemble_outputs stem={stem!r} is_4_stem={is_4_stem} is_inst_mix={is_inst_mix}")
         from lib_v5 import spec_utils
         from separate import save_format as _save_format
 

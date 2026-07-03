@@ -5,6 +5,7 @@ import os
 from typing import List, Sequence
 
 from . import paths
+from .debug_log import debug
 from .settings import SettingsModel
 
 
@@ -31,9 +32,11 @@ def prepare_input_paths(settings: SettingsModel, input_paths: Sequence[str]) -> 
 
         clip_path = _clip_cache_path(path, duration)
         if os.path.isfile(clip_path):
+            debug("model", f"sample clip cache hit file={os.path.basename(path)!r}")
             prepared.append(clip_path)
             continue
 
+        debug("model", f"sample clip generating file={os.path.basename(path)!r} duration={duration}s")
         try:
             import librosa
             import soundfile as sf
@@ -46,5 +49,6 @@ def prepare_input_paths(settings: SettingsModel, input_paths: Sequence[str]) -> 
                 sf.write(clip_path, audio.T, sample_rate)
             prepared.append(clip_path)
         except Exception:
+            debug("model", f"sample clip fallback to full file={os.path.basename(path)!r}")
             prepared.append(path)
     return prepared
