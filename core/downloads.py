@@ -45,6 +45,17 @@ from bundled.constants import (
 from . import paths
 from .debug_log import debug
 from .mdx_config_fetch import ensure_mdx_c_config
+from .politrees_catalog import (
+    hf_fallback_url,
+    load_politrees_links,
+    manual_links_for_model,
+    mdx_checkpoint_filename,
+    merge_politrees_catalogues,
+    prefetch_mdx_catalog_entry,
+    resolve_demucs_jobs,
+    resolve_mdx_jobs,
+    resolve_vr_jobs,
+)
 from .version_info import release_update_status
 
 DOWNLOAD_MODEL_CACHE = paths.DOWNLOAD_MODEL_CACHE_PATH
@@ -151,6 +162,7 @@ class DownloadManager:
 
         self.latest_version = self.online_data.get(_latest_version_key(), "")
         self._rebuild_catalogues()
+        self._merge_politrees_supplement()
         debug(
             "download",
             "refresh online "
@@ -189,8 +201,22 @@ class DownloadManager:
         unlocked = self.decoded_vip_link != NO_CODE
         if unlocked and self.online_data:
             self._rebuild_catalogues()
+            self._merge_politrees_supplement()
         debug("download", f"vip_validate unlocked={unlocked}")
         return unlocked
+
+    def _merge_politrees_supplement(self) -> None:
+        politrees = load_politrees_links()
+        if not politrees:
+            return
+        self.vr_download_list, self.mdx_download_list, self.demucs_download_list = (
+            merge_politrees_catalogues(
+                self.vr_download_list,
+                self.mdx_download_list,
+                self.demucs_download_list,
+                politrees,
+            )
+        )
 
     # -- Download lists ---------------------------------------------------------
 
@@ -207,7 +233,12 @@ class DownloadManager:
             vr_list = [
                 selectable
                 for selectable, model in self.vr_download_list.items()
-                if not os.path.isfile(os.path.join(paths.VR_MODELS_DIR, model))
+                if not os.path.isfile(
+                    os.path.join(
+                        paths.VR_MODELS_DIR,
+                        mdx_checkpoint_filename(model) if isinstance(model, dict) else model,
+                    )
+                )
             ]
             result[VR_ARCH_TYPE] = vr_list or [NO_NEW_MODELS]
 
@@ -215,9 +246,8 @@ class DownloadManager:
             mdx_list: List[str] = []
             for selectable, model in self.mdx_download_list.items():
                 if isinstance(model, dict):
-                    items_list = list(model.items())
-                    model_name, config = items_list[0]
-                    self._ensure_mdx_c_config(config)
+                    prefetch_mdx_catalog_entry(model)
+                    model_name = mdx_checkpoint_filename(model)
                 else:
                     model_name = str(model)
                 if not os.path.isfile(os.path.join(paths.MDX_MODELS_DIR, model_name)):
@@ -261,25 +291,19 @@ class DownloadManager:
             model = self.vr_download_list.get(selection)
             if not model:
                 return []
-            return [(f"{model_repo}{model}", os.path.join(paths.VR_MODELS_DIR, model))]
+            return resolve_vr_jobs(model, model_repo)
 
         if arch_type == MDX_ARCH_TYPE:
             model = self.mdx_download_list.get(selection)
             if model is None:
                 return []
-            model_name = list(model.keys())[0] if isinstance(model, dict) else str(model)
-            return [(f"{model_repo}{model_name}", os.path.join(paths.MDX_MODELS_DIR, model_name))]
+            return resolve_mdx_jobs(model, model_repo)
 
         if arch_type == DEMUCS_ARCH_TYPE:
             model = self.demucs_download_list.get(selection)
             if not model:
                 return []
-            is_newer = any(x in selection for x in DEMUCS_NEWER_ARCH_TYPES)
-            jobs: List[Tuple[str, str]] = []
-            for file_name, url in model.items():
-                directory = paths.DEMUCS_NEWER_REPO_DIR if is_newer else paths.DEMUCS_MODELS_DIR
-                jobs.append((url, os.path.join(directory, file_name)))
-            return jobs
+            return resolve_demucs_jobs(model, selection)
 
         return []
 
@@ -340,6 +364,29 @@ class DownloadManager:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         tmp_path = f"{save_path}.part"
         try:
+            self._download_file_url(url, tmp_path, index, total, on_progress, stop_event)
+            os.replace(tmp_path, save_path)
+        except Exception:
+            fallback = hf_fallback_url(url)
+            if fallback and fallback != url:
+                debug("download", f"hf fallback {os.path.basename(save_path)}")
+                try:
+                    if os.path.isfile(tmp_path):
+                        os.remove(tmp_path)
+                except OSError:
+                    pass
+                self._download_file_url(fallback, tmp_path, index, total, on_progress, stop_event)
+                os.replace(tmp_path, save_path)
+                return
+            if os.path.isfile(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+            raise
+
+    def _download_file_url(self, url, tmp_path, index, total, on_progress, stop_event) -> None:
+        try:
             with _urlopen(url) as response:
                 length_header = response.getheader("Content-Length")
                 file_total = int(length_header) if length_header and length_header.isdigit() else 0
@@ -363,7 +410,6 @@ class DownloadManager:
                             file_fraction = downloaded / file_total
                             overall = (index + file_fraction) / total
                             on_progress(max(0.0, min(1.0, overall)))
-            os.replace(tmp_path, save_path)
         except Exception:
             if os.path.isfile(tmp_path):
                 try:
@@ -444,6 +490,9 @@ class DownloadManager:
             mdx.update(source.get("mdx23c_download_vip_list", {}))
             mdx.update(source.get("roformer_download_vip_list", {}))
 
+        politrees = load_politrees_links()
+        vr, mdx, demucs = merge_politrees_catalogues(vr, mdx, demucs, politrees)
+
         return {"vr": vr, "mdx": mdx, "demucs": demucs}
 
     @staticmethod
@@ -456,26 +505,8 @@ class DownloadManager:
 
     @staticmethod
     def manual_links(arch_type: str, model) -> List[Tuple[str, str]]:
-        """Return ``[(label, url), ...]`` direct links for a manual-download entry.
-
-        VR/MDX models live in the public release repo (``NORMAL_REPO`` + file);
-        MDX23-C and Demucs entries are dicts whose values are already full URLs.
-        """
-        links: List[Tuple[str, str]] = []
-        if arch_type == VR_ARCH_TYPE:
-            links.append(("Open Link to Model", f"{NORMAL_REPO}{model}"))
-        elif arch_type == MDX_ARCH_TYPE:
-            if isinstance(model, dict):
-                model_name = list(model.keys())[0]
-                links.append(("Open Link to Model", f"{NORMAL_REPO}{model_name}"))
-            else:
-                links.append(("Open Link to Model", f"{NORMAL_REPO}{model}"))
-        elif arch_type == DEMUCS_ARCH_TYPE and isinstance(model, dict):
-            multi = len(model) > 1
-            for number, url in enumerate(model.values(), start=1):
-                suffix = f" {number}" if multi else ""
-                links.append((f"Open Link to Model{suffix}", url))
-        return links
+        """Return ``[(label, url), ...]`` direct links for a manual-download entry."""
+        return manual_links_for_model(arch_type, model, NORMAL_REPO)
 
     @staticmethod
     def model_directory(arch_type: str, selection: str = "") -> str:

@@ -97,3 +97,14 @@ def ensure_mdx_c_config(filename: str) -> bool:
 
     debug("download", f"mdx_c_config unavailable name={safe}")
     return False
+
+
+def fetch_mdx_config_url(filename: str, url: str) -> bool:
+    """Download a remote YAML into ``MDX_C_CONFIG_PATH``."""
+    safe = _safe_config_name(filename)
+    if not safe or not url:
+        return False
+    dest = _config_dest(safe)
+    if os.path.isfile(dest):
+        return True
+    return _fetch_url_to_file(url, dest)

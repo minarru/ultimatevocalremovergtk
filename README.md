@@ -158,7 +158,7 @@ Everything else must be downloaded or placed manually:
 2. Download the models you need for VR, MDX-Net, or Demucs.
 3. For **Apollo** restoration, place checkpoint files (`.ckpt` or `.bin`) in `models/Apollo_Models/`.
 4. **Roformer** checkpoints download like other MDX models; enable the *Roformer Model* flag in MDX-C model parameters when using them.
-5. **MDX-C / Roformer YAML configs** not on the official TRvlvr mirror are fetched automatically from the [Politrees UVR_resources](https://github.com/Politrees/UVR_resources) config tree when you use Download Center or load a model. Community checkpoints can also be downloaded from [Hugging Face](https://huggingface.co/Politrees/UVR_resources/tree/main) and placed in `models/MDX_Net_Models/`.
+5. **Community models** from [Politrees UVR_resources](https://github.com/Politrees/UVR_resources) appear in **Download Center** after refresh (alongside the official TRvlvr catalogue). Weights download from Hugging Face; YAML configs are fetched automatically. Set `UVR_DISABLE_POLITREES=1` to use only the official catalogue. TRvlvr download URLs that fail fall back to the Politrees Hugging Face mirror when available.
 
 Downloaded weights are ignored by git (see `.gitignore`). Runtime data (settings, temp files) lives under the project directory in portable mode, or under `~/.local/share/ultimatevocalremover` when the install directory is read-only.
 
@@ -220,6 +220,7 @@ Ultimate Vocal Remover is **MIT-licensed**. If you use UVR models or code in unr
 - [Kuielab & Woosung Choi](https://github.com/kuielab) — original MDX-Net code
 - [Adefossez & Demucs](https://github.com/facebookresearch/demucs) — Demucs code and models
 - [KimberleyJSN](https://github.com/KimberleyJensen) — MDX-Net and Demucs training scripts
+- [Politrees](https://github.com/Politrees/UVR_resources) — community model mirror and extended roformer configs
 - [Hv](https://github.com/NaJeongMo/Colab-for-MDX_B) — MDX-Net chunking implementation
 
 ## References
