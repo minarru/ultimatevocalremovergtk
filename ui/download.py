@@ -165,14 +165,17 @@ class DownloadCenter:
         debug("download", "ui refresh worker")
         is_online = self.manager.refresh()
         mapper_ok = None
+        available = {}
         # Auto-refresh the model-data mappers when the user opted in (matches
         # UVR's is_auto_update_model_params behaviour on a successful check).
         if is_online and self.settings.get("is_auto_update_model_params", True):
             mapper_ok = self.manager.update_model_settings(self.context.repo)
             debug("download", f"ui auto update_model_settings ok={mapper_ok}")
-        idle_on_main(self._refresh_done, is_online)
+        if is_online:
+            available = self.manager.available_downloads()
+        idle_on_main(self._refresh_done, is_online, available)
 
-    def _refresh_done(self, is_online: bool) -> None:
+    def _refresh_done(self, is_online: bool, available=None) -> None:
         self._busy = False
         if not is_online:
             debug("download", "ui refresh done offline")
@@ -181,7 +184,7 @@ class DownloadCenter:
             self.refresh_button.set_sensitive(True)
             set_combo_values(self.model_row, [NO_CONNECTION])
             return
-        self._available = self.manager.available_downloads()
+        self._available = available or {}
         counts = {
             arch: len(models) for arch, models in self._available.items()
         }

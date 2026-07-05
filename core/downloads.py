@@ -51,7 +51,6 @@ from .politrees_catalog import (
     manual_links_for_model,
     mdx_checkpoint_filename,
     merge_politrees_catalogues,
-    prefetch_mdx_catalog_entry,
     resolve_demucs_jobs,
     resolve_mdx_jobs,
     resolve_vr_jobs,
@@ -78,6 +77,9 @@ def _latest_version_key() -> str:
     return "current_version"
 
 
+_DOWNLOAD_TIMEOUT_SECONDS = 30
+
+
 def _ssl_context() -> ssl.SSLContext:
     """Return a TLS context; set ``UVR_INSECURE_DOWNLOADS=1`` to disable verification."""
     if os.environ.get("UVR_INSECURE_DOWNLOADS") == "1":
@@ -86,7 +88,7 @@ def _ssl_context() -> ssl.SSLContext:
 
 
 def _urlopen(url: str):
-    return urllib.request.urlopen(url, context=_ssl_context())
+    return urllib.request.urlopen(url, context=_ssl_context(), timeout=_DOWNLOAD_TIMEOUT_SECONDS)
 
 
 def vip_downloads(password: str, link_type: Tuple[bytes, bytes] = VIP_REPO) -> str:
@@ -224,8 +226,8 @@ class DownloadManager:
         """Return ``{arch_type: [selectable, ...]}`` of not-yet-downloaded models.
 
         Faithful port of ``download_list_fill``: filters each catalogue entry by
-        whether the target file already exists on disk, and (for MDX23-C) fetches
-        any missing config YAML so the model is usable once downloaded.
+        whether the target file already exists on disk. Config YAMLs are fetched
+        when a model is resolved for download, not while building this list.
         """
         result: Dict[str, List[str]] = {}
 
@@ -246,7 +248,6 @@ class DownloadManager:
             mdx_list: List[str] = []
             for selectable, model in self.mdx_download_list.items():
                 if isinstance(model, dict):
-                    prefetch_mdx_catalog_entry(model)
                     model_name = mdx_checkpoint_filename(model)
                 else:
                     model_name = str(model)

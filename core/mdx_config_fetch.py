@@ -13,6 +13,8 @@ from bundled.constants import MDX23_CONFIG_CHECKS, POLITREES_CONFIG_SUBDIRS, POL
 from . import paths
 from .debug_log import debug
 
+_DOWNLOAD_TIMEOUT_SECONDS = 30
+
 
 def _ssl_context() -> ssl.SSLContext:
     if os.environ.get("UVR_INSECURE_DOWNLOADS") == "1":
@@ -21,7 +23,9 @@ def _ssl_context() -> ssl.SSLContext:
 
 
 def _urlopen(url: str):
-    return urllib.request.urlopen(url, context=_ssl_context())
+    return urllib.request.urlopen(
+        url, context=_ssl_context(), timeout=_DOWNLOAD_TIMEOUT_SECONDS
+    )
 
 
 def _safe_config_name(filename: str) -> Optional[str]:
