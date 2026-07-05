@@ -61,6 +61,8 @@ models/VR_Models/model_data/*
 
 # Runtime / portable-mode artifacts (see core/paths.py)
 data.pkl
+download_size_cache.json
+politrees_model_links.json
 ensemble_temps/
 temp_sample_clips/
 profiles/*
