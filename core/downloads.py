@@ -28,7 +28,6 @@ from bundled.constants import (
     DEMUCS_NEWER_ARCH_TYPES,
     DOWNLOAD_CHECKS,
     INFO_UNAVAILABLE_TEXT,
-    MDX23_CONFIG_CHECKS,
     MDX_ARCH_TYPE,
     MDX_MODEL_DATA_LINK,
     MDX_MODEL_NAME_DATA_LINK,
@@ -45,6 +44,7 @@ from bundled.constants import (
 
 from . import paths
 from .debug_log import debug
+from .mdx_config_fetch import ensure_mdx_c_config
 from .version_info import release_update_status
 
 DOWNLOAD_MODEL_CACHE = paths.DOWNLOAD_MODEL_CACHE_PATH
@@ -241,16 +241,7 @@ class DownloadManager:
         return result
 
     def _ensure_mdx_c_config(self, config: str) -> None:
-        config_local = os.path.join(paths.MDX_C_CONFIG_PATH, config)
-        if os.path.isfile(config_local):
-            return
-        try:
-            os.makedirs(paths.MDX_C_CONFIG_PATH, exist_ok=True)
-            with _urlopen(f"{MDX23_CONFIG_CHECKS}{config}") as response:
-                with open(config_local, "wb") as out_file:
-                    out_file.write(response.read())
-        except Exception:
-            pass
+        ensure_mdx_c_config(config)
 
     # -- Resolve a selection to concrete download jobs --------------------------
 

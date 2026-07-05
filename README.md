@@ -158,6 +158,7 @@ Everything else must be downloaded or placed manually:
 2. Download the models you need for VR, MDX-Net, or Demucs.
 3. For **Apollo** restoration, place checkpoint files (`.ckpt` or `.bin`) in `models/Apollo_Models/`.
 4. **Roformer** checkpoints download like other MDX models; enable the *Roformer Model* flag in MDX-C model parameters when using them.
+5. **MDX-C / Roformer YAML configs** not on the official TRvlvr mirror are fetched automatically from the [Politrees UVR_resources](https://github.com/Politrees/UVR_resources) config tree when you use Download Center or load a model. Community checkpoints can also be downloaded from [Hugging Face](https://huggingface.co/Politrees/UVR_resources/tree/main) and placed in `models/MDX_Net_Models/`.
 
 Downloaded weights are ignored by git (see `.gitignore`). Runtime data (settings, temp files) lives under the project directory in portable mode, or under `~/.local/share/ultimatevocalremover` when the install directory is read-only.
 

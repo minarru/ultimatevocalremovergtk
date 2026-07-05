@@ -90,6 +90,17 @@ DOWNLOAD_CHECKS = "https://raw.githubusercontent.com/TRvlvr/application_data/mai
 MDX_MODEL_DATA_LINK = "https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/model_data_new.json"
 VR_MODEL_DATA_LINK = "https://raw.githubusercontent.com/TRvlvr/application_data/main/vr_model_data/model_data_new.json"
 MDX23_CONFIG_CHECKS = "https://raw.githubusercontent.com/TRvlvr/application_data/main/mdx_model_data/mdx_c_configs/"
+POLITREES_RAW_BASE = "https://raw.githubusercontent.com/Politrees/UVR_resources/main"
+POLITREES_CONFIG_SUBDIRS = (
+    "Roformer/BandSplit",
+    "Roformer/MelBand",
+    "MDX23C",
+    "SCnet",
+    "Bandit",
+    "demucs",
+)
+POLITREES_MODEL_LINKS_URL = f"{POLITREES_RAW_BASE}/UVR_resources/model_list_links.json"
+POLITREES_HF_BASE = "https://huggingface.co/Politrees/UVR_resources/resolve/main"
 BULLETIN_CHECK = "https://raw.githubusercontent.com/TRvlvr/application_data/main/bulletin.txt"
 
 DEMUCS_MODEL_NAME_DATA_LINK = "https://raw.githubusercontent.com/TRvlvr/application_data/main/demucs_model_data/model_name_mapper.json"

@@ -23,6 +23,7 @@ from typing import Any, Callable, Dict, List, Optional
 from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
 
 from . import paths
+from .mdx_config_fetch import ensure_mdx_c_config
 from .audio_io import resolve_wav_type_set
 from .settings import SettingsModel
 
@@ -471,7 +472,10 @@ class ModelData:
                         self.is_roformer = self.model_data["is_roformer"]
                     if "config_yaml" in self.model_data:
                         self.is_mdx_c = True
-                        config_path = os.path.join(paths.MDX_C_CONFIG_PATH, self.model_data["config_yaml"])
+                        config_name = self.model_data["config_yaml"]
+                        config_path = os.path.join(paths.MDX_C_CONFIG_PATH, config_name)
+                        if not os.path.isfile(config_path):
+                            ensure_mdx_c_config(config_name)
                         if os.path.isfile(config_path):
                             try:
                                 from ml_collections import ConfigDict
