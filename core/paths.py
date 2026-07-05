@@ -141,11 +141,12 @@ def ensure_data_dir() -> None:
     """
     from .debug_log import debug
 
+    os.makedirs(DATA_DIR, exist_ok=True)
+    writable = os.access(DATA_DIR, os.W_OK)
     debug(
         "settings",
-        f"ensure_data_dir DATA_DIR={DATA_DIR} bundled_relocated={BUNDLED_MODELS_DIR != MODELS_DIR}",
+        f"ensure_data_dir DATA_DIR={DATA_DIR} bundled_relocated={BUNDLED_MODELS_DIR != MODELS_DIR} writable={writable}",
     )
-    os.makedirs(DATA_DIR, exist_ok=True)
     _migrate_legacy_data_layout()
     for directory in (
         MODELS_DIR,

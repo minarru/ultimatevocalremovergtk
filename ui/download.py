@@ -456,6 +456,9 @@ def open_manual_downloads(parent, app_context):
 
 def open_download_center(parent_window, app_context, on_models_changed=None):
     """Open the Download Center. Wire this to the ``win.download`` action."""
+    from core.debug_log import debug
+
+    debug("download", "download_center present")
     center = DownloadCenter(parent_window, app_context, on_models_changed=on_models_changed)
     center.present()
     return center

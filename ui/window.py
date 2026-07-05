@@ -357,7 +357,10 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _show_method(self, view) -> None:
         """Make ``view`` the active method and refresh the column layout."""
+        from core.debug_log import debug
+
         self._current_view = view
+        debug("ui", f"method={getattr(view, 'title', view.method_key)}")
         if not self._columns_ready:
             return
         view._sync_only_active()
@@ -582,6 +585,9 @@ class MainWindow(Adw.ApplicationWindow):
         if name != "ensemble":
             self.settings.set("chosen_process_method", self._active_view().method_key)
         self._run_target = target
+        from core.debug_log import debug
+
+        debug("ui", f"tab={name}")
         target.on_activated()
 
     def _on_settings_changed(self) -> None:
@@ -701,6 +707,9 @@ class MainWindow(Adw.ApplicationWindow):
     # -- Misc -------------------------------------------------------------------
 
     def _on_open_settings(self, _action: Gio.SimpleAction, _param) -> None:
+        from core.debug_log import debug
+
+        debug("ui", "open settings")
         from .preferences import PreferencesDialog
 
         dialog = PreferencesDialog(self.context, on_settings_reloaded=self._load_from_settings)
@@ -713,6 +722,9 @@ class MainWindow(Adw.ApplicationWindow):
         self.content_stack.set_visible_child_name("audio_tools")
 
     def _on_download(self, _action: Gio.SimpleAction, _param) -> None:
+        from core.debug_log import debug
+
+        debug("ui", "open download_center")
         from .download import open_download_center
 
         open_download_center(self, self.context, on_models_changed=self._refresh_models)
@@ -732,11 +744,17 @@ class MainWindow(Adw.ApplicationWindow):
         self._update_sep_banner()
 
     def _on_about(self, _action: Gio.SimpleAction, _param) -> None:
+        from core.debug_log import debug
+
+        debug("ui", "open about")
         from .about import open_about
 
         open_about(self)
 
     def _on_updates(self, _action: Gio.SimpleAction, _param) -> None:
+        from core.debug_log import debug
+
+        debug("ui", "open updates")
         from .updates import open_update_view
 
         open_update_view(self, self.context)

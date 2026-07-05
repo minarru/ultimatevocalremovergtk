@@ -91,8 +91,11 @@ def load_release_metadata(*, force_refresh: bool = False) -> Tuple[Dict, bool]:
 
 def release_update_status(*, force_refresh: bool = False) -> Dict[str, object]:
     """Return GTK fork version/update status for the Updates UI."""
+    from .debug_log import debug
+
     metadata, is_online = load_release_metadata(force_refresh=force_refresh)
     latest = str(metadata.get("latest_version") or "")
+    debug("settings", f"release check online={is_online} latest={latest or 'unknown'}")
     running = VERSION or ""
     is_current = bool(latest) and not is_newer(latest, running)
     if not latest:

@@ -332,11 +332,18 @@ class _ParamDialog:
 
 
 def _run_param_dialog(context, parent, model_data):
+    from core.debug_log import debug, preview_text
+
+    model_name = getattr(model_data, "model_name", None) or getattr(model_data, "model_basename", "?")
+    debug("model", f"unrecognized model dialog model={preview_text(str(model_name))}")
     existing = _existing_params(context, model_data)
     dialog = _ParamDialog(context, parent, model_data, existing=existing)
     result = dialog.run()
     if result is not None:
         context.repo.invalidate_stem_check()
+        debug("model", f"unrecognized model dialog saved model={preview_text(str(model_name))}")
+    else:
+        debug("model", f"unrecognized model dialog cancelled model={preview_text(str(model_name))}")
     return result
 
 
@@ -415,7 +422,16 @@ def make_apollo_unrecognized_handler(get_parent):
     """Build the Apollo ``on_unrecognized`` hook (runs the dialog on the UI loop)."""
 
     def handler(apollo_model_data):
-        return _run_on_main(lambda: _ApolloParamDialog(get_parent(), apollo_model_data).run())
+        from core.debug_log import debug, preview_text
+
+        name = getattr(apollo_model_data, "apollo_model_name", None) or "?"
+        debug("model", f"unrecognized apollo dialog model={preview_text(str(name))}")
+        result = _run_on_main(lambda: _ApolloParamDialog(get_parent(), apollo_model_data).run())
+        if result is not None:
+            debug("model", f"unrecognized apollo dialog saved model={preview_text(str(name))}")
+        else:
+            debug("model", f"unrecognized apollo dialog cancelled model={preview_text(str(name))}")
+        return result
 
     return handler
 

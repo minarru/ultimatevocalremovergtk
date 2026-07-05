@@ -1,114 +1,148 @@
-"""Opt-in stderr logging for tracing UI/worker timing.
+"""Opt-in GLib debug logging for tracing UI/worker timing.
 
-Enable with the ``UVR_DEBUG`` environment variable::
+Enable with ``G_MESSAGES_DEBUG`` (standard GNOME debug switch)::
 
-    UVR_DEBUG=1 python -m ui
-    UVR_DEBUG=ui,dispatch,worker,separate,cleanup python -m ui
+    G_MESSAGES_DEBUG=uvr python -m ui
+    G_MESSAGES_DEBUG=uvr-ui,uvr-worker python -m ui
 
 In fish, prefix with ``env`` (inline ``VAR=val cmd`` is bash-style)::
 
-    env UVR_DEBUG=ui .venv/bin/python -m ui
+    env G_MESSAGES_DEBUG=uvr-ui python -m ui
 
-Logs are written to **stderr** and mirrored to a log file (plain text, no ANSI) under
-the platform cache dir (see :mod:`core.platform`), e.g. ``~/.cache/uvr/debug.log``
-on Linux.
+Optional plain-text mirror (independent of ``G_MESSAGES_DEBUG``)::
 
-Override the file with ``UVR_DEBUG_LOG=/path/to/log`` or the cache root with
-``UVR_CACHE_DIR``. If the app is already
-running, a second launch exits immediately (GApplication single-instance) and
-will not print to your terminal — use the log file or quit the existing
-instance first.
+    UVR_LOG_FILE=/path/to/log python -m ui
 
-A startup line is emitted when tracing is active; dialog timing lines appear
-after you confirm Stop.
+Recognised components map to GLib domains ``uvr-{component}``:
 
-Recognised components: ``ui``, ``dispatch``, ``console``, ``worker``,
-``separate``, ``cleanup``, ``model``, ``audio``, ``download``, ``error``,
-``settings``.
-``1`` / ``all`` enables every component.
+``ui``, ``dispatch``, ``console``, ``worker``, ``separate``, ``cleanup``,
+``model``, ``audio``, ``download``, ``error``, ``settings``.
 
-``UVR_DEBUG_VERBOSE=1`` enables chatty logs (every progress tick, scroll
-viewport detail). When stderr is a TTY, lines are colorized per component.
-Set ``NO_COLOR=1`` or ``UVR_DEBUG_NOCOLOR=1`` to disable ANSI codes.
+Parsing rules for ``G_MESSAGES_DEBUG``:
+
+- ``all`` — every component
+- ``uvr`` — all ``uvr-*`` components (UVR-specific convenience)
+- ``uvr-ui uvr-worker`` — selective domains (GLib uses spaces; commas are accepted)
+- ``ui`` — shorthand for ``uvr-ui`` (same for other component names)
+
+Chatty dispatch/console detail uses the ``console`` component; enable
+``uvr-console`` (or ``uvr`` / ``all``) for progress ticks and scroll traces.
+
+Suggested profiles::
+
+    # General app debugging
+    G_MESSAGES_DEBUG=uvr-ui,uvr-settings,uvr-error
+
+    # Separation run debugging
+    G_MESSAGES_DEBUG=uvr-ui,uvr-worker,uvr-separate,uvr-model,uvr-error
+
+    # Full internal trace
+    G_MESSAGES_DEBUG=uvr
+
+If the app is already running, a second launch exits immediately
+(GApplication single-instance) and will not print to your terminal — use
+``journalctl --user -f`` or ``UVR_LOG_FILE`` + ``tail -f``.
+
+UVR shorthands in ``G_MESSAGES_DEBUG`` are expanded to GLib domain names
+before GTK loads; set the variable before launch (``run_uvr.sh`` does this
+automatically).
+
+Application code should use :func:`debug` for opt-in tracing. Standard-library
+``logging.getLogger`` is not wired to ``G_MESSAGES_DEBUG``; use :func:`debug`
+instead of ``logger.debug`` in UVR modules.
 """
 
 from __future__ import annotations
 
 import os
-import sys
 import threading
 import time
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
-_ENABLED: Optional[bool] = None
-_VERBOSE: Optional[bool] = None
-_FLAGS: set[str] = set()
+from . import glib_log
+
+_COMPONENTS = frozenset(
+    {
+        "ui",
+        "dispatch",
+        "console",
+        "worker",
+        "separate",
+        "cleanup",
+        "model",
+        "audio",
+        "download",
+        "error",
+        "settings",
+    }
+)
+
+_DOMAINS: Optional[set[str]] = None
 _LOG_FILE_PATH: Optional[str] = None
 _LOG_FILE_ANNOUNCED = False
 _RUN_T0: Optional[float] = None
 _SEQ: int = 0
 _TLS = threading.local()
-
-_RESET = "\033[0m"
-_DIM = "\033[2m"
-_BOLD = "\033[1m"
-_RUN_DELTA = "\033[93m"  # bright yellow
-_COMPONENT_COLORS = {
-    "ui": "\033[36m",  # cyan
-    "dispatch": "\033[33m",  # yellow
-    "console": "\033[32m",  # green
-    "worker": "\033[35m",  # magenta
-    "separate": "\033[34m",  # blue
-    "cleanup": "\033[31m",  # red
-    "model": "\033[96m",  # bright cyan
-    "audio": "\033[95m",  # bright magenta
-    "download": "\033[94m",  # bright blue
-    "error": "\033[91m",  # bright red
-    "settings": "\033[97m",  # bright white
-}
-_DEFAULT_COMPONENT = "\033[37m"  # white
+_GMD_NORMALIZED = False
 
 
-def _parse_env() -> None:
-    global _ENABLED, _FLAGS
-    raw = os.environ.get("UVR_DEBUG", "").strip().lower()
-    if not raw or raw in {"0", "false", "no", "off"}:
-        _ENABLED = False
-        _FLAGS = set()
+def _log_domain(component: str) -> str:
+    return f"uvr-{component.lower()}"
+
+
+def _all_uvr_domains() -> tuple[str, ...]:
+    domains = tuple(_log_domain(component) for component in sorted(_COMPONENTS))
+    return domains + ("uvr",)
+
+
+def normalize_g_messages_debug_env() -> None:
+    """Expand UVR shorthands in ``G_MESSAGES_DEBUG`` for GLib's domain filter."""
+    global _GMD_NORMALIZED, _DOMAINS
+    if _GMD_NORMALIZED:
         return
-    _ENABLED = True
-    if raw in {"1", "true", "yes", "on", "all"}:
-        _FLAGS = {"all"}
+    _GMD_NORMALIZED = True
+    _DOMAINS = None
+
+    raw = os.environ.get("G_MESSAGES_DEBUG", "").strip()
+    if not raw:
         return
-    _FLAGS = {part.strip() for part in raw.split(",") if part.strip()}
-    if "all" in _FLAGS:
-        _FLAGS = {"all"}
+
+    expanded: list[str] = []
+    for token in raw.replace(" ", ",").split(","):
+        token = token.strip()
+        if not token:
+            continue
+        lower = token.lower()
+        if lower == "all":
+            expanded.append("all")
+        elif lower == "uvr":
+            expanded.extend(_all_uvr_domains())
+        elif lower in _COMPONENTS:
+            expanded.append(_log_domain(lower))
+        else:
+            expanded.append(token)
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for domain in expanded:
+        if domain not in seen:
+            seen.add(domain)
+            unique.append(domain)
+    os.environ["G_MESSAGES_DEBUG"] = " ".join(unique)
 
 
-def verbose() -> bool:
-    global _VERBOSE
-    if _VERBOSE is None:
-        raw = os.environ.get("UVR_DEBUG_VERBOSE", "").strip().lower()
-        _VERBOSE = raw in {"1", "true", "yes", "on"}
-    return _VERBOSE
-
-
-def _use_color() -> bool:
-    if os.environ.get("NO_COLOR") or os.environ.get("UVR_DEBUG_NOCOLOR") == "1":
-        return False
-    if os.environ.get("UVR_DEBUG_COLOR") == "1":
-        return True
-    try:
-        return sys.stderr.isatty()
-    except Exception:  # noqa: BLE001 - best-effort TTY detection
-        return False
-
-
-def _paint(code: str, text: str, *, colorize: bool) -> str:
-    if not colorize:
-        return text
-    return f"{code}{text}{_RESET}"
+def _parse_g_messages_debug() -> set[str]:
+    normalize_g_messages_debug_env()
+    raw = os.environ.get("G_MESSAGES_DEBUG", "").strip()
+    if not raw:
+        return set()
+    parts = set()
+    for token in raw.replace(" ", ",").split(","):
+        token = token.strip().lower()
+        if token:
+            parts.add(token)
+    return parts
 
 
 def preview_text(text: str, max_len: int = 72) -> str:
@@ -127,73 +161,61 @@ def format_ctx(**ctx: object) -> str:
     return " ".join(parts)
 
 
-def format_line(
-    component: str,
-    message: str,
-    *,
-    wall: str,
-    millis: int,
-    run_delta: str,
-    thread: str,
-    colorize: bool,
-    seq: Optional[int] = None,
-) -> str:
-    prefix = f"#{seq} " if seq is not None else ""
-    meta = _paint(_DIM, f"[UVR {prefix}{wall}.{millis:03d}", colorize=colorize)
-    if run_delta:
-        meta += _paint(_BOLD + _RUN_DELTA, run_delta, colorize=colorize)
-    meta += _paint(_DIM, f" {thread}]", colorize=colorize)
+def _domains() -> set[str]:
+    global _DOMAINS
+    if _DOMAINS is None:
+        _DOMAINS = _parse_g_messages_debug()
+    return _DOMAINS
 
-    comp_color = _COMPONENT_COLORS.get(component.lower(), _DEFAULT_COMPONENT)
-    tag = _paint(_BOLD + comp_color, f" [{component}]", colorize=colorize)
-    body = _paint(comp_color, f" {message}", colorize=colorize)
-    return f"{meta}{tag}{body}"
+
+def verbose() -> bool:
+    return enabled("console")
 
 
 def _log_file_path() -> Optional[str]:
-    if _ENABLED is None:
-        _parse_env()
-    if not _ENABLED:
+    explicit = os.environ.get("UVR_LOG_FILE", "").strip()
+    if not explicit:
         return None
     global _LOG_FILE_PATH
     if _LOG_FILE_PATH is not None:
         return _LOG_FILE_PATH
-    explicit = os.environ.get("UVR_DEBUG_LOG", "").strip()
-    if explicit:
-        path = explicit
-    else:
-        from .platform import user_cache_dir
-
-        path = os.path.join(user_cache_dir(), "debug.log")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    _LOG_FILE_PATH = path
-    return path
+    parent = os.path.dirname(explicit)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    _LOG_FILE_PATH = explicit
+    return explicit
 
 
 def announce_log_file() -> None:
-    """Print the debug log path once (stderr) when tracing is enabled."""
+    """Emit one MESSAGE when ``UVR_LOG_FILE`` is configured."""
     global _LOG_FILE_ANNOUNCED
-    if _LOG_FILE_ANNOUNCED or not enabled():
+    if _LOG_FILE_ANNOUNCED:
         return
     path = _log_file_path()
     if path is None:
         return
     _LOG_FILE_ANNOUNCED = True
-    print(f"UVR debug log: {path}", file=sys.stderr, flush=True)
+    glib_log.emit("uvr", f"debug log file: {path}", level="message")
 
 
 def enabled(component: str = "") -> bool:
-    if _ENABLED is None:
-        _parse_env()
-    if not _ENABLED:
+    domains = _domains()
+    if not domains:
         return False
-    if not component or "all" in _FLAGS:
+    if "all" in domains:
         return True
-    return component.lower() in _FLAGS
+    if "uvr" in domains:
+        return True
+    if not component:
+        return bool(domains & ({"uvr", "all"} | {_log_domain(c) for c in _COMPONENTS}))
+    comp = component.lower()
+    if comp in domains:
+        return True
+    return _log_domain(comp) in domains
 
 
 def mark_run_start() -> None:
-    """Reset the per-run monotonic clock (call when the user starts processing)."""
+    """Reset the per-run correlation sequence (call when processing starts)."""
     global _RUN_T0, _SEQ
     _RUN_T0 = time.monotonic()
     _SEQ = 0
@@ -219,44 +241,25 @@ def correlation_seq() -> Optional[int]:
     return getattr(_TLS, "seq", None)
 
 
+def _mirror_file(message: str) -> None:
+    path = _log_file_path()
+    if path is None:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as log_file:
+            log_file.write(message + "\n")
+    except OSError:
+        pass
+
+
 def debug(component: str, message: str, *, seq: Optional[int] = None) -> None:
     if not enabled(component):
         return
-    now = time.monotonic()
-    wall = time.strftime("%H:%M:%S")
-    millis = int(time.time() * 1000) % 1000
-    thread = threading.current_thread().name
-    run_delta = ""
-    if _RUN_T0 is not None:
-        run_delta = f" run+{now - _RUN_T0:.3f}s"
-    line = format_line(
-        component,
-        message,
-        wall=wall,
-        millis=millis,
-        run_delta=run_delta,
-        thread=thread,
-        colorize=_use_color(),
-        seq=seq,
-    )
-    plain = format_line(
-        component,
-        message,
-        wall=wall,
-        millis=millis,
-        run_delta=run_delta,
-        thread=thread,
-        colorize=False,
-        seq=seq,
-    )
-    print(line, file=sys.stderr, flush=True)
-    path = _log_file_path()
-    if path is not None:
-        try:
-            with open(path, "a", encoding="utf-8") as log_file:
-                log_file.write(plain + "\n")
-        except OSError:
-            pass
+    if seq is not None:
+        message = f"#{seq} {message}"
+    domain = _log_domain(component)
+    glib_log.emit(domain, message)
+    _mirror_file(f"{domain}: {message}")
 
 
 def debug_elapsed(component: str, label: str, started: float, **ctx: object) -> None:

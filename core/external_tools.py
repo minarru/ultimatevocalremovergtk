@@ -12,9 +12,12 @@ from .paths import BASE_PATH
 __all__ = [
     "configure_pydub_ffmpeg",
     "external_tools_status",
+    "log_external_tools_once",
     "resolve_ffmpeg",
     "resolve_rubberband",
 ]
+
+_TOOLS_LOGGED = False
 
 
 def _bundled_tool(name: str) -> Optional[str]:
@@ -74,3 +77,22 @@ def external_tools_status() -> dict[str, Optional[str]]:
         "ffmpeg": resolve_ffmpeg(),
         "rubberband": resolve_rubberband(),
     }
+
+
+def log_external_tools_once() -> None:
+    """Log resolved ffmpeg/rubberband paths once per process."""
+    global _TOOLS_LOGGED
+    if _TOOLS_LOGGED:
+        return
+    _TOOLS_LOGGED = True
+    from .debug_log import debug
+
+    status = external_tools_status()
+    ffmpeg = status.get("ffmpeg")
+    rubberband = status.get("rubberband")
+    debug(
+        "audio",
+        "external_tools "
+        f"ffmpeg={'ok' if ffmpeg else 'missing'} "
+        f"rubberband={'ok' if rubberband else 'missing'}",
+    )

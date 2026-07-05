@@ -171,9 +171,11 @@ class JobRunner:
 
     def pause(self) -> None:
         """Pause the worker between files/models (e.g. while a confirm dialog is open)."""
+        debug("worker", "pause requested")
         self._is_paused = True
 
     def unpause(self) -> None:
+        debug("worker", "unpause requested")
         self._is_paused = False
 
     def stop(self, *, force: bool = False) -> None:

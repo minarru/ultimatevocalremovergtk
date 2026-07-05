@@ -392,6 +392,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
             return
         self._profiles.save(name, self.settings.to_dict())
         entry_row.set_text("")
+        from core.debug_log import debug
+
+        debug("settings", f"profile save name={name}")
         # Profiles are listed by file-name stem (spaces become underscores),
         # mirroring UVR.py; select that canonical form after saving.
         self._refresh_profile_list(select=name.replace(" ", "_"))
@@ -408,6 +411,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
         # Only adopt keys the settings schema knows about.
         self.settings.update({k: v for k, v in data.items() if k in DEFAULT_DATA})
         self.context.save_settings()
+        from core.debug_log import debug
+
+        debug("settings", f"profile load name={name}")
         self._reload_widgets()
         if self._on_settings_reloaded is not None:
             self._on_settings_reloaded()
@@ -433,6 +439,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
         if response != "remove":
             return
         if self._profiles.remove(name):
+            from core.debug_log import debug
+
+            debug("settings", f"profile remove name={name}")
             self._refresh_profile_list()
             self.add_toast(Adw.Toast.new(f'Removed profile "{name}"'))
 
@@ -454,8 +463,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
     def _on_reset_confirmed(self, _dialog, response) -> None:
         if response != "reset":
             return
+        from core.debug_log import debug
+
         self.settings.reset_to_default()
         self.context.save_settings()
+        debug("settings", "profile reset confirmed")
         self._reload_widgets()
         if self._on_settings_reloaded is not None:
             self._on_settings_reloaded()

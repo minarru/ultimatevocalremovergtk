@@ -36,6 +36,17 @@ class InferenceBackend:
     is_other_gpu: bool = False
 
 
+def _log_backend(backend: InferenceBackend) -> InferenceBackend:
+    from .debug_log import debug
+
+    providers = ",".join(backend.onnx_providers)
+    debug(
+        "model",
+        f"backend {backend.backend_name} device={backend.torch_device} providers=[{providers}]",
+    )
+    return backend
+
+
 def _nvidia_smi_devices() -> List[Tuple[str, str]]:
     """Return ``[(index, name), ...]`` via ``nvidia-smi`` (torch-free)."""
     try:
@@ -123,28 +134,34 @@ def resolve_inference_backend(
 ) -> InferenceBackend:
     """Pick PyTorch device and ONNX providers from settings and runtime state."""
     if is_gpu_conversion < 0:
-        return InferenceBackend(
-            torch_device=CPU,
-            onnx_providers=list(_CPU_PROVIDERS),
-            backend_name="cpu",
+        return _log_backend(
+            InferenceBackend(
+                torch_device=CPU,
+                onnx_providers=list(_CPU_PROVIDERS),
+                backend_name="cpu",
+            )
         )
 
     import torch
 
     if is_macos and torch.backends.mps.is_available():
-        return InferenceBackend(
-            torch_device="mps",
-            onnx_providers=list(_CPU_PROVIDERS),
-            backend_name="mps",
-            is_other_gpu=True,
+        return _log_backend(
+            InferenceBackend(
+                torch_device="mps",
+                onnx_providers=list(_CPU_PROVIDERS),
+                backend_name="mps",
+                is_other_gpu=True,
+            )
         )
 
     if is_use_directml and directml_available():
-        return InferenceBackend(
-            torch_device=_directml_torch_device(device_set),
-            onnx_providers=list(_CPU_PROVIDERS),
-            backend_name="directml",
-            is_other_gpu=True,
+        return _log_backend(
+            InferenceBackend(
+                torch_device=_directml_torch_device(device_set),
+                onnx_providers=list(_CPU_PROVIDERS),
+                backend_name="directml",
+                is_other_gpu=True,
+            )
         )
 
     if torch.cuda.is_available():
@@ -152,16 +169,20 @@ def resolve_inference_backend(
 
         preload_onnxruntime_gpu()
         providers: List[str] = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        return InferenceBackend(
-            torch_device=_cuda_torch_device(device_set),
-            onnx_providers=providers,
-            backend_name="cuda",
+        return _log_backend(
+            InferenceBackend(
+                torch_device=_cuda_torch_device(device_set),
+                onnx_providers=providers,
+                backend_name="cuda",
+            )
         )
 
-    return InferenceBackend(
-        torch_device=CPU,
-        onnx_providers=list(_CPU_PROVIDERS),
-        backend_name="cpu",
+    return _log_backend(
+        InferenceBackend(
+            torch_device=CPU,
+            onnx_providers=list(_CPU_PROVIDERS),
+            backend_name="cpu",
+        )
     )
 
 

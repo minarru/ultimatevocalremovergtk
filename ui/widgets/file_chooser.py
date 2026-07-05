@@ -73,6 +73,9 @@ class InputFilesRow(Adw.ExpanderRow):
         self.paths = [p for p in paths if p]
         self._refresh()
         if notify:
+            from core.debug_log import debug
+
+            debug("ui", f"inputs count={len(self.paths)}")
             self._on_changed()
 
     def _refresh(self) -> None:

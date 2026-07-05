@@ -217,6 +217,10 @@ class ViewInputs:
     def _verify_done(self, broken) -> None:
         self._verifying = False
         self.verify_button.set_sensitive(True)
+        from core.debug_log import debug
+
+        total = len(self._rows)
+        debug("ui", f"verify_inputs count={total} ok={total - len(broken)}")
         if broken:
             report_lines = "\n".join(f"{os.path.basename(p)}: {info}" for p, info in broken)
             set_error_log(

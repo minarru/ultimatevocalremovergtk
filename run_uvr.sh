@@ -145,13 +145,31 @@ ensure_venv() {
 install_desktop_entry || true
 ensure_venv
 
-if [[ -n "${UVR_DEBUG:-}" ]]; then
-    _uvr_debug_log="${UVR_DEBUG_LOG:-${XDG_CACHE_HOME:-${HOME}/.cache}/uvr/debug.log}"
+if [[ -n "${G_MESSAGES_DEBUG:-}" ]]; then
+    # Expand UVR shorthands (e.g. uvr -> uvr-ui uvr-worker …) before Python loads GLib.
+    G_MESSAGES_DEBUG="$(
+        cd "${HERE}" && "${VENV_PYTHON}" -c "
+from core.debug_log import normalize_g_messages_debug_env
+import os
+normalize_g_messages_debug_env()
+print(os.environ.get('G_MESSAGES_DEBUG', ''))
+" 2>/dev/null || echo "${G_MESSAGES_DEBUG}"
+    )"
+    export G_MESSAGES_DEBUG
+fi
+
+if [[ -n "${G_MESSAGES_DEBUG:-}" || -n "${UVR_LOG_FILE:-}" ]]; then
     if pgrep -f "${VENV_PYTHON} -m ui" >/dev/null 2>&1; then
         echo "UVR is already running; this launch will exit immediately (single-instance app)." >&2
-        echo "Quit the running instance first, or: tail -f ${_uvr_debug_log}" >&2
-    else
-        echo "UVR debug logging to: ${_uvr_debug_log}" >&2
+        if [[ -n "${UVR_LOG_FILE:-}" ]]; then
+            echo "Quit the running instance first, or: tail -f ${UVR_LOG_FILE}" >&2
+        else
+            echo "Quit the running instance first, or use: journalctl --user -f" >&2
+        fi
+    elif [[ -n "${UVR_LOG_FILE:-}" ]]; then
+        echo "UVR debug log file: ${UVR_LOG_FILE}" >&2
+    elif [[ -n "${G_MESSAGES_DEBUG:-}" ]]; then
+        echo "UVR GLib debug domains: G_MESSAGES_DEBUG=${G_MESSAGES_DEBUG}" >&2
     fi
 fi
 

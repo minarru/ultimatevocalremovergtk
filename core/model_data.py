@@ -16,7 +16,6 @@ by the ``Ensembler`` in :mod:`core.job_runner`. Nothing here imports
 
 import hashlib
 import json
-import logging
 import os
 from typing import Any, Callable, Dict, List, Optional
 
@@ -26,8 +25,6 @@ from . import paths
 from .mdx_config_fetch import ensure_mdx_c_config
 from .audio_io import resolve_wav_type_set
 from .settings import SettingsModel
-
-logger = logging.getLogger(__name__)
 
 _MDX_C_YAML_LOADER = None
 
@@ -235,8 +232,7 @@ class ModelRepository:
         except (FileNotFoundError, ValueError, KeyError, OSError, json.JSONDecodeError) as exc:
             from .debug_log import debug
 
-            debug("model", f"resolve_model_dry failed model={model_name!r} error={type(exc).__name__}")
-            logger.debug("resolve_model_dry failed for %r: %s", model_name, exc)
+            debug("model", f"resolve_model_dry failed model={model_name!r} error={type(exc).__name__}: {exc}")
             return None
 
     def stem_labels_for_model(self, settings: "SettingsModel", process_method: str, model_name: str):
@@ -487,10 +483,12 @@ class ModelData:
                                 # configured, so treat it as unavailable here.
                                 config = None
                             except Exception as exc:
-                                logger.debug(
-                                    "MDX-C config %r failed to load: %s",
-                                    config_path,
-                                    exc,
+                                from .debug_log import debug
+
+                                debug(
+                                    "model",
+                                    f"mdx_c_config load failed file={os.path.basename(config_path)} "
+                                    f"error={type(exc).__name__}: {exc}",
                                 )
                                 config = None
                             if config is None:
@@ -900,10 +898,10 @@ def assemble_model_data(
         if skipped:
             from .debug_log import debug
 
-            debug("model", f"assemble_model_data skipped={skipped} valid={len(valid)}")
-            logger.warning(
-                "%d ensemble member(s) could not be resolved and were skipped",
-                skipped,
+            debug(
+                "model",
+                f"assemble_model_data skipped={skipped} valid={len(valid)} "
+                f"({skipped} ensemble member(s) could not be resolved)",
             )
         if len(valid) < 2 and len(selected) >= 2:
             raise ValueError(

@@ -119,12 +119,27 @@ class UVRApplication(Adw.Application):
     def do_startup(self):
         Adw.Application.do_startup(self)
         from core.debug_log import debug, enabled
+        from core.paths import DATA_DIR
 
         if enabled("ui"):
-            debug("ui", "UVR_DEBUG ui tracing enabled")
+            try:
+                adw_ver = f"{Adw.MAJOR_VERSION}.{Adw.MINOR_VERSION}"
+            except Exception:  # noqa: BLE001
+                adw_ver = "unknown"
+            try:
+                from __version__ import VERSION
+            except Exception:  # noqa: BLE001
+                VERSION = "unknown"
+            debug(
+                "ui",
+                f"startup version={VERSION} data_dir={DATA_DIR} adw={adw_ver}",
+            )
         # Provision the writable runtime-data tree (and seed bundled assets when
         # running from a read-only install) before any window/model work.
         ensure_data_dir()
+        from core.external_tools import log_external_tools_once
+
+        log_external_tools_once()
         register_gresources()
         self._load_styles()
         self._apply_saved_color_scheme()
@@ -166,11 +181,13 @@ class UVRApplication(Adw.Application):
 def main(argv: Optional[Sequence[str]] = None) -> int:
     import os
 
+    from core import glib_log
     from core.debug_log import announce_log_file, debug, enabled
 
-    if enabled():
-        announce_log_file()
-        debug("ui", f"ui main pid={os.getpid()}")
+    glib_log.init()
+    announce_log_file()
+    if enabled("ui"):
+        debug("ui", f"main pid={os.getpid()}")
 
     app = UVRApplication()
     try:
@@ -182,10 +199,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if enabled("ui"):
             debug("ui", "KeyboardInterrupt after main loop (SIGINT)")
 
-    if enabled():
+    if enabled("ui"):
         if not app._did_activate:
-            debug("ui", "duplicate instance rejected (single-instance, activate not called)")
-        debug("ui", f"ui exit status={status}")
+            debug("ui", "duplicate instance rejected (single-instance)")
+        debug("ui", f"exit status={status} activated={app._did_activate}")
 
     from .shutdown import finalize_process_exit
 

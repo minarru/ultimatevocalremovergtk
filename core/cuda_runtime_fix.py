@@ -48,6 +48,11 @@ def preload_onnxruntime_cuda12() -> list[str]:
             loaded.append(lib_path)
         except OSError:
             pass
+
+    if loaded:
+        from .debug_log import debug
+
+        debug("model", f"onnxruntime cuda preload libs={len(loaded)}")
     return loaded
 
 

@@ -43,23 +43,51 @@ def save_format(
 
     from pydub import AudioSegment
 
+    from .debug_log import debug
     from .external_tools import configure_pydub_ffmpeg
 
-    configure_pydub_ffmpeg()
-    audio_segment = AudioSegment.from_wav(audio_path)
-    if save_format_sel == FLAC:
-        audio_segment.export(
-            audio_path.replace(".wav", ".flac"),
-            format="flac",
-            parameters=flac_export_parameters(flac_bit_set),
+    if configure_pydub_ffmpeg() is None:
+        debug(
+            "audio",
+            f"export failed format={save_format_sel} file={os.path.basename(audio_path)} reason=ffmpeg_missing",
         )
-    elif save_format_sel == MP3:
-        mp3_path = audio_path.replace(".wav", ".mp3")
-        try:
-            audio_segment.export(mp3_path, format="mp3", bitrate=mp3_bit_set, codec="libmp3lame")
-        except Exception:  # noqa: BLE001 - fall back to default codec like UVR
-            audio_segment.export(mp3_path, format="mp3", bitrate=mp3_bit_set)
+        return
+
+    try:
+        audio_segment = AudioSegment.from_wav(audio_path)
+    except Exception as exc:  # noqa: BLE001 - surfaced via missing output file
+        debug(
+            "audio",
+            f"export failed format={save_format_sel} file={os.path.basename(audio_path)} "
+            f"error={type(exc).__name__}: {exc}",
+        )
+        return
+
+    try:
+        if save_format_sel == FLAC:
+            audio_segment.export(
+                audio_path.replace(".wav", ".flac"),
+                format="flac",
+                parameters=flac_export_parameters(flac_bit_set),
+            )
+        elif save_format_sel == MP3:
+            mp3_path = audio_path.replace(".wav", ".mp3")
+            try:
+                audio_segment.export(mp3_path, format="mp3", bitrate=mp3_bit_set, codec="libmp3lame")
+            except Exception:  # noqa: BLE001 - fall back to default codec like UVR
+                audio_segment.export(mp3_path, format="mp3", bitrate=mp3_bit_set)
+    except Exception as exc:  # noqa: BLE001 - surfaced via missing output file
+        debug(
+            "audio",
+            f"export failed format={save_format_sel} file={os.path.basename(audio_path)} "
+            f"error={type(exc).__name__}: {exc}",
+        )
+        return
+
     try:
         os.remove(audio_path)
-    except OSError:
-        pass
+    except OSError as exc:
+        debug(
+            "audio",
+            f"export cleanup failed file={os.path.basename(audio_path)} error={type(exc).__name__}: {exc}",
+        )

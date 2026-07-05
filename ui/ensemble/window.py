@@ -599,6 +599,11 @@ class EnsemblePage:
 
     def _on_models_dialog_closed(self, *_args) -> None:
         self._update_models_summary()
+        from core.debug_log import debug
+
+        stem = self.settings.get("ensemble_main_stem", "")
+        models = len(self._selected_model_tags())
+        debug("ui", f"ensemble models selected count={models} stem={stem}")
 
     def _on_model_toggled(self, _check: Gtk.CheckButton) -> None:
         # Changing the member set detaches the run from any saved ensemble.
@@ -652,7 +657,9 @@ class EnsemblePage:
         try:
             from core.debug_log import debug
 
-            debug("ui", f"ensemble start files={len(input_paths)}")
+            stem = self.settings.get("ensemble_main_stem", "")
+            models = len(self._selected_model_tags())
+            debug("ui", f"ensemble start files={len(input_paths)} models={models} stem={stem}")
             self.context.runner.start_ensemble(input_paths, callbacks)
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
             self.window.fail_to_start(f"Unable to start ensemble: {exc}", exc)

@@ -208,7 +208,14 @@ class MethodView:
     def _on_model_changed(self, *_args) -> None:
         if self._loading:
             return
+        from core.debug_log import debug, preview_text
+
         self.settings.set(self.model_key, self.selected_model())
+        name = self.selected_model()
+        debug(
+            "model",
+            f"model selected name={preview_text(name)} arch={self.title or self.method_key}",
+        )
         self._on_settings_changed()
         self.update_stem_labels()
 

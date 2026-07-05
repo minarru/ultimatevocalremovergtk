@@ -11,7 +11,8 @@ Most Recent Changes (v1.0.0 — Linux GTK4 port):
 ~ Writable runtime data can live outside the install tree via UVR_DATA_DIR (models, settings, profiles, ensembles).
 ~ NVIDIA GPU acceleration for MDX/ONNX inference when CUDA is installed.
 ~ Apollo music restoration and audio tools (time stretch, pitch shift) in the GTK shell.
-~ Expanded UVR_DEBUG tracing across startup, downloads, workers, and separation engines.
+~ GLib debug logging via G_MESSAGES_DEBUG (replaces UVR_DEBUG); optional UVR_LOG_FILE mirror.
+~ Expanded debug tracing across startup, downloads, workers, and separation engines.
 ~ Cleaner shutdown and stop/cancel handling during active conversions.
 ~ Fixed MDX two-stem export, model download regressions, and run failure dialogs.
 ~ Reorganized codebase: ui/, core/, engines/, ml/, bundled/, vendor/demucs/.
