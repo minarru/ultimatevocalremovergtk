@@ -204,6 +204,8 @@ For shared dependency questions (FFmpeg, Rubber Band, etc.), upstream [GitHub Is
 
 Report bugs in **this GTK fork** on [Codeberg Issues](https://codeberg.org/jawlet/ultimatevocalremovergtk/issues). Use **Report Issue** in the Error Log to pre-fill version and log details.
 
+Known upstream-applicable bugs and roadmap gaps are tracked in [docs/tracked-issues.md](docs/tracked-issues.md) (items 1–7 + product gaps).
+
 ## License
 
 Ultimate Vocal Remover is **MIT-licensed**. If you use UVR models or code in unrelated projects, please credit the UVR developers.
