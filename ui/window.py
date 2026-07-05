@@ -269,7 +269,6 @@ class MainWindow(Adw.ApplicationWindow):
             button_label="Download Models",
             revealed=False,
         )
-        self._sep_banner.add_css_class("app-banner")
         self._sep_banner.connect("button-clicked", self._on_sep_banner_clicked)
         separation_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         separation_page.set_vexpand(True)

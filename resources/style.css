@@ -1,6 +1,6 @@
 /* Application styles bundled in ui/data/uvr.gresource (see compile_resources.sh). */
 
-/* Empty-state banners (class app-banner) are inset and rounded rather than
+/* Apollo empty-state banner (class app-banner): inset and rounded rather than
    spanning edge-to-edge. The accent background lives on the banner's inner
    revealer > widget node, so the radius/margin must target it there. */
 .app-banner > revealer > widget {
