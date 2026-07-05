@@ -44,6 +44,7 @@ from bundled.constants import (
 
 from . import paths
 from .debug_log import debug
+from .download_sizes import describe_download_size, estimate_jobs_size, format_download_size
 from .mdx_config_fetch import ensure_mdx_c_config
 from .politrees_catalog import (
     hf_fallback_url,
@@ -308,6 +309,13 @@ class DownloadManager:
 
         return []
 
+    def describe_selection_download_size(self, selection: str, arch_type: str) -> str:
+        """Human-readable size estimate for a catalogue selection."""
+        jobs = self.resolve(selection, arch_type)
+        if not jobs:
+            return "—"
+        return describe_download_size(jobs)
+
     # -- Downloading ------------------------------------------------------------
 
     def download(
@@ -334,18 +342,26 @@ class DownloadManager:
 
         started = time.perf_counter()
         debug("download", f"download start jobs={len(jobs)}")
+        pending_jobs = [(url, path) for url, path in jobs if not os.path.isfile(path)]
+        total_bytes, _file_count, _known = estimate_jobs_size(pending_jobs)
         total = len(jobs)
         any_downloaded = False
         for index, (url, save_path) in enumerate(jobs):
             if stop_event is not None and stop_event.is_set():
                 debug("download", "download stopped by user")
                 return "stopped"
-            if on_info:
-                on_info(f"Downloading Item {index + 1}/{total}...")
             if os.path.isfile(save_path):
                 continue
             any_downloaded = True
-            self._download_file(url, save_path, index, total, on_progress, stop_event)
+            if on_info:
+                if total_bytes is not None:
+                    on_info(
+                        f"Downloading {index + 1}/{total} "
+                        f"({format_download_size(total_bytes)} total)"
+                    )
+                else:
+                    on_info(f"Downloading {index + 1}/{total}...")
+            self._download_file(url, save_path, index, total, on_progress, stop_event, on_info)
             if stop_event is not None and stop_event.is_set():
                 # Remove the partial file so a retry restarts cleanly.
                 if os.path.isfile(save_path):
@@ -361,11 +377,11 @@ class DownloadManager:
         debug_elapsed("download", f"download done status={result}", started)
         return result
 
-    def _download_file(self, url, save_path, index, total, on_progress, stop_event) -> None:
+    def _download_file(self, url, save_path, index, total, on_progress, stop_event, on_info=None) -> None:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         tmp_path = f"{save_path}.part"
         try:
-            self._download_file_url(url, tmp_path, index, total, on_progress, stop_event)
+            self._download_file_url(url, tmp_path, index, total, on_progress, stop_event, on_info)
             os.replace(tmp_path, save_path)
         except Exception:
             fallback = hf_fallback_url(url)
@@ -376,7 +392,9 @@ class DownloadManager:
                         os.remove(tmp_path)
                 except OSError:
                     pass
-                self._download_file_url(fallback, tmp_path, index, total, on_progress, stop_event)
+                self._download_file_url(
+                    fallback, tmp_path, index, total, on_progress, stop_event, on_info
+                )
                 os.replace(tmp_path, save_path)
                 return
             if os.path.isfile(tmp_path):
@@ -386,7 +404,7 @@ class DownloadManager:
                     pass
             raise
 
-    def _download_file_url(self, url, tmp_path, index, total, on_progress, stop_event) -> None:
+    def _download_file_url(self, url, tmp_path, index, total, on_progress, stop_event, on_info=None) -> None:
         try:
             with _urlopen(url) as response:
                 length_header = response.getheader("Content-Length")
@@ -411,6 +429,12 @@ class DownloadManager:
                             file_fraction = downloaded / file_total
                             overall = (index + file_fraction) / total
                             on_progress(max(0.0, min(1.0, overall)))
+                        if on_info and file_total:
+                            on_info(
+                                f"{format_download_size(downloaded)} / "
+                                f"{format_download_size(file_total)} "
+                                f"(file {index + 1}/{total})"
+                            )
         except Exception:
             if os.path.isfile(tmp_path):
                 try:

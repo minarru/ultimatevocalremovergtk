@@ -58,6 +58,7 @@ from ..help_text import (
     ENSEMBLE_SAVED_PRESET_HINT,
 )
 from ..hints import OUTPUT_FORMAT_HINT, set_tooltip
+from ..markup import set_row_title
 from core import (
     delete_ensemble,
     list_saved_ensembles,
@@ -558,7 +559,8 @@ class EnsemblePage:
             return
 
         for tag in tags:
-            row = Adw.ActionRow(title=tag)
+            row = Adw.ActionRow()
+            set_row_title(row, tag)
             check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
             check.set_active(tag in preselected_set)
             check.connect("toggled", self._on_model_toggled)
