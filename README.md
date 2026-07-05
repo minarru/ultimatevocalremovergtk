@@ -2,9 +2,9 @@
 
 <img src="packaging/org.uvr.UltimateVocalRemover.png" alt="Ultimate Vocal Remover" width="128" />
 
-Linux port of [Ultimate Vocal Remover](https://github.com/Anjok07/ultimatevocalremovergui) with a **GTK4 / libadwaita** interface (PyGObject), built on the upstream **v5.6** codebase including **Apollo** restoration and **BS-Roformer / Mel-Band Roformer** support.
+Linux port of [Ultimate Vocal Remover](https://github.com/Anjok07/ultimatevocalremovergui) with a **GTK4 / libadwaita** interface (PyGObject). **GTK release v1.0.0**, based on upstream **v5.6**, including **Apollo** restoration and **BS-Roformer / Mel-Band Roformer** support.
 
-**Source:** [codeberg.org/jawlet/ultimatevocalremovergtk](https://codeberg.org/jawlet/ultimatevocalremovergtk)
+**Source:** [codeberg.org/jawlet/ultimatevocalremovergtk](https://codeberg.org/jawlet/ultimatevocalremovergtk) · **Releases:** [codeberg.org/jawlet/ultimatevocalremovergtk/releases](https://codeberg.org/jawlet/ultimatevocalremovergtk/releases)
 
 ## About
 
@@ -123,10 +123,23 @@ Or, with the virtual environment activated:
 
 ```bash
 source .venv/bin/activate
-python -m uvr_gtk
+python -m ui
 ```
 
 `run_uvr.sh` also installs a desktop entry under `~/.local/share/applications/` on first launch. A template is provided at `packaging/org.uvr.UltimateVocalRemover.desktop`.
+
+## Upgrading
+
+This fork is distributed as **source** (no in-app binary update). To upgrade to a newer release:
+
+```bash
+cd ultimatevocalremovergtk
+git pull
+./install_packages.sh   # re-run if requirements.txt changed
+./run_uvr.sh
+```
+
+Check [Releases](https://codeberg.org/jawlet/ultimatevocalremovergtk/releases) for release notes. The app’s **Application Version** dialog (Settings menu) compares your running version against `packaging/release.json` on Codeberg.
 
 ## Models
 
@@ -148,6 +161,25 @@ Everything else must be downloaded or placed manually:
 
 Downloaded weights are ignored by git (see `.gitignore`). Runtime data (settings, temp files) lives under the project directory in portable mode, or under `~/.local/share/ultimatevocalremover` when the install directory is read-only.
 
+## Project layout
+
+Source code is grouped by layer at the repository root:
+
+| Path | Role |
+|---|---|
+| `ui/` | GTK4 / libadwaita interface (`python -m ui`) |
+| `core/` | Backend facade: settings, job runner, paths, downloads |
+| `engines/` | Separation orchestration (VR, MDX, Demucs) |
+| `ml/` | Neural networks and audio DSP helpers |
+| `bundled/` | Read-only constants, changelog, download metadata |
+| `vendor/demucs/` | Vendored Demucs fork |
+| `models/` | Model weights and hash maps (mostly downloaded locally) |
+| `resources/` | Icon sources compiled into `ui/data/uvr.gresource` |
+
+**Bundled (shipped with the repo):** `bundled/`, model metadata under `models/`, `ml/` VR parameter JSON, `vendor/`.
+
+**Runtime (your machine, not in git):** `data.pkl`, `profiles/*.json`, `ensembles/*.json`, `ensemble_temps/`, downloaded model weights. In a writable checkout these live at the repo root; otherwise they resolve under `DATA_DIR` (see `core/paths.py`).
+
 ## Notes
 
 - This port uses the **GTK4 / libadwaita** UI. The original Tkinter application is not included.
@@ -168,9 +200,9 @@ Downloaded weights are ignored by git (see `.gitignore`). Runtime data (settings
 | No models in a dropdown | Open **Download Center** and fetch models for that process method |
 | Errors during processing | Open **Error Log** from the menu or press `Ctrl+E`; details are also shown in the log panel |
 
-For distro-specific install issues, check upstream [GitHub Issues](https://github.com/Anjok07/ultimatevocalremovergui/issues) — many Linux dependency problems are shared between the original app and this port.
+For shared dependency questions (FFmpeg, Rubber Band, etc.), upstream [GitHub Issues](https://github.com/Anjok07/ultimatevocalremovergui/issues) may still be useful.
 
-When reporting issues for **this GTK fork**, include your distribution, Python version, GPU (if any), the model and settings used, and the text from **Error Log**.
+Report bugs in **this GTK fork** on [Codeberg Issues](https://codeberg.org/jawlet/ultimatevocalremovergtk/issues). Use **Report Issue** in the Error Log to pre-fill version and log details.
 
 ## License
 

@@ -1,6 +1,6 @@
 """Filesystem locations for the Tk-free backend facade.
 
-These mirror the path constants defined inline in ``UVR.py`` so ``uvr_core`` can
+These mirror the path constants defined inline in ``UVR.py`` so ``core`` can
 locate models, model-data caches and the persisted settings file without
 importing the Tkinter application module.
 
@@ -8,7 +8,7 @@ Paths are split into two groups so the app can run from a read-only install
 (Flatpak ``/app``, AppImage mount) while keeping writable runtime data in a
 separate, user-writable location:
 
-* Read-only **bundled data** lives under :data:`data/` (constants, changelog,
+* Read-only **bundled data** lives under :data:`bundled/` (constants, changelog,
   download cache JSON).
 * Writable **runtime data** resolves relative to :data:`DATA_DIR` (models, model
   data caches, downloaded aux models, temp dirs and the settings pickle).
@@ -19,7 +19,7 @@ separate, user-writable location:
 2. Else :data:`BASE_PATH` when it is writable (preserves the historic
    "portable" layout for dev checkouts / tarball installs, so existing
    ``./models`` and ``./data.pkl`` keep working unchanged).
-3. Else the OS-default user data dir from :mod:`uvr_core.platform` (XDG on Linux,
+3. Else the OS-default user data dir from :mod:`core.platform` (XDG on Linux,
    ``%LOCALAPPDATA%`` on Windows, ``~/Library/Application Support`` on macOS).
 """
 
@@ -31,11 +31,12 @@ from .platform import user_data_dir
 BASE_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # --- Read-only bundled data (never written at runtime) -----------------------
-BUNDLED_DATA_DIR = os.path.join(BASE_PATH, "data")
+BUNDLED_DATA_DIR = os.path.join(BASE_PATH, "bundled")
 CHANGE_LOG_PATH = os.path.join(BUNDLED_DATA_DIR, "change_log.txt")
+RELEASE_JSON_PATH = os.path.join(BUNDLED_DATA_DIR, "release.json")
 DOWNLOAD_MODEL_CACHE_PATH = os.path.join(BUNDLED_DATA_DIR, "model_manual_download.json")
-VR_PARAM_DIR = os.path.join(BASE_PATH, "lib_v5", "vr_network", "modelparams")
-MDX_MIXER_PATH = os.path.join(BASE_PATH, "lib_v5", "mixer.ckpt")
+VR_PARAM_DIR = os.path.join(BASE_PATH, "ml", "vr_network", "modelparams")
+MDX_MIXER_PATH = os.path.join(BASE_PATH, "ml", "mixer.ckpt")
 
 # Read-only seed tree shipped inside the install dir. When ``DATA_DIR`` is
 # relocated (read-only install), :func:`ensure_data_dir` copies the bundled

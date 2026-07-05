@@ -20,7 +20,7 @@ import time
 import urllib.request
 from typing import Callable, Dict, List, Optional, Tuple
 
-from data.constants import (
+from bundled.constants import (
     ALL_TYPES,
     BULLETIN_CHECK,
     DEMUCS_ARCH_TYPE,
@@ -37,9 +37,6 @@ from data.constants import (
     NO_NEW_MODELS,
     NORMAL_REPO,
     OPERATING_SYSTEM,
-    UPDATE_LINUX_REPO,
-    UPDATE_MAC_X86_64_REPO,
-    UPDATE_REPO,
     VIP_REPO,
     VIP_SELECTION,
     VR_ARCH_TYPE,
@@ -48,12 +45,7 @@ from data.constants import (
 
 from . import paths
 from .debug_log import debug
-
-try:  # The version constants live at the repo root (reused verbatim from UVR).
-    from __version__ import PATCH, PATCH_LINUX, PATCH_MAC, VERSION
-except Exception:  # pragma: no cover - defensive only
-    VERSION = ""
-    PATCH = PATCH_LINUX = PATCH_MAC = ""
+from .version_info import release_update_status
 
 DOWNLOAD_MODEL_CACHE = paths.DOWNLOAD_MODEL_CACHE_PATH
 
@@ -65,14 +57,6 @@ _MODEL_DATA_URLS = [
     (MDX_MODEL_NAME_DATA_LINK, paths.MDX_MODEL_NAME_SELECT),
     (DEMUCS_MODEL_NAME_DATA_LINK, paths.DEMUCS_MODEL_NAME_SELECT),
 ]
-
-
-def _current_patch() -> str:
-    if OPERATING_SYSTEM == "Darwin":
-        return PATCH_MAC
-    if OPERATING_SYSTEM == "Linux":
-        return PATCH_LINUX
-    return PATCH
 
 
 def _latest_version_key() -> str:
@@ -438,33 +422,13 @@ class DownloadManager:
 
     # -- Update check -----------------------------------------------------------
 
+    def check_release(self) -> Dict[str, object]:
+        """Fetch fork release metadata and return GTK version/update status."""
+        return release_update_status(force_refresh=True)
+
     def update_status(self) -> Dict[str, object]:
-        """Return the app version / update status (port of the update half of
-        ``online_data_refresh``).
-
-        Keys: ``current`` (running patch), ``version`` (UVR semantic version),
-        ``latest`` (newest patch online or ``''``), ``is_current`` bool,
-        ``is_online`` bool, ``update_link`` (download/instructions URL).
-        """
-        current = _current_patch()
-        latest = self.latest_version
-        is_current = bool(latest) and latest == current
-
-        if OPERATING_SYSTEM == "Linux":
-            update_link = UPDATE_LINUX_REPO
-        elif OPERATING_SYSTEM == "Darwin":
-            update_link = UPDATE_MAC_X86_64_REPO
-        else:
-            update_link = f"{UPDATE_REPO}{latest}.zip" if latest else UPDATE_REPO
-
-        return {
-            "current": current,
-            "version": VERSION,
-            "latest": latest,
-            "is_current": is_current,
-            "is_online": self.is_online,
-            "update_link": update_link,
-        }
+        """Return GTK fork version / update status for the Updates UI."""
+        return release_update_status()
 
     # -- Manual downloads -------------------------------------------------------
 

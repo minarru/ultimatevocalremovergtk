@@ -1,4 +1,22 @@
-Most Recent Changes:
+Most Recent Changes (v1.0.0 — Linux GTK4 port):
+
+~ First public release of the Linux GTK4 / libadwaita port (PyGObject), built on upstream UVR v5.6.
+~ GTK4 interface with libadwaita styling, keyboard shortcuts, and light/dark color scheme support.
+~ Help Hints on controls; tooltip text consolidated for clearer reading.
+~ About dialog with credits, resources, license, and release notes.
+~ Error Log window for troubleshooting failed runs.
+~ Saved settings profiles and saved ensemble presets.
+~ Align Inputs UI with a dedicated dual-input pairs row.
+~ FLAC export bit-depth option.
+~ Writable runtime data can live outside the install tree via UVR_DATA_DIR (models, settings, profiles, ensembles).
+~ NVIDIA GPU acceleration for MDX/ONNX inference when CUDA is installed.
+~ Apollo music restoration and audio tools (time stretch, pitch shift) in the GTK shell.
+~ Expanded UVR_DEBUG tracing across startup, downloads, workers, and separation engines.
+~ Cleaner shutdown and stop/cancel handling during active conversions.
+~ Fixed MDX two-stem export, model download regressions, and run failure dialogs.
+~ Reorganized codebase: ui/, core/, engines/, ml/, bundled/, vendor/demucs/.
+
+Upstream UVR v5.5 (included in this port):
 
 ~ Fixed Download Center model list issue.
 ~ Fixed audio clip in ensemble mode.

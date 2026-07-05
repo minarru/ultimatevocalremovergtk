@@ -106,7 +106,12 @@ UPDATE_MAC_ARM_REPO = "https://github.com/Anjok07/ultimatevocalremovergui/releas
 UPDATE_MAC_X86_64_REPO = "https://github.com/Anjok07/ultimatevocalremovergui/releases/download/v5.6/Ultimate_Vocal_Remover_v5_6_MacOS_x86_64.dmg"
 UPDATE_LINUX_REPO = "https://github.com/Anjok07/ultimatevocalremovergui#linux-installation"
 
-ISSUE_LINK = 'https://github.com/Anjok07/ultimatevocalremovergui/issues/new'
+FORK_RELEASE_JSON_URL = (
+    "https://codeberg.org/jawlet/ultimatevocalremovergtk/raw/branch/main/packaging/release.json"
+)
+FORK_RELEASE_PAGE = "https://codeberg.org/jawlet/ultimatevocalremovergtk/releases"
+FORK_ISSUE_URL = "https://codeberg.org/jawlet/ultimatevocalremovergtk/issues/new"
+ISSUE_LINK = FORK_ISSUE_URL
 VIP_REPO = b'\xf3\xc2W\x19\x1foI)\xc2\xa9\xcc\xb67(Z\xf5',\
            b'gAAAAABjQAIQ-NpNMMxMedpKHHb7ze_nqB05hw0YhbOy3pFzuzDrfqumn8_qvraxEoUpZC5ZXC0gGvfDxFMqyq9VWbYKlA67SUFI_wZB6QoVyGI581vs7kaGfUqlXHIdDS6tQ_U-BfjbEAK9EU_74-R2zXjz8Xzekw=='
 NO_CODE = 'incorrect_code'
@@ -768,8 +773,8 @@ elif OPERATING_SYSTEM=="Windows":
                               '• Application functionality for systems running Windows 7 or lower is not guaranteed.\n' +\
                               '• Application functionality for Intel Pentium & Celeron CPUs systems is not guaranteed.\n\n'
 
-LICENSE_TEXT = lambda a, p:f'Current Application Version: Ultimate Vocal Remover {a}\n' +\
-               f'Current Patch Version: {p}\n\n' +\
+LICENSE_TEXT = lambda a, u:f'Current Application Version: Ultimate Vocal Remover GTK {a}\n' +\
+               f'Based on upstream UVR {u}\n\n' +\
                'Copyright (c) 2022 Ultimate Vocal Remover\n\n' +\
                'UVR is free and open-source, but MIT licensed. Please credit us if you use our\n' +\
                f'models or code for projects unrelated to UVR.\n\n{LICENSE_OS_SPECIFIC_TEXT}' +\
@@ -816,13 +821,13 @@ PROCESS_COMPLETE_2 = 'Process complete\n'
 # GUI Text Constants
 BACK_TO_MAIN_MENU = 'Back to Main Menu'
 
-# Help Hint Text — canonical definitions live in :mod:`uvr_gtk.help_text`.
+# Help Hint Text — canonical definitions live in :mod:`ui.help_text`.
 
 
 def __getattr__(name: str):
-    """Lazy re-export for legacy ``from data.constants import …_HELP`` imports."""
+    """Lazy re-export for legacy ``from bundled.constants import …_HELP`` imports."""
     if name.endswith("_HELP"):
-        import uvr_gtk.help_text as _help_text
+        import ui.help_text as _help_text
 
         return getattr(_help_text, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

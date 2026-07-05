@@ -19,8 +19,8 @@ from typing import Callable, Optional
 
 from gi.repository import Adw, Gdk, Gtk
 
-from data.constants import ISSUE_LINK
-from data.error_handling import CONTACT_DEV, error_dialouge, error_text
+from bundled.error_handling import CONTACT_DEV, error_dialouge, error_text
+from core.support_urls import fork_issue_url
 
 from .dialogs.utils import fill_dialog_width, present_modal_dialog, set_dialog_content
 
@@ -33,7 +33,7 @@ _ACTIVE_ERROR_DIALOG: Optional[Adw.Dialog] = None
 
 def set_error_log(text: str) -> None:
     """Replace the current error log (mirrors ``error_log_var.set``)."""
-    from uvr_core.debug_log import debug, preview_text
+    from core.debug_log import debug, preview_text
 
     global _ERROR_LOG
     with _LOCK:
@@ -48,7 +48,7 @@ def log_error(process_method: str, exception: BaseException) -> str:
     Thread-safe so worker threads can record errors directly; returns the
     formatted text.
     """
-    from uvr_core.debug_log import debug, preview_text
+    from core.debug_log import debug, preview_text
 
     formatted = error_text(process_method, exception)
     set_error_log(formatted)
@@ -73,7 +73,7 @@ def present_error_dialog(
     on_copied: Optional[Callable[[], None]] = None,
 ) -> None:
     """Show a modal failure dialog with copy / error-log actions."""
-    from uvr_core.debug_log import debug
+    from core.debug_log import debug
 
     debug("ui", f"present_error_dialog heading={heading!r} error={type(exception).__name__}")
     global _ACTIVE_ERROR_DIALOG
@@ -234,7 +234,7 @@ def open_error_log(parent_window, message=None):
     header.pack_start(copy_button)
 
     report_button = Gtk.Button(label="Report Issue")
-    report_button.connect("clicked", lambda *_: _open_link(ISSUE_LINK))
+    report_button.connect("clicked", lambda *_: _open_link(fork_issue_url(log_text=text)))
     header.pack_start(report_button)
 
     toolbar.add_top_bar(header)

@@ -29,10 +29,10 @@
 
   <launchable type="desktop-id">org.uvr.UltimateVocalRemover.desktop</launchable>
 
-  <url type="homepage">https://github.com/Anjok07/ultimatevocalremovergui</url>
+  <url type="homepage">https://codeberg.org/jawlet/ultimatevocalremovergtk</url>
 
   <releases>
-    <!-- TODO: update the release date to the actual v5.6.0 release date. -->
+    <release version="v1.0.0" date="2026-07-05"/>
     <release version="v5.6.0" date="2023-09-29"/>
   </releases>
 </component>

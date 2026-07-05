@@ -9,33 +9,20 @@ the Legal page and the release notes).
 Entry point: :func:`open_about`.
 """
 
-import os
-import platform
-
 from gi.repository import Adw, GLib, Gtk
 
-from data.constants import DONATE_LINK_BMAC, LICENSE_TEXT
-from uvr_core import paths
+from bundled.constants import DONATE_LINK_BMAC, FORK_ISSUE_URL, LICENSE_TEXT
+from core import paths
 
 from . import APP_ID
 
 try:
-    from __version__ import PATCH, PATCH_LINUX, PATCH_MAC, VERSION
+    from __version__ import UPSTREAM_BASE, VERSION
 except Exception:  # pragma: no cover
-    VERSION = "v5.6.0"
-    PATCH = PATCH_LINUX = PATCH_MAC = ""
+    VERSION = "v1.0.0"
+    UPSTREAM_BASE = "v5.6.0"
 
 CHANGE_LOG = paths.CHANGE_LOG_PATH
-
-
-def _current_patch() -> str:
-    system = platform.system()
-    if system == "Darwin":
-        return PATCH_MAC
-    if system == "Linux":
-        return PATCH_LINUX
-    return PATCH
-
 
 # Upstream AI code authors. Formatted as "Name URL" so libadwaita renders the
 # trailing URL as a clickable link in the credit section.
@@ -101,7 +88,7 @@ def _enrich_about(about) -> None:
         about.add_link(title, url)
 
     about.set_license_type(Gtk.License.CUSTOM)
-    about.set_license(LICENSE_TEXT(VERSION, _current_patch()))
+    about.set_license(LICENSE_TEXT(VERSION, UPSTREAM_BASE))
 
     notes = _changelog_to_markup(_read_change_log())
     if notes:
@@ -118,10 +105,10 @@ def open_about(parent_window):
     kwargs = dict(
         application_name="Ultimate Vocal Remover",
         application_icon=APP_ID,
-        version=VERSION or "v5.6.0",
+        version=VERSION or "v1.0.0",
         comments="A GUI for vocal/instrumental separation using state-of-the-art AI models.",
-        website="https://github.com/Anjok07/ultimatevocalremovergui",
-        issue_url="https://github.com/Anjok07/ultimatevocalremovergui/issues/new",
+        website="https://codeberg.org/jawlet/ultimatevocalremovergtk",
+        issue_url=FORK_ISSUE_URL,
         developer_name="Anjok07 & Aufr33",
         developers=["Anjok07", "Aufr33", "DilanBoskan"],
         copyright="\u00a9 2022 Ultimate Vocal Remover",

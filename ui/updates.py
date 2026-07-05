@@ -1,10 +1,8 @@
-"""Version / update view (port of UVR's update half of ``online_data_refresh``).
+"""Version / update view for the GTK fork release channel.
 
-Shows the running application version + patch (from :mod:`__version__`, reused
-verbatim) and checks the online catalogue for a newer build, exactly as UVR's
-Settings "version status" area does. On Linux the update action opens UVR's
-Linux installation instructions page (matching ``UPDATE_LINUX_REPO``); the check
-runs on a worker thread and updates the UI via ``GLib.idle_add``.
+Shows the running application version and checks ``packaging/release.json`` on
+Codeberg for a newer source release. Upgrade is documented on the release page
+(``git pull`` + ``install_packages.sh``), not an in-app binary download.
 
 Entry point: :func:`open_update_view` (wire to a ``win.updates`` action).
 """
@@ -12,12 +10,13 @@ Entry point: :func:`open_update_view` (wire to a ``win.updates`` action).
 import threading
 import webbrowser
 
-from gi.repository import Adw, GLib, Gtk
+from gi.repository import Adw, Gtk
 
-from data.constants import CHECK_FOR_UPDATES_TEXT, LOADING_VERSION_INFO_TEXT
-from uvr_core.downloads import DownloadManager
+from bundled.constants import FORK_RELEASE_PAGE, LOADING_VERSION_INFO_TEXT
+from core.downloads import DownloadManager
 
 from .dialogs.utils import present_modal_dialog, set_dialog_content
+from .dispatch import idle_on_main
 
 
 def _get_manager(app_context) -> DownloadManager:
@@ -29,13 +28,13 @@ def _get_manager(app_context) -> DownloadManager:
         setattr(app_context, "_download_manager", manager)
     return manager
 
-from .dispatch import idle_on_main
+
 class UpdateView:
     def __init__(self, parent, app_context=None):
         self.parent = parent
         self.context = app_context
         self.manager = _get_manager(app_context)
-        self._update_link = ""
+        self._update_link = FORK_RELEASE_PAGE
 
         self.dialog = Adw.Dialog()
         self.dialog.set_title("Application Version")
@@ -46,16 +45,28 @@ class UpdateView:
 
         status = self.manager.update_status()
         version_group = Adw.PreferencesGroup(title="Application Version")
-        version_group.add(Adw.ActionRow(title="Version", subtitle=status["version"] or "unknown"))
-        version_group.add(Adw.ActionRow(title="Patch", subtitle=status["current"] or "unknown"))
+        version_group.add(
+            Adw.ActionRow(title="Version", subtitle=status["version"] or "unknown")
+        )
+        if status.get("upstream_base"):
+            version_group.add(
+                Adw.ActionRow(
+                    title="Based on",
+                    subtitle=str(status["upstream_base"]),
+                )
+            )
         page.add(version_group)
 
         update_group = Adw.PreferencesGroup(title="Updates")
         self.status_row = Adw.ActionRow(title="Status", subtitle=LOADING_VERSION_INFO_TEXT)
         update_group.add(self.status_row)
 
+        self.upgrade_row = Adw.ActionRow(title="Upgrade")
+        self.upgrade_row.set_visible(False)
+        update_group.add(self.upgrade_row)
+
         self.update_row = Adw.ActionRow(title="Get the latest version")
-        self.update_button = Gtk.Button(label=CHECK_FOR_UPDATES_TEXT, valign=Gtk.Align.CENTER)
+        self.update_button = Gtk.Button(label="Check again", valign=Gtk.Align.CENTER)
         self.update_button.connect("clicked", self._on_check_or_update)
         self.update_row.add_suffix(self.update_button)
         update_group.add(self.update_row)
@@ -69,31 +80,38 @@ class UpdateView:
 
     def _check(self) -> None:
         self.status_row.set_subtitle(LOADING_VERSION_INFO_TEXT)
+        self.upgrade_row.set_visible(False)
         self.update_button.set_sensitive(False)
         threading.Thread(target=self._check_worker, daemon=True).start()
 
     def _check_worker(self) -> None:
-        self.manager.refresh()
-        status = self.manager.update_status()
+        status = self.manager.check_release()
         idle_on_main(self._check_done, status)
 
     def _check_done(self, status) -> None:
         self.update_button.set_sensitive(True)
-        self._update_link = status["update_link"]
-        if not status["is_online"]:
-            self.status_row.set_subtitle("No internet connection")
-            self.update_button.set_label("Refresh")
-        elif status["is_current"]:
-            self.status_row.set_subtitle("UVR version is up to date")
-            self.update_button.set_label(CHECK_FOR_UPDATES_TEXT)
+        self._update_link = status.get("update_link") or FORK_RELEASE_PAGE
+
+        if not status.get("is_online"):
+            self.status_row.set_subtitle("Could not check for updates (offline)")
+            self.update_button.set_label("Check again")
+        elif status.get("is_current"):
+            self.status_row.set_subtitle("This release is up to date")
+            self.update_button.set_label("View release notes")
         else:
-            latest = status["latest"] or "available"
-            self.status_row.set_subtitle(f"Update available: {latest}")
-            self.update_button.set_label("Open Update Page")
+            latest = status.get("latest") or "available"
+            self.status_row.set_subtitle(
+                f"New release available: {latest} — upgrade from source (see release notes)"
+            )
+            instructions = status.get("upgrade_instructions") or ""
+            if instructions:
+                self.upgrade_row.set_subtitle(str(instructions))
+                self.upgrade_row.set_visible(True)
+            self.update_button.set_label("View release notes")
 
     def _on_check_or_update(self, _button) -> None:
         label = self.update_button.get_label()
-        if label in (CHECK_FOR_UPDATES_TEXT, "Refresh"):
+        if label == "Check again":
             self._check()
         elif self._update_link:
             webbrowser.open_new_tab(self._update_link)

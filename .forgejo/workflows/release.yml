@@ -1,0 +1,43 @@
+name: Release check
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  verify-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify tag matches VERSION and release.json
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="$(grep "^VERSION" __version__.py | cut -d"'" -f2)"
+          JSON_VERSION="$(python3 -c "import json; print(json.load(open('packaging/release.json'))['latest_version'])")"
+          BUNDLED_VERSION="$(python3 -c "import json; print(json.load(open('bundled/release.json'))['latest_version'])")"
+          echo "Tag: ${TAG}"
+          echo "VERSION: ${VERSION}"
+          echo "packaging/release.json: ${JSON_VERSION}"
+          echo "bundled/release.json: ${BUNDLED_VERSION}"
+          test "${TAG}" = "${VERSION}"
+          test "${TAG}" = "${JSON_VERSION}"
+          test "${TAG}" = "${BUNDLED_VERSION}"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3 python3-venv python3-pip python3-gi \
+            gir1.2-gtk-4.0 gir1.2-adw-1 \
+            ffmpeg rubberband-cli
+
+      - name: Create virtual environment
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: .venv/bin/python -m unittest discover -s tests -v
