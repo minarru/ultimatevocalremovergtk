@@ -1,7 +1,7 @@
 import unittest
 
-from data.error_handling import error_dialouge, error_text
-from uvr_gtk.errorlog import (
+from bundled.error_handling import error_dialouge, error_text
+from ui.errorlog import (
     _friendly_error_message,
     get_error_log,
     log_error,
