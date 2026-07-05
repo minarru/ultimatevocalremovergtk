@@ -133,7 +133,7 @@ install_system_deps() {
     fi
 }
 
-# Bundle resources/icons/ into ui/data/uvr.gresource (custom symbolic icons).
+# Bundle resources/ (icons + style.css) into ui/data/uvr.gresource.
 compile_gresources() {
     local script="${PROJECT_ROOT}/resources/compile_resources.sh"
     if [[ ! -x "${script}" ]]; then

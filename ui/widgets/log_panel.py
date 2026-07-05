@@ -16,11 +16,11 @@ from .console import ConsoleView
 
 _PANEL_WIDTH = 520
 #: Log body height; keep in sync with ``.uvr-log-body { min-height }`` in
-#: :mod:`ui.application`.
+#: ``resources/style.css``.
 _LOG_BODY_HEIGHT = 200
 #: Bottom margin applied to the panel in :class:`ui.window.MainWindow`.
 OVERLAY_MARGIN_BOTTOM = 12
-#: Layout reserves derived from ``application.py`` (``.uvr-run-controls``,
+#: Layout reserves derived from ``resources/style.css`` (``.uvr-run-controls``,
 #: ``.uvr-run-actions``, ``.uvr-progress-section``). Used when the panel has
 #: not been allocated yet and :meth:`Gtk.Widget.measure` is not meaningful.
 _RUN_CONTROLS_PADDING_Y = 24

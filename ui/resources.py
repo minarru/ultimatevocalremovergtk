@@ -9,13 +9,17 @@ from core import paths
 
 from . import APP_ID
 
+#: GResource prefix (must match resources/compile_resources.sh).
+RESOURCE_PREFIX = f"/{APP_ID.replace('.', '/')}"
 #: GResource prefix for the bundled icon theme (must match compile_resources.sh).
-ICON_RESOURCE_PREFIX = f"/{APP_ID.replace('.', '/')}/icons"
+ICON_RESOURCE_PREFIX = f"{RESOURCE_PREFIX}/icons"
+STYLE_CSS_RESOURCE = f"{RESOURCE_PREFIX}/style.css"
 
 _RESOURCE_PATH = os.path.join(os.path.dirname(__file__), "data", "uvr.gresource")
 _bundle_registered = False
 _icon_theme_registered = False
 _app_icon_registered = False
+_styles_loaded = False
 
 
 def resource_bundle_path() -> str:
@@ -108,3 +112,24 @@ def register_gresources() -> bool:
     _register_icon_theme()
     _register_application_icon()
     return loaded
+
+
+def load_application_styles() -> bool:
+    """Load bundled ``style.css`` at application priority (idempotent)."""
+    global _styles_loaded
+    if _styles_loaded:
+        return True
+    display = Gdk.Display.get_default()
+    if display is None:
+        return False
+    if not register_gresources():
+        return False
+    provider = Gtk.CssProvider()
+    provider.load_from_resource(STYLE_CSS_RESOURCE)
+    Gtk.StyleContext.add_provider_for_display(
+        display,
+        provider,
+        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+    )
+    _styles_loaded = True
+    return True

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Bundle resources/icons/ into ui/data/uvr.gresource for Gtk.IconTheme.
+# Bundle resources/icons/ and resources/style.css into ui/data/uvr.gresource.
 set -euo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${HERE}/.." && pwd)"
 ICONS_DIR="${HERE}/icons"
+STYLE_CSS="${HERE}/style.css"
 XML="${HERE}/uvr.gresource.xml"
 OUT_DIR="${REPO_ROOT}/ui/data"
 OUT_BIN="${OUT_DIR}/uvr.gresource"
@@ -17,6 +18,11 @@ fi
 
 if [[ ! -f "${ICONS_DIR}/index.theme" ]]; then
     echo "Missing ${ICONS_DIR}/index.theme" >&2
+    exit 1
+fi
+
+if [[ ! -f "${STYLE_CSS}" ]]; then
+    echo "Missing ${STYLE_CSS}" >&2
     exit 1
 fi
 
@@ -33,6 +39,7 @@ mkdir -p "${OUT_DIR}"
     echo '<?xml version="1.0" encoding="UTF-8"?>'
     echo '<gresources>'
     echo "  <gresource prefix=\"${PREFIX}\">"
+    echo "    <file>style.css</file>"
     while IFS= read -r -d '' file; do
         rel="${file#${ICONS_DIR}/}"
         case "${rel}" in
