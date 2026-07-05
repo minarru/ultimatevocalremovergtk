@@ -59,11 +59,15 @@ models/VR_Models/model_data/*
 !models/VR_Models/model_data/model_data.json
 !models/VR_Models/UVR-DeNoise-Lite.pth
 
-# Runtime / portable-mode artifacts (see uvr_core/paths.py)
+# Runtime / portable-mode artifacts (see core/paths.py)
 data.pkl
 ensemble_temps/
 temp_sample_clips/
-uvr_gtk/data/icons/
+profiles/*
+!profiles/.gitkeep
+ensembles/*
+!ensembles/.gitkeep
+ui/data/icons/
 
 # Scripts only used locally
 scripts/*
