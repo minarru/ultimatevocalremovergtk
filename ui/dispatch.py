@@ -1,6 +1,6 @@
 """Marshal background-thread callbacks onto the GTK main loop.
 
-:class:`uvr_core.JobRunner` runs separation on a worker thread and calls plain
+:class:`core.JobRunner` runs separation on a worker thread and calls plain
 callbacks from that thread. GTK widgets may only be touched from the main loop,
 so the helpers here wrap those callbacks with ``GLib.idle_add``. Later phases use
 :func:`gtk_job_callbacks` to bind progress/console/completion to widgets safely.
@@ -11,8 +11,8 @@ import time
 
 from gi.repository import GLib
 
-from uvr_core import JobCallbacks
-from uvr_core.debug_log import correlation_seq, debug, preview_text, verbose
+from core import JobCallbacks
+from core.debug_log import correlation_seq, debug, preview_text, verbose
 
 _PROGRESS_LOG_STEP = 0.05
 _last_progress_log = -1.0

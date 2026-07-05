@@ -1,4 +1,4 @@
-"""Cross-tab file, output and format options synced from :class:`~uvr_core.SettingsModel`.
+"""Cross-tab file, output and format options synced from :class:`~core.SettingsModel`.
 
 Input paths, the export folder, output format, GPU conversion and sample mode
 are shared across the Separation, Ensemble and Audio Tools surfaces. Call
@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Optional, Protocol, Sequence
 
-from data.constants import SAMPLE_MODE_CHECKBOX, WAV
+from bundled.constants import SAMPLE_MODE_CHECKBOX, WAV
 
 from .widgets.rows import set_combo_value
 

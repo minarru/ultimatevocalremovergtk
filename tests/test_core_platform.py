@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest import mock
 
-from uvr_core import platform as uvr_platform
+from core import platform as uvr_platform
 
 
 class PlatformPathTests(unittest.TestCase):

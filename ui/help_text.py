@@ -1,6 +1,6 @@
 """GTK tooltip copy for the UVR interface.
 
-Strings here are passed verbatim to :func:`uvr_gtk.hints.set_tooltip` — edit them
+Strings here are passed verbatim to :func:`ui.hints.set_tooltip` — edit them
 in final display form; there is no runtime normalization layer.
 
 Style guide
@@ -59,7 +59,7 @@ def validate_help_text(text: str, *, name: str = "") -> List[str]:
 
 def iter_help_strings() -> Iterator[tuple[str, str]]:
     """Yield ``(name, text)`` for every module-level tooltip constant."""
-    import uvr_gtk.help_text as mod
+    import ui.help_text as mod
 
     names = [n for n in dir(mod) if n.isupper() and (n.endswith("_HELP") or n.endswith("_HINT"))]
     for name in sorted(names):

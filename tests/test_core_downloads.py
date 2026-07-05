@@ -1,9 +1,9 @@
 import os
 import unittest
 
-from data.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, NO_MODEL, VR_ARCH_TYPE
-from uvr_core.downloads import DownloadManager, vip_downloads
-from uvr_core import paths
+from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, NO_MODEL, VR_ARCH_TYPE
+from core.downloads import DownloadManager, vip_downloads
+from core import paths
 
 
 class DownloadManagerResolveTests(unittest.TestCase):
@@ -52,7 +52,7 @@ class DownloadManagerResolveTests(unittest.TestCase):
 
 class VipDownloadsTests(unittest.TestCase):
     def test_wrong_password_returns_no_code(self):
-        from data.constants import NO_CODE
+        from bundled.constants import NO_CODE
 
         self.assertEqual(vip_downloads("definitely-wrong-password"), NO_CODE)
 

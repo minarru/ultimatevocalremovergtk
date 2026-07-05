@@ -5,23 +5,23 @@ separation surface. It provides:
 
 * a "Process method" dropdown (``Adw.ComboRow``) that swaps the visible option
   panel in a ``Gtk.Stack`` (VR Architecture / MDX-Net / Demucs), each panel
-  contributed by a :class:`uvr_gtk.views.MethodView`;
+  contributed by a :class:`ui.views.MethodView`;
 * input file(s) and output folder choosers with native drag and drop;
 * the shared main-window options (output format, GPU conversion, sample mode);
 * Start / Stop and a progress bar in a collapsible log panel at the bottom of
   the window (run controls always visible; log output expands above them), all
   wired to
-  :class:`uvr_core.JobRunner` through :mod:`uvr_gtk.dispatch` so worker-thread
+  :class:`core.JobRunner` through :mod:`ui.dispatch` so worker-thread
   callbacks land on the GTK main loop.
 
-Settings are persisted through the shared :class:`uvr_gtk.context.AppContext`
+Settings are persisted through the shared :class:`ui.context.AppContext`
 using the exact ``DEFAULT_DATA`` keys, so the Phase 2 settings window and the
 Phase 3 advanced panels read and write the same model.
 
 Settings, Ensemble, Audio Tools, the Download Center, About, Updates, the
 Error Log and the input viewer are all reachable through window
 actions wired in :meth:`MainWindow._install_actions`, with keyboard accelerators
-and help-hint tooltips installed from :mod:`uvr_gtk.hints`.
+and help-hint tooltips installed from :mod:`ui.hints`.
 """
 
 import os
@@ -29,7 +29,7 @@ from typing import Optional
 
 from gi.repository import Adw, Gio, Gtk
 
-from data.constants import (
+from bundled.constants import (
     FLAC,
     INPUT_FOLDER_ENTRY_HELP,
     MDX_ARCH_TYPE,
@@ -56,7 +56,7 @@ from .hints import (
 )
 from .dispatch import idle_on_main
 from .run_control import RunController
-from uvr_core.debug_log import debug
+from core.debug_log import debug
 from .shared_settings import apply_shared_file_options
 from .views import METHOD_VIEWS
 from .widgets.columns import (
@@ -718,7 +718,7 @@ class MainWindow(Adw.ApplicationWindow):
         open_download_center(self, self.context, on_models_changed=self._refresh_models)
 
     def _refresh_models(self, *, source: str = "download_center") -> None:
-        from uvr_core.debug_log import debug
+        from core.debug_log import debug
 
         debug("ui", f"refresh_models source={source}")
         # New model files may add hash/name mappings and change stem filtering.

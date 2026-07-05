@@ -1,9 +1,9 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from data.constants import DEFAULT, ENSEMBLE_MODE, MDX_ARCH_TYPE, VR_ARCH_TYPE
-from uvr_core.model_data import ModelData, assemble_model_data
-from uvr_core.settings import SettingsModel
+from bundled.constants import DEFAULT, ENSEMBLE_MODE, MDX_ARCH_TYPE, VR_ARCH_TYPE
+from core.model_data import ModelData, assemble_model_data
+from core.settings import SettingsModel
 
 
 class OverlapMdxDefaultTests(unittest.TestCase):
@@ -42,7 +42,7 @@ class AssembleEnsembleTests(unittest.TestCase):
         bad = MagicMock()
         bad.model_status = False
 
-        with patch("uvr_core.model_data.ModelData", side_effect=[good, bad]):
+        with patch("core.model_data.ModelData", side_effect=[good, bad]):
             with self.assertRaises(ValueError):
                 assemble_model_data(settings, repo, arch_type=ENSEMBLE_MODE)
 
@@ -63,7 +63,7 @@ class AssembleEnsembleTests(unittest.TestCase):
         second = MagicMock()
         second.model_status = True
 
-        with patch("uvr_core.model_data.ModelData", side_effect=[first, second]):
+        with patch("core.model_data.ModelData", side_effect=[first, second]):
             models = assemble_model_data(settings, repo, arch_type=ENSEMBLE_MODE)
         self.assertEqual(models, [first, second])
 

@@ -1,7 +1,7 @@
 """Tk-free backend facade for Ultimate Vocal Remover (GTK4 rewrite).
 
-``uvr_core`` decouples UVR's audio backend from Tkinter so it can be driven by the
-GTK4/libadwaita UI (``uvr_gtk``) or any other front end. It exposes:
+``core`` decouples UVR's audio backend from Tkinter so it can be driven by the
+GTK4/libadwaita UI (``ui``) or any other front end. It exposes:
 
 * :class:`SettingsModel` - the flat ``DEFAULT_DATA`` schema with pickle persistence.
 * :class:`ModelData` / :func:`assemble_model_data` - Tk-free per-run config assembly.
@@ -9,7 +9,7 @@ GTK4/libadwaita UI (``uvr_gtk``) or any other front end. It exposes:
 * :class:`JobRunner` / :class:`JobCallbacks` - the ``KThread`` separation worker.
 
 Importing this package must never import ``tkinter``; heavy ML dependencies
-(``torch``, ``separate.py``) are imported lazily inside the methods that use them.
+(``torch``, ``engines``) are imported lazily inside the methods that use them.
 """
 
 from .audio_tools import AudioToolRunner

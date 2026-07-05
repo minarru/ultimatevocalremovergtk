@@ -3,12 +3,12 @@
 ``JobRunner`` reimplements the orchestration in ``MainWindow.process_start`` and
 its ``KThread`` worker, but without any Tkinter coupling: progress, console and
 completion are delivered through plain callbacks. The runner deliberately knows
-nothing about GTK; the ``uvr_gtk`` layer wraps these callbacks with
-``GLib.idle_add`` (see :mod:`uvr_gtk.dispatch`) so they run on the main loop.
+nothing about GTK; the ``ui`` layer wraps these callbacks with
+``GLib.idle_add`` (see :mod:`ui.dispatch`) so they run on the main loop.
 
 Supports single-model separation, ensemble runs, sample mode, and secondary /
 vocal-splitter / Demucs pre-process machinery. Audio tools live in
-:mod:`uvr_core.audio_tools`.
+:mod:`core.audio_tools`.
 """
 
 import os
@@ -18,7 +18,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Sequence
 
-from data.constants import (
+from bundled.constants import (
     CHOOSE_ENSEMBLE_OPTION,
     CHOOSE_STEM_PAIR,
     DEMUCS_ARCH_TYPE,
@@ -648,8 +648,8 @@ class Ensembler:
     def ensemble_outputs(self, audio_file_base, export_path, stem, is_4_stem=False, is_inst_mix=False):
         """Combine the per-member outputs for ``stem`` with the chosen algorithm."""
         debug("worker", f"ensemble_outputs stem={stem!r} is_4_stem={is_4_stem} is_inst_mix={is_inst_mix}")
-        from lib_v5 import spec_utils
-        from separate import save_format as _save_format
+        from ml import spec_utils
+        from engines.separate import save_format as _save_format
 
         if is_4_stem:
             algorithm = self.settings.get("ensemble_type", MAX_MIN)

@@ -1,7 +1,7 @@
 """Shared application context for the GTK front end.
 
-Holds the single :class:`~uvr_core.SettingsModel` (loaded from ``data.pkl``) plus
-lazily-created :class:`~uvr_core.ModelRepository` and :class:`~uvr_core.JobRunner`
+Holds the single :class:`~core.SettingsModel` (loaded from ``data.pkl``) plus
+lazily-created :class:`~core.ModelRepository` and :class:`~core.JobRunner`
 instances. The repository and runner are created on first use so the window can
 be constructed without importing the heavy ML stack (``torch`` / ``separate.py``
 are only pulled in once a separation actually starts).
@@ -11,13 +11,13 @@ phases, the settings/ensemble/audio-tool views) so they all read and write the
 same settings keys.
 
 The unrecognized-model dialog hook is registered once here so every method view
-shares the same :attr:`~uvr_core.ModelRepository.on_unrecognized_model` handler.
+shares the same :attr:`~core.ModelRepository.on_unrecognized_model` handler.
 """
 
 from typing import Callable, Optional
 
-from uvr_core import ModelRepository, SettingsModel
-from uvr_core.debug_log import debug
+from core import ModelRepository, SettingsModel
+from core.debug_log import debug
 
 
 class AppContext:
@@ -55,7 +55,7 @@ class AppContext:
     @property
     def runner(self):
         if self._runner is None:
-            from uvr_core import JobRunner
+            from core import JobRunner
 
             self._runner = JobRunner(self.settings, self.repo)
         return self._runner

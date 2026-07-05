@@ -3,7 +3,7 @@ from contextlib import contextmanager
 
 import pytest
 
-from uvr_core import debug_log
+from core import debug_log
 
 
 @pytest.fixture(autouse=True)

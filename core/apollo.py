@@ -8,12 +8,12 @@ extract the four model build parameters (``sr`` / ``win`` / ``feature_dim`` /
 ``layer``) the Apollo architecture needs.
 
 Nothing here imports ``torch``; the heavy inference module
-(``lib_v5.apollo_inference``) is imported lazily by the audio-tools runner. The
+(``ml.apollo_inference``) is imported lazily by the audio-tools runner. The
 yaml config is read with ``PyYAML`` (already a dependency).
 
 An *unrecognized* model (one whose hash has no ``<hash>.json``) is handled via an
 optional ``on_unrecognized`` callback (installed by the GTK layer, analogous to
-:attr:`uvr_core.ModelRepository.on_unrecognized_model`). The callback receives
+:attr:`core.ModelRepository.on_unrecognized_model`). The callback receives
 this :class:`ApolloModelData` and returns a params dict (``{"config_yaml": ...}``)
 or ``None``; a returned dict is persisted to ``<hash>.json`` so the model is
 recognised on subsequent runs.

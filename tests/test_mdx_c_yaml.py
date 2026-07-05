@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from uvr_core.model_data import load_mdx_c_config
+from core.model_data import load_mdx_c_config
 
 
 class LoadMdxCConfigTests(unittest.TestCase):

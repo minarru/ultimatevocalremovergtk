@@ -1,7 +1,7 @@
 """Download Center (GTK4 / libadwaita port of UVR's ``tab3`` download menu).
 
 Provides :func:`open_download_center`, the entry point the main window's
-``win.download`` action calls. It reuses :class:`uvr_core.downloads.DownloadManager`
+``win.download`` action calls. It reuses :class:`core.downloads.DownloadManager`
 for all network/disk work and mirrors UVR's behaviour:
 
 * pick a network (VR Arch / MDX-Net / Demucs) and a not-yet-downloaded model;
@@ -19,7 +19,7 @@ import webbrowser
 
 from gi.repository import Adw, GLib, Gtk
 
-from data.constants import (
+from bundled.constants import (
     DEMUCS_ARCH_TYPE,
     DONATE_LINK_BMAC,
     DONATE_LINK_PATREON,
@@ -29,9 +29,9 @@ from data.constants import (
     NO_NEW_MODELS,
     VR_ARCH_TYPE,
 )
-from uvr_core.downloads import DownloadManager
+from core.downloads import DownloadManager
 
-from uvr_core.debug_log import debug
+from core.debug_log import debug
 
 from .dialogs.utils import configure_dialog_width, fill_dialog_width, present_modal_dialog, set_dialog_content
 from .help_text import VIP_DOWNLOAD_CODE_HINT
@@ -236,7 +236,7 @@ class DownloadCenter:
                 stop_event=self._stop_event,
             )
         except Exception as exc:  # noqa: BLE001 - surfaced via the error log + UI
-            from uvr_core.debug_log import debug
+            from core.debug_log import debug
 
             debug("download", f"download failed error={type(exc).__name__}: {exc}")
             from .errorlog import log_error

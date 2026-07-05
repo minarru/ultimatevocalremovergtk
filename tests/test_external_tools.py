@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from uvr_core import external_tools
+from core import external_tools
 
 
 class ExternalToolsTests(unittest.TestCase):

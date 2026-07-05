@@ -31,7 +31,7 @@ usage() {
 Usage: ./install_packages.sh [options]
 
 Sets up the environment for the GTK4 / libadwaita Ultimate Vocal Remover app
-(Linux-only). After it finishes, run the app with:  python -m uvr_gtk
+(Linux-only). After it finishes, run the app with:  python -m ui
 
 Options:
   --mode MODE         Install mode: 'system' (Option B, default) builds the venv
@@ -133,7 +133,7 @@ install_system_deps() {
     fi
 }
 
-# Bundle resources/icons/ into uvr_gtk/data/uvr.gresource (custom symbolic icons).
+# Bundle resources/icons/ into ui/data/uvr.gresource (custom symbolic icons).
 compile_gresources() {
     local script="${PROJECT_ROOT}/resources/compile_resources.sh"
     if [[ ! -x "${script}" ]]; then
@@ -346,7 +346,7 @@ Activate the environment:
   source "${VENV_DIR}/bin/activate"
 
 Run the GTK4 app:
-  python -m uvr_gtk
+  python -m ui
 EOF
 else
     # Option A (fallback): uv-managed Python 3.12 venv + pip PyGObject against the
@@ -411,6 +411,6 @@ EOF
     cat <<EOF
 
 Run the GTK4 app:
-  python -m uvr_gtk
+  python -m ui
 EOF
 fi

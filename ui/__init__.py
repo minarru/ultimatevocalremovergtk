@@ -2,8 +2,8 @@
 
 This package hosts the ``Adw.Application``, the main window and (in later phases)
 the separation UI, settings and dialogs. It drives the Tk-free backend in
-:mod:`uvr_core`, marshaling the backend's worker-thread callbacks onto the GTK
-main loop via :mod:`uvr_gtk.dispatch`.
+:mod:`core`, marshaling the backend's worker-thread callbacks onto the GTK
+main loop via :mod:`ui.dispatch`.
 
 Importing this package requires the system PyGObject stack (gi / GTK 4.0 / Adw 1);
 the required versions are pinned here before ``gi.repository`` is imported.

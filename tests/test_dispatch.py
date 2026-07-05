@@ -1,11 +1,11 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from uvr_gtk.dispatch import gtk_job_callbacks, idle_on_main, main_thread
+from ui.dispatch import gtk_job_callbacks, idle_on_main, main_thread
 
 
 class DispatchTests(unittest.TestCase):
-    @patch("uvr_gtk.dispatch.GLib.idle_add")
+    @patch("ui.dispatch.GLib.idle_add")
     def test_idle_on_main_schedules_once(self, idle_add):
         calls = []
 
@@ -17,7 +17,7 @@ class DispatchTests(unittest.TestCase):
         idle_on_main(calls.append, "done")
         self.assertEqual(calls, ["done"])
 
-    @patch("uvr_gtk.dispatch.GLib.idle_add")
+    @patch("ui.dispatch.GLib.idle_add")
     def test_main_thread_wrapper(self, idle_add):
         seen = []
 
@@ -30,7 +30,7 @@ class DispatchTests(unittest.TestCase):
         wrapped("ok")
         self.assertEqual(seen, ["ok"])
 
-    @patch("uvr_gtk.dispatch.main_thread", side_effect=lambda func: func)
+    @patch("ui.dispatch.main_thread", side_effect=lambda func: func)
     def test_gtk_job_callbacks_wraps_handlers(self, _main_thread):
         progress = MagicMock()
         console = MagicMock()

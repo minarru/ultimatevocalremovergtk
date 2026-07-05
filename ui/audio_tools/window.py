@@ -2,7 +2,7 @@
 
 Refactored from a standalone ``Adw.Window`` into an embeddable *page controller*
 hosted by the main window's ``content_stack`` (see
-:class:`uvr_gtk.window.MainWindow`). The page builds only its option groups in
+:class:`ui.window.MainWindow`). The page builds only its option groups in
 the shared responsive two-column layout; the console, progress bar and
 Start/Stop action bar are shared across all modes and supplied by the main
 window via :meth:`AudioToolsPage.start`.
@@ -18,10 +18,10 @@ It offers the five UVR audio tools as selectable sub-modes:
   advanced options, driven by the dual/batch editor.
 * **Matchering** - reference-based mastering of (target, reference) pairs.
 
-Heavy work runs on :class:`uvr_core.AudioToolRunner`'s ``KThread`` worker; all
+Heavy work runs on :class:`core.AudioToolRunner`'s ``KThread`` worker; all
 progress / console / completion callbacks are marshaled onto the GTK main loop
 through the caller-supplied callbacks (built with
-:func:`uvr_gtk.dispatch.gtk_job_callbacks`). Options bind to the exact
+:func:`ui.dispatch.gtk_job_callbacks`). Options bind to the exact
 ``DEFAULT_DATA`` keys via the shared ``SettingsModel``.
 """
 
@@ -30,7 +30,7 @@ from typing import List, Optional, Tuple
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
-from data.constants import (
+from bundled.constants import (
     ALIGN_INPUTS,
     ALIGN_PHASE_OPTIONS,
     APOLLO_CHUNK_SIZE_HELP,
@@ -134,7 +134,7 @@ class AudioToolsPage:
         self._dual_inputs_rows: List[DualInputsRow] = []
         self._runner = None
         # Same per-view help-hint manager the separation method views use
-        # (see ``uvr_gtk.views.base.MethodView``), so Audio Tools tooltips are
+        # (see ``ui.views.base.MethodView``), so Audio Tools tooltips are
         # registered through the identical ``HelpHintManager`` path.
         self.hints = HelpHintManager()
 
@@ -153,7 +153,7 @@ class AudioToolsPage:
     @property
     def runner(self):
         if self._runner is None:
-            from uvr_core.audio_tools import AudioToolRunner
+            from core.audio_tools import AudioToolRunner
 
             self._runner = AudioToolRunner(self.settings)
         return self._runner
@@ -374,7 +374,7 @@ class AudioToolsPage:
 
     def _refresh_apollo_models(self) -> None:
         """Repopulate the Apollo model picker from the models on disk."""
-        from uvr_core.apollo import list_apollo_models
+        from core.apollo import list_apollo_models
 
         found = list_apollo_models()
         models = [CHOOSE_MODEL, *found]
@@ -563,7 +563,7 @@ class AudioToolsPage:
 
     def start_blocked_reason(self) -> Optional[str]:
         """First reason the active tool can't start, or ``None`` when ready."""
-        from uvr_core.audio_tools import DUAL_INPUT_TOOLS
+        from core.audio_tools import DUAL_INPUT_TOOLS
 
         tool = self._current_tool()
         if tool in DUAL_INPUT_TOOLS:
@@ -590,7 +590,7 @@ class AudioToolsPage:
 
     def _apollo_blocked_reason(self) -> Optional[str]:
         """Side-effect-free Apollo readiness check (no toasts / dialogs)."""
-        from uvr_core.apollo import list_apollo_models
+        from core.apollo import list_apollo_models
 
         if not list_apollo_models():
             return _REASON_NO_APOLLO
@@ -605,7 +605,7 @@ class AudioToolsPage:
         # own dialog/toast for the deeper model-recognition cases.
         tool = self._current_tool()
 
-        from uvr_core.audio_tools import DUAL_INPUT_TOOLS
+        from core.audio_tools import DUAL_INPUT_TOOLS
 
         single_inputs: List[str] = []
         dual_pairs: List[Tuple[str, str]] = []
@@ -630,7 +630,7 @@ class AudioToolsPage:
         self.window.begin_run(self)
 
         try:
-            from uvr_core.debug_log import debug
+            from core.debug_log import debug
 
             debug(
                 "ui",
@@ -647,7 +647,7 @@ class AudioToolsPage:
         recognised (prompting for an unrecognized model's config yaml if needed),
         or ``None`` (after a toast) when no valid model is selected.
         """
-        from uvr_core.apollo import ApolloModelData, list_apollo_models
+        from core.apollo import ApolloModelData, list_apollo_models
         from ..dialogs.model_params import make_apollo_unrecognized_handler
 
         if not list_apollo_models():
@@ -685,7 +685,7 @@ class AudioToolsPage:
     # -- Misc ------------------------------------------------------------------
 
     def _on_open_apollo_folder(self, _banner: Adw.Banner) -> None:
-        from uvr_core import paths
+        from core import paths
 
         os.makedirs(paths.APOLLO_MODELS_DIR, exist_ok=True)
         launcher = Gtk.FileLauncher.new(Gio.File.new_for_path(paths.APOLLO_MODELS_DIR))

@@ -1,6 +1,6 @@
 import unittest
 
-from uvr_gtk.run_control import _format_mmss
+from ui.run_control import _format_mmss
 
 
 class FormatMmssTests(unittest.TestCase):

@@ -10,7 +10,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any, List, Sequence, Tuple
 
-from data.constants import CPU, CUDA_DEVICE, DEFAULT
+from bundled.constants import CPU, CUDA_DEVICE, DEFAULT
 
 from .platform import system_name
 

@@ -2,15 +2,15 @@
 
 Enable with the ``UVR_DEBUG`` environment variable::
 
-    UVR_DEBUG=1 python -m uvr_gtk
-    UVR_DEBUG=ui,dispatch,worker,separate,cleanup python -m uvr_gtk
+    UVR_DEBUG=1 python -m ui
+    UVR_DEBUG=ui,dispatch,worker,separate,cleanup python -m ui
 
 In fish, prefix with ``env`` (inline ``VAR=val cmd`` is bash-style)::
 
-    env UVR_DEBUG=ui .venv/bin/python -m uvr_gtk
+    env UVR_DEBUG=ui .venv/bin/python -m ui
 
 Logs are written to **stderr** and mirrored to a log file (plain text, no ANSI) under
-the platform cache dir (see :mod:`uvr_core.platform`), e.g. ``~/.cache/uvr/debug.log``
+the platform cache dir (see :mod:`core.platform`), e.g. ``~/.cache/uvr/debug.log``
 on Linux.
 
 Override the file with ``UVR_DEBUG_LOG=/path/to/log`` or the cache root with

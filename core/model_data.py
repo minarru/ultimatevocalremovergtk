@@ -1,7 +1,7 @@
 """Tk-free port of ``UVR.py``'s ``ModelData`` / ``assemble_model_data``.
 
 This rebuilds the per-run model configuration that the ``separate.py`` engines
-consume, but reads every value from a :class:`~uvr_core.settings.SettingsModel`
+consume, but reads every value from a :class:`~core.settings.SettingsModel`
 instead of Tkinter variables and the root window. The MD5 model-discovery logic
 is preserved verbatim.
 
@@ -10,7 +10,7 @@ MDX-C, Demucs) plus the secondary-model, vocal-splitter and Demucs pre-process
 machinery is fully ported. Ensemble assembly (``ENSEMBLE_MODE`` /
 ``ENSEMBLE_CHECK``, the ensemble main-stem pairing and the saved-ensemble JSON
 store) is ported here too; the combination of the per-model outputs is performed
-by the ``Ensembler`` in :mod:`uvr_core.job_runner`. Nothing here imports
+by the ``Ensembler`` in :mod:`core.job_runner`. Nothing here imports
 ``tkinter``.
 """
 
@@ -20,7 +20,7 @@ import logging
 import os
 from typing import Any, Callable, Dict, List, Optional
 
-from data.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
+from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
 
 from . import paths
 from .audio_io import resolve_wav_type_set
@@ -439,7 +439,7 @@ class ModelData:
                 else:
                     self.model_data = self.get_model_data(paths.VR_HASH_DIR, repo.vr_hash_MAPPER) if self.model_hash != WOOD_INST_MODEL_HASH else WOOD_INST_PARAMS
                 if self.model_data:
-                    from lib_v5.vr_network.model_param_init import ModelParameters
+                    from ml.vr_network.model_param_init import ModelParameters
                     vr_model_param = os.path.join(paths.VR_PARAM_DIR, "{}.json".format(self.model_data["vr_model_param"]))
                     self.primary_stem = self.model_data["primary_stem"]
                     self.secondary_stem = secondary_stem(str(self.primary_stem or ""))

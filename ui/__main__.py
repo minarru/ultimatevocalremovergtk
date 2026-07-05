@@ -1,4 +1,4 @@
-"""Allow ``python -m uvr_gtk`` to launch the GTK4 application."""
+"""Allow ``python -m ui`` to launch the GTK4 application."""
 
 import sys
 

@@ -2,7 +2,7 @@
 
 import os
 
-from data.constants import WAV
+from bundled.constants import WAV
 
 from .settings import SettingsModel
 
@@ -36,7 +36,7 @@ def save_format(
     Converts an exported WAV to FLAC/MP3 via ``pydub`` when the chosen output
     format is not WAV, then removes the intermediate WAV.
     """
-    from data.constants import FLAC, MP3
+    from bundled.constants import FLAC, MP3
 
     if save_format_sel == WAV:
         return

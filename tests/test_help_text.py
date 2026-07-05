@@ -1,6 +1,6 @@
 import unittest
 
-from uvr_gtk.help_text import iter_help_strings, validate_help_text
+from ui.help_text import iter_help_strings, validate_help_text
 
 
 class HelpTextStyleTests(unittest.TestCase):

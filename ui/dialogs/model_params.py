@@ -6,7 +6,7 @@ Two flows from ``UVR.py`` are reproduced here, both writing to the *same*
 
 * **Unrecognized model** - when a model's MD5 is not in the mapper JSON,
   :func:`make_unrecognized_handler` returns the callable installed on
-  :attr:`uvr_core.ModelRepository.on_unrecognized_model`. It prompts for the
+  :attr:`core.ModelRepository.on_unrecognized_model`. It prompts for the
   architecture-specific parameters (VR: stem / param file / 5.1 channels;
   MDX-Net: stem / dim_f / dim_t / n_fft / compensate; MDX-C: config yaml),
   persists them, and returns the dict ``ModelData`` expects.
@@ -26,7 +26,7 @@ import threading
 
 from gi.repository import Adw, GLib, Gtk
 
-from data.constants import (
+from bundled.constants import (
     BALANCE_VALUES,
     CHANGE_MODEL_DEFAULTS_TEXT,
     CKPT,
@@ -50,8 +50,8 @@ from data.constants import (
     VR_ARCH_TYPE,
 )
 
-from uvr_core import paths
-from uvr_core.model_data import ModelData
+from core import paths
+from core.model_data import ModelData
 from ..hints import set_tooltip
 from .utils import present_modal_dialog, run_blocking_dialog, set_dialog_content, set_form_dialog_content
 from ..widgets.rows import (
@@ -357,17 +357,17 @@ class _ApolloParamDialog:
     """Modal picker mapping an unrecognized Apollo model to a config yaml.
 
     Returns ``{"config_yaml": "<name>.yaml"}`` on confirm, or ``None`` on
-    cancel. The backend (:class:`uvr_core.apollo.ApolloModelData`) persists the
+    cancel. The backend (:class:`core.apollo.ApolloModelData`) persists the
     returned dict to ``<hash>.json`` so the model is recognised next time.
     """
 
     def __init__(self, parent, apollo_model_data):
-        from data.constants import (
+        from bundled.constants import (
             APOLLO_MODEL_PARAMETERS_TEXT,
             NONE_SELECTED,
             YAML,
         )
-        from uvr_core.apollo import list_config_files
+        from core.apollo import list_config_files
 
         self._yaml_ext = YAML
         self._none = NONE_SELECTED

@@ -1,7 +1,7 @@
 import unittest
 
-from data.constants import MDX_ARCH_TYPE, VR_ARCH_PM, VR_ARCH_TYPE
-from uvr_gtk.window import _METHOD_SETTING_ALIASES
+from bundled.constants import MDX_ARCH_TYPE, VR_ARCH_PM, VR_ARCH_TYPE
+from ui.window import _METHOD_SETTING_ALIASES
 
 
 class MethodSettingAliasTests(unittest.TestCase):

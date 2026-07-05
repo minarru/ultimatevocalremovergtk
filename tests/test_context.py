@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from uvr_gtk.context import AppContext
+from ui.context import AppContext
 
 
 class AppContextHookTests(unittest.TestCase):
@@ -9,7 +9,7 @@ class AppContextHookTests(unittest.TestCase):
         context = AppContext()
         parent = MagicMock()
 
-        with patch("uvr_gtk.context.ModelRepository") as repo_cls:
+        with patch("ui.context.ModelRepository") as repo_cls:
             repo = repo_cls.return_value
             context.install_unrecognized_model_hook(parent)
             _ = context.repo

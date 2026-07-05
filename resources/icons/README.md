@@ -17,7 +17,7 @@ Then recompile the GResource bundle:
 ./resources/compile_resources.sh
 ```
 
-Restart the app so the new `uvr_gtk/data/uvr.gresource` is loaded.
+Restart the app so the new `ui/data/uvr.gresource` is loaded.
 
 Icons are registered at app startup and searched **before** the system theme, so
 a bundled name overrides Adwaita when present.

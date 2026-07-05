@@ -1,7 +1,7 @@
 import unittest
 
-from data.constants import FLAC, WAV
-from uvr_gtk.shared_settings import SharedFileOptions, apply_shared_file_options, read_shared_file_options
+from bundled.constants import FLAC, WAV
+from ui.shared_settings import SharedFileOptions, apply_shared_file_options, read_shared_file_options
 
 
 class _FakeSettings:
@@ -99,7 +99,7 @@ class ReadSharedFileOptionsTests(unittest.TestCase):
 
 class ApplySharedFileOptionsTests(unittest.TestCase):
     def setUp(self):
-        import uvr_gtk.shared_settings as shared_settings
+        import ui.shared_settings as shared_settings
 
         self._original_set_combo = shared_settings.set_combo_value
         shared_settings.set_combo_value = _set_combo_value

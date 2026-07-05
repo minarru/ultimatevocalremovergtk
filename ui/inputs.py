@@ -16,7 +16,7 @@ import threading
 
 from gi.repository import Adw, GLib, Gtk
 
-from data.constants import AUDIO_INPUT_TOTAL_TEXT, VERIFY_INPUTS_TEXT
+from bundled.constants import AUDIO_INPUT_TOTAL_TEXT, VERIFY_INPUTS_TEXT
 
 from .errorlog import set_error_log
 from .help_text import (

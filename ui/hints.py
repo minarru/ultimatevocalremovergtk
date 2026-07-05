@@ -17,7 +17,7 @@ from typing import Dict, List, Optional
 
 from gi.repository import Adw, Gtk
 
-from uvr_gtk.help_text import (
+from ui.help_text import (
     AUDIO_TOOLS_HELP,
     COMMAND_TEXT_HELP,
     IS_GPU_CONVERSION_HELP,

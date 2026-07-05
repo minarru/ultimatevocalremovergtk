@@ -3,8 +3,8 @@
 This is the GTK4 / libadwaita port of ``UVR.py``'s ``menu_settings`` window
 (tabs 1 and 2 - general + additional/audio-format/process settings). It exposes
 the same options the Tkinter settings window does and binds every control to the
-shared :class:`uvr_core.settings.SettingsModel` through
-:class:`uvr_gtk.context.AppContext`, using the exact ``DEFAULT_DATA`` keys.
+shared :class:`core.settings.SettingsModel` through
+:class:`ui.context.AppContext`, using the exact ``DEFAULT_DATA`` keys.
 
 Covered (Phase 2):
 
@@ -32,7 +32,7 @@ import re
 
 from gi.repository import Adw, Gtk
 
-from data.constants import (
+from bundled.constants import (
     DEFAULT,
     DEFAULT_DATA,
     FLAC,
@@ -46,9 +46,9 @@ from data.constants import (
     WAV,
     WAV_TYPE,
 )
-from uvr_core.gpu import list_gpu_devices
-from uvr_core.platform import system_name
-from uvr_core.paths import SETTINGS_CACHE_DIR
+from core.gpu import list_gpu_devices
+from core.platform import system_name
+from core.paths import SETTINGS_CACHE_DIR
 
 from .application import apply_color_scheme
 from .help_text import REMOVE_PROFILE_HINT, FLAC_BIT_DEPTH_HINT

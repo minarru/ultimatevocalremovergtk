@@ -1,7 +1,7 @@
 """Cheap, dependency-free GPU detection for the settings UI.
 
-Re-exports :func:`available_cuda_devices` from :mod:`uvr_core.gpu_backend`.
-Prefer :func:`uvr_core.gpu_backend.list_gpu_devices` for the unified settings UI.
+Re-exports :func:`available_cuda_devices` from :mod:`core.gpu_backend`.
+Prefer :func:`core.gpu_backend.list_gpu_devices` for the unified settings UI.
 """
 
 from .gpu_backend import available_cuda_devices, list_gpu_devices

@@ -1,7 +1,7 @@
 """Shared Start/Stop dispatch and run lifecycle for the main window.
 
 :class:`RunController` owns progress, console output, notifications and the
-pinned running target so :class:`uvr_gtk.window.MainWindow` can stay focused on
+pinned running target so :class:`ui.window.MainWindow` can stay focused on
 layout and settings. Ensemble and Audio Tools pages call
 :meth:`RunController.begin_run` / :meth:`RunController.fail_to_start` through thin
 delegates on the window.
@@ -16,13 +16,13 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
-from data.constants import (
+from bundled.constants import (
     QUIT_WHILE_PROCESSING_CONFIRM,
     STOP_PROCESS_CONFIRM,
     STOP_PROCESSING,
 )
 
-from uvr_core.debug_log import (
+from core.debug_log import (
     clear_run_start,
     debug,
     mark_run_start,
@@ -31,7 +31,7 @@ from uvr_core.debug_log import (
     set_correlation_seq,
     verbose,
 )
-from uvr_core.separate_import import engines_imported, warm_status
+from core.separate_import import engines_imported, warm_status
 
 from . import APP_ID
 from .dispatch import gtk_job_callbacks, idle_on_main, reset_progress_log

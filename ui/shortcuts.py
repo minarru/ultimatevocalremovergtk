@@ -1,7 +1,7 @@
 """Keyboard Shortcuts window for UVR.
 
 Builds and presents a "Keyboard Shortcuts" overview like other GTK/GNOME apps.
-The accelerators are pulled straight from :data:`uvr_gtk.hints.KEYBOARD_ACCELERATORS`
+The accelerators are pulled straight from :data:`ui.hints.KEYBOARD_ACCELERATORS`
 so the window can never drift from the bindings actually installed on the app;
 only the human-readable titles and the section grouping live here.
 

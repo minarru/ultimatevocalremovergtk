@@ -2,7 +2,7 @@
 
 Replaces the Tk ``ThreadSafeConsole``. Text is appended from the separation
 worker via the callbacks marshaled onto the main loop (see
-:mod:`uvr_gtk.dispatch`), so :meth:`ConsoleView.append` is only ever called on
+:mod:`ui.dispatch`), so :meth:`ConsoleView.append` is only ever called on
 the GTK main thread.
 """
 
@@ -10,12 +10,12 @@ from typing import Callable, Optional
 
 from gi.repository import GLib, Gtk
 
-from data.constants import DONE
-from uvr_core.debug_log import correlation_seq, debug, preview_text, verbose
+from bundled.constants import DONE
+from core.debug_log import correlation_seq, debug, preview_text, verbose
 
 
 class ConsoleView(Gtk.ScrolledWindow):
-    #: Matches revealer slide duration in :class:`uvr_gtk.widgets.log_panel.LogPanel`.
+    #: Matches revealer slide duration in :class:`ui.widgets.log_panel.LogPanel`.
     _LAYOUT_SETTLE_MS = 250
 
     def __init__(self, on_changed: Optional[Callable[[bool], None]] = None):

@@ -5,7 +5,7 @@ import shutil
 
 from gi.repository import Gdk, Gio, GLib, Gtk
 
-from uvr_core import paths
+from core import paths
 
 from . import APP_ID
 

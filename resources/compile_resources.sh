@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Bundle resources/icons/ into uvr_gtk/data/uvr.gresource for Gtk.IconTheme.
+# Bundle resources/icons/ into ui/data/uvr.gresource for Gtk.IconTheme.
 set -euo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${HERE}/.." && pwd)"
 ICONS_DIR="${HERE}/icons"
 XML="${HERE}/uvr.gresource.xml"
-OUT_DIR="${REPO_ROOT}/uvr_gtk/data"
+OUT_DIR="${REPO_ROOT}/ui/data"
 OUT_BIN="${OUT_DIR}/uvr.gresource"
 PREFIX="/org/uvr/UltimateVocalRemover"
 

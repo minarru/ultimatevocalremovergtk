@@ -5,7 +5,7 @@ from typing import Optional, Sequence
 
 from gi.repository import Adw, Gdk, Gio, Gtk
 
-from uvr_core import SettingsModel, ensure_data_dir
+from core import SettingsModel, ensure_data_dir
 
 from . import APP_ID
 from .resources import register_gresources
@@ -118,7 +118,7 @@ class UVRApplication(Adw.Application):
 
     def do_startup(self):
         Adw.Application.do_startup(self)
-        from uvr_core.debug_log import debug, enabled
+        from core.debug_log import debug, enabled
 
         if enabled("ui"):
             debug("ui", "UVR_DEBUG ui tracing enabled")
@@ -154,7 +154,7 @@ class UVRApplication(Adw.Application):
     def do_activate(self):
         self._did_activate = True
         register_gresources()
-        from uvr_core.separate_import import warm_import_separate_engines
+        from core.separate_import import warm_import_separate_engines
 
         warm_import_separate_engines()
         window = self.props.active_window
@@ -166,11 +166,11 @@ class UVRApplication(Adw.Application):
 def main(argv: Optional[Sequence[str]] = None) -> int:
     import os
 
-    from uvr_core.debug_log import announce_log_file, debug, enabled
+    from core.debug_log import announce_log_file, debug, enabled
 
     if enabled():
         announce_log_file()
-        debug("ui", f"uvr_gtk main pid={os.getpid()}")
+        debug("ui", f"ui main pid={os.getpid()}")
 
     app = UVRApplication()
     try:
@@ -185,7 +185,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if enabled():
         if not app._did_activate:
             debug("ui", "duplicate instance rejected (single-instance, activate not called)")
-        debug("ui", f"uvr_gtk exit status={status}")
+        debug("ui", f"ui exit status={status}")
 
     from .shutdown import finalize_process_exit
 

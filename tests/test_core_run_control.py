@@ -1,6 +1,6 @@
 import unittest
 
-from uvr_core.run_control import ProcessStopped, check_stopped, pausable_callback
+from core.run_control import ProcessStopped, check_stopped, pausable_callback
 
 
 class _FakeRunner:

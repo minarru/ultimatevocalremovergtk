@@ -2,12 +2,12 @@
 
 Covers both classic MDX-Net (``.onnx`` / ``.ckpt``) and MDX23C / MDX-C
 (``config_yaml``) models: the latter live in the same model directory and are
-auto-detected by :class:`uvr_core.ModelData` (``is_mdx_c``), so the
-:class:`uvr_core.JobRunner` selects ``SeperateMDXC`` vs ``SeperateMDX`` at run
+auto-detected by :class:`core.ModelData` (``is_mdx_c``), so the
+:class:`core.JobRunner` selects ``SeperateMDXC`` vs ``SeperateMDX`` at run
 time. There is therefore one MDX model dropdown here, exactly as in the Tk app.
 """
 
-from data.constants import (
+from bundled.constants import (
     ALL_STEMS,
     BASS_STEM,
     BATCH_SIZE,

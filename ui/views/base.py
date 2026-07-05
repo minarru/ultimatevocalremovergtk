@@ -4,7 +4,7 @@ Each processing method (VR Architecture, MDX-Net, Demucs) contributes one
 :class:`MethodView`. A view owns the method's model dropdown plus the
 main-window options that the Tk app shows for that method
 (``update_main_widget_states``), and knows how to read/write its slice of the
-:class:`~uvr_core.settings.SettingsModel` using the exact ``DEFAULT_DATA`` keys.
+:class:`~core.settings.SettingsModel` using the exact ``DEFAULT_DATA`` keys.
 
 The window builds a ``Gtk.Stack`` from :data:`METHOD_VIEWS` and a "Process
 method" ``Adw.ComboRow`` to choose between them, so additional method panels can
@@ -15,7 +15,7 @@ from typing import Callable, List, Optional, Type
 
 from gi.repository import Adw, Gio, Gtk
 
-from data.constants import (
+from bundled.constants import (
     BASS_PAIR,
     BASS_STEM,
     CHOOSE_MODEL,
@@ -30,7 +30,7 @@ from data.constants import (
     VOCAL_PAIR,
     VOCAL_STEM,
 )
-from data.constants import (
+from bundled.constants import (
     CHOOSE_MODEL_HELP,
     CLEAR_CACHE_HELP,
     IS_DEVERB_OPT_HELP,
@@ -277,7 +277,7 @@ class MethodView:
     def _on_model_resolved(self, model) -> None:
         """Hook called after the selected model is dry-resolved (on change/load).
 
-        ``model`` is a dry-check :class:`~uvr_core.ModelData` or ``None`` when no
+        ``model`` is a dry-check :class:`~core.ModelData` or ``None`` when no
         model is selected / it couldn't be resolved. Subclasses override to react
         to model-specific attributes (e.g. MDX-C vs classic MDX). Default no-op.
         """

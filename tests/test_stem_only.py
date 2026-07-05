@@ -1,7 +1,7 @@
 import unittest
 
-from data.constants import INST_STEM, PRIMARY_STEM, SECONDARY_STEM, VOCAL_STEM
-from uvr_gtk.widgets.stem_only import _TOGGLE_ALL, build_stem_only_options
+from bundled.constants import INST_STEM, PRIMARY_STEM, SECONDARY_STEM, VOCAL_STEM
+from ui.widgets.stem_only import _TOGGLE_ALL, build_stem_only_options
 
 
 class BuildStemOnlyOptionsTests(unittest.TestCase):

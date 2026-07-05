@@ -16,7 +16,7 @@ antlr4-python3-runtime==4.9.3
 attrs==26.1.0
 audioread==3.1.0
 # Roformer (BS-Roformer / Mel-Band Roformer) architecture deps. Vendored in
-# lib_v5/{attend,bs_roformer,mel_band_roformer}.py; einops/librosa/packaging are
+# ml/{attend,bs_roformer,mel_band_roformer}.py; einops/librosa/packaging are
 # already pinned above. These two are the only new packages roformer needs.
 beartype==0.22.9
 certifi==2026.6.17

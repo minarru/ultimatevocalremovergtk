@@ -2,17 +2,17 @@
 
 Port of UVR's ensemble surface, refactored from a standalone ``Adw.Window`` into
 an embeddable *page controller* that lives inside the main window's
-``content_stack`` (see :class:`uvr_gtk.window.MainWindow`). The page owns only
+``content_stack`` (see :class:`ui.window.MainWindow`). The page owns only
 its option groups (laid out in the shared responsive two-column layout); the
 console, progress bar and Start/Stop action bar are shared with every other mode
 and supplied by the main window via :meth:`EnsemblePage.start`.
 
 Pick the ensemble main-stem pair and combination algorithm, multi-select the
 member models, manage saved ensembles, and run all members through
-:class:`uvr_core.JobRunner` so their outputs are combined by the
-:class:`uvr_core.Ensembler`. Worker-thread callbacks are marshaled onto the GTK
+:class:`core.JobRunner` so their outputs are combined by the
+:class:`core.Ensembler`. Worker-thread callbacks are marshaled onto the GTK
 main loop by the caller-supplied callbacks (built with
-:func:`uvr_gtk.dispatch.gtk_job_callbacks`), so GTK is never touched off the main
+:func:`ui.dispatch.gtk_job_callbacks`), so GTK is never touched off the main
 thread.
 
 Every control binds to the same settings keys the Tk app uses
@@ -26,7 +26,7 @@ from typing import Dict, List, Optional
 
 from gi.repository import Adw, Gtk
 
-from data.constants import (
+from bundled.constants import (
     CHOOSE_ENSEMBLE_OPTION,
     CHOOSE_STEM_PAIR,
     ENSEMBLE_LISTBOX_HELP,
@@ -58,7 +58,7 @@ from ..help_text import (
     ENSEMBLE_SAVED_PRESET_HINT,
 )
 from ..hints import OUTPUT_FORMAT_HINT, set_tooltip
-from uvr_core import (
+from core import (
     delete_ensemble,
     list_saved_ensembles,
     load_ensemble,
@@ -650,7 +650,7 @@ class EnsemblePage:
         self.window.begin_run(self)
 
         try:
-            from uvr_core.debug_log import debug
+            from core.debug_log import debug
 
             debug("ui", f"ensemble start files={len(input_paths)}")
             self.context.runner.start_ensemble(input_paths, callbacks)

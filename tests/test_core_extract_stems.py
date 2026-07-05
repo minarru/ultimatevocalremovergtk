@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from uvr_core.job_runner import _extract_stems
+from core.job_runner import _extract_stems
 
 
 class ExtractStemsTests(unittest.TestCase):

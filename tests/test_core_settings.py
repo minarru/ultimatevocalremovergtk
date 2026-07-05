@@ -3,8 +3,8 @@ import pickle
 import tempfile
 import unittest
 
-from data.constants import DEFAULT_DATA
-from uvr_core.settings import SettingsModel
+from bundled.constants import DEFAULT_DATA
+from core.settings import SettingsModel
 
 
 class SettingsModelTests(unittest.TestCase):

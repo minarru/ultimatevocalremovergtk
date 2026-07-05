@@ -27,7 +27,7 @@ def import_separate_engines() -> Tuple[Any, ...]:
             return _engines
         started = time.perf_counter()
         debug("worker", "importing separate engines (sync)")
-        from separate import (  # noqa: WPS433 - intentional lazy import
+        from engines.separate import (  # noqa: WPS433 - intentional lazy import
             SeperateDemucs,
             SeperateMDX,
             SeperateMDXC,

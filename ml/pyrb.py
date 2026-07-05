@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -7,8 +8,6 @@ import numpy as np
 import six
 import soundfile as sf
 
-from uvr_core.external_tools import resolve_rubberband
-
 __all__ = ['time_stretch', 'pitch_shift']
 
 if six.PY2:
@@ -16,11 +15,24 @@ if six.PY2:
 else:
     DEVNULL = subprocess.DEVNULL
 
+
+def _resolve_rubberband() -> str | None:
+    """Locate rubberband without importing ``core`` (see ``core.external_tools``)."""
+    env = os.environ.get("UVR_RUBBERBAND", "").strip()
+    if env and os.path.isfile(env):
+        return env
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (os.path.join(here, "rubberband"), shutil.which("rubberband")):
+        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return shutil.which("rubberband")
+
+
 def __rubberband(y, sr, **kwargs):
 
     assert sr > 0
 
-    rubberband = resolve_rubberband()
+    rubberband = _resolve_rubberband()
     if not rubberband:
         raise RuntimeError(
             'Failed to execute rubberband. Please verify that rubberband-cli '

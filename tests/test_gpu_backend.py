@@ -3,7 +3,7 @@
 import unittest
 from unittest import mock
 
-from uvr_core.gpu_backend import InferenceBackend, resolve_inference_backend
+from core.gpu_backend import InferenceBackend, resolve_inference_backend
 
 
 class GpuBackendTests(unittest.TestCase):
@@ -13,9 +13,9 @@ class GpuBackendTests(unittest.TestCase):
         self.assertEqual(backend.torch_device, "cpu")
         self.assertEqual(backend.onnx_providers, ["CPUExecutionProvider"])
 
-    @mock.patch("uvr_core.gpu_backend.directml_available", return_value=False)
+    @mock.patch("core.gpu_backend.directml_available", return_value=False)
     @mock.patch("torch.cuda.is_available", return_value=True)
-    @mock.patch("uvr_core.cuda_runtime_fix.preload_onnxruntime_gpu", return_value=[])
+    @mock.patch("core.cuda_runtime_fix.preload_onnxruntime_gpu", return_value=[])
     def test_cuda_when_available(self, _preload, _cuda, _dml):
         backend = resolve_inference_backend(
             is_gpu_conversion=0,
@@ -27,8 +27,8 @@ class GpuBackendTests(unittest.TestCase):
         self.assertEqual(backend.torch_device, "cuda:1")
         self.assertIn("CUDAExecutionProvider", backend.onnx_providers)
 
-    @mock.patch("uvr_core.gpu_backend._directml_torch_device", return_value="dml-device")
-    @mock.patch("uvr_core.gpu_backend.directml_available", return_value=True)
+    @mock.patch("core.gpu_backend._directml_torch_device", return_value="dml-device")
+    @mock.patch("core.gpu_backend.directml_available", return_value=True)
     @mock.patch("torch.cuda.is_available", return_value=False)
     def test_directml_when_enabled(self, _cuda, _dml, _device):
         backend = resolve_inference_backend(

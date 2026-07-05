@@ -1,9 +1,9 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from data.constants import WAV
-from uvr_core.audio_io import flac_export_parameters, resolve_wav_type_set, save_format
-from uvr_core.settings import SettingsModel
+from bundled.constants import WAV
+from core.audio_io import flac_export_parameters, resolve_wav_type_set, save_format
+from core.settings import SettingsModel
 
 
 class FlacExportParametersTests(unittest.TestCase):

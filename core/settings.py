@@ -17,7 +17,7 @@ import os
 import pickle
 from typing import Any, Dict, Optional
 
-from data.constants import DEFAULT_DATA
+from bundled.constants import DEFAULT_DATA
 
 from .debug_log import debug
 from .paths import SETTINGS_DATA_FILE

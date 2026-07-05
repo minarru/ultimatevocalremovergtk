@@ -1,4 +1,4 @@
-"""Resolve Apollo restore device via the shared GPU backend."""
+"""Apollo restore inference (torch; device supplied by caller)."""
 
 import gc
 
@@ -6,18 +6,12 @@ import librosa
 import numpy as np
 import torch
 
-import lib_v5.apollo_model_data as models
-from data.constants import DEFAULT
-from uvr_core.gpu_backend import clear_torch_cache, resolve_inference_backend
+import ml.apollo_model_data as models
+from bundled.constants import DEFAULT
 
 import warnings
 
 warnings.filterwarnings("ignore")
-
-
-def clear_gpu_cache(is_macos: bool = False, backend_name: str = "cpu") -> None:
-    gc.collect()
-    clear_torch_cache(is_macos=is_macos, backend_name=backend_name)
 
 
 def load_audio(file_path):
@@ -40,43 +34,19 @@ def dBgain(audio, volume_gain_dB):
     return gained_audio
 
 
-def check_gpu_availability(
-    is_gpu_conversion,
-    device_set,
-    *,
-    is_use_directml: bool = False,
-    is_macos: bool = False,
-):
-    """Resolve the inference device using :mod:`uvr_core.gpu_backend`."""
-    backend = resolve_inference_backend(
-        is_gpu_conversion=is_gpu_conversion,
-        device_set=device_set or DEFAULT,
-        is_use_directml=is_use_directml,
-        is_macos=is_macos,
-    )
-    return backend.torch_device
-
-
 def restore_process(
     input_wav,
     ckpt_path,
     overlap=2,
     chunk_size=10,
     set_progress_bar=None,
-    is_gpu_conversion=0,
-    device_set=DEFAULT,
+    device=None,
     extracted_params=None,
     config=None,
-    is_use_directml=False,
-    is_macos=False,
 ):
 
-    device = check_gpu_availability(
-        is_gpu_conversion,
-        device_set,
-        is_use_directml=is_use_directml,
-        is_macos=is_macos,
-    )
+    if device is None:
+        device = "cpu"
 
     global progress_value
     progress_value = 0
@@ -161,12 +131,6 @@ def restore_process(
 
     model.cpu()
     del model
-    backend = resolve_inference_backend(
-        is_gpu_conversion=is_gpu_conversion,
-        device_set=device_set or DEFAULT,
-        is_use_directml=is_use_directml,
-        is_macos=is_macos,
-    )
-    clear_gpu_cache(is_macos=is_macos, backend_name=backend.backend_name)
+    gc.collect()
 
     return final_output

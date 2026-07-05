@@ -1,6 +1,6 @@
 """VR Architecture method view."""
 
-from data.constants import (
+from bundled.constants import (
     AGGRESSION_SETTING_HELP,
     BATCH_SIZE,
     BATCH_SIZE_HELP,

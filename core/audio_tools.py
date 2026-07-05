@@ -4,16 +4,16 @@ This is the Tk-free port of ``UVR.py``'s Audio Tools mode (the ``AudioTools``
 and manual-``Ensembler`` classes plus the ``process_tool_start`` orchestration).
 It exposes a small set of pure functions for each tool and an
 :class:`AudioToolRunner` that drives them on a ``KThread`` worker, reporting
-progress / console / completion through the same :class:`uvr_core.JobCallbacks`
-contract the separation :class:`~uvr_core.JobRunner` uses. The GTK layer marshals
-those callbacks onto the main loop (see :mod:`uvr_gtk.dispatch`).
+progress / console / completion through the same :class:`core.JobCallbacks`
+contract the separation :class:`~core.JobRunner` uses. The GTK layer marshals
+those callbacks onto the main loop (see :mod:`ui.dispatch`).
 
 Every heavy dependency (``librosa`` / ``soundfile`` / ``scipy`` via
-``lib_v5.spec_utils``, ``matchering``, ``pyrubberband`` via ``lib_v5.pyrb``,
+``ml.spec_utils``, ``matchering``, ``pyrubberband`` via ``ml.pyrb``,
 ``pydub`` for non-WAV export, ``kthread``) is imported lazily inside the worker
 so this module - and any view that imports it - stays importable on a bare
 Python (no torch / ML stack) install. Options are read from a
-:class:`~uvr_core.settings.SettingsModel` using the exact ``DEFAULT_DATA`` keys.
+:class:`~core.settings.SettingsModel` using the exact ``DEFAULT_DATA`` keys.
 """
 
 import os
@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence, Tuple
 
-from data.constants import (
+from bundled.constants import (
     ALIGN_INPUTS,
     APOLLO_RESTORE,
     CHANGE_PITCH,
@@ -83,7 +83,7 @@ class AudioTools:
 
         # Apollo restore options. Device selection follows the local CUDA/CPU
         # convention used by separate.py / model_data.py.
-        from uvr_core import paths
+        from core import paths
 
         self.apollo_model = settings.get("apollo_model")
         self.apollo_overlap_val = int(settings.get("apollo_overlap"))
@@ -91,7 +91,7 @@ class AudioTools:
         self.apollo_model_location = os.path.join(paths.APOLLO_MODELS_DIR, self.apollo_model or "")
         self.is_gpu_conversion = 0 if settings.get("is_gpu_conversion") else -1
         self.is_use_directml = bool(settings.get("is_use_directml"))
-        from data.constants import is_macos
+        from bundled.constants import is_macos
 
         self.is_macos = is_macos
         device_set = settings.get("device_set") or DEFAULT
@@ -105,7 +105,7 @@ class AudioTools:
     # -- Manual ensemble (port of ``Ensembler.ensemble_manual_process``) -------
 
     def ensemble_manual(self, audio_inputs: Sequence[str], audio_file_base: str) -> None:
-        from lib_v5 import spec_utils
+        from ml import spec_utils
 
         algorithm = self.settings.get("choose_algorithm")
         algorithm_text = f"_({algorithm})"
@@ -124,7 +124,7 @@ class AudioTools:
         self._save_format(stem_save_path)
 
     def combine_audio(self, audio_inputs: Sequence[str], audio_file_base: str) -> None:
-        from lib_v5 import spec_utils
+        from ml import spec_utils
 
         spec_utils.combine_audio(
             list(audio_inputs),
@@ -136,7 +136,7 @@ class AudioTools:
     # -- Time-stretch / pitch shift (port of ``pitch_or_time_shift``) ----------
 
     def pitch_or_time_shift(self, tool: str, audio_file: str, audio_file_base: str) -> None:
-        from lib_v5 import spec_utils
+        from ml import spec_utils
 
         is_pitch = tool == CHANGE_PITCH
         if is_pitch:
@@ -172,7 +172,7 @@ class AudioTools:
         command_text: Callable[[str], None],
         set_progress_bar: Callable[[float, float], None],
     ) -> None:
-        from lib_v5 import spec_utils
+        from ml import spec_utils
 
         audio_file_base = f"{self.is_testing_audio}{audio_file_base}"
         audio_file_2_base = f"{self.is_testing_audio}{audio_file_2_base}"
@@ -234,12 +234,20 @@ class AudioTools:
     ) -> None:
         import soundfile as sf
 
-        # ``apollo_inference`` pulls in torch; import it lazily so ``uvr_core``
+        # ``apollo_inference`` pulls in torch; import it lazily so ``core``
         # (and any view importing it) stays torch-free at import time.
-        from lib_v5 import apollo_inference
+        from ml import apollo_inference
+        from core.gpu_backend import clear_torch_cache, resolve_inference_backend
 
         save_path = os.path.join(
             self.main_export_path, f"{self.is_testing_audio}{audio_file_base}_restored.wav"
+        )
+
+        backend = resolve_inference_backend(
+            is_gpu_conversion=self.is_gpu_conversion,
+            device_set=self.device_set or DEFAULT,
+            is_use_directml=self.is_use_directml,
+            is_macos=self.is_macos,
         )
 
         restored_audio = apollo_inference.restore_process(
@@ -248,13 +256,12 @@ class AudioTools:
             self.apollo_overlap_val,
             self.apollo_chunk_val,
             set_progress_bar,
-            self.is_gpu_conversion,
-            self.device_set,
-            extracted_params,
-            config,
-            is_use_directml=self.is_use_directml,
-            is_macos=self.is_macos,
+            device=backend.torch_device,
+            extracted_params=extracted_params,
+            config=config,
         )
+
+        clear_torch_cache(is_macos=self.is_macos, backend_name=backend.backend_name)
 
         sf.write(save_path, restored_audio.T, 44100, subtype=self.wav_type_set)
         self._save_format(save_path)
@@ -439,7 +446,7 @@ class AudioToolRunner:
         extracted_params = self._apollo_params.get("extracted_params")
         config = self._apollo_params.get("config")
         if not extracted_params:
-            from data.constants import APOLLO_MODEL_FAIL_TEXT
+            from bundled.constants import APOLLO_MODEL_FAIL_TEXT
 
             raise ValueError(APOLLO_MODEL_FAIL_TEXT.strip())
 

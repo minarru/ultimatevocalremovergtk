@@ -1,6 +1,6 @@
 import unittest
 
-from uvr_gtk.views.base import apply_name_mapper
+from ui.views.base import apply_name_mapper
 
 
 class ApplyNameMapperTests(unittest.TestCase):

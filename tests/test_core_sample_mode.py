@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from uvr_core.sample_mode import prepare_input_paths
-from uvr_core.settings import SettingsModel
+from core.sample_mode import prepare_input_paths
+from core.settings import SettingsModel
 
 
 class SampleModeTests(unittest.TestCase):
@@ -33,7 +33,7 @@ class SampleModeTests(unittest.TestCase):
             mock_librosa.load.return_value = (np.zeros(44100), 44100)
             mock_sf = MagicMock()
 
-            with patch("uvr_core.sample_mode.paths.SAMPLE_CLIP_PATH", tmp):
+            with patch("core.sample_mode.paths.SAMPLE_CLIP_PATH", tmp):
                 with patch.dict(sys.modules, {"librosa": mock_librosa, "soundfile": mock_sf}):
                     result = prepare_input_paths(settings, [source])
             self.assertEqual(len(result), 1)

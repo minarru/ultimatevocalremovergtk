@@ -1,6 +1,6 @@
 """Demucs method view."""
 
-from data.constants import (
+from bundled.constants import (
     DEMUCS_4_STEM_OPTIONS,
     DEMUCS_ARCH_TYPE,
     DEMUCS_OVERLAP,

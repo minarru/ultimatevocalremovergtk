@@ -1,18 +1,18 @@
 {
   "include": [
-    "uvr_gtk",
-    "uvr_core",
+    "ui",
+    "core",
+    "engines",
     "tests",
-    "data"
+    "bundled"
   ],
   "exclude": [
     "**/__pycache__",
     "**/.venv",
     "**/node_modules",
-    "demucs",
-    "lib_v5",
-    "models",
-    "separate.py"
+    "vendor/demucs",
+    "ml",
+    "models"
   ],
   "venvPath": ".",
   "venv": ".venv",

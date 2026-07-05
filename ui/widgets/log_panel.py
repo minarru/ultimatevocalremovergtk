@@ -9,16 +9,16 @@ from typing import Callable, Optional
 
 from gi.repository import GLib, Gtk
 
-from uvr_core.debug_log import debug
+from core.debug_log import debug
 
 from ..hints import set_icon_button_a11y
 from .console import ConsoleView
 
 _PANEL_WIDTH = 520
 #: Log body height; keep in sync with ``.uvr-log-body { min-height }`` in
-#: :mod:`uvr_gtk.application`.
+#: :mod:`ui.application`.
 _LOG_BODY_HEIGHT = 200
-#: Bottom margin applied to the panel in :class:`uvr_gtk.window.MainWindow`.
+#: Bottom margin applied to the panel in :class:`ui.window.MainWindow`.
 OVERLAY_MARGIN_BOTTOM = 12
 #: Layout reserves derived from ``application.py`` (``.uvr-run-controls``,
 #: ``.uvr-run-actions``, ``.uvr-progress-section``). Used when the panel has

@@ -39,7 +39,7 @@ finish-args:
   # automatically with --device=dri and supplies the HOST-matching libcuda.so /
   # NVIDIA userspace libs into the sandbox. The CUDA *toolkit* libs themselves
   # come from the nvidia-*-cu12 / -cu13 wheels (bundled or first-run installed);
-  # uvr_core/cuda_runtime_fix.py still ctypes-preloads the cu12 set.
+  # core/cuda_runtime_fix.py still ctypes-preloads the cu12 set.
   # --device=all exposes /dev/nvidia*; narrow if your flatpak supports it.
   - --device=all
 
@@ -103,7 +103,7 @@ modules:
   # - python3-requirements.json   # TODO: generate via flatpak-pip-generator
   #
   # OPTION B (slim, deferred): install NOTHING heavy here. The GTK UI boots
-  # torch-free (uvr_core/job_runner.py imports `separate` -> torch/onnxruntime
+  # torch-free (core/job_runner.py imports `separate` -> torch/onnxruntime
   # lazily, only when a job runs), so the app can show a first-run "install
   # dependencies" screen and pip-install requirements.txt into
   #   $UVR_DATA_DIR/runtime  (default ~/.var/app/<id>/data/runtime)
@@ -120,13 +120,13 @@ modules:
     build-commands:
       # App code (read-only) -> /app/share/uvr
       - mkdir -p /app/share/uvr
-      - cp -r uvr_gtk uvr_core lib_v5 data separate.py __version__.py requirements.txt /app/share/uvr/
+      - cp -r ui core engines vendor ml bundled __version__.py requirements.txt /app/share/uvr/
       # Thin launcher -> /app/bin/uvr
       - |
         cat > /app/bin/uvr <<'SH'
         #!/bin/sh
         export PYTHONPATH="/app/share/uvr:${PYTHONPATH}"
-        exec python3 -m uvr_gtk "$@"
+        exec python3 -m ui "$@"
         SH
       - chmod 755 /app/bin/uvr
       # Desktop entry + icon + AppStream metadata.

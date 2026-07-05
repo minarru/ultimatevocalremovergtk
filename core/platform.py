@@ -1,7 +1,7 @@
 """Cross-platform user data and cache directory resolution.
 
-Centralizes OS-specific defaults so :mod:`uvr_core.paths` and
-:mod:`uvr_core.debug_log` do not assume Linux XDG layout.
+Centralizes OS-specific defaults so :mod:`core.paths` and
+:mod:`core.debug_log` do not assume Linux XDG layout.
 """
 
 from __future__ import annotations

@@ -5,7 +5,7 @@ share the same shape: a set of :class:`Adw.PreferencesGroup` panels distributed
 across two equal-width columns that collapse into a single stacked column when
 the window gets narrow. Centralising the construction here keeps every page's
 layout (margins, spacing, clamp width, scroller minimum width and the
-wide/narrow flip) identical, and lets :class:`uvr_gtk.window.MainWindow` drive
+wide/narrow flip) identical, and lets :class:`ui.window.MainWindow` drive
 every page's ``columns_box`` from one breakpoint handler.
 """
 

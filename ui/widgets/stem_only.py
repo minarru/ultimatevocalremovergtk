@@ -9,7 +9,7 @@ from typing import Callable, Dict, List, Optional
 
 from gi.repository import Adw, Gtk
 
-from data.constants import (
+from bundled.constants import (
     ALL_STEMS,
     BASS_STEM,
     DRUM_STEM,

@@ -18,11 +18,11 @@ __all__ = [
 
 
 def _bundled_tool(name: str) -> Optional[str]:
-    """Return a bundled executable next to lib_v5 or the PyInstaller bundle root."""
+    """Return a bundled executable next to ml or the PyInstaller bundle root."""
     if getattr(sys, "frozen", False):
         base = sys._MEIPASS
     else:
-        base = os.path.join(BASE_PATH, "lib_v5")
+        base = os.path.join(BASE_PATH, "ml")
     for candidate in (
         os.path.join(base, name),
         os.path.join(base, name + (".exe" if os.name == "nt" else "")),

@@ -1,6 +1,6 @@
 import unittest
 
-from uvr_gtk.hints import set_tooltip
+from ui.hints import set_tooltip
 
 
 class _TooltipWidget:

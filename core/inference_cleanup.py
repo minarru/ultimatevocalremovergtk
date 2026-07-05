@@ -109,7 +109,7 @@ def release_inference_memory(
             cached_clear()
         if hasattr(runner, "all_models"):
             runner.all_models = []
-    from separate import clear_gpu_cache
+    from engines.separate import clear_gpu_cache
 
     gc.collect()
     clear_gpu_cache()
