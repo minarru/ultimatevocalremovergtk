@@ -158,7 +158,7 @@ print(os.environ.get('G_MESSAGES_DEBUG', ''))
     export G_MESSAGES_DEBUG
 fi
 
-if [[ -n "${G_MESSAGES_DEBUG:-}" || -n "${UVR_LOG_FILE:-}" ]]; then
+if [[ -n "${G_MESSAGES_DEBUG:-}" || -n "${UVR_LOG_FILE:-}" || -n "${UVR_VERBOSE:-}" ]]; then
     if pgrep -f "${VENV_PYTHON} -m ui" >/dev/null 2>&1; then
         echo "UVR is already running; this launch will exit immediately (single-instance app)." >&2
         if [[ -n "${UVR_LOG_FILE:-}" ]]; then
@@ -168,6 +168,8 @@ if [[ -n "${G_MESSAGES_DEBUG:-}" || -n "${UVR_LOG_FILE:-}" ]]; then
         fi
     elif [[ -n "${UVR_LOG_FILE:-}" ]]; then
         echo "UVR debug log file: ${UVR_LOG_FILE}" >&2
+    elif [[ -n "${UVR_VERBOSE:-}" ]]; then
+        echo "UVR high-frequency trace: UVR_VERBOSE=${UVR_VERBOSE}" >&2
     elif [[ -n "${G_MESSAGES_DEBUG:-}" ]]; then
         echo "UVR GLib debug domains: G_MESSAGES_DEBUG=${G_MESSAGES_DEBUG}" >&2
     fi

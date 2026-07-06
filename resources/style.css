@@ -30,8 +30,8 @@
   background-color: @window_bg_color;
   color: @card_fg_color;
   border: 1px solid alpha(@borders, 0.45);
-  box-shadow: 0 2px 6px alpha(@shade_color, 0.08),
-              0 8px 24px alpha(@shade_color, 0.16);
+  box-shadow: 0 3px 10px alpha(@shade_color, 0.14),
+              0 12px 36px alpha(@shade_color, 0.24);
 }
 
 .uvr-log-expander-arrow image {
@@ -40,6 +40,7 @@
 }
 
 .uvr-log-expander-arrow:checked image {
+  color: @accent_color;
   -gtk-icon-transform: rotate(180deg);
 }
 

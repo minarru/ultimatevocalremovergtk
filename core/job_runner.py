@@ -45,7 +45,7 @@ from .model_data import (
 from .sample_mode import prepare_input_paths
 from .settings import SettingsModel
 from .run_control import ProcessStopped, check_stopped, pausable_callback
-from .debug_log import debug, debug_elapsed, next_seq, preview_text, set_correlation_seq
+from .debug_log import debug, debug_elapsed, next_seq, preview_text, set_correlation_seq, verbose
 from .separate_import import import_separate_engines
 from .inference_cleanup import (
     clear_source_mapper,
@@ -82,7 +82,8 @@ class JobCallbacks:
     def console(self, text: str) -> None:
         seq = next_seq()
         set_correlation_seq(seq)
-        debug("worker", f"console emit {preview_text(text)!r}", seq=seq)
+        if verbose():
+            debug("worker", f"console emit {preview_text(text)!r}", seq=seq)
         if self.on_console:
             self.on_console(text)
 

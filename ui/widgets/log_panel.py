@@ -19,6 +19,10 @@ _PANEL_WIDTH = 520
 # not been allocated yet and :meth:`Gtk.Widget.measure` is not meaningful.
 #: Log body height ↔ ``.uvr-log-body { min-height }``.
 _LOG_BODY_HEIGHT = 200
+#: Meta row ↔ ``.uvr-log-meta`` min-height 32 + padding-bottom 8.
+_LOG_META_ROW_RESERVE = 40
+#: Log body wrap ↔ ``.uvr-log-body-wrap`` padding-bottom.
+_LOG_BODY_WRAP_RESERVE = 12
 #: Overlay bottom gap ↔ ``MainWindow`` ``set_margin_bottom`` on the log panel.
 OVERLAY_MARGIN_BOTTOM = 12
 #: Run controls vertical padding ↔ ``.uvr-run-controls { padding }`` (12 + 12).
@@ -183,13 +187,21 @@ class LogPanel(Gtk.Box):
     def default_bottom_inset(cls) -> int:
         """Scroll padding so option columns clear the collapsed floating panel."""
         # Progress is hidden until a run starts; reserve it only when visible
-        # (see :meth:`collapsed_overlay_height`).
+        # (see :meth:`options_overlay_clearance`).
         return cls._collapsed_body_height(include_progress=False) + OVERLAY_MARGIN_BOTTOM
 
+    def options_overlay_clearance(self) -> int:
+        """Bottom inset for the options scroller to clear the floating log panel."""
+        height = self._collapsed_body_height(include_progress=False)
+        if self._progress_revealer.get_reveal_child():
+            height += _PROGRESS_SECTION_RESERVE
+        if self._log_revealer.get_reveal_child():
+            height += _LOG_META_ROW_RESERVE + _LOG_BODY_HEIGHT + _LOG_BODY_WRAP_RESERVE
+        return height + OVERLAY_MARGIN_BOTTOM
+
     def collapsed_overlay_height(self) -> int:
-        """Bottom inset for the options scroller (always the collapsed panel height)."""
-        include_progress = self._progress_revealer.get_child_revealed()
-        return self._collapsed_body_height(include_progress=include_progress) + OVERLAY_MARGIN_BOTTOM
+        """Alias for :meth:`options_overlay_clearance`."""
+        return self.options_overlay_clearance()
 
     def set_progress_pulse_step(self, step: float) -> None:
         self._progressbar.set_pulse_step(step)

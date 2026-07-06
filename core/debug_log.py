@@ -15,7 +15,7 @@ Optional plain-text mirror (independent of ``G_MESSAGES_DEBUG``)::
 
 Recognised components map to GLib domains ``uvr-{component}``:
 
-``ui``, ``dispatch``, ``console``, ``worker``, ``separate``, ``cleanup``,
+``ui``, ``dispatch``, ``trace``, ``worker``, ``separate``, ``cleanup``,
 ``model``, ``audio``, ``download``, ``error``, ``settings``.
 
 Parsing rules for ``G_MESSAGES_DEBUG``:
@@ -25,8 +25,8 @@ Parsing rules for ``G_MESSAGES_DEBUG``:
 - ``uvr-ui uvr-worker`` — selective domains (GLib uses spaces; commas are accepted)
 - ``ui`` — shorthand for ``uvr-ui`` (same for other component names)
 
-Chatty dispatch/console detail uses the ``console`` component; enable
-``uvr-console`` (or ``uvr`` / ``all``) for progress ticks and scroll traces.
+High-frequency internals (every progress tick, worker pause polls, per-console
+chunk emit) use :func:`verbose`, enabled by ``uvr-trace`` or ``UVR_VERBOSE=1``.
 
 Suggested profiles::
 
@@ -34,7 +34,10 @@ Suggested profiles::
     G_MESSAGES_DEBUG=uvr-ui,uvr-settings,uvr-error
 
     # Separation run debugging
-    G_MESSAGES_DEBUG=uvr-ui,uvr-worker,uvr-separate,uvr-model,uvr-error
+    G_MESSAGES_DEBUG=uvr-ui,uvr-worker,uvr-dispatch,uvr-separate,uvr-model,uvr-error
+
+    # High-frequency internals (or UVR_VERBOSE=1)
+    G_MESSAGES_DEBUG=uvr-trace
 
     # Full internal trace
     G_MESSAGES_DEBUG=uvr
@@ -66,7 +69,7 @@ _COMPONENTS = frozenset(
     {
         "ui",
         "dispatch",
-        "console",
+        "trace",
         "worker",
         "separate",
         "cleanup",
@@ -169,7 +172,10 @@ def _domains() -> set[str]:
 
 
 def verbose() -> bool:
-    return enabled("console")
+    flag = os.environ.get("UVR_VERBOSE", "").strip().lower()
+    if flag in ("1", "true", "yes"):
+        return True
+    return enabled("trace")
 
 
 def _log_file_path() -> Optional[str]:

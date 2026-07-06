@@ -167,7 +167,9 @@ class MainWindow(Adw.ApplicationWindow):
         self._options_page = None
 
         page = self._build_content()
-        self.log_panel = LogPanel()
+        self.log_panel = LogPanel(
+            on_expanded_changed=lambda *_: self._sync_options_bottom_clearance()
+        )
         self.console = self.log_panel.console
         self.start_button = self.log_panel.start_button
         self.stop_button = self.log_panel.stop_button
@@ -182,6 +184,12 @@ class MainWindow(Adw.ApplicationWindow):
             "notify::child-revealed", lambda *_: self._sync_options_bottom_clearance()
         )
         self.log_panel._progress_revealer.connect(
+            "notify::reveal-child", lambda *_: self._sync_options_bottom_clearance()
+        )
+        self.log_panel._log_revealer.connect(
+            "notify::child-revealed", lambda *_: self._sync_options_bottom_clearance()
+        )
+        self.log_panel._log_revealer.connect(
             "notify::reveal-child", lambda *_: self._sync_options_bottom_clearance()
         )
 
@@ -304,6 +312,11 @@ class MainWindow(Adw.ApplicationWindow):
             self._ensemble_page.columns_box,
             self._audio_tools_page.columns_box,
         ]
+        self._options_pages = [
+            self._options_page,
+            self._ensemble_page.widget,
+            self._audio_tools_page.widget,
+        ]
 
         # Shared Start/Stop dispatch to the run target of the visible tab.
         # ``RunController.running_target`` pins the dispatch to whatever actually
@@ -391,10 +404,12 @@ class MainWindow(Adw.ApplicationWindow):
         idle_on_main(refresh)
 
     def _sync_options_bottom_clearance(self) -> None:
-        """Keep scroll padding aligned with the collapsed log panel height."""
-        clearance = self.log_panel.collapsed_overlay_height()
+        """Keep scroll padding aligned with the floating log panel height."""
+        clearance = self.log_panel.options_overlay_clearance()
         for columns_box in self._column_boxes:
             set_options_bottom_clearance(columns_box, clearance)
+        for page in getattr(self, "_options_pages", ()):
+            options_scroller(page).queue_allocate()
 
     def _update_sep_banner(self) -> None:
         """Reveal the empty-state banner when the active method has no models."""
