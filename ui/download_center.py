@@ -197,7 +197,6 @@ class DownloadCenterWindow:
         body.set_vexpand(True)
         body.append(self.stack)
         body.append(self.queue_revealer)
-        body.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         body.append(action_dock)
 
         clamp = Adw.Clamp(child=body, maximum_size=_CLAMP_MAX_WIDTH)
