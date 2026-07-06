@@ -178,8 +178,11 @@ class MainWindow(Adw.ApplicationWindow):
         self.stop_button.connect("clicked", self._on_stop)
         self.log_copy_button.connect("clicked", self._on_log_copy)
         self.log_clear_button.connect("clicked", self._on_log_clear)
-        self.log_panel._progress_section.connect(
-            "notify::visible", lambda *_: self._sync_options_bottom_clearance()
+        self.log_panel._progress_revealer.connect(
+            "notify::child-revealed", lambda *_: self._sync_options_bottom_clearance()
+        )
+        self.log_panel._progress_revealer.connect(
+            "notify::reveal-child", lambda *_: self._sync_options_bottom_clearance()
         )
 
         root = Gtk.Overlay()

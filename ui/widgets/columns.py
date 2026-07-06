@@ -13,6 +13,7 @@ from typing import Optional
 
 from gi.repository import Adw, Gtk
 
+from ..spacing import set_inset
 from .log_panel import LogPanel
 
 #: Clamp width shared by every two-column options surface.
@@ -55,10 +56,7 @@ def build_columns_box(left_groups=(), right_groups=()):
     # Homogeneous keeps both columns the same width regardless of content, so
     # the split point doesn't jump when the active panel changes height.
     columns_box.set_homogeneous(True)
-    columns_box.set_margin_top(18)
-    columns_box.set_margin_bottom(18)
-    columns_box.set_margin_start(12)
-    columns_box.set_margin_end(12)
+    set_inset(columns_box, top=18, bottom=18, start=12, end=12)
     columns_box.append(col_start)
     columns_box.append(col_end)
     return columns_box, col_start, col_end

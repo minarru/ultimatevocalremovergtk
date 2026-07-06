@@ -32,6 +32,7 @@ from bundled.constants import (
 
 from gi.repository import Adw, Gtk
 
+from ..spacing import set_inset
 from .base import MethodView, register_method_view
 from ..help_text import MDX_OVERLAP_HINT, MDX_STEMS_HINT
 from ..hints import set_tooltip
@@ -138,10 +139,7 @@ class MDXView(MethodView):
         self._stem_box = Adw.WrapBox()
         self._stem_box.set_child_spacing(6)
         self._stem_box.set_line_spacing(6)
-        self._stem_box.set_margin_top(6)
-        self._stem_box.set_margin_bottom(6)
-        self._stem_box.set_margin_start(12)
-        self._stem_box.set_margin_end(12)
+        set_inset(self._stem_box, top=6, bottom=6, start=12, end=12)
         self._stem_box.set_visible(False)
         group.add(self._stem_box)
         self.hints.register(self._stem_box, MDX_STEMS_HINT)

@@ -14,6 +14,7 @@ from typing import Callable, List, Sequence, Tuple
 from gi.repository import Adw, Gdk, GLib, Gtk
 
 from ..dialogs.utils import present_modal_dialog, set_form_dialog_content
+from ..spacing import inset_md, set_inset
 from ..help_text import (
     DUAL_BATCH_CLEAR_HINT,
     DUAL_BATCH_MOVE_DOWN_HINT,
@@ -190,19 +191,15 @@ class DualBatchDialog:
             xalign=0.0,
         )
         hint.add_css_class("dim-label")
-        hint.set_margin_start(12)
-        hint.set_margin_end(12)
-        hint.set_margin_bottom(6)
+        set_inset(hint, start=12, end=12, bottom=6)
 
         columns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        columns.set_margin_start(12)
-        columns.set_margin_end(12)
-        columns.set_margin_bottom(12)
+        set_inset(columns, start=12, end=12, bottom=12)
         columns.append(self._left)
         columns.append(self._right)
 
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, vexpand=True)
-        content.set_margin_top(12)
+        set_inset(content, top=12)
         content.append(hint)
         content.append(columns)
 

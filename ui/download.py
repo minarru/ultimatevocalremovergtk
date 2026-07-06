@@ -18,6 +18,7 @@ from core.download_queue import DownloadQueue
 from core.downloads import DownloadManager
 
 from .dialogs.utils import configure_dialog_width, fill_dialog_width, present_modal_dialog, set_dialog_content
+from .spacing import inset_md
 from .download_center import DownloadCenterWindow
 
 
@@ -121,10 +122,7 @@ def open_vip_code_dialog(parent, app_context, on_validated=None):
     page.add(links_group)
 
     content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-    content.set_margin_top(12)
-    content.set_margin_bottom(12)
-    content.set_margin_start(12)
-    content.set_margin_end(12)
+    inset_md(content)
     fill_dialog_width(content)
     fill_dialog_width(page)
     content.append(page)

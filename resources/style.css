@@ -1,4 +1,13 @@
-/* Application styles bundled in ui/data/uvr.gresource (see compile_resources.sh). */
+/* Application styles bundled in ui/data/uvr.gresource (see compile_resources.sh).
+ *
+ * Spacing convention:
+ *   - CSS: component padding, colors, radius, min-heights
+ *   - ui/spacing.py: static GtkWidget margins (dialogs, labels, layout shells)
+ *   - Python: dynamic layout (overlay clearance, progress-dependent height)
+ *   - SYNC comments link CSS values to Python measure constants when needed
+ */
+
+/* --- Spacing utilities: see ui/spacing.py (Gtk margin API) --- */
 
 /* Apollo empty-state banner (class app-banner): inset and rounded rather than
    spanning edge-to-edge. The accent background lives on the banner's inner
@@ -35,7 +44,7 @@
 }
 
 .uvr-run-controls {
-  padding: 12px 12px 12px;
+  padding: 12px 12px 12px; /* SYNC: _RUN_CONTROLS_PADDING_Y in log_panel.py */
 }
 
 .uvr-progress-section {
@@ -54,20 +63,27 @@
 }
 
 .uvr-log-body-wrap {
-  padding: 0 0 4px;
+  padding: 0 0 12px;
 }
 
 .uvr-run-actions {
-  min-height: 36px;
+  min-height: 36px; /* SYNC: _RUN_ACTIONS_MIN_HEIGHT in log_panel.py */
 }
 
 /* Keep min-height in sync with _LOG_BODY_HEIGHT in ui/widgets/log_panel.py */
 .uvr-log-body {
   min-height: 200px;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: alpha(@window_fg_color, 0.04);
 }
 
 .uvr-log-console {
-  background-color: alpha(@window_fg_color, 0.04);
+  background-color: transparent;
+}
+
+.uvr-log-console viewport {
+  border-radius: 8px;
 }
 
 .uvr-log-empty {
@@ -76,8 +92,4 @@
 
 .uvr-log-empty .dim-label {
   opacity: 0.75;
-}
-
-.uvr-log-console text {
-  padding: 2px 0;
 }

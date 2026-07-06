@@ -53,6 +53,7 @@ from bundled.constants import (
 from core import paths
 from core.model_data import ModelData
 from ..hints import set_tooltip
+from ..spacing import inset_md
 from .utils import present_modal_dialog, run_blocking_dialog, set_dialog_content, set_form_dialog_content
 from ..widgets.rows import (
     get_combo_value,
@@ -156,10 +157,7 @@ class _ParamDialog:
         page = Adw.PreferencesPage()
         self._build(page)
         self._content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self._content.set_margin_top(12)
-        self._content.set_margin_bottom(12)
-        self._content.set_margin_start(12)
-        self._content.set_margin_end(12)
+        inset_md(self._content)
         self._content.append(page)
 
     # -- Layout -------------------------------------------------------------
@@ -397,10 +395,7 @@ class _ApolloParamDialog:
         group.add(self.config_row)
 
         self._content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self._content.set_margin_top(12)
-        self._content.set_margin_bottom(12)
-        self._content.set_margin_start(12)
-        self._content.set_margin_end(12)
+        inset_md(self._content)
         self._content.append(page)
 
     def _collect(self):
@@ -520,10 +515,7 @@ def show_change_defaults_dialog(context, parent):
     button_group.add(delete_row)
 
     content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-    content.set_margin_top(12)
-    content.set_margin_bottom(12)
-    content.set_margin_start(12)
-    content.set_margin_end(12)
+    inset_md(content)
     content.append(description)
     content.append(page)
 

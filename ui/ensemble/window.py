@@ -52,6 +52,7 @@ from bundled.constants import (
 )
 
 from ..dialogs.utils import present_modal_dialog, set_dialog_content
+from ..spacing import inset_md
 from ..help_text import (
     ENSEMBLE_DELETE_BUTTON_HINT,
     ENSEMBLE_SAVE_BUTTON_HINT,
@@ -206,10 +207,7 @@ class EnsemblePage:
         description.add_css_class("dim-label")
 
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        content.set_margin_top(12)
-        content.set_margin_bottom(12)
-        content.set_margin_start(12)
-        content.set_margin_end(12)
+        inset_md(content)
         content.append(description)
         content.append(scroller)
 

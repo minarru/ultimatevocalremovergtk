@@ -420,8 +420,7 @@ class RunController:
         self._window._stop_pulse()
         self._set_running(False)
         self._running_target = None
-        self._window.log_panel.set_progress_fraction(0.0)
-        self._window.log_panel.set_progress_text("Stopped" if stopped else "")
+        self._window.log_panel.clear_progress()
         clear_run_start()
 
     def _on_stopped(self) -> None:

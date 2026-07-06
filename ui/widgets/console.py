@@ -23,6 +23,7 @@ class ConsoleView(Gtk.ScrolledWindow):
         self.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.set_vexpand(True)
         self.set_propagate_natural_height(False)
+        self.set_overflow(Gtk.Overflow.HIDDEN)
 
         self._on_changed = on_changed
         self._scroll_idle_id: Optional[int] = None

@@ -20,6 +20,7 @@ from bundled.constants import (
     VOCAL_STEM,
 )
 
+from ..spacing import set_inset
 from ..help_text import (
     STEM_ONLY_ALL_HINT,
     primary_stem_only_tooltip,
@@ -114,7 +115,7 @@ class StemOnlyControls:
     def __init__(self, *, on_changed: Optional[Callable[[], None]] = None):
         self.container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.container.add_css_class("uvr-stem-only-row")
-        self.container.set_margin_bottom(6)
+        set_inset(self.container, bottom=6)
         self.container.set_halign(Gtk.Align.FILL)
         self.container.set_hexpand(True)
 

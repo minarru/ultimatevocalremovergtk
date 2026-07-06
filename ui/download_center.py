@@ -21,6 +21,7 @@ from .dispatch import idle_on_main
 from .help_text import VIP_DOWNLOAD_CODE_HINT
 from .hints import set_tooltip
 from .markup import set_row_subtitle, set_row_title
+from .spacing import set_inset
 
 _NETWORKS = [
     ("VR Arch", VR_ARCH_TYPE),
@@ -143,10 +144,7 @@ class DownloadCenterWindow:
         self.queue_revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_UP)
 
         queue_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        queue_panel.set_margin_top(12)
-        queue_panel.set_margin_bottom(4)
-        queue_panel.set_margin_start(12)
-        queue_panel.set_margin_end(12)
+        set_inset(queue_panel, top=12, bottom=4, start=12, end=12)
 
         queue_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.queue_title = Gtk.Label(label="Downloads", xalign=0.0)
@@ -212,9 +210,7 @@ class DownloadCenterWindow:
 
     def _build_catalogue_page(self, arch: str, network_label: str) -> Gtk.Widget:
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        page.set_margin_top(6)
-        page.set_margin_start(12)
-        page.set_margin_end(12)
+        set_inset(page, top=6, start=12, end=12)
 
         search = Gtk.SearchEntry()
         search.set_placeholder_text(f"Search {network_label} models")
@@ -494,10 +490,7 @@ class DownloadCenterWindow:
         title.set_hexpand(True)
 
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        content.set_margin_top(10)
-        content.set_margin_bottom(10)
-        content.set_margin_start(4)
-        content.set_margin_end(4)
+        set_inset(content, top=10, bottom=10, start=4, end=4)
         content.append(title_row)
         content.append(detail)
         content.append(progress)
