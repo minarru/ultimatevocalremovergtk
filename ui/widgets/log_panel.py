@@ -52,7 +52,6 @@ class LogPanel(Gtk.Box):
         self._on_console_changed = on_console_changed
         self._on_expanded_changed = on_expanded_changed
         self._syncing_expand = False
-        self._defer_collapse_visibility = False
         self._pulse_source_id: Optional[int] = None
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -99,13 +98,14 @@ class LogPanel(Gtk.Box):
         set_icon_button_a11y(self.log_clear_button, "Clear the log")
         self._log_meta_row.append(self.log_clear_button)
 
-        body.append(self._log_meta_row)
-
         self._log_revealer = Gtk.Revealer()
         self._log_revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_UP)
         self._log_revealer.set_transition_duration(200)
         self._log_revealer.set_reveal_child(False)
         self._log_revealer.connect("notify::child-revealed", self._on_log_revealed)
+
+        revealer_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        revealer_content.append(self._log_meta_row)
 
         log_body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         log_body.add_css_class("uvr-log-body-wrap")
@@ -124,12 +124,9 @@ class LogPanel(Gtk.Box):
         self._log_stack.add_named(self.console, "console")
 
         log_body.append(self._log_stack)
-        self._log_revealer.set_child(log_body)
+        revealer_content.append(log_body)
+        self._log_revealer.set_child(revealer_content)
         body.append(self._log_revealer)
-
-        self._log_run_separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        self._log_run_separator.set_visible(False)
-        body.append(self._log_run_separator)
 
         action_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         action_row.add_css_class("uvr-run-actions")
@@ -160,7 +157,6 @@ class LogPanel(Gtk.Box):
         self.start_button = self._start_button
         self.stop_button = self._stop_button
 
-        self._apply_expanded_visibility(False)
         self._handle_console_changed(self.console.is_empty())
 
     @property
@@ -231,19 +227,10 @@ class LogPanel(Gtk.Box):
 
     def set_expanded(self, expanded: bool) -> None:
         if self.get_expanded() == expanded and self.expand_button.get_active() == expanded:
-            if expanded:
-                self._apply_expanded_visibility(True)
-            elif not self._defer_collapse_visibility:
-                self._apply_expanded_visibility(self._log_revealer.get_child_revealed())
             return
         self._syncing_expand = True
         self.expand_button.set_active(expanded)
         self._log_revealer.set_reveal_child(expanded)
-        if expanded:
-            self._defer_collapse_visibility = False
-            self._apply_expanded_visibility(True)
-        else:
-            self._defer_collapse_visibility = True
         self._notify_expanded_changed(expanded)
         self._syncing_expand = False
 
@@ -268,29 +255,15 @@ class LogPanel(Gtk.Box):
             return
         expanded = button.get_active()
         self._log_revealer.set_reveal_child(expanded)
-        if expanded:
-            self._defer_collapse_visibility = False
-            self._apply_expanded_visibility(True)
-        else:
-            self._defer_collapse_visibility = True
         self._notify_expanded_changed(expanded)
 
     def _on_log_revealed(self, revealer: Gtk.Revealer, _pspec) -> None:
-        if revealer.get_child_revealed():
-            debug("ui", "log_panel child revealed resume_scroll")
-            self._apply_expanded_visibility(True)
-            self._defer_collapse_visibility = False
-            self.console.resume_scroll()
-            debug("ui", "log_panel scroll_to_end_stable")
-            self.console.scroll_to_end_stable()
+        if not revealer.get_child_revealed():
             return
-        if self._defer_collapse_visibility:
-            self._apply_expanded_visibility(False)
-            self._defer_collapse_visibility = False
-
-    def _apply_expanded_visibility(self, expanded: bool) -> None:
-        self._log_meta_row.set_visible(expanded)
-        self._log_run_separator.set_visible(expanded)
+        debug("ui", "log_panel child revealed resume_scroll")
+        self.console.resume_scroll()
+        debug("ui", "log_panel scroll_to_end_stable")
+        self.console.scroll_to_end_stable()
 
     def _handle_console_changed(self, is_empty: bool) -> None:
         self._log_stack.set_visible_child_name("empty" if is_empty else "console")
