@@ -16,6 +16,7 @@ never touches any UI toolkit and reports progress through plain callbacks.
 import json
 import os
 import ssl
+import threading
 import time
 import urllib.request
 from typing import Callable, Dict, List, Optional, Tuple
@@ -44,7 +45,12 @@ from bundled.constants import (
 
 from . import paths
 from .debug_log import debug
-from .download_sizes import describe_download_size, estimate_jobs_size, format_download_size
+from .download_sizes import (
+    describe_download_size,
+    estimate_jobs_size,
+    format_download_size,
+    prefetch_remote_sizes,
+)
 from .mdx_config_fetch import ensure_mdx_c_config
 from .politrees_catalog import (
     hf_fallback_url,
@@ -136,6 +142,78 @@ class DownloadManager:
         self.vr_download_list: Dict[str, str] = {}
         self.mdx_download_list: Dict[str, object] = {}
         self.demucs_download_list: Dict[str, dict] = {}
+        self._size_warmup_lock = threading.Lock()
+
+    # -- Catalogue + size cache -------------------------------------------------
+
+    def ensure_catalogues(self) -> bool:
+        """Populate download catalogues from in-memory, bundled, or Politrees data."""
+        if self.vr_download_list or self.mdx_download_list or self.demucs_download_list:
+            return True
+        if self.online_data:
+            self._rebuild_catalogues()
+            self._merge_politrees_supplement()
+            if self.vr_download_list or self.mdx_download_list or self.demucs_download_list:
+                return True
+        self.online_data = self._load_cache()
+        if not self.online_data:
+            debug("download", "ensure_catalogues no bundled cache")
+            return False
+        self._rebuild_catalogues()
+        self._merge_politrees_supplement()
+        debug(
+            "download",
+            "ensure_catalogues bundled fallback "
+            f"vr={len(self.vr_download_list)} "
+            f"mdx={len(self.mdx_download_list)} "
+            f"demucs={len(self.demucs_download_list)}",
+        )
+        return bool(self.vr_download_list or self.mdx_download_list or self.demucs_download_list)
+
+    def catalogue_urls(self) -> List[str]:
+        """Unique remote URLs for every catalogue entry."""
+        urls: set[str] = set()
+        for arch_type, catalogue in (
+            (VR_ARCH_TYPE, self.vr_download_list),
+            (MDX_ARCH_TYPE, self.mdx_download_list),
+            (DEMUCS_ARCH_TYPE, self.demucs_download_list),
+        ):
+            for name in catalogue:
+                for url, _path in self.resolve(name, arch_type):
+                    urls.add(url)
+        return sorted(urls)
+
+    def warm_size_cache(self) -> Dict[str, int]:
+        """Prefetch remote sizes for catalogue URLs (7-day TTL)."""
+        if not self.ensure_catalogues():
+            debug("download", "size_cache_warmup skip no catalogues")
+            return {"total": 0, "fresh": 0, "fetched": 0, "failed": 0}
+
+        if not self._size_warmup_lock.acquire(blocking=False):
+            debug("download", "size_cache_warmup skip already running")
+            return {"total": 0, "fresh": 0, "fetched": 0, "failed": 0}
+
+        from .debug_log import debug_elapsed
+
+        try:
+            urls = self.catalogue_urls()
+            debug("download", f"size_cache_warmup start urls={len(urls)}")
+            started = time.perf_counter()
+            stats = prefetch_remote_sizes(urls)
+            debug_elapsed(
+                "download",
+                "size_cache_warmup done "
+                f"total={stats['total']} fresh={stats['fresh']} "
+                f"fetched={stats['fetched']} failed={stats['failed']}",
+                started,
+            )
+            return stats
+        finally:
+            self._size_warmup_lock.release()
+
+    def schedule_size_cache_warmup(self) -> None:
+        """Kick off a background size-cache refresh (idempotent per process)."""
+        threading.Thread(target=self.warm_size_cache, daemon=True).start()
 
     # -- Online refresh ---------------------------------------------------------
 
@@ -174,6 +252,7 @@ class DownloadManager:
             f"demucs={len(self.demucs_download_list)} "
             f"latest={self.latest_version!r}",
         )
+        self.schedule_size_cache_warmup()
         return True
 
     def _rebuild_catalogues(self) -> None:

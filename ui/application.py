@@ -3,7 +3,7 @@
 import sys
 from typing import Optional, Sequence
 
-from gi.repository import Adw, Gio
+from gi.repository import Adw, Gio, GLib, Gtk
 
 from core import SettingsModel, ensure_data_dir
 
@@ -63,6 +63,19 @@ class UVRApplication(Adw.Application):
         quit_action = Gio.SimpleAction.new("quit", None)
         quit_action.connect("activate", lambda *_: self.quit())
         self.add_action(quit_action)
+        open_output = Gio.SimpleAction.new(
+            "open-output-folder", GLib.VariantType.new("s")
+        )
+        open_output.connect("activate", self._on_open_output_folder)
+        self.add_action(open_output)
+
+    def _on_open_output_folder(self, _action: Gio.SimpleAction, param: GLib.Variant) -> None:
+        from .files import open_folder_in_file_manager
+
+        window = self.props.active_window
+        if window is None or param is None:
+            return
+        open_folder_in_file_manager(window, param.get_string())
 
     @staticmethod
     def _apply_saved_color_scheme():

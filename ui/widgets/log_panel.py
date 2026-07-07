@@ -37,6 +37,7 @@ _PANEL_BORDER_RESERVE = 2
 _LOG_EMPTY_ICON = "utilities-terminal-symbolic"
 _LOG_EMPTY_TITLE = "No activity yet"
 _LOG_EMPTY_DESCRIPTION = "Start a process to see its log here."
+_PROGRESS_DONE_LABEL = "Done"
 
 
 class LogPanel(Gtk.Box):
@@ -236,6 +237,19 @@ class LogPanel(Gtk.Box):
         self._progress_label.set_text("")
         self._progress_label.set_visible(False)
         self._sync_progress_section_visible()
+
+    def clear_log(self) -> None:
+        """Clear the console; collapse the progress block after a finished run."""
+        self.console.clear()
+        self._collapse_progress_if_done()
+
+    def _collapse_progress_if_done(self) -> None:
+        if (
+            self._pulse_source_id is None
+            and self._progressbar.get_fraction() >= 1.0
+            and self._progress_label.get_text() == _PROGRESS_DONE_LABEL
+        ):
+            self.clear_progress()
 
     def prepare_for_run(self) -> None:
         """Show the console and reset scroll before worker output arrives."""

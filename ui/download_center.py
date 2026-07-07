@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 
 from gi.repository import Adw, Gio, Gtk
@@ -16,11 +17,17 @@ from bundled.constants import (
 from core.debug_log import debug
 from core.download_queue import DownloadQueue, DownloadQueueItem
 from core.downloads import DownloadManager
+from core import paths
 
 from .dispatch import idle_on_main
 from .help_text import VIP_DOWNLOAD_CODE_HINT
 from .hints import set_tooltip
 from .markup import set_row_subtitle, set_row_title
+from .notifications import (
+    NOTIFY_DOWNLOAD_COMPLETE,
+    NOTIFY_DOWNLOAD_FAILED,
+    send_desktop_notification,
+)
 from .spacing import set_inset
 
 _NETWORKS = [
@@ -74,6 +81,9 @@ class DownloadCenterWindow:
 
         self._actions = Gio.SimpleActionGroup()
         self.window.insert_action_group("dc", self._actions)
+        models_action = Gio.SimpleAction.new("open-models", None)
+        models_action.connect("activate", lambda *_: self._open_models_folder())
+        self._actions.add_action(models_action)
         manual_action = Gio.SimpleAction.new("manual", None)
         manual_action.connect("activate", lambda *_: self._open_manual())
         self._actions.add_action(manual_action)
@@ -90,6 +100,15 @@ class DownloadCenterWindow:
         self.window.present()
         if not self._available:
             self.start_refresh()
+
+    def _application(self) -> Gtk.Application | None:
+        """Return the app instance (utility window is not an application window)."""
+        app = self.window.get_application()
+        if app is not None:
+            return app
+        if self.parent is not None:
+            return self.parent.get_application()
+        return None
 
     def _on_close_request(self, _window) -> bool:
         self.window.set_visible(False)
@@ -124,10 +143,11 @@ class DownloadCenterWindow:
         header.pack_start(self.vip_button)
 
         menu = Gio.Menu()
+        menu.append("Open models folder", "dc.open-models")
         menu.append("Manual downloads", "dc.manual")
         menu_button = Gtk.MenuButton()
         menu_button.set_icon_name("open-menu-symbolic")
-        set_tooltip(menu_button, "Manual download links")
+        set_tooltip(menu_button, "Models folder and manual download links")
         menu_button.set_menu_model(menu)
         header.pack_end(menu_button)
 
@@ -533,6 +553,49 @@ class DownloadCenterWindow:
         if self._on_models_changed is not None:
             self._on_models_changed()
         self._toast("Downloads finished")
+        self._send_download_notifications()
+
+    def _send_download_notifications(self) -> None:
+        items = self.queue.items()
+        complete = sum(1 for item in items if item.status == "complete")
+        existed = sum(1 for item in items if item.status == "exists")
+        failed = sum(1 for item in items if item.status == "failed")
+        debug(
+            "download",
+            "download notification "
+            f"complete={complete} exists={existed} failed={failed}",
+        )
+        app = self._application()
+        if failed:
+            if failed == 1:
+                body = "1 download failed"
+            else:
+                body = f"{failed} downloads failed"
+            if complete or existed:
+                body += f"; {complete + existed} succeeded"
+            send_desktop_notification(
+                app,
+                self.settings,
+                setting_key=NOTIFY_DOWNLOAD_FAILED,
+                ident="uvr-download-failed",
+                title="Model downloads finished with errors",
+                body=body,
+            )
+            return
+        if complete or existed:
+            count = complete + existed
+            if count == 1:
+                body = "1 model is ready to use"
+            else:
+                body = f"{count} models are ready to use"
+            send_desktop_notification(
+                app,
+                self.settings,
+                setting_key=NOTIFY_DOWNLOAD_COMPLETE,
+                ident="uvr-download-complete",
+                title="Model downloads complete",
+                body=body,
+            )
 
     def _open_vip(self) -> None:
         from .download import open_vip_code_dialog
@@ -543,6 +606,12 @@ class DownloadCenterWindow:
         from .download import open_manual_downloads
 
         open_manual_downloads(self.window, self.context)
+
+    def _open_models_folder(self) -> None:
+        from .files import open_folder_in_file_manager
+
+        os.makedirs(paths.MODELS_DIR, exist_ok=True)
+        open_folder_in_file_manager(self.window, paths.MODELS_DIR)
 
     def _on_vip_validated(self, unlocked: bool) -> None:
         if unlocked:

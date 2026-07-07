@@ -33,27 +33,28 @@ from core.debug_log import (
 )
 from core.separate_import import engines_imported, warm_status
 
-from . import APP_ID
 from .dispatch import gtk_job_callbacks, idle_on_main, reset_progress_log
+from .files import open_folder_in_file_manager
+from .notifications import (
+    NOTIFY_PROCESS_COMPLETE,
+    NOTIFY_PROCESS_FAILED,
+    send_desktop_notification,
+)
 
 if TYPE_CHECKING:
     from .window import MainWindow
 
 _OPEN_FOLDER_LABEL = "Open Folder"
-_OPEN_FOLDER_ERROR = "Couldn't open the output folder: {message}"
 _NOTIFY_COMPLETE_TITLE = "{label} complete"
 _NOTIFY_COMPLETE_BODY = "Saved to {folder}"
 _NOTIFY_COMPLETE_BODY_PLAIN = "Processing finished"
 _NOTIFY_FAILED_TITLE = "{label} failed"
 _NOTIFY_FAILED_BODY = "Open the app to see the error log"
-_NOTIFY_ICONS = {
-    "uvr-complete": "emblem-ok-symbolic",
-    "uvr-failed": "dialog-error-symbolic",
-}
 _PROGRESS_STARTING = "Starting…"
 _PROGRESS_DONE = "Done"
 _PROGRESS_EPSILON = 0.001
 _EXIT_CLEANUP_TIMEOUT_MS = 10_000
+
 
 class RunController:
     """Run lifecycle shared by Separation, Ensemble and Audio Tools."""
@@ -462,14 +463,7 @@ class RunController:
         self._window.toast_overlay.add_toast(toast)
 
     def _on_open_output_folder(self, _toast: Adw.Toast, output_dir: str) -> None:
-        launcher = Gtk.FileLauncher.new(Gio.File.new_for_path(output_dir))
-        launcher.launch(self._window, None, self._on_output_folder_launched)
-
-    def _on_output_folder_launched(self, launcher: Gtk.FileLauncher, result) -> None:
-        try:
-            launcher.launch_finish(result)
-        except GLib.Error as exc:
-            self._window._toast(_OPEN_FOLDER_ERROR.format(message=exc.message))
+        open_folder_in_file_manager(self._window, output_dir)
 
     def _send_completion_notification(self, output_dir: str) -> None:
         title = _NOTIFY_COMPLETE_TITLE.format(label=self._run_label)
@@ -479,27 +473,27 @@ class RunController:
             )
         else:
             body = _NOTIFY_COMPLETE_BODY_PLAIN
-        self._send_notification("uvr-complete", title, body)
+        open_folder = output_dir if output_dir and os.path.isdir(output_dir) else None
+        send_desktop_notification(
+            self._window.get_application(),
+            self._window.settings,
+            setting_key=NOTIFY_PROCESS_COMPLETE,
+            ident="uvr-complete",
+            title=title,
+            body=body,
+            output_dir=open_folder,
+        )
 
     def _send_failure_notification(self) -> None:
         title = _NOTIFY_FAILED_TITLE.format(label=self._run_label)
-        self._send_notification("uvr-failed", title, _NOTIFY_FAILED_BODY)
-
-    def _send_notification(self, ident: str, title: str, body: str) -> None:
-        try:
-            app = self._window.get_application()
-            if app is None:
-                return
-            notification = Gio.Notification.new(title)
-            notification.set_body(body)
-            icon_name = _NOTIFY_ICONS.get(ident, APP_ID)
-            try:
-                notification.set_icon(Gio.ThemedIcon.new(icon_name))
-            except Exception:  # noqa: BLE001 - icon is best-effort
-                pass
-            app.send_notification(ident, notification)
-        except Exception:  # noqa: BLE001 - notifications must never break a run
-            pass
+        send_desktop_notification(
+            self._window.get_application(),
+            self._window.settings,
+            setting_key=NOTIFY_PROCESS_FAILED,
+            ident="uvr-failed",
+            title=title,
+            body=_NOTIFY_FAILED_BODY,
+        )
 
     def _on_progress(self, fraction: float) -> None:
         if self._run_ui_suspended:

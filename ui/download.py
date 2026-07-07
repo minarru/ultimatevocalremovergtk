@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import webbrowser
 
 from gi.repository import Adw, Gtk
@@ -36,6 +37,26 @@ def _get_queue(app_context, manager: DownloadManager) -> DownloadQueue:
         queue = DownloadQueue(manager, on_changed=lambda: None)
         setattr(app_context, "_download_queue", queue)
     return queue
+
+
+def start_download_size_cache_warmup(app_context) -> None:
+    """Prefetch model download sizes on a background thread (7-day cache TTL)."""
+    if getattr(app_context, "_size_cache_warmup_started", False):
+        return
+    app_context._size_cache_warmup_started = True
+
+    def worker() -> None:
+        manager = _get_manager(app_context)
+        code = app_context.settings.get("user_code", "")
+        if code:
+            manager.validate_vip_code(code)
+        if manager.ensure_catalogues():
+            manager.schedule_size_cache_warmup()
+        else:
+            debug("download", "size_cache_warmup refresh catalogues (no bundled cache)")
+            manager.refresh()
+
+    threading.Thread(target=worker, daemon=True).start()
 
 
 def open_download_center(parent_window, app_context, on_models_changed=None):

@@ -120,17 +120,18 @@ class DownloadQueue:
         threading.Thread(target=self._worker_main, daemon=True).start()
 
     def _worker_main(self) -> None:
-        completed_any = False
+        processed_any = False
         try:
             while True:
                 item = self._next_queued()
                 if item is None:
                     break
-                completed_any = self._process_item(item) or completed_any
+                processed_any = True
+                self._process_item(item)
         finally:
             self._worker_active = False
             self._notify()
-            if completed_any and self._on_batch_complete is not None:
+            if processed_any and self._on_batch_complete is not None:
                 self._on_batch_complete()
             if self._has_queued():
                 self._ensure_worker()

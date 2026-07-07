@@ -194,6 +194,39 @@ class PreferencesDialog(Adw.PreferencesDialog):
         reset_group.add(reset_row)
         page.add(reset_group)
 
+        notifications_group = Adw.PreferencesGroup(
+            title="Desktop notifications",
+            description="System notifications when tasks finish in the background",
+        )
+        self._notification_switches = {}
+        for key, title, subtitle in (
+            (
+                "notify_process_complete",
+                "Processing complete",
+                "When separation, ensemble, or audio tools finish successfully",
+            ),
+            (
+                "notify_process_failed",
+                "Processing failed",
+                "When a run stops with an error",
+            ),
+            (
+                "notify_download_complete",
+                "Downloads finished",
+                "When queued model downloads complete successfully",
+            ),
+            (
+                "notify_download_failed",
+                "Download failed",
+                "When a queued model download fails",
+            ),
+        ):
+            row = Adw.SwitchRow(title=title, subtitle=subtitle)
+            row.connect("notify::active", self._on_bool_changed, key)
+            notifications_group.add(row)
+            self._notification_switches[key] = row
+        page.add(notifications_group)
+
         return page
 
     def _build_audio_page(self) -> Adw.PreferencesPage:
@@ -307,6 +340,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
             for key, row in self._process_switches.items():
                 row.set_active(bool(self.settings.get(key)))
+
+            for key, row in self._notification_switches.items():
+                row.set_active(bool(self.settings.get(key, True)))
 
             self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
             if hasattr(self, "directml_row"):

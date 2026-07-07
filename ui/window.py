@@ -395,6 +395,10 @@ class MainWindow(Adw.ApplicationWindow):
             clamp.queue_resize()
 
     def _on_window_mapped(self, *_args) -> None:
+        from .download import start_download_size_cache_warmup
+
+        start_download_size_cache_warmup(self.context)
+
         def refresh() -> None:
             if self._current_view is not None:
                 self._populate_columns()
@@ -445,7 +449,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.log_panel.stop_progress_pulse()
 
     def _on_log_clear(self, _button: Gtk.Button) -> None:
-        self.console.clear()
+        self.log_panel.clear_log()
 
     def _on_log_copy(self, _button: Gtk.Button) -> None:
         text = self.console.get_text()

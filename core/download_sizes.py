@@ -8,7 +8,7 @@ import ssl
 import time
 import urllib.error
 import urllib.request
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from . import paths
 from .debug_log import debug
@@ -58,16 +58,24 @@ def _write_cache(payload: Dict[str, object]) -> None:
         debug("download", f"size cache write failed err={exc}")
 
 
+def _cache_entry_fresh(entry: object, *, now: Optional[float] = None) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    fetched_at = entry.get("fetched_at")
+    if not isinstance(fetched_at, (int, float)):
+        return False
+    if now is None:
+        now = time.time()
+    return (now - float(fetched_at)) <= _CACHE_TTL_SECONDS
+
+
 def _cache_get(url: str) -> Optional[int]:
     entry = _read_cache().get(url)
+    if not _cache_entry_fresh(entry):
+        return None
     if not isinstance(entry, dict):
         return None
-    fetched_at = entry.get("fetched_at")
     size = entry.get("size")
-    if not isinstance(fetched_at, (int, float)):
-        return None
-    if (time.time() - float(fetched_at)) > _CACHE_TTL_SECONDS:
-        return None
     if size is None:
         return None
     try:
@@ -93,6 +101,56 @@ def fetch_remote_size(url: str) -> Optional[int]:
         size = _get_content_length(url)
     _cache_put(url, size)
     return size
+
+
+def prefetch_remote_sizes(urls: Iterable[str]) -> Dict[str, int]:
+    """Refresh stale or missing cache entries for ``urls``.
+
+    Entries younger than :data:`_CACHE_TTL_SECONDS` are left untouched.
+    Returns counts ``{total, fresh, fetched, failed}``.
+    """
+    unique: List[str] = []
+    seen: set[str] = set()
+    for url in urls:
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        unique.append(url)
+
+    if not unique:
+        return {"total": 0, "fresh": 0, "fetched": 0, "failed": 0}
+
+    payload = _read_cache()
+    now = time.time()
+    fresh = 0
+    fetched = 0
+    failed = 0
+    dirty = False
+
+    for url in unique:
+        entry = payload.get(url)
+        if _cache_entry_fresh(entry, now=now):
+            fresh += 1
+            continue
+        size = _head_content_length(url)
+        if size is None:
+            size = _get_content_length(url)
+        payload[url] = {"size": size, "fetched_at": now}
+        dirty = True
+        if size is not None:
+            fetched += 1
+        else:
+            failed += 1
+
+    if dirty:
+        _write_cache(payload)
+
+    return {
+        "total": len(unique),
+        "fresh": fresh,
+        "fetched": fetched,
+        "failed": failed,
+    }
 
 
 def _head_content_length(url: str) -> Optional[int]:

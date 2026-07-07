@@ -1,13 +1,17 @@
 """Tests for download size formatting and job estimates."""
 
+import json
 import os
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
 from core.download_sizes import (
+    _CACHE_TTL_SECONDS,
     describe_download_size,
     format_download_size,
+    prefetch_remote_sizes,
 )
 
 
@@ -46,6 +50,39 @@ class DescribeDownloadSizeTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 jobs = [("https://example.com/a.onnx", os.path.join(tmp, "a.onnx"))]
                 self.assertEqual(describe_download_size(jobs), "Size unknown · 1 file")
+
+
+class PrefetchRemoteSizesTests(unittest.TestCase):
+    def test_skips_fresh_cache_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "download_size_cache.json")
+            url = "https://example.com/model.onnx"
+            with open(cache_path, "w", encoding="utf-8") as handle:
+                json.dump({url: {"size": 1024, "fetched_at": time.time()}}, handle)
+            with patch("core.download_sizes._CACHE_PATH", cache_path):
+                with patch("core.download_sizes._head_content_length") as head:
+                    stats = prefetch_remote_sizes([url])
+            self.assertEqual(stats, {"total": 1, "fresh": 1, "fetched": 0, "failed": 0})
+            head.assert_not_called()
+
+    def test_refetches_expired_cache_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "download_size_cache.json")
+            url = "https://example.com/model.onnx"
+            stale_at = time.time() - _CACHE_TTL_SECONDS - 60
+            with open(cache_path, "w", encoding="utf-8") as handle:
+                json.dump({url: {"size": 1024, "fetched_at": stale_at}}, handle)
+            with patch("core.download_sizes._CACHE_PATH", cache_path):
+                with patch(
+                    "core.download_sizes._head_content_length",
+                    return_value=2048,
+                ) as head:
+                    stats = prefetch_remote_sizes([url])
+            self.assertEqual(stats, {"total": 1, "fresh": 0, "fetched": 1, "failed": 0})
+            head.assert_called_once_with(url)
+            with open(cache_path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            self.assertEqual(payload[url]["size"], 2048)
 
 
 if __name__ == "__main__":

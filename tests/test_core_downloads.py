@@ -15,6 +15,11 @@ class DownloadManagerResolveTests(unittest.TestCase):
             "Demucs Test": {"checkpoint.th": "https://example.com/checkpoint.th"}
         }
 
+    def test_catalogue_urls_collects_resolve_jobs(self):
+        urls = self.manager.catalogue_urls()
+        self.assertIn("https://example.com/checkpoint.th", urls)
+        self.assertTrue(any(url.endswith("test_vr.pth") for url in urls))
+
     def test_resolve_vr_job(self):
         jobs = self.manager.resolve("VR Test", VR_ARCH_TYPE)
         self.assertEqual(len(jobs), 1)

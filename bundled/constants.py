@@ -698,7 +698,11 @@ DEFAULT_DATA = {
         'color_scheme': 'auto',
         'window_width': 1040,
         'window_height': 720,
-        'window_maximized': False
+        'window_maximized': False,
+        'notify_process_complete': True,
+        'notify_process_failed': True,
+        'notify_download_complete': True,
+        'notify_download_failed': True,
 }
 
 NEW_LINES = "\n\n"
