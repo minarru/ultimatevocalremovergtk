@@ -4,10 +4,14 @@ Importing ``separate`` pulls in torch, onnxruntime, demucs, etc. and typically
 costs ~1–2s on the first load. :func:`warm_import_separate_engines` starts that
 work in a background thread during app startup so the first separation run can
 emit console output immediately.
+
+Set ``UVR_SKIP_SEPARATE_WARMUP=1`` to skip that background import (engines load
+on the first separation run instead).
 """
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from typing import Any, Optional, Tuple
@@ -17,6 +21,13 @@ from .debug_log import debug
 _lock = threading.Lock()
 _engines: Optional[Tuple[Any, ...]] = None
 _warm_thread: Optional[threading.Thread] = None
+
+_SKIP_WARMUP_ENV = "UVR_SKIP_SEPARATE_WARMUP"
+
+
+def skip_separate_warmup() -> bool:
+    """Return whether startup should skip the background separate import."""
+    return os.environ.get(_SKIP_WARMUP_ENV, "").strip() == "1"
 
 
 def import_separate_engines() -> Tuple[Any, ...]:
@@ -53,6 +64,9 @@ def import_separate_engines() -> Tuple[Any, ...]:
 
 def warm_import_separate_engines() -> None:
     """Start a background import if engines are not loaded yet."""
+    if skip_separate_warmup():
+        debug("worker", "skipping separate import warmup (UVR_SKIP_SEPARATE_WARMUP)")
+        return
     global _warm_thread
     with _lock:
         if _engines is not None or _warm_thread is not None:

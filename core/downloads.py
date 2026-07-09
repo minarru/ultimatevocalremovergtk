@@ -13,6 +13,7 @@ Network and disk work happens on caller-supplied worker threads; this module
 never touches any UI toolkit and reports progress through plain callbacks.
 """
 
+import errno
 import json
 import os
 import ssl
@@ -456,13 +457,33 @@ class DownloadManager:
         debug_elapsed("download", f"download done status={result}", started)
         return result
 
+    @staticmethod
+    def _download_stopped(stop_event) -> bool:
+        return stop_event is not None and stop_event.is_set()
+
+    def _finalize_part_file(self, tmp_path: str, save_path: str, stop_event) -> None:
+        """Rename a completed ``.part`` file unless the download was cancelled."""
+        if self._download_stopped(stop_event):
+            return
+        if not os.path.isfile(tmp_path):
+            raise FileNotFoundError(
+                errno.ENOENT,
+                os.strerror(errno.ENOENT),
+                tmp_path,
+            )
+        os.replace(tmp_path, save_path)
+
     def _download_file(self, url, save_path, index, total, on_progress, stop_event, on_info=None) -> None:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         tmp_path = f"{save_path}.part"
         try:
             self._download_file_url(url, tmp_path, index, total, on_progress, stop_event, on_info)
-            os.replace(tmp_path, save_path)
+            if self._download_stopped(stop_event):
+                return
+            self._finalize_part_file(tmp_path, save_path, stop_event)
         except Exception:
+            if self._download_stopped(stop_event):
+                return
             fallback = hf_fallback_url(url)
             if fallback and fallback != url:
                 debug("download", f"hf fallback {os.path.basename(save_path)}")
@@ -474,7 +495,9 @@ class DownloadManager:
                 self._download_file_url(
                     fallback, tmp_path, index, total, on_progress, stop_event, on_info
                 )
-                os.replace(tmp_path, save_path)
+                if self._download_stopped(stop_event):
+                    return
+                self._finalize_part_file(tmp_path, save_path, stop_event)
                 return
             if os.path.isfile(tmp_path):
                 try:

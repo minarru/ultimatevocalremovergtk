@@ -15,7 +15,7 @@ from bundled.constants import (
     VR_ARCH_TYPE,
 )
 from core.debug_log import debug
-from core.download_queue import DownloadQueue, DownloadQueueItem
+from core.download_queue import DownloadQueue
 from core.downloads import DownloadManager
 from core import paths
 
@@ -23,11 +23,6 @@ from .dispatch import idle_on_main
 from .help_text import VIP_DOWNLOAD_CODE_HINT
 from .hints import set_tooltip
 from .markup import set_row_subtitle, set_row_title
-from .notifications import (
-    NOTIFY_DOWNLOAD_COMPLETE,
-    NOTIFY_DOWNLOAD_FAILED,
-    send_desktop_notification,
-)
 from .spacing import set_inset
 
 _NETWORKS = [
@@ -64,7 +59,6 @@ class DownloadCenterWindow:
         self._row_actions: dict[tuple[str, str], Adw.ActionRow] = {}
         self._search_entries: dict[str, Gtk.SearchEntry] = {}
         self._list_boxes: dict[str, Gtk.ListBox] = {}
-        self._queue_rows: dict[str, Gtk.ListBoxRow] = {}
         self._stack_pages: dict[str, Adw.ViewStackPage] = {}
 
         saved_code = self.settings.get("user_code", "")
@@ -92,23 +86,10 @@ class DownloadCenterWindow:
         self.toast_overlay.set_child(self._build_content())
         self.window.set_content(self.toast_overlay)
 
-        self.queue.set_on_changed(self._on_queue_changed)
-        self.queue.set_on_batch_complete(self._on_queue_batch_complete)
-        self._render_queue()
-
     def present(self) -> None:
         self.window.present()
         if not self._available:
             self.start_refresh()
-
-    def _application(self) -> Gtk.Application | None:
-        """Return the app instance (utility window is not an application window)."""
-        app = self.window.get_application()
-        if app is not None:
-            return app
-        if self.parent is not None:
-            return self.parent.get_application()
-        return None
 
     def _on_close_request(self, _window) -> bool:
         self.window.set_visible(False)
@@ -159,34 +140,6 @@ class DownloadCenterWindow:
             if isinstance(self.stack, Adw.ViewStack):
                 self._stack_pages[arch] = self.stack.get_page(page)
 
-        self.queue_revealer = Gtk.Revealer()
-        self.queue_revealer.set_reveal_child(False)
-        self.queue_revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_UP)
-
-        queue_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        set_inset(queue_panel, top=12, bottom=4, start=12, end=12)
-
-        queue_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        self.queue_title = Gtk.Label(label="Downloads", xalign=0.0)
-        self.queue_title.add_css_class("heading")
-        self.queue_title.set_hexpand(True)
-        queue_header.append(self.queue_title)
-        clear_button = Gtk.Button(label="Clear finished")
-        clear_button.add_css_class("flat")
-        clear_button.connect("clicked", lambda *_: self._clear_finished_queue())
-        queue_header.append(clear_button)
-        queue_panel.append(queue_header)
-
-        self.queue_list = Gtk.ListBox()
-        self.queue_list.set_selection_mode(Gtk.SelectionMode.NONE)
-        queue_scroller = Gtk.ScrolledWindow()
-        queue_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        queue_scroller.set_max_content_height(220)
-        queue_scroller.set_child(self.queue_list)
-        queue_panel.append(queue_scroller)
-
-        self.queue_revealer.set_child(queue_panel)
-
         self.refresh_button = Gtk.Button(icon_name="view-refresh-symbolic")
         self.refresh_button.add_css_class("flat")
         self.refresh_button.connect("clicked", lambda *_: self.start_refresh())
@@ -214,7 +167,6 @@ class DownloadCenterWindow:
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         body.set_vexpand(True)
         body.append(self.stack)
-        body.append(self.queue_revealer)
         body.append(action_dock)
 
         clamp = Adw.Clamp(child=body, maximum_size=_CLAMP_MAX_WIDTH)
@@ -465,137 +417,27 @@ class DownloadCenterWindow:
         self._update_download_button()
         self._toast(f"Queued {len(ids)} download(s)")
 
-    def _on_queue_changed(self) -> None:
-        idle_on_main(self._render_queue)
-
-    def _render_queue(self) -> None:
-        while (child := self.queue_list.get_first_child()) is not None:
-            self.queue_list.remove(child)
-        self._queue_rows.clear()
-
-        items = self.queue.items()
-        active = [item for item in items if item.status in ("queued", "downloading")]
-        self.queue_revealer.set_reveal_child(bool(items))
-
-        if not items:
-            return
-
-        self.queue_title.set_label(
-            f"Downloads ({len(active)} active)" if active else f"Downloads ({len(items)} recent)"
-        )
-
-        for item in items:
-            list_row = self._make_queue_row(item)
-            self._update_queue_row(list_row, item)
-            self.queue_list.append(list_row)
-            self._queue_rows[item.item_id] = list_row
-
-    def _make_queue_row(self, item: DownloadQueueItem) -> Gtk.ListBoxRow:
-        title = Gtk.Label(xalign=0.0, wrap=True, natural_wrap_mode=Gtk.NaturalWrapMode.WORD)
-        title.set_label(item.label)
-
-        detail = Gtk.Label(xalign=0.0, wrap=True, natural_wrap_mode=Gtk.NaturalWrapMode.WORD)
-        detail.add_css_class("dim-label")
-
-        progress = Gtk.ProgressBar()
-        progress.set_show_text(False)
-
-        stop_button = Gtk.Button(icon_name="process-stop-symbolic")
-        stop_button.set_valign(Gtk.Align.START)
-        stop_button.connect("clicked", lambda *_: self.queue.cancel(item.item_id))
-
-        title_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        title_row.append(title)
-        title_row.append(stop_button)
-        title.set_hexpand(True)
-
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        set_inset(content, top=10, bottom=10, start=4, end=4)
-        content.append(title_row)
-        content.append(detail)
-        content.append(progress)
-
-        list_row = Gtk.ListBoxRow()
-        list_row.set_child(content)
-        list_row._uvr_title = title  # type: ignore[attr-defined]
-        list_row._uvr_detail = detail  # type: ignore[attr-defined]
-        list_row._uvr_progress = progress  # type: ignore[attr-defined]
-        list_row._uvr_item_id = item.item_id  # type: ignore[attr-defined]
-        return list_row
-
-    def _update_queue_row(self, list_row: Gtk.ListBoxRow, item: DownloadQueueItem) -> None:
-        title: Gtk.Label = list_row._uvr_title  # type: ignore[attr-defined]
-        detail: Gtk.Label = list_row._uvr_detail  # type: ignore[attr-defined]
-        progress: Gtk.ProgressBar = list_row._uvr_progress  # type: ignore[attr-defined]
-        title.set_label(item.label)
-        subtitle = item.detail or item.status.replace("_", " ").title()
-        detail.set_label(subtitle)
-        detail.set_visible(bool(subtitle))
-        if item.status in ("queued", "downloading"):
-            progress.set_fraction(item.progress if item.status == "downloading" else 0.0)
-            progress.set_visible(True)
-        elif item.status == "complete":
-            progress.set_fraction(1.0)
-            progress.set_visible(True)
-        else:
-            progress.set_visible(False)
-
-    def _clear_finished_queue(self) -> None:
-        self.queue.clear_finished()
-        self._render_queue()
-
-    def _on_queue_batch_complete(self) -> None:
-        idle_on_main(self._after_downloads)
-
-    def _after_downloads(self) -> None:
+    def refresh_after_downloads(self) -> None:
+        """Rebuild catalogue after a download batch completes."""
         self._available = self.manager.available_downloads()
         self._rebuild_catalogue()
-        if self._on_models_changed is not None:
-            self._on_models_changed()
-        self._toast("Downloads finished")
-        self._send_download_notifications()
-
-    def _send_download_notifications(self) -> None:
-        items = self.queue.items()
-        complete = sum(1 for item in items if item.status == "complete")
-        existed = sum(1 for item in items if item.status == "exists")
-        failed = sum(1 for item in items if item.status == "failed")
-        debug(
-            "download",
-            "download notification "
-            f"complete={complete} exists={existed} failed={failed}",
+        total = sum(
+            1
+            for arch, models in self._available.items()
+            for name in models
+            if name not in (NO_NEW_MODELS, NO_CONNECTION)
         )
-        app = self._application()
-        if failed:
-            if failed == 1:
-                body = "1 download failed"
-            else:
-                body = f"{failed} downloads failed"
-            if complete or existed:
-                body += f"; {complete + existed} succeeded"
-            send_desktop_notification(
-                app,
-                self.settings,
-                setting_key=NOTIFY_DOWNLOAD_FAILED,
-                ident="uvr-download-failed",
-                title="Model downloads finished with errors",
-                body=body,
+        self._update_tab_counts()
+        selected = len(self._selected_entries())
+        if selected:
+            self.status_label.set_label(
+                f"{selected} selected · {total} available across all networks"
             )
-            return
-        if complete or existed:
-            count = complete + existed
-            if count == 1:
-                body = "1 model is ready to use"
-            else:
-                body = f"{count} models are ready to use"
-            send_desktop_notification(
-                app,
-                self.settings,
-                setting_key=NOTIFY_DOWNLOAD_COMPLETE,
-                ident="uvr-download-complete",
-                title="Model downloads complete",
-                body=body,
+        else:
+            self.status_label.set_label(
+                f"{total} models available — check one or more, then Download"
             )
+        self._update_download_button()
 
     def _open_vip(self) -> None:
         from .download import open_vip_code_dialog

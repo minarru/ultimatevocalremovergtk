@@ -16,10 +16,18 @@ ICON_RESOURCE_PREFIX = f"{RESOURCE_PREFIX}/icons"
 STYLE_CSS_RESOURCE = f"{RESOURCE_PREFIX}/style.css"
 
 _RESOURCE_PATH = os.path.join(os.path.dirname(__file__), "data", "uvr.gresource")
+#: Source (uncompiled) stylesheet, used by the dev-time live CSS loader.
+_SOURCE_STYLE_CSS = os.path.join(paths.BASE_PATH, "resources", "style.css")
+#: Set ``UVR_DEV_CSS=1`` to load ``resources/style.css`` from disk (with live
+#: reload) instead of the bundled GResource copy, so styling tweaks show up
+#: without recompiling ``uvr.gresource``.
+_DEV_CSS_ENV = "UVR_DEV_CSS"
 _bundle_registered = False
 _icon_theme_registered = False
 _app_icon_registered = False
 _styles_loaded = False
+_dev_css_provider = None
+_dev_css_monitor = None
 
 
 def resource_bundle_path() -> str:
@@ -115,7 +123,12 @@ def register_gresources() -> bool:
 
 
 def load_application_styles() -> bool:
-    """Load bundled ``style.css`` at application priority (idempotent)."""
+    """Load bundled ``style.css`` at application priority (idempotent).
+
+    When ``UVR_DEV_CSS`` is set, additionally load ``resources/style.css`` from
+    disk at user priority (overriding the bundle) and watch it for changes so
+    styling edits reload live without recompiling the GResource.
+    """
     global _styles_loaded
     if _styles_loaded:
         return True
@@ -132,4 +145,39 @@ def load_application_styles() -> bool:
         Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
     )
     _styles_loaded = True
+    if os.environ.get(_DEV_CSS_ENV):
+        _enable_dev_css(display)
     return True
+
+
+def _enable_dev_css(display) -> None:
+    """Load on-disk ``style.css`` at user priority with live reload."""
+    global _dev_css_provider, _dev_css_monitor
+    if _dev_css_provider is not None:
+        return
+    if not os.path.isfile(_SOURCE_STYLE_CSS):
+        return
+
+    provider = Gtk.CssProvider()
+    _dev_css_provider = provider
+    Gtk.StyleContext.add_provider_for_display(
+        display,
+        provider,
+        Gtk.STYLE_PROVIDER_PRIORITY_USER,
+    )
+
+    def reload_css(*_args) -> None:
+        try:
+            provider.load_from_path(_SOURCE_STYLE_CSS)
+        except GLib.Error:
+            pass
+
+    reload_css()
+
+    try:
+        gfile = Gio.File.new_for_path(_SOURCE_STYLE_CSS)
+        monitor = gfile.monitor_file(Gio.FileMonitorFlags.NONE, None)
+        monitor.connect("changed", lambda *_a: reload_css())
+        _dev_css_monitor = monitor
+    except GLib.Error:
+        _dev_css_monitor = None

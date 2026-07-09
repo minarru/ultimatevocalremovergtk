@@ -13,84 +13,138 @@
    spanning edge-to-edge. The accent background lives on the banner's inner
    revealer > widget node, so the radius/margin must target it there. */
 .app-banner > revealer > widget {
-  margin: 8px 0;
-  border-radius: 12px;
+    margin: 8px 0;
+    border-radius: 12px;
 }
 
 .drop-highlight {
-  box-shadow: inset 0 0 0 2px @accent_color;
-  background-color: alpha(@accent_color, 0.1);
-  border-radius: 12px;
+    box-shadow: inset 0 0 0 2px @accent_color;
+    background-color: alpha(@accent_color, 0.1);
+    border-radius: 12px;
 }
 
 .uvr-log-panel {
-  min-width: 520px;
-  border-radius: 16px 16px 12px 12px;
-  background-image: none;
-  background-color: @window_bg_color;
-  color: @card_fg_color;
-  border: 1px solid alpha(@borders, 0.45);
-  box-shadow: 0 3px 10px alpha(@shade_color, 0.14),
-              0 12px 36px alpha(@shade_color, 0.24);
+    min-width: 520px;
+    border-radius: 16px 16px 12px 12px;
+    background-image: none;
+    background-color: @window_bg_color;
+    color: @card_fg_color;
+    border: 1px solid alpha(@borders, 0.45);
+    box-shadow:
+        0 3px 10px alpha(@shade_color, 0.14),
+        0 12px 36px alpha(@shade_color, 0.24);
 }
 
 .uvr-log-expander-arrow image {
-  transition: -gtk-icon-transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
-  -gtk-icon-transform: rotate(0deg);
+    transition: -gtk-icon-transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    -gtk-icon-transform: rotate(0deg);
 }
 
 .uvr-log-expander-arrow:checked image {
-  color: @accent_color;
-  -gtk-icon-transform: rotate(180deg);
+    color: @accent_color;
+    -gtk-icon-transform: rotate(180deg);
 }
 
 .uvr-run-controls {
-  padding: 12px 12px 12px; /* SYNC: _RUN_CONTROLS_PADDING_Y in log_panel.py */
+    padding: 12px 12px 12px; /* SYNC: _RUN_CONTROLS_PADDING_Y in log_panel.py */
 }
 
 .uvr-progress-section {
-  margin-bottom: 4px;
+    margin-bottom: 4px;
 }
 
 .uvr-progress-label {
-  margin-top: 4px;
-  margin-bottom: 8px;
-  opacity: 0.85;
+    margin-top: 4px;
+    margin-bottom: 8px;
+    opacity: 0.85;
 }
 
 .uvr-log-meta {
-  padding: 0 0 8px;
-  min-height: 32px;
+    padding: 0 0 8px;
+    min-height: 32px;
 }
 
 .uvr-log-body-wrap {
-  padding: 0 0 12px;
+    padding: 0 0 12px;
 }
 
 .uvr-run-actions {
-  min-height: 36px; /* SYNC: _RUN_ACTIONS_MIN_HEIGHT in log_panel.py */
+    min-height: 36px; /* SYNC: _RUN_ACTIONS_MIN_HEIGHT in log_panel.py */
 }
 
 /* Keep min-height in sync with _LOG_BODY_HEIGHT in ui/widgets/log_panel.py */
 .uvr-log-body {
-  min-height: 200px;
-  border-radius: 8px;
-  overflow: hidden;
-  background-color: alpha(@window_fg_color, 0.04);
+    min-height: 200px;
+    border-radius: 8px;
+    background-color: alpha(@window_fg_color, 0.04);
 }
 
 .uvr-log-console {
-  background-color: transparent;
+    background-color: transparent;
 }
 
 .uvr-log-console viewport {
-  border-radius: 8px;
+    border-radius: 8px;
 }
 
 .uvr-log-empty {
-  padding: 20px 16px;
+    padding: 20px 16px;
 }
 
 .uvr-log-empty .dim-label {
-  opacity: 0.75;
+    opacity: 0.75;
+}
+
+/* MenuButton shell is transparent; chip + height live on the inner toggle. */
+menubutton.uvr-download-queue-chip {
+    padding: 0;
+    margin: 0;
+    min-height: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+menubutton.uvr-download-queue-chip > button.chip {
+    border-radius: 20px;
+    border: 1px solid alpha(@borders, 0.45);
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+menubutton.uvr-download-queue-chip arrow {
+    opacity: 0;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+}
+
+@keyframes needs_attention_keyframes {
+    0% { }
+    10% { background-color: var(--accent-bg-color); }
+    100% { }
+}
+
+menubutton.uvr-download-queue-chip.needs-attention > button.chip {
+    animation: needs_attention_keyframes 2s ease-in-out;
+}
+
+menubutton.uvr-download-queue-chip > button.chip .uvr-chip-content {
+    font-weight: normal;
+}
+
+.uvr-download-queue-chip-label {
+    font-weight: 500;
+}
+
+.uvr-progress-ring {
+    min-width: 20px;
+    min-height: 20px;
+}
+
+/* Nautilus operations popover (see nautilus-gnome-50/src/resources/style.css). */
+.operations-list,
+.operations-list > :hover {
+    background: none;
 }

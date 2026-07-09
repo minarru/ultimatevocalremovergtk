@@ -9,6 +9,17 @@ from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
 from core.debug_log import debug
+from core.download_status import (
+    ACTIVE_STATUSES,
+    RESULT_STOPPED,
+    STATUS_CANCELLED,
+    STATUS_COMPLETE,
+    STATUS_DOWNLOADING,
+    STATUS_FAILED,
+    STATUS_QUEUED,
+    default_detail_for_status,
+    map_download_result,
+)
 
 
 @dataclass
@@ -18,7 +29,7 @@ class DownloadQueueItem:
     arch_type: str
     label: str
     jobs: list
-    status: str = "queued"
+    status: str = STATUS_QUEUED
     progress: float = 0.0
     detail: str = ""
     stop_event: threading.Event = field(default_factory=threading.Event)
@@ -47,7 +58,7 @@ class DownloadQueue:
 
     def active_count(self) -> int:
         with self._lock:
-            return sum(1 for item in self._items if item.status in ("queued", "downloading"))
+            return sum(1 for item in self._items if item.status in ACTIVE_STATUSES)
 
     def enqueue(self, selection: str, arch_type: str) -> Optional[str]:
         jobs = self.manager.resolve(selection, arch_type)
@@ -78,10 +89,11 @@ class DownloadQueue:
     def cancel(self, item_id: str) -> None:
         with self._lock:
             for item in self._items:
-                if item.item_id == item_id and item.status in ("queued", "downloading"):
+                if item.item_id == item_id and item.status in ACTIVE_STATUSES:
                     item.stop_event.set()
-                    if item.status == "queued":
-                        item.status = "cancelled"
+                    if item.status == STATUS_QUEUED:
+                        item.status = STATUS_CANCELLED
+                        item.detail = default_detail_for_status(STATUS_CANCELLED)
                     item.detail = "Cancelling…"
                     break
         self._notify()
@@ -91,7 +103,7 @@ class DownloadQueue:
             self._items = [
                 item
                 for item in self._items
-                if item.status in ("queued", "downloading")
+                if item.status in ACTIVE_STATUSES
             ]
         self._notify()
 
@@ -101,13 +113,13 @@ class DownloadQueue:
 
     def _has_queued(self) -> bool:
         with self._lock:
-            return any(item.status == "queued" for item in self._items)
+            return any(item.status == STATUS_QUEUED for item in self._items)
 
     def _next_queued(self) -> Optional[DownloadQueueItem]:
         with self._lock:
             for item in self._items:
-                if item.status == "queued":
-                    item.status = "downloading"
+                if item.status == STATUS_QUEUED:
+                    item.status = STATUS_DOWNLOADING
                     item.detail = "Starting…"
                     item.progress = 0.0
                     return item
@@ -138,8 +150,8 @@ class DownloadQueue:
 
     def _process_item(self, item: DownloadQueueItem) -> bool:
         if item.stop_event.is_set():
-            item.status = "cancelled"
-            item.detail = "Cancelled"
+            item.status = STATUS_CANCELLED
+            item.detail = default_detail_for_status(STATUS_CANCELLED)
             self._notify()
             return False
 
@@ -159,24 +171,27 @@ class DownloadQueue:
                 stop_event=item.stop_event,
             )
         except Exception as exc:  # noqa: BLE001
+            if item.stop_event.is_set():
+                debug("download", f"queue cancelled id={item.item_id}")
+                item.status = STATUS_CANCELLED
+                item.detail = default_detail_for_status(STATUS_CANCELLED)
+                self._notify()
+                return False
             debug("download", f"queue failed id={item.item_id} err={type(exc).__name__}: {exc}")
-            item.status = "failed"
+            item.status = STATUS_FAILED
             item.detail = type(exc).__name__
             self._notify()
             return False
 
-        if item.stop_event.is_set() and result == "stopped":
-            item.status = "cancelled"
-            item.detail = "Cancelled"
+        if item.stop_event.is_set() and result == RESULT_STOPPED:
+            item.status = STATUS_CANCELLED
+            item.detail = default_detail_for_status(STATUS_CANCELLED)
         else:
-            item.status = result
-            if result == "complete":
+            item.status = map_download_result(result)
+            if item.status == STATUS_COMPLETE:
                 item.progress = 1.0
-                item.detail = "Complete"
-            elif result == "exists":
-                item.detail = "Already on disk"
-            elif result == "stopped":
-                item.status = "cancelled"
-                item.detail = "Cancelled"
+            default_detail = default_detail_for_status(item.status)
+            if default_detail:
+                item.detail = default_detail
         self._notify()
-        return item.status == "complete"
+        return item.status == STATUS_COMPLETE

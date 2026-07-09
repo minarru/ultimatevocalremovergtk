@@ -69,6 +69,8 @@ from .widgets.columns import (
 from .widgets.file_chooser import InputFilesRow, OutputFolderRow
 from .widgets.log_panel import OVERLAY_MARGIN_BOTTOM, LogPanel
 from .widgets.rows import get_combo_value, make_combo_row, make_switch_row, set_combo_value
+from .widgets.download_queue_indicator import DownloadQueueIndicator
+from .download import init_download_queue_ui
 
 #: Cadence (ms) and step of the indeterminate progress pulse shown before the
 #: first real fractional update arrives.
@@ -200,12 +202,16 @@ class MainWindow(Adw.ApplicationWindow):
         self.log_panel.set_valign(Gtk.Align.END)
         self.log_panel.set_margin_bottom(OVERLAY_MARGIN_BOTTOM)
 
+        self._download_queue_indicator = DownloadQueueIndicator()
+
         toolbar_view = Adw.ToolbarView()
         toolbar_view.add_top_bar(self._build_header())
         toolbar_view.set_content(root)
         self.toast_overlay = Adw.ToastOverlay()
         self.toast_overlay.set_child(toolbar_view)
         self.set_content(self.toast_overlay)
+
+        init_download_queue_ui(self, self.context, on_models_changed=self._refresh_models)
 
         # Collapse the two option columns into a single column when the window
         # is narrow. ``set_orientation`` is driven from the apply/unapply
@@ -233,6 +239,8 @@ class MainWindow(Adw.ApplicationWindow):
         switcher.set_stack(self.content_stack)
         install_view_tab_tooltips(switcher)
         header.set_title_widget(switcher)
+
+        header.pack_end(self._download_queue_indicator.widget)
 
         menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic")
         set_tooltip(menu_button, MAIN_MENU_HINT)
