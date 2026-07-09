@@ -71,6 +71,7 @@ ui/data/icons/
 
 # Scripts only used locally
 scripts/*
+!scripts/sync-github-mirror.sh
 
 # Generated GResource manifest (rebuilt by resources/compile_resources.sh)
 resources/uvr.gresource.xml

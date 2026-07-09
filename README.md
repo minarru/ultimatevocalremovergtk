@@ -4,7 +4,9 @@
 
 Linux port of [Ultimate Vocal Remover](https://github.com/Anjok07/ultimatevocalremovergui) with a **GTK4 / libadwaita** interface (PyGObject). **GTK release v1.0.0**, based on upstream **v5.6**, including **Apollo** restoration and **BS-Roformer / Mel-Band Roformer** support.
 
-**Source:** [codeberg.org/jawlet/ultimatevocalremovergtk](https://codeberg.org/jawlet/ultimatevocalremovergtk) · **Releases:** [codeberg.org/jawlet/ultimatevocalremovergtk/releases](https://codeberg.org/jawlet/ultimatevocalremovergtk/releases)
+**Source:** [codeberg.org/jawlet/ultimatevocalremovergtk](https://codeberg.org/jawlet/ultimatevocalremovergtk) (canonical) · **Mirror:** [github.com/minarru/ultimatevocalremovergtk](https://github.com/minarru/ultimatevocalremovergtk) · **Releases:** [codeberg.org/jawlet/ultimatevocalremovergtk/releases](https://codeberg.org/jawlet/ultimatevocalremovergtk/releases)
+
+Report bugs and open pull requests on **Codeberg only**. GitHub is a read-only code mirror — see [docs/mirroring.md](docs/mirroring.md) for setup and maintenance.
 
 ## About
 
