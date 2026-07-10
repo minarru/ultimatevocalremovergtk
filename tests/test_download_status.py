@@ -18,6 +18,7 @@ from core.download_status import (
     default_detail_for_status,
     map_download_result,
     normalize_item_status,
+    row_action_tooltip_for,
     row_progress_for,
 )
 from core.download_queue import DownloadQueueItem
@@ -82,6 +83,19 @@ class PerStatusPresentationTests(unittest.TestCase):
         self.assertEqual(row_progress_for(STATUS_EXISTS).mode, "full")
         self.assertFalse(row_progress_for(STATUS_FAILED).visible)
         self.assertFalse(row_progress_for(STATUS_CANCELLED).visible)
+
+    def test_row_action_tooltips(self) -> None:
+        expectations = {
+            STATUS_QUEUED: "Cancel download",
+            STATUS_DOWNLOADING: "Cancel download",
+            STATUS_COMPLETE: "Download complete",
+            STATUS_EXISTS: "Already on disk",
+            STATUS_CANCELLED: "Cancelled",
+            STATUS_FAILED: "Download failed",
+        }
+        for status, expected in expectations.items():
+            with self.subTest(status=status):
+                self.assertEqual(row_action_tooltip_for(status), expected)
 
     def test_default_details(self) -> None:
         self.assertEqual(default_detail_for_status(STATUS_COMPLETE), "Complete")

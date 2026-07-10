@@ -240,12 +240,16 @@ class MainWindow(Adw.ApplicationWindow):
         install_view_tab_tooltips(switcher)
         header.set_title_widget(switcher)
 
-        header.pack_end(self._download_queue_indicator.widget)
+        end_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        end_box.set_valign(Gtk.Align.CENTER)
+        end_box.append(self._download_queue_indicator.widget)
 
         menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic")
         set_tooltip(menu_button, MAIN_MENU_HINT)
         menu_button.set_menu_model(self._build_primary_menu())
-        header.pack_end(menu_button)
+        end_box.append(menu_button)
+
+        header.pack_end(end_box)
 
         return header
 

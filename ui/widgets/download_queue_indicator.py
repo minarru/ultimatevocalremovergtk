@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, List, Optional
 from gi.repository import GLib, Gtk, Pango
 
 from core.download_queue import DownloadQueueItem
+from ui.hints import set_icon_button_a11y
 from ui.widgets.download_queue_icons import (
     ICON_CANCEL,
     ICON_CANCELLED,
@@ -32,11 +33,13 @@ from core.download_status import (
     STATUS_FAILED,
     STATUS_QUEUED,
     is_failed,
+    row_action_tooltip_for,
     row_progress_for,
 )
 
 REMOVE_FINISHED_TIMEOUT_S = 3
 ATTENTION_TIMEOUT_MS = 2000
+CHIP_HEIGHT = 34
 
 
 @dataclass(frozen=True)
@@ -211,15 +214,18 @@ class DownloadQueueIndicator:
         self._chip_label.set_ellipsize(Pango.EllipsizeMode.END)
         self._chip_label.add_css_class("uvr-download-queue-chip-label")
 
-        chip_content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+        chip_content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         chip_content.add_css_class("uvr-chip-content")
+        chip_content.set_valign(Gtk.Align.CENTER)
         chip_content.append(self._chip_ring)
         chip_content.append(self._chip_label)
 
         self.widget = Gtk.MenuButton()
         self.widget.add_css_class("uvr-download-queue-chip")
+        self.widget.set_valign(Gtk.Align.CENTER)
+        self.widget.set_size_request(-1, CHIP_HEIGHT)
         self.widget.set_child(chip_content)
-        self.widget.set_tooltip_text("Show downloads")
+        self.widget.set_tooltip_text("Show download queue")
         self.widget.set_visible(False)
         self.widget.connect("map", self._on_menu_button_mapped)
 
@@ -375,7 +381,7 @@ class DownloadQueueIndicator:
         action_button.add_css_class("circular")
         action_button.set_valign(Gtk.Align.CENTER)
         action_button.set_margin_start(20)
-        action_button.set_tooltip_text("Cancel")
+        action_button.set_tooltip_text("Cancel download")
         action_button.connect("clicked", self._on_cancel_clicked, item.item_id)
 
         grid.attach(status, 0, 0, 1, 1)
@@ -427,16 +433,7 @@ class DownloadQueueIndicator:
         icon_name, sensitive = _row_button_state(item)
         action.set_icon_name(icon_name)
         action.set_sensitive(sensitive)
-        if sensitive:
-            action.set_tooltip_text("Cancel")
-        elif item.status in SUCCESS_STATUSES:
-            action.set_tooltip_text("Operation Completed")
-        elif item.status == STATUS_CANCELLED:
-            action.set_has_tooltip(False)
-        elif item.status == STATUS_FAILED:
-            action.set_tooltip_text("Download failed")
-        else:
-            action.set_tooltip_text(None)
+        set_icon_button_a11y(action, row_action_tooltip_for(item.status))
 
     def _schedule_remove_finished(self) -> None:
         if self._sticky:

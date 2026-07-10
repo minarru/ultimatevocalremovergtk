@@ -105,3 +105,19 @@ def is_failed(status: str) -> bool:
 
 def is_cancelled(status: str) -> bool:
     return status == STATUS_CANCELLED
+
+
+def row_action_tooltip_for(status: str) -> Optional[str]:
+    """Tooltip for the circular action button on a popover queue row."""
+    status = normalize_item_status(status)
+    if status in ACTIVE_STATUSES:
+        return "Cancel download"
+    if status == STATUS_COMPLETE:
+        return "Download complete"
+    if status == STATUS_EXISTS:
+        return "Already on disk"
+    if status == STATUS_CANCELLED:
+        return "Cancelled"
+    if status == STATUS_FAILED:
+        return "Download failed"
+    return None
