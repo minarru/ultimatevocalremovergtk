@@ -286,7 +286,8 @@ class DownloadQueueIndicator:
             return
 
         self.widget.set_visible(True)
-        self._chip_label.set_label(summary.chip_label)
+        if self._chip_label.get_label() != summary.chip_label:
+            self._chip_label.set_label(summary.chip_label)
         self._chip_ring.update_from_state(chip_ring_state(items, summary))
         self._render_rows(items)
 
@@ -408,9 +409,13 @@ class DownloadQueueIndicator:
         progress: Gtk.ProgressBar = grid._uvr_progress  # type: ignore[attr-defined]
         action: Gtk.Button = grid._uvr_action  # type: ignore[attr-defined]
 
-        status.set_label(item.label)
+        if status.get_label() != item.label:
+            status.set_label(item.label)
         subtitle = _status_subtitle(item)
-        detail.set_markup(_details_markup(subtitle))
+        markup = _details_markup(subtitle)
+        if getattr(grid, "_uvr_detail_markup", None) != markup:
+            grid._uvr_detail_markup = markup  # type: ignore[attr-defined]
+            detail.set_markup(markup)
         detail.set_visible(bool(subtitle))
 
         presentation = row_progress_for(item.status)
@@ -420,11 +425,8 @@ class DownloadQueueIndicator:
         elif presentation.mode == "pulse":
             progress.set_fraction(0.0)
             progress.pulse()
-        elif presentation.mode == "fraction" and item.progress > 0:
-            progress.set_fraction(max(0.0, min(1.0, item.progress)))
         elif presentation.mode == "fraction":
-            progress.set_fraction(0.0)
-            progress.pulse()
+            progress.set_fraction(max(0.0, min(1.0, item.progress)))
         elif presentation.mode == "full":
             progress.set_fraction(1.0)
         else:

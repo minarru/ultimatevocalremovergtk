@@ -9,6 +9,9 @@ from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
 from core.debug_log import debug
+
+# Cap queue UI refresh rate while a download reports per-chunk progress.
+_PROGRESS_NOTIFY_INTERVAL_S = 0.1
 from core.download_status import (
     ACTIVE_STATUSES,
     RESULT_STOPPED,
@@ -155,11 +158,19 @@ class DownloadQueue:
             self._notify()
             return False
 
+        last_progress_notify = 0.0
+
         def on_progress(fraction: float) -> None:
             item.progress = max(0.0, min(1.0, fraction))
-            self._notify()
+            nonlocal last_progress_notify
+            now = time.monotonic()
+            if fraction >= 1.0 or now - last_progress_notify >= _PROGRESS_NOTIFY_INTERVAL_S:
+                last_progress_notify = now
+                self._notify()
 
         def on_info(text: str) -> None:
+            if item.detail == text:
+                return
             item.detail = text
             self._notify()
 

@@ -66,6 +66,8 @@ from .politrees_catalog import (
 from .version_info import release_update_status
 
 DOWNLOAD_MODEL_CACHE = paths.DOWNLOAD_MODEL_CACHE_PATH
+# Minimum interval between byte-count status strings shown in the queue UI.
+_INFO_UPDATE_INTERVAL_S = 0.25
 
 # Mapper JSON download links paired with their on-disk destinations (the exact
 # four files ``download_model_settings`` refreshes).
@@ -512,6 +514,8 @@ class DownloadManager:
                 length_header = response.getheader("Content-Length")
                 file_total = int(length_header) if length_header and length_header.isdigit() else 0
                 downloaded = 0
+                last_info_at = 0.0
+                last_info_text = ""
                 with open(tmp_path, "wb") as out_file:
                     while True:
                         if stop_event is not None and stop_event.is_set():
@@ -532,11 +536,19 @@ class DownloadManager:
                             overall = (index + file_fraction) / total
                             on_progress(max(0.0, min(1.0, overall)))
                         if on_info and file_total:
-                            on_info(
+                            info_text = (
                                 f"{format_download_size(downloaded)} / "
                                 f"{format_download_size(file_total)} "
                                 f"(file {index + 1}/{total})"
                             )
+                            now = time.monotonic()
+                            if info_text != last_info_text and (
+                                now - last_info_at >= _INFO_UPDATE_INTERVAL_S
+                                or downloaded >= file_total
+                            ):
+                                last_info_at = now
+                                last_info_text = info_text
+                                on_info(info_text)
         except Exception:
             if os.path.isfile(tmp_path):
                 try:
