@@ -607,6 +607,7 @@ DEFAULT_DATA = {
         'is_split_mode': True,
         'is_demucs_combine_stems': True,#
         'is_mdx23_combine_stems': True,#
+        'is_mdx_include_stem_complement': False,
         'demucs_voc_inst_secondary_model': NO_MODEL,
         'demucs_other_secondary_model': NO_MODEL,
         'demucs_bass_secondary_model': NO_MODEL,

@@ -60,7 +60,8 @@ from ..widgets.rows import (
     set_scale_row_value,
     use_wrapping_list,
 )
-from ..widgets.stem_only import StemOnlyControls, build_stem_only_options
+from ..widgets.stem_only import SaveStemsSection, roformer_lead_vocal_label_overrides
+from core.run_estimate import estimate_workload, format_workload_line
 
 # Per-stem secondary-model slots: (settings-key slot, display pair, primary stem,
 # secondary stem) used to build the four secondary-model selectors UVR exposes.
@@ -170,12 +171,15 @@ class MethodView:
         self._build_secondary_section()
 
         self.stem_group = Adw.PreferencesGroup(title="Save stems")
-        self.stem_only = StemOnlyControls(on_changed=self._on_stem_only_changed)
-        self.stem_only_row = self.stem_only.widget
+        self.save_stems = SaveStemsSection(
+            settings=self.settings,
+            on_changed=self._on_save_stems_changed,
+        )
         self._resolved_primary_stem = None
         self._resolved_secondary_stem = None
-        self.stem_group.add(self.stem_only_row)
-        self.hints.register(self.stem_only_row, SAVE_STEM_ONLY_HELP)
+        self._resolved_model = None
+        self.stem_group.add(self.save_stems.widget)
+        self.hints.register(self.save_stems.widget, SAVE_STEM_ONLY_HELP)
         self.build_stem_options(self.stem_group)
         self.groups.append(self.stem_group)
 
@@ -269,48 +273,60 @@ class MethodView:
         secondary = model.secondary_stem if model else None
         self._resolved_primary_stem = primary_stem
         self._resolved_secondary_stem = secondary
-        self._rebuild_stem_only_toggles(primary_stem, secondary)
+        self._resolved_model = model
+        if not self.has_model():
+            self.save_stems.configure_hidden(has_model=False)
+        else:
+            self._configure_save_stems(model)
         self._on_model_resolved(model)
+        if self.has_model():
+            self.save_stems.sync_from_settings()
+        self._update_stem_group_metadata()
 
-    def _rebuild_stem_only_toggles(self, primary_stem, secondary_stem) -> None:
-        options = build_stem_only_options(
-            primary_stem=primary_stem,
-            secondary_stem=secondary_stem,
+    def _configure_save_stems(self, model) -> None:
+        """Default: exclusive export filter for <=2-stem / VR-style models."""
+        self.save_stems.configure_exclusive(
+            primary_stem=self._resolved_primary_stem,
+            secondary_stem=self._resolved_secondary_stem,
             primary_key=self.primary_only_key,
             secondary_key=self.secondary_only_key,
+            has_model=True,
+            stem_label_overrides=roformer_lead_vocal_label_overrides(model),
         )
-        was_loading = self._loading
-        self._loading = True
-        try:
-            self.stem_only.rebuild(options)
-            self._sync_stem_only_toggles()
-        finally:
-            self._loading = was_loading
+
+    def _update_stem_group_metadata(self) -> None:
+        line1 = self.save_stems.export_summary()
+        workload = estimate_workload(
+            self.settings,
+            method_key=self.method_key,
+            save_stems=self.save_stems,
+            repo=self.context.repo,
+            model_name=self.selected_model() if self.has_model() else None,
+            has_model=self.has_model(),
+        )
+        line2 = format_workload_line(workload)
+        self.stem_group.set_description(f"{line1}\n{line2}" if line2 else line1)
+        from ..hints import set_tooltip
+
+        set_tooltip(self.save_stems.widget, self.save_stems.active_hint())
+
+    def _touch_settings(self) -> None:
+        self._update_stem_group_metadata()
+        self._on_settings_changed()
 
     def _sync_stem_only_toggles(self) -> None:
-        """Reflect ``is_*_stem_only`` settings in the toggle group."""
-        was_loading = self._loading
-        self._loading = True
-        try:
-            self.stem_only.sync_from_settings(
-                self.settings,
-                self.primary_only_key,
-                self.secondary_only_key,
-            )
-        finally:
-            self._loading = was_loading
+        """Reflect stem export settings in the save-stems widget."""
+        self.save_stems.sync_from_settings()
+        self._update_stem_group_metadata()
 
     def _persist_stem_only(self) -> None:
-        self.stem_only.persist_to_settings(
-            self.settings,
-            self.primary_only_key,
-            self.secondary_only_key,
-        )
+        self.save_stems.persist_to_settings()
 
-    def _on_stem_only_changed(self) -> None:
+    def _on_save_stems_changed(self) -> None:
         if self._loading:
             return
         self._persist_stem_only()
+        self._update_stem_group_metadata()
         self._on_settings_changed()
 
     # Backwards-compatible alias used when switching method tabs.
@@ -441,7 +457,7 @@ class MethodView:
         if self._loading:
             return
         self.settings.set(key, get_combo_value(row))
-        self._on_settings_changed()
+        self._touch_settings()
 
     def _on_option_scale(self, key, row) -> None:
         if self._loading:
@@ -450,19 +466,19 @@ class MethodView:
             self.settings.set(key, round(get_scale_row_float(row), 2))
         else:
             self.settings.set(key, get_scale_row_value(row))
-        self._on_settings_changed()
+        self._touch_settings()
 
     def _on_option_switch(self, key, row) -> None:
         if self._loading:
             return
         self.settings.set(key, row.get_active())
-        self._on_settings_changed()
+        self._touch_settings()
 
     def _on_option_spin(self, key, row) -> None:
         if self._loading:
             return
         self.settings.set(key, round(row.get_value(), 2))
-        self._on_settings_changed()
+        self._touch_settings()
 
     def _load_scales(self) -> None:
         for key, row in self._scale_rows.items():
@@ -569,7 +585,7 @@ class MethodView:
         if entry and not entry["ready"]:
             return
         self.settings.set(key, get_combo_value(row))
-        self._on_settings_changed()
+        self._touch_settings()
 
     def _ensure_model_combos_populated(self, *_args) -> None:
         if self._model_combos_populated:

@@ -147,6 +147,34 @@ menubutton.uvr-download-queue-chip > button.chip .uvr-chip-content {
     min-height: 18px;
 }
 
+/* Save stems section */
+.uvr-stem-only-row {
+    min-height: 0;
+}
+
+.uvr-stem-section-label {
+    font-size: 0.85em;
+    margin-bottom: 2px;
+}
+
+.uvr-stem-subset {
+    min-height: 0;
+}
+
+.uvr-stem-chip {
+    min-height: 34px;
+    padding: 4px 10px;
+    border-radius: 999px;
+}
+
+.uvr-stem-chip:checked {
+    background: alpha(currentColor, 0.12);
+}
+
+.uvr-stem-row-inactive {
+    opacity: 0.55;
+}
+
 /* Nautilus operations popover (see nautilus-gnome-50/src/resources/style.css). */
 .operations-list,
 .operations-list > :hover {

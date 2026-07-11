@@ -31,6 +31,7 @@ from core.debug_log import (
     set_correlation_seq,
     verbose,
 )
+from core.run_estimate import ProgressEtaTracker
 from core.separate_import import engines_imported, warm_status
 
 from .dispatch import gtk_job_callbacks, idle_on_main, reset_progress_log
@@ -65,6 +66,7 @@ class RunController:
         self._run_output_dir = ""
         self._run_label = "Processing"
         self._run_started_at = 0.0
+        self._eta_tracker = ProgressEtaTracker()
         self._stop_confirm_dialog: Optional[Adw.AlertDialog] = None
         self._shutdown_dialog: Optional[Adw.AlertDialog] = None
         self._cleanup_target: Any = None
@@ -144,6 +146,7 @@ class RunController:
         self._run_output_dir = self._window.settings.get("export_path") or ""
         self._run_label = self._run_label_for(target)
         self._run_started_at = time.monotonic()
+        self._eta_tracker.reset()
         self._window.console.clear()
         self._window.log_panel.set_progress_fraction(0.0)
         self._window.log_panel.set_progress_text(_PROGRESS_STARTING)
@@ -501,16 +504,18 @@ class RunController:
         if fraction > _PROGRESS_EPSILON:
             self._window._stop_pulse()
             self._window.log_panel.set_progress_fraction(fraction)
-            self._window.log_panel.set_progress_text(self._progress_text(fraction))
+            now = time.monotonic()
+            self._eta_tracker.update(fraction, now)
+            elapsed = max(0.0, now - self._run_started_at)
+            self._window.log_panel.set_progress_text(
+                self._eta_tracker.format_text(fraction, elapsed, now=now)
+            )
 
     def _progress_text(self, fraction: float) -> str:
-        percent = int(round(fraction * 100))
-        elapsed = max(0.0, time.monotonic() - self._run_started_at)
-        parts = [f"{percent}%", f"{_format_mmss(elapsed)} elapsed"]
-        if fraction > 0.01 and fraction < 1.0:
-            remaining = elapsed * (1.0 - fraction) / fraction
-            parts.append(f"~{_format_mmss(remaining)} left")
-        return " · ".join(parts)
+        now = time.monotonic()
+        elapsed = max(0.0, now - self._run_started_at)
+        self._eta_tracker.update(fraction, now)
+        return self._eta_tracker.format_text(fraction, elapsed, now=now)
 
     def _report_error(self, message: str, exc: BaseException) -> None:
         from .errorlog import log_error, present_error_dialog

@@ -339,6 +339,7 @@ class ModelData:
         self.is_target_instrument = False
         self.model_type = ""
         self.is_mdx_combine_stems = settings.get("is_mdx23_combine_stems")
+        self.is_mdx_include_stem_complement = settings.get("is_mdx_include_stem_complement")
         self.mdx_c_configs = None
         self.mdx_model_stems = []
         self.mdx_dim_f_set = None

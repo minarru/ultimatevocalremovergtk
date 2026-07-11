@@ -26,6 +26,7 @@ from typing import Dict, List, Optional
 
 from gi.repository import Adw, Gtk
 
+from core.run_estimate import estimate_workload, format_workload_line
 from bundled.constants import (
     CHOOSE_ENSEMBLE_OPTION,
     CHOOSE_STEM_PAIR,
@@ -77,7 +78,7 @@ from ..widgets.rows import (
     set_combo_value,
     set_combo_values,
 )
-from ..widgets.stem_only import StemOnlyControls, build_stem_only_options
+from ..widgets.stem_only import SaveStemsSection
 
 _PRIMARY_STEM_ONLY_KEY = "is_primary_stem_only"
 _SECONDARY_STEM_ONLY_KEY = "is_secondary_stem_only"
@@ -219,10 +220,13 @@ class EnsemblePage:
 
     def _build_stems_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Save stems")
-        self.stem_only = StemOnlyControls(on_changed=self._on_stem_only_changed)
-        self.stem_only_row = self.stem_only.widget
-        set_tooltip(self.stem_only_row, SAVE_STEM_ONLY_HELP)
-        group.add(self.stem_only_row)
+        self.save_stems = SaveStemsSection(
+            settings=self.settings,
+            on_changed=self._on_save_stems_changed,
+        )
+        set_tooltip(self.save_stems.widget, SAVE_STEM_ONLY_HELP)
+        group.add(self.save_stems.widget)
+        self.stems_group = group
         return group
 
     def _build_output_group(self) -> Adw.PreferencesGroup:
@@ -347,43 +351,38 @@ class EnsemblePage:
 
     def _rebuild_stem_only_toggles(self) -> None:
         primary_stem, secondary_stem = self._ensemble_stem_pair()
-        options = build_stem_only_options(
-            primary_stem=primary_stem,
-            secondary_stem=secondary_stem,
-            primary_key=_PRIMARY_STEM_ONLY_KEY,
-            secondary_key=_SECONDARY_STEM_ONLY_KEY,
-        )
-        was_loading = self._loading
-        self._loading = True
-        try:
-            self.stem_only.rebuild(options)
-            self._sync_stem_only_toggles()
-        finally:
-            self._loading = was_loading
-
-    def _sync_stem_only_toggles(self) -> None:
-        was_loading = self._loading
-        self._loading = True
-        try:
-            self.stem_only.sync_from_settings(
-                self.settings,
-                _PRIMARY_STEM_ONLY_KEY,
-                _SECONDARY_STEM_ONLY_KEY,
+        has_pair = bool(primary_stem and secondary_stem)
+        if not has_pair:
+            self.save_stems.configure_hidden(has_model=False)
+        else:
+            self.save_stems.configure_exclusive(
+                primary_stem=primary_stem,
+                secondary_stem=secondary_stem,
+                primary_key=_PRIMARY_STEM_ONLY_KEY,
+                secondary_key=_SECONDARY_STEM_ONLY_KEY,
+                has_model=True,
             )
-        finally:
-            self._loading = was_loading
+            self.save_stems.sync_from_settings()
+        self._update_stems_group_metadata()
 
-    def _persist_stem_only(self) -> None:
-        self.stem_only.persist_to_settings(
+    def _update_stems_group_metadata(self) -> None:
+        line1 = self.save_stems.export_summary()
+        workload = estimate_workload(
             self.settings,
-            _PRIMARY_STEM_ONLY_KEY,
-            _SECONDARY_STEM_ONLY_KEY,
+            method_key=ENSEMBLE_MODE,
+            save_stems=self.save_stems,
+            repo=self.window.context.repo,
+            has_model=bool(self._ensemble_stem_pair()[0]),
         )
+        line2 = format_workload_line(workload)
+        self.stems_group.set_description(f"{line1}\n{line2}" if line2 else line1)
+        set_tooltip(self.save_stems.widget, self.save_stems.active_hint())
 
-    def _on_stem_only_changed(self) -> None:
+    def _on_save_stems_changed(self) -> None:
         if self._loading:
             return
-        self._persist_stem_only()
+        self.save_stems.persist_to_settings()
+        self._update_stems_group_metadata()
 
     # -- Saved ensembles --------------------------------------------------------
 

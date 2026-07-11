@@ -59,6 +59,7 @@ class SeperateAttributes:
         self.overlap_mdx = model_data.overlap_mdx
         self.overlap_mdx23 = model_data.overlap_mdx23
         self.is_mdx_combine_stems = model_data.is_mdx_combine_stems
+        self.is_mdx_include_stem_complement = model_data.is_mdx_include_stem_complement
         self.is_mdx_c = model_data.is_mdx_c
         self.mdx_c_configs = model_data.mdx_c_configs
         self.mdxnet_stem_select = model_data.mdxnet_stem_select

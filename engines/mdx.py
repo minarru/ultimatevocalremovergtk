@@ -331,6 +331,26 @@ class SeperateMDXC(SeperateAttributes):
         is_not_secondary_model = not self.is_secondary_model
         is_ensemble_4_stem = self.is_4_stem_ensemble and is_not_single_stem
 
+        is_vocals_quick_export = (
+            len(selected_stems) == 1
+            and selected_stems[0] == VOCAL_STEM
+            and (self.is_primary_stem_only or self.is_secondary_stem_only)
+        )
+        is_complement_export = (
+            len(selected_stems) == 1
+            and bool(getattr(self, "is_mdx_include_stem_complement", False))
+            and not is_vocals_quick_export
+        )
+        is_native_pick = (
+            len(selected_stems) == 1
+            and is_not_ensemble_master
+            and is_not_single_stem
+            and is_not_secondary_model
+            and not self.is_pre_proc_model
+            and not is_vocals_quick_export
+            and not is_complement_export
+        )
+
         # A "true subset": 2..n-1 of the multi-stem model's stems, only on the
         # main (non-secondary, non-pre-proc, non-ensemble) export path.
         is_stem_subset = (
@@ -339,8 +359,8 @@ class SeperateMDXC(SeperateAttributes):
             and is_not_secondary_model and not self.is_pre_proc_model
         )
 
-        if (is_all_stems and is_not_ensemble_master and is_not_single_stem and is_not_secondary_model) or is_ensemble_4_stem and not self.is_pre_proc_model or is_stem_subset:
-            export_stems = [stem for stem in stem_list if stem in selected_stems] if is_stem_subset else stem_list
+        if (is_all_stems and is_not_ensemble_master and is_not_single_stem and is_not_secondary_model) or is_ensemble_4_stem and not self.is_pre_proc_model or is_stem_subset or is_native_pick:
+            export_stems = [stem for stem in stem_list if stem in selected_stems] if (is_stem_subset or is_native_pick) else stem_list
             for stem in export_stems:
                 primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({stem}).wav')
                 self.primary_source = sources[stem].T

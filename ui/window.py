@@ -544,6 +544,9 @@ class MainWindow(Adw.ApplicationWindow):
         self._hint_manager.register(self.format_row, OUTPUT_FORMAT_HINT)
         self._hint_manager.register(self.input_row, INPUT_FOLDER_ENTRY_HELP)
         self._hint_manager.register(self.output_row, OUTPUT_FOLDER_ENTRY_HELP)
+        from .help_text import PROGRESS_ETA_HINT
+
+        self._hint_manager.register(self.log_panel._progress_label, PROGRESS_ETA_HINT)
 
     def _apply_accelerators(self) -> None:
         app = self.get_application()
@@ -690,9 +693,16 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_gpu_changed(self, *_args) -> None:
         self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
+        self._refresh_active_stem_metadata()
 
     def _on_sample_changed(self, *_args) -> None:
         self.settings.set("model_sample_mode", self.sample_row.get_active())
+        self._refresh_active_stem_metadata()
+
+    def _refresh_active_stem_metadata(self) -> None:
+        view = self._active_view()
+        if hasattr(view, "_update_stem_group_metadata"):
+            view._update_stem_group_metadata()
 
     def _on_close_request(self, *_args) -> bool:
         return self._run_controller.handle_close_request(self._finalize_close)
