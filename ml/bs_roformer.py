@@ -356,7 +356,8 @@ class BSRoformer(Module):
             multi_stft_resolutions_window_sizes: Tuple[int, ...] = (4096, 2048, 1024, 512, 256),
             multi_stft_hop_size=147,
             multi_stft_normalized=False,
-            multi_stft_window_fn: Callable = torch.hann_window
+            multi_stft_window_fn: Callable = torch.hann_window,
+            mlp_expansion_factor=4,
     ):
         super().__init__()
 
@@ -421,7 +422,8 @@ class BSRoformer(Module):
             mask_estimator = MaskEstimator(
                 dim=dim,
                 dim_inputs=freqs_per_bands_with_complex,
-                depth=mask_estimator_depth
+                depth=mask_estimator_depth,
+                mlp_expansion_factor=mlp_expansion_factor,
             )
 
             self.mask_estimators.append(mask_estimator)
@@ -475,6 +477,7 @@ class BSRoformer(Module):
         # to stft
 
         raw_audio, batch_audio_channel_packed_shape = pack_one(raw_audio, '* t')
+        istft_length = raw_audio.shape[-1]
 
         stft_window = self.stft_window_fn(device=device)
 
@@ -540,7 +543,13 @@ class BSRoformer(Module):
 
         stft_repr = rearrange(stft_repr, 'b n (f s) t -> (b n s) f t', s=self.audio_channels)
 
-        recon_audio = torch.istft(stft_repr, **self.stft_kwargs, window=stft_window, return_complex=False)
+        recon_audio = torch.istft(
+            stft_repr,
+            **self.stft_kwargs,
+            window=stft_window,
+            return_complex=False,
+            length=istft_length,
+        )
 
         recon_audio = rearrange(recon_audio, '(b n s) t -> b n s t', s=self.audio_channels, n=num_stems)
 

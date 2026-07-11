@@ -82,6 +82,36 @@ class MdxArchDispatchTests(unittest.TestCase):
         model = _build_mdx_c_model(config)
         self.assertEqual(model.__class__.__name__, "MultiMaskMultiSourceBandSplitRNNSimple")
 
+    def test_bs_roformer_accepts_mlp_expansion_factor(self) -> None:
+        from ml.bs_roformer import BSRoformer, DEFAULT_FREQS_PER_BANDS
+
+        model = BSRoformer(
+            dim=256,
+            depth=1,
+            freqs_per_bands=DEFAULT_FREQS_PER_BANDS,
+            mlp_expansion_factor=4,
+        )
+        self.assertEqual(model.__class__.__name__, "BSRoformer")
+
+    def test_bs_roformer_preserves_input_length(self) -> None:
+        import torch
+
+        from ml.bs_roformer import BSRoformer, DEFAULT_FREQS_PER_BANDS
+
+        model = BSRoformer(
+            dim=64,
+            depth=1,
+            stereo=True,
+            freqs_per_bands=DEFAULT_FREQS_PER_BANDS,
+            stft_hop_length=512,
+        )
+        model.eval()
+        length = 882000
+        audio = torch.randn(1, 2, length)
+        with torch.inference_mode():
+            output = model(audio)
+        self.assertEqual(output.shape[-1], length)
+
 
 if __name__ == "__main__":
     unittest.main()

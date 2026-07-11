@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from core import paths
-from ui.dialogs.model_params import _infer_mdx_c_architecture
+from core.mdx_c_registry import infer_mdx_c_architecture
 
 
 class InferMdxCArchitectureTests(unittest.TestCase):
@@ -22,7 +22,7 @@ class InferMdxCArchitectureTests(unittest.TestCase):
                 paths.MDX_C_CONFIG_PATH = tmp
                 with open(os.path.join(tmp, "fixture_scnet.yaml"), "w", encoding="utf-8") as handle:
                     handle.write(payload)
-                arch, is_roformer = _infer_mdx_c_architecture("fixture_scnet.yaml")
+                arch, is_roformer = infer_mdx_c_architecture("fixture_scnet.yaml")
             finally:
                 paths.MDX_C_CONFIG_PATH = original
         self.assertEqual(arch, "SCNet")
@@ -41,7 +41,7 @@ class InferMdxCArchitectureTests(unittest.TestCase):
                 paths.MDX_C_CONFIG_PATH = tmp
                 with open(os.path.join(tmp, "fixture_bandit.yaml"), "w", encoding="utf-8") as handle:
                     handle.write(payload)
-                arch, is_roformer = _infer_mdx_c_architecture("fixture_bandit.yaml")
+                arch, is_roformer = infer_mdx_c_architecture("fixture_bandit.yaml")
             finally:
                 paths.MDX_C_CONFIG_PATH = original
         self.assertEqual(arch, "Bandit")

@@ -23,6 +23,7 @@ from bundled.constants import (
     DRUM_PAIR,
     DRUM_STEM,
     INST_STEM,
+    MDX_ARCH_TYPE,
     NO_MODEL,
     OTHER_PAIR,
     OTHER_STEM,
@@ -71,14 +72,25 @@ _SECONDARY_SLOTS = (
 )
 
 
-def apply_name_mapper(names, name_mapper) -> List[str]:
+def apply_name_mapper(names, name_mapper, *, catalogue_index=None) -> List[str]:
     """Port of ``UVR.update_available_models.fix_name``.
 
     Maps an on-disk model file name to the friendlier display name listed in the
     repository's name mapper, leaving names without a mapping untouched.
     """
-    if not name_mapper:
+    if not name_mapper and not catalogue_index:
         return list(names)
+    if catalogue_index is not None:
+        from core.mdx_c_registry import display_name_for_basename
+
+        return [
+            display_name_for_basename(
+                name,
+                name_mapper,
+                catalogue_index=catalogue_index,
+            )
+            for name in names
+        ]
     mapped = []
     for name in names:
         replacement = next(
@@ -181,9 +193,33 @@ class MethodView:
         return None
 
     def populate_models(self) -> None:
-        names = apply_name_mapper(sorted(self.list_models()), self.name_mapper())
+        catalogue_index = None
+        if self.method_key == MDX_ARCH_TYPE:
+            catalogue_index = self.context.repo.mdx_catalogue_display_index()
+        basenames = sorted(self.list_models())
+        names = apply_name_mapper(
+            basenames,
+            self.name_mapper(),
+            catalogue_index=catalogue_index,
+        )
         set_combo_values(self.model_row, [CHOOSE_MODEL, *names])
-        set_combo_value(self.model_row, self.settings.get(self.model_key, CHOOSE_MODEL))
+        stored = self.settings.get(self.model_key, CHOOSE_MODEL)
+        if (
+            catalogue_index
+            and stored not in (CHOOSE_MODEL, NO_MODEL, None)
+            and stored in basenames
+        ):
+            from core.mdx_c_registry import display_name_for_basename
+
+            display = display_name_for_basename(
+                stored,
+                self.name_mapper(),
+                catalogue_index=catalogue_index,
+            )
+            if display != stored:
+                stored = display
+                self.settings.set(self.model_key, display)
+        set_combo_value(self.model_row, stored)
 
     def refresh_models(self) -> None:
         """Re-list on-disk models (e.g. after a Download Center download)."""

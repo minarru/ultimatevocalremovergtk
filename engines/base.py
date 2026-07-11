@@ -177,7 +177,13 @@ class SeperateAttributes:
                         self.primary_stem = model_data.ensemble_primary_stem if process_data['is_ensemble_master'] else model_data.primary_stem
                         self.secondary_stem = model_data.ensemble_secondary_stem if process_data['is_ensemble_master'] else model_data.secondary_stem
             else:
-                self.dim_f, self.dim_t = model_data.mdx_dim_f_set, 2**model_data.mdx_dim_t_set
+                dim_f_set = model_data.mdx_dim_f_set
+                dim_t_set = model_data.mdx_dim_t_set
+                if dim_f_set is None:
+                    dim_f_set = int(MDX_POP_DIMF[0])
+                if dim_t_set is None:
+                    dim_t_set = 8
+                self.dim_f, self.dim_t = int(dim_f_set), 2 ** int(dim_t_set)
                 
             self.check_label_secondary_stem_runs()
             self.n_fft = model_data.mdx_n_fft_scale_set

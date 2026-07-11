@@ -51,6 +51,7 @@ from bundled.constants import (
 )
 
 from core import paths
+from core.mdx_c_registry import infer_mdx_c_architecture
 from core.model_data import ModelData, load_mdx_c_config
 from ..hints import set_tooltip
 from ..spacing import inset_md
@@ -69,37 +70,7 @@ from ..widgets.rows import (
 # Thread marshalling
 # ---------------------------------------------------------------------------
 
-def _infer_mdx_c_architecture(yaml_name: str) -> tuple[str, bool]:
-    """Return ``(architecture label, is_roformer)`` for a bundled MDX-C yaml."""
-    if not yaml_name:
-        return "", False
-    config_path = os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name)
-    if not os.path.isfile(config_path):
-        return "", False
-    try:
-        from ml_collections import ConfigDict
-
-        config = ConfigDict(load_mdx_c_config(config_path))
-    except Exception:
-        return "", False
-
-    if getattr(config, "cls", None) == "Bandit":
-        return "Bandit", True
-
-    model = getattr(config, "model", None)
-    if model is None:
-        return "MDX23C", False
-    if "band_specs" in model:
-        return "Bandit", True
-    if "band_SR" in model or "sources" in model:
-        return "SCNet", True
-    if "num_bands" in model:
-        return "Mel-Band Roformer", True
-    if "freqs_per_bands" in model:
-        return "BS Roformer", True
-    return "MDX23C", False
-
-
+def _run_on_main(func):
     """Run ``func`` on the GTK main loop and return its result (blocking)."""
     if threading.current_thread() is threading.main_thread():
         return func()
@@ -282,7 +253,7 @@ class _ParamDialog:
         if not selected or selected == NONE_SELECTED:
             self.arch_row.set_subtitle("—")
             return
-        arch, is_roformer = _infer_mdx_c_architecture(f"{selected}.yaml")
+        arch, is_roformer = infer_mdx_c_architecture(f"{selected}.yaml")
         if arch:
             self.arch_row.set_subtitle(arch)
             if not self.existing.get("is_roformer"):
@@ -365,7 +336,7 @@ class _ParamDialog:
         if not selected or selected == NONE_SELECTED:
             return None
         yaml_name = f"{selected}.yaml"
-        arch, _is_roformer = _infer_mdx_c_architecture(yaml_name)
+        arch, _is_roformer = infer_mdx_c_architecture(yaml_name)
         params = {
             "config_yaml": yaml_name,
             "is_roformer": bool(self.is_roformer_row.get_active()),

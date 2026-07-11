@@ -49,7 +49,7 @@ def _get_manager(app_context) -> DownloadManager:
 def _get_queue(app_context, manager: DownloadManager) -> DownloadQueue:
     queue = getattr(app_context, "_download_queue", None)
     if queue is None:
-        queue = DownloadQueue(manager, on_changed=lambda: None)
+        queue = DownloadQueue(manager, on_changed=lambda: None, repo=app_context.repo)
         setattr(app_context, "_download_queue", queue)
     return queue
 

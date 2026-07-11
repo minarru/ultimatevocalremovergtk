@@ -406,6 +406,7 @@ class DownloadManager:
         on_progress: Optional[Callable[[float], None]] = None,
         on_info: Optional[Callable[[str], None]] = None,
         stop_event=None,
+        repo=None,
     ) -> str:
         """Download every ``(url, save_path)`` job sequentially.
 
@@ -456,6 +457,12 @@ class DownloadManager:
         if on_progress:
             on_progress(1.0)
         result = "complete" if any_downloaded else "exists"
+        if result in ("complete", "exists"):
+            from .mdx_c_registry import register_mdx_c_from_download_jobs
+
+            if register_mdx_c_from_download_jobs(jobs) and repo is not None:
+                repo.invalidate_stem_check()
+                repo.reload_mappers()
         debug_elapsed("download", f"download done status={result}", started)
         return result
 

@@ -14,7 +14,6 @@ by the ``Ensembler`` in :mod:`core.job_runner`. Nothing here imports
 ``tkinter``.
 """
 
-import hashlib
 import json
 import os
 from typing import Any, Callable, Dict, List, Optional
@@ -23,6 +22,7 @@ from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat const
 
 from . import paths
 from .mdx_config_fetch import ensure_mdx_c_config
+from .mdx_c_registry import compute_checkpoint_hash, display_name_for_basename, resolve_mdx_model_basename, try_register_from_catalog
 from .audio_io import resolve_wav_type_set
 from .settings import SettingsModel
 
@@ -132,8 +132,21 @@ class ModelRepository:
         return [f"{VR_ARCH_TYPE}{ENSEMBLE_PARTITION}{name}" for name in names]
 
     def list_mdx_model_tags(self) -> List[str]:
-        names = sorted(_apply_name_mapper(self.list_mdx_models(), self.mdx_name_select_MAPPER))
+        catalogue_names = self.mdx_catalogue_display_index()
+        names = sorted(
+            display_name_for_basename(
+                name,
+                self.mdx_name_select_MAPPER,
+                catalogue_index=catalogue_names,
+            )
+            for name in self.list_mdx_models()
+        )
         return [f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}{name}" for name in names]
+
+    def mdx_catalogue_display_index(self) -> Dict[str, str]:
+        from .mdx_c_registry import load_mdx_catalog_display_index
+
+        return load_mdx_catalog_display_index()
 
     def list_demucs_model_tags(self) -> List[str]:
         names = sorted(_apply_name_mapper(self.list_demucs_models(), self.demucs_name_select_MAPPER))
@@ -710,17 +723,32 @@ class ModelData:
             self.bv_model_rebalance = self.model_data[IS_BV_MODEL_REBAL]
 
     def get_mdx_model_path(self):
-        if self.model_name.endswith(CKPT):
+        resolved_name = resolve_mdx_model_basename(
+            self.model_name,
+            self.repo.mdx_name_select_MAPPER,
+            catalogue_index=self.repo.mdx_catalogue_display_index(),
+        )
+        if resolved_name.endswith(CKPT):
             self.is_mdx_ckpt = True
         ext = "" if self.is_mdx_ckpt else ONNX
         for file_name, chosen_mdx_model in self.repo.mdx_name_select_MAPPER.items():
-            if self.model_name in chosen_mdx_model:
+            if resolved_name in file_name or self.model_name in chosen_mdx_model:
                 if file_name.endswith(CKPT):
                     ext = ""
+                    self.is_mdx_ckpt = True
                 self.model_path = os.path.join(paths.MDX_MODELS_DIR, f"{file_name}{ext}")
                 break
         else:
-            self.model_path = os.path.join(paths.MDX_MODELS_DIR, f"{self.model_name}{ext}")
+            base_path = os.path.join(paths.MDX_MODELS_DIR, resolved_name)
+            ckpt_path = f"{base_path}{CKPT}"
+            onnx_path = f"{base_path}{ONNX}"
+            if os.path.isfile(ckpt_path):
+                self.model_path = ckpt_path
+                self.is_mdx_ckpt = True
+            elif os.path.isfile(onnx_path):
+                self.model_path = onnx_path
+            else:
+                self.model_path = f"{base_path}{ext}"
         self.mixer_path = os.path.join(paths.MDX_MODELS_DIR, "mixer_val.ckpt")
 
     def get_demucs_model_path(self):
@@ -747,13 +775,36 @@ class ModelData:
             self.secondary_stem = secondary_stem(str(self.primary_stem or ""))
 
     def get_model_data(self, model_hash_dir, hash_mapper: dict):
+        mapped = None
+        for model_hash, model_settings in hash_mapper.items():
+            if self.model_hash in model_hash:
+                mapped = dict(model_settings)
+                break
+
         model_settings_json = os.path.join(model_hash_dir, f"{self.model_hash}.json")
         if os.path.isfile(model_settings_json):
             with open(model_settings_json, "r") as json_file:
-                return json.load(json_file)
-        for model_hash, model_settings in hash_mapper.items():
-            if self.model_hash in model_hash:
-                return model_settings
+                local = json.load(json_file)
+            if not isinstance(local, dict):
+                local = {}
+            if mapped:
+                merged = dict(mapped)
+                merged.update(local)
+                return merged
+            return local
+
+        if mapped:
+            return mapped
+
+        if (
+            self.process_method == MDX_ARCH_TYPE
+            and self.is_mdx_ckpt
+            and self.model_path
+        ):
+            params = try_register_from_catalog(self.model_path, self.model_hash)
+            if params:
+                return params
+
         return self.get_model_data_from_popup()
 
     def change_model_data(self):
@@ -787,13 +838,9 @@ class ModelData:
                     self.model_hash = value
                     break
         if not self.model_hash:
-            try:
-                with open(self.model_path, "rb") as f:
-                    f.seek(-10000 * 1024, 2)
-                    self.model_hash = hashlib.md5(f.read()).hexdigest()
-            except Exception:
-                self.model_hash = hashlib.md5(open(self.model_path, "rb").read()).hexdigest()
-            cache.update({self.model_path: self.model_hash})
+            self.model_hash = compute_checkpoint_hash(self.model_path)
+            if self.model_hash:
+                cache.update({self.model_path: self.model_hash})
 
 
 _SECONDARY_PREFIX_BY_METHOD = {

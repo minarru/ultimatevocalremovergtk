@@ -60,6 +60,11 @@ _MODEL_KEY_BY_METHOD = {
 }
 
 
+def _model_output_label(model: ModelData) -> str:
+    """Return the user-facing model label for export paths and test mode."""
+    return model.model_name or model.model_basename or ""
+
+
 @dataclass
 class JobCallbacks:
     """Callbacks invoked from the worker thread.
@@ -363,15 +368,15 @@ class JobRunner:
 
                     audio_file_base = f"{file_num}_{os.path.splitext(os.path.basename(audio_file))[0]}"
                     if self.settings.get("is_add_model_name"):
-                        audio_file_base = f"{audio_file_base}_{current_model.model_basename}"
+                        audio_file_base = f"{audio_file_base}_{_model_output_label(current_model)}"
 
                     model_export_path = export_path
                     if self.settings.get("is_create_model_folder"):
-                        model_basename = current_model.model_basename
-                        if model_basename:
+                        model_label = _model_output_label(current_model)
+                        if model_label:
                             model_export_path = os.path.join(
                                 export_path,
-                                model_basename,
+                                model_label,
                                 os.path.splitext(os.path.basename(audio_file))[0],
                             )
                             os.makedirs(model_export_path, exist_ok=True)
@@ -500,7 +505,7 @@ class JobRunner:
                     check_stopped(self)
                     self._process_iteration()
                     callbacks.console(
-                        f"Ensemble Mode - {current_model.model_basename} - "
+                        f"Ensemble Mode - {_model_output_label(current_model)} - "
                         f"Model {current_model_num}/{len(models)}\n"
                     )
                     write_to_console = pausable_callback(
@@ -509,7 +514,7 @@ class JobRunner:
                     )
 
                     audio_file_base = f"{file_num}_{os.path.splitext(os.path.basename(audio_file))[0]}"
-                    audio_file_base = f"{audio_file_base}_{current_model.model_basename}"
+                    audio_file_base = f"{audio_file_base}_{_model_output_label(current_model)}"
 
                     process_data = {
                         "model_data": current_model,
@@ -547,7 +552,7 @@ class JobRunner:
 
                 # Combine each member's stems into the final ensemble outputs.
                 if current_model is not None:
-                    audio_file_base = audio_file_base.replace(f"_{current_model.model_basename}", "")
+                    audio_file_base = audio_file_base.replace(f"_{_model_output_label(current_model)}", "")
                 callbacks.console(base_text + "Ensembling outputs...\n")
                 combine_started = time.perf_counter()
 

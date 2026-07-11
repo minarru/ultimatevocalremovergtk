@@ -41,8 +41,9 @@ class DownloadQueueItem:
 class DownloadQueue:
     """Sequential download queue shared by the app (survives window close)."""
 
-    def __init__(self, manager, on_changed: Optional[Callable[[], None]] = None):
+    def __init__(self, manager, on_changed: Optional[Callable[[], None]] = None, repo=None):
         self.manager = manager
+        self.repo = repo
         self._on_changed = on_changed
         self._items: List[DownloadQueueItem] = []
         self._lock = threading.Lock()
@@ -180,6 +181,7 @@ class DownloadQueue:
                 on_progress=on_progress,
                 on_info=on_info,
                 stop_event=item.stop_event,
+                repo=self.repo,
             )
         except Exception as exc:  # noqa: BLE001
             if item.stop_event.is_set():
