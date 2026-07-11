@@ -57,7 +57,11 @@ from .hints import (
 from .dispatch import idle_on_main
 from .run_control import RunController
 from core.debug_log import debug
-from .shared_settings import apply_shared_file_options
+from .shared_settings import (
+    apply_shared_file_options,
+    format_input_sanitize_toasts,
+    sanitize_input_paths,
+)
 from .views import METHOD_VIEWS
 from .widgets.columns import (
     build_columns_box,
@@ -82,8 +86,6 @@ _LOG_COPIED_TOAST = "Log copied"
 
 #: Blocking-reason strings toasted from the shared Start dispatch when a
 #: required field is missing.
-_REASON_INPUT = "Select an input audio file"
-_REASON_OUTPUT = "Choose an output folder"
 _REASON_MODEL = "Choose a model"
 
 # Tk / legacy settings may store the short process-method label instead of the
@@ -222,6 +224,8 @@ class MainWindow(Adw.ApplicationWindow):
         self.add_breakpoint(narrow)
 
         self._hint_manager = HelpHintManager()
+        self._stale_export_toast_shown = False
+        self._stale_inputs_toast_shown = False
         self._register_hints()
         self._apply_accelerators()
 
@@ -477,7 +481,7 @@ class MainWindow(Adw.ApplicationWindow):
         set_tooltip(view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
         view_inputs_button.set_action_name("win.view_inputs")
         group.set_header_suffix(view_inputs_button)
-        self.input_row = InputFilesRow(self._on_inputs_changed)
+        self.input_row = InputFilesRow(self._on_inputs_changed, on_toast=self.toast)
         self.output_row = OutputFolderRow(self._on_output_changed)
         group.add(self.input_row)
         group.add(self.output_row)
@@ -552,8 +556,15 @@ class MainWindow(Adw.ApplicationWindow):
         for view in self._views:
             view.load()
 
-        self.input_row.set_paths(self.settings.get("input_paths") or [], notify=False)
-        self.output_row.set_path(self.settings.get("export_path") or "", notify=False)
+        raw_inputs = self.settings.get("input_paths") or []
+        cleaned_inputs, input_result = sanitize_input_paths(raw_inputs)
+        if cleaned_inputs != raw_inputs:
+            self.settings.set("input_paths", cleaned_inputs)
+        self.input_row.set_paths(cleaned_inputs, notify=False)
+        self._maybe_notify_stale_inputs(input_result)
+        export_path = self.settings.get("export_path") or ""
+        self.output_row.set_path(export_path, notify=False)
+        self._maybe_notify_stale_export_path()
         set_combo_value(self.format_row, self.settings.get("save_format", WAV))
         self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
         self.sample_row.set_title(SAMPLE_MODE_CHECKBOX(self.settings.get("model_sample_mode_duration", 30)))
@@ -579,6 +590,28 @@ class MainWindow(Adw.ApplicationWindow):
 
         if getattr(self, "_hint_manager", None) is not None:
             self._hint_manager.refresh()
+
+    def _maybe_notify_stale_export_path(self) -> None:
+        if getattr(self, "_stale_export_toast_shown", False):
+            return
+        if self.output_row.path and self.output_row.blocked_reason():
+            self._stale_export_toast_shown = True
+            idle_on_main(
+                lambda: self._toast("Saved output folder no longer exists — select a new folder")
+            )
+
+    def _maybe_notify_stale_inputs(self, result) -> None:
+        if self._stale_inputs_toast_shown:
+            return
+        messages = format_input_sanitize_toasts(
+            result,
+            include_missing=True,
+            include_large_batch=False,
+        )
+        if not messages:
+            return
+        self._stale_inputs_toast_shown = True
+        idle_on_main(lambda: self._toast(" ".join(messages)))
 
     def _active_view(self):
         return self._current_view or self._views[0]
@@ -697,11 +730,12 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _separation_blocked_reason(self) -> Optional[str]:
         """First reason the separation run can't start, or ``None`` when ready."""
-        input_paths = list(self.input_row.paths)
-        if not input_paths or not os.path.isfile(input_paths[0]):
-            return _REASON_INPUT
-        if not os.path.isdir(self.output_row.path):
-            return _REASON_OUTPUT
+        input_reason = self.input_row.blocked_reason()
+        if input_reason:
+            return input_reason
+        output_reason = self.output_row.blocked_reason()
+        if output_reason:
+            return output_reason
         if not self._active_view().has_model():
             return _REASON_MODEL
         return None

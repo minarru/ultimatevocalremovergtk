@@ -84,8 +84,6 @@ _SECONDARY_STEM_ONLY_KEY = "is_secondary_stem_only"
 
 #: Blocking-reason strings surfaced as the shared Start button tooltip (and
 #: reused as the safety-net toasts in :meth:`EnsemblePage.start`).
-_REASON_INPUT = "Select an input audio file"
-_REASON_OUTPUT = "Choose an output folder"
 _REASON_STEM_PAIR = "Choose an ensemble stem pair"
 _REASON_TWO_MODELS = "Select two or more models"
 
@@ -134,7 +132,7 @@ class EnsemblePage:
 
     def _build_files_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Files")
-        self.input_row = InputFilesRow(self._on_inputs_changed)
+        self.input_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
         self.output_row = OutputFolderRow(self._on_output_changed)
         group.add(self.input_row)
         group.add(self.output_row)
@@ -634,11 +632,12 @@ class EnsemblePage:
 
     def start_blocked_reason(self) -> Optional[str]:
         """First reason the ensemble run can't start, or ``None`` when ready."""
-        input_paths = list(self.input_row.paths)
-        if not input_paths or not os.path.isfile(input_paths[0]):
-            return _REASON_INPUT
-        if not os.path.isdir(self.output_row.path):
-            return _REASON_OUTPUT
+        input_reason = self.input_row.blocked_reason()
+        if input_reason:
+            return input_reason
+        output_reason = self.output_row.blocked_reason()
+        if output_reason:
+            return output_reason
         if self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR) == CHOOSE_STEM_PAIR:
             return _REASON_STEM_PAIR
         if len(self._selected_model_tags()) <= 1:

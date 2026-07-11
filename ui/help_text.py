@@ -309,7 +309,7 @@ Select from various AI networks and algorithms to process your track:
 
 INPUT_FOLDER_ENTRY_HELP = """Select Input:
 
-Choose the audio file(s) you want to process"""
+Choose the audio file(s) you want to process. Batch runs support many files at once; selections above 100 files may take a long time, and the list is capped at 500 files."""
 
 OUTPUT_FOLDER_ENTRY_HELP = """Select Output:
 
@@ -378,7 +378,7 @@ APOLLO_OVERLAP_HELP = """This option controls the amount of overlap between pred
 
 CHOOSE_APOLLO_MODEL_HELP = "Choose the Apollo model to use to restore audio"
 
-ROFORMER_MODEL_HELP = """Enable for BS-Roformer / Mel-Band Roformer checkpoints. They use the MDX-C yaml-config flow but require this flag so the engine builds the Roformer network instead of the standard TFC-TDF net"""
+ROFORMER_MODEL_HELP = """Enable for BS-Roformer, Mel-Band Roformer, SCNet, or Bandit checkpoints. They use the MDX-C yaml-config flow but require this flag so the engine routes to the correct network instead of the standard TFC-TDF net."""
 
 PRE_PROC_MODEL_INST_MIX_HELP = """When enabled, the application will generate a third output without the selected stem and vocals"""
 

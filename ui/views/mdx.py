@@ -47,7 +47,17 @@ from ..widgets.rows import (
 # Full stem universe presented in the UI. The backend intersects this with the
 # selected model's actual stems, so checking a stem a model does not produce is
 # simply ignored (resolving per-model stems here would require model hashing).
-_MDX_STEM_OPTIONS = (VOCAL_STEM, INST_STEM, OTHER_STEM, BASS_STEM, DRUM_STEM)
+_MDX_STEM_OPTIONS = (
+    VOCAL_STEM,
+    INST_STEM,
+    OTHER_STEM,
+    BASS_STEM,
+    DRUM_STEM,
+    "Speech",
+    "Music",
+    "Sfx",
+    "Effects",
+)
 
 
 @register_method_view

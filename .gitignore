@@ -52,6 +52,12 @@ models/MDX_Net_Models/model_data/mdx_c_configs/*
 !models/MDX_Net_Models/model_data/mdx_c_configs/model_2_stem_full_band_4.yaml
 !models/MDX_Net_Models/model_data/mdx_c_configs/model_2_stem_full_band_8k.yaml
 !models/MDX_Net_Models/model_data/mdx_c_configs/sndfx.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/config_musdb18_scnet.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/config_musdb18_scnet_large.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/config_musdb18_scnet_large_starrytong.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/config_musdb18_scnet_xl.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/config_dnr_bandit_v2_mus64.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/config_dnr_bandit_bsrnn_multi_mus64.yaml
 !models/VR_Models/
 models/VR_Models/*
 !models/VR_Models/model_data/
