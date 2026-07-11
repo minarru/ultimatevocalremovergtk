@@ -32,9 +32,23 @@ _TOGGLE_ALL = "all"
 # Stable display order for "<stem> Only" entries.
 _STEM_ONLY_ORDER = (INST_STEM, VOCAL_STEM, BASS_STEM, DRUM_STEM, OTHER_STEM)
 
+# Placeholder icons — replace with final choices
+STEM_ONLY_ICON_FALLBACK = "edit-none-symbolic"
+_PLACEHOLDER_STEMS = (
+    "Drums",
+    "Bass",
+    "Other",
+    "Vocals",
+    "Speech",
+    "Music",
+    "Sfx",
+    "Effects",
+)
+
 STEM_ONLY_ICONS: Dict[str, str] = {
     VOCAL_STEM: "person-talking-symbolic",
     INST_STEM: "bullhorn-symbolic",
+    **{stem: STEM_ONLY_ICON_FALLBACK for stem in _PLACEHOLDER_STEMS},
 }
 ALL_STEMS_ICON = "ungroup-symbolic"
 
@@ -42,7 +56,7 @@ ALL_STEMS_ICON = "ungroup-symbolic"
 def stem_only_icon(stem: Optional[str]) -> Optional[str]:
     if not stem:
         return None
-    return STEM_ONLY_ICONS.get(stem)
+    return STEM_ONLY_ICONS.get(stem, STEM_ONLY_ICON_FALLBACK)
 
 
 def _stem_only_rank(stem: str) -> int:

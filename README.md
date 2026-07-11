@@ -15,7 +15,7 @@ This application uses source-separation models to split audio into stems (vocals
 Supported separation backends in this port:
 
 - **VR Architecture** — classic UVR models
-- **MDX-Net** — including MDX23C and Roformer checkpoints (BS-Roformer, Mel-Band Roformer)
+- **MDX-Net** — including MDX23C, Roformer, **SCNet**, and **Bandit** checkpoints
 - **Demucs** — v2/v3/v4 multi-stem separation
 - **Ensemble** — combine multiple models
 - **Audio Tools** — time stretch, pitch shift, and **Apollo** music restoration
@@ -150,7 +150,7 @@ Most model **weights are not stored in git** (they are large binary files). The 
 | Shipped in git | Purpose |
 |---|---|
 | `models/*/model_data/*.json` | Model hash maps and parameters |
-| `models/MDX_Net_Models/model_data/mdx_c_configs/*.yaml` | MDX-C / Roformer config templates |
+| `models/MDX_Net_Models/model_data/mdx_c_configs/*.yaml` | MDX-C / Roformer / SCNet / Bandit config templates |
 | `models/Apollo_Models/model_configs/` and `model_data/` | Apollo recognition metadata |
 | `models/VR_Models/UVR-DeNoise-Lite.pth` | Built-in denoiser (~17 MB) |
 
@@ -159,7 +159,7 @@ Everything else must be downloaded or placed manually:
 1. Launch the app and open **Download Center** from the menu (or use the banner when no models are installed for the selected method).
 2. Download the models you need for VR, MDX-Net, or Demucs.
 3. For **Apollo** restoration, place checkpoint files (`.ckpt` or `.bin`) in `models/Apollo_Models/`.
-4. **Roformer** checkpoints download like other MDX models; enable the *Roformer Model* flag in MDX-C model parameters when using them.
+4. **Roformer**, **SCNet**, and **Bandit** checkpoints download like other MDX models; enable the *Roformer Model* flag in MDX-C model parameters when using them. See [docs/models.md](docs/models.md) for stem layouts.
 5. **Community models** from [Politrees UVR_resources](https://github.com/Politrees/UVR_resources) appear in **Download Center** after refresh (alongside the official TRvlvr catalogue). Weights download from Hugging Face; YAML configs are fetched automatically. Set `UVR_DISABLE_POLITREES=1` to use only the official catalogue. TRvlvr download URLs that fail fall back to the Politrees Hugging Face mirror when available.
 
 Downloaded weights are ignored by git (see `.gitignore`). Runtime data (settings, temp files) lives under the project directory in portable mode, or under `~/.local/share/ultimatevocalremover` when the install directory is read-only.

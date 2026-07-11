@@ -324,6 +324,7 @@ class ModelData:
         # a config that defines a single ``training.target_instrument``.
         self.is_roformer = False
         self.is_target_instrument = False
+        self.model_type = ""
         self.is_mdx_combine_stems = settings.get("is_mdx23_combine_stems")
         self.mdx_c_configs = None
         self.mdx_model_stems = []
@@ -466,6 +467,8 @@ class ModelData:
                 if self.model_data:
                     if "is_roformer" in self.model_data:
                         self.is_roformer = self.model_data["is_roformer"]
+                    if "model_type" in self.model_data:
+                        self.model_type = str(self.model_data["model_type"])
                     if "config_yaml" in self.model_data:
                         self.is_mdx_c = True
                         config_name = self.model_data["config_yaml"]

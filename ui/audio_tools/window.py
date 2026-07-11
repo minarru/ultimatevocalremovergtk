@@ -98,7 +98,6 @@ _TOOL_LABELS = (("File 1", "File 2"), ("Target", "Reference"))
 
 #: Blocking-reason strings surfaced as the shared Start button tooltip when the
 #: active audio tool is missing a required field.
-_REASON_OUTPUT = "Choose an output folder"
 _REASON_INPUT = "Select an input file"
 _REASON_DUAL_INPUTS = "Add input pairs in the dual/batch editor"
 _REASON_TWO_FILES = "Select two or more files"
@@ -190,7 +189,7 @@ class AudioToolsPage:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         group = Adw.PreferencesGroup(title="Manual Ensemble", description="Combine two or more audio files")
 
-        self.me_inputs_row = InputFilesRow(self._on_inputs_changed)
+        self.me_inputs_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
         group.add(self.me_inputs_row)
 
         self.algorithm_row = make_combo_row("Algorithm", MANUAL_ENSEMBLE_OPTIONS)
@@ -210,7 +209,7 @@ class AudioToolsPage:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         group = Adw.PreferencesGroup(title="Time Stretch", description="Change playback rate (requires pyrubberband)")
 
-        self.ts_inputs_row = InputFilesRow(self._on_inputs_changed)
+        self.ts_inputs_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
         group.add(self.ts_inputs_row)
 
         self.time_rate_row = self._make_spin("Rate", 0.1, 10.0, 0.1, digits=2)
@@ -225,7 +224,7 @@ class AudioToolsPage:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         group = Adw.PreferencesGroup(title="Change Pitch", description="Pitch shift in semitones (requires pyrubberband)")
 
-        self.ps_inputs_row = InputFilesRow(self._on_inputs_changed)
+        self.ps_inputs_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
         group.add(self.ps_inputs_row)
 
         self.pitch_rate_row = self._make_spin("Semitones", -10.0, 10.0, 0.5, digits=2)
@@ -331,7 +330,7 @@ class AudioToolsPage:
             description="Restore codec-distorted audio (e.g. low-bitrate MP3s)",
         )
 
-        self.ap_inputs_row = InputFilesRow(self._on_inputs_changed)
+        self.ap_inputs_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
         group.add(self.ap_inputs_row)
 
         self.apollo_model_row = make_combo_row("Apollo model", [CHOOSE_MODEL])
@@ -577,13 +576,16 @@ class AudioToolsPage:
                 APOLLO_RESTORE: self.ap_inputs_row,
             }
             row = page_rows.get(tool)
-            single_inputs = list(row.paths) if row is not None else []
-            if not single_inputs:
+            if row is None:
                 return _REASON_INPUT
-            if tool == MANUAL_ENSEMBLE and len(single_inputs) < 2:
+            input_reason = row.blocked_reason()
+            if input_reason:
+                return input_reason
+            if tool == MANUAL_ENSEMBLE and len(row.paths) < 2:
                 return _REASON_TWO_FILES
-        if not os.path.isdir(self.output_row.path):
-            return _REASON_OUTPUT
+        output_reason = self.output_row.blocked_reason()
+        if output_reason:
+            return output_reason
         if tool == APOLLO_RESTORE:
             return self._apollo_blocked_reason()
         return None

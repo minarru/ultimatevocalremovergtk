@@ -42,6 +42,54 @@ from ml.mel_band_roformer import MelBandRoformer
 from ml.bs_roformer import BSRoformer
 from .orchestration import process_secondary_model
 
+
+def _load_torch_checkpoint(path: str):
+    try:
+        return torch.load(path, map_location='cpu', weights_only=False)
+    except TypeError:
+        return torch.load(path, map_location='cpu')
+
+
+def _mdx_c_hop_length(config) -> int:
+    model_cfg = getattr(config, 'model', None)
+    if model_cfg is not None and hasattr(model_cfg, 'hop_size'):
+        return int(model_cfg.hop_size)
+    kwargs = getattr(config, 'kwargs', None)
+    if kwargs is not None and hasattr(kwargs, 'hop_length'):
+        return int(kwargs.hop_length)
+    audio_cfg = getattr(config, 'audio', None)
+    if audio_cfg is not None and hasattr(audio_cfg, 'hop_length'):
+        return int(audio_cfg.hop_length)
+    raise ValueError('MDX-C config is missing hop_length / hop_size.')
+
+
+def _build_mdx_c_model(config):
+    if getattr(config, 'cls', None) == 'Bandit':
+        from ml.bandit import Bandit
+
+        kwargs = dict(config.kwargs)
+        if 'fs' not in kwargs and hasattr(config.audio, 'sample_rate'):
+            kwargs['fs'] = int(config.audio.sample_rate)
+        return Bandit(**kwargs)
+
+    model_cfg = getattr(config, 'model', None)
+    if model_cfg is None:
+        raise ValueError('Unknown MDX-C architecture in configuration.')
+
+    if 'num_bands' in model_cfg:
+        return MelBandRoformer(**model_cfg)
+    if 'freqs_per_bands' in model_cfg:
+        return BSRoformer(**model_cfg)
+    if 'band_SR' in model_cfg or 'sources' in model_cfg:
+        from ml.scnet import SCNet
+
+        return SCNet(**model_cfg)
+    if 'band_specs' in model_cfg:
+        from ml.bandit import MultiMaskMultiSourceBandSplitRNN
+
+        return MultiMaskMultiSourceBandSplitRNN(**model_cfg)
+    raise ValueError('Unknown MDX-C architecture in configuration.')
+
 class SeperateMDX(SeperateAttributes):        
 
     def seperate(self):
@@ -238,7 +286,21 @@ class SeperateMDXC(SeperateAttributes):
                 self.start_inference_console_write()
                 self.write_to_console(LOADING_MODEL)
                 mix = prepare_mix(self.audio_file)
+                export_rate = samplerate
+                model_rate = int(getattr(self.mdx_c_configs.audio, 'sample_rate', export_rate) or export_rate)
+                if model_rate != export_rate:
+                    mix = librosa.resample(mix, orig_sr=export_rate, target_sr=model_rate, axis=1)
                 sources = self.demix(mix)
+                if model_rate != export_rate:
+                    if isinstance(sources, dict):
+                        for key, stem_audio in list(sources.items()):
+                            sources[key] = librosa.resample(
+                                stem_audio, orig_sr=model_rate, target_sr=export_rate, axis=1
+                            )
+                    else:
+                        sources = librosa.resample(
+                            sources, orig_sr=model_rate, target_sr=export_rate, axis=1
+                        )
                 if not self.is_vocal_split_model:
                     self.cache_source((mix, sources))
                 self.write_to_console(DONE, base_text='')
@@ -371,7 +433,7 @@ class SeperateMDXC(SeperateAttributes):
                 mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
 
             model = TFC_TDF_net(self.mdx_c_configs, device=self.device)
-            model.load_state_dict(torch.load(self.model_path, map_location=cpu))
+            model.load_state_dict(_load_torch_checkpoint(self.model_path))
             model.to(self.device).eval()
             self._inference_model = model
             mix = torch.tensor(mix, dtype=torch.float32)
@@ -453,15 +515,10 @@ class SeperateMDXC(SeperateAttributes):
 
             device = self.device
 
-            # Build the roformer architecture indicated by the model's yaml config.
-            if 'num_bands' in self.roformer_config.model:
-                model = MelBandRoformer(**self.roformer_config.model)
-            elif 'freqs_per_bands' in self.roformer_config.model:
-                model = BSRoformer(**self.roformer_config.model)
-            else:
-                raise ValueError('Unknown model type in the configuration.')
+            # Build the MDX-C architecture indicated by the model yaml config.
+            model = _build_mdx_c_model(self.roformer_config)
 
-            checkpoint = torch.load(self.model_path, map_location='cpu')
+            checkpoint = _load_torch_checkpoint(self.model_path)
             model = model if not isinstance(model, torch.nn.DataParallel) else model.module
             model.load_state_dict(checkpoint)
             del checkpoint
@@ -473,7 +530,7 @@ class SeperateMDXC(SeperateAttributes):
             try:
                 segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size
                 S = 1 if self.roformer_config.training.target_instrument else len(self.roformer_config.training.instruments)
-                C = self.roformer_config.audio.hop_length * (segment_size - 1)
+                C = _mdx_c_hop_length(self.roformer_config) * (segment_size - 1)
                 N = self.overlap_mdx23
                 step = int(C // N)
                 fade_size = C // 10
