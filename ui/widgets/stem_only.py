@@ -13,7 +13,6 @@ from bundled.constants import (
     DRUM_STEM,
     GUITAR_STEM,
     INST_STEM,
-    LEAD_VOCAL_STEM_LABEL,
     NO_BASS_STEM,
     NO_DRUM_STEM,
     NO_GUITAR_STEM,
@@ -26,6 +25,11 @@ from bundled.constants import (
     SECONDARY_STEM,
     VOCAL_STEM,
     secondary_stem,
+)
+
+from core.model_stem_semantics import (
+    VOCALS_OTHER_DISPLAY_OVERRIDES,
+    stem_display_overrides,
 )
 
 from ..spacing import set_inset
@@ -101,42 +105,13 @@ _COMPLEMENT_DISPLAY: Dict[str, str] = {
     NO_PIANO_STEM: NO_PIANO_STEM,
 }
 
-_MIX_MINUS_LEAD_VOCALS = f"Mix minus {LEAD_VOCAL_STEM_LABEL}"
-
-# Roformer models trained on vocals+other use Demucs yaml names but export a
-# lead-vocal vs everything-else split (see ``other_fix`` in model configs).
-_LEAD_VOCAL_PAIR_LABELS: Dict[str, str] = {
-    "vocals": LEAD_VOCAL_STEM_LABEL,
-    "Vocals": LEAD_VOCAL_STEM_LABEL,
-    VOCAL_STEM: LEAD_VOCAL_STEM_LABEL,
-    "other": _MIX_MINUS_LEAD_VOCALS,
-    "Other": _MIX_MINUS_LEAD_VOCALS,
-    OTHER_STEM: _MIX_MINUS_LEAD_VOCALS,
-    "No vocals": _MIX_MINUS_LEAD_VOCALS,
-    "No Vocals": _MIX_MINUS_LEAD_VOCALS,
-    f"{NO_STEM}{VOCAL_STEM}": _MIX_MINUS_LEAD_VOCALS,
-    f"{NO_STEM}{VOCAL_STEM.lower()}": _MIX_MINUS_LEAD_VOCALS,
-    "No other": LEAD_VOCAL_STEM_LABEL,
-    "No Other": LEAD_VOCAL_STEM_LABEL,
-    NO_OTHER_STEM: LEAD_VOCAL_STEM_LABEL,
-    f"{NO_STEM}{OTHER_STEM.lower()}": LEAD_VOCAL_STEM_LABEL,
-    f"{NO_STEM}{OTHER_STEM}": LEAD_VOCAL_STEM_LABEL,
-}
+# Back-compat alias for tests and callers that referenced the old private dict.
+_LEAD_VOCAL_PAIR_LABELS = VOCALS_OTHER_DISPLAY_OVERRIDES
 
 
 def roformer_lead_vocal_label_overrides(model) -> Optional[Dict[str, str]]:
-    """Return lead-vocal display labels for roformer vocals+other yaml pairs."""
-    if model is None or not getattr(model, "is_roformer", False):
-        return None
-    configs = getattr(model, "mdx_c_configs", None)
-    training = getattr(configs, "training", None) if configs is not None else None
-    if training is None:
-        return None
-    instruments = getattr(training, "instruments", None) or []
-    lowered = {str(name).lower() for name in instruments}
-    if not ({"vocals", "other"} <= lowered):
-        return None
-    return dict(_LEAD_VOCAL_PAIR_LABELS)
+    """Return stem display overrides for the selected model."""
+    return stem_display_overrides(model)
 
 
 def canonical_stem_name(stem: Optional[str]) -> Optional[str]:
@@ -244,7 +219,7 @@ def build_stem_only_options(
                 key=lambda entry: (
                     0
                     if stem_display_label(entry[0], overrides=stem_label_overrides)
-                    == LEAD_VOCAL_STEM_LABEL
+                    == VOCAL_STEM
                     else 1,
                     _stem_only_rank(entry[0]),
                 )
@@ -376,8 +351,14 @@ class StemOnlyControls:
         self._on_changed()
 
 
-def _make_chip(stem: str, *, tooltip: str, on_toggled: Callable) -> Gtk.ToggleButton:
-    label = stem_display_label(stem)
+def _make_chip(
+    stem: str,
+    *,
+    tooltip: str,
+    on_toggled: Callable,
+    stem_label_overrides: Optional[Dict[str, str]] = None,
+) -> Gtk.ToggleButton:
+    label = stem_display_label(stem, overrides=stem_label_overrides)
     button = Gtk.ToggleButton(valign=Gtk.Align.CENTER)
     button.add_css_class("uvr-stem-chip")
     icon = stem_only_icon(stem)
@@ -388,7 +369,9 @@ def _make_chip(stem: str, *, tooltip: str, on_toggled: Callable) -> Gtk.ToggleBu
         button.set_child(content)
     else:
         button.set_label(label)
-    button.set_tooltip_text(tooltip)
+    button.set_tooltip_text(
+        stem_only_tooltip(stem, overrides=stem_label_overrides) if stem_label_overrides else tooltip
+    )
     button.connect("toggled", on_toggled)
     return button
 
@@ -401,6 +384,7 @@ class StemSubsetControls:
         self._loading = False
         self._stems: List[str] = []
         self._chips: Dict[str, Gtk.ToggleButton] = {}
+        self._stem_label_overrides: Optional[Dict[str, str]] = None
 
         self.wrap = Adw.WrapBox()
         self.wrap.add_css_class("uvr-stem-subset")
@@ -415,8 +399,9 @@ class StemSubsetControls:
     def widget(self) -> Gtk.Box:
         return self.container
 
-    def rebuild(self, stems: List[str]) -> None:
+    def rebuild(self, stems: List[str], *, stem_label_overrides: Optional[Dict[str, str]] = None) -> None:
         self._stems = list(stems)
+        self._stem_label_overrides = stem_label_overrides
         child = self.wrap.get_first_child()
         while child is not None:
             nxt = child.get_next_sibling()
@@ -432,16 +417,33 @@ class StemSubsetControls:
         for stem in stems:
             if stem == ALL_STEMS:
                 continue
-            chip = _make_chip(stem, tooltip=stem_only_tooltip(stem), on_toggled=self._on_chip_toggled)
+            chip = _make_chip(
+                stem,
+                tooltip=stem_only_tooltip(stem, overrides=self._stem_label_overrides),
+                on_toggled=self._on_chip_toggled,
+                stem_label_overrides=self._stem_label_overrides,
+            )
             self.wrap.append(chip)
             self._chips[stem] = chip
 
-    def set_selection(self, selected: Set[str], *, full_stems: List[str]) -> None:
+    def set_selection(
+        self,
+        selected: Set[str],
+        *,
+        full_stems: List[str],
+        highlight_all_when_empty: bool = True,
+    ) -> None:
         was_loading = self._loading
         self._loading = True
         try:
             stem_set = set(full_stems)
-            if not selected or selected >= stem_set:
+            if not selected:
+                for stem, chip in self._chips.items():
+                    if highlight_all_when_empty:
+                        chip.set_active(stem == ALL_STEMS)
+                    else:
+                        chip.set_active(False)
+            elif selected >= stem_set:
                 for stem, chip in self._chips.items():
                     chip.set_active(stem == ALL_STEMS)
             else:
@@ -670,6 +672,7 @@ class SaveStemsSection:
         self._demucs_export_secondary: Optional[str] = None
         self._subset_mode = _QUICK_ALL
         self._stem_label_overrides: Optional[Dict[str, str]] = None
+        self._export_semantics_note = ""
         self._demucs_stem_count = 4
 
         self._exclusive = StemOnlyControls(on_changed=self._notify)
@@ -702,6 +705,7 @@ class SaveStemsSection:
         self.mode = "hidden"
         self._has_model = has_model
         self._stem_label_overrides = None
+        self._export_semantics_note = ""
         self._hide_all_rows()
         self.widget.set_visible(False)
 
@@ -714,6 +718,7 @@ class SaveStemsSection:
         secondary_key: str,
         has_model: bool = True,
         stem_label_overrides: Optional[Dict[str, str]] = None,
+        export_semantics_note: str = "",
     ) -> None:
         self.mode = "exclusive"
         self._has_model = has_model
@@ -722,6 +727,7 @@ class SaveStemsSection:
         self._exclusive_primary = primary_stem
         self._exclusive_secondary = secondary_stem
         self._stem_label_overrides = stem_label_overrides
+        self._export_semantics_note = export_semantics_note or ""
         self._hide_all_rows()
         if not has_model:
             self.widget.set_visible(False)
@@ -745,10 +751,13 @@ class SaveStemsSection:
         primary_key: str,
         secondary_key: str,
         has_model: bool = True,
+        stem_label_overrides: Optional[Dict[str, str]] = None,
+        export_semantics_note: str = "",
     ) -> None:
         self.mode = "subset"
         self._has_model = has_model
-        self._stem_label_overrides = None
+        self._stem_label_overrides = stem_label_overrides
+        self._export_semantics_note = export_semantics_note or ""
         self._primary_key = primary_key
         self._secondary_key = secondary_key
         self._subset_stems = [s for s in stems if s != ALL_STEMS]
@@ -760,7 +769,7 @@ class SaveStemsSection:
         if has_vocals:
             self._quick_export.rebuild()
             self._quick_block.set_visible(True)
-        self._subset.rebuild(self._subset_stems)
+        self._subset.rebuild(self._subset_stems, stem_label_overrides=stem_label_overrides)
         self._subset_block.set_visible(True)
         self._apply_subset_dimming()
 
@@ -772,10 +781,12 @@ class SaveStemsSection:
         secondary_key: str,
         has_model: bool = True,
         demucs_stem_count: int = 4,
+        export_semantics_note: str = "",
     ) -> None:
         self.mode = "demucs"
         self._has_model = has_model
         self._stem_label_overrides = None
+        self._export_semantics_note = export_semantics_note or ""
         self._demucs_stem_count = max(1, demucs_stem_count)
         self._primary_key = primary_key
         self._secondary_key = secondary_key
@@ -824,6 +835,12 @@ class SaveStemsSection:
         if self.mode == "demucs":
             return self._demucs_export_summary()
         return SAVE_STEMS_NO_MODEL_HELP
+
+    def export_description_lines(self) -> List[str]:
+        lines = [self.export_summary()]
+        if self._export_semantics_note:
+            lines.append(self._export_semantics_note)
+        return lines
 
     def expected_output_count(self) -> int:
         if not self._has_model or self.mode == "hidden":
@@ -876,6 +893,34 @@ class SaveStemsSection:
             self._subset_block.add_css_class("uvr-stem-row-inactive")
             self._quick_block.remove_css_class("uvr-stem-row-inactive")
 
+    def _vocal_stem_in_subset(self) -> Optional[str]:
+        for stem in self._subset_stems:
+            if canonical_stem_name(stem) == VOCAL_STEM:
+                return stem
+        return None
+
+    def _selection_matches_vocal_stem(self, selected: Set[str]) -> bool:
+        if not selected or len(selected) != 1:
+            return False
+        chosen = next(iter(selected))
+        return canonical_stem_name(chosen) == VOCAL_STEM or chosen == VOCAL_STEM
+
+    def _apply_subset_chip_selection(self, mode: str, selected: Set[str]) -> None:
+        full = self._subset_stems
+        if mode == _QUICK_INSTRUMENTAL:
+            self._subset.set_selection(set(), full_stems=full, highlight_all_when_empty=False)
+        elif mode == _QUICK_VOCALS:
+            vocal = self._vocal_stem_in_subset()
+            self._subset.set_selection(
+                {vocal} if vocal else set(),
+                full_stems=full,
+                highlight_all_when_empty=False,
+            )
+        elif mode == _QUICK_ALL:
+            self._subset.set_selection(set(), full_stems=full)
+        else:
+            self._subset.set_selection(selected, full_stems=full)
+
     def _stored_subset_selection(self) -> Tuple[str, Set[str]]:
         selected = list(self.settings.get("mdx_stems_selected") or [])
         if not selected:
@@ -887,10 +932,10 @@ class SaveStemsSection:
         primary_on = bool(self.settings.get(self._primary_key))
         secondary_on = bool(self.settings.get(self._secondary_key))
 
-        if VOCAL_STEM in stem_set:
-            if secondary_on and not primary_on and selected_set == {VOCAL_STEM}:
+        if self._vocal_stem_in_subset() and self._selection_matches_vocal_stem(selected_set):
+            if secondary_on and not primary_on:
                 return _QUICK_INSTRUMENTAL, selected_set
-            if primary_on and not secondary_on and selected_set == {VOCAL_STEM}:
+            if primary_on and not secondary_on:
                 return _QUICK_VOCALS, selected_set
         if not selected_set or selected_set >= stem_set:
             if not primary_on and not secondary_on:
@@ -900,9 +945,9 @@ class SaveStemsSection:
     def _sync_subset_from_settings(self) -> None:
         mode, selected = self._stored_subset_selection()
         self._subset_mode = mode
-        if VOCAL_STEM in self._subset_stems:
+        if self._vocal_stem_in_subset():
             self._quick_export.set_active(mode if mode != "custom" else _QUICK_ALL)
-        self._subset.set_selection(selected, full_stems=self._subset_stems)
+        self._apply_subset_chip_selection(mode, selected)
         self._apply_subset_dimming()
 
     def _persist_subset(self) -> None:
@@ -944,7 +989,9 @@ class SaveStemsSection:
         selected = self._subset.selected_stems()
         if not selected:
             return "Exporting all stems"
-        return "Exporting " + ", ".join(stem_display_label(stem) for stem in selected)
+        return "Exporting " + ", ".join(
+            stem_display_label(stem, overrides=self._stem_label_overrides) for stem in selected
+        )
 
     def _demucs_focus_stem_list(self) -> List[str]:
         return list(self._demucs_focus._focus_map.values())
@@ -1036,8 +1083,19 @@ class SaveStemsSection:
         try:
             if self._subset_mode == _QUICK_ALL:
                 self._subset.set_selection(set(), full_stems=self._subset_stems)
-            elif self._subset_mode in (_QUICK_INSTRUMENTAL, _QUICK_VOCALS):
-                self._subset.set_selection({VOCAL_STEM}, full_stems=self._subset_stems)
+            elif self._subset_mode == _QUICK_INSTRUMENTAL:
+                self._subset.set_selection(
+                    set(),
+                    full_stems=self._subset_stems,
+                    highlight_all_when_empty=False,
+                )
+            elif self._subset_mode == _QUICK_VOCALS:
+                vocal = self._vocal_stem_in_subset()
+                self._subset.set_selection(
+                    {vocal} if vocal else set(),
+                    full_stems=self._subset_stems,
+                    highlight_all_when_empty=False,
+                )
         finally:
             self._loading = False
         self._apply_subset_dimming()

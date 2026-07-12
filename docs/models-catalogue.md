@@ -1,6 +1,6 @@
 # UVR Model Catalogue (TRvlvr + Politrees)
 
-Generated: 2026-07-12 09:56 UTC by `scripts/generate_models_catalogue.py`.
+Generated: 2026-07-12 15:47 UTC by `scripts/generate_models_catalogue.py`.
 
 Regenerate after catalogue updates:
 
@@ -23,7 +23,7 @@ and [upseem/uvr5-cli-no-ui models.txt](https://github.com/upseem/uvr5-cli-no-ui/
 
 Instrumental Mel-Band / BS models often use `target_instrument: other` with
 `instruments: [other, vocals]`. That is a **2-stem vocal/instrumental** split.
-The GUI should show **Lead Vocals** / **Mix minus Lead Vocals**, not Demucs Other.
+The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Demucs Other.
 
 ## Summary
 
@@ -193,7 +193,7 @@ The GUI should show **Lead Vocals** / **Mix minus Lead Vocals**, not Demucs Othe
 | Roformer | MelBand Roformer \| Karaoke by Gabox (beta) | karaoke | Karaoke backing (Instrumental primary; complement … | vocal_target | Vocals | — |
 | Roformer | MelBand Roformer \| Karaoke by becruily | karaoke | Karaoke backing (Instrumental primary; complement … | two_stem | Vocals | — |
 | Roformer | MelBand Roformer \| SDR 1143 by Viperx | vocals | Vocals (complement = Instrumental) | vocal_target | Vocals | — |
-| Roformer | MelBand Roformer \| Small by Aname | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | two_stem | Instrumental | — |
+| Roformer | MelBand Roformer \| Small by Aname | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
 | Roformer | MelBand Roformer \| Vocals Bleedless by Aname | special_fx | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer \| Vocals Fullness by Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer \| Vocals Fullness v1 by Gabox | vocals | Vocals (complement = Instrumental) | vocal_target | Vocals | — |
@@ -262,7 +262,7 @@ Roformer karaoke yamls typically target **vocals** (lead) with instrumental comp
 These models are **instrumental-first** in practice. The training yaml names the
 native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 `other`, which previously showed as Demucs-style “Other” in the GUI. Relabel to
-**Lead Vocals** / **Mix minus Lead Vocals** for the complement stem.
+**Vocals** / **Instrumental** (yaml `other` is the backing track).
 
 | Model | Config | Instruments | Best result |
 | --- | --- | --- | --- |
@@ -1093,7 +1093,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Primary stem (backend):** `drums`
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: drums, bass, other, vocals
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** remote_yaml:config_BandSplit_Roformer_4stems_FT_by_SYH99999.yaml
 
 ### BandSplit Roformer | Chorus Male-Female by Sucial
@@ -1137,9 +1137,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `other`
 - **Best result:** Instrumental (yaml `other`; complement = vocals)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_BandSplit-Roformer_FNO_by-Unwa.yaml
-- **Note:** Expected: inst models use yaml stem `other` (not Demucs Other)
+- **Note:** Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)
 
 ### BandSplit Roformer | Inst-EXP-Value-Residual by Unwa
 
@@ -1153,7 +1153,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Vocals, Instrumental
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_bs_roformer_inst_exp_vrl.yaml
 
 ### BandSplit Roformer | Karaoke Frazer by becruily
@@ -1196,9 +1196,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `other`
 - **Best result:** Instrumental (yaml `other`; complement = vocals)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_BandSplit-Roformer_Resurrection_Instrumental_by-Unwa.yaml
-- **Note:** Expected: inst models use yaml stem `other` (not Demucs Other)
+- **Note:** Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)
 
 ### BandSplit Roformer | Resurrection Vocals by Unwa
 
@@ -1212,7 +1212,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_BandSplit-Roformer_Resurrection_Vocals_by-Unwa.yaml
 
 ### BandSplit Roformer | Revive by Unwa
@@ -1227,7 +1227,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_bs_roformer_revive_by_unwa.yaml
 
 ### BandSplit Roformer | Revive v2 by Unwa
@@ -1242,7 +1242,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_bs_roformer_revive_by_unwa.yaml
 
 ### BandSplit Roformer | Revive v3 by Unwa
@@ -1257,7 +1257,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_bs_roformer_revive_by_unwa.yaml
 
 ### BandSplit Roformer | SDR 1053 by Viperx
@@ -1319,7 +1319,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Primary stem (backend):** `bass`
 - **Instruments:** bass, drums, other, vocals, guitar, piano
 - **Best result:** Multi-stem: bass, drums, other, vocals, guitar, piano
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** remote_yaml:config_BandSplit-Roformer_SW_by-jarredou.yaml
 - **Note:** Intent inferred from metadata (multi_stem)
 
@@ -1350,7 +1350,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_big_beta4.yaml
 - **Note:** Community ref: vocals* (12.5), other
 
@@ -1366,7 +1366,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_big_beta5e.yaml
 - **Note:** Community ref: vocals* (12.4), other
 
@@ -1382,7 +1382,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_big_beta6.yaml
 
 ### MelBand Roformer Kim | Big Beta v6x FT by Unwa
@@ -1397,7 +1397,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_big_beta6x.yaml
 
 ### MelBand Roformer Kim | Big SYHFT v1 by SYH99999
@@ -1412,7 +1412,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_vocals_big_v1_ft.yaml
 - **Note:** Community ref: vocals* (12.3), other
 
@@ -1428,7 +1428,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:config_melband_roformer_kim_ft_unwa.yaml
 - **Note:** Community ref: vocals* (12.4), other
 
@@ -1444,7 +1444,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:config_melband_roformer_kim_ft_unwa.yaml
 
 ### MelBand Roformer Kim | FT v2 by Unwa
@@ -1459,7 +1459,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:config_melband_roformer_kim_ft_unwa.yaml
 
 ### MelBand Roformer Kim | Inst v1 by Unwa
@@ -1474,10 +1474,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** other, vocals
 - **Target instrument:** `other`
 - **Best result:** Instrumental (yaml `other`; complement = vocals)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** politrees_mdx_hash
 - **Note:** Community ref: instrumental* (15.9), vocals (9.8)
-- **Note:** Expected: inst models use yaml stem `other` (not Demucs Other)
+- **Note:** Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)
 
 ### MelBand Roformer Kim | Inst v1e Plus by Unwa
 
@@ -1491,9 +1491,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** other, vocals
 - **Target instrument:** `other`
 - **Best result:** Instrumental (yaml `other`; complement = vocals)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:config_melband_roformer_inst.yaml
-- **Note:** Expected: inst models use yaml stem `other` (not Demucs Other)
+- **Note:** Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)
 
 ### MelBand Roformer Kim | Inst v1e by Unwa
 
@@ -1507,10 +1507,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** other, vocals
 - **Target instrument:** `other`
 - **Best result:** Instrumental (yaml `other`; complement = vocals)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:config_melband_roformer_inst.yaml
 - **Note:** Community ref: instrumental* (15.8), vocals (9.6)
-- **Note:** Expected: inst models use yaml stem `other` (not Demucs Other)
+- **Note:** Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)
 
 ### MelBand Roformer Kim | Inst v2 by Unwa
 
@@ -1524,7 +1524,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_v2.yaml
 - **Note:** Community ref: instrumental* (16.1), vocals (10.3)
 
@@ -1569,7 +1569,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_vocals_ft.yaml
 - **Note:** Community ref: vocals* (8.0), other
 
@@ -1585,7 +1585,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_vocals_ft.yaml
 - **Note:** Community ref: vocals* (8.6), other
 
@@ -1601,7 +1601,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_vocals_ft.yaml
 - **Note:** Community ref: vocals* (8.5), other
 
@@ -1617,7 +1617,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_vocals_ft.yaml
 - **Note:** Community ref: vocals* (9.5), other
 
@@ -1633,7 +1633,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_vocals_fullness_aname.yaml
 
 ### MelBand Roformer Kim | Vocals Fullness v2 by Aname
@@ -1648,7 +1648,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_vocals_fullness_aname.yaml
 
 ### MelBand Roformer Kim | Vocals v1 by Aname
@@ -1663,7 +1663,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_vocals_fullness_aname.yaml
 
 ### MelBand Roformer Kim | Vocals v2 by Aname
@@ -1678,7 +1678,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_vocals_fullness_aname.yaml
 
 ### MelBand Roformer Kim | Vocals v3 by Aname
@@ -1693,7 +1693,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_vocals_fullness_aname.yaml
 
 ### MelBand Roformer | 4-stems FT Large v1 by SYH99999
@@ -1707,7 +1707,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Primary stem (backend):** `drums`
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: drums, bass, other, vocals
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** remote_yaml:config_MelBand_Roformer_4stems_FT_Large_by_SYH99999.yaml
 
 ### MelBand Roformer | 4-stems FT Large v2 by SYH99999
@@ -1721,7 +1721,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Primary stem (backend):** `drums`
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: drums, bass, other, vocals
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** remote_yaml:config_MelBand_Roformer_4stems_FT_Large_by_SYH99999.yaml
 
 ### MelBand Roformer | 4-stems Large v1 by Aname
@@ -1735,7 +1735,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Primary stem (backend):** `drums`
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: drums, bass, other, vocals
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** remote_yaml:config_MelBand_Roformer_4stems_Large_v1_by_Aname.yaml
 
 ### MelBand Roformer | 4-stems XL v1 by Aname
@@ -1749,7 +1749,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Primary stem (backend):** `drums`
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: drums, bass, other, vocals
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** remote_yaml:config_MelBand_Roformer_4stems_XL_v1_by_Aname.yaml
 
 ### MelBand Roformer | Aspiration Less Aggressive by Sucial
@@ -1806,7 +1806,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Bleed
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_melband_roformer_bleed_suppressor_v1.yaml
 - **Note:** Community ref: instrumental*, bleed
 
@@ -1982,7 +1982,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** User picks Vocals or Instrumental (dual 2-stem)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_MelBand-Roformer_Duality_v1_by-Aname.yaml
 
 ### MelBand Roformer | Guitar by becruily
@@ -2011,7 +2011,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Instrumental Bleedless v2 by Gabox
@@ -2026,7 +2026,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Instrumental DeNoise-DeBleed by Gabox
@@ -2041,7 +2041,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Instrumental Fullness v1 by Gabox
@@ -2101,7 +2101,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Instrumental Fullness v5 Noise by Gabox
@@ -2116,7 +2116,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Instrumental Fullness v5 by Gabox
@@ -2146,7 +2146,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Instrumental Fullness v6 by Gabox
@@ -2176,7 +2176,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Instrumental Fullness v7 by Gabox
@@ -2236,7 +2236,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Instrumental by becruily
@@ -2251,7 +2251,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_melband_roformer_instrumental_becruily.yaml
 
 ### MelBand Roformer | Instrumental v1 by Gabox
@@ -2266,7 +2266,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Instrumental v2 by Gabox
@@ -2281,7 +2281,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Instrumental v3 by Gabox
@@ -2296,7 +2296,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Karaoke Fusion Aggressive by Gonza
@@ -2441,14 +2441,14 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `melband_roformer_small_by_aname.ckpt`
 - **Config:** `config_melband_roformer_small_by_aname.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** dual_voc_inst
+- **Name intent:** instrumental
 - **Backend focus:** two_stem
 - **Primary stem (backend):** `Instrumental`
 - **Instruments:** Instrumental, Vocals
-- **Best result:** User picks Vocals or Instrumental (dual 2-stem)
-- **Save stems UI:** UI: Vocals / Instrumental (either stem is a valid primary export)
+- **Best result:** Instrumental (+ Vocals complement)
+- **Save stems UI:** UI: Instrumental / complement
 - **Metadata:** remote_yaml:config_melband_roformer_small_by_aname.yaml
-- **Note:** Intent inferred from metadata (dual_voc_inst)
+- **Note:** Intent inferred from metadata (instrumental)
 
 ### MelBand Roformer | Vocals Bleedless by Aname
 
@@ -2477,7 +2477,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_vocals_fullness_aname.yaml
 
 ### MelBand Roformer | Vocals Fullness v1 by Gabox
@@ -2597,7 +2597,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_vocals_kim.yaml
 - **Note:** Community ref: vocals* (12.6), other
 
@@ -2613,7 +2613,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_vocals_becruily.yaml
 
 ### MelBand Roformer | instrumental Metal preview by Mesk
@@ -2628,9 +2628,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, other
 - **Target instrument:** `other`
 - **Best result:** Instrumental (yaml `other`; complement = vocals)
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_metal_prev_by_mesk.yaml
-- **Note:** Expected: inst models use yaml stem `other` (not Demucs Other)
+- **Note:** Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)
 
 ## SCNet (detail)
 
@@ -2644,7 +2644,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Primary stem (backend):** `Drums`
 - **Instruments:** Drums, Bass, Other, Vocals
 - **Best result:** Multi-stem: Drums, Bass, Other, Vocals
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:config_musdb18_scnet_large.yaml
 
 ### 4-stems SCNet Large by starrytong
@@ -2657,7 +2657,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Primary stem (backend):** `Drums`
 - **Instruments:** Drums, Bass, Other, Vocals
 - **Best result:** Multi-stem: Drums, Bass, Other, Vocals
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:config_musdb18_scnet_large_starrytong.yaml
 
 ### 4-stems SCNet MUSDB18 by starrytong
@@ -2670,7 +2670,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Primary stem (backend):** `Drums`
 - **Instruments:** Drums, Bass, Other, Vocals
 - **Best result:** Multi-stem: Drums, Bass, Other, Vocals
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** politrees_mdx_hash
 
 ### 4-stems SCNet XL
@@ -2683,7 +2683,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Primary stem (backend):** `Drums`
 - **Instruments:** Drums, Bass, Other, Vocals
 - **Best result:** Multi-stem: Drums, Bass, Other, Vocals
-- **Save stems UI:** UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)
+- **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:config_musdb18_scnet_xl.yaml
 
 ## Demucs (detail)

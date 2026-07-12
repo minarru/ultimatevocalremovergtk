@@ -23,6 +23,7 @@ from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat const
 from . import paths
 from .mdx_config_fetch import ensure_mdx_c_config
 from .mdx_c_registry import compute_checkpoint_hash, display_name_for_basename, resolve_mdx_model_basename, try_register_from_catalog
+from .model_stem_semantics import resolve_is_karaoke
 from .audio_io import resolve_wav_type_set
 from .settings import SettingsModel
 
@@ -544,7 +545,6 @@ class ModelData:
                         self.mdx_n_fft_scale_set = self.model_data["mdx_n_fft_scale_set"]
                         self.primary_stem = self.model_data["primary_stem"]
                         self.primary_stem_native = self.model_data["primary_stem"]
-                        self.check_if_karaokee_model()
                     self.secondary_stem = secondary_stem(str(self.primary_stem or ""))
                 else:
                     self.model_status = False
@@ -568,6 +568,11 @@ class ModelData:
             self.model_basename = os.path.splitext(os.path.basename(self.model_path))[0]
         else:
             self.model_basename = None
+
+        if self.process_method == MDX_ARCH_TYPE and self.model_data:
+            self.apply_karaoke_metadata(
+                str(self.model_data.get("config_yaml") or "")
+            )
 
         self.pre_proc_model_activated = self.pre_proc_model_activated if not self.is_secondary_model else False
 
@@ -722,6 +727,24 @@ class ModelData:
             self.is_bv_model = self.model_data[IS_BV_MODEL]
         if IS_BV_MODEL_REBAL in self.model_data.keys() and self.is_bv_model:
             self.bv_model_rebalance = self.model_data[IS_BV_MODEL_REBAL]
+
+    def apply_karaoke_metadata(self, config_yaml: str = "") -> None:
+        """Set ``is_karaoke`` from hash JSON and catalogue/config name hints."""
+        self.check_if_karaokee_model()
+        if self.is_karaoke:
+            return
+        weight_basename = getattr(self, "model_basename", None)
+        if not weight_basename:
+            model_path = getattr(self, "model_path", None) or ""
+            if model_path:
+                weight_basename = os.path.splitext(os.path.basename(model_path))[0]
+        if resolve_is_karaoke(
+            model_data=self.model_data,
+            model_name=str(self.model_name or ""),
+            config_yaml=config_yaml,
+            weight_basename=str(weight_basename or ""),
+        ):
+            self.is_karaoke = True
 
     def get_mdx_model_path(self):
         resolved_name = resolve_mdx_model_basename(

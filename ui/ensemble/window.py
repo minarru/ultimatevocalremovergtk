@@ -366,7 +366,7 @@ class EnsemblePage:
         self._update_stems_group_metadata()
 
     def _update_stems_group_metadata(self) -> None:
-        line1 = self.save_stems.export_summary()
+        line1 = "\n".join(self.save_stems.export_description_lines())
         workload = estimate_workload(
             self.settings,
             method_key=ENSEMBLE_MODE,

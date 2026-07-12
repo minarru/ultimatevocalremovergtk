@@ -30,6 +30,8 @@ from bundled.constants import (
     VOL_COMPENSATION,
 )
 
+from core.model_stem_semantics import recommended_export_note, stem_display_overrides
+
 from .base import MethodView, register_method_view
 from ..help_text import MDX_INCLUDE_COMPLEMENT_HELP, MDX_OVERLAP_HINT
 from ..widgets.rows import (
@@ -129,6 +131,8 @@ class MDXView(MethodView):
                 primary_key=self.primary_only_key,
                 secondary_key=self.secondary_only_key,
                 has_model=True,
+                stem_label_overrides=stem_display_overrides(model),
+                export_semantics_note=recommended_export_note(model),
             )
         else:
             super()._configure_save_stems(model)

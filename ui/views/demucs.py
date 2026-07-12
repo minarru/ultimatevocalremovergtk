@@ -18,6 +18,8 @@ from bundled.constants import (
     VOCAL_STEM,
 )
 
+from core.model_stem_semantics import recommended_export_note
+
 from ..help_text import DEMUCS_CHUNK_HINT
 from ..widgets.stem_only import _FOCUS_INSTRUMENTAL, _FOCUS_VOCALS
 from .base import MethodView, register_method_view
@@ -72,6 +74,7 @@ class DemucsView(MethodView):
             secondary_key=self.secondary_only_key,
             has_model=True,
             demucs_stem_count=stem_count,
+            export_semantics_note=recommended_export_note(model),
         )
 
     def save_options(self):

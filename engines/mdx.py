@@ -22,6 +22,7 @@ from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
 from core.gpu_backend import clear_torch_cache, resolve_inference_backend
+from core.model_stem_semantics import is_vocal_target
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
 
@@ -274,7 +275,8 @@ class SeperateMDXC(SeperateAttributes):
         # treated as a vocals+instrumental model: ``demix`` derives the
         # instrumental as ``mixture - vocals``. Classic (non-roformer) MDX-C
         # models are excluded so their original single-stem output is preserved.
-        self.is_vocal_main_target = self.is_roformer and self.mdx_c_configs.training.target_instrument == VOCAL_STEM
+        target = str(getattr(self.mdx_c_configs.training, "target_instrument", None) or "")
+        self.is_vocal_main_target = self.is_roformer and is_vocal_target(target)
         samplerate = 44100
         sources = None
 
@@ -630,9 +632,16 @@ class SeperateMDXC(SeperateAttributes):
                 if S > 1 or self.is_vocal_main_target:
                     sources = {k: pitch_fix(v) if self.is_pitch_change else v for k, v in zip(self.mdx_c_configs.training.instruments, estimated_sources.cpu().detach().numpy())}
                     if self.is_vocal_main_target:
-                        if sources[VOCAL_STEM].shape[1] != org_mix.shape[1]:
-                            sources[VOCAL_STEM] = spec_utils.match_array_shapes(sources[VOCAL_STEM], org_mix)
-                        sources[INST_STEM] = org_mix - sources[VOCAL_STEM]
+                        vocal_key = next(
+                            (key for key in sources if is_vocal_target(key)),
+                            None,
+                        )
+                        if vocal_key is not None:
+                            if sources[vocal_key].shape[1] != org_mix.shape[1]:
+                                sources[vocal_key] = spec_utils.match_array_shapes(
+                                    sources[vocal_key], org_mix
+                                )
+                            sources[INST_STEM] = org_mix - sources[vocal_key]
 
                     return sources
                 else:

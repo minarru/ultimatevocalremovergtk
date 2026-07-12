@@ -60,7 +60,8 @@ from ..widgets.rows import (
     set_scale_row_value,
     use_wrapping_list,
 )
-from ..widgets.stem_only import SaveStemsSection, roformer_lead_vocal_label_overrides
+from ..widgets.stem_only import SaveStemsSection
+from core.model_stem_semantics import recommended_export_note, stem_display_overrides
 from core.run_estimate import estimate_workload, format_workload_line
 
 # Per-stem secondary-model slots: (settings-key slot, display pair, primary stem,
@@ -291,11 +292,12 @@ class MethodView:
             primary_key=self.primary_only_key,
             secondary_key=self.secondary_only_key,
             has_model=True,
-            stem_label_overrides=roformer_lead_vocal_label_overrides(model),
+            stem_label_overrides=stem_display_overrides(model),
+            export_semantics_note=recommended_export_note(model),
         )
 
     def _update_stem_group_metadata(self) -> None:
-        line1 = self.save_stems.export_summary()
+        line1 = "\n".join(self.save_stems.export_description_lines())
         workload = estimate_workload(
             self.settings,
             method_key=self.method_key,

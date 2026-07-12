@@ -24,6 +24,16 @@ from bundled.constants import INST_STEM, VOCAL_STEM  # noqa: E402
 from core import paths  # noqa: E402
 from core.mdx_c_registry import compute_checkpoint_hash, infer_mdx_c_architecture, sanitize_catalogue_label  # noqa: E402
 from core.model_data import load_mdx_c_config, load_model_hash_data, _mdx_c_training  # noqa: E402
+from core.model_stem_semantics import (  # noqa: E402
+    INTENT_INSTRUMENTAL,
+    INTENT_UNKNOWN,
+    backend_focus_label,
+    export_intent_from_fields,
+    infer_name_intent_from_label,
+    intent_from_primary_stem,
+    is_dual_stem_weight,
+    normalize_stem_label,
+)
 from core.politrees_catalog import merge_politrees_catalogues  # noqa: E402
 
 OUTPUT_PATH = os.path.join(ROOT, "docs", "models-catalogue.md")
@@ -49,91 +59,6 @@ _POLITREES_KEYS = (
     "scnet_download_list",
     "bandit_download_list",
 )
-
-_VOCAL_HINTS = (
-    "vocal",
-    "voc ",
-    " voc",
-    "lead",
-    "chorus",
-    "aspiration",
-    "bve",
-    "syhft",
-    "bleedless",
-    "fullness",
-    "revive",
-    "resurrection vocals",
-    "male-female",
-    "male female",
-    "phantom",
-    "centre",
-    "center",
-    "big beta",
-    "big syhft",
-    " kim | ft",
-    "| ft ",
-    "sdr 1143",
-    "sdr 1296",
-    "sdr 1297",
-)
-_INST_HINTS = (
-    "inst",
-    "instrumental",
-    "instr",
-    "hp-uvr",
-    "hp2-uvr",
-    "hp uvr",
-    "wind_inst",
-    "crowd",
-    "fno",
-    "guitar",
-    "metal",
-    "drumsep",
-    "drum sep",
-    "instvoc",
-    "mgm",
-    "sp-uvr",
-    "sp_uvr",
-)
-_DUAL_VOC_INST_LABELS = (
-    "mdx-net main",
-    "uvr-mdx-net main",
-)
-_SPECIAL_HINTS = (
-    "dereverb",
-    "de-reverb",
-    "deverb",
-    "denoise",
-    "de-echo",
-    "deecho",
-    "reverb",
-    "echo",
-    "noise",
-    "bleed",
-    "suppressor",
-)
-_MULTI_HINTS = (
-    "4-stem",
-    "4 stem",
-    "4stems",
-    "scnet",
-    "kuielab",
-    "demucs",
-    "bandit",
-    "drums",
-    "bass",
-    "speech",
-    "music",
-    "effects",
-    "sfx",
-    "ensemble",
-)
-_DUAL_STEM_WEIGHTS = frozenset(
-    {
-        "uvr_mdxnet_main.onnx",
-    }
-)
-_DRUM_BASS_HINTS = ("drum-bass", "no drum", "drum bass", "sdr 1053")
 
 
 @dataclass
@@ -262,22 +187,7 @@ def _scan_weight_hashes(*weight_dirs: str) -> Dict[str, str]:
 
 
 def _intent_from_primary_stem(primary: str, *, is_karaoke: bool = False) -> str:
-    if not primary:
-        return ""
-    if is_karaoke:
-        return "karaoke"
-    low = primary.lower()
-    if low in ("vocals", "vocal"):
-        return "vocals"
-    if low in ("instrumental", "inst"):
-        return "instrumental"
-    if "drum" in low and "bass" in low:
-        return "drum_bass_sep"
-    if low in ("drums", "bass", "guitar", "piano", "other"):
-        return "multi_stem"
-    if low.startswith("no ") or low in ("noise", "reverb", "dry"):
-        return "special_fx"
-    return ""
+    return intent_from_primary_stem(primary, is_karaoke=is_karaoke) or ""
 
 
 def _intent_from_community_stems(stems_text: str) -> Tuple[str, str]:
@@ -368,118 +278,27 @@ def _build_catalogue_context() -> CatalogueContext:
 
 
 def _infer_name_intent(label: str) -> str:
-    text = label.lower()
-    if "karaoke" in text:
-        return "karaoke"
-    if any(h in text for h in _DRUM_BASS_HINTS):
-        return "drum_bass_sep"
-    if "instvoc" in text or "duality" in text:
-        return "dual_voc_inst"
-    if any(pattern in text for pattern in _DUAL_VOC_INST_LABELS) and "inst main" not in text:
-        return "dual_voc_inst"
-    if any(h in text for h in _MULTI_HINTS):
-        return "multi_stem"
-    if any(h in text for h in _SPECIAL_HINTS):
-        return "special_fx"
-    inst = any(h in text for h in _INST_HINTS)
-    vocal = any(h in text for h in _VOCAL_HINTS)
-    if inst and vocal:
-        return "dual_voc_inst"
-    if inst:
-        return "instrumental"
-    if vocal:
-        return "vocals"
-    if "mdx-net 1" in text or "mdx-net 2" in text or "mdx-net 3" in text:
-        return "vocals"
-    if "mdxnet_9482" in text or "d1581" in text:
-        return "vocals"
-    return "unknown"
+    return infer_name_intent_from_label(label)
 
 
 def _infer_intent_from_metadata(entry: ModelEntry) -> str:
-    if entry.is_karaoke:
-        return "karaoke"
-    if entry.target_instrument:
-        t = entry.target_instrument.lower()
-        if t in ("vocals", "vocal"):
-            return "vocals"
-        if t in ("instrumental", "inst", "other"):
-            return "instrumental"
-        if "drum" in t and "bass" in t:
-            return "drum_bass_sep"
-        if t in ("drums", "bass", "guitar", "piano"):
-            return "multi_stem"
-        if t.startswith("no ") or t in ("noise", "reverb", "dry"):
-            return "special_fx"
-    lowered = {s.lower() for s in entry.instruments}
-    if {"no drum-bass", "drum-bass"} <= lowered or {"no drum-bass", "drum-bass"} & lowered:
-        return "drum_bass_sep"
-    if len(entry.instruments) >= 3:
-        return "multi_stem"
-    if len(entry.instruments) == 2:
-        if lowered >= {"vocals", "other"} or lowered >= {"vocals", "instrumental"}:
-            if entry.target_instrument:
-                return _infer_intent_from_metadata(
-                    ModelEntry(
-                        source="",
-                        family="",
-                        catalogue_label="",
-                        weight_file="",
-                        target_instrument=entry.target_instrument,
-                        instruments=entry.instruments,
-                    )
-                )
-            return "dual_voc_inst"
-    if entry.primary_stem:
-        intent = _intent_from_primary_stem(entry.primary_stem, is_karaoke=entry.is_karaoke)
-        if intent:
-            return intent
-    return ""
+    intent = export_intent_from_fields(
+        primary_stem=entry.primary_stem,
+        target=entry.target_instrument,
+        instruments=entry.instruments,
+        is_karaoke=entry.is_karaoke,
+        weight_basename=entry.weight_file,
+        catalogue_label=entry.catalogue_label,
+    )
+    return intent if intent != INTENT_UNKNOWN else ""
 
 
 def _normalize_stem(stem: str) -> str:
-    if not stem:
-        return ""
-    low = stem.lower()
-    if low in ("vocals", "vocal", "voc"):
-        return VOCAL_STEM
-    if low in ("instrumental", "inst"):
-        return INST_STEM
-    if low == "other":
-        return "Other"
-    return stem
+    return normalize_stem_label(stem)
 
 
 def _backend_focus(primary: str, target: str, instruments: List[str], *, is_karaoke: bool) -> str:
-    if is_karaoke:
-        if _normalize_stem(primary) == VOCAL_STEM or _normalize_stem(target) == VOCAL_STEM:
-            return "karaoke_vocal_primary"
-        return "karaoke_instrumental_primary"
-    if target:
-        norm = _normalize_stem(target)
-        if norm == VOCAL_STEM:
-            return "vocal_target"
-        if norm == INST_STEM:
-            return "instrumental_target"
-        if target.lower() == "other":
-            return "instrumental_target_other_yaml"
-        if "drum" in target.lower() and "bass" in target.lower():
-            return "drum_bass_target"
-        return f"single_target:{target}"
-    lowered = {s.lower() for s in instruments}
-    if {"no drum-bass", "drum-bass"} <= lowered or {"no drum-bass", "drum-bass"} & lowered:
-        return "drum_bass_sep"
-    if len(instruments) >= 3:
-        return "multi_stem"
-    if len(instruments) == 2:
-        return "two_stem"
-    if primary:
-        norm = _normalize_stem(primary)
-        if norm == VOCAL_STEM:
-            return "vocal_primary"
-        if norm == INST_STEM:
-            return "instrumental_primary"
-    return "unknown"
+    return backend_focus_label(primary, target, instruments, is_karaoke=is_karaoke)
 
 
 def _best_result(entry: ModelEntry) -> str:
@@ -491,7 +310,7 @@ def _best_result(entry: ModelEntry) -> str:
         primary = entry.target_instrument or entry.primary_stem or "No Drum-Bass"
         return f"{primary} (drum/bass separation; complement = Drum-Bass)"
     if entry.name_intent == "dual_voc_inst":
-        if entry.weight_file.lower() in _DUAL_STEM_WEIGHTS:
+        if is_dual_stem_weight(entry.weight_file):
             return "Vocals or Instrumental — both are first-class 2-stem exports"
         return "User picks Vocals or Instrumental (dual 2-stem)"
     if entry.name_intent == "multi_stem" and entry.instruments:
@@ -519,8 +338,12 @@ def _best_result(entry: ModelEntry) -> str:
 
 
 def _ui_note(entry: ModelEntry) -> str:
-    if entry.instruments and {"vocals", "other"} <= {s.lower() for s in entry.instruments}:
-        return "UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)"
+    if (
+        len(entry.instruments) == 2
+        and entry.instruments
+        and {"vocals", "other"} <= {s.lower() for s in entry.instruments}
+    ):
+        return "UI: Vocals / Instrumental (yaml `other` is the backing track)"
     if entry.name_intent == "drum_bass_sep":
         return "UI: No Drum-Bass / Drum-Bass subset"
     if entry.name_intent == "dual_voc_inst":
@@ -528,7 +351,7 @@ def _ui_note(entry: ModelEntry) -> str:
     if entry.target_instrument and entry.target_instrument.lower() in ("vocals", "vocal"):
         return "UI: Vocals / Instrumental"
     if entry.target_instrument and entry.target_instrument.lower() in ("instrumental", "inst", "other"):
-        return "UI: Instrumental / Vocals (or Lead Vocals relabel for `other`)"
+        return "UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)"
     if entry.primary_stem in (VOCAL_STEM, INST_STEM):
         return f"UI: {entry.primary_stem} / complement"
     if entry.stem_count >= 3:
@@ -732,7 +555,7 @@ def _apply_community_ref(meta: ModelEntry, ref: CommunityRef) -> None:
         meta.stem_count = max(meta.stem_count, 2)
     if not meta.metadata_source or meta.metadata_source == "unavailable":
         meta.metadata_source = "community_models.txt"
-    if meta.weight_file.lower() in _DUAL_STEM_WEIGHTS:
+    if is_dual_stem_weight(meta.weight_file):
         meta.name_intent = "dual_voc_inst"
         meta.notes.append("Both Vocals and Instrumental are first-class exports")
     elif ref.intent and meta.name_intent == "unknown":
@@ -753,7 +576,7 @@ def _finalize_entry(meta: ModelEntry) -> None:
     meta.ui_export_note = _ui_note(meta)
     meta.flags = _flag_mismatches(meta)
     if meta.target_instrument.lower() == "other" and meta.name_intent == "instrumental":
-        meta.notes.append("Expected: inst models use yaml stem `other` (not Demucs Other)")
+        meta.notes.append("Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)")
 
 
 def _parse_catalogue_entry(
@@ -835,7 +658,7 @@ def _parse_catalogue_entry(
                 meta.metadata_source = src
                 meta.stem_count = 2
 
-    if weight.lower() in _DUAL_STEM_WEIGHTS:
+    if is_dual_stem_weight(weight):
         meta.name_intent = "dual_voc_inst"
         if "Both Vocals and Instrumental are first-class exports" not in meta.notes:
             meta.notes.append("Both Vocals and Instrumental are first-class exports")
@@ -987,7 +810,7 @@ def _render(entries: List[ModelEntry]) -> str:
         "",
         "Instrumental Mel-Band / BS models often use `target_instrument: other` with",
         "`instruments: [other, vocals]`. That is a **2-stem vocal/instrumental** split.",
-        "The GUI should show **Lead Vocals** / **Mix minus Lead Vocals**, not Demucs Other.",
+        "The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Demucs Other.",
         "",
         "## Summary",
         "",
@@ -1082,7 +905,7 @@ def _render(entries: List[ModelEntry]) -> str:
                 "These models are **instrumental-first** in practice. The training yaml names the",
                 "native output `other` (not `Instrumental`). Backend `primary_stem` is therefore",
                 "`other`, which previously showed as Demucs-style “Other” in the GUI. Relabel to",
-                "**Lead Vocals** / **Mix minus Lead Vocals** for the complement stem.",
+                "**Vocals** / **Instrumental** (yaml `other` is the backing track).",
                 "",
                 _md_table(
                     ["Model", "Config", "Instruments", "Best result"],

@@ -6,7 +6,6 @@ from bundled.constants import (
     BASS_STEM,
     DRUM_STEM,
     INST_STEM,
-    LEAD_VOCAL_STEM_LABEL,
     PRIMARY_STEM,
     SECONDARY_STEM,
     VOCAL_STEM,
@@ -55,16 +54,10 @@ class StemDisplayLabelTests(unittest.TestCase):
         labels = [option.display_label for option in options if option.settings_key]
         self.assertEqual(labels, ["Other", "Mix minus Other"])
 
-    def test_roformer_other_pair_uses_lead_vocal_labels(self):
+    def test_roformer_other_pair_uses_vocals_instrumental_labels(self):
         overrides = dict(_LEAD_VOCAL_PAIR_LABELS)
-        self.assertEqual(
-            stem_display_label("other", overrides=overrides),
-            f"Mix minus {LEAD_VOCAL_STEM_LABEL}",
-        )
-        self.assertEqual(
-            stem_display_label("No other", overrides=overrides),
-            LEAD_VOCAL_STEM_LABEL,
-        )
+        self.assertEqual(stem_display_label("other", overrides=overrides), INST_STEM)
+        self.assertEqual(stem_display_label("No other", overrides=overrides), VOCAL_STEM)
         options = build_stem_only_options(
             primary_stem="other",
             secondary_stem="No other",
@@ -73,12 +66,9 @@ class StemDisplayLabelTests(unittest.TestCase):
             stem_label_overrides=overrides,
         )
         labels = [option.display_label for option in options if option.settings_key]
-        self.assertEqual(
-            labels,
-            [LEAD_VOCAL_STEM_LABEL, f"Mix minus {LEAD_VOCAL_STEM_LABEL}"],
-        )
+        self.assertEqual(labels, [VOCAL_STEM, INST_STEM])
 
-    def test_roformer_lead_vocal_overrides_detects_vocals_other_yaml(self):
+    def test_roformer_vocals_other_overrides_only_for_two_stem_models(self):
         class _Training:
             instruments = ["other", "vocals"]
 
@@ -89,11 +79,21 @@ class StemDisplayLabelTests(unittest.TestCase):
             is_roformer = True
             mdx_c_configs = _Config()
 
-        self.assertEqual(
-            roformer_lead_vocal_label_overrides(_Model()),
-            _LEAD_VOCAL_PAIR_LABELS,
-        )
+        self.assertEqual(roformer_lead_vocal_label_overrides(_Model()), _LEAD_VOCAL_PAIR_LABELS)
         self.assertIsNone(roformer_lead_vocal_label_overrides(None))
+
+    def test_vocals_other_overrides_skipped_for_multi_stem_models(self):
+        class _Training:
+            instruments = ["other", "vocals", "drums", "bass"]
+
+        class _Config:
+            training = _Training()
+
+        class _Model:
+            is_roformer = True
+            mdx_c_configs = _Config()
+
+        self.assertIsNone(roformer_lead_vocal_label_overrides(_Model()))
 
 
 class BuildStemOnlyOptionsTests(unittest.TestCase):
@@ -176,10 +176,39 @@ class SaveStemsSectionTests(unittest.TestCase):
         )
         self.section.sync_from_settings()
         self.assertEqual(self.section._subset_mode, _QUICK_INSTRUMENTAL)
+        self.assertFalse(self.section._subset._chips[VOCAL_STEM].get_active())
+        self.assertFalse(self.section._subset.is_all_active())
         self.section.persist_to_settings()
         self.assertEqual(self.settings["mdx_stems_selected"], [VOCAL_STEM])
         self.assertTrue(self.settings["is_secondary_stem_only"])
         self.assertFalse(self.settings["is_primary_stem_only"])
+
+    def test_subset_quick_vocals_highlights_vocal_chip(self):
+        self.settings["is_primary_stem_only"] = True
+        self.settings["mdx_stems_selected"] = [VOCAL_STEM]
+        self.section.configure_subset(
+            stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM],
+            has_vocals=True,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        self.assertEqual(self.section._subset_mode, _QUICK_VOCALS)
+        self.assertTrue(self.section._subset._chips[VOCAL_STEM].get_active())
+
+    def test_subset_quick_instrumental_ui_clears_chips(self):
+        self.section.configure_subset(
+            stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM],
+            has_vocals=True,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section._quick_export.set_active(_QUICK_INSTRUMENTAL)
+        self.section._on_quick_export_changed()
+        self.assertFalse(self.section._subset._chips[VOCAL_STEM].get_active())
+        self.assertFalse(self.section._subset.is_all_active())
 
     def test_subset_custom_single_stem_persist(self):
         self.section.configure_subset(
