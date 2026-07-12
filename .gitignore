@@ -80,6 +80,10 @@ ui/data/icons/
 # Scripts only used locally
 scripts/*
 !scripts/sync-github-mirror.sh
+!scripts/generate_models_catalogue.py
+
+# Fetched Politrees yaml cache for catalogue regeneration
+docs/.yaml_cache/
 
 # Generated GResource manifest (rebuilt by resources/compile_resources.sh)
 resources/uvr.gresource.xml
