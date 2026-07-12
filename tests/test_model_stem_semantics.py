@@ -7,12 +7,16 @@ from core.model_stem_semantics import (
     INTENT_DUAL_VOC_INST,
     INTENT_INSTRUMENTAL,
     INTENT_KARAOKE,
+    INTENT_SPECIALTY_STEM,
+    INTENT_SPECIAL_FX,
     INTENT_VOCALS,
     VOCALS_OTHER_DISPLAY_OVERRIDES,
     export_intent_from_fields,
     export_intent_from_model,
     infer_is_karaoke_from_hints,
     infer_name_intent_from_label,
+    is_special_fx_stem,
+    is_specialty_instrument_pair,
     is_vocal_target,
     is_vocals_other_pair,
     recommended_export_note,
@@ -177,6 +181,84 @@ class ExportIntentFromModelTests(unittest.TestCase):
             model_name="VR Arch Single Model v5: 1_HP-UVR",
         )
         self.assertEqual(export_intent_from_model(model), INTENT_INSTRUMENTAL)
+
+
+class SpecialFxIntentTests(unittest.TestCase):
+    def test_bleedless_models_are_voc_or_inst_not_special_fx(self):
+        cases = {
+            "MelBand Roformer Kim | FT v2 Bleedless by Unwa": INTENT_VOCALS,
+            "MelBand Roformer | Vocals Bleedless by Aname": INTENT_VOCALS,
+            "MelBand Roformer | Instrumental Bleedless v1 by Gabox": INTENT_INSTRUMENTAL,
+            "MelBand Roformer | Instrumental Fullness v4 Noise by Gabox": INTENT_DUAL_VOC_INST,
+            "MelBand Roformer | Instrumental DeNoise-DeBleed by Gabox": INTENT_INSTRUMENTAL,
+            "MelBand Roformer | Bleed Suppressor v1 by Unwa & 97chris": INTENT_INSTRUMENTAL,
+        }
+        for label, expected in cases.items():
+            with self.subTest(label=label):
+                self.assertEqual(infer_name_intent_from_label(label), expected)
+
+    def test_subtraction_models_are_special_fx(self):
+        cases = {
+            "MDX-Net Model: UVR-MDX-NET Crowd HQ 1 By Aufr33": INTENT_SPECIAL_FX,
+            "VR Arch Single Model v5: 17_HP-Wind_Inst-UVR": INTENT_SPECIAL_FX,
+            "VR Arch Single Model v5: UVR-DeNoise by FoxJoy": INTENT_SPECIAL_FX,
+            "MelBand Roformer | DeReverb by anvuew": INTENT_SPECIAL_FX,
+        }
+        for label, expected in cases.items():
+            with self.subTest(label=label):
+                self.assertEqual(infer_name_intent_from_label(label), expected)
+
+    def test_crowd_extraction_is_specialty_not_subtraction(self):
+        self.assertEqual(
+            infer_name_intent_from_label("MelBand Roformer | Crowd by Aufr33 & Viperx"),
+            INTENT_SPECIALTY_STEM,
+        )
+
+    def test_noreverb_target_is_special_fx_from_fields(self):
+        self.assertEqual(
+            export_intent_from_fields(target="noreverb", catalogue_label=""),
+            INTENT_SPECIAL_FX,
+        )
+        self.assertTrue(is_special_fx_stem("noreverb"))
+        self.assertTrue(is_special_fx_stem("no crowd"))
+
+
+class SpecialtyStemIntentTests(unittest.TestCase):
+    def test_specialty_labels(self):
+        cases = {
+            "BandSplit Roformer | Chorus Male-Female by Sucial": INTENT_SPECIALTY_STEM,
+            "MelBand Roformer | Aspiration by Sucial": INTENT_SPECIALTY_STEM,
+            "MDX23C Model: MDX23C Phantom Centre extraction by wesleyr36": INTENT_SPECIALTY_STEM,
+            "MelBand Roformer | BVE by Gonza": INTENT_SPECIALTY_STEM,
+            "MelBand Roformer | Guitar by becruily": INTENT_SPECIALTY_STEM,
+            "MelBand Roformer | Crowd by Aufr33 & Viperx": INTENT_SPECIALTY_STEM,
+        }
+        for label, expected in cases.items():
+            with self.subTest(label=label):
+                self.assertEqual(infer_name_intent_from_label(label), expected)
+
+    def test_specialty_from_instruments(self):
+        self.assertEqual(
+            export_intent_from_fields(instruments=["male", "female"]),
+            INTENT_SPECIALTY_STEM,
+        )
+        self.assertTrue(is_specialty_instrument_pair(["aspiration", "other"]))
+
+    def test_special_fx_backend_focus(self):
+        from core.model_stem_semantics import backend_focus_label
+
+        self.assertEqual(
+            backend_focus_label("no echo", "", []),
+            "special_fx_primary:no echo",
+        )
+        self.assertEqual(
+            backend_focus_label("", "noreverb", ["noreverb", "reverb"]),
+            "special_fx_target:noreverb",
+        )
+        self.assertEqual(
+            backend_focus_label("", "", ["male", "female"]),
+            "specialty_two_stem",
+        )
 
 
 if __name__ == "__main__":

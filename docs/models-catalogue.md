@@ -1,6 +1,6 @@
 # UVR Model Catalogue (TRvlvr + Politrees)
 
-Generated: 2026-07-12 15:47 UTC by `scripts/generate_models_catalogue.py`.
+Generated: 2026-07-12 20:06 UTC by `scripts/generate_models_catalogue.py`.
 
 Regenerate after catalogue updates:
 
@@ -47,7 +47,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | VR Architecture | VR Arch Single Model v5: 14_SP-UVR-4B-44100-2 | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
 | VR Architecture | VR Arch Single Model v5: 15_SP-UVR-MID-44100-1 | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
 | VR Architecture | VR Arch Single Model v5: 16_SP-UVR-MID-44100-2 | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
-| VR Architecture | VR Arch Single Model v5: 17_HP-Wind_Inst-UVR | instrumental | instrumental | unknown | no woodwinds | — |
+| VR Architecture | VR Arch Single Model v5: 17_HP-Wind_Inst-UVR | special_fx | no woodwinds (mix minus woodwinds) | special_fx_primary:no woodwinds | no woodwinds | — |
 | VR Architecture | VR Arch Single Model v5: 1_HP-UVR | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
 | VR Architecture | VR Arch Single Model v5: 2_HP-UVR | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
 | VR Architecture | VR Arch Single Model v5: 3_HP-Vocal-UVR | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
@@ -58,24 +58,24 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | VR Architecture | VR Arch Single Model v5: 8_HP2-UVR | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
 | VR Architecture | VR Arch Single Model v5: 9_HP2-UVR | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
 | VR Architecture | VR Arch Single Model v5: UVR-BVE-4B_SN-44100-1 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
-| VR Architecture | VR Arch Single Model v5: UVR-De-Echo-Aggressive by FoxJoy | special_fx | special_fx | unknown | no echo | — |
-| VR Architecture | VR Arch Single Model v5: UVR-De-Echo-Normal by FoxJoy | special_fx | special_fx | unknown | no echo | — |
-| VR Architecture | VR Arch Single Model v5: UVR-DeEcho-Aggressive by FoxJoy | special_fx | special_fx | unknown | no echo | — |
-| VR Architecture | VR Arch Single Model v5: UVR-DeEcho-DeReverb by FoxJoy | special_fx | special_fx | unknown | no reverb | — |
-| VR Architecture | VR Arch Single Model v5: UVR-DeEcho-Normal by FoxJoy | special_fx | special_fx | unknown | no echo | — |
-| VR Architecture | VR Arch Single Model v5: UVR-DeNoise by FoxJoy | special_fx | special_fx | unknown | noise | — |
-| VR Architecture | VR Arch Single Model v5: UVR-DeNoise-Lite by FoxJoy | special_fx | special_fx | unknown | noise | — |
-| VR Architecture | VR Arch Single Model v5: UVR-DeReverb by aufr33 & jarredou | special_fx | special_fx | unknown | dry | — |
+| VR Architecture | VR Arch Single Model v5: UVR-De-Echo-Aggressive by FoxJoy | special_fx | no echo (mix minus echo) | special_fx_primary:no echo | no echo | — |
+| VR Architecture | VR Arch Single Model v5: UVR-De-Echo-Normal by FoxJoy | special_fx | no echo (mix minus echo) | special_fx_primary:no echo | no echo | — |
+| VR Architecture | VR Arch Single Model v5: UVR-DeEcho-Aggressive by FoxJoy | special_fx | no echo (mix minus echo) | special_fx_primary:no echo | no echo | — |
+| VR Architecture | VR Arch Single Model v5: UVR-DeEcho-DeReverb by FoxJoy | special_fx | no reverb (mix minus reverb) | special_fx_primary:no reverb | no reverb | — |
+| VR Architecture | VR Arch Single Model v5: UVR-DeEcho-Normal by FoxJoy | special_fx | no echo (mix minus echo) | special_fx_primary:no echo | no echo | — |
+| VR Architecture | VR Arch Single Model v5: UVR-DeNoise by FoxJoy | special_fx | Noise (isolated noise stem) | special_fx_primary:noise | noise | — |
+| VR Architecture | VR Arch Single Model v5: UVR-DeNoise-Lite by FoxJoy | special_fx | Noise (isolated noise stem) | special_fx_primary:noise | noise | — |
+| VR Architecture | VR Arch Single Model v5: UVR-DeReverb by aufr33 & jarredou | special_fx | Dry (dereverbbed signal) | special_fx_primary:dry | dry | — |
 | Bandit | Bandit Plus: Cinematic Bandit Plus by kwatcharasupat | multi_stem | Multi-stem: Speech, Music, Effects | multi_stem | Speech | — |
 | Bandit | Bandit v2: Cinematic Bandit v2 Multilang by kwatcharasupat | multi_stem | Multi-stem: Speech, Music, Sfx | multi_stem | Speech | — |
 | MDX-Net ONNX | MDX-Net Model: Kim Inst | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
 | MDX-Net ONNX | MDX-Net Model: Kim Vocal 1 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
 | MDX-Net ONNX | MDX-Net Model: Kim Vocal 2 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net Model: Reverb HQ By FoxJoy | special_fx | special_fx | unknown | reverb | — |
+| MDX-Net ONNX | MDX-Net Model: Reverb HQ By FoxJoy | special_fx | Reverb (isolated reverb stem) | special_fx_primary:reverb | reverb | — |
 | MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET 1 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
 | MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET 2 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
 | MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET 3 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET Crowd HQ 1 By Aufr33 | instrumental | instrumental | unknown | no crowd | — |
+| MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET Crowd HQ 1 By Aufr33 | special_fx | no crowd (mix minus crowd) | special_fx_primary:no crowd | no crowd | — |
 | MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET Inst 1 | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
 | MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET Inst 2 | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
 | MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET Inst 3 | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
@@ -86,30 +86,30 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET Inst HQ 5 | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
 | MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET Inst Main | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
 | MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET Karaoke | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET Karaoke 2 | karaoke | Karaoke backing (Instrumental primary; complement … | instrumental_primary | Instrumental | — |
+| MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET Karaoke 2 | karaoke | Karaoke backing (Instrumental primary; complement … | karaoke_instrumental_primary | Instrumental | — |
 | MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET Main | dual_voc_inst | Vocals or Instrumental — both are first-class 2-st… | vocal_primary | Vocals | — |
 | MDX-Net ONNX | MDX-Net Model: UVR-MDX-NET Voc FT | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
 | MDX-Net ONNX | MDX-Net Model: UVR_MDXNET_9482 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net Model: kuielab_a_bass | multi_stem | multi_stem | unknown | bass | — |
-| MDX-Net ONNX | MDX-Net Model: kuielab_a_drums | multi_stem | multi_stem | unknown | drums | — |
-| MDX-Net ONNX | MDX-Net Model: kuielab_a_other | multi_stem | multi_stem | unknown | other | — |
+| MDX-Net ONNX | MDX-Net Model: kuielab_a_bass | multi_stem | Kuielab Demucs bass stem (single 4-stem component) | demucs_component:bass | bass | — |
+| MDX-Net ONNX | MDX-Net Model: kuielab_a_drums | multi_stem | Kuielab Demucs drums stem (single 4-stem component… | demucs_component:drums | drums | — |
+| MDX-Net ONNX | MDX-Net Model: kuielab_a_other | multi_stem | Kuielab Demucs other stem (single 4-stem component… | demucs_component:other | other | — |
 | MDX-Net ONNX | MDX-Net Model: kuielab_a_vocals | multi_stem | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net Model: kuielab_b_bass | multi_stem | multi_stem | unknown | bass | — |
-| MDX-Net ONNX | MDX-Net Model: kuielab_b_drums | multi_stem | multi_stem | unknown | drums | — |
-| MDX-Net ONNX | MDX-Net Model: kuielab_b_other | multi_stem | multi_stem | unknown | other | — |
+| MDX-Net ONNX | MDX-Net Model: kuielab_b_bass | multi_stem | Kuielab Demucs bass stem (single 4-stem component) | demucs_component:bass | bass | — |
+| MDX-Net ONNX | MDX-Net Model: kuielab_b_drums | multi_stem | Kuielab Demucs drums stem (single 4-stem component… | demucs_component:drums | drums | — |
+| MDX-Net ONNX | MDX-Net Model: kuielab_b_other | multi_stem | Kuielab Demucs other stem (single 4-stem component… | demucs_component:other | other | — |
 | MDX-Net ONNX | MDX-Net Model: kuielab_b_vocals | multi_stem | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
 | MDX23C | MDX23 Model: MDX23C_D1581 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
-| MDX23C | MDX23C Model: MDX23C DeReverb by aufr33 & jarredou | special_fx | dry, No dry | two_stem | dry | — |
+| MDX23C | MDX23C Model: MDX23C DeReverb by aufr33 & jarredou | special_fx | Dry (dereverbbed signal) | two_stem | dry | — |
 | MDX23C | MDX23C Model: MDX23C DrumSep by aufr33 & jarredou | multi_stem | Multi-stem: kick, snare, toms, hh, ride, crash | multi_stem | kick | — |
 | MDX23C | MDX23C Model: MDX23C InstVoc HQ | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | two_stem | Vocals | — |
-| MDX23C | MDX23C Model: MDX23C Phantom Centre extraction by wesleyr36 | vocals | Similarity (single native output) | single_target:Similarity | Similarity | — |
+| MDX23C | MDX23C Model: MDX23C Phantom Centre extraction by wesleyr36 | specialty_stem | Similarity, Difference | specialty_target:Similarity | Similarity | — |
 | Roformer | BandSplit Roformer \| 4-stems FT by SYH99999 | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| Roformer | BandSplit Roformer \| Chorus Male-Female by Sucial | vocals | male, female | two_stem | male | — |
-| Roformer | BandSplit Roformer \| Dereverb by anvuew | special_fx | noreverb (single native output) | single_target:noreverb | noreverb | — |
+| Roformer | BandSplit Roformer \| Chorus Male-Female by Sucial | specialty_stem | male, female | specialty_two_stem | male | — |
+| Roformer | BandSplit Roformer \| Dereverb by anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
 | Roformer | BandSplit Roformer \| FNO by Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
 | Roformer | BandSplit Roformer \| Inst-EXP-Value-Residual by Unwa | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
-| Roformer | BandSplit Roformer \| Karaoke Frazer by becruily | karaoke | Karaoke backing (Instrumental primary; complement … | vocal_target | Vocals | — |
-| Roformer | BandSplit Roformer \| Male-Female by aufr33 | vocals | male, female | two_stem | male | — |
+| Roformer | BandSplit Roformer \| Karaoke Frazer by becruily | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
+| Roformer | BandSplit Roformer \| Male-Female by aufr33 | specialty_stem | male, female | specialty_two_stem | male | — |
 | Roformer | BandSplit Roformer \| Resurrection Instrumental by Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
 | Roformer | BandSplit Roformer \| Resurrection Vocals by Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | BandSplit Roformer \| Revive by Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
@@ -126,7 +126,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Roformer | MelBand Roformer Kim \| Big Beta v6x FT by Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer Kim \| Big SYHFT v1 by SYH99999 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer Kim \| FT by Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| Roformer | MelBand Roformer Kim \| FT v2 Bleedless by Unwa | special_fx | Vocals (complement = Instrumental) | vocal_target | vocals | — |
+| Roformer | MelBand Roformer Kim \| FT v2 Bleedless by Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer Kim \| FT v2 by Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer Kim \| Inst v1 by Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
 | Roformer | MelBand Roformer Kim \| Inst v1e Plus by Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
@@ -147,35 +147,35 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Roformer | MelBand Roformer \| 4-stems FT Large v2 by SYH99999 | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
 | Roformer | MelBand Roformer \| 4-stems Large v1 by Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
 | Roformer | MelBand Roformer \| 4-stems XL v1 by Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| Roformer | MelBand Roformer \| Aspiration Less Aggressive by Sucial | vocals | aspiration, other | two_stem | aspiration | — |
-| Roformer | MelBand Roformer \| Aspiration by Sucial | vocals | aspiration, other | two_stem | aspiration | — |
-| Roformer | MelBand Roformer \| BVE by Gonza | vocals | Lead (single native output) | single_target:Lead | Lead | — |
-| Roformer | MelBand Roformer \| Bleed Suppressor v1 by Unwa & 97chris | special_fx | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
-| Roformer | MelBand Roformer \| Crowd by Aufr33 & Viperx | instrumental | crowd (single native output) | single_target:crowd | crowd | — |
-| Roformer | MelBand Roformer \| DeReverb Big by Sucial | special_fx | dry (single native output) | single_target:dry | dry | — |
-| Roformer | MelBand Roformer \| DeReverb Less Aggressive by anvuew | special_fx | noreverb (single native output) | single_target:noreverb | noreverb | — |
-| Roformer | MelBand Roformer \| DeReverb Mono by anvuew | special_fx | noreverb (single native output) | single_target:noreverb | noreverb | — |
-| Roformer | MelBand Roformer \| DeReverb Super Big by Sucial | special_fx | dry (single native output) | single_target:dry | dry | — |
-| Roformer | MelBand Roformer \| DeReverb by anvuew | special_fx | noreverb (single native output) | single_target:noreverb | noreverb | — |
-| Roformer | MelBand Roformer \| DeReverb-Echo Fused by Sucial | special_fx | dry (single native output) | single_target:dry | dry | — |
-| Roformer | MelBand Roformer \| DeReverb-Echo by Sucial | special_fx | dry, No dry | two_stem | dry | — |
-| Roformer | MelBand Roformer \| DeReverb-Echo v2 by Sucial | special_fx | dry (single native output) | single_target:dry | dry | — |
-| Roformer | MelBand Roformer \| Denoise Aggr by Aufr33 | special_fx | dry (single native output) | single_target:dry | dry | — |
-| Roformer | MelBand Roformer \| Denoise by Aufr33 | special_fx | dry (single native output) | single_target:dry | dry | — |
+| Roformer | MelBand Roformer \| Aspiration Less Aggressive by Sucial | specialty_stem | aspiration, other | specialty_two_stem | aspiration | — |
+| Roformer | MelBand Roformer \| Aspiration by Sucial | specialty_stem | aspiration, other | specialty_two_stem | aspiration | — |
+| Roformer | MelBand Roformer \| BVE by Gonza | specialty_stem | Lead, Back | specialty_target:Lead | Lead | — |
+| Roformer | MelBand Roformer \| Bleed Suppressor v1 by Unwa & 97chris | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
+| Roformer | MelBand Roformer \| Crowd by Aufr33 & Viperx | specialty_stem | crowd, other | specialty_target:crowd | crowd | — |
+| Roformer | MelBand Roformer \| DeReverb Big by Sucial | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
+| Roformer | MelBand Roformer \| DeReverb Less Aggressive by anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
+| Roformer | MelBand Roformer \| DeReverb Mono by anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
+| Roformer | MelBand Roformer \| DeReverb Super Big by Sucial | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
+| Roformer | MelBand Roformer \| DeReverb by anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
+| Roformer | MelBand Roformer \| DeReverb-Echo Fused by Sucial | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
+| Roformer | MelBand Roformer \| DeReverb-Echo by Sucial | special_fx | Dry (dereverbbed signal) | two_stem | dry | — |
+| Roformer | MelBand Roformer \| DeReverb-Echo v2 by Sucial | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
+| Roformer | MelBand Roformer \| Denoise Aggr by Aufr33 | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
+| Roformer | MelBand Roformer \| Denoise by Aufr33 | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
 | Roformer | MelBand Roformer \| Duality v1 by Aname | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | vocal_target | vocals | — |
-| Roformer | MelBand Roformer \| Guitar by becruily | instrumental | Guitar (single native output) | single_target:Guitar | Guitar | — |
-| Roformer | MelBand Roformer \| Instrumental Bleedless v1 by Gabox | special_fx | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
-| Roformer | MelBand Roformer \| Instrumental Bleedless v2 by Gabox | special_fx | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
-| Roformer | MelBand Roformer \| Instrumental DeNoise-DeBleed by Gabox | special_fx | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
+| Roformer | MelBand Roformer \| Guitar by becruily | specialty_stem | Guitar, Other | specialty_target:Guitar | Guitar | — |
+| Roformer | MelBand Roformer \| Instrumental Bleedless v1 by Gabox | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
+| Roformer | MelBand Roformer \| Instrumental Bleedless v2 by Gabox | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
+| Roformer | MelBand Roformer \| Instrumental DeNoise-DeBleed by Gabox | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | Roformer | MelBand Roformer \| Instrumental Fullness v1 by Gabox | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | instrumental_target | Instrumental | — |
 | Roformer | MelBand Roformer \| Instrumental Fullness v2 by Gabox | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | instrumental_target | Instrumental | — |
 | Roformer | MelBand Roformer \| Instrumental Fullness v3 by Gabox | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | instrumental_target | Instrumental | — |
-| Roformer | MelBand Roformer \| Instrumental Fullness v4 Noise by Gabox | special_fx | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
-| Roformer | MelBand Roformer \| Instrumental Fullness v5 Noise by Gabox | special_fx | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
+| Roformer | MelBand Roformer \| Instrumental Fullness v4 Noise by Gabox | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | instrumental_target | Instrumental | — |
+| Roformer | MelBand Roformer \| Instrumental Fullness v5 Noise by Gabox | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | instrumental_target | Instrumental | — |
 | Roformer | MelBand Roformer \| Instrumental Fullness v5 by Gabox | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | instrumental_target | Instrumental | — |
-| Roformer | MelBand Roformer \| Instrumental Fullness v6 Noise by Gabox | special_fx | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
+| Roformer | MelBand Roformer \| Instrumental Fullness v6 Noise by Gabox | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | instrumental_target | Instrumental | — |
 | Roformer | MelBand Roformer \| Instrumental Fullness v6 by Gabox | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | instrumental_target | Instrumental | — |
-| Roformer | MelBand Roformer \| Instrumental Fullness v7 Noise by Gabox | special_fx | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
+| Roformer | MelBand Roformer \| Instrumental Fullness v7 Noise by Gabox | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | instrumental_target | Instrumental | — |
 | Roformer | MelBand Roformer \| Instrumental Fullness v7 by Gabox | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | instrumental_target | Instrumental | — |
 | Roformer | MelBand Roformer \| Instrumental Fullness v8 by Gabox | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | instrumental_target | Instrumental | — |
 | Roformer | MelBand Roformer \| Instrumental Fullness vX by Gabox | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | instrumental_target | Instrumental | — |
@@ -184,17 +184,17 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Roformer | MelBand Roformer \| Instrumental v1 by Gabox | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | Roformer | MelBand Roformer \| Instrumental v2 by Gabox | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | Roformer | MelBand Roformer \| Instrumental v3 by Gabox | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
-| Roformer | MelBand Roformer \| Karaoke Fusion Aggressive by Gonza | karaoke | Karaoke backing (Instrumental primary; complement … | vocal_target | Vocals | — |
-| Roformer | MelBand Roformer \| Karaoke Fusion Aggressive v2 by Gonza | karaoke | Karaoke backing (Instrumental primary; complement … | vocal_target | Vocals | — |
-| Roformer | MelBand Roformer \| Karaoke Fusion Standard by Gonza | karaoke | Karaoke backing (Instrumental primary; complement … | vocal_target | Vocals | — |
-| Roformer | MelBand Roformer \| Karaoke Fusion Total by Gonza | karaoke | Karaoke backing (Instrumental primary; complement … | vocal_target | Vocals | — |
-| Roformer | MelBand Roformer \| Karaoke by Aufr33 & Viperx | karaoke | Karaoke backing (Instrumental primary; complement … | vocal_target | Vocals | — |
-| Roformer | MelBand Roformer \| Karaoke by Gabox | karaoke | Karaoke backing (Instrumental primary; complement … | vocal_target | Vocals | — |
-| Roformer | MelBand Roformer \| Karaoke by Gabox (beta) | karaoke | Karaoke backing (Instrumental primary; complement … | vocal_target | Vocals | — |
-| Roformer | MelBand Roformer \| Karaoke by becruily | karaoke | Karaoke backing (Instrumental primary; complement … | two_stem | Vocals | — |
+| Roformer | MelBand Roformer \| Karaoke Fusion Aggressive by Gonza | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
+| Roformer | MelBand Roformer \| Karaoke Fusion Aggressive v2 by Gonza | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
+| Roformer | MelBand Roformer \| Karaoke Fusion Standard by Gonza | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
+| Roformer | MelBand Roformer \| Karaoke Fusion Total by Gonza | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
+| Roformer | MelBand Roformer \| Karaoke by Aufr33 & Viperx | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
+| Roformer | MelBand Roformer \| Karaoke by Gabox | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
+| Roformer | MelBand Roformer \| Karaoke by Gabox (beta) | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
+| Roformer | MelBand Roformer \| Karaoke by becruily | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | Roformer | MelBand Roformer \| SDR 1143 by Viperx | vocals | Vocals (complement = Instrumental) | vocal_target | Vocals | — |
 | Roformer | MelBand Roformer \| Small by Aname | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| Roformer | MelBand Roformer \| Vocals Bleedless by Aname | special_fx | Vocals (complement = Instrumental) | vocal_target | vocals | — |
+| Roformer | MelBand Roformer \| Vocals Bleedless by Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer \| Vocals Fullness by Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer \| Vocals Fullness v1 by Gabox | vocals | Vocals (complement = Instrumental) | vocal_target | Vocals | — |
 | Roformer | MelBand Roformer \| Vocals Fullness v2 by Gabox | vocals | Vocals (complement = Instrumental) | vocal_target | Vocals | — |
@@ -246,16 +246,16 @@ Roformer karaoke yamls typically target **vocals** (lead) with instrumental comp
 | VR Arch Single Model v5: 5_HP-Karaoke-UVR | Instrumental | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
 | VR Arch Single Model v5: 6_HP-Karaoke-UVR | Instrumental | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
 | MDX-Net Model: UVR-MDX-NET Karaoke | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
-| MDX-Net Model: UVR-MDX-NET Karaoke 2 | Instrumental | — | Karaoke backing (Instrumental primary; complement = lead vocals) |
-| BandSplit Roformer \| Karaoke Frazer by becruily | Vocals | — | Karaoke backing (Instrumental primary; complement = lead vocals) |
-| MelBand Roformer \| Karaoke Fusion Aggressive by Gonza | Vocals | — | Karaoke backing (Instrumental primary; complement = lead vocals) |
-| MelBand Roformer \| Karaoke Fusion Aggressive v2 by Gonza | Vocals | — | Karaoke backing (Instrumental primary; complement = lead vocals) |
-| MelBand Roformer \| Karaoke Fusion Standard by Gonza | Vocals | — | Karaoke backing (Instrumental primary; complement = lead vocals) |
-| MelBand Roformer \| Karaoke Fusion Total by Gonza | Vocals | — | Karaoke backing (Instrumental primary; complement = lead vocals) |
-| MelBand Roformer \| Karaoke by Aufr33 & Viperx | Vocals | — | Karaoke backing (Instrumental primary; complement = lead vocals) |
-| MelBand Roformer \| Karaoke by Gabox | Vocals | — | Karaoke backing (Instrumental primary; complement = lead vocals) |
-| MelBand Roformer \| Karaoke by Gabox (beta) | Vocals | — | Karaoke backing (Instrumental primary; complement = lead vocals) |
-| MelBand Roformer \| Karaoke by becruily | Vocals | — | Karaoke backing (Instrumental primary; complement = lead vocals) |
+| MDX-Net Model: UVR-MDX-NET Karaoke 2 | Instrumental | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
+| BandSplit Roformer \| Karaoke Frazer by becruily | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
+| MelBand Roformer \| Karaoke Fusion Aggressive by Gonza | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
+| MelBand Roformer \| Karaoke Fusion Aggressive v2 by Gonza | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
+| MelBand Roformer \| Karaoke Fusion Standard by Gonza | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
+| MelBand Roformer \| Karaoke Fusion Total by Gonza | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
+| MelBand Roformer \| Karaoke by Aufr33 & Viperx | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
+| MelBand Roformer \| Karaoke by Gabox | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
+| MelBand Roformer \| Karaoke by Gabox (beta) | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
+| MelBand Roformer \| Karaoke by becruily | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 
 ## Instrumental models with yaml stem `other`
 
@@ -411,10 +411,11 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `17_HP-Wind_Inst-UVR.pth`
-- **Name intent:** instrumental
-- **Backend focus:** unknown
+- **Name intent:** special_fx
+- **Backend focus:** special_fx_primary:no woodwinds
 - **Primary stem (backend):** `no woodwinds`
-- **Best result:** instrumental
+- **Best result:** no woodwinds (mix minus woodwinds)
+- **Save stems UI:** UI: no woodwinds / complement stem
 - **Metadata:** community_models.txt
 - **Note:** Community ref: no woodwinds*, woodwinds
 
@@ -545,9 +546,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr
 - **Weight:** `UVR-De-Echo-Aggressive.pth`
 - **Name intent:** special_fx
-- **Backend focus:** unknown
+- **Backend focus:** special_fx_primary:no echo
 - **Primary stem (backend):** `no echo`
-- **Best result:** special_fx
+- **Best result:** no echo (mix minus echo)
+- **Save stems UI:** UI: no echo / complement stem
 - **Metadata:** community_models.txt
 - **Note:** Community ref: no echo*, echo
 
@@ -556,9 +558,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr
 - **Weight:** `UVR-De-Echo-Normal.pth`
 - **Name intent:** special_fx
-- **Backend focus:** unknown
+- **Backend focus:** special_fx_primary:no echo
 - **Primary stem (backend):** `no echo`
-- **Best result:** special_fx
+- **Best result:** no echo (mix minus echo)
+- **Save stems UI:** UI: no echo / complement stem
 - **Metadata:** community_models.txt
 - **Note:** Community ref: no echo*, echo
 
@@ -567,9 +570,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `UVR-De-Echo-Aggressive.pth`
 - **Name intent:** special_fx
-- **Backend focus:** unknown
+- **Backend focus:** special_fx_primary:no echo
 - **Primary stem (backend):** `no echo`
-- **Best result:** special_fx
+- **Best result:** no echo (mix minus echo)
+- **Save stems UI:** UI: no echo / complement stem
 - **Metadata:** community_models.txt
 - **Note:** Community ref: no echo*, echo
 
@@ -578,9 +582,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-DeEcho-DeReverb.pth`
 - **Name intent:** special_fx
-- **Backend focus:** unknown
+- **Backend focus:** special_fx_primary:no reverb
 - **Primary stem (backend):** `no reverb`
-- **Best result:** special_fx
+- **Best result:** no reverb (mix minus reverb)
+- **Save stems UI:** UI: no reverb / complement stem
 - **Metadata:** politrees_vr_hash
 - **Note:** Community ref: no reverb*, reverb
 
@@ -589,9 +594,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `UVR-De-Echo-Normal.pth`
 - **Name intent:** special_fx
-- **Backend focus:** unknown
+- **Backend focus:** special_fx_primary:no echo
 - **Primary stem (backend):** `no echo`
-- **Best result:** special_fx
+- **Best result:** no echo (mix minus echo)
+- **Save stems UI:** UI: no echo / complement stem
 - **Metadata:** community_models.txt
 - **Note:** Community ref: no echo*, echo
 
@@ -600,9 +606,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-DeNoise.pth`
 - **Name intent:** special_fx
-- **Backend focus:** unknown
+- **Backend focus:** special_fx_primary:noise
 - **Primary stem (backend):** `noise`
-- **Best result:** special_fx
+- **Best result:** Noise (isolated noise stem)
+- **Save stems UI:** UI: noise / complement stem
 - **Metadata:** politrees_vr_hash
 - **Note:** Community ref: noise*, no noise
 
@@ -611,9 +618,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-DeNoise-Lite.pth`
 - **Name intent:** special_fx
-- **Backend focus:** unknown
+- **Backend focus:** special_fx_primary:noise
 - **Primary stem (backend):** `noise`
-- **Best result:** special_fx
+- **Best result:** Noise (isolated noise stem)
+- **Save stems UI:** UI: noise / complement stem
 - **Metadata:** politrees_vr_hash
 - **Note:** Community ref: noise*, no noise
 
@@ -622,9 +630,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `UVR-De-Reverb-aufr33-jarredou.pth`
 - **Name intent:** special_fx
-- **Backend focus:** unknown
+- **Backend focus:** special_fx_primary:dry
 - **Primary stem (backend):** `dry`
-- **Best result:** special_fx
+- **Best result:** Dry (dereverbbed signal)
+- **Save stems UI:** UI: dry / complement stem
 - **Metadata:** community_models.txt
 - **Note:** Community ref: dry*, no dry
 
@@ -699,9 +708,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `Reverb_HQ_By_FoxJoy.onnx`
 - **Name intent:** special_fx
-- **Backend focus:** unknown
+- **Backend focus:** special_fx_primary:reverb
 - **Primary stem (backend):** `reverb`
-- **Best result:** special_fx
+- **Best result:** Reverb (isolated reverb stem)
+- **Save stems UI:** UI: reverb / complement stem
 - **Metadata:** community_models.txt
 - **Note:** Community ref: reverb*, no reverb
 
@@ -745,10 +755,11 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 
 - **Source:** Politrees
 - **Weight:** `UVR-MDX-NET_Crowd_HQ_1.onnx`
-- **Name intent:** instrumental
-- **Backend focus:** unknown
+- **Name intent:** special_fx
+- **Backend focus:** special_fx_primary:no crowd
 - **Primary stem (backend):** `no crowd`
-- **Best result:** instrumental
+- **Best result:** no crowd (mix minus crowd)
+- **Save stems UI:** UI: no crowd / complement stem
 - **Metadata:** community_models.txt
 - **Note:** Community ref: no crowd*, crowd
 
@@ -878,8 +889,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR_MDXNET_KARA_2.onnx`
 - **Name intent:** karaoke
-- **Backend focus:** instrumental_primary
+- **Backend focus:** karaoke_instrumental_primary
 - **Primary stem (backend):** `Instrumental`
+- **Karaoke model:** yes
 - **Best result:** Karaoke backing (Instrumental primary; complement = lead vocals)
 - **Save stems UI:** UI: Instrumental / complement
 - **Metadata:** community_models.txt
@@ -927,9 +939,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `kuielab_a_bass.onnx`
 - **Name intent:** multi_stem
-- **Backend focus:** unknown
+- **Backend focus:** demucs_component:bass
 - **Primary stem (backend):** `bass`
-- **Best result:** multi_stem
+- **Best result:** Kuielab Demucs bass stem (single 4-stem component)
 - **Metadata:** community_models.txt
 - **Note:** Community ref: bass* (10.4), no bass
 
@@ -938,9 +950,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `kuielab_a_drums.onnx`
 - **Name intent:** multi_stem
-- **Backend focus:** unknown
+- **Backend focus:** demucs_component:drums
 - **Primary stem (backend):** `drums`
-- **Best result:** multi_stem
+- **Best result:** Kuielab Demucs drums stem (single 4-stem component)
 - **Metadata:** community_models.txt
 - **Note:** Community ref: drums* (7.0), no drums
 
@@ -949,9 +961,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `kuielab_a_other.onnx`
 - **Name intent:** multi_stem
-- **Backend focus:** unknown
+- **Backend focus:** demucs_component:other
 - **Primary stem (backend):** `other`
-- **Best result:** multi_stem
+- **Best result:** Kuielab Demucs other stem (single 4-stem component)
 - **Metadata:** community_models.txt
 - **Note:** Community ref: other*, no other
 
@@ -972,9 +984,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `kuielab_b_bass.onnx`
 - **Name intent:** multi_stem
-- **Backend focus:** unknown
+- **Backend focus:** demucs_component:bass
 - **Primary stem (backend):** `bass`
-- **Best result:** multi_stem
+- **Best result:** Kuielab Demucs bass stem (single 4-stem component)
 - **Metadata:** community_models.txt
 - **Note:** Community ref: bass* (9.9), no bass
 
@@ -983,9 +995,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `kuielab_b_drums.onnx`
 - **Name intent:** multi_stem
-- **Backend focus:** unknown
+- **Backend focus:** demucs_component:drums
 - **Primary stem (backend):** `drums`
-- **Best result:** multi_stem
+- **Best result:** Kuielab Demucs drums stem (single 4-stem component)
 - **Metadata:** community_models.txt
 - **Note:** Community ref: drums* (7.1), no drums
 
@@ -994,9 +1006,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `kuielab_b_other.onnx`
 - **Name intent:** multi_stem
-- **Backend focus:** unknown
+- **Backend focus:** demucs_component:other
 - **Primary stem (backend):** `other`
-- **Best result:** multi_stem
+- **Best result:** Kuielab Demucs other stem (single 4-stem component)
 - **Metadata:** community_models.txt
 - **Note:** Community ref: other*, no other
 
@@ -1035,7 +1047,8 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Backend focus:** two_stem
 - **Primary stem (backend):** `dry`
 - **Instruments:** dry, No dry
-- **Best result:** dry, No dry
+- **Best result:** Dry (dereverbbed signal)
+- **Save stems UI:** UI: dry / complement stem
 - **Metadata:** remote_yaml:config_dereverb_mdx23c.yaml
 - **Note:** Community ref: dry, no dry
 
@@ -1072,13 +1085,14 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `model_mdx23c_ep_271_l1_freq_72.2383.ckpt`
 - **Config:** `config_mdx23c_similarity.yaml`
-- **Name intent:** vocals
-- **Backend focus:** single_target:Similarity
+- **Name intent:** specialty_stem
+- **Backend focus:** specialty_target:Similarity
 - **Primary stem (backend):** `Similarity`
 - **Instruments:** Similarity, Difference
 - **Target instrument:** `Similarity`
-- **Best result:** Similarity (single native output)
-- **Metadata:** remote_yaml:config_mdx23c_similarity.yaml
+- **Best result:** Similarity, Difference
+- **Save stems UI:** UI: Similarity / Difference subset
+- **Metadata:** politrees_mdx_hash
 
 ## Roformer (detail)
 
@@ -1102,11 +1116,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `model_chorus_bs_roformer_ep_267_sdr_24.1275.ckpt`
 - **Config:** `config_bs_roformer_chorus_male_female.yaml`
 - **Architecture:** BS Roformer
-- **Name intent:** vocals
-- **Backend focus:** two_stem
+- **Name intent:** specialty_stem
+- **Backend focus:** specialty_two_stem
 - **Primary stem (backend):** `male`
 - **Instruments:** male, female
 - **Best result:** male, female
+- **Save stems UI:** UI: male / female subset
 - **Metadata:** remote_yaml:config_bs_roformer_chorus_male_female.yaml
 - **Note:** Community ref: male, female
 
@@ -1117,11 +1132,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_bs_roformer_deverb_8_384dim_10depth.yaml`
 - **Architecture:** BS Roformer
 - **Name intent:** special_fx
-- **Backend focus:** single_target:noreverb
+- **Backend focus:** special_fx_target:noreverb
 - **Primary stem (backend):** `noreverb`
 - **Instruments:** noreverb, reverb
 - **Target instrument:** `noreverb`
-- **Best result:** noreverb (single native output)
+- **Best result:** No reverb (dereverbbed signal)
+- **Save stems UI:** UI: noreverb / complement stem
 - **Metadata:** remote_yaml:config_bs_roformer_deverb_8_384dim_10depth.yaml
 - **Note:** Community ref: noreverb*, reverb
 
@@ -1163,11 +1179,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_BandSplit-Roformer_Karaoke_Frazer_by-becruily.yaml`
 - **Architecture:** BS Roformer
 - **Name intent:** karaoke
-- **Backend focus:** vocal_target
+- **Backend focus:** karaoke_vocal_primary
 - **Primary stem (backend):** `Vocals`
 - **Instruments:** Vocals, Instrumental
 - **Target instrument:** `Vocals`
-- **Best result:** Karaoke backing (Instrumental primary; complement = lead vocals)
+- **Karaoke model:** yes
+- **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** bundled_yaml:config_BandSplit-Roformer_Karaoke_Frazer_by-becruily.yaml
 
@@ -1177,11 +1194,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `bs_roformer_male_female_by_aufr33_sdr_7.2889.ckpt`
 - **Config:** `config_bs_roformer_chorus_male_female.yaml`
 - **Architecture:** BS Roformer
-- **Name intent:** vocals
-- **Backend focus:** two_stem
+- **Name intent:** specialty_stem
+- **Backend focus:** specialty_two_stem
 - **Primary stem (backend):** `male`
 - **Instruments:** male, female
 - **Best result:** male, female
+- **Save stems UI:** UI: male / female subset
 - **Metadata:** remote_yaml:config_bs_roformer_chorus_male_female.yaml
 
 ### BandSplit Roformer | Resurrection Instrumental by Unwa
@@ -1438,7 +1456,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mel_band_roformer_kim_ft2_bleedless_unwa.ckpt`
 - **Config:** `config_melband_roformer_kim_ft_unwa.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** vocals
 - **Backend focus:** vocal_target
 - **Primary stem (backend):** `vocals`
 - **Instruments:** vocals, other
@@ -1758,11 +1776,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `aspiration_mel_band_roformer_less_aggr_sdr_18.1201.ckpt`
 - **Config:** `config_melband_roformer_aspiration.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** vocals
-- **Backend focus:** two_stem
+- **Name intent:** specialty_stem
+- **Backend focus:** specialty_two_stem
 - **Primary stem (backend):** `aspiration`
 - **Instruments:** aspiration, other
 - **Best result:** aspiration, other
+- **Save stems UI:** UI: aspiration / other subset
 - **Metadata:** remote_yaml:config_melband_roformer_aspiration.yaml
 - **Note:** Community ref: aspiration, other
 
@@ -1772,11 +1791,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `aspiration_mel_band_roformer_sdr_18.9845.ckpt`
 - **Config:** `config_melband_roformer_aspiration.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** vocals
-- **Backend focus:** two_stem
+- **Name intent:** specialty_stem
+- **Backend focus:** specialty_two_stem
 - **Primary stem (backend):** `aspiration`
 - **Instruments:** aspiration, other
 - **Best result:** aspiration, other
+- **Save stems UI:** UI: aspiration / other subset
 - **Metadata:** remote_yaml:config_melband_roformer_aspiration.yaml
 - **Note:** Community ref: aspiration, other
 
@@ -1786,12 +1806,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `model_MelBand-Roformer_BVE_by-Gonza.ckpt`
 - **Config:** `config_MelBand-Roformer_BVE_by-Gonza.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** vocals
-- **Backend focus:** single_target:Lead
+- **Name intent:** specialty_stem
+- **Backend focus:** specialty_target:Lead
 - **Primary stem (backend):** `Lead`
 - **Instruments:** Lead, Back
 - **Target instrument:** `Lead`
-- **Best result:** Lead (single native output)
+- **Best result:** Lead, Back
+- **Save stems UI:** UI: Lead / Back subset
 - **Metadata:** remote_yaml:config_MelBand-Roformer_BVE_by-Gonza.yaml
 
 ### MelBand Roformer | Bleed Suppressor v1 by Unwa & 97chris
@@ -1800,7 +1821,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mel_band_roformer_bleed_suppressor_v1.ckpt`
 - **Config:** `config_melband_roformer_bleed_suppressor_v1.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** instrumental
 - **Backend focus:** instrumental_target
 - **Primary stem (backend):** `Instrumental`
 - **Instruments:** Instrumental, Bleed
@@ -1816,12 +1837,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mel_band_roformer_crowd_aufr33_viperx_sdr_8.7144.ckpt`
 - **Config:** `config_melband_roformer_crowd_aufr33_viperx_sdr_8.7144.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** instrumental
-- **Backend focus:** single_target:crowd
+- **Name intent:** specialty_stem
+- **Backend focus:** specialty_target:crowd
 - **Primary stem (backend):** `crowd`
 - **Instruments:** crowd, other
 - **Target instrument:** `crowd`
-- **Best result:** crowd (single native output)
+- **Best result:** crowd, other
+- **Save stems UI:** UI: crowd / other subset
 - **Metadata:** remote_yaml:config_melband_roformer_crowd_aufr33_viperx_sdr_8.7144.yaml
 - **Note:** Community ref: crowd*, other
 
@@ -1832,11 +1854,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_melband_roformer_dereverb_echo_v2.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** special_fx
-- **Backend focus:** single_target:dry
+- **Backend focus:** special_fx_target:dry
 - **Primary stem (backend):** `dry`
 - **Instruments:** dry, other
 - **Target instrument:** `dry`
-- **Best result:** dry (single native output)
+- **Best result:** Dry (dereverbbed signal)
+- **Save stems UI:** UI: dry / complement stem
 - **Metadata:** remote_yaml:config_melband_roformer_dereverb_echo_v2.yaml
 
 ### MelBand Roformer | DeReverb Less Aggressive by anvuew
@@ -1846,11 +1869,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_melband_roformer_dereverb_anvuew.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** special_fx
-- **Backend focus:** single_target:noreverb
+- **Backend focus:** special_fx_target:noreverb
 - **Primary stem (backend):** `noreverb`
 - **Instruments:** noreverb, reverb
 - **Target instrument:** `noreverb`
-- **Best result:** noreverb (single native output)
+- **Best result:** No reverb (dereverbbed signal)
+- **Save stems UI:** UI: noreverb / complement stem
 - **Metadata:** remote_yaml:config_melband_roformer_dereverb_anvuew.yaml
 - **Note:** Community ref: noreverb*, reverb
 
@@ -1861,11 +1885,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_melband_roformer_dereverb_anvuew.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** special_fx
-- **Backend focus:** single_target:noreverb
+- **Backend focus:** special_fx_target:noreverb
 - **Primary stem (backend):** `noreverb`
 - **Instruments:** noreverb, reverb
 - **Target instrument:** `noreverb`
-- **Best result:** noreverb (single native output)
+- **Best result:** No reverb (dereverbbed signal)
+- **Save stems UI:** UI: noreverb / complement stem
 - **Metadata:** remote_yaml:config_melband_roformer_dereverb_anvuew.yaml
 
 ### MelBand Roformer | DeReverb Super Big by Sucial
@@ -1875,11 +1900,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_melband_roformer_dereverb_echo_v2.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** special_fx
-- **Backend focus:** single_target:dry
+- **Backend focus:** special_fx_target:dry
 - **Primary stem (backend):** `dry`
 - **Instruments:** dry, other
 - **Target instrument:** `dry`
-- **Best result:** dry (single native output)
+- **Best result:** Dry (dereverbbed signal)
+- **Save stems UI:** UI: dry / complement stem
 - **Metadata:** remote_yaml:config_melband_roformer_dereverb_echo_v2.yaml
 
 ### MelBand Roformer | DeReverb by anvuew
@@ -1889,11 +1915,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_melband_roformer_dereverb_anvuew.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** special_fx
-- **Backend focus:** single_target:noreverb
+- **Backend focus:** special_fx_target:noreverb
 - **Primary stem (backend):** `noreverb`
 - **Instruments:** noreverb, reverb
 - **Target instrument:** `noreverb`
-- **Best result:** noreverb (single native output)
+- **Best result:** No reverb (dereverbbed signal)
+- **Save stems UI:** UI: noreverb / complement stem
 - **Metadata:** remote_yaml:config_melband_roformer_dereverb_anvuew.yaml
 - **Note:** Community ref: noreverb*, reverb
 
@@ -1904,11 +1931,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_melband_roformer_dereverb_echo_v2.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** special_fx
-- **Backend focus:** single_target:dry
+- **Backend focus:** special_fx_target:dry
 - **Primary stem (backend):** `dry`
 - **Instruments:** dry, other
 - **Target instrument:** `dry`
-- **Best result:** dry (single native output)
+- **Best result:** Dry (dereverbbed signal)
+- **Save stems UI:** UI: dry / complement stem
 - **Metadata:** remote_yaml:config_melband_roformer_dereverb_echo_v2.yaml
 
 ### MelBand Roformer | DeReverb-Echo by Sucial
@@ -1921,7 +1949,8 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Backend focus:** two_stem
 - **Primary stem (backend):** `dry`
 - **Instruments:** dry, No dry
-- **Best result:** dry, No dry
+- **Best result:** Dry (dereverbbed signal)
+- **Save stems UI:** UI: dry / complement stem
 - **Metadata:** remote_yaml:config_melband_roformer_dereverb-echo.yaml
 - **Note:** Community ref: dry, no dry
 
@@ -1932,11 +1961,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_melband_roformer_dereverb-echo_sdr_13.4843_v2.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** special_fx
-- **Backend focus:** single_target:dry
+- **Backend focus:** special_fx_target:dry
 - **Primary stem (backend):** `dry`
 - **Instruments:** dry, No dry
 - **Target instrument:** `dry`
-- **Best result:** dry (single native output)
+- **Best result:** Dry (dereverbbed signal)
+- **Save stems UI:** UI: dry / complement stem
 - **Metadata:** remote_yaml:config_melband_roformer_dereverb-echo_sdr_13.4843_v2.yaml
 - **Note:** Community ref: dry*, no dry
 
@@ -1947,11 +1977,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_melband_roformer_denoise_aufr33_aggr_sdr_27.9768.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** special_fx
-- **Backend focus:** single_target:dry
+- **Backend focus:** special_fx_target:dry
 - **Primary stem (backend):** `dry`
 - **Instruments:** dry, other
 - **Target instrument:** `dry`
-- **Best result:** dry (single native output)
+- **Best result:** Dry (dereverbbed signal)
+- **Save stems UI:** UI: dry / complement stem
 - **Metadata:** remote_yaml:config_melband_roformer_denoise_aufr33_aggr_sdr_27.9768.yaml
 - **Note:** Community ref: dry*, other
 
@@ -1962,11 +1993,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_melband_roformer_denoise_aufr33_sdr_27.9959.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** special_fx
-- **Backend focus:** single_target:dry
+- **Backend focus:** special_fx_target:dry
 - **Primary stem (backend):** `dry`
 - **Instruments:** dry, other
 - **Target instrument:** `dry`
-- **Best result:** dry (single native output)
+- **Best result:** Dry (dereverbbed signal)
+- **Save stems UI:** UI: dry / complement stem
 - **Metadata:** remote_yaml:config_melband_roformer_denoise_aufr33_sdr_27.9959.yaml
 - **Note:** Community ref: dry*, other
 
@@ -1991,12 +2023,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `melband_roformer_guitar_becruily.ckpt`
 - **Config:** `config_melband_roformer_guitar_becruily.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** instrumental
-- **Backend focus:** single_target:Guitar
+- **Name intent:** specialty_stem
+- **Backend focus:** specialty_target:Guitar
 - **Primary stem (backend):** `Guitar`
 - **Instruments:** Guitar, Other
 - **Target instrument:** `Guitar`
-- **Best result:** Guitar (single native output)
+- **Best result:** Guitar, Other
+- **Save stems UI:** UI: Guitar / Other subset
 - **Metadata:** remote_yaml:config_melband_roformer_guitar_becruily.yaml
 
 ### MelBand Roformer | Instrumental Bleedless v1 by Gabox
@@ -2005,7 +2038,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mel_band_roformer_inst_bleedless_v1_gabox.ckpt`
 - **Config:** `config_melband_roformer_inst_gabox.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** instrumental
 - **Backend focus:** instrumental_target
 - **Primary stem (backend):** `Instrumental`
 - **Instruments:** Instrumental, Vocals
@@ -2020,7 +2053,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mel_band_roformer_inst_bleedless_v2_gabox.ckpt`
 - **Config:** `config_melband_roformer_inst_gabox.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** instrumental
 - **Backend focus:** instrumental_target
 - **Primary stem (backend):** `Instrumental`
 - **Instruments:** Instrumental, Vocals
@@ -2035,7 +2068,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mel_band_roformer_inst_denoise_debleed_gabox.ckpt`
 - **Config:** `config_melband_roformer_inst_gabox.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** instrumental
 - **Backend focus:** instrumental_target
 - **Primary stem (backend):** `Instrumental`
 - **Instruments:** Instrumental, Vocals
@@ -2095,13 +2128,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mel_band_roformer_inst_fullness_v4_noise_gabox.ckpt`
 - **Config:** `config_melband_roformer_inst_gabox.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** dual_voc_inst
 - **Backend focus:** instrumental_target
 - **Primary stem (backend):** `Instrumental`
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
-- **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
+- **Best result:** User picks Vocals or Instrumental (dual 2-stem)
+- **Save stems UI:** UI: Vocals / Instrumental (either stem is a valid primary export)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Instrumental Fullness v5 Noise by Gabox
@@ -2110,13 +2143,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mel_band_roformer_inst_fullness_v5_noise_gabox.ckpt`
 - **Config:** `config_melband_roformer_inst_gabox.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** dual_voc_inst
 - **Backend focus:** instrumental_target
 - **Primary stem (backend):** `Instrumental`
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
-- **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
+- **Best result:** User picks Vocals or Instrumental (dual 2-stem)
+- **Save stems UI:** UI: Vocals / Instrumental (either stem is a valid primary export)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Instrumental Fullness v5 by Gabox
@@ -2140,13 +2173,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mel_band_roformer_inst_fullness_v6_noise_gabox.ckpt`
 - **Config:** `config_melband_roformer_inst_gabox.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** dual_voc_inst
 - **Backend focus:** instrumental_target
 - **Primary stem (backend):** `Instrumental`
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
-- **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
+- **Best result:** User picks Vocals or Instrumental (dual 2-stem)
+- **Save stems UI:** UI: Vocals / Instrumental (either stem is a valid primary export)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Instrumental Fullness v6 by Gabox
@@ -2170,13 +2203,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mel_band_roformer_inst_fullness_v7_noise_gabox.ckpt`
 - **Config:** `config_melband_roformer_inst_gabox.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** dual_voc_inst
 - **Backend focus:** instrumental_target
 - **Primary stem (backend):** `Instrumental`
 - **Instruments:** Instrumental, Vocals
 - **Target instrument:** `Instrumental`
-- **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
+- **Best result:** User picks Vocals or Instrumental (dual 2-stem)
+- **Save stems UI:** UI: Vocals / Instrumental (either stem is a valid primary export)
 - **Metadata:** remote_yaml:config_melband_roformer_inst_gabox.yaml
 
 ### MelBand Roformer | Instrumental Fullness v7 by Gabox
@@ -2306,11 +2339,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_MelBand-Roformer_Karaoke_Fusion_by-Gonza.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** karaoke
-- **Backend focus:** vocal_target
+- **Backend focus:** karaoke_vocal_primary
 - **Primary stem (backend):** `Vocals`
 - **Instruments:** Vocals, Instrumental
 - **Target instrument:** `Vocals`
-- **Best result:** Karaoke backing (Instrumental primary; complement = lead vocals)
+- **Karaoke model:** yes
+- **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** bundled_yaml:config_MelBand-Roformer_Karaoke_Fusion_by-Gonza.yaml
 
@@ -2321,11 +2355,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_MelBand-Roformer_Karaoke_Fusion_v2_by-Gonza.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** karaoke
-- **Backend focus:** vocal_target
+- **Backend focus:** karaoke_vocal_primary
 - **Primary stem (backend):** `Vocals`
 - **Instruments:** Vocals, Instrumental
 - **Target instrument:** `Vocals`
-- **Best result:** Karaoke backing (Instrumental primary; complement = lead vocals)
+- **Karaoke model:** yes
+- **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** remote_yaml:config_MelBand-Roformer_Karaoke_Fusion_v2_by-Gonza.yaml
 
@@ -2336,11 +2371,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_MelBand-Roformer_Karaoke_Fusion_by-Gonza.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** karaoke
-- **Backend focus:** vocal_target
+- **Backend focus:** karaoke_vocal_primary
 - **Primary stem (backend):** `Vocals`
 - **Instruments:** Vocals, Instrumental
 - **Target instrument:** `Vocals`
-- **Best result:** Karaoke backing (Instrumental primary; complement = lead vocals)
+- **Karaoke model:** yes
+- **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** bundled_yaml:config_MelBand-Roformer_Karaoke_Fusion_by-Gonza.yaml
 
@@ -2351,11 +2387,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_MelBand-Roformer_Karaoke_Fusion_Total_by-Gonza.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** karaoke
-- **Backend focus:** vocal_target
+- **Backend focus:** karaoke_vocal_primary
 - **Primary stem (backend):** `Vocals`
 - **Instruments:** Vocals, Instrumental
 - **Target instrument:** `Vocals`
-- **Best result:** Karaoke backing (Instrumental primary; complement = lead vocals)
+- **Karaoke model:** yes
+- **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** remote_yaml:config_MelBand-Roformer_Karaoke_Fusion_Total_by-Gonza.yaml
 
@@ -2366,11 +2403,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_melband_roformer_karaoke_aufr33_viperx_sdr_10.1956.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** karaoke
-- **Backend focus:** vocal_target
+- **Backend focus:** karaoke_vocal_primary
 - **Primary stem (backend):** `Vocals`
 - **Instruments:** Vocals, Instrumental
 - **Target instrument:** `Vocals`
-- **Best result:** Karaoke backing (Instrumental primary; complement = lead vocals)
+- **Karaoke model:** yes
+- **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** remote_yaml:config_melband_roformer_karaoke_aufr33_viperx_sdr_10.1956.yaml
 - **Note:** Community ref: vocals* (8.4), instrumental (14.7)
@@ -2382,11 +2420,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_MelBand-Roformer_Karaoke_by-Gabox.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** karaoke
-- **Backend focus:** vocal_target
+- **Backend focus:** karaoke_vocal_primary
 - **Primary stem (backend):** `Vocals`
 - **Instruments:** Vocals, Instrumental
 - **Target instrument:** `Vocals`
-- **Best result:** Karaoke backing (Instrumental primary; complement = lead vocals)
+- **Karaoke model:** yes
+- **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** remote_yaml:config_MelBand-Roformer_Karaoke_by-Gabox.yaml
 
@@ -2397,11 +2436,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_melband_roformer_voc_gabox.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** karaoke
-- **Backend focus:** vocal_target
+- **Backend focus:** karaoke_vocal_primary
 - **Primary stem (backend):** `Vocals`
 - **Instruments:** Vocals, Instrumental
 - **Target instrument:** `Vocals`
-- **Best result:** Karaoke backing (Instrumental primary; complement = lead vocals)
+- **Karaoke model:** yes
+- **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** remote_yaml:config_melband_roformer_voc_gabox.yaml
 
@@ -2412,10 +2452,11 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `config_melband_roformer_karaoke_becruily.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** karaoke
-- **Backend focus:** two_stem
+- **Backend focus:** karaoke_vocal_primary
 - **Primary stem (backend):** `Vocals`
 - **Instruments:** Vocals, Instrumental
-- **Best result:** Karaoke backing (Instrumental primary; complement = lead vocals)
+- **Karaoke model:** yes
+- **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
 - **Save stems UI:** UI: Vocals / complement
 - **Metadata:** remote_yaml:config_melband_roformer_karaoke_becruily.yaml
 
@@ -2456,7 +2497,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `melband_roformer_vocals_bleedness_by_aname.ckpt`
 - **Config:** `config_melband_roformer_vocals_test_by_aname.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** vocals
 - **Backend focus:** vocal_target
 - **Primary stem (backend):** `vocals`
 - **Instruments:** vocals, instruments

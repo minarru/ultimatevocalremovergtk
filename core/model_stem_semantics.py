@@ -16,6 +16,7 @@ INTENT_DRUM_BASS_SEP = "drum_bass_sep"
 INTENT_DUAL_VOC_INST = "dual_voc_inst"
 INTENT_MULTI_STEM = "multi_stem"
 INTENT_SPECIAL_FX = "special_fx"
+INTENT_SPECIALTY_STEM = "specialty_stem"
 INTENT_INSTRUMENTAL = "instrumental"
 INTENT_VOCALS = "vocals"
 INTENT_UNKNOWN = "unknown"
@@ -45,6 +46,74 @@ _DUAL_VOC_INST_LABELS = (
 )
 
 _DRUM_BASS_HINTS = ("drum-bass", "no drum", "drum bass", "sdr 1053")
+
+_SPECIAL_FX_LABEL_HINTS = (
+    "dereverb",
+    "de-reverb",
+    "deverb",
+    "denoise",
+    "de-noise",
+    "de-echo",
+    "deecho",
+    "de echo",
+    "reverb hq",
+    "uvr-deecho",
+    "uvr-de-echo",
+    "uvr-denoise",
+    "uvr-dereverb",
+    "uvr-de-reverb",
+    "uvr-de-echo",
+    "mdx23c dereverb",
+)
+
+_EARLY_SPECIAL_FX_LABEL_HINTS = (
+    "crowd hq",
+    "wind_inst",
+    "wind inst",
+)
+
+_SPECIALTY_LABEL_HINTS = (
+    "male-female",
+    "male female",
+    "chorus male",
+    "aspiration",
+    "phantom centre",
+    "phantom center",
+    " bve",
+    "| bve",
+    " guitar by",
+    "| guitar by",
+    " crowd by",
+    "| crowd by",
+)
+
+_SPECIALTY_STEMS = frozenset(
+    {
+        "male",
+        "female",
+        "aspiration",
+        "similarity",
+        "lead",
+        "crowd",
+        "guitar",
+    }
+)
+
+_SPECIALTY_STEM_PAIRS = (
+    frozenset({"male", "female"}),
+    frozenset({"aspiration", "other"}),
+)
+
+_SPECIAL_FX_STEM_COMPACT = frozenset(
+    {
+        "noise",
+        "reverb",
+        "dry",
+        "noreverb",
+        "nodry",
+        "noecho",
+    }
+)
 
 # Two-stem yaml pairs use `vocals` + `other` where `other` is the instrumental side
 # (not Demucs 4-stem "Other"). Relabel only for display; backend stem keys are unchanged.
@@ -160,6 +229,71 @@ def is_drum_bass_pair(instruments: Sequence[str]) -> bool:
     return bool({"no drum-bass", "drum-bass"} & lowered)
 
 
+def is_special_fx_stem(stem: str) -> bool:
+    """True when a yaml/hash stem names a post-processing output (dry, no echo, etc.)."""
+    if not stem:
+        return False
+    low = str(stem).lower().strip()
+    if low.startswith("no "):
+        return True
+    compact = low.replace(" ", "").replace("-", "")
+    return compact in _SPECIAL_FX_STEM_COMPACT
+
+
+def is_specialty_stem(stem: str) -> bool:
+    if not stem:
+        return False
+    return str(stem).lower().strip() in _SPECIALTY_STEMS
+
+
+def is_specialty_instrument_pair(instruments: Sequence[str]) -> bool:
+    if len(instruments) != 2:
+        return False
+    lowered = frozenset(str(name).lower() for name in instruments)
+    return lowered in _SPECIALTY_STEM_PAIRS
+
+
+def describe_special_fx_stem(stem: str) -> str:
+    """Human-readable best-result line for FX / subtraction primaries."""
+    if not stem:
+        return "Post-processing stem export"
+    low = str(stem).lower().strip()
+    if low.startswith("no "):
+        removed = stem[3:].strip()
+        return f"{stem} (mix minus {removed})"
+    compact = low.replace(" ", "").replace("-", "")
+    labels = {
+        "noise": "Noise (isolated noise stem)",
+        "reverb": "Reverb (isolated reverb stem)",
+        "dry": "Dry (dereverbbed signal)",
+        "noreverb": "No reverb (dereverbbed signal)",
+        "nodry": "Dry (mix minus wet signal)",
+        "noecho": "No echo (mix minus echo)",
+    }
+    if compact in labels:
+        return labels[compact]
+    return f"{stem} (post-processing stem)"
+
+
+def describe_kuielab_component(stem: str) -> str:
+    if not stem:
+        return "Kuielab Demucs component stem"
+    return f"Kuielab Demucs {stem} stem (single 4-stem component)"
+
+
+def specialty_ui_note(instruments: Sequence[str]) -> str:
+    if instruments:
+        return f"UI: {' / '.join(str(name) for name in instruments)} subset"
+    return "UI: specialty stem subset"
+
+
+def special_fx_ui_note(primary: str = "", target: str = "") -> str:
+    stem = target or primary
+    if not stem:
+        return "UI: post-processing stem export"
+    return f"UI: {stem} / complement stem"
+
+
 def intent_from_primary_stem(primary: str, *, is_karaoke: bool = False) -> str:
     if not primary:
         return ""
@@ -172,9 +306,11 @@ def intent_from_primary_stem(primary: str, *, is_karaoke: bool = False) -> str:
         return INTENT_INSTRUMENTAL
     if "drum" in low and "bass" in low:
         return INTENT_DRUM_BASS_SEP
-    if low in ("drums", "bass", "guitar", "piano", "other"):
+    if low in ("drums", "bass", "piano", "other"):
         return INTENT_MULTI_STEM
-    if low.startswith("no ") or low in ("noise", "reverb", "dry"):
+    if is_specialty_stem(primary):
+        return INTENT_SPECIALTY_STEM
+    if is_special_fx_stem(primary):
         return INTENT_SPECIAL_FX
     return ""
 
@@ -195,6 +331,8 @@ def export_intent_from_fields(
 
     if is_karaoke:
         return INTENT_KARAOKE
+    if is_specialty_instrument_pair(instruments):
+        return INTENT_SPECIALTY_STEM
     if target:
         t = target.lower()
         if t in ("vocals", "vocal"):
@@ -203,9 +341,13 @@ def export_intent_from_fields(
             return INTENT_INSTRUMENTAL
         if "drum" in t and "bass" in t:
             return INTENT_DRUM_BASS_SEP
-        if t in ("drums", "bass", "guitar", "piano"):
+        if t in ("drums", "bass", "piano"):
             return INTENT_MULTI_STEM
-        if t.startswith("no ") or t in ("noise", "reverb", "dry"):
+        if t == "guitar":
+            return INTENT_SPECIALTY_STEM
+        if is_specialty_stem(target):
+            return INTENT_SPECIALTY_STEM
+        if is_special_fx_stem(target):
             return INTENT_SPECIAL_FX
     if is_drum_bass_pair(instruments):
         return INTENT_DRUM_BASS_SEP
@@ -306,23 +448,23 @@ def infer_name_intent_from_label(label: str) -> str:
     )
     if any(h in text for h in multi_hints):
         return INTENT_MULTI_STEM
-    special_hints = (
-        "dereverb", "de-reverb", "deverb", "denoise", "de-echo", "deecho",
-        "reverb", "echo", "noise", "bleed", "suppressor",
-    )
-    if any(h in text for h in special_hints):
+    if any(h in text for h in _EARLY_SPECIAL_FX_LABEL_HINTS):
         return INTENT_SPECIAL_FX
+    if any(h in text for h in _SPECIALTY_LABEL_HINTS):
+        return INTENT_SPECIALTY_STEM
     inst_hints = (
         "inst", "instrumental", "instr", "hp-uvr", "hp2-uvr", "hp uvr",
-        "wind_inst", "crowd", "fno", "guitar", "metal", "drumsep", "drum sep",
-        "instvoc", "mgm", "sp-uvr", "sp_uvr",
+        "fno", "metal", "drumsep", "drum sep",
+        "instvoc", "mgm", "sp-uvr", "sp_uvr", "bleed suppressor",
     )
     vocal_hints = (
-        "vocal", "voc ", " voc", "lead", "chorus", "aspiration", "bve", "syhft",
-        "bleedless", "fullness", "revive", "resurrection vocals", "male-female",
-        "male female", "phantom", "centre", "center", "big beta", "big syhft",
+        "vocal", "voc ", " voc", "syhft",
+        "bleedless", "fullness", "revive", "resurrection vocals",
+        "big beta", "big syhft",
         " kim | ft", "| ft ", "sdr 1143", "sdr 1296", "sdr 1297",
     )
+    if "instrumental" in text:
+        vocal_hints = tuple(h for h in vocal_hints if h != "bleedless")
     inst = any(h in text for h in inst_hints)
     vocal = any(h in text for h in vocal_hints)
     if inst and vocal:
@@ -331,6 +473,10 @@ def infer_name_intent_from_label(label: str) -> str:
         return INTENT_INSTRUMENTAL
     if vocal:
         return INTENT_VOCALS
+    if any(h in text for h in _SPECIAL_FX_LABEL_HINTS) or "uvr-de" in text:
+        return INTENT_SPECIAL_FX
+    if "crowd" in text:
+        return INTENT_SPECIALTY_STEM
     if "mdx-net 1" in text or "mdx-net 2" in text or "mdx-net 3" in text:
         return INTENT_VOCALS
     if "mdxnet_9482" in text or "d1581" in text:
@@ -362,6 +508,8 @@ def backend_focus_label(
     if is_karaoke:
         if normalize_stem_label(primary) == VOCAL_STEM or normalize_stem_label(target) == VOCAL_STEM:
             return "karaoke_vocal_primary"
+        if normalize_stem_label(primary) == INST_STEM or normalize_stem_label(target) == INST_STEM:
+            return "karaoke_instrumental_primary"
         return "karaoke_instrumental_primary"
     if target:
         norm = normalize_stem_label(target)
@@ -373,9 +521,15 @@ def backend_focus_label(
             return "instrumental_target_other_yaml"
         if "drum" in target.lower() and "bass" in target.lower():
             return "drum_bass_target"
+        if is_special_fx_stem(target):
+            return f"special_fx_target:{target}"
+        if is_specialty_stem(target):
+            return f"specialty_target:{target}"
         return f"single_target:{target}"
     if is_drum_bass_pair(instruments):
         return INTENT_DRUM_BASS_SEP
+    if is_specialty_instrument_pair(instruments):
+        return "specialty_two_stem"
     if len(instruments) >= 3:
         return INTENT_MULTI_STEM
     if len(instruments) == 2:
@@ -386,4 +540,11 @@ def backend_focus_label(
             return "vocal_primary"
         if norm == INST_STEM:
             return "instrumental_primary"
+        if is_special_fx_stem(primary):
+            return f"special_fx_primary:{primary}"
+        if is_specialty_stem(primary):
+            return f"specialty_primary:{primary}"
+        low = str(primary).lower()
+        if low in ("bass", "drums", "other"):
+            return f"demucs_component:{primary}"
     return INTENT_UNKNOWN

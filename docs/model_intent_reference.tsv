@@ -16,8 +16,8 @@ filename	arch	primary_stem	intent	stems	friendly_name
 7_HP2-UVR.pth	VR	instrumental	instrumental	instrumental* (13.5), vocals (8.3)	VR Arch Single Model v5: 7_HP2-UVR
 8_HP2-UVR.pth	VR	instrumental	instrumental	instrumental* (13.5), vocals (8.2)	VR Arch Single Model v5: 8_HP2-UVR
 9_HP2-UVR.pth	VR	instrumental	instrumental	instrumental* (13.7), vocals (8.0)	VR Arch Single Model v5: 9_HP2-UVR
-aspiration_mel_band_roformer_less_aggr_sdr_18.1201.ckpt	MDXC	aspiration	unknown	aspiration, other	Roformer Model: MelBand Roformer | Aspiration Less Aggressive by Sucial
-aspiration_mel_band_roformer_sdr_18.9845.ckpt	MDXC	aspiration	unknown	aspiration, other	Roformer Model: MelBand Roformer | Aspiration by Sucial
+aspiration_mel_band_roformer_less_aggr_sdr_18.1201.ckpt	MDXC	aspiration	specialty_stem	aspiration, other	Roformer Model: MelBand Roformer | Aspiration Less Aggressive by Sucial
+aspiration_mel_band_roformer_sdr_18.9845.ckpt	MDXC	aspiration	specialty_stem	aspiration, other	Roformer Model: MelBand Roformer | Aspiration by Sucial
 BS-Roformer-SW.ckpt	MDXC		unknown	Unknown	Roformer Model: BS Roformer SW by jarredou
 bs_roformer_instrumental_resurrection_unwa.ckpt	MDXC		unknown	Unknown	Roformer Model: BS Roformer | Instrumental Resurrection by unwa
 bs_roformer_male_female_by_aufr33_sdr_7.2889.ckpt	MDXC		unknown	Unknown	Roformer Model: BS Roformer | Male-Female by aufr33
@@ -32,11 +32,11 @@ dereverb-echo_mel_band_roformer_sdr_10.0169.ckpt	MDXC	dry	special_fx	dry, no dry
 dereverb-echo_mel_band_roformer_sdr_13.4843_v2.ckpt	MDXC	dry	special_fx	dry*, no dry	Roformer Model: MelBand Roformer | De-Reverb-Echo V2 by Sucial
 dereverb_big_mbr_ep_362.ckpt	MDXC		unknown	Unknown	Roformer Model: MelBand Roformer | De-Reverb Big by Sucial
 dereverb_echo_mbr_fused.ckpt	MDXC		unknown	Unknown	Roformer Model: MelBand Roformer | De-Reverb-Echo Fused by Sucial
-dereverb_mel_band_roformer_anvuew_sdr_19.1729.ckpt	MDXC	noreverb	unknown	noreverb*, reverb	Roformer Model: MelBand Roformer | De-Reverb by anvuew
-dereverb_mel_band_roformer_less_aggressive_anvuew_sdr_18.8050.ckpt	MDXC	noreverb	unknown	noreverb*, reverb	Roformer Model: MelBand Roformer | De-Reverb Less Aggressive by anvuew
+dereverb_mel_band_roformer_anvuew_sdr_19.1729.ckpt	MDXC	noreverb	special_fx	noreverb*, reverb	Roformer Model: MelBand Roformer | De-Reverb by anvuew
+dereverb_mel_band_roformer_less_aggressive_anvuew_sdr_18.8050.ckpt	MDXC	noreverb	special_fx	noreverb*, reverb	Roformer Model: MelBand Roformer | De-Reverb Less Aggressive by anvuew
 dereverb_mel_band_roformer_mono_anvuew.ckpt	MDXC		unknown	Unknown	Roformer Model: MelBand Roformer | De-Reverb Mono by anvuew
 dereverb_super_big_mbr_ep_346.ckpt	MDXC		unknown	Unknown	Roformer Model: MelBand Roformer | De-Reverb Super Big by Sucial
-deverb_bs_roformer_8_384dim_10depth.ckpt	MDXC	noreverb	unknown	noreverb*, reverb	Roformer Model: BS-Roformer-De-Reverb
+deverb_bs_roformer_8_384dim_10depth.ckpt	MDXC	noreverb	special_fx	noreverb*, reverb	Roformer Model: BS-Roformer-De-Reverb
 Kim_Inst.onnx	MDX	instrumental	instrumental	instrumental* (15.5), vocals (9.1)	MDX-Net Model: Kim Inst
 Kim_Vocal_1.onnx	MDX	vocals	vocals	vocals* (10.1), instrumental (15.5)	MDX-Net Model: Kim Vocal 1
 Kim_Vocal_2.onnx	MDX	vocals	vocals	vocals* (10.2), instrumental (15.4)	MDX-Net Model: Kim Vocal 2
@@ -54,7 +54,7 @@ MDX23C-De-Reverb-aufr33-jarredou.ckpt	MDXC	dry	special_fx	dry, no dry	MDX23C Mod
 MDX23C-DrumSep-aufr33-jarredou.ckpt	MDXC	kick	unknown	kick, snare, toms, hh, ride, crash	MDX23C Model: MDX23C DrumSep by aufr33-jarredou
 MDX23C_D1581.ckpt	MDXC	vocals	vocals	vocals (10.0), instrumental (15.5)	MDX23C Model VIP: MDX23C_D1581
 mel_band_roformer_bleed_suppressor_v1.ckpt	MDXC	instrumental	instrumental	instrumental*, bleed	Roformer Model: MelBand Roformer | Bleed Suppressor V1 by unwa-97chris
-mel_band_roformer_crowd_aufr33_viperx_sdr_8.7144.ckpt	MDXC	crowd	unknown	crowd*, other	Roformer Model: Mel-Roformer-Crowd-Aufr33-Viperx
+mel_band_roformer_crowd_aufr33_viperx_sdr_8.7144.ckpt	MDXC	crowd	specialty_stem	crowd*, other	Roformer Model: Mel-Roformer-Crowd-Aufr33-Viperx
 mel_band_roformer_denoise_debleed_gabox.ckpt	MDXC		unknown	Unknown	Roformer Model: MelBand Roformer | Denoise-Debleed by Gabox
 mel_band_roformer_instrumental_2_gabox.ckpt	MDXC		unknown	Unknown	Roformer Model: MelBand Roformer | Instrumental 2 by Gabox
 mel_band_roformer_instrumental_3_gabox.ckpt	MDXC		unknown	Unknown	Roformer Model: MelBand Roformer | Instrumental 3 by Gabox
@@ -119,7 +119,7 @@ MGM_MAIN_v4.pth	VR	instrumental	instrumental	instrumental* (12.4), vocals (6.2)	
 model_bs_roformer_ep_317_sdr_12.9755.ckpt	MDXC	vocals	vocals	vocals* (11.8), instrumental (16.5)	Roformer Model: BS-Roformer-Viperx-1297
 model_bs_roformer_ep_368_sdr_12.9628.ckpt	MDXC	vocals	vocals	vocals* (12.1), instrumental (16.3)	Roformer Model: BS-Roformer-Viperx-1296
 model_bs_roformer_ep_937_sdr_10.5309.ckpt	MDXC	no drum-bass	drum_bass_sep	no drum-bass*, drum-bass	Roformer Model: BS-Roformer-Viperx-1053
-model_chorus_bs_roformer_ep_267_sdr_24.1275.ckpt	MDXC	male	unknown	male, female	Roformer Model: BS Roformer | Chorus Male-Female by Sucial
+model_chorus_bs_roformer_ep_267_sdr_24.1275.ckpt	MDXC	male	specialty_stem	male, female	Roformer Model: BS Roformer | Chorus Male-Female by Sucial
 model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt	MDXC	vocals	vocals	vocals* (10.5), instrumental (15.1)	Roformer Model: Mel-Roformer-Viperx-1143
 Reverb_HQ_By_FoxJoy.onnx	MDX	reverb	special_fx	reverb*, no reverb	MDX-Net Model: Reverb HQ By FoxJoy
 UVR-BVE-4B_SN-44100-1.pth	VR	vocals	vocals	vocals* (0.0), instrumental (7.7)	VR Arch Single Model v5: UVR-BVE-4B_SN-44100-1

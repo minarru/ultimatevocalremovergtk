@@ -26,13 +26,23 @@ from core.mdx_c_registry import compute_checkpoint_hash, infer_mdx_c_architectur
 from core.model_data import load_mdx_c_config, load_model_hash_data, _mdx_c_training  # noqa: E402
 from core.model_stem_semantics import (  # noqa: E402
     INTENT_INSTRUMENTAL,
+    INTENT_MULTI_STEM,
+    INTENT_SPECIALTY_STEM,
     INTENT_UNKNOWN,
     backend_focus_label,
+    describe_kuielab_component,
+    describe_special_fx_stem,
     export_intent_from_fields,
     infer_name_intent_from_label,
     intent_from_primary_stem,
     is_dual_stem_weight,
+    is_special_fx_stem,
+    is_specialty_instrument_pair,
+    is_vocal_target,
     normalize_stem_label,
+    resolve_is_karaoke,
+    special_fx_ui_note,
+    specialty_ui_note,
 )
 from core.politrees_catalog import merge_politrees_catalogues  # noqa: E402
 
@@ -313,6 +323,24 @@ def _best_result(entry: ModelEntry) -> str:
         if is_dual_stem_weight(entry.weight_file):
             return "Vocals or Instrumental — both are first-class 2-stem exports"
         return "User picks Vocals or Instrumental (dual 2-stem)"
+    if entry.name_intent == "specialty_stem":
+        if entry.instruments:
+            return ", ".join(entry.instruments)
+        stem = entry.target_instrument or entry.primary_stem
+        if stem:
+            return f"{stem} (specialty stem export)"
+        return "Specialty stem export"
+    if entry.name_intent == "special_fx":
+        stem = entry.target_instrument or entry.primary_stem
+        if stem:
+            return describe_special_fx_stem(stem)
+        if entry.instruments:
+            return ", ".join(entry.instruments)
+        return "Post-processing stem export"
+    if "kuielab" in entry.catalogue_label.lower() and entry.primary_stem:
+        if entry.primary_stem.lower() in ("vocals", "vocal"):
+            return "Vocals (+ Instrumental complement)"
+        return describe_kuielab_component(entry.primary_stem)
     if entry.name_intent == "multi_stem" and entry.instruments:
         return f"Multi-stem: {', '.join(entry.instruments)}"
     if entry.target_instrument:
@@ -323,6 +351,8 @@ def _best_result(entry: ModelEntry) -> str:
             return "Instrumental (complement = Vocals)"
         if t == "other":
             return "Instrumental (yaml `other`; complement = vocals)"
+        if is_special_fx_stem(entry.target_instrument):
+            return describe_special_fx_stem(entry.target_instrument)
         return f"{entry.target_instrument} (single native output)"
     if entry.primary_stem:
         p = _normalize_stem(entry.primary_stem)
@@ -330,6 +360,8 @@ def _best_result(entry: ModelEntry) -> str:
             return "Vocals (+ Instrumental complement)"
         if p == INST_STEM:
             return "Instrumental (+ Vocals complement)"
+        if is_special_fx_stem(entry.primary_stem):
+            return describe_special_fx_stem(entry.primary_stem)
         if entry.stem_count == 1:
             return entry.primary_stem
     if entry.instruments:
@@ -344,6 +376,10 @@ def _ui_note(entry: ModelEntry) -> str:
         and {"vocals", "other"} <= {s.lower() for s in entry.instruments}
     ):
         return "UI: Vocals / Instrumental (yaml `other` is the backing track)"
+    if entry.name_intent == "specialty_stem":
+        return specialty_ui_note(entry.instruments)
+    if entry.name_intent == "special_fx":
+        return special_fx_ui_note(entry.primary_stem, entry.target_instrument)
     if entry.name_intent == "drum_bass_sep":
         return "UI: No Drum-Bass / Drum-Bass subset"
     if entry.name_intent == "dual_voc_inst":
@@ -354,14 +390,22 @@ def _ui_note(entry: ModelEntry) -> str:
         return "UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)"
     if entry.primary_stem in (VOCAL_STEM, INST_STEM):
         return f"UI: {entry.primary_stem} / complement"
+    if is_special_fx_stem(entry.primary_stem) or is_special_fx_stem(entry.target_instrument):
+        return special_fx_ui_note(entry.primary_stem, entry.target_instrument)
     if entry.stem_count >= 3:
         return "UI: per-stem subset or focus row"
     return ""
 
 
 def _intent_compatible(intent: str, focus: str) -> bool:
-    if intent in ("multi_stem", "special_fx", "dual_voc_inst", "drum_bass_sep", "unknown"):
+    if intent in ("dual_voc_inst", "drum_bass_sep", "unknown"):
         return True
+    if intent == "multi_stem":
+        return focus.startswith((INTENT_MULTI_STEM, "demucs_component:")) or focus == INTENT_UNKNOWN
+    if intent == "special_fx":
+        return focus.startswith(("special_fx_", "single_target:")) or focus == INTENT_UNKNOWN
+    if intent == "specialty_stem":
+        return focus.startswith(("specialty_", "single_target:", "two_stem"))
     if intent == "karaoke":
         return focus.startswith("karaoke_")
     if intent == "instrumental":
@@ -369,6 +413,17 @@ def _intent_compatible(intent: str, focus: str) -> bool:
     if intent == "vocals":
         return focus.startswith("vocal")
     return True
+
+
+def _is_vocals_instrumental_pair(instruments: List[str]) -> bool:
+    if len(instruments) != 2:
+        return False
+    lowered = {str(name).lower() for name in instruments}
+    return (
+        lowered <= {"vocals", "instrumental", "vocal", "inst"}
+        or lowered <= {"vocals", "other"}
+        or lowered <= {"vocal", "other"}
+    )
 
 
 def _flag_mismatches(entry: ModelEntry) -> List[str]:
@@ -382,6 +437,18 @@ def _flag_mismatches(entry: ModelEntry) -> List[str]:
             flags.append("NAME says instrumental but backend is vocal-focused")
         elif intent == "vocals" and focus.startswith("instrumental"):
             flags.append("NAME says vocal but backend is instrumental-focused")
+        elif intent == "karaoke" and not focus.startswith("karaoke_"):
+            flags.append("NAME says karaoke but backend is not karaoke-focused")
+        elif intent == "vocals" and not focus.startswith("vocal"):
+            flags.append("NAME says vocals but backend is not vocal-focused")
+        elif intent == "specialty_stem" and not focus.startswith(("specialty_", "single_target:")):
+            flags.append("NAME says specialty stem but backend focus differs")
+    if intent == "vocals" and focus == "two_stem" and not _is_vocals_instrumental_pair(entry.instruments):
+        flags.append("NAME says vocals but backend is specialty 2-stem")
+    if intent == "vocals" and focus.startswith("single_target:"):
+        stem = focus.split(":", 1)[-1]
+        if not is_vocal_target(stem):
+            flags.append(f"NAME says vocals but native target is {stem}")
     if intent == "instrumental" and entry.target_instrument.lower() in ("vocals", "vocal"):
         flags.append("target_instrument=Vocals on instrumental-named model")
     if intent == "vocals" and entry.target_instrument.lower() in ("other", "instrumental", "inst"):
@@ -515,6 +582,8 @@ def _apply_hash_row(meta: ModelEntry, row: dict, source: str) -> None:
 
 def _infer_onnx_meta(filename: str, label: str) -> Tuple[str, bool, str]:
     low = f"{filename} {label}".lower()
+    if "kara_2" in low or "karaoke 2" in low:
+        return INST_STEM, True, "onnx_name_heuristic"
     if "kara" in low:
         return VOCAL_STEM, True, "onnx_name_heuristic"
     if any(k in low for k in ("kim_vocal", "voc_ft", "vocals", "_voc", "mdxnet_1", "mdxnet_2", "mdxnet_3", "9482")):
@@ -555,6 +624,8 @@ def _apply_community_ref(meta: ModelEntry, ref: CommunityRef) -> None:
         meta.stem_count = max(meta.stem_count, 2)
     if not meta.metadata_source or meta.metadata_source == "unavailable":
         meta.metadata_source = "community_models.txt"
+    if ref.intent == "karaoke" or "karaoke" in meta.catalogue_label.lower():
+        meta.is_karaoke = True
     if is_dual_stem_weight(meta.weight_file):
         meta.name_intent = "dual_voc_inst"
         meta.notes.append("Both Vocals and Instrumental are first-class exports")
@@ -565,10 +636,32 @@ def _apply_community_ref(meta: ModelEntry, ref: CommunityRef) -> None:
 
 
 def _finalize_entry(meta: ModelEntry) -> None:
+    if not meta.is_karaoke and resolve_is_karaoke(
+        model_name=meta.catalogue_label,
+        weight_basename=meta.weight_file,
+    ):
+        meta.is_karaoke = True
     metadata_intent = _infer_intent_from_metadata(meta)
     if meta.name_intent == "unknown" and metadata_intent:
         meta.name_intent = metadata_intent
         meta.notes.append(f"Intent inferred from metadata ({metadata_intent})")
+    elif metadata_intent and meta.name_intent != metadata_intent:
+        if meta.name_intent == "special_fx" and metadata_intent in (
+            "vocals",
+            "instrumental",
+            "dual_voc_inst",
+        ):
+            meta.name_intent = metadata_intent
+            meta.notes.append(f"Name intent corrected from metadata ({metadata_intent})")
+        elif meta.name_intent == "instrumental" and metadata_intent == "special_fx":
+            meta.name_intent = metadata_intent
+            meta.notes.append(f"Name intent corrected from metadata ({metadata_intent})")
+        elif meta.name_intent == "vocals" and metadata_intent in (
+            INTENT_SPECIALTY_STEM,
+            "special_fx",
+        ):
+            meta.name_intent = metadata_intent
+            meta.notes.append(f"Name intent corrected from metadata ({metadata_intent})")
     meta.backend_focus = _backend_focus(
         meta.primary_stem, meta.target_instrument, meta.instruments, is_karaoke=meta.is_karaoke
     )
