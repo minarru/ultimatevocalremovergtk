@@ -22,12 +22,25 @@ sys.path.insert(0, ROOT)
 
 from bundled.constants import INST_STEM, VOCAL_STEM  # noqa: E402
 from core import paths  # noqa: E402
-from core.mdx_c_registry import infer_mdx_c_architecture, sanitize_catalogue_label  # noqa: E402
+from core.mdx_c_registry import compute_checkpoint_hash, infer_mdx_c_architecture, sanitize_catalogue_label  # noqa: E402
 from core.model_data import load_mdx_c_config, load_model_hash_data, _mdx_c_training  # noqa: E402
 from core.politrees_catalog import merge_politrees_catalogues  # noqa: E402
 
 OUTPUT_PATH = os.path.join(ROOT, "docs", "models-catalogue.md")
+REFERENCE_TSV_PATH = os.path.join(ROOT, "docs", "model_intent_reference.tsv")
 YAML_CACHE_DIR = os.path.join(ROOT, "docs", ".yaml_cache")
+POLITREES_CACHE_DIR = os.path.join(ROOT, "docs", ".politrees_cache")
+COMMUNITY_CACHE_DIR = os.path.join(ROOT, "docs", ".community_cache")
+
+_POLITREES_VR_DATA_URL = (
+    "https://raw.githubusercontent.com/Politrees/UVR_resources/main/UVR_resources/model_data/vr_model_data.json"
+)
+_POLITREES_MDX_DATA_URL = (
+    "https://raw.githubusercontent.com/Politrees/UVR_resources/main/UVR_resources/model_data/mdx_model_data.json"
+)
+_COMMUNITY_MODELS_URL = (
+    "https://raw.githubusercontent.com/upseem/uvr5-cli-no-ui/main/models.txt"
+)
 
 _POLITREES_KEYS = (
     "mdx_download_list",
@@ -55,6 +68,13 @@ _VOCAL_HINTS = (
     "phantom",
     "centre",
     "center",
+    "big beta",
+    "big syhft",
+    " kim | ft",
+    "| ft ",
+    "sdr 1143",
+    "sdr 1296",
+    "sdr 1297",
 )
 _INST_HINTS = (
     "inst",
@@ -70,10 +90,14 @@ _INST_HINTS = (
     "metal",
     "drumsep",
     "drum sep",
-    "duality",
     "instvoc",
-    "main",
-    "mgm_main",
+    "mgm",
+    "sp-uvr",
+    "sp_uvr",
+)
+_DUAL_VOC_INST_LABELS = (
+    "mdx-net main",
+    "uvr-mdx-net main",
 )
 _SPECIAL_HINTS = (
     "dereverb",
@@ -104,6 +128,30 @@ _MULTI_HINTS = (
     "sfx",
     "ensemble",
 )
+_DUAL_STEM_WEIGHTS = frozenset(
+    {
+        "uvr_mdxnet_main.onnx",
+    }
+)
+_DRUM_BASS_HINTS = ("drum-bass", "no drum", "drum bass", "sdr 1053")
+
+
+@dataclass
+class CommunityRef:
+    filename: str
+    arch: str
+    primary_stem: str
+    stems_text: str
+    friendly_name: str
+    intent: str = ""
+
+
+@dataclass
+class CatalogueContext:
+    community_by_file: Dict[str, CommunityRef] = field(default_factory=dict)
+    vr_by_hash: Dict[str, dict] = field(default_factory=dict)
+    mdx_by_hash: Dict[str, dict] = field(default_factory=dict)
+    weight_to_hash: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -161,13 +209,175 @@ def _merged_catalogues() -> Tuple[dict, dict, dict]:
     return vr, mdx, demucs
 
 
+def _fetch_cached(url: str, cache_dir: str, filename: str) -> Optional[str]:
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path = os.path.join(cache_dir, filename)
+    if os.path.isfile(cache_path):
+        return cache_path
+    try:
+        with urllib.request.urlopen(url, timeout=30) as response:
+            data = response.read()
+        with open(cache_path, "wb") as handle:
+            handle.write(data)
+        return cache_path
+    except (urllib.error.URLError, OSError, TimeoutError):
+        return cache_path if os.path.isfile(cache_path) else None
+
+
+def _load_json_cache(url: str, cache_dir: str, filename: str) -> dict:
+    path = _fetch_cached(url, cache_dir, filename)
+    if not path:
+        return {}
+    try:
+        with open(path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+        return payload if isinstance(payload, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _merge_hash_tables(local_path: str, remote: dict) -> dict:
+    merged: dict = {}
+    if os.path.isfile(local_path):
+        try:
+            merged.update(load_model_hash_data(local_path))
+        except (FileNotFoundError, ValueError, json.JSONDecodeError):
+            pass
+    merged.update(remote)
+    return merged
+
+
+def _scan_weight_hashes(*weight_dirs: str) -> Dict[str, str]:
+    index: Dict[str, str] = {}
+    for weight_dir in weight_dirs:
+        if not os.path.isdir(weight_dir):
+            continue
+        for name in os.listdir(weight_dir):
+            if not name.endswith((".pth", ".onnx", ".ckpt", ".th")):
+                continue
+            digest = compute_checkpoint_hash(os.path.join(weight_dir, name))
+            if digest:
+                index[name.lower()] = digest
+    return index
+
+
+def _intent_from_primary_stem(primary: str, *, is_karaoke: bool = False) -> str:
+    if not primary:
+        return ""
+    if is_karaoke:
+        return "karaoke"
+    low = primary.lower()
+    if low in ("vocals", "vocal"):
+        return "vocals"
+    if low in ("instrumental", "inst"):
+        return "instrumental"
+    if "drum" in low and "bass" in low:
+        return "drum_bass_sep"
+    if low in ("drums", "bass", "guitar", "piano", "other"):
+        return "multi_stem"
+    if low.startswith("no ") or low in ("noise", "reverb", "dry"):
+        return "special_fx"
+    return ""
+
+
+def _intent_from_community_stems(stems_text: str) -> Tuple[str, str]:
+    """Return (intent, primary_stem) from community stems column."""
+    text = stems_text.strip()
+    if not text or text.lower() == "unknown":
+        return "", ""
+    match = re.search(r"([^,]+?)\*", text)
+    primary = match.group(1).strip() if match else ""
+    if not primary:
+        primary = re.split(r",\s*", text)[0].strip()
+    primary = re.sub(r"\s*\([^)]*\)\s*$", "", primary).strip()
+    intent = _intent_from_primary_stem(primary)
+    if intent == "multi_stem" and "*" in text:
+        if any(k in text.lower() for k in ("vocals", "instrumental", "other")):
+            if "vocals" in primary.lower():
+                intent = "vocals"
+            elif "instrumental" in primary.lower() or primary.lower() == "other":
+                intent = "instrumental"
+    return intent, primary
+
+
+def _parse_community_models_txt(path: str) -> Dict[str, CommunityRef]:
+    refs: Dict[str, CommunityRef] = {}
+    if not os.path.isfile(path):
+        return refs
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.rstrip()
+            if not line or line.startswith("#") or line.startswith("-"):
+                continue
+            if set(line) <= {"-"}:
+                continue
+            if "Model Filename" in line or "Output Stems" in line:
+                continue
+            parts = re.split(r"\s{2,}", line.strip())
+            if len(parts) < 4:
+                continue
+            filename, arch, stems_text, friendly = parts[0], parts[1], parts[2], parts[3]
+            if not filename.endswith((".pth", ".onnx", ".ckpt", ".th")):
+                continue
+            intent, primary = _intent_from_community_stems(stems_text)
+            refs[filename.lower()] = CommunityRef(
+                filename=filename,
+                arch=arch,
+                primary_stem=primary,
+                stems_text=stems_text,
+                friendly_name=friendly,
+                intent=intent,
+            )
+    return refs
+
+
+def _write_reference_tsv(refs: Dict[str, CommunityRef]) -> None:
+    rows = sorted(refs.values(), key=lambda item: item.filename.lower())
+    lines = ["filename\tarch\tprimary_stem\tintent\tstems\tfriendly_name"]
+    for ref in rows:
+        lines.append(
+            "\t".join(
+                [
+                    ref.filename,
+                    ref.arch,
+                    ref.primary_stem,
+                    ref.intent or "unknown",
+                    ref.stems_text.replace("\t", " "),
+                    ref.friendly_name.replace("\t", " "),
+                ]
+            )
+        )
+    os.makedirs(os.path.dirname(REFERENCE_TSV_PATH), exist_ok=True)
+    with open(REFERENCE_TSV_PATH, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+
+
+def _build_catalogue_context() -> CatalogueContext:
+    remote_vr = _load_json_cache(_POLITREES_VR_DATA_URL, POLITREES_CACHE_DIR, "vr_model_data.json")
+    remote_mdx = _load_json_cache(_POLITREES_MDX_DATA_URL, POLITREES_CACHE_DIR, "mdx_model_data.json")
+    community_path = _fetch_cached(_COMMUNITY_MODELS_URL, COMMUNITY_CACHE_DIR, "models.txt")
+    community = _parse_community_models_txt(community_path or "")
+    if community:
+        _write_reference_tsv(community)
+    return CatalogueContext(
+        community_by_file=community,
+        vr_by_hash=_merge_hash_tables(paths.VR_HASH_JSON, remote_vr),
+        mdx_by_hash=_merge_hash_tables(paths.MDX_HASH_JSON, remote_mdx),
+        weight_to_hash=_scan_weight_hashes(paths.VR_MODELS_DIR, paths.MDX_MODELS_DIR),
+    )
+
+
 def _infer_name_intent(label: str) -> str:
     text = label.lower()
-    if "karaoke" in text and "fusion" not in text:
+    if "karaoke" in text:
         return "karaoke"
+    if any(h in text for h in _DRUM_BASS_HINTS):
+        return "drum_bass_sep"
+    if "instvoc" in text or "duality" in text:
+        return "dual_voc_inst"
+    if any(pattern in text for pattern in _DUAL_VOC_INST_LABELS) and "inst main" not in text:
+        return "dual_voc_inst"
     if any(h in text for h in _MULTI_HINTS):
-        if "instvoc" in text or "duality" in text:
-            return "dual_voc_inst"
         return "multi_stem"
     if any(h in text for h in _SPECIAL_HINTS):
         return "special_fx"
@@ -179,7 +389,52 @@ def _infer_name_intent(label: str) -> str:
         return "instrumental"
     if vocal:
         return "vocals"
+    if "mdx-net 1" in text or "mdx-net 2" in text or "mdx-net 3" in text:
+        return "vocals"
+    if "mdxnet_9482" in text or "d1581" in text:
+        return "vocals"
     return "unknown"
+
+
+def _infer_intent_from_metadata(entry: ModelEntry) -> str:
+    if entry.is_karaoke:
+        return "karaoke"
+    if entry.target_instrument:
+        t = entry.target_instrument.lower()
+        if t in ("vocals", "vocal"):
+            return "vocals"
+        if t in ("instrumental", "inst", "other"):
+            return "instrumental"
+        if "drum" in t and "bass" in t:
+            return "drum_bass_sep"
+        if t in ("drums", "bass", "guitar", "piano"):
+            return "multi_stem"
+        if t.startswith("no ") or t in ("noise", "reverb", "dry"):
+            return "special_fx"
+    lowered = {s.lower() for s in entry.instruments}
+    if {"no drum-bass", "drum-bass"} <= lowered or {"no drum-bass", "drum-bass"} & lowered:
+        return "drum_bass_sep"
+    if len(entry.instruments) >= 3:
+        return "multi_stem"
+    if len(entry.instruments) == 2:
+        if lowered >= {"vocals", "other"} or lowered >= {"vocals", "instrumental"}:
+            if entry.target_instrument:
+                return _infer_intent_from_metadata(
+                    ModelEntry(
+                        source="",
+                        family="",
+                        catalogue_label="",
+                        weight_file="",
+                        target_instrument=entry.target_instrument,
+                        instruments=entry.instruments,
+                    )
+                )
+            return "dual_voc_inst"
+    if entry.primary_stem:
+        intent = _intent_from_primary_stem(entry.primary_stem, is_karaoke=entry.is_karaoke)
+        if intent:
+            return intent
+    return ""
 
 
 def _normalize_stem(stem: str) -> str:
@@ -208,7 +463,12 @@ def _backend_focus(primary: str, target: str, instruments: List[str], *, is_kara
             return "instrumental_target"
         if target.lower() == "other":
             return "instrumental_target_other_yaml"
+        if "drum" in target.lower() and "bass" in target.lower():
+            return "drum_bass_target"
         return f"single_target:{target}"
+    lowered = {s.lower() for s in instruments}
+    if {"no drum-bass", "drum-bass"} <= lowered or {"no drum-bass", "drum-bass"} & lowered:
+        return "drum_bass_sep"
     if len(instruments) >= 3:
         return "multi_stem"
     if len(instruments) == 2:
@@ -227,8 +487,15 @@ def _best_result(entry: ModelEntry) -> str:
         if entry.backend_focus == "karaoke_vocal_primary":
             return "Karaoke vocals (Vocals primary; complement = instrumental backing)"
         return "Karaoke backing (Instrumental primary; complement = lead vocals)"
+    if entry.name_intent == "drum_bass_sep":
+        primary = entry.target_instrument or entry.primary_stem or "No Drum-Bass"
+        return f"{primary} (drum/bass separation; complement = Drum-Bass)"
     if entry.name_intent == "dual_voc_inst":
+        if entry.weight_file.lower() in _DUAL_STEM_WEIGHTS:
+            return "Vocals or Instrumental — both are first-class 2-stem exports"
         return "User picks Vocals or Instrumental (dual 2-stem)"
+    if entry.name_intent == "multi_stem" and entry.instruments:
+        return f"Multi-stem: {', '.join(entry.instruments)}"
     if entry.target_instrument:
         t = entry.target_instrument.lower()
         if t in ("vocals", "vocal"):
@@ -254,6 +521,10 @@ def _best_result(entry: ModelEntry) -> str:
 def _ui_note(entry: ModelEntry) -> str:
     if entry.instruments and {"vocals", "other"} <= {s.lower() for s in entry.instruments}:
         return "UI: Lead Vocals / Mix minus Lead Vocals (roformer vocals+other yaml)"
+    if entry.name_intent == "drum_bass_sep":
+        return "UI: No Drum-Bass / Drum-Bass subset"
+    if entry.name_intent == "dual_voc_inst":
+        return "UI: Vocals / Instrumental (either stem is a valid primary export)"
     if entry.target_instrument and entry.target_instrument.lower() in ("vocals", "vocal"):
         return "UI: Vocals / Instrumental"
     if entry.target_instrument and entry.target_instrument.lower() in ("instrumental", "inst", "other"):
@@ -266,7 +537,7 @@ def _ui_note(entry: ModelEntry) -> str:
 
 
 def _intent_compatible(intent: str, focus: str) -> bool:
-    if intent in ("multi_stem", "special_fx", "dual_voc_inst", "unknown"):
+    if intent in ("multi_stem", "special_fx", "dual_voc_inst", "drum_bass_sep", "unknown"):
         return True
     if intent == "karaoke":
         return focus.startswith("karaoke_")
@@ -307,18 +578,19 @@ def _yaml_paths(yaml_name: str) -> List[str]:
 def _fetch_yaml(url: str, yaml_name: str) -> Optional[str]:
     if not url or not yaml_name.endswith(".yaml"):
         return None
-    os.makedirs(YAML_CACHE_DIR, exist_ok=True)
-    cache_path = os.path.join(YAML_CACHE_DIR, yaml_name)
-    if os.path.isfile(cache_path):
-        return cache_path
-    try:
-        with urllib.request.urlopen(url, timeout=20) as response:
-            data = response.read()
-        with open(cache_path, "wb") as handle:
-            handle.write(data)
-        return cache_path
-    except (urllib.error.URLError, OSError, TimeoutError):
-        return None
+    return _fetch_cached(url, YAML_CACHE_DIR, yaml_name)
+
+
+def _training_fields(training) -> Tuple[List[str], str]:
+    if training is None:
+        return [], ""
+    if isinstance(training, dict):
+        instruments = list(training.get("instruments") or [])
+        target = training.get("target_instrument") or ""
+        return instruments, str(target) if target else ""
+    instruments = list(getattr(training, "instruments", None) or [])
+    target = getattr(training, "target_instrument", None) or ""
+    return instruments, str(target) if target else ""
 
 
 def _load_yaml_meta(yaml_name: str, yaml_url: str = "") -> Tuple[List[str], str, str, str]:
@@ -346,16 +618,17 @@ def _load_yaml_meta(yaml_name: str, yaml_url: str = "") -> Tuple[List[str], str,
             return inferred[0], inferred[1], inferred[2], f"yaml_name_heuristic:{yaml_name}"
         return [], "", "", ""
     try:
-        from ml_collections import ConfigDict
-
-        config = ConfigDict(load_mdx_c_config(config_path))
+        config = load_mdx_c_config(config_path)
         training = _mdx_c_training(config)
-        if training is None:
-            return [], "", "", source
-        instruments = list(getattr(training, "instruments", None) or [])
-        target = getattr(training, "target_instrument", None) or ""
+        instruments, target = _training_fields(training)
         arch, _ = infer_mdx_c_architecture(yaml_name)
-        return instruments, str(target) if target else "", arch, source
+        if not arch and isinstance(config, dict):
+            model = config.get("model") or {}
+            if "num_bands" in model:
+                arch = "Mel-Band Roformer"
+            elif "freqs_per_bands" in model:
+                arch = "BS Roformer"
+        return instruments, target, arch, source
     except Exception:
         inferred = _infer_from_yaml_name(yaml_name)
         if inferred[0] or inferred[1]:
@@ -372,18 +645,16 @@ def _infer_from_yaml_name(yaml_name: str) -> Tuple[List[str], str, str]:
         return ["instrumental", "vocals"], "", arch
     if any(k in low for k in ("inst", "instrumental", "fno", "crowd", "guitar", "metal")):
         return ["other", "vocals"], "other", arch
-    if any(k in low for k in ("voc", "karaoke", "aspiration", "bve", "revive", "chorus", "male_female")):
+    if any(k in low for k in ("voc", "karaoke", "aspiration", "bve", "revive", "chorus", "male_female", "big_beta", "kim_ft")):
         return ["other", "vocals"], "vocals", arch
     if any(k in low for k in ("dereverb", "deverb", "denoise", "echo", "bleed")):
         return ["no_reverb"], "no_reverb", arch
     return [], "", arch
 
 
-def _hash_lookup(weight_path: str, hash_json_path: str) -> Optional[dict]:
+def _hash_lookup_local(weight_path: str, hash_json_path: str) -> Optional[dict]:
     if not os.path.isfile(weight_path) or not os.path.isfile(hash_json_path):
         return None
-    from core.mdx_c_registry import compute_checkpoint_hash
-
     digest = compute_checkpoint_hash(weight_path)
     if not digest:
         return None
@@ -391,13 +662,43 @@ def _hash_lookup(weight_path: str, hash_json_path: str) -> Optional[dict]:
     return data.get(digest)
 
 
+def _lookup_hash_row(
+    weight_file: str,
+    ctx: CatalogueContext,
+    *,
+    prefer_vr: bool,
+) -> Tuple[Optional[dict], str]:
+    digest = ctx.weight_to_hash.get(weight_file.lower())
+    if not digest:
+        return None, ""
+    if prefer_vr and digest in ctx.vr_by_hash:
+        return ctx.vr_by_hash[digest], "politrees_vr_hash"
+    if digest in ctx.mdx_by_hash:
+        return ctx.mdx_by_hash[digest], "politrees_mdx_hash"
+    if digest in ctx.vr_by_hash:
+        return ctx.vr_by_hash[digest], "politrees_vr_hash"
+    return None, ""
+
+
+def _apply_hash_row(meta: ModelEntry, row: dict, source: str) -> None:
+    meta.metadata_source = source
+    if row.get("primary_stem"):
+        meta.primary_stem = row["primary_stem"]
+        meta.stem_count = 2
+    meta.is_karaoke = bool(row.get("is_karaoke"))
+    if row.get("config_yaml") and not meta.config_yaml:
+        meta.config_yaml = row["config_yaml"]
+
+
 def _infer_onnx_meta(filename: str, label: str) -> Tuple[str, bool, str]:
     low = f"{filename} {label}".lower()
     if "kara" in low:
         return VOCAL_STEM, True, "onnx_name_heuristic"
-    if any(k in low for k in ("kim_vocal", "voc_ft", "vocals", "_voc")):
+    if any(k in low for k in ("kim_vocal", "voc_ft", "vocals", "_voc", "mdxnet_1", "mdxnet_2", "mdxnet_3", "9482")):
         return VOCAL_STEM, False, "onnx_name_heuristic"
-    if any(k in low for k in ("kim_inst", "inst_", "_inst", "main", "crowd")):
+    if any(k in low for k in ("kim_inst", "inst_", "_inst", "inst main", "crowd", "reverb")):
+        if "reverb" in low:
+            return "Reverb", False, "onnx_name_heuristic"
         return INST_STEM, False, "onnx_name_heuristic"
     if "kuielab" in low:
         for stem in ("vocals", "drums", "bass", "other"):
@@ -412,11 +713,47 @@ def _infer_vr_meta(filename: str, label: str) -> Tuple[str, bool, str]:
         return INST_STEM, True, "vr_name_heuristic"
     if any(k in low for k in ("hp-vocal", "hp_vocal", "bve", "vocal")):
         return VOCAL_STEM, False, "vr_name_heuristic"
-    if any(k in low for k in ("hp-uvr", "hp2-uvr", "hp_uvr", "hp2_uvr", "wind_inst", "mgm_main", "main")):
+    if any(k in low for k in ("hp-uvr", "hp2-uvr", "hp_uvr", "hp2_uvr", "wind_inst", "mgm", "sp-uvr", "sp_uvr")):
         return INST_STEM, False, "vr_name_heuristic"
     if any(k in low for k in ("deecho", "de-echo", "dereverb", "denoise", "deverb")):
         return "No Reverb", False, "vr_name_heuristic"
     return "", False, ""
+
+
+def _apply_community_ref(meta: ModelEntry, ref: CommunityRef) -> None:
+    cleaned_primary = ref.primary_stem
+    if cleaned_primary:
+        if cleaned_primary.lower() in ("instrumental", "inst"):
+            meta.primary_stem = INST_STEM
+        elif cleaned_primary.lower() in ("vocals", "vocal"):
+            meta.primary_stem = VOCAL_STEM
+        else:
+            meta.primary_stem = cleaned_primary
+        meta.stem_count = max(meta.stem_count, 2)
+    if not meta.metadata_source or meta.metadata_source == "unavailable":
+        meta.metadata_source = "community_models.txt"
+    if meta.weight_file.lower() in _DUAL_STEM_WEIGHTS:
+        meta.name_intent = "dual_voc_inst"
+        meta.notes.append("Both Vocals and Instrumental are first-class exports")
+    elif ref.intent and meta.name_intent == "unknown":
+        meta.name_intent = ref.intent
+    if ref.stems_text and ref.stems_text.lower() != "unknown":
+        meta.notes.append(f"Community ref: {ref.stems_text}")
+
+
+def _finalize_entry(meta: ModelEntry) -> None:
+    metadata_intent = _infer_intent_from_metadata(meta)
+    if meta.name_intent == "unknown" and metadata_intent:
+        meta.name_intent = metadata_intent
+        meta.notes.append(f"Intent inferred from metadata ({metadata_intent})")
+    meta.backend_focus = _backend_focus(
+        meta.primary_stem, meta.target_instrument, meta.instruments, is_karaoke=meta.is_karaoke
+    )
+    meta.best_result = _best_result(meta)
+    meta.ui_export_note = _ui_note(meta)
+    meta.flags = _flag_mismatches(meta)
+    if meta.target_instrument.lower() == "other" and meta.name_intent == "instrumental":
+        meta.notes.append("Expected: inst models use yaml stem `other` (not Demucs Other)")
 
 
 def _parse_catalogue_entry(
@@ -425,10 +762,10 @@ def _parse_catalogue_entry(
     family: str,
     label: str,
     payload,
+    ctx: CatalogueContext,
     hash_json: str = "",
     weight_dir: str = "",
 ) -> List[ModelEntry]:
-    entries: List[ModelEntry] = []
     yaml_name = ""
     yaml_url = ""
     weight = ""
@@ -465,14 +802,22 @@ def _parse_catalogue_entry(
             meta.primary_stem = instruments[0]
         if yaml_source:
             meta.metadata_source = yaml_source
-    elif hash_json and weight_dir and weight:
-        full = os.path.join(weight_dir, weight)
-        row = _hash_lookup(full, hash_json)
+
+    prefer_vr = family == "VR Architecture"
+    if weight:
+        row, row_source = _lookup_hash_row(weight, ctx, prefer_vr=prefer_vr)
         if row:
-            meta.primary_stem = row.get("primary_stem", "")
-            meta.is_karaoke = bool(row.get("is_karaoke"))
-            meta.metadata_source = "hash_json"
-            meta.stem_count = 2
+            _apply_hash_row(meta, row, row_source)
+        elif hash_json and weight_dir:
+            full = os.path.join(weight_dir, weight)
+            row = _hash_lookup_local(full, hash_json)
+            if row:
+                _apply_hash_row(meta, row, "hash_json")
+
+    if weight:
+        ref = ctx.community_by_file.get(weight.lower())
+        if ref:
+            _apply_community_ref(meta, ref)
 
     if not meta.metadata_source and weight:
         if weight.endswith(".onnx"):
@@ -490,24 +835,19 @@ def _parse_catalogue_entry(
                 meta.metadata_source = src
                 meta.stem_count = 2
 
+    if weight.lower() in _DUAL_STEM_WEIGHTS:
+        meta.name_intent = "dual_voc_inst"
+        if "Both Vocals and Instrumental are first-class exports" not in meta.notes:
+            meta.notes.append("Both Vocals and Instrumental are first-class exports")
+
     if not meta.metadata_source:
         meta.metadata_source = "unavailable"
 
-    meta.backend_focus = _backend_focus(
-        meta.primary_stem, meta.target_instrument, meta.instruments, is_karaoke=meta.is_karaoke
-    )
-    meta.best_result = _best_result(meta)
-    meta.ui_export_note = _ui_note(meta)
-    meta.flags = _flag_mismatches(meta)
-
-    if meta.target_instrument.lower() == "other" and meta.name_intent == "instrumental":
-        meta.notes.append("Expected: inst models use yaml stem `other` (not Demucs Other)")
-
-    entries.append(meta)
-    return entries
+    _finalize_entry(meta)
+    return [meta]
 
 
-def _collect_entries() -> List[ModelEntry]:
+def _collect_entries(ctx: CatalogueContext) -> List[ModelEntry]:
     vr_cat, mdx_cat, demucs_cat = _merged_catalogues()
     politrees = _load_politrees_catalogue()
     trvlvr = _load_trvlvr_catalogue()
@@ -539,6 +879,7 @@ def _collect_entries() -> List[ModelEntry]:
                 family="VR Architecture",
                 label=label,
                 payload=payload,
+                ctx=ctx,
                 hash_json=paths.VR_HASH_JSON,
                 weight_dir=paths.VR_MODELS_DIR,
             )
@@ -565,6 +906,7 @@ def _collect_entries() -> List[ModelEntry]:
                 family=family,
                 label=label,
                 payload=payload,
+                ctx=ctx,
                 hash_json=paths.MDX_HASH_JSON if family == "MDX-Net ONNX" else "",
                 weight_dir=paths.MDX_MODELS_DIR,
             )
@@ -577,6 +919,7 @@ def _collect_entries() -> List[ModelEntry]:
                 family="Demucs",
                 label=label,
                 payload=payload,
+                ctx=ctx,
             )
         )
         entry = all_entries[-1]
@@ -584,14 +927,17 @@ def _collect_entries() -> List[ModelEntry]:
             entry.instruments = ["instrumental", "vocals"]
             entry.stem_count = 2
             entry.best_result = "2-stem: instrumental + vocals (user picks focus)"
+            entry.name_intent = "dual_voc_inst"
         elif "6s" in label:
             entry.instruments = ["drums", "bass", "other", "vocals", "guitar", "piano"]
             entry.stem_count = 6
             entry.best_result = "6-stem Demucs"
+            entry.name_intent = "multi_stem"
         else:
             entry.instruments = ["drums", "bass", "other", "vocals"]
             entry.stem_count = 4
             entry.best_result = "4-stem Demucs"
+            entry.name_intent = "multi_stem"
         entry.metadata_source = "demucs_heuristic"
         entry.backend_focus = "multi_stem"
 
@@ -611,6 +957,7 @@ def _md_table(headers: List[str], rows: List[List[str]]) -> str:
 
 def _render(entries: List[ModelEntry]) -> str:
     flagged = [e for e in entries if e.flags]
+    unknown = [e for e in entries if e.name_intent == "unknown"]
     with_meta = [e for e in entries if e.metadata_source not in ("unavailable", "")]
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
@@ -625,13 +972,13 @@ def _render(entries: List[ModelEntry]) -> str:
         "python scripts/generate_models_catalogue.py",
         "```",
         "",
-        "This catalogue compares **catalogue naming intent** with **backend stem metadata**",
-        "(`primary_stem`, `training.instruments`, `training.target_instrument`). Use it to",
-        "verify Save stems labels and which output users should treat as the “best” result.",
+        "Intent sources: catalogue label, yaml/hash metadata, Politrees model_data,",
+        "and [upseem/uvr5-cli-no-ui models.txt](https://github.com/upseem/uvr5-cli-no-ui/blob/main/models.txt)",
+        f"(cached as `{os.path.relpath(REFERENCE_TSV_PATH, ROOT)}`).",
         "",
         "## How to read this",
         "",
-        "- **Name intent** — inferred from the Download Center label.",
+        "- **Name intent** — from label, metadata, or community reference.",
         "- **Backend focus** — what `ModelData` uses as `primary_stem` at runtime.",
         "- **Best result** — the stem users typically want from that model name.",
         "- **Flags** — vocal/instrumental labelling mismatches (only when metadata resolved).",
@@ -646,11 +993,32 @@ def _render(entries: List[ModelEntry]) -> str:
         "",
         f"- Total catalogue entries: **{len(entries)}**",
         f"- Entries with resolved metadata: **{len(with_meta)}**",
+        f"- Unknown intent remaining: **{len(unknown)}**",
         f"- Flagged mismatches: **{len(flagged)}**",
         "",
     ]
 
-    # Compact master table
+    if unknown:
+        lines.extend(
+            [
+                "## Models with unknown intent",
+                "",
+                _md_table(
+                    ["Family", "Model", "Metadata", "Primary/Target"],
+                    [
+                        [
+                            e.family,
+                            sanitize_catalogue_label(e.catalogue_label),
+                            e.metadata_source,
+                            e.target_instrument or e.primary_stem or "—",
+                        ]
+                        for e in unknown
+                    ],
+                ),
+                "",
+            ]
+        )
+
     lines.extend(
         [
             "## Quick reference (all models)",
@@ -793,13 +1161,20 @@ def _render(entries: List[ModelEntry]) -> str:
 
 
 def main() -> int:
-    entries = _collect_entries()
+    ctx = _build_catalogue_context()
+    entries = _collect_entries(ctx)
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     with open(OUTPUT_PATH, "w", encoding="utf-8") as handle:
         handle.write(_render(entries))
     flagged = sum(1 for e in entries if e.flags)
+    unknown = sum(1 for e in entries if e.name_intent == "unknown")
     with_meta = sum(1 for e in entries if e.metadata_source not in ("unavailable", ""))
-    print(f"Wrote {OUTPUT_PATH} ({len(entries)} models, {with_meta} with metadata, {flagged} flagged)")
+    print(
+        f"Wrote {OUTPUT_PATH} ({len(entries)} models, {with_meta} with metadata, "
+        f"{unknown} unknown, {flagged} flagged)"
+    )
+    if os.path.isfile(REFERENCE_TSV_PATH):
+        print(f"Wrote {REFERENCE_TSV_PATH}")
     return 0
 
 

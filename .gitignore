@@ -84,6 +84,8 @@ scripts/*
 
 # Fetched Politrees yaml cache for catalogue regeneration
 docs/.yaml_cache/
+docs/.politrees_cache/
+docs/.community_cache/
 
 # Generated GResource manifest (rebuilt by resources/compile_resources.sh)
 resources/uvr.gresource.xml
