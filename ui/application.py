@@ -102,6 +102,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     from core import glib_log
     from core.debug_log import announce_log_file, debug, enabled
+    from core.torch_checkpoint import ensure_demucs_import_aliases
+
+    ensure_demucs_import_aliases()
 
     glib_log.init()
     announce_log_file()
