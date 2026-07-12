@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Mapping, Optional, Sequence, Set
 
-from bundled.constants import INST_STEM, NO_OTHER_STEM, NO_STEM, OTHER_STEM, VOCAL_STEM
+from bundled.constants import ALL_STEMS, INST_STEM, NO_OTHER_STEM, NO_STEM, OTHER_STEM, VOCAL_STEM
 
 # Catalogue / runtime intent labels (stable strings).
 INTENT_KARAOKE = "karaoke"
@@ -406,6 +406,72 @@ def stem_display_overrides(model) -> Optional[Dict[str, str]]:
     return None
 
 
+def vocal_stem_key(model, stems: Optional[Sequence[str]] = None) -> str:
+    """Yaml/hash stem name used for vocal quick-export selection, or ``Vocals``."""
+    for stem in stems or training_instruments(model):
+        if is_vocal_target(stem) or stem == VOCAL_STEM:
+            return str(stem)
+    primary = str(getattr(model, "primary_stem", "") or "") if model else ""
+    if is_vocal_target(primary):
+        return primary
+    return VOCAL_STEM
+
+
+def shows_voc_inst_quick_export(model, stems: Sequence[str]) -> bool:
+    """Whether the All / Vocals / Instrumental quick-export row applies."""
+    if not model or not stems:
+        return False
+    intent = export_intent_from_model(model)
+    if intent in (
+        INTENT_SPECIALTY_STEM,
+        INTENT_SPECIAL_FX,
+        INTENT_MULTI_STEM,
+        INTENT_DRUM_BASS_SEP,
+    ):
+        return False
+    return any(is_vocal_target(stem) or stem == VOCAL_STEM for stem in stems)
+
+
+def preferred_quick_export_mode(model) -> Optional[str]:
+    """Default quick-export mode for subset UI, or ``None`` to keep user settings."""
+    if export_intent_from_model(model) != INTENT_KARAOKE:
+        return None
+    primary = str(getattr(model, "primary_stem", "") or "")
+    target = target_instrument(model)
+    if is_vocal_target(primary) or is_vocal_target(target):
+        return "instrumental"
+    return None
+
+
+def apply_karaoke_quick_export_default(
+    settings,
+    model,
+    *,
+    primary_key: str,
+    secondary_key: str,
+    stems_key: str = "mdx_stems",
+    selected_key: str = "mdx_stems_selected",
+) -> bool:
+    """Apply instrumental quick-export defaults for vocal-target karaoke models."""
+    if preferred_quick_export_mode(model) != "instrumental":
+        return False
+    stems = list(getattr(model, "mdx_model_stems", []) or [])
+    if len(stems) < 3:
+        return False
+    if settings.get(selected_key):
+        return False
+    if settings.get(stems_key) not in (ALL_STEMS, None):
+        return False
+    if settings.get(primary_key) or settings.get(secondary_key):
+        return False
+    vocal = vocal_stem_key(model, stems)
+    settings.set(selected_key, [vocal])
+    settings.set(stems_key, vocal)
+    settings.set(primary_key, False)
+    settings.set(secondary_key, True)
+    return True
+
+
 def recommended_export_note(model) -> str:
     """Short UX hint for Save stems when intent differs from a single primary stem."""
     intent = export_intent_from_model(model)
@@ -428,6 +494,19 @@ def recommended_export_note(model) -> str:
         return "Drum/bass separation model — pick No Drum-Bass or Drum-Bass."
     if intent == INTENT_INSTRUMENTAL and target_instrument(model).lower() == "other":
         return "Instrumental model: Vocals + Instrumental (yaml `other` is the backing track)."
+    if intent == INTENT_SPECIAL_FX:
+        stem = target_instrument(model) or str(getattr(model, "primary_stem", "") or "")
+        if stem:
+            return describe_special_fx_stem(stem)
+        return "Post-processing stem export."
+    if intent == INTENT_SPECIALTY_STEM:
+        instruments = training_instruments(model)
+        if instruments:
+            return (
+                f"Specialty stems: export {' / '.join(str(name) for name in instruments)} "
+                "individually (not Vocals/Instrumental quick export)."
+            )
+        return "Specialty stem model — use per-stem subset export."
     return ""
 
 

@@ -169,7 +169,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.settings["mdx_stems_selected"] = [VOCAL_STEM]
         self.section.configure_subset(
             stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM],
-            has_vocals=True,
+            show_quick_export=True,
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
             has_model=True,
@@ -188,7 +188,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.settings["mdx_stems_selected"] = [VOCAL_STEM]
         self.section.configure_subset(
             stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM],
-            has_vocals=True,
+            show_quick_export=True,
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
             has_model=True,
@@ -200,7 +200,7 @@ class SaveStemsSectionTests(unittest.TestCase):
     def test_subset_quick_instrumental_ui_clears_chips(self):
         self.section.configure_subset(
             stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM],
-            has_vocals=True,
+            show_quick_export=True,
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
             has_model=True,
@@ -213,7 +213,7 @@ class SaveStemsSectionTests(unittest.TestCase):
     def test_subset_custom_single_stem_persist(self):
         self.section.configure_subset(
             stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM],
-            has_vocals=True,
+            show_quick_export=True,
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
             has_model=True,
@@ -230,7 +230,7 @@ class SaveStemsSectionTests(unittest.TestCase):
     def test_subset_all_stems_persist(self):
         self.section.configure_subset(
             stems=[VOCAL_STEM, BASS_STEM],
-            has_vocals=True,
+            show_quick_export=True,
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
             has_model=True,
@@ -265,10 +265,21 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertTrue(self.settings["is_primary_stem_only_Demucs"])
         self.assertFalse(self.settings["is_secondary_stem_only_Demucs"])
 
+    def test_subset_hides_quick_export_when_disabled(self):
+        self.section.configure_subset(
+            stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM],
+            show_quick_export=False,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.assertFalse(self.section._quick_block.get_visible())
+        self.assertTrue(self.section._subset_block.get_visible())
+
     def test_mode_switch_hides_rows(self):
         self.section.configure_subset(
             stems=[VOCAL_STEM, BASS_STEM],
-            has_vocals=True,
+            show_quick_export=True,
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
             has_model=True,

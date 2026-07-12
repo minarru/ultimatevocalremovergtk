@@ -30,7 +30,12 @@ from bundled.constants import (
     VOL_COMPENSATION,
 )
 
-from core.model_stem_semantics import recommended_export_note, stem_display_overrides
+from core.model_stem_semantics import (
+    apply_karaoke_quick_export_default,
+    recommended_export_note,
+    shows_voc_inst_quick_export,
+    stem_display_overrides,
+)
 
 from .base import MethodView, register_method_view
 from ..help_text import MDX_INCLUDE_COMPLEMENT_HELP, MDX_OVERLAP_HINT
@@ -127,7 +132,7 @@ class MDXView(MethodView):
         if len(ordered) > 2:
             self.save_stems.configure_subset(
                 stems=ordered,
-                has_vocals=VOCAL_STEM in ordered,
+                show_quick_export=shows_voc_inst_quick_export(model, ordered),
                 primary_key=self.primary_only_key,
                 secondary_key=self.secondary_only_key,
                 has_model=True,
@@ -148,6 +153,12 @@ class MDXView(MethodView):
             self.settings.set("mdx_stems", stems[0])
         elif len(stems) >= 3 and self.settings.get("mdx_stems") not in (*stems, ALL_STEMS):
             self.settings.set("mdx_stems", ALL_STEMS)
+        apply_karaoke_quick_export_default(
+            self.settings,
+            model,
+            primary_key=self.primary_only_key,
+            secondary_key=self.secondary_only_key,
+        )
 
     def load_options(self):
         super().load_options()

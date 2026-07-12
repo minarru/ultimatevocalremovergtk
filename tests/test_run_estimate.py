@@ -137,7 +137,7 @@ class SaveStemsOutputCountTests(unittest.TestCase):
     def test_subset_quick_vocals(self):
         self.section.configure_subset(
             stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM],
-            has_vocals=True,
+            show_quick_export=True,
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
             has_model=True,
@@ -148,7 +148,7 @@ class SaveStemsOutputCountTests(unittest.TestCase):
     def test_subset_all_stems(self):
         self.section.configure_subset(
             stems=[VOCAL_STEM, BASS_STEM],
-            has_vocals=True,
+            show_quick_export=True,
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
             has_model=True,

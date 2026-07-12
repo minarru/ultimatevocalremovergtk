@@ -21,7 +21,7 @@ from onnx2pytorch import ConvertModel
 from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
-from core.gpu_backend import clear_torch_cache, resolve_inference_backend
+from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
 
@@ -78,14 +78,14 @@ class SeperateDemucs(SeperateAttributes):
                 if self.demucs_version == DEMUCS_V1:
                     if str(self.model_path).endswith(".gz"):
                         self.model_path = gzip.open(self.model_path, "rb")
-                    klass, args, kwargs, state = torch.load(self.model_path)
+                    klass, args, kwargs, state = load_torch_checkpoint(self.model_path)
                     self.demucs = klass(*args, **kwargs)
                     self.demucs.to(self.device) 
                     self.demucs.load_state_dict(state)
                 elif self.demucs_version == DEMUCS_V2:
                     self.demucs = auto_load_demucs_model_v2(self.demucs_source_list, self.model_path)
                     self.demucs.to(self.device) 
-                    self.demucs.load_state_dict(torch.load(self.model_path))
+                    self.demucs.load_state_dict(load_torch_checkpoint(self.model_path))
                     self.demucs.eval()
                 else:  
                     self.demucs = HDemucs(sources=self.demucs_source_list)

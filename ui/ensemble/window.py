@@ -27,6 +27,7 @@ from typing import Dict, List, Optional
 from gi.repository import Adw, Gtk
 
 from core.run_estimate import estimate_workload, format_workload_line
+from core.model_stem_semantics import recommended_export_note, stem_display_overrides
 from bundled.constants import (
     CHOOSE_ENSEMBLE_OPTION,
     CHOOSE_STEM_PAIR,
@@ -34,6 +35,7 @@ from bundled.constants import (
     ENSEMBLE_MAIN_STEM,
     ENSEMBLE_MAIN_STEM_HELP,
     ENSEMBLE_MODE,
+    ENSEMBLE_PARTITION,
     ENSEMBLE_TYPE,
     ENSEMBLE_TYPE_4_STEM,
     ENSEMBLE_TYPE_HELP,
@@ -349,18 +351,34 @@ class EnsemblePage:
             return primary_stem, secondary_stem
         return None, None
 
+    def _resolve_ensemble_semantics_model(self):
+        """Best-effort model resolve for export-semantics hints (first member)."""
+        tags = self._selected_model_tags()
+        if not tags:
+            return None
+        tag = tags[0]
+        if ENSEMBLE_PARTITION not in tag:
+            return None
+        process_method, _, model_name = tag.partition(ENSEMBLE_PARTITION)
+        return self.window.context.repo.resolve_model_dry(
+            self.settings, process_method.strip(), model_name.strip()
+        )
+
     def _rebuild_stem_only_toggles(self) -> None:
         primary_stem, secondary_stem = self._ensemble_stem_pair()
         has_pair = bool(primary_stem and secondary_stem)
         if not has_pair:
             self.save_stems.configure_hidden(has_model=False)
         else:
+            model = self._resolve_ensemble_semantics_model()
             self.save_stems.configure_exclusive(
                 primary_stem=primary_stem,
                 secondary_stem=secondary_stem,
                 primary_key=_PRIMARY_STEM_ONLY_KEY,
                 secondary_key=_SECONDARY_STEM_ONLY_KEY,
                 has_model=True,
+                stem_label_overrides=stem_display_overrides(model),
+                export_semantics_note=recommended_export_note(model),
             )
             self.save_stems.sync_from_settings()
         self._update_stems_group_metadata()
@@ -596,6 +614,7 @@ class EnsemblePage:
 
     def _on_models_dialog_closed(self, *_args) -> None:
         self._update_models_summary()
+        self._rebuild_stem_only_toggles()
         from core.debug_log import debug
 
         stem = self.settings.get("ensemble_main_stem", "")
@@ -609,6 +628,7 @@ class EnsemblePage:
             set_combo_value(self.saved_row, CHOOSE_ENSEMBLE_OPTION)
         self._persist_selected_models()
         self._update_models_summary()
+        self._rebuild_stem_only_toggles()
 
     # -- Run target interface ---------------------------------------------------
 

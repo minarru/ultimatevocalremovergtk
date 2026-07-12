@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from core.torch_checkpoint import load_torch_checkpoint
 from .modules import TFC_TDF
 from pytorch_lightning import LightningModule
 
@@ -127,7 +128,7 @@ class Mixer(nn.Module):
         self.linear = nn.Linear((dim_s+1)*2, dim_s*2, bias=False)
         
         self.load_state_dict(
-            torch.load(mixer_path, map_location=device)
+            load_torch_checkpoint(mixer_path, map_location=device)
         )
 
     def forward(self, x):

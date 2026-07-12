@@ -7,10 +7,12 @@ from core.model_stem_semantics import (
     INTENT_DUAL_VOC_INST,
     INTENT_INSTRUMENTAL,
     INTENT_KARAOKE,
+    INTENT_MULTI_STEM,
     INTENT_SPECIALTY_STEM,
     INTENT_SPECIAL_FX,
     INTENT_VOCALS,
     VOCALS_OTHER_DISPLAY_OVERRIDES,
+    apply_karaoke_quick_export_default,
     export_intent_from_fields,
     export_intent_from_model,
     infer_is_karaoke_from_hints,
@@ -19,8 +21,10 @@ from core.model_stem_semantics import (
     is_specialty_instrument_pair,
     is_vocal_target,
     is_vocals_other_pair,
+    preferred_quick_export_mode,
     recommended_export_note,
     resolve_is_karaoke,
+    shows_voc_inst_quick_export,
     stem_display_overrides,
 )
 
@@ -165,6 +169,83 @@ class RecommendedExportNoteTests(unittest.TestCase):
             is_roformer=True,
         )
         self.assertEqual(recommended_export_note(model), "")
+
+    def test_special_fx_note(self):
+        model = _Model(
+            primary_stem="noreverb",
+            mdx_c_configs=_Config(["noreverb", "reverb"], "noreverb"),
+        )
+        note = recommended_export_note(model)
+        self.assertIn("dereverbbed", note.lower())
+
+    def test_specialty_stem_note(self):
+        model = _Model(
+            mdx_c_configs=_Config(["male", "female"]),
+            model_name="BandSplit Roformer | Chorus Male-Female by Sucial",
+        )
+        note = recommended_export_note(model)
+        self.assertIn("male / female", note)
+        self.assertIn("Specialty", note)
+
+
+class QuickExportSemanticsTests(unittest.TestCase):
+    def test_multi_stem_hides_quick_export(self):
+        model = _Model(
+            mdx_c_configs=_Config(["vocals", "drums", "bass", "other"]),
+            model_name="Demucs 4-stem",
+        )
+        stems = ["Vocals", "Drums", "Bass", "Other"]
+        self.assertFalse(shows_voc_inst_quick_export(model, stems))
+
+    def test_karaoke_shows_quick_export(self):
+        model = _Model(
+            is_karaoke=True,
+            primary_stem=VOCAL_STEM,
+            mdx_model_stems=["Vocals", "Instrumental", "Other"],
+            model_name="BandSplit Roformer | Karaoke Frazer by becruily",
+        )
+        self.assertTrue(shows_voc_inst_quick_export(model, model.mdx_model_stems))
+
+    def test_karaoke_prefers_instrumental_quick_export(self):
+        model = _Model(
+            is_karaoke=True,
+            primary_stem=VOCAL_STEM,
+            mdx_model_stems=["Vocals", "Instrumental", "Other"],
+        )
+        self.assertEqual(preferred_quick_export_mode(model), "instrumental")
+
+    def test_apply_karaoke_default_sets_instrumental_flags(self):
+        class _Settings(dict):
+            def get(self, key, default=None):
+                return super().get(key, default)
+
+            def set(self, key, value):
+                self[key] = value
+
+        settings = _Settings(
+            {
+                "mdx_stems": "All Stems",
+                "mdx_stems_selected": [],
+                "is_primary_stem_only": False,
+                "is_secondary_stem_only": False,
+            }
+        )
+        model = _Model(
+            is_karaoke=True,
+            primary_stem=VOCAL_STEM,
+            mdx_model_stems=["Vocals", "Instrumental", "Other"],
+        )
+        self.assertTrue(
+            apply_karaoke_quick_export_default(
+                settings,
+                model,
+                primary_key="is_primary_stem_only",
+                secondary_key="is_secondary_stem_only",
+            )
+        )
+        self.assertEqual(settings["mdx_stems_selected"], ["Vocals"])
+        self.assertTrue(settings["is_secondary_stem_only"])
+        self.assertFalse(settings["is_primary_stem_only"])
 
 
 class PairDetectionTests(unittest.TestCase):

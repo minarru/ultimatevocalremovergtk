@@ -747,7 +747,7 @@ class SaveStemsSection:
         self,
         *,
         stems: List[str],
-        has_vocals: bool,
+        show_quick_export: bool,
         primary_key: str,
         secondary_key: str,
         has_model: bool = True,
@@ -766,7 +766,7 @@ class SaveStemsSection:
             self.widget.set_visible(False)
             return
         self.widget.set_visible(True)
-        if has_vocals:
+        if show_quick_export:
             self._quick_export.rebuild()
             self._quick_block.set_visible(True)
         self._subset.rebuild(self._subset_stems, stem_label_overrides=stem_label_overrides)

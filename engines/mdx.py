@@ -21,7 +21,7 @@ from onnx2pytorch import ConvertModel
 from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
-from core.gpu_backend import clear_torch_cache, resolve_inference_backend
+from core.torch_checkpoint import load_torch_checkpoint
 from core.model_stem_semantics import is_vocal_target
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
@@ -45,10 +45,7 @@ from .orchestration import process_secondary_model
 
 
 def _load_torch_checkpoint(path: str):
-    try:
-        return torch.load(path, map_location='cpu', weights_only=False)
-    except TypeError:
-        return torch.load(path, map_location='cpu')
+    return load_torch_checkpoint(path, map_location="cpu")
 
 
 def _mdx_c_hop_length(config) -> int:
@@ -105,7 +102,9 @@ class SeperateMDX(SeperateAttributes):
                 self.write_to_console(LOADING_MODEL)
 
                 if self.is_mdx_ckpt:
-                    model_params = torch.load(self.model_path, map_location=lambda storage, loc: storage)['hyper_parameters']
+                    model_params = load_torch_checkpoint(
+                        self.model_path, map_location=lambda storage, loc: storage
+                    )["hyper_parameters"]
                     self.dim_c, self.hop = model_params['dim_c'], model_params['hop_length']
                     separator = MdxnetSet.ConvTDFNet(**model_params)
                     self.model_run = separator.load_from_checkpoint(self.model_path).to(self.device).eval()
