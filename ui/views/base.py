@@ -19,32 +19,32 @@ from bundled.constants import (
     BASS_PAIR,
     BASS_STEM,
     CHOOSE_MODEL,
+    CHOOSE_MODEL_HELP,
+    CLEAR_CACHE_HELP,
+    DEMUCS_ARCH_TYPE,
     DEVERB_MAPPER,
     DRUM_PAIR,
     DRUM_STEM,
     INST_STEM,
-    MDX_ARCH_TYPE,
-    NO_MODEL,
-    OTHER_PAIR,
-    OTHER_STEM,
-    SECONDARY_STEM,
-    VOCAL_PAIR,
-    VOCAL_STEM,
-)
-from bundled.constants import (
-    CHOOSE_MODEL_HELP,
-    CLEAR_CACHE_HELP,
     IS_DEVERB_OPT_HELP,
     IS_DEVERB_VOC_HELP,
     IS_VOC_SPLIT_INST_SAVE_SELECT_HELP,
     IS_VOC_SPLIT_MODEL_SELECT_HELP,
+    MDX_ARCH_TYPE,
+    NO_MODEL,
+    OTHER_PAIR,
+    OTHER_STEM,
     PRE_PROC_MODEL_ACTIVATE_HELP,
     PRE_PROC_MODEL_INST_MIX_HELP,
     SAVE_STEM_ONLY_HELP,
     SECONDARY_MODEL_ACTIVATE_HELP,
     SECONDARY_MODEL_HELP,
     SECONDARY_MODEL_SCALE_HELP,
+    SECONDARY_STEM,
+    VOCAL_PAIR,
+    VOCAL_STEM,
     VOC_SPLIT_MODEL_SELECT_HELP,
+    VR_ARCH_TYPE,
 )
 
 from ..hints import HelpHintManager
@@ -54,12 +54,14 @@ from ..widgets.rows import (
     get_scale_row_value,
     make_combo_row,
     make_switch_row,
+    set_combo_tag_values,
     set_combo_value,
     set_combo_values,
     set_scale_row_float,
     set_scale_row_value,
     use_wrapping_list,
 )
+from core.model_display import format_tag_title, map_basenames_to_display
 from ..widgets.stem_only import SaveStemsSection
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
 from core.run_estimate import estimate_workload, format_workload_line
@@ -74,33 +76,18 @@ _SECONDARY_SLOTS = (
 )
 
 
-def apply_name_mapper(names, name_mapper, *, catalogue_index=None) -> List[str]:
-    """Port of ``UVR.update_available_models.fix_name``.
-
-    Maps an on-disk model file name to the friendlier display name listed in the
-    repository's name mapper, leaving names without a mapping untouched.
-    """
+def apply_name_mapper(names, name_mapper, *, catalogue_index=None, arch=None, repo=None) -> List[str]:
+    """Map on-disk basenames to runtime display labels."""
+    if arch and repo:
+        return map_basenames_to_display(names, arch, repo)
     if not name_mapper and not catalogue_index:
         return list(names)
-    if catalogue_index is not None:
-        from core.mdx_c_registry import display_name_for_basename
+    from core.model_display import display_name_for_basename
 
-        return [
-            display_name_for_basename(
-                name,
-                name_mapper,
-                catalogue_index=catalogue_index,
-            )
-            for name in names
-        ]
-    mapped = []
-    for name in names:
-        replacement = next(
-            (new_name for old_name, new_name in name_mapper.items() if name in old_name),
-            name,
-        )
-        mapped.append(replacement)
-    return mapped
+    return [
+        display_name_for_basename(name, name_mapper, catalogue_index=catalogue_index)
+        for name in names
+    ]
 
 
 class MethodView:
@@ -198,29 +185,14 @@ class MethodView:
         return None
 
     def populate_models(self) -> None:
-        catalogue_index = None
-        if self.method_key == MDX_ARCH_TYPE:
-            catalogue_index = self.context.repo.mdx_catalogue_display_index()
+        arch = self.method_key_for_resolution
+        repo = self.context.repo
         basenames = sorted(self.list_models())
-        names = apply_name_mapper(
-            basenames,
-            self.name_mapper(),
-            catalogue_index=catalogue_index,
-        )
+        names = map_basenames_to_display(basenames, arch, repo)
         set_combo_values(self.model_row, [CHOOSE_MODEL, *names])
         stored = self.settings.get(self.model_key, CHOOSE_MODEL)
-        if (
-            catalogue_index
-            and stored not in (CHOOSE_MODEL, NO_MODEL, None)
-            and stored in basenames
-        ):
-            from core.mdx_c_registry import display_name_for_basename
-
-            display = display_name_for_basename(
-                stored,
-                self.name_mapper(),
-                catalogue_index=catalogue_index,
-            )
+        if stored not in (CHOOSE_MODEL, NO_MODEL, None) and stored in basenames:
+            display = map_basenames_to_display([stored], arch, repo)[0]
             if display != stored:
                 stored = display
                 self.settings.set(self.model_key, display)
@@ -600,7 +572,11 @@ class MethodView:
                     values = entry["provider"]()
                 except Exception:
                     values = []
-                set_combo_values(entry["row"], [NO_MODEL, *values])
+                tag_items = [
+                    (tag, format_tag_title(tag, self.context.repo))
+                    for tag in values
+                ]
+                set_combo_tag_values(entry["row"], [NO_MODEL, *tag_items])
                 set_combo_value(entry["row"], self.settings.get(entry["key"], NO_MODEL))
                 entry["ready"] = True
         finally:

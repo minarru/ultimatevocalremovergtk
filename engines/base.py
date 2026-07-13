@@ -11,6 +11,8 @@ from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
 from core.gpu_backend import resolve_inference_backend
+from core.model_display import display_name_for_model
+from core.run_estimate import save_progress_local_step
 from ml import spec_utils
 
 from .export import save_format
@@ -35,6 +37,8 @@ class SeperateAttributes:
         self.list_all_models: list
         self.process_data = process_data
         self.progress_value = 0
+        self._save_stem_total = 1
+        self._save_stem_index = 0
         self.set_progress_bar = process_data['set_progress_bar']
         self.write_to_console = process_data['write_to_console']
         self.check_run_control = process_data.get('check_run_control', lambda: None)
@@ -75,6 +79,15 @@ class SeperateAttributes:
         self.model_path = model_data.model_path
         self.model_name = model_data.model_name
         self.model_basename = model_data.model_basename
+        self.model_display_label = (
+            display_name_for_model(
+                model_data.process_method,
+                model_data.model_name,
+                model_data.repo,
+            )
+            or model_data.model_basename
+            or ""
+        )
         self.wav_type_set = model_data.wav_type_set
         self.mp3_bit_set = model_data.mp3_bit_set
         self.flac_bit_set = model_data.flac_bit_set
@@ -267,14 +280,26 @@ class SeperateAttributes:
             
     def start_inference_console_write(self):
         if self.is_secondary_model and not self.is_pre_proc_model and not self.is_vocal_split_model:
-            self.write_to_console(INFERENCE_STEP_2_SEC(self.process_method, self.model_basename))
+            self.write_to_console(INFERENCE_STEP_2_SEC(self.process_method, self.model_display_label))
         
         if self.is_pre_proc_model:
-            self.write_to_console(INFERENCE_STEP_2_PRE(self.process_method, self.model_basename))
+            self.write_to_console(INFERENCE_STEP_2_PRE(self.process_method, self.model_display_label))
             
         if self.is_vocal_split_model:
-            self.write_to_console(INFERENCE_STEP_2_VOC_S(self.process_method, self.model_basename))
+            self.write_to_console(INFERENCE_STEP_2_VOC_S(self.process_method, self.model_display_label))
         
+    def begin_save_phase(self, total: int) -> None:
+        """Reset per-stem save progress (local step 0.90–0.95)."""
+        self._save_stem_total = max(1, int(total))
+        self._save_stem_index = 0
+
+    def _report_save_progress(self) -> None:
+        total = max(1, getattr(self, "_save_stem_total", 1))
+        index = getattr(self, "_save_stem_index", 0) + 1
+        self._save_stem_index = index
+        local = save_progress_local_step(index, total)
+        self.set_progress_bar(local)
+
     def running_inference_console_write(self, is_no_write=False):
         self.write_to_console(DONE, base_text='') if not is_no_write else None
         self.set_progress_bar(0.05) if not is_no_write else None
@@ -300,9 +325,9 @@ class SeperateAttributes:
     def load_cached_sources(self):
         
         if self.is_secondary_model and not self.is_pre_proc_model:
-            self.write_to_console(INFERENCE_STEP_2_SEC_CACHED_MODOEL(self.process_method, self.model_basename))
+            self.write_to_console(INFERENCE_STEP_2_SEC_CACHED_MODOEL(self.process_method, self.model_display_label))
         elif self.is_pre_proc_model:
-            self.write_to_console(INFERENCE_STEP_2_PRE_CACHED_MODOEL(self.process_method, self.model_basename))
+            self.write_to_console(INFERENCE_STEP_2_PRE_CACHED_MODOEL(self.process_method, self.model_display_label))
         else:
             self.write_to_console(INFERENCE_STEP_2_PRIMARY_CACHED, "")
             
@@ -432,7 +457,7 @@ class SeperateAttributes:
                     if is_bv_rebalance_lead:
                         save_voc_split_instrumental(LEAD_VOCAL_STEM, bv_rebalance_lead_source, is_inst_invert=True)
 
-                self.set_progress_bar(0.95)
+                self._report_save_progress()
 
         if stem_name == VOCAL_STEM:
             self.master_vocal_path = stem_path

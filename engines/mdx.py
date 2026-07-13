@@ -130,6 +130,9 @@ class SeperateMDX(SeperateAttributes):
         if self.is_secondary_model_activated and self.secondary_model:
             self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, self.process_data, main_process_method=self.process_method, main_model_primary=self.primary_stem)
         
+        self.begin_save_phase(
+            int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only) or 1
+        )
         if not self.is_primary_stem_only:
             secondary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.secondary_stem}).wav')
             if not isinstance(self.secondary_source, np.ndarray):
@@ -362,6 +365,7 @@ class SeperateMDXC(SeperateAttributes):
 
         if (is_all_stems and is_not_ensemble_master and is_not_single_stem and is_not_secondary_model) or is_ensemble_4_stem and not self.is_pre_proc_model or is_stem_subset or is_native_pick:
             export_stems = [stem for stem in stem_list if stem in selected_stems] if (is_stem_subset or is_native_pick) else stem_list
+            self.begin_save_phase(len(export_stems))
             for stem in export_stems:
                 primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({stem}).wav')
                 self.primary_source = sources[stem].T
@@ -388,6 +392,9 @@ class SeperateMDXC(SeperateAttributes):
                                                                                                          main_process_method=self.process_method, 
                                                                                                          main_model_primary=self.primary_stem)
 
+            self.begin_save_phase(
+                int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only) or 1
+            )
             if not self.is_primary_stem_only:
                 secondary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.secondary_stem}).wav')
                 if not isinstance(self.secondary_source, np.ndarray):

@@ -498,23 +498,23 @@ class RunController:
             body=_NOTIFY_FAILED_BODY,
         )
 
-    def _on_progress(self, fraction: float) -> None:
+    def _on_progress(self, fraction: float, local_step: Optional[float] = None) -> None:
         if self._run_ui_suspended:
             return
         if fraction > _PROGRESS_EPSILON:
             self._window._stop_pulse()
             self._window.log_panel.set_progress_fraction(fraction)
             now = time.monotonic()
-            self._eta_tracker.update(fraction, now)
+            self._eta_tracker.update(fraction, now, local_step=local_step)
             elapsed = max(0.0, now - self._run_started_at)
             self._window.log_panel.set_progress_text(
                 self._eta_tracker.format_text(fraction, elapsed, now=now)
             )
 
-    def _progress_text(self, fraction: float) -> str:
+    def _progress_text(self, fraction: float, local_step: Optional[float] = None) -> str:
         now = time.monotonic()
         elapsed = max(0.0, now - self._run_started_at)
-        self._eta_tracker.update(fraction, now)
+        self._eta_tracker.update(fraction, now, local_step=local_step)
         return self._eta_tracker.format_text(fraction, elapsed, now=now)
 
     def _report_error(self, message: str, exc: BaseException) -> None:

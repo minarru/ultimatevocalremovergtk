@@ -22,8 +22,19 @@ from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat const
 
 from . import paths
 from .mdx_config_fetch import ensure_mdx_c_config
-from .mdx_c_registry import compute_checkpoint_hash, display_name_for_basename, resolve_mdx_model_basename, try_register_from_catalog
+from .demucs_models import (
+    demucs_yaml_bag_member_sigs,
+    is_demucs_bag_member_weight,
+    resolve_demucs_model_file,
+)
+from .mdx_c_registry import compute_checkpoint_hash, try_register_from_catalog
 from .model_stem_semantics import resolve_is_karaoke
+from .model_display import (
+    display_name_for_basename,
+    map_basenames_to_display,
+    resolve_mdx_model_basename,
+    resolve_vr_model_basename,
+)
 from .audio_io import resolve_wav_type_set
 from .settings import SettingsModel
 
@@ -117,8 +128,15 @@ class ModelRepository:
 
     def list_demucs_models(self) -> List[str]:
         models: List[str] = []
+        bag_sigs = demucs_yaml_bag_member_sigs(paths.DEMUCS_NEWER_REPO_DIR)
         for directory in (paths.DEMUCS_NEWER_REPO_DIR, paths.DEMUCS_MODELS_DIR):
-            models.extend(_list_models(directory, (".th", ".ckpt", ".yaml", ".gz")))
+            for name in _list_models(directory, (".th", ".ckpt", ".yaml", ".gz")):
+                if (
+                    directory == paths.DEMUCS_NEWER_REPO_DIR
+                    and is_demucs_bag_member_weight(name, bag_sigs)
+                ):
+                    continue
+                models.append(name)
         seen, unique = set(), []
         for name in models:
             if name not in seen:
@@ -129,28 +147,36 @@ class ModelRepository:
     # -- Model tags / stem filtering (ported from UVR's model menus) -----------
 
     def list_vr_model_tags(self) -> List[str]:
-        names = sorted(self.list_vr_models())
+        names = sorted(
+            map_basenames_to_display(self.list_vr_models(), VR_ARCH_TYPE, self)
+        )
         return [f"{VR_ARCH_TYPE}{ENSEMBLE_PARTITION}{name}" for name in names]
 
     def list_mdx_model_tags(self) -> List[str]:
-        catalogue_names = self.mdx_catalogue_display_index()
         names = sorted(
-            display_name_for_basename(
-                name,
-                self.mdx_name_select_MAPPER,
-                catalogue_index=catalogue_names,
-            )
-            for name in self.list_mdx_models()
+            map_basenames_to_display(self.list_mdx_models(), MDX_ARCH_TYPE, self)
         )
         return [f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}{name}" for name in names]
 
     def mdx_catalogue_display_index(self) -> Dict[str, str]:
-        from .mdx_c_registry import load_mdx_catalog_display_index
+        from .model_display import load_mdx_catalog_display_index
 
         return load_mdx_catalog_display_index()
 
+    def vr_catalogue_display_index(self) -> Dict[str, str]:
+        from .model_display import load_vr_catalog_display_index
+
+        return load_vr_catalog_display_index()
+
+    def demucs_catalogue_display_index(self) -> Dict[str, str]:
+        from .model_display import load_demucs_catalog_display_index
+
+        return load_demucs_catalog_display_index()
+
     def list_demucs_model_tags(self) -> List[str]:
-        names = sorted(_apply_name_mapper(self.list_demucs_models(), self.demucs_name_select_MAPPER))
+        names = sorted(
+            map_basenames_to_display(self.list_demucs_models(), DEMUCS_ARCH_TYPE, self)
+        )
         return [f"{DEMUCS_ARCH_TYPE}{ENSEMBLE_PARTITION}{name}" for name in names]
 
     def all_model_tags(self) -> List[str]:
@@ -259,20 +285,6 @@ class ModelRepository:
         if model is None:
             return None, None
         return model.primary_stem, model.secondary_stem
-
-
-def _apply_name_mapper(names, name_mapper) -> List[str]:
-    """Map on-disk file names to display names (UVR's ``fix_name``)."""
-    if not name_mapper:
-        return list(names)
-    mapped = []
-    for name in names:
-        replacement = next(
-            (new_name for old_name, new_name in name_mapper.items() if name in old_name),
-            name,
-        )
-        mapped.append(replacement)
-    return mapped
 
 
 def _list_models(directory: str, extensions) -> List[str]:
@@ -443,7 +455,7 @@ class ModelData:
             self.is_high_end_process = "mirroring" if settings.get("is_high_end_process") else "None"
             self.post_process_threshold = float(settings.get("post_process_threshold"))
             self.model_capacity = 32, 128
-            self.model_path = os.path.join(paths.VR_MODELS_DIR, f"{self.model_name}.pth")
+            self.get_vr_model_path()
             self.get_model_hash()
             if self.model_hash:
                 self.model_hash_dir = os.path.join(paths.VR_HASH_DIR, f"{self.model_hash}.json")
@@ -746,6 +758,13 @@ class ModelData:
         ):
             self.is_karaoke = True
 
+    def get_vr_model_path(self) -> None:
+        resolved_name = resolve_vr_model_basename(
+            self.model_name,
+            catalogue_index=self.repo.vr_catalogue_display_index(),
+        )
+        self.model_path = os.path.join(paths.VR_MODELS_DIR, f"{resolved_name}.pth")
+
     def get_mdx_model_path(self):
         resolved_name = resolve_mdx_model_basename(
             self.model_name,
@@ -781,9 +800,8 @@ class ModelData:
         for file_name, chosen_model in self.repo.demucs_name_select_MAPPER.items():
             if self.model_name == chosen_model:
                 self.model_path = os.path.join(demucs_model_dir, file_name)
-                break
-        else:
-            self.model_path = os.path.join(paths.DEMUCS_NEWER_REPO_DIR, f"{self.model_name}.yaml")
+                return
+        self.model_path = resolve_demucs_model_file(self.model_name, self.demucs_version)
 
     def get_demucs_model_data(self):
         self.demucs_version = DEMUCS_V4

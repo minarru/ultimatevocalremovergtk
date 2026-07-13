@@ -35,6 +35,12 @@ _LOAD_END = 0.10
 _SAVE_START = 0.92
 _INFER_SPAN = _SAVE_START - _LOAD_END
 
+# Per-model local step ranges passed through JobCallbacks.progress.
+_LOCAL_LOAD_END = 0.10
+_LOCAL_SAVE_START = 0.90
+_LOCAL_COMBINE_START = 0.97
+_LOCAL_SAVE_END = 0.96
+
 # Live ETA tuning.
 _MIN_INFER_FRAC_FOR_ETA = 0.08
 _MIN_INFER_ELAPSED_FOR_ETA = 20.0
@@ -204,6 +210,18 @@ def format_workload_line(estimate: Optional[WorkloadEstimate]) -> str:
     return estimate.format_summary()
 
 
+def save_progress_local_step(index: int, total: int) -> float:
+    """Local step for per-stem save substeps."""
+    total = max(1, total)
+    return _LOCAL_SAVE_START + (_LOCAL_SAVE_END - _LOCAL_SAVE_START) * (index / total)
+
+
+def combine_progress_local_step(index: int, total: int) -> float:
+    """Local step for ensemble combine substeps (maps to the Combining phase)."""
+    total = max(1, total)
+    return _LOCAL_COMBINE_START + (1.0 - _LOCAL_COMBINE_START) * ((index + 1) / total)
+
+
 def _format_mmss(seconds: float) -> str:
     total = max(0, int(round(seconds)))
     minutes, secs = divmod(total, 60)
@@ -225,17 +243,22 @@ class ProgressEtaTracker:
     _inference_started_at: Optional[float] = None
     _samples: List[Tuple[float, float]] = field(default_factory=list)
     _smoothed_remaining: Optional[float] = None
+    _local_step: Optional[float] = None
 
     def reset(self) -> None:
         self._inference_started_at = None
         self._samples.clear()
         self._smoothed_remaining = None
+        self._local_step = None
 
-    def update(self, fraction: float, now: float) -> None:
+    def update(self, fraction: float, now: float, *, local_step: Optional[float] = None) -> None:
         fraction = max(0.0, min(1.0, fraction))
+        if local_step is not None:
+            self._local_step = max(0.0, min(1.0, local_step))
         if fraction >= _LOAD_END and self._inference_started_at is None:
-            self._inference_started_at = now
-        if fraction < _LOAD_END:
+            if self._phase(fraction) == "inference":
+                self._inference_started_at = now
+        if self._phase(fraction) != "inference":
             return
         infer_frac = _infer_fraction(fraction)
         if infer_frac <= 0.0:
@@ -245,6 +268,22 @@ class ProgressEtaTracker:
         self._samples = [(f, t) for f, t in self._samples if t >= cutoff]
         if len(self._samples) > _MAX_SAMPLES:
             self._samples = self._samples[-_MAX_SAMPLES:]
+
+    def _phase(self, fraction: float) -> str:
+        local = self._local_step
+        if local is not None:
+            if local >= _LOCAL_COMBINE_START:
+                return "combining"
+            if local >= _LOCAL_SAVE_START:
+                return "saving"
+            if local < _LOCAL_LOAD_END:
+                return "loading"
+            return "inference"
+        if fraction < _LOAD_END:
+            return "loading"
+        if fraction >= _SAVE_START:
+            return "saving"
+        return "inference"
 
     def _raw_remaining(self, fraction: float, now: float) -> Optional[float]:
         if self._inference_started_at is None:
@@ -288,10 +327,11 @@ class ProgressEtaTracker:
             return " · ".join(parts)
 
         clock = now if now is not None else elapsed
-        if fraction < _LOAD_END:
+        phase = self._phase(fraction)
+        if phase == "loading":
             parts.append("Loading model")
-        elif fraction >= _SAVE_START:
-            parts.append("Saving")
+        elif phase in ("saving", "combining"):
+            parts.append("Combining" if phase == "combining" else "Saving")
         else:
             raw = self._raw_remaining(fraction, clock)
             smoothed = self._smooth_remaining(raw)

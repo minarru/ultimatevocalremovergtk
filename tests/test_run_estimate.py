@@ -14,12 +14,14 @@ from core.run_estimate import (
     ProgressEtaTracker,
     RunCostTier,
     WorkloadEstimate,
+    combine_progress_local_step,
     classify_export_tier,
     classify_run_tier,
     count_inference_passes,
     count_inference_passes_from_models,
     estimate_workload,
     format_workload_line,
+    save_progress_local_step,
 )
 from ui.widgets.stem_only import (
     SaveStemsSection,
@@ -193,6 +195,16 @@ class EstimateWorkloadIntegrationTests(unittest.TestCase):
         self.assertEqual(format_workload_line(estimate), "1 pass · 1 output · CPU · Fastest")
 
 
+class ProgressLocalStepTests(unittest.TestCase):
+    def test_save_steps_span_local_save_range(self):
+        self.assertEqual(save_progress_local_step(1, 4), 0.915)
+        self.assertEqual(save_progress_local_step(4, 4), 0.96)
+
+    def test_combine_steps_end_at_one(self):
+        self.assertAlmostEqual(combine_progress_local_step(0, 2), 0.985)
+        self.assertEqual(combine_progress_local_step(1, 2), 1.0)
+
+
 class ProgressEtaTrackerTests(unittest.TestCase):
     def test_load_phase_no_remaining(self):
         tracker = ProgressEtaTracker()
@@ -227,9 +239,23 @@ class ProgressEtaTrackerTests(unittest.TestCase):
 
     def test_saving_phase(self):
         tracker = ProgressEtaTracker()
+        tracker.update(0.475, 200.0, local_step=0.92)
+        text = tracker.format_text(0.475, 200.0, now=200.0)
+        self.assertIn("Saving", text)
+        self.assertNotIn("left", text)
+
+    def test_saving_phase_via_global_fraction(self):
+        tracker = ProgressEtaTracker()
         tracker.update(0.95, 200.0)
         text = tracker.format_text(0.95, 200.0, now=200.0)
         self.assertIn("Saving", text)
+        self.assertNotIn("left", text)
+
+    def test_combine_phase(self):
+        tracker = ProgressEtaTracker()
+        tracker.update(0.98, 220.0, local_step=0.98)
+        text = tracker.format_text(0.98, 220.0, now=220.0)
+        self.assertIn("Combining", text)
         self.assertNotIn("left", text)
 
     def test_ema_smoothing_does_not_halve_on_one_tick(self):

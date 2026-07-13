@@ -85,6 +85,9 @@ class SeperateVR(SeperateAttributes):
         if self.is_secondary_model_activated and self.secondary_model:
             self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, self.process_data, main_process_method=self.process_method, main_model_primary=self.primary_stem)
 
+        self.begin_save_phase(
+            int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only) or 1
+        )
         if not self.is_secondary_stem_only:
             primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.primary_stem}).wav')
             if not isinstance(self.primary_source, np.ndarray):

@@ -11,6 +11,14 @@ from bundled.constants import CKPT
 
 from . import paths
 from .mdx_config_fetch import ensure_mdx_c_config
+from .model_display import (
+    _is_checkpoint_name,
+    build_checkpoint_display_index,
+    display_name_for_basename,
+    load_mdx_catalog_display_index,
+    resolve_mdx_model_basename,
+    sanitize_catalogue_label,
+)
 
 _MDX_CATALOG_SOURCE_KEYS = (
     "mdx_download_list",
@@ -21,16 +29,6 @@ _MDX_CATALOG_SOURCE_KEYS = (
     "mdx_download_vip_list",
     "mdx23c_download_vip_list",
     "roformer_download_vip_list",
-)
-
-_CHECKPOINT_EXTENSIONS = (".ckpt", ".pth", ".onnx")
-
-_CATALOGUE_LABEL_PREFIXES = (
-    "Roformer Model: ",
-    "SCnet: ",
-    "Bandit: ",
-    "MDX23C: ",
-    "MDX-Net: ",
 )
 
 
@@ -96,89 +94,7 @@ def params_from_config_yaml(yaml_name: str) -> Optional[Dict[str, object]]:
     return params
 
 
-def _is_checkpoint_name(filename: str) -> bool:
-    return filename.lower().endswith(_CHECKPOINT_EXTENSIONS)
-
-
-def sanitize_catalogue_label(label: str) -> str:
-    """Strip Download Center category prefixes from a catalogue entry label."""
-    text = str(label).strip()
-    for prefix in _CATALOGUE_LABEL_PREFIXES:
-        if text.startswith(prefix):
-            text = text[len(prefix) :].strip()
-    if text.endswith(".ckpt"):
-        text = text[: -len(".ckpt")].strip()
-    return text
-
-
-def build_checkpoint_display_index(catalogues: Iterable[Dict[str, object]]) -> Dict[str, str]:
-    """Map checkpoint basename (no extension) to a friendly display label."""
-    index: Dict[str, str] = {}
-    for catalogue in catalogues:
-        if not isinstance(catalogue, dict):
-            continue
-        for selectable, model in catalogue.items():
-            if not isinstance(model, dict):
-                continue
-            display_name = sanitize_catalogue_label(selectable)
-            for filename in model:
-                if _is_checkpoint_name(filename):
-                    index[os.path.splitext(filename)[0]] = display_name
-    return index
-
-
-def load_mdx_catalog_display_index() -> Dict[str, str]:
-    """Build checkpoint-basename→display-name index from download catalogues."""
-    catalogues: List[Dict[str, object]] = []
-    catalogues.extend(_catalogues_from_source(_load_manual_download_cache()))
-
-    from .politrees_catalog import load_politrees_links
-
-    politrees = load_politrees_links()
-    if isinstance(politrees, dict):
-        catalogues.extend(_catalogues_from_source(politrees))
-
-    return build_checkpoint_display_index(catalogues)
-
-
-def display_name_for_basename(
-    basename: str,
-    name_mapper: Optional[Dict[str, str]] = None,
-    *,
-    catalogue_index: Optional[Dict[str, str]] = None,
-) -> str:
-    """Return the friendly MDX model label for an on-disk basename."""
-    if not basename:
-        return basename
-    mapper = name_mapper or {}
-    replacement = next(
-        (display for file_key, display in mapper.items() if basename in file_key),
-        None,
-    )
-    if replacement:
-        return replacement
-    lookup = catalogue_index if catalogue_index is not None else load_mdx_catalog_display_index()
-    return lookup.get(basename, basename)
-
-
-def resolve_mdx_model_basename(
-    model_name: str,
-    name_mapper: Optional[Dict[str, str]] = None,
-    *,
-    catalogue_index: Optional[Dict[str, str]] = None,
-) -> str:
-    """Resolve a dropdown label (or basename) to the on-disk checkpoint basename."""
-    if not model_name:
-        return model_name
-    mapper = name_mapper or {}
-    for file_key, display_name in mapper.items():
-        if model_name == display_name or model_name in display_name:
-            return os.path.splitext(file_key)[0]
-    lookup = catalogue_index if catalogue_index is not None else load_mdx_catalog_display_index()
-    for basename, display_name in lookup.items():
-        if model_name == display_name:
-            return basename
-    return model_name
+_CHECKPOINT_EXTENSIONS = (".ckpt", ".pth", ".onnx")
 
 
 def _mapper_key_for_checkpoint(checkpoint_path: str) -> str:

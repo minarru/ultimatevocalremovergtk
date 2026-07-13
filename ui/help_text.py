@@ -179,7 +179,7 @@ RUN_WORKLOAD_HINT = """Shows how heavy this export combo is:
 • outputs — how many files will be written
 • Fastest / Typical / Slower — relative export cost, not clock time"""
 
-PROGRESS_ETA_HINT = """Time remaining stabilizes after separation begins. Large models may revise the estimate upward while loading and during early inference"""
+PROGRESS_ETA_HINT = """Time remaining stabilizes after separation begins. During stem export and ensemble combine the bar shows Saving or Combining instead of an ETA. Large models may revise the estimate upward while loading and during early inference"""
 
 IS_NORMALIZATION_HELP = "Normalizes output to prevent clipping"
 

@@ -486,7 +486,14 @@ def show_change_defaults_dialog(context, parent):
 
     model_group = Adw.PreferencesGroup()
     model_tags = repo.default_change_model_tags()
-    model_row = make_combo_row("Model", [NO_MODEL, *model_tags])
+    model_row = make_combo_row("Model", [NO_MODEL])
+    from core.model_display import format_tag_title
+    from ..widgets.rows import set_combo_tag_values
+
+    set_combo_tag_values(
+        model_row,
+        [NO_MODEL, *[(tag, format_tag_title(tag, repo)) for tag in model_tags]],
+    )
     model_group.add(model_row)
     page.add(model_group)
 
