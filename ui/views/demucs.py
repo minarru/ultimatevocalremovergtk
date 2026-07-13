@@ -1,21 +1,45 @@
 """Demucs method view."""
 
 from bundled.constants import (
+    ALL_STEMS,
     DEMUCS_4_STEM_OPTIONS,
+    DEMUCS_6_STEM_MODEL,
+    DEMUCS_6_STEM_OPTIONS,
     DEMUCS_ARCH_TYPE,
     DEMUCS_OVERLAP,
     DEMUCS_SEGMENTS,
     DEMUCS_SHIFTS,
-    DEMUCS_STEMS_HELP,
+    DEMUCS_UVR_MODEL,
     IS_DEMUCS_COMBINE_STEMS_HELP,
     IS_SPLIT_MODE_HELP,
     OVERLAP_HELP,
     SEGMENT_HELP,
     SHIFTS_HELP,
+    VOCAL_STEM,
 )
 
+from core.model_stem_semantics import recommended_export_note
+
 from ..help_text import DEMUCS_CHUNK_HINT
+from ..widgets.stem_only import _FOCUS_INSTRUMENTAL, _FOCUS_VOCALS
 from .base import MethodView, register_method_view
+
+
+def _demucs_focus_entries(model, model_name: str) -> list:
+    if DEMUCS_6_STEM_MODEL in model_name or getattr(model, "demucs_stem_count", 4) == 6:
+        options = DEMUCS_6_STEM_OPTIONS
+    else:
+        options = DEMUCS_4_STEM_OPTIONS
+    entries = []
+    for entry in options:
+        if entry == ALL_STEMS:
+            entries.append(ALL_STEMS)
+        elif entry == VOCAL_STEM:
+            entries.extend([_FOCUS_INSTRUMENTAL, _FOCUS_VOCALS])
+        else:
+            entries.append(entry)
+    return entries
+
 
 @register_method_view
 class DemucsView(MethodView):
@@ -36,12 +60,29 @@ class DemucsView(MethodView):
         return self.context.repo.demucs_name_select_MAPPER
 
     def build_options(self, group):
-        # Phase 3 keeps the static option set; per-model 4/6/2-stem refinement is
-        # handled by the engines via the selected Demucs model.
-        self.add_option_combo(group, "demucs_stems", "Stem", DEMUCS_4_STEM_OPTIONS, hint=DEMUCS_STEMS_HELP)
         self.add_option_scale(group, "segment", "Segment", values=DEMUCS_SEGMENTS, hint=SEGMENT_HELP)
 
-    def build_advanced(self, expander):
+    def _configure_save_stems(self, model) -> None:
+        model_name = self.selected_model() or ""
+        if model and (DEMUCS_UVR_MODEL in model_name or getattr(model, "demucs_stem_count", 4) == 2):
+            super()._configure_save_stems(model)
+            return
+        stem_count = getattr(model, "demucs_stem_count", 4) if model else 4
+        self.save_stems.configure_demucs(
+            focus_stems=_demucs_focus_entries(model, model_name),
+            primary_key=self.primary_only_key,
+            secondary_key=self.secondary_only_key,
+            has_model=True,
+            demucs_stem_count=stem_count,
+            export_semantics_note=recommended_export_note(model),
+        )
+
+    def save_options(self):
+        super().save_options()
+        if self.save_stems.mode == "demucs":
+            self.save_stems.persist_to_settings()
+
+    def build_advanced(self, group):
         self.add_advanced_scale(
             "shifts",
             "Shifts",

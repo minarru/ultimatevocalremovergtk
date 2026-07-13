@@ -19,31 +19,32 @@ from bundled.constants import (
     BASS_PAIR,
     BASS_STEM,
     CHOOSE_MODEL,
+    CHOOSE_MODEL_HELP,
+    CLEAR_CACHE_HELP,
+    DEMUCS_ARCH_TYPE,
     DEVERB_MAPPER,
     DRUM_PAIR,
     DRUM_STEM,
     INST_STEM,
-    NO_MODEL,
-    OTHER_PAIR,
-    OTHER_STEM,
-    SECONDARY_STEM,
-    VOCAL_PAIR,
-    VOCAL_STEM,
-)
-from bundled.constants import (
-    CHOOSE_MODEL_HELP,
-    CLEAR_CACHE_HELP,
     IS_DEVERB_OPT_HELP,
     IS_DEVERB_VOC_HELP,
     IS_VOC_SPLIT_INST_SAVE_SELECT_HELP,
     IS_VOC_SPLIT_MODEL_SELECT_HELP,
+    MDX_ARCH_TYPE,
+    NO_MODEL,
+    OTHER_PAIR,
+    OTHER_STEM,
     PRE_PROC_MODEL_ACTIVATE_HELP,
     PRE_PROC_MODEL_INST_MIX_HELP,
     SAVE_STEM_ONLY_HELP,
     SECONDARY_MODEL_ACTIVATE_HELP,
     SECONDARY_MODEL_HELP,
     SECONDARY_MODEL_SCALE_HELP,
+    SECONDARY_STEM,
+    VOCAL_PAIR,
+    VOCAL_STEM,
     VOC_SPLIT_MODEL_SELECT_HELP,
+    VR_ARCH_TYPE,
 )
 
 from ..hints import HelpHintManager
@@ -53,13 +54,17 @@ from ..widgets.rows import (
     get_scale_row_value,
     make_combo_row,
     make_switch_row,
+    set_combo_tag_values,
     set_combo_value,
     set_combo_values,
     set_scale_row_float,
     set_scale_row_value,
     use_wrapping_list,
 )
-from ..widgets.stem_only import StemOnlyControls, build_stem_only_options
+from core.model_display import format_tag_title, map_basenames_to_display
+from ..widgets.stem_only import SaveStemsSection
+from core.model_stem_semantics import recommended_export_note, stem_display_overrides
+from core.run_estimate import estimate_workload, format_workload_line
 
 # Per-stem secondary-model slots: (settings-key slot, display pair, primary stem,
 # secondary stem) used to build the four secondary-model selectors UVR exposes.
@@ -71,22 +76,18 @@ _SECONDARY_SLOTS = (
 )
 
 
-def apply_name_mapper(names, name_mapper) -> List[str]:
-    """Port of ``UVR.update_available_models.fix_name``.
-
-    Maps an on-disk model file name to the friendlier display name listed in the
-    repository's name mapper, leaving names without a mapping untouched.
-    """
-    if not name_mapper:
+def apply_name_mapper(names, name_mapper, *, catalogue_index=None, arch=None, repo=None) -> List[str]:
+    """Map on-disk basenames to runtime display labels."""
+    if arch and repo:
+        return map_basenames_to_display(names, arch, repo)
+    if not name_mapper and not catalogue_index:
         return list(names)
-    mapped = []
-    for name in names:
-        replacement = next(
-            (new_name for old_name, new_name in name_mapper.items() if name in old_name),
-            name,
-        )
-        mapped.append(replacement)
-    return mapped
+    from core.model_display import display_name_for_basename
+
+    return [
+        display_name_for_basename(name, name_mapper, catalogue_index=catalogue_index)
+        for name in names
+    ]
 
 
 class MethodView:
@@ -135,7 +136,10 @@ class MethodView:
         # columns when the method or the window width changes.
         self.groups = []
 
-        self.group = Adw.PreferencesGroup(title=self.title)
+        # No group title: the method combo directly above already names the
+        # architecture (e.g. "MDX-Net"), so a per-arch header here was redundant
+        # chrome. The group's first row ("Model") labels the content.
+        self.group = Adw.PreferencesGroup()
         self.groups.append(self.group)
 
         self.model_row = make_combo_row("Model", [CHOOSE_MODEL], icon_name="applications-science-symbolic")
@@ -146,11 +150,9 @@ class MethodView:
 
         self.build_options(self.group)
 
-        # Advanced options (collapsed by default to keep the basic panel clean).
+        # Advanced / inference options: standard preferences list without an expander.
         self.advanced_group = Adw.PreferencesGroup()
-        self.advanced_expander = Adw.ExpanderRow(title="Advanced options")
-        self.advanced_group.add(self.advanced_expander)
-        self.build_advanced(self.advanced_expander)
+        self.build_advanced(self.advanced_group)
         self.groups.append(self.advanced_group)
 
         # Secondary / pre-process / vocal-splitter model selection
@@ -158,12 +160,15 @@ class MethodView:
         self._build_secondary_section()
 
         self.stem_group = Adw.PreferencesGroup(title="Save stems")
-        self.stem_only = StemOnlyControls(on_changed=self._on_stem_only_changed)
-        self.stem_only_row = self.stem_only.widget
+        self.save_stems = SaveStemsSection(
+            settings=self.settings,
+            on_changed=self._on_save_stems_changed,
+        )
         self._resolved_primary_stem = None
         self._resolved_secondary_stem = None
-        self.stem_group.add(self.stem_only_row)
-        self.hints.register(self.stem_only_row, SAVE_STEM_ONLY_HELP)
+        self._resolved_model = None
+        self.stem_group.add(self.save_stems.widget)
+        self.hints.register(self.save_stems.widget, SAVE_STEM_ONLY_HELP)
         self.build_stem_options(self.stem_group)
         self.groups.append(self.stem_group)
 
@@ -181,9 +186,18 @@ class MethodView:
         return None
 
     def populate_models(self) -> None:
-        names = apply_name_mapper(sorted(self.list_models()), self.name_mapper())
+        arch = self.method_key_for_resolution
+        repo = self.context.repo
+        basenames = sorted(self.list_models())
+        names = map_basenames_to_display(basenames, arch, repo)
         set_combo_values(self.model_row, [CHOOSE_MODEL, *names])
-        set_combo_value(self.model_row, self.settings.get(self.model_key, CHOOSE_MODEL))
+        stored = self.settings.get(self.model_key, CHOOSE_MODEL)
+        if stored not in (CHOOSE_MODEL, NO_MODEL, None) and stored in basenames:
+            display = map_basenames_to_display([stored], arch, repo)[0]
+            if display != stored:
+                stored = display
+                self.settings.set(self.model_key, display)
+        set_combo_value(self.model_row, stored)
 
     def refresh_models(self) -> None:
         """Re-list on-disk models (e.g. after a Download Center download)."""
@@ -233,48 +247,61 @@ class MethodView:
         secondary = model.secondary_stem if model else None
         self._resolved_primary_stem = primary_stem
         self._resolved_secondary_stem = secondary
-        self._rebuild_stem_only_toggles(primary_stem, secondary)
+        self._resolved_model = model
+        if not self.has_model():
+            self.save_stems.configure_hidden(has_model=False)
+        else:
+            self._configure_save_stems(model)
         self._on_model_resolved(model)
+        if self.has_model():
+            self.save_stems.sync_from_settings()
+        self._update_stem_group_metadata()
 
-    def _rebuild_stem_only_toggles(self, primary_stem, secondary_stem) -> None:
-        options = build_stem_only_options(
-            primary_stem=primary_stem,
-            secondary_stem=secondary_stem,
+    def _configure_save_stems(self, model) -> None:
+        """Default: exclusive export filter for <=2-stem / VR-style models."""
+        self.save_stems.configure_exclusive(
+            primary_stem=self._resolved_primary_stem,
+            secondary_stem=self._resolved_secondary_stem,
             primary_key=self.primary_only_key,
             secondary_key=self.secondary_only_key,
+            has_model=True,
+            stem_label_overrides=stem_display_overrides(model),
+            export_semantics_note=recommended_export_note(model),
         )
-        was_loading = self._loading
-        self._loading = True
-        try:
-            self.stem_only.rebuild(options)
-            self._sync_stem_only_toggles()
-        finally:
-            self._loading = was_loading
+
+    def _update_stem_group_metadata(self) -> None:
+        line1 = "\n".join(self.save_stems.export_description_lines())
+        workload = estimate_workload(
+            self.settings,
+            method_key=self.method_key,
+            save_stems=self.save_stems,
+            repo=self.context.repo,
+            model_name=self.selected_model() if self.has_model() else None,
+            has_model=self.has_model(),
+        )
+        line2 = format_workload_line(workload)
+        self.stem_group.set_description(f"{line1}\n{line2}" if line2 else line1)
+        from ..hints import set_tooltip
+
+        set_tooltip(self.save_stems.widget, self.save_stems.active_hint())
+
+    def _touch_settings(self) -> None:
+        self._update_stem_group_metadata()
+        self._on_settings_changed()
 
     def _sync_stem_only_toggles(self) -> None:
-        """Reflect ``is_*_stem_only`` settings in the toggle group."""
-        was_loading = self._loading
-        self._loading = True
-        try:
-            self.stem_only.sync_from_settings(
-                self.settings,
-                self.primary_only_key,
-                self.secondary_only_key,
-            )
-        finally:
-            self._loading = was_loading
+        """Reflect stem export settings in the save-stems widget."""
+        self.save_stems.sync_from_settings()
+        self._update_stem_group_metadata()
 
     def _persist_stem_only(self) -> None:
-        self.stem_only.persist_to_settings(
-            self.settings,
-            self.primary_only_key,
-            self.secondary_only_key,
-        )
+        self.save_stems.persist_to_settings()
 
-    def _on_stem_only_changed(self) -> None:
+    def _on_save_stems_changed(self) -> None:
         if self._loading:
             return
         self._persist_stem_only()
+        self._update_stem_group_metadata()
         self._on_settings_changed()
 
     # Backwards-compatible alias used when switching method tabs.
@@ -405,7 +432,7 @@ class MethodView:
         if self._loading:
             return
         self.settings.set(key, get_combo_value(row))
-        self._on_settings_changed()
+        self._touch_settings()
 
     def _on_option_scale(self, key, row) -> None:
         if self._loading:
@@ -414,19 +441,19 @@ class MethodView:
             self.settings.set(key, round(get_scale_row_float(row), 2))
         else:
             self.settings.set(key, get_scale_row_value(row))
-        self._on_settings_changed()
+        self._touch_settings()
 
     def _on_option_switch(self, key, row) -> None:
         if self._loading:
             return
         self.settings.set(key, row.get_active())
-        self._on_settings_changed()
+        self._touch_settings()
 
     def _on_option_spin(self, key, row) -> None:
         if self._loading:
             return
         self.settings.set(key, round(row.get_value(), 2))
-        self._on_settings_changed()
+        self._touch_settings()
 
     def _load_scales(self) -> None:
         for key, row in self._scale_rows.items():
@@ -470,8 +497,8 @@ class MethodView:
     def build_options(self, group: Adw.PreferencesGroup) -> None:
         """Add the basic method-specific rows to ``group``."""
 
-    def build_advanced(self, expander: "Adw.ExpanderRow") -> None:
-        """Add advanced method-specific rows to the "Advanced options" expander."""
+    def build_advanced(self, group: Adw.PreferencesGroup) -> None:
+        """Add advanced method-specific rows to the model-options inference group."""
 
     def build_stem_options(self, group: Adw.PreferencesGroup) -> None:
         """Append method-specific rows to the shared "Save stems" group."""
@@ -487,11 +514,11 @@ class MethodView:
             self.settings.set(key, get_combo_value(row))
 
     def add_advanced_combo(self, key, title, values, subtitle=None, hint=None):
-        return self.add_option_combo(self.advanced_expander, key, title, values, subtitle, hint=hint)
+        return self.add_option_combo(self.advanced_group, key, title, values, subtitle, hint=hint)
 
     def add_advanced_scale(self, key, title, *, values=None, lower=None, upper=None, step=1, digits=0, subtitle=None, hint=None, store_float=False):
         return self.add_option_scale(
-            self.advanced_expander,
+            self.advanced_group,
             key,
             title,
             values=values,
@@ -505,7 +532,7 @@ class MethodView:
         )
 
     def add_advanced_switch(self, key, title, subtitle=None, hint=None):
-        return self.add_option_switch(self.advanced_expander, key, title, subtitle, hint=hint)
+        return self.add_option_switch(self.advanced_group, key, title, subtitle, hint=hint)
 
     # -- Secondary / pre-process / vocal-splitter model selection --------------
 
@@ -533,7 +560,7 @@ class MethodView:
         if entry and not entry["ready"]:
             return
         self.settings.set(key, get_combo_value(row))
-        self._on_settings_changed()
+        self._touch_settings()
 
     def _ensure_model_combos_populated(self, *_args) -> None:
         if self._model_combos_populated:
@@ -546,7 +573,11 @@ class MethodView:
                     values = entry["provider"]()
                 except Exception:
                     values = []
-                set_combo_values(entry["row"], [NO_MODEL, *values])
+                tag_items = [
+                    (tag, format_tag_title(tag, self.context.repo))
+                    for tag in values
+                ]
+                set_combo_tag_values(entry["row"], [NO_MODEL, *tag_items])
                 set_combo_value(entry["row"], self.settings.get(entry["key"], NO_MODEL))
                 entry["ready"] = True
         finally:
@@ -555,7 +586,13 @@ class MethodView:
     def _build_secondary_section(self) -> None:
         repo = self.context.repo
         settings = self.settings
-        self.secondary_group = Adw.PreferencesGroup(title="Secondary, pre-process and vocal-split models")
+        # "Extra models" is a titled group holding the secondary, pre-process
+        # and vocal-split selectors as sibling expander rows (each collapsed by
+        # default). Per the GNOME HIG these expanders live directly in the group
+        # rather than nested inside another expander: nesting expander rows adds
+        # indentation levels that read as confusing, so the section stays one
+        # level deep (group -> expander -> rows).
+        self.secondary_group = Adw.PreferencesGroup(title="Extra models")
         group = self.secondary_group
 
         # Secondary models (one selector + scale per stem pair).

@@ -1,19 +1,8 @@
-"""Download Center (GTK4 / libadwaita port of UVR's ``tab3`` download menu).
+"""Download Center entry point, VIP / manual dialogs, and shared download services."""
 
-Provides :func:`open_download_center`, the entry point the main window's
-``win.download`` action calls. It reuses :class:`core.downloads.DownloadManager`
-for all network/disk work and mirrors UVR's behaviour:
+from __future__ import annotations
 
-* pick a network (VR Arch / MDX-Net / Demucs) and a not-yet-downloaded model;
-* download with a live progress bar and a Stop button (cooperative cancel);
-* refresh the catalogue, unlock VIP models with a download code, and fall back
-  to per-link manual downloads.
-
-Every network/IO operation runs on a worker thread; results are marshalled back
-onto the GTK main loop with ``GLib.idle_add`` so widgets are only ever touched
-from the main thread. Construction never imports ``torch``.
-"""
-
+import os
 import threading
 import webbrowser
 
@@ -24,295 +13,325 @@ from bundled.constants import (
     DONATE_LINK_BMAC,
     DONATE_LINK_PATREON,
     MDX_ARCH_TYPE,
-    NO_CONNECTION,
-    NO_MODEL,
-    NO_NEW_MODELS,
     VR_ARCH_TYPE,
+)
+from core.debug_log import debug
+from core.download_queue import DownloadQueue, DownloadQueueItem
+from core.download_status import (
+    STATUS_CANCELLED,
+    STATUS_COMPLETE,
+    STATUS_DOWNLOADING,
+    STATUS_EXISTS,
+    STATUS_FAILED,
 )
 from core.downloads import DownloadManager
 
-from core.debug_log import debug
-
+from .dispatch import idle_on_main
 from .dialogs.utils import configure_dialog_width, fill_dialog_width, present_modal_dialog, set_dialog_content
-from .help_text import VIP_DOWNLOAD_CODE_HINT
-from .hints import set_tooltip
-from .widgets.rows import get_combo_value, make_combo_row, set_combo_values, use_wrapping_list
-
-# Network label -> arch-type constant (the radio buttons in UVR's tab3).
-_NETWORKS = [
-    ("VR Arch", VR_ARCH_TYPE),
-    ("MDX-Net", MDX_ARCH_TYPE),
-    ("Demucs", DEMUCS_ARCH_TYPE),
-]
+from .notifications import (
+    NOTIFY_DOWNLOAD_COMPLETE,
+    NOTIFY_DOWNLOAD_FAILED,
+    send_desktop_notification,
+)
+from .spacing import inset_md
+from .download_center import DownloadCenterWindow
+from .widgets.download_queue_indicator import DownloadQueueIndicator
 
 
 def _get_manager(app_context) -> DownloadManager:
-    """Reuse a single :class:`DownloadManager` per app context across opens."""
     manager = getattr(app_context, "_download_manager", None)
     if manager is None:
         manager = DownloadManager()
         setattr(app_context, "_download_manager", manager)
     return manager
 
-from .dispatch import idle_on_main
-class DownloadCenter:
-    def __init__(self, parent, app_context, on_models_changed=None):
-        self.parent = parent
-        self.context = app_context
-        self.settings = app_context.settings
-        self.manager = _get_manager(app_context)
-        self._on_models_changed = on_models_changed
-        self._available = {}
-        self._stop_event = None
-        self._busy = False
 
-        # Restore a previously-entered VIP code so VIP models stay unlocked.
-        saved_code = self.settings.get("user_code", "")
-        if saved_code:
-            self.manager.validate_vip_code(saved_code)
+def _get_queue(app_context, manager: DownloadManager) -> DownloadQueue:
+    queue = getattr(app_context, "_download_queue", None)
+    if queue is None:
+        queue = DownloadQueue(manager, on_changed=lambda: None, repo=app_context.repo)
+        setattr(app_context, "_download_queue", queue)
+    return queue
 
-        self.window = Adw.Window(title="Application Download Center")
-        self.window.set_default_size(520, 0)
-        if parent is not None:
-            self.window.set_transient_for(parent)
 
-        toolbar = Adw.ToolbarView()
-        header = Adw.HeaderBar()
-        self.key_button = Gtk.Button(icon_name="dialog-password-symbolic")
-        set_tooltip(self.key_button, VIP_DOWNLOAD_CODE_HINT)
-        self.key_button.connect("clicked", self._on_vip_code)
-        header.pack_start(self.key_button)
-        toolbar.add_top_bar(header)
-
-        self.toast_overlay = Adw.ToastOverlay()
-        self.toast_overlay.set_child(self._build_body())
-        toolbar.set_content(self.toast_overlay)
-        self.window.set_content(toolbar)
-
-    # -- Layout -----------------------------------------------------------------
-
-    def _build_body(self) -> Gtk.Widget:
-        page = Adw.PreferencesPage()
-
-        select_group = Adw.PreferencesGroup(title="Select Download")
-        self.network_row = make_combo_row("Network", [label for label, _ in _NETWORKS])
-        use_wrapping_list(self.network_row)
-        if hasattr(self.network_row, "set_enable_search"):
-            self.network_row.set_enable_search(False)
-        self.network_row.connect("notify::selected", self._on_network_changed)
-        select_group.add(self.network_row)
-
-        self.model_row = make_combo_row("Model", [NO_MODEL])
-        use_wrapping_list(self.model_row)
-        select_group.add(self.model_row)
-        page.add(select_group)
-
-        action_group = Adw.PreferencesGroup()
-        download_row = Adw.ActionRow(title="Download selected model")
-        self.download_button = Gtk.Button(label="Download", valign=Gtk.Align.CENTER)
-        self.download_button.add_css_class("suggested-action")
-        self.download_button.connect("clicked", self._on_download)
-        download_row.add_suffix(self.download_button)
-        self.stop_button = Gtk.Button(label="Stop", valign=Gtk.Align.CENTER)
-        self.stop_button.add_css_class("destructive-action")
-        self.stop_button.set_sensitive(False)
-        self.stop_button.connect("clicked", self._on_stop)
-        download_row.add_suffix(self.stop_button)
-        action_group.add(download_row)
-
-        refresh_row = Adw.ActionRow(title="Refresh List", subtitle="Re-check the online model catalogue.")
-        refresh_button = Gtk.Button(label="Refresh", valign=Gtk.Align.CENTER)
-        refresh_button.connect("clicked", lambda *_: self.start_refresh())
-        refresh_row.add_suffix(refresh_button)
-        self.refresh_button = refresh_button
-        action_group.add(refresh_row)
-
-        manual_row = Adw.ActionRow(title="Try Manual Download", subtitle="Open direct links for any model.")
-        manual_button = Gtk.Button(label="Manual\u2026", valign=Gtk.Align.CENTER)
-        manual_button.connect("clicked", self._on_manual)
-        manual_row.add_suffix(manual_button)
-        action_group.add(manual_row)
-        page.add(action_group)
-
-        progress_group = Adw.PreferencesGroup()
-        self.progress = Gtk.ProgressBar(show_text=True)
-        self.progress.set_margin_top(6)
-        self.progress.set_margin_bottom(6)
-        progress_group.add(self.progress)
-        self.info_row = Adw.ActionRow(title="Loading version information\u2026")
-        progress_group.add(self.info_row)
-        page.add(progress_group)
-
-        self._set_controls_sensitive(False)
-        return page
-
-    # -- Refresh ----------------------------------------------------------------
-
-    def present(self) -> None:
-        self.window.present()
-        self.start_refresh()
-
-    def start_refresh(self) -> None:
-        if self._busy:
-            return
-        debug("download", "ui refresh start")
-        self._busy = True
-        self._set_info("Refreshing model list\u2026")
-        self._set_controls_sensitive(False)
-        threading.Thread(target=self._refresh_worker, daemon=True).start()
-
-    def _refresh_worker(self) -> None:
-        debug("download", "ui refresh worker")
-        is_online = self.manager.refresh()
-        mapper_ok = None
-        available = {}
-        # Auto-refresh the model-data mappers when the user opted in (matches
-        # UVR's is_auto_update_model_params behaviour on a successful check).
-        if is_online and self.settings.get("is_auto_update_model_params", True):
-            mapper_ok = self.manager.update_model_settings(self.context.repo)
-            debug("download", f"ui auto update_model_settings ok={mapper_ok}")
-        if is_online:
-            available = self.manager.available_downloads()
-        idle_on_main(self._refresh_done, is_online, available)
-
-    def _refresh_done(self, is_online: bool, available=None) -> None:
-        self._busy = False
-        if not is_online:
-            debug("download", "ui refresh done offline")
-            self._set_info(NO_CONNECTION)
-            self._set_controls_sensitive(False)
-            self.refresh_button.set_sensitive(True)
-            set_combo_values(self.model_row, [NO_CONNECTION])
-            return
-        self._available = available or {}
-        counts = {
-            arch: len(models) for arch, models in self._available.items()
-        }
-        debug("download", f"ui refresh done online available={counts}")
-        self._set_controls_sensitive(True)
-        self._populate_models()
-        self._set_info("Ready.")
-
-    # -- Selection --------------------------------------------------------------
-
-    def _current_arch(self) -> str:
-        index = self.network_row.get_selected()
-        index = 0 if index < 0 else index
-        return _NETWORKS[index][1]
-
-    def _populate_models(self) -> None:
-        arch = self._current_arch()
-        models = self._available.get(arch) or [NO_NEW_MODELS]
-        set_combo_values(self.model_row, models)
-
-    def _on_network_changed(self, *_args) -> None:
-        if self._available:
-            self._populate_models()
-
-    # -- Download ---------------------------------------------------------------
-
-    def _on_download(self, _button) -> None:
-        if self._busy:
-            return
-        selection = get_combo_value(self.model_row)
-        if not selection or selection in (NO_MODEL, NO_NEW_MODELS, NO_CONNECTION):
-            self._set_info(NO_MODEL)
-            return
-        jobs = self.manager.resolve(selection, self._current_arch())
-        if not jobs:
-            self._set_info(NO_MODEL)
-            return
-
-        self._busy = True
-        self._stop_event = threading.Event()
-        self._set_controls_sensitive(False)
-        self.stop_button.set_sensitive(True)
-        self.progress.set_fraction(0.0)
-        threading.Thread(target=self._download_worker, args=(jobs,), daemon=True).start()
-
-    def _download_worker(self, jobs) -> None:
-        try:
-            result = self.manager.download(
-                jobs,
-                on_progress=lambda f: idle_on_main(self._set_progress, f),
-                on_info=lambda text: idle_on_main(self._set_info, text),
-                stop_event=self._stop_event,
-            )
-        except Exception as exc:  # noqa: BLE001 - surfaced via the error log + UI
-            from core.debug_log import debug
-
-            debug("download", f"download failed error={type(exc).__name__}: {exc}")
-            from .errorlog import log_error
-
-            log_error("Downloading Item", exc)
-            idle_on_main(self._download_done, "failed", str(type(exc).__name__))
-            return
-        idle_on_main(self._download_done, result, None)
-
-    def _download_done(self, result: str, error_name) -> None:
-        self._busy = False
-        self.stop_button.set_sensitive(False)
-        if result == "complete":
-            self.progress.set_fraction(1.0)
-            self._set_info("Download Complete")
-            # Re-list so the freshly-downloaded model drops off the menu.
-            self._available = self.manager.available_downloads()
-            self._populate_models()
-            # Notify the main window so its method dropdowns pick up the new model.
-            if self._on_models_changed is not None:
-                self._on_models_changed()
-        elif result == "stopped":
-            self._set_info("Download Stopped")
-        elif result == "exists":
-            self._set_info("File already exists!")
+def _send_download_notifications(app, settings, queue: DownloadQueue) -> None:
+    items = queue.items()
+    complete = sum(1 for item in items if item.status == "complete")
+    existed = sum(1 for item in items if item.status == "exists")
+    failed = sum(1 for item in items if item.status == "failed")
+    debug(
+        "download",
+        "download notification "
+        f"complete={complete} exists={existed} failed={failed}",
+    )
+    if failed:
+        if failed == 1:
+            body = "1 download failed"
         else:
-            self._set_info(f"Download Failed ({error_name})" if error_name else "Download Failed")
-        self._set_controls_sensitive(True)
+            body = f"{failed} downloads failed"
+        if complete or existed:
+            body += f"; {complete + existed} succeeded"
+        send_desktop_notification(
+            app,
+            settings,
+            setting_key=NOTIFY_DOWNLOAD_FAILED,
+            ident="uvr-download-failed",
+            title="Model downloads finished with errors",
+            body=body,
+        )
+        return
+    if complete or existed:
+        count = complete + existed
+        if count == 1:
+            body = "1 model is ready to use"
+        else:
+            body = f"{count} models are ready to use"
+        send_desktop_notification(
+            app,
+            settings,
+            setting_key=NOTIFY_DOWNLOAD_COMPLETE,
+            ident="uvr-download-complete",
+            title="Model downloads complete",
+            body=body,
+        )
 
-    def _on_stop(self, _button) -> None:
-        if self._stop_event is not None:
-            debug("download", "ui download stop requested")
-            self._stop_event.set()
-        self.stop_button.set_sensitive(False)
-        self._set_info("Stopping\u2026")
 
-    # -- VIP code ---------------------------------------------------------------
+def init_download_queue_ui(main_window, app_context, *, on_models_changed=None) -> DownloadQueueIndicator:
+    """Wire the header download indicator and app-level queue callbacks."""
+    manager = _get_manager(app_context)
+    queue = _get_queue(app_context, manager)
+    indicator = getattr(main_window, "_download_queue_indicator", None)
+    if indicator is None:
+        indicator = DownloadQueueIndicator()
+        main_window._download_queue_indicator = indicator
+    indicator.bind(queue)
+    app_context._download_queue_indicator = indicator
 
-    def _on_vip_code(self, _button) -> None:
-        open_vip_code_dialog(self.window, self.context, on_validated=self._on_vip_validated)
+    def refresh() -> None:
+        indicator.refresh()
 
-    def _on_vip_validated(self, unlocked: bool) -> None:
-        debug("download", f"ui vip_validated unlocked={unlocked}")
-        if unlocked and self._available:
-            self._available = self.manager.available_downloads()
-            self._populate_models()
-            self._toast("VIP Models Added!")
+    def after_batch() -> None:
+        indicator.on_batch_complete()
+        center = getattr(app_context, "_download_center_window", None)
+        if center is not None:
+            center.refresh_after_downloads()
+        if on_models_changed is not None:
+            on_models_changed()
+        main_window.toast_overlay.add_toast(Adw.Toast.new("Downloads finished"))
+        _send_download_notifications(main_window.get_application(), app_context.settings, queue)
 
-    # -- Manual -----------------------------------------------------------------
+    queue.set_on_changed(lambda: idle_on_main(refresh))
+    queue.set_on_batch_complete(lambda: idle_on_main(after_batch))
+    if os.environ.get("UVR_DEBUG_QUEUE"):
+        _seed_debug_queue(queue)
+    chip_debug_scenarios = parse_chip_debug_scenarios()
+    if chip_debug_scenarios:
+        _start_chip_debug_cycle(queue, indicator, chip_debug_scenarios)
+    if os.environ.get("UVR_DEBUG_QUEUE_POPUP"):
+        _auto_open_popover(main_window, indicator)
+    idle_on_main(refresh)
+    return indicator
 
-    def _on_manual(self, _button) -> None:
-        open_manual_downloads(self.window, self.context)
 
-    # -- Helpers ----------------------------------------------------------------
+def _auto_open_popover(main_window, indicator: DownloadQueueIndicator) -> None:
+    """Dev-only (UVR_DEBUG_QUEUE_POPUP): open the popover once the window maps.
 
-    def _set_controls_sensitive(self, sensitive: bool) -> None:
-        for widget in (self.network_row, self.model_row, self.download_button,
-                       self.refresh_button, self.key_button):
-            widget.set_sensitive(sensitive)
+    Autohide is disabled so the popover stays open when focus moves to the GTK
+    Inspector (Ctrl+Shift+I) for styling/layout work.
+    """
+    indicator.dev_disable_autohide()
 
-    def _set_info(self, text: str) -> None:
-        self.info_row.set_title(text)
+    def open_once(*_args) -> None:
+        indicator.refresh()
+        indicator.popup()
+        if handler_id[0] is not None:
+            main_window.disconnect(handler_id[0])
+            handler_id[0] = None
 
-    def _set_progress(self, fraction: float) -> None:
-        self.progress.set_fraction(max(0.0, min(1.0, fraction)))
-        self.progress.set_text(f"{int(fraction * 100)} %")
+    handler_id = [None]
+    handler_id[0] = main_window.connect(
+        "map", lambda *_a: idle_on_main(open_once)
+    )
 
-    def _toast(self, message: str) -> None:
-        self.toast_overlay.add_toast(Adw.Toast.new(message))
+
+def _seed_debug_queue(queue: DownloadQueue) -> None:
+    """Inject fake queue items so the header chip/popover can be styled offline.
+
+    Enabled with ``UVR_DEBUG_QUEUE=1``. One item stays ``downloading`` so the
+    auto-dismiss timer never fires and the chip remains visible.
+    """
+    samples = [
+        ("UVR-MDX-NET Main", "MDX-Net", "downloading", 0.42, "12.3 / 29.1 MB (file 1/1)"),
+        ("Kim Vocal 2", "MDX-Net", "complete", 1.0, "Complete"),
+        ("Demucs v4 (htdemucs)", "Demucs", "failed", 0.0, "ConnectionError"),
+        ("5_HP-Karaoke-UVR", "VR Arch", "queued", 0.0, "Waiting"),
+        ("UVR-DeEcho-DeReverb", "VR Arch", "cancelled", 0.0, "Cancelled"),
+    ]
+    items = [
+        DownloadQueueItem(
+            item_id=f"debug-{index}",
+            selection=name,
+            arch_type=arch,
+            label=name,
+            jobs=[],
+            status=status,
+            progress=progress,
+            detail=detail,
+        )
+        for index, (name, arch, status, progress, detail) in enumerate(samples)
+    ]
+    with queue._lock:  # noqa: SLF001 - dev-only seeding of the shared queue
+        queue._items.extend(items)
+    debug("download", f"seeded debug queue with {len(items)} items")
+
+
+_CHIP_DEBUG_ORDER = ("active", "success", "partial", "failed", "cancelled")
+
+_CHIP_DEBUG_SCENARIOS: dict[str, list[tuple[str, str, str, float, str]]] = {
+    "active": [
+        ("UVR-MDX-NET Main", "MDX-Net", STATUS_DOWNLOADING, 0.65, "12.3 / 29.1 MB (file 1/1)"),
+        ("Kim Vocal 2", "MDX-Net", STATUS_DOWNLOADING, 0.35, "4.1 / 11.8 MB (file 1/1)"),
+    ],
+    "success": [
+        ("Kim Vocal 2", "MDX-Net", STATUS_COMPLETE, 1.0, "Complete"),
+        ("Demucs v4 (htdemucs)", "Demucs", STATUS_EXISTS, 1.0, "Already on disk"),
+    ],
+    "partial": [
+        ("Kim Vocal 2", "MDX-Net", STATUS_COMPLETE, 1.0, "Complete"),
+        ("5_HP-Karaoke-UVR", "VR Arch", STATUS_FAILED, 0.0, "ConnectionError"),
+    ],
+    "failed": [
+        ("5_HP-Karaoke-UVR", "VR Arch", STATUS_FAILED, 0.0, "ConnectionError"),
+        ("UVR-DeEcho-DeReverb", "VR Arch", STATUS_FAILED, 0.0, "TimeoutError"),
+    ],
+    "cancelled": [
+        ("UVR-DeEcho-DeReverb", "VR Arch", STATUS_CANCELLED, 0.0, "Cancelled"),
+    ],
+}
+
+
+def parse_chip_debug_scenarios() -> list[str] | None:
+    """Parse ``UVR_DEBUG_QUEUE_CHIP`` for chip state visual QA.
+
+    Values:
+    - ``1``, ``true``, ``cycle``, ``all`` — rotate through every chip outcome
+    - ``active``, ``success``, … — pin to one scenario
+    - comma-separated list — rotate through the named scenarios only
+    """
+    raw = os.environ.get("UVR_DEBUG_QUEUE_CHIP", "").strip()
+    if not raw:
+        return None
+    if raw.lower() in {"1", "true", "yes", "cycle", "all"}:
+        return list(_CHIP_DEBUG_ORDER)
+    names = [part.strip() for part in raw.split(",") if part.strip()]
+    unknown = [name for name in names if name not in _CHIP_DEBUG_SCENARIOS]
+    if unknown:
+        debug("download", f"chip debug ignored unknown scenario(s): {', '.join(unknown)}")
+    selected = [name for name in names if name in _CHIP_DEBUG_SCENARIOS]
+    return selected or None
+
+
+def chip_debug_items_for(scenario: str) -> list[DownloadQueueItem]:
+    """Build fake queue rows that produce a specific chip outcome."""
+    rows = _CHIP_DEBUG_SCENARIOS[scenario]
+    return [
+        DownloadQueueItem(
+            item_id=f"chip-debug-{scenario}-{index}",
+            selection=name,
+            arch_type=arch,
+            label=name,
+            jobs=[],
+            status=status,
+            progress=progress,
+            detail=detail,
+        )
+        for index, (name, arch, status, progress, detail) in enumerate(rows)
+    ]
+
+
+def _replace_queue_items(queue: DownloadQueue, items: list[DownloadQueueItem]) -> None:
+    with queue._lock:  # noqa: SLF001 - dev-only queue seeding
+        queue._items.clear()
+        queue._items.extend(items)
+    queue._notify()  # noqa: SLF001 - dev-only queue seeding
+
+
+def _start_chip_debug_cycle(
+    queue: DownloadQueue,
+    indicator: DownloadQueueIndicator,
+    scenarios: list[str],
+) -> None:
+    """Cycle chip outcomes for headless-incompatible visual QA.
+
+    Enabled with ``UVR_DEBUG_QUEUE_CHIP``. Keeps the chip visible (sticky) and
+    optionally pairs with ``UVR_DEBUG_QUEUE_POPUP=1`` to inspect popover rows.
+    Interval seconds: ``UVR_DEBUG_QUEUE_CHIP_INTERVAL`` (default 4).
+    """
+    interval_s = max(1, int(os.environ.get("UVR_DEBUG_QUEUE_CHIP_INTERVAL", "4")))
+    indicator._sticky = True  # noqa: SLF001 - dev-only sticky chip
+    index = 0
+
+    def apply_scenario() -> None:
+        nonlocal index
+        scenario = scenarios[index]
+        items = chip_debug_items_for(scenario)
+        _replace_queue_items(queue, items)
+        indicator.widget.set_tooltip_text(f"Chip debug: {scenario}")
+        debug("download", f"chip debug scenario={scenario}")
+
+    def on_timeout() -> bool:
+        nonlocal index
+        index = (index + 1) % len(scenarios)
+        apply_scenario()
+        return GLib.SOURCE_CONTINUE
+
+    apply_scenario()
+    GLib.timeout_add_seconds(interval_s, on_timeout)
+
+
+def start_download_size_cache_warmup(app_context) -> None:
+    """Prefetch model download sizes on a background thread (7-day cache TTL)."""
+    if getattr(app_context, "_size_cache_warmup_started", False):
+        return
+    app_context._size_cache_warmup_started = True
+
+    def worker() -> None:
+        manager = _get_manager(app_context)
+        code = app_context.settings.get("user_code", "")
+        if code:
+            manager.validate_vip_code(code)
+        if manager.ensure_catalogues():
+            manager.schedule_size_cache_warmup()
+        else:
+            debug("download", "size_cache_warmup refresh catalogues (no bundled cache)")
+            manager.refresh()
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def open_download_center(parent_window, app_context, on_models_changed=None):
+    """Open or raise the Download Center utility window."""
+    center = getattr(app_context, "_download_center_window", None)
+    if center is not None:
+        center.present()
+        return center
+
+    manager = _get_manager(app_context)
+    queue = _get_queue(app_context, manager)
+    center = DownloadCenterWindow(
+        parent_window,
+        app_context,
+        manager,
+        queue,
+        on_models_changed=on_models_changed,
+    )
+    app_context._download_center_window = center
+    center.present()
+    return center
 
 
 # ---------------------------------------------------------------------------
-# VIP code dialog (port of pop_up_user_code_input)
+# VIP code dialog
 # ---------------------------------------------------------------------------
 
 def open_vip_code_dialog(parent, app_context, on_validated=None):
@@ -320,7 +339,7 @@ def open_vip_code_dialog(parent, app_context, on_validated=None):
     settings = app_context.settings
 
     dialog = Adw.Dialog()
-    dialog.set_title("Input Code")
+    dialog.set_title("Unlock VIP models")
     configure_dialog_width(dialog, parent, fallback=520)
 
     toast_overlay = Adw.ToastOverlay()
@@ -328,15 +347,14 @@ def open_vip_code_dialog(parent, app_context, on_validated=None):
 
     page = Adw.PreferencesPage()
     group = Adw.PreferencesGroup(
-        title="User Download Codes",
+        title="Download code",
         description=(
-            "Obtain codes by visiting one of the links below. From there you can "
-            "donate, pledge, or just obtain the code! (Donations are not required.)"
+            "Obtain a code from the links below. Donations are appreciated but not required."
         ),
     )
     page.add(group)
 
-    code_row = Adw.EntryRow(title="Download Code")
+    code_row = Adw.EntryRow(title="Code")
     code_row.set_text(settings.get("user_code", ""))
     group.add(code_row)
 
@@ -349,21 +367,23 @@ def open_vip_code_dialog(parent, app_context, on_validated=None):
         if unlocked:
             settings.set("user_code", code)
             app_context.save_settings(trigger="vip")
-            toast("VIP models added")
+            toast("VIP models unlocked")
         else:
             toast("Incorrect code")
         debug("download", f"ui vip_code_confirm unlocked={unlocked}")
         if on_validated is not None:
             on_validated(unlocked)
 
-    confirm_button = Gtk.Button(label="Add", valign=Gtk.Align.CENTER)
+    confirm_button = Gtk.Button(label="Unlock", valign=Gtk.Align.CENTER)
     confirm_button.add_css_class("suggested-action")
     confirm_button.connect("clicked", on_confirm)
     code_row.add_suffix(confirm_button)
 
     links_group = Adw.PreferencesGroup(title="Support UVR")
-    for title, link in (("UVR Patreon Link", DONATE_LINK_PATREON),
-                        ('UVR "Buy Me a Coffee" Link', DONATE_LINK_BMAC)):
+    for title, link in (
+        ("Patreon", DONATE_LINK_PATREON),
+        ("Buy Me a Coffee", DONATE_LINK_BMAC),
+    ):
         row = Adw.ActionRow(title=title)
         button = Gtk.Button(icon_name="adw-external-link-symbolic", valign=Gtk.Align.CENTER)
         button.connect("clicked", lambda _b, url=link: webbrowser.open_new_tab(url))
@@ -373,10 +393,7 @@ def open_vip_code_dialog(parent, app_context, on_validated=None):
     page.add(links_group)
 
     content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-    content.set_margin_top(12)
-    content.set_margin_bottom(12)
-    content.set_margin_start(12)
-    content.set_margin_end(12)
+    inset_md(content)
     fill_dialog_width(content)
     fill_dialog_width(page)
     content.append(page)
@@ -388,7 +405,7 @@ def open_vip_code_dialog(parent, app_context, on_validated=None):
 
 
 # ---------------------------------------------------------------------------
-# Manual downloads dialog (port of menu_manual_downloads)
+# Manual downloads dialog
 # ---------------------------------------------------------------------------
 
 def open_manual_downloads(parent, app_context):
@@ -396,16 +413,16 @@ def open_manual_downloads(parent, app_context):
     data = manager.manual_download_data()
 
     dialog = Adw.Dialog()
-    dialog.set_title("Manual Downloads")
+    dialog.set_title("Manual downloads")
     configure_dialog_width(dialog, parent, fallback=520)
     dialog.set_content_height(560)
 
     page = Adw.PreferencesPage()
 
     catalogue = [
-        ("VR Models", VR_ARCH_TYPE, data["vr"]),
-        ("MDX-Net Models", MDX_ARCH_TYPE, data["mdx"]),
-        ("Demucs Models", DEMUCS_ARCH_TYPE, data["demucs"]),
+        ("VR models", VR_ARCH_TYPE, data["vr"]),
+        ("MDX-Net models", MDX_ARCH_TYPE, data["mdx"]),
+        ("Demucs models", DEMUCS_ARCH_TYPE, data["demucs"]),
     ]
 
     for group_title, arch, models in catalogue:
@@ -429,9 +446,9 @@ def open_manual_downloads(parent, app_context):
                 row.add_row(link_row)
             dir_row = Adw.ActionRow()
             dir_row.set_use_markup(False)
-            dir_row.set_title("Selected Model Placement Path")
+            dir_row.set_title("Install folder")
             dir_row.set_subtitle(DownloadManager.model_directory(arch, selectable))
-            dir_button = Gtk.Button(label="Open Folder", valign=Gtk.Align.CENTER)
+            dir_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
             dir_button.connect(
                 "clicked",
                 lambda _b, d=DownloadManager.model_directory(arch, selectable): webbrowser.open(f"file://{d}"),
@@ -449,16 +466,3 @@ def open_manual_downloads(parent, app_context):
     present_modal_dialog(dialog, parent)
     return dialog
 
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-def open_download_center(parent_window, app_context, on_models_changed=None):
-    """Open the Download Center. Wire this to the ``win.download`` action."""
-    from core.debug_log import debug
-
-    debug("download", "download_center present")
-    center = DownloadCenter(parent_window, app_context, on_models_changed=on_models_changed)
-    center.present()
-    return center

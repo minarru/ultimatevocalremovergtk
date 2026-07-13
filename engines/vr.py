@@ -21,7 +21,7 @@ from onnx2pytorch import ConvertModel
 from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
-from core.gpu_backend import clear_torch_cache, resolve_inference_backend
+from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
 
@@ -71,7 +71,7 @@ class SeperateVR(SeperateAttributes):
                 else:
                     self.model_run = nets.determine_model_capacity(self.mp.param['bins'] * 2, nn_arch_size)
                                 
-                self.model_run.load_state_dict(torch.load(self.model_path, map_location=cpu)) 
+                self.model_run.load_state_dict(load_torch_checkpoint(self.model_path, map_location=cpu)) 
                 self.model_run.to(device) 
 
                 self.running_inference_console_write()
@@ -85,6 +85,9 @@ class SeperateVR(SeperateAttributes):
         if self.is_secondary_model_activated and self.secondary_model:
             self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, self.process_data, main_process_method=self.process_method, main_model_primary=self.primary_stem)
 
+        self.begin_save_phase(
+            int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only) or 1
+        )
         if not self.is_secondary_stem_only:
             primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.primary_stem}).wav')
             if not isinstance(self.primary_source, np.ndarray):

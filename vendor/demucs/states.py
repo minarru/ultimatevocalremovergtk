@@ -19,6 +19,8 @@ from omegaconf import OmegaConf
 from diffq import DiffQuantizer, UniformQuantizer, restore_quantized_state
 import torch
 
+from core.torch_checkpoint import load_torch_checkpoint
+
 
 def get_quantizer(model, args, optimizer=None):
     """Return the quantizer given the XP quantization args."""
@@ -43,7 +45,7 @@ def load_model(path_or_package, strict=False):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             path = path_or_package
-            package = torch.load(path, 'cpu')
+            package = load_torch_checkpoint(path, map_location="cpu")
     else:
         raise ValueError(f"Invalid type for {path_or_package}.")
 

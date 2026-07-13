@@ -260,9 +260,6 @@ def manual_links_for_model(arch_type: str, model: object, model_repo: str) -> Li
         for url, _ in weight_jobs:
             links.append(("Open Link to Model", url))
     elif arch_type == DEMUCS_ARCH_TYPE and isinstance(model, dict):
-        jobs = resolve_demucs_jobs(model, "")
-        multi = len(jobs) > 1
-        for number, (url, _) in enumerate(jobs, start=1):
-            suffix = f" {number}" if multi else ""
-            links.append((f"Open Link to Model{suffix}", url))
+        for url, _ in resolve_demucs_jobs(model, ""):
+            links.append(("Open Link to Model", url))
     return links

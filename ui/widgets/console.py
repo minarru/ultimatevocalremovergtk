@@ -11,7 +11,6 @@ from typing import Callable, Optional
 from gi.repository import GLib, Gtk
 
 from bundled.constants import DONE
-from core.debug_log import correlation_seq, debug, preview_text, verbose
 
 
 class ConsoleView(Gtk.ScrolledWindow):
@@ -23,6 +22,7 @@ class ConsoleView(Gtk.ScrolledWindow):
         self.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.set_vexpand(True)
         self.set_propagate_natural_height(False)
+        self.set_overflow(Gtk.Overflow.HIDDEN)
 
         self._on_changed = on_changed
         self._scroll_idle_id: Optional[int] = None
@@ -64,20 +64,13 @@ class ConsoleView(Gtk.ScrolledWindow):
         page = vadj.get_page_size()
         if upper <= page + 0.5 or self._defer_scroll:
             if vadj.get_value() != vadj.get_lower():
-                if verbose():
-                    debug(
-                        "console",
-                        f"viewport pin top upper={upper:.0f} page={page:.0f} defer={self._defer_scroll}",
-                    )
                 vadj.set_value(vadj.get_lower())
         return GLib.SOURCE_REMOVE
 
     def defer_scroll_until_settled(self) -> None:
-        debug("console", "defer_scroll=True")
         self._defer_scroll = True
 
     def resume_scroll(self) -> None:
-        debug("console", "defer_scroll=False resume_scroll")
         self._defer_scroll = False
         self._reset_scroll()
 
@@ -86,25 +79,7 @@ class ConsoleView(Gtk.ScrolledWindow):
         # Skip it when there is no open line, which avoids a lone " Done!" at run
         # start before the first "Running inference..." message is written.
         if text == DONE and (self.is_empty() or self.get_text().endswith("\n")):
-            if verbose():
-                debug("console", f"append skipped DONE (empty={self.is_empty()})")
             return
-
-        seq = correlation_seq()
-        extra = ""
-        if verbose():
-            vadj = self.get_vadjustment()
-            if vadj is not None:
-                extra = (
-                    f" vadj=({vadj.get_value():.0f}/{vadj.get_upper():.0f}"
-                    f" page={vadj.get_page_size():.0f})"
-                )
-        debug(
-            "console",
-            f"append {preview_text(text)!r} defer_scroll={self._defer_scroll}"
-            f" mapped={self.get_mapped()}{extra}",
-            seq=seq,
-        )
 
         end = self._buffer.get_end_iter()
         self._buffer.insert(end, text)

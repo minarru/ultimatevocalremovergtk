@@ -51,8 +51,10 @@ from bundled.constants import (
 )
 
 from core import paths
-from core.model_data import ModelData
+from core.mdx_c_registry import infer_mdx_c_architecture
+from core.model_data import ModelData, load_mdx_c_config
 from ..hints import set_tooltip
+from ..spacing import inset_md
 from .utils import present_modal_dialog, run_blocking_dialog, set_dialog_content, set_form_dialog_content
 from ..widgets.rows import (
     get_combo_value,
@@ -156,10 +158,7 @@ class _ParamDialog:
         page = Adw.PreferencesPage()
         self._build(page)
         self._content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self._content.set_margin_top(12)
-        self._content.set_margin_bottom(12)
-        self._content.set_margin_start(12)
-        self._content.set_margin_end(12)
+        inset_md(self._content)
         self._content.append(page)
 
     # -- Layout -------------------------------------------------------------
@@ -235,13 +234,32 @@ class _ParamDialog:
         if existing_yaml:
             set_combo_value(self.mdx_c_row, os.path.splitext(existing_yaml)[0])
         group.add(self.mdx_c_row)
-        # BS-Roformer / Mel-Band Roformer models share the MDX-C yaml-config flow
-        # but need ``is_roformer`` set so the engine builds the roformer net.
+        self.arch_row = Adw.ActionRow(title="Architecture")
+        self.arch_row.set_activatable(False)
+        group.add(self.arch_row)
         self.is_roformer_row = Adw.SwitchRow(title=ROFORMER_MODEL_TEXT)
         set_tooltip(self.is_roformer_row, ROFORMER_MODEL_HELP)
         self.is_roformer_row.set_active(bool(self.existing.get("is_roformer", False)))
         group.add(self.is_roformer_row)
+        self.mdx_c_row.connect("notify::selected-item", self._on_mdx_c_yaml_changed)
+        self._update_mdx_c_architecture_hint()
         self.stem_row = None  # not used for MDX-C
+
+    def _on_mdx_c_yaml_changed(self, *_args):
+        self._update_mdx_c_architecture_hint()
+
+    def _update_mdx_c_architecture_hint(self):
+        selected = get_combo_value(self.mdx_c_row)
+        if not selected or selected == NONE_SELECTED:
+            self.arch_row.set_subtitle("—")
+            return
+        arch, is_roformer = infer_mdx_c_architecture(f"{selected}.yaml")
+        if arch:
+            self.arch_row.set_subtitle(arch)
+            if not self.existing.get("is_roformer"):
+                self.is_roformer_row.set_active(is_roformer)
+        else:
+            self.arch_row.set_subtitle("Unknown (select yaml)")
 
     @staticmethod
     def _entry_row(title, value):
@@ -317,7 +335,15 @@ class _ParamDialog:
         selected = get_combo_value(self.mdx_c_row)
         if not selected or selected == NONE_SELECTED:
             return None
-        return {"config_yaml": f"{selected}.yaml", "is_roformer": bool(self.is_roformer_row.get_active())}
+        yaml_name = f"{selected}.yaml"
+        arch, _is_roformer = infer_mdx_c_architecture(yaml_name)
+        params = {
+            "config_yaml": yaml_name,
+            "is_roformer": bool(self.is_roformer_row.get_active()),
+        }
+        if arch:
+            params["model_type"] = arch
+        return params
 
     def run(self):
         result = run_blocking_dialog(
@@ -397,10 +423,7 @@ class _ApolloParamDialog:
         group.add(self.config_row)
 
         self._content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self._content.set_margin_top(12)
-        self._content.set_margin_bottom(12)
-        self._content.set_margin_start(12)
-        self._content.set_margin_end(12)
+        inset_md(self._content)
         self._content.append(page)
 
     def _collect(self):
@@ -463,7 +486,14 @@ def show_change_defaults_dialog(context, parent):
 
     model_group = Adw.PreferencesGroup()
     model_tags = repo.default_change_model_tags()
-    model_row = make_combo_row("Model", [NO_MODEL, *model_tags])
+    model_row = make_combo_row("Model", [NO_MODEL])
+    from core.model_display import format_tag_title
+    from ..widgets.rows import set_combo_tag_values
+
+    set_combo_tag_values(
+        model_row,
+        [NO_MODEL, *[(tag, format_tag_title(tag, repo)) for tag in model_tags]],
+    )
     model_group.add(model_row)
     page.add(model_group)
 
@@ -520,10 +550,7 @@ def show_change_defaults_dialog(context, parent):
     button_group.add(delete_row)
 
     content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-    content.set_margin_top(12)
-    content.set_margin_bottom(12)
-    content.set_margin_start(12)
-    content.set_margin_end(12)
+    inset_md(content)
     content.append(description)
     content.append(page)
 

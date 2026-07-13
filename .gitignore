@@ -52,6 +52,12 @@ models/MDX_Net_Models/model_data/mdx_c_configs/*
 !models/MDX_Net_Models/model_data/mdx_c_configs/model_2_stem_full_band_4.yaml
 !models/MDX_Net_Models/model_data/mdx_c_configs/model_2_stem_full_band_8k.yaml
 !models/MDX_Net_Models/model_data/mdx_c_configs/sndfx.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/config_musdb18_scnet.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/config_musdb18_scnet_large.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/config_musdb18_scnet_large_starrytong.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/config_musdb18_scnet_xl.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/config_dnr_bandit_v2_mus64.yaml
+!models/MDX_Net_Models/model_data/mdx_c_configs/config_dnr_bandit_bsrnn_multi_mus64.yaml
 !models/VR_Models/
 models/VR_Models/*
 !models/VR_Models/model_data/
@@ -61,6 +67,8 @@ models/VR_Models/model_data/*
 
 # Runtime / portable-mode artifacts (see core/paths.py)
 data.pkl
+download_size_cache.json
+politrees_model_links.json
 ensemble_temps/
 temp_sample_clips/
 profiles/*
@@ -72,6 +80,12 @@ ui/data/icons/
 # Scripts only used locally
 scripts/*
 !scripts/sync-github-mirror.sh
+!scripts/generate_models_catalogue.py
+
+# Fetched Politrees yaml cache for catalogue regeneration
+docs/.yaml_cache/
+docs/.politrees_cache/
+docs/.community_cache/
 
 # Generated GResource manifest (rebuilt by resources/compile_resources.sh)
 resources/uvr.gresource.xml

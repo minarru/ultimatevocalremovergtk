@@ -35,7 +35,6 @@ from bundled.constants import (
     MDX_ARCH_TYPE,
     MP3,
     OUTPUT_FOLDER_ENTRY_HELP,
-    SAMPLE_MODE_CHECKBOX,
     VR_ARCH_PM,
     VR_ARCH_TYPE,
     WAV,
@@ -45,7 +44,13 @@ from . import APP_TITLE
 from .audio_tools import AudioToolsPage
 from .context import AppContext
 from .ensemble import EnsemblePage
-from .help_text import MAIN_MENU_HINT, VIEW_INPUTS_BUTTON_HINT
+from .help_text import (
+    MAIN_MENU_HINT,
+    MODEL_OPTIONS_BUTTON_HINT,
+    MODEL_OPTIONS_ROW_HINT,
+    VIEW_INPUTS_BUTTON_HINT,
+)
+from .model_options import OPEN_CONTEXT_AUDIO_TOOLS, OPEN_CONTEXT_ENSEMBLE, OPEN_CONTEXT_SEPARATION, open_model_options_sheet
 from .hints import (
     HelpHintManager,
     OUTPUT_FORMAT_HINT,
@@ -57,7 +62,14 @@ from .hints import (
 from .dispatch import idle_on_main
 from .run_control import RunController
 from core.debug_log import debug
-from .shared_settings import apply_shared_file_options
+from .shared_settings import (
+    SAMPLE_MODE_TITLE,
+    apply_sample_mode_label,
+    apply_shared_file_options,
+    format_input_sanitize_toasts,
+    sample_mode_subtitle,
+    sanitize_input_paths,
+)
 from .views import METHOD_VIEWS
 from .widgets.columns import (
     build_columns_box,
@@ -69,6 +81,8 @@ from .widgets.columns import (
 from .widgets.file_chooser import InputFilesRow, OutputFolderRow
 from .widgets.log_panel import OVERLAY_MARGIN_BOTTOM, LogPanel
 from .widgets.rows import get_combo_value, make_combo_row, make_switch_row, set_combo_value
+from .widgets.download_queue_indicator import DownloadQueueIndicator
+from .download import init_download_queue_ui
 
 #: Cadence (ms) and step of the indeterminate progress pulse shown before the
 #: first real fractional update arrives.
@@ -80,8 +94,6 @@ _LOG_COPIED_TOAST = "Log copied"
 
 #: Blocking-reason strings toasted from the shared Start dispatch when a
 #: required field is missing.
-_REASON_INPUT = "Select an input audio file"
-_REASON_OUTPUT = "Choose an output folder"
 _REASON_MODEL = "Choose a model"
 
 # Tk / legacy settings may store the short process-method label instead of the
@@ -165,9 +177,12 @@ class MainWindow(Adw.ApplicationWindow):
         self._columns_ready = False
         self._syncing_method_combo = False
         self._options_page = None
+        self._model_options_sheet = None
 
         page = self._build_content()
-        self.log_panel = LogPanel()
+        self.log_panel = LogPanel(
+            on_expanded_changed=lambda *_: self._sync_options_bottom_clearance()
+        )
         self.console = self.log_panel.console
         self.start_button = self.log_panel.start_button
         self.stop_button = self.log_panel.stop_button
@@ -178,8 +193,17 @@ class MainWindow(Adw.ApplicationWindow):
         self.stop_button.connect("clicked", self._on_stop)
         self.log_copy_button.connect("clicked", self._on_log_copy)
         self.log_clear_button.connect("clicked", self._on_log_clear)
-        self.log_panel._progress_section.connect(
-            "notify::visible", lambda *_: self._sync_options_bottom_clearance()
+        self.log_panel._progress_revealer.connect(
+            "notify::child-revealed", lambda *_: self._sync_options_bottom_clearance()
+        )
+        self.log_panel._progress_revealer.connect(
+            "notify::reveal-child", lambda *_: self._sync_options_bottom_clearance()
+        )
+        self.log_panel._log_revealer.connect(
+            "notify::child-revealed", lambda *_: self._sync_options_bottom_clearance()
+        )
+        self.log_panel._log_revealer.connect(
+            "notify::reveal-child", lambda *_: self._sync_options_bottom_clearance()
         )
 
         root = Gtk.Overlay()
@@ -189,12 +213,16 @@ class MainWindow(Adw.ApplicationWindow):
         self.log_panel.set_valign(Gtk.Align.END)
         self.log_panel.set_margin_bottom(OVERLAY_MARGIN_BOTTOM)
 
+        self._download_queue_indicator = DownloadQueueIndicator()
+
         toolbar_view = Adw.ToolbarView()
         toolbar_view.add_top_bar(self._build_header())
         toolbar_view.set_content(root)
         self.toast_overlay = Adw.ToastOverlay()
         self.toast_overlay.set_child(toolbar_view)
         self.set_content(self.toast_overlay)
+
+        init_download_queue_ui(self, self.context, on_models_changed=self._refresh_models)
 
         # Collapse the two option columns into a single column when the window
         # is narrow. ``set_orientation`` is driven from the apply/unapply
@@ -205,6 +233,8 @@ class MainWindow(Adw.ApplicationWindow):
         self.add_breakpoint(narrow)
 
         self._hint_manager = HelpHintManager()
+        self._stale_export_toast_shown = False
+        self._stale_inputs_toast_shown = False
         self._register_hints()
         self._apply_accelerators()
 
@@ -223,10 +253,16 @@ class MainWindow(Adw.ApplicationWindow):
         install_view_tab_tooltips(switcher)
         header.set_title_widget(switcher)
 
+        end_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        end_box.set_valign(Gtk.Align.CENTER)
+        end_box.append(self._download_queue_indicator.widget)
+
         menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic")
         set_tooltip(menu_button, MAIN_MENU_HINT)
         menu_button.set_menu_model(self._build_primary_menu())
-        header.pack_end(menu_button)
+        end_box.append(menu_button)
+
+        header.pack_end(end_box)
 
         return header
 
@@ -234,6 +270,7 @@ class MainWindow(Adw.ApplicationWindow):
         menu = Gio.Menu()
         tools = Gio.Menu()
         tools.append("View / Verify Inputs", "win.view_inputs")
+        tools.append("Model options", "win.model_options")
         tools.append("Download Center", "win.download")
         tools.append("Error Log", "win.error_log")
         menu.append_section(None, tools)
@@ -251,6 +288,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.files_group = self._build_files_group()
         self.method_group = self._build_method_group()
         self.shared_group = self._build_shared_group()
+        self.model_options_group = self._build_model_options_group()
 
         # Separation page: two side-by-side columns when wide, collapsed to one
         # when narrow (the breakpoint in ``__init__`` flips this box and every
@@ -301,6 +339,11 @@ class MainWindow(Adw.ApplicationWindow):
             self._ensemble_page.columns_box,
             self._audio_tools_page.columns_box,
         ]
+        self._options_pages = [
+            self._options_page,
+            self._ensemble_page.options_page,
+            self._audio_tools_page.widget,
+        ]
 
         # Shared Start/Stop dispatch to the run target of the visible tab.
         # ``RunController.running_target`` pins the dispatch to whatever actually
@@ -326,13 +369,10 @@ class MainWindow(Adw.ApplicationWindow):
         method changes. Groups are removed from their current column and
         re-appended so the layout reflects ``self._current_view``.
 
-        The split is balanced to keep the two columns close in height: the left
-        column holds Files -> Method -> Basic options and ends with the short
-        collapsed Advanced expander, while the right column runs Save stems ->
-        Output and options (the user-preferred top order) and ends with the tall
-        Secondary/pre-process/vocal-split models group. This moves the tall
-        secondary group off the already-heavy left side so the lower groups stay
-        nearer the fold on launch.
+        The split keeps the common path on the left (Files, method, model,
+        basic options, model-options entry) and the run/output path on the right
+        (Save stems, Processing). Advanced and extra-model controls live in the
+        model-options sheet instead of inline expanders.
         """
         for column in (self._col_start, self._col_end):
             child = column.get_first_child()
@@ -347,10 +387,9 @@ class MainWindow(Adw.ApplicationWindow):
         view = self._current_view
         if view is not None:
             self._col_start.append(view.group)
-            self._col_start.append(view.advanced_group)
+            self._col_start.append(self.model_options_group)
             self._col_end.append(view.stem_group)
             self._col_end.append(self.shared_group)
-            self._col_end.append(view.secondary_group)
         else:
             self._col_end.append(self.shared_group)
 
@@ -379,6 +418,10 @@ class MainWindow(Adw.ApplicationWindow):
             clamp.queue_resize()
 
     def _on_window_mapped(self, *_args) -> None:
+        from .download import start_download_size_cache_warmup
+
+        start_download_size_cache_warmup(self.context)
+
         def refresh() -> None:
             if self._current_view is not None:
                 self._populate_columns()
@@ -388,10 +431,12 @@ class MainWindow(Adw.ApplicationWindow):
         idle_on_main(refresh)
 
     def _sync_options_bottom_clearance(self) -> None:
-        """Keep scroll padding aligned with the collapsed log panel height."""
-        clearance = self.log_panel.collapsed_overlay_height()
+        """Keep scroll padding aligned with the floating log panel height."""
+        clearance = self.log_panel.options_overlay_clearance()
         for columns_box in self._column_boxes:
             set_options_bottom_clearance(columns_box, clearance)
+        for page in getattr(self, "_options_pages", ()):
+            options_scroller(page).queue_allocate()
 
     def _update_sep_banner(self) -> None:
         """Reveal the empty-state banner when the active method has no models."""
@@ -427,7 +472,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.log_panel.stop_progress_pulse()
 
     def _on_log_clear(self, _button: Gtk.Button) -> None:
-        self.console.clear()
+        self.log_panel.clear_log()
 
     def _on_log_copy(self, _button: Gtk.Button) -> None:
         text = self.console.get_text()
@@ -443,14 +488,18 @@ class MainWindow(Adw.ApplicationWindow):
         set_tooltip(view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
         view_inputs_button.set_action_name("win.view_inputs")
         group.set_header_suffix(view_inputs_button)
-        self.input_row = InputFilesRow(self._on_inputs_changed)
+        self.input_row = InputFilesRow(self._on_inputs_changed, on_toast=self.toast)
         self.output_row = OutputFolderRow(self._on_output_changed)
         group.add(self.input_row)
         group.add(self.output_row)
         return group
 
     def _build_method_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Conversion method")
+        # No group title: the "Process method" row already names the step, and
+        # the adjacent (title-less) model group reads as one "pick method ->
+        # pick model" block. This drops a redundant header from the separation
+        # page (see also the per-arch title removed on the model group).
+        group = Adw.PreferencesGroup()
         self.method_row = make_combo_row(
             "Process method",
             [view.title for view in self._views],
@@ -460,8 +509,21 @@ class MainWindow(Adw.ApplicationWindow):
         group.add(self.method_row)
         return group
 
+    def _build_model_options_group(self) -> Adw.PreferencesGroup:
+        group = Adw.PreferencesGroup()
+        self.model_options_row = Adw.ActionRow(
+            title="Model options…",
+            subtitle="Batch size, secondary models, and more",
+            activatable=True,
+        )
+        self.model_options_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        self.model_options_row.connect("activated", lambda *_: self._open_model_options())
+        set_tooltip(self.model_options_row, MODEL_OPTIONS_ROW_HINT)
+        group.add(self.model_options_row)
+        return group
+
     def _build_shared_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Output and options")
+        group = Adw.PreferencesGroup(title="Processing")
 
         self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="audio-x-generic-symbolic")
         self.format_row.connect("notify::selected", self._on_format_changed)
@@ -472,7 +534,11 @@ class MainWindow(Adw.ApplicationWindow):
         group.add(self.gpu_row)
 
         duration = self.settings.get("model_sample_mode_duration", 30)
-        self.sample_row = make_switch_row(SAMPLE_MODE_CHECKBOX(duration), icon_name="preferences-system-time-symbolic")
+        self.sample_row = make_switch_row(
+            SAMPLE_MODE_TITLE,
+            sample_mode_subtitle(duration),
+            icon_name="preferences-system-time-symbolic",
+        )
         self.sample_row.connect("notify::active", self._on_sample_changed)
         group.add(self.sample_row)
 
@@ -488,6 +554,7 @@ class MainWindow(Adw.ApplicationWindow):
             "updates": self._on_updates,
             "error_log": self._on_error_log,
             "view_inputs": self._on_view_inputs,
+            "model_options": self._on_model_options,
             "start": self._on_start_action,
             "stop": self._on_stop_action,
             "shortcuts": self._on_shortcuts,
@@ -506,6 +573,10 @@ class MainWindow(Adw.ApplicationWindow):
         self._hint_manager.register(self.format_row, OUTPUT_FORMAT_HINT)
         self._hint_manager.register(self.input_row, INPUT_FOLDER_ENTRY_HELP)
         self._hint_manager.register(self.output_row, OUTPUT_FOLDER_ENTRY_HELP)
+        self._hint_manager.register(self.model_options_row, MODEL_OPTIONS_ROW_HINT)
+        from .help_text import PROGRESS_ETA_HINT
+
+        self._hint_manager.register(self.log_panel._progress_label, PROGRESS_ETA_HINT)
 
     def _apply_accelerators(self) -> None:
         app = self.get_application()
@@ -518,11 +589,18 @@ class MainWindow(Adw.ApplicationWindow):
         for view in self._views:
             view.load()
 
-        self.input_row.set_paths(self.settings.get("input_paths") or [], notify=False)
-        self.output_row.set_path(self.settings.get("export_path") or "", notify=False)
+        raw_inputs = self.settings.get("input_paths") or []
+        cleaned_inputs, input_result = sanitize_input_paths(raw_inputs)
+        if cleaned_inputs != raw_inputs:
+            self.settings.set("input_paths", cleaned_inputs)
+        self.input_row.set_paths(cleaned_inputs, notify=False)
+        self._maybe_notify_stale_inputs(input_result)
+        export_path = self.settings.get("export_path") or ""
+        self.output_row.set_path(export_path, notify=False)
+        self._maybe_notify_stale_export_path()
         set_combo_value(self.format_row, self.settings.get("save_format", WAV))
         self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
-        self.sample_row.set_title(SAMPLE_MODE_CHECKBOX(self.settings.get("model_sample_mode_duration", 30)))
+        apply_sample_mode_label(self.sample_row, self.settings.get("model_sample_mode_duration", 30))
         self.sample_row.set_active(bool(self.settings.get("model_sample_mode")))
 
         method = self.settings.get("chosen_process_method") or MDX_ARCH_TYPE
@@ -545,6 +623,28 @@ class MainWindow(Adw.ApplicationWindow):
 
         if getattr(self, "_hint_manager", None) is not None:
             self._hint_manager.refresh()
+
+    def _maybe_notify_stale_export_path(self) -> None:
+        if getattr(self, "_stale_export_toast_shown", False):
+            return
+        if self.output_row.path and self.output_row.blocked_reason():
+            self._stale_export_toast_shown = True
+            idle_on_main(
+                lambda: self._toast("Saved output folder no longer exists — select a new folder")
+            )
+
+    def _maybe_notify_stale_inputs(self, result) -> None:
+        if self._stale_inputs_toast_shown:
+            return
+        messages = format_input_sanitize_toasts(
+            result,
+            include_missing=True,
+            include_large_batch=False,
+        )
+        if not messages:
+            return
+        self._stale_inputs_toast_shown = True
+        idle_on_main(lambda: self._toast(" ".join(messages)))
 
     def _active_view(self):
         return self._current_view or self._views[0]
@@ -623,9 +723,16 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_gpu_changed(self, *_args) -> None:
         self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
+        self._refresh_active_stem_metadata()
 
     def _on_sample_changed(self, *_args) -> None:
         self.settings.set("model_sample_mode", self.sample_row.get_active())
+        self._refresh_active_stem_metadata()
+
+    def _refresh_active_stem_metadata(self) -> None:
+        view = self._active_view()
+        if hasattr(view, "_update_stem_group_metadata"):
+            view._update_stem_group_metadata()
 
     def _on_close_request(self, *_args) -> bool:
         return self._run_controller.handle_close_request(self._finalize_close)
@@ -663,11 +770,12 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _separation_blocked_reason(self) -> Optional[str]:
         """First reason the separation run can't start, or ``None`` when ready."""
-        input_paths = list(self.input_row.paths)
-        if not input_paths or not os.path.isfile(input_paths[0]):
-            return _REASON_INPUT
-        if not os.path.isdir(self.output_row.path):
-            return _REASON_OUTPUT
+        input_reason = self.input_row.blocked_reason()
+        if input_reason:
+            return input_reason
+        output_reason = self.output_row.blocked_reason()
+        if output_reason:
+            return output_reason
         if not self._active_view().has_model():
             return _REASON_MODEL
         return None
@@ -767,6 +875,37 @@ class MainWindow(Adw.ApplicationWindow):
         from .inputs import open_view_inputs
 
         open_view_inputs(self, self.context, on_inputs_changed=self._on_external_inputs_changed)
+
+    def _on_model_options(self, _action: Gio.SimpleAction, _param) -> None:
+        self._open_model_options()
+
+    def _open_model_options(self, *, initial_stack: Optional[str] = None, context: Optional[str] = None) -> None:
+        tab = self.content_stack.get_visible_child_name()
+        if context is None:
+            if tab == "ensemble":
+                context = OPEN_CONTEXT_ENSEMBLE
+            elif tab == "audio_tools":
+                context = OPEN_CONTEXT_AUDIO_TOOLS
+            else:
+                context = OPEN_CONTEXT_SEPARATION
+
+        selected_models = (
+            self.settings.get("selected_models") or []
+            if context == OPEN_CONTEXT_ENSEMBLE
+            else []
+        )
+        self._model_options_sheet = open_model_options_sheet(
+            self,
+            views=self._views,
+            views_by_stack=self._views_by_stack,
+            settings=self.settings,
+            on_toast=self.toast,
+            context=context,
+            active_method_key=self._active_view().method_key,
+            selected_models=selected_models,
+            initial_stack=initial_stack,
+            existing=self._model_options_sheet,
+        )
 
     def _on_shortcuts(self, _action: Gio.SimpleAction, _param) -> None:
         from .shortcuts import present_shortcuts

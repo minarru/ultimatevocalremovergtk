@@ -1,5 +1,7 @@
 import os
+import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, NO_MODEL, VR_ARCH_TYPE
 from core.downloads import DownloadManager, vip_downloads
@@ -14,6 +16,11 @@ class DownloadManagerResolveTests(unittest.TestCase):
         self.manager.demucs_download_list = {
             "Demucs Test": {"checkpoint.th": "https://example.com/checkpoint.th"}
         }
+
+    def test_catalogue_urls_collects_resolve_jobs(self):
+        urls = self.manager.catalogue_urls()
+        self.assertIn("https://example.com/checkpoint.th", urls)
+        self.assertTrue(any(url.endswith("test_vr.pth") for url in urls))
 
     def test_resolve_vr_job(self):
         jobs = self.manager.resolve("VR Test", VR_ARCH_TYPE)
@@ -48,6 +55,43 @@ class DownloadManagerResolveTests(unittest.TestCase):
             self.assertEqual(result, "exists")
         finally:
             os.remove(path)
+
+    def test_download_registers_paired_mdx_c_jobs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            hash_dir = os.path.join(tmp, "model_data")
+            config_dir = os.path.join(hash_dir, "mdx_c_configs")
+            models_dir = os.path.join(tmp, "models")
+            os.makedirs(config_dir)
+            os.makedirs(models_dir)
+
+            checkpoint = os.path.join(models_dir, "download_model.ckpt")
+            yaml_name = "config_musdb18_scnet.yaml"
+            with open(checkpoint, "wb") as handle:
+                handle.write(b"download registration checkpoint")
+            with open(os.path.join(config_dir, yaml_name), "w", encoding="utf-8") as handle:
+                handle.write(open(paths.MDX_C_CONFIG_PATH + "/" + yaml_name, encoding="utf-8").read())
+
+            jobs = [
+                ("https://example.com/download_model.ckpt", checkpoint),
+                ("https://example.com/model.yaml", os.path.join(config_dir, yaml_name)),
+            ]
+
+            repo = Mock()
+            original_hash_dir = paths.MDX_HASH_DIR
+            original_config_dir = paths.MDX_C_CONFIG_PATH
+            original_models_dir = paths.MDX_MODELS_DIR
+            try:
+                paths.MDX_HASH_DIR = hash_dir
+                paths.MDX_C_CONFIG_PATH = config_dir
+                paths.MDX_MODELS_DIR = models_dir
+                result = self.manager.download(jobs, repo=repo)
+            finally:
+                paths.MDX_HASH_DIR = original_hash_dir
+                paths.MDX_C_CONFIG_PATH = original_config_dir
+                paths.MDX_MODELS_DIR = original_models_dir
+
+            self.assertEqual(result, "exists")
+            repo.invalidate_stem_check.assert_called_once()
 
 
 class VipDownloadsTests(unittest.TestCase):

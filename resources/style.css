@@ -1,83 +1,182 @@
-/* Application styles bundled in ui/data/uvr.gresource (see compile_resources.sh). */
+/* Application styles bundled in ui/data/uvr.gresource (see compile_resources.sh).
+ *
+ * Spacing convention:
+ *   - CSS: component padding, colors, radius, min-heights
+ *   - ui/spacing.py: static GtkWidget margins (dialogs, labels, layout shells)
+ *   - Python: dynamic layout (overlay clearance, progress-dependent height)
+ *   - SYNC comments link CSS values to Python measure constants when needed
+ */
+
+/* --- Spacing utilities: see ui/spacing.py (Gtk margin API) --- */
 
 /* Apollo empty-state banner (class app-banner): inset and rounded rather than
    spanning edge-to-edge. The accent background lives on the banner's inner
    revealer > widget node, so the radius/margin must target it there. */
 .app-banner > revealer > widget {
-  margin: 8px 0;
-  border-radius: 12px;
+    margin: 8px 0;
+    border-radius: 12px;
 }
 
 .drop-highlight {
-  box-shadow: inset 0 0 0 2px @accent_color;
-  background-color: alpha(@accent_color, 0.1);
-  border-radius: 12px;
+    box-shadow: inset 0 0 0 2px @accent_color;
+    background-color: alpha(@accent_color, 0.1);
+    border-radius: 12px;
 }
 
 .uvr-log-panel {
-  min-width: 520px;
-  border-radius: 16px 16px 12px 12px;
-  background-image: none;
-  background-color: @window_bg_color;
-  color: @card_fg_color;
-  border: 1px solid alpha(@borders, 0.45);
-  box-shadow: 0 2px 6px alpha(@shade_color, 0.08),
-              0 8px 24px alpha(@shade_color, 0.16);
+    min-width: 360px;
+    border-radius: 16px 16px 12px 12px;
+    background-image: none;
+    background-color: @window_bg_color;
+    color: @card_fg_color;
+    border: 1px solid alpha(@borders, 0.45);
+    box-shadow:
+        0 3px 10px alpha(@shade_color, 0.14),
+        0 12px 36px alpha(@shade_color, 0.24);
 }
 
 .uvr-log-expander-arrow image {
-  transition: -gtk-icon-transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
-  -gtk-icon-transform: rotate(0deg);
+    transition: -gtk-icon-transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    -gtk-icon-transform: rotate(0deg);
 }
 
 .uvr-log-expander-arrow:checked image {
-  -gtk-icon-transform: rotate(180deg);
+    color: @accent_color;
+    -gtk-icon-transform: rotate(180deg);
 }
 
 .uvr-run-controls {
-  padding: 12px 12px 12px;
+    padding: 12px 12px 12px; /* SYNC: _RUN_CONTROLS_PADDING_Y in log_panel.py */
 }
 
 .uvr-progress-section {
-  margin-bottom: 4px;
+    margin-bottom: 4px;
 }
 
 .uvr-progress-label {
-  margin-top: 4px;
-  margin-bottom: 8px;
-  opacity: 0.85;
+    margin-top: 4px;
+    margin-bottom: 8px;
+    opacity: 0.85;
 }
 
 .uvr-log-meta {
-  padding: 0 0 8px;
-  min-height: 32px;
+    padding: 0 0 8px;
+    min-height: 32px;
 }
 
 .uvr-log-body-wrap {
-  padding: 0 0 4px;
+    padding: 0 0 12px;
 }
 
 .uvr-run-actions {
-  min-height: 36px;
+    min-height: 36px; /* SYNC: _RUN_ACTIONS_MIN_HEIGHT in log_panel.py */
 }
 
 /* Keep min-height in sync with _LOG_BODY_HEIGHT in ui/widgets/log_panel.py */
 .uvr-log-body {
-  min-height: 200px;
+    min-height: 200px;
+    border-radius: 8px;
+    background-color: alpha(@window_fg_color, 0.04);
 }
 
 .uvr-log-console {
-  background-color: alpha(@window_fg_color, 0.04);
+    background-color: transparent;
+}
+
+.uvr-log-console viewport {
+    border-radius: 8px;
 }
 
 .uvr-log-empty {
-  padding: 20px 16px;
+    padding: 20px 16px;
 }
 
 .uvr-log-empty .dim-label {
-  opacity: 0.75;
+    opacity: 0.75;
 }
 
-.uvr-log-console text {
-  padding: 2px 0;
+/* MenuButton shell is transparent; keep chip height within the header bar. */
+menubutton.uvr-download-queue-chip {
+    padding: 0;
+    margin: 0;
+    min-height: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+menubutton.uvr-download-queue-chip > button.chip {
+    border-radius: 999px;
+    border: 1px solid alpha(@borders, 0.45);
+    padding: 2px 10px;
+    min-height: 0;
+    margin: 0;
+}
+
+menubutton.uvr-download-queue-chip arrow {
+    opacity: 0;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+}
+
+@keyframes needs_attention_keyframes {
+    0% { }
+    10% { background-color: var(--accent-bg-color); }
+    100% { }
+}
+
+menubutton.uvr-download-queue-chip.needs-attention > button.chip {
+    animation: needs_attention_keyframes 2s ease-in-out;
+}
+
+menubutton.uvr-download-queue-chip > button.chip .uvr-chip-content {
+    font-weight: normal;
+    min-height: 0;
+}
+
+.uvr-download-queue-chip-label {
+    font-weight: 500;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.uvr-progress-ring {
+    min-width: 18px;
+    min-height: 18px;
+}
+
+/* Save stems section */
+.uvr-stem-only-row {
+    min-height: 0;
+}
+
+.uvr-stem-section-label {
+    font-size: 0.85em;
+    margin-bottom: 2px;
+}
+
+.uvr-stem-subset {
+    min-height: 0;
+}
+
+.uvr-stem-chip {
+    min-height: 34px;
+    padding: 4px 10px;
+    border-radius: 999px;
+}
+
+.uvr-stem-chip:checked {
+    background: alpha(currentColor, 0.12);
+}
+
+.uvr-stem-row-inactive {
+    opacity: 0.55;
+}
+
+/* Nautilus operations popover (see nautilus-gnome-50/src/resources/style.css). */
+.operations-list,
+.operations-list > :hover {
+    background: none;
 }

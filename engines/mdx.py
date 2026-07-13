@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import gc
 import gzip
+import inspect
 import math
 import os
 from pathlib import Path
@@ -21,7 +22,8 @@ from onnx2pytorch import ConvertModel
 from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
-from core.gpu_backend import clear_torch_cache, resolve_inference_backend
+from core.torch_checkpoint import load_torch_checkpoint
+from core.model_stem_semantics import is_vocal_target
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
 
@@ -42,6 +44,60 @@ from ml.mel_band_roformer import MelBandRoformer
 from ml.bs_roformer import BSRoformer
 from .orchestration import process_secondary_model
 
+
+def _load_torch_checkpoint(path: str):
+    return load_torch_checkpoint(path, map_location="cpu")
+
+
+def _mdx_c_hop_length(config) -> int:
+    model_cfg = getattr(config, 'model', None)
+    if model_cfg is not None and hasattr(model_cfg, 'hop_size'):
+        return int(model_cfg.hop_size)
+    kwargs = getattr(config, 'kwargs', None)
+    if kwargs is not None and hasattr(kwargs, 'hop_length'):
+        return int(kwargs.hop_length)
+    audio_cfg = getattr(config, 'audio', None)
+    if audio_cfg is not None and hasattr(audio_cfg, 'hop_length'):
+        return int(audio_cfg.hop_length)
+    raise ValueError('MDX-C config is missing hop_length / hop_size.')
+
+
+def _filter_init_kwargs(model_cls, cfg) -> dict:
+    """Drop YAML keys that are not accepted by a model class ``__init__``."""
+    params = inspect.signature(model_cls.__init__).parameters
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return dict(cfg)
+    allowed = {name for name in params if name != 'self'}
+    return {key: cfg[key] for key in cfg if key in allowed}
+
+
+def _build_mdx_c_model(config):
+    if getattr(config, 'cls', None) == 'Bandit':
+        from ml.bandit import Bandit
+
+        kwargs = _filter_init_kwargs(Bandit, config.kwargs)
+        if 'fs' not in kwargs and hasattr(config.audio, 'sample_rate'):
+            kwargs['fs'] = int(config.audio.sample_rate)
+        return Bandit(**kwargs)
+
+    model_cfg = getattr(config, 'model', None)
+    if model_cfg is None:
+        raise ValueError('Unknown MDX-C architecture in configuration.')
+
+    if 'num_bands' in model_cfg:
+        return MelBandRoformer(**_filter_init_kwargs(MelBandRoformer, model_cfg))
+    if 'freqs_per_bands' in model_cfg:
+        return BSRoformer(**_filter_init_kwargs(BSRoformer, model_cfg))
+    if 'band_SR' in model_cfg or 'sources' in model_cfg:
+        from ml.scnet import SCNet
+
+        return SCNet(**_filter_init_kwargs(SCNet, model_cfg))
+    if 'band_specs' in model_cfg:
+        from ml.bandit import MultiMaskMultiSourceBandSplitRNN
+
+        return MultiMaskMultiSourceBandSplitRNN(**_filter_init_kwargs(MultiMaskMultiSourceBandSplitRNN, model_cfg))
+    raise ValueError('Unknown MDX-C architecture in configuration.')
+
 class SeperateMDX(SeperateAttributes):        
 
     def seperate(self):
@@ -56,7 +112,9 @@ class SeperateMDX(SeperateAttributes):
                 self.write_to_console(LOADING_MODEL)
 
                 if self.is_mdx_ckpt:
-                    model_params = torch.load(self.model_path, map_location=lambda storage, loc: storage)['hyper_parameters']
+                    model_params = load_torch_checkpoint(
+                        self.model_path, map_location=lambda storage, loc: storage
+                    )["hyper_parameters"]
                     self.dim_c, self.hop = model_params['dim_c'], model_params['hop_length']
                     separator = MdxnetSet.ConvTDFNet(**model_params)
                     self.model_run = separator.load_from_checkpoint(self.model_path).to(self.device).eval()
@@ -82,6 +140,9 @@ class SeperateMDX(SeperateAttributes):
         if self.is_secondary_model_activated and self.secondary_model:
             self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, self.process_data, main_process_method=self.process_method, main_model_primary=self.primary_stem)
         
+        self.begin_save_phase(
+            int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only) or 1
+        )
         if not self.is_primary_stem_only:
             secondary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.secondary_stem}).wav')
             if not isinstance(self.secondary_source, np.ndarray):
@@ -226,7 +287,8 @@ class SeperateMDXC(SeperateAttributes):
         # treated as a vocals+instrumental model: ``demix`` derives the
         # instrumental as ``mixture - vocals``. Classic (non-roformer) MDX-C
         # models are excluded so their original single-stem output is preserved.
-        self.is_vocal_main_target = self.is_roformer and self.mdx_c_configs.training.target_instrument == VOCAL_STEM
+        target = str(getattr(self.mdx_c_configs.training, "target_instrument", None) or "")
+        self.is_vocal_main_target = self.is_roformer and is_vocal_target(target)
         samplerate = 44100
         sources = None
 
@@ -238,7 +300,21 @@ class SeperateMDXC(SeperateAttributes):
                 self.start_inference_console_write()
                 self.write_to_console(LOADING_MODEL)
                 mix = prepare_mix(self.audio_file)
+                export_rate = samplerate
+                model_rate = int(getattr(self.mdx_c_configs.audio, 'sample_rate', export_rate) or export_rate)
+                if model_rate != export_rate:
+                    mix = librosa.resample(mix, orig_sr=export_rate, target_sr=model_rate, axis=1)
                 sources = self.demix(mix)
+                if model_rate != export_rate:
+                    if isinstance(sources, dict):
+                        for key, stem_audio in list(sources.items()):
+                            sources[key] = librosa.resample(
+                                stem_audio, orig_sr=model_rate, target_sr=export_rate, axis=1
+                            )
+                    else:
+                        sources = librosa.resample(
+                            sources, orig_sr=model_rate, target_sr=export_rate, axis=1
+                        )
                 if not self.is_vocal_split_model:
                     self.cache_source((mix, sources))
                 self.write_to_console(DONE, base_text='')
@@ -269,6 +345,26 @@ class SeperateMDXC(SeperateAttributes):
         is_not_secondary_model = not self.is_secondary_model
         is_ensemble_4_stem = self.is_4_stem_ensemble and is_not_single_stem
 
+        is_vocals_quick_export = (
+            len(selected_stems) == 1
+            and selected_stems[0] == VOCAL_STEM
+            and (self.is_primary_stem_only or self.is_secondary_stem_only)
+        )
+        is_complement_export = (
+            len(selected_stems) == 1
+            and bool(getattr(self, "is_mdx_include_stem_complement", False))
+            and not is_vocals_quick_export
+        )
+        is_native_pick = (
+            len(selected_stems) == 1
+            and is_not_ensemble_master
+            and is_not_single_stem
+            and is_not_secondary_model
+            and not self.is_pre_proc_model
+            and not is_vocals_quick_export
+            and not is_complement_export
+        )
+
         # A "true subset": 2..n-1 of the multi-stem model's stems, only on the
         # main (non-secondary, non-pre-proc, non-ensemble) export path.
         is_stem_subset = (
@@ -277,8 +373,9 @@ class SeperateMDXC(SeperateAttributes):
             and is_not_secondary_model and not self.is_pre_proc_model
         )
 
-        if (is_all_stems and is_not_ensemble_master and is_not_single_stem and is_not_secondary_model) or is_ensemble_4_stem and not self.is_pre_proc_model or is_stem_subset:
-            export_stems = [stem for stem in stem_list if stem in selected_stems] if is_stem_subset else stem_list
+        if (is_all_stems and is_not_ensemble_master and is_not_single_stem and is_not_secondary_model) or is_ensemble_4_stem and not self.is_pre_proc_model or is_stem_subset or is_native_pick:
+            export_stems = [stem for stem in stem_list if stem in selected_stems] if (is_stem_subset or is_native_pick) else stem_list
+            self.begin_save_phase(len(export_stems))
             for stem in export_stems:
                 primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({stem}).wav')
                 self.primary_source = sources[stem].T
@@ -305,6 +402,9 @@ class SeperateMDXC(SeperateAttributes):
                                                                                                          main_process_method=self.process_method, 
                                                                                                          main_model_primary=self.primary_stem)
 
+            self.begin_save_phase(
+                int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only) or 1
+            )
             if not self.is_primary_stem_only:
                 secondary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.secondary_stem}).wav')
                 if not isinstance(self.secondary_source, np.ndarray):
@@ -371,7 +471,7 @@ class SeperateMDXC(SeperateAttributes):
                 mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
 
             model = TFC_TDF_net(self.mdx_c_configs, device=self.device)
-            model.load_state_dict(torch.load(self.model_path, map_location=cpu))
+            model.load_state_dict(_load_torch_checkpoint(self.model_path))
             model.to(self.device).eval()
             self._inference_model = model
             mix = torch.tensor(mix, dtype=torch.float32)
@@ -453,15 +553,10 @@ class SeperateMDXC(SeperateAttributes):
 
             device = self.device
 
-            # Build the roformer architecture indicated by the model's yaml config.
-            if 'num_bands' in self.roformer_config.model:
-                model = MelBandRoformer(**self.roformer_config.model)
-            elif 'freqs_per_bands' in self.roformer_config.model:
-                model = BSRoformer(**self.roformer_config.model)
-            else:
-                raise ValueError('Unknown model type in the configuration.')
+            # Build the MDX-C architecture indicated by the model yaml config.
+            model = _build_mdx_c_model(self.roformer_config)
 
-            checkpoint = torch.load(self.model_path, map_location='cpu')
+            checkpoint = _load_torch_checkpoint(self.model_path)
             model = model if not isinstance(model, torch.nn.DataParallel) else model.module
             model.load_state_dict(checkpoint)
             del checkpoint
@@ -473,7 +568,7 @@ class SeperateMDXC(SeperateAttributes):
             try:
                 segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size
                 S = 1 if self.roformer_config.training.target_instrument else len(self.roformer_config.training.instruments)
-                C = self.roformer_config.audio.hop_length * (segment_size - 1)
+                C = _mdx_c_hop_length(self.roformer_config) * (segment_size - 1)
                 N = self.overlap_mdx23
                 step = int(C // N)
                 fade_size = C // 10
@@ -553,9 +648,16 @@ class SeperateMDXC(SeperateAttributes):
                 if S > 1 or self.is_vocal_main_target:
                     sources = {k: pitch_fix(v) if self.is_pitch_change else v for k, v in zip(self.mdx_c_configs.training.instruments, estimated_sources.cpu().detach().numpy())}
                     if self.is_vocal_main_target:
-                        if sources[VOCAL_STEM].shape[1] != org_mix.shape[1]:
-                            sources[VOCAL_STEM] = spec_utils.match_array_shapes(sources[VOCAL_STEM], org_mix)
-                        sources[INST_STEM] = org_mix - sources[VOCAL_STEM]
+                        vocal_key = next(
+                            (key for key in sources if is_vocal_target(key)),
+                            None,
+                        )
+                        if vocal_key is not None:
+                            if sources[vocal_key].shape[1] != org_mix.shape[1]:
+                                sources[vocal_key] = spec_utils.match_array_shapes(
+                                    sources[vocal_key], org_mix
+                                )
+                            sources[INST_STEM] = org_mix - sources[vocal_key]
 
                     return sources
                 else:

@@ -170,7 +170,16 @@ ENSEMBLE_LISTBOX_HELP = "Displays all available models for the chosen main stem 
 
 IS_TIME_CORRECTION_HELP = "When checked, the output will retain the original BPM of the input"
 
-SAVE_STEM_ONLY_HELP = """Choose which stems are written to disk. All Stems exports every output file; selecting a single stem saves only that file"""
+SAVE_STEM_ONLY_HELP = """Choose which stems are written to disk. All Stems exports every output file; selecting a single stem saves only that file
+
+The workload line below (passes, outputs, GPU/CPU) is a relative guide, not an exact time estimate"""
+
+RUN_WORKLOAD_HINT = """Shows how heavy this export combo is:
+• passes — how many model inferences the run performs
+• outputs — how many files will be written
+• Fastest / Typical / Slower — relative export cost, not clock time"""
+
+PROGRESS_ETA_HINT = """Time remaining stabilizes after separation begins. During stem export and ensemble combine the bar shows Saving or Combining instead of an ETA. Large models may revise the estimate upward while loading and during early inference"""
 
 IS_NORMALIZATION_HELP = "Normalizes output to prevent clipping"
 
@@ -309,7 +318,7 @@ Select from various AI networks and algorithms to process your track:
 
 INPUT_FOLDER_ENTRY_HELP = """Select Input:
 
-Choose the audio file(s) you want to process"""
+Choose the audio file(s) you want to process. Batch runs support many files at once; selections above 100 files may take a long time, and the list is capped at 500 files."""
 
 OUTPUT_FOLDER_ENTRY_HELP = """Select Output:
 
@@ -378,7 +387,7 @@ APOLLO_OVERLAP_HELP = """This option controls the amount of overlap between pred
 
 CHOOSE_APOLLO_MODEL_HELP = "Choose the Apollo model to use to restore audio"
 
-ROFORMER_MODEL_HELP = """Enable for BS-Roformer / Mel-Band Roformer checkpoints. They use the MDX-C yaml-config flow but require this flag so the engine builds the Roformer network instead of the standard TFC-TDF net"""
+ROFORMER_MODEL_HELP = """Enable for BS-Roformer, Mel-Band Roformer, SCNet, or Bandit checkpoints. They use the MDX-C yaml-config flow but require this flag so the engine routes to the correct network instead of the standard TFC-TDF net."""
 
 PRE_PROC_MODEL_INST_MIX_HELP = """When enabled, the application will generate a third output without the selected stem and vocals"""
 
@@ -542,8 +551,30 @@ MDX_OVERLAP_HINT = (
 )
 
 MDX_STEMS_HINT = (
-    "Choose which stems to save — applies to multi-stem MDX23C models; "
-    "for 2-stem models the 'Only' toggles above apply"
+    "Choose which stems to export. Common exports provide All stems, Instrumental only "
+    "(derived from vocals), or Vocals only. Custom stems selects native outputs; "
+    "single-stem picks export one file unless Advanced complement is enabled"
+)
+
+DEMUCS_STEMS_SAVE_HELP = (
+    "Choose stem focus and which files to write. All stems exports every native output; "
+    "Instrumental or Vocals only are one-click shortcuts. Other focuses use the export "
+    "filter to pick the focus stem, its complement, or both"
+)
+
+QUICK_EXPORT_INSTRUMENTAL_HINT = (
+    "Export a single derived Instrumental file (mixture minus vocals)"
+)
+
+QUICK_EXPORT_VOCALS_HINT = (
+    "Export a single native Vocals stem file"
+)
+
+SAVE_STEMS_NO_MODEL_HELP = "Choose a model to configure stem export"
+
+MDX_INCLUDE_COMPLEMENT_HELP = (
+    "When a single custom stem is selected, also write the derived No <stem> complement "
+    "alongside the native stem file"
 )
 
 DEMUCS_CHUNK_HINT = "Process the audio in chunks to reduce memory usage (legacy option)"
@@ -571,6 +602,9 @@ FLAC_BIT_DEPTH_HINT = "Bit depth used when saving FLAC output (16-bit or 24-bit)
 
 MAIN_MENU_HINT = "Main menu"
 VIEW_INPUTS_BUTTON_HINT = "View or verify selected inputs"
+MODEL_OPTIONS_BUTTON_HINT = "Advanced and extra-model options for VR, MDX-Net, and Demucs"
+MODEL_OPTIONS_ROW_HINT = "Open batch size, secondary models, vocal split, and other per-architecture options"
+ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT = "Tune inference options for the selected ensemble member architectures"
 
 # --- Preferences / download / inputs ---
 
@@ -602,7 +636,9 @@ STEM_ONLY_ALL_HINT = "Export every stem this model produces (default)"
 
 
 def stem_only_tooltip(stem: str) -> str:
-    return f"Export only the {stem} stem; the other output file is skipped"
+    from ui.widgets.stem_only import stem_display_label
+
+    return f"Export only {stem_display_label(stem)}; skip the other output file"
 
 
 def primary_stem_only_tooltip() -> str:

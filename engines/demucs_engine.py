@@ -21,7 +21,8 @@ from onnx2pytorch import ConvertModel
 from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
-from core.gpu_backend import clear_torch_cache, resolve_inference_backend
+from core.demucs_models import demucs_pretrained_load_name
+from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
 
@@ -78,19 +79,21 @@ class SeperateDemucs(SeperateAttributes):
                 if self.demucs_version == DEMUCS_V1:
                     if str(self.model_path).endswith(".gz"):
                         self.model_path = gzip.open(self.model_path, "rb")
-                    klass, args, kwargs, state = torch.load(self.model_path)
+                    klass, args, kwargs, state = load_torch_checkpoint(self.model_path)
                     self.demucs = klass(*args, **kwargs)
                     self.demucs.to(self.device) 
                     self.demucs.load_state_dict(state)
                 elif self.demucs_version == DEMUCS_V2:
                     self.demucs = auto_load_demucs_model_v2(self.demucs_source_list, self.model_path)
                     self.demucs.to(self.device) 
-                    self.demucs.load_state_dict(torch.load(self.model_path))
+                    self.demucs.load_state_dict(load_torch_checkpoint(self.model_path))
                     self.demucs.eval()
                 else:  
-                    self.demucs = HDemucs(sources=self.demucs_source_list)
-                    self.demucs = _gm(name=os.path.splitext(os.path.basename(self.model_path))[0], 
-                                      repo=Path(os.path.dirname(self.model_path)))
+                    load_name = demucs_pretrained_load_name(self.model_path)
+                    self.demucs = _gm(
+                        name=load_name,
+                        repo=Path(os.path.dirname(self.model_path)),
+                    )
                     self.demucs = demucs_segments(self.segment, self.demucs)
                     self.demucs.to(self.device)
                     self.demucs.eval()
@@ -144,6 +147,7 @@ class SeperateDemucs(SeperateAttributes):
             self.cache_source(source)
         
         if (self.demucs_stems == ALL_STEMS and not self.process_data['is_ensemble_master']) or self.is_4_stem_ensemble and not self.is_return_dual:
+            self.begin_save_phase(len(self.demucs_source_map))
             for stem_name, stem_value in self.demucs_source_map.items():
                 if self.is_secondary_model_activated and not self.is_secondary_model and not stem_value >= 4:
                     if self.secondary_model_4_stem[stem_value]:
@@ -170,6 +174,11 @@ class SeperateDemucs(SeperateAttributes):
             if self.is_secondary_model_activated and self.secondary_model:
                     self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, self.process_data, main_process_method=self.process_method)
                     
+            save_writes = int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only)
+            if self.is_demucs_pre_proc_model_inst_mix and self.pre_proc_model and not self.is_4_stem_ensemble:
+                save_writes += int(not self.is_primary_stem_only)
+            self.begin_save_phase(max(1, save_writes))
+
             if not self.is_primary_stem_only:
                 def secondary_save(sec_stem_name, source, raw_mixture=None, is_inst_mixture=False):
                     secondary_source = self.secondary_source if not is_inst_mixture else None

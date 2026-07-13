@@ -8,12 +8,123 @@ the latest in-memory settings without writing spurious changes back.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, replace
 from typing import Iterable, Optional, Protocol, Sequence
 
-from bundled.constants import SAMPLE_MODE_CHECKBOX, WAV
+from bundled.constants import WAV
 
 from .widgets.rows import set_combo_value
+
+INPUT_FILES_WARN = 100
+INPUT_FILES_MAX = 500
+
+#: Stable title for the sample-mode switch row (the duration lives in the
+#: subtitle so the title stays constant for scanability and screen readers).
+SAMPLE_MODE_TITLE = "Sample mode"
+
+
+def sample_mode_subtitle(duration: int) -> str:
+    """Subtitle describing how much audio sample mode processes."""
+    return f"Process only the first {int(duration)} s"
+
+
+def apply_sample_mode_label(sample_row, duration: int) -> None:
+    """Set the stable title + duration subtitle on a sample-mode switch row."""
+    sample_row.set_title(SAMPLE_MODE_TITLE)
+    if hasattr(sample_row, "set_subtitle"):
+        sample_row.set_subtitle(sample_mode_subtitle(duration))
+
+_REASON_OUTPUT_MISSING = "Choose an output folder"
+_REASON_OUTPUT_STALE = "Output folder no longer exists — select a new folder"
+_REASON_INPUT_MISSING = "Select an input audio file"
+
+
+@dataclass(frozen=True)
+class InputSanitizeResult:
+    removed_missing: int = 0
+    truncated_count: int = 0
+    large_batch: bool = False
+
+
+def export_path_blocked_reason(path: str) -> Optional[str]:
+    """Return a start-blocking message for ``path``, or ``None`` when export is ready."""
+    path = (path or "").strip()
+    if not path:
+        return _REASON_OUTPUT_MISSING
+    if not os.path.isdir(path):
+        return _REASON_OUTPUT_STALE
+    return None
+
+
+def export_path_is_valid(path: str) -> bool:
+    return export_path_blocked_reason(path) is None
+
+
+def partition_input_paths(paths: Sequence[str]) -> tuple[list[str], list[str]]:
+    """Return ``(existing_files, missing_paths)`` in original order, deduped."""
+    existing: list[str] = []
+    missing: list[str] = []
+    seen: set[str] = set()
+    for raw in paths:
+        path = (raw or "").strip()
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        if os.path.isfile(path):
+            existing.append(path)
+        else:
+            missing.append(path)
+    return existing, missing
+
+
+def sanitize_input_paths(
+    paths: Sequence[str],
+    *,
+    max_files: int = INPUT_FILES_MAX,
+) -> tuple[list[str], InputSanitizeResult]:
+    """Dedupe, drop missing files, and enforce the selection cap."""
+    existing, missing = partition_input_paths(paths)
+    removed_missing = len(missing)
+    truncated_count = 0
+    if len(existing) > max_files:
+        truncated_count = len(existing) - max_files
+        existing = existing[:max_files]
+    large_batch = len(existing) >= INPUT_FILES_WARN
+    return existing, InputSanitizeResult(
+        removed_missing=removed_missing,
+        truncated_count=truncated_count,
+        large_batch=large_batch,
+    )
+
+
+def input_paths_blocked_reason(paths: Sequence[str]) -> Optional[str]:
+    """Return a start-blocking message, or ``None`` when at least one file exists."""
+    if not paths:
+        return _REASON_INPUT_MISSING
+    for path in paths:
+        if path and os.path.isfile(path):
+            return None
+    return _REASON_INPUT_MISSING
+
+
+def format_input_sanitize_toasts(
+    result: InputSanitizeResult,
+    *,
+    include_missing: bool = False,
+    include_large_batch: bool = True,
+) -> list[str]:
+    """Build user-facing toast messages from a sanitize result."""
+    messages: list[str] = []
+    if include_missing and result.removed_missing:
+        count = result.removed_missing
+        noun = "file" if count == 1 else "files"
+        messages.append(f"Removed {count} saved input {noun} that no longer exist")
+    if result.truncated_count:
+        messages.append(f"Only the first {INPUT_FILES_MAX} files were added")
+    if include_large_batch and result.large_batch:
+        messages.append("100+ input files selected — processing may take a long time")
+    return messages
 
 
 class _InputPathsRow(Protocol):
@@ -30,6 +141,8 @@ class _SwitchRow(Protocol):
 
 class _SampleModeRow(Protocol):
     def set_title(self, title: str) -> None: ...
+
+    def set_subtitle(self, subtitle: str) -> None: ...
 
     def set_active(self, active: bool) -> None: ...
 
@@ -68,6 +181,10 @@ def apply_shared_file_options(
 ) -> SharedFileOptions:
     """Push shared settings values into the supplied option rows."""
     options = read_shared_file_options(settings)
+    cleaned, _result = sanitize_input_paths(options.input_paths)
+    if cleaned != options.input_paths:
+        settings.set("input_paths", cleaned)
+        options = replace(options, input_paths=cleaned)
 
     rows: list[_InputPathsRow] = []
     if input_row is not None:
@@ -85,7 +202,7 @@ def apply_shared_file_options(
     if gpu_row is not None:
         gpu_row.set_active(options.is_gpu_conversion)
     if sample_row is not None:
-        sample_row.set_title(SAMPLE_MODE_CHECKBOX(options.sample_duration))
+        apply_sample_mode_label(sample_row, options.sample_duration)
         sample_row.set_active(options.model_sample_mode)
 
     return options

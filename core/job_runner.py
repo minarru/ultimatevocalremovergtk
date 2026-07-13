@@ -45,7 +45,9 @@ from .model_data import (
 from .sample_mode import prepare_input_paths
 from .settings import SettingsModel
 from .run_control import ProcessStopped, check_stopped, pausable_callback
-from .debug_log import debug, debug_elapsed, next_seq, preview_text, set_correlation_seq
+from .run_estimate import combine_progress_local_step
+from .debug_log import debug, debug_elapsed, next_seq, preview_text, set_correlation_seq, verbose
+from .model_display import display_name_for_model
 from .separate_import import import_separate_engines
 from .inference_cleanup import (
     clear_source_mapper,
@@ -60,6 +62,12 @@ _MODEL_KEY_BY_METHOD = {
 }
 
 
+def _model_output_label(model: ModelData) -> str:
+    """Return the user-facing model label for export paths and test mode."""
+    label = display_name_for_model(model.process_method, model.model_name, model.repo)
+    return label or model.model_basename or ""
+
+
 @dataclass
 class JobCallbacks:
     """Callbacks invoked from the worker thread.
@@ -69,20 +77,25 @@ class JobCallbacks:
     raised exception. The GTK layer marshals each of these onto the main loop.
     """
 
-    on_progress: Optional[Callable[[float], None]] = None
+    on_progress: Optional[Callable[..., None]] = None
     on_console: Optional[Callable[[str], None]] = None
     on_complete: Optional[Callable[[], None]] = None
     on_stopped: Optional[Callable[[], None]] = None
     on_error: Optional[Callable[[BaseException], None]] = None
 
-    def progress(self, fraction: float) -> None:
+    def progress(self, fraction: float, *, local_step: Optional[float] = None) -> None:
         if self.on_progress:
-            self.on_progress(max(0.0, min(1.0, fraction)))
+            clamped = max(0.0, min(1.0, fraction))
+            if local_step is None:
+                self.on_progress(clamped)
+            else:
+                self.on_progress(clamped, local_step)
 
     def console(self, text: str) -> None:
         seq = next_seq()
         set_correlation_seq(seq)
-        debug("worker", f"console emit {preview_text(text)!r}", seq=seq)
+        if verbose():
+            debug("worker", f"console emit {preview_text(text)!r}", seq=seq)
         if self.on_console:
             self.on_console(text)
 
@@ -329,13 +342,17 @@ class JobRunner:
             self.true_model_count = self._count_true_models(models)
 
             total_files = len(input_paths)
+            last_progress_fraction = 0.0
 
             def make_progress(file_num):
                 def set_progress_bar(step, inference_iterations=0):
+                    nonlocal last_progress_fraction
                     total_count = max(1, self.true_model_count * total_files)
                     base = 1.0 / total_count
-                    fraction = base * self.iteration - base + base * (step + inference_iterations)
-                    callbacks.progress(fraction)
+                    local_step = step + inference_iterations
+                    fraction = base * self.iteration - base + base * local_step
+                    last_progress_fraction = fraction
+                    callbacks.progress(fraction, local_step=local_step)
                 return set_progress_bar
 
             for file_num, audio_file in enumerate(input_paths, start=1):
@@ -362,15 +379,15 @@ class JobRunner:
 
                     audio_file_base = f"{file_num}_{os.path.splitext(os.path.basename(audio_file))[0]}"
                     if self.settings.get("is_add_model_name"):
-                        audio_file_base = f"{audio_file_base}_{current_model.model_basename}"
+                        audio_file_base = f"{audio_file_base}_{_model_output_label(current_model)}"
 
                     model_export_path = export_path
                     if self.settings.get("is_create_model_folder"):
-                        model_basename = current_model.model_basename
-                        if model_basename:
+                        model_label = _model_output_label(current_model)
+                        if model_label:
                             model_export_path = os.path.join(
                                 export_path,
-                                model_basename,
+                                model_label,
                                 os.path.splitext(os.path.basename(audio_file))[0],
                             )
                             os.makedirs(model_export_path, exist_ok=True)
@@ -470,13 +487,17 @@ class JobRunner:
             self.true_model_count = self._count_true_models(models)
 
             total_files = len(input_paths)
+            last_progress_fraction = 0.0
 
             def make_progress(file_num):
                 def set_progress_bar(step, inference_iterations=0):
+                    nonlocal last_progress_fraction
                     total_count = max(1, self.true_model_count * total_files)
                     base = 1.0 / total_count
-                    fraction = base * self.iteration - base + base * (step + inference_iterations)
-                    callbacks.progress(fraction)
+                    local_step = step + inference_iterations
+                    fraction = base * self.iteration - base + base * local_step
+                    last_progress_fraction = fraction
+                    callbacks.progress(fraction, local_step=local_step)
                 return set_progress_bar
 
             for file_num, audio_file in enumerate(input_paths, start=1):
@@ -499,7 +520,7 @@ class JobRunner:
                     check_stopped(self)
                     self._process_iteration()
                     callbacks.console(
-                        f"Ensemble Mode - {current_model.model_basename} - "
+                        f"Ensemble Mode - {_model_output_label(current_model)} - "
                         f"Model {current_model_num}/{len(models)}\n"
                     )
                     write_to_console = pausable_callback(
@@ -508,7 +529,7 @@ class JobRunner:
                     )
 
                     audio_file_base = f"{file_num}_{os.path.splitext(os.path.basename(audio_file))[0]}"
-                    audio_file_base = f"{audio_file_base}_{current_model.model_basename}"
+                    audio_file_base = f"{audio_file_base}_{_model_output_label(current_model)}"
 
                     process_data = {
                         "model_data": current_model,
@@ -546,19 +567,35 @@ class JobRunner:
 
                 # Combine each member's stems into the final ensemble outputs.
                 if current_model is not None:
-                    audio_file_base = audio_file_base.replace(f"_{current_model.model_basename}", "")
+                    audio_file_base = audio_file_base.replace(f"_{_model_output_label(current_model)}", "")
                 callbacks.console(base_text + "Ensembling outputs...\n")
                 combine_started = time.perf_counter()
 
+                combine_steps: List[tuple] = []
                 if is_4_stem:
                     for output_stem in _extract_stems(audio_file_base, export_path):
-                        ensemble.ensemble_outputs(audio_file_base, export_path, output_stem, is_4_stem=True)
+                        combine_steps.append(
+                            (output_stem, {"is_4_stem": True}),
+                        )
                 else:
                     if not self.settings.get("is_secondary_stem_only"):
-                        ensemble.ensemble_outputs(audio_file_base, export_path, PRIMARY_STEM)
+                        combine_steps.append((PRIMARY_STEM, {}))
                     if not self.settings.get("is_primary_stem_only"):
-                        ensemble.ensemble_outputs(audio_file_base, export_path, SECONDARY_STEM)
-                        ensemble.ensemble_outputs(audio_file_base, export_path, SECONDARY_STEM, is_inst_mix=True)
+                        combine_steps.append((SECONDARY_STEM, {}))
+                        combine_steps.append((SECONDARY_STEM, {"is_inst_mix": True}))
+
+                combine_total = max(1, len(combine_steps))
+                combine_start = last_progress_fraction
+                combine_end = file_num / max(1, total_files)
+                for combine_idx, (stem_name, kwargs) in enumerate(combine_steps):
+                    ensemble.ensemble_outputs(
+                        audio_file_base, export_path, stem_name, **kwargs
+                    )
+                    span = max(combine_end - combine_start, 0.0)
+                    fraction = combine_start + span * ((combine_idx + 1) / combine_total)
+                    local_step = combine_progress_local_step(combine_idx, combine_total)
+                    last_progress_fraction = fraction
+                    callbacks.progress(fraction, local_step=local_step)
 
                 debug_elapsed("worker", "ensemble combine", combine_started)
                 callbacks.console("Done\n")

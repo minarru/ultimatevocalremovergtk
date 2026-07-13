@@ -138,9 +138,31 @@ def use_wrapping_list(row: Adw.ComboRow) -> None:
 
 def set_combo_values(row: Adw.ComboRow, values: Iterable) -> None:
     """Replace the row's model with ``values`` (coerced to strings)."""
+    if hasattr(row, "_uvr_combo_ids"):
+        del row._uvr_combo_ids
     model = Gtk.StringList()
     for value in values:
         model.append(str(value))
+    row.set_model(model)
+
+
+def set_combo_tag_values(row: Adw.ComboRow, items: Iterable) -> None:
+    """Populate a combo with ``[(stored_id, display_label), ...]`` or plain strings."""
+    ids: List[str] = []
+    labels: List[str] = []
+    for item in items:
+        if isinstance(item, tuple):
+            stored, display = item
+            ids.append(str(stored))
+            labels.append(str(display))
+        else:
+            text = str(item)
+            ids.append(text)
+            labels.append(text)
+    row._uvr_combo_ids = ids
+    model = Gtk.StringList()
+    for label in labels:
+        model.append(label)
     row.set_model(model)
 
 
@@ -152,7 +174,13 @@ def combo_values(row: Adw.ComboRow) -> List[str]:
 def set_combo_value(row: Adw.ComboRow, value) -> bool:
     """Select the item matching ``value``; returns ``True`` when found."""
     target = str(value)
+    ids = getattr(row, "_uvr_combo_ids", None)
     model = row.get_model()
+    if ids:
+        for index, stored in enumerate(ids):
+            if stored == target:
+                row.set_selected(index)
+                return True
     for index in range(model.get_n_items()):
         if model.get_string(index) == target:
             row.set_selected(index)
@@ -164,6 +192,9 @@ def get_combo_value(row: Adw.ComboRow) -> Optional[str]:
     index = row.get_selected()
     if index == Gtk.INVALID_LIST_POSITION:
         return None
+    ids = getattr(row, "_uvr_combo_ids", None)
+    if ids:
+        return ids[index]
     return row.get_model().get_string(index)
 
 
@@ -180,7 +211,7 @@ def make_switch_row(
     return row
 
 
-_SCALE_WIDTH = 200
+_SCALE_WIDTH = 120
 _VALUE_LABEL_WIDTH = 64
 
 
@@ -221,7 +252,10 @@ def _make_scale_row(
         add_row_icon(row, icon_name)
 
     suffix = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-    suffix.set_halign(Gtk.Align.END)
+    suffix.set_halign(Gtk.Align.FILL)
+    suffix.set_hexpand(True)
+    # Minimum footprint (slider min + value label); the slider flexes to fill
+    # any extra width on wide layouts and yields it back to the title when narrow.
     suffix.set_size_request(_SCALE_WIDTH + _VALUE_LABEL_WIDTH, -1)
     suffix.add_css_class("uvr-scale-suffix")
 
@@ -234,7 +268,7 @@ def _make_scale_row(
 
     scale = Gtk.Scale(orientation=Gtk.Orientation.HORIZONTAL)
     scale.set_draw_value(False)
-    scale.set_hexpand(False)
+    scale.set_hexpand(True)
     scale.set_halign(Gtk.Align.FILL)
     scale.set_size_request(_SCALE_WIDTH, -1)
     suffix.append(scale)

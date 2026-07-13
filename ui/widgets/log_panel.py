@@ -14,23 +14,30 @@ from core.debug_log import debug
 from ..hints import set_icon_button_a11y
 from .console import ConsoleView
 
-_PANEL_WIDTH = 520
-#: Log body height; keep in sync with ``.uvr-log-body { min-height }`` in
-#: ``resources/style.css``.
+_PANEL_WIDTH = 360
+# Layout constants below mirror ``resources/style.css``. Used when the panel has
+# not been allocated yet and :meth:`Gtk.Widget.measure` is not meaningful.
+#: Log body height ↔ ``.uvr-log-body { min-height }``.
 _LOG_BODY_HEIGHT = 200
-#: Bottom margin applied to the panel in :class:`ui.window.MainWindow`.
+#: Meta row ↔ ``.uvr-log-meta`` min-height 32 + padding-bottom 8.
+_LOG_META_ROW_RESERVE = 40
+#: Log body wrap ↔ ``.uvr-log-body-wrap`` padding-bottom.
+_LOG_BODY_WRAP_RESERVE = 12
+#: Overlay bottom gap ↔ ``MainWindow`` ``set_margin_bottom`` on the log panel.
 OVERLAY_MARGIN_BOTTOM = 12
-#: Layout reserves derived from ``resources/style.css`` (``.uvr-run-controls``,
-#: ``.uvr-run-actions``, ``.uvr-progress-section``). Used when the panel has
-#: not been allocated yet and :meth:`Gtk.Widget.measure` is not meaningful.
+#: Run controls vertical padding ↔ ``.uvr-run-controls { padding }`` (12 + 12).
 _RUN_CONTROLS_PADDING_Y = 24
+#: Action row height ↔ ``.uvr-run-actions { min-height }``.
 _RUN_ACTIONS_MIN_HEIGHT = 36
+#: Progress bar block ↔ ``.uvr-progress-section`` + ``.uvr-progress-label`` margins.
 _PROGRESS_SECTION_RESERVE = 34
+#: Card border in ``.uvr-log-panel``.
 _PANEL_BORDER_RESERVE = 2
 
 _LOG_EMPTY_ICON = "utilities-terminal-symbolic"
 _LOG_EMPTY_TITLE = "No activity yet"
 _LOG_EMPTY_DESCRIPTION = "Start a process to see its log here."
+_PROGRESS_DONE_LABEL = "Done"
 
 
 class LogPanel(Gtk.Box):
@@ -52,7 +59,6 @@ class LogPanel(Gtk.Box):
         self._on_console_changed = on_console_changed
         self._on_expanded_changed = on_expanded_changed
         self._syncing_expand = False
-        self._defer_collapse_visibility = False
         self._pulse_source_id: Optional[int] = None
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -60,7 +66,6 @@ class LogPanel(Gtk.Box):
 
         self._progress_section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self._progress_section.add_css_class("uvr-progress-section")
-        self._progress_section.set_visible(False)
 
         self._progress_label = Gtk.Label(label="")
         self._progress_label.add_css_class("uvr-progress-label")
@@ -73,7 +78,13 @@ class LogPanel(Gtk.Box):
         self._progressbar.set_show_text(False)
         self._progress_section.append(self._progressbar)
         self._progress_section.append(self._progress_label)
-        body.append(self._progress_section)
+
+        self._progress_revealer = Gtk.Revealer()
+        self._progress_revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_DOWN)
+        self._progress_revealer.set_transition_duration(200)
+        self._progress_revealer.set_reveal_child(False)
+        self._progress_revealer.set_child(self._progress_section)
+        body.append(self._progress_revealer)
 
         self._log_meta_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self._log_meta_row.add_css_class("uvr-log-meta")
@@ -94,12 +105,10 @@ class LogPanel(Gtk.Box):
         set_icon_button_a11y(self.log_copy_button, "Copy the full log to the clipboard")
         self._log_meta_row.append(self.log_copy_button)
 
-        self.log_clear_button = Gtk.Button(icon_name="user-trash-symbolic")
+        self.log_clear_button = Gtk.Button(icon_name="eraser3-symbolic")
         self.log_clear_button.add_css_class("flat")
         set_icon_button_a11y(self.log_clear_button, "Clear the log")
         self._log_meta_row.append(self.log_clear_button)
-
-        body.append(self._log_meta_row)
 
         self._log_revealer = Gtk.Revealer()
         self._log_revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_UP)
@@ -107,11 +116,15 @@ class LogPanel(Gtk.Box):
         self._log_revealer.set_reveal_child(False)
         self._log_revealer.connect("notify::child-revealed", self._on_log_revealed)
 
+        revealer_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        revealer_content.append(self._log_meta_row)
+
         log_body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         log_body.add_css_class("uvr-log-body-wrap")
 
         self._log_stack = Gtk.Stack()
         self._log_stack.add_css_class("uvr-log-body")
+        self._log_stack.set_overflow(Gtk.Overflow.HIDDEN)
         self._log_stack.set_size_request(-1, _LOG_BODY_HEIGHT)
 
         empty_state = self._build_empty_state()
@@ -124,12 +137,9 @@ class LogPanel(Gtk.Box):
         self._log_stack.add_named(self.console, "console")
 
         log_body.append(self._log_stack)
-        self._log_revealer.set_child(log_body)
+        revealer_content.append(log_body)
+        self._log_revealer.set_child(revealer_content)
         body.append(self._log_revealer)
-
-        self._log_run_separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        self._log_run_separator.set_visible(False)
-        body.append(self._log_run_separator)
 
         action_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         action_row.add_css_class("uvr-run-actions")
@@ -152,6 +162,7 @@ class LogPanel(Gtk.Box):
         self._stop_button.add_css_class("destructive-action")
         self._stop_button.set_sensitive(False)
         self._stop_button.set_valign(Gtk.Align.CENTER)
+        set_icon_button_a11y(self._stop_button, "Stop processing")
         action_row.append(self._stop_button)
 
         body.append(action_row)
@@ -160,7 +171,6 @@ class LogPanel(Gtk.Box):
         self.start_button = self._start_button
         self.stop_button = self._stop_button
 
-        self._apply_expanded_visibility(False)
         self._handle_console_changed(self.console.is_empty())
 
     @property
@@ -179,13 +189,21 @@ class LogPanel(Gtk.Box):
     def default_bottom_inset(cls) -> int:
         """Scroll padding so option columns clear the collapsed floating panel."""
         # Progress is hidden until a run starts; reserve it only when visible
-        # (see :meth:`collapsed_overlay_height`).
+        # (see :meth:`options_overlay_clearance`).
         return cls._collapsed_body_height(include_progress=False) + OVERLAY_MARGIN_BOTTOM
 
+    def options_overlay_clearance(self) -> int:
+        """Bottom inset for the options scroller to clear the floating log panel."""
+        height = self._collapsed_body_height(include_progress=False)
+        if self._progress_revealer.get_reveal_child():
+            height += _PROGRESS_SECTION_RESERVE
+        if self._log_revealer.get_reveal_child():
+            height += _LOG_META_ROW_RESERVE + _LOG_BODY_HEIGHT + _LOG_BODY_WRAP_RESERVE
+        return height + OVERLAY_MARGIN_BOTTOM
+
     def collapsed_overlay_height(self) -> int:
-        """Bottom inset for the options scroller (always the collapsed panel height)."""
-        include_progress = self._progress_section.get_visible()
-        return self._collapsed_body_height(include_progress=include_progress) + OVERLAY_MARGIN_BOTTOM
+        """Alias for :meth:`options_overlay_clearance`."""
+        return self.options_overlay_clearance()
 
     def set_progress_pulse_step(self, step: float) -> None:
         self._progressbar.set_pulse_step(step)
@@ -213,6 +231,27 @@ class LogPanel(Gtk.Box):
             self._pulse_source_id = None
         self._sync_progress_section_visible()
 
+    def clear_progress(self) -> None:
+        """Reset the progress bar and collapse the progress revealer."""
+        self.stop_progress_pulse()
+        self._progressbar.set_fraction(0.0)
+        self._progress_label.set_text("")
+        self._progress_label.set_visible(False)
+        self._sync_progress_section_visible()
+
+    def clear_log(self) -> None:
+        """Clear the console; collapse the progress block after a finished run."""
+        self.console.clear()
+        self._collapse_progress_if_done()
+
+    def _collapse_progress_if_done(self) -> None:
+        if (
+            self._pulse_source_id is None
+            and self._progressbar.get_fraction() >= 1.0
+            and self._progress_label.get_text() == _PROGRESS_DONE_LABEL
+        ):
+            self.clear_progress()
+
     def prepare_for_run(self) -> None:
         """Show the console and reset scroll before worker output arrives."""
         revealed = self._log_revealer.get_child_revealed()
@@ -231,19 +270,10 @@ class LogPanel(Gtk.Box):
 
     def set_expanded(self, expanded: bool) -> None:
         if self.get_expanded() == expanded and self.expand_button.get_active() == expanded:
-            if expanded:
-                self._apply_expanded_visibility(True)
-            elif not self._defer_collapse_visibility:
-                self._apply_expanded_visibility(self._log_revealer.get_child_revealed())
             return
         self._syncing_expand = True
         self.expand_button.set_active(expanded)
         self._log_revealer.set_reveal_child(expanded)
-        if expanded:
-            self._defer_collapse_visibility = False
-            self._apply_expanded_visibility(True)
-        else:
-            self._defer_collapse_visibility = True
         self._notify_expanded_changed(expanded)
         self._syncing_expand = False
 
@@ -257,7 +287,7 @@ class LogPanel(Gtk.Box):
             or self._progressbar.get_fraction() > 0.0
             or self._pulse_source_id is not None
         )
-        self._progress_section.set_visible(busy)
+        self._progress_revealer.set_reveal_child(busy)
 
     def _notify_expanded_changed(self, expanded: bool) -> None:
         if self._on_expanded_changed is not None:
@@ -268,29 +298,15 @@ class LogPanel(Gtk.Box):
             return
         expanded = button.get_active()
         self._log_revealer.set_reveal_child(expanded)
-        if expanded:
-            self._defer_collapse_visibility = False
-            self._apply_expanded_visibility(True)
-        else:
-            self._defer_collapse_visibility = True
         self._notify_expanded_changed(expanded)
 
     def _on_log_revealed(self, revealer: Gtk.Revealer, _pspec) -> None:
-        if revealer.get_child_revealed():
-            debug("ui", "log_panel child revealed resume_scroll")
-            self._apply_expanded_visibility(True)
-            self._defer_collapse_visibility = False
-            self.console.resume_scroll()
-            debug("ui", "log_panel scroll_to_end_stable")
-            self.console.scroll_to_end_stable()
+        if not revealer.get_child_revealed():
             return
-        if self._defer_collapse_visibility:
-            self._apply_expanded_visibility(False)
-            self._defer_collapse_visibility = False
-
-    def _apply_expanded_visibility(self, expanded: bool) -> None:
-        self._log_meta_row.set_visible(expanded)
-        self._log_run_separator.set_visible(expanded)
+        debug("ui", "log_panel child revealed resume_scroll")
+        self.console.resume_scroll()
+        debug("ui", "log_panel scroll_to_end_stable")
+        self.console.scroll_to_end_stable()
 
     def _handle_console_changed(self, is_empty: bool) -> None:
         self._log_stack.set_visible_child_name("empty" if is_empty else "console")

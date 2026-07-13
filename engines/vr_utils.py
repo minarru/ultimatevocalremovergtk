@@ -4,7 +4,7 @@ import torch
 import librosa
 
 from bundled.constants import OPERATING_SYSTEM, SYSTEM_PROC, ARM, SYSTEM_ARCH
-from core.paths import VR_PARAM_DIR
+from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
 from ml.vr_network import nets_new
 from ml.vr_network.model_param_init import ModelParameters
@@ -24,7 +24,7 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
         nout, nout_lstm = 16, 128
     
     model = nets_new.CascadedNet(n_fft, nout=nout, nout_lstm=nout_lstm)
-    model.load_state_dict(torch.load(model_path, map_location=cpu))
+    model.load_state_dict(load_torch_checkpoint(model_path, map_location=cpu))
     model.to(device)
 
     if mp is None:

@@ -14,7 +14,6 @@ by the ``Ensembler`` in :mod:`core.job_runner`. Nothing here imports
 ``tkinter``.
 """
 
-import hashlib
 import json
 import os
 from typing import Any, Callable, Dict, List, Optional
@@ -23,6 +22,19 @@ from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat const
 
 from . import paths
 from .mdx_config_fetch import ensure_mdx_c_config
+from .demucs_models import (
+    demucs_yaml_bag_member_sigs,
+    is_demucs_bag_member_weight,
+    resolve_demucs_model_file,
+)
+from .mdx_c_registry import compute_checkpoint_hash, try_register_from_catalog
+from .model_stem_semantics import resolve_is_karaoke
+from .model_display import (
+    display_name_for_basename,
+    map_basenames_to_display,
+    resolve_mdx_model_basename,
+    resolve_vr_model_basename,
+)
 from .audio_io import resolve_wav_type_set
 from .settings import SettingsModel
 
@@ -116,8 +128,15 @@ class ModelRepository:
 
     def list_demucs_models(self) -> List[str]:
         models: List[str] = []
+        bag_sigs = demucs_yaml_bag_member_sigs(paths.DEMUCS_NEWER_REPO_DIR)
         for directory in (paths.DEMUCS_NEWER_REPO_DIR, paths.DEMUCS_MODELS_DIR):
-            models.extend(_list_models(directory, (".th", ".ckpt", ".yaml", ".gz")))
+            for name in _list_models(directory, (".th", ".ckpt", ".yaml", ".gz")):
+                if (
+                    directory == paths.DEMUCS_NEWER_REPO_DIR
+                    and is_demucs_bag_member_weight(name, bag_sigs)
+                ):
+                    continue
+                models.append(name)
         seen, unique = set(), []
         for name in models:
             if name not in seen:
@@ -128,15 +147,36 @@ class ModelRepository:
     # -- Model tags / stem filtering (ported from UVR's model menus) -----------
 
     def list_vr_model_tags(self) -> List[str]:
-        names = sorted(self.list_vr_models())
+        names = sorted(
+            map_basenames_to_display(self.list_vr_models(), VR_ARCH_TYPE, self)
+        )
         return [f"{VR_ARCH_TYPE}{ENSEMBLE_PARTITION}{name}" for name in names]
 
     def list_mdx_model_tags(self) -> List[str]:
-        names = sorted(_apply_name_mapper(self.list_mdx_models(), self.mdx_name_select_MAPPER))
+        names = sorted(
+            map_basenames_to_display(self.list_mdx_models(), MDX_ARCH_TYPE, self)
+        )
         return [f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}{name}" for name in names]
 
+    def mdx_catalogue_display_index(self) -> Dict[str, str]:
+        from .model_display import load_mdx_catalog_display_index
+
+        return load_mdx_catalog_display_index()
+
+    def vr_catalogue_display_index(self) -> Dict[str, str]:
+        from .model_display import load_vr_catalog_display_index
+
+        return load_vr_catalog_display_index()
+
+    def demucs_catalogue_display_index(self) -> Dict[str, str]:
+        from .model_display import load_demucs_catalog_display_index
+
+        return load_demucs_catalog_display_index()
+
     def list_demucs_model_tags(self) -> List[str]:
-        names = sorted(_apply_name_mapper(self.list_demucs_models(), self.demucs_name_select_MAPPER))
+        names = sorted(
+            map_basenames_to_display(self.list_demucs_models(), DEMUCS_ARCH_TYPE, self)
+        )
         return [f"{DEMUCS_ARCH_TYPE}{ENSEMBLE_PARTITION}{name}" for name in names]
 
     def all_model_tags(self) -> List[str]:
@@ -247,20 +287,6 @@ class ModelRepository:
         return model.primary_stem, model.secondary_stem
 
 
-def _apply_name_mapper(names, name_mapper) -> List[str]:
-    """Map on-disk file names to display names (UVR's ``fix_name``)."""
-    if not name_mapper:
-        return list(names)
-    mapped = []
-    for name in names:
-        replacement = next(
-            (new_name for old_name, new_name in name_mapper.items() if name in old_name),
-            name,
-        )
-        mapped.append(replacement)
-    return mapped
-
-
 def _list_models(directory: str, extensions) -> List[str]:
     if not os.path.isdir(directory):
         return []
@@ -324,7 +350,9 @@ class ModelData:
         # a config that defines a single ``training.target_instrument``.
         self.is_roformer = False
         self.is_target_instrument = False
+        self.model_type = ""
         self.is_mdx_combine_stems = settings.get("is_mdx23_combine_stems")
+        self.is_mdx_include_stem_complement = settings.get("is_mdx_include_stem_complement")
         self.mdx_c_configs = None
         self.mdx_model_stems = []
         self.mdx_dim_f_set = None
@@ -427,7 +455,7 @@ class ModelData:
             self.is_high_end_process = "mirroring" if settings.get("is_high_end_process") else "None"
             self.post_process_threshold = float(settings.get("post_process_threshold"))
             self.model_capacity = 32, 128
-            self.model_path = os.path.join(paths.VR_MODELS_DIR, f"{self.model_name}.pth")
+            self.get_vr_model_path()
             self.get_model_hash()
             if self.model_hash:
                 self.model_hash_dir = os.path.join(paths.VR_HASH_DIR, f"{self.model_hash}.json")
@@ -466,6 +494,8 @@ class ModelData:
                 if self.model_data:
                     if "is_roformer" in self.model_data:
                         self.is_roformer = self.model_data["is_roformer"]
+                    if "model_type" in self.model_data:
+                        self.model_type = str(self.model_data["model_type"])
                     if "config_yaml" in self.model_data:
                         self.is_mdx_c = True
                         config_name = self.model_data["config_yaml"]
@@ -527,7 +557,6 @@ class ModelData:
                         self.mdx_n_fft_scale_set = self.model_data["mdx_n_fft_scale_set"]
                         self.primary_stem = self.model_data["primary_stem"]
                         self.primary_stem_native = self.model_data["primary_stem"]
-                        self.check_if_karaokee_model()
                     self.secondary_stem = secondary_stem(str(self.primary_stem or ""))
                 else:
                     self.model_status = False
@@ -551,6 +580,11 @@ class ModelData:
             self.model_basename = os.path.splitext(os.path.basename(self.model_path))[0]
         else:
             self.model_basename = None
+
+        if self.process_method == MDX_ARCH_TYPE and self.model_data:
+            self.apply_karaoke_metadata(
+                str(self.model_data.get("config_yaml") or "")
+            )
 
         self.pre_proc_model_activated = self.pre_proc_model_activated if not self.is_secondary_model else False
 
@@ -706,18 +740,58 @@ class ModelData:
         if IS_BV_MODEL_REBAL in self.model_data.keys() and self.is_bv_model:
             self.bv_model_rebalance = self.model_data[IS_BV_MODEL_REBAL]
 
+    def apply_karaoke_metadata(self, config_yaml: str = "") -> None:
+        """Set ``is_karaoke`` from hash JSON and catalogue/config name hints."""
+        self.check_if_karaokee_model()
+        if self.is_karaoke:
+            return
+        weight_basename = getattr(self, "model_basename", None)
+        if not weight_basename:
+            model_path = getattr(self, "model_path", None) or ""
+            if model_path:
+                weight_basename = os.path.splitext(os.path.basename(model_path))[0]
+        if resolve_is_karaoke(
+            model_data=self.model_data,
+            model_name=str(self.model_name or ""),
+            config_yaml=config_yaml,
+            weight_basename=str(weight_basename or ""),
+        ):
+            self.is_karaoke = True
+
+    def get_vr_model_path(self) -> None:
+        resolved_name = resolve_vr_model_basename(
+            self.model_name,
+            catalogue_index=self.repo.vr_catalogue_display_index(),
+        )
+        self.model_path = os.path.join(paths.VR_MODELS_DIR, f"{resolved_name}.pth")
+
     def get_mdx_model_path(self):
-        if self.model_name.endswith(CKPT):
+        resolved_name = resolve_mdx_model_basename(
+            self.model_name,
+            self.repo.mdx_name_select_MAPPER,
+            catalogue_index=self.repo.mdx_catalogue_display_index(),
+        )
+        if resolved_name.endswith(CKPT):
             self.is_mdx_ckpt = True
         ext = "" if self.is_mdx_ckpt else ONNX
         for file_name, chosen_mdx_model in self.repo.mdx_name_select_MAPPER.items():
-            if self.model_name in chosen_mdx_model:
+            if resolved_name in file_name or self.model_name in chosen_mdx_model:
                 if file_name.endswith(CKPT):
                     ext = ""
+                    self.is_mdx_ckpt = True
                 self.model_path = os.path.join(paths.MDX_MODELS_DIR, f"{file_name}{ext}")
                 break
         else:
-            self.model_path = os.path.join(paths.MDX_MODELS_DIR, f"{self.model_name}{ext}")
+            base_path = os.path.join(paths.MDX_MODELS_DIR, resolved_name)
+            ckpt_path = f"{base_path}{CKPT}"
+            onnx_path = f"{base_path}{ONNX}"
+            if os.path.isfile(ckpt_path):
+                self.model_path = ckpt_path
+                self.is_mdx_ckpt = True
+            elif os.path.isfile(onnx_path):
+                self.model_path = onnx_path
+            else:
+                self.model_path = f"{base_path}{ext}"
         self.mixer_path = os.path.join(paths.MDX_MODELS_DIR, "mixer_val.ckpt")
 
     def get_demucs_model_path(self):
@@ -726,9 +800,8 @@ class ModelData:
         for file_name, chosen_model in self.repo.demucs_name_select_MAPPER.items():
             if self.model_name == chosen_model:
                 self.model_path = os.path.join(demucs_model_dir, file_name)
-                break
-        else:
-            self.model_path = os.path.join(paths.DEMUCS_NEWER_REPO_DIR, f"{self.model_name}.yaml")
+                return
+        self.model_path = resolve_demucs_model_file(self.model_name, self.demucs_version)
 
     def get_demucs_model_data(self):
         self.demucs_version = DEMUCS_V4
@@ -744,13 +817,36 @@ class ModelData:
             self.secondary_stem = secondary_stem(str(self.primary_stem or ""))
 
     def get_model_data(self, model_hash_dir, hash_mapper: dict):
+        mapped = None
+        for model_hash, model_settings in hash_mapper.items():
+            if self.model_hash in model_hash:
+                mapped = dict(model_settings)
+                break
+
         model_settings_json = os.path.join(model_hash_dir, f"{self.model_hash}.json")
         if os.path.isfile(model_settings_json):
             with open(model_settings_json, "r") as json_file:
-                return json.load(json_file)
-        for model_hash, model_settings in hash_mapper.items():
-            if self.model_hash in model_hash:
-                return model_settings
+                local = json.load(json_file)
+            if not isinstance(local, dict):
+                local = {}
+            if mapped:
+                merged = dict(mapped)
+                merged.update(local)
+                return merged
+            return local
+
+        if mapped:
+            return mapped
+
+        if (
+            self.process_method == MDX_ARCH_TYPE
+            and self.is_mdx_ckpt
+            and self.model_path
+        ):
+            params = try_register_from_catalog(self.model_path, self.model_hash)
+            if params:
+                return params
+
         return self.get_model_data_from_popup()
 
     def change_model_data(self):
@@ -784,13 +880,9 @@ class ModelData:
                     self.model_hash = value
                     break
         if not self.model_hash:
-            try:
-                with open(self.model_path, "rb") as f:
-                    f.seek(-10000 * 1024, 2)
-                    self.model_hash = hashlib.md5(f.read()).hexdigest()
-            except Exception:
-                self.model_hash = hashlib.md5(open(self.model_path, "rb").read()).hexdigest()
-            cache.update({self.model_path: self.model_hash})
+            self.model_hash = compute_checkpoint_hash(self.model_path)
+            if self.model_hash:
+                cache.update({self.model_path: self.model_hash})
 
 
 _SECONDARY_PREFIX_BY_METHOD = {

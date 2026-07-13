@@ -13,6 +13,7 @@ from typing import Optional
 
 from gi.repository import Adw, Gtk
 
+from ..spacing import set_inset
 from .log_panel import LogPanel
 
 #: Clamp width shared by every two-column options surface.
@@ -55,10 +56,14 @@ def build_columns_box(left_groups=(), right_groups=()):
     # Homogeneous keeps both columns the same width regardless of content, so
     # the split point doesn't jump when the active panel changes height.
     columns_box.set_homogeneous(True)
-    columns_box.set_margin_top(18)
-    columns_box.set_margin_bottom(18)
-    columns_box.set_margin_start(12)
-    columns_box.set_margin_end(12)
+    # Expand horizontally so the enclosing Adw.Clamp stretches the box to its
+    # clamp width instead of allocating the (content-driven) natural width and
+    # centring it. Without this, each page's column width tracks the longest
+    # row it contains (long file paths / model names), so the split point and
+    # card widths differ from view to view. Expanding pins every page to the
+    # same clamp-bounded width for a consistent layout.
+    columns_box.set_hexpand(True)
+    set_inset(columns_box, top=18, bottom=18, start=12, end=12)
     columns_box.append(col_start)
     columns_box.append(col_end)
     return columns_box, col_start, col_end
@@ -91,6 +96,16 @@ def wrap_options_scroller(
     if bottom_inset:
         set_options_bottom_clearance(columns_box, bottom_inset)
     clamp = Adw.Clamp(child=columns_box, maximum_size=maximum_size)
+    # Pin the tightening threshold to the maximum size. With the default (lower)
+    # threshold, any window between the threshold and ``maximum_size`` lands in
+    # Adw.Clamp's easing region, where the child is allocated less than the
+    # available width by an amount that depends on the child's own content
+    # (natural/min) width. That makes each page's columns render at a different
+    # width based on its longest row. Raising the threshold to the maximum
+    # removes the easing band: below ``maximum_size`` the child fills the full
+    # available width (consistent across every page), and it is still clamped
+    # and centred once the window grows past ``maximum_size``.
+    clamp.set_tightening_threshold(maximum_size)
     clamp.set_vexpand(True)
     scroller = Gtk.ScrolledWindow()
     scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)

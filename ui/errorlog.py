@@ -23,6 +23,7 @@ from bundled.error_handling import CONTACT_DEV, error_dialouge, error_text
 from core.support_urls import fork_issue_url
 
 from .dialogs.utils import fill_dialog_width, present_modal_dialog, set_dialog_content
+from .spacing import inset_lg_sides_bottom, inset_md, set_inset
 
 _ERROR_DIALOG_WIDTH = 360
 
@@ -91,9 +92,7 @@ def present_error_dialog(
     dialog.set_follows_content_size(False)
 
     content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
-    content.set_margin_bottom(20)
-    content.set_margin_start(20)
-    content.set_margin_end(20)
+    inset_lg_sides_bottom(content)
     fill_dialog_width(content)
 
     intro = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -139,10 +138,7 @@ def present_error_dialog(
     summary_label.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
     summary_label.set_selectable(True)
     summary_label.add_css_class("monospace")
-    summary_label.set_margin_top(12)
-    summary_label.set_margin_bottom(12)
-    summary_label.set_margin_start(12)
-    summary_label.set_margin_end(12)
+    inset_md(summary_label)
     summary_box.append(summary_label)
     content.append(summary_box)
 
@@ -158,7 +154,7 @@ def present_error_dialog(
 
     button_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
     button_row.set_halign(Gtk.Align.END)
-    button_row.set_margin_top(4)
+    set_inset(button_row, top=4)
 
     copy_button = Gtk.Button(label="Copy Report")
     copy_button.connect(

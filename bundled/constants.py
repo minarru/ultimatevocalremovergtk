@@ -607,6 +607,7 @@ DEFAULT_DATA = {
         'is_split_mode': True,
         'is_demucs_combine_stems': True,#
         'is_mdx23_combine_stems': True,#
+        'is_mdx_include_stem_complement': False,
         'demucs_voc_inst_secondary_model': NO_MODEL,
         'demucs_other_secondary_model': NO_MODEL,
         'demucs_bass_secondary_model': NO_MODEL,
@@ -698,7 +699,11 @@ DEFAULT_DATA = {
         'color_scheme': 'auto',
         'window_width': 1040,
         'window_height': 720,
-        'window_maximized': False
+        'window_maximized': False,
+        'notify_process_complete': True,
+        'notify_process_failed': True,
+        'notify_download_complete': True,
+        'notify_download_failed': True,
 }
 
 NEW_LINES = "\n\n"

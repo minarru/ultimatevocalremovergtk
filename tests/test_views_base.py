@@ -20,6 +20,14 @@ class ApplyNameMapperTests(unittest.TestCase):
         mapper = {"other": "Mapped"}
         self.assertEqual(apply_name_mapper(["unknown.onnx"], mapper), ["unknown.onnx"])
 
+    def test_catalogue_index_fallback(self):
+        mapper = {}
+        catalogue = {"community_model": "Community Label"}
+        self.assertEqual(
+            apply_name_mapper(["community_model"], mapper, catalogue_index=catalogue),
+            ["Community Label"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

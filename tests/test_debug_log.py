@@ -17,6 +17,7 @@ def _reset_debug_env():
     glib_log.set_emit_hook(None)
     old_gmd = os.environ.pop("G_MESSAGES_DEBUG", None)
     old_log = os.environ.pop("UVR_LOG_FILE", None)
+    old_verbose = os.environ.pop("UVR_VERBOSE", None)
     yield
     debug_log._DOMAINS = None
     debug_log._GMD_NORMALIZED = False
@@ -33,6 +34,10 @@ def _reset_debug_env():
         os.environ["UVR_LOG_FILE"] = old_log
     else:
         os.environ.pop("UVR_LOG_FILE", None)
+    if old_verbose is not None:
+        os.environ["UVR_VERBOSE"] = old_verbose
+    else:
+        os.environ.pop("UVR_VERBOSE", None)
 
 
 def test_disabled_by_default():
@@ -52,9 +57,10 @@ def test_all_enables_everything():
 
 
 def test_component_filter_shorthand():
-    os.environ["G_MESSAGES_DEBUG"] = "ui,dispatch"
+    os.environ["G_MESSAGES_DEBUG"] = "ui,dispatch,trace"
     assert debug_log.enabled("ui")
     assert debug_log.enabled("dispatch")
+    assert debug_log.enabled("trace")
     assert not debug_log.enabled("worker")
 
 
@@ -71,12 +77,26 @@ def test_uvr_ui_does_not_enable_worker():
     assert not debug_log.enabled("worker")
 
 
-def test_verbose_follows_console_domain():
+def test_verbose_follows_trace_domain():
     assert not debug_log.verbose()
-    os.environ["G_MESSAGES_DEBUG"] = "uvr-console"
+    os.environ["G_MESSAGES_DEBUG"] = "uvr-trace"
     debug_log._DOMAINS = None
     assert debug_log.verbose()
     os.environ["G_MESSAGES_DEBUG"] = "uvr-ui"
+    debug_log._DOMAINS = None
+    assert not debug_log.verbose()
+
+
+def test_uvr_verbose_env_enables_verbose():
+    assert not debug_log.verbose()
+    os.environ["UVR_VERBOSE"] = "1"
+    assert debug_log.verbose()
+    os.environ["UVR_VERBOSE"] = "true"
+    assert debug_log.verbose()
+
+
+def test_uvr_console_shorthand_no_longer_enables_verbose():
+    os.environ["G_MESSAGES_DEBUG"] = "uvr-console"
     debug_log._DOMAINS = None
     assert not debug_log.verbose()
 

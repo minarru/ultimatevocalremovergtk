@@ -13,9 +13,11 @@ Network and disk work happens on caller-supplied worker threads; this module
 never touches any UI toolkit and reports progress through plain callbacks.
 """
 
+import errno
 import json
 import os
 import ssl
+import threading
 import time
 import urllib.request
 from typing import Callable, Dict, List, Optional, Tuple
@@ -44,6 +46,12 @@ from bundled.constants import (
 
 from . import paths
 from .debug_log import debug
+from .download_sizes import (
+    describe_download_size,
+    estimate_jobs_size,
+    format_download_size,
+    prefetch_remote_sizes,
+)
 from .mdx_config_fetch import ensure_mdx_c_config
 from .politrees_catalog import (
     hf_fallback_url,
@@ -58,6 +66,8 @@ from .politrees_catalog import (
 from .version_info import release_update_status
 
 DOWNLOAD_MODEL_CACHE = paths.DOWNLOAD_MODEL_CACHE_PATH
+# Minimum interval between byte-count status strings shown in the queue UI.
+_INFO_UPDATE_INTERVAL_S = 0.25
 
 # Mapper JSON download links paired with their on-disk destinations (the exact
 # four files ``download_model_settings`` refreshes).
@@ -135,6 +145,78 @@ class DownloadManager:
         self.vr_download_list: Dict[str, str] = {}
         self.mdx_download_list: Dict[str, object] = {}
         self.demucs_download_list: Dict[str, dict] = {}
+        self._size_warmup_lock = threading.Lock()
+
+    # -- Catalogue + size cache -------------------------------------------------
+
+    def ensure_catalogues(self) -> bool:
+        """Populate download catalogues from in-memory, bundled, or Politrees data."""
+        if self.vr_download_list or self.mdx_download_list or self.demucs_download_list:
+            return True
+        if self.online_data:
+            self._rebuild_catalogues()
+            self._merge_politrees_supplement()
+            if self.vr_download_list or self.mdx_download_list or self.demucs_download_list:
+                return True
+        self.online_data = self._load_cache()
+        if not self.online_data:
+            debug("download", "ensure_catalogues no bundled cache")
+            return False
+        self._rebuild_catalogues()
+        self._merge_politrees_supplement()
+        debug(
+            "download",
+            "ensure_catalogues bundled fallback "
+            f"vr={len(self.vr_download_list)} "
+            f"mdx={len(self.mdx_download_list)} "
+            f"demucs={len(self.demucs_download_list)}",
+        )
+        return bool(self.vr_download_list or self.mdx_download_list or self.demucs_download_list)
+
+    def catalogue_urls(self) -> List[str]:
+        """Unique remote URLs for every catalogue entry."""
+        urls: set[str] = set()
+        for arch_type, catalogue in (
+            (VR_ARCH_TYPE, self.vr_download_list),
+            (MDX_ARCH_TYPE, self.mdx_download_list),
+            (DEMUCS_ARCH_TYPE, self.demucs_download_list),
+        ):
+            for name in catalogue:
+                for url, _path in self.resolve(name, arch_type):
+                    urls.add(url)
+        return sorted(urls)
+
+    def warm_size_cache(self) -> Dict[str, int]:
+        """Prefetch remote sizes for catalogue URLs (7-day TTL)."""
+        if not self.ensure_catalogues():
+            debug("download", "size_cache_warmup skip no catalogues")
+            return {"total": 0, "fresh": 0, "fetched": 0, "failed": 0}
+
+        if not self._size_warmup_lock.acquire(blocking=False):
+            debug("download", "size_cache_warmup skip already running")
+            return {"total": 0, "fresh": 0, "fetched": 0, "failed": 0}
+
+        from .debug_log import debug_elapsed
+
+        try:
+            urls = self.catalogue_urls()
+            debug("download", f"size_cache_warmup start urls={len(urls)}")
+            started = time.perf_counter()
+            stats = prefetch_remote_sizes(urls)
+            debug_elapsed(
+                "download",
+                "size_cache_warmup done "
+                f"total={stats['total']} fresh={stats['fresh']} "
+                f"fetched={stats['fetched']} failed={stats['failed']}",
+                started,
+            )
+            return stats
+        finally:
+            self._size_warmup_lock.release()
+
+    def schedule_size_cache_warmup(self) -> None:
+        """Kick off a background size-cache refresh (idempotent per process)."""
+        threading.Thread(target=self.warm_size_cache, daemon=True).start()
 
     # -- Online refresh ---------------------------------------------------------
 
@@ -173,6 +255,7 @@ class DownloadManager:
             f"demucs={len(self.demucs_download_list)} "
             f"latest={self.latest_version!r}",
         )
+        self.schedule_size_cache_warmup()
         return True
 
     def _rebuild_catalogues(self) -> None:
@@ -308,6 +391,13 @@ class DownloadManager:
 
         return []
 
+    def describe_selection_download_size(self, selection: str, arch_type: str) -> str:
+        """Human-readable size estimate for a catalogue selection."""
+        jobs = self.resolve(selection, arch_type)
+        if not jobs:
+            return "—"
+        return describe_download_size(jobs)
+
     # -- Downloading ------------------------------------------------------------
 
     def download(
@@ -316,6 +406,7 @@ class DownloadManager:
         on_progress: Optional[Callable[[float], None]] = None,
         on_info: Optional[Callable[[str], None]] = None,
         stop_event=None,
+        repo=None,
     ) -> str:
         """Download every ``(url, save_path)`` job sequentially.
 
@@ -334,18 +425,23 @@ class DownloadManager:
 
         started = time.perf_counter()
         debug("download", f"download start jobs={len(jobs)}")
+        pending_jobs = [(url, path) for url, path in jobs if not os.path.isfile(path)]
+        total_bytes, _file_count, _known = estimate_jobs_size(pending_jobs)
         total = len(jobs)
         any_downloaded = False
         for index, (url, save_path) in enumerate(jobs):
             if stop_event is not None and stop_event.is_set():
                 debug("download", "download stopped by user")
                 return "stopped"
-            if on_info:
-                on_info(f"Downloading Item {index + 1}/{total}...")
             if os.path.isfile(save_path):
                 continue
             any_downloaded = True
-            self._download_file(url, save_path, index, total, on_progress, stop_event)
+            if on_info:
+                if total_bytes is not None:
+                    on_info(f"Downloading ({format_download_size(total_bytes)})")
+                else:
+                    on_info("Downloading…")
+            self._download_file(url, save_path, index, total, on_progress, stop_event, on_info)
             if stop_event is not None and stop_event.is_set():
                 # Remove the partial file so a retry restarts cleanly.
                 if os.path.isfile(save_path):
@@ -358,16 +454,42 @@ class DownloadManager:
         if on_progress:
             on_progress(1.0)
         result = "complete" if any_downloaded else "exists"
+        if result in ("complete", "exists"):
+            from .mdx_c_registry import register_mdx_c_from_download_jobs
+
+            if register_mdx_c_from_download_jobs(jobs) and repo is not None:
+                repo.invalidate_stem_check()
+                repo.reload_mappers()
         debug_elapsed("download", f"download done status={result}", started)
         return result
 
-    def _download_file(self, url, save_path, index, total, on_progress, stop_event) -> None:
+    @staticmethod
+    def _download_stopped(stop_event) -> bool:
+        return stop_event is not None and stop_event.is_set()
+
+    def _finalize_part_file(self, tmp_path: str, save_path: str, stop_event) -> None:
+        """Rename a completed ``.part`` file unless the download was cancelled."""
+        if self._download_stopped(stop_event):
+            return
+        if not os.path.isfile(tmp_path):
+            raise FileNotFoundError(
+                errno.ENOENT,
+                os.strerror(errno.ENOENT),
+                tmp_path,
+            )
+        os.replace(tmp_path, save_path)
+
+    def _download_file(self, url, save_path, index, total, on_progress, stop_event, on_info=None) -> None:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         tmp_path = f"{save_path}.part"
         try:
-            self._download_file_url(url, tmp_path, index, total, on_progress, stop_event)
-            os.replace(tmp_path, save_path)
+            self._download_file_url(url, tmp_path, index, total, on_progress, stop_event, on_info)
+            if self._download_stopped(stop_event):
+                return
+            self._finalize_part_file(tmp_path, save_path, stop_event)
         except Exception:
+            if self._download_stopped(stop_event):
+                return
             fallback = hf_fallback_url(url)
             if fallback and fallback != url:
                 debug("download", f"hf fallback {os.path.basename(save_path)}")
@@ -376,8 +498,12 @@ class DownloadManager:
                         os.remove(tmp_path)
                 except OSError:
                     pass
-                self._download_file_url(fallback, tmp_path, index, total, on_progress, stop_event)
-                os.replace(tmp_path, save_path)
+                self._download_file_url(
+                    fallback, tmp_path, index, total, on_progress, stop_event, on_info
+                )
+                if self._download_stopped(stop_event):
+                    return
+                self._finalize_part_file(tmp_path, save_path, stop_event)
                 return
             if os.path.isfile(tmp_path):
                 try:
@@ -386,12 +512,14 @@ class DownloadManager:
                     pass
             raise
 
-    def _download_file_url(self, url, tmp_path, index, total, on_progress, stop_event) -> None:
+    def _download_file_url(self, url, tmp_path, index, total, on_progress, stop_event, on_info=None) -> None:
         try:
             with _urlopen(url) as response:
                 length_header = response.getheader("Content-Length")
                 file_total = int(length_header) if length_header and length_header.isdigit() else 0
                 downloaded = 0
+                last_info_at = 0.0
+                last_info_text = ""
                 with open(tmp_path, "wb") as out_file:
                     while True:
                         if stop_event is not None and stop_event.is_set():
@@ -411,6 +539,19 @@ class DownloadManager:
                             file_fraction = downloaded / file_total
                             overall = (index + file_fraction) / total
                             on_progress(max(0.0, min(1.0, overall)))
+                        if on_info and file_total:
+                            info_text = (
+                                f"{format_download_size(downloaded)} / "
+                                f"{format_download_size(file_total)}"
+                            )
+                            now = time.monotonic()
+                            if info_text != last_info_text and (
+                                now - last_info_at >= _INFO_UPDATE_INTERVAL_S
+                                or downloaded >= file_total
+                            ):
+                                last_info_at = now
+                                last_info_text = info_text
+                                on_info(info_text)
         except Exception:
             if os.path.isfile(tmp_path):
                 try:
