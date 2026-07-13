@@ -24,7 +24,7 @@
 }
 
 .uvr-log-panel {
-    min-width: 520px;
+    min-width: 360px;
     border-radius: 16px 16px 12px 12px;
     background-image: none;
     background-color: @window_bg_color;

@@ -271,7 +271,7 @@ class StemOnlyControls:
 
         self.group = Adw.ToggleGroup()
         self.group.set_homogeneous(True)
-        self.group.set_can_shrink(False)
+        self.group.set_can_shrink(True)
         self.group.set_hexpand(True)
         self.group.set_halign(Gtk.Align.FILL)
         self.container.append(self.group)
@@ -504,7 +504,7 @@ class StemQuickExportControls:
 
         self.group = Adw.ToggleGroup()
         self.group.set_homogeneous(True)
-        self.group.set_can_shrink(False)
+        self.group.set_can_shrink(True)
         self.group.set_hexpand(True)
         self.group.connect("notify::active-name", self._on_active_name)
 

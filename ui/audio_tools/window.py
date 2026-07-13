@@ -42,6 +42,7 @@ from bundled.constants import (
     CHOOSE_APOLLO_MODEL_HELP,
     CHOOSE_MODEL,
     FLAC,
+    INPUT_FOLDER_ENTRY_HELP,
     INTRO_ANALYSIS_ALIGN_HELP,
     INTRO_MAPPER,
     IS_ALIGN_TRACK_HELP,
@@ -190,6 +191,7 @@ class AudioToolsPage:
         group = Adw.PreferencesGroup(title="Manual Ensemble", description="Combine two or more audio files")
 
         self.me_inputs_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
+        self.hints.register(self.me_inputs_row, INPUT_FOLDER_ENTRY_HELP)
         group.add(self.me_inputs_row)
 
         self.algorithm_row = make_combo_row("Algorithm", MANUAL_ENSEMBLE_OPTIONS)
@@ -197,7 +199,7 @@ class AudioToolsPage:
         self.algorithm_row.connect("notify::selected", lambda *_a: self._set("choose_algorithm", get_combo_value(self.algorithm_row)))
         group.add(self.algorithm_row)
 
-        self.wav_ensemble_row = make_switch_row("Ensemble waveforms", "Ensemble in the time domain instead of spectrograms")
+        self.wav_ensemble_row = make_switch_row("Ensemble waveforms", "Combine in the time domain instead of spectrograms")
         self.hints.register(self.wav_ensemble_row, IS_WAV_ENSEMBLE_HELP)
         self.wav_ensemble_row.connect("notify::active", lambda *_a: self._set("is_wav_ensemble", self.wav_ensemble_row.get_active()))
         group.add(self.wav_ensemble_row)
@@ -210,6 +212,7 @@ class AudioToolsPage:
         group = Adw.PreferencesGroup(title="Time Stretch", description="Change playback rate (requires pyrubberband)")
 
         self.ts_inputs_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
+        self.hints.register(self.ts_inputs_row, INPUT_FOLDER_ENTRY_HELP)
         group.add(self.ts_inputs_row)
 
         self.time_rate_row = self._make_spin("Rate", 0.1, 10.0, 0.1, digits=2)
@@ -225,6 +228,7 @@ class AudioToolsPage:
         group = Adw.PreferencesGroup(title="Change Pitch", description="Pitch shift in semitones (requires pyrubberband)")
 
         self.ps_inputs_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
+        self.hints.register(self.ps_inputs_row, INPUT_FOLDER_ENTRY_HELP)
         group.add(self.ps_inputs_row)
 
         self.pitch_rate_row = self._make_spin("Semitones", -10.0, 10.0, 0.5, digits=2)
@@ -331,6 +335,7 @@ class AudioToolsPage:
         )
 
         self.ap_inputs_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
+        self.hints.register(self.ap_inputs_row, INPUT_FOLDER_ENTRY_HELP)
         group.add(self.ap_inputs_row)
 
         self.apollo_model_row = make_combo_row("Apollo model", [CHOOSE_MODEL])
@@ -397,7 +402,7 @@ class AudioToolsPage:
         return row
 
     def _build_shared_group(self) -> Gtk.Widget:
-        group = Adw.PreferencesGroup(title="Output and options")
+        group = Adw.PreferencesGroup(title="Processing")
 
         self.output_row = OutputFolderRow(self._on_output_changed)
         group.add(self.output_row)

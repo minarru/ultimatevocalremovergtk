@@ -35,7 +35,6 @@ from bundled.constants import (
     MDX_ARCH_TYPE,
     MP3,
     OUTPUT_FOLDER_ENTRY_HELP,
-    SAMPLE_MODE_CHECKBOX,
     VR_ARCH_PM,
     VR_ARCH_TYPE,
     WAV,
@@ -58,8 +57,11 @@ from .dispatch import idle_on_main
 from .run_control import RunController
 from core.debug_log import debug
 from .shared_settings import (
+    SAMPLE_MODE_TITLE,
+    apply_sample_mode_label,
     apply_shared_file_options,
     format_input_sanitize_toasts,
+    sample_mode_subtitle,
     sanitize_input_paths,
 )
 from .views import METHOD_VIEWS
@@ -330,7 +332,7 @@ class MainWindow(Adw.ApplicationWindow):
         ]
         self._options_pages = [
             self._options_page,
-            self._ensemble_page.widget,
+            self._ensemble_page.options_page,
             self._audio_tools_page.widget,
         ]
 
@@ -361,10 +363,9 @@ class MainWindow(Adw.ApplicationWindow):
         The split is balanced to keep the two columns close in height: the left
         column holds Files -> Method -> Basic options and ends with the short
         collapsed Advanced expander, while the right column runs Save stems ->
-        Output and options (the user-preferred top order) and ends with the tall
-        Secondary/pre-process/vocal-split models group. This moves the tall
-        secondary group off the already-heavy left side so the lower groups stay
-        nearer the fold on launch.
+        Processing (the user-preferred top order) and ends with the collapsed
+        "Extra models" group. This keeps the common path on the left and the
+        advanced/rarely-used controls on the right.
         """
         for column in (self._col_start, self._col_end):
             child = column.get_first_child()
@@ -488,7 +489,11 @@ class MainWindow(Adw.ApplicationWindow):
         return group
 
     def _build_method_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Conversion method")
+        # No group title: the "Process method" row already names the step, and
+        # the adjacent (title-less) model group reads as one "pick method ->
+        # pick model" block. This drops a redundant header from the separation
+        # page (see also the per-arch title removed on the model group).
+        group = Adw.PreferencesGroup()
         self.method_row = make_combo_row(
             "Process method",
             [view.title for view in self._views],
@@ -499,7 +504,7 @@ class MainWindow(Adw.ApplicationWindow):
         return group
 
     def _build_shared_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Output and options")
+        group = Adw.PreferencesGroup(title="Processing")
 
         self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="audio-x-generic-symbolic")
         self.format_row.connect("notify::selected", self._on_format_changed)
@@ -510,7 +515,11 @@ class MainWindow(Adw.ApplicationWindow):
         group.add(self.gpu_row)
 
         duration = self.settings.get("model_sample_mode_duration", 30)
-        self.sample_row = make_switch_row(SAMPLE_MODE_CHECKBOX(duration), icon_name="preferences-system-time-symbolic")
+        self.sample_row = make_switch_row(
+            SAMPLE_MODE_TITLE,
+            sample_mode_subtitle(duration),
+            icon_name="preferences-system-time-symbolic",
+        )
         self.sample_row.connect("notify::active", self._on_sample_changed)
         group.add(self.sample_row)
 
@@ -570,7 +579,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._maybe_notify_stale_export_path()
         set_combo_value(self.format_row, self.settings.get("save_format", WAV))
         self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
-        self.sample_row.set_title(SAMPLE_MODE_CHECKBOX(self.settings.get("model_sample_mode_duration", 30)))
+        apply_sample_mode_label(self.sample_row, self.settings.get("model_sample_mode_duration", 30))
         self.sample_row.set_active(bool(self.settings.get("model_sample_mode")))
 
         method = self.settings.get("chosen_process_method") or MDX_ARCH_TYPE

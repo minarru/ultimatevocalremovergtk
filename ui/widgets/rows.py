@@ -211,7 +211,7 @@ def make_switch_row(
     return row
 
 
-_SCALE_WIDTH = 200
+_SCALE_WIDTH = 120
 _VALUE_LABEL_WIDTH = 64
 
 
@@ -252,7 +252,10 @@ def _make_scale_row(
         add_row_icon(row, icon_name)
 
     suffix = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-    suffix.set_halign(Gtk.Align.END)
+    suffix.set_halign(Gtk.Align.FILL)
+    suffix.set_hexpand(True)
+    # Minimum footprint (slider min + value label); the slider flexes to fill
+    # any extra width on wide layouts and yields it back to the title when narrow.
     suffix.set_size_request(_SCALE_WIDTH + _VALUE_LABEL_WIDTH, -1)
     suffix.add_css_class("uvr-scale-suffix")
 
@@ -265,7 +268,7 @@ def _make_scale_row(
 
     scale = Gtk.Scale(orientation=Gtk.Orientation.HORIZONTAL)
     scale.set_draw_value(False)
-    scale.set_hexpand(False)
+    scale.set_hexpand(True)
     scale.set_halign(Gtk.Align.FILL)
     scale.set_size_request(_SCALE_WIDTH, -1)
     suffix.append(scale)

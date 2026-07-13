@@ -17,7 +17,7 @@ from ..help_text import (
     SELECT_INPUT_FILES_HINT,
     SELECT_OUTPUT_FOLDER_HINT,
 )
-from ..hints import set_tooltip
+from ..hints import set_icon_button_a11y, set_tooltip
 from ..markup import set_row_subtitle, set_row_title
 from ..shared_settings import (
     INPUT_FILES_WARN,
@@ -134,7 +134,7 @@ class InputFilesRow(Adw.ExpanderRow):
             set_row_subtitle(row, path)
             row.set_tooltip_text(path)
             remove = Gtk.Button(icon_name="window-close-symbolic", valign=Gtk.Align.CENTER)
-            set_tooltip(remove, REMOVE_FROM_LIST_HINT)
+            set_icon_button_a11y(remove, f"{REMOVE_FROM_LIST_HINT}: {os.path.basename(path)}")
             remove.add_css_class("flat")
             remove.connect("clicked", self._on_remove_clicked, path)
             row.add_suffix(remove)

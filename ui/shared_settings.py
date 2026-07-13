@@ -12,12 +12,28 @@ import os
 from dataclasses import dataclass, replace
 from typing import Iterable, Optional, Protocol, Sequence
 
-from bundled.constants import SAMPLE_MODE_CHECKBOX, WAV
+from bundled.constants import WAV
 
 from .widgets.rows import set_combo_value
 
 INPUT_FILES_WARN = 100
 INPUT_FILES_MAX = 500
+
+#: Stable title for the sample-mode switch row (the duration lives in the
+#: subtitle so the title stays constant for scanability and screen readers).
+SAMPLE_MODE_TITLE = "Sample mode"
+
+
+def sample_mode_subtitle(duration: int) -> str:
+    """Subtitle describing how much audio sample mode processes."""
+    return f"Process only the first {int(duration)} s"
+
+
+def apply_sample_mode_label(sample_row, duration: int) -> None:
+    """Set the stable title + duration subtitle on a sample-mode switch row."""
+    sample_row.set_title(SAMPLE_MODE_TITLE)
+    if hasattr(sample_row, "set_subtitle"):
+        sample_row.set_subtitle(sample_mode_subtitle(duration))
 
 _REASON_OUTPUT_MISSING = "Choose an output folder"
 _REASON_OUTPUT_STALE = "Output folder no longer exists — select a new folder"
@@ -126,6 +142,8 @@ class _SwitchRow(Protocol):
 class _SampleModeRow(Protocol):
     def set_title(self, title: str) -> None: ...
 
+    def set_subtitle(self, subtitle: str) -> None: ...
+
     def set_active(self, active: bool) -> None: ...
 
 
@@ -184,7 +202,7 @@ def apply_shared_file_options(
     if gpu_row is not None:
         gpu_row.set_active(options.is_gpu_conversion)
     if sample_row is not None:
-        sample_row.set_title(SAMPLE_MODE_CHECKBOX(options.sample_duration))
+        apply_sample_mode_label(sample_row, options.sample_duration)
         sample_row.set_active(options.model_sample_mode)
 
     return options

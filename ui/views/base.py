@@ -136,7 +136,10 @@ class MethodView:
         # columns when the method or the window width changes.
         self.groups = []
 
-        self.group = Adw.PreferencesGroup(title=self.title)
+        # No group title: the method combo directly above already names the
+        # architecture (e.g. "MDX-Net"), so a per-arch header here was redundant
+        # chrome. The group's first row ("Model") labels the content.
+        self.group = Adw.PreferencesGroup()
         self.groups.append(self.group)
 
         self.model_row = make_combo_row("Model", [CHOOSE_MODEL], icon_name="applications-science-symbolic")
@@ -585,7 +588,13 @@ class MethodView:
     def _build_secondary_section(self) -> None:
         repo = self.context.repo
         settings = self.settings
-        self.secondary_group = Adw.PreferencesGroup(title="Secondary, pre-process and vocal-split models")
+        # "Extra models" is a titled group holding the secondary, pre-process
+        # and vocal-split selectors as sibling expander rows (each collapsed by
+        # default). Per the GNOME HIG these expanders live directly in the group
+        # rather than nested inside another expander: nesting expander rows adds
+        # indentation levels that read as confusing, so the section stays one
+        # level deep (group -> expander -> rows).
+        self.secondary_group = Adw.PreferencesGroup(title="Extra models")
         group = self.secondary_group
 
         # Secondary models (one selector + scale per stem pair).

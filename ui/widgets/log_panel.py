@@ -14,7 +14,7 @@ from core.debug_log import debug
 from ..hints import set_icon_button_a11y
 from .console import ConsoleView
 
-_PANEL_WIDTH = 520
+_PANEL_WIDTH = 360
 # Layout constants below mirror ``resources/style.css``. Used when the panel has
 # not been allocated yet and :meth:`Gtk.Widget.measure` is not meaningful.
 #: Log body height ↔ ``.uvr-log-body { min-height }``.
@@ -162,6 +162,7 @@ class LogPanel(Gtk.Box):
         self._stop_button.add_css_class("destructive-action")
         self._stop_button.set_sensitive(False)
         self._stop_button.set_valign(Gtk.Align.CENTER)
+        set_icon_button_a11y(self._stop_button, "Stop processing")
         action_row.append(self._stop_button)
 
         body.append(action_row)
