@@ -270,7 +270,7 @@ class MainWindow(Adw.ApplicationWindow):
         menu = Gio.Menu()
         tools = Gio.Menu()
         tools.append("View / Verify Inputs", "win.view_inputs")
-        tools.append("Model options…", "win.model_options")
+        tools.append("Model options", "win.model_options")
         tools.append("Download Center", "win.download")
         tools.append("Error Log", "win.error_log")
         menu.append_section(None, tools)

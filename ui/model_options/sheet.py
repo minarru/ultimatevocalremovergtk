@@ -86,10 +86,6 @@ class ModelOptionsSheet:
         # Header: left-aligned title + centered tab switcher (like Download Center).
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
-        title = Gtk.Label(label="Model options", xalign=0.0)
-        title.set_halign(Gtk.Align.START)
-        title.add_css_class("title-4")
-        header.pack_start(title)
         header.set_title_widget(self._switcher)
         toolbar.add_top_bar(header)
 
