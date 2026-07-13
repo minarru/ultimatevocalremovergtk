@@ -93,6 +93,26 @@ class MdxArchDispatchTests(unittest.TestCase):
         )
         self.assertEqual(model.__class__.__name__, "BSRoformer")
 
+    def test_bs_roformer_ignores_training_only_yaml_keys(self) -> None:
+        from ml.bs_roformer import DEFAULT_FREQS_PER_BANDS
+
+        config = ConfigDict(
+            {
+                "model": {
+                    "dim": 64,
+                    "depth": 1,
+                    "freqs_per_bands": DEFAULT_FREQS_PER_BANDS,
+                    "skip_connection": False,
+                    "use_torch_checkpoint": False,
+                },
+                "audio": {"sample_rate": 44100, "hop_length": 512},
+                "training": {"instruments": ["Vocals"]},
+                "inference": {"batch_size": 1, "dim_t": 256},
+            }
+        )
+        model = _build_mdx_c_model(config)
+        self.assertEqual(model.__class__.__name__, "BSRoformer")
+
     def test_bs_roformer_preserves_input_length(self) -> None:
         import torch
 

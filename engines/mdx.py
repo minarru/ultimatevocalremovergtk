@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import gc
 import gzip
+import inspect
 import math
 import os
 from pathlib import Path
@@ -61,11 +62,20 @@ def _mdx_c_hop_length(config) -> int:
     raise ValueError('MDX-C config is missing hop_length / hop_size.')
 
 
+def _filter_init_kwargs(model_cls, cfg) -> dict:
+    """Drop YAML keys that are not accepted by a model class ``__init__``."""
+    params = inspect.signature(model_cls.__init__).parameters
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return dict(cfg)
+    allowed = {name for name in params if name != 'self'}
+    return {key: cfg[key] for key in cfg if key in allowed}
+
+
 def _build_mdx_c_model(config):
     if getattr(config, 'cls', None) == 'Bandit':
         from ml.bandit import Bandit
 
-        kwargs = dict(config.kwargs)
+        kwargs = _filter_init_kwargs(Bandit, config.kwargs)
         if 'fs' not in kwargs and hasattr(config.audio, 'sample_rate'):
             kwargs['fs'] = int(config.audio.sample_rate)
         return Bandit(**kwargs)
@@ -75,17 +85,17 @@ def _build_mdx_c_model(config):
         raise ValueError('Unknown MDX-C architecture in configuration.')
 
     if 'num_bands' in model_cfg:
-        return MelBandRoformer(**model_cfg)
+        return MelBandRoformer(**_filter_init_kwargs(MelBandRoformer, model_cfg))
     if 'freqs_per_bands' in model_cfg:
-        return BSRoformer(**model_cfg)
+        return BSRoformer(**_filter_init_kwargs(BSRoformer, model_cfg))
     if 'band_SR' in model_cfg or 'sources' in model_cfg:
         from ml.scnet import SCNet
 
-        return SCNet(**model_cfg)
+        return SCNet(**_filter_init_kwargs(SCNet, model_cfg))
     if 'band_specs' in model_cfg:
         from ml.bandit import MultiMaskMultiSourceBandSplitRNN
 
-        return MultiMaskMultiSourceBandSplitRNN(**model_cfg)
+        return MultiMaskMultiSourceBandSplitRNN(**_filter_init_kwargs(MultiMaskMultiSourceBandSplitRNN, model_cfg))
     raise ValueError('Unknown MDX-C architecture in configuration.')
 
 class SeperateMDX(SeperateAttributes):        
