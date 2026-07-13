@@ -44,7 +44,13 @@ from . import APP_TITLE
 from .audio_tools import AudioToolsPage
 from .context import AppContext
 from .ensemble import EnsemblePage
-from .help_text import MAIN_MENU_HINT, VIEW_INPUTS_BUTTON_HINT
+from .help_text import (
+    MAIN_MENU_HINT,
+    MODEL_OPTIONS_BUTTON_HINT,
+    MODEL_OPTIONS_ROW_HINT,
+    VIEW_INPUTS_BUTTON_HINT,
+)
+from .model_options import OPEN_CONTEXT_AUDIO_TOOLS, OPEN_CONTEXT_ENSEMBLE, OPEN_CONTEXT_SEPARATION, open_model_options_sheet
 from .hints import (
     HelpHintManager,
     OUTPUT_FORMAT_HINT,
@@ -171,6 +177,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._columns_ready = False
         self._syncing_method_combo = False
         self._options_page = None
+        self._model_options_sheet = None
 
         page = self._build_content()
         self.log_panel = LogPanel(
@@ -263,6 +270,7 @@ class MainWindow(Adw.ApplicationWindow):
         menu = Gio.Menu()
         tools = Gio.Menu()
         tools.append("View / Verify Inputs", "win.view_inputs")
+        tools.append("Model options…", "win.model_options")
         tools.append("Download Center", "win.download")
         tools.append("Error Log", "win.error_log")
         menu.append_section(None, tools)
@@ -280,6 +288,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.files_group = self._build_files_group()
         self.method_group = self._build_method_group()
         self.shared_group = self._build_shared_group()
+        self.model_options_group = self._build_model_options_group()
 
         # Separation page: two side-by-side columns when wide, collapsed to one
         # when narrow (the breakpoint in ``__init__`` flips this box and every
@@ -360,12 +369,10 @@ class MainWindow(Adw.ApplicationWindow):
         method changes. Groups are removed from their current column and
         re-appended so the layout reflects ``self._current_view``.
 
-        The split is balanced to keep the two columns close in height: the left
-        column holds Files -> Method -> Basic options and ends with the short
-        collapsed Advanced expander, while the right column runs Save stems ->
-        Processing (the user-preferred top order) and ends with the collapsed
-        "Extra models" group. This keeps the common path on the left and the
-        advanced/rarely-used controls on the right.
+        The split keeps the common path on the left (Files, method, model,
+        basic options, model-options entry) and the run/output path on the right
+        (Save stems, Processing). Advanced and extra-model controls live in the
+        model-options sheet instead of inline expanders.
         """
         for column in (self._col_start, self._col_end):
             child = column.get_first_child()
@@ -380,10 +387,9 @@ class MainWindow(Adw.ApplicationWindow):
         view = self._current_view
         if view is not None:
             self._col_start.append(view.group)
-            self._col_start.append(view.advanced_group)
+            self._col_start.append(self.model_options_group)
             self._col_end.append(view.stem_group)
             self._col_end.append(self.shared_group)
-            self._col_end.append(view.secondary_group)
         else:
             self._col_end.append(self.shared_group)
 
@@ -503,6 +509,19 @@ class MainWindow(Adw.ApplicationWindow):
         group.add(self.method_row)
         return group
 
+    def _build_model_options_group(self) -> Adw.PreferencesGroup:
+        group = Adw.PreferencesGroup()
+        self.model_options_row = Adw.ActionRow(
+            title="Model options…",
+            subtitle="Batch size, secondary models, and more",
+            activatable=True,
+        )
+        self.model_options_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        self.model_options_row.connect("activated", lambda *_: self._open_model_options())
+        set_tooltip(self.model_options_row, MODEL_OPTIONS_ROW_HINT)
+        group.add(self.model_options_row)
+        return group
+
     def _build_shared_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Processing")
 
@@ -535,6 +554,7 @@ class MainWindow(Adw.ApplicationWindow):
             "updates": self._on_updates,
             "error_log": self._on_error_log,
             "view_inputs": self._on_view_inputs,
+            "model_options": self._on_model_options,
             "start": self._on_start_action,
             "stop": self._on_stop_action,
             "shortcuts": self._on_shortcuts,
@@ -553,6 +573,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._hint_manager.register(self.format_row, OUTPUT_FORMAT_HINT)
         self._hint_manager.register(self.input_row, INPUT_FOLDER_ENTRY_HELP)
         self._hint_manager.register(self.output_row, OUTPUT_FOLDER_ENTRY_HELP)
+        self._hint_manager.register(self.model_options_row, MODEL_OPTIONS_ROW_HINT)
         from .help_text import PROGRESS_ETA_HINT
 
         self._hint_manager.register(self.log_panel._progress_label, PROGRESS_ETA_HINT)
@@ -854,6 +875,37 @@ class MainWindow(Adw.ApplicationWindow):
         from .inputs import open_view_inputs
 
         open_view_inputs(self, self.context, on_inputs_changed=self._on_external_inputs_changed)
+
+    def _on_model_options(self, _action: Gio.SimpleAction, _param) -> None:
+        self._open_model_options()
+
+    def _open_model_options(self, *, initial_stack: Optional[str] = None, context: Optional[str] = None) -> None:
+        tab = self.content_stack.get_visible_child_name()
+        if context is None:
+            if tab == "ensemble":
+                context = OPEN_CONTEXT_ENSEMBLE
+            elif tab == "audio_tools":
+                context = OPEN_CONTEXT_AUDIO_TOOLS
+            else:
+                context = OPEN_CONTEXT_SEPARATION
+
+        selected_models = (
+            self.settings.get("selected_models") or []
+            if context == OPEN_CONTEXT_ENSEMBLE
+            else []
+        )
+        self._model_options_sheet = open_model_options_sheet(
+            self,
+            views=self._views,
+            views_by_stack=self._views_by_stack,
+            settings=self.settings,
+            on_toast=self.toast,
+            context=context,
+            active_method_key=self._active_view().method_key,
+            selected_models=selected_models,
+            initial_stack=initial_stack,
+            existing=self._model_options_sheet,
+        )
 
     def _on_shortcuts(self, _action: Gio.SimpleAction, _param) -> None:
         from .shortcuts import present_shortcuts

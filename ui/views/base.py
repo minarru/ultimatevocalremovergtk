@@ -150,11 +150,9 @@ class MethodView:
 
         self.build_options(self.group)
 
-        # Advanced options (collapsed by default to keep the basic panel clean).
+        # Advanced / inference options: standard preferences list without an expander.
         self.advanced_group = Adw.PreferencesGroup()
-        self.advanced_expander = Adw.ExpanderRow(title="Advanced options")
-        self.advanced_group.add(self.advanced_expander)
-        self.build_advanced(self.advanced_expander)
+        self.build_advanced(self.advanced_group)
         self.groups.append(self.advanced_group)
 
         # Secondary / pre-process / vocal-splitter model selection
@@ -499,8 +497,8 @@ class MethodView:
     def build_options(self, group: Adw.PreferencesGroup) -> None:
         """Add the basic method-specific rows to ``group``."""
 
-    def build_advanced(self, expander: "Adw.ExpanderRow") -> None:
-        """Add advanced method-specific rows to the "Advanced options" expander."""
+    def build_advanced(self, group: Adw.PreferencesGroup) -> None:
+        """Add advanced method-specific rows to the model-options inference group."""
 
     def build_stem_options(self, group: Adw.PreferencesGroup) -> None:
         """Append method-specific rows to the shared "Save stems" group."""
@@ -516,11 +514,11 @@ class MethodView:
             self.settings.set(key, get_combo_value(row))
 
     def add_advanced_combo(self, key, title, values, subtitle=None, hint=None):
-        return self.add_option_combo(self.advanced_expander, key, title, values, subtitle, hint=hint)
+        return self.add_option_combo(self.advanced_group, key, title, values, subtitle, hint=hint)
 
     def add_advanced_scale(self, key, title, *, values=None, lower=None, upper=None, step=1, digits=0, subtitle=None, hint=None, store_float=False):
         return self.add_option_scale(
-            self.advanced_expander,
+            self.advanced_group,
             key,
             title,
             values=values,
@@ -534,7 +532,7 @@ class MethodView:
         )
 
     def add_advanced_switch(self, key, title, subtitle=None, hint=None):
-        return self.add_option_switch(self.advanced_expander, key, title, subtitle, hint=hint)
+        return self.add_option_switch(self.advanced_group, key, title, subtitle, hint=hint)
 
     # -- Secondary / pre-process / vocal-splitter model selection --------------
 

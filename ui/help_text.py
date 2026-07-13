@@ -602,6 +602,9 @@ FLAC_BIT_DEPTH_HINT = "Bit depth used when saving FLAC output (16-bit or 24-bit)
 
 MAIN_MENU_HINT = "Main menu"
 VIEW_INPUTS_BUTTON_HINT = "View or verify selected inputs"
+MODEL_OPTIONS_BUTTON_HINT = "Advanced and extra-model options for VR, MDX-Net, and Demucs"
+MODEL_OPTIONS_ROW_HINT = "Open batch size, secondary models, vocal split, and other per-architecture options"
+ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT = "Tune inference options for the selected ensemble member architectures"
 
 # --- Preferences / download / inputs ---
 

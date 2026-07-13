@@ -59,6 +59,7 @@ from ..dialogs.utils import present_modal_dialog, set_dialog_content
 from ..spacing import inset_md
 from ..help_text import (
     ENSEMBLE_DELETE_BUTTON_HINT,
+    ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT,
     ENSEMBLE_SAVE_BUTTON_HINT,
     ENSEMBLE_SAVED_PRESET_HINT,
     VIEW_INPUTS_BUTTON_HINT,
@@ -205,6 +206,16 @@ class EnsemblePage:
         self.models_trigger_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
         self.models_trigger_row.connect("activated", self._open_models_dialog)
         group.add(self.models_trigger_row)
+
+        self.member_options_row = Adw.ActionRow(
+            title="Member model options…",
+            subtitle="Batch size, secondary models, and more",
+            activatable=True,
+        )
+        set_tooltip(self.member_options_row, ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT)
+        self.member_options_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        self.member_options_row.connect("activated", self._open_member_model_options)
+        group.add(self.member_options_row)
 
         return group
 
@@ -643,6 +654,13 @@ class EnsemblePage:
         preselected = self._selected_model_tags() if self._model_checks else (self.settings.get("selected_models") or [])
         self._rebuild_model_list(preselected)
         present_modal_dialog(self.models_dialog, self.window)
+
+    def _open_member_model_options(self, *_args) -> None:
+        from ..model_options import OPEN_CONTEXT_ENSEMBLE, stack_name_for_member_tag
+
+        selected = self._selected_model_tags() or self.settings.get("selected_models") or []
+        initial_stack = stack_name_for_member_tag(selected[-1]) if selected else None
+        self.window._open_model_options(context=OPEN_CONTEXT_ENSEMBLE, initial_stack=initial_stack)
 
     def _on_models_dialog_closed(self, *_args) -> None:
         self._update_models_summary()

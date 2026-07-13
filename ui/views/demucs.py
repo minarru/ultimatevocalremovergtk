@@ -82,7 +82,7 @@ class DemucsView(MethodView):
         if self.save_stems.mode == "demucs":
             self.save_stems.persist_to_settings()
 
-    def build_advanced(self, expander):
+    def build_advanced(self, group):
         self.add_advanced_scale(
             "shifts",
             "Shifts",

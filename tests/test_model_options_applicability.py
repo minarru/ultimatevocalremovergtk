@@ -1,0 +1,95 @@
+"""Tests for model-options sheet applicability rules."""
+
+import unittest
+
+from bundled.constants import DEMUCS_ARCH_TYPE, ENSEMBLE_PARTITION, MDX_ARCH_TYPE, VR_ARCH_PM, VR_ARCH_TYPE
+
+from ui.model_options.applicability import (
+    OPEN_CONTEXT_AUDIO_TOOLS,
+    OPEN_CONTEXT_ENSEMBLE,
+    OPEN_CONTEXT_SEPARATION,
+    applicable_stack_names,
+    applicability_subtitle,
+    default_stack_name,
+    member_arch_counts,
+    non_applicable_toast,
+    stack_name_for_member_tag,
+    stack_name_for_method_key,
+)
+
+
+class ModelOptionsApplicabilityTests(unittest.TestCase):
+    def test_stack_name_for_method_key_vr_aliases(self) -> None:
+        self.assertEqual(stack_name_for_method_key(VR_ARCH_PM), "vr")
+        self.assertEqual(stack_name_for_method_key(VR_ARCH_TYPE), "vr")
+
+    def test_stack_name_for_member_tag(self) -> None:
+        tag = f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}My Model"
+        self.assertEqual(stack_name_for_member_tag(tag), "mdx")
+
+    def test_separation_applicable_only_active_method(self) -> None:
+        applicable = applicable_stack_names(
+            OPEN_CONTEXT_SEPARATION,
+            active_method_key=MDX_ARCH_TYPE,
+            selected_models=[],
+        )
+        self.assertEqual(applicable, {"mdx"})
+
+    def test_ensemble_applicable_from_members(self) -> None:
+        selected = [
+            f"{VR_ARCH_TYPE}{ENSEMBLE_PARTITION}A",
+            f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}B",
+            f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}C",
+        ]
+        applicable = applicable_stack_names(
+            OPEN_CONTEXT_ENSEMBLE,
+            active_method_key=VR_ARCH_PM,
+            selected_models=selected,
+        )
+        self.assertEqual(applicable, {"vr", "mdx"})
+        self.assertEqual(member_arch_counts(selected), {"vr": 1, "mdx": 2, "demucs": 0})
+
+    def test_audio_tools_never_applicable(self) -> None:
+        applicable = applicable_stack_names(
+            OPEN_CONTEXT_AUDIO_TOOLS,
+            active_method_key=MDX_ARCH_TYPE,
+            selected_models=[f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}X"],
+        )
+        self.assertEqual(applicable, set())
+
+    def test_default_stack_prefers_active_separation_method(self) -> None:
+        views_by_stack = {"vr": object(), "mdx": object(), "demucs": object()}
+        stack = default_stack_name(
+            OPEN_CONTEXT_SEPARATION,
+            active_method_key=DEMUCS_ARCH_TYPE,
+            selected_models=[],
+            views_by_stack=views_by_stack,
+        )
+        self.assertEqual(stack, "demucs")
+
+    def test_subtitle_ensemble_member_count(self) -> None:
+        selected = [
+            f"{VR_ARCH_TYPE}{ENSEMBLE_PARTITION}A",
+            f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}B",
+        ]
+        text = applicability_subtitle(
+            OPEN_CONTEXT_ENSEMBLE,
+            "mdx",
+            active_method_key=VR_ARCH_PM,
+            selected_models=selected,
+        )
+        self.assertIn("1 of 2", text)
+
+    def test_non_applicable_toast_separation(self) -> None:
+        message = non_applicable_toast(
+            OPEN_CONTEXT_SEPARATION,
+            "vr",
+            active_method_key=MDX_ARCH_TYPE,
+            selected_models=[],
+        )
+        self.assertIsNotNone(message)
+        self.assertIn("VR", message)
+
+
+if __name__ == "__main__":
+    unittest.main()

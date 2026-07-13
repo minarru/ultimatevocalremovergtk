@@ -174,14 +174,14 @@ class MDXView(MethodView):
         if overlap_value is not None:
             self.settings.set(self._overlap_key(), overlap_value)
 
-    def build_advanced(self, expander):
+    def build_advanced(self, group):
         self.add_advanced_scale("mdx_batch_size", "Batch size", values=BATCH_SIZE, hint=BATCH_SIZE_HELP)
-        self.add_option_combo(expander, "denoise_option", "Denoise", MDX_DENOISE_OPTION, hint=IS_DENOISE_HELP)
-        self.add_option_scale(expander, "compensate", "Volume compensation", values=VOL_COMPENSATION, hint=COMPENSATE_HELP)
-        self.add_option_switch(expander, "is_match_frequency_pitch", "Match frequency cut-off", hint=IS_FREQUENCY_MATCH_HELP)
-        self.add_option_switch(expander, "is_invert_spec", "Spectral inversion", hint=IS_INVERT_SPEC_HELP)
-        self.add_option_switch(expander, "is_mdx_c_seg_def", "MDX-C default segment size", hint=IS_SEGMENT_DEFAULT_HELP)
-        self.add_option_switch(expander, "is_mdx23_combine_stems", "Combine stems (MDX23C)", hint=IS_DEMUCS_COMBINE_STEMS_HELP)
+        self.add_option_combo(group, "denoise_option", "Denoise", MDX_DENOISE_OPTION, hint=IS_DENOISE_HELP)
+        self.add_option_scale(group, "compensate", "Volume compensation", values=VOL_COMPENSATION, hint=COMPENSATE_HELP)
+        self.add_option_switch(group, "is_match_frequency_pitch", "Match frequency cut-off", hint=IS_FREQUENCY_MATCH_HELP)
+        self.add_option_switch(group, "is_invert_spec", "Spectral inversion", hint=IS_INVERT_SPEC_HELP)
+        self.add_option_switch(group, "is_mdx_c_seg_def", "MDX-C default segment size", hint=IS_SEGMENT_DEFAULT_HELP)
+        self.add_option_switch(group, "is_mdx23_combine_stems", "Combine stems (MDX23C)", hint=IS_DEMUCS_COMBINE_STEMS_HELP)
         self.add_advanced_switch(
             "is_mdx_include_stem_complement",
             "Include complement (No X)",

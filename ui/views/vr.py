@@ -45,7 +45,7 @@ class VRView(MethodView):
             hint=AGGRESSION_SETTING_HELP,
         )
 
-    def build_advanced(self, expander):
+    def build_advanced(self, group):
         self.add_advanced_scale("batch_size", "Batch size", values=BATCH_SIZE, hint=BATCH_SIZE_HELP)
         self.add_advanced_scale("crop_size", "Crop size", values=VR_CROP, hint=CROP_SIZE_HELP)
         self.add_advanced_scale(
