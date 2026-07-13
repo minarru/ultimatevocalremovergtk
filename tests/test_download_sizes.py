@@ -49,7 +49,16 @@ class DescribeDownloadSizeTests(unittest.TestCase):
         with patch("core.download_sizes.fetch_remote_size", return_value=None):
             with tempfile.TemporaryDirectory() as tmp:
                 jobs = [("https://example.com/a.onnx", os.path.join(tmp, "a.onnx"))]
-                self.assertEqual(describe_download_size(jobs), "Size unknown · 1 file")
+                self.assertEqual(describe_download_size(jobs), "Size unknown")
+
+    def test_multi_file_shows_aggregate_size_only(self) -> None:
+        with patch("core.download_sizes.fetch_remote_size", return_value=50 * 1024 * 1024):
+            with tempfile.TemporaryDirectory() as tmp:
+                jobs = [
+                    ("https://example.com/a.ckpt", os.path.join(tmp, "a.ckpt")),
+                    ("https://example.com/b.yaml", os.path.join(tmp, "b.yaml")),
+                ]
+                self.assertEqual(describe_download_size(jobs), "100 MB")
 
 
 class PrefetchRemoteSizesTests(unittest.TestCase):

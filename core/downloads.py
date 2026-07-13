@@ -438,12 +438,9 @@ class DownloadManager:
             any_downloaded = True
             if on_info:
                 if total_bytes is not None:
-                    on_info(
-                        f"Downloading {index + 1}/{total} "
-                        f"({format_download_size(total_bytes)} total)"
-                    )
+                    on_info(f"Downloading ({format_download_size(total_bytes)})")
                 else:
-                    on_info(f"Downloading {index + 1}/{total}...")
+                    on_info("Downloading…")
             self._download_file(url, save_path, index, total, on_progress, stop_event, on_info)
             if stop_event is not None and stop_event.is_set():
                 # Remove the partial file so a retry restarts cleanly.
@@ -545,8 +542,7 @@ class DownloadManager:
                         if on_info and file_total:
                             info_text = (
                                 f"{format_download_size(downloaded)} / "
-                                f"{format_download_size(file_total)} "
-                                f"(file {index + 1}/{total})"
+                                f"{format_download_size(file_total)}"
                             )
                             now = time.monotonic()
                             if info_text != last_info_text and (

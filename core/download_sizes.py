@@ -210,16 +210,10 @@ def describe_download_size(
     if not pending:
         return "Already downloaded"
 
-    total, file_count, known = estimate_jobs_size(pending)
-    if file_count == 1:
-        file_label = "1 file"
-    else:
-        file_label = f"{file_count} files"
+    total, _file_count, known = estimate_jobs_size(pending)
 
     if total is None:
-        return f"Size unknown · {file_label}"
-    if known < file_count:
-        return f"At least {format_download_size(total)} · {file_label}"
-    if file_count == 1:
-        return format_download_size(total)
-    return f"{format_download_size(total)} total · {file_label}"
+        return "Size unknown"
+    if known < len(pending):
+        return f"At least {format_download_size(total)}"
+    return format_download_size(total)
