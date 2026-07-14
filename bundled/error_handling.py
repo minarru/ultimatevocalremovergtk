@@ -78,12 +78,15 @@ ERROR_MAPPER = {
                         ('The application was not able to process the given audiofile. Please convert the audiofile to another format and try again.'),
 }
 
-def error_text(process_method, exception):
+def error_text(process_method, exception, context: str = ""):
                  
     traceback_text = ''.join(traceback.format_tb(exception.__traceback__))
     message = f'{type(exception).__name__}: "{exception}"\nTraceback Error: "\n{traceback_text}"\n'
     error_message = f'\n\nRaw Error Details:\n\n{message}\nError Time Stamp [{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}]\n'
     process = f'Last Error Received:\n\nProcess: {process_method}\n\n'
+    context_block = ""
+    if context:
+        context_block = f"{context.rstrip()}\n\n"
 
     for error_type, full_text in ERROR_MAPPER.items():
         if error_type in message:
@@ -92,7 +95,7 @@ def error_text(process_method, exception):
     else:
         final_message = (CONTACT_DEV) 
         
-    return f"{process}{final_message}{error_message}"
+    return f"{process}{context_block}{final_message}{error_message}"
 
 def error_dialouge(exception):
     

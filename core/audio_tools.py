@@ -40,6 +40,7 @@ from bundled.constants import (
 )
 
 from .audio_io import resolve_wav_type_set, save_format
+from .error_context import snapshot_worker_file
 from .job_runner import JobCallbacks
 from .run_control import ProcessStopped, check_stopped, pausable_callback
 from .inference_cleanup import release_inference_memory as _release_inference_resources
@@ -409,6 +410,7 @@ class AudioToolRunner:
             raise ValueError(f'File not found: "{os.path.basename(missing[0])}"')
 
         audio_file_base = _basename_no_ext(inputs[0])
+        snapshot_worker_file(inputs[0])
         for num, path in enumerate(inputs, start=1):
             callbacks.console(f'File {num} "{os.path.basename(path)}"\n')
         callbacks.console("\nProcessing...\n")
@@ -428,6 +430,7 @@ class AudioToolRunner:
         total = len(inputs)
         for file_num, audio_file in enumerate(inputs, start=1):
             check_stopped(self)
+            snapshot_worker_file(audio_file)
             base_text = f"File {file_num}/{total} "
             if not os.path.isfile(audio_file):
                 callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n')
@@ -453,6 +456,7 @@ class AudioToolRunner:
         total = len(inputs)
         for file_num, audio_file in enumerate(inputs, start=1):
             check_stopped(self)
+            snapshot_worker_file(audio_file)
             base_text = f"File {file_num}/{total} "
             if not os.path.isfile(audio_file):
                 callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n')
@@ -484,6 +488,7 @@ class AudioToolRunner:
         for file_num, pair in enumerate(dual_pairs, start=1):
             check_stopped(self)
             file_one, file_two = pair[0], pair[1]
+            snapshot_worker_file(file_one)
             base_text = f"Pair {file_num}/{total} "
 
             if not os.path.isfile(file_one) or not os.path.isfile(file_two):

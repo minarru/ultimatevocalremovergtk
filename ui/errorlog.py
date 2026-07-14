@@ -43,7 +43,7 @@ def set_error_log(text: str) -> None:
         debug("error", f"set_error_log {preview_text(text, max_len=120)!r}")
 
 
-def log_error(process_method: str, exception: BaseException) -> str:
+def log_error(process_method: str, exception: BaseException, *, context: str = "") -> str:
     """Format ``exception`` like UVR and store it as the current error log.
 
     Thread-safe so worker threads can record errors directly; returns the
@@ -51,7 +51,11 @@ def log_error(process_method: str, exception: BaseException) -> str:
     """
     from core.debug_log import debug, preview_text
 
-    formatted = error_text(process_method, exception)
+    if not context:
+        from core.error_context import format_error_context
+
+        context = format_error_context()
+    formatted = error_text(process_method, exception, context=context)
     set_error_log(formatted)
     debug(
         "error",

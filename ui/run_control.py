@@ -139,8 +139,12 @@ class RunController:
 
     def begin_run(self, target) -> None:
         """Shared bookkeeping when any run target starts its worker."""
+        from core.error_context import clear_run_error_context, set_run_error_context
+
         mark_run_start()
         reset_progress_log()
+        clear_run_error_context()
+        set_run_error_context(**self._snapshot_error_context(target))
         debug("ui", f"begin_run target={type(target).__name__} engines_imported={engines_imported()} warm={warm_status()}")
         self._running_target = target
         self._run_output_dir = self._window.settings.get("export_path") or ""
@@ -428,12 +432,18 @@ class RunController:
         clear_run_start()
 
     def _on_stopped(self) -> None:
+        from core.error_context import clear_run_error_context
+
         debug("ui", "on_stopped cooperative worker stop")
+        clear_run_error_context()
         self._cleanup_target = None
         self._finish_run_ui(stopped=True)
 
     def _on_complete(self) -> None:
+        from core.error_context import clear_run_error_context
+
         debug("ui", f"on_complete output_dir={os.path.basename(self._run_output_dir or '') or '(none)'}")
+        clear_run_error_context()
         self._window._stop_pulse()
         self._set_running(False)
         self._window.log_panel.set_progress_fraction(1.0)
@@ -533,6 +543,57 @@ class RunController:
             exception=exc,
             formatted_log=formatted,
             on_copied=lambda: window._toast("Report copied to clipboard"),
+        )
+
+    def _snapshot_error_context(self, target) -> dict:
+        from core.error_context import (
+            build_audio_tools_context,
+            build_ensemble_context,
+            build_separation_context,
+        )
+
+        window = self._window
+        settings = window.settings
+        repo = window.context.repo
+        tab = window.content_stack.get_visible_child_name()
+
+        if tab == "ensemble":
+            page = getattr(window, "_ensemble_page", None)
+            paths = list(page.input_row.paths) if page is not None else []
+            return build_ensemble_context(settings, paths)
+        if tab == "audio_tools":
+            from bundled.constants import (
+                APOLLO_RESTORE,
+                CHANGE_PITCH,
+                MANUAL_ENSEMBLE,
+                TIME_STRETCH,
+            )
+            from core.audio_tools import DUAL_INPUT_TOOLS
+
+            page = getattr(window, "_audio_tools_page", None)
+            tool = page._current_tool() if page is not None else "Audio Tools"
+            paths: list[str] = []
+            if page is not None:
+                if tool in DUAL_INPUT_TOOLS:
+                    paths = [os.path.basename(left) for left, _right in page._dual_pairs]
+                else:
+                    page_rows = {
+                        MANUAL_ENSEMBLE: page.me_inputs_row,
+                        TIME_STRETCH: page.ts_inputs_row,
+                        CHANGE_PITCH: page.ps_inputs_row,
+                        APOLLO_RESTORE: page.ap_inputs_row,
+                    }
+                    row = page_rows.get(tool)
+                    if row is not None:
+                        paths = list(row.paths)
+            return build_audio_tools_context(settings, tool, paths)
+
+        method_key = window._active_view().method_key
+        return build_separation_context(
+            settings,
+            repo,
+            list(window.input_row.paths),
+            method_key,
         )
 
     def _set_running(self, running: bool) -> None:

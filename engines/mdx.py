@@ -51,8 +51,13 @@ def _load_torch_checkpoint(path: str):
 
 def _mdx_c_hop_length(config) -> int:
     model_cfg = getattr(config, 'model', None)
-    if model_cfg is not None and hasattr(model_cfg, 'hop_size'):
-        return int(model_cfg.hop_size)
+    if model_cfg is not None:
+        if hasattr(model_cfg, 'hop_size'):
+            return int(model_cfg.hop_size)
+        # Roformer yaml files often keep a legacy audio.hop_length that does not
+        # match the model STFT hop used for chunk sizing (see chunk_size).
+        if hasattr(model_cfg, 'stft_hop_length'):
+            return int(model_cfg.stft_hop_length)
     kwargs = getattr(config, 'kwargs', None)
     if kwargs is not None and hasattr(kwargs, 'hop_length'):
         return int(kwargs.hop_length)
@@ -85,7 +90,9 @@ def _build_mdx_c_model(config):
         raise ValueError('Unknown MDX-C architecture in configuration.')
 
     if 'num_bands' in model_cfg:
-        return MelBandRoformer(**_filter_init_kwargs(MelBandRoformer, model_cfg))
+        kwargs = _filter_init_kwargs(MelBandRoformer, model_cfg)
+        kwargs['match_input_audio_length'] = True
+        return MelBandRoformer(**kwargs)
     if 'freqs_per_bands' in model_cfg:
         return BSRoformer(**_filter_init_kwargs(BSRoformer, model_cfg))
     if 'band_SR' in model_cfg or 'sources' in model_cfg:
@@ -448,10 +455,17 @@ class SeperateMDXC(SeperateAttributes):
         if self.is_secondary_model or self.is_pre_proc_model:
             return secondary_sources
 
-    def overlap_add(self, result, x, l, j, start, window):
+    def overlap_add(self, result, counter, x, l, j, start, window):
         if self.device == 'mps' or self.is_other_gpu:
             x = x.to(self.device)
-        result[..., start:start + l] += x[j][..., :l] * window[..., :l]
+        end = min(start + l, result.shape[-1])
+        chunk_len = end - start
+        if chunk_len <= 0:
+            return result
+        contrib = x[j][..., :chunk_len]
+        window_chunk = window[..., :chunk_len]
+        result[..., start:end] += contrib * window_chunk
+        counter[..., start:end] += window_chunk
         return result
 
     def demix(self, mix):
@@ -631,8 +645,7 @@ class SeperateMDXC(SeperateAttributes):
                                 elif i >= mix.shape[1]:
                                     window = window_finish
 
-                                result = self.overlap_add(result, x, l, j, start, window)
-                                counter[..., start:start + l] += window[..., :l]
+                                result = self.overlap_add(result, counter, x, l, j, start, window)
 
                             batch_data = []
                             batch_locations = []
