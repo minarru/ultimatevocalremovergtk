@@ -11,6 +11,45 @@ from ml.vr_network.model_param_init import ModelParameters
 
 cpu = torch.device('cpu')
 
+
+def _band_res_type(bp):
+    if OPERATING_SYSTEM == 'Darwin':
+        return 'polyphase' if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else bp['res_type']
+    return bp['res_type']
+
+
+def multiband_waves_to_spectrogram(
+    X_wave,
+    mp,
+    *,
+    is_v51_model=False,
+    use_model_res_type=True,
+):
+    """Convert a multiband wave dict into a combined VR spectrogram."""
+    X_spec_s = {}
+    bands_n = len(mp.param['band'])
+    for d in range(bands_n, 0, -1):
+        bp = mp.param['band'][d]
+        wav_resolution = _band_res_type(bp) if use_model_res_type else 'polyphase'
+        if d != bands_n:
+            X_wave[d] = librosa.resample(
+                X_wave[d + 1],
+                orig_sr=mp.param['band'][d + 1]['sr'],
+                target_sr=bp['sr'],
+                res_type=wav_resolution,
+            )
+        X_spec_s[d] = spec_utils.wave_to_spectrogram(
+            X_wave[d],
+            bp['hl'],
+            bp['n_fft'],
+            mp,
+            band=d,
+            is_v51_model=is_v51_model,
+        )
+    X_spec = spec_utils.combine_spectrograms(X_spec_s, mp, is_v51_model=is_v51_model)
+    return X_spec, X_spec_s, X_wave
+
+
 def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverber=False, model_path=None):
     batchsize = 4
 
@@ -93,32 +132,12 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
 
 def loading_mix(X, mp):
 
-    X_wave, X_spec_s = {}, {}
-    
     bands_n = len(mp.param['band'])
-    
-    for d in range(bands_n, 0, -1):        
-        bp = mp.param['band'][d]
-    
-        if OPERATING_SYSTEM == 'Darwin':
-            wav_resolution = 'polyphase' if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else bp['res_type']
-        else:
-            wav_resolution = 'polyphase'#bp['res_type']
-    
-        if d == bands_n: # high-end band
-            X_wave[d] = X
-
-        else: # lower bands
-            X_wave[d] = librosa.resample(X_wave[d+1], orig_sr=mp.param['band'][d+1]['sr'], target_sr=bp['sr'], res_type=wav_resolution)
-            
-        X_spec_s[d] = spec_utils.wave_to_spectrogram(X_wave[d], bp['hl'], bp['n_fft'], mp, band=d, is_v51_model=True)
-        
-        # if d == bands_n and is_high_end_process:
-        #     input_high_end_h = (bp['n_fft']//2 - bp['crop_stop']) + (mp.param['pre_filter_stop'] - mp.param['pre_filter_start'])
-        #     input_high_end = X_spec_s[d][:, bp['n_fft']//2-input_high_end_h:bp['n_fft']//2, :]
-
-    X_spec = spec_utils.combine_spectrograms(X_spec_s, mp)
-    
-    del X_wave, X_spec_s
-
+    X_wave = {bands_n: X}
+    X_spec, _, _ = multiband_waves_to_spectrogram(
+        X_wave,
+        mp,
+        is_v51_model=True,
+        use_model_res_type=False,
+    )
     return X_spec

@@ -13,9 +13,13 @@ def gather_sources(primary_stem_name, secondary_stem_name, secondary_sources: di
     source_secondary = False
 
     for key, value in secondary_sources.items():
-        if key in primary_stem_name:
+        if key == primary_stem_name:
             source_primary = value
-        if key in secondary_stem_name:
+        elif key == secondary_stem_name:
+            source_secondary = value
+        elif source_primary is False and key in primary_stem_name:
+            source_primary = value
+        elif source_secondary is False and key in secondary_stem_name:
             source_secondary = value
 
     return source_primary, source_secondary

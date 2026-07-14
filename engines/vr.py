@@ -29,7 +29,7 @@ from .base import SeperateAttributes
 from .gpu_cache import clear_gpu_cache
 from .mix import prepare_mix, gather_sources, rerun_mp3
 from .export import save_format
-from .vr_utils import vr_denoiser, loading_mix
+from .vr_utils import vr_denoiser, loading_mix, multiband_waves_to_spectrogram
 
 if TYPE_CHECKING:
     from core.model_data import ModelData
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 cpu = torch.device('cpu')
 warnings.filterwarnings("ignore")
 
-from ml.vr_network import nets
+from ml.vr_network import nets, nets_new
 from ml.vr_network.model_param_init import ModelParameters
 from core.paths import VR_PARAM_DIR
 from .orchestration import process_secondary_model
@@ -116,43 +116,45 @@ class SeperateVR(SeperateAttributes):
             
     def loading_mix(self):
 
-        X_wave, X_spec_s = {}, {}
-        
+        self.check_run_control()
         bands_n = len(self.mp.param['band'])
-        
         audio_file = spec_utils.write_array_to_mem(self.audio_file, subtype=self.wav_type_set)
         is_mp3 = audio_file.endswith('.mp3') if isinstance(audio_file, str) else False
+        bp = self.mp.param['band'][bands_n]
+        wav_resolution = (
+            'polyphase' if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else bp['res_type']
+        ) if OPERATING_SYSTEM == 'Darwin' else bp['res_type']
+        X_wave = {
+            bands_n: librosa.load(
+                audio_file,
+                sr=bp['sr'],
+                mono=False,
+                dtype=np.float32,
+                res_type=wav_resolution,
+            )[0],
+        }
+        if not np.any(X_wave[bands_n]) and is_mp3:
+            X_wave[bands_n] = rerun_mp3(audio_file, bp['sr'])
+        if X_wave[bands_n].ndim == 1:
+            X_wave[bands_n] = np.asarray([X_wave[bands_n], X_wave[bands_n]])
 
-        for d in range(bands_n, 0, -1):        
-            self.check_run_control()
-            bp = self.mp.param['band'][d]
-        
-            if OPERATING_SYSTEM == 'Darwin':
-                wav_resolution = 'polyphase' if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else bp['res_type']
-            else:
-                wav_resolution = bp['res_type']
-        
-            if d == bands_n: # high-end band
-                X_wave[d], _ = librosa.load(audio_file, sr=bp['sr'], mono=False, dtype=np.float32, res_type=wav_resolution)
-                X_spec_s[d] = spec_utils.wave_to_spectrogram(X_wave[d], bp['hl'], bp['n_fft'], self.mp, band=d, is_v51_model=self.is_vr_51_model)
-                    
-                if not np.any(X_wave[d]) and is_mp3:
-                    X_wave[d] = rerun_mp3(audio_file, bp['sr'])
+        X_spec, X_spec_s, _ = multiband_waves_to_spectrogram(
+            X_wave,
+            self.mp,
+            is_v51_model=self.is_vr_51_model,
+            use_model_res_type=True,
+        )
 
-                if X_wave[d].ndim == 1:
-                    X_wave[d] = np.asarray([X_wave[d], X_wave[d]])
-            else: # lower bands
-                X_wave[d] = librosa.resample(X_wave[d+1], orig_sr=self.mp.param['band'][d+1]['sr'], target_sr=bp['sr'], res_type=wav_resolution)
-                X_spec_s[d] = spec_utils.wave_to_spectrogram(X_wave[d], bp['hl'], bp['n_fft'], self.mp, band=d, is_v51_model=self.is_vr_51_model)
+        if self.high_end_process != 'none':
+            bp = self.mp.param['band'][bands_n]
+            self.input_high_end_h = (bp['n_fft'] // 2 - bp['crop_stop']) + (
+                self.mp.param['pre_filter_stop'] - self.mp.param['pre_filter_start']
+            )
+            self.input_high_end = X_spec_s[bands_n][
+                :, bp['n_fft'] // 2 - self.input_high_end_h:bp['n_fft'] // 2, :
+            ]
 
-            if d == bands_n and self.high_end_process != 'none':
-                self.input_high_end_h = (bp['n_fft']//2 - bp['crop_stop']) + (self.mp.param['pre_filter_stop'] - self.mp.param['pre_filter_start'])
-                self.input_high_end = X_spec_s[d][:, bp['n_fft']//2-self.input_high_end_h:bp['n_fft']//2, :]
-
-        X_spec = spec_utils.combine_spectrograms(X_spec_s, self.mp, is_v51_model=self.is_vr_51_model)
-        
         del X_wave, X_spec_s, audio_file
-
         return X_spec
 
     def inference_vr(self, X_spec, device, aggressiveness):
@@ -171,6 +173,7 @@ class SeperateVR(SeperateAttributes):
                 with torch.no_grad():
                     mask = []
                     for i in range(0, patches, self.batch_size):
+                        self.check_run_control()
                         self.progress_value += 1
                         if self.progress_value >= total_iterations:
                             self.progress_value = total_iterations

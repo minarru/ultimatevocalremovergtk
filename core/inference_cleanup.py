@@ -48,6 +48,19 @@ def release_separator(separator: Any) -> None:
         return
     model_name = getattr(separator, "model_basename", None)
     debug("cleanup", f"release_separator model={model_name!r}")
+    release_torch_model(getattr(separator, "demucs", None))
+    if hasattr(separator, "demucs"):
+        separator.demucs = None
+    ort_session = getattr(separator, "_ort_session", None)
+    if ort_session is not None:
+        close = getattr(ort_session, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:  # noqa: BLE001 - best-effort teardown
+                pass
+        if hasattr(separator, "_ort_session"):
+            separator._ort_session = None
     release_torch_model(getattr(separator, "model_run", None))
     separator.model_run = None
     release_torch_model(getattr(separator, "_inference_model", None))

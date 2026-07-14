@@ -251,6 +251,7 @@ class SeperateDemucs(SeperateAttributes):
             mix_infer = mix 
             
             with torch.no_grad():
+                self.check_run_control()
                 if self.demucs_version == DEMUCS_V1:
                     sources = apply_model_v1(self.demucs, 
                                                 mix_infer.to(self.device), 
