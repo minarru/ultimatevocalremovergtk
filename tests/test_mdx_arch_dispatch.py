@@ -132,6 +132,51 @@ class MdxArchDispatchTests(unittest.TestCase):
             output = model(audio)
         self.assertEqual(output.shape[-1], length)
 
+    def test_melband_hop_length_prefers_stft_hop_length(self) -> None:
+        config = ConfigDict(
+            {
+                "model": {
+                    "num_bands": 60,
+                    "stft_hop_length": 441,
+                },
+                "audio": {"hop_length": 411},
+                "inference": {"dim_t": 1101},
+            }
+        )
+        self.assertEqual(_mdx_c_hop_length(config), 441)
+        self.assertEqual(_mdx_c_hop_length(config) * (config.inference.dim_t - 1), 485100)
+
+    def test_melband_inference_build_matches_input_length(self) -> None:
+        import torch
+
+        config = ConfigDict(
+            {
+                "model": {
+                    "dim": 64,
+                    "depth": 1,
+                    "stereo": True,
+                    "num_stems": 1,
+                    "num_bands": 60,
+                    "dim_head": 32,
+                    "heads": 4,
+                    "stft_n_fft": 2048,
+                    "stft_hop_length": 441,
+                    "stft_win_length": 2048,
+                    "sample_rate": 44100,
+                },
+                "audio": {"hop_length": 411},
+                "training": {"instruments": ["Vocals"], "target_instrument": "Vocals"},
+                "inference": {"batch_size": 1, "dim_t": 1101},
+            }
+        )
+        model = _build_mdx_c_model(config)
+        self.assertTrue(model.match_input_audio_length)
+        length = _mdx_c_hop_length(config) * (config.inference.dim_t - 1)
+        audio = torch.randn(1, 2, length)
+        with torch.inference_mode():
+            output = model(audio)
+        self.assertEqual(output.shape[-1], length)
+
 
 if __name__ == "__main__":
     unittest.main()

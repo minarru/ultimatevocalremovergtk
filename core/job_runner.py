@@ -47,6 +47,7 @@ from .settings import SettingsModel
 from .run_control import ProcessStopped, check_stopped, pausable_callback
 from .run_estimate import combine_progress_local_step
 from .debug_log import debug, debug_elapsed, next_seq, preview_text, set_correlation_seq, verbose
+from .error_context import snapshot_worker_file
 from .model_display import display_name_for_model
 from .separate_import import import_separate_engines
 from .inference_cleanup import (
@@ -371,6 +372,7 @@ class JobRunner:
 
                 for current_model in models:
                     check_stopped(self)
+                    snapshot_worker_file(audio_file, current_model)
                     self._process_iteration()
                     write_to_console = pausable_callback(
                         self,
@@ -518,6 +520,7 @@ class JobRunner:
 
                 for current_model_num, current_model in enumerate(models, start=1):
                     check_stopped(self)
+                    snapshot_worker_file(audio_file, current_model)
                     self._process_iteration()
                     callbacks.console(
                         f"Ensemble Mode - {_model_output_label(current_model)} - "

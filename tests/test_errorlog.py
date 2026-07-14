@@ -14,6 +14,9 @@ class ErrorLogTests(unittest.TestCase):
         set_error_log("")
 
     def test_log_error_stores_formatted_text(self) -> None:
+        from core.error_context import clear_run_error_context
+
+        clear_run_error_context()
         exc = KeyError("'All Stems'")
         formatted = log_error("MDX-Net", exc)
         self.assertIn("MDX-Net", formatted)
