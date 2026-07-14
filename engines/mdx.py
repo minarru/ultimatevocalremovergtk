@@ -105,6 +105,80 @@ def _build_mdx_c_model(config):
         return MultiMaskMultiSourceBandSplitRNN(**_filter_init_kwargs(MultiMaskMultiSourceBandSplitRNN, model_cfg))
     raise ValueError('Unknown MDX-C architecture in configuration.')
 
+def _mdx_pitch_reference_sr() -> int:
+    return 441000
+
+
+def mdx_export_routing_flags(
+    *,
+    stem_list,
+    selected_stems,
+    mdxnet_stem_select,
+    is_secondary_model,
+    is_pre_proc_model,
+    is_ensemble_master,
+    is_4_stem_ensemble,
+    is_primary_stem_only,
+    is_secondary_stem_only,
+    include_stem_complement,
+):
+    is_full_selection = (not selected_stems) or set(selected_stems) == set(stem_list)
+    is_all_stems = mdxnet_stem_select == ALL_STEMS
+    is_not_ensemble_master = not is_ensemble_master
+    is_not_single_stem = not len(stem_list) <= 2
+    is_not_secondary_model = not is_secondary_model
+    is_ensemble_4_stem = is_4_stem_ensemble and is_not_single_stem
+    is_vocals_quick_export = (
+        len(selected_stems) == 1
+        and selected_stems[0] == VOCAL_STEM
+        and (is_primary_stem_only or is_secondary_stem_only)
+    )
+    is_complement_export = (
+        len(selected_stems) == 1
+        and bool(include_stem_complement)
+        and not is_vocals_quick_export
+    )
+    is_native_pick = (
+        len(selected_stems) == 1
+        and is_not_ensemble_master
+        and is_not_single_stem
+        and is_not_secondary_model
+        and not is_pre_proc_model
+        and not is_vocals_quick_export
+        and not is_complement_export
+    )
+    is_stem_subset = (
+        len(selected_stems) >= 2 and not is_full_selection
+        and is_not_ensemble_master and is_not_single_stem
+        and is_not_secondary_model and not is_pre_proc_model
+    )
+    multi_stem_export = (
+        (is_all_stems and is_not_ensemble_master and is_not_single_stem and is_not_secondary_model)
+        or (is_ensemble_4_stem and not is_pre_proc_model)
+        or is_stem_subset
+        or is_native_pick
+    )
+    return {
+        "is_complement_export": is_complement_export,
+        "is_native_pick": is_native_pick,
+        "is_stem_subset": is_stem_subset,
+        "multi_stem_export": multi_stem_export,
+        "export_stems": (
+            [stem for stem in stem_list if stem in selected_stems]
+            if (is_stem_subset or is_native_pick)
+            else stem_list
+        ),
+    }
+
+
+def derive_mdx_complement(native_source, mix, *, invert_spec=False, match_frequency_pitch=None):
+    raw_mix = match_frequency_pitch(mix) if match_frequency_pitch is not None else mix
+    shaped = spec_utils.to_shape(native_source, raw_mix.shape)
+    if invert_spec:
+        return spec_utils.invert_stem(raw_mix, shaped)
+    return (-shaped.T + raw_mix.T)
+
+
 class SeperateMDX(SeperateAttributes):        
 
     def seperate(self):
@@ -127,8 +201,8 @@ class SeperateMDX(SeperateAttributes):
                     self.model_run = separator.load_from_checkpoint(self.model_path).to(self.device).eval()
                 else:
                     if self.mdx_segment_size == self.dim_t and not self.is_other_gpu:
-                        ort_ = ort.InferenceSession(self.model_path, providers=self.run_type)
-                        self.model_run = lambda spek:ort_.run(None, {'input': spek.cpu().numpy()})[0]
+                        self._ort_session = ort.InferenceSession(self.model_path, providers=self.run_type)
+                        self.model_run = lambda spek: self._ort_session.run(None, {'input': spek.cpu().numpy()})[0]
                     else:
                         self.model_run = ConvertModel(load(self.model_path))
                         self.model_run.to(self.device).eval()
@@ -342,46 +416,42 @@ class SeperateMDXC(SeperateAttributes):
         # stem the model does not produce is simply ignored. An empty selection
         # (or one covering every stem) keeps the original "all stems" behaviour.
         selected_stems = [stem for stem in stem_list if stem in (self.mdxnet_stems_selected or [])]
-        is_full_selection = (not selected_stems) or set(selected_stems) == set(stem_list)
         if not self.is_secondary_model and len(selected_stems) == 1:
             self.mdxnet_stem_select = selected_stems[0]
 
-        is_all_stems = self.mdxnet_stem_select == ALL_STEMS
-        is_not_ensemble_master = not self.process_data['is_ensemble_master']
-        is_not_single_stem = not len(stem_list) <= 2
-        is_not_secondary_model = not self.is_secondary_model
-        is_ensemble_4_stem = self.is_4_stem_ensemble and is_not_single_stem
+        routing = mdx_export_routing_flags(
+            stem_list=stem_list,
+            selected_stems=selected_stems,
+            mdxnet_stem_select=self.mdxnet_stem_select,
+            is_secondary_model=self.is_secondary_model,
+            is_pre_proc_model=self.is_pre_proc_model,
+            is_ensemble_master=self.process_data['is_ensemble_master'],
+            is_4_stem_ensemble=self.is_4_stem_ensemble,
+            is_primary_stem_only=self.is_primary_stem_only,
+            is_secondary_stem_only=self.is_secondary_stem_only,
+            include_stem_complement=getattr(self, "is_mdx_include_stem_complement", False),
+        )
+        is_complement_export = routing["is_complement_export"]
 
-        is_vocals_quick_export = (
-            len(selected_stems) == 1
-            and selected_stems[0] == VOCAL_STEM
-            and (self.is_primary_stem_only or self.is_secondary_stem_only)
-        )
-        is_complement_export = (
-            len(selected_stems) == 1
-            and bool(getattr(self, "is_mdx_include_stem_complement", False))
-            and not is_vocals_quick_export
-        )
-        is_native_pick = (
-            len(selected_stems) == 1
-            and is_not_ensemble_master
-            and is_not_single_stem
-            and is_not_secondary_model
-            and not self.is_pre_proc_model
-            and not is_vocals_quick_export
-            and not is_complement_export
-        )
-
-        # A "true subset": 2..n-1 of the multi-stem model's stems, only on the
-        # main (non-secondary, non-pre-proc, non-ensemble) export path.
-        is_stem_subset = (
-            len(selected_stems) >= 2 and not is_full_selection
-            and is_not_ensemble_master and is_not_single_stem
-            and is_not_secondary_model and not self.is_pre_proc_model
-        )
-
-        if (is_all_stems and is_not_ensemble_master and is_not_single_stem and is_not_secondary_model) or is_ensemble_4_stem and not self.is_pre_proc_model or is_stem_subset or is_native_pick:
-            export_stems = [stem for stem in stem_list if stem in selected_stems] if (is_stem_subset or is_native_pick) else stem_list
+        if is_complement_export:
+            stem = selected_stems[0]
+            complement_stem = secondary_stem(stem)
+            self.begin_save_phase(2)
+            native_path = os.path.join(self.export_path, f'{self.audio_file_base}_({stem}).wav')
+            native_source = sources[stem].T
+            self.write_audio(native_path, native_source, samplerate, stem_name=stem)
+            complement_source = derive_mdx_complement(
+                sources[stem],
+                mix,
+                invert_spec=self.is_invert_spec,
+                match_frequency_pitch=self.match_frequency_pitch,
+            )
+            complement_path = os.path.join(self.export_path, f'{self.audio_file_base}_({complement_stem}).wav')
+            self.write_audio(complement_path, complement_source, samplerate, stem_name=complement_stem)
+            if stem == VOCAL_STEM and not self.is_sec_bv_rebalance:
+                self.process_vocal_split_chain({VOCAL_STEM: stem})
+        elif routing["multi_stem_export"]:
+            export_stems = routing["export_stems"]
             self.begin_save_phase(len(export_stems))
             for stem in export_stems:
                 primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({stem}).wav')
@@ -391,18 +461,19 @@ class SeperateMDXC(SeperateAttributes):
                 if stem == VOCAL_STEM and not self.is_sec_bv_rebalance:
                     self.process_vocal_split_chain({VOCAL_STEM:stem})
         else:
+            working_sources = dict(sources) if isinstance(sources, dict) else sources
             if len(stem_list) == 1:
-                source_primary = sources  
+                source_primary = working_sources  
             else:
                 if self.is_multi_stem_ensemble or len(stem_list) == 2:
                     stem_key = stem_list[0]
                 elif self.mdxnet_stem_select == ALL_STEMS:
                     stem_key = self.primary_stem
-                elif isinstance(sources, dict) and self.mdxnet_stem_select in sources:
+                elif isinstance(working_sources, dict) and self.mdxnet_stem_select in working_sources:
                     stem_key = self.mdxnet_stem_select
                 else:
                     stem_key = self.primary_stem
-                source_primary = sources[stem_key]
+                source_primary = working_sources[stem_key]
             if self.is_secondary_model_activated and self.secondary_model:
                 self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, 
                                                                                                          self.process_data, 
@@ -418,17 +489,17 @@ class SeperateMDXC(SeperateAttributes):
                     
                     if self.is_mdx_combine_stems and len(stem_list) >= 2:
                         if len(stem_list) == 2:
-                            secondary_source = sources[self.secondary_stem]
+                            secondary_source = working_sources[self.secondary_stem]
                         else:
-                            sources.pop(self.primary_stem)
-                            next_stem = next(iter(sources))
-                            secondary_source = np.zeros_like(sources[next_stem])
-                            for v in sources.values():
+                            working_sources.pop(self.primary_stem, None)
+                            next_stem = next(iter(working_sources))
+                            secondary_source = np.zeros_like(working_sources[next_stem])
+                            for v in working_sources.values():
                                 secondary_source += v
                                 
                         self.secondary_source = secondary_source.T 
-                    elif isinstance(sources, dict) and self.secondary_stem in sources:
-                        self.secondary_source = sources[self.secondary_stem].T
+                    elif isinstance(working_sources, dict) and self.secondary_stem in working_sources:
+                        self.secondary_source = working_sources[self.secondary_stem].T
                     else:
                         self.secondary_source, raw_mix = source_primary, self.match_frequency_pitch(mix)
                         self.secondary_source = spec_utils.to_shape(self.secondary_source, raw_mix.shape)
@@ -479,7 +550,7 @@ class SeperateMDXC(SeperateAttributes):
             model=self.model_basename,
             roformer=False,
         ):
-            sr_pitched = 441000
+            sr_pitched = _mdx_pitch_reference_sr()
             org_mix = mix
             if self.is_pitch_change:
                 mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
@@ -560,7 +631,7 @@ class SeperateMDXC(SeperateAttributes):
             engine="SeperateMDXC",
             model=self.model_basename,
         ):
-            sr_pitched = 441000
+            sr_pitched = _mdx_pitch_reference_sr()
             org_mix = mix
             if self.is_pitch_change:
                 mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)

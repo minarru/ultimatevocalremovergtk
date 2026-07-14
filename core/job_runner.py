@@ -232,11 +232,9 @@ class JobRunner:
 
     def _cached_source_callback(self, process_method, model_name=None):
         mapper = self._mapper_for(process_method)
-        model, sources = None, None
-        for key, value in mapper.items():
-            if model_name in key:
-                model, sources = key, value
-        return model, sources
+        if model_name and model_name in mapper:
+            return model_name, mapper[model_name]
+        return None, None
 
     def _cached_model_source_holder(self, process_method, sources, model_name=None):
         mapper = self._mapper_for(process_method)

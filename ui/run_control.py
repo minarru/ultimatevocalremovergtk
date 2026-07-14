@@ -302,6 +302,9 @@ class RunController:
         """Pause run-driven widget updates while a confirm dialog is on screen."""
         self._run_ui_suspended = True
         self._window._stop_pulse()
+        target = self._running_target
+        if target is not None and hasattr(target, "pause"):
+            target.pause()
 
     def _resume_run_ui_after_dialog(self) -> None:
         debug("ui", f"resume_run_ui after dialog dismissed running={self.is_running()}")
