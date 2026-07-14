@@ -704,6 +704,7 @@ DEFAULT_DATA = {
         'notify_process_failed': True,
         'notify_download_complete': True,
         'notify_download_failed': True,
+        'is_cleanup_ensemble_temps': True,
 }
 
 NEW_LINES = "\n\n"

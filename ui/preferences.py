@@ -319,6 +319,22 @@ class PreferencesDialog(Adw.PreferencesDialog):
         sample_group.add(self.sample_duration_row)
         page.add(sample_group)
 
+        maintenance_group = Adw.PreferencesGroup(
+            title="Maintenance",
+            description="Automatic cleanup of leftover working files",
+        )
+        self.cleanup_ensemble_temps_row = Adw.SwitchRow(
+            title="Clean up old ensemble temp folders",
+            subtitle="On startup, remove folders in ensemble_temps older than 7 days",
+        )
+        self.cleanup_ensemble_temps_row.connect(
+            "notify::active",
+            self._on_bool_changed,
+            "is_cleanup_ensemble_temps",
+        )
+        maintenance_group.add(self.cleanup_ensemble_temps_row)
+        page.add(maintenance_group)
+
         return page
 
     # -- Load settings into widgets ---------------------------------------------
@@ -351,6 +367,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
                 set_combo_value(self.device_row, DEFAULT)
 
             self.sample_mode_row.set_active(bool(self.settings.get("model_sample_mode")))
+            self.cleanup_ensemble_temps_row.set_active(
+                bool(self.settings.get("is_cleanup_ensemble_temps", True))
+            )
             duration = self.settings.get("model_sample_mode_duration", 30)
             try:
                 duration = float(duration)

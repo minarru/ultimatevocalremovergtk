@@ -54,6 +54,7 @@ class UVRApplication(Adw.Application):
         # Provision the writable runtime-data tree (and seed bundled assets when
         # running from a read-only install) before any window/model work.
         ensure_data_dir()
+        self._cleanup_stale_ensemble_temps()
         from core.external_tools import log_external_tools_once
 
         log_external_tools_once()
@@ -76,6 +77,20 @@ class UVRApplication(Adw.Application):
         if window is None or param is None:
             return
         open_folder_in_file_manager(window, param.get_string())
+
+    @staticmethod
+    def _cleanup_stale_ensemble_temps() -> None:
+        from core.debug_log import debug, enabled
+        from core.paths import cleanup_stale_ensemble_temps
+
+        try:
+            settings = SettingsModel.load()
+            cleanup_enabled = bool(settings.get("is_cleanup_ensemble_temps", True))
+        except Exception:
+            cleanup_enabled = True
+        removed = cleanup_stale_ensemble_temps(cleanup_enabled)
+        if removed and enabled("settings"):
+            debug("settings", f"cleanup_stale_ensemble_temps removed={removed}")
 
     @staticmethod
     def _apply_saved_color_scheme():
