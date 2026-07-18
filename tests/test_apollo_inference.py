@@ -25,6 +25,23 @@ class ApolloWindowTests(unittest.TestCase):
         window = _getWindowingArray(64, 0)
         self.assertTrue(torch.allclose(window, torch.ones_like(window)))
 
+    def test_clamped_fade_keeps_start_finish_ramps(self) -> None:
+        """Unclamped fade overrides must not wipe the window to all ones."""
+        import ml.apollo_inference as apollo
+
+        C = 100
+        fade_size = max(0, min(int(3 * 44100), C // 2))  # clamps to 50
+        middle = apollo._getWindowingArray(C, fade_size)
+        start = middle.clone()
+        finish = middle.clone()
+        if fade_size > 0:
+            start[:fade_size] = 1
+            finish[-fade_size:] = 1
+        self.assertAlmostEqual(float(start[0]), 1.0, places=5)
+        self.assertLess(float(start[-1]), 1.0)
+        self.assertAlmostEqual(float(finish[-1]), 1.0, places=5)
+        self.assertLess(float(finish[0]), 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()

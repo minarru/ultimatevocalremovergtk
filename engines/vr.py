@@ -28,7 +28,12 @@ import ml.mdxnet as MdxnetSet
 from .base import SeperateAttributes
 from .mix import prepare_mix, gather_sources, rerun_mp3
 from .export import save_format
-from .vr_utils import vr_denoiser, loading_mix, multiband_waves_to_spectrogram
+from .vr_utils import (
+    loading_mix,
+    multiband_waves_to_spectrogram,
+    scale_mag_pad_inplace,
+    vr_denoiser,
+)
 
 if TYPE_CHECKING:
     from core.model_data import ModelData
@@ -61,7 +66,11 @@ class SeperateVR(SeperateAttributes):
                 model_size = math.ceil(os.stat(self.model_path).st_size / 1024)
                 nn_arch_size = min(nn_arch_sizes, key=lambda x:abs(x-model_size))
 
-                from engines.model_weight_cache import get_weight_cache, weight_cache_key
+                from engines.model_weight_cache import (
+                    get_weight_cache,
+                    materialize_module,
+                    weight_cache_key,
+                )
 
                 key = weight_cache_key(
                     "vr",
@@ -74,7 +83,7 @@ class SeperateVR(SeperateAttributes):
                 self._weight_cache_key = key
                 cached = get_weight_cache().get(key)
                 if cached and cached.module is not None:
-                    self.model_run = cached.module
+                    self.model_run = materialize_module(cached.module, device)
                     if nn_arch_size in vr_5_1_models or self.is_vr_51_model:
                         self.is_vr_51_model = True
                 elif nn_arch_size in vr_5_1_models or self.is_vr_51_model:
@@ -242,14 +251,14 @@ class SeperateVR(SeperateAttributes):
             n_frame = X_mag.shape[2]
             pad_l, pad_r, roi_size = spec_utils.make_padding(n_frame, self.window_size, self.model_run.offset)
             X_mag_pad = np.pad(X_mag, ((0, 0), (0, 0), (pad_l, pad_r)), mode='constant')
-            X_mag_pad /= X_mag_pad.max()
+            scale_mag_pad_inplace(X_mag_pad)
             mask = _execute(X_mag_pad, roi_size)
             
             if self.is_tta:
                 pad_l += roi_size // 2
                 pad_r += roi_size // 2
                 X_mag_pad = np.pad(X_mag, ((0, 0), (0, 0), (pad_l, pad_r)), mode='constant')
-                X_mag_pad /= X_mag_pad.max()
+                scale_mag_pad_inplace(X_mag_pad)
                 mask_tta = _execute(X_mag_pad, roi_size)
                 mask_tta = mask_tta[:, :, roi_size // 2:]
                 mask = (mask[:, :, :n_frame] + mask_tta[:, :, :n_frame]) * 0.5

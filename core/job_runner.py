@@ -660,7 +660,7 @@ def _capture_separator_stem_arrays(seperator) -> dict:
         return {}
     import numpy as np
 
-    return {name: np.asarray(arr) for name, arr in buffers.items()}
+    return {name: np.array(arr, copy=True) for name, arr in buffers.items()}
 
 
 def _extract_stems(audio_file_base: str, export_path: str) -> List[str]:

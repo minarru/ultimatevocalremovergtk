@@ -414,9 +414,16 @@ class SeperateAttributes:
                 return
 
             if is_not_ensemble and self.save_format == FLAC:
-                flac_path = path[:-4] + ".flac" if path.endswith(".wav") else f"{path}.flac"
-                subtype = "PCM_24" if self.flac_bit_set == "24-bit" else "PCM_16"
-                sf.write(flac_path, source, samplerate, format="FLAC", subtype=subtype)
+                from core.audio_io import flac_subtype, replace_audio_suffix
+
+                flac_path = replace_audio_suffix(path, ".flac")
+                sf.write(
+                    flac_path,
+                    source,
+                    samplerate,
+                    format="FLAC",
+                    subtype=flac_subtype(self.flac_bit_set),
+                )
                 return
 
             sf.write(path, source, samplerate, subtype=self.wav_type_set)

@@ -5,6 +5,8 @@ import torch
 from torch import nn
 
 from ml.bandit_bsrnn._spectral import _SpectralComponent
+from ml.bandit_spectral import mps_compatible_module_device
+from ml.stft_device import needs_cpu_stft
 from .utils import (
     BarkBandsplitSpecification, BassBandsplitSpecification,
     DrumBandsplitSpecification,
@@ -176,23 +178,32 @@ class SingleMaskMultiSourceBandSplitBase(
 
     def forward(self, batch):
         audio = batch["audio"]
+        mixture = audio["mixture"]
+        with mps_compatible_module_device(self, mixture) as orig_device:
+            if needs_cpu_stft(orig_device):
+                batch["audio"] = {stem: wav.cpu() for stem, wav in audio.items()}
+                audio = batch["audio"]
 
-        with torch.no_grad():
-            batch["spectrogram"] = {stem: self.stft(audio[stem]) for stem in
-                                    audio}
+            with torch.no_grad():
+                batch["spectrogram"] = {
+                    stem: self.stft(audio[stem]) for stem in audio
+                }
 
-        X = batch["spectrogram"]["mixture"]
-        length = batch["audio"]["mixture"].shape[-1]
+            X = batch["spectrogram"]["mixture"]
+            length = batch["audio"]["mixture"].shape[-1]
 
-        output = {"spectrogram": {}, "audio": {}}
+            output = {"spectrogram": {}, "audio": {}}
 
-        for stem, bsrnn in self.bsrnn.items():
-            S = bsrnn(X)
-            s = self.istft(S, length)
-            output["spectrogram"][stem] = S
-            output["audio"][stem] = s
+            for stem, bsrnn in self.bsrnn.items():
+                S = bsrnn(X)
+                s = self.istft(S, length)
+                if needs_cpu_stft(orig_device):
+                    s = s.to(orig_device)
+                    S = S.to(orig_device)
+                output["spectrogram"][stem] = S
+                output["audio"][stem] = s
 
-        return batch, output
+            return batch, output
 
 
 class MultiMaskMultiSourceBandSplitBase(
@@ -243,19 +254,31 @@ class MultiMaskMultiSourceBandSplitBase(
         # with torch.no_grad():
         audio = batch["audio"]
         cond = batch.get("condition", None)
-        with torch.no_grad():
-            batch["spectrogram"] = {stem: self.stft(audio[stem]) for stem in
-                                    audio}
+        mixture = audio["mixture"]
+        with mps_compatible_module_device(self, mixture) as orig_device:
+            if needs_cpu_stft(orig_device):
+                batch["audio"] = {stem: wav.cpu() for stem, wav in audio.items()}
+                audio = batch["audio"]
+                if cond is not None and hasattr(cond, "cpu"):
+                    cond = cond.cpu()
 
-        X = batch["spectrogram"]["mixture"]
-        length = batch["audio"]["mixture"].shape[-1]
+            with torch.no_grad():
+                batch["spectrogram"] = {
+                    stem: self.stft(audio[stem]) for stem in audio
+                }
 
-        output = self.bsrnn(X, cond=cond)
-        output["audio"] = {}
+            X = batch["spectrogram"]["mixture"]
+            length = batch["audio"]["mixture"].shape[-1]
 
-        for stem, S in output["spectrogram"].items():
-            s = self.istft(S, length)
-            output["audio"][stem] = s
+            output = self.bsrnn(X, cond=cond)
+            output["audio"] = {}
+
+            for stem, S in output["spectrogram"].items():
+                s = self.istft(S, length)
+                if needs_cpu_stft(orig_device):
+                    s = s.to(orig_device)
+                    output["spectrogram"][stem] = S.to(orig_device)
+                output["audio"][stem] = s
 
         return batch, output
 
@@ -305,16 +328,20 @@ class MultiMaskMultiSourceBandSplitBaseSimple(
         self.stems = stems
 
     def forward(self, batch):
-        with torch.no_grad():
-            X = self.stft(batch)
-        length = batch.shape[-1]
-        output = self.bsrnn(X, cond=None)
-        res = []
-        for stem, S in output["spectrogram"].items():
-            s = self.istft(S, length)
-            res.append(s)
-        res = torch.stack(res, dim=1)
-        return res
+        with mps_compatible_module_device(self, batch) as orig_device:
+            wav = batch.cpu() if needs_cpu_stft(orig_device) else batch
+            with torch.no_grad():
+                X = self.stft(wav)
+            length = wav.shape[-1]
+            output = self.bsrnn(X, cond=None)
+            res = []
+            for stem, S in output["spectrogram"].items():
+                s = self.istft(S, length)
+                res.append(s)
+            res = torch.stack(res, dim=1)
+            if needs_cpu_stft(orig_device):
+                res = res.to(orig_device)
+            return res
 
 
 class SingleMaskMultiSourceBandSplitRNN(SingleMaskMultiSourceBandSplitBase):

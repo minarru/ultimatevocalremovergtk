@@ -64,7 +64,12 @@ def restore_process(
     global progress_value
     progress_value = 0
 
-    from engines.model_weight_cache import get_weight_cache, weight_cache_key
+    from engines.model_weight_cache import (
+        get_weight_cache,
+        materialize_module,
+        park_module,
+        weight_cache_key,
+    )
 
     cache = get_weight_cache()
     key = weight_cache_key(
@@ -75,11 +80,11 @@ def restore_process(
     )
     cached = cache.get(key)
     if cached is not None and cached.module is not None:
-        model = cached.module
-        model.to(device)
+        model = materialize_module(cached.module, device)
     else:
         model = models.BaseModel.from_pretrain(ckpt_path, **(extracted_params or {})).to(device)
         cache.put(key, module=model)
+        model = materialize_module(model, device)
 
     def process_chunk(chunk):
         chunk = chunk.unsqueeze(0).to(device)
@@ -106,7 +111,8 @@ def restore_process(
     step_ui = int(step)
 
     fade_sec = 3 if chunk_size >= 3 else chunk_size
-    fade_size = int(fade_sec * samplerate)
+    # Clamp once so start/finish overrides cannot wipe the whole window.
+    fade_size = max(0, min(int(fade_sec * samplerate), C // 2))
     border = C - step
 
     if len(audio_data.shape) == 1:
@@ -117,9 +123,10 @@ def restore_process(
 
     window_middle = _getWindowingArray(C, fade_size)
     window_start = window_middle.clone()
-    window_start[:fade_size] = 1
     window_finish = window_middle.clone()
-    window_finish[-fade_size:] = 1
+    if fade_size > 0:
+        window_start[:fade_size] = 1
+        window_finish[-fade_size:] = 1
 
     result = torch.zeros((1,) + tuple(audio_data.shape), dtype=torch.float32)
     counter = torch.zeros((1,) + tuple(audio_data.shape), dtype=torch.float32)
@@ -161,8 +168,9 @@ def restore_process(
     if audio_data.shape[1] > 2 * border and (border > 0):
         final_output = final_output[..., border:-border]
 
-    # Keep weights in the process LRU; only drop local references.
-    del result, counter, audio_data
+    # Keep weights in the process LRU on CPU; drop local accelerator residency.
+    park_module(model)
+    del result, counter, audio_data, model
     gc.collect()
 
     return final_output
