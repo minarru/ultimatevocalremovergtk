@@ -52,7 +52,7 @@ def weight_cache_key(
 class ModelWeightCache:
     """Small LRU of loaded modules / ORT sessions."""
 
-    def __init__(self, max_entries: int = 2) -> None:
+    def __init__(self, max_entries: int = 4) -> None:
         self.max_entries = max(1, int(max_entries))
         self._items: OrderedDict[tuple, CachedWeights] = OrderedDict()
         self._lock = threading.Lock()
@@ -156,7 +156,7 @@ class ModelWeightCache:
         handle.ort_session = None
 
 
-_CACHE = ModelWeightCache(max_entries=2)
+_CACHE = ModelWeightCache(max_entries=4)
 
 
 def get_weight_cache() -> ModelWeightCache:

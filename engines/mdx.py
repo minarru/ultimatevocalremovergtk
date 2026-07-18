@@ -105,7 +105,7 @@ def _build_mdx_c_model(config):
     raise ValueError('Unknown MDX-C architecture in configuration.')
 
 def _mdx_pitch_reference_sr() -> int:
-    return 441000
+    return 44100
 
 
 def mdx_export_routing_flags(
@@ -626,9 +626,9 @@ class SeperateMDXC(SeperateAttributes):
                 pad_size = hop_size - (mix_shape - chunk_size) % hop_size
                 mix = torch.cat([torch.zeros(2, chunk_size - hop_size), mix, torch.zeros(2, pad_size + chunk_size - hop_size)], 1)
 
-                chunks = mix.unfold(1, chunk_size, hop_size).transpose(0, 1)
-                batches = [chunks[i : i + batch_size] for i in range(0, len(chunks), batch_size)]
-                
+                n_chunks = 1 + (mix.shape[1] - chunk_size) // hop_size
+                n_batches = max(1, (n_chunks + batch_size - 1) // batch_size)
+
                 X = torch.zeros(S, *mix.shape) if S > 1 else torch.zeros_like(mix)
                 X = X.to(self.device)
 
@@ -636,9 +636,18 @@ class SeperateMDXC(SeperateAttributes):
 
                 with torch.no_grad():
                     cnt = 0
-                    for batch in batches:
+                    for start_idx in range(0, n_chunks, batch_size):
                         self.check_run_control()
-                        self.running_inference_progress_bar(len(batches))
+                        self.running_inference_progress_bar(n_batches)
+                        end_idx = min(start_idx + batch_size, n_chunks)
+                        # Hop-index batching avoids materializing mix.unfold(...) for the full track.
+                        batch = torch.stack(
+                            [
+                                mix[:, i * hop_size : i * hop_size + chunk_size]
+                                for i in range(start_idx, end_idx)
+                            ],
+                            dim=0,
+                        )
                         x = model(batch.to(self.device))
                         
                         for w in x:

@@ -664,6 +664,7 @@ class RunController:
         )
         self._schedule_release_inference_memory(
             force_if_alive=True,
+            clear_weight_cache=True,
             on_done=self._finish_exit_cleanup,
         )
 
@@ -700,12 +701,14 @@ class RunController:
         *,
         wait_for_stop: float = 0.0,
         force_if_alive: bool = False,
+        clear_weight_cache: bool = False,
         on_done: Optional[Callable[[], None]] = None,
     ) -> None:
         debug(
             "cleanup",
             "schedule_release_inference_memory "
-            f"wait_for_stop={wait_for_stop} force_if_alive={force_if_alive}",
+            f"wait_for_stop={wait_for_stop} force_if_alive={force_if_alive} "
+            f"clear_weight_cache={clear_weight_cache}",
         )
 
         def worker() -> None:
@@ -713,6 +716,7 @@ class RunController:
                 self._release_inference_memory(
                     wait_for_stop=wait_for_stop,
                     force_if_alive=force_if_alive,
+                    clear_weight_cache=clear_weight_cache,
                 )
             finally:
                 if on_done is not None:
@@ -729,21 +733,25 @@ class RunController:
         *,
         wait_for_stop: float = 0.0,
         force_if_alive: bool = False,
+        clear_weight_cache: bool = False,
     ) -> None:
         debug(
             "cleanup",
-            f"release_inference_memory wait_for_stop={wait_for_stop} force_if_alive={force_if_alive}",
+            f"release_inference_memory wait_for_stop={wait_for_stop} "
+            f"force_if_alive={force_if_alive} clear_weight_cache={clear_weight_cache}",
         )
         window = self._window
         window.context.runner.release_inference_memory(
             wait_for_stop=wait_for_stop,
             force_if_alive=force_if_alive,
+            clear_weight_cache=clear_weight_cache,
         )
         page = getattr(window, "_audio_tools_page", None)
         if page is not None:
             page.runner.release_inference_memory(
                 wait_for_stop=wait_for_stop,
                 force_if_alive=force_if_alive,
+                clear_weight_cache=clear_weight_cache,
             )
 
 

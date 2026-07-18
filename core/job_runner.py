@@ -212,12 +212,14 @@ class JobRunner:
         *,
         wait_for_stop: float = 0.0,
         force_if_alive: bool = False,
+        clear_weight_cache: bool = False,
     ) -> None:
         """Drop cached stems and return GPU memory after a run or halt."""
         _release_inference_resources(
             self,
             wait_for_stop=wait_for_stop,
             force_if_alive=force_if_alive,
+            clear_weight_cache=clear_weight_cache,
         )
 
     # -- Source cache helpers (ported from MainWindow) --------------------------
@@ -304,11 +306,15 @@ class JobRunner:
                 demucs_4_stem.extend(n for n in m.secondary_model_4_stem_model_names_list if n)
         self.all_models = [n for n in primary + secondary + pre_proc + demucs_4_stem if n]
 
-    def _run_seperator(self, seperator) -> None:
+    def _run_seperator(self, seperator):
+        """Run one separator and return captured stem arrays (for ensemble RAM path)."""
         self._active_separator = seperator
         self._last_backend_name = getattr(seperator, "_backend_name", None)
+        stems: dict = {}
         try:
             seperator.seperate()
+            stems = _capture_separator_stem_arrays(seperator)
+            return stems
         finally:
             debug("cleanup", f"_run_seperator finally engine={type(seperator).__name__}")
             release_separator(seperator)
@@ -516,6 +522,8 @@ class JobRunner:
                 )
                 audio_file_base = ""
                 current_model = None
+                # stem_tag -> list of member waveforms for in-memory combine
+                ensemble_stem_arrays: dict = {}
 
                 for current_model_num, current_model in enumerate(models, start=1):
                     check_stopped(self)
@@ -547,6 +555,9 @@ class JobRunner:
                         "list_all_models": self.all_models,
                         "is_ensemble_master": True,
                         "is_4_stem_ensemble": is_4_stem,
+                        "is_save_all_outputs_ensemble": bool(
+                            self.settings.get("is_save_all_outputs_ensemble")
+                        ),
                     }
 
                     if current_model.process_method == VR_ARCH_TYPE:
@@ -563,7 +574,9 @@ class JobRunner:
                         "worker",
                         f"ensemble separate start engine={engine} model={current_model.model_basename!r}",
                     )
-                    self._run_seperator(seperator)
+                    member_stems = self._run_seperator(seperator) or {}
+                    for stem_tag, arr in member_stems.items():
+                        ensemble_stem_arrays.setdefault(stem_tag, []).append(arr)
                     debug("worker", f"ensemble separate done engine={engine}")
                     callbacks.console("\n")
 
@@ -575,10 +588,16 @@ class JobRunner:
 
                 combine_steps: List[tuple] = []
                 if is_4_stem:
-                    for output_stem in _extract_stems(audio_file_base, export_path):
-                        combine_steps.append(
-                            (output_stem, {"is_4_stem": True}),
-                        )
+                    stem_names = [
+                        name
+                        for name, arrs in ensemble_stem_arrays.items()
+                        if len(arrs) > 1
+                    ]
+                    if not stem_names:
+                        stem_names = _extract_stems(audio_file_base, export_path)
+                    combine_steps = [
+                        (output_stem, {"is_4_stem": True}) for output_stem in stem_names
+                    ]
                 else:
                     if not self.settings.get("is_secondary_stem_only"):
                         combine_steps.append((PRIMARY_STEM, {}))
@@ -591,7 +610,11 @@ class JobRunner:
                 combine_end = file_num / max(1, total_files)
                 for combine_idx, (stem_name, kwargs) in enumerate(combine_steps):
                     ensemble.ensemble_outputs(
-                        audio_file_base, export_path, stem_name, **kwargs
+                        audio_file_base,
+                        export_path,
+                        stem_name,
+                        stem_arrays=ensemble_stem_arrays,
+                        **kwargs,
                     )
                     span = max(combine_end - combine_start, 0.0)
                     fraction = combine_start + span * ((combine_idx + 1) / combine_total)
@@ -628,6 +651,16 @@ class JobRunner:
             callbacks.error(exc)
         finally:
             _release_inference_resources(self)
+
+
+def _capture_separator_stem_arrays(seperator) -> dict:
+    """Copy stem waveforms buffered by an ensemble member before release."""
+    buffers = getattr(seperator, "_ensemble_stem_buffers", None) or {}
+    if not buffers:
+        return {}
+    import numpy as np
+
+    return {name: np.asarray(arr) for name, arr in buffers.items()}
 
 
 def _extract_stems(audio_file_base: str, export_path: str) -> List[str]:
@@ -686,8 +719,20 @@ class Ensembler:
         if not is_manual_ensemble:
             os.makedirs(self.ensemble_folder_name, exist_ok=True)
 
-    def ensemble_outputs(self, audio_file_base, export_path, stem, is_4_stem=False, is_inst_mix=False):
-        """Combine the per-member outputs for ``stem`` with the chosen algorithm."""
+    def ensemble_outputs(
+        self,
+        audio_file_base,
+        export_path,
+        stem,
+        is_4_stem=False,
+        is_inst_mix=False,
+        stem_arrays=None,
+    ):
+        """Combine the per-member outputs for ``stem`` with the chosen algorithm.
+
+        Prefer in-memory member waveforms from ``stem_arrays`` when present
+        (ensemble scratch path); otherwise fall back to disk ``.wav`` members.
+        """
         debug("worker", f"ensemble_outputs stem={stem!r} is_4_stem={is_4_stem} is_inst_mix={is_inst_mix}")
         from ml import spec_utils
         from engines.separate import save_format as _save_format
@@ -702,11 +747,25 @@ class Ensembler:
             algorithm = self.primary_algorithm if stem == PRIMARY_STEM else self.secondary_algorithm
             stem_tag = self.ensemble_primary_stem if stem == PRIMARY_STEM else self.ensemble_secondary_stem
 
-        stem_outputs = self.get_files_to_ensemble(folder=export_path, prefix=audio_file_base, suffix=f"_({stem_tag}).wav")
+        array_inputs = list((stem_arrays or {}).get(stem_tag, []))
+        stem_outputs = self.get_files_to_ensemble(
+            folder=export_path, prefix=audio_file_base, suffix=f"_({stem_tag}).wav"
+        )
         audio_file_output = f"{self.is_testing_audio}{audio_file_base}{self.chosen_ensemble}_({stem_tag})"
         stem_save_path = os.path.join(f"{self.main_export_path}", f"{audio_file_output}.wav")
 
-        if len(stem_outputs) > 1:
+        if len(array_inputs) > 1:
+            spec_utils.ensemble_inputs(
+                array_inputs,
+                algorithm,
+                self.is_normalization,
+                self.wav_type_set,
+                stem_save_path,
+                is_wave=self.is_wav_ensemble,
+                is_array=True,
+            )
+            _save_format(stem_save_path, self.save_format, self.mp3_bit_set, self.flac_bit_set)
+        elif len(stem_outputs) > 1:
             spec_utils.ensemble_inputs(
                 stem_outputs,
                 algorithm,

@@ -64,7 +64,8 @@ class SeperateDemucs(SeperateAttributes):
             self.start_inference_console_write()
             is_no_cache = True
 
-        mix = prepare_mix(self.audio_file)
+        # Defer decode on stem-cache hits; load only if invert/combine needs the mix.
+        mix = prepare_mix(self.audio_file) if is_no_cache else None
 
         if is_no_cache:
             with trace_phase(
@@ -190,6 +191,7 @@ class SeperateDemucs(SeperateAttributes):
 
             if not self.is_primary_stem_only:
                 def secondary_save(sec_stem_name, source, raw_mixture=None, is_inst_mixture=False):
+                    nonlocal mix
                     secondary_source = self.secondary_source if not is_inst_mixture else None
                     secondary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({sec_stem_name}).wav')
                     secondary_source_secondary = None
@@ -209,6 +211,8 @@ class SeperateDemucs(SeperateAttributes):
                             secondary_source = secondary_source.T
                         else:
                             if not isinstance(raw_mixture, np.ndarray):
+                                if mix is None:
+                                    mix = prepare_mix(self.audio_file)
                                 raw_mixture = mix
        
                             secondary_source = source[self.demucs_source_map[self.primary_stem]]

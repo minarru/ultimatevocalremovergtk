@@ -343,11 +343,13 @@ class AudioToolRunner:
         *,
         wait_for_stop: float = 0.0,
         force_if_alive: bool = False,
+        clear_weight_cache: bool = False,
     ) -> None:
         _release_inference_resources(
             self,
             wait_for_stop=wait_for_stop,
             force_if_alive=force_if_alive,
+            clear_weight_cache=clear_weight_cache,
         )
 
     # -- Worker ----------------------------------------------------------------

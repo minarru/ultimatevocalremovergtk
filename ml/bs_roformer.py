@@ -15,6 +15,8 @@ from rotary_embedding_torch import RotaryEmbedding
 from einops import rearrange, pack, unpack
 from einops.layers.torch import Rearrange
 
+from ml.stft_device import needs_cpu_stft, torch_istft, torch_stft
+
 # helper functions
 
 def exists(val):
@@ -459,13 +461,8 @@ class BSRoformer(Module):
         """
 
         original_device = raw_audio.device
-        
-        x_is_mps = True if original_device.type == 'mps' else False
-        
-        if x_is_mps:
-            raw_audio = raw_audio.cpu()
-
-        device = raw_audio.device
+        bounce = needs_cpu_stft(original_device)
+        device = original_device
 
         if raw_audio.ndim == 2:
             raw_audio = rearrange(raw_audio, 'b t -> b 1 t')
@@ -474,15 +471,17 @@ class BSRoformer(Module):
         assert (not self.stereo and channels == 1) or (
                     self.stereo and channels == 2), 'stereo needs to be set to True if passing in audio signal that is stereo (channel dimension of 2). also need to be False if mono (channel dimension of 1)'
 
-        # to stft
+        # to stft (CPU bounce only for the STFT call)
 
         raw_audio, batch_audio_channel_packed_shape = pack_one(raw_audio, '* t')
         istft_length = raw_audio.shape[-1]
 
         stft_window = self.stft_window_fn(device=device)
 
-        stft_repr = torch.stft(raw_audio, **self.stft_kwargs, window=stft_window, return_complex=True)
+        stft_repr = torch_stft(raw_audio, **self.stft_kwargs, window=stft_window, return_complex=True)
         stft_repr = torch.view_as_real(stft_repr)
+        if bounce:
+            stft_repr = stft_repr.to(device)
 
         stft_repr = unpack_one(stft_repr, batch_audio_channel_packed_shape, '* f t c')
         stft_repr = rearrange(stft_repr,
@@ -492,7 +491,7 @@ class BSRoformer(Module):
 
         x = self.band_split(x)
 
-        # axial / hierarchical attention
+        # axial / hierarchical attention (stays on accelerator)
 
         for transformer_block in self.layers:
 
@@ -524,9 +523,12 @@ class BSRoformer(Module):
 
         mask = torch.stack([fn(x) for fn in self.mask_estimators], dim=1)
         mask = rearrange(mask, 'b n t (f c) -> b n f t c', c=2)
-        
-        if x_is_mps:
-            mask = mask.to('cpu')
+
+        # Complex multiply + iSTFT are unreliable on MPS — finish on CPU.
+        if bounce:
+            mask = mask.cpu()
+            stft_repr = stft_repr.cpu()
+            stft_window = stft_window.cpu()
 
         # modulate frequency representation
 
@@ -543,7 +545,7 @@ class BSRoformer(Module):
 
         stft_repr = rearrange(stft_repr, 'b n (f s) t -> (b n s) f t', s=self.audio_channels)
 
-        recon_audio = torch.istft(
+        recon_audio = torch_istft(
             stft_repr,
             **self.stft_kwargs,
             window=stft_window,
@@ -555,6 +557,9 @@ class BSRoformer(Module):
 
         if num_stems == 1:
             recon_audio = rearrange(recon_audio, 'b 1 s t -> b s t')
+
+        if bounce:
+            recon_audio = recon_audio.to(original_device)
 
         # if a target is passed in, calculate loss for learning
 
@@ -574,16 +579,17 @@ class BSRoformer(Module):
         multi_stft_resolution_loss = 0.
 
         for window_size in self.multi_stft_resolutions_window_sizes:
+            res_window = self.multi_stft_window_fn(window_size, device=device)
             res_stft_kwargs = dict(
                 n_fft=max(window_size, self.multi_stft_n_fft),
                 win_length=window_size,
                 return_complex=True,
-                window=self.multi_stft_window_fn(window_size, device=device),
+                window=res_window,
                 **self.multi_stft_kwargs,
             )
 
-            recon_Y = torch.stft(rearrange(recon_audio, '... s t -> (... s) t'), **res_stft_kwargs)
-            target_Y = torch.stft(rearrange(target, '... s t -> (... s) t'), **res_stft_kwargs)
+            recon_Y = torch_stft(rearrange(recon_audio, '... s t -> (... s) t'), **res_stft_kwargs)
+            target_Y = torch_stft(rearrange(target, '... s t -> (... s) t'), **res_stft_kwargs)
 
             multi_stft_resolution_loss = multi_stft_resolution_loss + F.l1_loss(recon_Y, target_Y)
 
@@ -591,18 +597,8 @@ class BSRoformer(Module):
 
         total_loss = loss + weighted_multi_resolution_loss
 
-
         if not return_loss_breakdown:
-            # Move the result back to the original device if it was moved to CPU for MPS compatibility
-            if x_is_mps:
-                total_loss = total_loss.to(original_device)
             return total_loss
-
-        # For detailed loss breakdown, ensure all components are moved back to the original device for MPS
-        if x_is_mps:
-            loss = loss.to(original_device)
-            multi_stft_resolution_loss = multi_stft_resolution_loss.to(original_device)
-            weighted_multi_resolution_loss = weighted_multi_resolution_loss.to(original_device)
 
         return total_loss, (loss, multi_stft_resolution_loss)
 

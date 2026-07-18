@@ -66,10 +66,6 @@ class BaseModel(nn.Module):
             pretrained_model_conf_or_path, map_location="cpu"
         )  # Attempt to find the model and instantiate it.
 
-        #print(conf["state_dict"])
-
-        print(conf['infos'].keys())
-
         model_class = get(conf["model_name"])
         # model_class = get("Conv_TasNet")
         model = model_class(*args, **kwargs)
