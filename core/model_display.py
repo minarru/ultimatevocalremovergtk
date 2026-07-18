@@ -40,8 +40,13 @@ _DEMUCS_CATALOG_SOURCE_KEYS = ("demucs_download_list",)
 _CATALOGUE_LABEL_PREFIXES = (
     "Roformer Model: ",
     "SCnet: ",
+    "Bandit Plus: ",
+    "Bandit v2: ",
     "Bandit: ",
+    "MDX23C Model VIP: ",
+    "MDX23C Model: ",
     "MDX23C: ",
+    "MDX-Net Model VIP: ",
     "MDX-Net Model: ",
     "MDX-Net: ",
 )
@@ -238,14 +243,21 @@ def display_name_for_basename(
     *,
     catalogue_index: Optional[Dict[str, str]] = None,
 ) -> str:
-    """Return the friendly MDX model label for an on-disk basename."""
+    """Return the friendly MDX model label for an on-disk basename.
+
+    Catalogue labels win when present so community/Politrees names stay as
+    readable in method pickers as they are in Download Center. The name mapper
+    covers custom installs and reverse-resolve of older saved aliases.
+    """
     if not basename:
         return basename
+    lookup = catalogue_index if catalogue_index is not None else load_mdx_catalog_display_index()
+    if basename in lookup:
+        return lookup[basename]
     mapped = lookup_mapper_display(basename, name_mapper)
     if mapped:
         return mapped
-    lookup = catalogue_index if catalogue_index is not None else load_mdx_catalog_display_index()
-    return lookup.get(basename, basename)
+    return basename
 
 
 def resolve_mdx_model_basename(
@@ -337,21 +349,20 @@ def display_name_for_model(
             catalogue_index=repo.mdx_catalogue_display_index(),
         )
     if arch in (DEMUCS_ARCH_TYPE,):
-        mapped = lookup_mapper_display(name, repo.demucs_name_select_MAPPER)
-        if mapped:
-            return mapped
         lookup = repo.demucs_catalogue_display_index()
         if name in lookup:
             return lookup[name]
+        mapped = lookup_mapper_display(name, repo.demucs_name_select_MAPPER)
+        if mapped:
+            return mapped
         basename = resolve_demucs_model_basename(
             name,
             repo.demucs_name_select_MAPPER,
             catalogue_index=lookup,
         )
-        return (
-            lookup_mapper_display(basename, repo.demucs_name_select_MAPPER)
-            or lookup.get(basename, name)
-        )
+        return lookup.get(basename) or lookup_mapper_display(
+            basename, repo.demucs_name_select_MAPPER
+        ) or name
     return name
 
 
@@ -421,8 +432,9 @@ def map_basenames_to_display(
     if arch in (DEMUCS_ARCH_TYPE,):
         catalogue = repo.demucs_catalogue_display_index()
         return [
-            lookup_mapper_display(name, repo.demucs_name_select_MAPPER)
-            or catalogue.get(name, name)
+            catalogue.get(name)
+            or lookup_mapper_display(name, repo.demucs_name_select_MAPPER)
+            or name
             for name in names
         ]
     return names

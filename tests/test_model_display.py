@@ -12,6 +12,7 @@ from core.model_display import (
     format_tag_subtitle,
     format_tag_title,
     lookup_mapper_display,
+    map_basenames_to_display,
     parse_model_tag,
     resolve_mapper_basename,
     resolve_vr_model_basename,
@@ -33,6 +34,30 @@ class SanitizeCatalogueLabelTests(unittest.TestCase):
         self.assertEqual(
             sanitize_catalogue_label(label),
             "MelBand Roformer Kim | FT v2 by Unwa",
+        )
+
+    def test_strips_mdx23c_model_and_vip_prefixes(self) -> None:
+        self.assertEqual(
+            sanitize_catalogue_label("MDX23C Model: Example"),
+            "Example",
+        )
+        self.assertEqual(
+            sanitize_catalogue_label("MDX23C Model VIP: Example VIP"),
+            "Example VIP",
+        )
+        self.assertEqual(
+            sanitize_catalogue_label("MDX-Net Model VIP: UVR VIP"),
+            "UVR VIP",
+        )
+
+    def test_strips_bandit_plus_and_v2_prefixes(self) -> None:
+        self.assertEqual(
+            sanitize_catalogue_label("Bandit Plus: Cinema"),
+            "Cinema",
+        )
+        self.assertEqual(
+            sanitize_catalogue_label("Bandit v2: Speech"),
+            "Speech",
         )
 
 
@@ -124,12 +149,37 @@ class ResolveVrModelBasenameTests(unittest.TestCase):
 
 
 class DisplayNameForBasenameTests(unittest.TestCase):
-    def test_mapper_priority_over_catalogue(self) -> None:
+    def test_catalogue_priority_over_mapper(self) -> None:
         mapper = {"known": "Mapper Name"}
         catalogue = {"known": "Catalogue Name"}
         self.assertEqual(
             display_name_for_basename("known", mapper, catalogue_index=catalogue),
-            "Mapper Name",
+            "Catalogue Name",
+        )
+
+    def test_mapper_fallback_when_not_in_catalogue(self) -> None:
+        mapper = {"custom": "Custom Label"}
+        catalogue = {"other": "Catalogue Name"}
+        self.assertEqual(
+            display_name_for_basename("custom", mapper, catalogue_index=catalogue),
+            "Custom Label",
+        )
+
+    def test_stem_fallback_when_unmapped(self) -> None:
+        self.assertEqual(
+            display_name_for_basename("manual_stem", {}, catalogue_index={}),
+            "manual_stem",
+        )
+
+
+class MapBasenamesToDisplayTests(unittest.TestCase):
+    def test_demucs_catalogue_priority_over_mapper(self) -> None:
+        repo = MagicMock()
+        repo.demucs_name_select_MAPPER = {"htdemucs": "Short Alias"}
+        repo.demucs_catalogue_display_index.return_value = {"htdemucs": "v4 | htdemucs"}
+        self.assertEqual(
+            map_basenames_to_display(["htdemucs"], DEMUCS_ARCH_TYPE, repo),
+            ["v4 | htdemucs"],
         )
 
 

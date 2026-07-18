@@ -55,10 +55,17 @@ class BuildCheckpointDisplayIndexTests(unittest.TestCase):
 
 
 class DisplayNameResolutionTests(unittest.TestCase):
-    def test_display_name_prefers_mapper(self) -> None:
+    def test_display_name_prefers_catalogue(self) -> None:
         mapper = {"known.ckpt": "Known Display"}
         self.assertEqual(
             display_name_for_basename("known", mapper, catalogue_index={"known": "Catalogue"}),
+            "Catalogue",
+        )
+
+    def test_display_name_falls_back_to_mapper(self) -> None:
+        mapper = {"known.ckpt": "Known Display"}
+        self.assertEqual(
+            display_name_for_basename("known", mapper, catalogue_index={}),
             "Known Display",
         )
 

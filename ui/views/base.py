@@ -61,7 +61,11 @@ from ..widgets.rows import (
     set_scale_row_value,
     use_wrapping_list,
 )
-from core.model_display import format_tag_title, map_basenames_to_display
+from core.model_display import (
+    format_tag_title,
+    map_basenames_to_display,
+    resolve_model_basename,
+)
 from ..widgets.stem_only import SaveStemsSection
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
 from core.run_estimate import estimate_workload, format_workload_line
@@ -88,6 +92,23 @@ def apply_name_mapper(names, name_mapper, *, catalogue_index=None, arch=None, re
         display_name_for_basename(name, name_mapper, catalogue_index=catalogue_index)
         for name in names
     ]
+
+
+def current_display_for_stored_model(stored, basenames, arch, repo) -> str:
+    """Resolve a stored picker value to the current runtime display label.
+
+    Accepts an on-disk basename or an older mapper/catalogue alias and returns
+    the catalogue-first display name when the model is still installed.
+    """
+    if not stored:
+        return stored
+    if stored in basenames:
+        candidate = stored
+    else:
+        candidate = resolve_model_basename(arch, stored, repo)
+    if candidate in basenames:
+        return map_basenames_to_display([candidate], arch, repo)[0]
+    return stored
 
 
 class MethodView:
@@ -192,8 +213,8 @@ class MethodView:
         names = map_basenames_to_display(basenames, arch, repo)
         set_combo_values(self.model_row, [CHOOSE_MODEL, *names])
         stored = self.settings.get(self.model_key, CHOOSE_MODEL)
-        if stored not in (CHOOSE_MODEL, NO_MODEL, None) and stored in basenames:
-            display = map_basenames_to_display([stored], arch, repo)[0]
+        if stored not in (CHOOSE_MODEL, NO_MODEL, None):
+            display = current_display_for_stored_model(stored, basenames, arch, repo)
             if display != stored:
                 stored = display
                 self.settings.set(self.model_key, display)
