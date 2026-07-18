@@ -105,8 +105,8 @@ WINDOW_SIZE_HELP = """Select window size to balance quality and speed:
 MDX_SEGMENT_SIZE_HELP = """Pick a segment size to balance speed, resource use, and quality:
 • Smaller sizes consume less resources
 • Bigger sizes consume more resources, but may provide better results
-• Default size is 256. Quality can change based on your pick
-• For MDX-C / MDX23C models, "Default" uses the segment size from the model's yaml config"""
+• Classic MDX-Net default size is 256
+• For MDX-C / MDX23C models, "Default" uses the segment size from the model's yaml config (shown as a tick on the slider)"""
 
 DEMUCS_STEMS_HELP = """Select a stem for extraction with the chosen model:
 
@@ -173,12 +173,13 @@ IS_TIME_CORRECTION_HELP = "When checked, the output will retain the original BPM
 
 SAVE_STEM_ONLY_HELP = """Choose which stems are written to disk. All Stems exports every output file; selecting a single stem saves only that file
 
-The workload line below (passes, outputs, GPU/CPU) is a relative guide, not an exact time estimate"""
+The workload line below (passes, outputs, GPU/CPU) is a relative guide, not an exact time estimate. Hover for cost-factor details when heavier settings are active"""
 
-RUN_WORKLOAD_HINT = """Shows how heavy this export combo is:
+RUN_WORKLOAD_HINT = """Workload line (relative, not clock time):
 • passes — how many model inferences the run performs
 • outputs — how many files will be written
-• Fastest / Typical / Slower — relative export cost, not clock time"""
+• Fastest / Typical / Slower — relative export or run cost
+• Cost factors (when listed) — settings that add work beyond pass/output counts"""
 
 PROGRESS_ETA_HINT = """Time remaining stabilizes after separation begins. During stem export and ensemble combine the bar shows Saving or Combining instead of an ETA. Large models may revise the estimate upward while loading and during early inference"""
 

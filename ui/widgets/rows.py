@@ -375,6 +375,7 @@ def set_scale_default_mark(
     if scale is None:
         return
     row._uvr_default = default
+    row._uvr_default_label = label
     scale.clear_marks()
     if default is None:
         return
@@ -396,7 +397,11 @@ def refresh_scale_default_mark(row: Adw.ActionRow) -> None:
     """Re-apply ``row._uvr_default`` after a scale is reconfigured."""
     default = getattr(row, "_uvr_default", None)
     if default is not None:
-        set_scale_default_mark(row, default)
+        set_scale_default_mark(
+            row,
+            default,
+            label=getattr(row, "_uvr_default_label", None),
+        )
 
 
 def reconfigure_discrete_scale(row: Adw.ActionRow, values: Sequence) -> None:

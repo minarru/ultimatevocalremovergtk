@@ -68,7 +68,8 @@ from core.model_display import (
 )
 from ..widgets.stem_only import SaveStemsSection
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
-from core.run_estimate import estimate_workload, format_workload_line
+from core.run_estimate import compose_stem_group_tooltip, estimate_workload, format_workload_line
+from ..help_text import RUN_WORKLOAD_HINT
 
 # Per-stem secondary-model slots: (settings-key slot, display pair, primary stem,
 # secondary stem) used to build the four secondary-model selectors UVR exposes.
@@ -302,9 +303,13 @@ class MethodView:
         )
         line2 = format_workload_line(workload)
         self.stem_group.set_description(f"{line1}\n{line2}" if line2 else line1)
-        from ..hints import set_tooltip
-
-        set_tooltip(self.stem_group, self.save_stems.active_hint())
+        composed = compose_stem_group_tooltip(
+            self.save_stems.active_hint(),
+            workload,
+            workload_hint=RUN_WORKLOAD_HINT,
+        )
+        # Re-register so HelpHintManager.refresh() keeps the composed tooltip.
+        self.hints.register(self.stem_group, composed)
 
     def _touch_settings(self) -> None:
         self._update_stem_group_metadata()

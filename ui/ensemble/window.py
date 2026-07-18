@@ -26,7 +26,7 @@ from typing import Dict, List, Optional
 
 from gi.repository import Adw, Gtk
 
-from core.run_estimate import estimate_workload, format_workload_line
+from core.run_estimate import compose_stem_group_tooltip, estimate_workload, format_workload_line
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
 from bundled.constants import (
     CHOOSE_ENSEMBLE_OPTION,
@@ -62,6 +62,7 @@ from ..help_text import (
     ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT,
     ENSEMBLE_SAVE_BUTTON_HINT,
     ENSEMBLE_SAVED_PRESET_HINT,
+    RUN_WORKLOAD_HINT,
     VIEW_INPUTS_BUTTON_HINT,
 )
 from ..hints import OUTPUT_FORMAT_HINT, set_icon_button_a11y, set_tooltip
@@ -454,7 +455,14 @@ class EnsemblePage:
         )
         line2 = format_workload_line(workload)
         self.stems_group.set_description(f"{line1}\n{line2}" if line2 else line1)
-        set_tooltip(self.stems_group, self.save_stems.active_hint())
+        set_tooltip(
+            self.stems_group,
+            compose_stem_group_tooltip(
+                self.save_stems.active_hint(),
+                workload,
+                workload_hint=RUN_WORKLOAD_HINT,
+            ),
+        )
 
     def _on_save_stems_changed(self) -> None:
         if self._loading:
