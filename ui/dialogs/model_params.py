@@ -53,6 +53,7 @@ from bundled.constants import (
 from core import paths
 from core.mdx_c_registry import infer_mdx_c_architecture
 from core.model_data import ModelData, load_mdx_c_config
+from core.model_display import display_name_for_model
 from ..hints import set_tooltip
 from ..spacing import inset_md
 from .utils import present_modal_dialog, run_blocking_dialog, set_dialog_content, set_form_dialog_content
@@ -166,8 +167,14 @@ class _ParamDialog:
     def _build(self, page):
         method = self.model_data.process_method
         is_ckpt = getattr(self.model_data, "is_mdx_ckpt", False) or str(self.model_data.model_path).endswith(CKPT)
+        repo = getattr(self.model_data, "repo", None)
+        title = (
+            display_name_for_model(method, self.model_data.model_name, repo)
+            if repo is not None
+            else self.model_data.model_name
+        )
         group = Adw.PreferencesGroup(
-            title=f"{self.model_data.model_name}",
+            title=f"{title}",
             description="This model's parameters could not be detected automatically.",
         )
         page.add(group)
