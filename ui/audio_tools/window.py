@@ -407,7 +407,7 @@ class AudioToolsPage:
 
         self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="audio-x-generic-symbolic")
         self.hints.register(self.format_row, OUTPUT_FORMAT_HINT)
-        self.format_row.connect("notify::selected", lambda *_a: self._set("save_format", get_combo_value(self.format_row)))
+        self.format_row.connect("notify::selected", self._on_format_changed)
         group.add(self.format_row)
 
         self.wav_type_row = make_combo_row("WAV type", WAV_TYPE)
@@ -491,6 +491,7 @@ class AudioToolsPage:
         finally:
             self._loading = False
 
+        self._sync_format_rows()
         self._refresh_apollo_models()
         self._sync_tool_visibility()
         self._refresh_dual_rows()
@@ -508,6 +509,7 @@ class AudioToolsPage:
             )
         finally:
             self._loading = False
+        self._sync_format_rows()
 
     def _sync_tool_visibility(self) -> None:
         tool = self._current_tool()
@@ -610,6 +612,14 @@ class AudioToolsPage:
         self.settings.set("chosen_audio_tool", tool)
         self._sync_tool_visibility()
         self._refresh_dual_rows()
+
+    def _on_format_changed(self, *_args) -> None:
+        self._sync_format_rows()
+        self._set("save_format", get_combo_value(self.format_row))
+
+    def _sync_format_rows(self) -> None:
+        output_format = get_combo_value(self.format_row) or WAV
+        self.wav_type_row.set_visible(output_format == WAV)
 
     def _on_inputs_changed(self) -> None:
         if self._loading:

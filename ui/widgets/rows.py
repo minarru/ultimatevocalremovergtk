@@ -368,9 +368,9 @@ def set_scale_default_mark(
     default,
     *,
     position=Gtk.PositionType.BOTTOM,
-    label: Optional[str] = "Default",
+    label: Optional[str] = None,
 ) -> None:
-    """Place a labeled tick mark at the scale's default value (index or numeric)."""
+    """Place a tick mark at the scale's default value (index or numeric)."""
     scale = getattr(row, "_uvr_scale", None)
     if scale is None:
         return

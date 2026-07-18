@@ -1,4 +1,4 @@
-"""Save-stems controls: exclusive export filter, MDX subset, and Demucs focus."""
+"""Save-stems controls: exclusive export, MDX subset, and Demucs focus."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from core.model_stem_semantics import (
     stem_display_overrides,
 )
 
-from ..spacing import set_inset
+from ..dialogs.utils import present_modal_dialog, set_form_dialog_content
 from ..help_text import (
     DEMUCS_STEMS_SAVE_HELP,
     MDX_STEMS_HINT,
@@ -44,6 +44,9 @@ from ..help_text import (
     primary_stem_only_tooltip,
     secondary_stem_only_tooltip,
 )
+from ..markup import set_row_subtitle
+from ..spacing import inset_md
+from .rows import get_combo_value, make_combo_row, set_combo_tag_values, set_combo_value
 
 _TOGGLE_ALL = "all"
 _QUICK_ALL = "quick_all"
@@ -55,7 +58,7 @@ _FOCUS_VOCALS = "focus_vocals"
 # Stable display order for "<stem> Only" entries.
 _STEM_ONLY_ORDER = (INST_STEM, VOCAL_STEM, BASS_STEM, DRUM_STEM, OTHER_STEM)
 
-STEM_ONLY_ICON_FALLBACK = "edit-none-symbolic"
+STEM_ONLY_ICON_FALLBACK = "audio-x-generic-symbolic"
 
 STEM_ONLY_ICONS: Dict[str, str] = {
     VOCAL_STEM: "person-talking-symbolic",
@@ -133,7 +136,7 @@ def canonical_stem_name(stem: Optional[str]) -> Optional[str]:
 
 
 def stem_display_label(stem: Optional[str], *, overrides: Optional[Dict[str, str]] = None) -> str:
-    """Human-readable label for toggles, chips, and export summaries."""
+    """Human-readable label for combos, checklists, and export summaries."""
     if not stem:
         return ""
     if overrides:
@@ -160,10 +163,18 @@ _QUICK_EXPORT_LABELS = {
     _QUICK_VOCALS: f"{VOCAL_STEM} only",
 }
 
+_QUICK_EXPORT_HINTS = {
+    _QUICK_ALL: STEM_ONLY_ALL_HINT,
+    _QUICK_INSTRUMENTAL: QUICK_EXPORT_INSTRUMENTAL_HINT,
+    _QUICK_VOCALS: QUICK_EXPORT_VOCALS_HINT,
+}
+
 
 def stem_only_icon(stem: Optional[str]) -> Optional[str]:
     if not stem:
         return None
+    if stem == ALL_STEMS:
+        return ALL_STEMS_ICON
     canonical = canonical_stem_name(stem) or stem
     return STEM_ONLY_ICONS.get(canonical, STEM_ONLY_ICON_FALLBACK)
 
@@ -172,20 +183,6 @@ def _stem_only_rank(stem: str) -> int:
     if stem in _STEM_ONLY_ORDER:
         return _STEM_ONLY_ORDER.index(stem)
     return len(_STEM_ONLY_ORDER) + 1
-
-
-def _section_label(text: str) -> Gtk.Label:
-    label = Gtk.Label(label=text, xalign=0)
-    label.add_css_class("dim-label")
-    label.add_css_class("uvr-stem-section-label")
-    return label
-
-
-def _labeled_row(caption: str, content: Gtk.Widget) -> Gtk.Box:
-    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-    box.append(_section_label(caption))
-    box.append(content)
-    return box
 
 
 @dataclass(frozen=True)
@@ -205,7 +202,7 @@ def build_stem_only_options(
     secondary_key: str,
     stem_label_overrides: Optional[Dict[str, str]] = None,
 ) -> List[StemOnlyOption]:
-    """Build toggle entries for All Stems + each stem's Only option."""
+    """Build export entries for All Stems + each stem's Only option."""
     options = [
         StemOnlyOption(_TOGGLE_ALL, STEM_ONLY_ALL_HINT, ALL_STEMS, ALL_STEMS_ICON, None),
     ]
@@ -259,398 +256,33 @@ def build_stem_only_options(
     return options
 
 
-class StemOnlyControls:
-    """Compact ``Adw.ToggleGroup`` for exclusive stem-only selection."""
-
-    def __init__(self, *, on_changed: Optional[Callable[[], None]] = None):
-        self.container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.container.add_css_class("uvr-stem-only-row")
-        set_inset(self.container, bottom=6)
-        self.container.set_halign(Gtk.Align.FILL)
-        self.container.set_hexpand(True)
-
-        self.group = Adw.ToggleGroup()
-        self.group.set_homogeneous(True)
-        self.group.set_can_shrink(True)
-        self.group.set_hexpand(True)
-        self.group.set_halign(Gtk.Align.FILL)
-        self.container.append(self.group)
-
-        self._on_changed = on_changed
-        self._loading = False
-        self._choice_keys: Dict[str, Optional[str]] = {}
-        self.group.connect("notify::active-name", self._on_active_name)
-
-    @property
-    def widget(self) -> Gtk.Box:
-        return self.container
-
-    def set_visible(self, visible: bool) -> None:
-        self.container.set_visible(visible)
-
-    def rebuild(self, options: List[StemOnlyOption]) -> None:
-        was_loading = self._loading
-        self._loading = True
-        try:
-            self.group.remove_all()
-            self._choice_keys = {}
-            for option in options:
-                toggle = Adw.Toggle()
-                toggle.set_name(option.name)
-                toggle.set_label(option.display_label)
-                toggle.set_tooltip(option.tooltip)
-                if option.icon_name:
-                    toggle.set_icon_name(option.icon_name)
-                self.group.add(toggle)
-                self._choice_keys[option.name] = option.settings_key
-        finally:
-            self._loading = was_loading
-
-    def sync_from_settings(self, settings, primary_key: str, secondary_key: str) -> None:
-        primary_on = bool(settings.get(primary_key))
-        secondary_on = bool(settings.get(secondary_key))
-        if primary_on and not secondary_on:
-            name = primary_key
-        elif secondary_on and not primary_on:
-            name = secondary_key
-        else:
-            name = _TOGGLE_ALL
-
-        was_loading = self._loading
-        self._loading = True
-        try:
-            if self.group.get_toggle_by_name(name) is not None:
-                self.group.set_active_name(name)
-            elif self.group.get_n_toggles() > 0:
-                self.group.set_active_name(_TOGGLE_ALL)
-        finally:
-            self._loading = was_loading
-
-    def persist_to_settings(self, settings, primary_key: str, secondary_key: str) -> None:
-        name = self.group.get_active_name() or _TOGGLE_ALL
-        only_key = self._choice_keys.get(name)
-        settings.set(primary_key, only_key == primary_key)
-        settings.set(secondary_key, only_key == secondary_key)
-
-    def active_export_label(self, primary_stem: Optional[str], secondary_stem: Optional[str]) -> str:
-        name = self.group.get_active_name() or _TOGGLE_ALL
-        if name == _TOGGLE_ALL:
-            return "Exporting all outputs"
-        toggle = self.group.get_toggle_by_name(name)
-        if toggle is not None:
-            return f"Exporting {toggle.get_label()} only"
-        return "Exporting selected outputs"
-
-    def expected_output_count(self) -> int:
-        name = self.group.get_active_name() or _TOGGLE_ALL
-        return 2 if name == _TOGGLE_ALL else 1
-
-    def _on_active_name(self, *_args) -> None:
-        if self._loading or self._on_changed is None:
-            return
-        self._on_changed()
+def _fill_export_combo(row: Adw.ComboRow, options: List[StemOnlyOption]) -> Dict[str, StemOnlyOption]:
+    set_combo_tag_values(row, [(opt.name, opt.display_label) for opt in options])
+    return {opt.name: opt for opt in options}
 
 
-def _make_chip(
-    stem: str,
-    *,
-    tooltip: str,
-    on_toggled: Callable,
-    stem_label_overrides: Optional[Dict[str, str]] = None,
-) -> Gtk.ToggleButton:
-    label = stem_display_label(stem, overrides=stem_label_overrides)
-    button = Gtk.ToggleButton(valign=Gtk.Align.CENTER)
-    button.add_css_class("uvr-stem-chip")
-    icon = stem_only_icon(stem)
-    if icon:
-        content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4, valign=Gtk.Align.CENTER)
-        content.append(Gtk.Image.new_from_icon_name(icon))
-        content.append(Gtk.Label(label=label))
-        button.set_child(content)
-    else:
-        button.set_label(label)
-    button.set_tooltip_text(
-        stem_only_tooltip(stem, overrides=stem_label_overrides) if stem_label_overrides else tooltip
-    )
-    button.connect("toggled", on_toggled)
-    return button
+def _exclusive_name_from_settings(settings, primary_key: str, secondary_key: str) -> str:
+    primary_on = bool(settings.get(primary_key))
+    secondary_on = bool(settings.get(secondary_key))
+    if primary_on and not secondary_on:
+        return primary_key
+    if secondary_on and not primary_on:
+        return secondary_key
+    return _TOGGLE_ALL
 
 
-class StemSubsetControls:
-    """Multi-select stem chips with an All stems chip."""
-
-    def __init__(self, *, on_changed: Optional[Callable[[], None]] = None):
-        self._on_changed = on_changed
-        self._loading = False
-        self._stems: List[str] = []
-        self._chips: Dict[str, Gtk.ToggleButton] = {}
-        self._stem_label_overrides: Optional[Dict[str, str]] = None
-
-        self.wrap = Adw.WrapBox()
-        self.wrap.add_css_class("uvr-stem-subset")
-        self.wrap.set_child_spacing(6)
-        self.wrap.set_line_spacing(6)
-        set_inset(self.wrap, top=2, bottom=6, start=0, end=0)
-
-        self.container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.container.append(self.wrap)
-
-    @property
-    def widget(self) -> Gtk.Box:
-        return self.container
-
-    def rebuild(self, stems: List[str], *, stem_label_overrides: Optional[Dict[str, str]] = None) -> None:
-        self._stems = list(stems)
-        self._stem_label_overrides = stem_label_overrides
-        child = self.wrap.get_first_child()
-        while child is not None:
-            nxt = child.get_next_sibling()
-            self.wrap.remove(child)
-            child = nxt
-        self._chips = {}
-
-        all_button = _make_chip(ALL_STEMS, tooltip=STEM_ONLY_ALL_HINT, on_toggled=self._on_all_toggled)
-        all_button.add_css_class("uvr-stem-chip-all")
-        self.wrap.append(all_button)
-        self._chips[ALL_STEMS] = all_button
-
-        for stem in stems:
-            if stem == ALL_STEMS:
-                continue
-            chip = _make_chip(
-                stem,
-                tooltip=stem_only_tooltip(stem, overrides=self._stem_label_overrides),
-                on_toggled=self._on_chip_toggled,
-                stem_label_overrides=self._stem_label_overrides,
-            )
-            self.wrap.append(chip)
-            self._chips[stem] = chip
-
-    def set_selection(
-        self,
-        selected: Set[str],
-        *,
-        full_stems: List[str],
-        highlight_all_when_empty: bool = True,
-    ) -> None:
-        was_loading = self._loading
-        self._loading = True
-        try:
-            stem_set = set(full_stems)
-            if not selected:
-                for stem, chip in self._chips.items():
-                    if highlight_all_when_empty:
-                        chip.set_active(stem == ALL_STEMS)
-                    else:
-                        chip.set_active(False)
-            elif selected >= stem_set:
-                for stem, chip in self._chips.items():
-                    chip.set_active(stem == ALL_STEMS)
-            else:
-                if ALL_STEMS in self._chips:
-                    self._chips[ALL_STEMS].set_active(False)
-                for stem, chip in self._chips.items():
-                    if stem == ALL_STEMS:
-                        continue
-                    chip.set_active(stem in selected)
-        finally:
-            self._loading = was_loading
-
-    def selected_stems(self) -> List[str]:
-        if self._chips.get(ALL_STEMS) and self._chips[ALL_STEMS].get_active():
-            return []
-        return [stem for stem in self._stems if self._chips.get(stem) and self._chips[stem].get_active()]
-
-    def is_all_active(self) -> bool:
-        return bool(self._chips.get(ALL_STEMS) and self._chips[ALL_STEMS].get_active())
-
-    def _on_all_toggled(self, button: Gtk.ToggleButton) -> None:
-        if self._loading or not button.get_active():
-            return
-        was_loading = self._loading
-        self._loading = True
-        try:
-            for stem, chip in self._chips.items():
-                if stem != ALL_STEMS:
-                    chip.set_active(False)
-        finally:
-            self._loading = was_loading
-        self._notify()
-
-    def _on_chip_toggled(self, _button: Gtk.ToggleButton) -> None:
-        if self._loading:
-            return
-        if self._chips.get(ALL_STEMS):
-            was_loading = self._loading
-            self._loading = True
-            try:
-                self._chips[ALL_STEMS].set_active(False)
-            finally:
-                self._loading = was_loading
-        self._notify()
-
-    def _notify(self) -> None:
-        if self._loading or self._on_changed is None:
-            return
-        self._on_changed()
+def _persist_exclusive_choice(settings, primary_key: str, secondary_key: str, name: str) -> None:
+    settings.set(primary_key, name == primary_key)
+    settings.set(secondary_key, name == secondary_key)
 
 
-class StemQuickExportControls:
-    """Exclusive All / Instrumental only / Vocals only row."""
-
-    def __init__(self, *, on_changed: Optional[Callable[[], None]] = None):
-        self._on_changed = on_changed
-        self._loading = False
-
-        self.group = Adw.ToggleGroup()
-        self.group.set_homogeneous(True)
-        self.group.set_can_shrink(True)
-        self.group.set_hexpand(True)
-        self.group.connect("notify::active-name", self._on_active_name)
-
-        self.container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.container.add_css_class("uvr-stem-only-row")
-        self.container.append(self.group)
-
-    @property
-    def widget(self) -> Gtk.Box:
-        return self.container
-
-    def rebuild(self) -> None:
-        was_loading = self._loading
-        self._loading = True
-        try:
-            self.group.remove_all()
-            entries = (
-                (_QUICK_ALL, ALL_STEMS, ALL_STEMS_ICON, STEM_ONLY_ALL_HINT),
-                (_QUICK_INSTRUMENTAL, _QUICK_EXPORT_LABELS[_QUICK_INSTRUMENTAL], stem_only_icon(INST_STEM), QUICK_EXPORT_INSTRUMENTAL_HINT),
-                (_QUICK_VOCALS, _QUICK_EXPORT_LABELS[_QUICK_VOCALS], stem_only_icon(VOCAL_STEM), QUICK_EXPORT_VOCALS_HINT),
-            )
-            for name, label, icon, hint in entries:
-                toggle = Adw.Toggle()
-                toggle.set_name(name)
-                toggle.set_label(label)
-                toggle.set_tooltip(hint)
-                if icon:
-                    toggle.set_icon_name(icon)
-                self.group.add(toggle)
-        finally:
-            self._loading = was_loading
-
-    def set_active(self, name: str) -> None:
-        was_loading = self._loading
-        self._loading = True
-        try:
-            if self.group.get_toggle_by_name(name) is not None:
-                self.group.set_active_name(name)
-            elif self.group.get_n_toggles() > 0:
-                self.group.set_active_name(_QUICK_ALL)
-        finally:
-            self._loading = was_loading
-
-    def active_name(self) -> str:
-        return self.group.get_active_name() or _QUICK_ALL
-
-    def _on_active_name(self, *_args) -> None:
-        if self._loading or self._on_changed is None:
-            return
-        self._on_changed()
-
-
-class StemFocusControls:
-    """Exclusive Demucs focus row (All, quick exports, and per-stem focus)."""
-
-    def __init__(self, *, on_changed: Optional[Callable[[], None]] = None):
-        self._on_changed = on_changed
-        self._loading = False
-        self._focus_map: Dict[str, str] = {}
-
-        self.group = Adw.ToggleGroup()
-        self.group.set_homogeneous(False)
-        self.group.set_can_shrink(True)
-        self.group.set_hexpand(True)
-        self.group.connect("notify::active-name", self._on_active_name)
-
-        self.container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.container.add_css_class("uvr-stem-only-row")
-        self.container.append(self.group)
-
-    @property
-    def widget(self) -> Gtk.Box:
-        return self.container
-
-    def rebuild(self, focus_stems: List[str]) -> None:
-        was_loading = self._loading
-        self._loading = True
-        try:
-            self.group.remove_all()
-            self._focus_map = {}
-            for entry in focus_stems:
-                if entry == ALL_STEMS:
-                    name, label, icon, hint = _QUICK_ALL, ALL_STEMS, ALL_STEMS_ICON, STEM_ONLY_ALL_HINT
-                    self._focus_map[name] = ALL_STEMS
-                elif entry == _FOCUS_INSTRUMENTAL:
-                    name = _FOCUS_INSTRUMENTAL
-                    label = _QUICK_EXPORT_LABELS[_QUICK_INSTRUMENTAL]
-                    icon = stem_only_icon(INST_STEM)
-                    hint = QUICK_EXPORT_INSTRUMENTAL_HINT
-                    self._focus_map[name] = _FOCUS_INSTRUMENTAL
-                elif entry == _FOCUS_VOCALS:
-                    name = _FOCUS_VOCALS
-                    label = _QUICK_EXPORT_LABELS[_QUICK_VOCALS]
-                    icon = stem_only_icon(VOCAL_STEM)
-                    hint = QUICK_EXPORT_VOCALS_HINT
-                    self._focus_map[name] = _FOCUS_VOCALS
-                else:
-                    name = entry
-                    label = stem_display_label(entry)
-                    icon = stem_only_icon(entry)
-                    hint = stem_only_tooltip(entry)
-                    self._focus_map[name] = entry
-                toggle = Adw.Toggle()
-                toggle.set_name(name)
-                toggle.set_label(label)
-                toggle.set_tooltip(hint)
-                if icon:
-                    toggle.set_icon_name(icon)
-                self.group.add(toggle)
-        finally:
-            self._loading = was_loading
-
-    def set_active_name(self, name: str) -> None:
-        was_loading = self._loading
-        self._loading = True
-        try:
-            if self.group.get_toggle_by_name(name) is not None:
-                self.group.set_active_name(name)
-            elif self.group.get_n_toggles() > 0:
-                self.group.set_active_name(_QUICK_ALL)
-        finally:
-            self._loading = was_loading
-
-    def active_name(self) -> str:
-        return self.group.get_active_name() or _QUICK_ALL
-
-    def focus_value(self) -> str:
-        return self._focus_map.get(self.active_name(), ALL_STEMS)
-
-    def is_quick_vocals(self) -> bool:
-        return self.active_name() == _FOCUS_VOCALS
-
-    def is_quick_instrumental(self) -> bool:
-        return self.active_name() == _FOCUS_INSTRUMENTAL
-
-    def is_all_stems(self) -> bool:
-        return self.active_name() == _QUICK_ALL
-
-    def needs_export_filter(self) -> bool:
-        name = self.active_name()
-        return name not in (_QUICK_ALL, _FOCUS_INSTRUMENTAL, _FOCUS_VOCALS)
-
-    def _on_active_name(self, *_args) -> None:
-        if self._loading or self._on_changed is None:
-            return
-        self._on_changed()
+def _export_label_for_choice(name: str, options: Dict[str, StemOnlyOption]) -> str:
+    if name == _TOGGLE_ALL:
+        return "Exporting all outputs"
+    option = options.get(name)
+    if option is not None:
+        return f"Exporting {option.display_label} only"
+    return "Exporting selected outputs"
 
 
 class SaveStemsSection:
@@ -674,40 +306,117 @@ class SaveStemsSection:
         self._stem_label_overrides: Optional[Dict[str, str]] = None
         self._export_semantics_note = ""
         self._demucs_stem_count = 4
+        self._exclusive_options: Dict[str, StemOnlyOption] = {}
+        self._demucs_export_options: Dict[str, StemOnlyOption] = {}
+        self._demucs_focus_map: Dict[str, str] = {}
+        self._custom_selected: Set[str] = set()
+        self._custom_all = True
+        self._draft_custom_selected: Set[str] = set()
+        self._draft_custom_all = True
+        self._custom_checks: Dict[str, Gtk.CheckButton] = {}
+        self._host: Optional[Adw.PreferencesGroup] = None
+        self._section_visible = False
 
-        self._exclusive = StemOnlyControls(on_changed=self._notify)
-        self._quick_export = StemQuickExportControls(on_changed=self._on_quick_export_changed)
-        self._subset = StemSubsetControls(on_changed=self._on_subset_changed)
-        self._demucs_focus = StemFocusControls(on_changed=self._on_demucs_focus_changed)
-        self._demucs_export = StemOnlyControls(on_changed=self._notify)
+        self._exclusive_row = make_combo_row("Export", [])
+        self._exclusive_row.connect("notify::selected", self._on_exclusive_changed)
 
-        self._exclusive_block = _labeled_row("Export filter", self._exclusive.widget)
-        self._quick_block = _labeled_row("Common exports", self._quick_export.widget)
-        self._subset_block = _labeled_row("Custom stems", self._subset.widget)
-        self._demucs_focus_block = _labeled_row("Stem focus", self._demucs_focus.widget)
-        self._demucs_export_block = _labeled_row("Export filter", self._demucs_export.widget)
+        self._quick_row = make_combo_row("Quick export", [])
+        self._quick_row.connect("notify::selected", self._on_quick_export_changed)
 
-        self.widget = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        self.widget.set_halign(Gtk.Align.FILL)
-        self.widget.set_hexpand(True)
-        for block in (
-            self._exclusive_block,
-            self._quick_block,
-            self._subset_block,
-            self._demucs_focus_block,
-            self._demucs_export_block,
-        ):
-            self.widget.append(block)
+        self._custom_row = Adw.ActionRow(
+            title="Custom stems",
+            subtitle="Open to choose specific stems",
+            activatable=True,
+        )
+        self._custom_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        self._custom_row.connect("activated", self._open_custom_stems_dialog)
 
+        self._demucs_focus_row = make_combo_row("Stem focus", [])
+        self._demucs_focus_row.connect("notify::selected", self._on_demucs_focus_changed)
+
+        self._demucs_export_row = make_combo_row("Export", [])
+        self._demucs_export_row.connect("notify::selected", self._on_demucs_export_changed)
+
+        self._rows = (
+            self._exclusive_row,
+            self._quick_row,
+            self._custom_row,
+            self._demucs_focus_row,
+            self._demucs_export_row,
+        )
+        # Holder until attach_to() reparents rows into the outer Save stems group.
+        self._holder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        for row in self._rows:
+            self._holder.append(row)
+
+        # Compatibility aliases used by tests / metadata helpers.
+        self._exclusive_block = self._exclusive_row
+        self._quick_block = self._quick_row
+        self._subset_block = self._custom_row
+        self._demucs_focus_block = self._demucs_focus_row
+        self._demucs_export_block = self._demucs_export_row
+
+        self._build_custom_stems_dialog()
         self._hide_all_rows()
+
+    @property
+    def widget(self) -> Gtk.Widget:
+        """Hint/tooltip target: host PreferencesGroup once attached."""
+        return self._host if self._host is not None else self._holder
+
+    def attach_to(self, group: Adw.PreferencesGroup) -> None:
+        """Add export rows directly to ``group`` (avoids a nested PreferencesGroup)."""
+        for row in self._rows:
+            parent = row.get_parent()
+            if parent is self._holder:
+                self._holder.remove(row)
+            elif parent is not None and parent is not group:
+                parent.remove(row)
+            if row.get_parent() is None:
+                group.add(row)
+        self._host = group
+
+    def _build_custom_stems_dialog(self) -> None:
+        self._custom_listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self._custom_listbox.add_css_class("boxed-list")
+
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_min_content_height(280)
+        scroller.set_vexpand(True)
+        scroller.set_child(self._custom_listbox)
+
+        description = Gtk.Label(
+            label="Choose which stems to export. Selecting All stems clears individual picks.",
+            wrap=True,
+            xalign=0.0,
+        )
+        description.add_css_class("dim-label")
+
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        inset_md(content)
+        content.append(description)
+        content.append(scroller)
+
+        self._custom_dialog = Adw.Dialog()
+        self._custom_dialog.set_title("Custom stems")
+        self._custom_dialog.set_content_width(400)
+        self._custom_dialog.set_content_height(480)
+        self._custom_dialog.set_follows_content_size(True)
+        set_form_dialog_content(
+            self._custom_dialog,
+            content,
+            on_save=self._on_custom_stems_save,
+            save_label="Save",
+        )
 
     def configure_hidden(self, *, has_model: bool = False) -> None:
         self.mode = "hidden"
         self._has_model = has_model
         self._stem_label_overrides = None
         self._export_semantics_note = ""
+        self._section_visible = False
         self._hide_all_rows()
-        self.widget.set_visible(False)
 
     def configure_exclusive(
         self,
@@ -730,9 +439,9 @@ class SaveStemsSection:
         self._export_semantics_note = export_semantics_note or ""
         self._hide_all_rows()
         if not has_model:
-            self.widget.set_visible(False)
+            self._section_visible = False
             return
-        self.widget.set_visible(True)
+        self._section_visible = True
         options = build_stem_only_options(
             primary_stem=primary_stem,
             secondary_stem=secondary_stem,
@@ -740,8 +449,14 @@ class SaveStemsSection:
             secondary_key=secondary_key,
             stem_label_overrides=stem_label_overrides,
         )
-        self._exclusive.rebuild(options)
-        self._exclusive_block.set_visible(True)
+        was_loading = self._loading
+        self._loading = True
+        try:
+            self._exclusive_options = _fill_export_combo(self._exclusive_row, options)
+        finally:
+            self._loading = was_loading
+        self._exclusive_row.set_visible(True)
+        self._apply_semantics_tooltip(self._exclusive_row)
 
     def configure_subset(
         self,
@@ -763,14 +478,28 @@ class SaveStemsSection:
         self._subset_stems = [s for s in stems if s != ALL_STEMS]
         self._hide_all_rows()
         if not has_model:
-            self.widget.set_visible(False)
+            self._section_visible = False
             return
-        self.widget.set_visible(True)
-        if show_quick_export:
-            self._quick_export.rebuild()
-            self._quick_block.set_visible(True)
-        self._subset.rebuild(self._subset_stems, stem_label_overrides=stem_label_overrides)
-        self._subset_block.set_visible(True)
+        self._section_visible = True
+        was_loading = self._loading
+        self._loading = True
+        try:
+            if show_quick_export:
+                set_combo_tag_values(
+                    self._quick_row,
+                    [
+                        (_QUICK_ALL, _QUICK_EXPORT_LABELS[_QUICK_ALL]),
+                        (_QUICK_INSTRUMENTAL, _QUICK_EXPORT_LABELS[_QUICK_INSTRUMENTAL]),
+                        (_QUICK_VOCALS, _QUICK_EXPORT_LABELS[_QUICK_VOCALS]),
+                    ],
+                )
+                self._quick_row.set_visible(True)
+            self._custom_row.set_visible(True)
+        finally:
+            self._loading = was_loading
+        target = self._quick_row if show_quick_export else self._custom_row
+        self._apply_semantics_tooltip(target)
+        self._refresh_custom_subtitle()
         self._apply_subset_dimming()
 
     def configure_demucs(
@@ -792,31 +521,59 @@ class SaveStemsSection:
         self._secondary_key = secondary_key
         self._hide_all_rows()
         if not has_model:
-            self.widget.set_visible(False)
+            self._section_visible = False
             return
-        self.widget.set_visible(True)
-        self._demucs_focus.rebuild(focus_stems)
-        self._demucs_focus_block.set_visible(True)
+        self._section_visible = True
+        items: List[Tuple[str, str]] = []
+        self._demucs_focus_map = {}
+        for entry in focus_stems:
+            if entry == ALL_STEMS:
+                name, label = _QUICK_ALL, ALL_STEMS
+                self._demucs_focus_map[name] = ALL_STEMS
+            elif entry == _FOCUS_INSTRUMENTAL:
+                name = _FOCUS_INSTRUMENTAL
+                label = _QUICK_EXPORT_LABELS[_QUICK_INSTRUMENTAL]
+                self._demucs_focus_map[name] = _FOCUS_INSTRUMENTAL
+            elif entry == _FOCUS_VOCALS:
+                name = _FOCUS_VOCALS
+                label = _QUICK_EXPORT_LABELS[_QUICK_VOCALS]
+                self._demucs_focus_map[name] = _FOCUS_VOCALS
+            else:
+                name = entry
+                label = stem_display_label(entry)
+                self._demucs_focus_map[name] = entry
+            items.append((name, label))
+        was_loading = self._loading
+        self._loading = True
+        try:
+            set_combo_tag_values(self._demucs_focus_row, items)
+        finally:
+            self._loading = was_loading
+        self._demucs_focus_row.set_visible(True)
+        self._apply_semantics_tooltip(self._demucs_focus_row)
 
     def sync_from_settings(self) -> None:
         was_loading = self._loading
         self._loading = True
         try:
             if self.mode == "exclusive":
-                self._exclusive.sync_from_settings(
+                name = _exclusive_name_from_settings(
                     self.settings, self._primary_key, self._secondary_key
                 )
+                set_combo_value(self._exclusive_row, name)
             elif self.mode == "subset":
                 self._sync_subset_from_settings()
             elif self.mode == "demucs":
                 self._sync_demucs_from_settings()
         finally:
             self._loading = was_loading
+        self._refresh_primary_semantics()
 
     def persist_to_settings(self) -> None:
         if self.mode == "exclusive":
-            self._exclusive.persist_to_settings(
-                self.settings, self._primary_key, self._secondary_key
+            name = get_combo_value(self._exclusive_row) or _TOGGLE_ALL
+            _persist_exclusive_choice(
+                self.settings, self._primary_key, self._secondary_key, name
             )
         elif self.mode == "subset":
             self._persist_subset()
@@ -827,9 +584,8 @@ class SaveStemsSection:
         if not self._has_model:
             return SAVE_STEMS_NO_MODEL_HELP
         if self.mode == "exclusive":
-            return self._exclusive.active_export_label(
-                self._exclusive_primary, self._exclusive_secondary
-            )
+            name = get_combo_value(self._exclusive_row) or _TOGGLE_ALL
+            return _export_label_for_choice(name, self._exclusive_options)
         if self.mode == "subset":
             return self._subset_export_summary()
         if self.mode == "demucs":
@@ -837,61 +593,77 @@ class SaveStemsSection:
         return SAVE_STEMS_NO_MODEL_HELP
 
     def export_description_lines(self) -> List[str]:
-        lines = [self.export_summary()]
-        if self._export_semantics_note:
-            lines.append(self._export_semantics_note)
-        return lines
+        """Group description lines (summary only; semantics live on the row)."""
+        return [self.export_summary()]
 
     def expected_output_count(self) -> int:
         if not self._has_model or self.mode == "hidden":
             return 0
         if self.mode == "exclusive":
-            return self._exclusive.expected_output_count()
+            name = get_combo_value(self._exclusive_row) or _TOGGLE_ALL
+            return 2 if name == _TOGGLE_ALL else 1
         if self.mode == "subset":
             if self._subset_mode in (_QUICK_INSTRUMENTAL, _QUICK_VOCALS):
                 return 1
-            if self._subset_mode == _QUICK_ALL or self._subset.is_all_active():
+            if self._subset_mode == _QUICK_ALL or self._custom_all:
                 return max(1, len(self._subset_stems))
-            selected = self._subset.selected_stems()
-            if not selected:
+            if not self._custom_selected:
                 return max(1, len(self._subset_stems))
-            return len(selected)
+            return len(self._custom_selected)
         if self.mode == "demucs":
-            if self._demucs_focus.is_quick_instrumental() or self._demucs_focus.is_quick_vocals():
+            if self._demucs_is_quick_instrumental() or self._demucs_is_quick_vocals():
                 return 1
-            if self._demucs_focus.is_all_stems():
+            if self._demucs_is_all_stems():
                 return max(1, self._demucs_stem_count)
-            if self._demucs_export_block.get_visible():
-                return self._demucs_export.expected_output_count()
+            if self._demucs_export_row.get_visible():
+                name = get_combo_value(self._demucs_export_row) or _TOGGLE_ALL
+                return 2 if name == _TOGGLE_ALL else 1
             return 1
         return 0
 
     def active_hint(self) -> str:
+        if self._export_semantics_note:
+            return self._export_semantics_note
         if self.mode == "subset":
             return MDX_STEMS_HINT
         if self.mode == "demucs":
             return DEMUCS_STEMS_SAVE_HELP
         return SAVE_STEM_ONLY_HELP
 
+    # -- Exclusive -------------------------------------------------------------
+
+    def _on_exclusive_changed(self, *_args) -> None:
+        if self._loading:
+            return
+        self._notify()
+
+    # -- Subset / custom stems -------------------------------------------------
+
     def _hide_all_rows(self) -> None:
-        for block in (
-            self._exclusive_block,
-            self._quick_block,
-            self._subset_block,
-            self._demucs_focus_block,
-            self._demucs_export_block,
+        for row in (
+            self._exclusive_row,
+            self._quick_row,
+            self._custom_row,
+            self._demucs_focus_row,
+            self._demucs_export_row,
         ):
-            block.set_visible(False)
-        self._quick_block.remove_css_class("uvr-stem-row-inactive")
-        self._subset_block.remove_css_class("uvr-stem-row-inactive")
+            row.set_visible(False)
+        self._quick_row.set_sensitive(True)
+        self._custom_row.set_sensitive(True)
 
     def _apply_subset_dimming(self) -> None:
-        if self._subset_mode == "custom":
-            self._quick_block.add_css_class("uvr-stem-row-inactive")
-            self._subset_block.remove_css_class("uvr-stem-row-inactive")
-        else:
-            self._subset_block.add_css_class("uvr-stem-row-inactive")
-            self._quick_block.remove_css_class("uvr-stem-row-inactive")
+        """Dim the inactive path so Quick vs Custom ownership is obvious."""
+        if not self._quick_row.get_visible():
+            self._quick_row.set_opacity(1.0)
+            self._custom_row.set_opacity(1.0)
+            self._quick_row.set_sensitive(True)
+            self._custom_row.set_sensitive(True)
+            return
+        custom_active = self._subset_mode == "custom"
+        self._quick_row.set_opacity(0.55 if custom_active else 1.0)
+        self._custom_row.set_opacity(1.0 if custom_active else 0.55)
+        self._quick_row.set_sensitive(True)
+        self._custom_row.set_sensitive(True)
 
     def _vocal_stem_in_subset(self) -> Optional[str]:
         for stem in self._subset_stems:
@@ -905,21 +677,38 @@ class SaveStemsSection:
         chosen = next(iter(selected))
         return canonical_stem_name(chosen) == VOCAL_STEM or chosen == VOCAL_STEM
 
+    def _set_custom_selection(
+        self,
+        selected: Set[str],
+        *,
+        highlight_all_when_empty: bool = True,
+    ) -> None:
+        stem_set = set(self._subset_stems)
+        if not selected:
+            self._custom_all = highlight_all_when_empty
+            self._custom_selected = set()
+        elif selected >= stem_set:
+            self._custom_all = True
+            self._custom_selected = set()
+        else:
+            self._custom_all = False
+            self._custom_selected = set(selected)
+        self._refresh_custom_subtitle()
+
     def _apply_subset_chip_selection(self, mode: str, selected: Set[str]) -> None:
-        full = self._subset_stems
+        """Update in-memory custom selection to match quick/custom mode."""
         if mode == _QUICK_INSTRUMENTAL:
-            self._subset.set_selection(set(), full_stems=full, highlight_all_when_empty=False)
+            self._set_custom_selection(set(), highlight_all_when_empty=False)
         elif mode == _QUICK_VOCALS:
             vocal = self._vocal_stem_in_subset()
-            self._subset.set_selection(
+            self._set_custom_selection(
                 {vocal} if vocal else set(),
-                full_stems=full,
                 highlight_all_when_empty=False,
             )
         elif mode == _QUICK_ALL:
-            self._subset.set_selection(set(), full_stems=full)
+            self._set_custom_selection(set(), highlight_all_when_empty=True)
         else:
-            self._subset.set_selection(selected, full_stems=full)
+            self._set_custom_selection(selected, highlight_all_when_empty=True)
 
     def _stored_subset_selection(self) -> Tuple[str, Set[str]]:
         selected = list(self.settings.get("mdx_stems_selected") or [])
@@ -945,8 +734,8 @@ class SaveStemsSection:
     def _sync_subset_from_settings(self) -> None:
         mode, selected = self._stored_subset_selection()
         self._subset_mode = mode
-        if self._vocal_stem_in_subset():
-            self._quick_export.set_active(mode if mode != "custom" else _QUICK_ALL)
+        if self._quick_row.get_visible() and self._vocal_stem_in_subset():
+            set_combo_value(self._quick_row, mode if mode != "custom" else _QUICK_ALL)
         self._apply_subset_chip_selection(mode, selected)
         self._apply_subset_dimming()
 
@@ -969,11 +758,13 @@ class SaveStemsSection:
                 self.settings.set(self._secondary_key, False)
             return
 
-        selected = self._subset.selected_stems()
-        if self._subset.is_all_active() or not selected or set(selected) >= set(self._subset_stems):
+        if self._custom_all or not self._custom_selected or self._custom_selected >= set(
+            self._subset_stems
+        ):
             self.settings.set("mdx_stems_selected", [])
             self.settings.set("mdx_stems", ALL_STEMS)
         else:
+            selected = [stem for stem in self._subset_stems if stem in self._custom_selected]
             self.settings.set("mdx_stems_selected", selected)
             self.settings.set("mdx_stems", selected[0] if len(selected) == 1 else ALL_STEMS)
         self.settings.set(self._primary_key, False)
@@ -984,17 +775,170 @@ class SaveStemsSection:
             return "Exporting Instrumental only (derived)"
         if self._subset_mode == _QUICK_VOCALS:
             return "Exporting Vocals only"
-        if self._subset_mode == _QUICK_ALL or self._subset.is_all_active():
+        if self._subset_mode == _QUICK_ALL or self._custom_all:
             return "Exporting all stems"
-        selected = self._subset.selected_stems()
+        selected = [stem for stem in self._subset_stems if stem in self._custom_selected]
         if not selected:
             return "Exporting all stems"
+        if len(selected) == 1 and canonical_stem_name(selected[0]) == OTHER_STEM:
+            return "Exporting Other stem"
         return "Exporting " + ", ".join(
             stem_display_label(stem, overrides=self._stem_label_overrides) for stem in selected
         )
 
-    def _demucs_focus_stem_list(self) -> List[str]:
-        return list(self._demucs_focus._focus_map.values())
+    def _refresh_custom_subtitle(self) -> None:
+        if self._subset_mode != "custom":
+            set_row_subtitle(self._custom_row, "Open to choose specific stems")
+            return
+        if self._custom_all or not self._custom_selected:
+            set_row_subtitle(self._custom_row, ALL_STEMS)
+            return
+        labels = [
+            stem_display_label(stem, overrides=self._stem_label_overrides)
+            for stem in self._subset_stems
+            if stem in self._custom_selected
+        ]
+        set_row_subtitle(self._custom_row, ", ".join(labels) if labels else ALL_STEMS)
+
+    def _rebuild_custom_checklist(self) -> None:
+        child = self._custom_listbox.get_first_child()
+        while child is not None:
+            nxt = child.get_next_sibling()
+            self._custom_listbox.remove(child)
+            child = nxt
+        self._custom_checks = {}
+
+        all_row = Adw.ActionRow(title=ALL_STEMS)
+        all_check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
+        all_check.connect("toggled", self._on_draft_all_toggled)
+        all_row.add_prefix(all_check)
+        all_row.set_activatable_widget(all_check)
+        self._custom_listbox.append(all_row)
+        self._custom_checks[ALL_STEMS] = all_check
+
+        for stem in self._subset_stems:
+            label = stem_display_label(stem, overrides=self._stem_label_overrides)
+            row = Adw.ActionRow(title=label)
+            check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
+            check.connect("toggled", self._on_draft_stem_toggled)
+            row.add_prefix(check)
+            row.set_activatable_widget(check)
+            self._custom_listbox.append(row)
+            self._custom_checks[stem] = check
+
+    def _sync_draft_checks(self) -> None:
+        was_loading = self._loading
+        self._loading = True
+        try:
+            all_check = self._custom_checks.get(ALL_STEMS)
+            if all_check is not None:
+                all_check.set_active(self._draft_custom_all)
+            for stem in self._subset_stems:
+                check = self._custom_checks.get(stem)
+                if check is not None:
+                    check.set_active(
+                        (not self._draft_custom_all) and stem in self._draft_custom_selected
+                    )
+        finally:
+            self._loading = was_loading
+
+    def _open_custom_stems_dialog(self, *_args) -> None:
+        if self._subset_mode == "custom":
+            self._draft_custom_all = self._custom_all
+            self._draft_custom_selected = set(self._custom_selected)
+        else:
+            self._draft_custom_all = True
+            self._draft_custom_selected = set()
+        self._rebuild_custom_checklist()
+        self._sync_draft_checks()
+        parent = self.widget.get_root()
+        present_modal_dialog(self._custom_dialog, parent if isinstance(parent, Gtk.Window) else None)
+
+    def _on_draft_all_toggled(self, button: Gtk.CheckButton) -> None:
+        if self._loading or not button.get_active():
+            return
+        was_loading = self._loading
+        self._loading = True
+        try:
+            for stem, check in self._custom_checks.items():
+                if stem != ALL_STEMS:
+                    check.set_active(False)
+        finally:
+            self._loading = was_loading
+        self._draft_custom_all = True
+        self._draft_custom_selected = set()
+
+    def _on_draft_stem_toggled(self, _button: Gtk.CheckButton) -> None:
+        if self._loading:
+            return
+        was_loading = self._loading
+        self._loading = True
+        try:
+            all_check = self._custom_checks.get(ALL_STEMS)
+            if all_check is not None:
+                all_check.set_active(False)
+        finally:
+            self._loading = was_loading
+        self._draft_custom_all = False
+        self._draft_custom_selected = {
+            stem
+            for stem in self._subset_stems
+            if self._custom_checks.get(stem) and self._custom_checks[stem].get_active()
+        }
+        if not self._draft_custom_selected or self._draft_custom_selected >= set(
+            self._subset_stems
+        ):
+            self._draft_custom_all = True
+            self._draft_custom_selected = set()
+            if self._custom_checks.get(ALL_STEMS):
+                was_loading = self._loading
+                self._loading = True
+                try:
+                    self._custom_checks[ALL_STEMS].set_active(True)
+                    for stem in self._subset_stems:
+                        self._custom_checks[stem].set_active(False)
+                finally:
+                    self._loading = was_loading
+
+    def _on_custom_stems_save(self) -> None:
+        self._custom_all = self._draft_custom_all
+        self._custom_selected = set(self._draft_custom_selected)
+        self._subset_mode = "custom"
+        self._refresh_custom_subtitle()
+        self._apply_subset_dimming()
+        self._custom_dialog.close()
+        self._notify()
+
+    def _on_quick_export_changed(self, *_args) -> None:
+        if self._loading:
+            return
+        mode = get_combo_value(self._quick_row) or _QUICK_ALL
+        self._subset_mode = mode
+        self._apply_subset_chip_selection(mode, set())
+        self._apply_subset_dimming()
+        tip = self._export_semantics_note or _QUICK_EXPORT_HINTS.get(mode) or MDX_STEMS_HINT
+        self._quick_row.set_tooltip_text(tip)
+        self._notify()
+
+    # -- Demucs ----------------------------------------------------------------
+
+    def _demucs_active_name(self) -> str:
+        return get_combo_value(self._demucs_focus_row) or _QUICK_ALL
+
+    def _demucs_focus_value(self) -> str:
+        return self._demucs_focus_map.get(self._demucs_active_name(), ALL_STEMS)
+
+    def _demucs_is_quick_vocals(self) -> bool:
+        return self._demucs_active_name() == _FOCUS_VOCALS
+
+    def _demucs_is_quick_instrumental(self) -> bool:
+        return self._demucs_active_name() == _FOCUS_INSTRUMENTAL
+
+    def _demucs_is_all_stems(self) -> bool:
+        return self._demucs_active_name() == _QUICK_ALL
+
+    def _demucs_needs_export_filter(self) -> bool:
+        return self._demucs_active_name() not in (_QUICK_ALL, _FOCUS_INSTRUMENTAL, _FOCUS_VOCALS)
 
     def _sync_demucs_from_settings(self) -> None:
         focus = self.settings.get("demucs_stems", ALL_STEMS)
@@ -1010,11 +954,13 @@ class SaveStemsSection:
         else:
             active = focus
 
-        self._demucs_focus.set_active_name(active)
+        set_combo_value(self._demucs_focus_row, active)
+        self._update_demucs_export_visibility(from_settings=True)
 
-        if self._demucs_focus.needs_export_filter():
-            primary = focus
-            secondary = secondary_stem(focus)
+    def _update_demucs_export_visibility(self, *, from_settings: bool) -> None:
+        if self._demucs_needs_export_filter():
+            primary = self._demucs_focus_value()
+            secondary = secondary_stem(primary)
             self._demucs_export_primary = primary
             self._demucs_export_secondary = secondary
             options = build_stem_only_options(
@@ -1023,16 +969,32 @@ class SaveStemsSection:
                 primary_key=self._primary_key,
                 secondary_key=self._secondary_key,
             )
-            self._demucs_export.rebuild(options)
-            self._demucs_export.sync_from_settings(
-                self.settings, self._primary_key, self._secondary_key
-            )
-            self._demucs_export_block.set_visible(True)
+            was_loading = self._loading
+            self._loading = True
+            try:
+                self._demucs_export_options = _fill_export_combo(self._demucs_export_row, options)
+                if from_settings:
+                    name = _exclusive_name_from_settings(
+                        self.settings, self._primary_key, self._secondary_key
+                    )
+                else:
+                    if not self.settings.get(self._primary_key) and not self.settings.get(
+                        self._secondary_key
+                    ):
+                        self.settings.set(self._primary_key, True)
+                        self.settings.set(self._secondary_key, False)
+                    name = _exclusive_name_from_settings(
+                        self.settings, self._primary_key, self._secondary_key
+                    )
+                set_combo_value(self._demucs_export_row, name)
+            finally:
+                self._loading = was_loading
+            self._demucs_export_row.set_visible(True)
         else:
-            self._demucs_export_block.set_visible(False)
+            self._demucs_export_row.set_visible(False)
 
     def _persist_demucs(self) -> None:
-        active = self._demucs_focus.active_name()
+        active = self._demucs_active_name()
         if active == _QUICK_ALL:
             self.settings.set("demucs_stems", ALL_STEMS)
             self.settings.set(self._primary_key, False)
@@ -1050,96 +1012,173 @@ class SaveStemsSection:
             return
 
         self.settings.set("demucs_stems", active)
-        if self._demucs_export_block.get_visible():
-            self._demucs_export.persist_to_settings(
-                self.settings, self._primary_key, self._secondary_key
+        if self._demucs_export_row.get_visible():
+            name = get_combo_value(self._demucs_export_row) or _TOGGLE_ALL
+            _persist_exclusive_choice(
+                self.settings, self._primary_key, self._secondary_key, name
             )
         else:
             self.settings.set(self._primary_key, True)
             self.settings.set(self._secondary_key, False)
 
     def _demucs_export_summary(self) -> str:
-        if self._demucs_focus.is_all_stems():
+        if self._demucs_is_all_stems():
             return "Exporting all stems"
-        if self._demucs_focus.is_quick_instrumental():
+        if self._demucs_is_quick_instrumental():
             return "Exporting Instrumental only (derived)"
-        if self._demucs_focus.is_quick_vocals():
+        if self._demucs_is_quick_vocals():
             return "Exporting Vocals only"
-        focus = self._demucs_focus.focus_value()
-        if self._demucs_export_block.get_visible():
-            summary = self._demucs_export.active_export_label(
-                self._demucs_export_primary, self._demucs_export_secondary
-            )
-            focus_label = stem_display_label(focus)
+        focus = self._demucs_focus_value()
+        focus_label = stem_display_label(focus)
+        if self._demucs_export_row.get_visible():
+            name = get_combo_value(self._demucs_export_row) or _TOGGLE_ALL
+            summary = _export_label_for_choice(name, self._demucs_export_options)
             return summary.replace("Exporting", f"{focus_label} focus —", 1)
-        return f"{stem_display_label(focus)} focus — {stem_display_label(focus)} only"
+        return f"{focus_label} focus — {focus_label} only"
 
-    def _on_quick_export_changed(self) -> None:
+    def _on_demucs_focus_changed(self, *_args) -> None:
         if self._loading:
             return
-        self._subset_mode = self._quick_export.active_name()
-        was_loading = self._loading
-        self._loading = True
-        try:
-            if self._subset_mode == _QUICK_ALL:
-                self._subset.set_selection(set(), full_stems=self._subset_stems)
-            elif self._subset_mode == _QUICK_INSTRUMENTAL:
-                self._subset.set_selection(
-                    set(),
-                    full_stems=self._subset_stems,
-                    highlight_all_when_empty=False,
-                )
-            elif self._subset_mode == _QUICK_VOCALS:
-                vocal = self._vocal_stem_in_subset()
-                self._subset.set_selection(
-                    {vocal} if vocal else set(),
-                    full_stems=self._subset_stems,
-                    highlight_all_when_empty=False,
-                )
-        finally:
-            self._loading = False
-        self._apply_subset_dimming()
+        self._update_demucs_export_visibility(from_settings=False)
         self._notify()
 
-    def _on_subset_changed(self) -> None:
+    def _on_demucs_export_changed(self, *_args) -> None:
         if self._loading:
             return
-        self._subset_mode = "custom"
-        self._apply_subset_dimming()
         self._notify()
 
-    def _on_demucs_focus_changed(self) -> None:
-        if self._loading:
-            return
-        if self._demucs_focus.needs_export_filter():
-            primary = self._demucs_focus.focus_value()
-            secondary = secondary_stem(primary)
-            self._demucs_export_primary = primary
-            self._demucs_export_secondary = secondary
-            options = build_stem_only_options(
-                primary_stem=primary,
-                secondary_stem=secondary,
-                primary_key=self._primary_key,
-                secondary_key=self._secondary_key,
-            )
-            self._demucs_export.rebuild(options)
-            was_loading = self._loading
-            self._loading = True
-            try:
-                if not self.settings.get(self._primary_key) and not self.settings.get(self._secondary_key):
-                    self.settings.set(self._primary_key, True)
-                    self.settings.set(self._secondary_key, False)
-                self._demucs_export.sync_from_settings(
-                    self.settings, self._primary_key, self._secondary_key
-                )
-            finally:
-                self._loading = was_loading
-            self._demucs_export_block.set_visible(True)
-        else:
-            self._demucs_export_block.set_visible(False)
-        self._notify()
+    # -- Semantics / notify ----------------------------------------------------
+
+    def _apply_semantics_tooltip(self, row: Adw.PreferencesRow) -> None:
+        """Put long guidance on the tooltip only (not the row subtitle)."""
+        if isinstance(row, Adw.ComboRow):
+            row.set_subtitle("")
+        row.set_tooltip_text(self._export_semantics_note or self.active_hint())
+
+    def _refresh_primary_semantics(self) -> None:
+        if self.mode == "exclusive":
+            self._apply_semantics_tooltip(self._exclusive_row)
+        elif self.mode == "subset":
+            target = self._quick_row if self._quick_row.get_visible() else self._custom_row
+            self._apply_semantics_tooltip(target)
+        elif self.mode == "demucs":
+            self._apply_semantics_tooltip(self._demucs_focus_row)
 
     def _notify(self) -> None:
         if self._loading or self._on_changed is None:
             return
         self._on_changed()
+
+    # -- Test helpers (preserve prior internal call shapes) --------------------
+
+    class _QuickExportProxy:
+        def __init__(self, section: "SaveStemsSection"):
+            self._section = section
+
+        def set_active(self, name: str) -> None:
+            was_loading = self._section._loading
+            self._section._loading = True
+            try:
+                set_combo_value(self._section._quick_row, name)
+            finally:
+                self._section._loading = was_loading
+
+        def active_name(self) -> str:
+            return get_combo_value(self._section._quick_row) or _QUICK_ALL
+
+    class _SubsetProxy:
+        def __init__(self, section: "SaveStemsSection"):
+            self._section = section
+
+        @property
+        def _chips(self) -> Dict[str, "_ChipProxy"]:
+            return {
+                stem: SaveStemsSection._ChipProxy(self._section, stem)
+                for stem in [ALL_STEMS, *self._section._subset_stems]
+            }
+
+        def rebuild(self, stems: List[str], *, stem_label_overrides=None) -> None:
+            self._section._subset_stems = list(stems)
+            if stem_label_overrides is not None:
+                self._section._stem_label_overrides = stem_label_overrides
+            self._section._rebuild_custom_checklist()
+
+        def set_selection(
+            self,
+            selected: Set[str],
+            *,
+            full_stems: List[str],
+            highlight_all_when_empty: bool = True,
+        ) -> None:
+            self._section._subset_stems = list(full_stems)
+            self._section._set_custom_selection(
+                selected, highlight_all_when_empty=highlight_all_when_empty
+            )
+
+        def selected_stems(self) -> List[str]:
+            if self._section._custom_all:
+                return []
+            return [
+                stem
+                for stem in self._section._subset_stems
+                if stem in self._section._custom_selected
+            ]
+
+        def is_all_active(self) -> bool:
+            return self._section._custom_all
+
+    class _ChipProxy:
+        def __init__(self, section: "SaveStemsSection", stem: str):
+            self._section = section
+            self._stem = stem
+
+        def get_active(self) -> bool:
+            if self._stem == ALL_STEMS:
+                return self._section._custom_all
+            return (not self._section._custom_all) and self._stem in self._section._custom_selected
+
+    class _DemucsFocusProxy:
+        def __init__(self, section: "SaveStemsSection"):
+            self._section = section
+
+        def set_active_name(self, name: str) -> None:
+            was_loading = self._section._loading
+            self._section._loading = True
+            try:
+                set_combo_value(self._section._demucs_focus_row, name)
+            finally:
+                self._section._loading = was_loading
+
+        def active_name(self) -> str:
+            return self._section._demucs_active_name()
+
+        def focus_value(self) -> str:
+            return self._section._demucs_focus_value()
+
+        def is_quick_vocals(self) -> bool:
+            return self._section._demucs_is_quick_vocals()
+
+        def is_quick_instrumental(self) -> bool:
+            return self._section._demucs_is_quick_instrumental()
+
+        def is_all_stems(self) -> bool:
+            return self._section._demucs_is_all_stems()
+
+        def needs_export_filter(self) -> bool:
+            return self._section._demucs_needs_export_filter()
+
+        @property
+        def _focus_map(self) -> Dict[str, str]:
+            return self._section._demucs_focus_map
+
+    @property
+    def _quick_export(self) -> _QuickExportProxy:
+        return self._QuickExportProxy(self)
+
+    @property
+    def _subset(self) -> _SubsetProxy:
+        return self._SubsetProxy(self)
+
+    @property
+    def _demucs_focus(self) -> _DemucsFocusProxy:
+        return self._DemucsFocusProxy(self)

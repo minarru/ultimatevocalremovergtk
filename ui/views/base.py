@@ -188,8 +188,8 @@ class MethodView:
         self._resolved_primary_stem = None
         self._resolved_secondary_stem = None
         self._resolved_model = None
-        self.stem_group.add(self.save_stems.widget)
-        self.hints.register(self.save_stems.widget, SAVE_STEM_ONLY_HELP)
+        self.save_stems.attach_to(self.stem_group)
+        self.hints.register(self.stem_group, SAVE_STEM_ONLY_HELP)
         self.build_stem_options(self.stem_group)
         self.groups.append(self.stem_group)
 
@@ -291,7 +291,7 @@ class MethodView:
         )
 
     def _update_stem_group_metadata(self) -> None:
-        line1 = "\n".join(self.save_stems.export_description_lines())
+        line1 = self.save_stems.export_summary()
         workload = estimate_workload(
             self.settings,
             method_key=self.method_key,
@@ -304,7 +304,7 @@ class MethodView:
         self.stem_group.set_description(f"{line1}\n{line2}" if line2 else line1)
         from ..hints import set_tooltip
 
-        set_tooltip(self.save_stems.widget, self.save_stems.active_hint())
+        set_tooltip(self.stem_group, self.save_stems.active_hint())
 
     def _touch_settings(self) -> None:
         self._update_stem_group_metadata()

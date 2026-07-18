@@ -184,7 +184,7 @@ class RecommendedExportNoteTests(unittest.TestCase):
             model_name="BandSplit Roformer | Chorus Male-Female by Sucial",
         )
         note = recommended_export_note(model)
-        self.assertIn("male / female", note)
+        self.assertIn("Male / Female", note)
         self.assertIn("Specialty", note)
 
 
