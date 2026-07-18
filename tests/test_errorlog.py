@@ -2,7 +2,12 @@ import unittest
 
 from bundled.error_handling import error_dialouge, error_text
 from ui.errorlog import (
+    _ERROR_DIALOG_WIDTH,
+    _ERROR_SUMMARY_MAX_HEIGHT,
+    _ERROR_SUMMARY_MIN_HEIGHT,
+    _error_dialog_width,
     _friendly_error_message,
+    _summary_viewport_height,
     get_error_log,
     log_error,
     set_error_log,
@@ -42,6 +47,47 @@ class ErrorLogTests(unittest.TestCase):
         message = _friendly_error_message(MemoryError("CUDA out of memory"))
         self.assertIsNotNone(message)
         self.assertIn("GPU memory", message or "")
+
+    def test_error_dialog_width_is_readable_but_capped(self) -> None:
+        class _WideWindow:
+            def get_width(self) -> int:
+                return 1400
+
+            def get_default_width(self) -> int:
+                return 1400
+
+        self.assertEqual(_error_dialog_width(_WideWindow()), _ERROR_DIALOG_WIDTH)
+        self.assertGreaterEqual(_ERROR_DIALOG_WIDTH, 560)
+
+    def test_error_dialog_width_shrinks_on_narrow_parent(self) -> None:
+        class _NarrowWindow:
+            def get_width(self) -> int:
+                return 480
+
+            def get_default_width(self) -> int:
+                return 480
+
+        self.assertEqual(_error_dialog_width(_NarrowWindow()), 416)
+
+    def test_summary_viewport_height_fits_short_errors(self) -> None:
+        height = _summary_viewport_height("RuntimeError: boom", width_px=520)
+        self.assertGreaterEqual(height, _ERROR_SUMMARY_MIN_HEIGHT)
+        self.assertLess(height, 120)
+
+    def test_summary_viewport_height_caps_long_errors(self) -> None:
+        long_text = "RuntimeError: " + ("x" * 4000)
+        height = _summary_viewport_height(long_text, width_px=520)
+        self.assertEqual(height, _ERROR_SUMMARY_MAX_HEIGHT)
+
+    def test_typical_runtime_error_stays_under_scroll_cap(self) -> None:
+        summary = (
+            "RuntimeError: PytorchStreamReader failed reading zip archive: "
+            "failed finding central directory. This is an internal miniz error. "
+            "If you are seeing this error, there is a high likelihood that your "
+            "checkpoint file is corrupted."
+        )
+        height = _summary_viewport_height(summary, width_px=520)
+        self.assertLessEqual(height, _ERROR_SUMMARY_MAX_HEIGHT)
 
 
 if __name__ == "__main__":

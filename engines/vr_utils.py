@@ -1,9 +1,12 @@
 """VR denoiser and multi-band mix loading."""
+import os
+
 import numpy as np
 import torch
 import librosa
 
 from bundled.constants import OPERATING_SYSTEM, SYSTEM_PROC, ARM, SYSTEM_ARCH
+from core.paths import VR_PARAM_DIR
 from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
 from ml.vr_network import nets_new
@@ -61,10 +64,26 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
         mp = None
         hop_length=1024
         nout, nout_lstm = 16, 128
-    
-    model = nets_new.CascadedNet(n_fft, nout=nout, nout_lstm=nout_lstm)
-    model.load_state_dict(load_torch_checkpoint(model_path, map_location=cpu))
-    model.to(device)
+
+    from engines.model_weight_cache import get_weight_cache, weight_cache_key
+
+    key = weight_cache_key(
+        "vr_deverber" if is_deverber else "vr_denoise",
+        str(model_path),
+        device,
+        n_fft,
+        nout,
+        nout_lstm,
+    )
+    cache = get_weight_cache()
+    cached = cache.get(key)
+    if cached and cached.module is not None:
+        model = cached.module
+    else:
+        model = nets_new.CascadedNet(n_fft, nout=nout, nout_lstm=nout_lstm)
+        model.load_state_dict(load_torch_checkpoint(model_path, map_location=cpu))
+        model.to(device)
+        cache.put(key, module=model)
 
     if mp is None:
         X_spec = spec_utils.wave_to_spectrogram_old(X, hop_length, n_fft)

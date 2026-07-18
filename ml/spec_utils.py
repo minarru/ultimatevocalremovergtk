@@ -566,13 +566,21 @@ def ensemble_inputs(audio_input, algorithm, is_normalization, wav_type_set, save
     wavs_ = []
     
     if algorithm == AVERAGE:
-        output = average_audio(audio_input)
+        output = average_audio(audio_input, is_array=is_array)
         samplerate = 44100
     else:
         specs = []
         
-        for i in range(len(audio_input)):  
-            wave, samplerate = librosa.load(audio_input[i], mono=False, sr=44100)
+        for i in range(len(audio_input)):
+            if is_array:
+                wave = np.asarray(audio_input[i])
+                if wave.ndim == 1:
+                    wave = np.asarray([wave, wave])
+                elif wave.shape[0] != 2 and wave.shape[-1] == 2:
+                    wave = wave.T
+                samplerate = 44100
+            else:
+                wave, samplerate = librosa.load(audio_input[i], mono=False, sr=44100)
             wavs_.append(wave)
             spec = wave if is_wave else wave_to_spectrogram_no_mp(wave)
             specs.append(spec)
@@ -748,16 +756,23 @@ def augment_audio(export_path, audio_file, rate, is_normalization, wav_type_set,
     sf.write(export_path, normalize(wav_mix.T, is_normalization), sr, subtype=wav_type_set)
     save_format(export_path)
     
-def average_audio(audio):
+def average_audio(audio, is_array=False):
     
     waves = []
     wave_shapes = []
     final_waves = []
 
     for i in range(len(audio)):
-        wave = librosa.load(audio[i], sr=44100, mono=False)
-        waves.append(wave[0])
-        wave_shapes.append(wave[0].shape[1])
+        if is_array:
+            wave = np.asarray(audio[i])
+            if wave.ndim == 1:
+                wave = np.asarray([wave, wave])
+            elif wave.shape[0] != 2 and wave.shape[-1] == 2:
+                wave = wave.T
+        else:
+            wave = librosa.load(audio[i], sr=44100, mono=False)[0]
+        waves.append(wave)
+        wave_shapes.append(wave.shape[1])
 
     wave_shapes_index = wave_shapes.index(max(wave_shapes))
     target_shape = waves[wave_shapes_index]

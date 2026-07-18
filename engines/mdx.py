@@ -28,7 +28,6 @@ from ml import spec_utils
 import ml.mdxnet as MdxnetSet
 
 from .base import SeperateAttributes
-from .gpu_cache import clear_gpu_cache
 from .mix import prepare_mix, gather_sources, rerun_mp3
 from .export import save_format
 from .vr_utils import vr_denoiser, loading_mix
@@ -192,20 +191,49 @@ class SeperateMDX(SeperateAttributes):
                 self.start_inference_console_write()
                 self.write_to_console(LOADING_MODEL)
 
+                from engines.model_weight_cache import get_weight_cache, weight_cache_key
+
+                cache = get_weight_cache()
                 if self.is_mdx_ckpt:
-                    model_params = load_torch_checkpoint(
-                        self.model_path, map_location=lambda storage, loc: storage
-                    )["hyper_parameters"]
-                    self.dim_c, self.hop = model_params['dim_c'], model_params['hop_length']
-                    separator = MdxnetSet.ConvTDFNet(**model_params)
-                    self.model_run = separator.load_from_checkpoint(self.model_path).to(self.device).eval()
+                    key = weight_cache_key("mdx_ckpt", self.model_path, self.device)
+                    self._weight_cache_key = key
+                    cached = cache.get(key)
+                    if cached and cached.module is not None:
+                        self.model_run = cached.module
+                        self.dim_c = cached.meta.get("dim_c", self.dim_c)
+                        self.hop = cached.meta.get("hop", self.hop)
+                    else:
+                        model_params = load_torch_checkpoint(
+                            self.model_path, map_location=lambda storage, loc: storage
+                        )["hyper_parameters"]
+                        self.dim_c, self.hop = model_params['dim_c'], model_params['hop_length']
+                        separator = MdxnetSet.ConvTDFNet(**model_params)
+                        self.model_run = separator.load_from_checkpoint(self.model_path).to(self.device).eval()
+                        self._weight_cache_meta = {"dim_c": self.dim_c, "hop": self.hop}
                 else:
-                    if self.mdx_segment_size == self.dim_t and not self.is_other_gpu:
-                        self._ort_session = ort.InferenceSession(self.model_path, providers=self.run_type)
+                    use_ort = self.mdx_segment_size == self.dim_t and not self.is_other_gpu
+                    key = weight_cache_key(
+                        "mdx_ort" if use_ort else "mdx_convert",
+                        self.model_path,
+                        self.device,
+                        self.mdx_segment_size,
+                        self.dim_t,
+                        bool(self.is_other_gpu),
+                    )
+                    self._weight_cache_key = key
+                    cached = cache.get(key)
+                    if use_ort:
+                        if cached and cached.ort_session is not None:
+                            self._ort_session = cached.ort_session
+                        else:
+                            self._ort_session = ort.InferenceSession(self.model_path, providers=self.run_type)
                         self.model_run = lambda spek: self._ort_session.run(None, {'input': spek.cpu().numpy()})[0]
                     else:
-                        self.model_run = ConvertModel(load(self.model_path))
-                        self.model_run.to(self.device).eval()
+                        if cached and cached.module is not None:
+                            self.model_run = cached.module
+                        else:
+                            self.model_run = ConvertModel(load(self.model_path))
+                            self.model_run.to(self.device).eval()
 
                 self.running_inference_console_write()
                 mix = prepare_mix(self.audio_file)
@@ -240,8 +268,6 @@ class SeperateMDX(SeperateAttributes):
                 
             self.primary_source_map = self.final_process(primary_stem_path, self.primary_source, self.secondary_source_primary, self.primary_stem, samplerate)
         
-        clear_gpu_cache()
-
         secondary_sources = {**self.primary_source_map, **self.secondary_source_map}
         
         self.process_vocal_split_chain(secondary_sources)
@@ -350,16 +376,27 @@ class SeperateMDX(SeperateAttributes):
             return source
 
     def run_model(self, mix, is_match_mix=False):
-        
-        spek = self.stft(mix.to(self.device))*self.adjust
-        spek[:, :, :3, :] *= 0 
+        if torch.is_tensor(mix):
+            mix_device = mix if mix.device == self.device else mix.to(self.device)
+        else:
+            mix_device = torch.as_tensor(mix, device=self.device)
+        spek = self.stft(mix_device) * self.adjust
+        spek[:, :, :3, :] *= 0
 
         if is_match_mix:
             spec_pred = spek.cpu().numpy()
         else:
-            spec_pred = -self.model_run(-spek)*0.5+self.model_run(spek)*0.5 if self.is_denoise else self.model_run(spek)
+            spec_pred = (
+                -self.model_run(-spek) * 0.5 + self.model_run(spek) * 0.5
+                if self.is_denoise
+                else self.model_run(spek)
+            )
 
-        return self.stft.inverse(torch.tensor(spec_pred).to(self.device)).cpu().detach().numpy()
+        if torch.is_tensor(spec_pred):
+            inv = self.stft.inverse(spec_pred)
+        else:
+            inv = self.stft.inverse(torch.as_tensor(spec_pred, device=self.device))
+        return inv.detach().cpu().numpy()
 
 class SeperateMDXC(SeperateAttributes):        
 
@@ -518,8 +555,6 @@ class SeperateMDXC(SeperateAttributes):
 
                 self.primary_source_map = self.final_process(primary_stem_path, self.primary_source, self.secondary_source_primary, self.primary_stem, samplerate)
 
-        clear_gpu_cache()
-        
         secondary_sources = {**self.primary_source_map, **self.secondary_source_map}
         self.process_vocal_split_chain(secondary_sources)
         
@@ -555,9 +590,22 @@ class SeperateMDXC(SeperateAttributes):
             if self.is_pitch_change:
                 mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
 
-            model = TFC_TDF_net(self.mdx_c_configs, device=self.device)
-            model.load_state_dict(_load_torch_checkpoint(self.model_path))
-            model.to(self.device).eval()
+            from engines.model_weight_cache import get_weight_cache, weight_cache_key
+
+            key = weight_cache_key(
+                "mdx_c",
+                self.model_path,
+                self.device,
+                getattr(self.mdx_c_configs.inference, "dim_t", None),
+            )
+            self._weight_cache_key = key
+            cached = get_weight_cache().get(key)
+            if cached and cached.module is not None:
+                model = cached.module
+            else:
+                model = TFC_TDF_net(self.mdx_c_configs, device=self.device)
+                model.load_state_dict(_load_torch_checkpoint(self.model_path))
+                model.to(self.device).eval()
             self._inference_model = model
             mix = torch.tensor(mix, dtype=torch.float32)
 
@@ -619,10 +667,7 @@ class SeperateMDXC(SeperateAttributes):
             finally:
                 if isinstance(mix, torch.Tensor):
                     del mix
-                model.cpu()
-                del model
-                self._inference_model = None
-                clear_gpu_cache()
+                # Keep weights on self._inference_model for release_separator / weight cache.
 
     def demix_roformer(self, mix):
         with trace_phase(
@@ -638,14 +683,26 @@ class SeperateMDXC(SeperateAttributes):
 
             device = self.device
 
-            # Build the MDX-C architecture indicated by the model yaml config.
-            model = _build_mdx_c_model(self.roformer_config)
+            from engines.model_weight_cache import get_weight_cache, weight_cache_key
 
-            checkpoint = _load_torch_checkpoint(self.model_path)
-            model = model if not isinstance(model, torch.nn.DataParallel) else model.module
-            model.load_state_dict(checkpoint)
-            del checkpoint
-            model.to(device).eval()
+            key = weight_cache_key(
+                "mdx_roformer",
+                self.model_path,
+                device,
+                bool(self.is_roformer),
+                getattr(self.mdx_c_configs.inference, "dim_t", None),
+            )
+            self._weight_cache_key = key
+            cached = get_weight_cache().get(key)
+            if cached and cached.module is not None:
+                model = cached.module
+            else:
+                model = _build_mdx_c_model(self.roformer_config)
+                checkpoint = _load_torch_checkpoint(self.model_path)
+                model = model if not isinstance(model, torch.nn.DataParallel) else model.module
+                model.load_state_dict(checkpoint)
+                del checkpoint
+                model.to(device).eval()
             self._inference_model = model
             mix = torch.tensor(mix, dtype=torch.float32)
 
@@ -753,7 +810,4 @@ class SeperateMDXC(SeperateAttributes):
                 for tensor in (result, counter, mix, estimated_sources):
                     if tensor is not None:
                         del tensor
-                model.cpu()
-                del model
-                self._inference_model = None
-                clear_gpu_cache()
+                # Keep weights on self._inference_model for release_separator / weight cache.

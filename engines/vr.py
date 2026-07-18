@@ -26,7 +26,6 @@ from ml import spec_utils
 import ml.mdxnet as MdxnetSet
 
 from .base import SeperateAttributes
-from .gpu_cache import clear_gpu_cache
 from .mix import prepare_mix, gather_sources, rerun_mp3
 from .export import save_format
 from .vr_utils import vr_denoiser, loading_mix, multiband_waves_to_spectrogram
@@ -62,17 +61,34 @@ class SeperateVR(SeperateAttributes):
                 model_size = math.ceil(os.stat(self.model_path).st_size / 1024)
                 nn_arch_size = min(nn_arch_sizes, key=lambda x:abs(x-model_size))
 
-                if nn_arch_size in vr_5_1_models or self.is_vr_51_model:
+                from engines.model_weight_cache import get_weight_cache, weight_cache_key
+
+                key = weight_cache_key(
+                    "vr",
+                    self.model_path,
+                    device,
+                    nn_arch_size,
+                    bool(self.is_vr_51_model),
+                    tuple(self.model_capacity),
+                )
+                self._weight_cache_key = key
+                cached = get_weight_cache().get(key)
+                if cached and cached.module is not None:
+                    self.model_run = cached.module
+                    if nn_arch_size in vr_5_1_models or self.is_vr_51_model:
+                        self.is_vr_51_model = True
+                elif nn_arch_size in vr_5_1_models or self.is_vr_51_model:
                     self.model_run = nets_new.CascadedNet(self.mp.param['bins'] * 2, 
                                                           nn_arch_size, 
                                                           nout=self.model_capacity[0], 
                                                           nout_lstm=self.model_capacity[1])
                     self.is_vr_51_model = True
+                    self.model_run.load_state_dict(load_torch_checkpoint(self.model_path, map_location=cpu)) 
+                    self.model_run.to(device) 
                 else:
                     self.model_run = nets.determine_model_capacity(self.mp.param['bins'] * 2, nn_arch_size)
-                                
-                self.model_run.load_state_dict(load_torch_checkpoint(self.model_path, map_location=cpu)) 
-                self.model_run.to(device) 
+                    self.model_run.load_state_dict(load_torch_checkpoint(self.model_path, map_location=cpu)) 
+                    self.model_run.to(device) 
 
                 self.running_inference_console_write()
                             
@@ -106,7 +122,6 @@ class SeperateVR(SeperateAttributes):
             
             self.secondary_source_map = self.final_process(secondary_stem_path, self.secondary_source, self.secondary_source_secondary, self.secondary_stem, 44100)
             
-        clear_gpu_cache()
         secondary_sources = {**self.primary_source_map, **self.secondary_source_map}
         
         self.process_vocal_split_chain(secondary_sources)
@@ -118,25 +133,39 @@ class SeperateVR(SeperateAttributes):
 
         self.check_run_control()
         bands_n = len(self.mp.param['band'])
-        audio_file = spec_utils.write_array_to_mem(self.audio_file, subtype=self.wav_type_set)
-        is_mp3 = audio_file.endswith('.mp3') if isinstance(audio_file, str) else False
         bp = self.mp.param['band'][bands_n]
         wav_resolution = (
             'polyphase' if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else bp['res_type']
         ) if OPERATING_SYSTEM == 'Darwin' else bp['res_type']
-        X_wave = {
-            bands_n: librosa.load(
-                audio_file,
-                sr=bp['sr'],
-                mono=False,
-                dtype=np.float32,
-                res_type=wav_resolution,
-            )[0],
-        }
-        if not np.any(X_wave[bands_n]) and is_mp3:
-            X_wave[bands_n] = rerun_mp3(audio_file, bp['sr'])
-        if X_wave[bands_n].ndim == 1:
-            X_wave[bands_n] = np.asarray([X_wave[bands_n], X_wave[bands_n]])
+
+        if isinstance(self.audio_file, np.ndarray):
+            # Vocal-split / chain paths already provide decoded audio — skip WAV round-trip.
+            wave = np.asarray(self.audio_file, dtype=np.float32)
+            if wave.ndim == 1:
+                wave = np.asarray([wave, wave])
+            elif wave.shape[0] != 2 and wave.shape[-1] == 2:
+                wave = wave.T
+            target_sr = bp['sr']
+            if target_sr != 44100:
+                wave = librosa.resample(wave, orig_sr=44100, target_sr=target_sr, res_type=wav_resolution)
+            X_wave = {bands_n: wave}
+        else:
+            audio_file = spec_utils.write_array_to_mem(self.audio_file, subtype=self.wav_type_set)
+            is_mp3 = audio_file.endswith('.mp3') if isinstance(audio_file, str) else False
+            X_wave = {
+                bands_n: librosa.load(
+                    audio_file,
+                    sr=bp['sr'],
+                    mono=False,
+                    dtype=np.float32,
+                    res_type=wav_resolution,
+                )[0],
+            }
+            if not np.any(X_wave[bands_n]) and is_mp3:
+                X_wave[bands_n] = rerun_mp3(audio_file, bp['sr'])
+            if X_wave[bands_n].ndim == 1:
+                X_wave[bands_n] = np.asarray([X_wave[bands_n], X_wave[bands_n]])
+            del audio_file
 
         X_spec, X_spec_s, _ = multiband_waves_to_spectrogram(
             X_wave,
@@ -154,7 +183,7 @@ class SeperateVR(SeperateAttributes):
                 :, bp['n_fft'] // 2 - self.input_high_end_h:bp['n_fft'] // 2, :
             ]
 
-        del X_wave, X_spec_s, audio_file
+        del X_wave, X_spec_s
         return X_spec
 
     def inference_vr(self, X_spec, device, aggressiveness):
