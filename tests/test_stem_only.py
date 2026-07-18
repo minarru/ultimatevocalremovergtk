@@ -147,7 +147,8 @@ class SaveStemsSectionTests(unittest.TestCase):
     def test_hidden_without_model(self):
         self.section.configure_hidden(has_model=False)
         self.assertEqual(self.section.export_summary(), "Choose a model to configure stem export")
-        self.assertFalse(self.section.widget.get_visible())
+        self.assertFalse(self.section._section_visible)
+        self.assertFalse(self.section._exclusive_row.get_visible())
 
     def test_exclusive_sync_persist_round_trip(self):
         self.settings["is_primary_stem_only"] = True

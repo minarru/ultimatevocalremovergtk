@@ -493,7 +493,7 @@ def recommended_export_note(model) -> str:
     if intent == INTENT_DRUM_BASS_SEP:
         return "Drum/bass separation model — pick No Drum-Bass or Drum-Bass."
     if intent == INTENT_INSTRUMENTAL and target_instrument(model).lower() == "other":
-        return "Instrumental model: Vocals + Instrumental (yaml `other` is the backing track)."
+        return "Instrumental model: Vocals + Instrumental (Instrumental is the backing track)."
     if intent == INTENT_SPECIAL_FX:
         stem = target_instrument(model) or str(getattr(model, "primary_stem", "") or "")
         if stem:
@@ -502,12 +502,23 @@ def recommended_export_note(model) -> str:
     if intent == INTENT_SPECIALTY_STEM:
         instruments = training_instruments(model)
         if instruments:
+            names = " / ".join(format_specialty_instrument_name(name) for name in instruments)
             return (
-                f"Specialty stems: export {' / '.join(str(name) for name in instruments)} "
+                f"Specialty stems: export {names} "
                 "individually (not Vocals/Instrumental quick export)."
             )
         return "Specialty stem model — use per-stem subset export."
     return ""
+
+
+def format_specialty_instrument_name(name: str) -> str:
+    """Readable specialty stem label without mangling existing capitalization."""
+    text = str(name).strip().replace("_", " ")
+    if not text:
+        return text
+    if any(ch.isupper() for ch in text):
+        return text
+    return " ".join(part.capitalize() for part in text.split())
 
 
 def infer_name_intent_from_label(label: str) -> str:

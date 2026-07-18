@@ -118,27 +118,36 @@ class InputFilesRow(Adw.ExpanderRow):
         self._refresh_subtitle()
         self._rebuild_file_rows()
         self._clear_button.set_sensitive(bool(self.paths))
-        self.set_enable_expansion(bool(self.paths))
+        # One file is fully summarized in the header; expand only for batches.
+        # Collapse by default so the header summary stays primary after selection.
+        multi = len(self.paths) > 1
+        self.set_enable_expansion(multi)
+        self.set_expanded(False)
 
     def _refresh_subtitle(self) -> None:
         if not self.paths:
             self.set_subtitle("No files selected")
+            self.set_tooltip_text(None)
         elif len(self.paths) == 1:
-            subtitle = self.paths[0]
-            if len(self.paths) >= INPUT_FILES_WARN:
-                subtitle = f"{subtitle} (large batch)"
-            set_row_subtitle(self, subtitle)
+            path = self.paths[0]
+            set_row_subtitle(self, path)
+            self.set_tooltip_text(path)
         else:
             extra = len(self.paths) - 1
             subtitle = f"{os.path.basename(self.paths[0])} (and {extra} more)"
             if len(self.paths) >= INPUT_FILES_WARN:
                 subtitle = f"{subtitle} (large batch)"
             set_row_subtitle(self, subtitle)
+            self.set_tooltip_text(None)
 
     def _rebuild_file_rows(self) -> None:
         for row in self._file_rows:
             self.remove(row)
         self._file_rows = []
+        # A single selection already shows the path on the expander; skip the
+        # duplicate child row that previously stacked the same path twice.
+        if len(self.paths) <= 1:
+            return
         for path in self.paths:
             row = Adw.ActionRow()
             set_row_title(row, os.path.basename(path))

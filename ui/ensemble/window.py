@@ -262,8 +262,10 @@ class EnsemblePage:
             settings=self.settings,
             on_changed=self._on_save_stems_changed,
         )
-        set_tooltip(self.save_stems.widget, SAVE_STEM_ONLY_HELP)
-        group.add(self.save_stems.widget)
+        self.save_stems.attach_to(group)
+        set_tooltip(group, SAVE_STEM_ONLY_HELP)
+        # Revealed in _rebuild_stem_only_toggles once a stem pair is chosen.
+        group.set_visible(False)
         self.stems_group = group
         return group
 
@@ -419,6 +421,9 @@ class EnsemblePage:
     def _rebuild_stem_only_toggles(self) -> None:
         primary_stem, secondary_stem = self._ensemble_stem_pair()
         has_pair = bool(primary_stem and secondary_stem)
+        # Hide the whole group until a stem pair exists so the empty Save stems
+        # placeholder does not compete with the page banner.
+        self.stems_group.set_visible(has_pair)
         if not has_pair:
             self.save_stems.configure_hidden(has_model=False)
         else:
@@ -436,7 +441,10 @@ class EnsemblePage:
         self._update_stems_group_metadata()
 
     def _update_stems_group_metadata(self) -> None:
-        line1 = "\n".join(self.save_stems.export_description_lines())
+        if not self.stems_group.get_visible():
+            self.stems_group.set_description("")
+            return
+        line1 = self.save_stems.export_summary()
         workload = estimate_workload(
             self.settings,
             method_key=ENSEMBLE_MODE,
@@ -446,7 +454,7 @@ class EnsemblePage:
         )
         line2 = format_workload_line(workload)
         self.stems_group.set_description(f"{line1}\n{line2}" if line2 else line1)
-        set_tooltip(self.save_stems.widget, self.save_stems.active_hint())
+        set_tooltip(self.stems_group, self.save_stems.active_hint())
 
     def _on_save_stems_changed(self) -> None:
         if self._loading:
@@ -655,18 +663,38 @@ class EnsemblePage:
             return "1 model selected"
         return f"{count} models selected"
 
+    def _stem_pair_chosen(self) -> bool:
+        return self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR) != CHOOSE_STEM_PAIR
+
+    def _update_member_models_sensitivity(self) -> None:
+        """Dim Member models rows until a stem pair is chosen."""
+        enabled = self._stem_pair_chosen()
+        for row in (
+            getattr(self, "models_trigger_row", None),
+            getattr(self, "member_options_row", None),
+        ):
+            if row is None:
+                continue
+            row.set_sensitive(enabled)
+            row.set_activatable(enabled)
+
     def _update_models_summary(self) -> None:
         row = getattr(self, "models_trigger_row", None)
         if row is not None:
             row.set_subtitle(self._models_summary())
+        self._update_member_models_sensitivity()
         self._update_ensemble_banner()
 
     def _open_models_dialog(self, *_args) -> None:
+        if not self._stem_pair_chosen():
+            return
         preselected = self._selected_model_tags() if self._model_checks else (self.settings.get("selected_models") or [])
         self._rebuild_model_list(preselected)
         present_modal_dialog(self.models_dialog, self.window)
 
     def _open_member_model_options(self, *_args) -> None:
+        if not self._stem_pair_chosen():
+            return
         from ..model_options import OPEN_CONTEXT_ENSEMBLE, stack_name_for_member_tag
 
         selected = self._selected_model_tags() or self.settings.get("selected_models") or []
