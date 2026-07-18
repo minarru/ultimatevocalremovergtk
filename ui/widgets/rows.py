@@ -130,6 +130,9 @@ def use_wrapping_list(row: Adw.ComboRow) -> None:
     row.set_expression(Gtk.PropertyExpression.new(Gtk.StringObject, None, "string"))
     if hasattr(row, "set_enable_search"):
         row.set_enable_search(True)
+    # Default PREFIX matching misses mid-name queries like "Vocal" in "Kim Vocal 2".
+    if hasattr(row, "set_search_match_mode"):
+        row.set_search_match_mode(Gtk.StringFilterMatchMode.SUBSTRING)
     row.set_use_subtitle(True)
     # Allow the value subtitle to wrap onto multiple lines for very long names.
     if hasattr(row, "set_subtitle_lines"):

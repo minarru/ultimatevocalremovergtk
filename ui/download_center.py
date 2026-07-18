@@ -34,6 +34,18 @@ _NETWORKS = [
 _CLAMP_MAX_WIDTH = 800
 
 
+def resolve_catalogue_action_row(row: Gtk.ListBoxRow) -> Adw.ActionRow | None:
+    """Return the catalogue ``ActionRow`` for a ListBox filter callback.
+
+    ``Adw.ActionRow`` subclasses ``Gtk.ListBoxRow``, so filters receive the
+    action row itself. ``get_child()`` is only its internal layout box.
+    """
+    if isinstance(row, Adw.ActionRow):
+        return row
+    child = row.get_child()
+    return child if isinstance(child, Adw.ActionRow) else None
+
+
 class DownloadCenterWindow:
     """Non-modal utility window for browsing and queueing model downloads."""
 
@@ -203,8 +215,7 @@ class DownloadCenterWindow:
         return page
 
     def _catalogue_row_action(self, row: Gtk.ListBoxRow) -> Adw.ActionRow | None:
-        child = row.get_child()
-        return child if isinstance(child, Adw.ActionRow) else None
+        return resolve_catalogue_action_row(row)
 
     def _row_matches_filter(self, row: Gtk.ListBoxRow, arch: str) -> bool:
         search = self._search_entries.get(arch)
