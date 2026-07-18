@@ -30,6 +30,17 @@ from ..shared_settings import (
 _AUDIO_HINT = "audio-x-generic-symbolic"
 
 
+def merge_input_paths(existing: Sequence[str], added: Sequence[str]) -> List[str]:
+    """Merge paths without duplicates while preserving first-seen order."""
+    merged: List[str] = []
+    seen = set()
+    for path in (*existing, *added):
+        if path and path not in seen:
+            seen.add(path)
+            merged.append(path)
+    return merged
+
+
 class InputFilesRow(Adw.ExpanderRow):
     """Expandable row listing the selected input audio file(s) with drop support.
 
@@ -55,13 +66,13 @@ class InputFilesRow(Adw.ExpanderRow):
         self.add_prefix(icon)
 
         self._clear_button = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
-        set_tooltip(self._clear_button, CLEAR_INPUT_FILES_HINT)
+        set_icon_button_a11y(self._clear_button, CLEAR_INPUT_FILES_HINT)
         self._clear_button.add_css_class("flat")
         self._clear_button.connect("clicked", self._on_clear_clicked)
         self.add_suffix(self._clear_button)
 
         button = Gtk.Button(icon_name="document-open-symbolic", valign=Gtk.Align.CENTER)
-        set_tooltip(button, SELECT_INPUT_FILES_HINT)
+        set_icon_button_a11y(button, f"Add audio files. {SELECT_INPUT_FILES_HINT}")
         button.add_css_class("flat")
         button.connect("clicked", self._on_clicked)
         self.add_suffix(button)
@@ -159,7 +170,7 @@ class InputFilesRow(Adw.ExpanderRow):
             return
         paths = [files.get_item(i).get_path() for i in range(files.get_n_items())]
         if paths:
-            self.set_paths(paths)
+            self.set_paths(merge_input_paths(self.paths, paths))
 
     def _on_drop(self, _target: Gtk.DropTarget, value, _x: float, _y: float) -> bool:
         self.remove_css_class("drop-highlight")
@@ -170,7 +181,7 @@ class InputFilesRow(Adw.ExpanderRow):
         paths = [f.get_path() for f in files if f.get_path() and os.path.isfile(f.get_path())]
         if not paths:
             return False
-        self.set_paths(paths)
+        self.set_paths(merge_input_paths(self.paths, paths))
         return True
 
 

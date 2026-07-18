@@ -454,6 +454,7 @@ class MainWindow(Adw.ApplicationWindow):
         if banner is None:
             return
         banner.set_revealed(not self._active_view().has_any_models())
+        self._refresh_start_readiness()
 
     def _on_sep_banner_clicked(self, _banner: Adw.Banner) -> None:
         self._on_download(None, None)
@@ -639,6 +640,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         if getattr(self, "_hint_manager", None) is not None:
             self._hint_manager.refresh()
+        self._refresh_start_readiness()
 
     def _maybe_notify_stale_export_path(self) -> None:
         if getattr(self, "_stale_export_toast_shown", False):
@@ -706,6 +708,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         debug("ui", f"tab={name}")
         target.on_activated()
+        self._refresh_start_readiness()
 
     def _sync_narrow_window_title(self, tab_name: Optional[str] = None) -> None:
         """Keep the narrow-layout header title aligned with the active tab."""
@@ -727,7 +730,9 @@ class MainWindow(Adw.ApplicationWindow):
     def _sync_model_options_action(self, tab_name: Optional[str] = None) -> None:
         """Model options only apply to Separation / Ensemble runs."""
         name = tab_name or self.content_stack.get_visible_child_name()
-        enabled = name != "audio_tools"
+        controller = getattr(self, "_run_controller", None)
+        running = controller is not None and controller.is_running()
+        enabled = name != "audio_tools" and not running
         action = self.lookup_action("model_options")
         if action is not None:
             action.set_enabled(enabled)
@@ -737,9 +742,10 @@ class MainWindow(Adw.ApplicationWindow):
     def _on_settings_changed(self) -> None:
         """Settings-changed hook handed to the method views.
 
-        In-memory updates are flushed to disk on Start and on close, so nothing
-        needs to happen here; it exists to satisfy the view callback contract.
+        In-memory updates are flushed to disk on Start and on close. Readiness
+        is refreshed here because method views call this hook after model edits.
         """
+        self._refresh_start_readiness()
 
     def _on_method_selected(self, *_args) -> None:
         if self._syncing_method_combo or not self._columns_ready:
@@ -752,16 +758,20 @@ class MainWindow(Adw.ApplicationWindow):
             return
         self._show_method(view)
         self.settings.set("chosen_process_method", view.method_key)
+        self._refresh_start_readiness()
 
     def _on_inputs_changed(self) -> None:
         self.settings.set("input_paths", list(self.input_row.paths))
+        self._refresh_start_readiness()
 
     def _on_external_inputs_changed(self, paths) -> None:
         self.input_row.set_paths(list(paths), notify=False)
         self.settings.set("input_paths", list(paths))
+        self._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
         self.settings.set("export_path", self.output_row.path)
+        self._refresh_start_readiness()
 
     def _on_format_changed(self, *_args) -> None:
         self.settings.set("save_format", get_combo_value(self.format_row))
@@ -824,6 +834,12 @@ class MainWindow(Adw.ApplicationWindow):
         if not self._active_view().has_model():
             return _REASON_MODEL
         return None
+
+    def _refresh_start_readiness(self) -> Optional[str]:
+        controller = getattr(self, "_run_controller", None)
+        if controller is None or not hasattr(self, "start_button"):
+            return None
+        return controller.refresh_start_readiness()
 
     def _start_separation(self, callbacks) -> None:
         """Separation run-target body (launch on the shared widgets)."""
@@ -917,6 +933,13 @@ class MainWindow(Adw.ApplicationWindow):
         open_error_log(self)
 
     def _on_view_inputs(self, _action: Gio.SimpleAction, _param) -> None:
+        if self.content_stack.get_visible_child_name() == "audio_tools":
+            from core.audio_tools import DUAL_INPUT_TOOLS
+
+            page = self._audio_tools_page
+            if page._current_tool() in DUAL_INPUT_TOOLS:
+                page._on_open_dual_editor()
+                return
         from .inputs import open_view_inputs
 
         open_view_inputs(self, self.context, on_inputs_changed=self._on_external_inputs_changed)

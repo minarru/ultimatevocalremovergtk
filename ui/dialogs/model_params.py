@@ -534,6 +534,29 @@ def show_change_defaults_dialog(context, parent):
             toast("Select a model first.")
             return
         hash_file = model_data.model_hash_dir
+        if not hash_file or not os.path.isfile(hash_file):
+            toast("No defined parameters found.")
+            return
+        tag = get_combo_value(model_row)
+        model_title = format_tag_title(tag, repo) if tag else "this model"
+        dialog = Adw.AlertDialog(
+            heading="Delete stored parameters?",
+            body=(
+                f'This permanently removes the saved recognition parameters '
+                f'for "{model_title}".'
+            ),
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("delete", "Delete")
+        dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", on_delete_confirmed, hash_file)
+        dialog.present(parent)
+
+    def on_delete_confirmed(_dialog, response, hash_file: str):
+        if response != "delete":
+            return
         if hash_file and os.path.isfile(hash_file):
             os.remove(hash_file)
             repo.invalidate_stem_check()

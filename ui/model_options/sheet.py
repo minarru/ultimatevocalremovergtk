@@ -11,6 +11,7 @@ from ..spacing import inset_md
 from ..widgets.columns import build_columns_box, set_columns_narrow
 from .applicability import (
     OPEN_CONTEXT_AUDIO_TOOLS,
+    OPEN_CONTEXT_ENSEMBLE,
     applicable_stack_names,
     applicability_subtitle,
     default_stack_name,
@@ -251,8 +252,22 @@ class ModelOptionsSheet:
             active_method_key=self._active_method_key,
             selected_models=self._selected_models,
         )
+        empty_ensemble = (
+            self._context == OPEN_CONTEXT_ENSEMBLE and not applicable
+        )
+        if empty_ensemble:
+            self._ensemble_banner.set_label(
+                "Select ensemble member models before editing "
+                "architecture-specific options."
+            )
+            self._ensemble_banner.set_visible(True)
+        elif self._context == OPEN_CONTEXT_ENSEMBLE:
+            self._ensemble_banner.set_label(
+                ensemble_context_banner(self._context) or ""
+            )
+            self._ensemble_banner.set_visible(True)
         # When nothing is applicable yet (e.g. empty ensemble), keep every tab
-        # visible so defaults can still be reviewed. Otherwise hide inert tabs.
+        # visible for read-only review. Otherwise hide inert tabs.
         hide_unused = bool(applicable)
         for stack_name, page in self._tab_pages.items():
             is_applicable = stack_name in applicable
@@ -266,7 +281,9 @@ class ModelOptionsSheet:
             stack_page = self._tab_stack_pages.get(stack_name)
             if stack_page is not None:
                 stack_page.set_visible(is_applicable if hide_unused else True)
-            page.set_sensitive(is_applicable if hide_unused else True)
+            page.set_sensitive(
+                is_applicable if (hide_unused or empty_ensemble) else True
+            )
             page.set_opacity(1.0)
 
     def _maybe_toast_non_applicable(self, stack_name: str) -> None:

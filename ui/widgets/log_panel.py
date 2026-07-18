@@ -60,6 +60,8 @@ class LogPanel(Gtk.Box):
         self._on_expanded_changed = on_expanded_changed
         self._syncing_expand = False
         self._pulse_source_id: Optional[int] = None
+        self._run_label = ""
+        self._progress_status = ""
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         body.add_css_class("uvr-run-controls")
@@ -94,10 +96,10 @@ class LogPanel(Gtk.Box):
         title_icon = Gtk.Image.new_from_icon_name("utilities-terminal-symbolic")
         title_icon.set_pixel_size(16)
         title_icon.add_css_class("dim-label")
-        title = Gtk.Label(label="Log", xalign=0.0)
-        title.add_css_class("heading")
+        self._log_title = Gtk.Label(label="Log", xalign=0.0)
+        self._log_title.add_css_class("heading")
         title_box.append(title_icon)
-        title_box.append(title)
+        title_box.append(self._log_title)
         self._log_meta_row.append(title_box)
 
         self.log_copy_button = Gtk.Button(icon_name="edit-copy-symbolic")
@@ -208,12 +210,20 @@ class LogPanel(Gtk.Box):
     def set_progress_pulse_step(self, step: float) -> None:
         self._progressbar.set_pulse_step(step)
 
+    def set_run_label(self, label: str) -> None:
+        """Identify the job whose output remains pinned in the shared log."""
+        self._run_label = label or ""
+        self._log_title.set_label(f"{label} log" if label else "Log")
+
     def set_progress_fraction(self, fraction: float) -> None:
         self._progressbar.set_fraction(fraction)
         self._sync_progress_section_visible()
 
     def set_progress_text(self, text: str) -> None:
-        display = text or ""
+        self._progress_status = text or ""
+        display = self._progress_status
+        if display and self._run_label:
+            display = f"{self._run_label} — {display}"
         self._progress_label.set_text(display)
         self._progress_label.set_visible(bool(display))
         self._sync_progress_section_visible()
@@ -235,6 +245,7 @@ class LogPanel(Gtk.Box):
         """Reset the progress bar and collapse the progress revealer."""
         self.stop_progress_pulse()
         self._progressbar.set_fraction(0.0)
+        self._progress_status = ""
         self._progress_label.set_text("")
         self._progress_label.set_visible(False)
         self._sync_progress_section_visible()
@@ -248,7 +259,7 @@ class LogPanel(Gtk.Box):
         if (
             self._pulse_source_id is None
             and self._progressbar.get_fraction() >= 1.0
-            and self._progress_label.get_text() == _PROGRESS_DONE_LABEL
+            and self._progress_status == _PROGRESS_DONE_LABEL
         ):
             self.clear_progress()
 
