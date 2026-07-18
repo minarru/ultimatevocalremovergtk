@@ -15,6 +15,14 @@ from ml.vr_network.model_param_init import ModelParameters
 cpu = torch.device('cpu')
 
 
+def scale_mag_pad_inplace(mag_pad: np.ndarray) -> np.ndarray:
+    """Divide a magnitude pad by its peak; no-op for silent / all-zero input."""
+    peak = float(np.max(mag_pad)) if mag_pad.size else 0.0
+    if peak > 0:
+        mag_pad /= peak
+    return mag_pad
+
+
 def _band_res_type(bp):
     if OPERATING_SYSTEM == 'Darwin':
         return 'polyphase' if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else bp['res_type']
@@ -65,7 +73,12 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
         hop_length=1024
         nout, nout_lstm = 16, 128
 
-    from engines.model_weight_cache import get_weight_cache, weight_cache_key
+    from engines.model_weight_cache import (
+        get_weight_cache,
+        materialize_module,
+        park_module,
+        weight_cache_key,
+    )
 
     key = weight_cache_key(
         "vr_deverber" if is_deverber else "vr_denoise",
@@ -78,12 +91,13 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
     cache = get_weight_cache()
     cached = cache.get(key)
     if cached and cached.module is not None:
-        model = cached.module
+        model = materialize_module(cached.module, device)
     else:
         model = nets_new.CascadedNet(n_fft, nout=nout, nout_lstm=nout_lstm)
         model.load_state_dict(load_torch_checkpoint(model_path, map_location=cpu))
         model.to(device)
         cache.put(key, module=model)
+        model = materialize_module(model, device)
 
     if mp is None:
         X_spec = spec_utils.wave_to_spectrogram_old(X, hop_length, n_fft)
@@ -98,7 +112,7 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
     n_frame = X_mag.shape[2]
     pad_l, pad_r, roi_size = spec_utils.make_padding(n_frame, cropsize, model.offset)
     X_mag_pad = np.pad(X_mag, ((0, 0), (0, 0), (pad_l, pad_r)), mode='constant')
-    X_mag_pad /= X_mag_pad.max()
+    scale_mag_pad_inplace(X_mag_pad)
 
     patches = (X_mag_pad.shape[2] - 2 * model.offset) // roi_size
 
@@ -141,6 +155,7 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
         wave = spec_utils.cmb_spectrogram_to_wave(v_spec, mp, is_v51_model=True).T
         
     wave = spec_utils.match_array_shapes(wave, X)
+    park_module(model)
 
     if is_deverber:
         wave_2 = spec_utils.cmb_spectrogram_to_wave(y_spec, mp, is_v51_model=True).T

@@ -108,6 +108,19 @@ def _mdx_pitch_reference_sr() -> int:
     return 44100
 
 
+def select_roformer_ola_window(start, chunk_size, mix_length, window_start, window_middle, window_finish):
+    """Pick the OLA fade window for one Roformer chunk.
+
+    The final inference flush can contain several chunk starts; only a chunk
+    whose own range reaches the mix end uses the finish window.
+    """
+    if start == 0:
+        return window_start
+    if start + chunk_size >= mix_length:
+        return window_finish
+    return window_middle
+
+
 def mdx_export_routing_flags(
     *,
     stem_list,
@@ -191,7 +204,11 @@ class SeperateMDX(SeperateAttributes):
                 self.start_inference_console_write()
                 self.write_to_console(LOADING_MODEL)
 
-                from engines.model_weight_cache import get_weight_cache, weight_cache_key
+                from engines.model_weight_cache import (
+                    get_weight_cache,
+                    materialize_module,
+                    weight_cache_key,
+                )
 
                 cache = get_weight_cache()
                 if self.is_mdx_ckpt:
@@ -199,7 +216,7 @@ class SeperateMDX(SeperateAttributes):
                     self._weight_cache_key = key
                     cached = cache.get(key)
                     if cached and cached.module is not None:
-                        self.model_run = cached.module
+                        self.model_run = materialize_module(cached.module, self.device)
                         self.dim_c = cached.meta.get("dim_c", self.dim_c)
                         self.hop = cached.meta.get("hop", self.hop)
                     else:
@@ -230,7 +247,7 @@ class SeperateMDX(SeperateAttributes):
                         self.model_run = lambda spek: self._ort_session.run(None, {'input': spek.cpu().numpy()})[0]
                     else:
                         if cached and cached.module is not None:
-                            self.model_run = cached.module
+                            self.model_run = materialize_module(cached.module, self.device)
                         else:
                             self.model_run = ConvertModel(load(self.model_path))
                             self.model_run.to(self.device).eval()
@@ -590,7 +607,11 @@ class SeperateMDXC(SeperateAttributes):
             if self.is_pitch_change:
                 mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
 
-            from engines.model_weight_cache import get_weight_cache, weight_cache_key
+            from engines.model_weight_cache import (
+                get_weight_cache,
+                materialize_module,
+                weight_cache_key,
+            )
 
             key = weight_cache_key(
                 "mdx_c",
@@ -601,7 +622,7 @@ class SeperateMDXC(SeperateAttributes):
             self._weight_cache_key = key
             cached = get_weight_cache().get(key)
             if cached and cached.module is not None:
-                model = cached.module
+                model = materialize_module(cached.module, self.device)
             else:
                 model = TFC_TDF_net(self.mdx_c_configs, device=self.device)
                 model.load_state_dict(_load_torch_checkpoint(self.model_path))
@@ -692,7 +713,11 @@ class SeperateMDXC(SeperateAttributes):
 
             device = self.device
 
-            from engines.model_weight_cache import get_weight_cache, weight_cache_key
+            from engines.model_weight_cache import (
+                get_weight_cache,
+                materialize_module,
+                weight_cache_key,
+            )
 
             key = weight_cache_key(
                 "mdx_roformer",
@@ -704,7 +729,7 @@ class SeperateMDXC(SeperateAttributes):
             self._weight_cache_key = key
             cached = get_weight_cache().get(key)
             if cached and cached.module is not None:
-                model = cached.module
+                model = materialize_module(cached.module, device)
             else:
                 model = _build_mdx_c_model(self.roformer_config)
                 checkpoint = _load_torch_checkpoint(self.model_path)
@@ -776,12 +801,14 @@ class SeperateMDXC(SeperateAttributes):
                             for j in range(len(batch_locations)):
                                 self.running_inference_progress_bar(batch_len)
                                 start, l = batch_locations[j]
-                                window = window_middle
-                                if start == 0:
-                                    window = window_start
-                                elif i >= mix.shape[1]:
-                                    window = window_finish
-
+                                window = select_roformer_ola_window(
+                                    start,
+                                    C,
+                                    mix.shape[1],
+                                    window_start,
+                                    window_middle,
+                                    window_finish,
+                                )
                                 result = self.overlap_add(result, counter, x, l, j, start, window)
 
                             batch_data = []

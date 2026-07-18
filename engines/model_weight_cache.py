@@ -33,6 +33,24 @@ def _release_module(model: Any) -> None:
         pass
 
 
+def materialize_module(module: Any, device: Any) -> Any:
+    """Move a cached module onto ``device`` and set eval mode for inference."""
+    if module is None:
+        return None
+    to = getattr(module, "to", None)
+    if callable(to):
+        module = to(device)
+    eval_fn = getattr(module, "eval", None)
+    if callable(eval_fn):
+        eval_fn()
+    return module
+
+
+def park_module(module: Any) -> None:
+    """Return a materialized module to CPU residency for the weight cache."""
+    _release_module(module)
+
+
 def weight_cache_key(
     kind: str,
     model_path: str,
@@ -76,6 +94,10 @@ class ModelWeightCache:
     ) -> None:
         if module is None and ort_session is None:
             return
+        # Keep residency on CPU so ensemble/batch runs do not stack full
+        # checkpoints in accelerator VRAM between separators.
+        if module is not None:
+            _release_module(module)
         handle = CachedWeights(module=module, ort_session=ort_session, meta=dict(meta or {}))
         with self._lock:
             if key in self._items:

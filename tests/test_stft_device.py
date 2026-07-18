@@ -11,6 +11,12 @@ class StftDeviceTests(unittest.TestCase):
     def test_cpu_does_not_need_bounce(self) -> None:
         self.assertFalse(needs_cpu_stft(torch.device("cpu")))
 
+    def test_non_cuda_accelerators_need_bounce(self) -> None:
+        self.assertTrue(needs_cpu_stft("mps"))
+        self.assertTrue(needs_cpu_stft("xpu"))
+        self.assertFalse(needs_cpu_stft("cuda"))
+        self.assertFalse(needs_cpu_stft("cuda:1"))
+
     def test_stft_istft_roundtrip_shape(self) -> None:
         x = torch.randn(1, 8192)
         window = torch.hann_window(1024)

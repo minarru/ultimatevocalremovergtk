@@ -2,10 +2,30 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from contextlib import contextmanager
+from typing import Dict, Iterator, Optional
 
 import torch
 from torch import nn
+
+from ml.stft_device import needs_cpu_stft, torch_istft, torch_stft
+
+
+@contextmanager
+def mps_compatible_module_device(module: nn.Module, sample: torch.Tensor) -> Iterator[torch.device]:
+    """Run ``module`` on CPU when ``sample`` is on an STFT-unsafe device.
+
+    Yields the device that output tensors should be restored to.
+    """
+    orig_device = sample.device
+    if not needs_cpu_stft(orig_device):
+        yield orig_device
+        return
+    module.cpu()
+    try:
+        yield orig_device
+    finally:
+        module.to(orig_device)
 
 
 class SpectralComponent(nn.Module):
@@ -46,12 +66,13 @@ class SpectralComponent(nn.Module):
             raise ValueError(f"Expected audio shape (B, C, L), got {tuple(audio.shape)}")
         batch, channels, _length = audio.shape
         flat = audio.reshape(batch * channels, -1)
-        spec = torch.stft(
+        window = self._window_for(flat.device, flat.dtype)
+        spec = torch_stft(
             flat,
             n_fft=self.n_fft,
             hop_length=self.hop_length,
             win_length=self.win_length,
-            window=self._window_for(flat.device, flat.dtype),
+            window=window,
             center=self.center,
             normalized=self.normalized,
             return_complex=True,
@@ -65,12 +86,13 @@ class SpectralComponent(nn.Module):
             raise ValueError(f"Expected spectrogram shape (B, C, F, T), got {tuple(spec.shape)}")
         batch, channels, _freq, _time = spec.shape
         flat = spec.reshape(batch * channels, spec.shape[2], spec.shape[3])
-        audio = torch.istft(
+        window = self._window_for(flat.device, flat.real.dtype)
+        audio = torch_istft(
             flat,
             n_fft=self.n_fft,
             hop_length=self.hop_length,
             win_length=self.win_length,
-            window=self._window_for(flat.device, flat.real.dtype),
+            window=window,
             center=self.center,
             normalized=self.normalized,
             length=length,

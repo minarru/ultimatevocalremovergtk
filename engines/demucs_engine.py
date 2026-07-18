@@ -76,7 +76,11 @@ class SeperateDemucs(SeperateAttributes):
                 version=self.demucs_version,
             ):
                 self.write_to_console(LOADING_MODEL)
-                from engines.model_weight_cache import get_weight_cache, weight_cache_key
+                from engines.model_weight_cache import (
+                    get_weight_cache,
+                    materialize_module,
+                    weight_cache_key,
+                )
 
                 key = weight_cache_key(
                     "demucs",
@@ -88,7 +92,7 @@ class SeperateDemucs(SeperateAttributes):
                 self._weight_cache_key = key
                 cached = get_weight_cache().get(key)
                 if cached and cached.module is not None:
-                    self.demucs = cached.module
+                    self.demucs = materialize_module(cached.module, self.device)
                 elif self.demucs_version == DEMUCS_V1:
                     if str(self.model_path).endswith(".gz"):
                         self.model_path = gzip.open(self.model_path, "rb")

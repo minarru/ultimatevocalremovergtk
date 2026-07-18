@@ -3,7 +3,8 @@ from typing import Dict, List, Optional
 import torch
 from torch import nn
 
-from ml.bandit_spectral import SpectralComponent
+from ml.bandit_spectral import SpectralComponent, mps_compatible_module_device
+from ml.stft_device import needs_cpu_stft
 
 from .bandsplit import BandSplitModule
 from .maskestim import OverlappingMaskEstimationModule
@@ -176,29 +177,38 @@ class BaseBandit(BaseEndToEndModule):
                 }
             }
 
-        with torch.no_grad():
-            mixture = batch["mixture"]["audio"]
+        mixture = batch["mixture"]["audio"]
+        with mps_compatible_module_device(self, mixture) as orig_device:
+            if needs_cpu_stft(orig_device):
+                batch["mixture"]["audio"] = mixture.cpu()
+                if "sources" in batch:
+                    for stem in batch["sources"]:
+                        batch["sources"][stem]["audio"] = batch["sources"][stem]["audio"].cpu()
 
-            x = self._spectral.stft(mixture)
-            batch["mixture"]["spectrogram"] = x
+            with torch.no_grad():
+                mixture = batch["mixture"]["audio"]
 
-            if "sources" in batch.keys():
-                for stem in batch["sources"].keys():
-                    s = batch["sources"][stem]["audio"]
-                    s = self._spectral.stft(s)
-                    batch["sources"][stem]["spectrogram"] = s
+                x = self._spectral.stft(mixture)
+                batch["mixture"]["spectrogram"] = x
 
-        batch = self.separate(batch)
+                if "sources" in batch.keys():
+                    for stem in batch["sources"].keys():
+                        s = batch["sources"][stem]["audio"]
+                        s = self._spectral.stft(s)
+                        batch["sources"][stem]["spectrogram"] = s
 
-        if 1:
+            batch = self.separate(batch)
+
             b = []
             for s in self.stems:
                 # We need to obtain stereo again
                 r = batch['estimates'][s]['audio'].view(-1, init_shape[1], init_shape[2])
                 b.append(r)
             # And we need to return back tensor and not independent stems
-            batch = torch.stack(b, dim=1)
-        return batch
+            out = torch.stack(b, dim=1)
+            if needs_cpu_stft(orig_device):
+                out = out.to(orig_device)
+            return out
 
     def encode(self, batch):
         x = batch["mixture"]["spectrogram"]
