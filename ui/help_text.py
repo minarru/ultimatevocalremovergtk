@@ -178,10 +178,10 @@ The workload line below (passes, outputs, GPU/CPU) is a relative guide, not an e
 RUN_WORKLOAD_HINT = """Workload line (relative, not clock time):
 • passes — how many model inferences the run performs
 • outputs — how many files will be written
-• Fastest / Typical / Slower — relative export or run cost
-• Cost factors (when listed) — settings that add work beyond pass/output counts"""
+• Fastest / Typical / Slower — relative export cost (from outputs) and run cost (from passes plus heavy settings such as TTA, shifts, or high overlap)
+• Cost factors (when listed) — those heavy settings, called out separately"""
 
-PROGRESS_ETA_HINT = """Time remaining stabilizes after separation begins. During stem export and ensemble combine the bar shows Saving or Combining instead of an ETA. Large models may revise the estimate upward while loading and during early inference"""
+PROGRESS_ETA_HINT = """The progress bar and time estimate track separation only. While a model is loading or stems are being written, the last separation fill is held and the status shows that phase. Ensemble combine shows Combining i/n (with a rough time left when possible). Before the first separation tick the bar pulses (Importing engines / Loading model). The estimate uses known pass counts and pauses its clock outside inference; it stabilizes after separation is underway"""
 
 IS_NORMALIZATION_HELP = "Normalizes output to prevent clipping"
 

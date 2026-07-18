@@ -52,9 +52,20 @@ _NOTIFY_COMPLETE_BODY_PLAIN = "Processing finished"
 _NOTIFY_FAILED_TITLE = "{label} failed"
 _NOTIFY_FAILED_BODY = "Open the app to see the error log"
 _PROGRESS_STARTING = "Starting…"
+_PROGRESS_IMPORTING = "Importing engines…"
+_PROGRESS_LOADING_ENGINES = "Loading engines…"
 _PROGRESS_DONE = "Done"
 _PROGRESS_EPSILON = 0.001
+_PROGRESS_UI_MIN_INTERVAL = 0.1  # ~10 Hz UI updates during inference
 _EXIT_CLEANUP_TIMEOUT_MS = 10_000
+
+
+def _starting_progress_text() -> str:
+    if engines_imported():
+        return _PROGRESS_STARTING
+    if warm_status() == "in_progress":
+        return _PROGRESS_IMPORTING
+    return _PROGRESS_LOADING_ENGINES
 
 
 def target_blocked_reason(target) -> Optional[str]:
@@ -77,6 +88,10 @@ class RunController:
         self._run_label = "Processing"
         self._run_started_at = 0.0
         self._eta_tracker = ProgressEtaTracker()
+        self._last_progress_ui_at = 0.0
+        self._last_progress_phase: Optional[str] = None
+        self._last_progress_pass: Optional[int] = None
+        self._last_progress_combine: Optional[int] = None
         self._stop_confirm_dialog: Optional[Adw.AlertDialog] = None
         self._shutdown_dialog: Optional[Adw.AlertDialog] = None
         self._cleanup_target: Any = None
@@ -159,9 +174,13 @@ class RunController:
         self._window.log_panel.set_run_label(self._run_label)
         self._run_started_at = time.monotonic()
         self._eta_tracker.reset()
+        self._last_progress_ui_at = 0.0
+        self._last_progress_phase = None
+        self._last_progress_pass = None
+        self._last_progress_combine = None
         self._window.console.clear()
         self._window.log_panel.set_progress_fraction(0.0)
-        self._window.log_panel.set_progress_text(_PROGRESS_STARTING)
+        self._window.log_panel.set_progress_text(_starting_progress_text())
         self._window._start_pulse()
         self._set_running(True)
         self._window._reveal_log_panel(True)
@@ -519,23 +538,88 @@ class RunController:
             body=_NOTIFY_FAILED_BODY,
         )
 
-    def _on_progress(self, fraction: float, local_step: Optional[float] = None) -> None:
+    def _on_progress(
+        self,
+        fraction: float,
+        local_step: Optional[float] = None,
+        pass_index: Optional[int] = None,
+        pass_total: Optional[int] = None,
+        detail: Optional[str] = None,
+        combine_index: Optional[int] = None,
+        combine_total: Optional[int] = None,
+        **_extra,
+    ) -> None:
         if self._run_ui_suspended:
             return
-        if fraction > _PROGRESS_EPSILON:
-            self._window._stop_pulse()
-            self._window.log_panel.set_progress_fraction(fraction)
-            now = time.monotonic()
-            self._eta_tracker.update(fraction, now, local_step=local_step)
-            elapsed = max(0.0, now - self._run_started_at)
-            self._window.log_panel.set_progress_text(
-                self._eta_tracker.format_text(fraction, elapsed, now=now)
-            )
+        now = time.monotonic()
+        self._eta_tracker.update(
+            fraction,
+            now,
+            local_step=local_step,
+            pass_index=pass_index,
+            pass_total=pass_total,
+            detail=detail,
+            combine_index=combine_index,
+            combine_total=combine_total,
+        )
+        phase = self._eta_tracker.phase(fraction)
+        force_ui = (
+            fraction >= 1.0 - _PROGRESS_EPSILON
+            or phase != self._last_progress_phase
+            or pass_index != self._last_progress_pass
+            or combine_index != self._last_progress_combine
+        )
+        if (
+            not force_ui
+            and (now - self._last_progress_ui_at) < _PROGRESS_UI_MIN_INTERVAL
+        ):
+            return
+        self._last_progress_ui_at = now
+        self._last_progress_phase = phase
+        self._last_progress_pass = pass_index
+        self._last_progress_combine = combine_index
 
-    def _progress_text(self, fraction: float, local_step: Optional[float] = None) -> str:
+        elapsed = max(0.0, now - self._run_started_at)
+        self._window.log_panel.set_progress_text(
+            self._eta_tracker.format_text(fraction, elapsed, now=now)
+        )
+
+        if fraction >= 1.0 - _PROGRESS_EPSILON:
+            self._window._stop_pulse()
+            self._window.log_panel.set_progress_fraction(1.0)
+            return
+        if fraction <= _PROGRESS_EPSILON and self._eta_tracker.held_display <= 0:
+            self._window._start_pulse()
+            return
+
+        # Mid-run load/save/combine: keep the last inference fill and show phase
+        # text (GTK pulse would wipe the determinate bar). Pulse only before any
+        # inference progress exists.
+        if self._eta_tracker.is_indeterminate(fraction):
+            held = self._eta_tracker.held_display
+            if held > _PROGRESS_EPSILON:
+                self._window._stop_pulse()
+                self._window.log_panel.set_progress_fraction(held)
+            else:
+                self._window._start_pulse()
+            return
+
+        display = self._eta_tracker.inference_display_fraction(fraction)
+        if display is None:
+            held = self._eta_tracker.held_display
+            if held > _PROGRESS_EPSILON:
+                self._window._stop_pulse()
+                self._window.log_panel.set_progress_fraction(held)
+            else:
+                self._window._start_pulse()
+            return
+        self._window._stop_pulse()
+        self._window.log_panel.set_progress_fraction(display)
+
+    def _progress_text(self, fraction: float, local_step: Optional[float] = None, **kwargs) -> str:
         now = time.monotonic()
         elapsed = max(0.0, now - self._run_started_at)
-        self._eta_tracker.update(fraction, now, local_step=local_step)
+        self._eta_tracker.update(fraction, now, local_step=local_step, **kwargs)
         return self._eta_tracker.format_text(fraction, elapsed, now=now)
 
     def _report_error(self, message: str, exc: BaseException) -> None:

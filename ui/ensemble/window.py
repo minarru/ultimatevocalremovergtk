@@ -26,7 +26,12 @@ from typing import Dict, List, Optional
 
 from gi.repository import Adw, Gtk
 
-from core.run_estimate import compose_stem_group_tooltip, estimate_workload, format_workload_line
+from core.run_estimate import (
+    compose_stem_group_tooltip,
+    ensemble_export_summary,
+    estimate_workload,
+    format_workload_line,
+)
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
 from bundled.constants import (
     CHOOSE_ENSEMBLE_OPTION,
@@ -301,7 +306,11 @@ class EnsemblePage:
         set_tooltip(self.save_all_row, IS_SAVE_ALL_OUTPUTS_ENSEMBLE_HELP)
         self.save_all_row.connect(
             "notify::active",
-            lambda *_a: self._set_bool("is_save_all_outputs_ensemble", self.save_all_row.get_active()),
+            lambda *_a: self._set_bool(
+                "is_save_all_outputs_ensemble",
+                self.save_all_row.get_active(),
+                refresh_stems=True,
+            ),
         )
         expander.add_row(self.save_all_row)
 
@@ -374,10 +383,12 @@ class EnsemblePage:
         finally:
             self._loading = False
 
-    def _set_bool(self, key: str, value: bool) -> None:
+    def _set_bool(self, key: str, value: bool, *, refresh_stems: bool = False) -> None:
         if self._loading:
             return
         self.settings.set(key, value)
+        if refresh_stems:
+            self._update_stems_group_metadata()
 
     def _on_inputs_changed(self) -> None:
         self.settings.set("input_paths", list(self.input_row.paths))
@@ -394,10 +405,12 @@ class EnsemblePage:
     def _on_gpu_changed(self, *_args) -> None:
         if not self._loading:
             self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
+            self._update_stems_group_metadata()
 
     def _on_sample_changed(self, *_args) -> None:
         if not self._loading:
             self.settings.set("model_sample_mode", self.sample_row.get_active())
+            self._update_stems_group_metadata()
 
     def _ensemble_stem_pair(self) -> tuple[str | None, str | None]:
         main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
@@ -422,12 +435,12 @@ class EnsemblePage:
     def _rebuild_stem_only_toggles(self) -> None:
         primary_stem, secondary_stem = self._ensemble_stem_pair()
         has_pair = bool(primary_stem and secondary_stem)
-        # Hide the whole group until a stem pair exists so the empty Save stems
-        # placeholder does not compete with the page banner.
-        self.stems_group.set_visible(has_pair)
-        if not has_pair:
-            self.save_stems.configure_hidden(has_model=False)
-        else:
+        main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+        is_multi = self._is_multi_or_four_stem(main_stem)
+        # Dual-stem: full Save stems toggles. 4-stem / multi-stem: summary-only.
+        # Choose stem pair: hide the group.
+        self.stems_group.set_visible(has_pair or is_multi)
+        if has_pair:
             model = self._resolve_ensemble_semantics_model()
             self.save_stems.configure_exclusive(
                 primary_stem=primary_stem,
@@ -439,26 +452,41 @@ class EnsemblePage:
                 export_semantics_note=recommended_export_note(model),
             )
             self.save_stems.sync_from_settings()
+        else:
+            self.save_stems.configure_hidden(has_model=False)
         self._update_stems_group_metadata()
 
     def _update_stems_group_metadata(self) -> None:
         if not self.stems_group.get_visible():
             self.stems_group.set_description("")
             return
-        line1 = self.save_stems.export_summary()
+        primary_stem, _secondary = self._ensemble_stem_pair()
+        main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+        is_multi = self._is_multi_or_four_stem(main_stem)
+        has_run = bool(primary_stem) or is_multi
+        repo = self.window.context.repo
+        if primary_stem:
+            line1 = self.save_stems.export_summary()
+            export_hint = self.save_stems.active_hint()
+        else:
+            line1 = ensemble_export_summary(self.settings, repo=repo)
+            export_hint = SAVE_STEM_ONLY_HELP
         workload = estimate_workload(
             self.settings,
             method_key=ENSEMBLE_MODE,
             save_stems=self.save_stems,
-            repo=self.window.context.repo,
-            has_model=bool(self._ensemble_stem_pair()[0]),
+            repo=repo,
+            has_model=has_run,
         )
         line2 = format_workload_line(workload)
-        self.stems_group.set_description(f"{line1}\n{line2}" if line2 else line1)
+        if line1 and line2:
+            self.stems_group.set_description(f"{line1}\n{line2}")
+        else:
+            self.stems_group.set_description(line2 or line1)
         set_tooltip(
             self.stems_group,
             compose_stem_group_tooltip(
-                self.save_stems.active_hint(),
+                export_hint,
                 workload,
                 workload_hint=RUN_WORKLOAD_HINT,
             ),

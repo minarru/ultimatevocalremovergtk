@@ -2,7 +2,7 @@
 
 import unittest
 
-from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
+from bundled.constants import DEMUCS_ARCH_TYPE, ENSEMBLE_MODE, MDX_ARCH_TYPE, VR_ARCH_TYPE
 from core.run_estimate import (
     RunCostTier,
     WorkloadEstimate,
@@ -50,6 +50,25 @@ class CostFactorHintTests(unittest.TestCase):
     def test_skips_pass_duplicated_secondary(self) -> None:
         settings = _Settings({"mdx_is_secondary_model_activate": True})
         self.assertEqual(cost_factor_hints(settings, MDX_ARCH_TYPE), ())
+
+    def test_skips_pre_process_already_in_passes(self) -> None:
+        settings = _Settings({"is_demucs_pre_proc_model_activate": True, "shifts": 1})
+        self.assertNotIn("Pre-process", cost_factor_hints(settings, DEMUCS_ARCH_TYPE))
+
+    def test_ensemble_includes_global_cost_factors(self) -> None:
+        settings = _Settings(
+            {
+                "is_tta": True,
+                "shifts": 2,
+                "overlap_mdx23": "16",
+                "denoise_option": "Standard",
+            }
+        )
+        hints = cost_factor_hints(settings, ENSEMBLE_MODE)
+        self.assertIn("TTA", hints)
+        self.assertIn("Shifts 2", hints)
+        self.assertIn("Overlap 16", hints)
+        self.assertIn("Denoise", hints)
 
     def test_format_summary_excludes_hints(self) -> None:
         estimate = WorkloadEstimate(
