@@ -81,17 +81,17 @@ SHARED_HINTS: Dict[str, str] = {
 
 
 def install_view_tab_tooltips(
-    switcher: Adw.ViewSwitcher, hints: Optional[Dict[str, str]] = None
+    switcher, hints: Optional[Dict[str, str]] = None
 ) -> None:
-    """Attach tooltips to the tab buttons in an ``Adw.ViewSwitcher``.
+    """Attach tooltips to tab buttons in a ViewSwitcher or ViewSwitcherBar.
 
     ``hints`` maps ``Adw.ViewStack`` page ``name`` to tooltip text. Page order is
-    matched to toggle buttons left-to-right after the switcher is mapped.
+    matched to toggle buttons left-to-right after the widget is mapped.
     """
     hints = VIEW_TAB_HINTS if hints is None else hints
 
-    def apply(_switcher: Adw.ViewSwitcher) -> None:
-        stack = _switcher.get_stack()
+    def apply(host) -> None:
+        stack = host.get_stack() if hasattr(host, "get_stack") else None
         if stack is None:
             return
         tips = [hints.get(page.get_name(), "") for page in stack.get_pages()]
@@ -106,13 +106,13 @@ def install_view_tab_tooltips(
                 collect(child)
                 child = child.get_next_sibling()
 
-        collect(_switcher)
+        collect(host)
         for button, tip in zip(buttons, tips):
             if tip:
                 set_tooltip(button, tip)
 
-    def on_map(_switcher):
-        apply(_switcher)
+    def on_map(host, *_args):
+        apply(host)
 
     switcher.connect("map", on_map)
     if switcher.get_mapped():

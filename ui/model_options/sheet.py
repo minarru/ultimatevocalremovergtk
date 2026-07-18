@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Callable, Dict, Optional, Sequence
 
-from gi.repository import Adw, GLib, Gtk
+from gi.repository import Adw, Gtk
 
 from ..dialogs.utils import configure_dialog_width, parent_window_width, present_modal_dialog
 from ..spacing import inset_md
@@ -49,9 +49,11 @@ class ModelOptionsSheet:
         self._settings_wrappers: Dict[object, Callable[[], None]] = {}
         self._tab_columns: Dict[str, Gtk.Box] = {}
         self._tab_pages: Dict[str, Gtk.Widget] = {}
+        self._tab_stack_pages: Dict[str, Adw.ViewStackPage] = {}
         self._tab_subtitles: Dict[str, Gtk.Label] = {}
         self._last_parent_width: int = 0
-        self._resize_poll_source: int = 0
+        self._surface_handler: int = 0
+        self._parent_map_handler: int = 0
 
         self.dialog = Adw.Dialog()
         self.dialog.set_title("Model options")
@@ -80,7 +82,8 @@ class ModelOptionsSheet:
 
         for view in self._views:
             page = self._build_tab_page(view)
-            self._stack.add_titled(page, view.stack_name, view.title)
+            stack_page = self._stack.add_titled(page, view.stack_name, view.title)
+            self._tab_stack_pages[view.stack_name] = stack_page
 
         # Header: left-aligned title + centered tab switcher (like Download Center).
         toolbar = Adw.ToolbarView()
@@ -138,14 +141,50 @@ class ModelOptionsSheet:
         for columns_box in self._tab_columns.values():
             set_columns_narrow(columns_box, narrow)
 
-    def _poll_parent_width(self) -> bool:
-        """Poll parent width to keep the sheet responsive (GTK4 has no size-allocate signal)."""
+    def _sync_from_parent_width(self, *_args) -> None:
+        """Resize the sheet when the parent window's allocated width changes."""
         width = parent_window_width(self._parent, fallback=_SHEET_WIDE_WIDTH)
-        if width > 0 and width != self._last_parent_width:
-            self._last_parent_width = width
-            self.dialog.set_content_width(width)
-            self._sync_narrow_layout()
-        return True
+        if width <= 0 or width == self._last_parent_width:
+            return
+        self._last_parent_width = width
+        self.dialog.set_content_width(width)
+        self._sync_narrow_layout()
+
+    def _start_width_tracking(self) -> None:
+        """Track parent surface width instead of a fixed 200ms poll."""
+        self._stop_width_tracking()
+        self._sync_from_parent_width()
+        if self._parent is None:
+            return
+
+        def attach_surface(*_args) -> None:
+            surface = self._parent.get_surface()
+            if surface is None or self._surface_handler:
+                return
+            self._surface_handler = surface.connect(
+                "notify::width", self._sync_from_parent_width
+            )
+
+        if self._parent.get_mapped():
+            attach_surface()
+        else:
+            self._parent_map_handler = self._parent.connect("map", attach_surface)
+
+    def _stop_width_tracking(self) -> None:
+        if self._surface_handler and self._parent is not None:
+            surface = self._parent.get_surface()
+            if surface is not None:
+                try:
+                    surface.disconnect(self._surface_handler)
+                except TypeError:
+                    pass
+            self._surface_handler = 0
+        if self._parent_map_handler and self._parent is not None:
+            try:
+                self._parent.disconnect(self._parent_map_handler)
+            except TypeError:
+                pass
+            self._parent_map_handler = 0
 
     def _dialog_is_open(self) -> bool:
         # Adw.Dialog stays alive after close when reused; only toast while mapped.
@@ -199,9 +238,11 @@ class ModelOptionsSheet:
             selected_models=selected_models,
             views_by_stack=self._views_by_stack,
         )
-        if start_stack in self._views_by_stack:
-            self._stack.set_visible_child_name(start_stack)
         self._refresh_applicability()
+        if start_stack in self._views_by_stack:
+            stack_page = self._tab_stack_pages.get(start_stack)
+            if stack_page is None or stack_page.get_visible():
+                self._stack.set_visible_child_name(start_stack)
         self._sync_narrow_layout()
 
     def _refresh_applicability(self) -> None:
@@ -210,7 +251,11 @@ class ModelOptionsSheet:
             active_method_key=self._active_method_key,
             selected_models=self._selected_models,
         )
+        # When nothing is applicable yet (e.g. empty ensemble), keep every tab
+        # visible so defaults can still be reviewed. Otherwise hide inert tabs.
+        hide_unused = bool(applicable)
         for stack_name, page in self._tab_pages.items():
+            is_applicable = stack_name in applicable
             subtitle = applicability_subtitle(
                 self._context,
                 stack_name,
@@ -218,7 +263,11 @@ class ModelOptionsSheet:
                 selected_models=self._selected_models,
             )
             self._tab_subtitles[stack_name].set_label(subtitle)
-            page.set_opacity(1.0 if stack_name in applicable else 0.55)
+            stack_page = self._tab_stack_pages.get(stack_name)
+            if stack_page is not None:
+                stack_page.set_visible(is_applicable if hide_unused else True)
+            page.set_sensitive(is_applicable if hide_unused else True)
+            page.set_opacity(1.0)
 
     def _maybe_toast_non_applicable(self, stack_name: str) -> None:
         if stack_name in self._toast_shown:
@@ -234,9 +283,7 @@ class ModelOptionsSheet:
             self._on_toast(message)
 
     def _on_closed(self, *_args) -> None:
-        if self._resize_poll_source:
-            GLib.source_remove(self._resize_poll_source)
-            self._resize_poll_source = 0
+        self._stop_width_tracking()
         # Wrappers must not outlive the open sheet: main-view edits after close
         # would otherwise toast against a stale active method / context.
         self._restore_settings_callbacks()
@@ -251,9 +298,7 @@ class ModelOptionsSheet:
         initial_stack: Optional[str] = None,
     ) -> None:
         configure_dialog_width(self.dialog, self._parent, fallback=_SHEET_WIDE_WIDTH)
-        if not self._resize_poll_source:
-            # Keep it lightweight; only needed while the dialog is open.
-            self._resize_poll_source = GLib.timeout_add(200, self._poll_parent_width)
+        self._start_width_tracking()
         for view in self._views:
             self._wrap_settings_callback(view)
         self.update_context(
@@ -279,7 +324,6 @@ def open_model_options_sheet(
     existing: Optional[ModelOptionsSheet] = None,
 ) -> ModelOptionsSheet:
     if context == OPEN_CONTEXT_AUDIO_TOOLS:
-        on_toast("Model options apply to Separation and Ensemble runs.")
         return existing  # type: ignore[return-value]
 
     sheet = existing

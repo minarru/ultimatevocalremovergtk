@@ -132,11 +132,10 @@ class EnsemblePage:
         ensemble_group = self._build_ensemble_group()
         stems_group = self._build_stems_group()
         output_group = self._build_output_group()
-        advanced_group = self._build_advanced_group()
 
         self.columns_box, self._col_start, self._col_end = build_columns_box(
             left_groups=(files_group, ensemble_group),
-            right_groups=(stems_group, output_group, advanced_group),
+            right_groups=(stems_group, output_group),
         )
 
         # Proactive empty-state hint mirroring the Separation page: a full-width
@@ -208,7 +207,7 @@ class EnsemblePage:
         group.add(self.models_trigger_row)
 
         self.member_options_row = Adw.ActionRow(
-            title="Member model options…",
+            title="Member model options",
             subtitle="Batch size, secondary models, and more",
             activatable=True,
         )
@@ -291,25 +290,35 @@ class EnsemblePage:
         self.sample_row.connect("notify::active", self._on_sample_changed)
         group.add(self.sample_row)
 
-        return group
-
-    def _build_advanced_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup()
+        # Advanced toggles live in Processing (titled group) instead of a
+        # title-less PreferencesGroup wrapping a lone expander.
         expander = Adw.ExpanderRow(title="Advanced ensemble options")
 
         self.save_all_row = make_switch_row("Save all outputs")
-        set_tooltip(self.save_all_row,IS_SAVE_ALL_OUTPUTS_ENSEMBLE_HELP)
-        self.save_all_row.connect("notify::active", lambda *_a: self._set_bool("is_save_all_outputs_ensemble", self.save_all_row.get_active()))
+        set_tooltip(self.save_all_row, IS_SAVE_ALL_OUTPUTS_ENSEMBLE_HELP)
+        self.save_all_row.connect(
+            "notify::active",
+            lambda *_a: self._set_bool("is_save_all_outputs_ensemble", self.save_all_row.get_active()),
+        )
         expander.add_row(self.save_all_row)
 
         self.append_name_row = make_switch_row("Append ensemble name to output")
-        set_tooltip(self.append_name_row,IS_APPEND_ENSEMBLE_NAME_HELP)
-        self.append_name_row.connect("notify::active", lambda *_a: self._set_bool("is_append_ensemble_name", self.append_name_row.get_active()))
+        set_tooltip(self.append_name_row, IS_APPEND_ENSEMBLE_NAME_HELP)
+        self.append_name_row.connect(
+            "notify::active",
+            lambda *_a: self._set_bool("is_append_ensemble_name", self.append_name_row.get_active()),
+        )
         expander.add_row(self.append_name_row)
 
-        self.wav_ensemble_row = make_switch_row("Ensemble waveforms", "Combine in the time domain instead of spectrograms")
-        set_tooltip(self.wav_ensemble_row,IS_WAV_ENSEMBLE_HELP)
-        self.wav_ensemble_row.connect("notify::active", lambda *_a: self._set_bool("is_wav_ensemble", self.wav_ensemble_row.get_active()))
+        self.wav_ensemble_row = make_switch_row(
+            "Ensemble waveforms",
+            "Combine in the time domain instead of spectrograms",
+        )
+        set_tooltip(self.wav_ensemble_row, IS_WAV_ENSEMBLE_HELP)
+        self.wav_ensemble_row.connect(
+            "notify::active",
+            lambda *_a: self._set_bool("is_wav_ensemble", self.wav_ensemble_row.get_active()),
+        )
         expander.add_row(self.wav_ensemble_row)
 
         group.add(expander)
