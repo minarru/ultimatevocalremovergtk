@@ -97,6 +97,10 @@ class SeperateAttributes:
         self.is_primary_stem_only = model_data.is_primary_stem_only if not self.is_secondary_model else model_data.is_primary_model_primary_stem_only
         self.is_secondary_stem_only = model_data.is_secondary_stem_only if not self.is_secondary_model else model_data.is_primary_model_secondary_stem_only      
         self.is_ensemble_mode = model_data.is_ensemble_mode
+        self.is_save_all_outputs_ensemble = bool(
+            process_data.get("is_save_all_outputs_ensemble", False)
+        )
+        self._ensemble_stem_buffers = {}
         self.secondary_model = model_data.secondary_model #
         self.primary_model_primary_stem = model_data.primary_model_primary_stem
         self.primary_stem_native = model_data.primary_stem_native
@@ -394,6 +398,27 @@ class SeperateAttributes:
         
         def save_audio_file(path, source):
             source = spec_utils.normalize(source, self.is_normalization)
+            # Ensemble scratch members: keep arrays in memory and skip disk when
+            # the user did not ask to keep every member output.
+            if (
+                self.is_ensemble_mode
+                and not self.is_vocal_split_model
+                and not getattr(self, "is_save_all_outputs_ensemble", False)
+            ):
+                if stem_name:
+                    buffers = getattr(self, "_ensemble_stem_buffers", None)
+                    if buffers is None:
+                        buffers = {}
+                        self._ensemble_stem_buffers = buffers
+                    buffers[stem_name] = np.asarray(source)
+                return
+
+            if is_not_ensemble and self.save_format == FLAC:
+                flac_path = path[:-4] + ".flac" if path.endswith(".wav") else f"{path}.flac"
+                subtype = "PCM_24" if self.flac_bit_set == "24-bit" else "PCM_16"
+                sf.write(flac_path, source, samplerate, format="FLAC", subtype=subtype)
+                return
+
             sf.write(path, source, samplerate, subtype=self.wav_type_set)
 
             if is_not_ensemble:

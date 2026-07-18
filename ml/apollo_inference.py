@@ -1,17 +1,17 @@
 """Apollo restore inference (torch; device supplied by caller)."""
 
+from __future__ import annotations
+
 import gc
+import hashlib
+import json
+from typing import Any, Optional
 
 import librosa
 import numpy as np
 import torch
 
 import ml.apollo_model_data as models
-from bundled.constants import DEFAULT
-
-import warnings
-
-warnings.filterwarnings("ignore")
 
 
 def load_audio(file_path):
@@ -19,13 +19,26 @@ def load_audio(file_path):
     return torch.from_numpy(audio), samplerate
 
 
-def _getWindowingArray(window_size, fade_size):
-    fadein = torch.linspace(1, 1, fade_size)
-    fadeout = torch.linspace(0, 0, fade_size)
-    window = torch.ones(window_size)
-    window[-fade_size:] *= fadeout
+def _getWindowingArray(window_size: int, fade_size: int) -> torch.Tensor:
+    """Build a chunk window with real fade-in / fade-out ramps."""
+    fade_size = max(0, min(int(fade_size), int(window_size) // 2))
+    window = torch.ones(window_size, dtype=torch.float32)
+    if fade_size <= 0:
+        return window
+    fadein = torch.linspace(0, 1, fade_size, dtype=torch.float32)
+    fadeout = torch.linspace(1, 0, fade_size, dtype=torch.float32)
     window[:fade_size] *= fadein
+    window[-fade_size:] *= fadeout
     return window
+
+
+def _apollo_param_fingerprint(extracted_params: Optional[dict], config: Any) -> str:
+    payload = {
+        "params": extracted_params or {},
+        "config": str(config) if config is not None else "",
+    }
+    raw = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def dBgain(audio, volume_gain_dB):
@@ -51,6 +64,23 @@ def restore_process(
     global progress_value
     progress_value = 0
 
+    from engines.model_weight_cache import get_weight_cache, weight_cache_key
+
+    cache = get_weight_cache()
+    key = weight_cache_key(
+        "apollo",
+        str(ckpt_path),
+        device,
+        _apollo_param_fingerprint(extracted_params, config),
+    )
+    cached = cache.get(key)
+    if cached is not None and cached.module is not None:
+        model = cached.module
+        model.to(device)
+    else:
+        model = models.BaseModel.from_pretrain(ckpt_path, **(extracted_params or {})).to(device)
+        cache.put(key, module=model)
+
     def process_chunk(chunk):
         chunk = chunk.unsqueeze(0).to(device)
         with torch.no_grad():
@@ -67,8 +97,6 @@ def restore_process(
         iter_val = 0.99 if iter_val >= 1.0 else iter_val
         set_progress_bar(0.1, iter_val)
 
-    model = models.BaseModel.from_pretrain(ckpt_path, **extracted_params).to(device)
-
     audio_data, samplerate = load_audio(input_wav)
 
     C = chunk_size * samplerate
@@ -78,8 +106,7 @@ def restore_process(
     step_ui = int(step)
 
     fade_sec = 3 if chunk_size >= 3 else chunk_size
-
-    fade_size = fade_sec * 44100
+    fade_size = int(fade_sec * samplerate)
     border = C - step
 
     if len(audio_data.shape) == 1:
@@ -88,7 +115,11 @@ def restore_process(
     if audio_data.shape[1] > 2 * border and (border > 0):
         audio_data = torch.nn.functional.pad(audio_data, (border, border), mode='reflect')
 
-    windowingArray = _getWindowingArray(C, fade_size)
+    window_middle = _getWindowingArray(C, fade_size)
+    window_start = window_middle.clone()
+    window_start[:fade_size] = 1
+    window_finish = window_middle.clone()
+    window_finish[-fade_size:] = 1
 
     result = torch.zeros((1,) + tuple(audio_data.shape), dtype=torch.float32)
     counter = torch.zeros((1,) + tuple(audio_data.shape), dtype=torch.float32)
@@ -108,11 +139,12 @@ def restore_process(
 
         out = process_chunk(part)
 
-        window = windowingArray
         if i == 0:
-            window[:fade_size] = 1
+            window = window_start
         elif i + C >= audio_data.shape[1]:
-            window[-fade_size:] = 1
+            window = window_finish
+        else:
+            window = window_middle
 
         result[..., i:i+length] += out[..., :length] * window[..., :length]
         counter[..., i:i+length] += window[..., :length]
@@ -129,8 +161,8 @@ def restore_process(
     if audio_data.shape[1] > 2 * border and (border > 0):
         final_output = final_output[..., border:-border]
 
-    model.cpu()
-    del model
+    # Keep weights in the process LRU; only drop local references.
+    del result, counter, audio_data
     gc.collect()
 
     return final_output

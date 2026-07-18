@@ -265,7 +265,6 @@ class OverlappingMaskEstimationModule(MaskEstimationModuleBase):
         batch, n_bands, n_time, emb_dim = q.shape
 
         if cond is not None:
-            print(cond)
             if cond.ndim == 2:
                 cond = cond[:, None, None, :].expand(-1, n_bands, n_time, -1)
             elif cond.ndim == 3:

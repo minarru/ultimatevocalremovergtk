@@ -2,6 +2,7 @@
 import os
 
 import pydub
+import soundfile as sf
 from bundled.constants import FLAC, MP3, WAV
 
 
@@ -10,6 +11,29 @@ def save_format(audio_path, save_format, mp3_bit_set, flac_bit_set="16-bit"):
 
     if save_format == WAV:
         return
+
+    # Prefer direct FLAC write via libsndfile (no WAV→pydub round-trip).
+    if save_format == FLAC and audio_path.lower().endswith(".wav"):
+        try:
+            data, samplerate = sf.read(audio_path, always_2d=False)
+            flac_path = audio_path[:-4] + ".flac"
+            subtype = "PCM_24" if flac_bit_set == "24-bit" else "PCM_16"
+            sf.write(flac_path, data, samplerate, format="FLAC", subtype=subtype)
+            try:
+                os.remove(audio_path)
+            except OSError as exc:
+                debug(
+                    "audio",
+                    f"export cleanup failed file={os.path.basename(audio_path)} "
+                    f"error={type(exc).__name__}: {exc}",
+                )
+            return
+        except Exception as exc:  # noqa: BLE001 - fall through to pydub
+            debug(
+                "audio",
+                f"direct flac export failed file={os.path.basename(audio_path)} "
+                f"error={type(exc).__name__}: {exc}; falling back to pydub",
+            )
 
     from core.external_tools import configure_pydub_ffmpeg
 

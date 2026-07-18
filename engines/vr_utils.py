@@ -100,22 +100,22 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
     X_mag_pad = np.pad(X_mag, ((0, 0), (0, 0), (pad_l, pad_r)), mode='constant')
     X_mag_pad /= X_mag_pad.max()
 
-    X_dataset = []
     patches = (X_mag_pad.shape[2] - 2 * model.offset) // roi_size
-    for i in range(patches):
-        start = i * roi_size
-        X_mag_crop = X_mag_pad[:, :, start:start + cropsize]
-        X_dataset.append(X_mag_crop)
-
-    X_dataset = np.asarray(X_dataset)
 
     model.eval()
     
     with torch.no_grad():
         mask = []
-        # To reduce the overhead, dataloader is not used.
+        # Stream patches per batch instead of materializing all windows.
         for i in range(0, patches, batchsize):
-            X_batch = X_dataset[i: i + batchsize]
+            end = min(i + batchsize, patches)
+            X_batch = np.stack(
+                [
+                    X_mag_pad[:, :, j * roi_size : j * roi_size + cropsize]
+                    for j in range(i, end)
+                ],
+                axis=0,
+            )
             X_batch = torch.from_numpy(X_batch).to(device)
 
             pred = model.predict_mask(X_batch)

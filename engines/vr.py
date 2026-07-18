@@ -189,15 +189,8 @@ class SeperateVR(SeperateAttributes):
     def inference_vr(self, X_spec, device, aggressiveness):
         with trace_phase("separate", "inference_vr", engine="SeperateVR", model=self.model_basename):
             def _execute(X_mag_pad, roi_size):
-                X_dataset = []
                 patches = (X_mag_pad.shape[2] - 2 * self.model_run.offset) // roi_size
                 total_iterations = patches//self.batch_size if not self.is_tta else (patches//self.batch_size)*2
-                for i in range(patches):
-                    start = i * roi_size
-                    X_mag_window = X_mag_pad[:, :, start:start + self.window_size]
-                    X_dataset.append(X_mag_window)
-
-                X_dataset = np.asarray(X_dataset)
                 self.model_run.eval()
                 with torch.no_grad():
                     mask = []
@@ -207,7 +200,15 @@ class SeperateVR(SeperateAttributes):
                         if self.progress_value >= total_iterations:
                             self.progress_value = total_iterations
                         self.set_progress_bar(0.1, 0.8/total_iterations*self.progress_value)
-                        X_batch = X_dataset[i: i + self.batch_size]
+                        end = min(i + self.batch_size, patches)
+                        # Stream patches per batch instead of materializing all windows.
+                        X_batch = np.stack(
+                            [
+                                X_mag_pad[:, :, j * roi_size : j * roi_size + self.window_size]
+                                for j in range(i, end)
+                            ],
+                            axis=0,
+                        )
                         X_batch = torch.from_numpy(X_batch).to(device)
                         pred = self.model_run.predict_mask(X_batch)
                         if not pred.size()[3] > 0:

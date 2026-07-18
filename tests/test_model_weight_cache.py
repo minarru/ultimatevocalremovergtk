@@ -22,8 +22,13 @@ class WeightCacheTests(unittest.TestCase):
         self.assertEqual(key[0], "vr")
         self.assertEqual(key[2], "cpu")
 
+    def test_mdx_pitch_reference_sr(self) -> None:
+        from engines.mdx import _mdx_pitch_reference_sr
+
+        self.assertEqual(_mdx_pitch_reference_sr(), 44100)
+
     def test_put_get_roundtrip(self) -> None:
-        cache = ModelWeightCache(max_entries=2)
+        cache = ModelWeightCache(max_entries=4)
         key = ("vr", ("/x", 0, 0), "cpu", ())
         module = mock.MagicMock()
         cache.put(key, module=module)
@@ -43,6 +48,22 @@ class WeightCacheTests(unittest.TestCase):
         self.assertIsNotNone(cache.get(("b", 2)))
         self.assertIsNotNone(cache.get(("c", 3)))
         a.cpu.assert_called()
+
+    def test_default_max_entries_is_four(self) -> None:
+        cache = ModelWeightCache()
+        self.assertEqual(cache.max_entries, 4)
+
+    def test_release_inference_memory_keeps_weight_cache(self) -> None:
+        from core.inference_cleanup import release_inference_memory
+
+        cache = get_weight_cache()
+        key = ("vr", ("/keep", 0, 0), "cpu", ())
+        module = mock.MagicMock(name="keep")
+        cache.put(key, module=module)
+        release_inference_memory(None, clear_weight_cache=False)
+        self.assertIsNotNone(cache.get(key))
+        release_inference_memory(None, clear_weight_cache=True)
+        self.assertIsNone(cache.get(key))
 
     def test_stash_separator_preserves_module(self) -> None:
         cache = get_weight_cache()

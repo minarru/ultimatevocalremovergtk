@@ -17,10 +17,10 @@ ARM = 'arm'
 AUTO_PHASE = "Automatic"
 POSITIVE_PHASE = "Positive Phase"
 NEGATIVE_PHASE = "Negative Phase"
-NONE_P = "None",
-LOW_P = "Shifts: Low",
-MED_P = "Shifts: Medium",
-HIGH_P = "Shifts: High",
+NONE_P = "None"
+LOW_P = "Shifts: Low"
+MED_P = "Shifts: Medium"
+HIGH_P = "Shifts: High"
 VHIGH_P = "Shifts: Very High"
 MAXIMUM_P = "Shifts: Maximum"
 

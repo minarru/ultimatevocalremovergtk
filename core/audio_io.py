@@ -33,17 +33,42 @@ def save_format(
 ) -> None:
     """Torch-free port of ``separate.save_format``.
 
-    Converts an exported WAV to FLAC/MP3 via ``pydub`` when the chosen output
-    format is not WAV, then removes the intermediate WAV.
+    FLAC prefers a direct libsndfile rewrite; MP3 still goes through ``pydub``
+    so bitrate strings stay exact. Intermediate WAV is removed on success.
     """
     from bundled.constants import FLAC, MP3
 
     if save_format_sel == WAV:
         return
 
+    from .debug_log import debug
+
+    if save_format_sel == FLAC and audio_path.lower().endswith(".wav"):
+        try:
+            import soundfile as sf
+
+            data, samplerate = sf.read(audio_path, always_2d=False)
+            flac_path = audio_path[:-4] + ".flac"
+            subtype = "PCM_24" if flac_bit_set == "24-bit" else "PCM_16"
+            sf.write(flac_path, data, samplerate, format="FLAC", subtype=subtype)
+            try:
+                os.remove(audio_path)
+            except OSError as exc:
+                debug(
+                    "audio",
+                    f"export cleanup failed file={os.path.basename(audio_path)} "
+                    f"error={type(exc).__name__}: {exc}",
+                )
+            return
+        except Exception as exc:  # noqa: BLE001 - fall through to pydub
+            debug(
+                "audio",
+                f"direct flac export failed file={os.path.basename(audio_path)} "
+                f"error={type(exc).__name__}: {exc}; falling back to pydub",
+            )
+
     from pydub import AudioSegment
 
-    from .debug_log import debug
     from .external_tools import configure_pydub_ffmpeg
 
     if configure_pydub_ffmpeg() is None:

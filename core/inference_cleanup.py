@@ -111,12 +111,19 @@ def release_inference_memory(
     *,
     wait_for_stop: float = 0.0,
     force_if_alive: bool = False,
+    clear_weight_cache: bool = False,
 ) -> None:
-    """Clear per-run caches and return cached GPU/CPU allocator memory."""
+    """Clear per-run caches and return cached GPU/CPU allocator memory.
+
+    Weight LRU is kept across normal runs so the next Start can reuse
+    checkpoints. Pass ``clear_weight_cache=True`` on app quit / full teardown.
+    """
     started = time.perf_counter()
     debug(
         "cleanup",
-        f"release_inference_memory enter wait_for_stop={wait_for_stop} force={force_if_alive}",
+        "release_inference_memory enter "
+        f"wait_for_stop={wait_for_stop} force={force_if_alive} "
+        f"clear_weight_cache={clear_weight_cache}",
     )
     if runner is not None:
         is_running = getattr(runner, "is_running", None)
@@ -141,12 +148,13 @@ def release_inference_memory(
             cached_clear()
         if hasattr(runner, "all_models"):
             runner.all_models = []
-    try:
-        from engines.model_weight_cache import get_weight_cache
+    if clear_weight_cache:
+        try:
+            from engines.model_weight_cache import get_weight_cache
 
-        get_weight_cache().clear()
-    except Exception:  # noqa: BLE001
-        pass
+            get_weight_cache().clear()
+        except Exception:  # noqa: BLE001
+            pass
     from engines.separate import clear_gpu_cache
 
     gc.collect()
