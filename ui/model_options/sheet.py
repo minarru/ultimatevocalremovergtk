@@ -17,6 +17,7 @@ from .applicability import (
     default_stack_name,
     ensemble_context_banner,
     non_applicable_toast,
+    should_hide_unused_stacks,
 )
 
 _SHEET_WIDE_WIDTH = 900
@@ -239,11 +240,13 @@ class ModelOptionsSheet:
             selected_models=selected_models,
             views_by_stack=self._views_by_stack,
         )
-        self._refresh_applicability()
+        # Select the target tab while every page is still visible. Hiding the
+        # current ViewStack child first can leave the stack blank.
+        for stack_page in self._tab_stack_pages.values():
+            stack_page.set_visible(True)
         if start_stack in self._views_by_stack:
-            stack_page = self._tab_stack_pages.get(start_stack)
-            if stack_page is None or stack_page.get_visible():
-                self._stack.set_visible_child_name(start_stack)
+            self._stack.set_visible_child_name(start_stack)
+        self._refresh_applicability()
         self._sync_narrow_layout()
 
     def _refresh_applicability(self) -> None:
@@ -266,9 +269,10 @@ class ModelOptionsSheet:
                 ensemble_context_banner(self._context) or ""
             )
             self._ensemble_banner.set_visible(True)
-        # When nothing is applicable yet (e.g. empty ensemble), keep every tab
-        # visible for read-only review. Otherwise hide inert tabs.
-        hide_unused = bool(applicable)
+        # Separation: keep every architecture tab visible so options are never
+        # wiped by hiding the active ViewStack child. Ensemble: hide arches
+        # that no selected member uses (still show all when the list is empty).
+        hide_unused = should_hide_unused_stacks(self._context, applicable)
         for stack_name, page in self._tab_pages.items():
             is_applicable = stack_name in applicable
             subtitle = applicability_subtitle(
@@ -281,9 +285,15 @@ class ModelOptionsSheet:
             stack_page = self._tab_stack_pages.get(stack_name)
             if stack_page is not None:
                 stack_page.set_visible(is_applicable if hide_unused else True)
-            page.set_sensitive(
-                is_applicable if (hide_unused or empty_ensemble) else True
-            )
+            # Separation keeps non-active arches editable for pre-config; the
+            # settings wrapper still toasts when those values are unused.
+            # Empty ensemble dims everything until members are chosen.
+            if empty_ensemble:
+                page.set_sensitive(False)
+            elif hide_unused:
+                page.set_sensitive(is_applicable)
+            else:
+                page.set_sensitive(True)
             page.set_opacity(1.0)
 
     def _maybe_toast_non_applicable(self, stack_name: str) -> None:

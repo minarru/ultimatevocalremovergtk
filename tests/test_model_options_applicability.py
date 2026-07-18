@@ -13,6 +13,7 @@ from ui.model_options.applicability import (
     default_stack_name,
     member_arch_counts,
     non_applicable_toast,
+    should_hide_unused_stacks,
     stack_name_for_member_tag,
     stack_name_for_method_key,
 )
@@ -34,6 +35,13 @@ class ModelOptionsApplicabilityTests(unittest.TestCase):
             selected_models=[],
         )
         self.assertEqual(applicable, {"mdx"})
+        # Separation must not remove other architecture tabs from the switcher.
+        self.assertFalse(should_hide_unused_stacks(OPEN_CONTEXT_SEPARATION, applicable))
+
+    def test_ensemble_hides_unused_when_members_selected(self) -> None:
+        applicable = {"mdx"}
+        self.assertTrue(should_hide_unused_stacks(OPEN_CONTEXT_ENSEMBLE, applicable))
+        self.assertFalse(should_hide_unused_stacks(OPEN_CONTEXT_ENSEMBLE, set()))
 
     def test_ensemble_applicable_from_members(self) -> None:
         selected = [
