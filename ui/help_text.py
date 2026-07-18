@@ -105,7 +105,8 @@ WINDOW_SIZE_HELP = """Select window size to balance quality and speed:
 MDX_SEGMENT_SIZE_HELP = """Pick a segment size to balance speed, resource use, and quality:
 • Smaller sizes consume less resources
 • Bigger sizes consume more resources, but may provide better results
-• Default size is 256. Quality can change based on your pick"""
+• Default size is 256. Quality can change based on your pick
+• For MDX-C / MDX23C models, "Default" uses the segment size from the model's yaml config"""
 
 DEMUCS_STEMS_HELP = """Select a stem for extraction with the chosen model:
 
@@ -217,7 +218,7 @@ MDX_OVERLAP_HELP = """• This option controls the amount of overlap between pre
 OVERLAP_23_HELP = """• This option controls the amount of overlap between prediction windows
   - Higher values can provide better results, but will lead to longer processing times"""
 
-IS_SEGMENT_DEFAULT_HELP = """• The segment size is set based on the value provided in a chosen model's associated config file (yaml)"""
+IS_SEGMENT_DEFAULT_HELP = """• For MDX-C / MDX23C models, choose "Default" on Segment size to use the value from the model's yaml config"""
 
 IS_SPLIT_MODE_HELP = """• Enables "Segments"
 • Deselecting this option is only recommended for those with powerful PCs"""
@@ -548,6 +549,12 @@ OUTPUT_FORMAT_HINT = "Choose the audio format for saved output files (WAV, FLAC,
 MDX_OVERLAP_HINT = (
     "Overlap between prediction windows — available values follow the selected model: "
     "classic MDX-Net uses the Default/0.25-0.99 scale, while MDX23C models use 2-50"
+)
+
+MDX_SEGMENT_SIZE_HINT = (
+    "Segment size balances speed and quality — classic MDX-Net uses 32-4000 "
+    "(default 256), while MDX-C / MDX23C models can pick Default to use the "
+    "yaml config value"
 )
 
 MDX_STEMS_HINT = (

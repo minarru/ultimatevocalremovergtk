@@ -81,7 +81,6 @@ class ModelOptionsSheet:
         for view in self._views:
             page = self._build_tab_page(view)
             self._stack.add_titled(page, view.stack_name, view.title)
-            self._wrap_settings_callback(view)
 
         # Header: left-aligned title + centered tab switcher (like Download Center).
         toolbar = Adw.ToolbarView()
@@ -148,22 +147,28 @@ class ModelOptionsSheet:
             self._sync_narrow_layout()
         return True
 
+    def _dialog_is_open(self) -> bool:
+        # Adw.Dialog stays alive after close when reused; only toast while mapped.
+        return bool(self.dialog.get_mapped())
+
     def _wrap_settings_callback(self, view) -> None:
         if view in self._settings_wrappers:
             return
         original = view._on_settings_changed
 
         def wrapped() -> None:
-            self._maybe_toast_non_applicable(view.stack_name)
+            if self._dialog_is_open():
+                self._maybe_toast_non_applicable(view.stack_name)
             original()
 
         self._settings_wrappers[view] = original
         view._on_settings_changed = wrapped
 
-    def _restore_settings_callback(self, view) -> None:
-        original = self._settings_wrappers.pop(view, None)
-        if original is not None:
-            view._on_settings_changed = original
+    def _restore_settings_callbacks(self) -> None:
+        for view in list(self._settings_wrappers):
+            original = self._settings_wrappers.pop(view, None)
+            if original is not None:
+                view._on_settings_changed = original
 
     def _on_tab_changed(self, *_args) -> None:
         self._refresh_applicability()
@@ -232,6 +237,10 @@ class ModelOptionsSheet:
         if self._resize_poll_source:
             GLib.source_remove(self._resize_poll_source)
             self._resize_poll_source = 0
+        # Wrappers must not outlive the open sheet: main-view edits after close
+        # would otherwise toast against a stale active method / context.
+        self._restore_settings_callbacks()
+        self._toast_shown.clear()
 
     def present(
         self,
@@ -245,6 +254,8 @@ class ModelOptionsSheet:
         if not self._resize_poll_source:
             # Keep it lightweight; only needed while the dialog is open.
             self._resize_poll_source = GLib.timeout_add(200, self._poll_parent_width)
+        for view in self._views:
+            self._wrap_settings_callback(view)
         self.update_context(
             context=context,
             active_method_key=active_method_key,
