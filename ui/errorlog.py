@@ -17,7 +17,7 @@ from __future__ import annotations
 import threading
 from typing import Callable, Optional
 
-from gi.repository import Adw, Gdk, Gtk, Pango, PangoCairo
+from gi.repository import Adw, Gdk, GLib, Gtk, Pango, PangoCairo
 
 from bundled.error_handling import CONTACT_DEV, error_dialouge, error_text
 from core.support_urls import fork_issue_url
@@ -127,6 +127,8 @@ def _build_error_summary_view(summary: str, *, width: int) -> Gtk.Widget:
 _LOCK = threading.Lock()
 _ERROR_LOG = ""
 _ACTIVE_ERROR_DIALOG: Optional[Adw.Dialog] = None
+_ERROR_LOG_WINDOW: Optional[Adw.Window] = None
+_ERROR_LOG_BUFFER: Optional[Gtk.TextBuffer] = None
 
 
 def _error_dialog_width(parent_window: Gtk.Window) -> int:
@@ -150,6 +152,8 @@ def set_error_log(text: str) -> None:
     global _ERROR_LOG
     with _LOCK:
         _ERROR_LOG = text or ""
+    if _ERROR_LOG_BUFFER is not None:
+        GLib.idle_add(_refresh_error_log_window)
     if text:
         debug("error", f"set_error_log {preview_text(text, max_len=120)!r}")
 
@@ -178,6 +182,14 @@ def log_error(process_method: str, exception: BaseException, *, context: str = "
 def get_error_log() -> str:
     with _LOCK:
         return _ERROR_LOG
+
+
+def _refresh_error_log_window() -> bool:
+    if _ERROR_LOG_BUFFER is not None:
+        _ERROR_LOG_BUFFER.set_text(
+            get_error_log() or "No errors have been logged."
+        )
+    return GLib.SOURCE_REMOVE
 
 
 def present_error_dialog(
@@ -322,6 +334,11 @@ def open_error_log(parent_window, message=None):
     """
     if message is not None:
         set_error_log(message)
+    global _ERROR_LOG_WINDOW, _ERROR_LOG_BUFFER
+    if _ERROR_LOG_WINDOW is not None:
+        _refresh_error_log_window()
+        _ERROR_LOG_WINDOW.present()
+        return _ERROR_LOG_WINDOW
     text = get_error_log() or "No errors have been logged."
 
     window = Adw.Window(title="Error Console")
@@ -333,11 +350,14 @@ def open_error_log(parent_window, message=None):
     header = Adw.HeaderBar()
 
     copy_button = Gtk.Button(label="Copy All Text")
-    copy_button.connect("clicked", lambda *_: copy_text(window, text))
+    copy_button.connect("clicked", lambda *_: copy_text(window, get_error_log()))
     header.pack_start(copy_button)
 
     report_button = Gtk.Button(label="Report Issue")
-    report_button.connect("clicked", lambda *_: _open_link(fork_issue_url(log_text=text)))
+    report_button.connect(
+        "clicked",
+        lambda *_: _open_link(fork_issue_url(log_text=get_error_log())),
+    )
     header.pack_start(report_button)
 
     toolbar.add_top_bar(header)
@@ -359,8 +379,18 @@ def open_error_log(parent_window, message=None):
     scroller.set_child(text_view)
     toolbar.set_content(scroller)
     window.set_content(toolbar)
+    _ERROR_LOG_WINDOW = window
+    _ERROR_LOG_BUFFER = buffer
+    window.connect("close-request", _on_error_log_window_closed)
     window.present()
     return window
+
+
+def _on_error_log_window_closed(_window) -> bool:
+    global _ERROR_LOG_WINDOW, _ERROR_LOG_BUFFER
+    _ERROR_LOG_WINDOW = None
+    _ERROR_LOG_BUFFER = None
+    return False
 
 
 def copy_text(widget: Gtk.Widget, text: str) -> None:

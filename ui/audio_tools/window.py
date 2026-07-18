@@ -103,6 +103,10 @@ _APOLLO_BANNER_TITLE = (
     "No Apollo models found. Place an Apollo checkpoint (.ckpt or .bin) "
     "in the Apollo models folder, then reload."
 )
+_RUBBERBAND_BANNER_TITLE = (
+    "Rubber Band CLI was not found. Install rubberband to use Time Stretch "
+    "or Change Pitch, then restart the app."
+)
 
 # Full tool list (Time Stretch / Change Pitch are surfaced on all platforms here;
 # UVR hides them on Linux purely because pyrubberband may be unavailable - the
@@ -118,6 +122,7 @@ _REASON_DUAL_INPUTS = "Add input pairs in the dual/batch editor"
 _REASON_TWO_FILES = "Select two or more files"
 _REASON_NO_APOLLO = "No Apollo models found"
 _REASON_APOLLO_MODEL = "Select an Apollo model"
+_REASON_RUBBERBAND = "Rubber Band CLI not found"
 
 
 class AudioToolsPage:
@@ -375,6 +380,7 @@ class AudioToolsPage:
 
     def _on_apollo_model_changed(self, *_args) -> None:
         self._set("apollo_model", get_combo_value(self.apollo_model_row))
+        self.window._refresh_start_readiness()
 
     def _refresh_apollo_models(self) -> None:
         """Repopulate the Apollo model picker from the models on disk."""
@@ -546,22 +552,33 @@ class AudioToolsPage:
     def _update_audio_banner(self) -> None:
         """Page-level empty-state banner for Apollo models / dual input pairs."""
         from core.audio_tools import DUAL_INPUT_TOOLS
+        from core.external_tools import resolve_rubberband
 
         tool = self._current_tool()
+        if tool in (TIME_STRETCH, CHANGE_PITCH) and not resolve_rubberband():
+            self._banner_mode = "rubberband"
+            self._audio_banner.set_title(_RUBBERBAND_BANNER_TITLE)
+            self._audio_banner.set_button_label("")
+            self._audio_banner.set_revealed(True)
+            self.window._refresh_start_readiness()
+            return
         if tool == APOLLO_RESTORE and not self._apollo_has_models:
             self._banner_mode = "apollo"
             self._audio_banner.set_title(_APOLLO_BANNER_TITLE)
             self._audio_banner.set_button_label("Open Folder")
             self._audio_banner.set_revealed(True)
+            self.window._refresh_start_readiness()
             return
         if tool in DUAL_INPUT_TOOLS and not self._dual_pairs:
             self._banner_mode = "dual"
             self._audio_banner.set_title(_DUAL_BANNER_TITLE)
             self._audio_banner.set_button_label("Pair Editor")
             self._audio_banner.set_revealed(True)
+            self.window._refresh_start_readiness()
             return
         self._banner_mode = None
         self._audio_banner.set_revealed(False)
+        self.window._refresh_start_readiness()
 
     def _on_audio_banner_clicked(self, *_args) -> None:
         if self._banner_mode == "apollo":
@@ -598,9 +615,11 @@ class AudioToolsPage:
         if self._loading:
             return
         self.settings.set("input_paths", list(self.inputs_row.paths))
+        self.window._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
         self._set("export_path", self.output_row.path)
+        self.window._refresh_start_readiness()
 
     def _on_open_dual_editor(self, *_args) -> None:
         labels = _TOOL_LABELS[1] if self._current_tool() == MATCH_INPUTS else _TOOL_LABELS[0]
@@ -636,6 +655,11 @@ class AudioToolsPage:
         from core.audio_tools import DUAL_INPUT_TOOLS
 
         tool = self._current_tool()
+        if tool in (TIME_STRETCH, CHANGE_PITCH):
+            from core.external_tools import resolve_rubberband
+
+            if not resolve_rubberband():
+                return _REASON_RUBBERBAND
         if tool in DUAL_INPUT_TOOLS:
             if not self._dual_pairs:
                 return _REASON_DUAL_INPUTS

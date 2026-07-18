@@ -235,7 +235,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         group = Adw.PreferencesGroup(title="Audio format settings")
 
         self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3])
-        self.format_row.connect("notify::selected", self._on_combo_changed, "save_format")
+        self.format_row.connect("notify::selected", self._on_format_changed)
         group.add(self.format_row)
 
         self.wav_type_row = make_combo_row("WAV type", WAV_TYPE)
@@ -333,6 +333,20 @@ class PreferencesDialog(Adw.PreferencesDialog):
             "is_cleanup_ensemble_temps",
         )
         maintenance_group.add(self.cleanup_ensemble_temps_row)
+
+        self.auto_update_model_params_row = Adw.SwitchRow(
+            title="Update model parameters with catalogue",
+            subtitle=(
+                "Refresh recognition data when the Download Center catalogue "
+                "is refreshed"
+            ),
+        )
+        self.auto_update_model_params_row.connect(
+            "notify::active",
+            self._on_bool_changed,
+            "is_auto_update_model_params",
+        )
+        maintenance_group.add(self.auto_update_model_params_row)
         page.add(maintenance_group)
 
         return page
@@ -353,6 +367,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             set_combo_value(self.wav_type_row, self.settings.get("wav_type_set", "PCM_16"))
             set_combo_value(self.mp3_bit_row, self.settings.get("mp3_bit_set", "320k"))
             set_combo_value(self.flac_bit_row, self.settings.get("flac_bit_set", "16-bit"))
+            self._sync_format_rows()
 
             for key, row in self._process_switches.items():
                 row.set_active(bool(self.settings.get(key)))
@@ -369,6 +384,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self.sample_mode_row.set_active(bool(self.settings.get("model_sample_mode")))
             self.cleanup_ensemble_temps_row.set_active(
                 bool(self.settings.get("is_cleanup_ensemble_temps", True))
+            )
+            self.auto_update_model_params_row.set_active(
+                bool(self.settings.get("is_auto_update_model_params", True))
             )
             duration = self.settings.get("model_sample_mode_duration", 30)
             try:
@@ -425,6 +443,16 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.settings.set(key, value)
         self._persist()
 
+    def _on_format_changed(self, row, _pspec) -> None:
+        self._sync_format_rows()
+        self._on_combo_changed(row, _pspec, "save_format")
+
+    def _sync_format_rows(self) -> None:
+        output_format = get_combo_value(self.format_row) or WAV
+        self.wav_type_row.set_visible(output_format == WAV)
+        self.mp3_bit_row.set_visible(output_format == MP3)
+        self.flac_bit_row.set_visible(output_format == FLAC)
+
     def _on_duration_changed(self, row, _pspec) -> None:
         if self._loading:
             return
@@ -458,6 +486,21 @@ class PreferencesDialog(Adw.PreferencesDialog):
     def _on_load_profile(self, _button) -> None:
         name = get_combo_value(self.profile_combo)
         if not name or name == _NO_PROFILES:
+            return
+        dialog = Adw.AlertDialog(
+            heading=f'Load profile "{name}"?',
+            body="This replaces the current settings and file selections.",
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("load", "Load")
+        dialog.set_response_appearance("load", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", self._on_load_profile_confirmed, name)
+        dialog.present(self)
+
+    def _on_load_profile_confirmed(self, _dialog, response, name: str) -> None:
+        if response != "load":
             return
         data = self._profiles.load(name)
         if data is None:

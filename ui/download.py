@@ -38,6 +38,33 @@ from .download_center import DownloadCenterWindow
 from .widgets.download_queue_indicator import DownloadQueueIndicator
 
 
+def download_batch_message(items) -> tuple[str, bool]:
+    """Summarize terminal download outcomes for an honest in-app toast."""
+    ready = sum(
+        1 for item in items if item.status in (STATUS_COMPLETE, STATUS_EXISTS)
+    )
+    failed = sum(1 for item in items if item.status == STATUS_FAILED)
+    cancelled = sum(1 for item in items if item.status == STATUS_CANCELLED)
+    if failed:
+        message = f"{failed} download{'s' if failed != 1 else ''} failed"
+        if ready:
+            message += f"; {ready} succeeded"
+        if cancelled:
+            message += f"; {cancelled} cancelled"
+        return message, True
+    if cancelled:
+        message = f"{cancelled} download{'s' if cancelled != 1 else ''} cancelled"
+        if ready:
+            message += f"; {ready} succeeded"
+        return message, True
+    if ready:
+        return (
+            f"{ready} model{'s' if ready != 1 else ''} ready to use",
+            False,
+        )
+    return "Downloads finished", False
+
+
 def _get_manager(app_context) -> DownloadManager:
     manager = getattr(app_context, "_download_manager", None)
     if manager is None:
@@ -54,8 +81,14 @@ def _get_queue(app_context, manager: DownloadManager) -> DownloadQueue:
     return queue
 
 
-def _send_download_notifications(app, settings, queue: DownloadQueue) -> None:
-    items = queue.items()
+def _send_download_notifications(
+    app,
+    settings,
+    queue: DownloadQueue,
+    *,
+    items=None,
+) -> None:
+    items = queue.items() if items is None else list(items)
     complete = sum(1 for item in items if item.status == "complete")
     existed = sum(1 for item in items if item.status == "exists")
     failed = sum(1 for item in items if item.status == "failed")
@@ -106,19 +139,50 @@ def init_download_queue_ui(main_window, app_context, *, on_models_changed=None) 
         main_window._download_queue_indicator = indicator
     indicator.bind(queue)
     app_context._download_queue_indicator = indicator
+    terminal_statuses = {
+        STATUS_CANCELLED,
+        STATUS_COMPLETE,
+        STATUS_EXISTS,
+        STATUS_FAILED,
+    }
+    reported_terminal_ids: set[str] = {
+        item.item_id
+        for item in queue.items()
+        if item.status in terminal_statuses
+    }
 
     def refresh() -> None:
         indicator.refresh()
 
     def after_batch() -> None:
+        batch_items = [
+            item
+            for item in queue.items()
+            if item.status in terminal_statuses
+            and item.item_id not in reported_terminal_ids
+        ]
+        reported_terminal_ids.update(item.item_id for item in batch_items)
         indicator.on_batch_complete()
         center = getattr(app_context, "_download_center_window", None)
         if center is not None:
             center.refresh_after_downloads()
         if on_models_changed is not None:
             on_models_changed()
-        main_window.toast_overlay.add_toast(Adw.Toast.new("Downloads finished"))
-        _send_download_notifications(main_window.get_application(), app_context.settings, queue)
+        message, needs_attention = download_batch_message(batch_items)
+        toast = Adw.Toast.new(message)
+        if needs_attention:
+            indicator.hold_finished(10)
+            toast.set_priority(Adw.ToastPriority.HIGH)
+            toast.set_timeout(8)
+            toast.set_button_label("View Queue")
+            toast.connect("button-clicked", lambda *_: indicator.popup())
+        main_window.toast_overlay.add_toast(toast)
+        _send_download_notifications(
+            main_window.get_application(),
+            app_context.settings,
+            queue,
+            items=batch_items,
+        )
 
     queue.set_on_changed(lambda: idle_on_main(refresh))
     queue.set_on_batch_complete(lambda: idle_on_main(after_batch))

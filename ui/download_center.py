@@ -34,6 +34,17 @@ _NETWORKS = [
 _CLAMP_MAX_WIDTH = 800
 
 
+def catalogue_matches(names: list[str], query: str) -> list[str]:
+    """Return selectable catalogue names matching a case-insensitive query."""
+    selectable = [
+        name for name in names if name not in (NO_NEW_MODELS, NO_CONNECTION)
+    ]
+    folded = query.strip().casefold()
+    if not folded:
+        return selectable
+    return [name for name in selectable if folded in name.casefold()]
+
+
 def resolve_catalogue_action_row(row: Gtk.ListBoxRow) -> Adw.ActionRow | None:
     """Return the catalogue ``ActionRow`` for a ListBox filter callback.
 
@@ -65,12 +76,14 @@ class DownloadCenterWindow:
         self._on_models_changed = on_models_changed
 
         self._available: dict[str, list[str]] = {}
+        self._catalogue_online: bool | None = None
         self._refreshing = False
         self._size_lookup_id = 0
         self._row_checks: dict[tuple[str, str], Gtk.CheckButton] = {}
         self._row_actions: dict[tuple[str, str], Adw.ActionRow] = {}
         self._search_entries: dict[str, Gtk.SearchEntry] = {}
         self._list_boxes: dict[str, Gtk.ListBox] = {}
+        self._empty_labels: dict[str, Gtk.Label] = {}
         self._stack_pages: dict[str, Adw.ViewStackPage] = {}
 
         saved_code = self.settings.get("user_code", "")
@@ -151,6 +164,7 @@ class DownloadCenterWindow:
             self.stack.add_titled(page, arch, label)
             if isinstance(self.stack, Adw.ViewStack):
                 self._stack_pages[arch] = self.stack.get_page(page)
+        self.stack.connect("notify::visible-child-name", self._on_catalogue_tab_changed)
 
         self.refresh_button = Gtk.Button(icon_name="view-refresh-symbolic")
         self.refresh_button.add_css_class("flat")
@@ -203,6 +217,12 @@ class DownloadCenterWindow:
         page.append(search)
         self._search_entries[arch] = search
 
+        empty_label = Gtk.Label(wrap=True, xalign=0.0)
+        empty_label.add_css_class("dim-label")
+        empty_label.set_visible(False)
+        page.append(empty_label)
+        self._empty_labels[arch] = empty_label
+
         list_box = Gtk.ListBox()
         list_box.set_selection_mode(Gtk.SelectionMode.NONE)
         list_box.add_css_class("boxed-list")
@@ -232,6 +252,10 @@ class DownloadCenterWindow:
         list_box = self._list_boxes.get(arch)
         if list_box is not None:
             list_box.invalidate_filter()
+        self._update_catalogue_page_state(arch)
+        self._update_download_button()
+
+    def _on_catalogue_tab_changed(self, *_args) -> None:
         self._update_download_button()
 
     def _add_model_row(self, arch: str, name: str) -> None:
@@ -330,14 +354,34 @@ class DownloadCenterWindow:
                 for name in models
                 if name not in (NO_NEW_MODELS, NO_CONNECTION)
             )
-            if count:
+            active_arch = self.stack.get_visible_child_name()
+            active_search = self._search_entries.get(active_arch or "")
+            query = active_search.get_text().strip() if active_search is not None else ""
+            if query and active_arch:
+                network_label = next(
+                    (label for label, arch in _NETWORKS if arch == active_arch),
+                    "current network",
+                )
+                shown = len(
+                    catalogue_matches(self._available.get(active_arch) or [], query)
+                )
+                self.status_label.set_label(
+                    f"{shown} match{'es' if shown != 1 else ''} for “{query}” "
+                    f"in {network_label}"
+                )
+            elif count:
                 self.status_label.set_label(
                     f"{count} selected · {total} available across all networks"
                 )
             elif not self._refreshing:
-                self.status_label.set_label(
-                    f"{total} models available — check one or more, then Download"
-                )
+                if total:
+                    self.status_label.set_label(
+                        f"{total} models available — check one or more, then Download"
+                    )
+                else:
+                    self.status_label.set_label(
+                        "All available models are already installed"
+                    )
         self._update_tab_badges()
 
     def start_refresh(self) -> None:
@@ -359,10 +403,16 @@ class DownloadCenterWindow:
 
     def _refresh_done(self, is_online: bool, available: dict) -> None:
         self._refreshing = False
+        self._catalogue_online = is_online
         self.refresh_button.set_sensitive(True)
         if not is_online:
+            self._available = {}
             self.status_label.set_label(NO_CONNECTION)
             self._clear_catalogue()
+            for _label, arch in _NETWORKS:
+                self._set_catalogue_page_message(
+                    arch, "Catalogue unavailable — check your connection and refresh."
+                )
             return
 
         self._available = available
@@ -384,6 +434,8 @@ class DownloadCenterWindow:
         else:
             self.status_label.set_label(
                 f"{total} models available — check one or more, then Download"
+                if total
+                else "All available models are already installed"
             )
         self._update_download_button()
 
@@ -404,6 +456,37 @@ class DownloadCenterWindow:
             while (child := list_box.get_first_child()) is not None:
                 list_box.remove(child)
 
+    def _set_catalogue_page_message(self, arch: str, message: str) -> None:
+        label = self._empty_labels.get(arch)
+        if label is None:
+            return
+        label.set_label(message)
+        label.set_visible(bool(message))
+
+    def _update_catalogue_page_state(self, arch: str) -> None:
+        if self._catalogue_online is False:
+            self._set_catalogue_page_message(
+                arch, "Catalogue unavailable — check your connection and refresh."
+            )
+            return
+        if self._catalogue_online is None:
+            self._set_catalogue_page_message(arch, "Catalogue is still loading…")
+            return
+        names = self._available.get(arch) or []
+        search = self._search_entries.get(arch)
+        query = search.get_text().strip() if search is not None else ""
+        matches = catalogue_matches(names, query)
+        if query and not matches:
+            self._set_catalogue_page_message(
+                arch, f'No models match “{query}”. Try a broader search.'
+            )
+        elif not catalogue_matches(names, ""):
+            self._set_catalogue_page_message(
+                arch, "All models for this network are already installed."
+            )
+        else:
+            self._set_catalogue_page_message(arch, "")
+
     def _rebuild_catalogue(self) -> None:
         self._clear_catalogue()
         for _label, arch in _NETWORKS:
@@ -412,6 +495,7 @@ class DownloadCenterWindow:
                 self._add_model_row(arch, name)
             list_box = self._list_boxes[arch]
             list_box.invalidate_filter()
+            self._update_catalogue_page_state(arch)
 
     def _enqueue_selected(self) -> None:
         entries = self._selected_entries()
@@ -430,24 +514,10 @@ class DownloadCenterWindow:
 
     def refresh_after_downloads(self) -> None:
         """Rebuild catalogue after a download batch completes."""
+        self._catalogue_online = True
         self._available = self.manager.available_downloads()
         self._rebuild_catalogue()
-        total = sum(
-            1
-            for arch, models in self._available.items()
-            for name in models
-            if name not in (NO_NEW_MODELS, NO_CONNECTION)
-        )
         self._update_tab_counts()
-        selected = len(self._selected_entries())
-        if selected:
-            self.status_label.set_label(
-                f"{selected} selected · {total} available across all networks"
-            )
-        else:
-            self.status_label.set_label(
-                f"{total} models available — check one or more, then Download"
-            )
         self._update_download_button()
 
     def _open_vip(self) -> None:

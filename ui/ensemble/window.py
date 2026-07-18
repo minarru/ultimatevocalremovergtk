@@ -378,9 +378,11 @@ class EnsemblePage:
 
     def _on_inputs_changed(self) -> None:
         self.settings.set("input_paths", list(self.input_row.paths))
+        self.window._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
         self.settings.set("export_path", self.output_row.path)
+        self.window._refresh_start_readiness()
 
     def _on_format_changed(self, *_args) -> None:
         if not self._loading:
@@ -739,6 +741,7 @@ class EnsemblePage:
         if reason:
             banner.set_title(reason)
         banner.set_revealed(reason is not None)
+        self.window._refresh_start_readiness()
 
     def start(self, callbacks) -> None:
         # Readiness is validated by ``MainWindow._on_start`` before dispatch.

@@ -57,6 +57,16 @@ _PROGRESS_EPSILON = 0.001
 _EXIT_CLEANUP_TIMEOUT_MS = 10_000
 
 
+def target_blocked_reason(target) -> Optional[str]:
+    """Return a target readiness reason without allowing UI validation to fail."""
+    if target is None:
+        return "Choose a processing mode"
+    try:
+        return target.start_blocked_reason()
+    except Exception:  # noqa: BLE001 - readiness must never break the UI
+        return None
+
+
 class RunController:
     """Run lifecycle shared by Separation, Ensemble and Audio Tools."""
 
@@ -118,10 +128,7 @@ class RunController:
 
     def handle_start(self, target) -> None:
         """Validate readiness, then hand off to the active run target."""
-        try:
-            reason = target.start_blocked_reason()
-        except Exception:  # noqa: BLE001 - readiness check must never break the UI
-            reason = None
+        reason = target_blocked_reason(target)
         if reason is not None:
             debug("ui", f"handle_start blocked reason={reason!r}")
             self._window._toast(reason)
@@ -149,6 +156,7 @@ class RunController:
         self._running_target = target
         self._run_output_dir = self._window.settings.get("export_path") or ""
         self._run_label = self._run_label_for(target)
+        self._window.log_panel.set_run_label(self._run_label)
         self._run_started_at = time.monotonic()
         self._eta_tracker.reset()
         self._window.console.clear()
@@ -462,7 +470,7 @@ class RunController:
         debug("ui", f"on_error error={type(exc).__name__}: {exc}")
         self._window._stop_pulse()
         self._set_running(False)
-        self._window.log_panel.set_progress_text("")
+        self._window.log_panel.set_progress_text("Failed")
         message = f"Process failed: {exc}"
         self._window.console.append(f"\n{message}\n")
         self._report_error(message, exc)
@@ -592,8 +600,42 @@ class RunController:
         )
 
     def _set_running(self, running: bool) -> None:
-        self._window.start_button.set_sensitive(not running)
+        self._set_options_sensitive(not running)
+        self._set_edit_actions_sensitive(not running)
         self._window.stop_button.set_sensitive(running)
+        if running:
+            self._window.start_button.set_sensitive(False)
+        else:
+            self.refresh_start_readiness()
+
+    def _set_options_sensitive(self, sensitive: bool) -> None:
+        """Lock editable option surfaces while leaving tabs and logs usable."""
+        for page in getattr(self._window, "_options_pages", ()):
+            page.set_sensitive(sensitive)
+
+    def _set_edit_actions_sensitive(self, sensitive: bool) -> None:
+        for name in ("settings", "view_inputs", "model_options"):
+            action = self._window.lookup_action(name)
+            if action is not None:
+                action.set_enabled(sensitive)
+        if sensitive:
+            self._window._sync_model_options_action()
+
+    def refresh_start_readiness(self) -> Optional[str]:
+        """Synchronize Start sensitivity, tooltip and accessibility description."""
+        if self._running_target is not None and self._window.stop_button.get_sensitive():
+            return None
+        target = getattr(self._window, "_run_target", None)
+        reason = target_blocked_reason(target)
+        button = self._window.start_button
+        button.set_sensitive(reason is None)
+        description = reason or "Start processing"
+        button.set_tooltip_text(description)
+        button.update_property(
+            [Gtk.AccessibleProperty.DESCRIPTION],
+            [description],
+        )
+        return reason
 
     def _stop_all_workers(self, *, force: bool = False) -> None:
         debug("ui", f"stop_all_workers force={force}")
