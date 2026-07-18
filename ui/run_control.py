@@ -580,15 +580,7 @@ class RunController:
                 if tool in DUAL_INPUT_TOOLS:
                     paths = [os.path.basename(left) for left, _right in page._dual_pairs]
                 else:
-                    page_rows = {
-                        MANUAL_ENSEMBLE: page.me_inputs_row,
-                        TIME_STRETCH: page.ts_inputs_row,
-                        CHANGE_PITCH: page.ps_inputs_row,
-                        APOLLO_RESTORE: page.ap_inputs_row,
-                    }
-                    row = page_rows.get(tool)
-                    if row is not None:
-                        paths = list(row.paths)
+                    paths = list(page.inputs_row.paths)
             return build_audio_tools_context(settings, tool, paths)
 
         method_key = window._active_view().method_key

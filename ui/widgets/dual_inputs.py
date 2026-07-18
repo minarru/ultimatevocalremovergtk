@@ -14,7 +14,11 @@ from .rows import add_row_icon
 
 
 class DualInputsRow(Adw.ExpanderRow):
-    """Expandable row summarising paired inputs with a button to open the editor."""
+    """Expandable row summarising paired inputs with a button to open the editor.
+
+    Empty-state affordances match :class:`InputFilesRow`: expansion is disabled
+    until pairs exist; the pair-editor suffix remains the primary action.
+    """
 
     def __init__(self, on_edit: Callable[[], None]):
         super().__init__(title="Input pairs")
@@ -70,12 +74,8 @@ class DualInputsRow(Adw.ExpanderRow):
             self.set_enable_expansion(True)
         else:
             set_row_subtitle(self, "No pairs selected — open the pair editor to choose files")
-            placeholder = Adw.ActionRow(title="Open the pair editor to add files")
-            placeholder.set_activatable(True)
-            placeholder.connect("activated", self._open_editor)
-            self.add_row(placeholder)
-            self._detail_rows.append(placeholder)
-            self.set_enable_expansion(True)
+            self.set_expanded(False)
+            self.set_enable_expansion(False)
 
     def _append_detail_row(self, label: str, path: str) -> None:
         row = Adw.ActionRow()

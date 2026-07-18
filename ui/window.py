@@ -57,6 +57,7 @@ from .hints import (
     SHARED_HINTS,
     apply_accelerators,
     install_view_tab_tooltips,
+    set_icon_button_a11y,
     set_tooltip,
 )
 from .dispatch import idle_on_main
@@ -217,6 +218,9 @@ class MainWindow(Adw.ApplicationWindow):
 
         toolbar_view = Adw.ToolbarView()
         toolbar_view.add_top_bar(self._build_header())
+        # Narrow widths reveal a bottom ViewSwitcherBar; the header switcher is
+        # swapped for a plain window title (Adwaita adaptive navigation).
+        toolbar_view.add_bottom_bar(self._view_switcher_bar)
         toolbar_view.set_content(root)
         self.toast_overlay = Adw.ToastOverlay()
         self.toast_overlay.set_child(toolbar_view)
@@ -245,13 +249,19 @@ class MainWindow(Adw.ApplicationWindow):
     # -- Construction -----------------------------------------------------------
 
     def _build_header(self) -> Adw.HeaderBar:
-        header = Adw.HeaderBar()
+        self._header = Adw.HeaderBar()
 
-        switcher = Adw.ViewSwitcher()
-        switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
-        switcher.set_stack(self.content_stack)
-        install_view_tab_tooltips(switcher)
-        header.set_title_widget(switcher)
+        self._view_switcher = Adw.ViewSwitcher()
+        self._view_switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
+        self._view_switcher.set_stack(self.content_stack)
+        install_view_tab_tooltips(self._view_switcher)
+        self._header.set_title_widget(self._view_switcher)
+
+        self._window_title = Adw.WindowTitle(title="Separation")
+        self._view_switcher_bar = Adw.ViewSwitcherBar()
+        self._view_switcher_bar.set_stack(self.content_stack)
+        self._view_switcher_bar.set_reveal(False)
+        install_view_tab_tooltips(self._view_switcher_bar)
 
         end_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         end_box.set_valign(Gtk.Align.CENTER)
@@ -262,9 +272,9 @@ class MainWindow(Adw.ApplicationWindow):
         menu_button.set_menu_model(self._build_primary_menu())
         end_box.append(menu_button)
 
-        header.pack_end(end_box)
+        self._header.pack_end(end_box)
 
-        return header
+        return self._header
 
     def _build_primary_menu(self) -> Gio.Menu:
         menu = Gio.Menu()
@@ -342,7 +352,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._options_pages = [
             self._options_page,
             self._ensemble_page.options_page,
-            self._audio_tools_page.widget,
+            self._audio_tools_page.options_page,
         ]
 
         # Shared Start/Stop dispatch to the run target of the visible tab.
@@ -453,10 +463,14 @@ class MainWindow(Adw.ApplicationWindow):
         # by their own natural height instead of being forced to equal heights.
         for columns_box in self._column_boxes:
             set_columns_narrow(columns_box, True)
+        self._header.set_title_widget(self._window_title)
+        self._view_switcher_bar.set_reveal(True)
 
     def _on_breakpoint_wide(self, _breakpoint) -> None:
         for columns_box in self._column_boxes:
             set_columns_narrow(columns_box, False)
+        self._header.set_title_widget(self._view_switcher)
+        self._view_switcher_bar.set_reveal(False)
 
     def _sync_log_panel_expanded(self, expanded: bool) -> None:
         if self.log_panel.get_expanded() != expanded:
@@ -485,7 +499,7 @@ class MainWindow(Adw.ApplicationWindow):
         group = Adw.PreferencesGroup(title="Files")
         view_inputs_button = Gtk.Button(icon_name="view-list-symbolic", valign=Gtk.Align.CENTER)
         view_inputs_button.add_css_class("flat")
-        set_tooltip(view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
+        set_icon_button_a11y(view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
         view_inputs_button.set_action_name("win.view_inputs")
         group.set_header_suffix(view_inputs_button)
         self.input_row = InputFilesRow(self._on_inputs_changed, on_toast=self.toast)
@@ -512,7 +526,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _build_model_options_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup()
         self.model_options_row = Adw.ActionRow(
-            title="Model options…",
+            title="Model options",
             subtitle="Batch size, secondary models, and more",
             activatable=True,
         )
@@ -620,6 +634,8 @@ class MainWindow(Adw.ApplicationWindow):
         # The embedded mode pages load their own slice of the settings model.
         self._ensemble_page.load()
         self._audio_tools_page.load()
+        self._sync_narrow_window_title()
+        self._sync_model_options_action()
 
         if getattr(self, "_hint_manager", None) is not None:
             self._hint_manager.refresh()
@@ -684,10 +700,39 @@ class MainWindow(Adw.ApplicationWindow):
         if name != "ensemble":
             self.settings.set("chosen_process_method", self._active_view().method_key)
         self._run_target = target
+        self._sync_narrow_window_title(name)
+        self._sync_model_options_action(name)
         from core.debug_log import debug
 
         debug("ui", f"tab={name}")
         target.on_activated()
+
+    def _sync_narrow_window_title(self, tab_name: Optional[str] = None) -> None:
+        """Keep the narrow-layout header title aligned with the active tab."""
+        name = tab_name or self.content_stack.get_visible_child_name()
+        child = self.content_stack.get_visible_child()
+        title = APP_TITLE
+        if child is not None:
+            page = self.content_stack.get_page(child)
+            if page is not None and page.get_title():
+                title = page.get_title()
+        elif name == "separation":
+            title = "Separation"
+        elif name == "ensemble":
+            title = "Ensemble"
+        elif name == "audio_tools":
+            title = "Audio Tools"
+        self._window_title.set_title(title)
+
+    def _sync_model_options_action(self, tab_name: Optional[str] = None) -> None:
+        """Model options only apply to Separation / Ensemble runs."""
+        name = tab_name or self.content_stack.get_visible_child_name()
+        enabled = name != "audio_tools"
+        action = self.lookup_action("model_options")
+        if action is not None:
+            action.set_enabled(enabled)
+        if getattr(self, "model_options_row", None) is not None:
+            self.model_options_row.set_sensitive(enabled)
 
     def _on_settings_changed(self) -> None:
         """Settings-changed hook handed to the method views.
@@ -888,6 +933,9 @@ class MainWindow(Adw.ApplicationWindow):
                 context = OPEN_CONTEXT_AUDIO_TOOLS
             else:
                 context = OPEN_CONTEXT_SEPARATION
+        # Audio Tools has no model options; the menu action is disabled there.
+        if context == OPEN_CONTEXT_AUDIO_TOOLS:
+            return
 
         selected_models = (
             self.settings.get("selected_models") or []
