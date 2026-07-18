@@ -495,8 +495,9 @@ def show_change_defaults_dialog(context, parent):
     model_tags = repo.default_change_model_tags()
     model_row = make_combo_row("Model", [NO_MODEL])
     from core.model_display import format_tag_title
-    from ..widgets.rows import set_combo_tag_values
+    from ..widgets.rows import set_combo_tag_values, use_wrapping_list
 
+    use_wrapping_list(model_row)
     set_combo_tag_values(
         model_row,
         [NO_MODEL, *[(tag, format_tag_title(tag, repo)) for tag in model_tags]],
