@@ -68,6 +68,31 @@ _MDX_STEM_OPTIONS = (
 _MDX_C_SEGMENT_VALUES = (DEF_OPT, *[str(v) for v in MDX_SEGMENTS])
 
 
+def mdx_c_default_segment_size(model) -> int | None:
+    """Return MDX-C / MDX23C yaml ``inference.dim_t``, or ``None`` if unknown."""
+    if not model or not getattr(model, "is_mdx_c", False):
+        return None
+    configs = getattr(model, "mdx_c_configs", None)
+    if configs is None:
+        return None
+    inference = getattr(configs, "inference", None)
+    dim_t = getattr(inference, "dim_t", None) if inference is not None else None
+    if dim_t is None:
+        return None
+    try:
+        value = int(dim_t)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def nearest_mdx_segment_size(dim_t: int) -> int:
+    """Snap ``dim_t`` to the closest value on the Segment size slider."""
+    if not MDX_SEGMENTS:
+        return dim_t
+    return min(MDX_SEGMENTS, key=lambda value: (abs(value - dim_t), value))
+
+
 @register_method_view
 class MDXView(MethodView):
     method_key = MDX_ARCH_TYPE
@@ -120,7 +145,7 @@ class MDXView(MethodView):
         if self._loading:
             return
         self._persist_segment_value(get_scale_row_value(self.segment_row))
-        self._on_settings_changed()
+        self._touch_settings()
 
     def _on_overlap_changed(self, *_args):
         if self._loading:
@@ -128,7 +153,15 @@ class MDXView(MethodView):
         value = get_scale_row_value(self.overlap_row)
         if value is not None:
             self.settings.set(self._overlap_key(), value)
-            self._on_settings_changed()
+            self._touch_settings()
+
+    def _apply_mdx_c_segment_default_mark(self) -> None:
+        """Tick the nearest slider stop to the model's yaml segment size."""
+        dim_t = mdx_c_default_segment_size(self._resolved_model)
+        if dim_t is None:
+            set_scale_default_mark(self.segment_row, DEF_OPT)
+            return
+        set_scale_default_mark(self.segment_row, str(nearest_mdx_segment_size(dim_t)))
 
     def _refresh_segment(self):
         """Reconfigure the segment slider for the current model type."""
@@ -137,7 +170,7 @@ class MDXView(MethodView):
         try:
             if self._segment_is_mdx_c:
                 reconfigure_discrete_scale(self.segment_row, _MDX_C_SEGMENT_VALUES)
-                set_scale_default_mark(self.segment_row, DEF_OPT)
+                self._apply_mdx_c_segment_default_mark()
                 if self.settings.get("is_mdx_c_seg_def"):
                     set_scale_row_value(self.segment_row, DEF_OPT)
                 else:

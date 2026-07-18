@@ -67,6 +67,7 @@ class WorkloadEstimate:
     hints: Tuple[str, ...] = ()
 
     def format_summary(self) -> str:
+        """Structural workload line (passes, outputs, device, tier) — no cost factors."""
         if self.inference_passes <= 0 or self.output_count <= 0:
             return ""
         parts = [
@@ -79,9 +80,13 @@ class WorkloadEstimate:
         tier = self._tier_label()
         if tier:
             parts.append(tier)
-        if self.hints:
-            parts.extend(self.hints)
         return " · ".join(parts)
+
+    def format_cost_factors(self) -> str:
+        """Readable incremental cost factors for tooltips, or empty."""
+        if not self.hints:
+            return ""
+        return " · ".join(self.hints)
 
     def _tier_label(self) -> str:
         if self.run_tier and self.run_tier != self.export_tier:
@@ -89,8 +94,15 @@ class WorkloadEstimate:
         return self.export_tier.value
 
 
-def slow_setting_hints(settings, method_key: str) -> Tuple[str, ...]:
-    """Return short tokens for settings that multiply inference cost."""
+def _pitch_change_active(settings) -> bool:
+    try:
+        return float(settings.get("semitone_shift") or 0) != 0.0
+    except (TypeError, ValueError):
+        return False
+
+
+def cost_factor_hints(settings, method_key: str) -> Tuple[str, ...]:
+    """Return readable labels for settings that add cost beyond pass/output counts."""
     hints: List[str] = []
     if method_key in (VR_ARCH_TYPE, VR_ARCH_PM):
         if settings.get("is_tta"):
@@ -101,35 +113,26 @@ def slow_setting_hints(settings, method_key: str) -> Tuple[str, ...]:
         except (TypeError, ValueError):
             overlap = 0
         if overlap >= 8:
-            hints.append(f"overlap×{overlap}")
-        if settings.get("is_match_frequency_pitch"):
-            hints.append("match-freq")
+            hints.append(f"Overlap {overlap}")
+        if settings.get("is_match_frequency_pitch") and _pitch_change_active(settings):
+            hints.append("Match frequency")
         denoise = settings.get("denoise_option")
         if denoise not in (None, "", "None", "none"):
-            hints.append("denoise")
+            hints.append("Denoise")
     elif method_key == DEMUCS_ARCH_TYPE:
         try:
             shifts = int(settings.get("shifts") or 0)
         except (TypeError, ValueError):
             shifts = 0
         if shifts > 1:
-            hints.append(f"shifts×{shifts}")
+            hints.append(f"Shifts {shifts}")
         if settings.get("is_demucs_pre_proc_model_activate"):
-            hints.append("pre-proc")
-    secondary_key = _SECONDARY_ACTIVATE_KEY.get(method_key)
-    if secondary_key and settings.get(secondary_key):
-        hints.append("secondary")
-    if settings.get("is_set_vocal_splitter") and settings.get("set_vocal_splitter") not in (
-        None,
-        NO_MODEL,
-        "",
-    ):
-        hints.append("vocal-split")
-    if method_key == ENSEMBLE_MODE:
-        selected = settings.get("selected_models") or []
-        if len(selected) >= 3:
-            hints.append(f"{len(selected)} models")
+            hints.append("Pre-process")
     return tuple(hints)
+
+
+# Back-compat alias for older imports/tests.
+slow_setting_hints = cost_factor_hints
 
 
 def classify_export_tier(output_count: int) -> RunCostTier:
@@ -247,7 +250,7 @@ def estimate_workload(
         sample_seconds=int(settings.get("model_sample_mode_duration", 30) or 30),
         export_tier=classify_export_tier(output_count),
         run_tier=classify_run_tier(inference_passes),
-        hints=slow_setting_hints(settings, method_key),
+        hints=cost_factor_hints(settings, method_key),
     )
 
 
@@ -255,6 +258,39 @@ def format_workload_line(estimate: Optional[WorkloadEstimate]) -> str:
     if estimate is None:
         return ""
     return estimate.format_summary()
+
+
+def format_workload_tooltip_section(
+    estimate: Optional[WorkloadEstimate],
+    *,
+    base_hint: str,
+) -> str:
+    """Append cost factors to ``base_hint`` when the estimate has any."""
+    base = (base_hint or "").rstrip()
+    if estimate is None:
+        return base
+    factors = estimate.format_cost_factors()
+    if not factors:
+        return base
+    if not base:
+        return f"Cost factors: {factors}"
+    return f"{base}\n\nCost factors: {factors}"
+
+
+def compose_stem_group_tooltip(
+    export_hint: str,
+    estimate: Optional[WorkloadEstimate],
+    *,
+    workload_hint: str,
+) -> str:
+    """Combine stem-export help with the relative workload tooltip section."""
+    export = (export_hint or "").rstrip()
+    workload = format_workload_tooltip_section(estimate, base_hint=workload_hint)
+    if not export:
+        return workload
+    if not workload:
+        return export
+    return f"{export}\n\n{workload}"
 
 
 def save_progress_local_step(index: int, total: int) -> float:

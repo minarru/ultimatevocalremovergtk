@@ -54,7 +54,6 @@ class ScaleDefaultMarkTests(unittest.TestCase):
         reconfigure_numeric_scale(row, 2, 50, step=1, digits=0)
         self.assertEqual(row._uvr_default, "8")
 
-
 class MdxSegmentDefaultWiringTests(unittest.TestCase):
     def test_mdx_c_segment_choices_start_with_default(self) -> None:
         from bundled.constants import DEF_OPT
@@ -63,6 +62,32 @@ class MdxSegmentDefaultWiringTests(unittest.TestCase):
         self.assertEqual(_MDX_C_SEGMENT_VALUES[0], DEF_OPT)
         self.assertIn("256", _MDX_C_SEGMENT_VALUES)
         self.assertIn("32", _MDX_C_SEGMENT_VALUES)
+
+    def test_mdx_c_default_segment_size_from_yaml(self) -> None:
+        from types import SimpleNamespace
+
+        from ui.views.mdx import mdx_c_default_segment_size
+
+        model = SimpleNamespace(
+            is_mdx_c=True,
+            mdx_c_configs=SimpleNamespace(inference=SimpleNamespace(dim_t=512)),
+        )
+        self.assertEqual(mdx_c_default_segment_size(model), 512)
+        self.assertIsNone(mdx_c_default_segment_size(SimpleNamespace(is_mdx_c=False)))
+        self.assertIsNone(
+            mdx_c_default_segment_size(
+                SimpleNamespace(is_mdx_c=True, mdx_c_configs=None)
+            )
+        )
+
+    def test_nearest_mdx_segment_size_snaps(self) -> None:
+        from ui.views.mdx import nearest_mdx_segment_size
+
+        self.assertEqual(nearest_mdx_segment_size(256), 256)
+        self.assertEqual(nearest_mdx_segment_size(250), 256)
+        self.assertEqual(nearest_mdx_segment_size(240), 224)
+        self.assertEqual(nearest_mdx_segment_size(1), 32)
+        self.assertEqual(nearest_mdx_segment_size(9999), 4000)
 
 
 if __name__ == "__main__":
