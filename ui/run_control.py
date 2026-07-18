@@ -600,9 +600,12 @@ class RunController:
         )
 
     def _set_running(self, running: bool) -> None:
+        # Update Stop first: ``is_running()`` is ``_running_target and stop
+        # sensitive``. On unlock, ``_sync_model_options_action`` must see
+        # ``is_running() is False`` or Model options stays disabled.
+        self._window.stop_button.set_sensitive(running)
         self._set_options_sensitive(not running)
         self._set_edit_actions_sensitive(not running)
-        self._window.stop_button.set_sensitive(running)
         if running:
             self._window.start_button.set_sensitive(False)
         else:
