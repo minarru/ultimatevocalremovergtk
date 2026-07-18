@@ -45,7 +45,7 @@ from .model_data import (
 from .sample_mode import prepare_input_paths
 from .settings import SettingsModel
 from .run_control import ProcessStopped, check_stopped, pausable_callback
-from .run_estimate import combine_progress_local_step
+from .run_estimate import combine_progress_local_step, count_inference_passes_from_models
 from .debug_log import debug, debug_elapsed, next_seq, preview_text, set_correlation_seq, verbose
 from .error_context import snapshot_worker_file
 from .model_display import display_name_for_model
@@ -69,13 +69,36 @@ def _model_output_label(model: ModelData) -> str:
     return label or model.model_basename or ""
 
 
+def _progress_detail(
+    *,
+    file_num: int,
+    file_total: int,
+    model,
+    model_num: int,
+    model_count: int,
+) -> Optional[str]:
+    """Short status detail for the progress line (file / member model)."""
+    parts: List[str] = []
+    if file_total > 1:
+        parts.append(f"File {file_num}/{file_total}")
+    if model is not None:
+        label = _model_output_label(model)
+        if model_count > 1:
+            parts.append(f"Model {model_num}/{model_count}" + (f" · {label}" if label else ""))
+        elif label:
+            parts.append(label)
+    return " · ".join(parts) if parts else None
+
+
 @dataclass
 class JobCallbacks:
     """Callbacks invoked from the worker thread.
 
-    ``on_progress`` receives a float in ``[0.0, 1.0]``; ``on_console`` receives
-    text chunks; ``on_complete`` fires once on success; ``on_error`` receives the
-    raised exception. The GTK layer marshals each of these onto the main loop.
+    ``on_progress`` receives a float in ``[0.0, 1.0]`` plus optional keyword
+    metadata (``local_step``, ``pass_index``, ``pass_total``, ``detail``,
+    ``combine_index``, ``combine_total``). ``on_console`` receives text chunks;
+    ``on_complete`` fires once on success; ``on_error`` receives the raised
+    exception. The GTK layer marshals each of these onto the main loop.
     """
 
     on_progress: Optional[Callable[..., None]] = None
@@ -84,13 +107,29 @@ class JobCallbacks:
     on_stopped: Optional[Callable[[], None]] = None
     on_error: Optional[Callable[[BaseException], None]] = None
 
-    def progress(self, fraction: float, *, local_step: Optional[float] = None) -> None:
-        if self.on_progress:
-            clamped = max(0.0, min(1.0, fraction))
-            if local_step is None:
-                self.on_progress(clamped)
-            else:
-                self.on_progress(clamped, local_step)
+    def progress(
+        self,
+        fraction: float,
+        *,
+        local_step: Optional[float] = None,
+        pass_index: Optional[int] = None,
+        pass_total: Optional[int] = None,
+        detail: Optional[str] = None,
+        combine_index: Optional[int] = None,
+        combine_total: Optional[int] = None,
+    ) -> None:
+        if not self.on_progress:
+            return
+        clamped = max(0.0, min(1.0, fraction))
+        self.on_progress(
+            clamped,
+            local_step=local_step,
+            pass_index=pass_index,
+            pass_total=pass_total,
+            detail=detail,
+            combine_index=combine_index,
+            combine_total=combine_total,
+        )
 
     def console(self, text: str) -> None:
         seq = next_seq()
@@ -263,23 +302,8 @@ class JobRunner:
         return assemble_model_data(self.settings, self.repo, model_name, method)
 
     def _count_true_models(self, models: List[ModelData]) -> int:
-        """Mirror ``process_start``'s ``true_model_count`` (UVR.py L6742-6744).
-
-        Each activated secondary model adds a second inference pass; Demucs
-        4-stem secondaries and the Demucs pre-process model add their own; the
-        vocal splitter adds one when active.
-        """
-        true_model_4_stem_count = sum(
-            m.demucs_4_stem_added_count if m.process_method == DEMUCS_ARCH_TYPE else 0 for m in models
-        )
-        true_model_pre_proc_model_count = sum(2 if m.pre_proc_model_activated else 0 for m in models)
-        base = sum(2 if m.is_secondary_model_activated else 1 for m in models)
-        return base + true_model_4_stem_count + true_model_pre_proc_model_count + self._determine_voc_split(models)
-
-    def _determine_voc_split(self, models: List[ModelData]) -> int:
-        """Approximate ``MainWindow.determine_voc_split``: +1 when an active
-        vocal splitter applies to the run."""
-        return 1 if any(getattr(m, "is_vocal_split_model_activated", False) for m in models) else 0
+        """Progress denominator: shared with the Save stems workload estimate."""
+        return count_inference_passes_from_models(models)
 
     def _build_all_models(self, models: List[ModelData]) -> None:
         """Port of ``cached_source_model_list_check``'s ``all_models`` list.
@@ -349,8 +373,14 @@ class JobRunner:
 
             total_files = len(input_paths)
             last_progress_fraction = 0.0
+            progress_ctx = {
+                "file_num": 1,
+                "model": None,
+                "model_num": 0,
+                "model_count": len(models),
+            }
 
-            def make_progress(file_num):
+            def make_progress():
                 def set_progress_bar(step, inference_iterations=0):
                     nonlocal last_progress_fraction
                     total_count = max(1, self.true_model_count * total_files)
@@ -358,27 +388,40 @@ class JobRunner:
                     local_step = step + inference_iterations
                     fraction = base * self.iteration - base + base * local_step
                     last_progress_fraction = fraction
-                    callbacks.progress(fraction, local_step=local_step)
+                    callbacks.progress(
+                        fraction,
+                        local_step=local_step,
+                        pass_index=max(1, self.iteration),
+                        pass_total=total_count,
+                        detail=_progress_detail(
+                            file_num=progress_ctx["file_num"],
+                            file_total=total_files,
+                            model=progress_ctx["model"],
+                            model_num=progress_ctx["model_num"],
+                            model_count=progress_ctx["model_count"],
+                        ),
+                    )
                 return set_progress_bar
 
             for file_num, audio_file in enumerate(input_paths, start=1):
                 check_stopped(self)
                 self._cached_sources_clear()
                 base_text = f"File {file_num}/{total_files} "
+                progress_ctx["file_num"] = file_num
 
                 if not os.path.isfile(audio_file):
                     callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n')
                     self.iteration += self.true_model_count
                     continue
 
-                set_progress_bar = pausable_callback(
-                    self, make_progress(file_num)
-                )
+                set_progress_bar = pausable_callback(self, make_progress())
 
-                for current_model in models:
+                for model_num, current_model in enumerate(models, start=1):
                     check_stopped(self)
                     snapshot_worker_file(audio_file, current_model)
                     self._process_iteration()
+                    progress_ctx["model"] = current_model
+                    progress_ctx["model_num"] = model_num
                     write_to_console = pausable_callback(
                         self,
                         lambda text, base_text=base_text: callbacks.console(base_text + text),
@@ -495,8 +538,14 @@ class JobRunner:
 
             total_files = len(input_paths)
             last_progress_fraction = 0.0
+            progress_ctx = {
+                "file_num": 1,
+                "model": None,
+                "model_num": 0,
+                "model_count": len(models),
+            }
 
-            def make_progress(file_num):
+            def make_progress():
                 def set_progress_bar(step, inference_iterations=0):
                     nonlocal last_progress_fraction
                     total_count = max(1, self.true_model_count * total_files)
@@ -504,22 +553,33 @@ class JobRunner:
                     local_step = step + inference_iterations
                     fraction = base * self.iteration - base + base * local_step
                     last_progress_fraction = fraction
-                    callbacks.progress(fraction, local_step=local_step)
+                    callbacks.progress(
+                        fraction,
+                        local_step=local_step,
+                        pass_index=max(1, self.iteration),
+                        pass_total=total_count,
+                        detail=_progress_detail(
+                            file_num=progress_ctx["file_num"],
+                            file_total=total_files,
+                            model=progress_ctx["model"],
+                            model_num=progress_ctx["model_num"],
+                            model_count=progress_ctx["model_count"],
+                        ),
+                    )
                 return set_progress_bar
 
             for file_num, audio_file in enumerate(input_paths, start=1):
                 check_stopped(self)
                 self._cached_sources_clear()
                 base_text = f"File {file_num}/{total_files} "
+                progress_ctx["file_num"] = file_num
 
                 if not os.path.isfile(audio_file):
                     callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n')
                     self.iteration += self.true_model_count
                     continue
 
-                set_progress_bar = pausable_callback(
-                    self, make_progress(file_num)
-                )
+                set_progress_bar = pausable_callback(self, make_progress())
                 audio_file_base = ""
                 current_model = None
                 # stem_tag -> list of member waveforms for in-memory combine
@@ -529,6 +589,8 @@ class JobRunner:
                     check_stopped(self)
                     snapshot_worker_file(audio_file, current_model)
                     self._process_iteration()
+                    progress_ctx["model"] = current_model
+                    progress_ctx["model_num"] = current_model_num
                     callbacks.console(
                         f"Ensemble Mode - {_model_output_label(current_model)} - "
                         f"Model {current_model_num}/{len(models)}\n"
@@ -620,7 +682,16 @@ class JobRunner:
                     fraction = combine_start + span * ((combine_idx + 1) / combine_total)
                     local_step = combine_progress_local_step(combine_idx, combine_total)
                     last_progress_fraction = fraction
-                    callbacks.progress(fraction, local_step=local_step)
+                    total_count = max(1, self.true_model_count * total_files)
+                    callbacks.progress(
+                        fraction,
+                        local_step=local_step,
+                        pass_index=total_count,
+                        pass_total=total_count,
+                        combine_index=combine_idx + 1,
+                        combine_total=combine_total,
+                        detail=f"Combining {combine_idx + 1}/{combine_total}",
+                    )
 
                 debug_elapsed("worker", "ensemble combine", combine_started)
                 callbacks.console("Done\n")
