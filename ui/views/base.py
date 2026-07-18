@@ -413,7 +413,13 @@ class MethodView:
         store_float=False,
     ):
         """Add a constrained slider row bound to settings ``key``."""
-        from ..widgets.rows import make_discrete_scale_row, make_numeric_scale_row
+        from bundled.constants import DEFAULT_DATA
+
+        from ..widgets.rows import (
+            make_discrete_scale_row,
+            make_numeric_scale_row,
+            set_scale_default_mark,
+        )
 
         if values is not None:
             row = make_discrete_scale_row(title, values, subtitle)
@@ -422,6 +428,8 @@ class MethodView:
                 raise ValueError("lower and upper are required when values is None")
             row = make_numeric_scale_row(title, lower, upper, step=step, digits=digits, subtitle=subtitle)
         row._uvr_store_float = store_float
+        if key in DEFAULT_DATA:
+            set_scale_default_mark(row, DEFAULT_DATA[key])
         row._uvr_scale.connect(
             "value-changed",
             lambda *_a, k=key, r=row: self._on_option_scale(k, r),
