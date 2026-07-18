@@ -27,7 +27,6 @@ from ml import spec_utils
 import ml.mdxnet as MdxnetSet
 
 from .base import SeperateAttributes
-from .gpu_cache import clear_gpu_cache
 from .mix import prepare_mix, gather_sources, rerun_mp3
 from .export import save_format
 from .vr_utils import vr_denoiser, loading_mix
@@ -76,7 +75,20 @@ class SeperateDemucs(SeperateAttributes):
                 version=self.demucs_version,
             ):
                 self.write_to_console(LOADING_MODEL)
-                if self.demucs_version == DEMUCS_V1:
+                from engines.model_weight_cache import get_weight_cache, weight_cache_key
+
+                key = weight_cache_key(
+                    "demucs",
+                    str(self.model_path),
+                    self.device,
+                    self.demucs_version,
+                    self.segment,
+                )
+                self._weight_cache_key = key
+                cached = get_weight_cache().get(key)
+                if cached and cached.module is not None:
+                    self.demucs = cached.module
+                elif self.demucs_version == DEMUCS_V1:
                     if str(self.model_path).endswith(".gz"):
                         self.model_path = gzip.open(self.model_path, "rb")
                     klass, args, kwargs, state = load_torch_checkpoint(self.model_path)
@@ -117,9 +129,6 @@ class SeperateDemucs(SeperateAttributes):
                     source = self.demix_demucs(mix)
                 
                 self.write_to_console(DONE, base_text='')
-                
-                del self.demucs
-                clear_gpu_cache()
             
         if isinstance(inst_source, np.ndarray):
             source_reshape = spec_utils.reshape_sources(inst_source[self.demucs_source_map[VOCAL_STEM]], source[self.demucs_source_map[VOCAL_STEM]])
@@ -200,7 +209,7 @@ class SeperateDemucs(SeperateAttributes):
                             secondary_source = secondary_source.T
                         else:
                             if not isinstance(raw_mixture, np.ndarray):
-                                raw_mixture = prepare_mix(self.audio_file)
+                                raw_mixture = mix
        
                             secondary_source = source[self.demucs_source_map[self.primary_stem]]
                             

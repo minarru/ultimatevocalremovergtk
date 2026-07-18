@@ -175,6 +175,33 @@ menubutton.uvr-download-queue-chip > button.chip .uvr-chip-content {
     opacity: 0.55;
 }
 
+/* Error summary scrolls only past the measured cap; height is set in Python.
+   SYNC: _ERROR_SUMMARY_MAX_HEIGHT in ui/errorlog.py */
+.uvr-error-summary-scroll {
+    max-height: 280px;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+.uvr-error-summary-scroll > viewport,
+.uvr-error-summary-scroll > overshoot,
+.uvr-error-summary-scroll > undershoot {
+    background: transparent;
+}
+
+/* Let the parent .card provide bg + radius; TextView.view otherwise paints opaque. */
+textview.uvr-error-summary,
+textview.uvr-error-summary.view,
+textview.uvr-error-summary text {
+    background: transparent;
+    background-color: transparent;
+    box-shadow: none;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+}
+
 /* Nautilus operations popover (see nautilus-gnome-50/src/resources/style.css). */
 .operations-list,
 .operations-list > :hover {

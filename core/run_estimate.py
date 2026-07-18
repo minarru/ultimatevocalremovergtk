@@ -64,6 +64,7 @@ class WorkloadEstimate:
     sample_seconds: int
     export_tier: RunCostTier
     run_tier: Optional[RunCostTier] = None
+    hints: Tuple[str, ...] = ()
 
     def format_summary(self) -> str:
         if self.inference_passes <= 0 or self.output_count <= 0:
@@ -78,12 +79,57 @@ class WorkloadEstimate:
         tier = self._tier_label()
         if tier:
             parts.append(tier)
+        if self.hints:
+            parts.extend(self.hints)
         return " · ".join(parts)
 
     def _tier_label(self) -> str:
         if self.run_tier and self.run_tier != self.export_tier:
             return f"{self.export_tier.value} export · {self.run_tier.value} run"
         return self.export_tier.value
+
+
+def slow_setting_hints(settings, method_key: str) -> Tuple[str, ...]:
+    """Return short tokens for settings that multiply inference cost."""
+    hints: List[str] = []
+    if method_key in (VR_ARCH_TYPE, VR_ARCH_PM):
+        if settings.get("is_tta"):
+            hints.append("TTA")
+    elif method_key == MDX_ARCH_TYPE:
+        try:
+            overlap = int(float(settings.get("overlap_mdx23") or 0))
+        except (TypeError, ValueError):
+            overlap = 0
+        if overlap >= 8:
+            hints.append(f"overlap×{overlap}")
+        if settings.get("is_match_frequency_pitch"):
+            hints.append("match-freq")
+        denoise = settings.get("denoise_option")
+        if denoise not in (None, "", "None", "none"):
+            hints.append("denoise")
+    elif method_key == DEMUCS_ARCH_TYPE:
+        try:
+            shifts = int(settings.get("shifts") or 0)
+        except (TypeError, ValueError):
+            shifts = 0
+        if shifts > 1:
+            hints.append(f"shifts×{shifts}")
+        if settings.get("is_demucs_pre_proc_model_activate"):
+            hints.append("pre-proc")
+    secondary_key = _SECONDARY_ACTIVATE_KEY.get(method_key)
+    if secondary_key and settings.get(secondary_key):
+        hints.append("secondary")
+    if settings.get("is_set_vocal_splitter") and settings.get("set_vocal_splitter") not in (
+        None,
+        NO_MODEL,
+        "",
+    ):
+        hints.append("vocal-split")
+    if method_key == ENSEMBLE_MODE:
+        selected = settings.get("selected_models") or []
+        if len(selected) >= 3:
+            hints.append(f"{len(selected)} models")
+    return tuple(hints)
 
 
 def classify_export_tier(output_count: int) -> RunCostTier:
@@ -201,6 +247,7 @@ def estimate_workload(
         sample_seconds=int(settings.get("model_sample_mode_duration", 30) or 30),
         export_tier=classify_export_tier(output_count),
         run_tier=classify_run_tier(inference_passes),
+        hints=slow_setting_hints(settings, method_key),
     )
 
 

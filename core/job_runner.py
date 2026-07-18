@@ -306,6 +306,7 @@ class JobRunner:
 
     def _run_seperator(self, seperator) -> None:
         self._active_separator = seperator
+        self._last_backend_name = getattr(seperator, "_backend_name", None)
         try:
             seperator.seperate()
         finally:
@@ -425,7 +426,7 @@ class JobRunner:
                     self._run_seperator(seperator)
                     debug("worker", f"separate done engine={engine}")
 
-                clear_gpu_cache()
+                clear_gpu_cache(getattr(self, "_last_backend_name", None))
 
             callbacks.progress(1.0)
             callbacks.console(f"\nProcess complete\n{time_elapsed()}\n")
@@ -600,7 +601,7 @@ class JobRunner:
 
                 debug_elapsed("worker", "ensemble combine", combine_started)
                 callbacks.console("Done\n")
-                clear_gpu_cache()
+                clear_gpu_cache(getattr(self, "_last_backend_name", None))
 
             # Drop the temp folder if it was a scratch dir and is now empty.
             try:
