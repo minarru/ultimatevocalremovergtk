@@ -46,6 +46,7 @@ from bundled.constants import (
     WAV,
     WAV_TYPE,
 )
+from core.export_naming import preview_output_name
 from core.gpu import list_gpu_devices
 from core.platform import system_name
 from core.paths import SETTINGS_CACHE_DIR
@@ -54,6 +55,10 @@ from .application import apply_color_scheme
 from .help_text import REMOVE_PROFILE_HINT, FLAC_BIT_DEPTH_HINT
 from .hints import set_tooltip
 from .widgets.rows import get_combo_value, make_combo_row, set_combo_value, set_row_icon
+
+_NAMING_PREVIEW_KEYS = frozenset(
+    {"is_testing_audio", "is_add_model_name", "is_create_model_folder"}
+)
 
 _NO_PROFILES = "(no saved profiles)"
 
@@ -270,6 +275,13 @@ class PreferencesDialog(Adw.PreferencesDialog):
             row.connect("notify::active", self._on_bool_changed, key)
             process_group.add(row)
             self._process_switches[key] = row
+
+        self.output_name_preview_row = Adw.ActionRow(
+            title="Example output name",
+            subtitle=preview_output_name(self.settings),
+        )
+        self.output_name_preview_row.set_subtitle_lines(2)
+        process_group.add(self.output_name_preview_row)
         page.add(process_group)
 
         hardware_group = Adw.PreferencesGroup(title="Hardware")
@@ -371,6 +383,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
             for key, row in self._process_switches.items():
                 row.set_active(bool(self.settings.get(key)))
+            self._refresh_output_name_preview()
 
             for key, row in self._notification_switches.items():
                 row.set_active(bool(self.settings.get(key, True)))
@@ -421,7 +434,14 @@ class PreferencesDialog(Adw.PreferencesDialog):
         if self._loading:
             return
         self.settings.set(key, bool(row.get_active()))
+        if key in _NAMING_PREVIEW_KEYS:
+            self._refresh_output_name_preview()
         self._persist()
+
+    def _refresh_output_name_preview(self) -> None:
+        if not hasattr(self, "output_name_preview_row"):
+            return
+        self.output_name_preview_row.set_subtitle(preview_output_name(self.settings))
 
     def _on_color_scheme_changed(self, row, _pspec) -> None:
         if self._loading:
@@ -446,6 +466,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
     def _on_format_changed(self, row, _pspec) -> None:
         self._sync_format_rows()
         self._on_combo_changed(row, _pspec, "save_format")
+        self._refresh_output_name_preview()
 
     def _sync_format_rows(self) -> None:
         output_format = get_combo_value(self.format_row) or WAV

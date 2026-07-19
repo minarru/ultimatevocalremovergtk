@@ -8,7 +8,20 @@ from __future__ import annotations
 
 from typing import Dict, List, Mapping, Optional, Sequence, Set
 
-from bundled.constants import ALL_STEMS, INST_STEM, NO_OTHER_STEM, NO_STEM, OTHER_STEM, VOCAL_STEM
+from bundled.constants import (
+    ALL_STEMS,
+    BV_VOCAL_STEM,
+    BV_VOCAL_STEM_LABEL,
+    INST_STEM,
+    INST_WITH_BACKING_VOCALS_STEM,
+    INST_WITH_LEAD_VOCALS_STEM,
+    LEAD_VOCAL_STEM,
+    LEAD_VOCAL_STEM_LABEL,
+    NO_OTHER_STEM,
+    NO_STEM,
+    OTHER_STEM,
+    VOCAL_STEM,
+)
 
 # Catalogue / runtime intent labels (stable strings).
 INTENT_KARAOKE = "karaoke"
@@ -396,14 +409,68 @@ def export_intent_from_model(model) -> str:
     )
 
 
+def karaoke_bv_export_labels(model) -> Optional[Dict[str, str]]:
+    """Vocals/Instrumental → human karaoke/BV export labels, or ``None``."""
+    if model is None:
+        return None
+    is_bv = bool(getattr(model, "is_bv_model", False))
+    is_karaoke = bool(getattr(model, "is_karaoke", False))
+    if not is_bv and not is_karaoke:
+        return None
+    if is_bv:
+        return {
+            VOCAL_STEM: BV_VOCAL_STEM_LABEL,
+            INST_STEM: INST_WITH_LEAD_VOCALS_STEM,
+            LEAD_VOCAL_STEM: LEAD_VOCAL_STEM_LABEL,
+            BV_VOCAL_STEM: BV_VOCAL_STEM_LABEL,
+        }
+    return {
+        VOCAL_STEM: LEAD_VOCAL_STEM_LABEL,
+        INST_STEM: INST_WITH_BACKING_VOCALS_STEM,
+        LEAD_VOCAL_STEM: LEAD_VOCAL_STEM_LABEL,
+        BV_VOCAL_STEM: BV_VOCAL_STEM_LABEL,
+    }
+
+
+def export_stem_label(model, stem: str, *, for_ensemble: bool = False) -> str:
+    """Map a logic stem to the filename/UI export label.
+
+    Ensemble members keep native ``Vocals`` / ``Instrumental`` so combine
+    matching stays stable. Vocal-splitter codes ``lead_only`` / ``backing_only``
+    always become human labels when not in ensemble mode.
+    """
+    if not stem:
+        return stem
+    if for_ensemble:
+        return stem
+    # Splitter identity codes → human labels even when the parent model is not
+    # flagged karaoke/BV on this object (flags live on the split model).
+    if stem == LEAD_VOCAL_STEM:
+        return LEAD_VOCAL_STEM_LABEL
+    if stem == BV_VOCAL_STEM:
+        return BV_VOCAL_STEM_LABEL
+    labels = karaoke_bv_export_labels(model)
+    if not labels:
+        return stem
+    return labels.get(stem, stem)
+
+
 def stem_display_overrides(model) -> Optional[Dict[str, str]]:
     """Return per-stem display-label overrides for Save stems UI."""
     if model is None:
         return None
+    overrides: Dict[str, str] = {}
     instruments = training_instruments(model)
     if len(instruments) == 2 and is_vocals_other_pair(instruments):
-        return dict(VOCALS_OTHER_DISPLAY_OVERRIDES)
-    return None
+        overrides.update(VOCALS_OTHER_DISPLAY_OVERRIDES)
+    karaoke_bv = karaoke_bv_export_labels(model)
+    if karaoke_bv:
+        # UI keys stay Vocals/Instrumental; only those display overrides matter.
+        overrides[VOCAL_STEM] = karaoke_bv[VOCAL_STEM]
+        overrides[INST_STEM] = karaoke_bv[INST_STEM]
+        overrides["vocals"] = karaoke_bv[VOCAL_STEM]
+        overrides["instrumental"] = karaoke_bv[INST_STEM]
+    return overrides or None
 
 
 def vocal_stem_key(model, stems: Optional[Sequence[str]] = None) -> str:

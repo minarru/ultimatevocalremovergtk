@@ -270,7 +270,7 @@ class SeperateMDX(SeperateAttributes):
             int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only) or 1
         )
         if not self.is_primary_stem_only:
-            secondary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.secondary_stem}).wav')
+            secondary_stem_path = self.stem_export_wav_path(self.secondary_stem)
             if not isinstance(self.secondary_source, np.ndarray):
                 raw_mix = self.demix(self.match_frequency_pitch(mix), is_match_mix=True) if mdx_net_cut else self.match_frequency_pitch(mix)
                 self.secondary_source = spec_utils.invert_stem(raw_mix, source) if self.is_invert_spec else mix.T-source.T
@@ -278,7 +278,7 @@ class SeperateMDX(SeperateAttributes):
             self.secondary_source_map = self.final_process(secondary_stem_path, self.secondary_source, self.secondary_source_secondary, self.secondary_stem, samplerate)
         
         if not self.is_secondary_stem_only:
-            primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.primary_stem}).wav')
+            primary_stem_path = self.stem_export_wav_path(self.primary_stem)
 
             if not isinstance(self.primary_source, np.ndarray):
                 self.primary_source = source.T
@@ -491,7 +491,7 @@ class SeperateMDXC(SeperateAttributes):
             stem = selected_stems[0]
             complement_stem = secondary_stem(stem)
             self.begin_save_phase(2)
-            native_path = os.path.join(self.export_path, f'{self.audio_file_base}_({stem}).wav')
+            native_path = self.stem_export_wav_path(stem)
             native_source = sources[stem].T
             self.write_audio(native_path, native_source, samplerate, stem_name=stem)
             complement_source = derive_mdx_complement(
@@ -500,7 +500,7 @@ class SeperateMDXC(SeperateAttributes):
                 invert_spec=self.is_invert_spec,
                 match_frequency_pitch=self.match_frequency_pitch,
             )
-            complement_path = os.path.join(self.export_path, f'{self.audio_file_base}_({complement_stem}).wav')
+            complement_path = self.stem_export_wav_path(complement_stem)
             self.write_audio(complement_path, complement_source, samplerate, stem_name=complement_stem)
             if stem == VOCAL_STEM and not self.is_sec_bv_rebalance:
                 self.process_vocal_split_chain({VOCAL_STEM: stem})
@@ -508,7 +508,7 @@ class SeperateMDXC(SeperateAttributes):
             export_stems = routing["export_stems"]
             self.begin_save_phase(len(export_stems))
             for stem in export_stems:
-                primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({stem}).wav')
+                primary_stem_path = self.stem_export_wav_path(stem)
                 self.primary_source = sources[stem].T
                 self.write_audio(primary_stem_path, self.primary_source, samplerate, stem_name=stem)
                 
@@ -538,7 +538,7 @@ class SeperateMDXC(SeperateAttributes):
                 int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only) or 1
             )
             if not self.is_primary_stem_only:
-                secondary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.secondary_stem}).wav')
+                secondary_stem_path = self.stem_export_wav_path(self.secondary_stem)
                 if not isinstance(self.secondary_source, np.ndarray):
                     
                     if self.is_mdx_combine_stems and len(stem_list) >= 2:
@@ -566,7 +566,7 @@ class SeperateMDXC(SeperateAttributes):
                 self.secondary_source_map = self.final_process(secondary_stem_path, self.secondary_source, self.secondary_source_secondary, self.secondary_stem, samplerate)    
 
             if not self.is_secondary_stem_only:
-                primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.primary_stem}).wav')
+                primary_stem_path = self.stem_export_wav_path(self.primary_stem)
                 if not isinstance(self.primary_source, np.ndarray):
                     self.primary_source = source_primary.T
 

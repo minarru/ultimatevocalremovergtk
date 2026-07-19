@@ -31,16 +31,15 @@ from bundled.constants import (
     MANUAL_ENSEMBLE,
     MATCH_INPUTS,
     PHASE_SHIFTS_OPT,
-    PITCH_TEXT,
     PROCESS_STOPPED_BY_USER,
     TIME_STRETCH,
-    TIME_TEXT,
     TIME_WINDOW_MAPPER,
     VOLUME_MAPPER,
 )
 
 from .audio_io import resolve_wav_type_set, save_format
 from .error_context import snapshot_worker_file
+from .export_naming import sanitize_filename_component
 from .job_runner import JobCallbacks
 from .run_control import ProcessStopped, check_stopped, pausable_callback
 from .inference_cleanup import release_inference_memory as _release_inference_resources
@@ -67,7 +66,7 @@ class AudioTools:
         self.wav_type_set = resolve_wav_type_set(settings)
         self.is_normalization = bool(settings.get("is_normalization"))
         self.is_wav_ensemble = bool(settings.get("is_wav_ensemble"))
-        self.is_testing_audio = f"{time_stamp}_" if settings.get("is_testing_audio") else ""
+        self.is_testing_audio = f"{time_stamp} " if settings.get("is_testing_audio") else ""
         self.save_format_sel = settings.get("save_format")
         self.mp3_bit_set = settings.get("mp3_bit_set")
         self.flac_bit_set = settings.get("flac_bit_set", "16-bit")
@@ -109,11 +108,12 @@ class AudioTools:
         from ml import spec_utils
 
         algorithm = self.settings.get("choose_algorithm")
-        algorithm_text = f"_({algorithm})"
-        stem_save_path = os.path.join(
-            f"{self.main_export_path}",
-            f"{self.is_testing_audio}{audio_file_base}{algorithm_text}.wav",
-        )
+        track = sanitize_filename_component(audio_file_base) or "audio"
+        algorithm_part = sanitize_filename_component(str(algorithm or ""))
+        name = f"{self.is_testing_audio}{track}"
+        if algorithm_part:
+            name = f"{name} ({algorithm_part})"
+        stem_save_path = os.path.join(f"{self.main_export_path}", f"{name}.wav")
         spec_utils.ensemble_inputs(
             list(audio_inputs),
             algorithm,
@@ -127,9 +127,10 @@ class AudioTools:
     def combine_audio(self, audio_inputs: Sequence[str], audio_file_base: str) -> None:
         from ml import spec_utils
 
+        track = sanitize_filename_component(audio_file_base) or "audio"
         spec_utils.combine_audio(
             list(audio_inputs),
-            os.path.join(self.main_export_path, f"{self.is_testing_audio}{audio_file_base}"),
+            os.path.join(self.main_export_path, f"{self.is_testing_audio}{track}"),
             self.wav_type_set,
             save_format=self._save_format,
         )
@@ -143,14 +144,15 @@ class AudioTools:
         if is_pitch:
             rate = float(self.settings.get("pitch_rate"))
             is_time_correction = bool(self.settings.get("is_time_correction"))
-            file_text = PITCH_TEXT
+            file_text = " pitch shifted"
         else:
             rate = float(self.settings.get("time_stretch_rate"))
             is_time_correction = True
-            file_text = TIME_TEXT
+            file_text = " time stretched"
 
+        track = sanitize_filename_component(audio_file_base) or "audio"
         save_path = os.path.join(
-            self.main_export_path, f"{self.is_testing_audio}{audio_file_base}{file_text}.wav"
+            self.main_export_path, f"{self.is_testing_audio}{track}{file_text}.wav"
         )
         spec_utils.augment_audio(
             save_path,
@@ -175,11 +177,11 @@ class AudioTools:
     ) -> None:
         from ml import spec_utils
 
-        audio_file_base = f"{self.is_testing_audio}{audio_file_base}"
-        audio_file_2_base = f"{self.is_testing_audio}{audio_file_2_base}"
+        audio_file_base = f"{self.is_testing_audio}{sanitize_filename_component(audio_file_base) or 'audio'}"
+        audio_file_2_base = f"{self.is_testing_audio}{sanitize_filename_component(audio_file_2_base) or 'audio'}"
 
-        aligned_path = os.path.join(f"{self.main_export_path}", f"{audio_file_2_base}_(Aligned).wav")
-        inverted_path = os.path.join(f"{self.main_export_path}", f"{audio_file_base}_(Inverted).wav")
+        aligned_path = os.path.join(f"{self.main_export_path}", f"{audio_file_2_base} (Aligned).wav")
+        inverted_path = os.path.join(f"{self.main_export_path}", f"{audio_file_base} (Inverted).wav")
 
         spec_utils.align_audio(
             audio_inputs[0],
@@ -212,9 +214,10 @@ class AudioTools:
 
         target, reference = audio_inputs[0], audio_inputs[1]
         command_text("Processing... ")
+        track = sanitize_filename_component(audio_file_base) or "audio"
         save_path = os.path.join(
             f"{self.main_export_path}",
-            f"{self.is_testing_audio}{audio_file_base}_(Matched).wav",
+            f"{self.is_testing_audio}{track} (Matched).wav",
         )
         match.process(
             target=target,
@@ -240,8 +243,9 @@ class AudioTools:
         from ml import apollo_inference
         from core.gpu_backend import clear_torch_cache, resolve_inference_backend
 
+        track = sanitize_filename_component(audio_file_base) or "audio"
         save_path = os.path.join(
-            self.main_export_path, f"{self.is_testing_audio}{audio_file_base}_restored.wav"
+            self.main_export_path, f"{self.is_testing_audio}{track} restored.wav"
         )
 
         backend = resolve_inference_backend(

@@ -173,7 +173,7 @@ class SeperateDemucs(SeperateAttributes):
                             stem_source_secondary = stem_source_secondary[stem_name]
                             
                 stem_source_secondary = None if stem_value >= 4 else stem_source_secondary
-                stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({stem_name}).wav')
+                stem_path = self.stem_export_wav_path(stem_name)
                 stem_source = source[stem_value].T
                 
                 stem_source = self.process_secondary_stem(stem_source, secondary_model_source=stem_source_secondary, model_scale=model_scale)
@@ -197,7 +197,7 @@ class SeperateDemucs(SeperateAttributes):
                 def secondary_save(sec_stem_name, source, raw_mixture=None, is_inst_mixture=False):
                     nonlocal mix
                     secondary_source = self.secondary_source if not is_inst_mixture else None
-                    secondary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({sec_stem_name}).wav')
+                    secondary_stem_path = self.stem_export_wav_path(sec_stem_name)
                     secondary_source_secondary = None
                     
                     if not isinstance(secondary_source, np.ndarray):
@@ -241,7 +241,7 @@ class SeperateDemucs(SeperateAttributes):
                     secondary_save(f"{self.secondary_stem} {INST_STEM}", source, raw_mixture=inst_mix, is_inst_mixture=True)
 
             if not self.is_secondary_stem_only:
-                primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.primary_stem}).wav')
+                primary_stem_path = self.stem_export_wav_path(self.primary_stem)
                 if not isinstance(self.primary_source, np.ndarray):
                     self.primary_source = source[self.demucs_source_map[self.primary_stem]].T
                 

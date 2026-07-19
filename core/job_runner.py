@@ -37,6 +37,13 @@ from bundled.constants import (
 
 from . import paths
 from .audio_io import resolve_wav_type_set
+from .export_naming import (
+    format_stem_basename,
+    format_track_base,
+    sanitize_filename_component,
+    testing_timestamp_prefix,
+    track_basename_from_path,
+)
 from .model_data import (
     ModelData,
     ModelRepository,
@@ -427,18 +434,23 @@ class JobRunner:
                         lambda text, base_text=base_text: callbacks.console(base_text + text),
                     )
 
-                    audio_file_base = f"{file_num}_{os.path.splitext(os.path.basename(audio_file))[0]}"
-                    if self.settings.get("is_add_model_name"):
-                        audio_file_base = f"{audio_file_base}_{_model_output_label(current_model)}"
+                    track_title = track_basename_from_path(audio_file)
+                    model_label = _model_output_label(current_model)
+                    audio_file_base = format_track_base(
+                        track=track_title,
+                        model=model_label if self.settings.get("is_add_model_name") else None,
+                        file_index=file_num,
+                        file_total=total_files,
+                        timestamp=testing_timestamp_prefix(self.settings),
+                    )
 
                     model_export_path = export_path
                     if self.settings.get("is_create_model_folder"):
-                        model_label = _model_output_label(current_model)
                         if model_label:
                             model_export_path = os.path.join(
                                 export_path,
-                                model_label,
-                                os.path.splitext(os.path.basename(audio_file))[0],
+                                sanitize_filename_component(model_label),
+                                track_title,
                             )
                             os.makedirs(model_export_path, exist_ok=True)
 
@@ -580,10 +592,19 @@ class JobRunner:
                     continue
 
                 set_progress_bar = pausable_callback(self, make_progress())
-                audio_file_base = ""
                 current_model = None
                 # stem_tag -> list of member waveforms for in-memory combine
                 ensemble_stem_arrays: dict = {}
+                track_title = track_basename_from_path(audio_file)
+                stamp = testing_timestamp_prefix(self.settings)
+                ensemble_final_base = format_track_base(
+                    track=track_title,
+                    model=None,
+                    file_index=file_num,
+                    file_total=total_files,
+                    timestamp=stamp,
+                    ensemble=ensemble.append_ensemble_label,
+                )
 
                 for current_model_num, current_model in enumerate(models, start=1):
                     check_stopped(self)
@@ -600,8 +621,14 @@ class JobRunner:
                         lambda text, base_text=base_text: callbacks.console(base_text + text),
                     )
 
-                    audio_file_base = f"{file_num}_{os.path.splitext(os.path.basename(audio_file))[0]}"
-                    audio_file_base = f"{audio_file_base}_{_model_output_label(current_model)}"
+                    model_label = _model_output_label(current_model)
+                    audio_file_base = format_track_base(
+                        track=track_title,
+                        model=model_label,
+                        file_index=file_num,
+                        file_total=total_files,
+                        timestamp=stamp,
+                    )
 
                     process_data = {
                         "model_data": current_model,
@@ -643,8 +670,6 @@ class JobRunner:
                     callbacks.console("\n")
 
                 # Combine each member's stems into the final ensemble outputs.
-                if current_model is not None:
-                    audio_file_base = audio_file_base.replace(f"_{_model_output_label(current_model)}", "")
                 callbacks.console(base_text + "Ensembling outputs...\n")
                 combine_started = time.perf_counter()
 
@@ -656,7 +681,7 @@ class JobRunner:
                         if len(arrs) > 1
                     ]
                     if not stem_names:
-                        stem_names = _extract_stems(audio_file_base, export_path)
+                        stem_names = _extract_stems(ensemble_final_base, export_path)
                     combine_steps = [
                         (output_stem, {"is_4_stem": True}) for output_stem in stem_names
                     ]
@@ -672,7 +697,7 @@ class JobRunner:
                 combine_end = file_num / max(1, total_files)
                 for combine_idx, (stem_name, kwargs) in enumerate(combine_steps):
                     ensemble.ensemble_outputs(
-                        audio_file_base,
+                        ensemble_final_base,
                         export_path,
                         stem_name,
                         stem_arrays=ensemble_stem_arrays,
@@ -767,16 +792,21 @@ class Ensembler:
         self.is_save_all_outputs_ensemble = settings.get("is_save_all_outputs_ensemble")
 
         chosen = settings.get("chosen_ensemble", CHOOSE_ENSEMBLE_OPTION)
-        chosen_ensemble_name = chosen.replace(" ", "_") if chosen and chosen != CHOOSE_ENSEMBLE_OPTION else "Ensembled"
+        if chosen and chosen != CHOOSE_ENSEMBLE_OPTION:
+            chosen_ensemble_name = sanitize_filename_component(chosen) or "Ensembled"
+        else:
+            chosen_ensemble_name = "Ensembled"
         ensemble_algorithm = settings.get("ensemble_type", MAX_MIN).partition("/")
         ensemble_main_stem_pair = settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR).partition("/")
         time_stamp = round(time.time())
 
         self.main_export_path = settings.get("export_path")
-        self.chosen_ensemble = f"_{chosen_ensemble_name}" if settings.get("is_append_ensemble_name") else ""
+        self.append_ensemble_label = (
+            chosen_ensemble_name if settings.get("is_append_ensemble_name") else None
+        )
         ensemble_folder_root = self.main_export_path if self.is_save_all_outputs_ensemble else paths.ENSEMBLE_TEMP_PATH
-        self.ensemble_folder_name = os.path.join(ensemble_folder_root, f"{chosen_ensemble_name}_Outputs_{time_stamp}")
-        self.is_testing_audio = f"{time_stamp}_" if settings.get("is_testing_audio") else ""
+        folder_label = sanitize_filename_component(chosen_ensemble_name.replace(" ", "_")) or "Ensembled"
+        self.ensemble_folder_name = os.path.join(ensemble_folder_root, f"{folder_label}_Outputs_{time_stamp}")
         self.primary_algorithm = ensemble_algorithm[0]
         self.secondary_algorithm = ensemble_algorithm[2]
         self.ensemble_primary_stem = ensemble_main_stem_pair[0]
@@ -819,10 +849,15 @@ class Ensembler:
             stem_tag = self.ensemble_primary_stem if stem == PRIMARY_STEM else self.ensemble_secondary_stem
 
         array_inputs = list((stem_arrays or {}).get(stem_tag, []))
+        stem_suffix = f" ({sanitize_filename_component(stem_tag)}).wav"
+        # Member files are ``{final_base} {model} ({stem}).wav``; match by track prefix.
+        match_prefix = audio_file_base
+        if self.append_ensemble_label and match_prefix.endswith(f" {self.append_ensemble_label}"):
+            match_prefix = match_prefix[: -(len(self.append_ensemble_label) + 1)]
         stem_outputs = self.get_files_to_ensemble(
-            folder=export_path, prefix=audio_file_base, suffix=f"_({stem_tag}).wav"
+            folder=export_path, prefix=match_prefix, suffix=stem_suffix
         )
-        audio_file_output = f"{self.is_testing_audio}{audio_file_base}{self.chosen_ensemble}_({stem_tag})"
+        audio_file_output = format_stem_basename(audio_file_base, stem_tag)
         stem_save_path = os.path.join(f"{self.main_export_path}", f"{audio_file_output}.wav")
 
         if len(array_inputs) > 1:
