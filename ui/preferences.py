@@ -239,7 +239,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
         group = Adw.PreferencesGroup(title="Audio format settings")
 
-        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3])
+        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="waveform-symbolic")
         self.format_row.connect("notify::selected", self._on_format_changed)
         group.add(self.format_row)
 

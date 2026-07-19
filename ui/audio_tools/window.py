@@ -405,7 +405,7 @@ class AudioToolsPage:
     def _build_shared_group(self) -> Gtk.Widget:
         group = Adw.PreferencesGroup(title="Processing")
 
-        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="audio-x-generic-symbolic")
+        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="waveform-symbolic")
         self.hints.register(self.format_row, OUTPUT_FORMAT_HINT)
         self.format_row.connect("notify::selected", self._on_format_changed)
         group.add(self.format_row)

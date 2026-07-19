@@ -278,7 +278,7 @@ class EnsemblePage:
     def _build_output_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Processing")
 
-        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="audio-x-generic-symbolic")
+        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="waveform-symbolic")
         set_tooltip(self.format_row, OUTPUT_FORMAT_HINT)
         self.format_row.connect("notify::selected", self._on_format_changed)
         group.add(self.format_row)
