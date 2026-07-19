@@ -540,7 +540,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _build_shared_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Processing")
 
-        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="audio-x-generic-symbolic")
+        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="waveform-symbolic")
         self.format_row.connect("notify::selected", self._on_format_changed)
         group.add(self.format_row)
 
