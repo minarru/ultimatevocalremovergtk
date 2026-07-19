@@ -279,7 +279,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _build_primary_menu(self) -> Gio.Menu:
         menu = Gio.Menu()
         tools = Gio.Menu()
-        tools.append("View / Verify Inputs", "win.view_inputs")
+        tools.append("Verify Inputs", "win.view_inputs")
         tools.append("Model options", "win.model_options")
         tools.append("Download Center", "win.download")
         tools.append("Error Log", "win.error_log")
@@ -761,12 +761,16 @@ class MainWindow(Adw.ApplicationWindow):
         self._refresh_start_readiness()
 
     def _on_inputs_changed(self) -> None:
-        self.settings.set("input_paths", list(self.input_row.paths))
+        paths = list(self.input_row.paths)
+        self.settings.set("input_paths", paths)
+        self.context.prune_unreadable_input_paths(paths)
         self._refresh_start_readiness()
 
     def _on_external_inputs_changed(self, paths) -> None:
-        self.input_row.set_paths(list(paths), notify=False)
-        self.settings.set("input_paths", list(paths))
+        paths = list(paths)
+        self.input_row.set_paths(paths, notify=False)
+        self.settings.set("input_paths", paths)
+        self.context.prune_unreadable_input_paths(paths)
         self._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
@@ -825,7 +829,9 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _separation_blocked_reason(self) -> Optional[str]:
         """First reason the separation run can't start, or ``None`` when ready."""
-        input_reason = self.input_row.blocked_reason()
+        input_reason = self.input_row.blocked_reason(
+            unreadable_paths=self.context.unreadable_input_paths
+        )
         if input_reason:
             return input_reason
         output_reason = self.output_row.blocked_reason()

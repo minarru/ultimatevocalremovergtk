@@ -624,7 +624,9 @@ class AudioToolsPage:
     def _on_inputs_changed(self) -> None:
         if self._loading:
             return
-        self.settings.set("input_paths", list(self.inputs_row.paths))
+        paths = list(self.inputs_row.paths)
+        self.settings.set("input_paths", paths)
+        self.context.prune_unreadable_input_paths(paths)
         self.window._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
@@ -674,7 +676,9 @@ class AudioToolsPage:
             if not self._dual_pairs:
                 return _REASON_DUAL_INPUTS
         else:
-            input_reason = self.inputs_row.blocked_reason()
+            input_reason = self.inputs_row.blocked_reason(
+                unreadable_paths=self.context.unreadable_input_paths
+            )
             if input_reason:
                 return input_reason
             if tool == MANUAL_ENSEMBLE and len(self.inputs_row.paths) < 2:
