@@ -832,7 +832,7 @@ def combine_arrarys(audio_sources, is_swap=False):
 def combine_audio(paths: list, audio_file_base=None, wav_type_set='FLOAT', save_format=None):
     
     source = combine_arrarys([load_audio(i) for i in paths])
-    save_path = f"{audio_file_base}_combined.wav"
+    save_path = f"{audio_file_base} combined.wav"
     sf.write(save_path, source.T, 44100, subtype=wav_type_set)
     save_format(save_path)
     
@@ -853,13 +853,13 @@ def organize_inputs(inputs):
     }
     
     for i in inputs:
-        if i.endswith("_(Vocals).wav"):
+        if i.endswith(" (Vocals).wav") or i.endswith("_(Vocals).wav"):
             input_list["reference"] = i
         elif "_RVC_" in i:
             input_list["target"] = i
         elif i.endswith("reverbed_stem.wav"):
             input_list["reverb"] = i
-        elif i.endswith("_(Instrumental).wav"):
+        elif i.endswith(" (Instrumental).wav") or i.endswith("_(Instrumental).wav"):
             input_list["inst"] = i
             
     return input_list

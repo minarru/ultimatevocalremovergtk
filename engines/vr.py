@@ -114,7 +114,7 @@ class SeperateVR(SeperateAttributes):
             int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only) or 1
         )
         if not self.is_secondary_stem_only:
-            primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.primary_stem}).wav')
+            primary_stem_path = self.stem_export_wav_path(self.primary_stem)
             if not isinstance(self.primary_source, np.ndarray):
                 self.primary_source = self.spec_to_wav(y_spec).T
                 if not self.model_samplerate == 44100:
@@ -123,7 +123,7 @@ class SeperateVR(SeperateAttributes):
             self.primary_source_map = self.final_process(primary_stem_path, self.primary_source, self.secondary_source_primary, self.primary_stem, 44100)  
 
         if not self.is_primary_stem_only:
-            secondary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.secondary_stem}).wav')
+            secondary_stem_path = self.stem_export_wav_path(self.secondary_stem)
             if not isinstance(self.secondary_source, np.ndarray):
                 self.secondary_source = self.spec_to_wav(v_spec).T
                 if not self.model_samplerate == 44100:

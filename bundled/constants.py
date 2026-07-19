@@ -178,6 +178,8 @@ LEAD_VOCAL_STEM_I = 'with_lead_vocals'
 BV_VOCAL_STEM_I = 'with_backing_vocals'
 LEAD_VOCAL_STEM_LABEL = 'Lead Vocals'
 BV_VOCAL_STEM_LABEL = 'Backing Vocals'
+INST_WITH_LEAD_VOCALS_STEM = 'Instrumental (With Lead Vocals)'
+INST_WITH_BACKING_VOCALS_STEM = 'Instrumental (With Backing Vocals)'
 
 VOCAL_STEM_ONLY = f'{VOCAL_STEM} Only'
 INST_STEM_ONLY = f'{INST_STEM} Only'
