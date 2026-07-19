@@ -18,8 +18,10 @@ For GLib debug logging details and component names, see also `core/debug_log.py`
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `UVR_DATA_DIR` | Writable checkout root, else OS user data dir | Models, settings (`data.pkl`), profiles, ensembles |
-| `UVR_CACHE_DIR` | OS cache dir under `ultimatevocalremover` | Cache override |
+| `UVR_DATA_DIR` | Writable checkout root, else OS user data dir | Models, settings (`data.pkl`), profiles, ensembles, sample/ensemble temps |
+| `UVR_CACHE_DIR` | OS cache dir (`~/.cache/uvr` on Linux) | Download size cache and Politrees catalogue JSON |
+
+On first use, legacy copies of `download_size_cache.json` / `politrees_model_links.json` in the checkout root or `UVR_DATA_DIR` are moved into `UVR_CACHE_DIR`.
 
 Standard XDG / platform paths (`XDG_DATA_HOME`, `XDG_CACHE_HOME`, `LOCALAPPDATA`) apply when UVR-specific vars are unset. See `core/paths.py` and `core/platform.py`.
 
