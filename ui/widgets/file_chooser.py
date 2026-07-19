@@ -7,7 +7,7 @@ callback so the window can persist them to the settings model.
 """
 
 import os
-from typing import Callable, List, Optional, Sequence
+from typing import AbstractSet, Callable, List, Optional, Sequence
 
 from gi.repository import Adw, Gdk, GLib, Gtk
 
@@ -107,8 +107,14 @@ class InputFilesRow(Adw.ExpanderRow):
                 self._emit_toast(message)
             self._on_changed()
 
-    def blocked_reason(self) -> Optional[str]:
-        return input_paths_blocked_reason(self.paths)
+    def blocked_reason(
+        self,
+        *,
+        unreadable_paths: Optional[AbstractSet[str]] = None,
+    ) -> Optional[str]:
+        return input_paths_blocked_reason(
+            self.paths, unreadable_paths=unreadable_paths
+        )
 
     def _emit_toast(self, message: str) -> None:
         if self._on_toast is not None:

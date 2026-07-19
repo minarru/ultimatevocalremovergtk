@@ -391,7 +391,9 @@ class EnsemblePage:
             self._update_stems_group_metadata()
 
     def _on_inputs_changed(self) -> None:
-        self.settings.set("input_paths", list(self.input_row.paths))
+        paths = list(self.input_row.paths)
+        self.settings.set("input_paths", paths)
+        self.context.prune_unreadable_input_paths(paths)
         self.window._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
@@ -788,7 +790,9 @@ class EnsemblePage:
 
     def start_blocked_reason(self) -> Optional[str]:
         """First reason the ensemble run can't start, or ``None`` when ready."""
-        input_reason = self.input_row.blocked_reason()
+        input_reason = self.input_row.blocked_reason(
+            unreadable_paths=self.context.unreadable_input_paths
+        )
         if input_reason:
             return input_reason
         output_reason = self.output_row.blocked_reason()

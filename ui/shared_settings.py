@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, replace
-from typing import Iterable, Optional, Protocol, Sequence
+from typing import AbstractSet, Iterable, Optional, Protocol, Sequence
 
 from bundled.constants import WAV
 
@@ -38,6 +38,7 @@ def apply_sample_mode_label(sample_row, duration: int) -> None:
 _REASON_OUTPUT_MISSING = "Choose an output folder"
 _REASON_OUTPUT_STALE = "Output folder no longer exists — select a new folder"
 _REASON_INPUT_MISSING = "Select an input audio file"
+_REASON_UNREADABLE_INPUTS = "Remove unreadable inputs"
 
 
 @dataclass(frozen=True)
@@ -98,14 +99,49 @@ def sanitize_input_paths(
     )
 
 
-def input_paths_blocked_reason(paths: Sequence[str]) -> Optional[str]:
-    """Return a start-blocking message, or ``None`` when at least one file exists."""
+def prune_unreadable_paths(
+    unreadable: AbstractSet[str],
+    current_paths: Sequence[str],
+) -> set[str]:
+    """Keep only unreadable paths that are still in the current selection."""
+    current = {p for p in current_paths if p}
+    return {p for p in unreadable if p in current}
+
+
+def remove_unreadable_from_paths(
+    paths: Sequence[str],
+    unreadable: AbstractSet[str],
+) -> list[str]:
+    """Drop paths that are marked unreadable, preserving order."""
+    if not unreadable:
+        return list(paths)
+    return [p for p in paths if p and p not in unreadable]
+
+
+def input_paths_blocked_reason(
+    paths: Sequence[str],
+    *,
+    unreadable_paths: Optional[AbstractSet[str]] = None,
+) -> Optional[str]:
+    """Return a start-blocking message, or ``None`` when inputs are ready.
+
+    Never-verified selections only require at least one existing file. After
+    Verify Inputs marks failures, Start stays blocked while any failed path
+    remains in the selection.
+    """
     if not paths:
         return _REASON_INPUT_MISSING
+    existing = False
     for path in paths:
-        if path and os.path.isfile(path):
-            return None
-    return _REASON_INPUT_MISSING
+        if not path:
+            continue
+        if unreadable_paths and path in unreadable_paths:
+            return _REASON_UNREADABLE_INPUTS
+        if os.path.isfile(path):
+            existing = True
+    if not existing:
+        return _REASON_INPUT_MISSING
+    return None
 
 
 def format_input_sanitize_toasts(
