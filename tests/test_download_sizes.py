@@ -68,7 +68,7 @@ class PrefetchRemoteSizesTests(unittest.TestCase):
             url = "https://example.com/model.onnx"
             with open(cache_path, "w", encoding="utf-8") as handle:
                 json.dump({url: {"size": 1024, "fetched_at": time.time()}}, handle)
-            with patch("core.download_sizes._CACHE_PATH", cache_path):
+            with patch("core.download_sizes._cache_path", return_value=cache_path):
                 with patch("core.download_sizes._head_content_length") as head:
                     stats = prefetch_remote_sizes([url])
             self.assertEqual(stats, {"total": 1, "fresh": 1, "fetched": 0, "failed": 0})
@@ -81,7 +81,7 @@ class PrefetchRemoteSizesTests(unittest.TestCase):
             stale_at = time.time() - _CACHE_TTL_SECONDS - 60
             with open(cache_path, "w", encoding="utf-8") as handle:
                 json.dump({url: {"size": 1024, "fetched_at": stale_at}}, handle)
-            with patch("core.download_sizes._CACHE_PATH", cache_path):
+            with patch("core.download_sizes._cache_path", return_value=cache_path):
                 with patch(
                     "core.download_sizes._head_content_length",
                     return_value=2048,

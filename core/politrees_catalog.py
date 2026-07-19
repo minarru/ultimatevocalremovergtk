@@ -13,8 +13,11 @@ from . import paths
 from .debug_log import debug
 from .mdx_config_fetch import _urlopen, fetch_mdx_config_url
 
-_POLITREES_CACHE_PATH = os.path.join(paths.DATA_DIR, "politrees_model_links.json")
 _POLITREES_CACHE_TTL_SECONDS = 24 * 60 * 60
+
+
+def _politrees_cache_path() -> str:
+    return paths.migrate_cache_file("politrees_model_links.json", paths.POLITREES_CACHE_FILE)
 
 _POLITREES_MDX_SOURCE_KEYS = (
     "mdx_download_list",
@@ -50,7 +53,7 @@ def clear_politrees_cache() -> None:
 
 def _read_disk_cache() -> Optional[Dict]:
     try:
-        with open(_POLITREES_CACHE_PATH, "r", encoding="utf-8") as handle:
+        with open(_politrees_cache_path(), "r", encoding="utf-8") as handle:
             payload = json.load(handle)
         if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
             return payload["data"]
@@ -61,8 +64,9 @@ def _read_disk_cache() -> Optional[Dict]:
 
 def _write_disk_cache(data: Dict) -> None:
     try:
-        os.makedirs(os.path.dirname(_POLITREES_CACHE_PATH), exist_ok=True)
-        with open(_POLITREES_CACHE_PATH, "w", encoding="utf-8") as handle:
+        cache_path = _politrees_cache_path()
+        os.makedirs(os.path.dirname(cache_path) or ".", exist_ok=True)
+        with open(cache_path, "w", encoding="utf-8") as handle:
             json.dump({"fetched_at": time.time(), "data": data}, handle)
     except OSError as exc:
         debug("download", f"politrees cache write failed err={exc}")
