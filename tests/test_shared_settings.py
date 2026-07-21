@@ -11,7 +11,9 @@ from ui.shared_settings import (
     export_path_blocked_reason,
     export_path_is_valid,
     input_paths_blocked_reason,
+    prune_unreadable_paths,
     read_shared_file_options,
+    remove_unreadable_from_paths,
     sanitize_input_paths,
 )
 
@@ -109,6 +111,51 @@ class InputPathValidationTests(unittest.TestCase):
             self.assertIsNone(input_paths_blocked_reason(["/missing/a.wav", path]))
         finally:
             os.remove(path)
+
+    def test_unreadable_blocks_start(self):
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+            path = handle.name
+        try:
+            self.assertEqual(
+                input_paths_blocked_reason([path], unreadable_paths={path}),
+                "Remove unreadable inputs",
+            )
+        finally:
+            os.remove(path)
+
+    def test_unreadable_cleared_when_path_removed(self):
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as good:
+            good_path = good.name
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as bad:
+            bad_path = bad.name
+        try:
+            unreadable = {bad_path}
+            remaining = remove_unreadable_from_paths([good_path, bad_path], unreadable)
+            self.assertEqual(remaining, [good_path])
+            pruned = prune_unreadable_paths(unreadable, remaining)
+            self.assertEqual(pruned, set())
+            self.assertIsNone(
+                input_paths_blocked_reason(remaining, unreadable_paths=pruned)
+            )
+        finally:
+            os.remove(good_path)
+            os.remove(bad_path)
+
+    def test_never_verified_does_not_block(self):
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+            path = handle.name
+        try:
+            self.assertIsNone(
+                input_paths_blocked_reason([path], unreadable_paths=set())
+            )
+        finally:
+            os.remove(path)
+
+    def test_prune_keeps_only_selected_failures(self):
+        self.assertEqual(
+            prune_unreadable_paths({"/a.wav", "/b.wav"}, ["/a.wav", "/c.wav"]),
+            {"/a.wav"},
+        )
 
     def test_sanitize_drops_missing_and_dedupes(self):
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as first:

@@ -1,6 +1,15 @@
 import unittest
 
-from bundled.constants import INST_STEM, VOCAL_STEM
+from bundled.constants import (
+    BV_VOCAL_STEM,
+    BV_VOCAL_STEM_LABEL,
+    INST_STEM,
+    INST_WITH_BACKING_VOCALS_STEM,
+    INST_WITH_LEAD_VOCALS_STEM,
+    LEAD_VOCAL_STEM,
+    LEAD_VOCAL_STEM_LABEL,
+    VOCAL_STEM,
+)
 from core.model_stem_semantics import (
     DUAL_STEM_WEIGHTS,
     INTENT_DRUM_BASS_SEP,
@@ -15,12 +24,14 @@ from core.model_stem_semantics import (
     apply_karaoke_quick_export_default,
     export_intent_from_fields,
     export_intent_from_model,
+    export_stem_label,
     infer_is_karaoke_from_hints,
     infer_name_intent_from_label,
     is_special_fx_stem,
     is_specialty_instrument_pair,
     is_vocal_target,
     is_vocals_other_pair,
+    karaoke_bv_export_labels,
     preferred_quick_export_mode,
     recommended_export_note,
     resolve_is_karaoke,
@@ -44,6 +55,7 @@ class _Model:
     def __init__(self, **kwargs):
         self.is_roformer = kwargs.get("is_roformer", False)
         self.is_karaoke = kwargs.get("is_karaoke", False)
+        self.is_bv_model = kwargs.get("is_bv_model", False)
         self.primary_stem = kwargs.get("primary_stem", "")
         self.mdx_c_configs = kwargs.get("mdx_c_configs")
         self.mdx_model_stems = kwargs.get("mdx_model_stems", [])
@@ -109,6 +121,52 @@ class StemDisplayOverridesTests(unittest.TestCase):
             mdx_c_configs=_Config(["other", "vocals", "drums", "bass"], "other"),
         )
         self.assertIsNone(stem_display_overrides(model))
+
+    def test_karaoke_display_overrides(self):
+        overrides = stem_display_overrides(_Model(is_karaoke=True))
+        self.assertEqual(overrides[VOCAL_STEM], LEAD_VOCAL_STEM_LABEL)
+        self.assertEqual(overrides[INST_STEM], INST_WITH_BACKING_VOCALS_STEM)
+
+    def test_bv_display_overrides(self):
+        overrides = stem_display_overrides(_Model(is_bv_model=True))
+        self.assertEqual(overrides[VOCAL_STEM], BV_VOCAL_STEM_LABEL)
+        self.assertEqual(overrides[INST_STEM], INST_WITH_LEAD_VOCALS_STEM)
+
+
+class KaraokeBvExportLabelTests(unittest.TestCase):
+    def test_karaoke_map(self):
+        labels = karaoke_bv_export_labels(_Model(is_karaoke=True))
+        self.assertEqual(labels[VOCAL_STEM], LEAD_VOCAL_STEM_LABEL)
+        self.assertEqual(labels[INST_STEM], INST_WITH_BACKING_VOCALS_STEM)
+
+    def test_bv_preferred_over_karaoke(self):
+        labels = karaoke_bv_export_labels(_Model(is_karaoke=True, is_bv_model=True))
+        self.assertEqual(labels[VOCAL_STEM], BV_VOCAL_STEM_LABEL)
+        self.assertEqual(labels[INST_STEM], INST_WITH_LEAD_VOCALS_STEM)
+
+    def test_export_stem_label_karaoke(self):
+        model = _Model(is_karaoke=True)
+        self.assertEqual(export_stem_label(model, VOCAL_STEM), LEAD_VOCAL_STEM_LABEL)
+        self.assertEqual(
+            export_stem_label(model, INST_STEM),
+            INST_WITH_BACKING_VOCALS_STEM,
+        )
+
+    def test_export_stem_label_ensemble_passthrough(self):
+        model = _Model(is_karaoke=True)
+        self.assertEqual(
+            export_stem_label(model, VOCAL_STEM, for_ensemble=True),
+            VOCAL_STEM,
+        )
+        self.assertEqual(
+            export_stem_label(model, LEAD_VOCAL_STEM, for_ensemble=True),
+            LEAD_VOCAL_STEM,
+        )
+
+    def test_export_stem_label_splitter_codes(self):
+        model = _Model()
+        self.assertEqual(export_stem_label(model, LEAD_VOCAL_STEM), LEAD_VOCAL_STEM_LABEL)
+        self.assertEqual(export_stem_label(model, BV_VOCAL_STEM), BV_VOCAL_STEM_LABEL)
 
 
 class KaraokeDetectionTests(unittest.TestCase):
@@ -184,7 +242,7 @@ class RecommendedExportNoteTests(unittest.TestCase):
             model_name="BandSplit Roformer | Chorus Male-Female by Sucial",
         )
         note = recommended_export_note(model)
-        self.assertIn("male / female", note)
+        self.assertIn("Male / Female", note)
         self.assertIn("Specialty", note)
 
 

@@ -7,7 +7,11 @@ the shared responsive two-column layout; the console, progress bar and
 Start/Stop action bar are shared across all modes and supplied by the main
 window via :meth:`AudioToolsPage.start`.
 
-It offers the five UVR audio tools as selectable sub-modes:
+Layout mirrors Separation / Ensemble: a shared left **Files** group (multi-file
+or dual-pair inputs + output folder), an untitled tool selector, tool-specific
+settings in a stack, and a right **Processing** group for format options.
+
+It offers the UVR audio tools as selectable sub-modes:
 
 * **Manual Ensemble** - combine N files via the spectrogram/wave ensembler
   (``choose_algorithm``) or a straight ``Combine Inputs``.
@@ -58,6 +62,7 @@ from bundled.constants import (
     MANUAL_ENSEMBLE_OPTIONS,
     MATCH_INPUTS,
     MP3,
+    OUTPUT_FOLDER_ENTRY_HELP,
     PHASE_SHIFTS_ALIGN_HELP,
     PHASE_SHIFTS_OPT,
     PITCH_SHIFT_HELP,
@@ -73,9 +78,10 @@ from bundled.constants import (
 from ..help_text import (
     MANUAL_ENSEMBLE_ALGORITHM_HINT,
     PLAYBACK_RATE_HINT,
+    VIEW_INPUTS_BUTTON_HINT,
     WAV_TYPE_HINT,
 )
-from ..hints import HelpHintManager, OUTPUT_FORMAT_HINT
+from ..hints import HelpHintManager, OUTPUT_FORMAT_HINT, set_icon_button_a11y, set_tooltip
 from ..shared_settings import apply_shared_file_options
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.dual_inputs import DualInputsRow
@@ -89,6 +95,18 @@ from ..widgets.rows import (
     use_wrapping_list,
 )
 from .dual_batch import DualBatchDialog
+
+_MATCH_FILES_DESCRIPTION = "Target is mastered to match the reference track"
+_ALIGN_FILES_DESCRIPTION = "Primary is usually the full mix; secondary is usually the instrumental"
+_DUAL_BANNER_TITLE = "No input pairs selected. Open the pair editor to choose files."
+_APOLLO_BANNER_TITLE = (
+    "No Apollo models found. Place an Apollo checkpoint (.ckpt or .bin) "
+    "in the Apollo models folder, then reload."
+)
+_RUBBERBAND_BANNER_TITLE = (
+    "Rubber Band CLI was not found. Install rubberband to use Time Stretch "
+    "or Change Pitch, then restart the app."
+)
 
 # Full tool list (Time Stretch / Change Pitch are surfaced on all platforms here;
 # UVR hides them on Linux purely because pyrubberband may be unavailable - the
@@ -104,6 +122,7 @@ _REASON_DUAL_INPUTS = "Add input pairs in the dual/batch editor"
 _REASON_TWO_FILES = "Select two or more files"
 _REASON_NO_APOLLO = "No Apollo models found"
 _REASON_APOLLO_MODEL = "Select an Apollo model"
+_REASON_RUBBERBAND = "Rubber Band CLI not found"
 
 
 class AudioToolsPage:
@@ -129,26 +148,39 @@ class AudioToolsPage:
             for p in (self.settings.get("DualBatch_inputPaths") or [])
             if len(p) == 2
         ]
-        # Align and matchering each build their own dual-input row; both reflect
-        # the same dual pairs, so they are refreshed together.
-        self._dual_inputs_rows: List[DualInputsRow] = []
         self._runner = None
         # Same per-view help-hint manager the separation method views use
         # (see ``ui.views.base.MethodView``), so Audio Tools tooltips are
         # registered through the identical ``HelpHintManager`` path.
         self.hints = HelpHintManager()
+        self._apollo_has_models = True
+        self._banner_mode: Optional[str] = None
 
+        # Match Separation / Ensemble: shared Files (inputs + output) on the
+        # left, Processing on the right. Tool-specific settings stay in the
+        # stack below the tool selector. Page-level banner covers dual/Apollo
+        # empty states (same pattern as Separation / Ensemble).
+        self.files_group = self._build_files_group()
         select_group = self._build_select_group()
         self.tool_stack = self._build_tool_stack()
-        shared_group = self._build_shared_group()
+        self.shared_group = self._build_shared_group()
 
-        # Tool selector + the active tool's options fill the left column; the
-        # shared output options balance the right column.
         self.columns_box, self._col_start, self._col_end = build_columns_box(
-            left_groups=(select_group, self.tool_stack),
-            right_groups=(shared_group,),
+            left_groups=(self.files_group, select_group, self.tool_stack),
+            right_groups=(self.shared_group,),
         )
-        self.widget = wrap_options_scroller(self.columns_box)
+        self.options_page = wrap_options_scroller(self.columns_box)
+
+        self._audio_banner = Adw.Banner(revealed=False)
+        self._audio_banner.connect("button-clicked", self._on_audio_banner_clicked)
+
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        page.set_vexpand(True)
+        page.append(self._audio_banner)
+        page.append(self.options_page)
+        self.widget = page
+
+        self._sync_tool_visibility()
 
     @property
     def runner(self):
@@ -165,9 +197,42 @@ class AudioToolsPage:
 
     # -- Construction ----------------------------------------------------------
 
+    def _build_files_group(self) -> Adw.PreferencesGroup:
+        """Shared inputs + output folder, matching Separation / Ensemble."""
+        group = Adw.PreferencesGroup(title="Files")
+        self._view_inputs_button = Gtk.Button(icon_name="view-list-symbolic", valign=Gtk.Align.CENTER)
+        self._view_inputs_button.add_css_class("flat")
+        set_icon_button_a11y(self._view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
+        self._view_inputs_button.connect("clicked", self._on_view_inputs_clicked)
+        group.set_header_suffix(self._view_inputs_button)
+
+        self.inputs_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
+        self.hints.register(self.inputs_row, INPUT_FOLDER_ENTRY_HELP)
+        # Back-compat aliases for callers that still look up per-tool rows.
+        self.me_inputs_row = self.inputs_row
+        self.ts_inputs_row = self.inputs_row
+        self.ps_inputs_row = self.inputs_row
+        self.ap_inputs_row = self.inputs_row
+
+        self.dual_inputs_row = DualInputsRow(self._on_open_dual_editor)
+        self._dual_inputs_rows: List[DualInputsRow] = [self.dual_inputs_row]
+
+        self.output_row = OutputFolderRow(self._on_output_changed)
+        set_tooltip(self.output_row, OUTPUT_FOLDER_ENTRY_HELP)
+
+        group.add(self.inputs_row)
+        group.add(self.dual_inputs_row)
+        group.add(self.output_row)
+        return group
+
     def _build_select_group(self) -> Adw.PreferencesGroup:
-        select_group = Adw.PreferencesGroup(title="Audio tool")
-        self.tool_row = make_combo_row("Tool", AUDIO_TOOL_ORDER, icon_name="applications-utilities-symbolic")
+        # Untitled group + row title (same de-chrome pattern as Separation method).
+        select_group = Adw.PreferencesGroup()
+        self.tool_row = make_combo_row(
+            "Audio tool",
+            AUDIO_TOOL_ORDER,
+            icon_name="applications-utilities-symbolic",
+        )
         self.hints.register(self.tool_row, AUDIO_TOOLS_HELP)
         self.tool_row.connect("notify::selected", self._on_tool_changed)
         select_group.add(self.tool_row)
@@ -180,19 +245,15 @@ class AudioToolsPage:
         stack.add_named(self._build_time_stretch_page(), TIME_STRETCH)
         stack.add_named(self._build_pitch_page(), CHANGE_PITCH)
         stack.add_named(self._build_align_page(), ALIGN_INPUTS)
-        stack.add_named(self._build_match_page(), MATCH_INPUTS)
+        # Matchering has no tool settings; stack page is omitted (Files copy covers it).
         stack.add_named(self._build_apollo_page(), APOLLO_RESTORE)
         return stack
 
-    # -- Per-tool pages --------------------------------------------------------
+    # -- Per-tool pages (settings only; inputs live in Files) ------------------
 
     def _build_manual_ensemble_page(self) -> Gtk.Widget:
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        group = Adw.PreferencesGroup(title="Manual Ensemble", description="Combine two or more audio files")
-
-        self.me_inputs_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
-        self.hints.register(self.me_inputs_row, INPUT_FOLDER_ENTRY_HELP)
-        group.add(self.me_inputs_row)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+        group = Adw.PreferencesGroup(description="Combine two or more audio files")
 
         self.algorithm_row = make_combo_row("Algorithm", MANUAL_ENSEMBLE_OPTIONS)
         self.hints.register(self.algorithm_row, MANUAL_ENSEMBLE_ALGORITHM_HINT)
@@ -208,12 +269,8 @@ class AudioToolsPage:
         return box
 
     def _build_time_stretch_page(self) -> Gtk.Widget:
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        group = Adw.PreferencesGroup(title="Time Stretch", description="Change playback rate (requires pyrubberband)")
-
-        self.ts_inputs_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
-        self.hints.register(self.ts_inputs_row, INPUT_FOLDER_ENTRY_HELP)
-        group.add(self.ts_inputs_row)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+        group = Adw.PreferencesGroup(description="Change playback rate (requires pyrubberband)")
 
         self.time_rate_row = self._make_spin("Rate", 0.1, 10.0, 0.1, digits=2)
         self.hints.register(self.time_rate_row, PLAYBACK_RATE_HINT)
@@ -224,12 +281,8 @@ class AudioToolsPage:
         return box
 
     def _build_pitch_page(self) -> Gtk.Widget:
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        group = Adw.PreferencesGroup(title="Change Pitch", description="Pitch shift in semitones (requires pyrubberband)")
-
-        self.ps_inputs_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
-        self.hints.register(self.ps_inputs_row, INPUT_FOLDER_ENTRY_HELP)
-        group.add(self.ps_inputs_row)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+        group = Adw.PreferencesGroup(description="Pitch shift in semitones (requires pyrubberband)")
 
         self.pitch_rate_row = self._make_spin("Semitones", -10.0, 10.0, 0.5, digits=2)
         self.hints.register(self.pitch_rate_row, PITCH_SHIFT_HELP)
@@ -245,14 +298,7 @@ class AudioToolsPage:
         return box
 
     def _build_align_page(self) -> Gtk.Widget:
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-
-        inputs_group = Adw.PreferencesGroup(
-            title="Input pairs",
-            description="Primary is usually the full mix; secondary is usually the instrumental",
-        )
-        inputs_group.add(self._create_dual_inputs_row())
-        box.append(inputs_group)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
 
         settings_group = Adw.PreferencesGroup(title="Alignment settings")
         self.time_window_row = make_combo_row("Time window", list(TIME_WINDOW_MAPPER.keys()))
@@ -269,7 +315,6 @@ class AudioToolsPage:
         self.hints.register(self.db_row, VOLUME_ANALYSIS_ALIGN_HELP)
         self.db_row.connect("notify::selected", lambda *_a: self._set("db_analysis", get_combo_value(self.db_row)))
         settings_group.add(self.db_row)
-        box.append(settings_group)
 
         advanced = Adw.ExpanderRow(title="Advanced align options")
         self.phase_option_row = make_combo_row("Secondary phase", ALIGN_PHASE_OPTIONS)
@@ -297,52 +342,22 @@ class AudioToolsPage:
         self.spec_match_row.connect("notify::active", lambda *_a: self._set("is_spec_match", self.spec_match_row.get_active()))
         advanced.add_row(self.spec_match_row)
 
-        adv_group = Adw.PreferencesGroup()
-        adv_group.add(advanced)
-
-        box.append(adv_group)
-        return box
-
-    def _build_match_page(self) -> Gtk.Widget:
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-
-        inputs_group = Adw.PreferencesGroup(
-            title="Input pairs",
-            description="Target is mastered to match the reference track",
-        )
-        inputs_group.add(self._create_dual_inputs_row())
-        box.append(inputs_group)
+        settings_group.add(advanced)
+        box.append(settings_group)
         return box
 
     def _build_apollo_page(self) -> Gtk.Widget:
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
 
-        self.apollo_banner = Adw.Banner(
-            title=(
-                "No Apollo models found. Place an Apollo checkpoint (.ckpt or .bin) "
-                "in the Apollo models folder, then reload."
-            ),
-            button_label="Open Folder",
-            revealed=False,
-        )
-        self.apollo_banner.add_css_class("app-banner")
-        self.apollo_banner.connect("button-clicked", self._on_open_apollo_folder)
-        box.append(self.apollo_banner)
-
-        group = Adw.PreferencesGroup(
-            title="Apollo Restore",
+        self.apollo_group = Adw.PreferencesGroup(
             description="Restore codec-distorted audio (e.g. low-bitrate MP3s)",
         )
-
-        self.ap_inputs_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
-        self.hints.register(self.ap_inputs_row, INPUT_FOLDER_ENTRY_HELP)
-        group.add(self.ap_inputs_row)
 
         self.apollo_model_row = make_combo_row("Apollo model", [CHOOSE_MODEL])
         use_wrapping_list(self.apollo_model_row)
         self.hints.register(self.apollo_model_row, CHOOSE_APOLLO_MODEL_HELP)
         self.apollo_model_row.connect("notify::selected", self._on_apollo_model_changed)
-        group.add(self.apollo_model_row)
+        self.apollo_group.add(self.apollo_model_row)
 
         self.apollo_overlap_row = self._make_spin("Overlap", 0, 50, 1, digits=0)
         self.hints.register(self.apollo_overlap_row, APOLLO_OVERLAP_HELP)
@@ -350,7 +365,7 @@ class AudioToolsPage:
             "notify::value",
             lambda *_a: self._set("apollo_overlap", str(int(self.apollo_overlap_row.get_value()))),
         )
-        group.add(self.apollo_overlap_row)
+        self.apollo_group.add(self.apollo_overlap_row)
 
         self.apollo_chunk_row = self._make_spin("Chunk size", 1, 50, 1, digits=0)
         self.hints.register(self.apollo_chunk_row, APOLLO_CHUNK_SIZE_HELP)
@@ -358,23 +373,14 @@ class AudioToolsPage:
             "notify::value",
             lambda *_a: self._set("apollo_chunk_size", str(int(self.apollo_chunk_row.get_value()))),
         )
-        group.add(self.apollo_chunk_row)
+        self.apollo_group.add(self.apollo_chunk_row)
 
-        # Apollo is the only GPU-accelerated audio tool; the shared GPU toggle
-        # lives on the separation tabs, so expose it here too (same setting key).
-        self.apollo_gpu_row = make_switch_row("GPU conversion", "Use CUDA when available", icon_name="pci-card-symbolic")
-        self.hints.register(self.apollo_gpu_row, IS_GPU_CONVERSION_HELP)
-        self.apollo_gpu_row.connect(
-            "notify::active",
-            lambda *_a: self._set("is_gpu_conversion", self.apollo_gpu_row.get_active()),
-        )
-        group.add(self.apollo_gpu_row)
-
-        box.append(group)
+        box.append(self.apollo_group)
         return box
 
     def _on_apollo_model_changed(self, *_args) -> None:
         self._set("apollo_model", get_combo_value(self.apollo_model_row))
+        self.window._refresh_start_readiness()
 
     def _refresh_apollo_models(self) -> None:
         """Repopulate the Apollo model picker from the models on disk."""
@@ -392,30 +398,35 @@ class AudioToolsPage:
         finally:
             self._loading = was_loading
 
-        has_models = bool(found)
-        self.apollo_model_row.set_visible(has_models)
-        self.apollo_banner.set_revealed(not has_models)
-
-    def _create_dual_inputs_row(self) -> DualInputsRow:
-        row = DualInputsRow(self._on_open_dual_editor)
-        self._dual_inputs_rows.append(row)
-        return row
+        self._apollo_has_models = bool(found)
+        self.apollo_group.set_visible(self._apollo_has_models)
+        self._update_audio_banner()
 
     def _build_shared_group(self) -> Gtk.Widget:
         group = Adw.PreferencesGroup(title="Processing")
 
-        self.output_row = OutputFolderRow(self._on_output_changed)
-        group.add(self.output_row)
-
-        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="audio-x-generic-symbolic")
+        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="waveform-symbolic")
         self.hints.register(self.format_row, OUTPUT_FORMAT_HINT)
-        self.format_row.connect("notify::selected", lambda *_a: self._set("save_format", get_combo_value(self.format_row)))
+        self.format_row.connect("notify::selected", self._on_format_changed)
         group.add(self.format_row)
 
         self.wav_type_row = make_combo_row("WAV type", WAV_TYPE)
         self.hints.register(self.wav_type_row, WAV_TYPE_HINT)
         self.wav_type_row.connect("notify::selected", lambda *_a: self._set("wav_type_set", get_combo_value(self.wav_type_row)))
         group.add(self.wav_type_row)
+
+        # Shown only for Apollo (GPU-accelerated audio tool).
+        self.apollo_gpu_row = make_switch_row(
+            "GPU conversion",
+            "Use CUDA when available",
+            icon_name="pci-card-symbolic",
+        )
+        self.hints.register(self.apollo_gpu_row, IS_GPU_CONVERSION_HELP)
+        self.apollo_gpu_row.connect(
+            "notify::active",
+            lambda *_a: self._set("is_gpu_conversion", self.apollo_gpu_row.get_active()),
+        )
+        group.add(self.apollo_gpu_row)
 
         self.normalize_row = make_switch_row("Normalize output", "Limit peaks to prevent clipping")
         self.hints.register(self.normalize_row, IS_NORMALIZATION_HELP)
@@ -451,8 +462,7 @@ class AudioToolsPage:
             set_combo_value(self.tool_row, s.get("chosen_audio_tool", MANUAL_ENSEMBLE))
 
             inputs = s.get("input_paths") or []
-            for row in (self.me_inputs_row, self.ts_inputs_row, self.ps_inputs_row, self.ap_inputs_row):
-                row.set_paths(inputs, notify=False)
+            self.inputs_row.set_paths(inputs, notify=False)
             self.output_row.set_path(s.get("export_path") or "", notify=False)
 
             set_combo_value(self.algorithm_row, s.get("choose_algorithm"))
@@ -481,6 +491,7 @@ class AudioToolsPage:
         finally:
             self._loading = False
 
+        self._sync_format_rows()
         self._refresh_apollo_models()
         self._sync_tool_visibility()
         self._refresh_dual_rows()
@@ -491,21 +502,106 @@ class AudioToolsPage:
         try:
             apply_shared_file_options(
                 self.settings,
-                input_rows=(self.me_inputs_row, self.ts_inputs_row, self.ps_inputs_row, self.ap_inputs_row),
+                input_row=self.inputs_row,
                 output_row=self.output_row,
                 format_row=self.format_row,
                 gpu_row=self.apollo_gpu_row,
             )
         finally:
             self._loading = False
+        self._sync_format_rows()
 
     def _sync_tool_visibility(self) -> None:
-        self.tool_stack.set_visible_child_name(self._current_tool())
+        tool = self._current_tool()
+        # Matchering has no tool settings page; hide the empty stack slot.
+        has_settings = tool != MATCH_INPUTS
+        self.tool_stack.set_visible(has_settings)
+        if has_settings:
+            self.tool_stack.set_visible_child_name(tool)
+        self.apollo_gpu_row.set_visible(tool == APOLLO_RESTORE)
+        self._sync_files_visibility(tool)
+        self._sync_column_balance(tool)
+        self._update_audio_banner()
+
+    def _sync_files_visibility(self, tool: Optional[str] = None) -> None:
+        """Show multi-file or dual-pair inputs depending on the active tool."""
+        from core.audio_tools import DUAL_INPUT_TOOLS
+
+        tool = tool or self._current_tool()
+        dual = tool in DUAL_INPUT_TOOLS
+        self.inputs_row.set_visible(not dual)
+        self.dual_inputs_row.set_visible(dual)
+        if tool == MATCH_INPUTS:
+            self.files_group.set_description(_MATCH_FILES_DESCRIPTION)
+        elif tool == ALIGN_INPUTS:
+            self.files_group.set_description(_ALIGN_FILES_DESCRIPTION)
+        else:
+            self.files_group.set_description(None)
+
+    def _sync_column_balance(self, tool: Optional[str] = None) -> None:
+        """Tuck Processing under Files when the tool stack is empty (Matchering)."""
+        tool = tool or self._current_tool()
+        parent = self.shared_group.get_parent()
+        if parent is not None:
+            parent.remove(self.shared_group)
+        if tool == MATCH_INPUTS:
+            self._col_start.append(self.shared_group)
+            self._col_end.set_visible(False)
+        else:
+            self._col_end.append(self.shared_group)
+            self._col_end.set_visible(True)
+
+    def _update_audio_banner(self) -> None:
+        """Page-level empty-state banner for Apollo models / dual input pairs."""
+        from core.audio_tools import DUAL_INPUT_TOOLS
+        from core.external_tools import resolve_rubberband
+
+        tool = self._current_tool()
+        if tool in (TIME_STRETCH, CHANGE_PITCH) and not resolve_rubberband():
+            self._banner_mode = "rubberband"
+            self._audio_banner.set_title(_RUBBERBAND_BANNER_TITLE)
+            self._audio_banner.set_button_label("")
+            self._audio_banner.set_revealed(True)
+            self.window._refresh_start_readiness()
+            return
+        if tool == APOLLO_RESTORE and not self._apollo_has_models:
+            self._banner_mode = "apollo"
+            self._audio_banner.set_title(_APOLLO_BANNER_TITLE)
+            self._audio_banner.set_button_label("Open Folder")
+            self._audio_banner.set_revealed(True)
+            self.window._refresh_start_readiness()
+            return
+        if tool in DUAL_INPUT_TOOLS and not self._dual_pairs:
+            self._banner_mode = "dual"
+            self._audio_banner.set_title(_DUAL_BANNER_TITLE)
+            self._audio_banner.set_button_label("Pair Editor")
+            self._audio_banner.set_revealed(True)
+            self.window._refresh_start_readiness()
+            return
+        self._banner_mode = None
+        self._audio_banner.set_revealed(False)
+        self.window._refresh_start_readiness()
+
+    def _on_audio_banner_clicked(self, *_args) -> None:
+        if self._banner_mode == "apollo":
+            self._on_open_apollo_folder(self._audio_banner)
+        elif self._banner_mode == "dual":
+            self._on_open_dual_editor()
+
+    def _on_view_inputs_clicked(self, *_args) -> None:
+        """Open the pair editor for dual tools; otherwise the shared verifier."""
+        from core.audio_tools import DUAL_INPUT_TOOLS
+
+        if self._current_tool() in DUAL_INPUT_TOOLS:
+            self._on_open_dual_editor()
+            return
+        self.window.activate_action("win.view_inputs", None)
 
     def _refresh_dual_rows(self) -> None:
         labels = _TOOL_LABELS[1] if self._current_tool() == MATCH_INPUTS else _TOOL_LABELS[0]
         for row in self._dual_inputs_rows:
             row.set_pairs(self._dual_pairs, labels)
+        self._update_audio_banner()
 
     # -- Signal handlers -------------------------------------------------------
 
@@ -517,26 +613,25 @@ class AudioToolsPage:
         self._sync_tool_visibility()
         self._refresh_dual_rows()
 
+    def _on_format_changed(self, *_args) -> None:
+        self._sync_format_rows()
+        self._set("save_format", get_combo_value(self.format_row))
+
+    def _sync_format_rows(self) -> None:
+        output_format = get_combo_value(self.format_row) or WAV
+        self.wav_type_row.set_visible(output_format == WAV)
+
     def _on_inputs_changed(self) -> None:
         if self._loading:
             return
-        page_rows = {
-            MANUAL_ENSEMBLE: self.me_inputs_row,
-            TIME_STRETCH: self.ts_inputs_row,
-            CHANGE_PITCH: self.ps_inputs_row,
-            APOLLO_RESTORE: self.ap_inputs_row,
-        }
-        row = page_rows.get(self._current_tool())
-        if row is None:
-            return
-        paths = list(row.paths)
+        paths = list(self.inputs_row.paths)
         self.settings.set("input_paths", paths)
-        for other in page_rows.values():
-            if other is not row:
-                other.set_paths(paths, notify=False)
+        self.context.prune_unreadable_input_paths(paths)
+        self.window._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
         self._set("export_path", self.output_row.path)
+        self.window._refresh_start_readiness()
 
     def _on_open_dual_editor(self, *_args) -> None:
         labels = _TOOL_LABELS[1] if self._current_tool() == MATCH_INPUTS else _TOOL_LABELS[0]
@@ -561,6 +656,8 @@ class AudioToolsPage:
         # shared input/output selection in step with the other tabs.
         self._sync_shared_from_settings()
         self._refresh_apollo_models()
+        self._sync_tool_visibility()
+        self._refresh_dual_rows()
 
     def on_deactivated(self) -> None:
         pass
@@ -570,23 +667,21 @@ class AudioToolsPage:
         from core.audio_tools import DUAL_INPUT_TOOLS
 
         tool = self._current_tool()
+        if tool in (TIME_STRETCH, CHANGE_PITCH):
+            from core.external_tools import resolve_rubberband
+
+            if not resolve_rubberband():
+                return _REASON_RUBBERBAND
         if tool in DUAL_INPUT_TOOLS:
             if not self._dual_pairs:
                 return _REASON_DUAL_INPUTS
         else:
-            page_rows = {
-                MANUAL_ENSEMBLE: self.me_inputs_row,
-                TIME_STRETCH: self.ts_inputs_row,
-                CHANGE_PITCH: self.ps_inputs_row,
-                APOLLO_RESTORE: self.ap_inputs_row,
-            }
-            row = page_rows.get(tool)
-            if row is None:
-                return _REASON_INPUT
-            input_reason = row.blocked_reason()
+            input_reason = self.inputs_row.blocked_reason(
+                unreadable_paths=self.context.unreadable_input_paths
+            )
             if input_reason:
                 return input_reason
-            if tool == MANUAL_ENSEMBLE and len(row.paths) < 2:
+            if tool == MANUAL_ENSEMBLE and len(self.inputs_row.paths) < 2:
                 return _REASON_TWO_FILES
         output_reason = self.output_row.blocked_reason()
         if output_reason:
@@ -621,13 +716,7 @@ class AudioToolsPage:
         if tool in DUAL_INPUT_TOOLS:
             dual_pairs = list(self._dual_pairs)
         else:
-            page_rows = {
-                MANUAL_ENSEMBLE: self.me_inputs_row,
-                TIME_STRETCH: self.ts_inputs_row,
-                CHANGE_PITCH: self.ps_inputs_row,
-                APOLLO_RESTORE: self.ap_inputs_row,
-            }
-            single_inputs = list(page_rows[tool].paths)
+            single_inputs = list(self.inputs_row.paths)
             if tool == APOLLO_RESTORE:
                 apollo_params = self._resolve_apollo_model()
                 if apollo_params is None:

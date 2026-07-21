@@ -53,6 +53,7 @@ from bundled.constants import (
 from core import paths
 from core.mdx_c_registry import infer_mdx_c_architecture
 from core.model_data import ModelData, load_mdx_c_config
+from core.model_display import display_name_for_model
 from ..hints import set_tooltip
 from ..spacing import inset_md
 from .utils import present_modal_dialog, run_blocking_dialog, set_dialog_content, set_form_dialog_content
@@ -166,8 +167,14 @@ class _ParamDialog:
     def _build(self, page):
         method = self.model_data.process_method
         is_ckpt = getattr(self.model_data, "is_mdx_ckpt", False) or str(self.model_data.model_path).endswith(CKPT)
+        repo = getattr(self.model_data, "repo", None)
+        title = (
+            display_name_for_model(method, self.model_data.model_name, repo)
+            if repo is not None
+            else self.model_data.model_name
+        )
         group = Adw.PreferencesGroup(
-            title=f"{self.model_data.model_name}",
+            title=f"{title}",
             description="This model's parameters could not be detected automatically.",
         )
         page.add(group)
@@ -488,8 +495,9 @@ def show_change_defaults_dialog(context, parent):
     model_tags = repo.default_change_model_tags()
     model_row = make_combo_row("Model", [NO_MODEL])
     from core.model_display import format_tag_title
-    from ..widgets.rows import set_combo_tag_values
+    from ..widgets.rows import set_combo_tag_values, use_wrapping_list
 
+    use_wrapping_list(model_row)
     set_combo_tag_values(
         model_row,
         [NO_MODEL, *[(tag, format_tag_title(tag, repo)) for tag in model_tags]],
@@ -526,6 +534,29 @@ def show_change_defaults_dialog(context, parent):
             toast("Select a model first.")
             return
         hash_file = model_data.model_hash_dir
+        if not hash_file or not os.path.isfile(hash_file):
+            toast("No defined parameters found.")
+            return
+        tag = get_combo_value(model_row)
+        model_title = format_tag_title(tag, repo) if tag else "this model"
+        dialog = Adw.AlertDialog(
+            heading="Delete stored parameters?",
+            body=(
+                f'This permanently removes the saved recognition parameters '
+                f'for "{model_title}".'
+            ),
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("delete", "Delete")
+        dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", on_delete_confirmed, hash_file)
+        dialog.present(parent)
+
+    def on_delete_confirmed(_dialog, response, hash_file: str):
+        if response != "delete":
+            return
         if hash_file and os.path.isfile(hash_file):
             os.remove(hash_file)
             repo.invalidate_stem_check()

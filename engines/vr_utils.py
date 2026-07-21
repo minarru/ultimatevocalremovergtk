@@ -1,15 +1,65 @@
 """VR denoiser and multi-band mix loading."""
+import os
+
 import numpy as np
 import torch
 import librosa
 
 from bundled.constants import OPERATING_SYSTEM, SYSTEM_PROC, ARM, SYSTEM_ARCH
+from core.paths import VR_PARAM_DIR
 from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
 from ml.vr_network import nets_new
 from ml.vr_network.model_param_init import ModelParameters
 
 cpu = torch.device('cpu')
+
+
+def scale_mag_pad_inplace(mag_pad: np.ndarray) -> np.ndarray:
+    """Divide a magnitude pad by its peak; no-op for silent / all-zero input."""
+    peak = float(np.max(mag_pad)) if mag_pad.size else 0.0
+    if peak > 0:
+        mag_pad /= peak
+    return mag_pad
+
+
+def _band_res_type(bp):
+    if OPERATING_SYSTEM == 'Darwin':
+        return 'polyphase' if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else bp['res_type']
+    return bp['res_type']
+
+
+def multiband_waves_to_spectrogram(
+    X_wave,
+    mp,
+    *,
+    is_v51_model=False,
+    use_model_res_type=True,
+):
+    """Convert a multiband wave dict into a combined VR spectrogram."""
+    X_spec_s = {}
+    bands_n = len(mp.param['band'])
+    for d in range(bands_n, 0, -1):
+        bp = mp.param['band'][d]
+        wav_resolution = _band_res_type(bp) if use_model_res_type else 'polyphase'
+        if d != bands_n:
+            X_wave[d] = librosa.resample(
+                X_wave[d + 1],
+                orig_sr=mp.param['band'][d + 1]['sr'],
+                target_sr=bp['sr'],
+                res_type=wav_resolution,
+            )
+        X_spec_s[d] = spec_utils.wave_to_spectrogram(
+            X_wave[d],
+            bp['hl'],
+            bp['n_fft'],
+            mp,
+            band=d,
+            is_v51_model=is_v51_model,
+        )
+    X_spec = spec_utils.combine_spectrograms(X_spec_s, mp, is_v51_model=is_v51_model)
+    return X_spec, X_spec_s, X_wave
+
 
 def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverber=False, model_path=None):
     batchsize = 4
@@ -22,10 +72,31 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
         mp = None
         hop_length=1024
         nout, nout_lstm = 16, 128
-    
-    model = nets_new.CascadedNet(n_fft, nout=nout, nout_lstm=nout_lstm)
-    model.load_state_dict(load_torch_checkpoint(model_path, map_location=cpu))
-    model.to(device)
+
+    from engines.model_weight_cache import (
+        get_weight_cache,
+        materialize_module,
+        weight_cache_key,
+    )
+
+    key = weight_cache_key(
+        "vr_deverber" if is_deverber else "vr_denoise",
+        str(model_path),
+        device,
+        n_fft,
+        nout,
+        nout_lstm,
+    )
+    cache = get_weight_cache()
+    cached = cache.get(key)
+    if cached and cached.module is not None:
+        model = materialize_module(cached.module, device)
+    else:
+        model = nets_new.CascadedNet(n_fft, nout=nout, nout_lstm=nout_lstm)
+        model.load_state_dict(load_torch_checkpoint(model_path, map_location=cpu))
+        model.to(device)
+        cache.put(key, module=model)
+        model = materialize_module(model, device)
 
     if mp is None:
         X_spec = spec_utils.wave_to_spectrogram_old(X, hop_length, n_fft)
@@ -40,34 +111,31 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
     n_frame = X_mag.shape[2]
     pad_l, pad_r, roi_size = spec_utils.make_padding(n_frame, cropsize, model.offset)
     X_mag_pad = np.pad(X_mag, ((0, 0), (0, 0), (pad_l, pad_r)), mode='constant')
-    X_mag_pad /= X_mag_pad.max()
+    scale_mag_pad_inplace(X_mag_pad)
 
-    X_dataset = []
     patches = (X_mag_pad.shape[2] - 2 * model.offset) // roi_size
-    for i in range(patches):
-        start = i * roi_size
-        X_mag_crop = X_mag_pad[:, :, start:start + cropsize]
-        X_dataset.append(X_mag_crop)
-
-    X_dataset = np.asarray(X_dataset)
 
     model.eval()
-    
-    with torch.no_grad():
-        mask = []
-        # To reduce the overhead, dataloader is not used.
+
+    with torch.inference_mode():
+        mask_parts = []
+        # Stream patches per batch instead of materializing all windows.
         for i in range(0, patches, batchsize):
-            X_batch = X_dataset[i: i + batchsize]
+            end = min(i + batchsize, patches)
+            X_batch = np.stack(
+                [
+                    X_mag_pad[:, :, j * roi_size : j * roi_size + cropsize]
+                    for j in range(i, end)
+                ],
+                axis=0,
+            )
             X_batch = torch.from_numpy(X_batch).to(device)
 
             pred = model.predict_mask(X_batch)
+            mask_parts.append(torch.cat([pred[b] for b in range(pred.shape[0])], dim=2))
 
-            pred = pred.detach().cpu().numpy()
-            pred = np.concatenate(pred, axis=2)
-            mask.append(pred)
+        mask = torch.cat(mask_parts, dim=2).detach().cpu().numpy()
 
-        mask = np.concatenate(mask, axis=2)
-    
     mask = mask[:, :, :n_frame]
 
     #Post Proc
@@ -81,7 +149,7 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
         wave = spec_utils.spectrogram_to_wave_old(v_spec, hop_length=1024)
     else:
         wave = spec_utils.cmb_spectrogram_to_wave(v_spec, mp, is_v51_model=True).T
-        
+
     wave = spec_utils.match_array_shapes(wave, X)
 
     if is_deverber:
@@ -93,32 +161,12 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
 
 def loading_mix(X, mp):
 
-    X_wave, X_spec_s = {}, {}
-    
     bands_n = len(mp.param['band'])
-    
-    for d in range(bands_n, 0, -1):        
-        bp = mp.param['band'][d]
-    
-        if OPERATING_SYSTEM == 'Darwin':
-            wav_resolution = 'polyphase' if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else bp['res_type']
-        else:
-            wav_resolution = 'polyphase'#bp['res_type']
-    
-        if d == bands_n: # high-end band
-            X_wave[d] = X
-
-        else: # lower bands
-            X_wave[d] = librosa.resample(X_wave[d+1], orig_sr=mp.param['band'][d+1]['sr'], target_sr=bp['sr'], res_type=wav_resolution)
-            
-        X_spec_s[d] = spec_utils.wave_to_spectrogram(X_wave[d], bp['hl'], bp['n_fft'], mp, band=d, is_v51_model=True)
-        
-        # if d == bands_n and is_high_end_process:
-        #     input_high_end_h = (bp['n_fft']//2 - bp['crop_stop']) + (mp.param['pre_filter_stop'] - mp.param['pre_filter_start'])
-        #     input_high_end = X_spec_s[d][:, bp['n_fft']//2-input_high_end_h:bp['n_fft']//2, :]
-
-    X_spec = spec_utils.combine_spectrograms(X_spec_s, mp)
-    
-    del X_wave, X_spec_s
-
+    X_wave = {bands_n: X}
+    X_spec, _, _ = multiband_waves_to_spectrogram(
+        X_wave,
+        mp,
+        is_v51_model=True,
+        use_model_res_type=False,
+    )
     return X_spec

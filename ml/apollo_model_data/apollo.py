@@ -3,8 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from .base_model import BaseModel
-
-is_using_other_gpu = lambda device: not (device == "cpu" or device.startswith("cuda"))
+from ml.stft_device import needs_cpu_stft, torch_istft, torch_stft
 
 class RMSNorm(nn.Module):
     def __init__(self, dimension, groups=1):
@@ -255,28 +254,25 @@ class Apollo(BaseModel):
 
         B, nch, nsample = input.shape
         device = input.device
-        is_other_gpu = is_using_other_gpu(device.type)
 
-        if is_other_gpu:
-            input = input.cpu()
-        #print("MADE IT HERE 262")
-        spec = torch.stft(input.view(B*nch, nsample), n_fft=self.win, hop_length=self.stride, 
-                          window=torch.hann_window(self.win).to(input.device), return_complex=True)
+        wave = input.view(B * nch, nsample)
+        window = torch.hann_window(self.win, device=device)
+        # Complex STFT stays on CPU when bouncing; real features move later.
+        spec = torch_stft(
+            wave,
+            n_fft=self.win,
+            hop_length=self.stride,
+            window=window,
+            return_complex=True,
+        )
 
-        if is_other_gpu:
-            spec = spec.to(device)
-            input = input.to(device)
-        #print("MADE IT HERE 269")
-        subband_spec = []
         subband_spec_norm = []
         subband_power = []
         band_idx = 0
         for i in range(self.nband):
             this_spec = spec[:,band_idx:band_idx+self.band_width[i]]
-            subband_spec.append(this_spec)  # B, BW, T
             subband_power.append((this_spec.abs().pow(2).sum(1) + self.eps).sqrt().unsqueeze(1))  # B, 1, T
             normalized_spec = torch.complex(this_spec.real / subband_power[-1], this_spec.imag / subband_power[-1])
-                
             subband_spec_norm.append(normalized_spec)
             band_idx += self.band_width[i]
         subband_power = torch.cat(subband_power, 1)  # B, nband, T
@@ -284,13 +280,23 @@ class Apollo(BaseModel):
         return subband_spec_norm, subband_power
 
     def feature_extractor(self, input):
-        
+        device = input.device
+        bounce = needs_cpu_stft(device)
         subband_spec_norm, subband_power = self.spec_band_split(input)
-        
-        # normalization and bottleneck
+
+        # Move real-valued features to the model device before BN / BSNet.
         subband_feature = []
         for i in range(self.nband):
-            concat_spec = torch.cat([subband_spec_norm[i].real, subband_spec_norm[i].imag, torch.log(subband_power[:,i].unsqueeze(1))], 1)
+            concat_spec = torch.cat(
+                [
+                    subband_spec_norm[i].real,
+                    subband_spec_norm[i].imag,
+                    torch.log(subband_power[:, i].unsqueeze(1)),
+                ],
+                1,
+            )
+            if bounce:
+                concat_spec = concat_spec.to(device)
             subband_feature.append(self.BN[i](concat_spec))
         subband_feature = torch.stack(subband_feature, 1)  # B, nband, N, T
 
@@ -298,32 +304,31 @@ class Apollo(BaseModel):
         
     def forward(self, input):
         B, nch, nsample = input.shape
-
         device = input.device
-        #print(device)
-        is_other_gpu = is_using_other_gpu(device.type)
+        bounce = needs_cpu_stft(device)
 
-        if is_other_gpu:
-            input = input.cpu()
-
+        # Keep BSNet on the accelerator; only bounce complex/iSTFT.
         subband_feature = self.feature_extractor(input)
         feature = self.net(subband_feature)
 
         est_spec = []
         for i in range(self.nband):
             this_RI = self.output[i](feature[:,i]).view(B*nch, 2, self.band_width[i], -1)
-
-            if is_other_gpu:
-                this_RI = this_RI.to(input.device)
-
+            if bounce:
+                this_RI = this_RI.cpu()
             RI_input = torch.complex(this_RI[:,0], this_RI[:,1])
             est_spec.append(RI_input)
         est_spec = torch.cat(est_spec, 1)
-        output = torch.istft(est_spec, n_fft=self.win, hop_length=self.stride, 
-                             window=torch.hann_window(self.win).to(input.device), length=nsample).view(B, nch, -1)
-        
-        #print("MADE IT HERE")
-        if is_other_gpu:
+        window = torch.hann_window(self.win, device=est_spec.device)
+        output = torch_istft(
+            est_spec,
+            n_fft=self.win,
+            hop_length=self.stride,
+            window=window,
+            length=nsample,
+        ).view(B, nch, -1)
+
+        if bounce:
             output = output.to(device)
 
         return output

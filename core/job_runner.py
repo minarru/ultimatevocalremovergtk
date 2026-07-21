@@ -37,6 +37,13 @@ from bundled.constants import (
 
 from . import paths
 from .audio_io import resolve_wav_type_set
+from .export_naming import (
+    format_stem_basename,
+    format_track_base,
+    sanitize_filename_component,
+    testing_timestamp_prefix,
+    track_basename_from_path,
+)
 from .model_data import (
     ModelData,
     ModelRepository,
@@ -45,8 +52,9 @@ from .model_data import (
 from .sample_mode import prepare_input_paths
 from .settings import SettingsModel
 from .run_control import ProcessStopped, check_stopped, pausable_callback
-from .run_estimate import combine_progress_local_step
+from .run_estimate import combine_progress_local_step, count_inference_passes_from_models
 from .debug_log import debug, debug_elapsed, next_seq, preview_text, set_correlation_seq, verbose
+from .error_context import snapshot_worker_file
 from .model_display import display_name_for_model
 from .separate_import import import_separate_engines
 from .inference_cleanup import (
@@ -54,6 +62,14 @@ from .inference_cleanup import (
     release_inference_memory as _release_inference_resources,
     release_separator,
 )
+
+
+def _decoded_mix_for_process(audio_file):
+    """Decode once per track so ensemble / secondary models reuse the same mix."""
+    from engines.mix import prepare_mix
+
+    return prepare_mix(audio_file)
+
 
 _MODEL_KEY_BY_METHOD = {
     VR_ARCH_PM: "vr_model",
@@ -68,13 +84,36 @@ def _model_output_label(model: ModelData) -> str:
     return label or model.model_basename or ""
 
 
+def _progress_detail(
+    *,
+    file_num: int,
+    file_total: int,
+    model,
+    model_num: int,
+    model_count: int,
+) -> Optional[str]:
+    """Short status detail for the progress line (file / member model)."""
+    parts: List[str] = []
+    if file_total > 1:
+        parts.append(f"File {file_num}/{file_total}")
+    if model is not None:
+        label = _model_output_label(model)
+        if model_count > 1:
+            parts.append(f"Model {model_num}/{model_count}" + (f" · {label}" if label else ""))
+        elif label:
+            parts.append(label)
+    return " · ".join(parts) if parts else None
+
+
 @dataclass
 class JobCallbacks:
     """Callbacks invoked from the worker thread.
 
-    ``on_progress`` receives a float in ``[0.0, 1.0]``; ``on_console`` receives
-    text chunks; ``on_complete`` fires once on success; ``on_error`` receives the
-    raised exception. The GTK layer marshals each of these onto the main loop.
+    ``on_progress`` receives a float in ``[0.0, 1.0]`` plus optional keyword
+    metadata (``local_step``, ``pass_index``, ``pass_total``, ``detail``,
+    ``combine_index``, ``combine_total``). ``on_console`` receives text chunks;
+    ``on_complete`` fires once on success; ``on_error`` receives the raised
+    exception. The GTK layer marshals each of these onto the main loop.
     """
 
     on_progress: Optional[Callable[..., None]] = None
@@ -83,13 +122,29 @@ class JobCallbacks:
     on_stopped: Optional[Callable[[], None]] = None
     on_error: Optional[Callable[[BaseException], None]] = None
 
-    def progress(self, fraction: float, *, local_step: Optional[float] = None) -> None:
-        if self.on_progress:
-            clamped = max(0.0, min(1.0, fraction))
-            if local_step is None:
-                self.on_progress(clamped)
-            else:
-                self.on_progress(clamped, local_step)
+    def progress(
+        self,
+        fraction: float,
+        *,
+        local_step: Optional[float] = None,
+        pass_index: Optional[int] = None,
+        pass_total: Optional[int] = None,
+        detail: Optional[str] = None,
+        combine_index: Optional[int] = None,
+        combine_total: Optional[int] = None,
+    ) -> None:
+        if not self.on_progress:
+            return
+        clamped = max(0.0, min(1.0, fraction))
+        self.on_progress(
+            clamped,
+            local_step=local_step,
+            pass_index=pass_index,
+            pass_total=pass_total,
+            detail=detail,
+            combine_index=combine_index,
+            combine_total=combine_total,
+        )
 
     def console(self, text: str) -> None:
         seq = next_seq()
@@ -211,12 +266,14 @@ class JobRunner:
         *,
         wait_for_stop: float = 0.0,
         force_if_alive: bool = False,
+        clear_weight_cache: bool = False,
     ) -> None:
         """Drop cached stems and return GPU memory after a run or halt."""
         _release_inference_resources(
             self,
             wait_for_stop=wait_for_stop,
             force_if_alive=force_if_alive,
+            clear_weight_cache=clear_weight_cache,
         )
 
     # -- Source cache helpers (ported from MainWindow) --------------------------
@@ -231,11 +288,9 @@ class JobRunner:
 
     def _cached_source_callback(self, process_method, model_name=None):
         mapper = self._mapper_for(process_method)
-        model, sources = None, None
-        for key, value in mapper.items():
-            if model_name in key:
-                model, sources = key, value
-        return model, sources
+        if model_name and model_name in mapper:
+            return model_name, mapper[model_name]
+        return None, None
 
     def _cached_model_source_holder(self, process_method, sources, model_name=None):
         mapper = self._mapper_for(process_method)
@@ -262,23 +317,8 @@ class JobRunner:
         return assemble_model_data(self.settings, self.repo, model_name, method)
 
     def _count_true_models(self, models: List[ModelData]) -> int:
-        """Mirror ``process_start``'s ``true_model_count`` (UVR.py L6742-6744).
-
-        Each activated secondary model adds a second inference pass; Demucs
-        4-stem secondaries and the Demucs pre-process model add their own; the
-        vocal splitter adds one when active.
-        """
-        true_model_4_stem_count = sum(
-            m.demucs_4_stem_added_count if m.process_method == DEMUCS_ARCH_TYPE else 0 for m in models
-        )
-        true_model_pre_proc_model_count = sum(2 if m.pre_proc_model_activated else 0 for m in models)
-        base = sum(2 if m.is_secondary_model_activated else 1 for m in models)
-        return base + true_model_4_stem_count + true_model_pre_proc_model_count + self._determine_voc_split(models)
-
-    def _determine_voc_split(self, models: List[ModelData]) -> int:
-        """Approximate ``MainWindow.determine_voc_split``: +1 when an active
-        vocal splitter applies to the run."""
-        return 1 if any(getattr(m, "is_vocal_split_model_activated", False) for m in models) else 0
+        """Progress denominator: shared with the Save stems workload estimate."""
+        return count_inference_passes_from_models(models)
 
     def _build_all_models(self, models: List[ModelData]) -> None:
         """Port of ``cached_source_model_list_check``'s ``all_models`` list.
@@ -305,10 +345,15 @@ class JobRunner:
                 demucs_4_stem.extend(n for n in m.secondary_model_4_stem_model_names_list if n)
         self.all_models = [n for n in primary + secondary + pre_proc + demucs_4_stem if n]
 
-    def _run_seperator(self, seperator) -> None:
+    def _run_seperator(self, seperator):
+        """Run one separator and return captured stem arrays (for ensemble RAM path)."""
         self._active_separator = seperator
+        self._last_backend_name = getattr(seperator, "_backend_name", None)
+        stems: dict = {}
         try:
             seperator.seperate()
+            stems = _capture_separator_stem_arrays(seperator)
+            return stems
         finally:
             debug("cleanup", f"_run_seperator finally engine={type(seperator).__name__}")
             release_separator(seperator)
@@ -343,8 +388,14 @@ class JobRunner:
 
             total_files = len(input_paths)
             last_progress_fraction = 0.0
+            progress_ctx = {
+                "file_num": 1,
+                "model": None,
+                "model_num": 0,
+                "model_count": len(models),
+            }
 
-            def make_progress(file_num):
+            def make_progress():
                 def set_progress_bar(step, inference_iterations=0):
                     nonlocal last_progress_fraction
                     total_count = max(1, self.true_model_count * total_files)
@@ -352,43 +403,63 @@ class JobRunner:
                     local_step = step + inference_iterations
                     fraction = base * self.iteration - base + base * local_step
                     last_progress_fraction = fraction
-                    callbacks.progress(fraction, local_step=local_step)
+                    callbacks.progress(
+                        fraction,
+                        local_step=local_step,
+                        pass_index=max(1, self.iteration),
+                        pass_total=total_count,
+                        detail=_progress_detail(
+                            file_num=progress_ctx["file_num"],
+                            file_total=total_files,
+                            model=progress_ctx["model"],
+                            model_num=progress_ctx["model_num"],
+                            model_count=progress_ctx["model_count"],
+                        ),
+                    )
                 return set_progress_bar
 
             for file_num, audio_file in enumerate(input_paths, start=1):
                 check_stopped(self)
                 self._cached_sources_clear()
                 base_text = f"File {file_num}/{total_files} "
+                progress_ctx["file_num"] = file_num
 
                 if not os.path.isfile(audio_file):
                     callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n')
                     self.iteration += self.true_model_count
                     continue
 
-                set_progress_bar = pausable_callback(
-                    self, make_progress(file_num)
-                )
+                set_progress_bar = pausable_callback(self, make_progress())
+                decoded_mix = _decoded_mix_for_process(audio_file)
 
-                for current_model in models:
+                for model_num, current_model in enumerate(models, start=1):
                     check_stopped(self)
+                    snapshot_worker_file(audio_file, current_model)
                     self._process_iteration()
+                    progress_ctx["model"] = current_model
+                    progress_ctx["model_num"] = model_num
                     write_to_console = pausable_callback(
                         self,
                         lambda text, base_text=base_text: callbacks.console(base_text + text),
                     )
 
-                    audio_file_base = f"{file_num}_{os.path.splitext(os.path.basename(audio_file))[0]}"
-                    if self.settings.get("is_add_model_name"):
-                        audio_file_base = f"{audio_file_base}_{_model_output_label(current_model)}"
+                    track_title = track_basename_from_path(audio_file)
+                    model_label = _model_output_label(current_model)
+                    audio_file_base = format_track_base(
+                        track=track_title,
+                        model=model_label if self.settings.get("is_add_model_name") else None,
+                        file_index=file_num,
+                        file_total=total_files,
+                        timestamp=testing_timestamp_prefix(self.settings),
+                    )
 
                     model_export_path = export_path
                     if self.settings.get("is_create_model_folder"):
-                        model_label = _model_output_label(current_model)
                         if model_label:
                             model_export_path = os.path.join(
                                 export_path,
-                                model_label,
-                                os.path.splitext(os.path.basename(audio_file))[0],
+                                sanitize_filename_component(model_label),
+                                track_title,
                             )
                             os.makedirs(model_export_path, exist_ok=True)
 
@@ -396,7 +467,8 @@ class JobRunner:
                         "model_data": current_model,
                         "export_path": model_export_path,
                         "audio_file_base": audio_file_base,
-                        "audio_file": audio_file,
+                        "audio_file": decoded_mix,
+                        "audio_file_path": audio_file,
                         "set_progress_bar": set_progress_bar,
                         "write_to_console": write_to_console,
                         "process_iteration": pausable_callback(self, self._process_iteration),
@@ -425,7 +497,7 @@ class JobRunner:
                     self._run_seperator(seperator)
                     debug("worker", f"separate done engine={engine}")
 
-                clear_gpu_cache()
+                clear_gpu_cache(getattr(self, "_last_backend_name", None))
 
             callbacks.progress(1.0)
             callbacks.console(f"\nProcess complete\n{time_elapsed()}\n")
@@ -488,8 +560,14 @@ class JobRunner:
 
             total_files = len(input_paths)
             last_progress_fraction = 0.0
+            progress_ctx = {
+                "file_num": 1,
+                "model": None,
+                "model_num": 0,
+                "model_count": len(models),
+            }
 
-            def make_progress(file_num):
+            def make_progress():
                 def set_progress_bar(step, inference_iterations=0):
                     nonlocal last_progress_fraction
                     total_count = max(1, self.true_model_count * total_files)
@@ -497,28 +575,54 @@ class JobRunner:
                     local_step = step + inference_iterations
                     fraction = base * self.iteration - base + base * local_step
                     last_progress_fraction = fraction
-                    callbacks.progress(fraction, local_step=local_step)
+                    callbacks.progress(
+                        fraction,
+                        local_step=local_step,
+                        pass_index=max(1, self.iteration),
+                        pass_total=total_count,
+                        detail=_progress_detail(
+                            file_num=progress_ctx["file_num"],
+                            file_total=total_files,
+                            model=progress_ctx["model"],
+                            model_num=progress_ctx["model_num"],
+                            model_count=progress_ctx["model_count"],
+                        ),
+                    )
                 return set_progress_bar
 
             for file_num, audio_file in enumerate(input_paths, start=1):
                 check_stopped(self)
                 self._cached_sources_clear()
                 base_text = f"File {file_num}/{total_files} "
+                progress_ctx["file_num"] = file_num
 
                 if not os.path.isfile(audio_file):
                     callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n')
                     self.iteration += self.true_model_count
                     continue
 
-                set_progress_bar = pausable_callback(
-                    self, make_progress(file_num)
-                )
-                audio_file_base = ""
+                set_progress_bar = pausable_callback(self, make_progress())
                 current_model = None
+                # stem_tag -> list of member waveforms for in-memory combine
+                ensemble_stem_arrays: dict = {}
+                track_title = track_basename_from_path(audio_file)
+                stamp = testing_timestamp_prefix(self.settings)
+                decoded_mix = _decoded_mix_for_process(audio_file)
+                ensemble_final_base = format_track_base(
+                    track=track_title,
+                    model=None,
+                    file_index=file_num,
+                    file_total=total_files,
+                    timestamp=stamp,
+                    ensemble=ensemble.append_ensemble_label,
+                )
 
                 for current_model_num, current_model in enumerate(models, start=1):
                     check_stopped(self)
+                    snapshot_worker_file(audio_file, current_model)
                     self._process_iteration()
+                    progress_ctx["model"] = current_model
+                    progress_ctx["model_num"] = current_model_num
                     callbacks.console(
                         f"Ensemble Mode - {_model_output_label(current_model)} - "
                         f"Model {current_model_num}/{len(models)}\n"
@@ -528,14 +632,21 @@ class JobRunner:
                         lambda text, base_text=base_text: callbacks.console(base_text + text),
                     )
 
-                    audio_file_base = f"{file_num}_{os.path.splitext(os.path.basename(audio_file))[0]}"
-                    audio_file_base = f"{audio_file_base}_{_model_output_label(current_model)}"
+                    model_label = _model_output_label(current_model)
+                    audio_file_base = format_track_base(
+                        track=track_title,
+                        model=model_label,
+                        file_index=file_num,
+                        file_total=total_files,
+                        timestamp=stamp,
+                    )
 
                     process_data = {
                         "model_data": current_model,
                         "export_path": export_path,
                         "audio_file_base": audio_file_base,
-                        "audio_file": audio_file,
+                        "audio_file": decoded_mix,
+                        "audio_file_path": audio_file,
                         "set_progress_bar": set_progress_bar,
                         "write_to_console": write_to_console,
                         "process_iteration": pausable_callback(self, self._process_iteration),
@@ -545,6 +656,9 @@ class JobRunner:
                         "list_all_models": self.all_models,
                         "is_ensemble_master": True,
                         "is_4_stem_ensemble": is_4_stem,
+                        "is_save_all_outputs_ensemble": bool(
+                            self.settings.get("is_save_all_outputs_ensemble")
+                        ),
                     }
 
                     if current_model.process_method == VR_ARCH_TYPE:
@@ -561,22 +675,28 @@ class JobRunner:
                         "worker",
                         f"ensemble separate start engine={engine} model={current_model.model_basename!r}",
                     )
-                    self._run_seperator(seperator)
+                    member_stems = self._run_seperator(seperator) or {}
+                    for stem_tag, arr in member_stems.items():
+                        ensemble_stem_arrays.setdefault(stem_tag, []).append(arr)
                     debug("worker", f"ensemble separate done engine={engine}")
                     callbacks.console("\n")
 
                 # Combine each member's stems into the final ensemble outputs.
-                if current_model is not None:
-                    audio_file_base = audio_file_base.replace(f"_{_model_output_label(current_model)}", "")
                 callbacks.console(base_text + "Ensembling outputs...\n")
                 combine_started = time.perf_counter()
 
                 combine_steps: List[tuple] = []
                 if is_4_stem:
-                    for output_stem in _extract_stems(audio_file_base, export_path):
-                        combine_steps.append(
-                            (output_stem, {"is_4_stem": True}),
-                        )
+                    stem_names = [
+                        name
+                        for name, arrs in ensemble_stem_arrays.items()
+                        if len(arrs) > 1
+                    ]
+                    if not stem_names:
+                        stem_names = _extract_stems(ensemble_final_base, export_path)
+                    combine_steps = [
+                        (output_stem, {"is_4_stem": True}) for output_stem in stem_names
+                    ]
                 else:
                     if not self.settings.get("is_secondary_stem_only"):
                         combine_steps.append((PRIMARY_STEM, {}))
@@ -589,17 +709,30 @@ class JobRunner:
                 combine_end = file_num / max(1, total_files)
                 for combine_idx, (stem_name, kwargs) in enumerate(combine_steps):
                     ensemble.ensemble_outputs(
-                        audio_file_base, export_path, stem_name, **kwargs
+                        ensemble_final_base,
+                        export_path,
+                        stem_name,
+                        stem_arrays=ensemble_stem_arrays,
+                        **kwargs,
                     )
                     span = max(combine_end - combine_start, 0.0)
                     fraction = combine_start + span * ((combine_idx + 1) / combine_total)
                     local_step = combine_progress_local_step(combine_idx, combine_total)
                     last_progress_fraction = fraction
-                    callbacks.progress(fraction, local_step=local_step)
+                    total_count = max(1, self.true_model_count * total_files)
+                    callbacks.progress(
+                        fraction,
+                        local_step=local_step,
+                        pass_index=total_count,
+                        pass_total=total_count,
+                        combine_index=combine_idx + 1,
+                        combine_total=combine_total,
+                        detail=f"Combining {combine_idx + 1}/{combine_total}",
+                    )
 
                 debug_elapsed("worker", "ensemble combine", combine_started)
                 callbacks.console("Done\n")
-                clear_gpu_cache()
+                clear_gpu_cache(getattr(self, "_last_backend_name", None))
 
             # Drop the temp folder if it was a scratch dir and is now empty.
             try:
@@ -626,6 +759,16 @@ class JobRunner:
             callbacks.error(exc)
         finally:
             _release_inference_resources(self)
+
+
+def _capture_separator_stem_arrays(seperator) -> dict:
+    """Copy stem waveforms buffered by an ensemble member before release."""
+    buffers = getattr(seperator, "_ensemble_stem_buffers", None) or {}
+    if not buffers:
+        return {}
+    import numpy as np
+
+    return {name: np.array(arr, copy=True) for name, arr in buffers.items()}
 
 
 def _extract_stems(audio_file_base: str, export_path: str) -> List[str]:
@@ -661,16 +804,21 @@ class Ensembler:
         self.is_save_all_outputs_ensemble = settings.get("is_save_all_outputs_ensemble")
 
         chosen = settings.get("chosen_ensemble", CHOOSE_ENSEMBLE_OPTION)
-        chosen_ensemble_name = chosen.replace(" ", "_") if chosen and chosen != CHOOSE_ENSEMBLE_OPTION else "Ensembled"
+        if chosen and chosen != CHOOSE_ENSEMBLE_OPTION:
+            chosen_ensemble_name = sanitize_filename_component(chosen) or "Ensembled"
+        else:
+            chosen_ensemble_name = "Ensembled"
         ensemble_algorithm = settings.get("ensemble_type", MAX_MIN).partition("/")
         ensemble_main_stem_pair = settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR).partition("/")
         time_stamp = round(time.time())
 
         self.main_export_path = settings.get("export_path")
-        self.chosen_ensemble = f"_{chosen_ensemble_name}" if settings.get("is_append_ensemble_name") else ""
+        self.append_ensemble_label = (
+            chosen_ensemble_name if settings.get("is_append_ensemble_name") else None
+        )
         ensemble_folder_root = self.main_export_path if self.is_save_all_outputs_ensemble else paths.ENSEMBLE_TEMP_PATH
-        self.ensemble_folder_name = os.path.join(ensemble_folder_root, f"{chosen_ensemble_name}_Outputs_{time_stamp}")
-        self.is_testing_audio = f"{time_stamp}_" if settings.get("is_testing_audio") else ""
+        folder_label = sanitize_filename_component(chosen_ensemble_name.replace(" ", "_")) or "Ensembled"
+        self.ensemble_folder_name = os.path.join(ensemble_folder_root, f"{folder_label}_Outputs_{time_stamp}")
         self.primary_algorithm = ensemble_algorithm[0]
         self.secondary_algorithm = ensemble_algorithm[2]
         self.ensemble_primary_stem = ensemble_main_stem_pair[0]
@@ -684,8 +832,20 @@ class Ensembler:
         if not is_manual_ensemble:
             os.makedirs(self.ensemble_folder_name, exist_ok=True)
 
-    def ensemble_outputs(self, audio_file_base, export_path, stem, is_4_stem=False, is_inst_mix=False):
-        """Combine the per-member outputs for ``stem`` with the chosen algorithm."""
+    def ensemble_outputs(
+        self,
+        audio_file_base,
+        export_path,
+        stem,
+        is_4_stem=False,
+        is_inst_mix=False,
+        stem_arrays=None,
+    ):
+        """Combine the per-member outputs for ``stem`` with the chosen algorithm.
+
+        Prefer in-memory member waveforms from ``stem_arrays`` when present
+        (ensemble scratch path); otherwise fall back to disk ``.wav`` members.
+        """
         debug("worker", f"ensemble_outputs stem={stem!r} is_4_stem={is_4_stem} is_inst_mix={is_inst_mix}")
         from ml import spec_utils
         from engines.separate import save_format as _save_format
@@ -700,11 +860,30 @@ class Ensembler:
             algorithm = self.primary_algorithm if stem == PRIMARY_STEM else self.secondary_algorithm
             stem_tag = self.ensemble_primary_stem if stem == PRIMARY_STEM else self.ensemble_secondary_stem
 
-        stem_outputs = self.get_files_to_ensemble(folder=export_path, prefix=audio_file_base, suffix=f"_({stem_tag}).wav")
-        audio_file_output = f"{self.is_testing_audio}{audio_file_base}{self.chosen_ensemble}_({stem_tag})"
+        array_inputs = list((stem_arrays or {}).get(stem_tag, []))
+        stem_suffix = f" ({sanitize_filename_component(stem_tag)}).wav"
+        # Member files are ``{final_base} {model} ({stem}).wav``; match by track prefix.
+        match_prefix = audio_file_base
+        if self.append_ensemble_label and match_prefix.endswith(f" {self.append_ensemble_label}"):
+            match_prefix = match_prefix[: -(len(self.append_ensemble_label) + 1)]
+        stem_outputs = self.get_files_to_ensemble(
+            folder=export_path, prefix=match_prefix, suffix=stem_suffix
+        )
+        audio_file_output = format_stem_basename(audio_file_base, stem_tag)
         stem_save_path = os.path.join(f"{self.main_export_path}", f"{audio_file_output}.wav")
 
-        if len(stem_outputs) > 1:
+        if len(array_inputs) > 1:
+            spec_utils.ensemble_inputs(
+                array_inputs,
+                algorithm,
+                self.is_normalization,
+                self.wav_type_set,
+                stem_save_path,
+                is_wave=self.is_wav_ensemble,
+                is_array=True,
+            )
+            _save_format(stem_save_path, self.save_format, self.mp3_bit_set, self.flac_bit_set)
+        elif len(stem_outputs) > 1:
             spec_utils.ensemble_inputs(
                 stem_outputs,
                 algorithm,

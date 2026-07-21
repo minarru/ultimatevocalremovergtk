@@ -52,9 +52,30 @@ _NOTIFY_COMPLETE_BODY_PLAIN = "Processing finished"
 _NOTIFY_FAILED_TITLE = "{label} failed"
 _NOTIFY_FAILED_BODY = "Open the app to see the error log"
 _PROGRESS_STARTING = "Starting…"
+_PROGRESS_IMPORTING = "Importing engines…"
+_PROGRESS_LOADING_ENGINES = "Loading engines…"
 _PROGRESS_DONE = "Done"
 _PROGRESS_EPSILON = 0.001
+_PROGRESS_UI_MIN_INTERVAL = 0.1  # ~10 Hz UI updates during inference
 _EXIT_CLEANUP_TIMEOUT_MS = 10_000
+
+
+def _starting_progress_text() -> str:
+    if engines_imported():
+        return _PROGRESS_STARTING
+    if warm_status() == "in_progress":
+        return _PROGRESS_IMPORTING
+    return _PROGRESS_LOADING_ENGINES
+
+
+def target_blocked_reason(target) -> Optional[str]:
+    """Return a target readiness reason without allowing UI validation to fail."""
+    if target is None:
+        return "Choose a processing mode"
+    try:
+        return target.start_blocked_reason()
+    except Exception:  # noqa: BLE001 - readiness must never break the UI
+        return None
 
 
 class RunController:
@@ -67,6 +88,10 @@ class RunController:
         self._run_label = "Processing"
         self._run_started_at = 0.0
         self._eta_tracker = ProgressEtaTracker()
+        self._last_progress_ui_at = 0.0
+        self._last_progress_phase: Optional[str] = None
+        self._last_progress_pass: Optional[int] = None
+        self._last_progress_combine: Optional[int] = None
         self._stop_confirm_dialog: Optional[Adw.AlertDialog] = None
         self._shutdown_dialog: Optional[Adw.AlertDialog] = None
         self._cleanup_target: Any = None
@@ -118,10 +143,7 @@ class RunController:
 
     def handle_start(self, target) -> None:
         """Validate readiness, then hand off to the active run target."""
-        try:
-            reason = target.start_blocked_reason()
-        except Exception:  # noqa: BLE001 - readiness check must never break the UI
-            reason = None
+        reason = target_blocked_reason(target)
         if reason is not None:
             debug("ui", f"handle_start blocked reason={reason!r}")
             self._window._toast(reason)
@@ -139,17 +161,26 @@ class RunController:
 
     def begin_run(self, target) -> None:
         """Shared bookkeeping when any run target starts its worker."""
+        from core.error_context import clear_run_error_context, set_run_error_context
+
         mark_run_start()
         reset_progress_log()
+        clear_run_error_context()
+        set_run_error_context(**self._snapshot_error_context(target))
         debug("ui", f"begin_run target={type(target).__name__} engines_imported={engines_imported()} warm={warm_status()}")
         self._running_target = target
         self._run_output_dir = self._window.settings.get("export_path") or ""
         self._run_label = self._run_label_for(target)
+        self._window.log_panel.set_run_label(self._run_label)
         self._run_started_at = time.monotonic()
         self._eta_tracker.reset()
+        self._last_progress_ui_at = 0.0
+        self._last_progress_phase = None
+        self._last_progress_pass = None
+        self._last_progress_combine = None
         self._window.console.clear()
         self._window.log_panel.set_progress_fraction(0.0)
-        self._window.log_panel.set_progress_text(_PROGRESS_STARTING)
+        self._window.log_panel.set_progress_text(_starting_progress_text())
         self._window._start_pulse()
         self._set_running(True)
         self._window._reveal_log_panel(True)
@@ -298,6 +329,9 @@ class RunController:
         """Pause run-driven widget updates while a confirm dialog is on screen."""
         self._run_ui_suspended = True
         self._window._stop_pulse()
+        target = self._running_target
+        if target is not None and hasattr(target, "pause"):
+            target.pause()
 
     def _resume_run_ui_after_dialog(self) -> None:
         debug("ui", f"resume_run_ui after dialog dismissed running={self.is_running()}")
@@ -428,12 +462,18 @@ class RunController:
         clear_run_start()
 
     def _on_stopped(self) -> None:
+        from core.error_context import clear_run_error_context
+
         debug("ui", "on_stopped cooperative worker stop")
+        clear_run_error_context()
         self._cleanup_target = None
         self._finish_run_ui(stopped=True)
 
     def _on_complete(self) -> None:
+        from core.error_context import clear_run_error_context
+
         debug("ui", f"on_complete output_dir={os.path.basename(self._run_output_dir or '') or '(none)'}")
+        clear_run_error_context()
         self._window._stop_pulse()
         self._set_running(False)
         self._window.log_panel.set_progress_fraction(1.0)
@@ -449,7 +489,7 @@ class RunController:
         debug("ui", f"on_error error={type(exc).__name__}: {exc}")
         self._window._stop_pulse()
         self._set_running(False)
-        self._window.log_panel.set_progress_text("")
+        self._window.log_panel.set_progress_text("Failed")
         message = f"Process failed: {exc}"
         self._window.console.append(f"\n{message}\n")
         self._report_error(message, exc)
@@ -498,23 +538,88 @@ class RunController:
             body=_NOTIFY_FAILED_BODY,
         )
 
-    def _on_progress(self, fraction: float, local_step: Optional[float] = None) -> None:
+    def _on_progress(
+        self,
+        fraction: float,
+        local_step: Optional[float] = None,
+        pass_index: Optional[int] = None,
+        pass_total: Optional[int] = None,
+        detail: Optional[str] = None,
+        combine_index: Optional[int] = None,
+        combine_total: Optional[int] = None,
+        **_extra,
+    ) -> None:
         if self._run_ui_suspended:
             return
-        if fraction > _PROGRESS_EPSILON:
-            self._window._stop_pulse()
-            self._window.log_panel.set_progress_fraction(fraction)
-            now = time.monotonic()
-            self._eta_tracker.update(fraction, now, local_step=local_step)
-            elapsed = max(0.0, now - self._run_started_at)
-            self._window.log_panel.set_progress_text(
-                self._eta_tracker.format_text(fraction, elapsed, now=now)
-            )
+        now = time.monotonic()
+        self._eta_tracker.update(
+            fraction,
+            now,
+            local_step=local_step,
+            pass_index=pass_index,
+            pass_total=pass_total,
+            detail=detail,
+            combine_index=combine_index,
+            combine_total=combine_total,
+        )
+        phase = self._eta_tracker.phase(fraction)
+        force_ui = (
+            fraction >= 1.0 - _PROGRESS_EPSILON
+            or phase != self._last_progress_phase
+            or pass_index != self._last_progress_pass
+            or combine_index != self._last_progress_combine
+        )
+        if (
+            not force_ui
+            and (now - self._last_progress_ui_at) < _PROGRESS_UI_MIN_INTERVAL
+        ):
+            return
+        self._last_progress_ui_at = now
+        self._last_progress_phase = phase
+        self._last_progress_pass = pass_index
+        self._last_progress_combine = combine_index
 
-    def _progress_text(self, fraction: float, local_step: Optional[float] = None) -> str:
+        elapsed = max(0.0, now - self._run_started_at)
+        self._window.log_panel.set_progress_text(
+            self._eta_tracker.format_text(fraction, elapsed, now=now)
+        )
+
+        if fraction >= 1.0 - _PROGRESS_EPSILON:
+            self._window._stop_pulse()
+            self._window.log_panel.set_progress_fraction(1.0)
+            return
+        if fraction <= _PROGRESS_EPSILON and self._eta_tracker.held_display <= 0:
+            self._window._start_pulse()
+            return
+
+        # Mid-run load/save/combine: keep the last inference fill and show phase
+        # text (GTK pulse would wipe the determinate bar). Pulse only before any
+        # inference progress exists.
+        if self._eta_tracker.is_indeterminate(fraction):
+            held = self._eta_tracker.held_display
+            if held > _PROGRESS_EPSILON:
+                self._window._stop_pulse()
+                self._window.log_panel.set_progress_fraction(held)
+            else:
+                self._window._start_pulse()
+            return
+
+        display = self._eta_tracker.inference_display_fraction(fraction)
+        if display is None:
+            held = self._eta_tracker.held_display
+            if held > _PROGRESS_EPSILON:
+                self._window._stop_pulse()
+                self._window.log_panel.set_progress_fraction(held)
+            else:
+                self._window._start_pulse()
+            return
+        self._window._stop_pulse()
+        self._window.log_panel.set_progress_fraction(display)
+
+    def _progress_text(self, fraction: float, local_step: Optional[float] = None, **kwargs) -> str:
         now = time.monotonic()
         elapsed = max(0.0, now - self._run_started_at)
-        self._eta_tracker.update(fraction, now, local_step=local_step)
+        self._eta_tracker.update(fraction, now, local_step=local_step, **kwargs)
         return self._eta_tracker.format_text(fraction, elapsed, now=now)
 
     def _report_error(self, message: str, exc: BaseException) -> None:
@@ -535,9 +640,89 @@ class RunController:
             on_copied=lambda: window._toast("Report copied to clipboard"),
         )
 
+    def _snapshot_error_context(self, target) -> dict:
+        from core.error_context import (
+            build_audio_tools_context,
+            build_ensemble_context,
+            build_separation_context,
+        )
+
+        window = self._window
+        settings = window.settings
+        repo = window.context.repo
+        tab = window.content_stack.get_visible_child_name()
+
+        if tab == "ensemble":
+            page = getattr(window, "_ensemble_page", None)
+            paths = list(page.input_row.paths) if page is not None else []
+            return build_ensemble_context(settings, paths)
+        if tab == "audio_tools":
+            from bundled.constants import (
+                APOLLO_RESTORE,
+                CHANGE_PITCH,
+                MANUAL_ENSEMBLE,
+                TIME_STRETCH,
+            )
+            from core.audio_tools import DUAL_INPUT_TOOLS
+
+            page = getattr(window, "_audio_tools_page", None)
+            tool = page._current_tool() if page is not None else "Audio Tools"
+            paths: list[str] = []
+            if page is not None:
+                if tool in DUAL_INPUT_TOOLS:
+                    paths = [os.path.basename(left) for left, _right in page._dual_pairs]
+                else:
+                    paths = list(page.inputs_row.paths)
+            return build_audio_tools_context(settings, tool, paths)
+
+        method_key = window._active_view().method_key
+        return build_separation_context(
+            settings,
+            repo,
+            list(window.input_row.paths),
+            method_key,
+        )
+
     def _set_running(self, running: bool) -> None:
-        self._window.start_button.set_sensitive(not running)
+        # Update Stop first: ``is_running()`` is ``_running_target and stop
+        # sensitive``. On unlock, ``_sync_model_options_action`` must see
+        # ``is_running() is False`` or Model options stays disabled.
         self._window.stop_button.set_sensitive(running)
+        self._set_options_sensitive(not running)
+        self._set_edit_actions_sensitive(not running)
+        if running:
+            self._window.start_button.set_sensitive(False)
+        else:
+            self.refresh_start_readiness()
+
+    def _set_options_sensitive(self, sensitive: bool) -> None:
+        """Lock editable option surfaces while leaving tabs and logs usable."""
+        for page in getattr(self._window, "_options_pages", ()):
+            page.set_sensitive(sensitive)
+
+    def _set_edit_actions_sensitive(self, sensitive: bool) -> None:
+        for name in ("settings", "view_inputs", "model_options"):
+            action = self._window.lookup_action(name)
+            if action is not None:
+                action.set_enabled(sensitive)
+        if sensitive:
+            self._window._sync_model_options_action()
+
+    def refresh_start_readiness(self) -> Optional[str]:
+        """Synchronize Start sensitivity, tooltip and accessibility description."""
+        if self._running_target is not None and self._window.stop_button.get_sensitive():
+            return None
+        target = getattr(self._window, "_run_target", None)
+        reason = target_blocked_reason(target)
+        button = self._window.start_button
+        button.set_sensitive(reason is None)
+        description = reason or "Start processing"
+        button.set_tooltip_text(description)
+        button.update_property(
+            [Gtk.AccessibleProperty.DESCRIPTION],
+            [description],
+        )
+        return reason
 
     def _stop_all_workers(self, *, force: bool = False) -> None:
         debug("ui", f"stop_all_workers force={force}")
@@ -566,6 +751,7 @@ class RunController:
         )
         self._schedule_release_inference_memory(
             force_if_alive=True,
+            clear_weight_cache=True,
             on_done=self._finish_exit_cleanup,
         )
 
@@ -602,12 +788,14 @@ class RunController:
         *,
         wait_for_stop: float = 0.0,
         force_if_alive: bool = False,
+        clear_weight_cache: bool = False,
         on_done: Optional[Callable[[], None]] = None,
     ) -> None:
         debug(
             "cleanup",
             "schedule_release_inference_memory "
-            f"wait_for_stop={wait_for_stop} force_if_alive={force_if_alive}",
+            f"wait_for_stop={wait_for_stop} force_if_alive={force_if_alive} "
+            f"clear_weight_cache={clear_weight_cache}",
         )
 
         def worker() -> None:
@@ -615,6 +803,7 @@ class RunController:
                 self._release_inference_memory(
                     wait_for_stop=wait_for_stop,
                     force_if_alive=force_if_alive,
+                    clear_weight_cache=clear_weight_cache,
                 )
             finally:
                 if on_done is not None:
@@ -631,21 +820,25 @@ class RunController:
         *,
         wait_for_stop: float = 0.0,
         force_if_alive: bool = False,
+        clear_weight_cache: bool = False,
     ) -> None:
         debug(
             "cleanup",
-            f"release_inference_memory wait_for_stop={wait_for_stop} force_if_alive={force_if_alive}",
+            f"release_inference_memory wait_for_stop={wait_for_stop} "
+            f"force_if_alive={force_if_alive} clear_weight_cache={clear_weight_cache}",
         )
         window = self._window
         window.context.runner.release_inference_memory(
             wait_for_stop=wait_for_stop,
             force_if_alive=force_if_alive,
+            clear_weight_cache=clear_weight_cache,
         )
         page = getattr(window, "_audio_tools_page", None)
         if page is not None:
             page.runner.release_inference_memory(
                 wait_for_stop=wait_for_stop,
                 force_if_alive=force_if_alive,
+                clear_weight_cache=clear_weight_cache,
             )
 
 

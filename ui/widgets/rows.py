@@ -130,6 +130,9 @@ def use_wrapping_list(row: Adw.ComboRow) -> None:
     row.set_expression(Gtk.PropertyExpression.new(Gtk.StringObject, None, "string"))
     if hasattr(row, "set_enable_search"):
         row.set_enable_search(True)
+    # Default PREFIX matching misses mid-name queries like "Vocal" in "Kim Vocal 2".
+    if hasattr(row, "set_search_match_mode"):
+        row.set_search_match_mode(Gtk.StringFilterMatchMode.SUBSTRING)
     row.set_use_subtitle(True)
     # Allow the value subtitle to wrap onto multiple lines for very long names.
     if hasattr(row, "set_subtitle_lines"):
@@ -360,6 +363,47 @@ def make_numeric_scale_row(
     return row
 
 
+def set_scale_default_mark(
+    row: Adw.ActionRow,
+    default,
+    *,
+    position=Gtk.PositionType.BOTTOM,
+    label: Optional[str] = None,
+) -> None:
+    """Place a tick mark at the scale's default value (index or numeric)."""
+    scale = getattr(row, "_uvr_scale", None)
+    if scale is None:
+        return
+    row._uvr_default = default
+    row._uvr_default_label = label
+    scale.clear_marks()
+    if default is None:
+        return
+    values = getattr(row, "_uvr_values", None)
+    if values:
+        target = str(default)
+        for index, choice in enumerate(values):
+            if choice == target:
+                scale.add_mark(float(index), position, label)
+                return
+        return
+    try:
+        scale.add_mark(float(default), position, label)
+    except (TypeError, ValueError):
+        return
+
+
+def refresh_scale_default_mark(row: Adw.ActionRow) -> None:
+    """Re-apply ``row._uvr_default`` after a scale is reconfigured."""
+    default = getattr(row, "_uvr_default", None)
+    if default is not None:
+        set_scale_default_mark(
+            row,
+            default,
+            label=getattr(row, "_uvr_default_label", None),
+        )
+
+
 def reconfigure_discrete_scale(row: Adw.ActionRow, values: Sequence) -> None:
     """Replace the allowed values on a discrete scale row."""
     choices = [str(value) for value in values]
@@ -369,6 +413,7 @@ def reconfigure_discrete_scale(row: Adw.ActionRow, values: Sequence) -> None:
     current = get_scale_row_value(row) or choices[0]
     set_scale_row_value(row, current)
     _update_scale_value(row)
+    refresh_scale_default_mark(row)
 
 
 def reconfigure_numeric_scale(
@@ -385,6 +430,7 @@ def reconfigure_numeric_scale(
     _configure_adjustment(row._uvr_scale.get_adjustment(), lower=lower, upper=upper, step=step)
     row._uvr_scale.set_digits(digits)
     _update_scale_value(row)
+    refresh_scale_default_mark(row)
 
 
 def get_scale_row_value(row: Adw.ActionRow) -> Optional[str]:

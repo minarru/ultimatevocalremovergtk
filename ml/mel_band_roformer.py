@@ -16,6 +16,8 @@ from einops import rearrange, pack, unpack, reduce, repeat
 
 from librosa import filters
 
+from ml.stft_device import needs_cpu_stft, torch_istft, torch_stft
+
 def exists(val):
     return val is not None
 
@@ -388,12 +390,8 @@ class MelBandRoformer(Module):
         """
 
         original_device = raw_audio.device
-        x_is_mps = True if original_device.type == 'mps' else False
-        
-        if x_is_mps:
-            raw_audio = raw_audio.cpu()
-
-        device = raw_audio.device
+        bounce = needs_cpu_stft(original_device)
+        device = original_device
 
         if raw_audio.ndim == 2:
             raw_audio = rearrange(raw_audio, 'b t -> b 1 t')
@@ -409,16 +407,19 @@ class MelBandRoformer(Module):
 
         stft_window = self.stft_window_fn(device=device)
 
-        stft_repr = torch.stft(raw_audio, **self.stft_kwargs, window=stft_window, return_complex=True)
+        stft_repr = torch_stft(raw_audio, **self.stft_kwargs, window=stft_window, return_complex=True)
         stft_repr = torch.view_as_real(stft_repr)
+        if bounce:
+            stft_repr = stft_repr.to(device)
 
         stft_repr = unpack_one(stft_repr, batch_audio_channel_packed_shape, '* f t c')
         stft_repr = rearrange(stft_repr,
                               'b s f t c -> b (f s) t c')  # merge stereo / mono into the frequency, with frequency leading dimension, for band splitting
 
         batch_arange = torch.arange(batch, device=device)[..., None]
+        freq_indices = self.freq_indices.to(device)
 
-        x = stft_repr[batch_arange, self.freq_indices.cpu()] if x_is_mps else stft_repr[batch_arange, self.freq_indices]
+        x = stft_repr[batch_arange, freq_indices]
 
         x = rearrange(x, 'b f t c -> b t (f c)')
 
@@ -442,8 +443,17 @@ class MelBandRoformer(Module):
 
         masks = torch.stack([fn(x) for fn in self.mask_estimators], dim=1)
         masks = rearrange(masks, 'b n t (f c) -> b n f t c', c=2)
-        if x_is_mps:
+
+        # Complex scatter / multiply / iSTFT finish on CPU when needed.
+        if bounce:
             masks = masks.cpu()
+            stft_repr = stft_repr.cpu()
+            stft_window = stft_window.cpu()
+            freq_indices_scatter = self.freq_indices.cpu()
+            denom = repeat(self.num_bands_per_freq.cpu(), 'f -> (f r) 1', r=channels)
+        else:
+            freq_indices_scatter = self.freq_indices
+            denom = repeat(self.num_bands_per_freq, 'f -> (f r) 1', r=channels)
 
         stft_repr = rearrange(stft_repr, 'b f t c -> b 1 f t c')
 
@@ -452,16 +462,11 @@ class MelBandRoformer(Module):
 
         masks = masks.type(stft_repr.dtype)
 
-        if x_is_mps:
-            scatter_indices = repeat(self.freq_indices.cpu(), 'f -> b n f t', b=batch, n=num_stems, t=stft_repr.shape[-1])
-        else:
-            scatter_indices = repeat(self.freq_indices, 'f -> b n f t', b=batch, n=num_stems, t=stft_repr.shape[-1])
+        scatter_indices = repeat(
+            freq_indices_scatter, 'f -> b n f t', b=batch, n=num_stems, t=stft_repr.shape[-1]
+        )
         stft_repr_expanded_stems = repeat(stft_repr, 'b 1 ... -> b n ...', n=num_stems)
         masks_summed = torch.zeros_like(stft_repr_expanded_stems).scatter_add_(2, scatter_indices, masks)
-
-        denom = repeat(self.num_bands_per_freq, 'f -> (f r) 1', r=channels)
-        if x_is_mps:
-            denom = denom.cpu()
 
         masks_averaged = masks_summed / denom.clamp(min=1e-8)
 
@@ -469,13 +474,21 @@ class MelBandRoformer(Module):
 
         stft_repr = rearrange(stft_repr, 'b n (f s) t -> (b n s) f t', s=self.audio_channels)
 
-        recon_audio = torch.istft(stft_repr, **self.stft_kwargs, window=stft_window, return_complex=False,
-                                  length=istft_length)
+        recon_audio = torch_istft(
+            stft_repr,
+            **self.stft_kwargs,
+            window=stft_window,
+            return_complex=False,
+            length=istft_length,
+        )
 
         recon_audio = rearrange(recon_audio, '(b n s) t -> b n s t', b=batch, s=self.audio_channels, n=num_stems)
 
         if num_stems == 1:
             recon_audio = rearrange(recon_audio, 'b 1 s t -> b s t')
+
+        if bounce:
+            recon_audio = recon_audio.to(original_device)
 
         if not exists(target):
             return recon_audio
@@ -493,16 +506,17 @@ class MelBandRoformer(Module):
         multi_stft_resolution_loss = 0.
 
         for window_size in self.multi_stft_resolutions_window_sizes:
+            res_window = self.multi_stft_window_fn(window_size, device=device)
             res_stft_kwargs = dict(
                 n_fft=max(window_size, self.multi_stft_n_fft),
                 win_length=window_size,
                 return_complex=True,
-                window=self.multi_stft_window_fn(window_size, device=device),
+                window=res_window,
                 **self.multi_stft_kwargs,
             )
 
-            recon_Y = torch.stft(rearrange(recon_audio, '... s t -> (... s) t'), **res_stft_kwargs)
-            target_Y = torch.stft(rearrange(target, '... s t -> (... s) t'), **res_stft_kwargs)
+            recon_Y = torch_stft(rearrange(recon_audio, '... s t -> (... s) t'), **res_stft_kwargs)
+            target_Y = torch_stft(rearrange(target, '... s t -> (... s) t'), **res_stft_kwargs)
 
             multi_stft_resolution_loss = multi_stft_resolution_loss + F.l1_loss(recon_Y, target_Y)
 
@@ -510,19 +524,7 @@ class MelBandRoformer(Module):
 
         total_loss = loss + weighted_multi_resolution_loss
 
-
-        # Move the total loss back to the original device if necessary
-        if x_is_mps:
-            total_loss = total_loss.to(original_device)
-
         if not return_loss_breakdown:
             return total_loss
 
-        # If detailed loss breakdown is requested, ensure all components are on the original device
-        return total_loss, (loss.to(original_device) if x_is_mps else loss, 
-                            multi_stft_resolution_loss.to(original_device) if x_is_mps else multi_stft_resolution_loss)
-
-        # if not return_loss_breakdown:
-        #     return total_loss
-
-        # return total_loss, (loss, multi_stft_resolution_loss)
+        return total_loss, (loss, multi_stft_resolution_loss)

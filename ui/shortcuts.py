@@ -40,7 +40,7 @@ _SECTIONS: List[Tuple[str, List[Tuple[str, str]]]] = [
         [
             ("win.settings", "Settings"),
             ("win.download", "Download Center"),
-            ("win.view_inputs", "View / Verify Inputs"),
+            ("win.view_inputs", "Verify Inputs"),
             ("win.error_log", "Error Log"),
             ("win.updates", "Check for Updates"),
             ("win.about", "About"),

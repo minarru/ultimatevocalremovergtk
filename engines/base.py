@@ -10,8 +10,10 @@ import torch
 from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
+from core.export_naming import stem_wav_path
 from core.gpu_backend import resolve_inference_backend
 from core.model_display import display_name_for_model
+from core.model_stem_semantics import export_stem_label
 from core.run_estimate import save_progress_local_step
 from ml import spec_utils
 
@@ -44,7 +46,21 @@ class SeperateAttributes:
         self.check_run_control = process_data.get('check_run_control', lambda: None)
         if vocal_stem_path:
             self.audio_file, self.audio_file_base = vocal_stem_path
-            self.audio_file_base_voc_split = lambda stem, split:os.path.join(self.export_path, f'{self.audio_file_base.replace("_(Vocals)", "")}_({stem}_{split}).wav')
+
+            def _voc_split_path(export_stem: str):
+                base = self.audio_file_base
+                for suffix in (
+                    f" ({VOCAL_STEM})",
+                    f"_({VOCAL_STEM})",
+                    f" ({LEAD_VOCAL_STEM_LABEL})",
+                    f" ({BV_VOCAL_STEM_LABEL})",
+                ):
+                    if base.endswith(suffix):
+                        base = base[: -len(suffix)]
+                        break
+                return stem_wav_path(self.export_path, base, export_stem)
+
+            self.audio_file_base_voc_split = _voc_split_path
         else:
             self.audio_file = process_data['audio_file']
             self.audio_file_base = process_data['audio_file_base']
@@ -97,6 +113,10 @@ class SeperateAttributes:
         self.is_primary_stem_only = model_data.is_primary_stem_only if not self.is_secondary_model else model_data.is_primary_model_primary_stem_only
         self.is_secondary_stem_only = model_data.is_secondary_stem_only if not self.is_secondary_model else model_data.is_primary_model_secondary_stem_only      
         self.is_ensemble_mode = model_data.is_ensemble_mode
+        self.is_save_all_outputs_ensemble = bool(
+            process_data.get("is_save_all_outputs_ensemble", False)
+        )
+        self._ensemble_stem_buffers = {}
         self.secondary_model = model_data.secondary_model #
         self.primary_model_primary_stem = model_data.primary_model_primary_stem
         self.primary_stem_native = model_data.primary_stem_native
@@ -134,7 +154,7 @@ class SeperateAttributes:
         self.is_bv_model = model_data.is_bv_model
         self.is_bv_model_rebalenced = model_data.bv_model_rebalance and self.is_vocal_split_model
         self.is_sec_bv_rebalance = model_data.is_sec_bv_rebalance
-        self.stem_path_init = os.path.join(self.export_path, f'{self.audio_file_base}_({self.secondary_stem}).wav')
+        self.stem_path_init = self.stem_export_wav_path(self.secondary_stem)
         self.deverb_vocal_opt = model_data.deverb_vocal_opt
         self.is_save_vocal_only = model_data.is_save_vocal_only
         self.device = cpu
@@ -384,6 +404,12 @@ class SeperateAttributes:
   
         return stem_source
     
+    def stem_export_wav_path(self, stem: str) -> str:
+        """``.wav`` path using karaoke/BV export labels (native stems in ensemble)."""
+        for_ensemble = self.is_ensemble_mode and not self.is_vocal_split_model
+        label = export_stem_label(self, stem, for_ensemble=for_ensemble)
+        return stem_wav_path(self.export_path, self.audio_file_base, label)
+
     def final_process(self, stem_path, source, secondary_source, stem_name, samplerate):
         with trace_phase("separate", "final_process", stem=stem_name, model=self.model_basename):
             source = self.process_secondary_stem(source, secondary_source)
@@ -394,22 +420,53 @@ class SeperateAttributes:
         
         def save_audio_file(path, source):
             source = spec_utils.normalize(source, self.is_normalization)
+            # Ensemble scratch members: keep arrays in memory and skip disk when
+            # the user did not ask to keep every member output.
+            if (
+                self.is_ensemble_mode
+                and not self.is_vocal_split_model
+                and not getattr(self, "is_save_all_outputs_ensemble", False)
+            ):
+                if stem_name:
+                    buffers = getattr(self, "_ensemble_stem_buffers", None)
+                    if buffers is None:
+                        buffers = {}
+                        self._ensemble_stem_buffers = buffers
+                    buffers[stem_name] = np.asarray(source)
+                return
+
+            if is_not_ensemble and self.save_format == FLAC:
+                from core.audio_io import flac_subtype, replace_audio_suffix
+
+                flac_path = replace_audio_suffix(path, ".flac")
+                sf.write(
+                    flac_path,
+                    source,
+                    samplerate,
+                    format="FLAC",
+                    subtype=flac_subtype(self.flac_bit_set),
+                )
+                return
+
             sf.write(path, source, samplerate, subtype=self.wav_type_set)
 
             if is_not_ensemble:
                 save_format(path, self.save_format, self.mp3_bit_set, self.flac_bit_set)
 
         def save_voc_split_instrumental(stem_name, stem_source, is_inst_invert=False):
-            inst_stem_name = "Instrumental (With Lead Vocals)" if stem_name == LEAD_VOCAL_STEM else "Instrumental (With Backing Vocals)"
-            inst_stem_path_name = LEAD_VOCAL_STEM_I if stem_name == LEAD_VOCAL_STEM else BV_VOCAL_STEM_I
-            inst_stem_path = self.audio_file_base_voc_split(INST_STEM, inst_stem_path_name)
+            inst_stem_name = (
+                INST_WITH_LEAD_VOCALS_STEM
+                if stem_name == LEAD_VOCAL_STEM
+                else INST_WITH_BACKING_VOCALS_STEM
+            )
+            inst_stem_path = self.audio_file_base_voc_split(inst_stem_name)
             stem_source = -stem_source if is_inst_invert else stem_source
             inst_stem_source = spec_utils.combine_arrarys([self.master_inst_source, stem_source], is_swap=True)
             save_with_message(inst_stem_path, inst_stem_name, inst_stem_source)
 
         def save_voc_split_vocal(stem_name, stem_source):
             voc_split_stem_name = LEAD_VOCAL_STEM_LABEL if stem_name == LEAD_VOCAL_STEM else BV_VOCAL_STEM_LABEL
-            voc_split_stem_path = self.audio_file_base_voc_split(VOCAL_STEM, stem_name)
+            voc_split_stem_path = self.audio_file_base_voc_split(voc_split_stem_name)
             save_with_message(voc_split_stem_path, voc_split_stem_name, stem_source)
 
         def save_with_message(stem_path, stem_name, stem_source):

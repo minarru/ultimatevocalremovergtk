@@ -12,6 +12,9 @@ separate, user-writable location:
   download cache JSON).
 * Writable **runtime data** resolves relative to :data:`DATA_DIR` (models, model
   data caches, downloaded aux models, temp dirs and the settings pickle).
+* Ephemeral **download/catalog caches** resolve under :data:`CACHE_DIR`
+  (``$UVR_CACHE_DIR`` or the OS cache dir) so portable checkouts are not
+  littered with ``download_size_cache.json`` / ``politrees_model_links.json``.
 
 ``DATA_DIR`` resolution order (backward compatible):
 
@@ -25,8 +28,9 @@ separate, user-writable location:
 
 import os
 import shutil
+import time
 
-from .platform import user_data_dir
+from .platform import user_cache_dir, user_data_dir
 
 BASE_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -51,6 +55,9 @@ def _resolve_data_dir() -> str:
 
 # --- Writable runtime data ---------------------------------------------------
 DATA_DIR = _resolve_data_dir()
+
+# OS cache dir for download/catalog JSON caches (not portable settings/models).
+CACHE_DIR = user_cache_dir()
 
 MODELS_DIR = os.path.join(DATA_DIR, "models")
 VR_MODELS_DIR = os.path.join(MODELS_DIR, "VR_Models")
@@ -80,12 +87,48 @@ DEVERBER_MODEL_PATH = os.path.join(VR_MODELS_DIR, "UVR-DeEcho-DeReverb.pth")
 
 SAMPLE_CLIP_PATH = os.path.join(DATA_DIR, "temp_sample_clips")
 ENSEMBLE_TEMP_PATH = os.path.join(DATA_DIR, "ensemble_temps")
+ENSEMBLE_TEMP_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
 
 SETTINGS_DATA_FILE = os.path.join(DATA_DIR, "data.pkl")
+
+# Download / catalogue JSON caches (under CACHE_DIR so portable checkouts stay clean).
+DOWNLOAD_SIZE_CACHE_FILE = os.path.join(CACHE_DIR, "download_size_cache.json")
+POLITREES_CACHE_FILE = os.path.join(CACHE_DIR, "politrees_model_links.json")
 
 # Saved ensembles / settings profiles (JSON). Writable under DATA_DIR.
 SETTINGS_CACHE_DIR = os.path.join(DATA_DIR, "profiles")
 ENSEMBLE_CACHE_DIR = os.path.join(DATA_DIR, "ensembles")
+
+
+def migrate_cache_file(filename: str, dest_path: str) -> str:
+    """Return ``dest_path``, moving a legacy copy from ``DATA_DIR`` / repo root once.
+
+    Legacy locations (pre-cache-dir split) were ``DATA_DIR/<filename>`` and, when
+    that equalled the checkout root, the same file at ``BASE_PATH/<filename>``.
+    """
+    os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
+    if os.path.isfile(dest_path):
+        return dest_path
+    candidates = []
+    legacy_data = os.path.join(DATA_DIR, filename)
+    if legacy_data != dest_path:
+        candidates.append(legacy_data)
+    legacy_base = os.path.join(BASE_PATH, filename)
+    if legacy_base != dest_path and legacy_base != legacy_data:
+        candidates.append(legacy_base)
+    for src in candidates:
+        if not os.path.isfile(src):
+            continue
+        try:
+            shutil.move(src, dest_path)
+            return dest_path
+        except OSError:
+            try:
+                shutil.copy2(src, dest_path)
+                return dest_path
+            except OSError:
+                continue
+    return dest_path
 
 # Legacy paths from the Tk / early GTK layout (``gui_data/saved_*``).
 _LEGACY_SETTINGS_DIRS = (
@@ -217,6 +260,36 @@ def ensure_data_dir() -> None:
                 os.path.join(bundled_apollo_configs, name),
                 os.path.join(APOLLO_CONFIG_PATH, name),
             )
+
+
+def cleanup_stale_ensemble_temps(enabled: bool = True) -> int:
+    """Remove subfolders under ``ensemble_temps`` older than one week.
+
+    Returns the number of directories removed. Only touches
+    :data:`ENSEMBLE_TEMP_PATH`; never the user's export folder.
+    """
+    if not enabled or not os.path.isdir(ENSEMBLE_TEMP_PATH):
+        return 0
+
+    cutoff = time.time() - ENSEMBLE_TEMP_MAX_AGE_SECONDS
+    removed = 0
+    try:
+        entries = os.listdir(ENSEMBLE_TEMP_PATH)
+    except OSError:
+        return 0
+
+    for name in entries:
+        path = os.path.join(ENSEMBLE_TEMP_PATH, name)
+        if not os.path.isdir(path):
+            continue
+        try:
+            if os.path.getmtime(path) >= cutoff:
+                continue
+            shutil.rmtree(path)
+            removed += 1
+        except OSError:
+            pass
+    return removed
 
 
 def _seed_bundled_file(src: str, dst: str) -> None:

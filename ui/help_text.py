@@ -105,7 +105,8 @@ WINDOW_SIZE_HELP = """Select window size to balance quality and speed:
 MDX_SEGMENT_SIZE_HELP = """Pick a segment size to balance speed, resource use, and quality:
 • Smaller sizes consume less resources
 • Bigger sizes consume more resources, but may provide better results
-• Default size is 256. Quality can change based on your pick"""
+• Classic MDX-Net default size is 256
+• For MDX-C / MDX23C models, "Default" uses the segment size from the model's yaml config (shown as a tick on the slider)"""
 
 DEMUCS_STEMS_HELP = """Select a stem for extraction with the chosen model:
 
@@ -172,14 +173,15 @@ IS_TIME_CORRECTION_HELP = "When checked, the output will retain the original BPM
 
 SAVE_STEM_ONLY_HELP = """Choose which stems are written to disk. All Stems exports every output file; selecting a single stem saves only that file
 
-The workload line below (passes, outputs, GPU/CPU) is a relative guide, not an exact time estimate"""
+The workload line below (passes, outputs, GPU/CPU) is a relative guide, not an exact time estimate. Hover for cost-factor details when heavier settings are active"""
 
-RUN_WORKLOAD_HINT = """Shows how heavy this export combo is:
+RUN_WORKLOAD_HINT = """Workload line (relative, not clock time):
 • passes — how many model inferences the run performs
 • outputs — how many files will be written
-• Fastest / Typical / Slower — relative export cost, not clock time"""
+• Fastest / Typical / Slower — relative export cost (from outputs) and run cost (from passes plus heavy settings such as TTA, shifts, or high overlap)
+• Cost factors (when listed) — those heavy settings, called out separately"""
 
-PROGRESS_ETA_HINT = """Time remaining stabilizes after separation begins. During stem export and ensemble combine the bar shows Saving or Combining instead of an ETA. Large models may revise the estimate upward while loading and during early inference"""
+PROGRESS_ETA_HINT = """The progress bar and time estimate track separation only. While a model is loading or stems are being written, the last separation fill is held and the status shows that phase. Ensemble combine shows Combining i/n (with a rough time left when possible). Before the first separation tick the bar pulses (Importing engines / Loading model). The estimate uses known pass counts and pauses its clock outside inference; it stabilizes after separation is underway"""
 
 IS_NORMALIZATION_HELP = "Normalizes output to prevent clipping"
 
@@ -217,7 +219,7 @@ MDX_OVERLAP_HELP = """• This option controls the amount of overlap between pre
 OVERLAP_23_HELP = """• This option controls the amount of overlap between prediction windows
   - Higher values can provide better results, but will lead to longer processing times"""
 
-IS_SEGMENT_DEFAULT_HELP = """• The segment size is set based on the value provided in a chosen model's associated config file (yaml)"""
+IS_SEGMENT_DEFAULT_HELP = """• For MDX-C / MDX23C models, choose "Default" on Segment size to use the value from the model's yaml config"""
 
 IS_SPLIT_MODE_HELP = """• Enables "Segments"
 • Deselecting this option is only recommended for those with powerful PCs"""
@@ -550,6 +552,12 @@ MDX_OVERLAP_HINT = (
     "classic MDX-Net uses the Default/0.25-0.99 scale, while MDX23C models use 2-50"
 )
 
+MDX_SEGMENT_SIZE_HINT = (
+    "Segment size balances speed and quality — classic MDX-Net uses 32-4000 "
+    "(default 256), while MDX-C / MDX23C models can pick Default to use the "
+    "yaml config value"
+)
+
 MDX_STEMS_HINT = (
     "Choose which stems to export. Common exports provide All stems, Instrumental only "
     "(derived from vocals), or Vocals only. Custom stems selects native outputs; "
@@ -601,7 +609,7 @@ FLAC_BIT_DEPTH_HINT = "Bit depth used when saving FLAC output (16-bit or 24-bit)
 # --- Main window chrome ---
 
 MAIN_MENU_HINT = "Main menu"
-VIEW_INPUTS_BUTTON_HINT = "View or verify selected inputs"
+VIEW_INPUTS_BUTTON_HINT = "Verify inputs"
 MODEL_OPTIONS_BUTTON_HINT = "Advanced and extra-model options for VR, MDX-Net, and Demucs"
 MODEL_OPTIONS_ROW_HINT = "Open batch size, secondary models, vocal split, and other per-architecture options"
 ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT = "Tune inference options for the selected ensemble member architectures"

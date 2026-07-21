@@ -13,9 +13,12 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from . import paths
 from .debug_log import debug
 
-_CACHE_PATH = os.path.join(paths.DATA_DIR, "download_size_cache.json")
 _CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 _TIMEOUT_SECONDS = 20
+
+
+def _cache_path() -> str:
+    return paths.migrate_cache_file("download_size_cache.json", paths.DOWNLOAD_SIZE_CACHE_FILE)
 
 
 def _ssl_context() -> ssl.SSLContext:
@@ -40,7 +43,7 @@ def format_download_size(num_bytes: Optional[int]) -> str:
 
 def _read_cache() -> Dict[str, object]:
     try:
-        with open(_CACHE_PATH, "r", encoding="utf-8") as handle:
+        with open(_cache_path(), "r", encoding="utf-8") as handle:
             payload = json.load(handle)
         if isinstance(payload, dict):
             return payload
@@ -51,8 +54,9 @@ def _read_cache() -> Dict[str, object]:
 
 def _write_cache(payload: Dict[str, object]) -> None:
     try:
-        os.makedirs(os.path.dirname(_CACHE_PATH), exist_ok=True)
-        with open(_CACHE_PATH, "w", encoding="utf-8") as handle:
+        cache_path = _cache_path()
+        os.makedirs(os.path.dirname(cache_path) or ".", exist_ok=True)
+        with open(cache_path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
     except OSError as exc:
         debug("download", f"size cache write failed err={exc}")

@@ -48,10 +48,42 @@ def release_separator(separator: Any) -> None:
         return
     model_name = getattr(separator, "model_basename", None)
     debug("cleanup", f"release_separator model={model_name!r}")
-    release_torch_model(getattr(separator, "model_run", None))
-    separator.model_run = None
-    release_torch_model(getattr(separator, "_inference_model", None))
-    separator._inference_model = None
+
+    cached = False
+    try:
+        from engines.model_weight_cache import get_weight_cache
+
+        cached = get_weight_cache().stash_separator(separator)
+    except Exception:  # noqa: BLE001 - never fail cleanup on cache errors
+        cached = False
+
+    if not cached:
+        release_torch_model(getattr(separator, "demucs", None))
+        if hasattr(separator, "demucs"):
+            separator.demucs = None
+        ort_session = getattr(separator, "_ort_session", None)
+        if ort_session is not None:
+            close = getattr(ort_session, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:  # noqa: BLE001 - best-effort teardown
+                    pass
+            if hasattr(separator, "_ort_session"):
+                separator._ort_session = None
+        release_torch_model(getattr(separator, "model_run", None))
+        separator.model_run = None
+        release_torch_model(getattr(separator, "_inference_model", None))
+        separator._inference_model = None
+    else:
+        debug("cleanup", f"release_separator cached weights model={model_name!r}")
+        if hasattr(separator, "demucs"):
+            separator.demucs = None
+        if hasattr(separator, "_ort_session"):
+            separator._ort_session = None
+        separator.model_run = None
+        separator._inference_model = None
+
     for attr in (
         "primary_sources",
         "secondary_source",
@@ -79,12 +111,19 @@ def release_inference_memory(
     *,
     wait_for_stop: float = 0.0,
     force_if_alive: bool = False,
+    clear_weight_cache: bool = False,
 ) -> None:
-    """Clear per-run caches and return cached GPU/CPU allocator memory."""
+    """Clear per-run caches and return cached GPU/CPU allocator memory.
+
+    Weight LRU is kept across normal runs so the next Start can reuse
+    checkpoints. Pass ``clear_weight_cache=True`` on app quit / full teardown.
+    """
     started = time.perf_counter()
     debug(
         "cleanup",
-        f"release_inference_memory enter wait_for_stop={wait_for_stop} force={force_if_alive}",
+        "release_inference_memory enter "
+        f"wait_for_stop={wait_for_stop} force={force_if_alive} "
+        f"clear_weight_cache={clear_weight_cache}",
     )
     if runner is not None:
         is_running = getattr(runner, "is_running", None)
@@ -109,6 +148,13 @@ def release_inference_memory(
             cached_clear()
         if hasattr(runner, "all_models"):
             runner.all_models = []
+    if clear_weight_cache:
+        try:
+            from engines.model_weight_cache import get_weight_cache
+
+            get_weight_cache().clear()
+        except Exception:  # noqa: BLE001
+            pass
     from engines.separate import clear_gpu_cache
 
     gc.collect()

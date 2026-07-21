@@ -17,19 +17,132 @@ from __future__ import annotations
 import threading
 from typing import Callable, Optional
 
-from gi.repository import Adw, Gdk, Gtk
+from gi.repository import Adw, Gdk, GLib, Gtk, Pango, PangoCairo
 
 from bundled.error_handling import CONTACT_DEV, error_dialouge, error_text
 from core.support_urls import fork_issue_url
 
-from .dialogs.utils import fill_dialog_width, present_modal_dialog, set_dialog_content
-from .spacing import inset_lg_sides_bottom, inset_md, set_inset
+from .dialogs.utils import (
+    fill_dialog_width,
+    parent_window_width,
+    present_modal_dialog,
+    set_dialog_content,
+)
+from .spacing import inset_lg_sides_bottom, set_inset
 
-_ERROR_DIALOG_WIDTH = 360
+# Floating sheet width: wide enough to read, capped so it cannot grow with a
+# long RuntimeError line. TextView (not Label) wraps to the allocated width.
+_ERROR_DIALOG_WIDTH = 600
+_ERROR_DIALOG_MARGIN = 64
+_ERROR_SUMMARY_MIN_HEIGHT = 48
+_ERROR_SUMMARY_MAX_HEIGHT = 280
+_ERROR_SUMMARY_PAD_Y = 20  # TextView top+bottom margins
+_ERROR_SUMMARY_LINE_FALLBACK = 18
+
+
+def _estimate_wrapped_text_height(text: str, width_px: int) -> int:
+    """Measure wrapped monospace height for ``text`` at ``width_px``."""
+    try:
+        import cairo
+
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1, 1)
+        context = cairo.Context(surface)
+        layout = PangoCairo.create_layout(context)
+        layout.set_font_description(Pango.FontDescription("Monospace 11"))
+        layout.set_width(max(1, width_px) * Pango.SCALE)
+        layout.set_wrap(Pango.WrapMode.WORD_CHAR)
+        layout.set_text(text, -1)
+        _width, height = layout.get_pixel_size()
+        return height + _ERROR_SUMMARY_PAD_Y
+    except Exception:  # noqa: BLE001 - fall back without cairo/pango layout
+        chars_per_line = max(20, width_px // 8)
+        lines = max(1, summary_line_count(text, chars_per_line))
+        return lines * _ERROR_SUMMARY_LINE_FALLBACK + _ERROR_SUMMARY_PAD_Y
+
+
+def summary_line_count(text: str, chars_per_line: int) -> int:
+    total = 0
+    for paragraph in text.splitlines() or [""]:
+        if not paragraph:
+            total += 1
+            continue
+        total += max(1, (len(paragraph) + chars_per_line - 1) // chars_per_line)
+    return total
+
+
+def _summary_viewport_height(text: str, width_px: int) -> int:
+    """Natural text height, clamped to the scrollable maximum."""
+    natural = _estimate_wrapped_text_height(text, width_px) + 4
+    return max(_ERROR_SUMMARY_MIN_HEIGHT, min(_ERROR_SUMMARY_MAX_HEIGHT, natural))
+
+
+def _make_summary_text_view(summary: str) -> Gtk.TextView:
+    buffer = Gtk.TextBuffer()
+    buffer.set_text(summary)
+    view = Gtk.TextView(buffer=buffer)
+    view.add_css_class("uvr-error-summary")
+    view.set_editable(False)
+    view.set_cursor_visible(False)
+    view.set_monospace(True)
+    view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+    view.set_left_margin(12)
+    view.set_right_margin(12)
+    view.set_top_margin(10)
+    view.set_bottom_margin(10)
+    view.set_hexpand(True)
+    view.set_vexpand(False)
+    return view
+
+
+def _build_error_summary_view(summary: str, *, width: int) -> Gtk.Widget:
+    """Selectable technical summary: snug for short errors, scroll when long."""
+    content_width = max(200, width - 48)
+    text_width = content_width - 24
+    natural = _estimate_wrapped_text_height(summary, text_width) + 4
+    view = _make_summary_text_view(summary)
+
+    # Short errors: skip ScrolledWindow so the card hugs the text (no empty viewport).
+    if natural <= _ERROR_SUMMARY_MAX_HEIGHT:
+        view.set_size_request(content_width, -1)
+        return view
+
+    height = _ERROR_SUMMARY_MAX_HEIGHT
+    scroller = Gtk.ScrolledWindow()
+    scroller.add_css_class("uvr-error-summary-scroll")
+    scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    scroller.set_min_content_width(content_width)
+    scroller.set_max_content_width(content_width)
+    scroller.set_min_content_height(height)
+    scroller.set_max_content_height(height)
+    scroller.set_propagate_natural_height(False)
+    scroller.set_propagate_natural_width(True)
+    scroller.set_size_request(content_width, height)
+    scroller.set_hexpand(True)
+    scroller.set_vexpand(False)
+    scroller.set_valign(Gtk.Align.START)
+    scroller.set_child(view)
+    return scroller
+
 
 _LOCK = threading.Lock()
 _ERROR_LOG = ""
 _ACTIVE_ERROR_DIALOG: Optional[Adw.Dialog] = None
+_ERROR_LOG_WINDOW: Optional[Adw.Window] = None
+_ERROR_LOG_BUFFER: Optional[Gtk.TextBuffer] = None
+
+
+def _error_dialog_width(parent_window: Gtk.Window) -> int:
+    parent_width = parent_window_width(parent_window, fallback=_ERROR_DIALOG_WIDTH)
+    return max(360, min(_ERROR_DIALOG_WIDTH, parent_width - _ERROR_DIALOG_MARGIN))
+
+
+def _configure_wrapping_label(label: Gtk.Label, *, max_chars: int) -> None:
+    label.set_wrap(True)
+    label.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+    label.set_xalign(0.0)
+    label.set_halign(Gtk.Align.FILL)
+    label.set_hexpand(True)
+    label.set_max_width_chars(max_chars)
 
 
 def set_error_log(text: str) -> None:
@@ -39,11 +152,13 @@ def set_error_log(text: str) -> None:
     global _ERROR_LOG
     with _LOCK:
         _ERROR_LOG = text or ""
+    if _ERROR_LOG_BUFFER is not None:
+        GLib.idle_add(_refresh_error_log_window)
     if text:
         debug("error", f"set_error_log {preview_text(text, max_len=120)!r}")
 
 
-def log_error(process_method: str, exception: BaseException) -> str:
+def log_error(process_method: str, exception: BaseException, *, context: str = "") -> str:
     """Format ``exception`` like UVR and store it as the current error log.
 
     Thread-safe so worker threads can record errors directly; returns the
@@ -51,7 +166,11 @@ def log_error(process_method: str, exception: BaseException) -> str:
     """
     from core.debug_log import debug, preview_text
 
-    formatted = error_text(process_method, exception)
+    if not context:
+        from core.error_context import format_error_context
+
+        context = format_error_context()
+    formatted = error_text(process_method, exception, context=context)
     set_error_log(formatted)
     debug(
         "error",
@@ -63,6 +182,14 @@ def log_error(process_method: str, exception: BaseException) -> str:
 def get_error_log() -> str:
     with _LOCK:
         return _ERROR_LOG
+
+
+def _refresh_error_log_window() -> bool:
+    if _ERROR_LOG_BUFFER is not None:
+        _ERROR_LOG_BUFFER.set_text(
+            get_error_log() or "No errors have been logged."
+        )
+    return GLib.SOURCE_REMOVE
 
 
 def present_error_dialog(
@@ -86,12 +213,13 @@ def present_error_dialog(
     log_text = formatted_log if formatted_log is not None else get_error_log()
     summary = f"{type(exception).__name__}: {exception}"
     guidance = _friendly_error_message(exception)
+    sheet_width = _error_dialog_width(parent_window)
 
     dialog = Adw.Dialog()
-    dialog.set_content_width(_ERROR_DIALOG_WIDTH)
+    dialog.set_content_width(sheet_width)
     dialog.set_follows_content_size(False)
 
-    content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+    content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
     inset_lg_sides_bottom(content)
     fill_dialog_width(content)
 
@@ -105,22 +233,20 @@ def present_error_dialog(
 
     intro_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
     intro_text.set_hexpand(True)
+    intro_text.set_halign(Gtk.Align.FILL)
     intro_text.set_valign(Gtk.Align.CENTER)
 
+    # ~chars that fit the sheet; keeps Label natural width from blowing out FloatingSheet.
+    label_chars = max(28, sheet_width // 9)
+
     title_label = Gtk.Label(label=heading)
-    title_label.set_wrap(True)
-    title_label.set_xalign(0.0)
-    title_label.set_halign(Gtk.Align.FILL)
-    title_label.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+    _configure_wrapping_label(title_label, max_chars=label_chars)
     title_label.add_css_class("title-4")
     intro_text.append(title_label)
 
     if guidance:
         guidance_label = Gtk.Label(label=guidance)
-        guidance_label.set_wrap(True)
-        guidance_label.set_xalign(0.0)
-        guidance_label.set_halign(Gtk.Align.FILL)
-        guidance_label.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        _configure_wrapping_label(guidance_label, max_chars=label_chars)
         guidance_label.set_selectable(True)
         intro_text.append(guidance_label)
 
@@ -130,25 +256,13 @@ def present_error_dialog(
     summary_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
     summary_box.add_css_class("card")
     fill_dialog_width(summary_box)
-
-    summary_label = Gtk.Label(label=summary)
-    summary_label.set_wrap(True)
-    summary_label.set_xalign(0.0)
-    summary_label.set_halign(Gtk.Align.FILL)
-    summary_label.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-    summary_label.set_selectable(True)
-    summary_label.add_css_class("monospace")
-    inset_md(summary_label)
-    summary_box.append(summary_label)
+    summary_box.append(_build_error_summary_view(summary, width=sheet_width))
     content.append(summary_box)
 
     hint = Gtk.Label(
         label="View the log for the full traceback, or copy the report when asking for help"
     )
-    hint.set_wrap(True)
-    hint.set_xalign(0.0)
-    hint.set_halign(Gtk.Align.FILL)
-    hint.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+    _configure_wrapping_label(hint, max_chars=label_chars)
     hint.add_css_class("dim-label")
     content.append(hint)
 
@@ -170,7 +284,12 @@ def present_error_dialog(
     button_row.append(view_button)
     content.append(button_row)
 
-    set_dialog_content(dialog, content)
+    # Clamp the whole body so child natural sizes cannot widen FloatingSheet.
+    clamp = Adw.Clamp(child=content, maximum_size=sheet_width)
+    clamp.set_tightening_threshold(sheet_width)
+    fill_dialog_width(clamp)
+
+    set_dialog_content(dialog, clamp)
     dialog.connect("closed", lambda *_: _clear_active_error_dialog())
 
     _ACTIVE_ERROR_DIALOG = dialog
@@ -215,6 +334,11 @@ def open_error_log(parent_window, message=None):
     """
     if message is not None:
         set_error_log(message)
+    global _ERROR_LOG_WINDOW, _ERROR_LOG_BUFFER
+    if _ERROR_LOG_WINDOW is not None:
+        _refresh_error_log_window()
+        _ERROR_LOG_WINDOW.present()
+        return _ERROR_LOG_WINDOW
     text = get_error_log() or "No errors have been logged."
 
     window = Adw.Window(title="Error Console")
@@ -226,11 +350,14 @@ def open_error_log(parent_window, message=None):
     header = Adw.HeaderBar()
 
     copy_button = Gtk.Button(label="Copy All Text")
-    copy_button.connect("clicked", lambda *_: copy_text(window, text))
+    copy_button.connect("clicked", lambda *_: copy_text(window, get_error_log()))
     header.pack_start(copy_button)
 
     report_button = Gtk.Button(label="Report Issue")
-    report_button.connect("clicked", lambda *_: _open_link(fork_issue_url(log_text=text)))
+    report_button.connect(
+        "clicked",
+        lambda *_: _open_link(fork_issue_url(log_text=get_error_log())),
+    )
     header.pack_start(report_button)
 
     toolbar.add_top_bar(header)
@@ -252,8 +379,18 @@ def open_error_log(parent_window, message=None):
     scroller.set_child(text_view)
     toolbar.set_content(scroller)
     window.set_content(toolbar)
+    _ERROR_LOG_WINDOW = window
+    _ERROR_LOG_BUFFER = buffer
+    window.connect("close-request", _on_error_log_window_closed)
     window.present()
     return window
+
+
+def _on_error_log_window_closed(_window) -> bool:
+    global _ERROR_LOG_WINDOW, _ERROR_LOG_BUFFER
+    _ERROR_LOG_WINDOW = None
+    _ERROR_LOG_BUFFER = None
+    return False
 
 
 def copy_text(widget: Gtk.Widget, text: str) -> None:

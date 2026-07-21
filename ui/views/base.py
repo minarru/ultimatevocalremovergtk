@@ -61,10 +61,15 @@ from ..widgets.rows import (
     set_scale_row_value,
     use_wrapping_list,
 )
-from core.model_display import format_tag_title, map_basenames_to_display
+from core.model_display import (
+    format_tag_title,
+    map_basenames_to_display,
+    resolve_model_basename,
+)
 from ..widgets.stem_only import SaveStemsSection
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
-from core.run_estimate import estimate_workload, format_workload_line
+from core.run_estimate import compose_stem_group_tooltip, estimate_workload, format_workload_line
+from ..help_text import RUN_WORKLOAD_HINT
 
 # Per-stem secondary-model slots: (settings-key slot, display pair, primary stem,
 # secondary stem) used to build the four secondary-model selectors UVR exposes.
@@ -88,6 +93,23 @@ def apply_name_mapper(names, name_mapper, *, catalogue_index=None, arch=None, re
         display_name_for_basename(name, name_mapper, catalogue_index=catalogue_index)
         for name in names
     ]
+
+
+def current_display_for_stored_model(stored, basenames, arch, repo) -> str:
+    """Resolve a stored picker value to the current runtime display label.
+
+    Accepts an on-disk basename or an older mapper/catalogue alias and returns
+    the catalogue-first display name when the model is still installed.
+    """
+    if not stored:
+        return stored
+    if stored in basenames:
+        candidate = stored
+    else:
+        candidate = resolve_model_basename(arch, stored, repo)
+    if candidate in basenames:
+        return map_basenames_to_display([candidate], arch, repo)[0]
+    return stored
 
 
 class MethodView:
@@ -167,8 +189,8 @@ class MethodView:
         self._resolved_primary_stem = None
         self._resolved_secondary_stem = None
         self._resolved_model = None
-        self.stem_group.add(self.save_stems.widget)
-        self.hints.register(self.save_stems.widget, SAVE_STEM_ONLY_HELP)
+        self.save_stems.attach_to(self.stem_group)
+        self.hints.register(self.stem_group, SAVE_STEM_ONLY_HELP)
         self.build_stem_options(self.stem_group)
         self.groups.append(self.stem_group)
 
@@ -192,8 +214,8 @@ class MethodView:
         names = map_basenames_to_display(basenames, arch, repo)
         set_combo_values(self.model_row, [CHOOSE_MODEL, *names])
         stored = self.settings.get(self.model_key, CHOOSE_MODEL)
-        if stored not in (CHOOSE_MODEL, NO_MODEL, None) and stored in basenames:
-            display = map_basenames_to_display([stored], arch, repo)[0]
+        if stored not in (CHOOSE_MODEL, NO_MODEL, None):
+            display = current_display_for_stored_model(stored, basenames, arch, repo)
             if display != stored:
                 stored = display
                 self.settings.set(self.model_key, display)
@@ -270,7 +292,7 @@ class MethodView:
         )
 
     def _update_stem_group_metadata(self) -> None:
-        line1 = "\n".join(self.save_stems.export_description_lines())
+        line1 = self.save_stems.export_summary()
         workload = estimate_workload(
             self.settings,
             method_key=self.method_key,
@@ -281,9 +303,13 @@ class MethodView:
         )
         line2 = format_workload_line(workload)
         self.stem_group.set_description(f"{line1}\n{line2}" if line2 else line1)
-        from ..hints import set_tooltip
-
-        set_tooltip(self.save_stems.widget, self.save_stems.active_hint())
+        composed = compose_stem_group_tooltip(
+            self.save_stems.active_hint(),
+            workload,
+            workload_hint=RUN_WORKLOAD_HINT,
+        )
+        # Re-register so HelpHintManager.refresh() keeps the composed tooltip.
+        self.hints.register(self.stem_group, composed)
 
     def _touch_settings(self) -> None:
         self._update_stem_group_metadata()
@@ -392,7 +418,13 @@ class MethodView:
         store_float=False,
     ):
         """Add a constrained slider row bound to settings ``key``."""
-        from ..widgets.rows import make_discrete_scale_row, make_numeric_scale_row
+        from bundled.constants import DEFAULT_DATA
+
+        from ..widgets.rows import (
+            make_discrete_scale_row,
+            make_numeric_scale_row,
+            set_scale_default_mark,
+        )
 
         if values is not None:
             row = make_discrete_scale_row(title, values, subtitle)
@@ -401,6 +433,8 @@ class MethodView:
                 raise ValueError("lower and upper are required when values is None")
             row = make_numeric_scale_row(title, lower, upper, step=step, digits=digits, subtitle=subtitle)
         row._uvr_store_float = store_float
+        if key in DEFAULT_DATA:
+            set_scale_default_mark(row, DEFAULT_DATA[key])
         row._uvr_scale.connect(
             "value-changed",
             lambda *_a, k=key, r=row: self._on_option_scale(k, r),

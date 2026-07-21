@@ -225,7 +225,7 @@ class DownloadQueueIndicator:
         self.widget.set_valign(Gtk.Align.CENTER)
         self.widget.set_size_request(-1, CHIP_HEIGHT)
         self.widget.set_child(chip_content)
-        self.widget.set_tooltip_text("Show download queue")
+        set_icon_button_a11y(self.widget, "Show download queue")
         self.widget.set_visible(False)
         self.widget.connect("map", self._on_menu_button_mapped)
 
@@ -288,6 +288,12 @@ class DownloadQueueIndicator:
         self.widget.set_visible(True)
         if self._chip_label.get_label() != summary.chip_label:
             self._chip_label.set_label(summary.chip_label)
+        accessible_label = (
+            f"Show download queue: {summary.chip_label}"
+            if summary.chip_label
+            else "Show download queue"
+        )
+        set_icon_button_a11y(self.widget, accessible_label)
         self._chip_ring.update_from_state(chip_ring_state(items, summary))
         self._render_rows(items)
 
@@ -308,6 +314,17 @@ class DownloadQueueIndicator:
     def on_batch_complete(self) -> None:
         if not self._popover_visible:
             self._add_attention()
+
+    def hold_finished(self, seconds: int) -> None:
+        """Keep terminal rows available while an actionable toast is visible."""
+        self._unschedule_remove_finished()
+        if self._popover_visible:
+            self._defer_remove_on_close = True
+            return
+        self._remove_finished_timeout_id = GLib.timeout_add_seconds(
+            max(1, seconds),
+            self._on_remove_finished_timeout,
+        )
 
     def on_popover_visibility_changed(self, visible: bool) -> None:
         self._popover_visible = visible

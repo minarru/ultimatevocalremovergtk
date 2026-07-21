@@ -28,7 +28,6 @@ from ml import spec_utils
 import ml.mdxnet as MdxnetSet
 
 from .base import SeperateAttributes
-from .gpu_cache import clear_gpu_cache
 from .mix import prepare_mix, gather_sources, rerun_mp3
 from .export import save_format
 from .vr_utils import vr_denoiser, loading_mix
@@ -51,8 +50,13 @@ def _load_torch_checkpoint(path: str):
 
 def _mdx_c_hop_length(config) -> int:
     model_cfg = getattr(config, 'model', None)
-    if model_cfg is not None and hasattr(model_cfg, 'hop_size'):
-        return int(model_cfg.hop_size)
+    if model_cfg is not None:
+        if hasattr(model_cfg, 'hop_size'):
+            return int(model_cfg.hop_size)
+        # Roformer yaml files often keep a legacy audio.hop_length that does not
+        # match the model STFT hop used for chunk sizing (see chunk_size).
+        if hasattr(model_cfg, 'stft_hop_length'):
+            return int(model_cfg.stft_hop_length)
     kwargs = getattr(config, 'kwargs', None)
     if kwargs is not None and hasattr(kwargs, 'hop_length'):
         return int(kwargs.hop_length)
@@ -85,7 +89,9 @@ def _build_mdx_c_model(config):
         raise ValueError('Unknown MDX-C architecture in configuration.')
 
     if 'num_bands' in model_cfg:
-        return MelBandRoformer(**_filter_init_kwargs(MelBandRoformer, model_cfg))
+        kwargs = _filter_init_kwargs(MelBandRoformer, model_cfg)
+        kwargs['match_input_audio_length'] = True
+        return MelBandRoformer(**kwargs)
     if 'freqs_per_bands' in model_cfg:
         return BSRoformer(**_filter_init_kwargs(BSRoformer, model_cfg))
     if 'band_SR' in model_cfg or 'sources' in model_cfg:
@@ -97,6 +103,93 @@ def _build_mdx_c_model(config):
 
         return MultiMaskMultiSourceBandSplitRNN(**_filter_init_kwargs(MultiMaskMultiSourceBandSplitRNN, model_cfg))
     raise ValueError('Unknown MDX-C architecture in configuration.')
+
+def _mdx_pitch_reference_sr() -> int:
+    return 44100
+
+
+def select_roformer_ola_window(start, chunk_size, mix_length, window_start, window_middle, window_finish):
+    """Pick the OLA fade window for one Roformer chunk.
+
+    The final inference flush can contain several chunk starts; only a chunk
+    whose own range reaches the mix end uses the finish window.
+    """
+    if start == 0:
+        return window_start
+    if start + chunk_size >= mix_length:
+        return window_finish
+    return window_middle
+
+
+def mdx_export_routing_flags(
+    *,
+    stem_list,
+    selected_stems,
+    mdxnet_stem_select,
+    is_secondary_model,
+    is_pre_proc_model,
+    is_ensemble_master,
+    is_4_stem_ensemble,
+    is_primary_stem_only,
+    is_secondary_stem_only,
+    include_stem_complement,
+):
+    is_full_selection = (not selected_stems) or set(selected_stems) == set(stem_list)
+    is_all_stems = mdxnet_stem_select == ALL_STEMS
+    is_not_ensemble_master = not is_ensemble_master
+    is_not_single_stem = not len(stem_list) <= 2
+    is_not_secondary_model = not is_secondary_model
+    is_ensemble_4_stem = is_4_stem_ensemble and is_not_single_stem
+    is_vocals_quick_export = (
+        len(selected_stems) == 1
+        and selected_stems[0] == VOCAL_STEM
+        and (is_primary_stem_only or is_secondary_stem_only)
+    )
+    is_complement_export = (
+        len(selected_stems) == 1
+        and bool(include_stem_complement)
+        and not is_vocals_quick_export
+    )
+    is_native_pick = (
+        len(selected_stems) == 1
+        and is_not_ensemble_master
+        and is_not_single_stem
+        and is_not_secondary_model
+        and not is_pre_proc_model
+        and not is_vocals_quick_export
+        and not is_complement_export
+    )
+    is_stem_subset = (
+        len(selected_stems) >= 2 and not is_full_selection
+        and is_not_ensemble_master and is_not_single_stem
+        and is_not_secondary_model and not is_pre_proc_model
+    )
+    multi_stem_export = (
+        (is_all_stems and is_not_ensemble_master and is_not_single_stem and is_not_secondary_model)
+        or (is_ensemble_4_stem and not is_pre_proc_model)
+        or is_stem_subset
+        or is_native_pick
+    )
+    return {
+        "is_complement_export": is_complement_export,
+        "is_native_pick": is_native_pick,
+        "is_stem_subset": is_stem_subset,
+        "multi_stem_export": multi_stem_export,
+        "export_stems": (
+            [stem for stem in stem_list if stem in selected_stems]
+            if (is_stem_subset or is_native_pick)
+            else stem_list
+        ),
+    }
+
+
+def derive_mdx_complement(native_source, mix, *, invert_spec=False, match_frequency_pitch=None):
+    raw_mix = match_frequency_pitch(mix) if match_frequency_pitch is not None else mix
+    shaped = spec_utils.to_shape(native_source, raw_mix.shape)
+    if invert_spec:
+        return spec_utils.invert_stem(raw_mix, shaped)
+    return (-shaped.T + raw_mix.T)
+
 
 class SeperateMDX(SeperateAttributes):        
 
@@ -111,20 +204,53 @@ class SeperateMDX(SeperateAttributes):
                 self.start_inference_console_write()
                 self.write_to_console(LOADING_MODEL)
 
+                from engines.model_weight_cache import (
+                    get_weight_cache,
+                    materialize_module,
+                    weight_cache_key,
+                )
+
+                cache = get_weight_cache()
                 if self.is_mdx_ckpt:
-                    model_params = load_torch_checkpoint(
-                        self.model_path, map_location=lambda storage, loc: storage
-                    )["hyper_parameters"]
-                    self.dim_c, self.hop = model_params['dim_c'], model_params['hop_length']
-                    separator = MdxnetSet.ConvTDFNet(**model_params)
-                    self.model_run = separator.load_from_checkpoint(self.model_path).to(self.device).eval()
-                else:
-                    if self.mdx_segment_size == self.dim_t and not self.is_other_gpu:
-                        ort_ = ort.InferenceSession(self.model_path, providers=self.run_type)
-                        self.model_run = lambda spek:ort_.run(None, {'input': spek.cpu().numpy()})[0]
+                    key = weight_cache_key("mdx_ckpt", self.model_path, self.device)
+                    self._weight_cache_key = key
+                    cached = cache.get(key)
+                    if cached and cached.module is not None:
+                        self.model_run = materialize_module(cached.module, self.device)
+                        self.dim_c = cached.meta.get("dim_c", self.dim_c)
+                        self.hop = cached.meta.get("hop", self.hop)
                     else:
-                        self.model_run = ConvertModel(load(self.model_path))
-                        self.model_run.to(self.device).eval()
+                        model_params = load_torch_checkpoint(
+                            self.model_path, map_location=lambda storage, loc: storage
+                        )["hyper_parameters"]
+                        self.dim_c, self.hop = model_params['dim_c'], model_params['hop_length']
+                        separator = MdxnetSet.ConvTDFNet(**model_params)
+                        self.model_run = separator.load_from_checkpoint(self.model_path).to(self.device).eval()
+                        self._weight_cache_meta = {"dim_c": self.dim_c, "hop": self.hop}
+                else:
+                    use_ort = self.mdx_segment_size == self.dim_t and not self.is_other_gpu
+                    key = weight_cache_key(
+                        "mdx_ort" if use_ort else "mdx_convert",
+                        self.model_path,
+                        self.device,
+                        self.mdx_segment_size,
+                        self.dim_t,
+                        bool(self.is_other_gpu),
+                    )
+                    self._weight_cache_key = key
+                    cached = cache.get(key)
+                    if use_ort:
+                        if cached and cached.ort_session is not None:
+                            self._ort_session = cached.ort_session
+                        else:
+                            self._ort_session = ort.InferenceSession(self.model_path, providers=self.run_type)
+                        self.model_run = lambda spek: self._ort_session.run(None, {'input': spek.cpu().numpy()})[0]
+                    else:
+                        if cached and cached.module is not None:
+                            self.model_run = materialize_module(cached.module, self.device)
+                        else:
+                            self.model_run = ConvertModel(load(self.model_path))
+                            self.model_run.to(self.device).eval()
 
                 self.running_inference_console_write()
                 mix = prepare_mix(self.audio_file)
@@ -144,23 +270,29 @@ class SeperateMDX(SeperateAttributes):
             int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only) or 1
         )
         if not self.is_primary_stem_only:
-            secondary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.secondary_stem}).wav')
+            secondary_stem_path = self.stem_export_wav_path(self.secondary_stem)
             if not isinstance(self.secondary_source, np.ndarray):
-                raw_mix = self.demix(self.match_frequency_pitch(mix), is_match_mix=True) if mdx_net_cut else self.match_frequency_pitch(mix)
-                self.secondary_source = spec_utils.invert_stem(raw_mix, source) if self.is_invert_spec else mix.T-source.T
+                # Match-mix demix only affects invert-spec; defaults use mix-source subtraction.
+                if self.is_invert_spec:
+                    raw_mix = (
+                        self.demix(self.match_frequency_pitch(mix), is_match_mix=True)
+                        if mdx_net_cut
+                        else self.match_frequency_pitch(mix)
+                    )
+                    self.secondary_source = spec_utils.invert_stem(raw_mix, source)
+                else:
+                    self.secondary_source = mix.T - source.T
             
             self.secondary_source_map = self.final_process(secondary_stem_path, self.secondary_source, self.secondary_source_secondary, self.secondary_stem, samplerate)
         
         if not self.is_secondary_stem_only:
-            primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.primary_stem}).wav')
+            primary_stem_path = self.stem_export_wav_path(self.primary_stem)
 
             if not isinstance(self.primary_source, np.ndarray):
                 self.primary_source = source.T
                 
             self.primary_source_map = self.final_process(primary_stem_path, self.primary_source, self.secondary_source_primary, self.primary_stem, samplerate)
         
-        clear_gpu_cache()
-
         secondary_sources = {**self.primary_source_map, **self.secondary_source_map}
         
         self.process_vocal_split_chain(secondary_sources)
@@ -204,53 +336,57 @@ class SeperateMDX(SeperateAttributes):
             mixture = np.concatenate((np.zeros((2, self.trim), dtype='float32'), mix, np.zeros((2, pad), dtype='float32')), 1)
 
             step = self.chunk_size - self.n_fft if overlap == DEFAULT else int((1 - overlap) * chunk_size)
-            result = np.zeros((1, 2, mixture.shape[-1]), dtype=np.float32)
-            divider = np.zeros((1, 2, mixture.shape[-1]), dtype=np.float32)
+            mix_len = mixture.shape[-1]
+            result = torch.zeros((1, 2, mix_len), dtype=torch.float32, device=self.device)
+            divider = torch.zeros((1, 2, mix_len), dtype=torch.float32, device=self.device)
             total = 0
-            total_chunks = (mixture.shape[-1] + step - 1) // step
+            total_chunks = (mix_len + step - 1) // step
 
-            for i in range(0, mixture.shape[-1], step):
+            for i in range(0, mix_len, step):
                 self.check_run_control()
                 total += 1
                 start = i
-                end = min(i + chunk_size, mixture.shape[-1])
+                end = min(i + chunk_size, mix_len)
 
                 chunk_size_actual = end - start
 
-                if overlap == 0:
-                    window = None
-                else:
-                    window = np.hanning(chunk_size_actual)
-                    window = np.tile(window[None, None, :], (1, 2, 1))
+                window = None
+                if overlap != 0:
+                    window = torch.as_tensor(
+                        np.hanning(chunk_size_actual),
+                        dtype=torch.float32,
+                        device=self.device,
+                    )
+                    window = window.view(1, 1, -1).expand(1, 2, -1)
 
                 mix_part_ = mixture[:, start:end]
                 if end != i + chunk_size:
                     pad_size = (i + chunk_size) - end
                     mix_part_ = np.concatenate((mix_part_, np.zeros((2, pad_size), dtype='float32')), axis=-1)
 
-                mix_part = torch.tensor([mix_part_], dtype=torch.float32).to(self.device)
+                mix_part = torch.as_tensor(mix_part_, dtype=torch.float32, device=self.device).unsqueeze(0)
                 mix_waves = mix_part.split(self.mdx_batch_size)
-                
-                with torch.no_grad():
+
+                with torch.inference_mode():
                     for mix_wave in mix_waves:
                         self.running_inference_progress_bar(total_chunks, is_match_mix=is_match_mix)
 
                         tar_waves = self.run_model(mix_wave, is_match_mix=is_match_mix)
-                        
+
                         if window is not None:
-                            tar_waves[..., :chunk_size_actual] *= window 
+                            tar_waves[..., :chunk_size_actual] *= window
                             divider[..., start:end] += window
                         else:
                             divider[..., start:end] += 1
 
-                        result[..., start:end] += tar_waves[..., :end-start]
-                
-            tar_waves = result / divider
+                        result[..., start:end] += tar_waves[..., : end - start]
+
+            tar_waves = (result / divider).detach().cpu().numpy()
             tar_waves_.append(tar_waves)
 
             tar_waves_ = np.vstack(tar_waves_)[:, :, self.trim:-self.trim]
             tar_waves = np.concatenate(tar_waves_, axis=-1)[:, :mix.shape[-1]]
-            
+
             source = tar_waves[:,0:None]
 
             if self.is_pitch_change and not is_match_mix:
@@ -269,16 +405,26 @@ class SeperateMDX(SeperateAttributes):
             return source
 
     def run_model(self, mix, is_match_mix=False):
-        
-        spek = self.stft(mix.to(self.device))*self.adjust
-        spek[:, :, :3, :] *= 0 
+        """Run STFT → model → iSTFT and return a device-resident waveform tensor."""
+        if torch.is_tensor(mix):
+            mix_device = mix if mix.device == self.device else mix.to(self.device)
+        else:
+            mix_device = torch.as_tensor(mix, device=self.device)
+        spek = self.stft(mix_device) * self.adjust
+        spek[:, :, :3, :] *= 0
 
         if is_match_mix:
-            spec_pred = spek.cpu().numpy()
+            spec_pred = spek
         else:
-            spec_pred = -self.model_run(-spek)*0.5+self.model_run(spek)*0.5 if self.is_denoise else self.model_run(spek)
+            spec_pred = (
+                -self.model_run(-spek) * 0.5 + self.model_run(spek) * 0.5
+                if self.is_denoise
+                else self.model_run(spek)
+            )
 
-        return self.stft.inverse(torch.tensor(spec_pred).to(self.device)).cpu().detach().numpy()
+        if torch.is_tensor(spec_pred):
+            return self.stft.inverse(spec_pred)
+        return self.stft.inverse(torch.as_tensor(spec_pred, device=self.device))
 
 class SeperateMDXC(SeperateAttributes):        
 
@@ -335,67 +481,64 @@ class SeperateMDXC(SeperateAttributes):
         # stem the model does not produce is simply ignored. An empty selection
         # (or one covering every stem) keeps the original "all stems" behaviour.
         selected_stems = [stem for stem in stem_list if stem in (self.mdxnet_stems_selected or [])]
-        is_full_selection = (not selected_stems) or set(selected_stems) == set(stem_list)
         if not self.is_secondary_model and len(selected_stems) == 1:
             self.mdxnet_stem_select = selected_stems[0]
 
-        is_all_stems = self.mdxnet_stem_select == ALL_STEMS
-        is_not_ensemble_master = not self.process_data['is_ensemble_master']
-        is_not_single_stem = not len(stem_list) <= 2
-        is_not_secondary_model = not self.is_secondary_model
-        is_ensemble_4_stem = self.is_4_stem_ensemble and is_not_single_stem
+        routing = mdx_export_routing_flags(
+            stem_list=stem_list,
+            selected_stems=selected_stems,
+            mdxnet_stem_select=self.mdxnet_stem_select,
+            is_secondary_model=self.is_secondary_model,
+            is_pre_proc_model=self.is_pre_proc_model,
+            is_ensemble_master=self.process_data['is_ensemble_master'],
+            is_4_stem_ensemble=self.is_4_stem_ensemble,
+            is_primary_stem_only=self.is_primary_stem_only,
+            is_secondary_stem_only=self.is_secondary_stem_only,
+            include_stem_complement=getattr(self, "is_mdx_include_stem_complement", False),
+        )
+        is_complement_export = routing["is_complement_export"]
 
-        is_vocals_quick_export = (
-            len(selected_stems) == 1
-            and selected_stems[0] == VOCAL_STEM
-            and (self.is_primary_stem_only or self.is_secondary_stem_only)
-        )
-        is_complement_export = (
-            len(selected_stems) == 1
-            and bool(getattr(self, "is_mdx_include_stem_complement", False))
-            and not is_vocals_quick_export
-        )
-        is_native_pick = (
-            len(selected_stems) == 1
-            and is_not_ensemble_master
-            and is_not_single_stem
-            and is_not_secondary_model
-            and not self.is_pre_proc_model
-            and not is_vocals_quick_export
-            and not is_complement_export
-        )
-
-        # A "true subset": 2..n-1 of the multi-stem model's stems, only on the
-        # main (non-secondary, non-pre-proc, non-ensemble) export path.
-        is_stem_subset = (
-            len(selected_stems) >= 2 and not is_full_selection
-            and is_not_ensemble_master and is_not_single_stem
-            and is_not_secondary_model and not self.is_pre_proc_model
-        )
-
-        if (is_all_stems and is_not_ensemble_master and is_not_single_stem and is_not_secondary_model) or is_ensemble_4_stem and not self.is_pre_proc_model or is_stem_subset or is_native_pick:
-            export_stems = [stem for stem in stem_list if stem in selected_stems] if (is_stem_subset or is_native_pick) else stem_list
+        if is_complement_export:
+            stem = selected_stems[0]
+            complement_stem = secondary_stem(stem)
+            self.begin_save_phase(2)
+            native_path = self.stem_export_wav_path(stem)
+            native_source = sources[stem].T
+            self.write_audio(native_path, native_source, samplerate, stem_name=stem)
+            complement_source = derive_mdx_complement(
+                sources[stem],
+                mix,
+                invert_spec=self.is_invert_spec,
+                match_frequency_pitch=self.match_frequency_pitch,
+            )
+            complement_path = self.stem_export_wav_path(complement_stem)
+            self.write_audio(complement_path, complement_source, samplerate, stem_name=complement_stem)
+            if stem == VOCAL_STEM and not self.is_sec_bv_rebalance:
+                self.process_vocal_split_chain({VOCAL_STEM: stem})
+        elif routing["multi_stem_export"]:
+            export_stems = routing["export_stems"]
             self.begin_save_phase(len(export_stems))
             for stem in export_stems:
-                primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({stem}).wav')
+                primary_stem_path = self.stem_export_wav_path(stem)
                 self.primary_source = sources[stem].T
                 self.write_audio(primary_stem_path, self.primary_source, samplerate, stem_name=stem)
                 
                 if stem == VOCAL_STEM and not self.is_sec_bv_rebalance:
                     self.process_vocal_split_chain({VOCAL_STEM:stem})
         else:
+            working_sources = dict(sources) if isinstance(sources, dict) else sources
             if len(stem_list) == 1:
-                source_primary = sources  
+                source_primary = working_sources  
             else:
                 if self.is_multi_stem_ensemble or len(stem_list) == 2:
                     stem_key = stem_list[0]
                 elif self.mdxnet_stem_select == ALL_STEMS:
                     stem_key = self.primary_stem
-                elif isinstance(sources, dict) and self.mdxnet_stem_select in sources:
+                elif isinstance(working_sources, dict) and self.mdxnet_stem_select in working_sources:
                     stem_key = self.mdxnet_stem_select
                 else:
                     stem_key = self.primary_stem
-                source_primary = sources[stem_key]
+                source_primary = working_sources[stem_key]
             if self.is_secondary_model_activated and self.secondary_model:
                 self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, 
                                                                                                          self.process_data, 
@@ -406,22 +549,22 @@ class SeperateMDXC(SeperateAttributes):
                 int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only) or 1
             )
             if not self.is_primary_stem_only:
-                secondary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.secondary_stem}).wav')
+                secondary_stem_path = self.stem_export_wav_path(self.secondary_stem)
                 if not isinstance(self.secondary_source, np.ndarray):
                     
                     if self.is_mdx_combine_stems and len(stem_list) >= 2:
                         if len(stem_list) == 2:
-                            secondary_source = sources[self.secondary_stem]
+                            secondary_source = working_sources[self.secondary_stem]
                         else:
-                            sources.pop(self.primary_stem)
-                            next_stem = next(iter(sources))
-                            secondary_source = np.zeros_like(sources[next_stem])
-                            for v in sources.values():
+                            working_sources.pop(self.primary_stem, None)
+                            next_stem = next(iter(working_sources))
+                            secondary_source = np.zeros_like(working_sources[next_stem])
+                            for v in working_sources.values():
                                 secondary_source += v
                                 
                         self.secondary_source = secondary_source.T 
-                    elif isinstance(sources, dict) and self.secondary_stem in sources:
-                        self.secondary_source = sources[self.secondary_stem].T
+                    elif isinstance(working_sources, dict) and self.secondary_stem in working_sources:
+                        self.secondary_source = working_sources[self.secondary_stem].T
                     else:
                         self.secondary_source, raw_mix = source_primary, self.match_frequency_pitch(mix)
                         self.secondary_source = spec_utils.to_shape(self.secondary_source, raw_mix.shape)
@@ -434,24 +577,29 @@ class SeperateMDXC(SeperateAttributes):
                 self.secondary_source_map = self.final_process(secondary_stem_path, self.secondary_source, self.secondary_source_secondary, self.secondary_stem, samplerate)    
 
             if not self.is_secondary_stem_only:
-                primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.primary_stem}).wav')
+                primary_stem_path = self.stem_export_wav_path(self.primary_stem)
                 if not isinstance(self.primary_source, np.ndarray):
                     self.primary_source = source_primary.T
 
                 self.primary_source_map = self.final_process(primary_stem_path, self.primary_source, self.secondary_source_primary, self.primary_stem, samplerate)
 
-        clear_gpu_cache()
-        
         secondary_sources = {**self.primary_source_map, **self.secondary_source_map}
         self.process_vocal_split_chain(secondary_sources)
         
         if self.is_secondary_model or self.is_pre_proc_model:
             return secondary_sources
 
-    def overlap_add(self, result, x, l, j, start, window):
+    def overlap_add(self, result, counter, x, l, j, start, window):
         if self.device == 'mps' or self.is_other_gpu:
             x = x.to(self.device)
-        result[..., start:start + l] += x[j][..., :l] * window[..., :l]
+        end = min(start + l, result.shape[-1])
+        chunk_len = end - start
+        if chunk_len <= 0:
+            return result
+        contrib = x[j][..., :chunk_len]
+        window_chunk = window[..., :chunk_len]
+        result[..., start:end] += contrib * window_chunk
+        counter[..., start:end] += window_chunk
         return result
 
     def demix(self, mix):
@@ -465,16 +613,33 @@ class SeperateMDXC(SeperateAttributes):
             model=self.model_basename,
             roformer=False,
         ):
-            sr_pitched = 441000
+            sr_pitched = _mdx_pitch_reference_sr()
             org_mix = mix
             if self.is_pitch_change:
                 mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
 
-            model = TFC_TDF_net(self.mdx_c_configs, device=self.device)
-            model.load_state_dict(_load_torch_checkpoint(self.model_path))
-            model.to(self.device).eval()
+            from engines.model_weight_cache import (
+                get_weight_cache,
+                materialize_module,
+                weight_cache_key,
+            )
+
+            key = weight_cache_key(
+                "mdx_c",
+                self.model_path,
+                self.device,
+                getattr(self.mdx_c_configs.inference, "dim_t", None),
+            )
+            self._weight_cache_key = key
+            cached = get_weight_cache().get(key)
+            if cached and cached.module is not None:
+                model = materialize_module(cached.module, self.device)
+            else:
+                model = TFC_TDF_net(self.mdx_c_configs, device=self.device)
+                model.load_state_dict(_load_torch_checkpoint(self.model_path))
+                model.to(self.device).eval()
             self._inference_model = model
-            mix = torch.tensor(mix, dtype=torch.float32)
+            mix = torch.as_tensor(mix, dtype=torch.float32, device=self.device)
 
             try:
                 try:
@@ -491,22 +656,37 @@ class SeperateMDXC(SeperateAttributes):
                 hop_size = chunk_size // overlap
                 mix_shape = mix.shape[1]
                 pad_size = hop_size - (mix_shape - chunk_size) % hop_size
-                mix = torch.cat([torch.zeros(2, chunk_size - hop_size), mix, torch.zeros(2, pad_size + chunk_size - hop_size)], 1)
+                mix = torch.cat(
+                    [
+                        torch.zeros(2, chunk_size - hop_size, device=self.device),
+                        mix,
+                        torch.zeros(2, pad_size + chunk_size - hop_size, device=self.device),
+                    ],
+                    1,
+                )
 
-                chunks = mix.unfold(1, chunk_size, hop_size).transpose(0, 1)
-                batches = [chunks[i : i + batch_size] for i in range(0, len(chunks), batch_size)]
-                
-                X = torch.zeros(S, *mix.shape) if S > 1 else torch.zeros_like(mix)
-                X = X.to(self.device)
+                n_chunks = 1 + (mix.shape[1] - chunk_size) // hop_size
+                n_batches = max(1, (n_chunks + batch_size - 1) // batch_size)
+
+                X = torch.zeros(S, *mix.shape, device=self.device) if S > 1 else torch.zeros_like(mix)
 
                 self.running_inference_console_write()
 
-                with torch.no_grad():
+                with torch.inference_mode():
                     cnt = 0
-                    for batch in batches:
+                    for start_idx in range(0, n_chunks, batch_size):
                         self.check_run_control()
-                        self.running_inference_progress_bar(len(batches))
-                        x = model(batch.to(self.device))
+                        self.running_inference_progress_bar(n_batches)
+                        end_idx = min(start_idx + batch_size, n_chunks)
+                        # Hop-index batching avoids materializing mix.unfold(...) for the full track.
+                        batch = torch.stack(
+                            [
+                                mix[:, i * hop_size : i * hop_size + chunk_size]
+                                for i in range(start_idx, end_idx)
+                            ],
+                            dim=0,
+                        )
+                        x = model(batch)
                         
                         for w in x:
                             X[..., cnt * hop_size : cnt * hop_size + chunk_size] += w
@@ -534,10 +714,7 @@ class SeperateMDXC(SeperateAttributes):
             finally:
                 if isinstance(mix, torch.Tensor):
                     del mix
-                model.cpu()
-                del model
-                self._inference_model = None
-                clear_gpu_cache()
+                # Keep weights on self._inference_model for release_separator / weight cache.
 
     def demix_roformer(self, mix):
         with trace_phase(
@@ -546,23 +723,39 @@ class SeperateMDXC(SeperateAttributes):
             engine="SeperateMDXC",
             model=self.model_basename,
         ):
-            sr_pitched = 441000
+            sr_pitched = _mdx_pitch_reference_sr()
             org_mix = mix
             if self.is_pitch_change:
                 mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
 
             device = self.device
 
-            # Build the MDX-C architecture indicated by the model yaml config.
-            model = _build_mdx_c_model(self.roformer_config)
+            from engines.model_weight_cache import (
+                get_weight_cache,
+                materialize_module,
+                weight_cache_key,
+            )
 
-            checkpoint = _load_torch_checkpoint(self.model_path)
-            model = model if not isinstance(model, torch.nn.DataParallel) else model.module
-            model.load_state_dict(checkpoint)
-            del checkpoint
-            model.to(device).eval()
+            key = weight_cache_key(
+                "mdx_roformer",
+                self.model_path,
+                device,
+                bool(self.is_roformer),
+                getattr(self.mdx_c_configs.inference, "dim_t", None),
+            )
+            self._weight_cache_key = key
+            cached = get_weight_cache().get(key)
+            if cached and cached.module is not None:
+                model = materialize_module(cached.module, device)
+            else:
+                model = _build_mdx_c_model(self.roformer_config)
+                checkpoint = _load_torch_checkpoint(self.model_path)
+                model = model if not isinstance(model, torch.nn.DataParallel) else model.module
+                model.load_state_dict(checkpoint)
+                del checkpoint
+                model.to(device).eval()
             self._inference_model = model
-            mix = torch.tensor(mix, dtype=torch.float32)
+            mix = torch.as_tensor(mix, dtype=torch.float32, device=device)
 
             result = counter = estimated_sources = None
             try:
@@ -580,11 +773,11 @@ class SeperateMDXC(SeperateAttributes):
                     mix = nn.functional.pad(mix, (C - step, C - step), mode='reflect')
 
                 # Set up windows for fade-in/out
-                fadein = torch.linspace(0, 1, fade_size).to(device)
-                fadeout = torch.linspace(1, 0, fade_size).to(device)
-                window_start = torch.ones(C).to(device)
-                window_middle = torch.ones(C).to(device)
-                window_finish = torch.ones(C).to(device)
+                fadein = torch.linspace(0, 1, fade_size, device=device)
+                fadeout = torch.linspace(1, 0, fade_size, device=device)
+                window_start = torch.ones(C, device=device)
+                window_middle = torch.ones(C, device=device)
+                window_finish = torch.ones(C, device=device)
                 window_start[-fade_size:] *= fadeout  # No fade-in at start
                 window_finish[:fade_size] *= fadein  # No fade-out at end
                 window_middle[:fade_size] *= fadein
@@ -605,7 +798,7 @@ class SeperateMDXC(SeperateAttributes):
 
                     while i < mix.shape[1]:
                         self.check_run_control()
-                        part = mix[:, i:i + C].to(device)
+                        part = mix[:, i:i + C]
                         length = part.shape[-1]
                         if length < C:
                             if length > C // 2 + 1:
@@ -625,14 +818,15 @@ class SeperateMDXC(SeperateAttributes):
                             for j in range(len(batch_locations)):
                                 self.running_inference_progress_bar(batch_len)
                                 start, l = batch_locations[j]
-                                window = window_middle
-                                if start == 0:
-                                    window = window_start
-                                elif i >= mix.shape[1]:
-                                    window = window_finish
-
-                                result = self.overlap_add(result, x, l, j, start, window)
-                                counter[..., start:start + l] += window[..., :l]
+                                window = select_roformer_ola_window(
+                                    start,
+                                    C,
+                                    mix.shape[1],
+                                    window_start,
+                                    window_middle,
+                                    window_finish,
+                                )
+                                result = self.overlap_add(result, counter, x, l, j, start, window)
 
                             batch_data = []
                             batch_locations = []
@@ -669,7 +863,4 @@ class SeperateMDXC(SeperateAttributes):
                 for tensor in (result, counter, mix, estimated_sources):
                     if tensor is not None:
                         del tensor
-                model.cpu()
-                del model
-                self._inference_model = None
-                clear_gpu_cache()
+                # Keep weights on self._inference_model for release_separator / weight cache.

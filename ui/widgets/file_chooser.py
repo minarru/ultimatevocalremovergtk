@@ -7,7 +7,7 @@ callback so the window can persist them to the settings model.
 """
 
 import os
-from typing import Callable, List, Optional, Sequence
+from typing import AbstractSet, Callable, List, Optional, Sequence
 
 from gi.repository import Adw, Gdk, GLib, Gtk
 
@@ -28,6 +28,17 @@ from ..shared_settings import (
 )
 
 _AUDIO_HINT = "audio-x-generic-symbolic"
+
+
+def merge_input_paths(existing: Sequence[str], added: Sequence[str]) -> List[str]:
+    """Merge paths without duplicates while preserving first-seen order."""
+    merged: List[str] = []
+    seen = set()
+    for path in (*existing, *added):
+        if path and path not in seen:
+            seen.add(path)
+            merged.append(path)
+    return merged
 
 
 class InputFilesRow(Adw.ExpanderRow):
@@ -55,13 +66,13 @@ class InputFilesRow(Adw.ExpanderRow):
         self.add_prefix(icon)
 
         self._clear_button = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
-        set_tooltip(self._clear_button, CLEAR_INPUT_FILES_HINT)
+        set_icon_button_a11y(self._clear_button, CLEAR_INPUT_FILES_HINT)
         self._clear_button.add_css_class("flat")
         self._clear_button.connect("clicked", self._on_clear_clicked)
         self.add_suffix(self._clear_button)
 
         button = Gtk.Button(icon_name="document-open-symbolic", valign=Gtk.Align.CENTER)
-        set_tooltip(button, SELECT_INPUT_FILES_HINT)
+        set_icon_button_a11y(button, f"Add audio files. {SELECT_INPUT_FILES_HINT}")
         button.add_css_class("flat")
         button.connect("clicked", self._on_clicked)
         self.add_suffix(button)
@@ -96,8 +107,14 @@ class InputFilesRow(Adw.ExpanderRow):
                 self._emit_toast(message)
             self._on_changed()
 
-    def blocked_reason(self) -> Optional[str]:
-        return input_paths_blocked_reason(self.paths)
+    def blocked_reason(
+        self,
+        *,
+        unreadable_paths: Optional[AbstractSet[str]] = None,
+    ) -> Optional[str]:
+        return input_paths_blocked_reason(
+            self.paths, unreadable_paths=unreadable_paths
+        )
 
     def _emit_toast(self, message: str) -> None:
         if self._on_toast is not None:
@@ -107,27 +124,36 @@ class InputFilesRow(Adw.ExpanderRow):
         self._refresh_subtitle()
         self._rebuild_file_rows()
         self._clear_button.set_sensitive(bool(self.paths))
-        self.set_enable_expansion(bool(self.paths))
+        # One file is fully summarized in the header; expand only for batches.
+        # Collapse by default so the header summary stays primary after selection.
+        multi = len(self.paths) > 1
+        self.set_enable_expansion(multi)
+        self.set_expanded(False)
 
     def _refresh_subtitle(self) -> None:
         if not self.paths:
             self.set_subtitle("No files selected")
+            self.set_tooltip_text(None)
         elif len(self.paths) == 1:
-            subtitle = self.paths[0]
-            if len(self.paths) >= INPUT_FILES_WARN:
-                subtitle = f"{subtitle} (large batch)"
-            set_row_subtitle(self, subtitle)
+            path = self.paths[0]
+            set_row_subtitle(self, path)
+            self.set_tooltip_text(path)
         else:
             extra = len(self.paths) - 1
             subtitle = f"{os.path.basename(self.paths[0])} (and {extra} more)"
             if len(self.paths) >= INPUT_FILES_WARN:
                 subtitle = f"{subtitle} (large batch)"
             set_row_subtitle(self, subtitle)
+            self.set_tooltip_text(None)
 
     def _rebuild_file_rows(self) -> None:
         for row in self._file_rows:
             self.remove(row)
         self._file_rows = []
+        # A single selection already shows the path on the expander; skip the
+        # duplicate child row that previously stacked the same path twice.
+        if len(self.paths) <= 1:
+            return
         for path in self.paths:
             row = Adw.ActionRow()
             set_row_title(row, os.path.basename(path))
@@ -159,7 +185,7 @@ class InputFilesRow(Adw.ExpanderRow):
             return
         paths = [files.get_item(i).get_path() for i in range(files.get_n_items())]
         if paths:
-            self.set_paths(paths)
+            self.set_paths(merge_input_paths(self.paths, paths))
 
     def _on_drop(self, _target: Gtk.DropTarget, value, _x: float, _y: float) -> bool:
         self.remove_css_class("drop-highlight")
@@ -170,7 +196,7 @@ class InputFilesRow(Adw.ExpanderRow):
         paths = [f.get_path() for f in files if f.get_path() and os.path.isfile(f.get_path())]
         if not paths:
             return False
-        self.set_paths(paths)
+        self.set_paths(merge_input_paths(self.paths, paths))
         return True
 
 

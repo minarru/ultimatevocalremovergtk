@@ -27,7 +27,6 @@ from ml import spec_utils
 import ml.mdxnet as MdxnetSet
 
 from .base import SeperateAttributes
-from .gpu_cache import clear_gpu_cache
 from .mix import prepare_mix, gather_sources, rerun_mp3
 from .export import save_format
 from .vr_utils import vr_denoiser, loading_mix
@@ -65,7 +64,8 @@ class SeperateDemucs(SeperateAttributes):
             self.start_inference_console_write()
             is_no_cache = True
 
-        mix = prepare_mix(self.audio_file)
+        # Defer decode on stem-cache hits; load only if invert/combine needs the mix.
+        mix = prepare_mix(self.audio_file) if is_no_cache else None
 
         if is_no_cache:
             with trace_phase(
@@ -76,7 +76,24 @@ class SeperateDemucs(SeperateAttributes):
                 version=self.demucs_version,
             ):
                 self.write_to_console(LOADING_MODEL)
-                if self.demucs_version == DEMUCS_V1:
+                from engines.model_weight_cache import (
+                    get_weight_cache,
+                    materialize_module,
+                    weight_cache_key,
+                )
+
+                key = weight_cache_key(
+                    "demucs",
+                    str(self.model_path),
+                    self.device,
+                    self.demucs_version,
+                    self.segment,
+                )
+                self._weight_cache_key = key
+                cached = get_weight_cache().get(key)
+                if cached and cached.module is not None:
+                    self.demucs = materialize_module(cached.module, self.device)
+                elif self.demucs_version == DEMUCS_V1:
                     if str(self.model_path).endswith(".gz"):
                         self.model_path = gzip.open(self.model_path, "rb")
                     klass, args, kwargs, state = load_torch_checkpoint(self.model_path)
@@ -117,9 +134,6 @@ class SeperateDemucs(SeperateAttributes):
                     source = self.demix_demucs(mix)
                 
                 self.write_to_console(DONE, base_text='')
-                
-                del self.demucs
-                clear_gpu_cache()
             
         if isinstance(inst_source, np.ndarray):
             source_reshape = spec_utils.reshape_sources(inst_source[self.demucs_source_map[VOCAL_STEM]], source[self.demucs_source_map[VOCAL_STEM]])
@@ -159,7 +173,7 @@ class SeperateDemucs(SeperateAttributes):
                             stem_source_secondary = stem_source_secondary[stem_name]
                             
                 stem_source_secondary = None if stem_value >= 4 else stem_source_secondary
-                stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({stem_name}).wav')
+                stem_path = self.stem_export_wav_path(stem_name)
                 stem_source = source[stem_value].T
                 
                 stem_source = self.process_secondary_stem(stem_source, secondary_model_source=stem_source_secondary, model_scale=model_scale)
@@ -181,8 +195,9 @@ class SeperateDemucs(SeperateAttributes):
 
             if not self.is_primary_stem_only:
                 def secondary_save(sec_stem_name, source, raw_mixture=None, is_inst_mixture=False):
+                    nonlocal mix
                     secondary_source = self.secondary_source if not is_inst_mixture else None
-                    secondary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({sec_stem_name}).wav')
+                    secondary_stem_path = self.stem_export_wav_path(sec_stem_name)
                     secondary_source_secondary = None
                     
                     if not isinstance(secondary_source, np.ndarray):
@@ -200,7 +215,9 @@ class SeperateDemucs(SeperateAttributes):
                             secondary_source = secondary_source.T
                         else:
                             if not isinstance(raw_mixture, np.ndarray):
-                                raw_mixture = prepare_mix(self.audio_file)
+                                if mix is None:
+                                    mix = prepare_mix(self.audio_file)
+                                raw_mixture = mix
        
                             secondary_source = source[self.demucs_source_map[self.primary_stem]]
                             
@@ -224,7 +241,7 @@ class SeperateDemucs(SeperateAttributes):
                     secondary_save(f"{self.secondary_stem} {INST_STEM}", source, raw_mixture=inst_mix, is_inst_mixture=True)
 
             if not self.is_secondary_stem_only:
-                primary_stem_path = os.path.join(self.export_path, f'{self.audio_file_base}_({self.primary_stem}).wav')
+                primary_stem_path = self.stem_export_wav_path(self.primary_stem)
                 if not isinstance(self.primary_source, np.ndarray):
                     self.primary_source = source[self.demucs_source_map[self.primary_stem]].T
                 
@@ -245,35 +262,36 @@ class SeperateDemucs(SeperateAttributes):
                 mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
             
             processed = {}
-            mix = torch.tensor(mix, dtype=torch.float32)
-            ref = mix.mean(0)        
+            mix = torch.as_tensor(mix, dtype=torch.float32, device=self.device)
+            ref = mix.mean(0)
             mix = (mix - ref.mean()) / ref.std()
-            mix_infer = mix 
-            
-            with torch.no_grad():
+            mix_infer = mix
+
+            with torch.inference_mode():
+                self.check_run_control()
                 if self.demucs_version == DEMUCS_V1:
-                    sources = apply_model_v1(self.demucs, 
-                                                mix_infer.to(self.device), 
-                                                self.shifts, 
+                    sources = apply_model_v1(self.demucs,
+                                                mix_infer,
+                                                self.shifts,
                                                 self.is_split_mode,
                                                 set_progress_bar=self.set_progress_bar)
                 elif self.demucs_version == DEMUCS_V2:
-                    sources = apply_model_v2(self.demucs, 
-                                                mix_infer.to(self.device), 
+                    sources = apply_model_v2(self.demucs,
+                                                mix_infer,
                                                 self.shifts,
                                                 self.is_split_mode,
                                                 self.overlap,
                                                 set_progress_bar=self.set_progress_bar)
                 else:
-                    sources = apply_model(self.demucs, 
-                                            mix_infer[None], 
+                    sources = apply_model(self.demucs,
+                                            mix_infer[None],
                                             self.shifts,
                                             self.is_split_mode,
                                             self.overlap,
                                             static_shifts=1 if self.shifts == 0 else self.shifts,
                                             set_progress_bar=self.set_progress_bar,
                                             device=self.device)[0]
-            
+
             sources = (sources * ref.std() + ref.mean()).cpu().numpy()
             sources[[0,1]] = sources[[1,0]]
             processed[mix] = sources[:,:,0:None].copy()

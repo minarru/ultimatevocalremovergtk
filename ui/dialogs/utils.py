@@ -81,8 +81,8 @@ def set_form_dialog_content(
     *,
     on_save: Callable[[], None],
     save_label: str = "Save",
-) -> None:
-    """Assign dialog body with a Save action; the header close button dismisses."""
+) -> Gtk.Button:
+    """Assign dialog body and return its Save button for stateful forms."""
     toolbar = Adw.ToolbarView()
     header = Adw.HeaderBar()
 
@@ -94,6 +94,7 @@ def set_form_dialog_content(
     toolbar.add_top_bar(header)
     toolbar.set_content(content)
     dialog.set_child(toolbar)
+    return save
 
 
 def present_modal_dialog(dialog: Adw.Dialog, parent: Gtk.Window | None = None) -> None:

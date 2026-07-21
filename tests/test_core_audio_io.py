@@ -2,7 +2,13 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from bundled.constants import WAV
-from core.audio_io import flac_export_parameters, resolve_wav_type_set, save_format
+from core.audio_io import (
+    flac_export_parameters,
+    flac_subtype,
+    replace_audio_suffix,
+    resolve_wav_type_set,
+    save_format,
+)
 from core.settings import SettingsModel
 
 
@@ -16,14 +22,30 @@ class FlacExportParametersTests(unittest.TestCase):
     def test_unknown_defaults_to_sixteen(self):
         self.assertEqual(flac_export_parameters("unknown"), ["-sample_fmt", "s16"])
 
+    def test_flac_subtype_and_suffix_helpers(self):
+        self.assertEqual(flac_subtype("24-bit"), "PCM_24")
+        self.assertEqual(replace_audio_suffix("/tmp/a.WAV", ".flac"), "/tmp/a.flac")
+
 
 class SaveFormatFlacTests(unittest.TestCase):
+    @patch("soundfile.write")
+    @patch("soundfile.read", return_value=(MagicMock(), 44100))
+    @patch("os.remove")
+    def test_direct_flac_rewrite_skips_pydub(self, remove, _read, write):
+        save_format("/tmp/stem.wav", "FLAC", "320k", "24-bit")
+        write.assert_called_once()
+        self.assertEqual(write.call_args[0][0], "/tmp/stem.flac")
+        self.assertEqual(write.call_args.kwargs["subtype"], "PCM_24")
+        remove.assert_called_once_with("/tmp/stem.wav")
+
     @patch("pydub.AudioSegment")
-    def test_flac_export_uses_bit_depth_parameters(self, audio_segment_cls):
+    @patch("soundfile.read", side_effect=RuntimeError("boom"))
+    def test_flac_export_falls_back_to_pydub_parameters(self, _read, audio_segment_cls):
         segment = MagicMock()
         audio_segment_cls.from_wav.return_value = segment
 
-        save_format("/tmp/stem.wav", "FLAC", "320k", "24-bit")
+        with patch("os.remove"):
+            save_format("/tmp/stem.wav", "FLAC", "320k", "24-bit")
 
         segment.export.assert_called_once_with(
             "/tmp/stem.flac",
