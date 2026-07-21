@@ -37,6 +37,27 @@ class WeightCacheTests(unittest.TestCase):
         self.assertIsNotNone(hit)
         self.assertIs(hit.module, module)
 
+    def test_put_keeps_accelerator_resident(self) -> None:
+        cache = ModelWeightCache(max_entries=4)
+        key = ("vr", ("/x", 0, 0), "cuda:0", ())
+        module = mock.MagicMock()
+        cache.put(key, module=module)
+        module.cpu.assert_not_called()
+        self.assertEqual(cache._device_resident_key, key)
+
+    def test_put_parks_previous_accelerator_resident(self) -> None:
+        cache = ModelWeightCache(max_entries=4)
+        a = mock.MagicMock(name="a")
+        b = mock.MagicMock(name="b")
+        key_a = ("vr", ("/a", 0, 0), "cuda:0", ())
+        key_b = ("vr", ("/b", 0, 0), "cuda:0", ())
+        cache.put(key_a, module=a)
+        a.cpu.assert_not_called()
+        cache.put(key_b, module=b)
+        a.cpu.assert_called()
+        b.cpu.assert_not_called()
+        self.assertEqual(cache._device_resident_key, key_b)
+
     def test_materialize_and_park(self) -> None:
         from engines.model_weight_cache import materialize_module, park_module
 
@@ -49,7 +70,7 @@ class WeightCacheTests(unittest.TestCase):
         park_module(module)
         module.cpu.assert_called()
 
-    def test_stash_moves_module_to_cpu(self) -> None:
+    def test_stash_keeps_accelerator_module_resident(self) -> None:
         cache = get_weight_cache()
         key = weight_cache_key("vr", "/tmp/model.pth", "cuda:0", 1)
         module = mock.MagicMock(name="net")
@@ -60,7 +81,8 @@ class WeightCacheTests(unittest.TestCase):
         separator._inference_model = None
         separator.demucs = None
         self.assertTrue(cache.stash_separator(separator))
-        module.cpu.assert_called()
+        module.cpu.assert_not_called()
+        self.assertEqual(cache._device_resident_key, key)
 
     def test_lru_evicts_oldest(self) -> None:
         cache = ModelWeightCache(max_entries=2)

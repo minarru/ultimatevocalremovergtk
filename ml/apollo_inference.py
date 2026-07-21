@@ -67,7 +67,6 @@ def restore_process(
     from engines.model_weight_cache import (
         get_weight_cache,
         materialize_module,
-        park_module,
         weight_cache_key,
     )
 
@@ -168,8 +167,7 @@ def restore_process(
     if audio_data.shape[1] > 2 * border and (border > 0):
         final_output = final_output[..., border:-border]
 
-    # Keep weights in the process LRU on CPU; drop local accelerator residency.
-    park_module(model)
+    # Leave weights in the process LRU (sticky device residency when on GPU).
     del result, counter, audio_data, model
     gc.collect()
 

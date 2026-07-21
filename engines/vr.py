@@ -201,8 +201,8 @@ class SeperateVR(SeperateAttributes):
                 patches = (X_mag_pad.shape[2] - 2 * self.model_run.offset) // roi_size
                 total_iterations = patches//self.batch_size if not self.is_tta else (patches//self.batch_size)*2
                 self.model_run.eval()
-                with torch.no_grad():
-                    mask = []
+                with torch.inference_mode():
+                    mask_parts = []
                     for i in range(0, patches, self.batch_size):
                         self.check_run_control()
                         self.progress_value += 1
@@ -222,13 +222,12 @@ class SeperateVR(SeperateAttributes):
                         pred = self.model_run.predict_mask(X_batch)
                         if not pred.size()[3] > 0:
                             raise Exception(ERROR_MAPPER[WINDOW_SIZE_ERROR])
-                        pred = pred.detach().cpu().numpy()
-                        pred = np.concatenate(pred, axis=2)
-                        mask.append(pred)
-                    if len(mask) == 0:
+                        # Fold batch windows into time on-device before the host sync.
+                        mask_parts.append(torch.cat([pred[b] for b in range(pred.shape[0])], dim=2))
+                    if len(mask_parts) == 0:
                         raise Exception(ERROR_MAPPER[WINDOW_SIZE_ERROR])
-                    
-                    mask = np.concatenate(mask, axis=2)
+
+                    mask = torch.cat(mask_parts, dim=2).detach().cpu().numpy()
                 return mask
 
             def postprocess(mask, X_mag, X_phase):
