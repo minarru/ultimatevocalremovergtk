@@ -14,6 +14,7 @@ from bundled.constants import (
     ENSEMBLE_MODE,
     MDX_ARCH_TYPE,
     VR_ARCH_PM,
+    VR_ARCH_TYPE,
 )
 from core.model_display import display_name_for_model
 

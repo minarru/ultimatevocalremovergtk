@@ -244,7 +244,9 @@ class SeperateMDX(SeperateAttributes):
                             self._ort_session = cached.ort_session
                         else:
                             self._ort_session = ort.InferenceSession(self.model_path, providers=self.run_type)
-                        self.model_run = lambda spek: self._ort_session.run(None, {'input': spek.cpu().numpy()})[0]
+                        from engines.amp_runtime import build_ort_runner
+
+                        self.model_run = build_ort_runner(self._ort_session, self.device)
                     else:
                         if cached and cached.module is not None:
                             self.model_run = materialize_module(cached.module, self.device)
@@ -334,9 +336,10 @@ class SeperateMDX(SeperateAttributes):
 
             pad = gen_size + self.trim - ((mix.shape[-1]) % gen_size)
             mixture = np.concatenate((np.zeros((2, self.trim), dtype='float32'), mix, np.zeros((2, pad), dtype='float32')), 1)
+            mixture_t = torch.as_tensor(mixture, dtype=torch.float32, device=self.device)
 
             step = self.chunk_size - self.n_fft if overlap == DEFAULT else int((1 - overlap) * chunk_size)
-            mix_len = mixture.shape[-1]
+            mix_len = mixture_t.shape[-1]
             result = torch.zeros((1, 2, mix_len), dtype=torch.float32, device=self.device)
             divider = torch.zeros((1, 2, mix_len), dtype=torch.float32, device=self.device)
             total = 0
@@ -359,12 +362,12 @@ class SeperateMDX(SeperateAttributes):
                     )
                     window = window.view(1, 1, -1).expand(1, 2, -1)
 
-                mix_part_ = mixture[:, start:end]
+                mix_part = mixture_t[:, start:end]
                 if end != i + chunk_size:
                     pad_size = (i + chunk_size) - end
-                    mix_part_ = np.concatenate((mix_part_, np.zeros((2, pad_size), dtype='float32')), axis=-1)
+                    mix_part = torch.nn.functional.pad(mix_part, (0, pad_size))
 
-                mix_part = torch.as_tensor(mix_part_, dtype=torch.float32, device=self.device).unsqueeze(0)
+                mix_part = mix_part.unsqueeze(0)
                 mix_waves = mix_part.split(self.mdx_batch_size)
 
                 with torch.inference_mode():
@@ -406,6 +409,8 @@ class SeperateMDX(SeperateAttributes):
 
     def run_model(self, mix, is_match_mix=False):
         """Run STFT → model → iSTFT and return a device-resident waveform tensor."""
+        from engines.amp_runtime import maybe_autocast
+
         if torch.is_tensor(mix):
             mix_device = mix if mix.device == self.device else mix.to(self.device)
         else:
@@ -416,15 +421,17 @@ class SeperateMDX(SeperateAttributes):
         if is_match_mix:
             spec_pred = spek
         else:
-            spec_pred = (
-                -self.model_run(-spek) * 0.5 + self.model_run(spek) * 0.5
-                if self.is_denoise
-                else self.model_run(spek)
-            )
+            with maybe_autocast(self.device):
+                spec_pred = (
+                    -self.model_run(-spek) * 0.5 + self.model_run(spek) * 0.5
+                    if self.is_denoise
+                    else self.model_run(spek)
+                )
 
         if torch.is_tensor(spec_pred):
-            return self.stft.inverse(spec_pred)
-        return self.stft.inverse(torch.as_tensor(spec_pred, device=self.device))
+            # Keep OLA math in float32 even when autocast produced fp16 logits.
+            return self.stft.inverse(spec_pred.float())
+        return self.stft.inverse(torch.as_tensor(spec_pred, device=self.device, dtype=torch.float32))
 
 class SeperateMDXC(SeperateAttributes):        
 
@@ -590,8 +597,8 @@ class SeperateMDXC(SeperateAttributes):
             return secondary_sources
 
     def overlap_add(self, result, counter, x, l, j, start, window):
-        if self.device == 'mps' or self.is_other_gpu:
-            x = x.to(self.device)
+        if x.device != result.device:
+            x = x.to(result.device)
         end = min(start + l, result.shape[-1])
         chunk_len = end - start
         if chunk_len <= 0:
@@ -673,6 +680,8 @@ class SeperateMDXC(SeperateAttributes):
                 self.running_inference_console_write()
 
                 with torch.inference_mode():
+                    from engines.amp_runtime import maybe_autocast
+
                     cnt = 0
                     for start_idx in range(0, n_chunks, batch_size):
                         self.check_run_control()
@@ -686,7 +695,10 @@ class SeperateMDXC(SeperateAttributes):
                             ],
                             dim=0,
                         )
-                        x = model(batch)
+                        with maybe_autocast(self.device):
+                            x = model(batch)
+                        if torch.is_tensor(x) and x.dtype != torch.float32:
+                            x = x.float()
                         
                         for w in x:
                             X[..., cnt * hop_size : cnt * hop_size + chunk_size] += w
@@ -812,8 +824,13 @@ class SeperateMDXC(SeperateAttributes):
 
                         # Process in batches
                         if len(batch_data) >= batch_size or (i >= mix.shape[1]):
+                            from engines.amp_runtime import maybe_autocast
+
                             arr = torch.stack(batch_data, dim=0)
-                            x = model(arr)
+                            with maybe_autocast(device):
+                                x = model(arr)
+                            if torch.is_tensor(x) and x.dtype != torch.float32:
+                                x = x.float()
 
                             for j in range(len(batch_locations)):
                                 self.running_inference_progress_bar(batch_len)

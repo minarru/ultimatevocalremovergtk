@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Iterable, Set
+from typing import Iterable, Optional, Set
 
 import yaml
 
@@ -39,6 +39,40 @@ def is_demucs_bag_member_weight(stem: str, bag_sigs: Iterable[str]) -> bool:
         return False
     sig = stem.split("-", 1)[0]
     return sig in set(bag_sigs)
+
+
+def demucs_bag_owner_basename(
+    stem: str,
+    directory: Optional[str] = None,
+) -> Optional[str]:
+    """Return the yaml bag basename that owns ``stem``, or ``None``.
+
+    ``stem`` may be a full weight name (``75fc33f5-1941ce65``) or just the XP
+    sig prefix (``75fc33f5``). Used by the CLI so bag-member ``.th`` filenames
+    resolve to the selectable parent model (e.g. ``hdemucs_mmi``).
+    """
+    repo_dir = directory or paths.DEMUCS_NEWER_REPO_DIR
+    if not stem or not os.path.isdir(repo_dir):
+        return None
+    bag_sigs = demucs_yaml_bag_member_sigs(repo_dir)
+    sig = stem.split("-", 1)[0] if "-" in stem else stem
+    if sig not in bag_sigs:
+        return None
+    for entry in sorted(os.listdir(repo_dir)):
+        if not entry.lower().endswith(".yaml"):
+            continue
+        bag_path = os.path.join(repo_dir, entry)
+        try:
+            with open(bag_path, encoding="utf-8") as handle:
+                bag = yaml.safe_load(handle)
+        except (OSError, yaml.YAMLError):
+            continue
+        if not isinstance(bag, dict):
+            continue
+        models = [str(item) for item in (bag.get("models") or []) if item]
+        if sig in models:
+            return os.path.splitext(entry)[0]
+    return None
 
 
 def demucs_pretrained_load_name(model_path: str | os.PathLike) -> str:
