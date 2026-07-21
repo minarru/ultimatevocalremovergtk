@@ -76,7 +76,6 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
     from engines.model_weight_cache import (
         get_weight_cache,
         materialize_module,
-        park_module,
         weight_cache_key,
     )
 
@@ -117,9 +116,9 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
     patches = (X_mag_pad.shape[2] - 2 * model.offset) // roi_size
 
     model.eval()
-    
-    with torch.no_grad():
-        mask = []
+
+    with torch.inference_mode():
+        mask_parts = []
         # Stream patches per batch instead of materializing all windows.
         for i in range(0, patches, batchsize):
             end = min(i + batchsize, patches)
@@ -133,13 +132,10 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
             X_batch = torch.from_numpy(X_batch).to(device)
 
             pred = model.predict_mask(X_batch)
+            mask_parts.append(torch.cat([pred[b] for b in range(pred.shape[0])], dim=2))
 
-            pred = pred.detach().cpu().numpy()
-            pred = np.concatenate(pred, axis=2)
-            mask.append(pred)
+        mask = torch.cat(mask_parts, dim=2).detach().cpu().numpy()
 
-        mask = np.concatenate(mask, axis=2)
-    
     mask = mask[:, :, :n_frame]
 
     #Post Proc
@@ -153,9 +149,8 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
         wave = spec_utils.spectrogram_to_wave_old(v_spec, hop_length=1024)
     else:
         wave = spec_utils.cmb_spectrogram_to_wave(v_spec, mp, is_v51_model=True).T
-        
+
     wave = spec_utils.match_array_shapes(wave, X)
-    park_module(model)
 
     if is_deverber:
         wave_2 = spec_utils.cmb_spectrogram_to_wave(y_spec, mp, is_v51_model=True).T

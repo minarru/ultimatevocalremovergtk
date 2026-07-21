@@ -2,6 +2,10 @@
 
 Separators normally destroy weights in ``release_separator``. Caching lets
 batch jobs and secondary chains reuse checkpoints without reloading from disk.
+
+Accelerator-backed entries keep the most recently used key resident on device
+so same-model batch files avoid CPU↔GPU weight migration. Older entries are
+parked to CPU; eviction / clear / model switches park as needed.
 """
 
 from __future__ import annotations
@@ -31,6 +35,13 @@ def _release_module(model: Any) -> None:
             cpu()
     except Exception:  # noqa: BLE001
         pass
+
+
+def _is_accelerator_device(device: Any) -> bool:
+    text = str(device or "cpu").lower()
+    if not text or text == "cpu" or text.startswith("cpu"):
+        return False
+    return True
 
 
 def materialize_module(module: Any, device: Any) -> Any:
@@ -74,6 +85,8 @@ class ModelWeightCache:
         self.max_entries = max(1, int(max_entries))
         self._items: OrderedDict[tuple, CachedWeights] = OrderedDict()
         self._lock = threading.Lock()
+        # At most one accelerator-resident module; others stay parked on CPU.
+        self._device_resident_key: Optional[tuple] = None
 
     def get(self, key: tuple) -> Optional[CachedWeights]:
         with self._lock:
@@ -91,15 +104,26 @@ class ModelWeightCache:
         module: Any = None,
         ort_session: Any = None,
         meta: Optional[dict] = None,
+        park_to_cpu: bool = False,
     ) -> None:
         if module is None and ort_session is None:
             return
-        # Keep residency on CPU so ensemble/batch runs do not stack full
-        # checkpoints in accelerator VRAM between separators.
-        if module is not None:
-            _release_module(module)
-        handle = CachedWeights(module=module, ort_session=ort_session, meta=dict(meta or {}))
+        want_device = (
+            not park_to_cpu
+            and module is not None
+            and len(key) > 2
+            and _is_accelerator_device(key[2])
+        )
         with self._lock:
+            if want_device:
+                self._park_device_resident_locked(except_key=key)
+            elif module is not None:
+                # CPU targets (or explicit park) always store on host.
+                _release_module(module)
+                if self._device_resident_key == key:
+                    self._device_resident_key = None
+
+            handle = CachedWeights(module=module, ort_session=ort_session, meta=dict(meta or {}))
             if key in self._items:
                 old = self._items.pop(key)
                 same_module = old.module is handle.module
@@ -108,8 +132,12 @@ class ModelWeightCache:
                     self._destroy(old)
             self._items[key] = handle
             self._items.move_to_end(key)
+            if want_device:
+                self._device_resident_key = key
             while len(self._items) > self.max_entries:
                 _evicted_key, evicted = self._items.popitem(last=False)
+                if self._device_resident_key == _evicted_key:
+                    self._device_resident_key = None
                 debug("cache", f"weight cache evict kind={_evicted_key[0]!r}")
                 self._destroy(evicted)
             debug("cache", f"weight cache store kind={key[0]!r} size={len(self._items)}")
@@ -161,7 +189,18 @@ class ModelWeightCache:
             while self._items:
                 _key, handle = self._items.popitem(last=False)
                 self._destroy(handle)
+            self._device_resident_key = None
             debug("cache", "weight cache cleared")
+
+    def _park_device_resident_locked(self, *, except_key: Optional[tuple] = None) -> None:
+        key = self._device_resident_key
+        if key is None or key == except_key:
+            return
+        handle = self._items.get(key)
+        if handle is not None and handle.module is not None:
+            _release_module(handle.module)
+            debug("cache", f"weight cache park kind={key[0]!r}")
+        self._device_resident_key = None
 
     @staticmethod
     def _destroy(handle: CachedWeights) -> None:

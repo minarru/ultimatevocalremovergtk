@@ -63,6 +63,14 @@ from .inference_cleanup import (
     release_separator,
 )
 
+
+def _decoded_mix_for_process(audio_file):
+    """Decode once per track so ensemble / secondary models reuse the same mix."""
+    from engines.mix import prepare_mix
+
+    return prepare_mix(audio_file)
+
+
 _MODEL_KEY_BY_METHOD = {
     VR_ARCH_PM: "vr_model",
     MDX_ARCH_TYPE: "mdx_net_model",
@@ -422,6 +430,7 @@ class JobRunner:
                     continue
 
                 set_progress_bar = pausable_callback(self, make_progress())
+                decoded_mix = _decoded_mix_for_process(audio_file)
 
                 for model_num, current_model in enumerate(models, start=1):
                     check_stopped(self)
@@ -458,7 +467,8 @@ class JobRunner:
                         "model_data": current_model,
                         "export_path": model_export_path,
                         "audio_file_base": audio_file_base,
-                        "audio_file": audio_file,
+                        "audio_file": decoded_mix,
+                        "audio_file_path": audio_file,
                         "set_progress_bar": set_progress_bar,
                         "write_to_console": write_to_console,
                         "process_iteration": pausable_callback(self, self._process_iteration),
@@ -597,6 +607,7 @@ class JobRunner:
                 ensemble_stem_arrays: dict = {}
                 track_title = track_basename_from_path(audio_file)
                 stamp = testing_timestamp_prefix(self.settings)
+                decoded_mix = _decoded_mix_for_process(audio_file)
                 ensemble_final_base = format_track_base(
                     track=track_title,
                     model=None,
@@ -634,7 +645,8 @@ class JobRunner:
                         "model_data": current_model,
                         "export_path": export_path,
                         "audio_file_base": audio_file_base,
-                        "audio_file": audio_file,
+                        "audio_file": decoded_mix,
+                        "audio_file_path": audio_file,
                         "set_progress_bar": set_progress_bar,
                         "write_to_console": write_to_console,
                         "process_iteration": pausable_callback(self, self._process_iteration),

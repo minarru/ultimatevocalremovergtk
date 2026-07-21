@@ -262,36 +262,36 @@ class SeperateDemucs(SeperateAttributes):
                 mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
             
             processed = {}
-            mix = torch.tensor(mix, dtype=torch.float32)
-            ref = mix.mean(0)        
+            mix = torch.as_tensor(mix, dtype=torch.float32, device=self.device)
+            ref = mix.mean(0)
             mix = (mix - ref.mean()) / ref.std()
-            mix_infer = mix 
-            
-            with torch.no_grad():
+            mix_infer = mix
+
+            with torch.inference_mode():
                 self.check_run_control()
                 if self.demucs_version == DEMUCS_V1:
-                    sources = apply_model_v1(self.demucs, 
-                                                mix_infer.to(self.device), 
-                                                self.shifts, 
+                    sources = apply_model_v1(self.demucs,
+                                                mix_infer,
+                                                self.shifts,
                                                 self.is_split_mode,
                                                 set_progress_bar=self.set_progress_bar)
                 elif self.demucs_version == DEMUCS_V2:
-                    sources = apply_model_v2(self.demucs, 
-                                                mix_infer.to(self.device), 
+                    sources = apply_model_v2(self.demucs,
+                                                mix_infer,
                                                 self.shifts,
                                                 self.is_split_mode,
                                                 self.overlap,
                                                 set_progress_bar=self.set_progress_bar)
                 else:
-                    sources = apply_model(self.demucs, 
-                                            mix_infer[None], 
+                    sources = apply_model(self.demucs,
+                                            mix_infer[None],
                                             self.shifts,
                                             self.is_split_mode,
                                             self.overlap,
                                             static_shifts=1 if self.shifts == 0 else self.shifts,
                                             set_progress_bar=self.set_progress_bar,
                                             device=self.device)[0]
-            
+
             sources = (sources * ref.std() + ref.mean()).cpu().numpy()
             sources[[0,1]] = sources[[1,0]]
             processed[mix] = sources[:,:,0:None].copy()

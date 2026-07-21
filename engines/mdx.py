@@ -272,8 +272,16 @@ class SeperateMDX(SeperateAttributes):
         if not self.is_primary_stem_only:
             secondary_stem_path = self.stem_export_wav_path(self.secondary_stem)
             if not isinstance(self.secondary_source, np.ndarray):
-                raw_mix = self.demix(self.match_frequency_pitch(mix), is_match_mix=True) if mdx_net_cut else self.match_frequency_pitch(mix)
-                self.secondary_source = spec_utils.invert_stem(raw_mix, source) if self.is_invert_spec else mix.T-source.T
+                # Match-mix demix only affects invert-spec; defaults use mix-source subtraction.
+                if self.is_invert_spec:
+                    raw_mix = (
+                        self.demix(self.match_frequency_pitch(mix), is_match_mix=True)
+                        if mdx_net_cut
+                        else self.match_frequency_pitch(mix)
+                    )
+                    self.secondary_source = spec_utils.invert_stem(raw_mix, source)
+                else:
+                    self.secondary_source = mix.T - source.T
             
             self.secondary_source_map = self.final_process(secondary_stem_path, self.secondary_source, self.secondary_source_secondary, self.secondary_stem, samplerate)
         
@@ -328,53 +336,57 @@ class SeperateMDX(SeperateAttributes):
             mixture = np.concatenate((np.zeros((2, self.trim), dtype='float32'), mix, np.zeros((2, pad), dtype='float32')), 1)
 
             step = self.chunk_size - self.n_fft if overlap == DEFAULT else int((1 - overlap) * chunk_size)
-            result = np.zeros((1, 2, mixture.shape[-1]), dtype=np.float32)
-            divider = np.zeros((1, 2, mixture.shape[-1]), dtype=np.float32)
+            mix_len = mixture.shape[-1]
+            result = torch.zeros((1, 2, mix_len), dtype=torch.float32, device=self.device)
+            divider = torch.zeros((1, 2, mix_len), dtype=torch.float32, device=self.device)
             total = 0
-            total_chunks = (mixture.shape[-1] + step - 1) // step
+            total_chunks = (mix_len + step - 1) // step
 
-            for i in range(0, mixture.shape[-1], step):
+            for i in range(0, mix_len, step):
                 self.check_run_control()
                 total += 1
                 start = i
-                end = min(i + chunk_size, mixture.shape[-1])
+                end = min(i + chunk_size, mix_len)
 
                 chunk_size_actual = end - start
 
-                if overlap == 0:
-                    window = None
-                else:
-                    window = np.hanning(chunk_size_actual)
-                    window = np.tile(window[None, None, :], (1, 2, 1))
+                window = None
+                if overlap != 0:
+                    window = torch.as_tensor(
+                        np.hanning(chunk_size_actual),
+                        dtype=torch.float32,
+                        device=self.device,
+                    )
+                    window = window.view(1, 1, -1).expand(1, 2, -1)
 
                 mix_part_ = mixture[:, start:end]
                 if end != i + chunk_size:
                     pad_size = (i + chunk_size) - end
                     mix_part_ = np.concatenate((mix_part_, np.zeros((2, pad_size), dtype='float32')), axis=-1)
 
-                mix_part = torch.tensor([mix_part_], dtype=torch.float32).to(self.device)
+                mix_part = torch.as_tensor(mix_part_, dtype=torch.float32, device=self.device).unsqueeze(0)
                 mix_waves = mix_part.split(self.mdx_batch_size)
-                
-                with torch.no_grad():
+
+                with torch.inference_mode():
                     for mix_wave in mix_waves:
                         self.running_inference_progress_bar(total_chunks, is_match_mix=is_match_mix)
 
                         tar_waves = self.run_model(mix_wave, is_match_mix=is_match_mix)
-                        
+
                         if window is not None:
-                            tar_waves[..., :chunk_size_actual] *= window 
+                            tar_waves[..., :chunk_size_actual] *= window
                             divider[..., start:end] += window
                         else:
                             divider[..., start:end] += 1
 
-                        result[..., start:end] += tar_waves[..., :end-start]
-                
-            tar_waves = result / divider
+                        result[..., start:end] += tar_waves[..., : end - start]
+
+            tar_waves = (result / divider).detach().cpu().numpy()
             tar_waves_.append(tar_waves)
 
             tar_waves_ = np.vstack(tar_waves_)[:, :, self.trim:-self.trim]
             tar_waves = np.concatenate(tar_waves_, axis=-1)[:, :mix.shape[-1]]
-            
+
             source = tar_waves[:,0:None]
 
             if self.is_pitch_change and not is_match_mix:
@@ -393,6 +405,7 @@ class SeperateMDX(SeperateAttributes):
             return source
 
     def run_model(self, mix, is_match_mix=False):
+        """Run STFT → model → iSTFT and return a device-resident waveform tensor."""
         if torch.is_tensor(mix):
             mix_device = mix if mix.device == self.device else mix.to(self.device)
         else:
@@ -401,7 +414,7 @@ class SeperateMDX(SeperateAttributes):
         spek[:, :, :3, :] *= 0
 
         if is_match_mix:
-            spec_pred = spek.cpu().numpy()
+            spec_pred = spek
         else:
             spec_pred = (
                 -self.model_run(-spek) * 0.5 + self.model_run(spek) * 0.5
@@ -410,10 +423,8 @@ class SeperateMDX(SeperateAttributes):
             )
 
         if torch.is_tensor(spec_pred):
-            inv = self.stft.inverse(spec_pred)
-        else:
-            inv = self.stft.inverse(torch.as_tensor(spec_pred, device=self.device))
-        return inv.detach().cpu().numpy()
+            return self.stft.inverse(spec_pred)
+        return self.stft.inverse(torch.as_tensor(spec_pred, device=self.device))
 
 class SeperateMDXC(SeperateAttributes):        
 
@@ -628,7 +639,7 @@ class SeperateMDXC(SeperateAttributes):
                 model.load_state_dict(_load_torch_checkpoint(self.model_path))
                 model.to(self.device).eval()
             self._inference_model = model
-            mix = torch.tensor(mix, dtype=torch.float32)
+            mix = torch.as_tensor(mix, dtype=torch.float32, device=self.device)
 
             try:
                 try:
@@ -645,17 +656,23 @@ class SeperateMDXC(SeperateAttributes):
                 hop_size = chunk_size // overlap
                 mix_shape = mix.shape[1]
                 pad_size = hop_size - (mix_shape - chunk_size) % hop_size
-                mix = torch.cat([torch.zeros(2, chunk_size - hop_size), mix, torch.zeros(2, pad_size + chunk_size - hop_size)], 1)
+                mix = torch.cat(
+                    [
+                        torch.zeros(2, chunk_size - hop_size, device=self.device),
+                        mix,
+                        torch.zeros(2, pad_size + chunk_size - hop_size, device=self.device),
+                    ],
+                    1,
+                )
 
                 n_chunks = 1 + (mix.shape[1] - chunk_size) // hop_size
                 n_batches = max(1, (n_chunks + batch_size - 1) // batch_size)
 
-                X = torch.zeros(S, *mix.shape) if S > 1 else torch.zeros_like(mix)
-                X = X.to(self.device)
+                X = torch.zeros(S, *mix.shape, device=self.device) if S > 1 else torch.zeros_like(mix)
 
                 self.running_inference_console_write()
 
-                with torch.no_grad():
+                with torch.inference_mode():
                     cnt = 0
                     for start_idx in range(0, n_chunks, batch_size):
                         self.check_run_control()
@@ -669,7 +686,7 @@ class SeperateMDXC(SeperateAttributes):
                             ],
                             dim=0,
                         )
-                        x = model(batch.to(self.device))
+                        x = model(batch)
                         
                         for w in x:
                             X[..., cnt * hop_size : cnt * hop_size + chunk_size] += w
@@ -738,7 +755,7 @@ class SeperateMDXC(SeperateAttributes):
                 del checkpoint
                 model.to(device).eval()
             self._inference_model = model
-            mix = torch.tensor(mix, dtype=torch.float32)
+            mix = torch.as_tensor(mix, dtype=torch.float32, device=device)
 
             result = counter = estimated_sources = None
             try:
@@ -756,11 +773,11 @@ class SeperateMDXC(SeperateAttributes):
                     mix = nn.functional.pad(mix, (C - step, C - step), mode='reflect')
 
                 # Set up windows for fade-in/out
-                fadein = torch.linspace(0, 1, fade_size).to(device)
-                fadeout = torch.linspace(1, 0, fade_size).to(device)
-                window_start = torch.ones(C).to(device)
-                window_middle = torch.ones(C).to(device)
-                window_finish = torch.ones(C).to(device)
+                fadein = torch.linspace(0, 1, fade_size, device=device)
+                fadeout = torch.linspace(1, 0, fade_size, device=device)
+                window_start = torch.ones(C, device=device)
+                window_middle = torch.ones(C, device=device)
+                window_finish = torch.ones(C, device=device)
                 window_start[-fade_size:] *= fadeout  # No fade-in at start
                 window_finish[:fade_size] *= fadein  # No fade-out at end
                 window_middle[:fade_size] *= fadein
@@ -781,7 +798,7 @@ class SeperateMDXC(SeperateAttributes):
 
                     while i < mix.shape[1]:
                         self.check_run_control()
-                        part = mix[:, i:i + C].to(device)
+                        part = mix[:, i:i + C]
                         length = part.shape[-1]
                         if length < C:
                             if length > C // 2 + 1:
