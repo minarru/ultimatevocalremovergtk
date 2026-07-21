@@ -86,9 +86,13 @@ def restore_process(
         model = materialize_module(model, device)
 
     def process_chunk(chunk):
+        from engines.amp_runtime import maybe_autocast
+
         chunk = chunk.unsqueeze(0).to(device)
-        with torch.no_grad():
-            return model(chunk).squeeze(0).squeeze(0).cpu()
+        with torch.inference_mode():
+            with maybe_autocast(device):
+                out = model(chunk).squeeze(0).squeeze(0)
+            return out.float().cpu()
 
     def progress_bar_ui(length):
         global progress_value

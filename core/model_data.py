@@ -375,6 +375,8 @@ class ModelData:
         self.model_name = model_name
         self.process_method = selected_process_method
         self.model_status = False if self.model_name == CHOOSE_MODEL or self.model_name == NO_MODEL else True
+        # Always defined: hash / path lookup may leave this unset for missing files.
+        self.model_data = None
         self.primary_stem = None
         self.secondary_stem = None
         self.primary_stem_native = None

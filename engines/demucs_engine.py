@@ -257,50 +257,51 @@ class SeperateDemucs(SeperateAttributes):
     def demix_demucs(self, mix):
         with trace_phase("separate", "demix_demucs", engine="SeperateDemucs", model=self.model_basename):
             org_mix = mix
-            
+
             if self.is_pitch_change:
                 mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
-            
-            processed = {}
+
             mix = torch.as_tensor(mix, dtype=torch.float32, device=self.device)
             ref = mix.mean(0)
-            mix = (mix - ref.mean()) / ref.std()
-            mix_infer = mix
+            mix_infer = (mix - ref.mean()) / ref.std()
 
+            # Demucs hybrid nets are not fp16-safe under torch.autocast (NaN stems).
+            # UVR_AUTOCAST still applies to VR / MDX / Roformer paths.
             with torch.inference_mode():
                 self.check_run_control()
                 if self.demucs_version == DEMUCS_V1:
-                    sources = apply_model_v1(self.demucs,
-                                                mix_infer,
-                                                self.shifts,
-                                                self.is_split_mode,
-                                                set_progress_bar=self.set_progress_bar)
+                    sources = apply_model_v1(
+                        self.demucs,
+                        mix_infer,
+                        self.shifts,
+                        self.is_split_mode,
+                        set_progress_bar=self.set_progress_bar,
+                    )
                 elif self.demucs_version == DEMUCS_V2:
-                    sources = apply_model_v2(self.demucs,
-                                                mix_infer,
-                                                self.shifts,
-                                                self.is_split_mode,
-                                                self.overlap,
-                                                set_progress_bar=self.set_progress_bar)
+                    sources = apply_model_v2(
+                        self.demucs,
+                        mix_infer,
+                        self.shifts,
+                        self.is_split_mode,
+                        self.overlap,
+                        set_progress_bar=self.set_progress_bar,
+                    )
                 else:
-                    sources = apply_model(self.demucs,
-                                            mix_infer[None],
-                                            self.shifts,
-                                            self.is_split_mode,
-                                            self.overlap,
-                                            static_shifts=1 if self.shifts == 0 else self.shifts,
-                                            set_progress_bar=self.set_progress_bar,
-                                            device=self.device)[0]
+                    sources = apply_model(
+                        self.demucs,
+                        mix_infer[None],
+                        self.shifts,
+                        self.is_split_mode,
+                        self.overlap,
+                        static_shifts=1 if self.shifts == 0 else self.shifts,
+                        set_progress_bar=self.set_progress_bar,
+                        device=self.device,
+                    )[0]
 
-            sources = (sources * ref.std() + ref.mean()).cpu().numpy()
-            sources[[0,1]] = sources[[1,0]]
-            processed[mix] = sources[:,:,0:None].copy()
-            sources = list(processed.values())
-            sources = [s[:,:,0:None] for s in sources]
-            #sources = [self.pitch_fix(s[:,:,0:None], sr_pitched, org_mix) if self.is_pitch_change else s[:,:,0:None] for s in sources]
-            sources = np.concatenate(sources, axis=-1)
-                         
+            sources = (sources.float() * ref.std() + ref.mean()).cpu().numpy()
+            sources[[0, 1]] = sources[[1, 0]]
+
             if self.is_pitch_change:
                 sources = np.stack([self.pitch_fix(stem, sr_pitched, org_mix) for stem in sources])
-                            
+
             return sources

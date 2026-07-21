@@ -131,7 +131,12 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
             )
             X_batch = torch.from_numpy(X_batch).to(device)
 
-            pred = model.predict_mask(X_batch)
+            from engines.amp_runtime import maybe_autocast
+
+            with maybe_autocast(device):
+                pred = model.predict_mask(X_batch)
+            if torch.is_tensor(pred) and pred.dtype != torch.float32:
+                pred = pred.float()
             mask_parts.append(torch.cat([pred[b] for b in range(pred.shape[0])], dim=2))
 
         mask = torch.cat(mask_parts, dim=2).detach().cpu().numpy()

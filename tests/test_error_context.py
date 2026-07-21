@@ -1,14 +1,16 @@
 import os
 import tempfile
 import unittest
+import unittest.mock
 import wave
 
-from bundled.constants import DEFAULT_DATA, MDX_ARCH_TYPE
+from bundled.constants import DEFAULT_DATA, DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
 from bundled.error_handling import error_text
 from core.error_context import (
     build_separation_context,
     clear_run_error_context,
     format_error_context,
+    model_summary_lines,
     non_default_setting_lines,
     probe_audio_file,
     set_run_error_context,
@@ -98,6 +100,33 @@ class ErrorContextTests(unittest.TestCase):
         self.assertEqual(ctx["process"], MDX_ARCH_TYPE)
         self.assertEqual(ctx["input_files"], ["song.wav"])
         self.assertTrue(ctx["models"])
+
+    def test_model_summary_lines_for_vr_and_demucs(self) -> None:
+        """Regression: VR/Demucs branches must not NameError on VR_ARCH_TYPE."""
+
+        class _Fake:
+            process_method = VR_ARCH_TYPE
+            model_name = "v5: test"
+            model_basename = "test"
+            repo = object()
+            window_size = 512
+            aggression_setting = 0.05
+            model_samplerate = 44100
+            is_secondary_model_activated = False
+
+        with unittest.mock.patch(
+            "core.error_context.display_name_for_model",
+            return_value="v5: test",
+        ):
+            vr_lines = model_summary_lines(_Fake())
+            self.assertTrue(any("engine=VR" in line for line in vr_lines))
+
+            demucs = _Fake()
+            demucs.process_method = DEMUCS_ARCH_TYPE
+            demucs.demucs_stems = "All Stems"
+            demucs.overlap = 0.25
+            demucs_lines = model_summary_lines(demucs)
+            self.assertTrue(any("engine=Demucs" in line for line in demucs_lines))
 
 
 if __name__ == "__main__":
