@@ -130,11 +130,23 @@ def build_ort_runner(session: Any, torch_device: Any) -> Callable[[torch.Tensor]
     if use_cuda_iobind:
 
         def run_cuda(spek: torch.Tensor) -> torch.Tensor:
-            spek = spek.contiguous().to(dtype=torch.float32)
-            if spek.device != device_obj:
-                spek = spek.to(device_obj, non_blocking=False)
-            # ORT reads the binding pointer during run; keep spek alive.
-            torch.cuda.synchronize(spek.device)
+            # Hot path: STFT already produced contiguous float32 on the ORT device.
+            # Skip host sync and rely on same-stream ordering. Sync only when we
+            # materialize a new buffer ORT will read (H2D / dtype / contiguous).
+            already_ready = (
+                spek.device == device_obj
+                and spek.dtype == torch.float32
+                and spek.is_contiguous()
+            )
+            if not already_ready:
+                if spek.device != device_obj:
+                    spek = spek.to(device=device_obj, dtype=torch.float32, non_blocking=True)
+                elif spek.dtype != torch.float32:
+                    spek = spek.to(dtype=torch.float32)
+                if not spek.is_contiguous():
+                    spek = spek.contiguous()
+                # ORT reads the binding pointer during run; keep spek alive.
+                torch.cuda.synchronize(spek.device)
             binding = session.io_binding()
             binding.bind_input(
                 input_name,

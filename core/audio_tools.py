@@ -349,12 +349,14 @@ class AudioToolRunner:
         wait_for_stop: float = 0.0,
         force_if_alive: bool = False,
         clear_weight_cache: bool = False,
+        park_weights: bool = False,
     ) -> None:
         _release_inference_resources(
             self,
             wait_for_stop=wait_for_stop,
             force_if_alive=force_if_alive,
             clear_weight_cache=clear_weight_cache,
+            park_weights=park_weights,
         )
 
     # -- Worker ----------------------------------------------------------------
@@ -397,16 +399,19 @@ class AudioToolRunner:
             debug("audio", "_run ProcessStopped")
             callbacks.console(PROCESS_STOPPED_BY_USER)
             callbacks.stopped()
+            _release_inference_resources(self)
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
             if self._is_stopped:
                 debug("audio", "_run stopped during error")
                 callbacks.console(PROCESS_STOPPED_BY_USER)
                 callbacks.stopped()
+                _release_inference_resources(self)
                 return
             debug("audio", f"_run failed {type(exc).__name__}: {exc}")
             callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
             callbacks.error(exc)
-        finally:
+            _release_inference_resources(self, park_weights=True)
+        else:
             _release_inference_resources(self)
 
     def _run_manual_ensemble(self, audio_tool, inputs, callbacks) -> None:

@@ -16,7 +16,7 @@ import re
 import time
 from collections import Counter
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Sequence
+from typing import Any, Callable, List, Optional, Sequence
 
 from bundled.constants import (
     CHOOSE_ENSEMBLE_OPTION,
@@ -62,6 +62,30 @@ from .inference_cleanup import (
     release_inference_memory as _release_inference_resources,
     release_separator,
 )
+
+
+def collect_run_model_paths(models: Sequence[ModelData]) -> set:
+    """Collect on-disk model paths for every model participating in this run."""
+    found: set = set()
+
+    def add(model: Optional[ModelData]) -> None:
+        if model is None:
+            return
+        path = getattr(model, "model_path", None)
+        if path:
+            found.add(str(path))
+        secondary = getattr(model, "secondary_model", None)
+        if secondary is not None:
+            add(secondary)
+        pre_proc = getattr(model, "pre_proc_model", None)
+        if pre_proc is not None:
+            add(pre_proc)
+        for stem_model in getattr(model, "secondary_model_4_stem", None) or []:
+            add(stem_model)
+
+    for model in models:
+        add(model)
+    return found
 
 
 def _decoded_mix_for_process(audio_file):
@@ -187,6 +211,8 @@ class JobRunner:
         self._demucs_cache_source_mapper: dict = {}
         self.all_models: List[str] = []
         self._active_separator = None
+        self._run_protect_identities: set = set()
+        self._last_backend_name: Optional[str] = None
 
     # -- Public control ---------------------------------------------------------
 
@@ -267,6 +293,7 @@ class JobRunner:
         wait_for_stop: float = 0.0,
         force_if_alive: bool = False,
         clear_weight_cache: bool = False,
+        park_weights: bool = False,
     ) -> None:
         """Drop cached stems and return GPU memory after a run or halt."""
         _release_inference_resources(
@@ -274,6 +301,7 @@ class JobRunner:
             wait_for_stop=wait_for_stop,
             force_if_alive=force_if_alive,
             clear_weight_cache=clear_weight_cache,
+            park_weights=park_weights,
         )
 
     # -- Source cache helpers (ported from MainWindow) --------------------------
@@ -345,12 +373,60 @@ class JobRunner:
                 demucs_4_stem.extend(n for n in m.secondary_model_4_stem_model_names_list if n)
         self.all_models = [n for n in primary + secondary + pre_proc + demucs_4_stem if n]
 
+    def _set_run_protect_identities(self, models: List[ModelData]) -> None:
+        from engines.model_weight_cache import model_file_identity
+
+        identities = set()
+        for path in collect_run_model_paths(models):
+            ident = model_file_identity(path)
+            if ident is not None:
+                identities.add(ident)
+        self._run_protect_identities = identities
+
+    def _ensure_vram_for_job(
+        self,
+        callbacks: JobCallbacks,
+        device: Any = None,
+        *,
+        prefer_gpu_identity: Any = None,
+    ) -> None:
+        """Park or clear cached weights when free VRAM is too low for this job."""
+        from engines.model_weight_cache import ensure_weight_cache_vram_headroom
+
+        target = device
+        if target is None:
+            target = self.settings.get("device_set")
+        action = ensure_weight_cache_vram_headroom(
+            target,
+            protect_identities=self._run_protect_identities or None,
+            prefer_gpu_identity=prefer_gpu_identity,
+        )
+        if action in {"parked_other", "cleared_other"}:
+            callbacks.console(
+                "Low GPU memory — freed unused cached models for this run\n"
+            )
+        elif action in {"parked_all", "cleared_all"}:
+            callbacks.console(
+                "Low GPU memory — freed all cached models for this run\n"
+            )
+
     def _run_seperator(self, seperator):
         """Run one separator and return captured stem arrays (for ensemble RAM path)."""
         self._active_separator = seperator
         self._last_backend_name = getattr(seperator, "_backend_name", None)
         stems: dict = {}
         try:
+            from engines.model_weight_cache import (
+                ensure_weight_cache_vram_headroom,
+                model_file_identity,
+            )
+
+            prefer = model_file_identity(getattr(seperator, "model_path", "") or "")
+            ensure_weight_cache_vram_headroom(
+                getattr(seperator, "device", None),
+                protect_identities=self._run_protect_identities or None,
+                prefer_gpu_identity=prefer,
+            )
             seperator.seperate()
             stems = _capture_separator_stem_arrays(seperator)
             return stems
@@ -384,6 +460,8 @@ class JobRunner:
             debug_elapsed("worker", "resolve_models", resolve_started, count=len(models))
             self.iteration = 0
             self._build_all_models(models)
+            self._set_run_protect_identities(models)
+            self._ensure_vram_for_job(callbacks)
             self.true_model_count = self._count_true_models(models)
 
             total_files = len(input_paths)
@@ -506,19 +584,22 @@ class JobRunner:
             debug("worker", "_run ProcessStopped")
             callbacks.console(PROCESS_STOPPED_BY_USER)
             callbacks.stopped()
+            _release_inference_resources(self)
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
             if self._is_stopped:
                 debug("worker", "_run stopped during error path")
                 callbacks.console(PROCESS_STOPPED_BY_USER)
                 callbacks.stopped()
+                _release_inference_resources(self)
                 return
             debug("worker", f"_run failed {type(exc).__name__}: {exc}")
             callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
             callbacks.error(exc)
-        finally:
+            # Park GPU-resident weights so a retry is not blocked by VRAM from
+            # the failed attempt (common after CUDA OOM).
+            _release_inference_resources(self, park_weights=True)
+        else:
             _release_inference_resources(self)
-
-    # -- Ensemble worker --------------------------------------------------------
 
     def _run_ensemble(self, input_paths: List[str], callbacks: JobCallbacks) -> None:
         """Run every selected ensemble member then combine their outputs.
@@ -556,6 +637,8 @@ class JobRunner:
 
             self.iteration = 0
             self._build_all_models(models)
+            self._set_run_protect_identities(models)
+            self._ensure_vram_for_job(callbacks)
             self.true_model_count = self._count_true_models(models)
 
             total_files = len(input_paths)
@@ -748,16 +831,19 @@ class JobRunner:
             debug("worker", "_run_ensemble ProcessStopped")
             callbacks.console(PROCESS_STOPPED_BY_USER)
             callbacks.stopped()
+            _release_inference_resources(self)
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
             if self._is_stopped:
                 debug("worker", "_run_ensemble stopped during error path")
                 callbacks.console(PROCESS_STOPPED_BY_USER)
                 callbacks.stopped()
+                _release_inference_resources(self)
                 return
             debug("worker", f"_run_ensemble failed {type(exc).__name__}: {exc}")
             callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
             callbacks.error(exc)
-        finally:
+            _release_inference_resources(self, park_weights=True)
+        else:
             _release_inference_resources(self)
 
 
