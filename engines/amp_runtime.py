@@ -88,6 +88,31 @@ def torch_device_index(device: Any) -> int:
     return int(device_obj.index or 0)
 
 
+def ort_fixed_batch_size(session: Any) -> Optional[int]:
+    """Return a fixed leading batch size from an ORT session input, if any.
+
+    Classic MDX ONNX models often declare ``shape[0] == 1``. Dynamic dims
+    (``None`` or symbolic names like ``"batch"``) return ``None`` so callers
+    may stack freely.
+    """
+    try:
+        shape = session.get_inputs()[0].shape
+    except Exception:  # noqa: BLE001 - probe must never break demix
+        return None
+    if not shape:
+        return None
+    dim0 = shape[0]
+    if dim0 is None or isinstance(dim0, str):
+        return None
+    try:
+        value = int(dim0)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return value
+
+
 def build_ort_runner(session: Any, torch_device: Any) -> Callable[[torch.Tensor], torch.Tensor]:
     """Return ``spek_tensor -> spek_pred_tensor`` for an ORT session.
 
