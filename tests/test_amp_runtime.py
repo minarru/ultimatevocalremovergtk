@@ -8,10 +8,13 @@ from unittest import mock
 import numpy as np
 import torch
 
+import engines.amp_runtime as amp_runtime
 from engines.amp_runtime import (
     autocast_enabled,
     build_ort_runner,
+    configure_cuda_inference,
     env_flag,
+    make_ort_session_options,
     maybe_autocast,
     recommend_autocast,
 )
@@ -148,6 +151,53 @@ class AmpRuntimeTests(unittest.TestCase):
         with mock.patch("engines.amp_runtime.torch.cuda.synchronize") as sync:
             runner(spek)
         sync.assert_called_once()
+
+    def test_make_ort_session_options(self) -> None:
+        import onnxruntime as ort
+
+        options = make_ort_session_options()
+        self.assertEqual(
+            options.graph_optimization_level,
+            ort.GraphOptimizationLevel.ORT_ENABLE_ALL,
+        )
+        self.assertTrue(options.enable_mem_pattern)
+
+    def test_configure_cuda_inference_ampere_enables_tf32(self) -> None:
+        amp_runtime._cuda_inference_configured = False
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cuda.matmul.allow_tf32 = False
+        torch.backends.cudnn.allow_tf32 = False
+        with mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True), mock.patch(
+            "engines.amp_runtime.torch.cuda.device_count", return_value=1
+        ), mock.patch(
+            "engines.amp_runtime.torch.cuda.get_device_capability", return_value=(8, 0)
+        ):
+            configure_cuda_inference()
+        self.assertTrue(torch.backends.cudnn.benchmark)
+        self.assertTrue(torch.backends.cuda.matmul.allow_tf32)
+        self.assertTrue(torch.backends.cudnn.allow_tf32)
+        self.assertTrue(amp_runtime._cuda_inference_configured)
+
+    def test_configure_cuda_inference_pre_ampere_skips_tf32(self) -> None:
+        amp_runtime._cuda_inference_configured = False
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cuda.matmul.allow_tf32 = False
+        torch.backends.cudnn.allow_tf32 = False
+        with mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True), mock.patch(
+            "engines.amp_runtime.torch.cuda.device_count", return_value=1
+        ), mock.patch(
+            "engines.amp_runtime.torch.cuda.get_device_capability", return_value=(7, 5)
+        ):
+            configure_cuda_inference()
+        self.assertTrue(torch.backends.cudnn.benchmark)
+        self.assertFalse(torch.backends.cuda.matmul.allow_tf32)
+        self.assertFalse(torch.backends.cudnn.allow_tf32)
+
+    def test_configure_cuda_inference_idempotent(self) -> None:
+        amp_runtime._cuda_inference_configured = True
+        with mock.patch("engines.amp_runtime.torch.cuda.is_available") as available:
+            configure_cuda_inference()
+            available.assert_not_called()
 
 
 if __name__ == "__main__":

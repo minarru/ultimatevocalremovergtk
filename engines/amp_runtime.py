@@ -56,6 +56,39 @@ def recommend_autocast(device_set: Any = DEFAULT) -> bool:
         return False
 
 
+_cuda_inference_configured = False
+
+
+def configure_cuda_inference(device_set: Any = DEFAULT) -> None:
+    """Enable cudnn.benchmark and TF32 (Ampere+) once per process for CUDA jobs."""
+    global _cuda_inference_configured
+    if _cuda_inference_configured:
+        return
+    try:
+        if not torch.cuda.is_available():
+            return
+        torch.backends.cudnn.benchmark = True
+        index = _cuda_device_index(device_set)
+        if 0 <= index < torch.cuda.device_count():
+            major, _minor = torch.cuda.get_device_capability(index)
+            if int(major) >= 8:
+                torch.backends.cuda.matmul.allow_tf32 = True
+                torch.backends.cudnn.allow_tf32 = True
+        _cuda_inference_configured = True
+    except Exception:  # noqa: BLE001 - never block backend resolution
+        return
+
+
+def make_ort_session_options() -> Any:
+    """ORT session options for classic MDX ONNX loads (full graph opts + mem pattern)."""
+    import onnxruntime as ort
+
+    options = ort.SessionOptions()
+    options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    options.enable_mem_pattern = True
+    return options
+
+
 def autocast_enabled(settings: Any = None) -> bool:
     """Whether CUDA autocast should run for this process/job.
 
