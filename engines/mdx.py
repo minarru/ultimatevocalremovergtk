@@ -248,7 +248,14 @@ class SeperateMDX(SeperateAttributes):
                         if cached and cached.ort_session is not None:
                             self._ort_session = cached.ort_session
                         else:
-                            self._ort_session = ort.InferenceSession(self.model_path, providers=self.run_type)
+                            from engines.amp_runtime import make_ort_session_options
+
+                            # Cached ORT sessions already carry these options from first create.
+                            self._ort_session = ort.InferenceSession(
+                                self.model_path,
+                                sess_options=make_ort_session_options(),
+                                providers=self.run_type,
+                            )
                         from engines.amp_runtime import build_ort_runner
 
                         self.model_run = build_ort_runner(self._ort_session, self.device)
