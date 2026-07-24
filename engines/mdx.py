@@ -30,6 +30,11 @@ import ml.mdxnet as MdxnetSet
 from .base import SeperateAttributes
 from .mix import prepare_mix, gather_sources, rerun_mp3
 from .export import save_format
+from .mdx_classic_batch import (
+    mdx_batch_ranges,
+    mdx_hop_starts,
+    resolve_mdx_effective_batch,
+)
 from .vr_utils import vr_denoiser, loading_mix
 
 if TYPE_CHECKING:
@@ -342,47 +347,59 @@ class SeperateMDX(SeperateAttributes):
             mix_len = mixture_t.shape[-1]
             result = torch.zeros((1, 2, mix_len), dtype=torch.float32, device=self.device)
             divider = torch.zeros((1, 2, mix_len), dtype=torch.float32, device=self.device)
-            total = 0
-            total_chunks = (mix_len + step - 1) // step
 
-            for i in range(0, mix_len, step):
-                self.check_run_control()
-                total += 1
-                start = i
-                end = min(i + chunk_size, mix_len)
+            from engines.amp_runtime import ort_fixed_batch_size
 
-                chunk_size_actual = end - start
+            hop_starts = mdx_hop_starts(mix_len, step)
+            n_chunks = len(hop_starts)
+            ort_session = getattr(self, "_ort_session", None)
+            fixed_batch = ort_fixed_batch_size(ort_session) if ort_session is not None else None
+            effective_batch = resolve_mdx_effective_batch(self.mdx_batch_size, fixed_batch)
+            n_batches = max(1, (n_chunks + effective_batch - 1) // effective_batch) if n_chunks else 1
+            window_cache: dict[int, torch.Tensor] = {}
 
-                window = None
-                if overlap != 0:
-                    window = torch.as_tensor(
-                        np.hanning(chunk_size_actual),
+            def _hanning_window(length: int) -> torch.Tensor:
+                cached = window_cache.get(length)
+                if cached is None:
+                    cached = torch.as_tensor(
+                        np.hanning(length),
                         dtype=torch.float32,
                         device=self.device,
-                    )
-                    window = window.view(1, 1, -1).expand(1, 2, -1)
+                    ).view(1, 1, -1)
+                    window_cache[length] = cached
+                return cached.expand(1, 2, -1)
 
-                mix_part = mixture_t[:, start:end]
-                if end != i + chunk_size:
-                    pad_size = (i + chunk_size) - end
-                    mix_part = torch.nn.functional.pad(mix_part, (0, pad_size))
+            with torch.inference_mode():
+                for batch_start, batch_end in mdx_batch_ranges(n_chunks, effective_batch):
+                    self.check_run_control()
+                    self.running_inference_progress_bar(n_batches, is_match_mix=is_match_mix)
 
-                mix_part = mix_part.unsqueeze(0)
-                mix_waves = mix_part.split(self.mdx_batch_size)
+                    windows = []
+                    meta = []
+                    for hop_idx in range(batch_start, batch_end):
+                        start = hop_starts[hop_idx]
+                        end = min(start + chunk_size, mix_len)
+                        chunk_size_actual = end - start
+                        mix_part = mixture_t[:, start:end]
+                        if end != start + chunk_size:
+                            mix_part = torch.nn.functional.pad(
+                                mix_part, (0, (start + chunk_size) - end)
+                            )
+                        windows.append(mix_part)
+                        meta.append((start, end, chunk_size_actual))
 
-                with torch.inference_mode():
-                    for mix_wave in mix_waves:
-                        self.running_inference_progress_bar(total_chunks, is_match_mix=is_match_mix)
+                    batch = torch.stack(windows, dim=0)
+                    tar_waves = self.run_model(batch, is_match_mix=is_match_mix)
 
-                        tar_waves = self.run_model(mix_wave, is_match_mix=is_match_mix)
-
-                        if window is not None:
-                            tar_waves[..., :chunk_size_actual] *= window
+                    for item_idx, (start, end, chunk_size_actual) in enumerate(meta):
+                        item = tar_waves[item_idx : item_idx + 1]
+                        if overlap != 0:
+                            window = _hanning_window(chunk_size_actual)
+                            item[..., :chunk_size_actual] *= window
                             divider[..., start:end] += window
                         else:
                             divider[..., start:end] += 1
-
-                        result[..., start:end] += tar_waves[..., : end - start]
+                        result[..., start:end] += item[..., : end - start]
 
             tar_waves = (result / divider).detach().cpu().numpy()
             tar_waves_.append(tar_waves)
