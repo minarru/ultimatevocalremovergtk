@@ -61,7 +61,16 @@ def multiband_waves_to_spectrogram(
     return X_spec, X_spec_s, X_wave
 
 
-def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverber=False, model_path=None):
+def vr_denoiser(
+    X,
+    device,
+    hop_length=1024,
+    n_fft=2048,
+    cropsize=256,
+    is_deverber=False,
+    model_path=None,
+    settings=None,
+):
     batchsize = 4
 
     if is_deverber:
@@ -133,7 +142,7 @@ def vr_denoiser(X, device, hop_length=1024, n_fft=2048, cropsize=256, is_deverbe
 
             from engines.amp_runtime import maybe_autocast
 
-            with maybe_autocast(device):
+            with maybe_autocast(device, settings):
                 pred = model.predict_mask(X_batch)
             if torch.is_tensor(pred) and pred.dtype != torch.float32:
                 pred = pred.float()

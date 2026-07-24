@@ -1,33 +1,78 @@
 """Optional CUDA autocast and ONNX Runtime feed helpers.
 
-Defaults stay full FP32. Set ``UVR_AUTOCAST=1`` to enable CUDA autocast around
+GUI/settings key ``is_autocast`` enables CUDA ``torch.autocast`` (fp16) around
 model forwards only (OLA / post-processing remain float32). Demucs inference
 intentionally ignores this flag — hybrid Demucs nets emit NaNs under fp16
 autocast.
+
+``UVR_AUTOCAST`` in the environment overrides the settings value when present
+(used by headless ``bench-ab``).
 """
 
 from __future__ import annotations
 
 import os
 from contextlib import contextmanager, nullcontext
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, Optional
 
 import numpy as np
 import torch
+
+from bundled.constants import DEFAULT
 
 
 def env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def autocast_enabled() -> bool:
-    return env_flag("UVR_AUTOCAST")
+def _cuda_device_index(device_set: Any) -> int:
+    """Resolve a settings ``device_set`` value to a CUDA device index."""
+    if device_set is None or device_set == DEFAULT:
+        return 0
+    text = str(device_set).split(":")[-1].strip()
+    if not text or text == DEFAULT:
+        return 0
+    try:
+        return int(text)
+    except ValueError:
+        return 0
+
+
+def recommend_autocast(device_set: Any = DEFAULT) -> bool:
+    """Return True when FP16 autocast is a safe default for ``device_set``.
+
+    Enables only for CUDA devices with compute capability major >= 8 (Ampere+).
+    DirectML / MPS / CPU and older NVIDIA GPUs stay False.
+    """
+    try:
+        if not torch.cuda.is_available():
+            return False
+        index = _cuda_device_index(device_set)
+        if index < 0 or index >= torch.cuda.device_count():
+            return False
+        major, _minor = torch.cuda.get_device_capability(index)
+        return int(major) >= 8
+    except Exception:  # noqa: BLE001 - recommendation must never break settings load
+        return False
+
+
+def autocast_enabled(settings: Any = None) -> bool:
+    """Whether CUDA autocast should run for this process/job.
+
+    If ``UVR_AUTOCAST`` is set in the environment, that value wins. Otherwise
+    the ``is_autocast`` settings key is used when ``settings`` is provided.
+    """
+    if "UVR_AUTOCAST" in os.environ:
+        return env_flag("UVR_AUTOCAST")
+    if settings is not None:
+        return bool(settings.get("is_autocast"))
+    return False
 
 
 @contextmanager
-def maybe_autocast(device: Any) -> Iterator[None]:
+def maybe_autocast(device: Any, settings: Any = None) -> Iterator[None]:
     """Yield under ``torch.autocast`` only when opted in and running on CUDA."""
-    if not autocast_enabled():
+    if not autocast_enabled(settings):
         yield
         return
     device_obj = torch.device(device) if not isinstance(device, torch.device) else device
@@ -110,9 +155,15 @@ def build_ort_runner(session: Any, torch_device: Any) -> Callable[[torch.Tensor]
     return run_numpy
 
 
-def forward_with_autocast(device: Any, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+def forward_with_autocast(
+    device: Any,
+    fn: Callable[..., Any],
+    *args: Any,
+    settings: Any = None,
+    **kwargs: Any,
+) -> Any:
     """Call ``fn`` under optional CUDA autocast."""
-    with maybe_autocast(device):
+    with maybe_autocast(device, settings):
         return fn(*args, **kwargs)
 
 

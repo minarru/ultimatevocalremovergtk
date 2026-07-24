@@ -72,6 +72,7 @@ class SeperateAttributes:
         self.list_all_models = process_data['list_all_models']
         self.process_iteration = process_data['process_iteration']
         self.is_return_dual = is_return_dual
+        self.settings = model_data.settings
         self.is_pitch_change = model_data.is_pitch_change
         self.semitone_shift = model_data.semitone_shift
         self.is_match_frequency_pitch = model_data.is_match_frequency_pitch
@@ -485,7 +486,13 @@ class SeperateAttributes:
             
         def deverb_vocals(stem_path:str, stem_source):
             self.write_to_console(INFERENCE_STEP_DEVERBING, base_text='')
-            stem_source_deverbed, stem_source_2 = vr_denoiser(stem_source, self.device, is_deverber=True, model_path=self.DEVERBER_MODEL)
+            stem_source_deverbed, stem_source_2 = vr_denoiser(
+                stem_source,
+                self.device,
+                is_deverber=True,
+                model_path=self.DEVERBER_MODEL,
+                settings=self.settings,
+            )
             save_audio_file(stem_path.replace(".wav", "_deverbed.wav"), stem_source_deverbed)
             save_audio_file(stem_path.replace(".wav", "_reverb_only.wav"), stem_source_2)
             

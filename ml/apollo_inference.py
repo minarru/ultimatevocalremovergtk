@@ -56,6 +56,7 @@ def restore_process(
     device=None,
     extracted_params=None,
     config=None,
+    settings=None,
 ):
 
     if device is None:
@@ -90,7 +91,7 @@ def restore_process(
 
         chunk = chunk.unsqueeze(0).to(device)
         with torch.inference_mode():
-            with maybe_autocast(device):
+            with maybe_autocast(device, settings):
                 out = model(chunk).squeeze(0).squeeze(0)
             return out.float().cpu()
 

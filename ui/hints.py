@@ -20,6 +20,7 @@ from gi.repository import Adw, Gtk
 from ui.help_text import (
     AUDIO_TOOLS_HELP,
     COMMAND_TEXT_HELP,
+    IS_AUTOCAST_HELP,
     IS_GPU_CONVERSION_HELP,
     MODEL_SAMPLE_MODE_HELP,
     OUTPUT_FORMAT_HINT,
@@ -74,6 +75,7 @@ SHARED_HINTS: Dict[str, str] = {
     "console": COMMAND_TEXT_HELP,
     "process_method": PROCESS_METHOD_HINT,
     "gpu_conversion": IS_GPU_CONVERSION_HELP,
+    "autocast": IS_AUTOCAST_HELP,
     "stem_only": SAVE_STEM_ONLY_HELP,
     "sample_mode": MODEL_SAMPLE_MODE_HELP,
     "audio_tools": AUDIO_TOOLS_HELP,

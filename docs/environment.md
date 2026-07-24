@@ -77,7 +77,7 @@ G_MESSAGES_DEBUG=uvr-download UVR_LOG_FILE=/tmp/uvr.log python -m ui
 | Variable | Values | Purpose |
 |----------|--------|---------|
 | `UVR_SKIP_SEPARATE_WARMUP` | `1` | Skip background import of separation engines at startup (loads on first run instead) |
-| `UVR_AUTOCAST` | `1` | Opt-in CUDA `torch.autocast` (fp16) around model forwards only; OLA stays float32. Off by default. Applies to VR / MDX / Roformer; Demucs stays FP32 (fp16 produces NaN stems) |
+| `UVR_AUTOCAST` | `0`/`1` | **Override** for CUDA `torch.autocast` (fp16) around model forwards only; OLA stays float32. When unset, the GUI/settings key `is_autocast` applies. Applies to VR / MDX / Roformer; Demucs stays FP32 (fp16 produces NaN stems) |
 
 ---
 
@@ -106,6 +106,7 @@ Notes:
 
 - Ensemble mode is rejected in v1 (`--method mdx|demucs|vr`).
 - CLI overrides are **not** written back to `data.pkl`.
+- Autocast: unset `UVR_AUTOCAST` uses the persisted `is_autocast` setting; `--env UVR_AUTOCAST=…` overrides for A/B benches.
 - `--model` accepts GUI display names, on-disk basenames/filenames, or a
   **unique** substring of those (`karaoke_frazer` → Frazer Roformer when only
   one installed model matches). Ambiguous queries raise before separation starts.

@@ -221,7 +221,7 @@ class SeperateVR(SeperateAttributes):
                         X_batch = torch.from_numpy(X_batch).to(device)
                         from engines.amp_runtime import maybe_autocast
 
-                        with maybe_autocast(device):
+                        with maybe_autocast(device, self.settings):
                             pred = self.model_run.predict_mask(X_batch)
                         if torch.is_tensor(pred) and pred.dtype != torch.float32:
                             pred = pred.float()

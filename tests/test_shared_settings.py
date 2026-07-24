@@ -60,10 +60,14 @@ class _FakeSwitchRow:
 class _FakeSampleRow:
     def __init__(self):
         self.title = None
+        self.subtitle = None
         self.active = None
 
     def set_title(self, title):
         self.title = title
+
+    def set_subtitle(self, subtitle):
+        self.subtitle = subtitle
 
     def set_active(self, active):
         self.active = active
@@ -211,6 +215,7 @@ class ReadSharedFileOptionsTests(unittest.TestCase):
                 export_path="",
                 save_format=WAV,
                 is_gpu_conversion=False,
+                is_autocast=False,
                 sample_duration=30,
                 model_sample_mode=False,
             ),
@@ -223,6 +228,7 @@ class ReadSharedFileOptionsTests(unittest.TestCase):
                 "export_path": "/out",
                 "save_format": FLAC,
                 "is_gpu_conversion": True,
+                "is_autocast": True,
                 "model_sample_mode_duration": 45,
                 "model_sample_mode": True,
             }
@@ -232,6 +238,7 @@ class ReadSharedFileOptionsTests(unittest.TestCase):
         self.assertEqual(options.export_path, "/out")
         self.assertEqual(options.save_format, FLAC)
         self.assertTrue(options.is_gpu_conversion)
+        self.assertTrue(options.is_autocast)
         self.assertEqual(options.sample_duration, 45)
         self.assertTrue(options.model_sample_mode)
 
@@ -254,6 +261,7 @@ class ApplySharedFileOptionsTests(unittest.TestCase):
                     "export_path": "/out",
                     "save_format": FLAC,
                     "is_gpu_conversion": True,
+                    "is_autocast": True,
                     "model_sample_mode_duration": 15,
                     "model_sample_mode": True,
                 }
@@ -262,6 +270,7 @@ class ApplySharedFileOptionsTests(unittest.TestCase):
             output_row = _FakeOutputRow()
             format_row = _FakeFormatRow()
             gpu_row = _FakeSwitchRow()
+            autocast_row = _FakeSwitchRow()
             sample_row = _FakeSampleRow()
 
             apply_shared_file_options(
@@ -270,6 +279,7 @@ class ApplySharedFileOptionsTests(unittest.TestCase):
                 output_row=output_row,
                 format_row=format_row,
                 gpu_row=gpu_row,
+                autocast_row=autocast_row,
                 sample_row=sample_row,
             )
 
@@ -279,8 +289,9 @@ class ApplySharedFileOptionsTests(unittest.TestCase):
             self.assertFalse(output_row.notify)
             self.assertEqual(format_row.selected, FLAC)
             self.assertTrue(gpu_row.active)
+            self.assertTrue(autocast_row.active)
             self.assertTrue(sample_row.active)
-            self.assertIn("15", sample_row.title or "")
+            self.assertIn("15", sample_row.subtitle or "")
         finally:
             os.remove(input_path)
 

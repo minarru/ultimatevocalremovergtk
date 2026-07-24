@@ -401,9 +401,19 @@ class SeperateMDX(SeperateAttributes):
                 if NO_STEM in self.primary_stem_native or self.primary_stem_native == INST_STEM:
                     if org_mix.shape[1] != source.shape[1]:
                         source = spec_utils.match_array_shapes(source, org_mix)
-                    source = org_mix - vr_denoiser(org_mix-source, self.device, model_path=self.DENOISER_MODEL)
+                    source = org_mix - vr_denoiser(
+                        org_mix - source,
+                        self.device,
+                        model_path=self.DENOISER_MODEL,
+                        settings=self.settings,
+                    )
                 else:
-                    source = vr_denoiser(source, self.device, model_path=self.DENOISER_MODEL)
+                    source = vr_denoiser(
+                        source,
+                        self.device,
+                        model_path=self.DENOISER_MODEL,
+                        settings=self.settings,
+                    )
 
             return source
 
@@ -421,7 +431,7 @@ class SeperateMDX(SeperateAttributes):
         if is_match_mix:
             spec_pred = spek
         else:
-            with maybe_autocast(self.device):
+            with maybe_autocast(self.device, self.settings):
                 spec_pred = (
                     -self.model_run(-spek) * 0.5 + self.model_run(spek) * 0.5
                     if self.is_denoise
@@ -695,7 +705,7 @@ class SeperateMDXC(SeperateAttributes):
                             ],
                             dim=0,
                         )
-                        with maybe_autocast(self.device):
+                        with maybe_autocast(self.device, self.settings):
                             x = model(batch)
                         if torch.is_tensor(x) and x.dtype != torch.float32:
                             x = x.float()
@@ -713,7 +723,12 @@ class SeperateMDXC(SeperateAttributes):
                     del estimated_sources
                     if self.is_denoise_model:
                         if VOCAL_STEM in sources.keys() and INST_STEM in sources.keys():
-                            sources[VOCAL_STEM] = vr_denoiser(sources[VOCAL_STEM], self.device, model_path=self.DENOISER_MODEL)
+                            sources[VOCAL_STEM] = vr_denoiser(
+                                sources[VOCAL_STEM],
+                                self.device,
+                                model_path=self.DENOISER_MODEL,
+                                settings=self.settings,
+                            )
                             if sources[VOCAL_STEM].shape[1] != org_mix.shape[1]:
                                 sources[VOCAL_STEM] = spec_utils.match_array_shapes(sources[VOCAL_STEM], org_mix)
                             sources[INST_STEM] = org_mix - sources[VOCAL_STEM]
@@ -827,7 +842,7 @@ class SeperateMDXC(SeperateAttributes):
                             from engines.amp_runtime import maybe_autocast
 
                             arr = torch.stack(batch_data, dim=0)
-                            with maybe_autocast(device):
+                            with maybe_autocast(device, self.settings):
                                 x = model(arr)
                             if torch.is_tensor(x) and x.dtype != torch.float32:
                                 x = x.float()

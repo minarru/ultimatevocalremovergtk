@@ -47,6 +47,7 @@ from bundled.constants import (
     FLAC,
     FOUR_STEM_ENSEMBLE,
     IS_APPEND_ENSEMBLE_NAME_HELP,
+    IS_AUTOCAST_HELP,
     IS_GPU_CONVERSION_HELP,
     INPUT_FOLDER_ENTRY_HELP,
     IS_SAVE_ALL_OUTPUTS_ENSEMBLE_HELP,
@@ -284,9 +285,18 @@ class EnsemblePage:
         group.add(self.format_row)
 
         self.gpu_row = make_switch_row("GPU conversion", icon_name="pci-card-symbolic")
-        set_tooltip(self.gpu_row,IS_GPU_CONVERSION_HELP)
+        set_tooltip(self.gpu_row, IS_GPU_CONVERSION_HELP)
         self.gpu_row.connect("notify::active", self._on_gpu_changed)
         group.add(self.gpu_row)
+
+        self.autocast_row = make_switch_row(
+            "FP16 autocast",
+            subtitle="Faster VR/MDX/Roformer on modern NVIDIA GPUs",
+            icon_name="emblem-system-symbolic",
+        )
+        set_tooltip(self.autocast_row, IS_AUTOCAST_HELP)
+        self.autocast_row.connect("notify::active", self._on_autocast_changed)
+        group.add(self.autocast_row)
 
         duration = self.settings.get("model_sample_mode_duration", 30)
         self.sample_row = make_switch_row(
@@ -351,6 +361,7 @@ class EnsemblePage:
             self.output_row.set_path(self.settings.get("export_path") or "", notify=False)
             set_combo_value(self.format_row, self.settings.get("save_format", WAV))
             self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
+            self.autocast_row.set_active(bool(self.settings.get("is_autocast")))
             apply_sample_mode_label(self.sample_row, self.settings.get("model_sample_mode_duration", 30))
             self.sample_row.set_active(bool(self.settings.get("model_sample_mode")))
 
@@ -378,6 +389,7 @@ class EnsemblePage:
                 output_row=self.output_row,
                 format_row=self.format_row,
                 gpu_row=self.gpu_row,
+                autocast_row=self.autocast_row,
                 sample_row=self.sample_row,
             )
         finally:
@@ -408,6 +420,10 @@ class EnsemblePage:
         if not self._loading:
             self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
             self._update_stems_group_metadata()
+
+    def _on_autocast_changed(self, *_args) -> None:
+        if not self._loading:
+            self.settings.set("is_autocast", self.autocast_row.get_active())
 
     def _on_sample_changed(self, *_args) -> None:
         if not self._loading:

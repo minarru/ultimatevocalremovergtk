@@ -264,6 +264,7 @@ class AudioTools:
             device=backend.torch_device,
             extracted_params=extracted_params,
             config=config,
+            settings=self.settings,
         )
 
         clear_torch_cache(is_macos=self.is_macos, backend_name=backend.backend_name)
