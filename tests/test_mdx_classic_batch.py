@@ -8,6 +8,7 @@ from unittest import mock
 from engines.mdx_classic_batch import (
     mdx_batch_ranges,
     mdx_hop_starts,
+    next_batch_after_oom,
     resolve_mdx_effective_batch,
 )
 
@@ -34,6 +35,11 @@ class MdxClassicBatchHelpersTests(unittest.TestCase):
     def test_effective_batch_fixed_caps_requested(self) -> None:
         self.assertEqual(resolve_mdx_effective_batch(8, 4), 4)
         self.assertEqual(resolve_mdx_effective_batch(2, 4), 2)
+
+    def test_next_batch_after_oom_halves(self) -> None:
+        self.assertEqual(next_batch_after_oom(8), 4)
+        self.assertEqual(next_batch_after_oom(3), 1)
+        self.assertIsNone(next_batch_after_oom(1))
 
 
 class OrtFixedBatchSizeTests(unittest.TestCase):

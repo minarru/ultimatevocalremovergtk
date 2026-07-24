@@ -43,3 +43,11 @@ def resolve_mdx_effective_batch(requested: int, fixed_batch: Optional[int] = Non
     if fixed == 1:
         return 1
     return max(1, min(batch, fixed))
+
+
+def next_batch_after_oom(current: int) -> Optional[int]:
+    """Halve the batch after CUDA OOM, or return ``None`` when already at 1."""
+    batch = max(1, int(current or 1))
+    if batch <= 1:
+        return None
+    return max(1, batch // 2)

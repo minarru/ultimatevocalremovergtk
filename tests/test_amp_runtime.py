@@ -97,10 +97,7 @@ class AmpRuntimeTests(unittest.TestCase):
         self.assertEqual(fed.dtype, np.float32)
         self.assertTrue(fed.flags["C_CONTIGUOUS"])
 
-    def test_ort_cuda_iobind_path_uses_binding(self) -> None:
-        if not torch.cuda.is_available():
-            self.skipTest("CUDA required")
-
+    def _cuda_iobind_session(self):
         session = mock.MagicMock()
         session.get_inputs.return_value = [mock.MagicMock(name="input")]
         session.get_inputs.return_value[0].name = "input"
@@ -114,7 +111,13 @@ class AmpRuntimeTests(unittest.TestCase):
         binding = mock.MagicMock()
         binding.get_outputs.return_value = [ort_out]
         session.io_binding.return_value = binding
+        return session, binding
 
+    def test_ort_cuda_iobind_path_uses_binding(self) -> None:
+        if not torch.cuda.is_available():
+            self.skipTest("CUDA required")
+
+        session, binding = self._cuda_iobind_session()
         runner = build_ort_runner(session, torch.device("cuda:0"))
         spek = torch.zeros((1, 2, 4, 4), dtype=torch.float32, device="cuda:0")
         out = runner(spek)
@@ -123,6 +126,28 @@ class AmpRuntimeTests(unittest.TestCase):
         binding.bind_output.assert_called_once()
         self.assertEqual(out.device.type, "cuda")
         self.assertEqual(out.dtype, torch.float32)
+
+    def test_ort_cuda_skips_sync_when_already_on_device(self) -> None:
+        if not torch.cuda.is_available():
+            self.skipTest("CUDA required")
+
+        session, _binding = self._cuda_iobind_session()
+        runner = build_ort_runner(session, torch.device("cuda:0"))
+        spek = torch.zeros((1, 2, 4, 4), dtype=torch.float32, device="cuda:0")
+        with mock.patch("engines.amp_runtime.torch.cuda.synchronize") as sync:
+            runner(spek)
+        sync.assert_not_called()
+
+    def test_ort_cuda_syncs_after_host_to_device_copy(self) -> None:
+        if not torch.cuda.is_available():
+            self.skipTest("CUDA required")
+
+        session, _binding = self._cuda_iobind_session()
+        runner = build_ort_runner(session, torch.device("cuda:0"))
+        spek = torch.zeros((1, 2, 4, 4), dtype=torch.float32, device="cpu")
+        with mock.patch("engines.amp_runtime.torch.cuda.synchronize") as sync:
+            runner(spek)
+        sync.assert_called_once()
 
 
 if __name__ == "__main__":
