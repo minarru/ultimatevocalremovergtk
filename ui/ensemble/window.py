@@ -34,15 +34,15 @@ from core.run_estimate import (
 )
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
 from bundled.constants import (
+    CHUNK_MIN,
     CHOOSE_ENSEMBLE_OPTION,
     CHOOSE_STEM_PAIR,
+    ENSEMBLE_ALGORITHMS,
     ENSEMBLE_LISTBOX_HELP,
     ENSEMBLE_MAIN_STEM,
     ENSEMBLE_MAIN_STEM_HELP,
     ENSEMBLE_MODE,
     ENSEMBLE_PARTITION,
-    ENSEMBLE_TYPE,
-    ENSEMBLE_TYPE_4_STEM,
     ENSEMBLE_TYPE_HELP,
     FLAC,
     FOUR_STEM_ENSEMBLE,
@@ -60,6 +60,19 @@ from bundled.constants import (
     SAVE_STEM_ONLY_HELP,
     WAV,
 )
+from core.ensemble_algorithms import (
+    ENSEMBLE_PRESET_OPTIONS,
+    algorithm_blurb,
+    algorithm_row_titles,
+    ensemble_options_summary,
+    format_ensemble_type,
+    model_row_matches_query,
+    models_selection_status,
+    pair_for_preset,
+    parse_ensemble_type,
+    preset_for_pair,
+    wav_ensemble_subtitle,
+)
 
 from ..dialogs.utils import present_modal_dialog, set_dialog_content
 from ..spacing import inset_md
@@ -72,7 +85,7 @@ from ..help_text import (
     VIEW_INPUTS_BUTTON_HINT,
 )
 from ..hints import OUTPUT_FORMAT_HINT, set_icon_button_a11y, set_tooltip
-from ..markup import set_row_title
+from ..markup import set_row_subtitle, set_row_title
 from core.model_display import format_tag_subtitle, format_tag_title
 from core import (
     delete_ensemble,
@@ -128,7 +141,9 @@ class EnsemblePage:
         self.context = context
         self.settings = context.settings
         self._loading = False
+        self._syncing_preset = False
         self._model_checks: Dict[str, Gtk.CheckButton] = {}
+        self._model_row_text: Dict[str, tuple[str, str]] = {}
 
         # Distribute the groups across the shared two-column layout. The member
         # model checklist now lives in a modal dialog opened from a compact
@@ -176,6 +191,7 @@ class EnsemblePage:
 
     def _build_ensemble_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Ensemble options")
+        self.ensemble_group = group
 
         self.saved_row = make_combo_row("Saved ensemble", [CHOOSE_ENSEMBLE_OPTION])
         set_tooltip(self.saved_row, ENSEMBLE_SAVED_PRESET_HINT)
@@ -193,22 +209,18 @@ class EnsemblePage:
         group.add(self.saved_row)
 
         self.main_stem_row = make_combo_row("Main stem pair", list(ENSEMBLE_MAIN_STEM), icon_name="view-list-symbolic")
-        set_tooltip(self.main_stem_row,ENSEMBLE_MAIN_STEM_HELP)
+        set_tooltip(self.main_stem_row, ENSEMBLE_MAIN_STEM_HELP)
         self.main_stem_row.connect("notify::selected", self._on_main_stem_changed)
         group.add(self.main_stem_row)
 
-        self.ensemble_type_row = make_combo_row("Ensemble algorithm", list(ENSEMBLE_TYPE), icon_name="media-playlist-shuffle-symbolic")
-        set_tooltip(self.ensemble_type_row,ENSEMBLE_TYPE_HELP)
-        self.ensemble_type_row.connect("notify::selected", self._on_ensemble_type_changed)
-        group.add(self.ensemble_type_row)
-
+        # Checklist: models before algorithms.
         self._build_models_dialog()
         self.models_trigger_row = Adw.ActionRow(
             title="Member models",
             subtitle=self._models_summary(),
             activatable=True,
         )
-        set_tooltip(self.models_trigger_row,ENSEMBLE_LISTBOX_HELP)
+        set_tooltip(self.models_trigger_row, ENSEMBLE_LISTBOX_HELP)
         self.models_trigger_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
         self.models_trigger_row.connect("activated", self._open_models_dialog)
         group.add(self.models_trigger_row)
@@ -223,6 +235,36 @@ class EnsemblePage:
         self.member_options_row.connect("activated", self._open_member_model_options)
         group.add(self.member_options_row)
 
+        self.preset_row = make_combo_row(
+            "Algorithm preset",
+            list(ENSEMBLE_PRESET_OPTIONS),
+            icon_name="emblem-favorite-symbolic",
+        )
+        set_tooltip(
+            self.preset_row,
+            "Quick dual-stem algorithm pairs. Choose Custom to set Primary and Secondary independently.",
+        )
+        self.preset_row.connect("notify::selected", self._on_preset_changed)
+        group.add(self.preset_row)
+
+        self.primary_algo_row = make_combo_row(
+            "Primary algorithm",
+            list(ENSEMBLE_ALGORITHMS),
+            icon_name="media-playlist-shuffle-symbolic",
+        )
+        set_tooltip(self.primary_algo_row, ENSEMBLE_TYPE_HELP)
+        self.primary_algo_row.connect("notify::selected", self._on_ensemble_type_changed)
+        group.add(self.primary_algo_row)
+
+        self.secondary_algo_row = make_combo_row(
+            "Secondary algorithm",
+            list(ENSEMBLE_ALGORITHMS),
+            icon_name="media-playlist-shuffle-symbolic",
+        )
+        set_tooltip(self.secondary_algo_row, ENSEMBLE_TYPE_HELP)
+        self.secondary_algo_row.connect("notify::selected", self._on_ensemble_type_changed)
+        group.add(self.secondary_algo_row)
+
         return group
 
     def _build_models_dialog(self) -> None:
@@ -230,7 +272,8 @@ class EnsemblePage:
         here now, opened from the compact trigger row in "Ensemble options")."""
         self.models_listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         self.models_listbox.add_css_class("boxed-list")
-        set_tooltip(self.models_listbox,ENSEMBLE_LISTBOX_HELP)
+        set_tooltip(self.models_listbox, ENSEMBLE_LISTBOX_HELP)
+        self.models_listbox.set_filter_func(self._models_row_visible)
         self.models_listbox.append(
             Adw.ActionRow(title="Choose a stem pair to list models")
         )
@@ -241,7 +284,7 @@ class EnsemblePage:
         scroller.set_min_content_height(320)
         scroller.set_vexpand(True)
         scroller.set_child(self.models_listbox)
-        set_tooltip(scroller,ENSEMBLE_LISTBOX_HELP)
+        set_tooltip(scroller, ENSEMBLE_LISTBOX_HELP)
 
         description = Gtk.Label(
             label="Select two or more models compatible with the chosen stem pair.",
@@ -250,9 +293,39 @@ class EnsemblePage:
         )
         description.add_css_class("dim-label")
 
+        self.models_status_label = Gtk.Label(
+            label=models_selection_status(0),
+            wrap=True,
+            xalign=0.0,
+        )
+        self.models_status_label.add_css_class("dim-label")
+
+        self.models_search = Gtk.SearchEntry()
+        self.models_search.set_placeholder_text("Search models")
+        self.models_search.set_hexpand(True)
+        self.models_search.connect("search-changed", self._on_models_search_changed)
+
+        select_all_btn = Gtk.Button(label="Select all")
+        select_all_btn.add_css_class("flat")
+        select_all_btn.connect("clicked", self._on_models_select_all)
+        clear_btn = Gtk.Button(label="Clear")
+        clear_btn.add_css_class("flat")
+        clear_btn.connect("clicked", self._on_models_clear)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        actions.append(select_all_btn)
+        actions.append(clear_btn)
+        actions.set_halign(Gtk.Align.END)
+
+        toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        toolbar.append(self.models_search)
+        toolbar.append(actions)
+
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         inset_md(content)
         content.append(description)
+        content.append(self.models_status_label)
+        content.append(toolbar)
         content.append(scroller)
 
         self.models_dialog = Adw.Dialog()
@@ -334,7 +407,7 @@ class EnsemblePage:
 
         self.wav_ensemble_row = make_switch_row(
             "Ensemble waveforms",
-            "Combine in the time domain instead of spectrograms",
+            wav_ensemble_subtitle(uses_chunk_min=False),
         )
         set_tooltip(self.wav_ensemble_row, IS_WAV_ENSEMBLE_HELP)
         self.wav_ensemble_row.connect(
@@ -368,7 +441,6 @@ class EnsemblePage:
             self._refresh_saved_list()
             set_combo_value(self.main_stem_row, self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR))
             self._refresh_ensemble_type_values()
-            set_combo_value(self.ensemble_type_row, self.settings.get("ensemble_type", MAX_MIN))
 
             self._rebuild_stem_only_toggles()
             self.save_all_row.set_active(bool(self.settings.get("is_save_all_outputs_ensemble")))
@@ -543,10 +615,9 @@ class EnsemblePage:
             main_stem = data.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
             self.settings.set("ensemble_main_stem", main_stem)
             set_combo_value(self.main_stem_row, main_stem)
-            self._refresh_ensemble_type_values()
             ensemble_type = data.get("ensemble_type", MAX_MIN)
             self.settings.set("ensemble_type", ensemble_type)
-            set_combo_value(self.ensemble_type_row, ensemble_type)
+            self._refresh_ensemble_type_values()
         finally:
             self._loading = False
         self._rebuild_stem_only_toggles()
@@ -630,13 +701,46 @@ class EnsemblePage:
 
     def _refresh_ensemble_type_values(self) -> None:
         main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
-        values = ENSEMBLE_TYPE_4_STEM if self._is_multi_or_four_stem(main_stem) else ENSEMBLE_TYPE
+        multi = self._is_multi_or_four_stem(main_stem)
         current = self.settings.get("ensemble_type", MAX_MIN)
-        set_combo_values(self.ensemble_type_row, list(values))
-        if current not in values:
-            current = values[0]
-            self.settings.set("ensemble_type", current)
-        set_combo_value(self.ensemble_type_row, current)
+        primary, secondary = parse_ensemble_type(current)
+        primary_stem, secondary_stem = self._ensemble_stem_pair()
+        primary_title, secondary_title = algorithm_row_titles(
+            primary_stem, secondary_stem, multi_stem=multi
+        )
+
+        was_loading = self._loading
+        self._loading = True
+        self._syncing_preset = True
+        try:
+            set_combo_values(self.primary_algo_row, list(ENSEMBLE_ALGORITHMS))
+            set_combo_values(self.secondary_algo_row, list(ENSEMBLE_ALGORITHMS))
+            set_combo_value(self.primary_algo_row, primary)
+            set_combo_value(self.secondary_algo_row, secondary)
+            set_row_title(self.primary_algo_row, primary_title)
+            set_row_title(self.secondary_algo_row, secondary_title)
+            set_row_subtitle(self.primary_algo_row, algorithm_blurb(primary))
+            set_row_subtitle(self.secondary_algo_row, algorithm_blurb(secondary))
+
+            if multi:
+                self.preset_row.set_visible(False)
+                self.secondary_algo_row.set_visible(False)
+                if current != primary:
+                    self.settings.set("ensemble_type", primary)
+            else:
+                self.preset_row.set_visible(True)
+                self.secondary_algo_row.set_visible(True)
+                paired = format_ensemble_type(primary, secondary)
+                if current != paired:
+                    self.settings.set("ensemble_type", paired)
+                set_combo_value(self.preset_row, preset_for_pair(primary, secondary))
+        finally:
+            self._syncing_preset = False
+            self._loading = was_loading
+
+        self._update_algo_sensitivity()
+        self._update_wav_ensemble_subtitle()
+        self._update_ensemble_options_summary()
 
     def _on_main_stem_changed(self, *_args) -> None:
         if self._loading:
@@ -648,11 +752,91 @@ class EnsemblePage:
         self._refresh_ensemble_type_values()
         self._rebuild_stem_only_toggles()
         self._rebuild_model_list(self._selected_model_tags())
+        self._update_ensemble_options_summary()
+
+    def _on_preset_changed(self, *_args) -> None:
+        if self._loading or self._syncing_preset:
+            return
+        preset = get_combo_value(self.preset_row)
+        pair = pair_for_preset(preset)
+        if pair is None:
+            return
+        primary, secondary = pair
+        self._syncing_preset = True
+        try:
+            set_combo_value(self.primary_algo_row, primary)
+            set_combo_value(self.secondary_algo_row, secondary)
+            set_row_subtitle(self.primary_algo_row, algorithm_blurb(primary))
+            set_row_subtitle(self.secondary_algo_row, algorithm_blurb(secondary))
+            self.settings.set("ensemble_type", format_ensemble_type(primary, secondary))
+        finally:
+            self._syncing_preset = False
+        self._update_wav_ensemble_subtitle()
+        self._update_ensemble_options_summary()
 
     def _on_ensemble_type_changed(self, *_args) -> None:
-        if self._loading:
+        if self._loading or self._syncing_preset:
             return
-        self.settings.set("ensemble_type", get_combo_value(self.ensemble_type_row))
+        main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+        primary = get_combo_value(self.primary_algo_row)
+        set_row_subtitle(self.primary_algo_row, algorithm_blurb(primary))
+        if self._is_multi_or_four_stem(main_stem):
+            self.settings.set("ensemble_type", primary)
+        else:
+            secondary = get_combo_value(self.secondary_algo_row)
+            set_row_subtitle(self.secondary_algo_row, algorithm_blurb(secondary))
+            self.settings.set("ensemble_type", format_ensemble_type(primary, secondary))
+            self._syncing_preset = True
+            try:
+                set_combo_value(self.preset_row, preset_for_pair(primary, secondary))
+            finally:
+                self._syncing_preset = False
+        self._update_wav_ensemble_subtitle()
+        self._update_ensemble_options_summary()
+
+    def _update_algo_sensitivity(self) -> None:
+        enabled = self._stem_pair_chosen()
+        for row in (
+            getattr(self, "preset_row", None),
+            getattr(self, "primary_algo_row", None),
+            getattr(self, "secondary_algo_row", None),
+        ):
+            if row is None:
+                continue
+            row.set_sensitive(enabled)
+
+    def _update_wav_ensemble_subtitle(self) -> None:
+        row = getattr(self, "wav_ensemble_row", None)
+        if row is None:
+            return
+        main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+        primary, secondary = parse_ensemble_type(self.settings.get("ensemble_type", MAX_MIN))
+        if self._is_multi_or_four_stem(main_stem):
+            uses_chunk = primary == CHUNK_MIN
+        else:
+            uses_chunk = CHUNK_MIN in (primary, secondary)
+        set_row_subtitle(row, wav_ensemble_subtitle(uses_chunk_min=uses_chunk))
+
+    def _update_ensemble_options_summary(self) -> None:
+        group = getattr(self, "ensemble_group", None)
+        if group is None:
+            return
+        main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+        multi = self._is_multi_or_four_stem(main_stem)
+        primary_stem, secondary_stem = self._ensemble_stem_pair()
+        primary, secondary = parse_ensemble_type(self.settings.get("ensemble_type", MAX_MIN))
+        group.set_description(
+            ensemble_options_summary(
+                stem_chosen=self._stem_pair_chosen(),
+                main_stem=main_stem,
+                primary_stem=primary_stem,
+                secondary_stem=secondary_stem,
+                primary_algo=primary,
+                secondary_algo=secondary,
+                model_count=len(self._effective_selected_models()),
+                multi_stem=multi,
+            )
+        )
 
     # -- Model multi-select list ------------------------------------------------
 
@@ -664,12 +848,14 @@ class EnsemblePage:
             self.models_listbox.remove(child)
             child = nxt
         self._model_checks = {}
+        self._model_row_text = {}
 
         main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
         if main_stem == CHOOSE_STEM_PAIR:
             self.models_listbox.append(
                 Adw.ActionRow(title="Choose a stem pair to list models")
             )
+            self._update_models_dialog_status()
             self._update_models_summary()
             return
 
@@ -677,31 +863,45 @@ class EnsemblePage:
             tags = self.context.repo.ensemble_model_list(self.settings, main_stem)
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
             self.models_listbox.append(Adw.ActionRow(title=f"Could not list models: {exc}"))
+            self._update_models_dialog_status()
             self._update_models_summary()
             return
 
         if not tags:
             self.models_listbox.append(Adw.ActionRow(title="No compatible models found"))
+            self._update_models_dialog_status()
             self._update_models_summary()
             return
 
         for tag in tags:
+            title = format_tag_title(tag, self.context.repo)
+            subtitle = format_tag_subtitle(tag)
             row = Adw.ActionRow()
-            set_row_title(row, format_tag_title(tag, self.context.repo))
-            row.set_subtitle(format_tag_subtitle(tag))
+            set_row_title(row, title)
+            row.set_subtitle(subtitle)
             check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
             check.set_active(tag in preselected_set)
             check.connect("toggled", self._on_model_toggled)
             row.add_prefix(check)
             row.set_activatable_widget(check)
+            row._uvr_model_tag = tag  # type: ignore[attr-defined]
             self.models_listbox.append(row)
             self._model_checks[tag] = check
+            self._model_row_text[tag] = (title, subtitle)
 
+        self.models_listbox.invalidate_filter()
         self._persist_selected_models()
+        self._update_models_dialog_status()
         self._update_models_summary()
 
     def _selected_model_tags(self) -> List[str]:
         return [tag for tag, check in self._model_checks.items() if check.get_active()]
+
+    def _effective_selected_models(self) -> List[str]:
+        """Prefer live checklist state; fall back to persisted settings."""
+        if self._model_checks:
+            return self._selected_model_tags()
+        return list(self.settings.get("selected_models") or [])
 
     def _persist_selected_models(self) -> None:
         self.settings.set("selected_models", self._selected_model_tags())
@@ -710,7 +910,7 @@ class EnsemblePage:
         """Single-line description of the current member-model selection."""
         if self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR) == CHOOSE_STEM_PAIR:
             return "Choose a stem pair first"
-        count = len(self._selected_model_tags())
+        count = len(self._effective_selected_models())
         if count == 0:
             return "No models selected"
         if count == 1:
@@ -731,17 +931,77 @@ class EnsemblePage:
                 continue
             row.set_sensitive(enabled)
             row.set_activatable(enabled)
+        self._update_algo_sensitivity()
 
     def _update_models_summary(self) -> None:
         row = getattr(self, "models_trigger_row", None)
         if row is not None:
             row.set_subtitle(self._models_summary())
         self._update_member_models_sensitivity()
+        self._update_ensemble_options_summary()
         self._update_ensemble_banner()
+
+    def _models_row_visible(self, row: Gtk.ListBoxRow) -> bool:
+        tag = getattr(row, "_uvr_model_tag", None)
+        if tag is None:
+            # Placeholder / error rows stay visible.
+            return True
+        title, subtitle = self._model_row_text.get(tag, ("", ""))
+        query = ""
+        search = getattr(self, "models_search", None)
+        if search is not None:
+            query = search.get_text()
+        return model_row_matches_query(title, subtitle, query)
+
+    def _visible_model_tags(self) -> List[str]:
+        query = ""
+        search = getattr(self, "models_search", None)
+        if search is not None:
+            query = search.get_text()
+        return [
+            tag
+            for tag, (title, subtitle) in self._model_row_text.items()
+            if model_row_matches_query(title, subtitle, query)
+        ]
+
+    def _update_models_dialog_status(self) -> None:
+        label = getattr(self, "models_status_label", None)
+        if label is None:
+            return
+        selected = len(self._effective_selected_models())
+        if not self._model_checks:
+            label.set_label(models_selection_status(selected))
+            return
+        visible = len(self._visible_model_tags())
+        label.set_label(
+            models_selection_status(
+                selected,
+                visible_matches=visible,
+            )
+        )
+
+    def _on_models_search_changed(self, *_args) -> None:
+        self.models_listbox.invalidate_filter()
+        self._update_models_dialog_status()
+
+    def _on_models_select_all(self, *_args) -> None:
+        for tag in self._visible_model_tags():
+            check = self._model_checks.get(tag)
+            if check is not None and not check.get_active():
+                check.set_active(True)
+
+    def _on_models_clear(self, *_args) -> None:
+        for tag in self._visible_model_tags():
+            check = self._model_checks.get(tag)
+            if check is not None and check.get_active():
+                check.set_active(False)
 
     def _open_models_dialog(self, *_args) -> None:
         if not self._stem_pair_chosen():
             return
+        search = getattr(self, "models_search", None)
+        if search is not None:
+            search.set_text("")
         preselected = self._selected_model_tags() if self._model_checks else (self.settings.get("selected_models") or [])
         self._rebuild_model_list(preselected)
         present_modal_dialog(self.models_dialog, self.window)
@@ -770,6 +1030,7 @@ class EnsemblePage:
         if not self._loading:
             set_combo_value(self.saved_row, CHOOSE_ENSEMBLE_OPTION)
         self._persist_selected_models()
+        self._update_models_dialog_status()
         self._update_models_summary()
         self._rebuild_stem_only_toggles()
 
@@ -800,7 +1061,7 @@ class EnsemblePage:
         """
         if self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR) == CHOOSE_STEM_PAIR:
             return _REASON_STEM_PAIR
-        if len(self._selected_model_tags()) <= 1:
+        if len(self._effective_selected_models()) <= 1:
             return _REASON_TWO_MODELS
         return None
 

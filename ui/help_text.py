@@ -146,26 +146,21 @@ ENSEMBLE_MAIN_STEM_HELP = """Select the stem type for ensembling:
 • Multi-stem Ensemble:
   - The "Jungle Ensemble" gathers all models and ensembles any related outputs"""
 
-ENSEMBLE_TYPE_HELP = """Choose the ensemble algorithm for generating the final output:
+ENSEMBLE_TYPE_HELP = """Choose how member outputs are combined.
 
-• Max Spec/Min Spec:
-  - Primary stem processed with "Max Spec" algorithm
-  - Secondary stem processed with "Min Spec" algorithm
+Dual-stem ensembles use a Primary algorithm and a Secondary algorithm (saved as Primary/Secondary). 4-stem and multi-stem ensembles use a single algorithm for every stem.
 
-Note: For the "4 Stem Ensemble" option, only one algorithm will be displayed
+Algorithm atoms:
+• Max Spec — Keep the strongest magnitude per bin (fuller; can add artifacts)
+• Min Spec — Keep the weakest magnitude per bin (cleaner; can sound muddy)
+• Average — Mean of all member waveforms
+• Median Spec — Per-bin median of complex spectrograms (robust with 3+ models)
+• Soft Spec — Softmax blend with automatic magnitude-agreement weights (no manual weights)
+• Max Mag / Avg Phase — Max Spec magnitudes with a stable average phase
+• Hybrid Spec — Average of Max Spec and Min Spec results
+• Chunk Min — Time-domain: keep the quietest chunk from any member
 
-Algorithm Details:
-• Max Spec:
-  - Produces the highest possible output
-  - Ideal for vocal stems for a fuller sound, but might introduce unwanted artifacts
-  - Works well with instrumental stems, but avoid using VR Arch models in the ensemble
-
-• Min Spec:
-  - Produces the lowest possible output
-  - Ideal for instrumental stems for a cleaner result. Might result in a "muddy" sound
-
-• Average:
-  - Averages all results together for the final output"""
+Default dual-stem pair is Max Spec / Min Spec."""
 
 ENSEMBLE_LISTBOX_HELP = "Displays all available models for the chosen main stem pair"
 
@@ -605,7 +600,8 @@ ENSEMBLE_DELETE_BUTTON_HINT = "Delete selected saved ensemble"
 # --- Audio tools page ---
 
 MANUAL_ENSEMBLE_ALGORITHM_HINT = (
-    "Choose how the selected files are combined (e.g. Min/Max, Average, or Combine Inputs)"
+    "Choose how the selected files are combined: Max/Min/Average/Median/Soft Spec, "
+    "Max Mag / Avg Phase, Hybrid Spec, Chunk Min, or Combine Inputs. Soft Spec uses automatic weights."
 )
 PLAYBACK_RATE_HINT = (
     "Playback rate multiplier: values below 1 slow the track down, values above 1 speed it up"
