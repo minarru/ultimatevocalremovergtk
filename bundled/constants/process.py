@@ -254,4 +254,4 @@ WOOD_INST_MODEL_HASH = '0ec76fd9e65f81d8b4fbd13af4826ed8'
 WOOD_INST_PARAMS = {
     "vr_model_param": "4band_v3",
     "primary_stem": NO_WIND_INST_STEM
-                     }
+}
