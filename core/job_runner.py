@@ -26,6 +26,7 @@ from bundled.constants import (
     FOUR_STEM_ENSEMBLE,
     INST_STEM,
     MAX_MIN,
+    MAX_SPEC,
     MDX_ARCH_TYPE,
     MULTI_STEM_ENSEMBLE,
     PRIMARY_STEM,
@@ -894,7 +895,10 @@ class Ensembler:
             chosen_ensemble_name = sanitize_filename_component(chosen) or "Ensembled"
         else:
             chosen_ensemble_name = "Ensembled"
-        ensemble_algorithm = settings.get("ensemble_type", MAX_MIN).partition("/")
+        from core.ensemble_algorithms import parse_ensemble_type
+
+        ensemble_type_value = settings.get("ensemble_type", MAX_MIN)
+        primary_algorithm, secondary_algorithm = parse_ensemble_type(ensemble_type_value)
         ensemble_main_stem_pair = settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR).partition("/")
         time_stamp = round(time.time())
 
@@ -905,8 +909,9 @@ class Ensembler:
         ensemble_folder_root = self.main_export_path if self.is_save_all_outputs_ensemble else paths.ENSEMBLE_TEMP_PATH
         folder_label = sanitize_filename_component(chosen_ensemble_name.replace(" ", "_")) or "Ensembled"
         self.ensemble_folder_name = os.path.join(ensemble_folder_root, f"{folder_label}_Outputs_{time_stamp}")
-        self.primary_algorithm = ensemble_algorithm[0]
-        self.secondary_algorithm = ensemble_algorithm[2]
+        # Dual-stem: Primary/Secondary pair. 4-stem uses the full token in ensemble_outputs.
+        self.primary_algorithm = primary_algorithm
+        self.secondary_algorithm = secondary_algorithm
         self.ensemble_primary_stem = ensemble_main_stem_pair[0]
         self.ensemble_secondary_stem = ensemble_main_stem_pair[2]
         self.is_normalization = settings.get("is_normalization")
@@ -937,7 +942,9 @@ class Ensembler:
         from engines.separate import save_format as _save_format
 
         if is_4_stem:
-            algorithm = self.settings.get("ensemble_type", MAX_MIN)
+            # Single-token algorithm (no slash); never use an empty secondary partition.
+            raw_type = self.settings.get("ensemble_type", MAX_MIN)
+            algorithm = raw_type.partition("/")[0].strip() or MAX_SPEC
             stem_tag = stem
         elif is_inst_mix:
             algorithm = self.secondary_algorithm
