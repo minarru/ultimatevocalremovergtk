@@ -51,7 +51,15 @@ class SettingsModel:
             "settings",
             f"load_settings source={source} path={path} keys={len(stored)}",
         )
-        return cls(stored, path=path)
+        # First load of is_autocast: recommend Ampere+ CUDA, else leave False.
+        # Do not treat DEFAULT_DATA backfill as a user choice.
+        had_autocast = "is_autocast" in stored
+        settings = cls(stored, path=path)
+        if not had_autocast:
+            from engines.amp_runtime import recommend_autocast
+
+            settings.set("is_autocast", recommend_autocast(settings.get("device_set")))
+        return settings
 
     @staticmethod
     def _sanitize_stored(stored: Any) -> Dict[str, Any]:

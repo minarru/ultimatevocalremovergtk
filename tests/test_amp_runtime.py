@@ -13,6 +13,7 @@ from engines.amp_runtime import (
     build_ort_runner,
     env_flag,
     maybe_autocast,
+    recommend_autocast,
 )
 
 
@@ -24,8 +25,56 @@ class AmpRuntimeTests(unittest.TestCase):
         with mock.patch.dict("os.environ", {"UVR_AUTOCAST": "0"}, clear=False):
             self.assertFalse(autocast_enabled())
 
+    def test_autocast_enabled_env_overrides_settings(self) -> None:
+        settings = mock.MagicMock()
+        settings.get.return_value = True
+        with mock.patch.dict("os.environ", {"UVR_AUTOCAST": "0"}, clear=False):
+            self.assertFalse(autocast_enabled(settings))
+        with mock.patch.dict("os.environ", {"UVR_AUTOCAST": "1"}, clear=False):
+            self.assertTrue(autocast_enabled(settings))
+            settings.get.assert_not_called()
+
+    def test_autocast_enabled_uses_settings_when_env_absent(self) -> None:
+        settings = mock.MagicMock()
+        settings.get.return_value = True
+        env = {k: v for k, v in __import__("os").environ.items() if k != "UVR_AUTOCAST"}
+        with mock.patch.dict("os.environ", env, clear=True):
+            self.assertTrue(autocast_enabled(settings))
+            settings.get.assert_called_with("is_autocast")
+            settings.get.return_value = False
+            self.assertFalse(autocast_enabled(settings))
+            self.assertFalse(autocast_enabled(None))
+
+    def test_recommend_autocast_matrix(self) -> None:
+        with mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=False):
+            self.assertFalse(recommend_autocast())
+
+        with mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True), mock.patch(
+            "engines.amp_runtime.torch.cuda.device_count", return_value=1
+        ), mock.patch(
+            "engines.amp_runtime.torch.cuda.get_device_capability", return_value=(7, 5)
+        ):
+            self.assertFalse(recommend_autocast())
+
+        with mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True), mock.patch(
+            "engines.amp_runtime.torch.cuda.device_count", return_value=1
+        ), mock.patch(
+            "engines.amp_runtime.torch.cuda.get_device_capability", return_value=(8, 0)
+        ) as get_cap:
+            self.assertTrue(recommend_autocast())
+            get_cap.assert_called_with(0)
+
+        with mock.patch("engines.amp_runtime.torch.cuda.is_available", return_value=True), mock.patch(
+            "engines.amp_runtime.torch.cuda.device_count", return_value=2
+        ), mock.patch(
+            "engines.amp_runtime.torch.cuda.get_device_capability", return_value=(8, 9)
+        ) as get_cap:
+            self.assertTrue(recommend_autocast("CUDA:1"))
+            get_cap.assert_called_with(1)
+
     def test_maybe_autocast_default_is_noop(self) -> None:
-        with mock.patch.dict("os.environ", {"UVR_AUTOCAST": ""}, clear=False):
+        env = {k: v for k, v in __import__("os").environ.items() if k != "UVR_AUTOCAST"}
+        with mock.patch.dict("os.environ", env, clear=True):
             with maybe_autocast("cuda:0"):
                 pass  # should not raise when CUDA unavailable either
 

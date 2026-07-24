@@ -52,7 +52,7 @@ from core.platform import system_name
 from core.paths import SETTINGS_CACHE_DIR
 
 from .application import apply_color_scheme
-from .help_text import REMOVE_PROFILE_HINT, FLAC_BIT_DEPTH_HINT
+from .help_text import IS_AUTOCAST_HELP, REMOVE_PROFILE_HINT, FLAC_BIT_DEPTH_HINT
 from .hints import set_tooltip
 from .widgets.rows import get_combo_value, make_combo_row, set_combo_value, set_row_icon
 
@@ -293,6 +293,15 @@ class PreferencesDialog(Adw.PreferencesDialog):
         set_row_icon(self.gpu_row, "pci-card-symbolic")
         hardware_group.add(self.gpu_row)
 
+        self.autocast_row = Adw.SwitchRow(
+            title="FP16 autocast",
+            subtitle="Faster VR/MDX/Roformer on modern NVIDIA GPUs",
+        )
+        self.autocast_row.connect("notify::active", self._on_bool_changed, "is_autocast")
+        set_row_icon(self.autocast_row, "emblem-system-symbolic")
+        set_tooltip(self.autocast_row, IS_AUTOCAST_HELP)
+        hardware_group.add(self.autocast_row)
+
         devices = list_gpu_devices()
         if devices:
             device_opts = [DEFAULT] + [idx for idx, _name in devices]
@@ -389,6 +398,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
                 row.set_active(bool(self.settings.get(key, True)))
 
             self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
+            self.autocast_row.set_active(bool(self.settings.get("is_autocast")))
             if hasattr(self, "directml_row"):
                 self.directml_row.set_active(bool(self.settings.get("is_use_directml")))
             if not set_combo_value(self.device_row, self.settings.get("device_set", DEFAULT)):

@@ -520,6 +520,13 @@ else:
   - NVIDIA GPUs use CUDA; on Windows, enable DirectML for AMD/Intel GPUs
   - DirectML accelerates PyTorch models only; classic MDX ONNX models stay on CPU"""
 
+IS_AUTOCAST_HELP = """• FP16 autocast (CUDA):
+  - Speeds up VR, MDX-Net, and Roformer forwards on modern NVIDIA GPUs
+  - Demucs stays full precision (FP16 produces invalid results there)
+  - A tiny quality difference vs FP32 is possible
+  - Only applies when GPU conversion is on and CUDA is available
+  - UVR_AUTOCAST in the environment overrides this setting when set"""
+
 
 # --- GTK shell ---
 
