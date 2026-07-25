@@ -117,7 +117,16 @@ def weight_cache_key(
 
 
 class ModelWeightCache:
-    """Small LRU of loaded modules / ORT sessions."""
+    """Small LRU of loaded modules / ORT sessions.
+
+    Assumes at most one separator performs GPU inference at a time: the app's
+    ``RunController`` (ui/run_control.py) exposes a single shared
+    Start/Stop and ``_running_target``, so separation/ensemble/audio-tools
+    runs are mutually exclusive. If that ever changes to allow concurrent
+    runs on the same device, ``_device_resident_key`` below (a single slot)
+    could park a module that a different run is still actively using
+    mid-forward — this needs a per-run reservation, not just a bigger LRU.
+    """
 
     def __init__(self, max_entries: int = 4) -> None:
         self.max_entries = max(1, int(max_entries))

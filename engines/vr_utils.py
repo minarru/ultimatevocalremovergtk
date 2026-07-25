@@ -181,6 +181,6 @@ def loading_mix(X, mp):
         X_wave,
         mp,
         is_v51_model=True,
-        use_model_res_type=False,
+        use_model_res_type=True,
     )
     return X_spec

@@ -166,6 +166,16 @@ def build_ort_runner(session: Any, torch_device: Any) -> Callable[[torch.Tensor]
             # Hot path: STFT already produced contiguous float32 on the ORT device.
             # Skip host sync and rely on same-stream ordering. Sync only when we
             # materialize a new buffer ORT will read (H2D / dtype / contiguous).
+            #
+            # This relies on onnxruntime's CUDAExecutionProvider defaulting to
+            # the current thread's active CUDA stream (no ``user_compute_stream``
+            # provider option is set here) — not a documented cross-version ORT
+            # guarantee. If a future onnxruntime release schedules CUDA EP work
+            # on its own stream, ``run_with_iobinding`` could read this tensor
+            # before PyTorch finishes writing it. Covered by
+            # test_amp_runtime.py::test_ort_cuda_skips_sync_when_already_on_device;
+            # if that assumption ever needs relaxing, re-add the synchronize()
+            # here rather than silently trusting stream order.
             already_ready = (
                 spek.device == device_obj
                 and spek.dtype == torch.float32

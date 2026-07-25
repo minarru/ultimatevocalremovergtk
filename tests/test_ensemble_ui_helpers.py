@@ -111,5 +111,48 @@ class SummaryAndBlurbTests(unittest.TestCase):
         self.assertTrue(algorithm_blurb(CHUNK_MIN))
 
 
+class MainStemChangedOrderTests(unittest.TestCase):
+    def test_model_list_rebuilds_before_stem_toggles(self) -> None:
+        """Regression: stem-only toggles resolve export-semantics hints from
+        _selected_model_tags(), which reads the model checklist built by
+        _rebuild_model_list(). Rebuilding toggles first meant that checklist
+        still reflected the *previous* stem pair for one render pass.
+        """
+        from unittest import mock
+
+        import ui.ensemble.window as ensemble_window
+
+        page = object.__new__(ensemble_window.EnsemblePage)
+        page._loading = False
+        page.settings = mock.Mock()
+        page.main_stem_row = mock.Mock()
+        page.saved_row = mock.Mock()
+
+        order: list[str] = []
+        page._refresh_ensemble_type_values = mock.Mock(
+            side_effect=lambda: order.append("refresh_type")
+        )
+        page._rebuild_model_list = mock.Mock(
+            side_effect=lambda tags: order.append("rebuild_model_list")
+        )
+        page._rebuild_stem_only_toggles = mock.Mock(
+            side_effect=lambda: order.append("rebuild_stem_toggles")
+        )
+        page._update_ensemble_options_summary = mock.Mock(
+            side_effect=lambda: order.append("update_summary")
+        )
+        page._selected_model_tags = mock.Mock(return_value=["tag-a"])
+
+        with mock.patch.object(
+            ensemble_window, "get_combo_value", return_value="Vocals/Instrumental"
+        ), mock.patch.object(ensemble_window, "set_combo_value"):
+            page._on_main_stem_changed()
+
+        self.assertEqual(
+            order,
+            ["refresh_type", "rebuild_model_list", "rebuild_stem_toggles", "update_summary"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

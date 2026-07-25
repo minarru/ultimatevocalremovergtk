@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Sequence, Tuple
+from typing import List, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -84,19 +84,33 @@ def slice_mix(
 def concat_stems(
     parts: Sequence[np.ndarray],
     *,
-    overlap_samples: int = 0,
+    overlap_samples: Union[int, Sequence[int]] = 0,
 ) -> np.ndarray:
-    """Concatenate channel-first stem chunks with a linear crossfade on overlap."""
+    """Concatenate channel-first stem chunks with a linear crossfade on overlap.
+
+    ``overlap_samples`` is either a single count applied to every join, or a
+    sequence with one entry per join (``len(parts) - 1``). A sequence is
+    required when chunk boundaries are unevenly spaced — e.g. ``slice_mix``
+    pulls the final chunk back to end exactly at the mix length, so the last
+    join's actual overlap differs from the configured overlap used elsewhere.
+    Use :func:`overlaps_for_chunks` to derive it from ``slice_mix`` output.
+    """
     if not parts:
         raise ValueError("concat_stems requires at least one part")
     arrays = [np.asarray(part) for part in parts]
     if len(arrays) == 1:
         return arrays[0]
 
-    overlap = max(0, int(overlap_samples))
+    if isinstance(overlap_samples, (int, np.integer)):
+        overlaps = [max(0, int(overlap_samples))] * (len(arrays) - 1)
+    else:
+        overlaps = [max(0, int(v)) for v in overlap_samples]
+        if len(overlaps) != len(arrays) - 1:
+            raise ValueError("overlap_samples sequence must have len(parts) - 1 entries")
+
     result = arrays[0]
-    for nxt in arrays[1:]:
-        result = _crossfade_join(result, nxt, overlap)
+    for nxt, ov in zip(arrays[1:], overlaps):
+        result = _crossfade_join(result, nxt, ov)
     return result
 
 
@@ -112,6 +126,19 @@ def _crossfade_join(left: np.ndarray, right: np.ndarray, overlap: int) -> np.nda
     fade_in = 1.0 - fade_out
     mixed = left[:, -ov:] * fade_out + right[:, :ov] * fade_in
     return np.concatenate([left[:, :-ov], mixed, right[:, ov:]], axis=1)
+
+
+def overlaps_for_chunks(chunks: Sequence[Tuple[int, int, np.ndarray]]) -> List[int]:
+    """Actual per-join sample overlap between consecutive ``slice_mix`` chunks.
+
+    Regular joins overlap by the configured ``overlap_seconds``, but the
+    final join can differ because ``slice_mix`` pulls the last chunk's start
+    back so it ends exactly at the mix length. Deriving overlap directly from
+    each chunk's ``(start, end)`` keeps every join correct regardless.
+    """
+    return [
+        max(0, chunks[i][1] - chunks[i + 1][0]) for i in range(len(chunks) - 1)
+    ]
 
 
 def overlap_samples_for(
