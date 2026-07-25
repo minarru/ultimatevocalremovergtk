@@ -233,6 +233,41 @@ def resolve_mdx_jobs(model: object, model_repo: str) -> List[Tuple[str, str]]:
     return [(f"{model_repo}{model}", os.path.join(paths.MDX_MODELS_DIR, model))]
 
 
+def apollo_checkpoint_filename(model: object) -> str:
+    """Return the checkpoint filename for an Apollo catalogue entry."""
+    if isinstance(model, dict):
+        for name in model:
+            if not name.endswith(".yaml"):
+                return name
+        return next(iter(model), "")
+    return str(model)
+
+
+def resolve_apollo_jobs(model: object) -> List[Tuple[str, str]]:
+    """Return download jobs for an Apollo entry.
+
+    Checkpoints land in ``APOLLO_MODELS_DIR`` and their yaml in
+    ``APOLLO_CONFIG_PATH``, matching where :mod:`core.apollo` looks them up.
+    Unlike the MDX path there is no upstream repo fallback: Apollo entries are
+    fork-curated and always carry absolute URLs.
+    """
+    if not isinstance(model, dict):
+        return []
+
+    jobs: List[Tuple[str, str]] = []
+    for name, ref in model.items():
+        if not is_remote_ref(ref):
+            continue
+        base = os.path.basename(name)
+        if base != name or ".." in base:
+            continue
+        if base.endswith(".yaml"):
+            jobs.append((ref, os.path.join(paths.APOLLO_CONFIG_PATH, base)))
+        else:
+            jobs.append((ref, os.path.join(paths.APOLLO_MODELS_DIR, base)))
+    return jobs
+
+
 def resolve_demucs_jobs(model: object, selection: str) -> List[Tuple[str, str]]:
     from bundled.constants import DEMUCS_NEWER_ARCH_TYPES
 

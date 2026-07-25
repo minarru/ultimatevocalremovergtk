@@ -8,6 +8,7 @@ import threading
 from gi.repository import Adw, Gio, Gtk
 
 from bundled.constants import (
+    APOLLO_ARCH_TYPE,
     DEMUCS_ARCH_TYPE,
     MDX_ARCH_TYPE,
     NO_CONNECTION,
@@ -42,6 +43,9 @@ _NETWORKS = [
     ("VR Arch", VR_ARCH_TYPE),
     ("MDX-Net", MDX_ARCH_TYPE),
     ("Demucs", DEMUCS_ARCH_TYPE),
+    # Apollo models are restoration (Audio Tools), not separation networks, but
+    # they share the catalogue/queue plumbing so they get their own tab.
+    ("Apollo", APOLLO_ARCH_TYPE),
 ]
 
 _CLAMP_MAX_WIDTH = 800
@@ -621,10 +625,15 @@ class DownloadCenterWindow:
         open_manual_downloads(self.window, self.context)
 
     def _open_models_folder(self) -> None:
+        """Open the model folder for the visible network, or the parent folder."""
         from .files import open_folder_in_file_manager
 
-        os.makedirs(paths.MODELS_DIR, exist_ok=True)
-        open_folder_in_file_manager(self.window, paths.MODELS_DIR)
+        arch = self.stack.get_visible_child_name()
+        target = self.manager.model_directory(arch) if arch else paths.MODELS_DIR
+        if not target:
+            target = paths.MODELS_DIR
+        os.makedirs(target, exist_ok=True)
+        open_folder_in_file_manager(self.window, target)
 
     def _on_vip_validated(self, unlocked: bool) -> None:
         if unlocked:

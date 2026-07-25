@@ -1,0 +1,60 @@
+{
+  "_comment": [
+    "Fork-curated catalogue additions, merged on top of the TRvlvr download_checks",
+    "and Politrees UVR_resources catalogues by core/extra_catalog.py.",
+    "",
+    "Kept separate from model_manual_download.json because that file is a cache of",
+    "TRvlvr's download_checks.json and is replaced wholesale on every online",
+    "refresh; entries added there would disappear as soon as the app went online.",
+    "",
+    "Schema matches the upstream lists: {selectable label: {local filename: url}}.",
+    "For MDX/Roformer/SCNet entries the '.yaml' key is the LOCAL config filename",
+    "(saved into mdx_c_configs/) and its value is the remote URL, so several",
+    "checkpoints sharing one upstream config.yaml still get distinct local names."
+  ],
+
+  "scnet_download_list": {
+    "SCnet: 4-stems Huge SCNet v1.2 by Aname": {
+      "huge_scnet_4stems_v1.2.ckpt": "https://huggingface.co/Aname-Tommy/Huge-SCNet-4stems/resolve/main/huge_scnet_4stems_v1.2.ckpt",
+      "config_huge_scnet_4stems.yaml": "https://huggingface.co/Aname-Tommy/Huge-SCNet-4stems/resolve/main/config.yaml"
+    },
+    "SCnet: 4-stems Huge SCNet Bleedless by Aname": {
+      "huge_scnet_4stems_bleedless.ckpt": "https://huggingface.co/Aname-Tommy/Huge-SCNet-4stems/resolve/main/huge_scnet_4stems_bleedless.ckpt",
+      "config_huge_scnet_4stems.yaml": "https://huggingface.co/Aname-Tommy/Huge-SCNet-4stems/resolve/main/config.yaml"
+    },
+    "SCnet: 4-stems Huge SCNet Fullness by Aname": {
+      "huge_scnet_4stems_fullness.ckpt": "https://huggingface.co/Aname-Tommy/Huge-SCNet-4stems/resolve/main/huge_scnet_4stems_fullness.ckpt",
+      "config_huge_scnet_4stems.yaml": "https://huggingface.co/Aname-Tommy/Huge-SCNet-4stems/resolve/main/config.yaml"
+    },
+    "SCnet: 4-stems Huge SCNet Strong Fullness by Aname": {
+      "huge_scnet_4stems_strong_fullness.ckpt": "https://huggingface.co/Aname-Tommy/Huge-SCNet-4stems/resolve/main/huge_scnet_4stems_strong_fullness.ckpt",
+      "config_huge_scnet_4stems.yaml": "https://huggingface.co/Aname-Tommy/Huge-SCNet-4stems/resolve/main/config.yaml"
+    }
+  },
+
+  "roformer_download_list": {
+    "Roformer Model: BandSplit Roformer | HyperACE Instrumental by Unwa": {
+      "bs_hyperace.ckpt": "https://huggingface.co/pcunwa/BS-Roformer-HyperACE/resolve/main/bs_hyperace.ckpt",
+      "config_bs_hyperace.yaml": "https://huggingface.co/pcunwa/BS-Roformer-HyperACE/resolve/main/config.yaml"
+    },
+    "Roformer Model: BandSplit Roformer | HyperACE v2 Instrumental by Unwa": {
+      "bs_roformer_inst_hyperacev2.ckpt": "https://huggingface.co/pcunwa/BS-Roformer-HyperACE/resolve/main/v2_inst/bs_roformer_inst_hyperacev2.ckpt",
+      "config_bs_hyperace_v2_inst.yaml": "https://huggingface.co/pcunwa/BS-Roformer-HyperACE/resolve/main/v2_inst/config.yaml"
+    },
+    "Roformer Model: BandSplit Roformer | HyperACE v2 Vocals by Unwa": {
+      "bs_roformer_voc_hyperacev2.ckpt": "https://huggingface.co/pcunwa/BS-Roformer-HyperACE/resolve/main/v2_voc/bs_roformer_voc_hyperacev2.ckpt",
+      "config_bs_hyperace_v2_voc.yaml": "https://huggingface.co/pcunwa/BS-Roformer-HyperACE/resolve/main/v2_voc/config.yaml"
+    }
+  },
+
+  "apollo_download_list": {
+    "Apollo Model: EDM Restoration by essid": {
+      "apollo_edm_by_essid.ckpt": "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/Apollo/apollo_edm_by_essid.ckpt",
+      "apollo_edm_by_essid.yaml": "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/Apollo/apollo_edm_by_essid.yaml"
+    },
+    "Apollo Model: EDM Restoration Big by essid": {
+      "apollo_edm_big_by_essid.ckpt": "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/Apollo/apollo_edm_big_by_essid.ckpt",
+      "apollo_edm_big_by_essid.yaml": "https://huggingface.co/Politrees/UVR_resources/resolve/main/models/Apollo/apollo_edm_big_by_essid.yaml"
+    }
+  }
+}

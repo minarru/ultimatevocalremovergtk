@@ -24,6 +24,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from bundled.constants import (
     ALL_TYPES,
+    APOLLO_ARCH_TYPE,
     BULLETIN_CHECK,
     DEMUCS_ARCH_TYPE,
     DEMUCS_MODEL_NAME_DATA_LINK,
@@ -52,13 +53,16 @@ from .download_sizes import (
     format_download_size,
     prefetch_remote_sizes,
 )
+from .extra_catalog import apollo_download_list, merge_extra_catalogues
 from .mdx_config_fetch import ensure_mdx_c_config
 from .politrees_catalog import (
+    apollo_checkpoint_filename,
     hf_fallback_url,
     load_politrees_links,
     manual_links_for_model,
     mdx_checkpoint_filename,
     merge_politrees_catalogues,
+    resolve_apollo_jobs,
     resolve_demucs_jobs,
     resolve_mdx_jobs,
     resolve_vr_jobs,
@@ -145,23 +149,36 @@ class DownloadManager:
         self.vr_download_list: Dict[str, str] = {}
         self.mdx_download_list: Dict[str, object] = {}
         self.demucs_download_list: Dict[str, dict] = {}
+        # Apollo restoration models are fork-curated only (no upstream list).
+        self.apollo_download_list: Dict[str, dict] = {}
         self._size_warmup_lock = threading.Lock()
 
     # -- Catalogue + size cache -------------------------------------------------
 
+    def _has_any_catalogue(self) -> bool:
+        return bool(
+            self.vr_download_list
+            or self.mdx_download_list
+            or self.demucs_download_list
+            or self.apollo_download_list
+        )
+
     def ensure_catalogues(self) -> bool:
         """Populate download catalogues from in-memory, bundled, or Politrees data."""
-        if self.vr_download_list or self.mdx_download_list or self.demucs_download_list:
+        if self._has_any_catalogue():
             return True
         if self.online_data:
             self._rebuild_catalogues()
             self._merge_politrees_supplement()
-            if self.vr_download_list or self.mdx_download_list or self.demucs_download_list:
+            if self._has_any_catalogue():
                 return True
         self.online_data = self._load_cache()
         if not self.online_data:
             debug("download", "ensure_catalogues no bundled cache")
-            return False
+            # Apollo (and any other fork-curated list) is bundled locally, so it
+            # is still available with no upstream cache at all.
+            self._merge_politrees_supplement()
+            return self._has_any_catalogue()
         self._rebuild_catalogues()
         self._merge_politrees_supplement()
         debug(
@@ -169,9 +186,10 @@ class DownloadManager:
             "ensure_catalogues bundled fallback "
             f"vr={len(self.vr_download_list)} "
             f"mdx={len(self.mdx_download_list)} "
-            f"demucs={len(self.demucs_download_list)}",
+            f"demucs={len(self.demucs_download_list)} "
+            f"apollo={len(self.apollo_download_list)}",
         )
-        return bool(self.vr_download_list or self.mdx_download_list or self.demucs_download_list)
+        return self._has_any_catalogue()
 
     def catalogue_urls(self) -> List[str]:
         """Unique remote URLs for every catalogue entry."""
@@ -180,6 +198,7 @@ class DownloadManager:
             (VR_ARCH_TYPE, self.vr_download_list),
             (MDX_ARCH_TYPE, self.mdx_download_list),
             (DEMUCS_ARCH_TYPE, self.demucs_download_list),
+            (APOLLO_ARCH_TYPE, self.apollo_download_list),
         ):
             for name in catalogue:
                 for url, _path in self.resolve(name, arch_type):
@@ -292,16 +311,26 @@ class DownloadManager:
 
     def _merge_politrees_supplement(self) -> None:
         politrees = load_politrees_links()
-        if not politrees:
-            return
+        if politrees:
+            self.vr_download_list, self.mdx_download_list, self.demucs_download_list = (
+                merge_politrees_catalogues(
+                    self.vr_download_list,
+                    self.mdx_download_list,
+                    self.demucs_download_list,
+                    politrees,
+                )
+            )
+        # Fork-curated entries merge last so they fill gaps without ever
+        # shadowing an upstream label, and survive ``refresh`` replacing
+        # ``online_data`` wholesale.
         self.vr_download_list, self.mdx_download_list, self.demucs_download_list = (
-            merge_politrees_catalogues(
+            merge_extra_catalogues(
                 self.vr_download_list,
                 self.mdx_download_list,
                 self.demucs_download_list,
-                politrees,
             )
         )
+        self.apollo_download_list = apollo_download_list()
 
     # -- Download lists ---------------------------------------------------------
 
@@ -352,6 +381,16 @@ class DownloadManager:
             demucs_list = list(dict.fromkeys(demucs_list))
             result[DEMUCS_ARCH_TYPE] = demucs_list or [NO_NEW_MODELS]
 
+        if model_type in (APOLLO_ARCH_TYPE, ALL_TYPES):
+            apollo_list = [
+                selectable
+                for selectable, model in self.apollo_download_list.items()
+                if not os.path.isfile(
+                    os.path.join(paths.APOLLO_MODELS_DIR, apollo_checkpoint_filename(model))
+                )
+            ]
+            result[APOLLO_ARCH_TYPE] = apollo_list or [NO_NEW_MODELS]
+
         return result
 
     def _ensure_mdx_c_config(self, config: str) -> None:
@@ -388,6 +427,12 @@ class DownloadManager:
             if not model:
                 return []
             return resolve_demucs_jobs(model, selection)
+
+        if arch_type == APOLLO_ARCH_TYPE:
+            model = self.apollo_download_list.get(selection)
+            if not model:
+                return []
+            return resolve_apollo_jobs(model)
 
         return []
 
@@ -455,11 +500,16 @@ class DownloadManager:
             on_progress(1.0)
         result = "complete" if any_downloaded else "exists"
         if result in ("complete", "exists"):
+            from .apollo_registry import register_apollo_from_download_jobs
             from .mdx_c_registry import register_mdx_c_from_download_jobs
 
             if register_mdx_c_from_download_jobs(jobs) and repo is not None:
                 repo.invalidate_stem_check()
                 repo.reload_mappers()
+            # Apollo models are recognised by an md5 -> config_yaml mapping;
+            # write it now so the Audio Tools picker does not prompt for a
+            # config the catalogue already specified.
+            register_apollo_from_download_jobs(jobs)
         debug_elapsed("download", f"download done status={result}", started)
         return result
 
@@ -661,4 +711,6 @@ class DownloadManager:
             if any(x in selection for x in DEMUCS_NEWER_ARCH_TYPES):
                 return paths.DEMUCS_NEWER_REPO_DIR
             return paths.DEMUCS_MODELS_DIR
+        if arch_type == APOLLO_ARCH_TYPE:
+            return paths.APOLLO_MODELS_DIR
         return paths.MODELS_DIR

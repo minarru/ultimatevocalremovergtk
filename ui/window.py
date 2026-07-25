@@ -930,6 +930,11 @@ class MainWindow(Adw.ApplicationWindow):
             method = getattr(view, "method_key", type(view).__name__)
             model_count = len(getattr(view, "list_models", lambda: [])())
             debug("model", f"refresh_models view={method} models={model_count}")
+        # Apollo restoration models are downloadable too, but live on the Audio
+        # Tools page rather than in ``self._views``.
+        audio_tools = getattr(self, "_audio_tools_page", None)
+        if audio_tools is not None:
+            audio_tools.refresh_apollo_models()
         self._update_sep_banner()
 
     def _on_about(self, _action: Gio.SimpleAction, _param) -> None:
