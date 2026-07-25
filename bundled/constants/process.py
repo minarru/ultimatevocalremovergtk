@@ -8,6 +8,11 @@ MDX_ARCH_TYPE = 'MDX-Net'
 
 DEMUCS_ARCH_TYPE = 'Demucs'
 
+#: Apollo restoration models. Not a separation architecture — these are used by
+#: the Audio Tools restore path — but the Download Center keys its catalogues by
+#: "arch type", so Apollo gets one to appear as its own network.
+APOLLO_ARCH_TYPE = 'Apollo'
+
 VR_ARCH_PM = 'VR Architecture'
 
 ENSEMBLE_MODE = 'Ensemble Mode'

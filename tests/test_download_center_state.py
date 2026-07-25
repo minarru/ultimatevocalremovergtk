@@ -37,6 +37,8 @@ class DownloadCenterStateTests(unittest.TestCase):
         from gi.repository import Gtk
         from ui.download_center import _NETWORKS, DownloadCenterWindow
 
+        # Derived from _NETWORKS rather than hardcoded so adding a network tab
+        # cannot silently break this fixture.
         arches = [arch for _label, arch in _NETWORKS]
 
         win = object.__new__(DownloadCenterWindow)
