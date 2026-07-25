@@ -763,35 +763,41 @@ def _parse_catalogue_entry(
     return [meta]
 
 
+_TRVLVR_KEYS = (
+    "vr_download_list",
+    "mdx_download_list",
+    "mdx23_download_list",
+    "mdx23c_download_list",
+    "demucs_download_list",
+)
+
+
+def _source_for(label: str, politrees: Optional[dict], trvlvr: dict) -> str:
+    """Attribute ``label`` to TRvlvr, Politrees, or both, by catalogue membership."""
+    in_pt = False
+    if politrees:
+        for key in ("vr_download_list", *_POLITREES_KEYS, "demucs_download_list"):
+            if label in (politrees.get(key) or {}):
+                in_pt = True
+                break
+    in_tr = any(label in trvlvr.get(key, {}) for key in _TRVLVR_KEYS)
+    if in_pt and not in_tr:
+        return "Politrees"
+    if in_pt and in_tr:
+        return "TRvlvr+Politrees"
+    return "TRvlvr"
+
+
 def _collect_entries(ctx: CatalogueContext) -> List[ModelEntry]:
     vr_cat, mdx_cat, demucs_cat = _merged_catalogues()
     politrees = _load_politrees_catalogue()
     trvlvr = _load_trvlvr_catalogue()
     all_entries: List[ModelEntry] = []
 
-    def _source_for(label: str) -> str:
-        in_pt = False
-        if politrees:
-            for key in ("vr_download_list", *_POLITREES_KEYS, "demucs_download_list"):
-                if label in (politrees.get(key) or {}):
-                    in_pt = True
-                    break
-        in_tr = (
-            label in trvlvr.get("vr_download_list", {})
-            or label in trvlvr.get("mdx_download_list", {})
-            or label in trvlvr.get("mdx23_download_list", {})
-            or label in trvlvr.get("demucs_download_list", {})
-        )
-        if in_pt and not in_tr:
-            return "Politrees"
-        if in_pt and in_tr:
-            return "TRvlvr+Politrees"
-        return "TRvlvr"
-
     for label, payload in sorted(vr_cat.items()):
         all_entries.extend(
             _parse_catalogue_entry(
-                source=_source_for(label),
+                source=_source_for(label, politrees, trvlvr),
                 family="VR Architecture",
                 label=label,
                 payload=payload,
@@ -818,7 +824,7 @@ def _collect_entries(ctx: CatalogueContext) -> List[ModelEntry]:
                 break
         all_entries.extend(
             _parse_catalogue_entry(
-                source=_source_for(label),
+                source=_source_for(label, politrees, trvlvr),
                 family=family,
                 label=label,
                 payload=payload,
@@ -831,7 +837,7 @@ def _collect_entries(ctx: CatalogueContext) -> List[ModelEntry]:
     for label, payload in sorted(demucs_cat.items()):
         all_entries.extend(
             _parse_catalogue_entry(
-                source=_source_for(label),
+                source=_source_for(label, politrees, trvlvr),
                 family="Demucs",
                 label=label,
                 payload=payload,

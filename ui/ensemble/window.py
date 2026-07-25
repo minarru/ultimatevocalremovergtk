@@ -823,8 +823,11 @@ class EnsemblePage:
         self.settings.set("chosen_ensemble", CHOOSE_ENSEMBLE_OPTION)
         set_combo_value(self.saved_row, CHOOSE_ENSEMBLE_OPTION)
         self._refresh_ensemble_type_values()
-        self._rebuild_stem_only_toggles()
+        # Rebuild the model list for the new stem pair first: stem-only
+        # toggles resolve export-semantics hints from _selected_model_tags(),
+        # which otherwise still reflects the previous stem pair's checklist.
         self._rebuild_model_list(self._selected_model_tags())
+        self._rebuild_stem_only_toggles()
         self._update_ensemble_options_summary()
 
     def _on_preset_changed(self, *_args) -> None:

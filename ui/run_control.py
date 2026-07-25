@@ -122,6 +122,7 @@ class RunController:
         if self._shutdown_dialog is not None:
             return True
         if self._stop_confirm_dialog is not None:
+            dialog = self._stop_confirm_dialog
             self._stop_confirm_dialog = None
             self._run_ui_suspended = False
             target = self._running_target
@@ -129,6 +130,10 @@ class RunController:
                 target.unpause()
             if self.is_running():
                 self._window._start_pulse()
+            # Close the dialog itself, not just our reference to it — otherwise
+            # its "response"/"closed" handlers stay live and can later fire
+            # against state already mutated by the shutdown-confirm flow below.
+            dialog.force_close()
         if self.is_running():
             self._close_deferred = True
             self._present_shutdown_confirm()

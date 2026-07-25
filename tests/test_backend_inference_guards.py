@@ -51,6 +51,28 @@ class VrMagPadTests(unittest.TestCase):
         self.assertAlmostEqual(float(mag[0, 0, 1]), 0.5)
 
 
+class VrDenoiserLoadingMixTests(unittest.TestCase):
+    def test_uses_model_res_type_not_hardcoded_polyphase(self) -> None:
+        """Regression: the denoiser/deverb loading_mix must defer to the
+        model's configured res_type (matching engines.vr's own loading_mix
+        and the pre-refactor behavior), not force 'polyphase' — the latter
+        was an Intel-Mac-only quality regression.
+        """
+        import engines.vr_utils as vr_utils
+
+        mp = mock.Mock()
+        mp.param = {"band": {1: {}, 2: {}}}
+
+        with mock.patch.object(
+            vr_utils,
+            "multiband_waves_to_spectrogram",
+            return_value=(mock.Mock(), None, None),
+        ) as mocked:
+            vr_utils.loading_mix(mock.Mock(), mp)
+
+        self.assertTrue(mocked.call_args.kwargs.get("use_model_res_type"))
+
+
 class BanditSpectralTests(unittest.TestCase):
     def test_stft_istft_roundtrip_shape(self) -> None:
         from ml.bandit_spectral import SpectralComponent

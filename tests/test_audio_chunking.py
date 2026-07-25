@@ -10,6 +10,7 @@ from core.audio_chunking import (
     clamp_overlap_seconds,
     concat_stems,
     overlap_samples_for,
+    overlaps_for_chunks,
     slice_mix,
 )
 
@@ -65,6 +66,31 @@ class ConcatStemsTests(unittest.TestCase):
             overlap_samples_for(sample_rate=44100, chunk_seconds=10, overlap_seconds=2),
             88200,
         )
+
+    def test_overlaps_for_chunks_matches_pulled_back_final_chunk(self) -> None:
+        # 23s at 100 Hz with 10s chunks / 2s overlap: the final chunk's start
+        # gets pulled back so it ends exactly at the mix length, so its
+        # overlap with the previous chunk differs from the configured 2s.
+        sr = 100
+        mix = np.arange(23 * sr, dtype=np.float64)
+        mix = np.stack([mix, mix])
+        chunks = slice_mix(mix, sample_rate=sr, chunk_seconds=10.0, overlap_seconds=2.0)
+        overlaps = overlaps_for_chunks(chunks)
+        self.assertEqual(len(overlaps), len(chunks) - 1)
+        for i, ov in enumerate(overlaps):
+            self.assertEqual(ov, chunks[i][1] - chunks[i + 1][0])
+
+        parts = [chunk[2] for chunk in chunks]
+        out = concat_stems(parts, overlap_samples=overlaps)
+        # Reassembled length must match the original mix exactly — using a
+        # single fixed overlap for every join would duplicate/drop samples
+        # at the pulled-back final join.
+        self.assertEqual(out.shape[1], mix.shape[1])
+
+    def test_concat_stems_rejects_mismatched_overlap_sequence_length(self) -> None:
+        parts = [np.ones((2, 10)), np.ones((2, 10)), np.ones((2, 10))]
+        with self.assertRaises(ValueError):
+            concat_stems(parts, overlap_samples=[5])
 
 
 if __name__ == "__main__":

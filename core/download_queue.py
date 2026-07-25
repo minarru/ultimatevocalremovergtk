@@ -98,7 +98,8 @@ class DownloadQueue:
                     if item.status == STATUS_QUEUED:
                         item.status = STATUS_CANCELLED
                         item.detail = default_detail_for_status(STATUS_CANCELLED)
-                    item.detail = "Cancelling…"
+                    else:
+                        item.detail = "Cancelling…"
                     break
         self._notify()
 
@@ -130,9 +131,10 @@ class DownloadQueue:
         return None
 
     def _ensure_worker(self) -> None:
-        if self._worker_active:
-            return
-        self._worker_active = True
+        with self._lock:
+            if self._worker_active:
+                return
+            self._worker_active = True
         threading.Thread(target=self._worker_main, daemon=True).start()
 
     def _worker_main(self) -> None:
@@ -145,7 +147,8 @@ class DownloadQueue:
                 processed_any = True
                 self._process_item(item)
         finally:
-            self._worker_active = False
+            with self._lock:
+                self._worker_active = False
             self._notify()
             if processed_any and self._on_batch_complete is not None:
                 self._on_batch_complete()

@@ -785,6 +785,11 @@ class ModelData:
                 if file_name.endswith(CKPT):
                     ext = ""
                     self.is_mdx_ckpt = True
+                elif file_name.endswith(ONNX):
+                    # Mapper keys auto-registered from download jobs already
+                    # include the extension (unlike bundled catalogue keys),
+                    # so appending it again would look up "name.onnx.onnx".
+                    ext = ""
                 self.model_path = os.path.join(paths.MDX_MODELS_DIR, f"{file_name}{ext}")
                 break
         else:

@@ -97,7 +97,7 @@ class DownloadCenterWindow:
         self._available: dict[str, list[str]] = {}
         self._catalogue_online: bool | None = None
         self._refreshing = False
-        self._size_lookup_id = 0
+        self._size_lookup_ids: dict[tuple[str, str], int] = {}
         self._row_checks: dict[tuple[str, str], Gtk.CheckButton] = {}
         self._row_actions: dict[tuple[str, str], Adw.ActionRow] = {}
         self._search_entries: dict[str, Gtk.SearchEntry] = {}
@@ -363,8 +363,8 @@ class DownloadCenterWindow:
         if action is None:
             return
         set_row_subtitle(action, "Looking up size…")
-        self._size_lookup_id += 1
-        lookup_id = self._size_lookup_id
+        lookup_id = self._size_lookup_ids.get(key, 0) + 1
+        self._size_lookup_ids[key] = lookup_id
 
         def worker() -> None:
             text = self.manager.describe_selection_download_size(name, arch)
@@ -373,7 +373,9 @@ class DownloadCenterWindow:
         threading.Thread(target=worker, daemon=True).start()
 
     def _apply_row_size(self, lookup_id: int, key: tuple[str, str], text: str) -> None:
-        if lookup_id != self._size_lookup_id:
+        # Guard is keyed per-row: checking another model must not discard this
+        # row's own in-flight lookup result.
+        if self._size_lookup_ids.get(key) != lookup_id:
             return
         action = self._row_actions.get(key)
         if action is not None:
@@ -519,6 +521,7 @@ class DownloadCenterWindow:
     def _clear_catalogue(self) -> None:
         self._row_checks.clear()
         self._row_actions.clear()
+        self._size_lookup_ids.clear()
         for list_box in self._list_boxes.values():
             while (child := list_box.get_first_child()) is not None:
                 list_box.remove(child)
@@ -557,6 +560,7 @@ class DownloadCenterWindow:
             self._set_catalogue_page_message(arch, "")
 
     def _rebuild_catalogue(self) -> None:
+        previously_selected = {(arch, name) for name, arch in self._selected_entries()}
         self._clear_catalogue()
         for _label, arch in _NETWORKS:
             models = [
@@ -575,6 +579,13 @@ class DownloadCenterWindow:
             list_box = self._list_boxes[arch]
             list_box.invalidate_filter()
             self._update_catalogue_page_state(arch)
+        # Rebuilding (e.g. changing Sort) recreates every row/checkbox from
+        # scratch — reapply any selection that still exists so it isn't
+        # silently dropped, matching how purpose-filtering never loses it.
+        for key in previously_selected:
+            check = self._row_checks.get(key)
+            if check is not None:
+                check.set_active(True)
 
     def _enqueue_selected(self) -> None:
         entries = self._selected_entries()

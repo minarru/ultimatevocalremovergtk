@@ -45,6 +45,56 @@ class DownloadQueueTests(unittest.TestCase):
         ids = self.queue.enqueue_many([("A", "VR Arch"), ("B", "MDX-Net")])
         self.assertEqual(len(ids), 2)
 
+    def test_cancel_queued_item_keeps_terminal_detail(self) -> None:
+        from core.download_status import STATUS_CANCELLED, default_detail_for_status
+
+        started = threading.Event()
+        release = threading.Event()
+
+        def blocking_download(jobs, **kwargs):
+            started.set()
+            release.wait(timeout=5)
+            return "complete"
+
+        self.manager.download.side_effect = blocking_download
+        self.queue.enqueue("First", "MDX-Net")
+        started.wait(timeout=5)
+        second_id = self.queue.enqueue("Second", "MDX-Net")
+
+        # Second item is still STATUS_QUEUED (worker is busy on the first).
+        self.queue.cancel(second_id)
+        items = {item.item_id: item for item in self.queue.items()}
+        self.assertEqual(items[second_id].status, STATUS_CANCELLED)
+        self.assertEqual(
+            items[second_id].detail, default_detail_for_status(STATUS_CANCELLED)
+        )
+
+        release.set()
+
+    def test_ensure_worker_never_double_starts(self) -> None:
+        spawn_count = {"n": 0}
+        barrier = threading.Barrier(20)
+
+        def fake_worker_main() -> None:
+            spawn_count["n"] += 1
+            threading.Event().wait(0.05)
+            with self.queue._lock:
+                self.queue._worker_active = False
+
+        self.queue._worker_main = fake_worker_main  # type: ignore[method-assign]
+
+        def call_ensure() -> None:
+            barrier.wait()
+            self.queue._ensure_worker()
+
+        threads = [threading.Thread(target=call_ensure) for _ in range(20)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+        threading.Event().wait(0.2)
+        self.assertEqual(spawn_count["n"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

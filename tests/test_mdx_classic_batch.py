@@ -6,6 +6,7 @@ import unittest
 from unittest import mock
 
 from engines.mdx_classic_batch import (
+    is_oom_message,
     mdx_batch_ranges,
     mdx_hop_starts,
     next_batch_after_oom,
@@ -40,6 +41,17 @@ class MdxClassicBatchHelpersTests(unittest.TestCase):
         self.assertEqual(next_batch_after_oom(8), 4)
         self.assertEqual(next_batch_after_oom(3), 1)
         self.assertIsNone(next_batch_after_oom(1))
+
+    def test_is_oom_message_matches_known_phrasings(self) -> None:
+        self.assertTrue(is_oom_message("CUDA out of memory"))
+        self.assertTrue(is_oom_message("Failed to allocate memory for requested buffer"))
+        self.assertTrue(is_oom_message("CUDA_ERROR_OUT_OF_MEMORY"))
+        self.assertTrue(is_oom_message("cudaMalloc failed"))
+
+    def test_is_oom_message_rejects_unrelated_errors(self) -> None:
+        self.assertFalse(is_oom_message("Invalid input shape for node Conv_0"))
+        self.assertFalse(is_oom_message(""))
+        self.assertFalse(is_oom_message(None))
 
 
 class OrtFixedBatchSizeTests(unittest.TestCase):

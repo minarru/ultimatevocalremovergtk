@@ -527,7 +527,7 @@ class JobRunner:
 
             from core.audio_chunking import (
                 concat_stems,
-                overlap_samples_for,
+                overlaps_for_chunks,
                 slice_mix,
             )
 
@@ -611,11 +611,7 @@ class JobRunner:
                         f"{base_text}Long-file chunking: {n_chunks} chunks "
                         f"({chunk_seconds:g}s, overlap {overlap_seconds:g}s)\n"
                     )
-                ov_samples = overlap_samples_for(
-                    sample_rate=44100,
-                    chunk_seconds=chunk_seconds,
-                    overlap_seconds=overlap_seconds,
-                ) if chunked else 0
+                ov_samples = overlaps_for_chunks(chunks) if chunked else []
 
                 set_progress_bar = pausable_callback(self, make_progress())
 
@@ -785,7 +781,7 @@ class JobRunner:
 
             from core.audio_chunking import (
                 concat_stems,
-                overlap_samples_for,
+                overlaps_for_chunks,
                 slice_mix,
             )
 
@@ -864,11 +860,7 @@ class JobRunner:
                         f"{base_text}Long-file chunking: {n_chunks} chunks "
                         f"({chunk_seconds:g}s, overlap {overlap_seconds:g}s)\n"
                     )
-                ov_samples = overlap_samples_for(
-                    sample_rate=44100,
-                    chunk_seconds=chunk_seconds,
-                    overlap_seconds=overlap_seconds,
-                ) if chunked else 0
+                ov_samples = overlaps_for_chunks(chunks) if chunked else []
 
                 set_progress_bar = pausable_callback(self, make_progress())
                 current_model = None

@@ -31,6 +31,7 @@ from .base import SeperateAttributes
 from .mix import prepare_mix, gather_sources, rerun_mp3
 from .export import save_format
 from .mdx_classic_batch import (
+    is_oom_message,
     mdx_hop_starts,
     next_batch_after_oom,
     resolve_mdx_effective_batch,
@@ -39,6 +40,26 @@ from .vr_utils import vr_denoiser, loading_mix
 
 if TYPE_CHECKING:
     from core.model_data import ModelData
+
+# onnxruntime reports CUDA OOM through its own exception types rather than
+# torch.cuda.OutOfMemoryError, so the ORT-backed classic MDX path (the
+# default whenever mdx_segment_size == dim_t) needs to catch these too or its
+# batch-size backoff never fires and a VRAM-pressure OOM crashes the run.
+_ORT_RUNTIME_EXCEPTIONS = tuple(
+    cls
+    for cls in (
+        getattr(ort.capi.onnxruntime_pybind11_state, "Fail", None),
+        getattr(ort.capi.onnxruntime_pybind11_state, "RuntimeException", None),
+    )
+    if cls is not None
+)
+
+
+def _is_batch_oom(exc: BaseException) -> bool:
+    """Whether ``exc`` represents a GPU memory allocation failure worth retrying."""
+    if isinstance(exc, torch.cuda.OutOfMemoryError):
+        return True
+    return is_oom_message(str(exc))
 
 cpu = torch.device('cpu')
 warnings.filterwarnings("ignore")
@@ -234,6 +255,14 @@ class SeperateMDX(SeperateAttributes):
                         self._weight_cache_meta = {"dim_c": self.dim_c, "hop": self.hop}
                 else:
                     use_ort = self.mdx_segment_size == self.dim_t and not self.is_other_gpu
+                    if use_ort:
+                        from engines.amp_runtime import autocast_enabled
+
+                        if autocast_enabled(self.settings):
+                            self.write_to_console(
+                                "Note: FP16 autocast has no effect on this ONNX Runtime "
+                                "model; it only accelerates PyTorch-based models.\n"
+                            )
                     key = weight_cache_key(
                         "mdx_ort" if use_ort else "mdx_convert",
                         self.model_path,
@@ -409,7 +438,9 @@ class SeperateMDX(SeperateAttributes):
                     batch = torch.stack(windows, dim=0)
                     try:
                         tar_waves = self.run_model(batch, is_match_mix=is_match_mix)
-                    except torch.cuda.OutOfMemoryError:
+                    except (torch.cuda.OutOfMemoryError, *_ORT_RUNTIME_EXCEPTIONS) as exc:
+                        if not _is_batch_oom(exc):
+                            raise
                         del batch, windows
                         if torch.cuda.is_available():
                             torch.cuda.empty_cache()
@@ -898,24 +929,46 @@ class SeperateMDXC(SeperateAttributes):
                         if len(batch_data) >= batch_size or (i >= mix.shape[1]):
                             from engines.amp_runtime import maybe_autocast
 
-                            arr = torch.stack(batch_data, dim=0)
-                            with maybe_autocast(device, self.settings):
-                                x = model(arr)
-                            if torch.is_tensor(x) and x.dtype != torch.float32:
-                                x = x.float()
+                            pending_data = batch_data
+                            pending_locations = batch_locations
+                            sub_batch = len(pending_data)
+                            idx = 0
+                            while idx < len(pending_data):
+                                take = min(sub_batch, len(pending_data) - idx)
+                                chunk_data = pending_data[idx : idx + take]
+                                chunk_locations = pending_locations[idx : idx + take]
+                                arr = torch.stack(chunk_data, dim=0)
+                                try:
+                                    with maybe_autocast(device, self.settings):
+                                        x = model(arr)
+                                except torch.cuda.OutOfMemoryError:
+                                    del arr
+                                    if torch.cuda.is_available():
+                                        torch.cuda.empty_cache()
+                                    smaller = next_batch_after_oom(take)
+                                    if smaller is None:
+                                        raise
+                                    sub_batch = smaller
+                                    batch_size = smaller
+                                    self.write_to_console(
+                                        f"CUDA OOM — reducing MDX batch size to {batch_size}"
+                                    )
+                                    continue
+                                if torch.is_tensor(x) and x.dtype != torch.float32:
+                                    x = x.float()
 
-                            for j in range(len(batch_locations)):
-                                self.running_inference_progress_bar(batch_len)
-                                start, l = batch_locations[j]
-                                window = select_roformer_ola_window(
-                                    start,
-                                    C,
-                                    mix.shape[1],
-                                    window_start,
-                                    window_middle,
-                                    window_finish,
-                                )
-                                result = self.overlap_add(result, counter, x, l, j, start, window)
+                                for j, (start, l) in enumerate(chunk_locations):
+                                    self.running_inference_progress_bar(batch_len)
+                                    window = select_roformer_ola_window(
+                                        start,
+                                        C,
+                                        mix.shape[1],
+                                        window_start,
+                                        window_middle,
+                                        window_finish,
+                                    )
+                                    result = self.overlap_add(result, counter, x, l, j, start, window)
+                                idx += take
 
                             batch_data = []
                             batch_locations = []
