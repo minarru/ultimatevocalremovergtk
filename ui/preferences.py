@@ -52,7 +52,15 @@ from core.platform import system_name
 from core.paths import SETTINGS_CACHE_DIR
 
 from .application import apply_color_scheme
-from .help_text import IS_AUTOCAST_HELP, REMOVE_PROFILE_HINT, FLAC_BIT_DEPTH_HINT
+from .help_text import (
+    AMPLIFICATION_THRESHOLD_HELP,
+    IS_AUTOCAST_HELP,
+    IS_NORMALIZATION_HELP,
+    LONG_FILE_CHUNK_HELP,
+    LONG_FILE_CHUNK_OVERLAP_HELP,
+    REMOVE_PROFILE_HINT,
+    FLAC_BIT_DEPTH_HINT,
+)
 from .hints import set_tooltip
 from .widgets.rows import get_combo_value, make_combo_row, set_combo_value, set_row_icon
 
@@ -269,12 +277,26 @@ class PreferencesDialog(Adw.PreferencesDialog):
             ("is_add_model_name", "Model test mode", "Append the model name to output file names"),
             ("is_create_model_folder", "Generate model folder", "Save outputs inside a per-model subfolder"),
             ("is_accept_any_input", "Accept any input", "Allow any input file type, not just common audio"),
-            ("is_normalization", "Normalize output", "Normalize the loudness of saved audio"),
+            ("is_normalization", "Normalize output", "Limit peaks above 1.0 on saved audio"),
         ):
             row = Adw.SwitchRow(title=title, subtitle=subtitle)
             row.connect("notify::active", self._on_bool_changed, key)
             process_group.add(row)
             self._process_switches[key] = row
+        set_tooltip(self._process_switches["is_normalization"], IS_NORMALIZATION_HELP)
+
+        amp_adjustment = Gtk.Adjustment(
+            lower=0.0, upper=1.0, step_increment=0.05, page_increment=0.1
+        )
+        self.amplification_row = Adw.SpinRow(
+            title="Amplification threshold",
+            subtitle="Raise quiet outputs to this peak level (0 = off)",
+            adjustment=amp_adjustment,
+            digits=2,
+        )
+        set_tooltip(self.amplification_row, AMPLIFICATION_THRESHOLD_HELP)
+        self.amplification_row.connect("notify::value", self._on_amplification_changed)
+        process_group.add(self.amplification_row)
 
         self.output_name_preview_row = Adw.ActionRow(
             title="Example output name",
@@ -340,6 +362,37 @@ class PreferencesDialog(Adw.PreferencesDialog):
         sample_group.add(self.sample_duration_row)
         page.add(sample_group)
 
+        long_group = Adw.PreferencesGroup(
+            title="Long files",
+            description="Whole-file time slicing for hour+ tracks (not MDX/Demucs segment size)",
+        )
+        chunk_adjustment = Gtk.Adjustment(
+            lower=0, upper=3600, step_increment=60, page_increment=300
+        )
+        self.long_chunk_row = Adw.SpinRow(
+            title="Chunk duration (seconds)",
+            subtitle="0 = off; try 600 for long podcasts",
+            adjustment=chunk_adjustment,
+            digits=0,
+        )
+        set_tooltip(self.long_chunk_row, LONG_FILE_CHUNK_HELP)
+        self.long_chunk_row.connect("notify::value", self._on_long_chunk_changed)
+        long_group.add(self.long_chunk_row)
+
+        overlap_adjustment = Gtk.Adjustment(
+            lower=0.0, upper=30.0, step_increment=0.5, page_increment=1.0
+        )
+        self.long_chunk_overlap_row = Adw.SpinRow(
+            title="Chunk overlap (seconds)",
+            subtitle="Crossfade between slices",
+            adjustment=overlap_adjustment,
+            digits=1,
+        )
+        set_tooltip(self.long_chunk_overlap_row, LONG_FILE_CHUNK_OVERLAP_HELP)
+        self.long_chunk_overlap_row.connect("notify::value", self._on_long_chunk_overlap_changed)
+        long_group.add(self.long_chunk_overlap_row)
+        page.add(long_group)
+
         maintenance_group = Adw.PreferencesGroup(
             title="Maintenance",
             description="Automatic cleanup of leftover working files",
@@ -392,6 +445,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
             for key, row in self._process_switches.items():
                 row.set_active(bool(self.settings.get(key)))
+            try:
+                amp = float(self.settings.get("amplification_threshold") or 0.0)
+            except (TypeError, ValueError):
+                amp = 0.0
+            self.amplification_row.set_value(max(0.0, min(1.0, amp)))
             self._refresh_output_name_preview()
 
             for key, row in self._notification_switches.items():
@@ -418,6 +476,17 @@ class PreferencesDialog(Adw.PreferencesDialog):
                 duration = 30.0
             self.sample_duration_row.set_value(duration)
             self._update_sample_duration_subtitle(duration)
+
+            try:
+                long_chunk = float(self.settings.get("long_file_chunk_seconds") or 0)
+            except (TypeError, ValueError):
+                long_chunk = 0.0
+            self.long_chunk_row.set_value(max(0.0, min(3600.0, long_chunk)))
+            try:
+                long_overlap = float(self.settings.get("long_file_chunk_overlap_seconds") or 2.0)
+            except (TypeError, ValueError):
+                long_overlap = 2.0
+            self.long_chunk_overlap_row.set_value(max(0.0, min(30.0, long_overlap)))
 
             self._refresh_profile_list()
         finally:
@@ -446,6 +515,25 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.settings.set(key, bool(row.get_active()))
         if key in _NAMING_PREVIEW_KEYS:
             self._refresh_output_name_preview()
+        self._persist()
+
+    def _on_amplification_changed(self, row, _pspec) -> None:
+        if self._loading:
+            return
+        value = float(row.get_value())
+        self.settings.set("amplification_threshold", max(0.0, min(1.0, value)))
+        self._persist()
+
+    def _on_long_chunk_changed(self, row, _pspec) -> None:
+        if self._loading:
+            return
+        self.settings.set("long_file_chunk_seconds", int(round(float(row.get_value()))))
+        self._persist()
+
+    def _on_long_chunk_overlap_changed(self, row, _pspec) -> None:
+        if self._loading:
+            return
+        self.settings.set("long_file_chunk_overlap_seconds", float(row.get_value()))
         self._persist()
 
     def _refresh_output_name_preview(self) -> None:

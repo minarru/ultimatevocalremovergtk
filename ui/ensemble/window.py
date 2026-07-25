@@ -93,6 +93,16 @@ from core import (
     load_ensemble,
     save_ensemble,
 )
+from core.ensemble_presets import (
+    classify_preset_members,
+    curated_combo_label,
+    curated_id_from_combo_label,
+    download_entries_for_missing,
+    is_curated_combo_label,
+    list_curated_ensembles,
+    load_curated_ensemble,
+    resolve_member_tags,
+)
 
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
@@ -591,8 +601,9 @@ class EnsemblePage:
     # -- Saved ensembles --------------------------------------------------------
 
     def _refresh_saved_list(self) -> None:
+        curated = [curated_combo_label(preset_id) for preset_id in list_curated_ensembles()]
         names = list_saved_ensembles()
-        set_combo_values(self.saved_row, [CHOOSE_ENSEMBLE_OPTION, *names])
+        set_combo_values(self.saved_row, [CHOOSE_ENSEMBLE_OPTION, *curated, *names])
         set_combo_value(self.saved_row, self.settings.get("chosen_ensemble", CHOOSE_ENSEMBLE_OPTION))
 
     def _on_saved_selected(self, *_args) -> None:
@@ -602,6 +613,15 @@ class EnsemblePage:
         if not name or name == CHOOSE_ENSEMBLE_OPTION:
             self.settings.set("chosen_ensemble", CHOOSE_ENSEMBLE_OPTION)
             return
+        curated_id = curated_id_from_combo_label(name)
+        if curated_id is not None:
+            data = load_curated_ensemble(curated_id)
+            if not data:
+                self._toast(f"Could not load curated recipe '{curated_id}'.")
+                return
+            self.settings.set("chosen_ensemble", name)
+            self._apply_saved_ensemble(data, curated_id=curated_id)
+            return
         data = load_ensemble(name)
         if not data:
             self._toast(f"Could not load ensemble '{name}'.")
@@ -609,7 +629,7 @@ class EnsemblePage:
         self.settings.set("chosen_ensemble", name)
         self._apply_saved_ensemble(data)
 
-    def _apply_saved_ensemble(self, data: dict) -> None:
+    def _apply_saved_ensemble(self, data: dict, *, curated_id: Optional[str] = None) -> None:
         self._loading = True
         try:
             main_stem = data.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
@@ -621,8 +641,58 @@ class EnsemblePage:
         finally:
             self._loading = False
         self._rebuild_stem_only_toggles()
-        self._rebuild_model_list(data.get("selected_models") or [])
+        selected = list(data.get("selected_models") or [])
+        if curated_id is not None:
+            selected = resolve_member_tags(selected, self.context.repo)
+        self._rebuild_model_list(selected)
         self._persist_selected_models()
+        if curated_id is not None:
+            description = (data.get("description") or "").strip()
+            if description:
+                self._toast(description)
+            self._offer_download_missing(data.get("selected_models") or [])
+
+    def _offer_download_missing(self, tags: List[str]) -> None:
+        _installed, missing = classify_preset_members(tags, self.context.repo)
+        if not missing:
+            return
+        from ..download import _get_manager, _get_queue
+
+        manager = _get_manager(self.context)
+        queue = _get_queue(self.context, manager)
+        entries, unresolved = download_entries_for_missing(missing, manager)
+        if not entries and not unresolved:
+            return
+
+        body_parts = [f"{len(missing)} member model(s) are not installed."]
+        if entries:
+            body_parts.append(f"{len(entries)} can be queued from the Download Center.")
+        if unresolved:
+            body_parts.append(f"{len(unresolved)} could not be matched in the catalogue.")
+        dialog = Adw.AlertDialog(
+            heading="Download missing models?",
+            body=" ".join(body_parts),
+        )
+        dialog.add_response("cancel", "Not now")
+        if entries:
+            dialog.add_response("download", "Download missing")
+            dialog.set_response_appearance("download", Adw.ResponseAppearance.SUGGESTED)
+            dialog.set_default_response("download")
+        else:
+            dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def on_response(_dlg, response):
+            if response != "download" or not entries:
+                return
+            ids = queue.enqueue_many(entries)
+            if ids:
+                self._toast(f"Queued {len(ids)} download(s) for missing members")
+            else:
+                self._toast("Nothing new to download for the missing members")
+
+        dialog.connect("response", on_response)
+        dialog.present(self.window)
 
     def _on_save_clicked(self, _button: Gtk.Button) -> None:
         selected = self._selected_model_tags()
@@ -671,6 +741,9 @@ class EnsemblePage:
         name = get_combo_value(self.saved_row)
         if not name or name == CHOOSE_ENSEMBLE_OPTION:
             self._toast("Select a saved ensemble to delete.")
+            return
+        if is_curated_combo_label(name):
+            self._toast("Curated recipes cannot be deleted.")
             return
         dialog = Adw.AlertDialog(
             heading="Delete ensemble?",

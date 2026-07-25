@@ -17,6 +17,18 @@ from bundled.constants import (
 from core.debug_log import debug
 from core.download_queue import DownloadQueue
 from core.downloads import DownloadManager
+from core.model_scores import (
+    PURPOSE_ALL,
+    PURPOSE_FILTER_OPTIONS,
+    SORT_NAME,
+    SORT_OPTIONS,
+    SORT_SDR,
+    filter_labels_by_purpose,
+    format_sdr_subtitle,
+    parse_sdr_score,
+    purpose_for_label,
+    sort_labels_by_sdr,
+)
 from core import paths
 
 from .dispatch import idle_on_main
@@ -24,6 +36,7 @@ from .help_text import VIP_DOWNLOAD_CODE_HINT
 from .hints import set_tooltip
 from .markup import set_row_subtitle, set_row_title
 from .spacing import set_inset
+from .widgets.rows import get_combo_value, make_combo_row, set_combo_value
 
 _NETWORKS = [
     ("VR Arch", VR_ARCH_TYPE),
@@ -34,11 +47,17 @@ _NETWORKS = [
 _CLAMP_MAX_WIDTH = 800
 
 
-def catalogue_matches(names: list[str], query: str) -> list[str]:
-    """Return selectable catalogue names matching a case-insensitive query."""
+def catalogue_matches(
+    names: list[str],
+    query: str,
+    *,
+    purpose: str = PURPOSE_ALL,
+) -> list[str]:
+    """Return selectable catalogue names matching query and purpose filter."""
     selectable = [
         name for name in names if name not in (NO_NEW_MODELS, NO_CONNECTION)
     ]
+    selectable = filter_labels_by_purpose(selectable, purpose)
     folded = query.strip().casefold()
     if not folded:
         return selectable
@@ -85,6 +104,8 @@ class DownloadCenterWindow:
         self._list_boxes: dict[str, Gtk.ListBox] = {}
         self._empty_labels: dict[str, Gtk.Label] = {}
         self._stack_pages: dict[str, Adw.ViewStackPage] = {}
+        self._purpose = PURPOSE_ALL
+        self._sort_mode = SORT_NAME
 
         saved_code = self.settings.get("user_code", "")
         if saved_code:
@@ -166,6 +187,19 @@ class DownloadCenterWindow:
                 self._stack_pages[arch] = self.stack.get_page(page)
         self.stack.connect("notify::visible-child-name", self._on_catalogue_tab_changed)
 
+        filter_group = Adw.PreferencesGroup()
+        set_inset(filter_group, start=12, end=12, top=6)
+        purpose_labels = [label for _value, label in PURPOSE_FILTER_OPTIONS]
+        self.purpose_row = make_combo_row("Purpose", purpose_labels)
+        self.purpose_row.connect("notify::selected", self._on_purpose_changed)
+        set_combo_value(self.purpose_row, PURPOSE_FILTER_OPTIONS[0][1])
+        filter_group.add(self.purpose_row)
+        sort_labels = [label for _value, label in SORT_OPTIONS]
+        self.sort_row = make_combo_row("Sort", sort_labels)
+        self.sort_row.connect("notify::selected", self._on_sort_changed)
+        set_combo_value(self.sort_row, SORT_OPTIONS[0][1])
+        filter_group.add(self.sort_row)
+
         self.refresh_button = Gtk.Button(icon_name="view-refresh-symbolic")
         self.refresh_button.add_css_class("flat")
         self.refresh_button.connect("clicked", lambda *_: self.start_refresh())
@@ -192,6 +226,7 @@ class DownloadCenterWindow:
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         body.set_vexpand(True)
+        body.append(filter_group)
         body.append(self.stack)
         body.append(action_dock)
 
@@ -238,14 +273,18 @@ class DownloadCenterWindow:
         return resolve_catalogue_action_row(row)
 
     def _row_matches_filter(self, row: Gtk.ListBoxRow, arch: str) -> bool:
+        action = self._catalogue_row_action(row)
+        label = getattr(action, "_uvr_model_name", "") if action is not None else ""
+        if not label:
+            return False
+        if self._purpose != PURPOSE_ALL and purpose_for_label(label) != self._purpose:
+            return False
         search = self._search_entries.get(arch)
         if search is None:
             return True
         query = search.get_text().strip().casefold()
         if not query:
             return True
-        action = self._catalogue_row_action(row)
-        label = getattr(action, "_uvr_model_name", "") if action is not None else ""
         return query in str(label).casefold()
 
     def _on_search_changed(self, entry: Gtk.SearchEntry, arch: str) -> None:
@@ -253,6 +292,28 @@ class DownloadCenterWindow:
         if list_box is not None:
             list_box.invalidate_filter()
         self._update_catalogue_page_state(arch)
+        self._update_download_button()
+
+    def _on_purpose_changed(self, *_args) -> None:
+        label = get_combo_value(self.purpose_row) or PURPOSE_FILTER_OPTIONS[0][1]
+        self._purpose = next(
+            (value for value, text in PURPOSE_FILTER_OPTIONS if text == label),
+            PURPOSE_ALL,
+        )
+        self._invalidate_all_filters()
+
+    def _on_sort_changed(self, *_args) -> None:
+        label = get_combo_value(self.sort_row) or SORT_OPTIONS[0][1]
+        self._sort_mode = next(
+            (value for value, text in SORT_OPTIONS if text == label),
+            SORT_NAME,
+        )
+        self._rebuild_catalogue()
+
+    def _invalidate_all_filters(self) -> None:
+        for arch, list_box in self._list_boxes.items():
+            list_box.invalidate_filter()
+            self._update_catalogue_page_state(arch)
         self._update_download_button()
 
     def _on_catalogue_tab_changed(self, *_args) -> None:
@@ -274,6 +335,10 @@ class DownloadCenterWindow:
         action.set_activatable_widget(check)
         action._uvr_model_name = name  # type: ignore[attr-defined]
         action._uvr_check = check  # type: ignore[attr-defined]
+        action._uvr_sdr = parse_sdr_score(name)  # type: ignore[attr-defined]
+        sdr = getattr(action, "_uvr_sdr", None)
+        if sdr is not None:
+            set_row_subtitle(action, format_sdr_subtitle(sdr))
 
         self._row_checks[key] = check
         self._row_actions[key] = action
@@ -289,7 +354,8 @@ class DownloadCenterWindow:
             return
         action = self._row_actions.get(key)
         if action is not None:
-            set_row_subtitle(action, "")
+            sdr = getattr(action, "_uvr_sdr", None)
+            set_row_subtitle(action, format_sdr_subtitle(sdr))
 
     def _lookup_row_size(self, key: tuple[str, str]) -> None:
         arch, name = key
@@ -311,7 +377,8 @@ class DownloadCenterWindow:
             return
         action = self._row_actions.get(key)
         if action is not None:
-            set_row_subtitle(action, text or "")
+            sdr = getattr(action, "_uvr_sdr", None)
+            set_row_subtitle(action, format_sdr_subtitle(sdr, text or ""))
 
     def _selected_entries(self) -> list[tuple[str, str]]:
         selected: list[tuple[str, str]] = []
@@ -475,12 +542,14 @@ class DownloadCenterWindow:
         names = self._available.get(arch) or []
         search = self._search_entries.get(arch)
         query = search.get_text().strip() if search is not None else ""
-        matches = catalogue_matches(names, query)
-        if query and not matches:
-            self._set_catalogue_page_message(
-                arch, f'No models match “{query}”. Try a broader search.'
-            )
-        elif not catalogue_matches(names, ""):
+        matches = catalogue_matches(names, query, purpose=self._purpose)
+        if (query or self._purpose != PURPOSE_ALL) and not matches:
+            if query:
+                message = f'No models match “{query}”. Try a broader search.'
+            else:
+                message = "No models match this purpose filter."
+            self._set_catalogue_page_message(arch, message)
+        elif not catalogue_matches(names, "", purpose=PURPOSE_ALL):
             self._set_catalogue_page_message(
                 arch, "All models for this network are already installed."
             )
@@ -490,7 +559,17 @@ class DownloadCenterWindow:
     def _rebuild_catalogue(self) -> None:
         self._clear_catalogue()
         for _label, arch in _NETWORKS:
-            models = self._available.get(arch) or [NO_NEW_MODELS]
+            models = [
+                name
+                for name in (self._available.get(arch) or [])
+                if name not in (NO_NEW_MODELS, NO_CONNECTION)
+            ]
+            if self._sort_mode == SORT_SDR:
+                models = sort_labels_by_sdr(models)
+            else:
+                models = sorted(models, key=lambda value: value.casefold())
+            if not models:
+                models = [NO_NEW_MODELS]
             for name in models:
                 self._add_model_row(arch, name)
             list_box = self._list_boxes[arch]

@@ -210,8 +210,14 @@ class MethodView:
     def populate_models(self) -> None:
         arch = self.method_key_for_resolution
         repo = self.context.repo
-        basenames = sorted(self.list_models())
+        basenames = list(self.list_models())
         names = map_basenames_to_display(basenames, arch, repo)
+        from core.model_scores import sort_labels_by_sdr
+
+        names = sort_labels_by_sdr(
+            names,
+            score_texts=[(display, basename) for display, basename in zip(names, basenames)],
+        )
         set_combo_values(self.model_row, [CHOOSE_MODEL, *names])
         stored = self.settings.get(self.model_key, CHOOSE_MODEL)
         if stored not in (CHOOSE_MODEL, NO_MODEL, None):

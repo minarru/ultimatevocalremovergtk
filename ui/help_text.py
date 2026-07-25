@@ -180,6 +180,24 @@ PROGRESS_ETA_HINT = """The progress bar and time estimate track separation only.
 
 IS_NORMALIZATION_HELP = "Normalizes output to prevent clipping"
 
+AMPLIFICATION_THRESHOLD_HELP = """Raise quiet outputs so their peak reaches this level (0–1).
+
+• 0 — off (default); leave quiet stems as-is
+• 0.9 — match common audio-separator-style loudness targeting
+• Applies after peak limiting when Normalize output is enabled"""
+
+LONG_FILE_CHUNK_HELP = """Split very long inputs into wall-clock time slices before separation.
+
+• 0 — off (default); process the whole file in one pass
+• 600 — typical for hour+ podcasts / DJ mixes (10-minute slices)
+• This is not MDX segment size or Demucs segment — those are in-model windows
+• Slices are crossfaded using the overlap setting when stitched back together"""
+
+LONG_FILE_CHUNK_OVERLAP_HELP = """Crossfade length (seconds) between long-file chunks.
+
+• Clamped to less than half the chunk duration
+• Reduces clicks at slice boundaries; 2 seconds is a solid default"""
+
 IS_CUDA_SELECT_HELP = """If you have more than one GPU, you can pick which one to use for processing"""
 
 CROP_SIZE_HELP = """Only compatible with select models only!
@@ -592,7 +610,8 @@ DEMUCS_CHUNK_HINT = "Process the audio in chunks to reduce memory usage (legacy 
 # --- Ensemble page ---
 
 ENSEMBLE_SAVED_PRESET_HINT = (
-    "Load a previously saved ensemble preset, or save / delete one with the buttons"
+    "Load a curated recipe or a previously saved ensemble. "
+    "Save / delete apply to your own presets only (curated recipes are read-only)."
 )
 ENSEMBLE_SAVE_BUTTON_HINT = "Save current ensemble"
 ENSEMBLE_DELETE_BUTTON_HINT = "Delete selected saved ensemble"

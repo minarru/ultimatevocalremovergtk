@@ -1,0 +1,9 @@
+{
+    "description": "Best overall vocal quality — Resurrection Vocals + Big Beta v6x",
+    "ensemble_main_stem": "Vocals/Instrumental",
+    "ensemble_type": "Average/Average",
+    "selected_models": [
+        "MDX-Net: BandSplit Roformer | Resurrection Vocals by Unwa",
+        "MDX-Net: MelBand Roformer Kim | Big Beta v6x FT by Unwa"
+    ]
+}

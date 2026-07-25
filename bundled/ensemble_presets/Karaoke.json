@@ -1,0 +1,10 @@
+{
+    "description": "Lead vocal removal — Aufr33/Viperx + Gabox + becruily karaoke models",
+    "ensemble_main_stem": "Vocals/Instrumental",
+    "ensemble_type": "Average/Average",
+    "selected_models": [
+        "MDX-Net: MelBand Roformer | Karaoke by Aufr33 & Viperx",
+        "MDX-Net: MelBand Roformer | Karaoke by Gabox",
+        "MDX-Net: MelBand Roformer | Karaoke by becruily"
+    ]
+}

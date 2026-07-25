@@ -337,6 +337,8 @@ def build_settings(
     use_gpu: Optional[bool] = None,
     stable_names: bool = True,
     repo: Optional[Any] = None,
+    long_chunk_seconds: Optional[float] = None,
+    long_chunk_overlap: Optional[float] = None,
 ) -> SettingsModel:
     """Load settings and apply CLI overrides (does not persist)."""
     path = settings_path or SETTINGS_DATA_FILE
@@ -379,6 +381,11 @@ def build_settings(
         settings.set("is_create_model_folder", False)
         settings.set("is_testing_audio", False)
         settings.set("is_add_model_name", False)
+
+    if long_chunk_seconds is not None:
+        settings.set("long_file_chunk_seconds", float(long_chunk_seconds))
+    if long_chunk_overlap is not None:
+        settings.set("long_file_chunk_overlap_seconds", float(long_chunk_overlap))
 
     return settings
 
@@ -487,4 +494,6 @@ def settings_summary(settings: SettingsModel) -> dict[str, Any]:
         "demucs_stems": settings.get("demucs_stems"),
         "mdx_stems": settings.get("mdx_stems"),
         "mdx_stems_selected": settings.get("mdx_stems_selected"),
+        "long_file_chunk_seconds": settings.get("long_file_chunk_seconds"),
+        "long_file_chunk_overlap_seconds": settings.get("long_file_chunk_overlap_seconds"),
     }

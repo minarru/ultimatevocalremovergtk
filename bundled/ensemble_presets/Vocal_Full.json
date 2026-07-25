@@ -1,0 +1,9 @@
+{
+    "description": "Maximum vocal capture — Revive v3 + Vocals by becruily",
+    "ensemble_main_stem": "Vocals/Instrumental",
+    "ensemble_type": "Max Spec/Max Spec",
+    "selected_models": [
+        "MDX-Net: BandSplit Roformer | Revive v3 by Unwa",
+        "MDX-Net: MelBand Roformer | Vocals by becruily"
+    ]
+}
