@@ -53,6 +53,7 @@ from bundled.constants import (
     IS_GPU_CONVERSION_HELP,
     IS_MATCH_SILENCE_HELP,
     IS_MATCH_SPEC_HELP,
+    AMPLIFICATION_THRESHOLD_HELP,
     IS_NORMALIZATION_HELP,
     IS_PHASE_HELP,
     IS_TESTING_AUDIO_HELP,
@@ -433,6 +434,15 @@ class AudioToolsPage:
         self.normalize_row.connect("notify::active", lambda *_a: self._set("is_normalization", self.normalize_row.get_active()))
         group.add(self.normalize_row)
 
+        self.amplification_row = self._make_spin("Amplification threshold", 0.0, 1.0, 0.05, digits=2)
+        self.amplification_row.set_subtitle("Raise quiet outputs to this peak level (0 = off)")
+        self.hints.register(self.amplification_row, AMPLIFICATION_THRESHOLD_HELP)
+        self.amplification_row.connect(
+            "notify::value",
+            lambda *_a: self._set("amplification_threshold", float(self.amplification_row.get_value())),
+        )
+        group.add(self.amplification_row)
+
         self.testing_row = make_switch_row("Settings test", "Append a timestamp to output names to avoid overwrites")
         self.hints.register(self.testing_row, IS_TESTING_AUDIO_HELP)
         self.testing_row.connect("notify::active", lambda *_a: self._set("is_testing_audio", self.testing_row.get_active()))
@@ -487,6 +497,11 @@ class AudioToolsPage:
             set_combo_value(self.format_row, s.get("save_format", WAV))
             set_combo_value(self.wav_type_row, s.get("wav_type_set"))
             self.normalize_row.set_active(bool(s.get("is_normalization")))
+            try:
+                amp = float(s.get("amplification_threshold") or 0.0)
+            except (TypeError, ValueError):
+                amp = 0.0
+            self.amplification_row.set_value(max(0.0, min(1.0, amp)))
             self.testing_row.set_active(bool(s.get("is_testing_audio")))
         finally:
             self._loading = False

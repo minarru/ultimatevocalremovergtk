@@ -112,6 +112,18 @@ def _add_common_separate_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Print resolved method/model/export knobs before running",
     )
+    parser.add_argument(
+        "--long-chunk-seconds",
+        type=float,
+        default=None,
+        help="Whole-file chunk length in seconds (0/omit = off)",
+    )
+    parser.add_argument(
+        "--long-chunk-overlap",
+        type=float,
+        default=None,
+        help="Crossfade overlap between long-file chunks in seconds",
+    )
 
 
 def _cmd_separate(args: argparse.Namespace) -> int:
@@ -130,6 +142,8 @@ def _cmd_separate(args: argparse.Namespace) -> int:
             stems=args.stems,
             use_gpu=False if args.cpu else None,
             stable_names=True,
+            long_chunk_seconds=args.long_chunk_seconds,
+            long_chunk_overlap=args.long_chunk_overlap,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)

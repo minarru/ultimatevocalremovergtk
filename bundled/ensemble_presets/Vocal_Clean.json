@@ -1,0 +1,9 @@
+{
+    "description": "Minimal instrument bleed — Revive v2 + Kim FT v2 Bleedless",
+    "ensemble_main_stem": "Vocals/Instrumental",
+    "ensemble_type": "Min Spec/Min Spec",
+    "selected_models": [
+        "MDX-Net: BandSplit Roformer | Revive v2 by Unwa",
+        "MDX-Net: MelBand Roformer Kim | FT v2 Bleedless by Unwa"
+    ]
+}

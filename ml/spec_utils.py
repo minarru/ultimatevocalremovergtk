@@ -94,17 +94,26 @@ def make_padding(width, cropsize, offset):
 
     return left, right, roi_size
 
-def normalize(wave, is_normalize=False):
-    """Normalize audio"""
+def normalize(wave, is_normalize=False, min_peak=0.0):
+    """Limit peaks above 1.0 and optionally amplify quiet peaks to ``min_peak``.
 
-    maxv = np.abs(wave).max()
-    if maxv > 1.0:
-        if is_normalize:
-            print("Above clipping threshold.")
-            wave /= maxv
-    
+    When ``is_normalize`` is true and the peak exceeds 1.0, scale down to peak 1.0.
+    When ``min_peak`` is in (0, 1] and the (post-limit) peak is below it, scale up
+    so the peak equals ``min_peak``. ``min_peak`` of 0 disables amplification.
+    """
+    maxv = float(np.abs(wave).max()) if getattr(wave, "size", 0) else 0.0
+    if maxv > 1.0 and is_normalize:
+        print("Above clipping threshold.")
+        wave = wave / maxv
+        maxv = 1.0
+    try:
+        min_peak_f = float(min_peak)
+    except (TypeError, ValueError):
+        min_peak_f = 0.0
+    if min_peak_f > 0.0 and 0.0 < maxv < min_peak_f:
+        wave = wave * (min_peak_f / maxv)
     return wave
-    
+
 def auto_transpose(audio_array:np.ndarray):
     """
     Ensure that the audio array is in the (channels, samples) format.
@@ -652,7 +661,16 @@ def _load_ensemble_waves(audio_input, is_array=False):
     return wavs_, samplerate
 
 
-def ensemble_inputs(audio_input, algorithm, is_normalization, wav_type_set, save_path, is_wave=False, is_array=False):
+def ensemble_inputs(
+    audio_input,
+    algorithm,
+    is_normalization,
+    wav_type_set,
+    save_path,
+    is_wave=False,
+    is_array=False,
+    min_peak=0.0,
+):
 
     if algorithm == AVERAGE:
         output = average_audio(audio_input, is_array=is_array)
@@ -682,7 +700,12 @@ def ensemble_inputs(audio_input, algorithm, is_normalization, wav_type_set, save
 
         output = to_shape(output, target_shape)
 
-    sf.write(save_path, normalize(output.T, is_normalization), samplerate, subtype=wav_type_set)
+    sf.write(
+        save_path,
+        normalize(output.T, is_normalization, min_peak=min_peak),
+        samplerate,
+        subtype=wav_type_set,
+    )
 
 def to_shape(x, target_shape):
     padding_list = []
@@ -816,7 +839,17 @@ def change_pitch_semitones(y, sr, semitone_shift):
     new_sr = sr * factor
     return y_pitch_tuned, new_sr
 
-def augment_audio(export_path, audio_file, rate, is_normalization, wav_type_set, save_format=None, is_pitch=False, is_time_correction=True):
+def augment_audio(
+    export_path,
+    audio_file,
+    rate,
+    is_normalization,
+    wav_type_set,
+    save_format=None,
+    is_pitch=False,
+    is_time_correction=True,
+    min_peak=0.0,
+):
 
     wav, sr = librosa.load(audio_file, sr=44100, mono=False)
 
@@ -840,7 +873,12 @@ def augment_audio(export_path, audio_file, rate, is_normalization, wav_type_set,
             
         wav_mix = np.asfortranarray([wav_1, wav_2])
     
-    sf.write(export_path, normalize(wav_mix.T, is_normalization), sr, subtype=wav_type_set)
+    sf.write(
+        export_path,
+        normalize(wav_mix.T, is_normalization, min_peak=min_peak),
+        sr,
+        subtype=wav_type_set,
+    )
     save_format(export_path)
     
 def average_audio(audio, is_array=False):

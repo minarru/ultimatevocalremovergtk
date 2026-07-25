@@ -105,6 +105,7 @@ DEFAULT_DATA = {
         'is_add_model_name': False,
         'is_accept_any_input': False,
         'is_normalization': False,
+        'amplification_threshold': 0.0,
         'is_use_directml': False,
         'is_wav_ensemble': False,
         'is_create_model_folder': False,
@@ -132,6 +133,8 @@ DEFAULT_DATA = {
         'is_save_inst_set_vocal_splitter': False,#
         'model_sample_mode': False,
         'model_sample_mode_duration': 30,
+        'long_file_chunk_seconds': 0,
+        'long_file_chunk_overlap_seconds': 2.0,
         'color_scheme': 'auto',
         'window_width': 1040,
         'window_height': 720,
