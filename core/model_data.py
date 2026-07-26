@@ -328,6 +328,8 @@ class ModelData:
         self.is_denoise_model = True if settings.get("denoise_option") == DENOISE_M and os.path.isfile(paths.DENOISER_MODEL_PATH) else False
         self.is_gpu_conversion = 0 if settings.get("is_gpu_conversion") else -1
         self.is_normalization = settings.get("is_normalization")
+        self.is_match_mix_level = bool(settings.get("is_match_mix_level"))
+        self.is_prevent_export_clipping = bool(settings.get("is_prevent_export_clipping"))
         try:
             self.amplification_threshold = float(settings.get("amplification_threshold") or 0.0)
         except (TypeError, ValueError):

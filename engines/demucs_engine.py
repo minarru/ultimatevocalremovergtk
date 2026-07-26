@@ -161,6 +161,18 @@ class SeperateDemucs(SeperateAttributes):
             self.cache_source(source)
         
         if (self.demucs_stems == ALL_STEMS and not self.process_data['is_ensemble_master']) or self.is_4_stem_ensemble and not self.is_return_dual:
+            if isinstance(source, np.ndarray) and (
+                self.is_match_mix_level or self.is_prevent_export_clipping
+            ):
+                if mix is None:
+                    mix = prepare_mix(self.audio_file)
+                stem_dict = {
+                    stem_name: source[stem_value]
+                    for stem_name, stem_value in self.demucs_source_map.items()
+                }
+                self.apply_export_stem_levels(stem_dict, mix)
+                for stem_name, stem_value in self.demucs_source_map.items():
+                    source[stem_value] = stem_dict[stem_name]
             self.begin_save_phase(len(self.demucs_source_map))
             for stem_name, stem_value in self.demucs_source_map.items():
                 if self.is_secondary_model_activated and not self.is_secondary_model and not stem_value >= 4:

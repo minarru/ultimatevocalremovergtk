@@ -111,6 +111,10 @@ class SeperateAttributes:
         self.save_format = model_data.save_format
         self.is_gpu_conversion = model_data.is_gpu_conversion
         self.is_normalization = model_data.is_normalization
+        self.is_match_mix_level = bool(getattr(model_data, "is_match_mix_level", False))
+        self.is_prevent_export_clipping = bool(
+            getattr(model_data, "is_prevent_export_clipping", False)
+        )
         self.amplification_threshold = float(getattr(model_data, "amplification_threshold", 0.0) or 0.0)
         self.is_primary_stem_only = model_data.is_primary_stem_only if not self.is_secondary_model else model_data.is_primary_model_primary_stem_only
         self.is_secondary_stem_only = model_data.is_secondary_stem_only if not self.is_secondary_model else model_data.is_primary_model_secondary_stem_only      
@@ -415,6 +419,42 @@ class SeperateAttributes:
         label = export_stem_label(self, stem, for_ensemble=for_ensemble)
         return stem_wav_path(self.export_path, self.audio_file_base, label)
 
+    def apply_export_stem_levels(
+        self,
+        sources: dict,
+        mix,
+        *,
+        stem_keys=None,
+        allow_match_mix: bool = True,
+    ) -> dict:
+        """Optionally match multi-stem levels to ``mix`` and/or prevent PCM clipping."""
+        from core.stem_levels import (
+            apply_stem_level_options,
+            export_format_can_clip,
+            update_stem_mapping,
+        )
+
+        if not isinstance(sources, dict) or not sources:
+            return sources
+        keys = [key for key in (stem_keys or list(sources.keys())) if key in sources]
+        subset = {key: sources[key] for key in keys}
+        match_mix = bool(self.is_match_mix_level) and allow_match_mix and len(subset) >= 2
+        prevent = bool(self.is_prevent_export_clipping) and export_format_can_clip(
+            self.save_format, self.wav_type_set
+        )
+        if not match_mix and not prevent:
+            return sources
+        adjusted, messages = apply_stem_level_options(
+            subset,
+            mix,
+            match_mix_level=match_mix,
+            prevent_export_clipping=prevent,
+        )
+        update_stem_mapping(sources, adjusted)
+        for message in messages:
+            self.write_to_console(f"{message}\n")
+        return sources
+
     def final_process(self, stem_path, source, secondary_source, stem_name, samplerate):
         with trace_phase("separate", "final_process", stem=stem_name, model=self.model_basename):
             source = self.process_secondary_stem(source, secondary_source)
@@ -458,6 +498,13 @@ class SeperateAttributes:
                         self._ensemble_stem_paths = paths
                     paths[stem_name] = path
                 return
+
+            from core.stem_levels import export_format_can_clip, scale_to_peak_limit
+
+            if self.is_prevent_export_clipping and export_format_can_clip(
+                self.save_format, self.wav_type_set
+            ):
+                source, _gain = scale_to_peak_limit(source)
 
             source = spec_utils.normalize(
                 source,

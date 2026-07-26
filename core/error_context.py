@@ -46,6 +46,8 @@ _PROCESS_SETTING_KEYS = (
     "is_primary_stem_only",
     "is_secondary_stem_only",
     "is_normalization",
+    "is_match_mix_level",
+    "is_prevent_export_clipping",
     "amplification_threshold",
     "long_file_chunk_seconds",
     "long_file_chunk_overlap_seconds",

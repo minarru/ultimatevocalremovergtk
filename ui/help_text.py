@@ -180,6 +180,18 @@ PROGRESS_ETA_HINT = """The progress bar and time estimate track separation only.
 
 IS_NORMALIZATION_HELP = "Normalizes output to prevent clipping"
 
+IS_MATCH_MIX_LEVEL_HELP = """Scale multi-stem outputs so their sum matches the input mix level
+
+• Uses one shared gain across all exported stems (keeps relative balance)
+• Fixes models that run systematically hot or quiet (e.g. some SCNet checkpoints)
+• Applies when exporting two or more stems from the same separation"""
+
+IS_PREVENT_EXPORT_CLIPPING_HELP = """Scale outputs so peaks fit integer PCM / FLAC / MP3 without hard clipping
+
+• Uses one shared gain across multi-stem exports so relative levels stay intact
+• Skipped automatically when saving 32/64-bit float WAV (those formats keep peaks above 1.0)
+• Different from Normalize output, which can reshape each stem independently"""
+
 AMPLIFICATION_THRESHOLD_HELP = """Raise quiet outputs so their peak reaches this level (0–1)
 
 • 0 — off (default); leave quiet stems as-is
