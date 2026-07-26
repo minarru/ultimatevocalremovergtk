@@ -610,6 +610,16 @@ class SeperateMDXC(SeperateAttributes):
                 self.process_vocal_split_chain({VOCAL_STEM: stem})
         elif routing["multi_stem_export"]:
             export_stems = routing["export_stems"]
+            if isinstance(sources, dict):
+                # Match-mix only when exporting the model's full stem set so a
+                # partial selection is not forced to reconstruct the whole mix.
+                allow_match = set(export_stems) == set(stem_list)
+                self.apply_export_stem_levels(
+                    sources,
+                    mix,
+                    stem_keys=export_stems,
+                    allow_match_mix=allow_match,
+                )
             self.begin_save_phase(len(export_stems))
             for stem in export_stems:
                 primary_stem_path = self.stem_export_wav_path(stem)

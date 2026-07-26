@@ -57,7 +57,9 @@ from .dispatch import idle_on_main
 from .help_text import (
     AMPLIFICATION_THRESHOLD_HELP,
     IS_AUTOCAST_HELP,
+    IS_MATCH_MIX_LEVEL_HELP,
     IS_NORMALIZATION_HELP,
+    IS_PREVENT_EXPORT_CLIPPING_HELP,
     LONG_FILE_CHUNK_HELP,
     LONG_FILE_CHUNK_OVERLAP_HELP,
     REMOVE_PROFILE_HINT,
@@ -292,12 +294,27 @@ class PreferencesDialog(Adw.PreferencesDialog):
             ("is_create_model_folder", "Generate model folder", "Save outputs inside a per-model subfolder"),
             ("is_accept_any_input", "Accept any input", "Allow any input file type, not just common audio"),
             ("is_normalization", "Normalize output", "Limit peaks above 1.0 on saved audio"),
+            (
+                "is_match_mix_level",
+                "Match stem levels to mix",
+                "Scale multi-stem outputs so their sum matches the input mix",
+            ),
+            (
+                "is_prevent_export_clipping",
+                "Prevent export clipping",
+                "Scale peaks to fit PCM/FLAC/MP3 without hard clipping",
+            ),
         ):
             row = Adw.SwitchRow(title=title, subtitle=subtitle)
             row.connect("notify::active", self._on_bool_changed, key)
             process_group.add(row)
             self._process_switches[key] = row
         set_tooltip(self._process_switches["is_normalization"], IS_NORMALIZATION_HELP)
+        set_tooltip(self._process_switches["is_match_mix_level"], IS_MATCH_MIX_LEVEL_HELP)
+        set_tooltip(
+            self._process_switches["is_prevent_export_clipping"],
+            IS_PREVENT_EXPORT_CLIPPING_HELP,
+        )
 
         amp_adjustment = Gtk.Adjustment(
             lower=0.0, upper=1.0, step_increment=0.05, page_increment=0.1

@@ -105,6 +105,8 @@ DEFAULT_DATA = {
         'is_add_model_name': False,
         'is_accept_any_input': False,
         'is_normalization': False,
+        'is_match_mix_level': False,
+        'is_prevent_export_clipping': False,
         'amplification_threshold': 0.0,
         'is_use_directml': False,
         'is_wav_ensemble': False,
