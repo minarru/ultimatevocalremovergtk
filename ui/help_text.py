@@ -146,26 +146,21 @@ ENSEMBLE_MAIN_STEM_HELP = """Select the stem type for ensembling:
 • Multi-stem Ensemble:
   - The "Jungle Ensemble" gathers all models and ensembles any related outputs"""
 
-ENSEMBLE_TYPE_HELP = """Choose the ensemble algorithm for generating the final output:
+ENSEMBLE_TYPE_HELP = """Choose how member outputs are combined
 
-• Max Spec/Min Spec:
-  - Primary stem processed with "Max Spec" algorithm
-  - Secondary stem processed with "Min Spec" algorithm
+Dual-stem ensembles use a Primary algorithm and a Secondary algorithm (saved as Primary/Secondary). 4-stem and multi-stem ensembles use a single algorithm for every stem
 
-Note: For the "4 Stem Ensemble" option, only one algorithm will be displayed
+Algorithm atoms:
+• Max Spec — Keep the strongest magnitude per bin (fuller; can add artifacts)
+• Min Spec — Keep the weakest magnitude per bin (cleaner; can sound muddy)
+• Average — Mean of all member waveforms
+• Median Spec — Per-bin median of complex spectrograms (robust with 3+ models)
+• Soft Spec — Softmax blend with automatic magnitude-agreement weights (no manual weights)
+• Max Mag / Avg Phase — Max Spec magnitudes with a stable average phase
+• Hybrid Spec — Average of Max Spec and Min Spec results
+• Chunk Min — Time-domain: keep the quietest chunk from any member
 
-Algorithm Details:
-• Max Spec:
-  - Produces the highest possible output
-  - Ideal for vocal stems for a fuller sound, but might introduce unwanted artifacts
-  - Works well with instrumental stems, but avoid using VR Arch models in the ensemble
-
-• Min Spec:
-  - Produces the lowest possible output
-  - Ideal for instrumental stems for a cleaner result. Might result in a "muddy" sound
-
-• Average:
-  - Averages all results together for the final output"""
+Default dual-stem pair is Max Spec / Min Spec"""
 
 ENSEMBLE_LISTBOX_HELP = "Displays all available models for the chosen main stem pair"
 
@@ -184,6 +179,24 @@ RUN_WORKLOAD_HINT = """Workload line (relative, not clock time):
 PROGRESS_ETA_HINT = """The progress bar and time estimate track separation only. While a model is loading or stems are being written, the last separation fill is held and the status shows that phase. Ensemble combine shows Combining i/n (with a rough time left when possible). Before the first separation tick the bar pulses (Importing engines / Loading model). The estimate uses known pass counts and pauses its clock outside inference; it stabilizes after separation is underway"""
 
 IS_NORMALIZATION_HELP = "Normalizes output to prevent clipping"
+
+AMPLIFICATION_THRESHOLD_HELP = """Raise quiet outputs so their peak reaches this level (0–1)
+
+• 0 — off (default); leave quiet stems as-is
+• 0.9 — match common audio-separator-style loudness targeting
+• Applies after peak limiting when Normalize output is enabled"""
+
+LONG_FILE_CHUNK_HELP = """Split very long inputs into wall-clock time slices before separation
+
+• 0 — off (default); process the whole file in one pass
+• 600 — typical for hour+ podcasts / DJ mixes (10-minute slices)
+• This is not MDX segment size or Demucs segment — those are in-model windows
+• Slices are crossfaded using the overlap setting when stitched back together"""
+
+LONG_FILE_CHUNK_OVERLAP_HELP = """Crossfade length (seconds) between long-file chunks
+
+• Clamped to less than half the chunk duration
+• Reduces clicks at slice boundaries; 2 seconds is a solid default"""
 
 IS_CUDA_SELECT_HELP = """If you have more than one GPU, you can pick which one to use for processing"""
 
@@ -320,7 +333,7 @@ Select from various AI networks and algorithms to process your track:
 
 INPUT_FOLDER_ENTRY_HELP = """Select Input:
 
-Choose the audio file(s) you want to process. Batch runs support many files at once; selections above 100 files may take a long time, and the list is capped at 500 files."""
+Choose the audio file(s) you want to process. Batch runs support many files at once; selections above 100 files may take a long time, and the list is capped at 500 files"""
 
 OUTPUT_FOLDER_ENTRY_HELP = """Select Output:
 
@@ -389,7 +402,7 @@ APOLLO_OVERLAP_HELP = """This option controls the amount of overlap between pred
 
 CHOOSE_APOLLO_MODEL_HELP = "Choose the Apollo model to use to restore audio"
 
-ROFORMER_MODEL_HELP = """Enable for BS-Roformer, Mel-Band Roformer, SCNet, or Bandit checkpoints. They use the MDX-C yaml-config flow but require this flag so the engine routes to the correct network instead of the standard TFC-TDF net."""
+ROFORMER_MODEL_HELP = """Enable for BS-Roformer, Mel-Band Roformer, SCNet, or Bandit checkpoints. They use the MDX-C yaml-config flow but require this flag so the engine routes to the correct network instead of the standard TFC-TDF net"""
 
 PRE_PROC_MODEL_INST_MIX_HELP = """When enabled, the application will generate a third output without the selected stem and vocals"""
 
@@ -520,6 +533,13 @@ else:
   - NVIDIA GPUs use CUDA; on Windows, enable DirectML for AMD/Intel GPUs
   - DirectML accelerates PyTorch models only; classic MDX ONNX models stay on CPU"""
 
+IS_AUTOCAST_HELP = """• FP16 autocast (CUDA):
+  - Speeds up VR, MDX-Net, and Roformer forwards on modern NVIDIA GPUs
+  - Demucs stays full precision (FP16 produces invalid results there)
+  - A tiny quality difference vs FP32 is possible
+  - Only applies when GPU conversion is on and CUDA is available
+  - UVR_AUTOCAST in the environment overrides this setting when set"""
+
 
 # --- GTK shell ---
 
@@ -590,7 +610,8 @@ DEMUCS_CHUNK_HINT = "Process the audio in chunks to reduce memory usage (legacy 
 # --- Ensemble page ---
 
 ENSEMBLE_SAVED_PRESET_HINT = (
-    "Load a previously saved ensemble preset, or save / delete one with the buttons"
+    "Load a curated recipe or a previously saved ensemble. "
+    "Save / delete apply to your own presets only (curated recipes are read-only)"
 )
 ENSEMBLE_SAVE_BUTTON_HINT = "Save current ensemble"
 ENSEMBLE_DELETE_BUTTON_HINT = "Delete selected saved ensemble"
@@ -598,7 +619,8 @@ ENSEMBLE_DELETE_BUTTON_HINT = "Delete selected saved ensemble"
 # --- Audio tools page ---
 
 MANUAL_ENSEMBLE_ALGORITHM_HINT = (
-    "Choose how the selected files are combined (e.g. Min/Max, Average, or Combine Inputs)"
+    "Choose how the selected files are combined: Max/Min/Average/Median/Soft Spec, "
+    "Max Mag / Avg Phase, Hybrid Spec, Chunk Min, or Combine Inputs. Soft Spec uses automatic weights"
 )
 PLAYBACK_RATE_HINT = (
     "Playback rate multiplier: values below 1 slow the track down, values above 1 speed it up"

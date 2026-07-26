@@ -122,6 +122,7 @@ class RunController:
         if self._shutdown_dialog is not None:
             return True
         if self._stop_confirm_dialog is not None:
+            dialog = self._stop_confirm_dialog
             self._stop_confirm_dialog = None
             self._run_ui_suspended = False
             target = self._running_target
@@ -129,6 +130,10 @@ class RunController:
                 target.unpause()
             if self.is_running():
                 self._window._start_pulse()
+            # Close the dialog itself, not just our reference to it — otherwise
+            # its "response"/"closed" handlers stay live and can later fire
+            # against state already mutated by the shutdown-confirm flow below.
+            dialog.force_close()
         if self.is_running():
             self._close_deferred = True
             self._present_shutdown_confirm()
@@ -496,7 +501,9 @@ class RunController:
         self._send_failure_notification()
         self._running_target = None
         clear_run_start()
-        self._schedule_release_inference_memory()
+        # Worker already parks on failure; park again here in case UI cleanup
+        # races ahead of the worker finally/except path.
+        self._schedule_release_inference_memory(park_weights=True)
 
     def _show_complete_toast(self, output_dir: str) -> None:
         toast = Adw.Toast.new("Process complete.")
@@ -789,13 +796,14 @@ class RunController:
         wait_for_stop: float = 0.0,
         force_if_alive: bool = False,
         clear_weight_cache: bool = False,
+        park_weights: bool = False,
         on_done: Optional[Callable[[], None]] = None,
     ) -> None:
         debug(
             "cleanup",
             "schedule_release_inference_memory "
             f"wait_for_stop={wait_for_stop} force_if_alive={force_if_alive} "
-            f"clear_weight_cache={clear_weight_cache}",
+            f"clear_weight_cache={clear_weight_cache} park_weights={park_weights}",
         )
 
         def worker() -> None:
@@ -804,6 +812,7 @@ class RunController:
                     wait_for_stop=wait_for_stop,
                     force_if_alive=force_if_alive,
                     clear_weight_cache=clear_weight_cache,
+                    park_weights=park_weights,
                 )
             finally:
                 if on_done is not None:
@@ -821,17 +830,20 @@ class RunController:
         wait_for_stop: float = 0.0,
         force_if_alive: bool = False,
         clear_weight_cache: bool = False,
+        park_weights: bool = False,
     ) -> None:
         debug(
             "cleanup",
             f"release_inference_memory wait_for_stop={wait_for_stop} "
-            f"force_if_alive={force_if_alive} clear_weight_cache={clear_weight_cache}",
+            f"force_if_alive={force_if_alive} clear_weight_cache={clear_weight_cache} "
+            f"park_weights={park_weights}",
         )
         window = self._window
         window.context.runner.release_inference_memory(
             wait_for_stop=wait_for_stop,
             force_if_alive=force_if_alive,
             clear_weight_cache=clear_weight_cache,
+            park_weights=park_weights,
         )
         page = getattr(window, "_audio_tools_page", None)
         if page is not None:
@@ -839,6 +851,7 @@ class RunController:
                 wait_for_stop=wait_for_stop,
                 force_if_alive=force_if_alive,
                 clear_weight_cache=clear_weight_cache,
+                park_weights=park_weights,
             )
 
 

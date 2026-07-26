@@ -189,6 +189,7 @@ class SharedFileOptions:
     export_path: str
     save_format: str
     is_gpu_conversion: bool
+    is_autocast: bool
     sample_duration: int
     model_sample_mode: bool
 
@@ -200,6 +201,7 @@ def read_shared_file_options(settings) -> SharedFileOptions:
         export_path=settings.get("export_path") or "",
         save_format=settings.get("save_format", WAV),
         is_gpu_conversion=bool(settings.get("is_gpu_conversion")),
+        is_autocast=bool(settings.get("is_autocast")),
         sample_duration=int(settings.get("model_sample_mode_duration", 30) or 30),
         model_sample_mode=bool(settings.get("model_sample_mode")),
     )
@@ -213,6 +215,7 @@ def apply_shared_file_options(
     output_row: Optional[_OutputPathRow] = None,
     format_row=None,
     gpu_row: Optional[_SwitchRow] = None,
+    autocast_row: Optional[_SwitchRow] = None,
     sample_row: Optional[_SampleModeRow] = None,
 ) -> SharedFileOptions:
     """Push shared settings values into the supplied option rows."""
@@ -237,6 +240,8 @@ def apply_shared_file_options(
         set_combo_value(format_row, options.save_format)
     if gpu_row is not None:
         gpu_row.set_active(options.is_gpu_conversion)
+    if autocast_row is not None:
+        autocast_row.set_active(options.is_autocast)
     if sample_row is not None:
         apply_sample_mode_label(sample_row, options.sample_duration)
         sample_row.set_active(options.model_sample_mode)

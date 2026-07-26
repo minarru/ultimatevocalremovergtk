@@ -65,6 +65,10 @@ class AudioTools:
         self.main_export_path = Path(settings.get("export_path") or "")
         self.wav_type_set = resolve_wav_type_set(settings)
         self.is_normalization = bool(settings.get("is_normalization"))
+        try:
+            self.amplification_threshold = float(settings.get("amplification_threshold") or 0.0)
+        except (TypeError, ValueError):
+            self.amplification_threshold = 0.0
         self.is_wav_ensemble = bool(settings.get("is_wav_ensemble"))
         self.is_testing_audio = f"{time_stamp} " if settings.get("is_testing_audio") else ""
         self.save_format_sel = settings.get("save_format")
@@ -121,6 +125,7 @@ class AudioTools:
             self.wav_type_set,
             stem_save_path,
             is_wave=self.is_wav_ensemble,
+            min_peak=self.amplification_threshold,
         )
         self._save_format(stem_save_path)
 
@@ -163,6 +168,7 @@ class AudioTools:
             self._save_format,
             is_pitch=is_pitch,
             is_time_correction=is_time_correction,
+            min_peak=self.amplification_threshold,
         )
 
     # -- Align (port of ``AudioTools.align_inputs``) ---------------------------
@@ -264,6 +270,7 @@ class AudioTools:
             device=backend.torch_device,
             extracted_params=extracted_params,
             config=config,
+            settings=self.settings,
         )
 
         clear_torch_cache(is_macos=self.is_macos, backend_name=backend.backend_name)
@@ -348,12 +355,14 @@ class AudioToolRunner:
         wait_for_stop: float = 0.0,
         force_if_alive: bool = False,
         clear_weight_cache: bool = False,
+        park_weights: bool = False,
     ) -> None:
         _release_inference_resources(
             self,
             wait_for_stop=wait_for_stop,
             force_if_alive=force_if_alive,
             clear_weight_cache=clear_weight_cache,
+            park_weights=park_weights,
         )
 
     # -- Worker ----------------------------------------------------------------
@@ -396,16 +405,19 @@ class AudioToolRunner:
             debug("audio", "_run ProcessStopped")
             callbacks.console(PROCESS_STOPPED_BY_USER)
             callbacks.stopped()
+            _release_inference_resources(self)
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
             if self._is_stopped:
                 debug("audio", "_run stopped during error")
                 callbacks.console(PROCESS_STOPPED_BY_USER)
                 callbacks.stopped()
+                _release_inference_resources(self)
                 return
             debug("audio", f"_run failed {type(exc).__name__}: {exc}")
             callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
             callbacks.error(exc)
-        finally:
+            _release_inference_resources(self, park_weights=True)
+        else:
             _release_inference_resources(self)
 
     def _run_manual_ensemble(self, audio_tool, inputs, callbacks) -> None:

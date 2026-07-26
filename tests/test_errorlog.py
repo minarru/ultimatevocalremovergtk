@@ -1,6 +1,7 @@
+import os
 import unittest
 
-from bundled.error_handling import error_dialouge, error_text
+from bundled.error_handling import FFMPEG_MISSING_ERROR, error_dialouge, error_text
 from ui.errorlog import (
     _ERROR_DIALOG_WIDTH,
     _ERROR_SUMMARY_MAX_HEIGHT,
@@ -47,6 +48,23 @@ class ErrorLogTests(unittest.TestCase):
         message = _friendly_error_message(MemoryError("CUDA out of memory"))
         self.assertIsNotNone(message)
         self.assertIn("GPU memory", message or "")
+
+    def test_ffmpeg_missing_error_matches_current_platform_path_separator(self) -> None:
+        # Traceback paths use os.sep for the running platform (Linux/macOS use
+        # "/"); a hardcoded backslash here would never match outside Windows.
+        traceback_line = (
+            f'  File "{os.path.join("/usr/lib/audioread", "__init__.py")}", '
+            "line 116, in audio_open\n"
+        )
+        self.assertIn(FFMPEG_MISSING_ERROR, traceback_line)
+
+    def test_ffmpeg_missing_error_surfaces_friendly_message(self) -> None:
+        exc = RuntimeError(
+            f'  File "{os.path.join("audioread", "__init__.py")}", line 116, in audio_open'
+        )
+        message = _friendly_error_message(exc)
+        self.assertIsNotNone(message)
+        self.assertIn("FFmpeg", message or "")
 
     def test_error_dialog_width_is_readable_but_capped(self) -> None:
         class _WideWindow:

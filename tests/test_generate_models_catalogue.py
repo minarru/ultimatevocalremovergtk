@@ -78,5 +78,25 @@ class UiNoteTests(unittest.TestCase):
         self.assertTrue(any("specialty 2-stem" in flag for flag in flags))
 
 
+class SourceForTests(unittest.TestCase):
+    def test_mdx23c_download_list_counts_as_trvlvr(self) -> None:
+        trvlvr = {"mdx23c_download_list": {"Some Model": "some_model.ckpt"}}
+        self.assertEqual(catalogue._source_for("Some Model", None, trvlvr), "TRvlvr")
+
+    def test_mdx23c_only_in_politrees_is_politrees(self) -> None:
+        politrees = {"mdx23c_download_list": {"Some Model": "some_model.ckpt"}}
+        self.assertEqual(catalogue._source_for("Some Model", politrees, {}), "Politrees")
+
+    def test_mdx23c_in_both_is_combined(self) -> None:
+        politrees = {"mdx23c_download_list": {"Some Model": "some_model.ckpt"}}
+        trvlvr = {"mdx23c_download_list": {"Some Model": "some_model.ckpt"}}
+        self.assertEqual(
+            catalogue._source_for("Some Model", politrees, trvlvr), "TRvlvr+Politrees"
+        )
+
+    def test_unknown_label_defaults_to_trvlvr(self) -> None:
+        self.assertEqual(catalogue._source_for("Unknown Model", None, {}), "TRvlvr")
+
+
 if __name__ == "__main__":
     unittest.main()

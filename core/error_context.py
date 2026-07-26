@@ -14,10 +14,21 @@ from bundled.constants import (
     ENSEMBLE_MODE,
     MDX_ARCH_TYPE,
     VR_ARCH_PM,
+    VR_ARCH_TYPE,
 )
 from core.model_display import display_name_for_model
 
 _LOCK = threading.Lock()
+# Deliberately one shared dict, not per-thread: RunController exposes a
+# single ``_running_target`` and one shared Start/Stop button, so exactly one
+# of {separation, ensemble, audio tools} can be mid-run at a time. Writes
+# (``update_run_error_context``/``snapshot_worker_file``) happen on that run's
+# worker KThread; the read (``format_error_context``, via ``log_error``) is
+# dispatched back to the *main* thread through ``GLib.idle_add``, so a
+# per-thread-ident store would never see the worker's data. If this
+# single-active-run invariant is ever relaxed, this module needs a real
+# per-run token threaded through both the writers and ``_on_error``, not a
+# thread-local — don't "fix" this with thread-local storage.
 _CONTEXT: Dict[str, Any] = {}
 
 _MODEL_SETTING_BY_METHOD = {
@@ -35,6 +46,9 @@ _PROCESS_SETTING_KEYS = (
     "is_primary_stem_only",
     "is_secondary_stem_only",
     "is_normalization",
+    "amplification_threshold",
+    "long_file_chunk_seconds",
+    "long_file_chunk_overlap_seconds",
     "is_accept_any_input",
     "aggression_setting",
     "window_size",

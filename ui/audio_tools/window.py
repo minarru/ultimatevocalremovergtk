@@ -53,6 +53,7 @@ from bundled.constants import (
     IS_GPU_CONVERSION_HELP,
     IS_MATCH_SILENCE_HELP,
     IS_MATCH_SPEC_HELP,
+    AMPLIFICATION_THRESHOLD_HELP,
     IS_NORMALIZATION_HELP,
     IS_PHASE_HELP,
     IS_TESTING_AUDIO_HELP,
@@ -100,8 +101,8 @@ _MATCH_FILES_DESCRIPTION = "Target is mastered to match the reference track"
 _ALIGN_FILES_DESCRIPTION = "Primary is usually the full mix; secondary is usually the instrumental"
 _DUAL_BANNER_TITLE = "No input pairs selected. Open the pair editor to choose files."
 _APOLLO_BANNER_TITLE = (
-    "No Apollo models found. Place an Apollo checkpoint (.ckpt or .bin) "
-    "in the Apollo models folder, then reload."
+    "No Apollo models found. Get one from the Download Center, or place a "
+    "checkpoint (.ckpt or .bin) in the Apollo models folder."
 )
 _RUBBERBAND_BANNER_TITLE = (
     "Rubber Band CLI was not found. Install rubberband to use Time Stretch "
@@ -353,6 +354,12 @@ class AudioToolsPage:
             description="Restore codec-distorted audio (e.g. low-bitrate MP3s)",
         )
 
+        apollo_folder_button = Gtk.Button(icon_name="folder-symbolic")
+        apollo_folder_button.add_css_class("flat")
+        set_tooltip(apollo_folder_button, "Open the Apollo models folder")
+        apollo_folder_button.connect("clicked", self._on_open_apollo_folder)
+        self.apollo_group.set_header_suffix(apollo_folder_button)
+
         self.apollo_model_row = make_combo_row("Apollo model", [CHOOSE_MODEL])
         use_wrapping_list(self.apollo_model_row)
         self.hints.register(self.apollo_model_row, CHOOSE_APOLLO_MODEL_HELP)
@@ -381,6 +388,10 @@ class AudioToolsPage:
     def _on_apollo_model_changed(self, *_args) -> None:
         self._set("apollo_model", get_combo_value(self.apollo_model_row))
         self.window._refresh_start_readiness()
+
+    def refresh_apollo_models(self) -> None:
+        """Public hook: re-read Apollo models after a Download Center batch."""
+        self._refresh_apollo_models()
 
     def _refresh_apollo_models(self) -> None:
         """Repopulate the Apollo model picker from the models on disk."""
@@ -432,6 +443,15 @@ class AudioToolsPage:
         self.hints.register(self.normalize_row, IS_NORMALIZATION_HELP)
         self.normalize_row.connect("notify::active", lambda *_a: self._set("is_normalization", self.normalize_row.get_active()))
         group.add(self.normalize_row)
+
+        self.amplification_row = self._make_spin("Amplification threshold", 0.0, 1.0, 0.05, digits=2)
+        self.amplification_row.set_subtitle("Raise quiet outputs to this peak level (0 = off)")
+        self.hints.register(self.amplification_row, AMPLIFICATION_THRESHOLD_HELP)
+        self.amplification_row.connect(
+            "notify::value",
+            lambda *_a: self._set("amplification_threshold", float(self.amplification_row.get_value())),
+        )
+        group.add(self.amplification_row)
 
         self.testing_row = make_switch_row("Settings test", "Append a timestamp to output names to avoid overwrites")
         self.hints.register(self.testing_row, IS_TESTING_AUDIO_HELP)
@@ -487,6 +507,11 @@ class AudioToolsPage:
             set_combo_value(self.format_row, s.get("save_format", WAV))
             set_combo_value(self.wav_type_row, s.get("wav_type_set"))
             self.normalize_row.set_active(bool(s.get("is_normalization")))
+            try:
+                amp = float(s.get("amplification_threshold") or 0.0)
+            except (TypeError, ValueError):
+                amp = 0.0
+            self.amplification_row.set_value(max(0.0, min(1.0, amp)))
             self.testing_row.set_active(bool(s.get("is_testing_audio")))
         finally:
             self._loading = False
@@ -567,7 +592,7 @@ class AudioToolsPage:
         if tool == APOLLO_RESTORE and not self._apollo_has_models:
             self._banner_mode = "apollo"
             self._audio_banner.set_title(_APOLLO_BANNER_TITLE)
-            self._audio_banner.set_button_label("Open Folder")
+            self._audio_banner.set_button_label("Download Center")
             self._audio_banner.set_revealed(True)
             self.window._refresh_start_readiness()
             return
@@ -584,7 +609,11 @@ class AudioToolsPage:
 
     def _on_audio_banner_clicked(self, *_args) -> None:
         if self._banner_mode == "apollo":
-            self._on_open_apollo_folder(self._audio_banner)
+            # Apollo models are downloadable now, so the empty state sends users
+            # to the Download Center. Manual placement stays available via the
+            # folder button in the Apollo group header (shown once a model
+            # exists) and the Download Center's own "Open models folder".
+            self.window.activate_action("win.download", None)
         elif self._banner_mode == "dual":
             self._on_open_dual_editor()
 

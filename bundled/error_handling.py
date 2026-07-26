@@ -1,11 +1,15 @@
 from datetime import datetime
+import os
 import traceback
 
 CUDA_MEMORY_ERROR = "CUDA out of memory"
 CUDA_RUNTIME_ERROR = "CUDNN error executing cudnnSetTensorNdDescriptor"
 DEMUCS_MODEL_MISSING_ERROR = "is neither a single pre-trained model or a bag of models."
 ENSEMBLE_MISSING_MODEL_ERROR = "local variable \'enseExport\' referenced before assignment"
-FFMPEG_MISSING_ERROR = """audioread\__init__.py", line 116, in audio_open"""
+# Traceback paths use the platform's separator (Linux/macOS: "/", Windows: "\"),
+# so this must be built with os.path.join rather than hardcoded — a hardcoded
+# backslash never matches on Linux/macOS tracebacks.
+FFMPEG_MISSING_ERROR = os.path.join("audioread", "__init__.py") + '", line 116, in audio_open'
 FILE_MISSING_ERROR = "FileNotFoundError"
 MDX_MEMORY_ERROR = "onnxruntime::CudaCall CUDA failure 2: out of memory"
 MDX_MODEL_MISSING = "[ONNXRuntimeError] : 3 : NO_SUCHFILE"

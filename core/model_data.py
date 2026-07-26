@@ -328,6 +328,10 @@ class ModelData:
         self.is_denoise_model = True if settings.get("denoise_option") == DENOISE_M and os.path.isfile(paths.DENOISER_MODEL_PATH) else False
         self.is_gpu_conversion = 0 if settings.get("is_gpu_conversion") else -1
         self.is_normalization = settings.get("is_normalization")
+        try:
+            self.amplification_threshold = float(settings.get("amplification_threshold") or 0.0)
+        except (TypeError, ValueError):
+            self.amplification_threshold = 0.0
         self.is_use_directml = bool(settings.get("is_use_directml"))
         self.is_primary_stem_only = settings.get("is_primary_stem_only")
         self.is_secondary_stem_only = settings.get("is_secondary_stem_only")
@@ -375,6 +379,8 @@ class ModelData:
         self.model_name = model_name
         self.process_method = selected_process_method
         self.model_status = False if self.model_name == CHOOSE_MODEL or self.model_name == NO_MODEL else True
+        # Always defined: hash / path lookup may leave this unset for missing files.
+        self.model_data = None
         self.primary_stem = None
         self.secondary_stem = None
         self.primary_stem_native = None
@@ -779,6 +785,11 @@ class ModelData:
                 if file_name.endswith(CKPT):
                     ext = ""
                     self.is_mdx_ckpt = True
+                elif file_name.endswith(ONNX):
+                    # Mapper keys auto-registered from download jobs already
+                    # include the extension (unlike bundled catalogue keys),
+                    # so appending it again would look up "name.onnx.onnx".
+                    ext = ""
                 self.model_path = os.path.join(paths.MDX_MODELS_DIR, f"{file_name}{ext}")
                 break
         else:

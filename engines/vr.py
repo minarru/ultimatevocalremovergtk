@@ -219,7 +219,12 @@ class SeperateVR(SeperateAttributes):
                             axis=0,
                         )
                         X_batch = torch.from_numpy(X_batch).to(device)
-                        pred = self.model_run.predict_mask(X_batch)
+                        from engines.amp_runtime import maybe_autocast
+
+                        with maybe_autocast(device, self.settings):
+                            pred = self.model_run.predict_mask(X_batch)
+                        if torch.is_tensor(pred) and pred.dtype != torch.float32:
+                            pred = pred.float()
                         if not pred.size()[3] > 0:
                             raise Exception(ERROR_MAPPER[WINDOW_SIZE_ERROR])
                         # Fold batch windows into time on-device before the host sync.

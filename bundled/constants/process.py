@@ -8,6 +8,11 @@ MDX_ARCH_TYPE = 'MDX-Net'
 
 DEMUCS_ARCH_TYPE = 'Demucs'
 
+#: Apollo restoration models. Not a separation architecture — these are used by
+#: the Audio Tools restore path — but the Download Center keys its catalogues by
+#: "arch type", so Apollo gets one to appear as its own network.
+APOLLO_ARCH_TYPE = 'Apollo'
+
 VR_ARCH_PM = 'VR Architecture'
 
 ENSEMBLE_MODE = 'Ensemble Mode'
@@ -78,6 +83,27 @@ MAX_SPEC = 'Max Spec'
 
 AUDIO_AVERAGE = 'Average'
 
+MEDIAN_SPEC = 'Median Spec'
+
+SOFT_SPEC = 'Soft Spec'
+
+MAX_MAG_AVG_PHASE = 'Max Mag / Avg Phase'
+
+HYBRID_SPEC = 'Hybrid Spec'
+
+CHUNK_MIN = 'Chunk Min'
+
+ENSEMBLE_ALGORITHMS = (
+    MAX_SPEC,
+    MIN_SPEC,
+    AUDIO_AVERAGE,
+    MEDIAN_SPEC,
+    SOFT_SPEC,
+    MAX_MAG_AVG_PHASE,
+    HYBRID_SPEC,
+    CHUNK_MIN,
+)
+
 MAX_MIN = f'{MAX_SPEC}/{MIN_SPEC}'
 
 MAX_MAX = f'{MAX_SPEC}/{MAX_SPEC}'
@@ -96,9 +122,10 @@ AVE_MIN = f'{AUDIO_AVERAGE}/{MIN_SPEC}'
 
 AVE_AVE = f'{AUDIO_AVERAGE}/{AUDIO_AVERAGE}'
 
+# Legacy dual-stem pair labels (migration / defaults). UI uses ENSEMBLE_ALGORITHMS.
 ENSEMBLE_TYPE = (MAX_MIN, MAX_MAX, MAX_AVE, MIN_MAX, MIN_MIX, MIN_AVE, AVE_MAX, AVE_MIN, AVE_AVE)
 
-ENSEMBLE_TYPE_4_STEM = (MAX_SPEC, MIN_SPEC, AUDIO_AVERAGE)
+ENSEMBLE_TYPE_4_STEM = ENSEMBLE_ALGORITHMS
 
 DEF_OPT = 'Default'
 
@@ -131,7 +158,7 @@ if OPERATING_SYSTEM == 'Windows' or OPERATING_SYSTEM == 'Darwin':
 else:
    AUDIO_TOOL_OPTIONS = (MANUAL_ENSEMBLE, ALIGN_INPUTS, MATCH_INPUTS, APOLLO_RESTORE)
 
-MANUAL_ENSEMBLE_OPTIONS = (MIN_SPEC, MAX_SPEC, AUDIO_AVERAGE, COMBINE_INPUTS)
+MANUAL_ENSEMBLE_OPTIONS = ENSEMBLE_ALGORITHMS + (COMBINE_INPUTS,)
 
 DEMUCS_SEGMENTS = (DEF_OPT, '1', '5', '10', '15', '20', 
                   '25', '30', '35', '40', '45', '50', 
@@ -254,4 +281,4 @@ WOOD_INST_MODEL_HASH = '0ec76fd9e65f81d8b4fbd13af4826ed8'
 WOOD_INST_PARAMS = {
     "vr_model_param": "4band_v3",
     "primary_stem": NO_WIND_INST_STEM
-                     }
+}

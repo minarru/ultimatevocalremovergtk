@@ -30,10 +30,36 @@ import ml.mdxnet as MdxnetSet
 from .base import SeperateAttributes
 from .mix import prepare_mix, gather_sources, rerun_mp3
 from .export import save_format
+from .mdx_classic_batch import (
+    is_oom_message,
+    mdx_hop_starts,
+    next_batch_after_oom,
+    resolve_mdx_effective_batch,
+)
 from .vr_utils import vr_denoiser, loading_mix
 
 if TYPE_CHECKING:
     from core.model_data import ModelData
+
+# onnxruntime reports CUDA OOM through its own exception types rather than
+# torch.cuda.OutOfMemoryError, so the ORT-backed classic MDX path (the
+# default whenever mdx_segment_size == dim_t) needs to catch these too or its
+# batch-size backoff never fires and a VRAM-pressure OOM crashes the run.
+_ORT_RUNTIME_EXCEPTIONS = tuple(
+    cls
+    for cls in (
+        getattr(ort.capi.onnxruntime_pybind11_state, "Fail", None),
+        getattr(ort.capi.onnxruntime_pybind11_state, "RuntimeException", None),
+    )
+    if cls is not None
+)
+
+
+def _is_batch_oom(exc: BaseException) -> bool:
+    """Whether ``exc`` represents a GPU memory allocation failure worth retrying."""
+    if isinstance(exc, torch.cuda.OutOfMemoryError):
+        return True
+    return is_oom_message(str(exc))
 
 cpu = torch.device('cpu')
 warnings.filterwarnings("ignore")
@@ -229,6 +255,14 @@ class SeperateMDX(SeperateAttributes):
                         self._weight_cache_meta = {"dim_c": self.dim_c, "hop": self.hop}
                 else:
                     use_ort = self.mdx_segment_size == self.dim_t and not self.is_other_gpu
+                    if use_ort:
+                        from engines.amp_runtime import autocast_enabled
+
+                        if autocast_enabled(self.settings):
+                            self.write_to_console(
+                                "Note: FP16 autocast has no effect on this ONNX Runtime "
+                                "model; it only accelerates PyTorch-based models.\n"
+                            )
                     key = weight_cache_key(
                         "mdx_ort" if use_ort else "mdx_convert",
                         self.model_path,
@@ -243,8 +277,17 @@ class SeperateMDX(SeperateAttributes):
                         if cached and cached.ort_session is not None:
                             self._ort_session = cached.ort_session
                         else:
-                            self._ort_session = ort.InferenceSession(self.model_path, providers=self.run_type)
-                        self.model_run = lambda spek: self._ort_session.run(None, {'input': spek.cpu().numpy()})[0]
+                            from engines.amp_runtime import make_ort_session_options
+
+                            # Cached ORT sessions already carry these options from first create.
+                            self._ort_session = ort.InferenceSession(
+                                self.model_path,
+                                sess_options=make_ort_session_options(),
+                                providers=self.run_type,
+                            )
+                        from engines.amp_runtime import build_ort_runner
+
+                        self.model_run = build_ort_runner(self._ort_session, self.device)
                     else:
                         if cached and cached.module is not None:
                             self.model_run = materialize_module(cached.module, self.device)
@@ -334,52 +377,88 @@ class SeperateMDX(SeperateAttributes):
 
             pad = gen_size + self.trim - ((mix.shape[-1]) % gen_size)
             mixture = np.concatenate((np.zeros((2, self.trim), dtype='float32'), mix, np.zeros((2, pad), dtype='float32')), 1)
+            mixture_t = torch.as_tensor(mixture, dtype=torch.float32, device=self.device)
 
             step = self.chunk_size - self.n_fft if overlap == DEFAULT else int((1 - overlap) * chunk_size)
-            mix_len = mixture.shape[-1]
+            mix_len = mixture_t.shape[-1]
             result = torch.zeros((1, 2, mix_len), dtype=torch.float32, device=self.device)
             divider = torch.zeros((1, 2, mix_len), dtype=torch.float32, device=self.device)
-            total = 0
-            total_chunks = (mix_len + step - 1) // step
 
-            for i in range(0, mix_len, step):
-                self.check_run_control()
-                total += 1
-                start = i
-                end = min(i + chunk_size, mix_len)
+            from engines.amp_runtime import ort_fixed_batch_size
 
-                chunk_size_actual = end - start
+            hop_starts = mdx_hop_starts(mix_len, step)
+            n_chunks = len(hop_starts)
+            ort_session = getattr(self, "_ort_session", None)
+            fixed_batch = ort_fixed_batch_size(ort_session) if ort_session is not None else None
+            effective_batch = resolve_mdx_effective_batch(self.mdx_batch_size, fixed_batch)
+            window_cache: dict[int, torch.Tensor] = {}
 
-                window = None
-                if overlap != 0:
-                    window = torch.as_tensor(
-                        np.hanning(chunk_size_actual),
+            def _hanning_window(length: int) -> torch.Tensor:
+                cached = window_cache.get(length)
+                if cached is None:
+                    cached = torch.as_tensor(
+                        np.hanning(length),
                         dtype=torch.float32,
                         device=self.device,
-                    )
-                    window = window.view(1, 1, -1).expand(1, 2, -1)
+                    ).view(1, 1, -1)
+                    window_cache[length] = cached
+                return cached.expand(1, 2, -1)
 
-                mix_part_ = mixture[:, start:end]
-                if end != i + chunk_size:
-                    pad_size = (i + chunk_size) - end
-                    mix_part_ = np.concatenate((mix_part_, np.zeros((2, pad_size), dtype='float32')), axis=-1)
+            def _scatter_ola(tar_waves, meta) -> None:
+                for item_idx, (start, end, chunk_size_actual) in enumerate(meta):
+                    item = tar_waves[item_idx : item_idx + 1]
+                    if overlap != 0:
+                        window = _hanning_window(chunk_size_actual)
+                        item[..., :chunk_size_actual] *= window
+                        divider[..., start:end] += window
+                    else:
+                        divider[..., start:end] += 1
+                    result[..., start:end] += item[..., : end - start]
 
-                mix_part = torch.as_tensor(mix_part_, dtype=torch.float32, device=self.device).unsqueeze(0)
-                mix_waves = mix_part.split(self.mdx_batch_size)
+            with torch.inference_mode():
+                hop_idx = 0
+                progress_units = max(1, n_chunks)
+                while hop_idx < n_chunks:
+                    self.check_run_control()
+                    take = min(effective_batch, n_chunks - hop_idx)
+                    windows = []
+                    meta = []
+                    for offset in range(take):
+                        start = hop_starts[hop_idx + offset]
+                        end = min(start + chunk_size, mix_len)
+                        chunk_size_actual = end - start
+                        mix_part = mixture_t[:, start:end]
+                        if end != start + chunk_size:
+                            mix_part = torch.nn.functional.pad(
+                                mix_part, (0, (start + chunk_size) - end)
+                            )
+                        windows.append(mix_part)
+                        meta.append((start, end, chunk_size_actual))
 
-                with torch.inference_mode():
-                    for mix_wave in mix_waves:
-                        self.running_inference_progress_bar(total_chunks, is_match_mix=is_match_mix)
+                    batch = torch.stack(windows, dim=0)
+                    try:
+                        tar_waves = self.run_model(batch, is_match_mix=is_match_mix)
+                    except (torch.cuda.OutOfMemoryError, *_ORT_RUNTIME_EXCEPTIONS) as exc:
+                        if not _is_batch_oom(exc):
+                            raise
+                        del batch, windows
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                        smaller = next_batch_after_oom(take)
+                        if smaller is None:
+                            raise
+                        effective_batch = smaller
+                        self.write_to_console(
+                            f"CUDA OOM — reducing MDX batch size to {effective_batch}"
+                        )
+                        continue
 
-                        tar_waves = self.run_model(mix_wave, is_match_mix=is_match_mix)
-
-                        if window is not None:
-                            tar_waves[..., :chunk_size_actual] *= window
-                            divider[..., start:end] += window
-                        else:
-                            divider[..., start:end] += 1
-
-                        result[..., start:end] += tar_waves[..., : end - start]
+                    for _ in range(take):
+                        self.running_inference_progress_bar(
+                            progress_units, is_match_mix=is_match_mix
+                        )
+                    _scatter_ola(tar_waves, meta)
+                    hop_idx += take
 
             tar_waves = (result / divider).detach().cpu().numpy()
             tar_waves_.append(tar_waves)
@@ -398,14 +477,26 @@ class SeperateMDX(SeperateAttributes):
                 if NO_STEM in self.primary_stem_native or self.primary_stem_native == INST_STEM:
                     if org_mix.shape[1] != source.shape[1]:
                         source = spec_utils.match_array_shapes(source, org_mix)
-                    source = org_mix - vr_denoiser(org_mix-source, self.device, model_path=self.DENOISER_MODEL)
+                    source = org_mix - vr_denoiser(
+                        org_mix - source,
+                        self.device,
+                        model_path=self.DENOISER_MODEL,
+                        settings=self.settings,
+                    )
                 else:
-                    source = vr_denoiser(source, self.device, model_path=self.DENOISER_MODEL)
+                    source = vr_denoiser(
+                        source,
+                        self.device,
+                        model_path=self.DENOISER_MODEL,
+                        settings=self.settings,
+                    )
 
             return source
 
     def run_model(self, mix, is_match_mix=False):
         """Run STFT → model → iSTFT and return a device-resident waveform tensor."""
+        from engines.amp_runtime import maybe_autocast
+
         if torch.is_tensor(mix):
             mix_device = mix if mix.device == self.device else mix.to(self.device)
         else:
@@ -416,15 +507,17 @@ class SeperateMDX(SeperateAttributes):
         if is_match_mix:
             spec_pred = spek
         else:
-            spec_pred = (
-                -self.model_run(-spek) * 0.5 + self.model_run(spek) * 0.5
-                if self.is_denoise
-                else self.model_run(spek)
-            )
+            with maybe_autocast(self.device, self.settings):
+                spec_pred = (
+                    -self.model_run(-spek) * 0.5 + self.model_run(spek) * 0.5
+                    if self.is_denoise
+                    else self.model_run(spek)
+                )
 
         if torch.is_tensor(spec_pred):
-            return self.stft.inverse(spec_pred)
-        return self.stft.inverse(torch.as_tensor(spec_pred, device=self.device))
+            # Keep OLA math in float32 even when autocast produced fp16 logits.
+            return self.stft.inverse(spec_pred.float())
+        return self.stft.inverse(torch.as_tensor(spec_pred, device=self.device, dtype=torch.float32))
 
 class SeperateMDXC(SeperateAttributes):        
 
@@ -590,8 +683,8 @@ class SeperateMDXC(SeperateAttributes):
             return secondary_sources
 
     def overlap_add(self, result, counter, x, l, j, start, window):
-        if self.device == 'mps' or self.is_other_gpu:
-            x = x.to(self.device)
+        if x.device != result.device:
+            x = x.to(result.device)
         end = min(start + l, result.shape[-1])
         chunk_len = end - start
         if chunk_len <= 0:
@@ -649,7 +742,7 @@ class SeperateMDXC(SeperateAttributes):
 
                 mdx_segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size
                 
-                batch_size = self.mdx_batch_size
+                batch_size = max(1, int(self.mdx_batch_size or 1))
                 chunk_size = self.mdx_c_configs.audio.hop_length * (mdx_segment_size - 1)
                 overlap = self.overlap_mdx23
 
@@ -666,29 +759,46 @@ class SeperateMDXC(SeperateAttributes):
                 )
 
                 n_chunks = 1 + (mix.shape[1] - chunk_size) // hop_size
-                n_batches = max(1, (n_chunks + batch_size - 1) // batch_size)
 
                 X = torch.zeros(S, *mix.shape, device=self.device) if S > 1 else torch.zeros_like(mix)
 
                 self.running_inference_console_write()
 
                 with torch.inference_mode():
+                    from engines.amp_runtime import maybe_autocast
+
                     cnt = 0
-                    for start_idx in range(0, n_chunks, batch_size):
+                    while cnt < n_chunks:
                         self.check_run_control()
-                        self.running_inference_progress_bar(n_batches)
-                        end_idx = min(start_idx + batch_size, n_chunks)
+                        take = min(batch_size, n_chunks - cnt)
                         # Hop-index batching avoids materializing mix.unfold(...) for the full track.
                         batch = torch.stack(
                             [
                                 mix[:, i * hop_size : i * hop_size + chunk_size]
-                                for i in range(start_idx, end_idx)
+                                for i in range(cnt, cnt + take)
                             ],
                             dim=0,
                         )
-                        x = model(batch)
-                        
+                        try:
+                            with maybe_autocast(self.device, self.settings):
+                                x = model(batch)
+                        except torch.cuda.OutOfMemoryError:
+                            del batch
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                            smaller = next_batch_after_oom(take)
+                            if smaller is None:
+                                raise
+                            batch_size = smaller
+                            self.write_to_console(
+                                f"CUDA OOM — reducing MDX batch size to {batch_size}"
+                            )
+                            continue
+                        if torch.is_tensor(x) and x.dtype != torch.float32:
+                            x = x.float()
+
                         for w in x:
+                            self.running_inference_progress_bar(max(1, n_chunks))
                             X[..., cnt * hop_size : cnt * hop_size + chunk_size] += w
                             cnt += 1
 
@@ -701,7 +811,12 @@ class SeperateMDXC(SeperateAttributes):
                     del estimated_sources
                     if self.is_denoise_model:
                         if VOCAL_STEM in sources.keys() and INST_STEM in sources.keys():
-                            sources[VOCAL_STEM] = vr_denoiser(sources[VOCAL_STEM], self.device, model_path=self.DENOISER_MODEL)
+                            sources[VOCAL_STEM] = vr_denoiser(
+                                sources[VOCAL_STEM],
+                                self.device,
+                                model_path=self.DENOISER_MODEL,
+                                settings=self.settings,
+                            )
                             if sources[VOCAL_STEM].shape[1] != org_mix.shape[1]:
                                 sources[VOCAL_STEM] = spec_utils.match_array_shapes(sources[VOCAL_STEM], org_mix)
                             sources[INST_STEM] = org_mix - sources[VOCAL_STEM]
@@ -812,21 +927,48 @@ class SeperateMDXC(SeperateAttributes):
 
                         # Process in batches
                         if len(batch_data) >= batch_size or (i >= mix.shape[1]):
-                            arr = torch.stack(batch_data, dim=0)
-                            x = model(arr)
+                            from engines.amp_runtime import maybe_autocast
 
-                            for j in range(len(batch_locations)):
-                                self.running_inference_progress_bar(batch_len)
-                                start, l = batch_locations[j]
-                                window = select_roformer_ola_window(
-                                    start,
-                                    C,
-                                    mix.shape[1],
-                                    window_start,
-                                    window_middle,
-                                    window_finish,
-                                )
-                                result = self.overlap_add(result, counter, x, l, j, start, window)
+                            pending_data = batch_data
+                            pending_locations = batch_locations
+                            sub_batch = len(pending_data)
+                            idx = 0
+                            while idx < len(pending_data):
+                                take = min(sub_batch, len(pending_data) - idx)
+                                chunk_data = pending_data[idx : idx + take]
+                                chunk_locations = pending_locations[idx : idx + take]
+                                arr = torch.stack(chunk_data, dim=0)
+                                try:
+                                    with maybe_autocast(device, self.settings):
+                                        x = model(arr)
+                                except torch.cuda.OutOfMemoryError:
+                                    del arr
+                                    if torch.cuda.is_available():
+                                        torch.cuda.empty_cache()
+                                    smaller = next_batch_after_oom(take)
+                                    if smaller is None:
+                                        raise
+                                    sub_batch = smaller
+                                    batch_size = smaller
+                                    self.write_to_console(
+                                        f"CUDA OOM — reducing MDX batch size to {batch_size}"
+                                    )
+                                    continue
+                                if torch.is_tensor(x) and x.dtype != torch.float32:
+                                    x = x.float()
+
+                                for j, (start, l) in enumerate(chunk_locations):
+                                    self.running_inference_progress_bar(batch_len)
+                                    window = select_roformer_ola_window(
+                                        start,
+                                        C,
+                                        mix.shape[1],
+                                        window_start,
+                                        window_middle,
+                                        window_finish,
+                                    )
+                                    result = self.overlap_add(result, counter, x, l, j, start, window)
+                                idx += take
 
                             batch_data = []
                             batch_locations = []

@@ -13,10 +13,11 @@ class GpuBackendTests(unittest.TestCase):
         self.assertEqual(backend.torch_device, "cpu")
         self.assertEqual(backend.onnx_providers, ["CPUExecutionProvider"])
 
+    @mock.patch("engines.amp_runtime.configure_cuda_inference")
     @mock.patch("core.gpu_backend.directml_available", return_value=False)
     @mock.patch("torch.cuda.is_available", return_value=True)
     @mock.patch("core.cuda_runtime_fix.preload_onnxruntime_gpu", return_value=[])
-    def test_cuda_when_available(self, _preload, _cuda, _dml):
+    def test_cuda_when_available(self, _preload, _cuda, _dml, configure):
         backend = resolve_inference_backend(
             is_gpu_conversion=0,
             device_set="1",
@@ -26,6 +27,7 @@ class GpuBackendTests(unittest.TestCase):
         self.assertEqual(backend.backend_name, "cuda")
         self.assertEqual(backend.torch_device, "cuda:1")
         self.assertIn("CUDAExecutionProvider", backend.onnx_providers)
+        configure.assert_called_once_with("1")
 
     @mock.patch("core.gpu_backend._directml_torch_device", return_value="dml-device")
     @mock.patch("core.gpu_backend.directml_available", return_value=True)

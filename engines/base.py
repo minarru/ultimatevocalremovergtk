@@ -72,6 +72,7 @@ class SeperateAttributes:
         self.list_all_models = process_data['list_all_models']
         self.process_iteration = process_data['process_iteration']
         self.is_return_dual = is_return_dual
+        self.settings = model_data.settings
         self.is_pitch_change = model_data.is_pitch_change
         self.semitone_shift = model_data.semitone_shift
         self.is_match_frequency_pitch = model_data.is_match_frequency_pitch
@@ -110,13 +111,17 @@ class SeperateAttributes:
         self.save_format = model_data.save_format
         self.is_gpu_conversion = model_data.is_gpu_conversion
         self.is_normalization = model_data.is_normalization
+        self.amplification_threshold = float(getattr(model_data, "amplification_threshold", 0.0) or 0.0)
         self.is_primary_stem_only = model_data.is_primary_stem_only if not self.is_secondary_model else model_data.is_primary_model_primary_stem_only
         self.is_secondary_stem_only = model_data.is_secondary_stem_only if not self.is_secondary_model else model_data.is_primary_model_secondary_stem_only      
         self.is_ensemble_mode = model_data.is_ensemble_mode
         self.is_save_all_outputs_ensemble = bool(
             process_data.get("is_save_all_outputs_ensemble", False)
         )
+        # Long-file chunking / ensemble scratch: keep stem arrays, skip disk write.
+        self.capture_stems_only = bool(process_data.get("capture_stems_only", False))
         self._ensemble_stem_buffers = {}
+        self._ensemble_stem_paths = {}
         self.secondary_model = model_data.secondary_model #
         self.primary_model_primary_stem = model_data.primary_model_primary_stem
         self.primary_stem_native = model_data.primary_stem_native
@@ -419,21 +424,46 @@ class SeperateAttributes:
     def write_audio(self, stem_path: str, stem_source, samplerate, stem_name=None):
         
         def save_audio_file(path, source):
-            source = spec_utils.normalize(source, self.is_normalization)
-            # Ensemble scratch members: keep arrays in memory and skip disk when
-            # the user did not ask to keep every member output.
-            if (
+            # Ensemble scratch / long-file chunking: keep arrays in memory and
+            # skip disk when the caller asked to capture stems only, or when
+            # this is an ensemble member that should not keep every output.
+            capture_only = bool(getattr(self, "capture_stems_only", False))
+            ensemble_buffer = (
                 self.is_ensemble_mode
                 and not self.is_vocal_split_model
                 and not getattr(self, "is_save_all_outputs_ensemble", False)
-            ):
+            )
+            if capture_only or ensemble_buffer:
                 if stem_name:
                     buffers = getattr(self, "_ensemble_stem_buffers", None)
                     if buffers is None:
                         buffers = {}
                         self._ensemble_stem_buffers = buffers
-                    buffers[stem_name] = np.asarray(source)
+                    # Long-file chunking stores raw chunks (normalize after
+                    # concat / ensemble). Classic ensemble members keep the
+                    # historical pre-combine normalize.
+                    if capture_only:
+                        buffers[stem_name] = np.asarray(source)
+                    else:
+                        buffers[stem_name] = np.asarray(
+                            spec_utils.normalize(
+                                source,
+                                self.is_normalization,
+                                min_peak=self.amplification_threshold,
+                            )
+                        )
+                    paths = getattr(self, "_ensemble_stem_paths", None)
+                    if paths is None:
+                        paths = {}
+                        self._ensemble_stem_paths = paths
+                    paths[stem_name] = path
                 return
+
+            source = spec_utils.normalize(
+                source,
+                self.is_normalization,
+                min_peak=self.amplification_threshold,
+            )
 
             if is_not_ensemble and self.save_format == FLAC:
                 from core.audio_io import flac_subtype, replace_audio_suffix
@@ -485,7 +515,13 @@ class SeperateAttributes:
             
         def deverb_vocals(stem_path:str, stem_source):
             self.write_to_console(INFERENCE_STEP_DEVERBING, base_text='')
-            stem_source_deverbed, stem_source_2 = vr_denoiser(stem_source, self.device, is_deverber=True, model_path=self.DEVERBER_MODEL)
+            stem_source_deverbed, stem_source_2 = vr_denoiser(
+                stem_source,
+                self.device,
+                is_deverber=True,
+                model_path=self.DEVERBER_MODEL,
+                settings=self.settings,
+            )
             save_audio_file(stem_path.replace(".wav", "_deverbed.wav"), stem_source_deverbed)
             save_audio_file(stem_path.replace(".wav", "_reverb_only.wav"), stem_source_2)
             

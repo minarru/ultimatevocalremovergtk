@@ -4,6 +4,7 @@ import unittest
 from bundled.constants import DEMUCS_V4
 from core import paths
 from core.demucs_models import (
+    demucs_bag_owner_basename,
     demucs_pretrained_load_name,
     demucs_yaml_bag_member_sigs,
     is_demucs_bag_member_weight,
@@ -23,6 +24,12 @@ class DemucsBagMemberTests(unittest.TestCase):
         self.assertFalse(
             is_demucs_bag_member_weight("demucs-e07c671f", {"75fc33f5"})
         )
+
+    def test_bag_owner_basename_for_member_th(self):
+        owner = demucs_bag_owner_basename("75fc33f5-1941ce65")
+        if owner is not None:
+            self.assertEqual(owner, "hdemucs_mmi")
+        self.assertIsNone(demucs_bag_owner_basename("hdemucs_mmi"))
 
     def test_pretrained_load_name_for_yaml_bag(self):
         yaml_path = os.path.join(paths.DEMUCS_NEWER_REPO_DIR, "hdemucs_mmi.yaml")

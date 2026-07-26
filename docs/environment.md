@@ -77,6 +77,46 @@ G_MESSAGES_DEBUG=uvr-download UVR_LOG_FILE=/tmp/uvr.log python -m ui
 | Variable | Values | Purpose |
 |----------|--------|---------|
 | `UVR_SKIP_SEPARATE_WARMUP` | `1` | Skip background import of separation engines at startup (loads on first run instead) |
+| `UVR_AUTOCAST` | `0`/`1` | **Override** for CUDA `torch.autocast` (fp16) around model forwards only; OLA stays float32. When unset, the GUI/settings key `is_autocast` applies. Applies to VR / MDX / Roformer; Demucs stays FP32 (fp16 produces NaN stems) |
+
+---
+
+## Headless CLI
+
+Drive the same `JobRunner` path as the GUI without GTK:
+
+```bash
+# Use the project venv (required for kthread, soundfile, torch, …)
+./.venv/bin/python -m core.cli separate /path/to/song.wav -o /tmp/uvr_out --method mdx
+
+# Force CPU / print resolved settings
+./.venv/bin/python -m core.cli separate song.wav -o /tmp/out --cpu --print-settings
+
+# Force both stems (ignores GUI karaoke "instrumental only" defaults)
+./.venv/bin/python -m core.cli separate song.wav -o /tmp/out --method mdx --stems both
+
+# A/B autocast (two fresh subprocesses + stem null metrics)
+./.venv/bin/python -m core.cli bench-ab song.wav -o /tmp/uvr_ab \
+  --method mdx --model "Your Model Name" --stems both \
+  --env UVR_AUTOCAST=0 --env UVR_AUTOCAST=1 \
+  --json /tmp/uvr_ab/summary.json
+```
+
+Notes:
+
+- Ensemble mode is rejected in v1 (`--method mdx|demucs|vr`).
+- CLI overrides are **not** written back to `data.pkl`.
+- Autocast: unset `UVR_AUTOCAST` uses the persisted `is_autocast` setting; `--env UVR_AUTOCAST=…` overrides for A/B benches.
+- `--model` accepts GUI display names, on-disk basenames/filenames, or a
+  **unique** substring of those (`karaoke_frazer` → Frazer Roformer when only
+  one installed model matches). Ambiguous queries raise before separation starts.
+  Filenames are mapped to display labels for the run only (UI/settings storage
+  unchanged).
+- `--stems` overrides which outputs are saved for the run only
+  (`both` / `primary` / `secondary` / `vocals` / `instrumental`, plus Demucs
+  `bass`/`drums`/`other`). Omit to keep GUI/settings defaults (karaoke models
+  may default to instrumental-only).
+- `bench-ab` requires exactly two `--env KEY=value` flags; outputs land in `ab_a_*` / `ab_b_*` under `-o`.
 
 ---
 

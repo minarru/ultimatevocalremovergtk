@@ -548,6 +548,14 @@ class MainWindow(Adw.ApplicationWindow):
         self.gpu_row.connect("notify::active", self._on_gpu_changed)
         group.add(self.gpu_row)
 
+        self.autocast_row = make_switch_row(
+            "FP16 autocast",
+            subtitle="Faster VR/MDX/Roformer on modern NVIDIA GPUs",
+            icon_name="emblem-system-symbolic",
+        )
+        self.autocast_row.connect("notify::active", self._on_autocast_changed)
+        group.add(self.autocast_row)
+
         duration = self.settings.get("model_sample_mode_duration", 30)
         self.sample_row = make_switch_row(
             SAMPLE_MODE_TITLE,
@@ -582,6 +590,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _register_hints(self) -> None:
         self._hint_manager.register(self.stop_button, SHARED_HINTS["stop"])
         self._hint_manager.register(self.gpu_row, SHARED_HINTS["gpu_conversion"])
+        self._hint_manager.register(self.autocast_row, SHARED_HINTS["autocast"])
         self._hint_manager.register(self.sample_row, SHARED_HINTS["sample_mode"])
         self._hint_manager.register(self.console, SHARED_HINTS["console"])
         self._hint_manager.register(self.method_row, SHARED_HINTS["process_method"])
@@ -615,6 +624,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._maybe_notify_stale_export_path()
         set_combo_value(self.format_row, self.settings.get("save_format", WAV))
         self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
+        self.autocast_row.set_active(bool(self.settings.get("is_autocast")))
         apply_sample_mode_label(self.sample_row, self.settings.get("model_sample_mode_duration", 30))
         self.sample_row.set_active(bool(self.settings.get("model_sample_mode")))
 
@@ -675,6 +685,7 @@ class MainWindow(Adw.ApplicationWindow):
             output_row=self.output_row,
             format_row=self.format_row,
             gpu_row=self.gpu_row,
+            autocast_row=self.autocast_row,
             sample_row=self.sample_row,
         )
 
@@ -784,6 +795,9 @@ class MainWindow(Adw.ApplicationWindow):
         self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
         self._refresh_active_stem_metadata()
 
+    def _on_autocast_changed(self, *_args) -> None:
+        self.settings.set("is_autocast", self.autocast_row.get_active())
+
     def _on_sample_changed(self, *_args) -> None:
         self.settings.set("model_sample_mode", self.sample_row.get_active())
         self._refresh_active_stem_metadata()
@@ -820,6 +834,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.settings.set("export_path", self.output_row.path)
         self.settings.set("save_format", get_combo_value(self.format_row))
         self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
+        self.settings.set("is_autocast", self.autocast_row.get_active())
         self.settings.set("model_sample_mode", self.sample_row.get_active())
 
     # -- Run control ------------------------------------------------------------
@@ -915,6 +930,11 @@ class MainWindow(Adw.ApplicationWindow):
             method = getattr(view, "method_key", type(view).__name__)
             model_count = len(getattr(view, "list_models", lambda: [])())
             debug("model", f"refresh_models view={method} models={model_count}")
+        # Apollo restoration models are downloadable too, but live on the Audio
+        # Tools page rather than in ``self._views``.
+        audio_tools = getattr(self, "_audio_tools_page", None)
+        if audio_tools is not None:
+            audio_tools.refresh_apollo_models()
         self._update_sep_banner()
 
     def _on_about(self, _action: Gio.SimpleAction, _param) -> None:

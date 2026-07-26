@@ -44,6 +44,22 @@ def list_apollo_models() -> List[str]:
     return sorted(names)
 
 
+def checkpoint_md5(checkpoint_path: str) -> str:
+    """MD5 used to key Apollo model-data JSON (tail bytes, whole file fallback).
+
+    Shared by :meth:`ApolloModelData.get_model_hash` and the download-time
+    auto-registration in :mod:`core.apollo_registry`; both must produce the
+    identical digest or a freshly downloaded model is not recognised.
+    """
+    try:
+        with open(checkpoint_path, "rb") as handle:
+            handle.seek(-10000 * 1024, 2)
+            return hashlib.md5(handle.read()).hexdigest()
+    except Exception:
+        with open(checkpoint_path, "rb") as fallback_file:
+            return hashlib.md5(fallback_file.read()).hexdigest()
+
+
 def list_config_files() -> List[str]:
     """Return the available Apollo config yaml file names (without extension)."""
     directory = paths.APOLLO_CONFIG_PATH
@@ -97,13 +113,7 @@ class ApolloModelData:
                         break
 
             if not model_hash:
-                try:
-                    with open(self.apollo_model_location, "rb") as f:
-                        f.seek(-10000 * 1024, 2)
-                        model_hash = hashlib.md5(f.read()).hexdigest()
-                except Exception:
-                    with open(self.apollo_model_location, "rb") as fallback_file:
-                        model_hash = hashlib.md5(fallback_file.read()).hexdigest()
+                model_hash = checkpoint_md5(self.apollo_model_location)
                 cache.update({self.apollo_model_location: model_hash})
         else:
             model_status = False
