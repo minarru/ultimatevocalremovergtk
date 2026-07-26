@@ -89,3 +89,7 @@ docs/.community_cache/
 
 # Generated GResource manifest (rebuilt by resources/compile_resources.sh)
 resources/uvr.gresource.xml
+.cursor/
+CLAUDE.md
+resources/icons/scalable/actions/bug-symbolic.svg
+resources/icons/scalable/actions/cross-small-symbolic.svg
