@@ -130,6 +130,7 @@ KEYBOARD_ACCELERATORS: Dict[str, List[str]] = {
     "win.updates": ["<primary>u"],
     "win.error_log": ["<primary>e"],
     "win.view_inputs": ["<primary>i"],
+    "win.model_options": ["<primary>m"],
     "win.ensemble": ["<primary>l"],
     "win.audio_tools": ["<primary>t"],
     "win.start": ["<primary>Return"],

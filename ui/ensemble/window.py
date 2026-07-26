@@ -191,9 +191,13 @@ class EnsemblePage:
         set_icon_button_a11y(view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
         view_inputs_button.set_action_name("win.view_inputs")
         group.set_header_suffix(view_inputs_button)
-        self.input_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
+        self.input_row = InputFilesRow(
+            self._on_inputs_changed,
+            on_toast=self.window.toast,
+            accept_any_getter=lambda: bool(self.settings.get("is_accept_any_input")),
+        )
         set_tooltip(self.input_row, INPUT_FOLDER_ENTRY_HELP)
-        self.output_row = OutputFolderRow(self._on_output_changed)
+        self.output_row = OutputFolderRow(self._on_output_changed, on_toast=self.window.toast)
         set_tooltip(self.output_row, OUTPUT_FOLDER_ENTRY_HELP)
         group.add(self.input_row)
         group.add(self.output_row)
@@ -727,12 +731,16 @@ class EnsemblePage:
         dialog.present(self.window)
 
     def _do_save_ensemble(self, name: str, selected: List[str]) -> None:
-        save_ensemble(
-            name,
-            self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR),
-            self.settings.get("ensemble_type", MAX_MIN),
-            selected,
-        )
+        try:
+            save_ensemble(
+                name,
+                self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR),
+                self.settings.get("ensemble_type", MAX_MIN),
+                selected,
+            )
+        except OSError as exc:
+            self._toast(f"Couldn't save ensemble: {exc}")
+            return
         self.settings.set("chosen_ensemble", name)
         self._refresh_saved_list()
         self._toast(f"Saved ensemble '{name}'.")
@@ -938,7 +946,13 @@ class EnsemblePage:
         try:
             tags = self.context.repo.ensemble_model_list(self.settings, main_stem)
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
-            self.models_listbox.append(Adw.ActionRow(title=f"Could not list models: {exc}"))
+            from ..errorlog import log_error
+
+            log_error("Ensemble", exc, context="listing models")
+            row = Adw.ActionRow()
+            set_row_title(row, "Could not list models")
+            set_row_subtitle(row, "See Error Log for details")
+            self.models_listbox.append(row)
             self._update_models_dialog_status()
             self._update_models_summary()
             return
@@ -1170,10 +1184,12 @@ class EnsemblePage:
         self._persist_selected_models()
 
         input_paths = list(self.input_row.paths)
-        self.context.save_settings()
         self.window.begin_run(self)
 
         try:
+            error = self.context.try_save_settings(trigger="ensemble-start")
+            if error:
+                self._toast(error)
             from core.debug_log import debug
 
             stem = self.settings.get("ensemble_main_stem", "")

@@ -222,9 +222,22 @@ class MainWindow(Adw.ApplicationWindow):
         # swapped for a plain window title (Adwaita adaptive navigation).
         toolbar_view.add_bottom_bar(self._view_switcher_bar)
         toolbar_view.set_content(root)
+        toolbar_view.set_vexpand(True)
+
+        self._data_banner = Adw.Banner(
+            title=(
+                "Application data folder is not writable — settings and downloads may fail. "
+                "Choose a writable location or fix permissions."
+            ),
+            revealed=False,
+        )
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        outer.append(self._data_banner)
+        outer.append(toolbar_view)
         self.toast_overlay = Adw.ToastOverlay()
-        self.toast_overlay.set_child(toolbar_view)
+        self.toast_overlay.set_child(outer)
         self.set_content(self.toast_overlay)
+        self._reveal_data_dir_banner_if_needed()
 
         init_download_queue_ui(self, self.context, on_models_changed=self._refresh_models)
 
@@ -268,7 +281,7 @@ class MainWindow(Adw.ApplicationWindow):
         end_box.append(self._download_queue_indicator.widget)
 
         menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic")
-        set_tooltip(menu_button, MAIN_MENU_HINT)
+        set_icon_button_a11y(menu_button, MAIN_MENU_HINT)
         menu_button.set_menu_model(self._build_primary_menu())
         end_box.append(menu_button)
 
@@ -448,6 +461,15 @@ class MainWindow(Adw.ApplicationWindow):
         for page in getattr(self, "_options_pages", ()):
             options_scroller(page).queue_allocate()
 
+    def _reveal_data_dir_banner_if_needed(self) -> None:
+        """Surface a non-writable data dir as a banner (not only a debug log line)."""
+        banner = getattr(self, "_data_banner", None)
+        if banner is None:
+            return
+        from core import paths
+
+        banner.set_revealed(not os.access(paths.DATA_DIR, os.W_OK))
+
     def _update_sep_banner(self) -> None:
         """Reveal the empty-state banner when the active method has no models."""
         banner = getattr(self, "_sep_banner", None)
@@ -503,8 +525,13 @@ class MainWindow(Adw.ApplicationWindow):
         set_icon_button_a11y(view_inputs_button, VIEW_INPUTS_BUTTON_HINT)
         view_inputs_button.set_action_name("win.view_inputs")
         group.set_header_suffix(view_inputs_button)
-        self.input_row = InputFilesRow(self._on_inputs_changed, on_toast=self.toast)
-        self.output_row = OutputFolderRow(self._on_output_changed)
+        self.input_row = InputFilesRow(
+            self._on_inputs_changed,
+            on_toast=self.toast,
+            accept_any_getter=lambda: bool(self.settings.get("is_accept_any_input")),
+            initial_folder_getter=lambda: (self.settings.get("input_paths") or [None])[0],
+        )
+        self.output_row = OutputFolderRow(self._on_output_changed, on_toast=self.toast)
         group.add(self.input_row)
         group.add(self.output_row)
         return group
@@ -813,7 +840,9 @@ class MainWindow(Adw.ApplicationWindow):
     def _finalize_close(self, deferred: bool) -> None:
         self._flush_settings()
         self._save_geometry()
-        self.context.save_settings(trigger="close")
+        error = self.context.try_save_settings(trigger="close")
+        if error:
+            self.toast(error)
 
     def _save_geometry(self) -> None:
         # Only record the un-maximized size so a later un-maximize restores a
@@ -867,10 +896,12 @@ class MainWindow(Adw.ApplicationWindow):
         self._flush_settings()
 
         input_paths = list(self.input_row.paths)
-        self.context.save_settings()
         self.begin_run(self._separation_target)
 
         try:
+            error = self.context.try_save_settings(trigger="start")
+            if error:
+                self.toast(error)
             debug("ui", f"runner.start files={len(input_paths)}")
             self.context.runner.start(input_paths, callbacks)
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
@@ -921,6 +952,16 @@ class MainWindow(Adw.ApplicationWindow):
     def _refresh_models(self, *, source: str = "download_center") -> None:
         from core.debug_log import debug
 
+        controller = getattr(self, "_run_controller", None)
+        if controller is not None and controller.is_running():
+            debug("ui", f"refresh_models deferred source={source} (run in progress)")
+            self._deferred_model_refresh = source
+            return
+        self._apply_model_refresh(source=source)
+
+    def _apply_model_refresh(self, *, source: str = "download_center") -> None:
+        from core.debug_log import debug
+
         debug("ui", f"refresh_models source={source}")
         # New model files may add hash/name mappings and change stem filtering.
         self.context.repo.reload_mappers()
@@ -936,6 +977,7 @@ class MainWindow(Adw.ApplicationWindow):
         if audio_tools is not None:
             audio_tools.refresh_apollo_models()
         self._update_sep_banner()
+        self._deferred_model_refresh = None
 
     def _on_about(self, _action: Gio.SimpleAction, _param) -> None:
         from core.debug_log import debug

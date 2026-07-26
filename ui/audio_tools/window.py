@@ -207,7 +207,11 @@ class AudioToolsPage:
         self._view_inputs_button.connect("clicked", self._on_view_inputs_clicked)
         group.set_header_suffix(self._view_inputs_button)
 
-        self.inputs_row = InputFilesRow(self._on_inputs_changed, on_toast=self.window.toast)
+        self.inputs_row = InputFilesRow(
+            self._on_inputs_changed,
+            on_toast=self.window.toast,
+            accept_any_getter=lambda: bool(self.settings.get("is_accept_any_input")),
+        )
         self.hints.register(self.inputs_row, INPUT_FOLDER_ENTRY_HELP)
         # Back-compat aliases for callers that still look up per-tool rows.
         self.me_inputs_row = self.inputs_row
@@ -218,7 +222,7 @@ class AudioToolsPage:
         self.dual_inputs_row = DualInputsRow(self._on_open_dual_editor)
         self._dual_inputs_rows: List[DualInputsRow] = [self.dual_inputs_row]
 
-        self.output_row = OutputFolderRow(self._on_output_changed)
+        self.output_row = OutputFolderRow(self._on_output_changed, on_toast=self.window.toast)
         set_tooltip(self.output_row, OUTPUT_FOLDER_ENTRY_HELP)
 
         group.add(self.inputs_row)
@@ -356,7 +360,9 @@ class AudioToolsPage:
 
         apollo_folder_button = Gtk.Button(icon_name="folder-symbolic")
         apollo_folder_button.add_css_class("flat")
-        set_tooltip(apollo_folder_button, "Open the Apollo models folder")
+        from ..hints import set_icon_button_a11y
+
+        set_icon_button_a11y(apollo_folder_button, "Open the Apollo models folder")
         apollo_folder_button.connect("clicked", self._on_open_apollo_folder)
         self.apollo_group.set_header_suffix(apollo_folder_button)
 
@@ -751,10 +757,12 @@ class AudioToolsPage:
                 if apollo_params is None:
                     return
 
-        self.context.save_settings()
         self.window.begin_run(self)
 
         try:
+            error = self.context.try_save_settings(trigger="audio-tools-start")
+            if error:
+                self._toast(error)
             from core.debug_log import debug
 
             debug(
@@ -812,15 +820,16 @@ class AudioToolsPage:
     def _on_open_apollo_folder(self, _banner: Adw.Banner) -> None:
         from core import paths
 
-        os.makedirs(paths.APOLLO_MODELS_DIR, exist_ok=True)
-        launcher = Gtk.FileLauncher.new(Gio.File.new_for_path(paths.APOLLO_MODELS_DIR))
-        launcher.launch(self.window, None, self._on_apollo_folder_launched)
-
-    def _on_apollo_folder_launched(self, launcher: Gtk.FileLauncher, result) -> None:
         try:
-            launcher.launch_finish(result)
-        except GLib.Error as exc:
-            self._toast(f"Couldn't open the Apollo models folder: {exc.message}")
+            os.makedirs(paths.APOLLO_MODELS_DIR, exist_ok=True)
+        except OSError as exc:
+            self._toast(f"Couldn't create Apollo models folder: {exc}")
+            return
+        from ..files import open_folder_in_file_manager
+
+        open_folder_in_file_manager(
+            self.window, paths.APOLLO_MODELS_DIR, on_error=self._toast
+        )
 
     def _toast(self, message: str) -> None:
         self.window.toast(message)

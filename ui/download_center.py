@@ -32,9 +32,10 @@ from core.model_scores import (
 )
 from core import paths
 
+from .dialogs.utils import close_on_escape
 from .dispatch import idle_on_main
 from .help_text import VIP_DOWNLOAD_CODE_HINT
-from .hints import set_tooltip
+from .hints import set_icon_button_a11y
 from .markup import set_row_subtitle, set_row_title
 from .spacing import set_inset
 from .widgets.rows import get_combo_value, make_combo_row, set_combo_value
@@ -106,7 +107,7 @@ class DownloadCenterWindow:
         self._row_actions: dict[tuple[str, str], Adw.ActionRow] = {}
         self._search_entries: dict[str, Gtk.SearchEntry] = {}
         self._list_boxes: dict[str, Gtk.ListBox] = {}
-        self._empty_labels: dict[str, Gtk.Label] = {}
+        self._empty_pages: dict[str, Adw.StatusPage] = {}
         self._stack_pages: dict[str, Adw.ViewStackPage] = {}
         self._purpose = PURPOSE_ALL
         self._sort_mode = SORT_NAME
@@ -120,6 +121,7 @@ class DownloadCenterWindow:
         self.window.set_default_size(760, 620)
         if parent is not None:
             self.window.set_transient_for(parent)
+        close_on_escape(self.window)
 
         self.window.connect("close-request", self._on_close_request)
 
@@ -169,7 +171,9 @@ class DownloadCenterWindow:
         header.set_title_widget(self.switcher)
 
         self.vip_button = Gtk.Button(icon_name="dialog-password-symbolic")
-        set_tooltip(self.vip_button, f"{VIP_DOWNLOAD_CODE_HINT} (Unlock VIP models)")
+        set_icon_button_a11y(
+            self.vip_button, f"{VIP_DOWNLOAD_CODE_HINT} (Unlock VIP models)"
+        )
         self.vip_button.connect("clicked", lambda *_: self._open_vip())
         header.pack_start(self.vip_button)
 
@@ -178,7 +182,7 @@ class DownloadCenterWindow:
         menu.append("Manual downloads", "dc.manual")
         menu_button = Gtk.MenuButton()
         menu_button.set_icon_name("open-menu-symbolic")
-        set_tooltip(menu_button, "Models folder and manual download links")
+        set_icon_button_a11y(menu_button, "Models folder and manual download links")
         menu_button.set_menu_model(menu)
         header.pack_end(menu_button)
 
@@ -207,9 +211,9 @@ class DownloadCenterWindow:
         self.refresh_button = Gtk.Button(icon_name="view-refresh-symbolic")
         self.refresh_button.add_css_class("flat")
         self.refresh_button.connect("clicked", lambda *_: self.start_refresh())
-        set_tooltip(self.refresh_button, "Refresh catalogue")
+        set_icon_button_a11y(self.refresh_button, "Refresh catalogue")
 
-        self.download_button = Gtk.Button(label="Download")
+        self.download_button = Gtk.Button(label="_Download", use_underline=True)
         self.download_button.add_css_class("suggested-action")
         self.download_button.set_hexpand(True)
         self.download_button.connect("clicked", lambda *_: self._enqueue_selected())
@@ -222,10 +226,16 @@ class DownloadCenterWindow:
         self.status_label = Gtk.Label(label="Loading catalogue…", xalign=0.0)
         self.status_label.add_css_class("dim-label")
         self.status_label.set_wrap(True)
+        self._refresh_spinner = Gtk.Spinner()
+        self._refresh_spinner.set_visible(False)
+
+        status_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        status_row.append(self._refresh_spinner)
+        status_row.append(self.status_label)
 
         action_dock = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         action_dock.add_css_class("uvr-run-controls")
-        action_dock.append(self.status_label)
+        action_dock.append(status_row)
         action_dock.append(action_row)
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -256,11 +266,20 @@ class DownloadCenterWindow:
         page.append(search)
         self._search_entries[arch] = search
 
-        empty_label = Gtk.Label(wrap=True, xalign=0.0)
-        empty_label.add_css_class("dim-label")
-        empty_label.set_visible(False)
-        page.append(empty_label)
-        self._empty_labels[arch] = empty_label
+        empty_page = Adw.StatusPage(
+            icon_name="network-offline-symbolic",
+            title="Catalogue unavailable",
+            description="Check your connection and try again.",
+        )
+        empty_page.set_vexpand(True)
+        empty_page.set_visible(False)
+        retry = Gtk.Button(label="Try Again")
+        retry.add_css_class("suggested-action")
+        retry.set_halign(Gtk.Align.CENTER)
+        retry.connect("clicked", lambda *_: self.start_refresh())
+        empty_page.set_child(retry)
+        page.append(empty_page)
+        self._empty_pages[arch] = empty_page
 
         list_box = Gtk.ListBox()
         list_box.set_selection_mode(Gtk.SelectionMode.NONE)
@@ -463,6 +482,8 @@ class DownloadCenterWindow:
         debug("download", "ui refresh start")
         self._refreshing = True
         self.status_label.set_label("Refreshing catalogue…")
+        self._refresh_spinner.set_visible(True)
+        self._refresh_spinner.start()
         self.refresh_button.set_sensitive(False)
         self._update_download_button()
         threading.Thread(target=self._refresh_worker, daemon=True).start()
@@ -478,13 +499,18 @@ class DownloadCenterWindow:
         self._refreshing = False
         self._catalogue_online = is_online
         self.refresh_button.set_sensitive(True)
+        self._refresh_spinner.stop()
+        self._refresh_spinner.set_visible(False)
         if not is_online:
             self._available = {}
             self.status_label.set_label(NO_CONNECTION)
             self._clear_catalogue()
             for _label, arch in _NETWORKS:
                 self._set_catalogue_page_message(
-                    arch, "Catalogue unavailable — check your connection and refresh."
+                    arch,
+                    "Catalogue unavailable",
+                    description="Check your connection and try again.",
+                    offline=True,
                 )
             return
 
@@ -530,21 +556,51 @@ class DownloadCenterWindow:
             while (child := list_box.get_first_child()) is not None:
                 list_box.remove(child)
 
-    def _set_catalogue_page_message(self, arch: str, message: str) -> None:
-        label = self._empty_labels.get(arch)
-        if label is None:
+    def _set_catalogue_page_message(
+        self,
+        arch: str,
+        title: str,
+        *,
+        description: str = "",
+        offline: bool = False,
+    ) -> None:
+        page = self._empty_pages.get(arch)
+        list_box = self._list_boxes.get(arch)
+        if page is None:
             return
-        label.set_label(message)
-        label.set_visible(bool(message))
+        list_parent = list_box.get_parent() if list_box is not None else None
+        if not title:
+            page.set_visible(False)
+            if list_parent is not None:
+                list_parent.set_visible(True)
+            return
+        page.set_title(title)
+        page.set_description(description or None)
+        page.set_icon_name(
+            "network-offline-symbolic" if offline else "edit-find-symbolic"
+        )
+        child = page.get_child()
+        if child is not None:
+            child.set_visible(offline)
+        page.set_visible(True)
+        if list_parent is not None:
+            list_parent.set_visible(False)
 
     def _update_catalogue_page_state(self, arch: str) -> None:
         if self._catalogue_online is False:
             self._set_catalogue_page_message(
-                arch, "Catalogue unavailable — check your connection and refresh."
+                arch,
+                "Catalogue unavailable",
+                description="Check your connection and try again.",
+                offline=True,
             )
             return
         if self._catalogue_online is None:
-            self._set_catalogue_page_message(arch, "Catalogue is still loading…")
+            self._set_catalogue_page_message(
+                arch,
+                "Catalogue is still loading…",
+                description="Please wait.",
+            )
             return
         names = self._available.get(arch) or []
         search = self._search_entries.get(arch)
@@ -552,13 +608,22 @@ class DownloadCenterWindow:
         matches = catalogue_matches(names, query, purpose=self._purpose)
         if (query or self._purpose != PURPOSE_ALL) and not matches:
             if query:
-                message = f'No models match “{query}”. Try a broader search.'
+                self._set_catalogue_page_message(
+                    arch,
+                    "No matching models",
+                    description=f'Try a broader search than “{query}”.',
+                )
             else:
-                message = "No models match this purpose filter."
-            self._set_catalogue_page_message(arch, message)
+                self._set_catalogue_page_message(
+                    arch,
+                    "No matching models",
+                    description="No models match this purpose filter.",
+                )
         elif not catalogue_matches(names, "", purpose=PURPOSE_ALL):
             self._set_catalogue_page_message(
-                arch, "All models for this network are already installed."
+                arch,
+                "All installed",
+                description="All models for this network are already installed.",
             )
         else:
             self._set_catalogue_page_message(arch, "")
@@ -632,8 +697,12 @@ class DownloadCenterWindow:
         target = self.manager.model_directory(arch) if arch else paths.MODELS_DIR
         if not target:
             target = paths.MODELS_DIR
-        os.makedirs(target, exist_ok=True)
-        open_folder_in_file_manager(self.window, target)
+        try:
+            os.makedirs(target, exist_ok=True)
+        except OSError as exc:
+            self._toast(f"Couldn't open models folder: {exc}")
+            return
+        open_folder_in_file_manager(self.window, target, on_error=self._toast)
 
     def _on_vip_validated(self, unlocked: bool) -> None:
         if unlocked:

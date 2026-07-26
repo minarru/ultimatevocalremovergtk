@@ -158,11 +158,24 @@ def set_error_log(text: str) -> None:
         debug("error", f"set_error_log {preview_text(text, max_len=120)!r}")
 
 
+def append_error_log(text: str) -> None:
+    """Append ``text`` to the error log, keeping prior entries."""
+    if not text:
+        return
+    with _LOCK:
+        existing = _ERROR_LOG
+    if existing:
+        set_error_log(f"{existing.rstrip()}\n\n---\n\n{text.lstrip()}")
+    else:
+        set_error_log(text)
+
+
 def log_error(process_method: str, exception: BaseException, *, context: str = "") -> str:
     """Format ``exception`` like UVR and store it as the current error log.
 
     Thread-safe so worker threads can record errors directly; returns the
-    formatted text.
+    formatted text. When a prior error is already stored, the new report is
+    appended rather than replacing it.
     """
     from core.debug_log import debug, preview_text
 
@@ -171,7 +184,7 @@ def log_error(process_method: str, exception: BaseException, *, context: str = "
 
         context = format_error_context()
     formatted = error_text(process_method, exception, context=context)
-    set_error_log(formatted)
+    append_error_log(formatted)
     debug(
         "error",
         f"log_error method={process_method!r} error={type(exception).__name__}: {exception}",
@@ -208,6 +221,13 @@ def present_error_dialog(
 
     if _ACTIVE_ERROR_DIALOG is not None:
         debug("error", f"present_error_dialog suppressed heading={heading!r} (dialog already open)")
+        if formatted_log:
+            append_error_log(formatted_log)
+        else:
+            log_error(heading, exception)
+        toast = getattr(parent_window, "toast", None)
+        if callable(toast):
+            toast("Another error occurred — see Error Log")
         return
 
     log_text = formatted_log if formatted_log is not None else get_error_log()
@@ -345,6 +365,9 @@ def open_error_log(parent_window, message=None):
     window.set_default_size(700, 520)
     if parent_window is not None:
         window.set_transient_for(parent_window)
+    from .dialogs.utils import close_on_escape
+
+    close_on_escape(window)
 
     toolbar = Adw.ToolbarView()
     header = Adw.HeaderBar()
@@ -353,10 +376,14 @@ def open_error_log(parent_window, message=None):
     copy_button.connect("clicked", lambda *_: copy_text(window, get_error_log()))
     header.pack_start(copy_button)
 
+    clear_button = Gtk.Button(label="Clear")
+    clear_button.connect("clicked", lambda *_: set_error_log(""))
+    header.pack_start(clear_button)
+
     report_button = Gtk.Button(label="Report Issue")
     report_button.connect(
         "clicked",
-        lambda *_: _open_link(fork_issue_url(log_text=get_error_log())),
+        lambda *_: _open_link(window, fork_issue_url(log_text=get_error_log())),
     )
     header.pack_start(report_button)
 
@@ -399,7 +426,12 @@ def copy_text(widget: Gtk.Widget, text: str) -> None:
         display.get_clipboard().set(text)
 
 
-def _open_link(url: str) -> None:
-    import webbrowser
+def _open_link(window: Gtk.Window, url: str) -> None:
+    from .files import open_uri_in_browser
 
-    webbrowser.open_new_tab(url)
+    def on_error(message: str) -> None:
+        toast = getattr(window, "toast", None)
+        if callable(toast):
+            toast(message)
+
+    open_uri_in_browser(window, url, on_error=on_error)

@@ -19,13 +19,14 @@ from gi.repository import Adw, GLib, Gtk
 
 from bundled.constants import AUDIO_INPUT_TOTAL_TEXT, VERIFY_INPUTS_TEXT
 
-from .errorlog import set_error_log
+from .dialogs.utils import close_on_escape
+from .errorlog import log_error, set_error_log
 from .help_text import (
     ADD_INPUT_FILES_HINT,
     CLEAR_ALL_INPUTS_HINT,
     REMOVE_INPUT_HINT,
 )
-from .hints import set_tooltip
+from .hints import set_icon_button_a11y
 from .markup import set_row_subtitle, set_row_title
 from .dispatch import idle_on_main
 from .shared_settings import (
@@ -34,6 +35,7 @@ from .shared_settings import (
     sanitize_input_paths,
 )
 from .widgets.file_chooser import merge_input_paths
+from .widgets.file_dialogs import audio_open_dialog, is_dialog_dismissed
 from .widgets.rows import set_row_icon
 
 _REMOVE_UNREADABLE_TEXT = "Remove unreadable"
@@ -83,7 +85,8 @@ def inspect_audio(path: str):
         librosa.load(path, duration=3, mono=False, sr=44100)
         return True, "readable"
     except Exception as exc:  # noqa: BLE001 - reported back to the user
-        return False, f"{type(exc).__name__}: {exc}"
+        log_error("Verify Inputs", exc, context=f"path={path!r}")
+        return False, "Could not read this file"
 
 
 class ViewInputs:
@@ -97,22 +100,25 @@ class ViewInputs:
         self._status = {}  # path -> (is_valid, info) after verify
         self._verifying = False
         self._verify_total = 0
+        self._verify_stop = threading.Event()
 
         self.window = Adw.Window(title=VERIFY_INPUTS_TEXT)
         self.window.set_default_size(620, 560)
         if parent is not None:
             self.window.set_transient_for(parent)
+        close_on_escape(self.window)
+        self.window.connect("close-request", self._on_close_request)
 
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
 
         self.add_button = Gtk.Button(icon_name="list-add-symbolic")
-        set_tooltip(self.add_button, ADD_INPUT_FILES_HINT)
+        set_icon_button_a11y(self.add_button, ADD_INPUT_FILES_HINT)
         self.add_button.connect("clicked", self._on_add)
         header.pack_start(self.add_button)
 
         self.clear_button = Gtk.Button(icon_name="edit-clear-all-symbolic")
-        set_tooltip(self.clear_button, CLEAR_ALL_INPUTS_HINT)
+        set_icon_button_a11y(self.clear_button, CLEAR_ALL_INPUTS_HINT)
         self.clear_button.connect("clicked", self._on_clear)
         header.pack_start(self.clear_button)
 
@@ -121,7 +127,7 @@ class ViewInputs:
         self.remove_unreadable_button.connect("clicked", self._on_remove_unreadable)
         header.pack_end(self.remove_unreadable_button)
 
-        self.verify_button = Gtk.Button(label=VERIFY_INPUTS_TEXT)
+        self.verify_button = Gtk.Button(label=f"_{VERIFY_INPUTS_TEXT}", use_underline=True)
         self.verify_button.add_css_class("suggested-action")
         self.verify_button.connect("clicked", self._on_verify)
         header.pack_end(self.verify_button)
@@ -195,7 +201,7 @@ class ViewInputs:
                 set_row_subtitle(row, f"{path}\n{info}")
             remove_button = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
             remove_button.add_css_class("flat")
-            set_tooltip(remove_button, REMOVE_INPUT_HINT)
+            set_icon_button_a11y(remove_button, REMOVE_INPUT_HINT)
             remove_button.connect("clicked", lambda _b, p=path: self._remove_path(p))
             row.add_suffix(remove_button)
             self._files_group.add(row)
@@ -204,17 +210,26 @@ class ViewInputs:
     def _sync_actions(self) -> None:
         has_files = bool(self.paths)
         self.clear_button.set_sensitive(has_files and not self._verifying)
-        self.verify_button.set_sensitive(has_files and not self._verifying)
         self.add_button.set_sensitive(not self._verifying)
         failed = self._failed_paths()
         self.remove_unreadable_button.set_visible(bool(failed))
         self.remove_unreadable_button.set_sensitive(bool(failed) and not self._verifying)
-        if not self._verifying:
-            self.verify_button.set_label(VERIFY_INPUTS_TEXT)
+        if self._verifying:
+            self.verify_button.set_sensitive(True)
+            self.verify_button.set_label("Cancel")
+            self.verify_button.remove_css_class("suggested-action")
+            self.verify_button.add_css_class("destructive-action")
+        else:
+            self.verify_button.set_sensitive(has_files)
+            self.verify_button.set_label(f"_{VERIFY_INPUTS_TEXT}")
+            self.verify_button.remove_css_class("destructive-action")
+            self.verify_button.add_css_class("suggested-action")
 
     def _commit_paths(self) -> None:
         self.settings.set("input_paths", list(self.paths))
-        self.context.save_settings()
+        error = self.context.try_save_settings(trigger="verify-inputs")
+        if error:
+            self._toast(error)
         self.context.prune_unreadable_input_paths(self.paths)
         if self._on_inputs_changed is not None:
             self._on_inputs_changed(list(self.paths))
@@ -255,13 +270,20 @@ class ViewInputs:
             self._toast(f"Removed {removed} unreadable {noun}.")
 
     def _on_add(self, _button) -> None:
-        dialog = Gtk.FileDialog(title="Select Audio Files")
+        initial = os.path.dirname(self.paths[0]) if self.paths else None
+        dialog = audio_open_dialog(
+            "Select Audio Files",
+            accept_any=bool(self.settings.get("is_accept_any_input")),
+            initial=initial,
+        )
         dialog.open_multiple(self.window, None, self._on_add_finished)
 
     def _on_add_finished(self, dialog, result) -> None:
         try:
             files = dialog.open_multiple_finish(result)
-        except GLib.Error:
+        except GLib.Error as exc:
+            if not is_dialog_dismissed(exc):
+                self._toast(f"Couldn't open files: {exc.message}")
             return
         added = [files.get_item(i).get_path() for i in range(files.get_n_items())]
         added = [p for p in added if p]
@@ -283,12 +305,22 @@ class ViewInputs:
 
     # -- Verification -----------------------------------------------------------
 
+    def _on_close_request(self, *_args) -> bool:
+        if self._verifying:
+            self._verify_stop.set()
+        return False
+
     def _on_verify(self, _button) -> None:
-        if self._verifying or not self.paths:
-            if not self.paths:
-                self._toast("No files to verify.")
+        if self._verifying:
+            self._verify_stop.set()
+            self.verify_button.set_label("Cancelling…")
+            self.verify_button.set_sensitive(False)
+            return
+        if not self.paths:
+            self._toast("No files to verify.")
             return
         self._verifying = True
+        self._verify_stop.clear()
         self._verify_total = len(self.paths)
         self._status.clear()
         self.verify_button.set_label(f"Verifying… 0/{self._verify_total}")
@@ -298,12 +330,16 @@ class ViewInputs:
 
     def _verify_worker(self, paths) -> None:
         broken = []
+        cancelled = False
         for index, path in enumerate(paths, start=1):
+            if self._verify_stop.is_set():
+                cancelled = True
+                break
             is_valid, info = inspect_audio(path)
             idle_on_main(self._apply_result, path, is_valid, info, index)
             if not is_valid:
                 broken.append((path, info))
-        idle_on_main(self._verify_done, broken)
+        idle_on_main(self._verify_done, broken, cancelled)
 
     def _apply_result(self, path, is_valid, info, index: int) -> None:
         self._status[path] = (is_valid, info)
@@ -315,8 +351,9 @@ class ViewInputs:
         set_row_subtitle(row, f"{path}\n{info}")
         self._files_group.set_title(self._total_text())
 
-    def _verify_done(self, broken) -> None:
+    def _verify_done(self, broken, cancelled: bool = False) -> None:
         self._verifying = False
+        self._verify_stop.clear()
         failed_paths = [p for p, _info in broken]
         self.context.set_unreadable_input_paths(failed_paths)
         self._rebuild_list()
@@ -324,7 +361,10 @@ class ViewInputs:
         from core.debug_log import debug
 
         total = len(self.paths)
-        debug("ui", f"verify_inputs count={total} ok={total - len(broken)}")
+        debug("ui", f"verify_inputs count={total} ok={total - len(broken)} cancelled={cancelled}")
+        if cancelled:
+            self._toast("Verification cancelled")
+            return
         if broken:
             report_lines = "\n".join(f"{os.path.basename(p)}: {info}" for p, info in broken)
             set_error_log(

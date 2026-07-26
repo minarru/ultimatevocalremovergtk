@@ -8,7 +8,6 @@ Entry point: :func:`open_update_view` (wire to a ``win.updates`` action).
 """
 
 import threading
-import webbrowser
 
 from gi.repository import Adw, Gtk
 
@@ -17,6 +16,7 @@ from core.downloads import DownloadManager
 
 from .dialogs.utils import present_modal_dialog, set_dialog_content
 from .dispatch import idle_on_main
+from .files import open_uri_in_browser
 
 
 def _get_manager(app_context) -> DownloadManager:
@@ -114,7 +114,7 @@ class UpdateView:
         if label == "Check again":
             self._check()
         elif self._update_link:
-            webbrowser.open_new_tab(self._update_link)
+            open_uri_in_browser(self.parent, self._update_link)
 
 
 def open_update_view(parent_window, app_context=None):

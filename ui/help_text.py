@@ -610,7 +610,7 @@ DEMUCS_CHUNK_HINT = "Process the audio in chunks to reduce memory usage (legacy 
 # --- Ensemble page ---
 
 ENSEMBLE_SAVED_PRESET_HINT = (
-    "Load a curated recipe or a previously saved ensemble. "
+    "Load a curated recipe or a previously saved ensemble\n\n"
     "Save / delete apply to your own presets only (curated recipes are read-only)"
 )
 ENSEMBLE_SAVE_BUTTON_HINT = "Save current ensemble"
@@ -659,6 +659,9 @@ DUAL_INPUTS_HINT = (
     "Paired audio files processed together — for align, primary is usually the mixture "
     "and secondary is usually the instrumental"
 )
+
+OPEN_EXTERNAL_LINK_HINT = "Open link in the default browser"
+OPEN_INSTALL_FOLDER_HINT = "Open the install folder in the file manager"
 
 # --- Stem-only toggles ---
 
