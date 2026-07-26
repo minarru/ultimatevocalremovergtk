@@ -44,6 +44,45 @@ class JobRunnerSeperatorTests(unittest.TestCase):
         self.assertIsNone(model_name)
         self.assertIsNone(sources)
 
+    def test_start_does_not_prepare_on_caller_thread(self) -> None:
+        """``prepare_input_paths`` must not run before the worker starts."""
+        from core.job_runner import JobCallbacks
+
+        runner = JobRunner(SettingsModel({"model_sample_mode": False}))
+        prepare = mock.Mock(side_effect=lambda settings, paths, **kwargs: list(paths))
+        created: list = []
+
+        class _DeferredThread:
+            def __init__(self, target=None, args=()):
+                self._target = target
+                self._args = args
+                created.append(self)
+
+            def start(self):
+                # Intentionally deferred — caller must not have prepared yet.
+                pass
+
+            def is_alive(self):
+                return False
+
+            def run_now(self):
+                self._target(*self._args)
+
+        with mock.patch.dict("sys.modules", {"kthread": mock.Mock(KThread=_DeferredThread)}):
+            with mock.patch("core.job_runner.prepare_input_paths", prepare):
+                with mock.patch.object(
+                    runner,
+                    "_run",
+                    side_effect=lambda paths, callbacks: runner._prepare_paths_for_run(
+                        paths, callbacks
+                    ),
+                ):
+                    runner.start(["/tmp/a.wav"], JobCallbacks())
+                    prepare.assert_not_called()
+                    self.assertEqual(len(created), 1)
+                    created[0].run_now()
+                    prepare.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

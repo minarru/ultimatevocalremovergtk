@@ -73,5 +73,19 @@ class SettingsModelTests(unittest.TestCase):
             self.assertFalse(loaded.get("is_autocast"))
 
 
+class TrySaveSettingsTests(unittest.TestCase):
+    def test_returns_message_instead_of_raising(self):
+        from ui.context import AppContext
+
+        context = object.__new__(AppContext)
+        context.settings = SettingsModel()
+        with mock.patch.object(
+            context.settings, "save", side_effect=OSError("Read-only file system")
+        ):
+            message = AppContext.try_save_settings(context, trigger="test")
+        self.assertIsInstance(message, str)
+        self.assertIn("Couldn't save settings", message)
+
+
 if __name__ == "__main__":
     unittest.main()

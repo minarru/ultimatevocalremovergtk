@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 from bundled.constants import FLAC, WAV
 from ui.shared_settings import (
@@ -96,6 +97,14 @@ class ExportPathValidationTests(unittest.TestCase):
     def test_valid_path(self):
         self.assertIsNone(export_path_blocked_reason(os.path.abspath(os.getcwd())))
         self.assertTrue(export_path_is_valid(os.path.abspath(os.getcwd())))
+
+    def test_readonly_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("os.access", return_value=False):
+                self.assertEqual(
+                    export_path_blocked_reason(tmp),
+                    "Output folder is not writable — choose another folder",
+                )
 
 
 class InputPathValidationTests(unittest.TestCase):

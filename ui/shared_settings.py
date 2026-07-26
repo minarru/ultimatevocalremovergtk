@@ -37,6 +37,7 @@ def apply_sample_mode_label(sample_row, duration: int) -> None:
 
 _REASON_OUTPUT_MISSING = "Choose an output folder"
 _REASON_OUTPUT_STALE = "Output folder no longer exists — select a new folder"
+_REASON_OUTPUT_READONLY = "Output folder is not writable — choose another folder"
 _REASON_INPUT_MISSING = "Select an input audio file"
 _REASON_UNREADABLE_INPUTS = "Remove unreadable inputs"
 
@@ -55,6 +56,8 @@ def export_path_blocked_reason(path: str) -> Optional[str]:
         return _REASON_OUTPUT_MISSING
     if not os.path.isdir(path):
         return _REASON_OUTPUT_STALE
+    if not os.access(path, os.W_OK):
+        return _REASON_OUTPUT_READONLY
     return None
 
 

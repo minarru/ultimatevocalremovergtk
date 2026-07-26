@@ -40,6 +40,35 @@ class SampleModeTests(unittest.TestCase):
             self.assertNotEqual(result[0], source)
             mock_sf.write.assert_called_once()
 
+    def test_clip_failure_reports_fallback_and_keeps_full_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = os.path.join(tmp, "input.wav")
+            with open(source, "wb") as handle:
+                handle.write(b"wav")
+
+            settings = SettingsModel(
+                {
+                    "model_sample_mode": True,
+                    "model_sample_mode_duration": 5,
+                }
+            )
+            reported: list[tuple[str, Exception]] = []
+
+            mock_librosa = MagicMock()
+            mock_librosa.load.side_effect = RuntimeError("decode failed")
+
+            with patch("core.sample_mode.paths.SAMPLE_CLIP_PATH", tmp):
+                with patch.dict(sys.modules, {"librosa": mock_librosa, "soundfile": MagicMock()}):
+                    result = prepare_input_paths(
+                        settings,
+                        [source],
+                        on_fallback=lambda path, exc: reported.append((path, exc)),
+                    )
+            self.assertEqual(result, [source])
+            self.assertEqual(len(reported), 1)
+            self.assertEqual(reported[0][0], source)
+            self.assertIsInstance(reported[0][1], RuntimeError)
+
 
 if __name__ == "__main__":
     unittest.main()
