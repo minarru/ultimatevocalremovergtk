@@ -26,7 +26,7 @@ from ui.widgets.download_queue_indicator import _row_button_state, chip_ring_sta
 from ui.widgets.download_queue_icons import (
     ICON_CANCEL,
     ICON_CANCELLED,
-    ICON_FAILED,
+    ICON_RETRY,
     ICON_ROW_SUCCESS,
 )
 
@@ -70,7 +70,7 @@ class PerStatusPresentationTests(unittest.TestCase):
             STATUS_COMPLETE: (ICON_ROW_SUCCESS, False),
             STATUS_EXISTS: (ICON_ROW_SUCCESS, False),
             STATUS_CANCELLED: (ICON_CANCELLED, False),
-            STATUS_FAILED: (ICON_FAILED, False),
+            STATUS_FAILED: (ICON_RETRY, True),
         }
         for status, expected in expectations.items():
             with self.subTest(status=status):
@@ -91,7 +91,7 @@ class PerStatusPresentationTests(unittest.TestCase):
             STATUS_COMPLETE: "Download complete",
             STATUS_EXISTS: "Already on disk",
             STATUS_CANCELLED: "Cancelled",
-            STATUS_FAILED: "Download failed",
+            STATUS_FAILED: "Retry download",
         }
         for status, expected in expectations.items():
             with self.subTest(status=status):

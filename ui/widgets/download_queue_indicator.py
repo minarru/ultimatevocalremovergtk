@@ -14,7 +14,7 @@ from ui.widgets.download_queue_icons import (
     ICON_CANCEL,
     ICON_CANCELLED,
     ICON_CHIP_SUCCESS,
-    ICON_FAILED,
+    ICON_RETRY,
     ICON_ROW_SUCCESS,
 )
 from ui.widgets.progress_ring import ProgressRing
@@ -174,7 +174,7 @@ def _row_button_state(item: DownloadQueueItem) -> tuple[str, bool]:
     if item.status == STATUS_CANCELLED:
         return ICON_CANCELLED, False
     if item.status == STATUS_FAILED:
-        return ICON_FAILED, False
+        return ICON_RETRY, True
     return ICON_CANCEL, False
 
 
@@ -184,10 +184,15 @@ def should_schedule_remove_finished(
     popover_visible: bool,
     defer_remove_on_close: bool,
 ) -> bool:
-    """Return whether finished queue items should auto-clear after a delay."""
+    """Return whether finished queue items should auto-clear after a delay.
+
+    Failed items are kept so the user can retry; auto-clear only runs when
+    every terminal item succeeded or was cancelled.
+    """
     return (
         summary.all_terminal
         and summary.total > 0
+        and not summary.has_failed
         and not popover_visible
         and not defer_remove_on_close
     )
@@ -346,8 +351,13 @@ class DownloadQueueIndicator:
         self.on_popover_visibility_changed(self._popover.get_visible())
 
     def _on_cancel_clicked(self, _button, item_id: str) -> None:
-        if self._queue is not None:
-            self._queue.cancel(item_id)
+        if self._queue is None:
+            return
+        for item in self._queue.items():
+            if item.item_id == item_id and item.status == STATUS_FAILED:
+                self._queue.retry(item_id)
+                return
+        self._queue.cancel(item_id)
 
     def _render_rows(self, items: List[DownloadQueueItem]) -> None:
         seen = {item.item_id for item in items}

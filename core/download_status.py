@@ -119,5 +119,5 @@ def row_action_tooltip_for(status: str) -> Optional[str]:
     if status == STATUS_CANCELLED:
         return "Cancelled"
     if status == STATUS_FAILED:
-        return "Download failed"
+        return "Retry download"
     return None
