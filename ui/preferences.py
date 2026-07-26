@@ -29,8 +29,10 @@ phases.
 import json
 import os
 import re
+import threading
+from typing import Optional
 
-from gi.repository import Adw, Gtk
+from gi.repository import Adw, GLib, Gtk
 
 from bundled.constants import (
     DEFAULT,
@@ -47,11 +49,11 @@ from bundled.constants import (
     WAV_TYPE,
 )
 from core.export_naming import preview_output_name
-from core.gpu import list_gpu_devices
 from core.platform import system_name
 from core.paths import SETTINGS_CACHE_DIR
 
 from .application import apply_color_scheme
+from .dispatch import idle_on_main
 from .help_text import (
     AMPLIFICATION_THRESHOLD_HELP,
     IS_AUTOCAST_HELP,
@@ -61,8 +63,10 @@ from .help_text import (
     REMOVE_PROFILE_HINT,
     FLAC_BIT_DEPTH_HINT,
 )
-from .hints import set_tooltip
+from .hints import set_icon_button_a11y, set_tooltip
 from .widgets.rows import get_combo_value, make_combo_row, set_combo_value, set_row_icon
+
+_PERSIST_DEBOUNCE_MS = 250
 
 _NAMING_PREVIEW_KEYS = frozenset(
     {"is_testing_audio", "is_add_model_name", "is_create_model_folder"}
@@ -105,10 +109,15 @@ class ProfileStore:
             if entry.endswith(".json")
         )
 
-    def save(self, name: str, data: dict) -> None:
-        os.makedirs(self.directory, exist_ok=True)
-        with open(self._path(name), "w") as outfile:
-            outfile.write(json.dumps(data, indent=4))
+    def save(self, name: str, data: dict) -> Optional[str]:
+        """Write ``data`` as a profile. Returns an error message, or ``None`` on success."""
+        try:
+            os.makedirs(self.directory, exist_ok=True)
+            with open(self._path(name), "w") as outfile:
+                outfile.write(json.dumps(data, indent=4))
+        except OSError as exc:
+            return f"Couldn't save profile: {exc}"
+        return None
 
     def load(self, name: str):
         path = self._path(name)
@@ -121,12 +130,16 @@ class ProfileStore:
             return None
         return data if isinstance(data, dict) else None
 
-    def remove(self, name: str) -> bool:
+    def remove(self, name: str) -> tuple[bool, Optional[str]]:
+        """Remove a profile. Returns ``(removed, error_message)``."""
         path = self._path(name)
-        if os.path.isfile(path):
+        if not os.path.isfile(path):
+            return False, None
+        try:
             os.remove(path)
-            return True
-        return False
+        except OSError as exc:
+            return False, f"Couldn't remove profile: {exc}"
+        return True, None
 
 
 def _is_valid_profile_name(name: str) -> bool:
@@ -149,15 +162,16 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._profiles = ProfileStore()
         # Guards programmatic widget updates from being treated as user edits.
         self._loading = False
+        self._persist_timeout_id = 0
 
         self.set_title("Settings")
-        self.set_search_enabled(False)
 
         self.add(self._build_general_page())
         self.add(self._build_audio_page())
         self.add(self._build_processing_page())
 
         self._reload_widgets()
+        self.connect("closed", self._on_dialog_closed)
 
     # -- Page construction ------------------------------------------------------
 
@@ -179,10 +193,10 @@ class PreferencesDialog(Adw.PreferencesDialog):
         )
 
         self.profile_combo = make_combo_row("Profile", [_NO_PROFILES])
-        load_button = Gtk.Button(label="Load", valign=Gtk.Align.CENTER)
+        load_button = Gtk.Button(label="_Load", use_underline=True, valign=Gtk.Align.CENTER)
         load_button.connect("clicked", self._on_load_profile)
         remove_button = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
-        set_tooltip(remove_button, REMOVE_PROFILE_HINT)
+        set_icon_button_a11y(remove_button, REMOVE_PROFILE_HINT)
         remove_button.add_css_class("destructive-action")
         remove_button.connect("clicked", self._on_remove_profile)
         self.profile_combo.add_suffix(load_button)
@@ -324,20 +338,20 @@ class PreferencesDialog(Adw.PreferencesDialog):
         set_tooltip(self.autocast_row, IS_AUTOCAST_HELP)
         hardware_group.add(self.autocast_row)
 
-        devices = list_gpu_devices()
-        if devices:
-            device_opts = [DEFAULT] + [idx for idx, _name in devices]
-            device_subtitle = "Detected: " + ", ".join(
-                f"{idx}: {name}" if name else idx for idx, name in devices
-            )
+        # Populate asynchronously — ``nvidia-smi`` can take up to ~2s.
+        cached = getattr(self.context, "gpu_devices", None)
+        if cached is not None:
+            device_opts, device_subtitle = self._device_row_options(cached)
         else:
             device_opts = list(GPU_DEVICE_NUM_OPTS)
-            device_subtitle = "No GPU detected"
+            device_subtitle = "Detecting…"
 
         self.device_row = make_combo_row("GPU device", device_opts, subtitle=device_subtitle)
         set_tooltip(self.device_row, IS_CUDA_SELECT_HELP)
         self.device_row.connect("notify::selected", self._on_combo_changed, "device_set")
         hardware_group.add(self.device_row)
+        if cached is None:
+            threading.Thread(target=self._probe_gpu_devices, daemon=True).start()
 
         self.directml_row = Adw.SwitchRow(
             title="Use DirectML",
@@ -581,9 +595,62 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._persist()
 
     def _persist(self) -> None:
-        self.context.save_settings()
-        if self._on_settings_reloaded is not None:
+        """Debounce disk writes so spin-row ticks do not rewrite settings JSON."""
+        if self._persist_timeout_id:
+            GLib.source_remove(self._persist_timeout_id)
+        self._persist_timeout_id = GLib.timeout_add(
+            _PERSIST_DEBOUNCE_MS, self._flush_persist
+        )
+
+    def _flush_persist(self) -> bool:
+        self._persist_timeout_id = 0
+        error = self.context.try_save_settings(trigger="preferences")
+        if error:
+            self.add_toast(Adw.Toast.new(error))
+        elif self._on_settings_reloaded is not None:
             self._on_settings_reloaded()
+        return GLib.SOURCE_REMOVE
+
+    def _on_dialog_closed(self, *_args) -> None:
+        if self._persist_timeout_id:
+            GLib.source_remove(self._persist_timeout_id)
+            self._persist_timeout_id = 0
+            self._flush_persist()
+
+    @staticmethod
+    def _device_row_options(devices):
+        if devices:
+            opts = [DEFAULT] + [idx for idx, _name in devices]
+            subtitle = "Detected: " + ", ".join(
+                f"{idx}: {name}" if name else idx for idx, name in devices
+            )
+        else:
+            opts = list(GPU_DEVICE_NUM_OPTS)
+            subtitle = "No GPU detected"
+        return opts, subtitle
+
+    def _probe_gpu_devices(self) -> None:
+        from core.gpu import list_gpu_devices
+
+        devices = list_gpu_devices()
+        self.context.gpu_devices = devices
+        idle_on_main(self._apply_gpu_devices, devices)
+
+    def _apply_gpu_devices(self, devices) -> None:
+        if not hasattr(self, "device_row"):
+            return
+        current = get_combo_value(self.device_row)
+        opts, subtitle = self._device_row_options(devices)
+        self._loading = True
+        try:
+            from .widgets.rows import set_combo_values
+
+            set_combo_values(self.device_row, opts)
+            self.device_row.set_subtitle(subtitle)
+            if current in opts:
+                set_combo_value(self.device_row, current)
+        finally:
+            self._loading = False
 
     # -- Profiles ---------------------------------------------------------------
 
@@ -592,7 +659,32 @@ class PreferencesDialog(Adw.PreferencesDialog):
         if not _is_valid_profile_name(name):
             self.add_toast(Adw.Toast.new("Invalid name. Use up to 25 letters, numbers, spaces or dashes"))
             return
-        self._profiles.save(name, self.settings.to_dict())
+        canonical = name.replace(" ", "_")
+        if canonical in self._profiles.list_profiles():
+            dialog = Adw.AlertDialog(
+                heading=f'Replace profile "{name}"?',
+                body="A profile with this name already exists. Replacing it overwrites the saved settings.",
+            )
+            dialog.add_response("cancel", "Cancel")
+            dialog.add_response("replace", "Replace")
+            dialog.set_response_appearance("replace", Adw.ResponseAppearance.DESTRUCTIVE)
+            dialog.set_default_response("cancel")
+            dialog.set_close_response("cancel")
+            dialog.connect("response", self._on_save_profile_confirmed, entry_row, name)
+            dialog.present(self)
+            return
+        self._write_profile(entry_row, name)
+
+    def _on_save_profile_confirmed(self, _dialog, response, entry_row, name: str) -> None:
+        if response != "replace":
+            return
+        self._write_profile(entry_row, name)
+
+    def _write_profile(self, entry_row, name: str) -> None:
+        error = self._profiles.save(name, self.settings.to_dict())
+        if error:
+            self.add_toast(Adw.Toast.new(error))
+            return
         entry_row.set_text("")
         from core.debug_log import debug
 
@@ -627,7 +719,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
             return
         # Only adopt keys the settings schema knows about.
         self.settings.update({k: v for k, v in data.items() if k in DEFAULT_DATA})
-        self.context.save_settings()
+        error = self.context.try_save_settings(trigger="profile-load")
+        if error:
+            self.add_toast(Adw.Toast.new(error))
         from core.debug_log import debug
 
         debug("settings", f"profile load name={name}")
@@ -655,12 +749,19 @@ class PreferencesDialog(Adw.PreferencesDialog):
     def _on_remove_confirmed(self, _dialog, response, name) -> None:
         if response != "remove":
             return
-        if self._profiles.remove(name):
-            from core.debug_log import debug
-
-            debug("settings", f"profile remove name={name}")
+        removed, error = self._profiles.remove(name)
+        if error:
+            self.add_toast(Adw.Toast.new(error))
+            return
+        if not removed:
+            self.add_toast(Adw.Toast.new(f'Could not remove profile "{name}"'))
             self._refresh_profile_list()
-            self.add_toast(Adw.Toast.new(f'Removed profile "{name}"'))
+            return
+        from core.debug_log import debug
+
+        debug("settings", f"profile remove name={name}")
+        self._refresh_profile_list()
+        self.add_toast(Adw.Toast.new(f'Removed profile "{name}"'))
 
     # -- Reset ------------------------------------------------------------------
 
@@ -683,7 +784,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
         from core.debug_log import debug
 
         self.settings.reset_to_default()
-        self.context.save_settings()
+        error = self.context.try_save_settings(trigger="reset")
+        if error:
+            self.add_toast(Adw.Toast.new(error))
         debug("settings", "profile reset confirmed")
         self._reload_widgets()
         if self._on_settings_reloaded is not None:

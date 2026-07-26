@@ -52,7 +52,15 @@ class DispatchTests(unittest.TestCase):
         callbacks.stopped()
         callbacks.error(RuntimeError("boom"))
 
-        progress.assert_called_once_with(0.5)
+        progress.assert_called_once_with(
+            0.5,
+            local_step=None,
+            pass_index=None,
+            pass_total=None,
+            detail=None,
+            combine_index=None,
+            combine_total=None,
+        )
         console.assert_called_once_with("line")
         complete.assert_called_once_with()
         stopped.assert_called_once_with()

@@ -310,38 +310,52 @@ class _ParamDialog:
         }
 
     def _collect_vr(self):
+        from .utils import CollectInvalid
+
         param = get_combo_value(self.vr_param_row)
         if not param or param == NONE_SELECTED:
-            return None
+            raise CollectInvalid("Select model parameters", self.vr_param_row)
         params = {"vr_model_param": param, "primary_stem": get_combo_value(self.stem_row)}
         if self.is_51_row.get_active():
             nout = get_scale_row_value(self.nout_row)
             nout_lstm = get_scale_row_value(self.nout_lstm_row)
             if nout is None or nout_lstm is None:
-                return None
+                raise CollectInvalid("Select VR 5.1 channel counts", self.nout_row)
             params["nout"] = int(nout)
             params["nout_lstm"] = int(nout_lstm)
         params.update(self._karaoke_values())
         return params
 
     def _collect_mdx(self):
-        try:
-            params = {
-                "compensate": float(self.compensate_row.get_text()),
-                "mdx_dim_f_set": int(self.dim_f_row.get_text()),
-                "mdx_dim_t_set": int(self.dim_t_row.get_text()),
-                "mdx_n_fft_scale_set": int(self.n_fft_row.get_text()),
-                "primary_stem": get_combo_value(self.stem_row),
-            }
-        except (TypeError, ValueError):
-            return None
+        from .utils import CollectInvalid
+
+        for row, label, caster in (
+            (self.compensate_row, "Volume compensation", float),
+            (self.dim_f_row, "Dim_f", int),
+            (self.dim_t_row, "Dim_t", int),
+            (self.n_fft_row, "N_FFT scale", int),
+        ):
+            row.remove_css_class("error")
+            try:
+                caster(row.get_text())
+            except (TypeError, ValueError) as exc:
+                raise CollectInvalid(f"Invalid {label}", row) from exc
+        params = {
+            "compensate": float(self.compensate_row.get_text()),
+            "mdx_dim_f_set": int(self.dim_f_row.get_text()),
+            "mdx_dim_t_set": int(self.dim_t_row.get_text()),
+            "mdx_n_fft_scale_set": int(self.n_fft_row.get_text()),
+            "primary_stem": get_combo_value(self.stem_row),
+        }
         params.update(self._karaoke_values())
         return params
 
     def _collect_mdx_c(self):
+        from .utils import CollectInvalid
+
         selected = get_combo_value(self.mdx_c_row)
         if not selected or selected == NONE_SELECTED:
-            return None
+            raise CollectInvalid("Select a model configuration", self.mdx_c_row)
         yaml_name = f"{selected}.yaml"
         arch, _is_roformer = infer_mdx_c_architecture(yaml_name)
         params = {
@@ -558,7 +572,11 @@ def show_change_defaults_dialog(context, parent):
         if response != "delete":
             return
         if hash_file and os.path.isfile(hash_file):
-            os.remove(hash_file)
+            try:
+                os.remove(hash_file)
+            except OSError as exc:
+                toast(f"Couldn't delete parameters: {exc}")
+                return
             repo.invalidate_stem_check()
             toast(DEFINED_PARAMETERS_DELETED_TEXT)
         else:

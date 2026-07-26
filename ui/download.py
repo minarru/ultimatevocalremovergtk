@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import threading
-import webbrowser
 
 from gi.repository import Adw, GLib, Gtk
 
@@ -28,6 +27,9 @@ from core.downloads import DownloadManager
 
 from .dispatch import idle_on_main
 from .dialogs.utils import configure_dialog_width, fill_dialog_width, present_modal_dialog, set_dialog_content
+from .files import open_folder_in_file_manager, open_uri_in_browser
+from .help_text import OPEN_EXTERNAL_LINK_HINT, OPEN_INSTALL_FOLDER_HINT
+from .hints import set_icon_button_a11y
 from .notifications import (
     NOTIFY_DOWNLOAD_COMPLETE,
     NOTIFY_DOWNLOAD_FAILED,
@@ -430,15 +432,18 @@ def open_vip_code_dialog(parent, app_context, on_validated=None):
         unlocked = manager.validate_vip_code(code)
         if unlocked:
             settings.set("user_code", code)
-            app_context.save_settings(trigger="vip")
-            toast("VIP models unlocked")
+            error = app_context.try_save_settings(trigger="vip")
+            if error:
+                toast(error)
+            else:
+                toast("VIP models unlocked")
         else:
             toast("Incorrect code")
         debug("download", f"ui vip_code_confirm unlocked={unlocked}")
         if on_validated is not None:
             on_validated(unlocked)
 
-    confirm_button = Gtk.Button(label="Unlock", valign=Gtk.Align.CENTER)
+    confirm_button = Gtk.Button(label="_Unlock", use_underline=True, valign=Gtk.Align.CENTER)
     confirm_button.add_css_class("suggested-action")
     confirm_button.connect("clicked", on_confirm)
     code_row.add_suffix(confirm_button)
@@ -450,7 +455,11 @@ def open_vip_code_dialog(parent, app_context, on_validated=None):
     ):
         row = Adw.ActionRow(title=title)
         button = Gtk.Button(icon_name="adw-external-link-symbolic", valign=Gtk.Align.CENTER)
-        button.connect("clicked", lambda _b, url=link: webbrowser.open_new_tab(url))
+        set_icon_button_a11y(button, f"{OPEN_EXTERNAL_LINK_HINT}: {title}")
+        button.connect(
+            "clicked",
+            lambda _b, url=link: open_uri_in_browser(parent, url, on_error=toast),
+        )
         row.add_suffix(button)
         row.set_activatable_widget(button)
         links_group.add(row)
@@ -504,7 +513,11 @@ def open_manual_downloads(parent, app_context):
                 link_row.set_title(label)
                 link_row.set_subtitle(url)
                 open_button = Gtk.Button(icon_name="adw-external-link-symbolic", valign=Gtk.Align.CENTER)
-                open_button.connect("clicked", lambda _b, u=url: webbrowser.open_new_tab(u))
+                set_icon_button_a11y(open_button, f"{OPEN_EXTERNAL_LINK_HINT}: {label}")
+                open_button.connect(
+                    "clicked",
+                    lambda _b, u=url: open_uri_in_browser(parent, u),
+                )
                 link_row.add_suffix(open_button)
                 link_row.set_activatable_widget(open_button)
                 row.add_row(link_row)
@@ -513,9 +526,12 @@ def open_manual_downloads(parent, app_context):
             dir_row.set_title("Install folder")
             dir_row.set_subtitle(DownloadManager.model_directory(arch, selectable))
             dir_button = Gtk.Button(label="Open", valign=Gtk.Align.CENTER)
+            set_icon_button_a11y(dir_button, OPEN_INSTALL_FOLDER_HINT)
             dir_button.connect(
                 "clicked",
-                lambda _b, d=DownloadManager.model_directory(arch, selectable): webbrowser.open(f"file://{d}"),
+                lambda _b, d=DownloadManager.model_directory(arch, selectable): open_folder_in_file_manager(
+                    parent, d
+                ),
             )
             dir_row.add_suffix(dir_button)
             row.add_row(dir_row)

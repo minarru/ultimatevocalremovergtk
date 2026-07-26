@@ -155,7 +155,7 @@ class LogPanel(Gtk.Box):
         self.expand_button.connect("toggled", self._on_expand_toggled)
         action_row.append(self.expand_button)
 
-        self._start_button = Gtk.Button(label="Start Processing", hexpand=True)
+        self._start_button = Gtk.Button(label="_Start Processing", use_underline=True, hexpand=True)
         self._start_button.add_css_class("suggested-action")
         self._start_button.set_valign(Gtk.Align.CENTER)
         action_row.append(self._start_button)

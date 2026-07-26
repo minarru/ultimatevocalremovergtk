@@ -513,7 +513,11 @@ class RunController:
         self._window.toast_overlay.add_toast(toast)
 
     def _on_open_output_folder(self, _toast: Adw.Toast, output_dir: str) -> None:
-        open_folder_in_file_manager(self._window, output_dir)
+        open_folder_in_file_manager(
+            self._window,
+            output_dir,
+            on_error=self._window.toast,
+        )
 
     def _send_completion_notification(self, output_dir: str) -> None:
         title = _NOTIFY_COMPLETE_TITLE.format(label=self._run_label)
@@ -708,12 +712,15 @@ class RunController:
             page.set_sensitive(sensitive)
 
     def _set_edit_actions_sensitive(self, sensitive: bool) -> None:
-        for name in ("settings", "view_inputs", "model_options"):
+        for name in ("settings", "view_inputs", "model_options", "download"):
             action = self._window.lookup_action(name)
             if action is not None:
                 action.set_enabled(sensitive)
         if sensitive:
             self._window._sync_model_options_action()
+            deferred = getattr(self._window, "_deferred_model_refresh", None)
+            if deferred is not None:
+                self._window._apply_model_refresh(source=deferred)
 
     def refresh_start_readiness(self) -> Optional[str]:
         """Synchronize Start sensitivity, tooltip and accessibility description."""
