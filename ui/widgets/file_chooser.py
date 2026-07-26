@@ -11,13 +11,15 @@ from typing import AbstractSet, Callable, List, Optional, Sequence
 
 from gi.repository import Adw, Gdk, GLib, Gtk
 
+from core.audio_formats import expand_audio_paths
+
 from ..help_text import (
     CLEAR_INPUT_FILES_HINT,
     REMOVE_FROM_LIST_HINT,
     SELECT_INPUT_FILES_HINT,
     SELECT_OUTPUT_FOLDER_HINT,
 )
-from ..hints import set_icon_button_a11y, set_tooltip
+from ..hints import set_icon_button_a11y
 from ..markup import set_row_subtitle, set_row_title
 from ..shared_settings import (
     INPUT_FILES_WARN,
@@ -25,6 +27,11 @@ from ..shared_settings import (
     format_input_sanitize_toasts,
     input_paths_blocked_reason,
     sanitize_input_paths,
+)
+from .file_dialogs import (
+    audio_open_dialog,
+    folder_dialog,
+    is_dialog_dismissed,
 )
 
 _AUDIO_HINT = "audio-x-generic-symbolic"
@@ -41,6 +48,10 @@ def merge_input_paths(existing: Sequence[str], added: Sequence[str]) -> List[str
     return merged
 
 
+# Re-export for call sites / tests that historically imported from here.
+expand_dropped_paths = expand_audio_paths
+
+
 class InputFilesRow(Adw.ExpanderRow):
     """Expandable row listing the selected input audio file(s) with drop support.
 
@@ -53,12 +64,17 @@ class InputFilesRow(Adw.ExpanderRow):
         self,
         on_changed: Callable[[], None],
         on_toast: Optional[Callable[[str], None]] = None,
+        *,
+        accept_any_getter: Optional[Callable[[], bool]] = None,
+        initial_folder_getter: Optional[Callable[[], Optional[str]]] = None,
     ):
         super().__init__(title="Input")
         if hasattr(self, "set_use_markup"):
             self.set_use_markup(False)
         self._on_changed = on_changed
         self._on_toast = on_toast
+        self._accept_any_getter = accept_any_getter
+        self._initial_folder_getter = initial_folder_getter
         self.paths: List[str] = []
         self._file_rows: List[Gtk.Widget] = []
 
@@ -84,6 +100,24 @@ class InputFilesRow(Adw.ExpanderRow):
         self.add_controller(drop)
 
         self._refresh()
+
+    def _accept_any(self) -> bool:
+        if self._accept_any_getter is None:
+            return False
+        try:
+            return bool(self._accept_any_getter())
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _initial_folder(self) -> Optional[str]:
+        if self.paths:
+            return os.path.dirname(self.paths[0]) or None
+        if self._initial_folder_getter is not None:
+            try:
+                return self._initial_folder_getter()
+            except Exception:  # noqa: BLE001
+                return None
+        return None
 
     def _on_drop_enter(self, _target: Gtk.DropTarget, _x: float, _y: float) -> Gdk.DragAction:
         self.add_css_class("drop-highlight")
@@ -175,13 +209,19 @@ class InputFilesRow(Adw.ExpanderRow):
             self.set_paths([])
 
     def _on_clicked(self, _button: Gtk.Button) -> None:
-        dialog = Gtk.FileDialog(title="Select Audio Files")
+        dialog = audio_open_dialog(
+            "Select Audio Files",
+            accept_any=self._accept_any(),
+            initial=self._initial_folder(),
+        )
         dialog.open_multiple(self.get_root(), None, self._on_open_finished)
 
     def _on_open_finished(self, dialog: Gtk.FileDialog, result) -> None:
         try:
             files = dialog.open_multiple_finish(result)
-        except GLib.Error:
+        except GLib.Error as exc:
+            if not is_dialog_dismissed(exc):
+                self._emit_toast(f"Couldn't open files: {exc.message}")
             return
         paths = [files.get_item(i).get_path() for i in range(files.get_n_items())]
         if paths:
@@ -193,8 +233,10 @@ class InputFilesRow(Adw.ExpanderRow):
             files = value.get_files()
         except AttributeError:
             return False
-        paths = [f.get_path() for f in files if f.get_path() and os.path.isfile(f.get_path())]
+        raw = [f.get_path() for f in files if f.get_path()]
+        paths = expand_dropped_paths(raw, accept_any=self._accept_any())
         if not paths:
+            self._emit_toast("No audio files found in the drop")
             return False
         self.set_paths(merge_input_paths(self.paths, paths))
         return True
@@ -203,15 +245,16 @@ class InputFilesRow(Adw.ExpanderRow):
 class OutputFolderRow(Adw.ActionRow):
     """Row holding the export directory with drop support."""
 
-    def __init__(self, on_changed: Callable[[], None]):
+    def __init__(self, on_changed: Callable[[], None], on_toast: Optional[Callable[[str], None]] = None):
         super().__init__(title="Output folder", icon_name="folder-symbolic")
         if hasattr(self, "set_use_markup"):
             self.set_use_markup(False)
         self._on_changed = on_changed
+        self._on_toast = on_toast
         self.path: str = ""
 
         button = Gtk.Button(icon_name="document-open-symbolic", valign=Gtk.Align.CENTER)
-        set_tooltip(button, SELECT_OUTPUT_FOLDER_HINT)
+        set_icon_button_a11y(button, SELECT_OUTPUT_FOLDER_HINT)
         button.add_css_class("flat")
         button.connect("clicked", self._on_clicked)
         self.add_suffix(button)
@@ -224,6 +267,10 @@ class OutputFolderRow(Adw.ActionRow):
         self.add_controller(drop)
 
         self._refresh_subtitle()
+
+    def _emit_toast(self, message: str) -> None:
+        if self._on_toast is not None:
+            self._on_toast(message)
 
     def _on_drop_enter(self, _target: Gtk.DropTarget, _x: float, _y: float) -> Gdk.DragAction:
         self.add_css_class("drop-highlight")
@@ -250,18 +297,23 @@ class OutputFolderRow(Adw.ActionRow):
             return
         reason = export_path_blocked_reason(self.path)
         if reason and self.path:
-            set_row_subtitle(self, f"Folder not found — {self.path}")
+            if "writable" in reason.lower():
+                set_row_subtitle(self, f"Folder not writable — {self.path}")
+            else:
+                set_row_subtitle(self, f"Folder not found — {self.path}")
             return
         set_row_subtitle(self, self.path)
 
     def _on_clicked(self, _button: Gtk.Button) -> None:
-        dialog = Gtk.FileDialog(title="Select Output Folder")
+        dialog = folder_dialog("Select Output Folder", initial=self.path or None)
         dialog.select_folder(self.get_root(), None, self._on_select_finished)
 
     def _on_select_finished(self, dialog: Gtk.FileDialog, result) -> None:
         try:
             folder = dialog.select_folder_finish(result)
-        except GLib.Error:
+        except GLib.Error as exc:
+            if not is_dialog_dismissed(exc):
+                self._emit_toast(f"Couldn't select folder: {exc.message}")
             return
         if folder and folder.get_path():
             self.set_path(folder.get_path())
