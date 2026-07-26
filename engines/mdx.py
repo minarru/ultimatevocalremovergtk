@@ -22,7 +22,7 @@ from onnx2pytorch import ConvertModel
 from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
-from core.torch_checkpoint import load_torch_checkpoint
+from core.torch_checkpoint import as_model_state_dict, load_torch_checkpoint
 from core.model_stem_semantics import is_vocal_target
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
@@ -71,7 +71,7 @@ from .orchestration import process_secondary_model
 
 
 def _load_torch_checkpoint(path: str):
-    return load_torch_checkpoint(path, map_location="cpu")
+    return as_model_state_dict(load_torch_checkpoint(path, map_location="cpu"))
 
 
 def _mdx_c_hop_length(config) -> int:
