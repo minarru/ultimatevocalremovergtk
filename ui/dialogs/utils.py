@@ -6,6 +6,35 @@ from typing import Any
 from gi.repository import Adw, GLib, Gtk
 
 
+class CollectInvalid(Exception):
+    """Raised by a form ``collect()`` when input is invalid and the dialog should stay open.
+
+    ``message`` is shown as a toast; ``widget`` (when provided) receives the
+    ``error`` CSS class so the offending field is highlighted.
+    """
+
+    def __init__(self, message: str, widget: Gtk.Widget | None = None):
+        super().__init__(message)
+        self.message = message
+        self.widget = widget
+
+
+def close_on_escape(window: Gtk.Window) -> None:
+    """Bind Escape so secondary ``Adw.Window``s close like ``Adw.Dialog``s."""
+    if getattr(window, "_uvr_close_on_escape", False):
+        return
+    controller = Gtk.ShortcutController()
+    controller.set_scope(Gtk.ShortcutScope.LOCAL)
+    controller.add_shortcut(
+        Gtk.Shortcut.new(
+            Gtk.ShortcutTrigger.parse_string("Escape"),
+            Gtk.CallbackAction.new(lambda *_: window.close() or True),
+        )
+    )
+    window.add_controller(controller)
+    window._uvr_close_on_escape = True
+
+
 def _iter_widgets(root: Gtk.Widget):
     yield root
     child = root.get_first_child()
@@ -133,7 +162,30 @@ def run_blocking_dialog(
 
     def on_save() -> None:
         if collect is not None:
-            state["result"] = collect()
+            try:
+                result = collect()
+            except CollectInvalid as exc:
+                if exc.widget is not None:
+                    exc.widget.add_css_class("error")
+                toast = Adw.Toast.new(exc.message)
+                # Prefer a toast overlay on the dialog content when present.
+                overlay = getattr(dialog, "_uvr_toast_overlay", None)
+                if overlay is not None:
+                    overlay.add_toast(toast)
+                else:
+                    # Fall back: keep dialog open and surface via parent if possible.
+                    parent_toast = getattr(parent, "add_toast", None) if parent else None
+                    if callable(parent_toast):
+                        parent_toast(toast)
+                    elif parent is not None and callable(getattr(parent, "toast", None)):
+                        parent.toast(exc.message)
+                return
+            if result is None:
+                # Distinct from CollectInvalid: cancelled / no selection.
+                state["result"] = None
+                dialog.close()
+                return
+            state["result"] = result
         dialog.close()
 
     dialog.connect("closed", lambda *_: finish())

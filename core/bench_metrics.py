@@ -8,6 +8,8 @@ from typing import Iterable, Optional
 
 import numpy as np
 
+from .audio_formats import AUDIO_EXTENSIONS
+
 
 @dataclass
 class StemDiff:
@@ -50,9 +52,6 @@ class StemCompareReport:
         }
 
 
-_AUDIO_EXTS = (".wav", ".flac", ".aiff", ".aif", ".ogg", ".mp3")
-
-
 def list_stem_basenames(directory: str) -> set[str]:
     """Return audio stem basenames (files only) under ``directory`` (non-recursive)."""
     if not os.path.isdir(directory):
@@ -61,7 +60,7 @@ def list_stem_basenames(directory: str) -> set[str]:
         name
         for name in os.listdir(directory)
         if os.path.isfile(os.path.join(directory, name))
-        and name.lower().endswith(_AUDIO_EXTS)
+        and name.lower().endswith(AUDIO_EXTENSIONS)
     }
 
 
