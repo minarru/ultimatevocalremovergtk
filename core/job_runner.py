@@ -294,14 +294,12 @@ class JobRunner:
 
         self._is_stopped = False
         self._is_paused = False
-        prep_started = time.perf_counter()
-        prepared_paths = prepare_input_paths(self.settings, input_paths)
-        debug_elapsed("worker", "prepare_input_paths", prep_started, files=len(prepared_paths))
+        paths = list(input_paths)
         self._thread = KThread(
             target=self._run,
-            args=(prepared_paths, callbacks),
+            args=(paths, callbacks),
         )
-        debug("worker", f"KThread start files={len(prepared_paths)}")
+        debug("worker", f"KThread start files={len(paths)}")
         self._thread.start()
 
     def start_ensemble(self, input_paths: Sequence[str], callbacks: JobCallbacks) -> None:
@@ -312,15 +310,43 @@ class JobRunner:
 
         self._is_stopped = False
         self._is_paused = False
-        prep_started = time.perf_counter()
-        prepared_paths = prepare_input_paths(self.settings, input_paths)
-        debug_elapsed("worker", "prepare_input_paths", prep_started, files=len(prepared_paths))
+        paths = list(input_paths)
         self._thread = KThread(
             target=self._run_ensemble,
-            args=(prepared_paths, callbacks),
+            args=(paths, callbacks),
         )
-        debug("worker", f"KThread ensemble start files={len(prepared_paths)}")
+        debug("worker", f"KThread ensemble start files={len(paths)}")
         self._thread.start()
+
+    def _prepare_paths_for_run(
+        self, input_paths: List[str], callbacks: JobCallbacks
+    ) -> List[str]:
+        """Build sample clips on the worker thread and report any fallbacks."""
+        if self.settings.get("model_sample_mode"):
+            callbacks.console("Preparing sample clips...\n")
+            callbacks.progress(0.0, detail="Preparing sample clips")
+
+        def on_fallback(path: str, exc: Exception) -> None:
+            name = os.path.basename(path)
+            message = (
+                f'Sample clip failed for "{name}"; processing the full file '
+                f"({type(exc).__name__}: {exc})"
+            )
+            callbacks.console(f"{message}\n")
+            try:
+                # Lazy import: keep core free of a hard ui dependency at load time.
+                from ui import errorlog as errorlog_mod
+
+                errorlog_mod.log_error("Sample mode", exc, context=message)
+            except Exception:  # noqa: BLE001 - logging must not abort the run
+                debug("model", f"sample clip fallback log failed: {exc}")
+
+        prep_started = time.perf_counter()
+        prepared = prepare_input_paths(
+            self.settings, input_paths, on_fallback=on_fallback
+        )
+        debug_elapsed("worker", "prepare_input_paths", prep_started, files=len(prepared))
+        return prepared
 
     def pause(self) -> None:
         """Pause the worker between files/models (e.g. while a confirm dialog is open)."""
@@ -513,6 +539,7 @@ class JobRunner:
         time_elapsed = lambda: f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
 
         try:
+            input_paths = self._prepare_paths_for_run(input_paths, callbacks)
             export_path = self.settings.get("export_path")
             if not export_path:
                 raise ValueError("export_path is required")
@@ -764,6 +791,7 @@ class JobRunner:
         time_elapsed = lambda: f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
 
         try:
+            input_paths = self._prepare_paths_for_run(input_paths, callbacks)
             models = assemble_model_data(self.settings, self.repo, arch_type=ENSEMBLE_MODE)
             if len(models) <= 1:
                 raise RuntimeError("Select at least two models to run an ensemble")

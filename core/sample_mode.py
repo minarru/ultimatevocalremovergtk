@@ -1,12 +1,16 @@
 """Sample-clip generation when model sample mode is enabled."""
 
+from __future__ import annotations
+
 import hashlib
 import os
-from typing import List, Sequence
+from typing import Callable, List, Optional, Sequence
 
 from . import paths
 from .debug_log import debug
 from .settings import SettingsModel
+
+FallbackCallback = Callable[[str, Exception], None]
 
 
 def _clip_cache_path(source: str, duration: int) -> str:
@@ -16,8 +20,18 @@ def _clip_cache_path(source: str, duration: int) -> str:
     return os.path.join(paths.SAMPLE_CLIP_PATH, f"{stem}_{duration}s_{digest}{ext or '.wav'}")
 
 
-def prepare_input_paths(settings: SettingsModel, input_paths: Sequence[str]) -> List[str]:
-    """Return paths to process, using cached sample clips when sample mode is on."""
+def prepare_input_paths(
+    settings: SettingsModel,
+    input_paths: Sequence[str],
+    *,
+    on_fallback: Optional[FallbackCallback] = None,
+) -> List[str]:
+    """Return paths to process, using cached sample clips when sample mode is on.
+
+    When clip generation fails for a file, the original path is used and
+    ``on_fallback`` is invoked (if provided) so callers can surface the
+    fallback instead of silently turning a preview into a full-length run.
+    """
     if not settings.get("model_sample_mode"):
         return list(input_paths)
 
@@ -48,7 +62,13 @@ def prepare_input_paths(settings: SettingsModel, input_paths: Sequence[str]) -> 
             else:
                 sf.write(clip_path, audio.T, sample_rate)
             prepared.append(clip_path)
-        except Exception:
-            debug("model", f"sample clip fallback to full file={os.path.basename(path)!r}")
+        except Exception as exc:  # noqa: BLE001 - reported via on_fallback
+            debug(
+                "model",
+                f"sample clip fallback to full file={os.path.basename(path)!r} "
+                f"error={type(exc).__name__}: {exc}",
+            )
+            if on_fallback is not None:
+                on_fallback(path, exc)
             prepared.append(path)
     return prepared
