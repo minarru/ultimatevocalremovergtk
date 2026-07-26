@@ -28,6 +28,8 @@ class AppContext:
         self._repo = None
         self._runner = None
         self._get_dialog_parent: Optional[Callable[[], object]] = None
+        #: Session cache for :func:`core.gpu.list_gpu_devices` (None until probed).
+        self.gpu_devices = None
         self._unrecognized_hook_installed = False
         #: Ephemeral: paths that failed the last Verify Inputs run (not persisted).
         self.unreadable_input_paths: set[str] = set()
@@ -84,6 +86,19 @@ class AppContext:
         except OSError as exc:
             debug("settings", f"save_settings failed error={type(exc).__name__}: {exc}")
             raise
+
+    def try_save_settings(self, *, trigger: str = "unspecified") -> Optional[str]:
+        """Save settings, returning an error message instead of raising on failure.
+
+        Call sites on the GTK main thread should prefer this over
+        :meth:`save_settings` so a full/read-only home directory surfaces a
+        toast rather than silently aborting a ``clicked`` handler.
+        """
+        try:
+            self.save_settings(trigger=trigger)
+        except OSError as exc:
+            return f"Couldn't save settings: {exc}"
+        return None
 
     def stop_all_workers(self, *, force: bool = False) -> None:
         """Cooperatively stop (or force-terminate) every started worker."""
