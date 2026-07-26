@@ -103,12 +103,30 @@ class DownloadQueue:
                     break
         self._notify()
 
+    def retry(self, item_id: str) -> bool:
+        """Re-queue a failed item. Returns True when the item was requeued."""
+        with self._lock:
+            for item in self._items:
+                if item.item_id != item_id or item.status != STATUS_FAILED:
+                    continue
+                item.status = STATUS_QUEUED
+                item.progress = 0.0
+                item.detail = ""
+                item.stop_event = threading.Event()
+                break
+            else:
+                return False
+        self._notify()
+        self._ensure_worker()
+        return True
+
     def clear_finished(self) -> None:
+        """Remove successful / cancelled items; keep failed rows for retry."""
         with self._lock:
             self._items = [
                 item
                 for item in self._items
-                if item.status in ACTIVE_STATUSES
+                if item.status in ACTIVE_STATUSES or item.status == STATUS_FAILED
             ]
         self._notify()
 
@@ -195,7 +213,20 @@ class DownloadQueue:
                 return False
             debug("download", f"queue failed id={item.item_id} err={type(exc).__name__}: {exc}")
             item.status = STATUS_FAILED
-            item.detail = type(exc).__name__
+            detail = str(exc).strip() or type(exc).__name__
+            if type(exc).__name__ not in detail:
+                detail = f"{type(exc).__name__}: {detail}"
+            item.detail = detail
+            try:
+                from ui.errorlog import log_error
+
+                log_error(
+                    "Download",
+                    exc,
+                    context=f"selection={item.selection!r} arch={item.arch_type!r}",
+                )
+            except Exception:  # noqa: BLE001 - logging must not abort the queue
+                pass
             self._notify()
             return False
 

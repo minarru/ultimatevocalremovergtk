@@ -148,9 +148,21 @@ class RowButtonStateTests(unittest.TestCase):
         self.assertFalse(sensitive)
 
     def test_failed_icon(self) -> None:
+        from ui.widgets.download_queue_icons import ICON_RETRY
+
         icon, sensitive = _row_button_state(_item("a", status="failed"))
-        self.assertEqual(icon, ICON_FAILED)
-        self.assertFalse(sensitive)
+        self.assertEqual(icon, ICON_RETRY)
+        self.assertTrue(sensitive)
+
+    def test_skips_auto_clear_when_failed(self) -> None:
+        summary = summarize_queue([_item("a", status="failed")])
+        self.assertFalse(
+            should_schedule_remove_finished(
+                summary,
+                popover_visible=False,
+                defer_remove_on_close=False,
+            )
+        )
 
 
 class AutoDismissSchedulingTests(unittest.TestCase):

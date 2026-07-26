@@ -12,6 +12,9 @@ from gi.repository import GLib, Gtk
 
 from bundled.constants import DONE
 
+#: Soft cap matching typical terminal scrollback; trim from the head when exceeded.
+_CONSOLE_LINE_CAP = 5000
+
 
 class ConsoleView(Gtk.ScrolledWindow):
     #: Matches revealer slide duration in :class:`ui.widgets.log_panel.LogPanel`.
@@ -83,11 +86,22 @@ class ConsoleView(Gtk.ScrolledWindow):
 
         end = self._buffer.get_end_iter()
         self._buffer.insert(end, text)
+        self._trim_to_line_cap()
         if self._defer_scroll:
             self._reset_scroll()
         else:
             self._scroll_to_end()
         self._notify_changed()
+
+    def _trim_to_line_cap(self) -> None:
+        line_count = self._buffer.get_line_count()
+        if line_count <= _CONSOLE_LINE_CAP:
+            return
+        # Drop whole lines from the head; leave the newest cap lines.
+        drop = line_count - _CONSOLE_LINE_CAP
+        start = self._buffer.get_start_iter()
+        end = self._buffer.get_iter_at_line(drop)
+        self._buffer.delete(start, end)
 
     def clear(self) -> None:
         self._buffer.set_text("")

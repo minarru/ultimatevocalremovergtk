@@ -34,7 +34,7 @@ class DownloadCenterStateTests(unittest.TestCase):
 
     def _make_bare_window(self):
         from core.model_scores import PURPOSE_ALL, SORT_NAME
-        from gi.repository import Gtk
+        from gi.repository import Adw, Gtk
         from ui.download_center import _NETWORKS, DownloadCenterWindow
 
         # Derived from _NETWORKS rather than hardcoded so adding a network tab
@@ -53,7 +53,7 @@ class DownloadCenterStateTests(unittest.TestCase):
         win._size_lookup_ids = {}
         win._search_entries = {}
         win._list_boxes = {arch: Gtk.ListBox() for arch in arches}
-        win._empty_labels = {arch: Gtk.Label() for arch in arches}
+        win._empty_pages = {arch: Adw.StatusPage() for arch in arches}
         win.download_button = Gtk.Button()
         win.status_label = Gtk.Label()
         win.stack = Gtk.Stack()
