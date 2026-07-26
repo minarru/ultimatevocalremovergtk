@@ -23,6 +23,9 @@ from ..help_text import (
 )
 from ..hints import set_icon_button_a11y
 from ..markup import set_row_subtitle, set_row_title
+from core.audio_formats import expand_audio_paths
+
+from ..widgets.file_dialogs import audio_open_dialog, is_dialog_dismissed
 
 
 def pair_count_state(left_count: int, right_count: int) -> tuple[bool, str]:
@@ -161,13 +164,17 @@ class _FileColumn(Gtk.Box):
     # -- Input -----------------------------------------------------------------
 
     def _on_add_clicked(self, _button: Gtk.Button) -> None:
-        dialog = Gtk.FileDialog(title="Select Audio Files")
+        initial = os.path.dirname(self.paths[0]) if self.paths else None
+        dialog = audio_open_dialog("Select Audio Files", initial=initial)
         dialog.open_multiple(self.get_root(), None, self._on_open_finished)
 
     def _on_open_finished(self, dialog: Gtk.FileDialog, result) -> None:
         try:
             files = dialog.open_multiple_finish(result)
-        except GLib.Error:
+        except GLib.Error as exc:
+            if not is_dialog_dismissed(exc):
+                # DualBatchDialog may toast via parent if available later.
+                pass
             return
         paths = [files.get_item(i).get_path() for i in range(files.get_n_items())]
         self.add_paths([p for p in paths if p])
@@ -177,7 +184,8 @@ class _FileColumn(Gtk.Box):
             files = value.get_files()
         except AttributeError:
             return False
-        paths = [f.get_path() for f in files if f.get_path() and os.path.isfile(f.get_path())]
+        raw = [f.get_path() for f in files if f.get_path()]
+        paths = expand_audio_paths(raw)
         if not paths:
             return False
         self.add_paths(paths)
