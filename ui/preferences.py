@@ -15,7 +15,8 @@ Covered (Phase 2):
   holds settings with no per-run meaning.
 * General process settings: test-mode / model-name / model-folder / accept-any-
   input / notification-chimes / normalization toggles.
-* Hardware: GPU conversion + CUDA device selection.
+* Hardware: CUDA device selection (gated on GPU conversion, set on the
+  processing pages) + Windows DirectML toggle.
 * Sample mode + sample-clip duration.
 
 Saved-settings profiles mirror ``UVR.py``: each profile is a JSON file under
