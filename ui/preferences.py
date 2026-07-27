@@ -10,7 +10,9 @@ Covered (Phase 2):
 
 * General: help-hints toggle, reset-to-default (with confirmation) and
   saved-settings profiles (save / load / remove).
-* Audio format: ``save_format`` and the WAV bit-depth / MP3 bitrate / FLAC bit-depth sub-options.
+* Output format and its quality sub-option live on the Separation / Ensemble /
+  Audio Tools pages (``ui/widgets/format_row.py``), not here — this dialog only
+  holds settings with no per-run meaning.
 * General process settings: test-mode / model-name / model-folder / accept-any-
   input / notification-chimes / normalization toggles.
 * Hardware: GPU conversion + CUDA device selection.
@@ -37,16 +39,10 @@ from gi.repository import Adw, GLib, Gtk
 from bundled.constants import (
     DEFAULT,
     DEFAULT_DATA,
-    FLAC,
-    FLAC_BIT_DEPTHS,
     GPU_DEVICE_NUM_OPTS,
     IS_CUDA_SELECT_HELP,
-    MP3,
-    MP3_BIT_RATES,
     REG_SAVE_INPUT,
     SAMPLE_MODE_CHECKBOX,
-    WAV,
-    WAV_TYPE,
 )
 from core.export_naming import preview_output_name
 from core.platform import system_name
@@ -56,17 +52,15 @@ from .application import apply_color_scheme
 from .dispatch import idle_on_main
 from .help_text import (
     AMPLIFICATION_THRESHOLD_HELP,
-    IS_AUTOCAST_HELP,
     IS_MATCH_MIX_LEVEL_HELP,
     IS_NORMALIZATION_HELP,
     IS_PREVENT_EXPORT_CLIPPING_HELP,
     LONG_FILE_CHUNK_HELP,
     LONG_FILE_CHUNK_OVERLAP_HELP,
     REMOVE_PROFILE_HINT,
-    FLAC_BIT_DEPTH_HINT,
 )
 from .hints import set_icon_button_a11y, set_tooltip
-from .widgets.rows import get_combo_value, make_combo_row, set_combo_value, set_row_icon
+from .widgets.rows import get_combo_value, make_combo_row, set_combo_value
 
 _PERSIST_DEBOUNCE_MS = 250
 
@@ -169,7 +163,6 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.set_title("Settings")
 
         self.add(self._build_general_page())
-        self.add(self._build_audio_page())
         self.add(self._build_processing_page())
 
         self._reload_widgets()
@@ -258,31 +251,6 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
         return page
 
-    def _build_audio_page(self) -> Adw.PreferencesPage:
-        page = Adw.PreferencesPage(title="Audio", icon_name="audio-x-generic-symbolic")
-
-        group = Adw.PreferencesGroup(title="Audio format settings")
-
-        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="waveform-symbolic")
-        self.format_row.connect("notify::selected", self._on_format_changed)
-        group.add(self.format_row)
-
-        self.wav_type_row = make_combo_row("WAV type", WAV_TYPE)
-        self.wav_type_row.connect("notify::selected", self._on_combo_changed, "wav_type_set")
-        group.add(self.wav_type_row)
-
-        self.mp3_bit_row = make_combo_row("MP3 bitrate", MP3_BIT_RATES)
-        self.mp3_bit_row.connect("notify::selected", self._on_combo_changed, "mp3_bit_set")
-        group.add(self.mp3_bit_row)
-
-        self.flac_bit_row = make_combo_row("FLAC bit depth", FLAC_BIT_DEPTHS)
-        self.flac_bit_row.connect("notify::selected", self._on_combo_changed, "flac_bit_set")
-        set_tooltip(self.flac_bit_row, FLAC_BIT_DEPTH_HINT)
-        group.add(self.flac_bit_row)
-
-        page.add(group)
-        return page
-
     def _build_processing_page(self) -> Adw.PreferencesPage:
         page = Adw.PreferencesPage(title="Processing", icon_name="applications-system-symbolic")
 
@@ -338,22 +306,6 @@ class PreferencesDialog(Adw.PreferencesDialog):
         page.add(process_group)
 
         hardware_group = Adw.PreferencesGroup(title="Hardware")
-        self.gpu_row = Adw.SwitchRow(
-            title="GPU conversion",
-            subtitle="Use GPU acceleration when available (CUDA, MPS, or DirectML)",
-        )
-        self.gpu_row.connect("notify::active", self._on_bool_changed, "is_gpu_conversion")
-        set_row_icon(self.gpu_row, "pci-card-symbolic")
-        hardware_group.add(self.gpu_row)
-
-        self.autocast_row = Adw.SwitchRow(
-            title="FP16 autocast",
-            subtitle="Faster VR/MDX/Roformer on modern NVIDIA GPUs",
-        )
-        self.autocast_row.connect("notify::active", self._on_bool_changed, "is_autocast")
-        set_row_icon(self.autocast_row, "emblem-system-symbolic")
-        set_tooltip(self.autocast_row, IS_AUTOCAST_HELP)
-        hardware_group.add(self.autocast_row)
 
         # Populate asynchronously — ``nvidia-smi`` can take up to ~2s.
         cached = getattr(self.context, "gpu_devices", None)
@@ -468,12 +420,6 @@ class PreferencesDialog(Adw.PreferencesDialog):
             )
             self.color_scheme_row.set_selected(scheme_index)
 
-            set_combo_value(self.format_row, self.settings.get("save_format", WAV))
-            set_combo_value(self.wav_type_row, self.settings.get("wav_type_set", "PCM_16"))
-            set_combo_value(self.mp3_bit_row, self.settings.get("mp3_bit_set", "320k"))
-            set_combo_value(self.flac_bit_row, self.settings.get("flac_bit_set", "16-bit"))
-            self._sync_format_rows()
-
             for key, row in self._process_switches.items():
                 row.set_active(bool(self.settings.get(key)))
             try:
@@ -486,12 +432,16 @@ class PreferencesDialog(Adw.PreferencesDialog):
             for key, row in self._notification_switches.items():
                 row.set_active(bool(self.settings.get(key, True)))
 
-            self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
-            self.autocast_row.set_active(bool(self.settings.get("is_autocast")))
             if hasattr(self, "directml_row"):
                 self.directml_row.set_active(bool(self.settings.get("is_use_directml")))
             if not set_combo_value(self.device_row, self.settings.get("device_set", DEFAULT)):
                 set_combo_value(self.device_row, DEFAULT)
+
+            from ui.shared_settings import gpu_dependent_enabled
+
+            self.device_row.set_sensitive(
+                gpu_dependent_enabled(self.settings.get("is_gpu_conversion"))
+            )
 
             self.sample_mode_row.set_active(bool(self.settings.get("model_sample_mode")))
             self.cleanup_ensemble_temps_row.set_active(
@@ -591,17 +541,6 @@ class PreferencesDialog(Adw.PreferencesDialog):
             return
         self.settings.set(key, value)
         self._persist()
-
-    def _on_format_changed(self, row, _pspec) -> None:
-        self._sync_format_rows()
-        self._on_combo_changed(row, _pspec, "save_format")
-        self._refresh_output_name_preview()
-
-    def _sync_format_rows(self) -> None:
-        output_format = get_combo_value(self.format_row) or WAV
-        self.wav_type_row.set_visible(output_format == WAV)
-        self.mp3_bit_row.set_visible(output_format == MP3)
-        self.flac_bit_row.set_visible(output_format == FLAC)
 
     def _on_duration_changed(self, row, _pspec) -> None:
         if self._loading:
