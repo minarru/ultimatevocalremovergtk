@@ -533,7 +533,7 @@ class MainWindow(Adw.ApplicationWindow):
         if not text:
             return
         self.console.get_clipboard().set(text)
-        self._toast(_LOG_COPIED_TOAST)
+        self.toast(_LOG_COPIED_TOAST)
 
     def _build_files_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Files")
@@ -701,7 +701,7 @@ class MainWindow(Adw.ApplicationWindow):
         if self.output_row.path and self.output_row.blocked_reason():
             self._stale_export_toast_shown = True
             idle_on_main(
-                lambda: self._toast("Saved output folder no longer exists — select a new folder")
+                lambda: self.toast("Saved output folder no longer exists — select a new folder")
             )
 
     def _maybe_notify_stale_inputs(self, result) -> None:
@@ -715,7 +715,7 @@ class MainWindow(Adw.ApplicationWindow):
         if not messages:
             return
         self._stale_inputs_toast_shown = True
-        idle_on_main(lambda: self._toast(" ".join(messages)))
+        idle_on_main(lambda: self.toast(" ".join(messages)))
 
     def _active_view(self):
         return self._current_view or self._views[0]
@@ -1077,7 +1077,6 @@ class MainWindow(Adw.ApplicationWindow):
             views=self._views,
             views_by_stack=self._views_by_stack,
             settings=self.settings,
-            on_toast=self.toast,
             context=context,
             active_method_key=self._active_view().method_key,
             selected_models=selected_models,
@@ -1100,6 +1099,3 @@ class MainWindow(Adw.ApplicationWindow):
     def toast(self, message: str) -> None:
         """Show a transient toast (public so the embedded pages can use it)."""
         self.toast_overlay.add_toast(Adw.Toast.new(message))
-
-    def _toast(self, message: str) -> None:
-        self.toast(message)

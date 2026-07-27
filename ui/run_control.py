@@ -151,7 +151,7 @@ class RunController:
         reason = target_blocked_reason(target)
         if reason is not None:
             debug("ui", f"handle_start blocked reason={reason!r}")
-            self._window._toast(reason)
+            self._window.toast(reason)
             return
 
         callbacks = gtk_job_callbacks(
@@ -649,7 +649,7 @@ class RunController:
             heading=f"{label} failed",
             exception=exc,
             formatted_log=formatted,
-            on_copied=lambda: window._toast("Report copied to clipboard"),
+            on_copied=lambda: window.toast("Report copied to clipboard"),
         )
 
     def _snapshot_error_context(self, target) -> dict:
