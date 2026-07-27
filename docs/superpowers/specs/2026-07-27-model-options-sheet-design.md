@@ -6,7 +6,7 @@ Status: approved (design), pending implementation plan
 ## Problem
 
 The global model-options sheet (`ui/model_options/sheet.py`) is a hand-built
-`Adw.Dialog` with three architecture tabs (VR, MDX-Net, Demucs). Four things
+`Adw.Dialog` with three architecture tabs (VR, MDX-Net, Demucs). Five things
 work badly:
 
 1. **Sizing.** The sheet tracks the parent window's width and resizes to match
@@ -14,23 +14,33 @@ work badly:
    options sheet has no reason to be as wide as the main window, and the
    machinery is ~45 lines that also drags in `parent_window_width`, which
    contains a live GTK4 bug (see "Out of scope").
-2. **Columns.** `build_columns_box()` is homogeneous, so the "Inference" group
-   sits beside "Extra models" at equal width regardless of content. Row counts
-   are lopsided: **VR has 6 inference rows, Demucs 4, MDX-Net 2**, while the
-   right column always holds 3 expanders (4 for Demucs) plus a maintenance row.
-   The MDX-Net tab renders two rows next to four.
-3. **Applicability signalling.** Non-applicable architectures are marked with a
+2. **Columns.** `build_columns_box()` is homogeneous, so "Inference" sits beside
+   "Extra models" at equal width regardless of content, at a 900px-wide dialog
+   — two 440px columns with a canyon between them. Row counts are lopsided:
+   **VR has 6 inference rows, Demucs 4, MDX-Net 2**, while the right column
+   holds 3 expanders (4 for Demucs).
+3. **Misplaced global settings.** The "Vocal splitter and deverb" expander is
+   built unconditionally for every view (`ui/views/base.py:717-734`) but edits
+   **unprefixed global keys** — `is_set_vocal_splitter`, `set_vocal_splitter`,
+   `is_save_inst_set_vocal_splitter`, `is_deverb_vocals`, `deverb_vocal_opt`.
+   It is therefore rendered three times over one set of values: changing it on
+   the VR tab silently changes the MDX-Net and Demucs tabs. The code
+   acknowledges this ("shared global options, surfaced per method") without
+   resolving it.
+4. **Applicability signalling.** Non-applicable architectures are marked with a
    dim `Gtk.Label` subtitle per page, and ensemble context with a second dim
    `Gtk.Label` banner. Both are bare labels styled `dim-label` — they read as
    incidental prose, not as state, and they are inconsistent with the real
    `Adw.Banner` used elsewhere in the window.
-4. **Disclosure.** The three expanders ("Secondary models", "Pre-process model",
-   "Vocal splitter and deverb") are collapsed and titled only. Nothing indicates
-   whether a section is on or what it is configured to do without opening it.
+5. **Disclosure.** The expanders are collapsed and titled only. Nothing
+   indicates whether a section is on, or what it is configured to do, without
+   opening it. Secondary models in particular always shows four stem-pair slots
+   (`voc_inst`, `other`, `bass`, `drums`) even when the primary model produces
+   two stems and three of them are meaningless.
 
 ## Decisions taken
 
-Gathered before design (recorded here so the plan does not relitigate them):
+Gathered before design; the plan does not relitigate them.
 
 - Scope is **one rework**, covering layout, clarity, and information
   architecture together.
@@ -41,8 +51,10 @@ Gathered before design (recorded here so the plan does not relitigate them):
   `Adw.PreferencesDialog`, **no search**.
 - Disclosure is **live state subtitles plus auto-expand of enabled sections**.
 - "Change model defaults" gets its **own group at the bottom of each tab**.
-- The layout is **single column at every width** (see §2 for the rationale;
-  a width-conditional split was considered and rejected).
+- **Vocal splitter + deverb moves to the main view**, into the "Processing"
+  option-row group.
+- **Secondary models hides its non-applicable stem slots** for ≤2-stem models.
+- The sheet keeps **two columns**, fixed rather than removed (see §2).
 
 ## Design
 
@@ -58,60 +70,201 @@ the header title widget. Change:
   only job and is removed with them.
 - **Height follows content**, bounded to 90% of the parent's allocated height.
   Replaces the fixed `_SHEET_WIDE_HEIGHT = 560`. When the parent height is
-  unavailable (unrealized, or 0), fall back to the current 560.
-- Constants `_SHEET_WIDE_WIDTH`, `_SHEET_WIDE_HEIGHT` and `_NARROW_BREAKPOINT`
-  are replaced by `_SHEET_WIDTH = 760`, `_SHEET_FALLBACK_HEIGHT = 560` and
+  unavailable (unrealized, or 0), fall back to 560.
+- Constants `_SHEET_WIDE_WIDTH`, `_SHEET_WIDE_HEIGHT` are replaced by
+  `_SHEET_WIDTH = 760`, `_SHEET_FALLBACK_HEIGHT = 560` and
   `_SHEET_MAX_HEIGHT_FRACTION = 0.9`.
 
 Consequence worth stating: the sheet stops calling `parent_window_width`, so it
 no longer reaches the `get_default_width()` crash path. That bug still exists
 for `ui/errorlog.py` and `ui/download.py` and is **not** fixed here.
 
-### 2. Single-column layout
+### 2. Two non-homogeneous columns
 
-Each tab page becomes a `Gtk.ScrolledWindow` wrapping an `Adw.Clamp`
-(`maximum-size` 700, `tightening-threshold` 600) containing a vertical
-`Gtk.Box` of the three groups in order:
+The defect was never "two columns" — it was a *homogeneous* split at a *900px*
+dialog. At the 760 cap with columns sized to their content, the layout is:
 
 ```
-Inference
-Extra models
-Model maintenance
+col_start            col_end
+  Inference            Extra models
+                       Model maintenance
 ```
 
-`build_columns_box` / `set_columns_narrow` are no longer used by this file
-(they remain in `ui/widgets/columns.py` for other callers), and
-`_sync_narrow_layout`, `_tab_columns` and the `notify::content-width` handler
-are deleted.
+`build_columns_box()` is replaced by a non-homogeneous equivalent for this
+surface: `Gtk.Box(HORIZONTAL, spacing=18)` with both children `hexpand=True`
+but `homogeneous=False`, so each column takes its natural width. Below ~700px
+of content width the columns stack vertically (retaining the existing
+`set_columns_narrow`-style behaviour, driven off `notify::content-width`).
 
-Rationale for single column at all widths, over a width-conditional split:
+`_NARROW_BREAKPOINT` becomes `_STACK_BREAKPOINT = 700`, matched to the sheet's
+own width rather than the main window's 880sp.
 
-- A conditional split engages on wide screens, which is exactly where MDX-Net
-  shows 2 rows beside 4 expanders. Gating on width hides the imbalance on small
-  screens rather than fixing it.
-- The groups are not peers. "Extra models" operates on the primary model's
-  output; stacking expresses that order, side-by-side implies independence.
-- §4 expands sections dynamically. In two columns, expanding a right-column row
-  grows only that column and the page lurches asymmetrically.
-- Every other settings surface in the app (Preferences) is single-column
-  clamped, as are libadwaita preference pages generally.
+**Why not single column.** The main window defaults to **1040×720**
+(`ui/window.py:189-190`), leaving ~578px of dialog content height after the
+header bar and insets. Single column would put VR at ~765px and Demucs at
+~710px — both scrolling on open with nothing enabled, which is worse than the
+status quo. Two columns fit every tab (see §7).
 
-Height cost is acceptable: the tallest tab (VR) is roughly 730px with all
-expanders collapsed, which fits without scrolling on a maximized window at
-1080p and scrolls slightly on a ~900px-tall window. MDX-Net is around 480px.
+**Why not all-expanded-and-rearranged.** Fully expanding every section roughly
+doubles content height (VR ~1480px, Demucs ~1600px). An `Adw.Dialog` cannot
+exceed its parent, so 578px is a hard ceiling; no arrangement closes a 2.5×
+gap, and three columns at a 760 cap gives ~240px each, too narrow for combo
+rows carrying long model names. Reflowing groups between columns on expand
+would also make them jump mid-interaction, and GTK has no masonry layout.
+Collapsed-by-default is the mechanism that makes the sheet fit at all.
 
-### 3. Applicability signalling
+### 3. Vocal splitter and deverb moves to the main view
+
+Remove the `voc_split_expander` construction from `_build_secondary_section`
+in `ui/views/base.py` entirely. Add it instead to the **"Processing"
+`Adw.PreferencesGroup`** on the two surfaces that run separations:
+
+- `MainWindow._build_shared_group` (`ui/window.py:601`) — the Separation page
+- `EnsembleWindow`'s equivalent (`ui/ensemble/window.py:366`)
+
+Audio Tools does not run separations and does not get it.
+
+Both surfaces edit the same global keys. This is the existing, correct pattern:
+`OutputFormatRow` already appears in all three Processing groups editing the
+same global `save_format`.
+
+**Form.** One `Adw.ExpanderRow` titled "Vocal splitter and deverb", carrying
+the live subtitle from §5, containing the five existing rows in their current
+order:
+
+| Row | Key | Type |
+|---|---|---|
+| Enable vocal split mode | `is_set_vocal_splitter` | switch |
+| Vocal splitter model | `set_vocal_splitter` | model combo (karaoke list) |
+| Save split vocal instrumentals | `is_save_inst_set_vocal_splitter` | switch |
+| Deverb vocals | `is_deverb_vocals` | switch |
+| Deverb vocal type | `deverb_vocal_opt` | combo (`DEVERB_MAPPER` keys) |
+
+Collapsed it costs one row (~60px) on the main page — the scarcest real estate
+in the app — and expands to five only on demand. The existing
+`_bind_switch_dependents` dimming (splitter switch → model + save-inst rows;
+deverb switch → deverb type row) is preserved.
+
+**Where it is built.** Not as a factory over `MethodView`'s helpers. Those
+helpers (`add_option_switch`, `add_option_combo`, `_add_model_combo`) register
+each row in per-view registries — `_option_rows`, `_switch_rows`,
+`_model_combos` — which `MethodView.load()` and `.save()` iterate for
+persistence. Reusing them outside a view means reimplementing that machinery.
+
+Instead the section becomes a **self-contained widget owning its own binding**,
+following the pattern `OutputFormatRow` already established for exactly this
+situation (a shared row living in several windows):
+
+```python
+# ui/widgets/vocal_split_row.py
+class VocalSplitRow(Adw.ExpanderRow):
+    def __init__(self, repo, on_changed): ...
+    def apply_from_settings(self, settings) -> None: ...
+    def persist_to_settings(self, settings) -> None: ...
+```
+
+Both windows already call `format_row.apply_from_settings(...)` and
+`.persist_to_settings(...)` in their load and flush paths, so `VocalSplitRow`
+drops into the same call sites with no new plumbing shape to learn. The model
+combo is populated lazily on first expansion (`notify::expanded` → populate),
+as it is today.
+
+### 4. Secondary models hides non-applicable stem slots
+
+`_SECONDARY_SLOTS` (`ui/views/base.py:76`) defines four slots: `voc_inst`,
+`other`, `bass`, `drums`. Show `voc_inst` always; show the other three only
+when the resolved primary model produces four stems.
+
+`update_stem_labels()` (`ui/views/base.py:267`) already resolves the model and
+stores it as `self._resolved_model`, and calls the `_on_model_resolved(model)`
+hook — so the signal exists and the refresh point exists. Add a
+`_sync_secondary_slot_visibility()` pass that sets `visible` on the six rows
+(3 combos + 3 scales) for `other`/`bass`/`drums`, called from
+`update_stem_labels()`.
+
+Hiding rather than dimming: dimming saves no height, and the height is the
+point. This is a deliberate departure from the `_bind_switch_dependents`
+dimming convention, justified because model stem count is a *structural* fact
+about the run, not a toggle the user is expected to flip.
+
+Values for hidden slots are untouched — they persist in settings and reappear
+when a 4-stem model is selected. No settings are cleared.
+
+Effect: the expanded section drops from ~600px (9 rows) to ~240px (3 rows) for
+the common 2-stem case.
+
+### 5. Live state disclosure
+
+A new module `ui/option_summaries.py` holds pure functions over a settings
+mapping, with no GTK import, so they are unit-testable headlessly. It sits at
+the `ui/` root rather than under `ui/model_options/` because both
+`ui/views/base.py` and `ui/widgets/vocal_split_row.py` consume it, and a
+widget importing from `model_options` would invert the dependency:
+
+```python
+def secondary_models_summary(settings, prefix: str, *, four_stem: bool) -> str
+def preproc_summary(settings) -> str
+def vocal_split_summary(settings) -> str
+```
+
+Each returns a one-line subtitle. Conventions:
+
+- Every activate switch in the section off → `"Off"`.
+- On, but the model it needs is unset (`NO_MODEL`) → `"On — no model selected"`.
+- On and configured → a compact description, e.g. for secondary models
+  `"Vocals/Instrumental: UVR-MDX-NET Inst HQ 3 (0.90)"`, with multiple
+  configured stem pairs joined by `" · "`.
+
+`secondary_models_summary` takes `four_stem` so it describes only the slots
+that are actually visible (§4), keeping subtitle and body consistent.
+
+`vocal_split_summary` covers **two independent switches**
+(`is_set_vocal_splitter` and `is_deverb_vocals`). It returns `"Off"` only when
+both are off; otherwise it joins the enabled halves with `" · "`, e.g.
+`"UVR-BVE-4B · deverb: Main vocals"`, or `"deverb: Main vocals"` when only
+deverb is on.
+
+**Application.** In `ui/views/base.py`, after building each expander, set its
+subtitle from the matching summary and re-apply on each activate switch's
+`notify::active` and each model combo's `notify::selected`. A new
+`_sync_expander_summaries()` does the whole pass; it is called at the end of
+`MethodView.load()` (`ui/views/base.py:376`, beside the existing
+`_sync_switch_dependents()` call) and from `update_stem_labels()` (so the
+secondary subtitle follows slot visibility). Views without a given section
+(`secondary_prefix` unset, `has_preproc` false) skip it — the method guards on
+the expander attribute existing. `VocalSplitRow` applies the same pattern
+internally, refreshing its own subtitle from `apply_from_settings` and from its
+two switches' `notify::active`.
+
+**Auto-expand:** when any of a section's activate switches is on, its expander
+opens. This happens in `_sync_expander_summaries()` — **expand only, never
+auto-collapse**, so a section the user opened by hand is never shut on them.
+Because it runs from `load()`, auto-expand applies on sheet open and after a
+settings reload, not on every switch toggle. The main-view vocal-split row
+follows the same rule, expanding on window load when enabled.
+
+Keys consumed, per existing schema (`prefix` is `vr` / `mdx` / `demucs`):
+
+| Section | Activate key | Detail keys |
+|---|---|---|
+| Secondary models | `{prefix}_is_secondary_model_activate` | `{prefix}_{slot}_secondary_model`, `{prefix}_{slot}_secondary_model_scale` for slot in `voc_inst`, `other`, `bass`, `drums` |
+| Pre-process model | `is_demucs_pre_proc_model_activate` | `demucs_pre_proc_model`, `is_demucs_pre_proc_model_inst_mix` |
+| Vocal splitter and deverb | `is_set_vocal_splitter`, `is_deverb_vocals` | `set_vocal_splitter`, `is_save_inst_set_vocal_splitter`, `deverb_vocal_opt` |
+
+No new settings keys are introduced.
+
+### 6. Applicability signalling
 
 Replace both `Gtk.Label` mechanisms with real widgets.
 
 **Ensemble context — badge counts.** Each `Adw.ViewStackPage` gets
 `set_badge_number(n)` where `n` is that architecture's member count from the
 existing `member_arch_counts()`. Zero clears the badge (`set_badge_number(0)`).
-Verified available in the installed libadwaita 1.9.2.
+Verified available in the installed libadwaita 1.9.2, and guarded with
+`hasattr` in the same style as the existing `Adw.InlineViewSwitcher` fallback.
 
 **Separation context — a page banner.** Each non-applicable page gets an
-`Adw.Banner` at the top of the page (above the scroller, inside the page box)
-reading:
+`Adw.Banner` at the top of the page (above the scroller, inside the page box):
 
 > Not used by this run — the active method is MDX-Net
 
@@ -149,90 +302,73 @@ value is consumed as a group description. `member_arch_counts` is unchanged.
 `ui/model_options/__init__.py` re-exports `applicability_subtitle`; that export
 and `tests/test_model_options_applicability.py` change with it.
 
-### 4. Live state disclosure
-
-A new module `ui/model_options/summaries.py` holds pure functions over a
-settings mapping, with no GTK import, so they are unit-testable headlessly:
-
-```python
-def secondary_models_summary(settings, prefix: str) -> str
-def preproc_summary(settings) -> str
-def vocal_split_summary(settings) -> str
-```
-
-Each returns a one-line subtitle. Conventions:
-
-- Every activate switch in the section off → `"Off"`.
-- On, but the model it needs is unset (`NO_MODEL`) → `"On — no model selected"`.
-- On and configured → a compact description, e.g. for secondary models
-  `"Vocals/Instrumental: UVR-MDX-NET Inst HQ 3 (0.90)"`, with multiple
-  configured stem pairs joined by `" · "`.
-
-`vocal_split_summary` covers **two independent switches** in one expander
-(`is_set_vocal_splitter` and `is_deverb_vocals`). It returns `"Off"` only when
-both are off; otherwise it joins the enabled halves with `" · "`, e.g.
-`"UVR-BVE-4B · deverb: Main vocals"`, or `"deverb: Main vocals"` when only
-deverb is on.
-
-`ui/views/base.py` applies them: after building each expander, set its subtitle
-from the matching summary, and re-apply on each activate switch's
-`notify::active` and on the section's model combos' `notify::selected`. A new
-`_sync_expander_summaries()` method does the whole pass; it is called at the end
-of `MethodView.load()` (`ui/views/base.py:376`, beside the existing
-`_sync_switch_dependents()` call) so a settings reload refreshes subtitles.
-Views without a given section (`secondary_prefix` unset, `has_preproc` false)
-skip it — the method guards on the expander attribute existing.
-
-**Auto-expand:** when any of a section's activate switches is on, its expander
-opens. This happens in `_sync_expander_summaries()` — **expand only, never
-auto-collapse**, so a section the user opened by hand is never shut on them.
-Because it runs from `load()`, auto-expand applies on sheet open and after a
-settings reload, not on every switch toggle.
-
-Keys consumed, per existing schema (`prefix` is `vr` / `mdx` / `demucs`):
-
-| Section | Activate key | Detail keys |
-|---|---|---|
-| Secondary models | `{prefix}_is_secondary_model_activate` | `{prefix}_{slot}_secondary_model`, `{prefix}_{slot}_secondary_model_scale` for slot in `voc_inst`, `other`, `bass`, `drums` |
-| Pre-process model | `is_demucs_pre_proc_model_activate` | `demucs_pre_proc_model`, `is_demucs_pre_proc_model_inst_mix` |
-| Vocal splitter and deverb | `is_set_vocal_splitter`, `is_deverb_vocals` | `set_vocal_splitter`, `is_save_inst_set_vocal_splitter`, `deverb_vocal_opt` |
-
-No new settings keys are introduced.
-
-### 5. Model maintenance group
+### 7. Model maintenance group
 
 `_build_secondary_section` in `ui/views/base.py` currently appends the
 "Change model defaults" `Adw.ActionRow` to `secondary_group`. Move it into a
 new `self.maintenance_group = Adw.PreferencesGroup(title="Model maintenance")`,
 appended to `self.groups` after `secondary_group`. The sheet reparents all three
-groups per tab. The row keeps its existing `CLEAR_CACHE_HELP` hint and
-`_on_change_defaults` handler.
+groups per tab, `maintenance_group` into `col_end` below `secondary_group`. The
+row keeps its existing `CLEAR_CACHE_HELP` hint and `_on_change_defaults`
+handler.
 
 The group stays per-architecture — it edits that architecture's stored model
 parameters — but stops presenting as a fourth "extra model".
+
+### 8. Resulting fit
+
+Against ~578px of content height at the default 1040×720 window:
+
+| Tab | col_start | col_end | Max | Fits |
+|---|---|---|---|---|
+| VR | Inference 420 | Extra 100 + Maint 100 = 200 | 420 | yes |
+| Demucs | Inference 300 | Extra 160 + Maint 100 = 260 | 300 | yes |
+| MDX-Net | Inference 180 | Extra 100 + Maint 100 = 200 | 200 | yes |
+
+With Secondary models expanded on a 2-stem model (§4), the right column grows
+to ~380px — still within budget. A 4-stem model expands it to ~740px and
+scrolls, which is acceptable: at that point the user is deliberately working
+inside one section.
+
+Moving the vocal splitter out (§3) also removes the MDX-Net imbalance as a side
+effect — 180 vs 200 instead of 180 vs 320.
+
+Main page cost: one collapsed row (~60px) added to the Processing group on the
+Separation and Ensemble pages.
 
 ## Files
 
 | File | Change |
 |---|---|
 | `ui/model_options/sheet.py` | shell rework; net smaller |
-| `ui/model_options/summaries.py` | **new** — pure state summarisers |
-| `ui/model_options/applicability.py` | `applicability_banner` replaces `applicability_subtitle`; badge counts consumed by the sheet |
-| `ui/views/base.py` | `maintenance_group`; expander subtitles + auto-expand; expose expanders |
-| `tests/test_model_options_summaries.py` | **new** — headless summariser tests |
+| `ui/option_summaries.py` | **new** — pure state summarisers, no GTK |
+| `ui/widgets/vocal_split_row.py` | **new** — `VocalSplitRow`, modelled on `OutputFormatRow` |
+| `ui/model_options/applicability.py` | `applicability_banner` replaces `applicability_subtitle` |
+| `ui/model_options/__init__.py` | export update |
+| `ui/views/base.py` | vocal-split section removed; `maintenance_group`; stem-slot visibility; expander subtitles + auto-expand |
+| `ui/window.py` | `VocalSplitRow` in Processing group; `on_switch_method` callback |
+| `ui/ensemble/window.py` | `VocalSplitRow` in Processing group |
+| `tests/test_option_summaries.py` | **new** — headless summariser tests |
+| `tests/test_secondary_slot_visibility.py` | **new** — 2-stem vs 4-stem slot rules |
 | `tests/test_model_options_applicability.py` | update for `applicability_banner` |
-| `tests/` (sheet) | badge numbers, banner presence/absence, single-column structure |
+| `tests/` (sheet) | badge numbers, banner presence/absence, two-column structure |
 
 ## Testing
 
-- **Headless (no display):** every function in `summaries.py`, and
+- **Headless (no display):** every function in `option_summaries.py`;
   `applicability_banner` across the three contexts × three stacks × empty and
-  populated member lists. These are the bulk of the coverage.
+  populated member lists; the pure stem-count → visible-slots rule. These are
+  the bulk of the coverage.
 - **GTK-guarded** (`@unittest.skipUnless(DISPLAY or WAYLAND_DISPLAY)`, with
-  `gi.require_version` in `setUpClass`): sheet constructs; each tab page has
-  exactly one clamped column; badge numbers match `member_arch_counts`; the
-  non-applicable page carries a banner and the applicable one does not;
-  an enabled section's expander is expanded after a context update.
+  `gi.require_version` in `setUpClass`): sheet constructs; each tab page has two
+  non-homogeneous columns that stack below the breakpoint; badge numbers match
+  `member_arch_counts`; the non-applicable page carries a banner and the
+  applicable one does not; an enabled section's expander is expanded after a
+  context update; the vocal-split row appears in the Processing group on the
+  Separation and Ensemble pages and **not** in Audio Tools.
+- **Regression:** editing the vocal splitter on the Separation page and
+  reopening Ensemble shows the same values (they are one global setting) — the
+  behaviour that used to require three synchronised copies.
 - The existing suite (694 tests) must stay green.
 
 ## Error handling
@@ -243,8 +379,10 @@ parameters — but stops presenting as a fourth "extra model".
   `settings.get(key, default)` and degrades to `"Off"` / `"On — no model
   selected"` rather than raising. `SettingsModel` backfills missing keys from
   defaults on load, so this is defence in depth.
-- `Adw.ViewStackPage.set_badge_number` is guarded with `hasattr` in the same
-  style as the existing `Adw.InlineViewSwitcher` fallback, so an older
+- Model unresolved (no model chosen, or a hash miss) → §4 treats it as ≤2-stem
+  and shows only the `voc_inst` slot, matching how `update_stem_labels` already
+  degrades when `resolve_model_dry` returns `None`.
+- `Adw.ViewStackPage.set_badge_number` guarded with `hasattr`, so an older
   libadwaita degrades to no badges rather than crashing.
 
 ## Out of scope
