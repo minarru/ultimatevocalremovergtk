@@ -30,14 +30,11 @@ from typing import Optional
 from gi.repository import Adw, Gio, Gtk
 
 from bundled.constants import (
-    FLAC,
     INPUT_FOLDER_ENTRY_HELP,
     MDX_ARCH_TYPE,
-    MP3,
     OUTPUT_FOLDER_ENTRY_HELP,
     VR_ARCH_PM,
     VR_ARCH_TYPE,
-    WAV,
 )
 
 from . import APP_TITLE
@@ -53,7 +50,6 @@ from .help_text import (
 from .model_options import OPEN_CONTEXT_AUDIO_TOOLS, OPEN_CONTEXT_ENSEMBLE, OPEN_CONTEXT_SEPARATION, open_model_options_sheet
 from .hints import (
     HelpHintManager,
-    OUTPUT_FORMAT_HINT,
     SHARED_HINTS,
     apply_accelerators,
     install_view_tab_tooltips,
@@ -82,6 +78,7 @@ from .widgets.columns import (
     wrap_options_scroller,
 )
 from .widgets.file_chooser import InputFilesRow, OutputFolderRow
+from .widgets.format_row import OutputFormatRow
 from .widgets.log_panel import OVERLAY_MARGIN_BOTTOM, LogPanel
 from .widgets.rows import get_combo_value, make_combo_row, make_switch_row, set_combo_value
 from .widgets.download_queue_indicator import DownloadQueueIndicator
@@ -587,8 +584,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _build_shared_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Processing")
 
-        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="waveform-symbolic")
-        self.format_row.connect("notify::selected", self._on_format_changed)
+        self.format_row = OutputFormatRow(self._on_format_changed)
         group.add(self.format_row)
 
         self.gpu_row = make_switch_row("GPU conversion", icon_name="pci-card-symbolic")
@@ -641,7 +637,6 @@ class MainWindow(Adw.ApplicationWindow):
         self._hint_manager.register(self.sample_row, SHARED_HINTS["sample_mode"])
         self._hint_manager.register(self.console, SHARED_HINTS["console"])
         self._hint_manager.register(self.method_row, SHARED_HINTS["process_method"])
-        self._hint_manager.register(self.format_row, OUTPUT_FORMAT_HINT)
         self._hint_manager.register(self.input_row, INPUT_FOLDER_ENTRY_HELP)
         self._hint_manager.register(self.output_row, OUTPUT_FOLDER_ENTRY_HELP)
         self._hint_manager.register(self.model_options_row, MODEL_OPTIONS_ROW_HINT)
@@ -669,7 +664,7 @@ class MainWindow(Adw.ApplicationWindow):
         export_path = self.settings.get("export_path") or ""
         self.output_row.set_path(export_path, notify=False)
         self._maybe_notify_stale_export_path()
-        set_combo_value(self.format_row, self.settings.get("save_format", WAV))
+        self.format_row.apply_from_settings(self.settings)
         self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
         self.autocast_row.set_active(bool(self.settings.get("is_autocast")))
         self._sync_gpu_dependent_rows()
@@ -838,7 +833,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._refresh_start_readiness()
 
     def _on_format_changed(self, *_args) -> None:
-        self.settings.set("save_format", get_combo_value(self.format_row))
+        self.format_row.persist_to_settings(self.settings)
 
     def _on_gpu_changed(self, *_args) -> None:
         self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
@@ -888,7 +883,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.settings.set("chosen_process_method", self._active_view().method_key)
         self.settings.set("input_paths", list(self.input_row.paths))
         self.settings.set("export_path", self.output_row.path)
-        self.settings.set("save_format", get_combo_value(self.format_row))
+        self.format_row.persist_to_settings(self.settings)
         self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
         self.settings.set("is_autocast", self.autocast_row.get_active())
         self.settings.set("model_sample_mode", self.sample_row.get_active())

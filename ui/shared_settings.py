@@ -14,8 +14,6 @@ from typing import AbstractSet, Iterable, Optional, Protocol, Sequence
 
 from bundled.constants import WAV
 
-from .widgets.rows import set_combo_value
-
 INPUT_FILES_WARN = 100
 INPUT_FILES_MAX = 500
 
@@ -196,6 +194,10 @@ class _SampleModeRow(Protocol):
     def set_active(self, active: bool) -> None: ...
 
 
+class _FormatRow(Protocol):
+    def apply_from_settings(self, settings) -> None: ...
+
+
 @dataclass(frozen=True)
 class SharedFileOptions:
     input_paths: list[str]
@@ -226,7 +228,7 @@ def apply_shared_file_options(
     input_row: Optional[_InputPathsRow] = None,
     input_rows: Optional[Iterable[_InputPathsRow]] = None,
     output_row: Optional[_OutputPathRow] = None,
-    format_row=None,
+    format_row: Optional[_FormatRow] = None,
     gpu_row: Optional[_SwitchRow] = None,
     autocast_row: Optional[_SwitchRow] = None,
     sample_row: Optional[_SampleModeRow] = None,
@@ -250,7 +252,7 @@ def apply_shared_file_options(
     if output_row is not None:
         output_row.set_path(options.export_path, notify=False)
     if format_row is not None:
-        set_combo_value(format_row, options.save_format)
+        format_row.apply_from_settings(settings)
     if gpu_row is not None:
         gpu_row.set_active(options.is_gpu_conversion)
     if autocast_row is not None:

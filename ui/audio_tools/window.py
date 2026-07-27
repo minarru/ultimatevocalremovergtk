@@ -45,7 +45,6 @@ from bundled.constants import (
     CHANGE_PITCH,
     CHOOSE_APOLLO_MODEL_HELP,
     CHOOSE_MODEL,
-    FLAC,
     INPUT_FOLDER_ENTRY_HELP,
     INTRO_ANALYSIS_ALIGN_HELP,
     INTRO_MAPPER,
@@ -62,7 +61,6 @@ from bundled.constants import (
     MANUAL_ENSEMBLE,
     MANUAL_ENSEMBLE_OPTIONS,
     MATCH_INPUTS,
-    MP3,
     OUTPUT_FOLDER_ENTRY_HELP,
     PHASE_SHIFTS_ALIGN_HELP,
     PHASE_SHIFTS_OPT,
@@ -72,21 +70,19 @@ from bundled.constants import (
     TIME_WINDOW_MAPPER,
     VOLUME_ANALYSIS_ALIGN_HELP,
     VOLUME_MAPPER,
-    WAV,
-    WAV_TYPE,
 )
 
 from ..help_text import (
     MANUAL_ENSEMBLE_ALGORITHM_HINT,
     PLAYBACK_RATE_HINT,
     VIEW_INPUTS_BUTTON_HINT,
-    WAV_TYPE_HINT,
 )
-from ..hints import HelpHintManager, OUTPUT_FORMAT_HINT, set_icon_button_a11y, set_tooltip
+from ..hints import HelpHintManager, set_icon_button_a11y, set_tooltip
 from ..shared_settings import apply_shared_file_options
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.dual_inputs import DualInputsRow
 from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
+from ..widgets.format_row import OutputFormatRow
 from ..widgets.rows import (
     get_combo_value,
     make_combo_row,
@@ -422,15 +418,8 @@ class AudioToolsPage:
     def _build_shared_group(self) -> Gtk.Widget:
         group = Adw.PreferencesGroup(title="Processing")
 
-        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="waveform-symbolic")
-        self.hints.register(self.format_row, OUTPUT_FORMAT_HINT)
-        self.format_row.connect("notify::selected", self._on_format_changed)
+        self.format_row = OutputFormatRow(self._on_format_changed)
         group.add(self.format_row)
-
-        self.wav_type_row = make_combo_row("WAV type", WAV_TYPE)
-        self.hints.register(self.wav_type_row, WAV_TYPE_HINT)
-        self.wav_type_row.connect("notify::selected", lambda *_a: self._set("wav_type_set", get_combo_value(self.wav_type_row)))
-        group.add(self.wav_type_row)
 
         # Shown only for Apollo (GPU-accelerated audio tool).
         self.apollo_gpu_row = make_switch_row(
@@ -510,8 +499,7 @@ class AudioToolsPage:
             self.match_silence_row.set_active(bool(s.get("is_match_silence")))
             self.spec_match_row.set_active(bool(s.get("is_spec_match")))
 
-            set_combo_value(self.format_row, s.get("save_format", WAV))
-            set_combo_value(self.wav_type_row, s.get("wav_type_set"))
+            self.format_row.apply_from_settings(s)
             self.normalize_row.set_active(bool(s.get("is_normalization")))
             try:
                 amp = float(s.get("amplification_threshold") or 0.0)
@@ -522,7 +510,6 @@ class AudioToolsPage:
         finally:
             self._loading = False
 
-        self._sync_format_rows()
         self._refresh_apollo_models()
         self._sync_tool_visibility()
         self._refresh_dual_rows()
@@ -540,7 +527,6 @@ class AudioToolsPage:
             )
         finally:
             self._loading = False
-        self._sync_format_rows()
 
     def _sync_tool_visibility(self) -> None:
         tool = self._current_tool()
@@ -649,12 +635,9 @@ class AudioToolsPage:
         self._refresh_dual_rows()
 
     def _on_format_changed(self, *_args) -> None:
-        self._sync_format_rows()
-        self._set("save_format", get_combo_value(self.format_row))
-
-    def _sync_format_rows(self) -> None:
-        output_format = get_combo_value(self.format_row) or WAV
-        self.wav_type_row.set_visible(output_format == WAV)
+        if self._loading:
+            return
+        self.format_row.persist_to_settings(self.settings)
 
     def _on_inputs_changed(self) -> None:
         if self._loading:

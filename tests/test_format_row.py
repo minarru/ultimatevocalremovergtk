@@ -112,6 +112,38 @@ class OutputFormatRowTests(unittest.TestCase):
         row.set_save_format(FLAC)
         self.assertGreater(len(calls), before)
 
+    def test_selecting_a_new_quality_value_fires_on_changed_and_persists(self):
+        """Covers ``_on_quality_selected`` -> ``on_changed`` (Task 7 review gap).
+
+        Driving the quality dropdown directly (post ``apply_from_settings``, so
+        ``_syncing`` is false) must fire ``on_changed`` the same way switching
+        format does; otherwise a page's ``persist_to_settings`` call never runs
+        and a new MP3 bitrate silently fails to save.
+        """
+        from ui.widgets.format_row import OutputFormatRow
+
+        calls = []
+        row = OutputFormatRow(lambda: calls.append(1))
+        settings = self._settings(save_format=MP3, mp3_bit_set="320k")
+        row.apply_from_settings(settings)
+        self.assertEqual(calls, [])
+
+        model = row._quality_drop.get_model()
+        current_index = row._quality_drop.get_selected()
+        new_index = next(
+            i
+            for i in range(model.get_n_items())
+            if model.get_string(i) != model.get_string(current_index)
+        )
+        new_value = model.get_string(new_index)
+
+        row._quality_drop.set_selected(new_index)
+
+        self.assertEqual(len(calls), 1, "on_changed should fire once for the new selection")
+
+        row.persist_to_settings(settings)
+        self.assertEqual(settings.get("mp3_bit_set"), new_value)
+
     def test_each_dropdown_has_an_accessible_label(self):
         from gi.repository import Gtk
 

@@ -76,11 +76,10 @@ class _FakeSampleRow:
 
 class _FakeFormatRow:
     def __init__(self):
-        self.selected = None
+        self.applied_from = None
 
-
-def _set_combo_value(row, value):
-    row.selected = value
+    def apply_from_settings(self, settings):
+        self.applied_from = settings.get("save_format")
 
 
 class ExportPathValidationTests(unittest.TestCase):
@@ -253,13 +252,6 @@ class ReadSharedFileOptionsTests(unittest.TestCase):
 
 
 class ApplySharedFileOptionsTests(unittest.TestCase):
-    def setUp(self):
-        import ui.shared_settings as shared_settings
-
-        self._original_set_combo = shared_settings.set_combo_value
-        shared_settings.set_combo_value = _set_combo_value
-        self.addCleanup(setattr, shared_settings, "set_combo_value", self._original_set_combo)
-
     def test_applies_to_rows_without_notify(self):
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
             input_path = handle.name
@@ -296,7 +288,7 @@ class ApplySharedFileOptionsTests(unittest.TestCase):
             self.assertFalse(input_row.notify)
             self.assertEqual(output_row.path, "/out")
             self.assertFalse(output_row.notify)
-            self.assertEqual(format_row.selected, FLAC)
+            self.assertEqual(format_row.applied_from, FLAC)
             self.assertTrue(gpu_row.active)
             self.assertTrue(autocast_row.active)
             self.assertTrue(sample_row.active)
