@@ -48,6 +48,20 @@ def merge_input_paths(existing: Sequence[str], added: Sequence[str]) -> List[str
     return merged
 
 
+def expander_state(
+    path_count: int, *, was_expanded: bool, preserve: bool
+) -> tuple[bool, bool]:
+    """Return ``(enable_expansion, expanded)`` for a ``path_count``-file selection.
+
+    One file is fully summarized by the header, so expansion is disabled below
+    two files. ``preserve`` keeps an already-open list open — set when the list
+    is being edited in place (removing a file) rather than replaced wholesale.
+    """
+    if path_count <= 1:
+        return False, False
+    return True, (was_expanded if preserve else False)
+
+
 # Re-export for call sites / tests that historically imported from here.
 expand_dropped_paths = expand_audio_paths
 
@@ -126,10 +140,16 @@ class InputFilesRow(Adw.ExpanderRow):
     def _on_drop_leave(self, _target: Gtk.DropTarget) -> None:
         self.remove_css_class("drop-highlight")
 
-    def set_paths(self, paths: Sequence[str], notify: bool = True) -> None:
+    def set_paths(
+        self,
+        paths: Sequence[str],
+        notify: bool = True,
+        *,
+        preserve_expansion: bool = False,
+    ) -> None:
         cleaned, result = sanitize_input_paths(paths)
         self.paths = cleaned
-        self._refresh()
+        self._refresh(preserve_expansion=preserve_expansion)
         if notify:
             from core.debug_log import debug
 
@@ -154,15 +174,16 @@ class InputFilesRow(Adw.ExpanderRow):
         if self._on_toast is not None:
             self._on_toast(message)
 
-    def _refresh(self) -> None:
+    def _refresh(self, *, preserve_expansion: bool = False) -> None:
+        was_expanded = self.get_expanded()
         self._refresh_subtitle()
         self._rebuild_file_rows()
         self._clear_button.set_sensitive(bool(self.paths))
-        # One file is fully summarized in the header; expand only for batches.
-        # Collapse by default so the header summary stays primary after selection.
-        multi = len(self.paths) > 1
-        self.set_enable_expansion(multi)
-        self.set_expanded(False)
+        enable, expanded = expander_state(
+            len(self.paths), was_expanded=was_expanded, preserve=preserve_expansion
+        )
+        self.set_enable_expansion(enable)
+        self.set_expanded(expanded)
 
     def _refresh_subtitle(self) -> None:
         if not self.paths:
@@ -202,7 +223,9 @@ class InputFilesRow(Adw.ExpanderRow):
             self._file_rows.append(row)
 
     def _on_remove_clicked(self, _button: Gtk.Button, path: str) -> None:
-        self.set_paths([p for p in self.paths if p != path])
+        self.set_paths(
+            [p for p in self.paths if p != path], preserve_expansion=True
+        )
 
     def _on_clear_clicked(self, _button: Gtk.Button) -> None:
         if self.paths:
