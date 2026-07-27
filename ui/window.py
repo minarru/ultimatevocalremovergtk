@@ -61,6 +61,7 @@ from .hints import (
     set_tooltip,
 )
 from .dispatch import idle_on_main
+from .files import open_folder_in_file_manager
 from .run_control import RunController
 from core.debug_log import debug
 from .shared_settings import (
@@ -102,6 +103,21 @@ _REASON_MODEL = "Choose a model"
 _METHOD_SETTING_ALIASES = {
     VR_ARCH_TYPE: VR_ARCH_PM,
 }
+
+#: Banner copy for a non-writable data folder. There is no in-app picker for
+#: the data directory (it is resolved by ``core.paths`` from ``$UVR_DATA_DIR``,
+#: the repo root, or the OS user-data dir), so the copy asks the user to fix
+#: permissions rather than to choose a location.
+_DATA_DIR_BANNER_TITLE = (
+    "Can't write to the application data folder ({path}) — "
+    "settings and downloads will fail. Fix its permissions to continue."
+)
+
+
+def data_dir_banner_state(data_dir: str) -> tuple[bool, str]:
+    """Return ``(revealed, title)`` for the non-writable data-folder banner."""
+    revealed = not os.access(data_dir, os.W_OK)
+    return revealed, _DATA_DIR_BANNER_TITLE.format(path=data_dir)
 
 
 class _SeparationTarget:
@@ -224,13 +240,8 @@ class MainWindow(Adw.ApplicationWindow):
         toolbar_view.set_content(root)
         toolbar_view.set_vexpand(True)
 
-        self._data_banner = Adw.Banner(
-            title=(
-                "Application data folder is not writable — settings and downloads may fail. "
-                "Choose a writable location or fix permissions."
-            ),
-            revealed=False,
-        )
+        self._data_banner = Adw.Banner(button_label="Show Folder", revealed=False)
+        self._data_banner.connect("button-clicked", self._on_data_banner_clicked)
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         outer.append(self._data_banner)
         outer.append(toolbar_view)
@@ -450,6 +461,7 @@ class MainWindow(Adw.ApplicationWindow):
                 self._populate_columns()
                 self._refresh_separation_layout()
             self._sync_options_bottom_clearance()
+            self._reveal_data_dir_banner_if_needed()
 
         idle_on_main(refresh)
 
@@ -468,7 +480,14 @@ class MainWindow(Adw.ApplicationWindow):
             return
         from core import paths
 
-        banner.set_revealed(not os.access(paths.DATA_DIR, os.W_OK))
+        revealed, title = data_dir_banner_state(paths.DATA_DIR)
+        banner.set_title(title)
+        banner.set_revealed(revealed)
+
+    def _on_data_banner_clicked(self, _banner: Adw.Banner) -> None:
+        from core import paths
+
+        open_folder_in_file_manager(self, paths.DATA_DIR, on_error=self.toast)
 
     def _update_sep_banner(self) -> None:
         """Reveal the empty-state banner when the active method has no models."""
@@ -840,9 +859,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _finalize_close(self, deferred: bool) -> None:
         self._flush_settings()
         self._save_geometry()
-        error = self.context.try_save_settings(trigger="close")
-        if error:
-            self.toast(error)
+        self._handle_settings_error(self.context.try_save_settings(trigger="close"))
 
     def _save_geometry(self) -> None:
         # Only record the un-maximized size so a later un-maximize restores a
@@ -899,9 +916,9 @@ class MainWindow(Adw.ApplicationWindow):
         self.begin_run(self._separation_target)
 
         try:
-            error = self.context.try_save_settings(trigger="start")
-            if error:
-                self.toast(error)
+            self._handle_settings_error(
+                self.context.try_save_settings(trigger="start")
+            )
             debug("ui", f"runner.start files={len(input_paths)}")
             self.context.runner.start(input_paths, callbacks)
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
@@ -1050,6 +1067,13 @@ class MainWindow(Adw.ApplicationWindow):
         from .shortcuts import present_shortcuts
 
         present_shortcuts(self)
+
+    def _handle_settings_error(self, error: Optional[str]) -> None:
+        """Toast a settings-save failure and re-check the data-folder banner."""
+        if not error:
+            return
+        self.toast(error)
+        self._reveal_data_dir_banner_if_needed()
 
     def toast(self, message: str) -> None:
         """Show a transient toast (public so the embedded pages can use it)."""
