@@ -483,6 +483,7 @@ class RunController:
         self._set_running(False)
         self._window.log_panel.set_progress_fraction(1.0)
         self._window.log_panel.set_progress_text(_PROGRESS_DONE)
+        self._window.log_panel.mark_run_complete()
         self._running_target = None
         clear_run_start()
         output_dir = self._run_output_dir
