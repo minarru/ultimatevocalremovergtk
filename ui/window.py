@@ -27,7 +27,7 @@ and help-hint tooltips installed from :mod:`ui.hints`.
 import os
 from typing import Optional
 
-from gi.repository import Adw, Gio, Gtk
+from gi.repository import Adw, Gdk, Gio, Gtk
 
 from bundled.constants import (
     INPUT_FOLDER_ENTRY_HELP,
@@ -116,6 +116,20 @@ def data_dir_banner_state(data_dir: str) -> tuple[bool, str]:
     """Return ``(revealed, title)`` for the non-writable data-folder banner."""
     revealed = not os.access(data_dir, os.W_OK)
     return revealed, _DATA_DIR_BANNER_TITLE.format(path=data_dir)
+
+
+def drop_target_row_name(tab_name, tool, dual_tools) -> Optional[str]:
+    """Return which page's input row should receive a window-level file drop.
+
+    Dual-input audio tools pair files positionally (left/right), so a drop with
+    no drop point has no unambiguous meaning there — those keep their own
+    per-row drop targets and are not routed.
+    """
+    if tab_name in ("separation", "ensemble"):
+        return tab_name
+    if tab_name == "audio_tools":
+        return None if tool in dual_tools else "audio_tools"
+    return None
 
 
 class _SeparationTarget:
@@ -224,6 +238,9 @@ class MainWindow(Adw.ApplicationWindow):
         root = Gtk.Overlay()
         root.set_child(page)
         root.add_overlay(self.log_panel)
+        window_drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
+        window_drop.connect("drop", self._on_window_drop)
+        root.add_controller(window_drop)
         self.log_panel.set_halign(Gtk.Align.CENTER)
         self.log_panel.set_valign(Gtk.Align.END)
         self.log_panel.set_margin_bottom(OVERLAY_MARGIN_BOTTOM)
@@ -1038,6 +1055,33 @@ class MainWindow(Adw.ApplicationWindow):
         from .errorlog import open_error_log
 
         open_error_log(self)
+
+    def _input_row_for_drop(self):
+        """Resolve the visible tab's input row, or ``None`` when not routable."""
+        from core.audio_tools import DUAL_INPUT_TOOLS
+
+        tab = self.content_stack.get_visible_child_name()
+        tool = (
+            self._audio_tools_page._current_tool()
+            if tab == "audio_tools"
+            else None
+        )
+        name = drop_target_row_name(tab, tool, DUAL_INPUT_TOOLS)
+        if name == "separation":
+            return self.input_row
+        if name == "ensemble":
+            return self._ensemble_page.input_row
+        if name == "audio_tools":
+            return self._audio_tools_page.inputs_row
+        return None
+
+    def _on_window_drop(self, _target, value, _x, _y) -> bool:
+        row = self._input_row_for_drop()
+        if row is None:
+            return False
+        # Delegate to the row's own handler so path expansion, the accept-any
+        # setting, dedupe and the toasts all stay in one place.
+        return row._on_drop(_target, value, _x, _y)
 
     def _on_view_inputs(self, _action: Gio.SimpleAction, _param) -> None:
         if self.content_stack.get_visible_child_name() == "audio_tools":
