@@ -12,7 +12,6 @@ from ui.model_options.applicability import (
     applicability_subtitle,
     default_stack_name,
     member_arch_counts,
-    non_applicable_toast,
     should_hide_unused_stacks,
     stack_name_for_member_tag,
     stack_name_for_method_key,
@@ -87,16 +86,6 @@ class ModelOptionsApplicabilityTests(unittest.TestCase):
             selected_models=selected,
         )
         self.assertIn("1 of 2", text)
-
-    def test_non_applicable_toast_separation(self) -> None:
-        message = non_applicable_toast(
-            OPEN_CONTEXT_SEPARATION,
-            "vr",
-            active_method_key=MDX_ARCH_TYPE,
-            selected_models=[],
-        )
-        self.assertIsNotNone(message)
-        self.assertIn("VR", message)
 
 
 if __name__ == "__main__":

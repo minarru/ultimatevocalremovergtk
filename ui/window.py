@@ -27,17 +27,14 @@ and help-hint tooltips installed from :mod:`ui.hints`.
 import os
 from typing import Optional
 
-from gi.repository import Adw, Gio, Gtk
+from gi.repository import Adw, Gdk, Gio, Gtk
 
 from bundled.constants import (
-    FLAC,
     INPUT_FOLDER_ENTRY_HELP,
     MDX_ARCH_TYPE,
-    MP3,
     OUTPUT_FOLDER_ENTRY_HELP,
     VR_ARCH_PM,
     VR_ARCH_TYPE,
-    WAV,
 )
 
 from . import APP_TITLE
@@ -53,7 +50,6 @@ from .help_text import (
 from .model_options import OPEN_CONTEXT_AUDIO_TOOLS, OPEN_CONTEXT_ENSEMBLE, OPEN_CONTEXT_SEPARATION, open_model_options_sheet
 from .hints import (
     HelpHintManager,
-    OUTPUT_FORMAT_HINT,
     SHARED_HINTS,
     apply_accelerators,
     install_view_tab_tooltips,
@@ -61,6 +57,7 @@ from .hints import (
     set_tooltip,
 )
 from .dispatch import idle_on_main
+from .files import open_folder_in_file_manager
 from .run_control import RunController
 from core.debug_log import debug
 from .shared_settings import (
@@ -68,6 +65,7 @@ from .shared_settings import (
     apply_sample_mode_label,
     apply_shared_file_options,
     format_input_sanitize_toasts,
+    gpu_dependent_enabled,
     sample_mode_subtitle,
     sanitize_input_paths,
 )
@@ -80,6 +78,7 @@ from .widgets.columns import (
     wrap_options_scroller,
 )
 from .widgets.file_chooser import InputFilesRow, OutputFolderRow
+from .widgets.format_row import OutputFormatRow
 from .widgets.log_panel import OVERLAY_MARGIN_BOTTOM, LogPanel
 from .widgets.rows import get_combo_value, make_combo_row, make_switch_row, set_combo_value
 from .widgets.download_queue_indicator import DownloadQueueIndicator
@@ -102,6 +101,35 @@ _REASON_MODEL = "Choose a model"
 _METHOD_SETTING_ALIASES = {
     VR_ARCH_TYPE: VR_ARCH_PM,
 }
+
+#: Banner copy for a non-writable data folder. There is no in-app picker for
+#: the data directory (it is resolved by ``core.paths`` from ``$UVR_DATA_DIR``,
+#: the repo root, or the OS user-data dir), so the copy asks the user to fix
+#: permissions rather than to choose a location.
+_DATA_DIR_BANNER_TITLE = (
+    "Can't write to the application data folder ({path}) — "
+    "settings and downloads will fail. Fix its permissions to continue."
+)
+
+
+def data_dir_banner_state(data_dir: str) -> tuple[bool, str]:
+    """Return ``(revealed, title)`` for the non-writable data-folder banner."""
+    revealed = not os.access(data_dir, os.W_OK)
+    return revealed, _DATA_DIR_BANNER_TITLE.format(path=data_dir)
+
+
+def drop_target_row_name(tab_name, tool, dual_tools) -> Optional[str]:
+    """Return which page's input row should receive a window-level file drop.
+
+    Dual-input audio tools pair files positionally (left/right), so a drop with
+    no drop point has no unambiguous meaning there — those keep their own
+    per-row drop targets and are not routed.
+    """
+    if tab_name in ("separation", "ensemble"):
+        return tab_name
+    if tab_name == "audio_tools":
+        return None if tool in dual_tools else "audio_tools"
+    return None
 
 
 class _SeparationTarget:
@@ -210,6 +238,9 @@ class MainWindow(Adw.ApplicationWindow):
         root = Gtk.Overlay()
         root.set_child(page)
         root.add_overlay(self.log_panel)
+        window_drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
+        window_drop.connect("drop", self._on_window_drop)
+        root.add_controller(window_drop)
         self.log_panel.set_halign(Gtk.Align.CENTER)
         self.log_panel.set_valign(Gtk.Align.END)
         self.log_panel.set_margin_bottom(OVERLAY_MARGIN_BOTTOM)
@@ -224,13 +255,8 @@ class MainWindow(Adw.ApplicationWindow):
         toolbar_view.set_content(root)
         toolbar_view.set_vexpand(True)
 
-        self._data_banner = Adw.Banner(
-            title=(
-                "Application data folder is not writable — settings and downloads may fail. "
-                "Choose a writable location or fix permissions."
-            ),
-            revealed=False,
-        )
+        self._data_banner = Adw.Banner(button_label="Show Folder", revealed=False)
+        self._data_banner.connect("button-clicked", self._on_data_banner_clicked)
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         outer.append(self._data_banner)
         outer.append(toolbar_view)
@@ -450,6 +476,7 @@ class MainWindow(Adw.ApplicationWindow):
                 self._populate_columns()
                 self._refresh_separation_layout()
             self._sync_options_bottom_clearance()
+            self._reveal_data_dir_banner_if_needed()
 
         idle_on_main(refresh)
 
@@ -468,7 +495,14 @@ class MainWindow(Adw.ApplicationWindow):
             return
         from core import paths
 
-        banner.set_revealed(not os.access(paths.DATA_DIR, os.W_OK))
+        revealed, title = data_dir_banner_state(paths.DATA_DIR)
+        banner.set_title(title)
+        banner.set_revealed(revealed)
+
+    def _on_data_banner_clicked(self, _banner: Adw.Banner) -> None:
+        from core import paths
+
+        open_folder_in_file_manager(self, paths.DATA_DIR, on_error=self.toast)
 
     def _update_sep_banner(self) -> None:
         """Reveal the empty-state banner when the active method has no models."""
@@ -516,7 +550,7 @@ class MainWindow(Adw.ApplicationWindow):
         if not text:
             return
         self.console.get_clipboard().set(text)
-        self._toast(_LOG_COPIED_TOAST)
+        self.toast(_LOG_COPIED_TOAST)
 
     def _build_files_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Files")
@@ -567,8 +601,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _build_shared_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Processing")
 
-        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="waveform-symbolic")
-        self.format_row.connect("notify::selected", self._on_format_changed)
+        self.format_row = OutputFormatRow(self._on_format_changed)
         group.add(self.format_row)
 
         self.gpu_row = make_switch_row("GPU conversion", icon_name="pci-card-symbolic")
@@ -621,7 +654,6 @@ class MainWindow(Adw.ApplicationWindow):
         self._hint_manager.register(self.sample_row, SHARED_HINTS["sample_mode"])
         self._hint_manager.register(self.console, SHARED_HINTS["console"])
         self._hint_manager.register(self.method_row, SHARED_HINTS["process_method"])
-        self._hint_manager.register(self.format_row, OUTPUT_FORMAT_HINT)
         self._hint_manager.register(self.input_row, INPUT_FOLDER_ENTRY_HELP)
         self._hint_manager.register(self.output_row, OUTPUT_FOLDER_ENTRY_HELP)
         self._hint_manager.register(self.model_options_row, MODEL_OPTIONS_ROW_HINT)
@@ -649,9 +681,10 @@ class MainWindow(Adw.ApplicationWindow):
         export_path = self.settings.get("export_path") or ""
         self.output_row.set_path(export_path, notify=False)
         self._maybe_notify_stale_export_path()
-        set_combo_value(self.format_row, self.settings.get("save_format", WAV))
+        self.format_row.apply_from_settings(self.settings)
         self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
         self.autocast_row.set_active(bool(self.settings.get("is_autocast")))
+        self._sync_gpu_dependent_rows()
         apply_sample_mode_label(self.sample_row, self.settings.get("model_sample_mode_duration", 30))
         self.sample_row.set_active(bool(self.settings.get("model_sample_mode")))
 
@@ -685,7 +718,7 @@ class MainWindow(Adw.ApplicationWindow):
         if self.output_row.path and self.output_row.blocked_reason():
             self._stale_export_toast_shown = True
             idle_on_main(
-                lambda: self._toast("Saved output folder no longer exists — select a new folder")
+                lambda: self.toast("Saved output folder no longer exists — select a new folder")
             )
 
     def _maybe_notify_stale_inputs(self, result) -> None:
@@ -699,7 +732,7 @@ class MainWindow(Adw.ApplicationWindow):
         if not messages:
             return
         self._stale_inputs_toast_shown = True
-        idle_on_main(lambda: self._toast(" ".join(messages)))
+        idle_on_main(lambda: self.toast(" ".join(messages)))
 
     def _active_view(self):
         return self._current_view or self._views[0]
@@ -715,6 +748,7 @@ class MainWindow(Adw.ApplicationWindow):
             autocast_row=self.autocast_row,
             sample_row=self.sample_row,
         )
+        self._sync_gpu_dependent_rows()
 
     def _activate_separation(self) -> None:
         self.settings.set("chosen_process_method", self._active_view().method_key)
@@ -816,10 +850,11 @@ class MainWindow(Adw.ApplicationWindow):
         self._refresh_start_readiness()
 
     def _on_format_changed(self, *_args) -> None:
-        self.settings.set("save_format", get_combo_value(self.format_row))
+        self.format_row.persist_to_settings(self.settings)
 
     def _on_gpu_changed(self, *_args) -> None:
         self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
+        self._sync_gpu_dependent_rows()
         self._refresh_active_stem_metadata()
 
     def _on_autocast_changed(self, *_args) -> None:
@@ -834,15 +869,19 @@ class MainWindow(Adw.ApplicationWindow):
         if hasattr(view, "_update_stem_group_metadata"):
             view._update_stem_group_metadata()
 
+    def _sync_gpu_dependent_rows(self) -> None:
+        """Dim GPU-only options while GPU conversion is off."""
+        self.autocast_row.set_sensitive(
+            gpu_dependent_enabled(self.gpu_row.get_active())
+        )
+
     def _on_close_request(self, *_args) -> bool:
         return self._run_controller.handle_close_request(self._finalize_close)
 
     def _finalize_close(self, deferred: bool) -> None:
         self._flush_settings()
         self._save_geometry()
-        error = self.context.try_save_settings(trigger="close")
-        if error:
-            self.toast(error)
+        self._handle_settings_error(self.context.try_save_settings(trigger="close"))
 
     def _save_geometry(self) -> None:
         # Only record the un-maximized size so a later un-maximize restores a
@@ -859,12 +898,22 @@ class MainWindow(Adw.ApplicationWindow):
         for view in self._views:
             view.save(include_stem_only=(view is active))
         self.settings.set("chosen_process_method", self._active_view().method_key)
-        self.settings.set("input_paths", list(self.input_row.paths))
-        self.settings.set("export_path", self.output_row.path)
-        self.settings.set("save_format", get_combo_value(self.format_row))
-        self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
-        self.settings.set("is_autocast", self.autocast_row.get_active())
-        self.settings.set("model_sample_mode", self.sample_row.get_active())
+        # The widgets below live on the Separation page only; they are kept in
+        # sync with ``settings`` while Separation is visible (see
+        # ``_activate_separation`` / ``_sync_shared_from_settings``), but go
+        # stale the moment another tab is shown — Ensemble and Audio Tools each
+        # have their own copies of these shared keys (format/quality, GPU,
+        # autocast, sample mode, input/output paths) that stay live instead.
+        # Flushing the stale Separation widgets here would clobber whatever the
+        # other tab's own widgets just wrote, so only do it when Separation is
+        # actually the visible tab.
+        if self.content_stack.get_visible_child_name() == "separation":
+            self.settings.set("input_paths", list(self.input_row.paths))
+            self.settings.set("export_path", self.output_row.path)
+            self.format_row.persist_to_settings(self.settings)
+            self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
+            self.settings.set("is_autocast", self.autocast_row.get_active())
+            self.settings.set("model_sample_mode", self.sample_row.get_active())
 
     # -- Run control ------------------------------------------------------------
 
@@ -899,9 +948,9 @@ class MainWindow(Adw.ApplicationWindow):
         self.begin_run(self._separation_target)
 
         try:
-            error = self.context.try_save_settings(trigger="start")
-            if error:
-                self.toast(error)
+            self._handle_settings_error(
+                self.context.try_save_settings(trigger="start")
+            )
             debug("ui", f"runner.start files={len(input_paths)}")
             self.context.runner.start(input_paths, callbacks)
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
@@ -926,13 +975,30 @@ class MainWindow(Adw.ApplicationWindow):
 
     # -- Misc -------------------------------------------------------------------
 
+    def _sync_after_preferences(self) -> None:
+        """Cheap re-read of the keys Preferences shares with the visible tab.
+
+        Preferences only edits a handful of keys the processing pages mirror
+        (format, GPU, sample mode), so a full ``_load_from_settings`` — which
+        re-lists every model and reparents every option group — is far too
+        heavy for a single switch flip.
+        """
+        target = self._targets.get(self.content_stack.get_visible_child_name())
+        if target is not None:
+            target.on_activated()
+        self._refresh_start_readiness()
+
     def _on_open_settings(self, _action: Gio.SimpleAction, _param) -> None:
         from core.debug_log import debug
 
         debug("ui", "open settings")
         from .preferences import PreferencesDialog
 
-        dialog = PreferencesDialog(self.context, on_settings_reloaded=self._load_from_settings)
+        dialog = PreferencesDialog(
+            self.context,
+            on_settings_reloaded=self._load_from_settings,
+            on_settings_applied=self._sync_after_preferences,
+        )
         dialog.present(self)
 
     def _on_ensemble(self, _action: Gio.SimpleAction, _param) -> None:
@@ -1000,6 +1066,33 @@ class MainWindow(Adw.ApplicationWindow):
 
         open_error_log(self)
 
+    def _input_row_for_drop(self):
+        """Resolve the visible tab's input row, or ``None`` when not routable."""
+        from core.audio_tools import DUAL_INPUT_TOOLS
+
+        tab = self.content_stack.get_visible_child_name()
+        tool = (
+            self._audio_tools_page._current_tool()
+            if tab == "audio_tools"
+            else None
+        )
+        name = drop_target_row_name(tab, tool, DUAL_INPUT_TOOLS)
+        if name == "separation":
+            return self.input_row
+        if name == "ensemble":
+            return self._ensemble_page.input_row
+        if name == "audio_tools":
+            return self._audio_tools_page.inputs_row
+        return None
+
+    def _on_window_drop(self, _target, value, _x, _y) -> bool:
+        row = self._input_row_for_drop()
+        if row is None:
+            return False
+        # Delegate to the row's own handler so path expansion, the accept-any
+        # setting, dedupe and the toasts all stay in one place.
+        return row._on_drop(_target, value, _x, _y)
+
     def _on_view_inputs(self, _action: Gio.SimpleAction, _param) -> None:
         if self.content_stack.get_visible_child_name() == "audio_tools":
             from core.audio_tools import DUAL_INPUT_TOOLS
@@ -1038,7 +1131,6 @@ class MainWindow(Adw.ApplicationWindow):
             views=self._views,
             views_by_stack=self._views_by_stack,
             settings=self.settings,
-            on_toast=self.toast,
             context=context,
             active_method_key=self._active_view().method_key,
             selected_models=selected_models,
@@ -1051,9 +1143,13 @@ class MainWindow(Adw.ApplicationWindow):
 
         present_shortcuts(self)
 
+    def _handle_settings_error(self, error: Optional[str]) -> None:
+        """Toast a settings-save failure and re-check the data-folder banner."""
+        if not error:
+            return
+        self.toast(error)
+        self._reveal_data_dir_banner_if_needed()
+
     def toast(self, message: str) -> None:
         """Show a transient toast (public so the embedded pages can use it)."""
         self.toast_overlay.add_toast(Adw.Toast.new(message))
-
-    def _toast(self, message: str) -> None:
-        self.toast(message)

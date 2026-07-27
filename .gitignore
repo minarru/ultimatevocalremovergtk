@@ -93,3 +93,6 @@ resources/uvr.gresource.xml
 CLAUDE.md
 resources/icons/scalable/actions/bug-symbolic.svg
 resources/icons/scalable/actions/cross-small-symbolic.svg
+
+# Subagent-driven-development scratch workspace
+.superpowers/

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Dict, Optional, Sequence
+from typing import Dict, Optional, Sequence
 
 from gi.repository import Adw, Gtk
 
@@ -16,7 +16,6 @@ from .applicability import (
     applicability_subtitle,
     default_stack_name,
     ensemble_context_banner,
-    non_applicable_toast,
     should_hide_unused_stacks,
 )
 
@@ -37,18 +36,14 @@ class ModelOptionsSheet:
         views: Sequence,
         views_by_stack: Dict[str, object],
         settings,
-        on_toast: Callable[[str], None],
     ):
         self._parent = parent
         self._views = list(views)
         self._views_by_stack = views_by_stack
         self._settings = settings
-        self._on_toast = on_toast
         self._context = ""
         self._active_method_key = ""
         self._selected_models: list[str] = []
-        self._toast_shown: set[str] = set()
-        self._settings_wrappers: Dict[object, Callable[[], None]] = {}
         self._tab_columns: Dict[str, Gtk.Box] = {}
         self._tab_pages: Dict[str, Gtk.Widget] = {}
         self._tab_stack_pages: Dict[str, Adw.ViewStackPage] = {}
@@ -188,29 +183,6 @@ class ModelOptionsSheet:
                 pass
             self._parent_map_handler = 0
 
-    def _dialog_is_open(self) -> bool:
-        # Adw.Dialog stays alive after close when reused; only toast while mapped.
-        return bool(self.dialog.get_mapped())
-
-    def _wrap_settings_callback(self, view) -> None:
-        if view in self._settings_wrappers:
-            return
-        original = view._on_settings_changed
-
-        def wrapped() -> None:
-            if self._dialog_is_open():
-                self._maybe_toast_non_applicable(view.stack_name)
-            original()
-
-        self._settings_wrappers[view] = original
-        view._on_settings_changed = wrapped
-
-    def _restore_settings_callbacks(self) -> None:
-        for view in list(self._settings_wrappers):
-            original = self._settings_wrappers.pop(view, None)
-            if original is not None:
-                view._on_settings_changed = original
-
     def _on_tab_changed(self, *_args) -> None:
         self._refresh_applicability()
 
@@ -225,7 +197,6 @@ class ModelOptionsSheet:
         self._context = context
         self._active_method_key = active_method_key
         self._selected_models = list(selected_models or [])
-        self._toast_shown.clear()
 
         banner_text = ensemble_context_banner(context)
         if banner_text:
@@ -286,7 +257,7 @@ class ModelOptionsSheet:
             if stack_page is not None:
                 stack_page.set_visible(is_applicable if hide_unused else True)
             # Separation keeps non-active arches editable for pre-config; the
-            # settings wrapper still toasts when those values are unused.
+            # tab subtitle communicates that those values are unused.
             # Empty ensemble dims everything until members are chosen.
             if empty_ensemble:
                 page.set_sensitive(False)
@@ -296,25 +267,8 @@ class ModelOptionsSheet:
                 page.set_sensitive(True)
             page.set_opacity(1.0)
 
-    def _maybe_toast_non_applicable(self, stack_name: str) -> None:
-        if stack_name in self._toast_shown:
-            return
-        message = non_applicable_toast(
-            self._context,
-            stack_name,
-            active_method_key=self._active_method_key,
-            selected_models=self._selected_models,
-        )
-        if message:
-            self._toast_shown.add(stack_name)
-            self._on_toast(message)
-
     def _on_closed(self, *_args) -> None:
         self._stop_width_tracking()
-        # Wrappers must not outlive the open sheet: main-view edits after close
-        # would otherwise toast against a stale active method / context.
-        self._restore_settings_callbacks()
-        self._toast_shown.clear()
 
     def present(
         self,
@@ -326,8 +280,6 @@ class ModelOptionsSheet:
     ) -> None:
         configure_dialog_width(self.dialog, self._parent, fallback=_SHEET_WIDE_WIDTH)
         self._start_width_tracking()
-        for view in self._views:
-            self._wrap_settings_callback(view)
         self.update_context(
             context=context,
             active_method_key=active_method_key,
@@ -343,7 +295,6 @@ def open_model_options_sheet(
     views: Sequence,
     views_by_stack: Dict[str, object],
     settings,
-    on_toast: Callable[[str], None],
     context: str,
     active_method_key: str,
     selected_models: Sequence[str],
@@ -360,7 +311,6 @@ def open_model_options_sheet(
             views=views,
             views_by_stack=views_by_stack,
             settings=settings,
-            on_toast=on_toast,
         )
     sheet.present(
         context=context,

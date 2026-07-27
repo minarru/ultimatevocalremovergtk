@@ -45,7 +45,6 @@ from bundled.constants import (
     CHANGE_PITCH,
     CHOOSE_APOLLO_MODEL_HELP,
     CHOOSE_MODEL,
-    FLAC,
     INPUT_FOLDER_ENTRY_HELP,
     INTRO_ANALYSIS_ALIGN_HELP,
     INTRO_MAPPER,
@@ -62,7 +61,6 @@ from bundled.constants import (
     MANUAL_ENSEMBLE,
     MANUAL_ENSEMBLE_OPTIONS,
     MATCH_INPUTS,
-    MP3,
     OUTPUT_FOLDER_ENTRY_HELP,
     PHASE_SHIFTS_ALIGN_HELP,
     PHASE_SHIFTS_OPT,
@@ -72,21 +70,19 @@ from bundled.constants import (
     TIME_WINDOW_MAPPER,
     VOLUME_ANALYSIS_ALIGN_HELP,
     VOLUME_MAPPER,
-    WAV,
-    WAV_TYPE,
 )
 
 from ..help_text import (
     MANUAL_ENSEMBLE_ALGORITHM_HINT,
     PLAYBACK_RATE_HINT,
     VIEW_INPUTS_BUTTON_HINT,
-    WAV_TYPE_HINT,
 )
-from ..hints import HelpHintManager, OUTPUT_FORMAT_HINT, set_icon_button_a11y, set_tooltip
+from ..hints import HelpHintManager, set_icon_button_a11y, set_tooltip
 from ..shared_settings import apply_shared_file_options
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.dual_inputs import DualInputsRow
 from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
+from ..widgets.format_row import OutputFormatRow
 from ..widgets.rows import (
     get_combo_value,
     make_combo_row,
@@ -166,7 +162,7 @@ class AudioToolsPage:
         self.tool_stack = self._build_tool_stack()
         self.shared_group = self._build_shared_group()
 
-        self.columns_box, self._col_start, self._col_end = build_columns_box(
+        self.columns_box, _, _ = build_columns_box(
             left_groups=(self.files_group, select_group, self.tool_stack),
             right_groups=(self.shared_group,),
         )
@@ -422,15 +418,8 @@ class AudioToolsPage:
     def _build_shared_group(self) -> Gtk.Widget:
         group = Adw.PreferencesGroup(title="Processing")
 
-        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="waveform-symbolic")
-        self.hints.register(self.format_row, OUTPUT_FORMAT_HINT)
-        self.format_row.connect("notify::selected", self._on_format_changed)
+        self.format_row = OutputFormatRow(self._on_format_changed)
         group.add(self.format_row)
-
-        self.wav_type_row = make_combo_row("WAV type", WAV_TYPE)
-        self.hints.register(self.wav_type_row, WAV_TYPE_HINT)
-        self.wav_type_row.connect("notify::selected", lambda *_a: self._set("wav_type_set", get_combo_value(self.wav_type_row)))
-        group.add(self.wav_type_row)
 
         # Shown only for Apollo (GPU-accelerated audio tool).
         self.apollo_gpu_row = make_switch_row(
@@ -510,8 +499,7 @@ class AudioToolsPage:
             self.match_silence_row.set_active(bool(s.get("is_match_silence")))
             self.spec_match_row.set_active(bool(s.get("is_spec_match")))
 
-            set_combo_value(self.format_row, s.get("save_format", WAV))
-            set_combo_value(self.wav_type_row, s.get("wav_type_set"))
+            self.format_row.apply_from_settings(s)
             self.normalize_row.set_active(bool(s.get("is_normalization")))
             try:
                 amp = float(s.get("amplification_threshold") or 0.0)
@@ -522,7 +510,6 @@ class AudioToolsPage:
         finally:
             self._loading = False
 
-        self._sync_format_rows()
         self._refresh_apollo_models()
         self._sync_tool_visibility()
         self._refresh_dual_rows()
@@ -540,7 +527,28 @@ class AudioToolsPage:
             )
         finally:
             self._loading = False
-        self._sync_format_rows()
+
+    def sync_processing_from_settings(self) -> None:
+        """Re-read the Processing-group rows Preferences can edit directly.
+
+        ``_sync_shared_from_settings`` only covers the block shared with every
+        tab (inputs/output/format/GPU/sample mode); normalization and the
+        amplification threshold are Audio-Tools-only rows that Preferences can
+        still edit (see ``ui/preferences.py``), so the light resync used after
+        applying Preferences (``MainWindow._sync_after_preferences``) needs its
+        own pass to keep them from going stale for the rest of the session.
+        """
+        self._loading = True
+        try:
+            s = self.settings
+            self.normalize_row.set_active(bool(s.get("is_normalization")))
+            try:
+                amp = float(s.get("amplification_threshold") or 0.0)
+            except (TypeError, ValueError):
+                amp = 0.0
+            self.amplification_row.set_value(max(0.0, min(1.0, amp)))
+        finally:
+            self._loading = False
 
     def _sync_tool_visibility(self) -> None:
         tool = self._current_tool()
@@ -551,7 +559,6 @@ class AudioToolsPage:
             self.tool_stack.set_visible_child_name(tool)
         self.apollo_gpu_row.set_visible(tool == APOLLO_RESTORE)
         self._sync_files_visibility(tool)
-        self._sync_column_balance(tool)
         self._update_audio_banner()
 
     def _sync_files_visibility(self, tool: Optional[str] = None) -> None:
@@ -568,19 +575,6 @@ class AudioToolsPage:
             self.files_group.set_description(_ALIGN_FILES_DESCRIPTION)
         else:
             self.files_group.set_description(None)
-
-    def _sync_column_balance(self, tool: Optional[str] = None) -> None:
-        """Tuck Processing under Files when the tool stack is empty (Matchering)."""
-        tool = tool or self._current_tool()
-        parent = self.shared_group.get_parent()
-        if parent is not None:
-            parent.remove(self.shared_group)
-        if tool == MATCH_INPUTS:
-            self._col_start.append(self.shared_group)
-            self._col_end.set_visible(False)
-        else:
-            self._col_end.append(self.shared_group)
-            self._col_end.set_visible(True)
 
     def _update_audio_banner(self) -> None:
         """Page-level empty-state banner for Apollo models / dual input pairs."""
@@ -649,12 +643,9 @@ class AudioToolsPage:
         self._refresh_dual_rows()
 
     def _on_format_changed(self, *_args) -> None:
-        self._sync_format_rows()
-        self._set("save_format", get_combo_value(self.format_row))
-
-    def _sync_format_rows(self) -> None:
-        output_format = get_combo_value(self.format_row) or WAV
-        self.wav_type_row.set_visible(output_format == WAV)
+        if self._loading:
+            return
+        self.format_row.persist_to_settings(self.settings)
 
     def _on_inputs_changed(self) -> None:
         if self._loading:
@@ -690,6 +681,7 @@ class AudioToolsPage:
         # Audio Tools does not use ``chosen_process_method``; just keep the
         # shared input/output selection in step with the other tabs.
         self._sync_shared_from_settings()
+        self.sync_processing_from_settings()
         self._refresh_apollo_models()
         self._sync_tool_visibility()
         self._refresh_dual_rows()

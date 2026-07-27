@@ -38,9 +38,14 @@ _LOG_EMPTY_ICON = "utilities-terminal-symbolic"
 _LOG_EMPTY_TITLE = "No activity yet"
 _LOG_EMPTY_DESCRIPTION = "Start a process to see its log here."
 _PROGRESS_DONE_LABEL = "Done"
+#: Delay before a finished run's 100% / "Done" bar collapses on its own.
+_DONE_COLLAPSE_MS = 5000
 
 
 class LogPanel(Gtk.Box):
+    #: Public alias so callers don't reach for the module-private constant.
+    DONE_COLLAPSE_MS = _DONE_COLLAPSE_MS
+
     def __init__(
         self,
         on_console_changed: Optional[Callable[[bool], None]] = None,
@@ -60,6 +65,7 @@ class LogPanel(Gtk.Box):
         self._on_expanded_changed = on_expanded_changed
         self._syncing_expand = False
         self._pulse_source_id: Optional[int] = None
+        self._done_collapse_id: Optional[int] = None
         self._run_label = ""
         self._progress_status = ""
 
@@ -250,6 +256,29 @@ class LogPanel(Gtk.Box):
         self._progress_label.set_visible(False)
         self._sync_progress_section_visible()
 
+    def mark_run_complete(self) -> None:
+        """Collapse the finished progress block after a short grace period.
+
+        The completion toast and the log both persist the result, so the 100% /
+        "Done" bar only needs to be visible long enough to be read. Collapsing
+        it also returns ``_PROGRESS_SECTION_RESERVE`` px of scroll clearance to
+        the option columns (see :meth:`options_overlay_clearance`).
+        """
+        self._cancel_done_collapse()
+        self._done_collapse_id = GLib.timeout_add(
+            _DONE_COLLAPSE_MS, self._on_done_collapse
+        )
+
+    def _on_done_collapse(self) -> bool:
+        self._done_collapse_id = None
+        self.clear_progress()
+        return GLib.SOURCE_REMOVE
+
+    def _cancel_done_collapse(self) -> None:
+        if self._done_collapse_id is not None:
+            GLib.source_remove(self._done_collapse_id)
+            self._done_collapse_id = None
+
     def clear_log(self) -> None:
         """Clear the console; collapse the progress block after a finished run."""
         self.console.clear()
@@ -265,6 +294,7 @@ class LogPanel(Gtk.Box):
 
     def prepare_for_run(self) -> None:
         """Show the console and reset scroll before worker output arrives."""
+        self._cancel_done_collapse()
         revealed = self._log_revealer.get_child_revealed()
         debug("ui", f"log_panel.prepare_for_run child_revealed={revealed}")
         self._log_stack.set_visible_child_name("console")

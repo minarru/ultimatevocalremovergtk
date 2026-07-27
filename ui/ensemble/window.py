@@ -44,7 +44,6 @@ from bundled.constants import (
     ENSEMBLE_MODE,
     ENSEMBLE_PARTITION,
     ENSEMBLE_TYPE_HELP,
-    FLAC,
     FOUR_STEM_ENSEMBLE,
     IS_APPEND_ENSEMBLE_NAME_HELP,
     IS_AUTOCAST_HELP,
@@ -54,11 +53,9 @@ from bundled.constants import (
     IS_WAV_ENSEMBLE_HELP,
     MAX_MIN,
     MODEL_SAMPLE_MODE_HELP,
-    MP3,
     OUTPUT_FOLDER_ENTRY_HELP,
     MULTI_STEM_ENSEMBLE,
     SAVE_STEM_ONLY_HELP,
-    WAV,
 )
 from core.ensemble_algorithms import (
     ENSEMBLE_PRESET_OPTIONS,
@@ -84,7 +81,7 @@ from ..help_text import (
     RUN_WORKLOAD_HINT,
     VIEW_INPUTS_BUTTON_HINT,
 )
-from ..hints import OUTPUT_FORMAT_HINT, set_icon_button_a11y, set_tooltip
+from ..hints import set_icon_button_a11y, set_tooltip
 from ..markup import set_row_subtitle, set_row_title
 from core.model_display import format_tag_subtitle, format_tag_title
 from core import (
@@ -106,10 +103,12 @@ from core.ensemble_presets import (
 
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
+from ..widgets.format_row import OutputFormatRow
 from ..shared_settings import (
     SAMPLE_MODE_TITLE,
     apply_sample_mode_label,
     apply_shared_file_options,
+    gpu_dependent_enabled,
     sample_mode_subtitle,
 )
 from ..widgets.rows import (
@@ -366,9 +365,7 @@ class EnsemblePage:
     def _build_output_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Processing")
 
-        self.format_row = make_combo_row("Output format", [WAV, FLAC, MP3], icon_name="waveform-symbolic")
-        set_tooltip(self.format_row, OUTPUT_FORMAT_HINT)
-        self.format_row.connect("notify::selected", self._on_format_changed)
+        self.format_row = OutputFormatRow(self._on_format_changed)
         group.add(self.format_row)
 
         self.gpu_row = make_switch_row("GPU conversion", icon_name="pci-card-symbolic")
@@ -446,7 +443,7 @@ class EnsemblePage:
         try:
             self.input_row.set_paths(self.settings.get("input_paths") or [], notify=False)
             self.output_row.set_path(self.settings.get("export_path") or "", notify=False)
-            set_combo_value(self.format_row, self.settings.get("save_format", WAV))
+            self.format_row.apply_from_settings(self.settings)
             self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
             self.autocast_row.set_active(bool(self.settings.get("is_autocast")))
             apply_sample_mode_label(self.sample_row, self.settings.get("model_sample_mode_duration", 30))
@@ -462,6 +459,7 @@ class EnsemblePage:
             self.wav_ensemble_row.set_active(bool(self.settings.get("is_wav_ensemble")))
         finally:
             self._loading = False
+        self._sync_gpu_dependent_rows()
 
         self._rebuild_model_list(self.settings.get("selected_models") or [])
 
@@ -480,6 +478,7 @@ class EnsemblePage:
             )
         finally:
             self._loading = False
+        self._sync_gpu_dependent_rows()
 
     def _set_bool(self, key: str, value: bool, *, refresh_stems: bool = False) -> None:
         if self._loading:
@@ -500,12 +499,13 @@ class EnsemblePage:
 
     def _on_format_changed(self, *_args) -> None:
         if not self._loading:
-            self.settings.set("save_format", get_combo_value(self.format_row))
+            self.format_row.persist_to_settings(self.settings)
 
     def _on_gpu_changed(self, *_args) -> None:
         if not self._loading:
             self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
             self._update_stems_group_metadata()
+        self._sync_gpu_dependent_rows()
 
     def _on_autocast_changed(self, *_args) -> None:
         if not self._loading:
@@ -888,6 +888,12 @@ class EnsemblePage:
             if row is None:
                 continue
             row.set_sensitive(enabled)
+
+    def _sync_gpu_dependent_rows(self) -> None:
+        """Dim GPU-only options while GPU conversion is off."""
+        self.autocast_row.set_sensitive(
+            gpu_dependent_enabled(self.gpu_row.get_active())
+        )
 
     def _update_wav_ensemble_subtitle(self) -> None:
         row = getattr(self, "wav_ensemble_row", None)

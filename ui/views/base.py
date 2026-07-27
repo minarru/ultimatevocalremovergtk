@@ -149,6 +149,7 @@ class MethodView:
         self._spin_rows = {}
         self._model_combos = []
         self._model_combos_populated = False
+        self._switch_dependent_appliers = []
         self.hints = HelpHintManager()
 
         # The window distributes these groups across one or two responsive
@@ -372,6 +373,7 @@ class MethodView:
             self._load_spins()
         finally:
             self._loading = False
+        self._sync_switch_dependents()
         self.update_stem_labels()
         self.hints.refresh()
 
@@ -623,6 +625,32 @@ class MethodView:
         finally:
             self._populating_models = False
 
+    def _bind_switch_dependents(self, switch_row, dependents) -> None:
+        """Dim ``dependents`` whenever ``switch_row`` is off.
+
+        Mirrors the pattern already used for the Ensemble algorithm rows: an
+        inapplicable control stays visible but non-interactive, so the section's
+        shape doesn't change as switches flip.
+        """
+        rows = [row for row in dependents if row is not None]
+
+        def apply(*_args) -> None:
+            active = switch_row.get_active()
+            for row in rows:
+                row.set_sensitive(active)
+
+        switch_row.connect("notify::active", apply)
+        # Guarded: tests exercise this method on a bare ``__new__`` instance.
+        appliers = getattr(self, "_switch_dependent_appliers", None)
+        if appliers is not None:
+            appliers.append(apply)
+        apply()
+
+    def _sync_switch_dependents(self) -> None:
+        """Re-apply every activate-switch's dimming after settings are loaded."""
+        for apply in getattr(self, "_switch_dependent_appliers", ()):
+            apply()
+
     def _build_secondary_section(self) -> None:
         repo = self.context.repo
         settings = self.settings
@@ -640,54 +668,69 @@ class MethodView:
             prefix = self.secondary_prefix
             self.secondary_expander = Adw.ExpanderRow(title="Secondary models")
             self.secondary_expander.connect("notify::expanded", self._ensure_model_combos_populated)
-            self.add_option_switch(self.secondary_expander, f"{prefix}_is_secondary_model_activate", "Activate secondary model", hint=SECONDARY_MODEL_ACTIVATE_HELP)
+            activate = self.add_option_switch(
+                self.secondary_expander,
+                f"{prefix}_is_secondary_model_activate",
+                "Activate secondary model",
+                hint=SECONDARY_MODEL_ACTIVATE_HELP,
+            )
+            dependents = []
             for slot, pair, primary, secondary in _SECONDARY_SLOTS:
                 model_key = f"{prefix}_{slot}_secondary_model"
                 scale_key = f"{prefix}_{slot}_secondary_model_scale"
                 provider = (lambda p=primary, s=secondary: repo.model_list(settings, p, s))
-                self._add_model_combo(self.secondary_expander, model_key, provider, pair, hint=SECONDARY_MODEL_HELP)
-                self.add_option_scale(
-                    self.secondary_expander,
-                    scale_key,
-                    f"{pair} influence",
-                    lower=0.01,
-                    upper=0.99,
-                    step=0.01,
-                    digits=2,
-                    hint=SECONDARY_MODEL_SCALE_HELP,
-                    store_float=True,
+                dependents.append(
+                    self._add_model_combo(self.secondary_expander, model_key, provider, pair, hint=SECONDARY_MODEL_HELP)
                 )
+                dependents.append(
+                    self.add_option_scale(
+                        self.secondary_expander,
+                        scale_key,
+                        f"{pair} influence",
+                        lower=0.01,
+                        upper=0.99,
+                        step=0.01,
+                        digits=2,
+                        hint=SECONDARY_MODEL_SCALE_HELP,
+                        store_float=True,
+                    )
+                )
+            self._bind_switch_dependents(activate, dependents)
             group.add(self.secondary_expander)
 
         # Demucs pre-process model.
         if self.has_preproc:
             self.preproc_expander = Adw.ExpanderRow(title="Pre-process model")
             self.preproc_expander.connect("notify::expanded", self._ensure_model_combos_populated)
-            self.add_option_switch(self.preproc_expander, "is_demucs_pre_proc_model_activate", "Activate pre-process model", hint=PRE_PROC_MODEL_ACTIVATE_HELP)
-            self._add_model_combo(
+            activate = self.add_option_switch(self.preproc_expander, "is_demucs_pre_proc_model_activate", "Activate pre-process model", hint=PRE_PROC_MODEL_ACTIVATE_HELP)
+            model_row = self._add_model_combo(
                 self.preproc_expander,
                 "demucs_pre_proc_model",
                 lambda: repo.model_list(settings, VOCAL_STEM, INST_STEM, is_no_demucs=True),
                 "Pre-process model",
                 hint=SECONDARY_MODEL_HELP,
             )
-            self.add_option_switch(self.preproc_expander, "is_demucs_pre_proc_model_inst_mix", "Save instrumental mixture", hint=PRE_PROC_MODEL_INST_MIX_HELP)
+            inst_mix_row = self.add_option_switch(self.preproc_expander, "is_demucs_pre_proc_model_inst_mix", "Save instrumental mixture", hint=PRE_PROC_MODEL_INST_MIX_HELP)
+            self._bind_switch_dependents(activate, [model_row, inst_mix_row])
             group.add(self.preproc_expander)
 
         # Vocal splitter and deverb (shared global options, surfaced per method).
         self.voc_split_expander = Adw.ExpanderRow(title="Vocal splitter and deverb")
         self.voc_split_expander.connect("notify::expanded", self._ensure_model_combos_populated)
-        self.add_option_switch(self.voc_split_expander, "is_set_vocal_splitter", "Enable vocal split mode", hint=IS_VOC_SPLIT_MODEL_SELECT_HELP)
-        self._add_model_combo(
+        split_activate = self.add_option_switch(self.voc_split_expander, "is_set_vocal_splitter", "Enable vocal split mode", hint=IS_VOC_SPLIT_MODEL_SELECT_HELP)
+        splitter_row = self._add_model_combo(
             self.voc_split_expander,
             "set_vocal_splitter",
             lambda: repo.karaoke_model_list(settings),
             "Vocal splitter model",
             hint=VOC_SPLIT_MODEL_SELECT_HELP,
         )
-        self.add_option_switch(self.voc_split_expander, "is_save_inst_set_vocal_splitter", "Save split vocal instrumentals", hint=IS_VOC_SPLIT_INST_SAVE_SELECT_HELP)
-        self.add_option_switch(self.voc_split_expander, "is_deverb_vocals", "Deverb vocals", hint=IS_DEVERB_VOC_HELP)
-        self.add_option_combo(self.voc_split_expander, "deverb_vocal_opt", "Deverb vocal type", list(DEVERB_MAPPER.keys()), hint=IS_DEVERB_OPT_HELP)
+        save_inst_row = self.add_option_switch(self.voc_split_expander, "is_save_inst_set_vocal_splitter", "Save split vocal instrumentals", hint=IS_VOC_SPLIT_INST_SAVE_SELECT_HELP)
+        self._bind_switch_dependents(split_activate, [splitter_row, save_inst_row])
+
+        deverb_activate = self.add_option_switch(self.voc_split_expander, "is_deverb_vocals", "Deverb vocals", hint=IS_DEVERB_VOC_HELP)
+        deverb_type_row = self.add_option_combo(self.voc_split_expander, "deverb_vocal_opt", "Deverb vocal type", list(DEVERB_MAPPER.keys()), hint=IS_DEVERB_OPT_HELP)
+        self._bind_switch_dependents(deverb_activate, [deverb_type_row])
         group.add(self.voc_split_expander)
 
         # Change-model-defaults entry point.

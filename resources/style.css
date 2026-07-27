@@ -28,7 +28,7 @@
     border-radius: 16px 16px 12px 12px;
     background-image: none;
     background-color: @window_bg_color;
-    color: @card_fg_color;
+    color: @window_fg_color;
     border: 1px solid alpha(@borders, 0.45);
     box-shadow:
         0 3px 10px alpha(@shade_color, 0.14),
@@ -123,7 +123,7 @@ menubutton.uvr-download-queue-chip arrow {
 
 @keyframes needs_attention_keyframes {
     0% { }
-    10% { background-color: var(--accent-bg-color); }
+    10% { background-color: @accent_bg_color; }
     100% { }
 }
 

@@ -48,6 +48,31 @@ def merge_input_paths(existing: Sequence[str], added: Sequence[str]) -> List[str
     return merged
 
 
+def expander_state(
+    path_count: int, *, was_expanded: bool, preserve: bool
+) -> tuple[bool, bool]:
+    """Return ``(enable_expansion, expanded)`` for a ``path_count``-file selection.
+
+    One file is fully summarized by the header, so expansion is disabled below
+    two files. ``preserve`` keeps an already-open list open — set when the list
+    is being edited in place (removing a file) rather than replaced wholesale.
+    """
+    if path_count <= 1:
+        return False, False
+    return True, (was_expanded if preserve else False)
+
+
+def output_subtitle(path: str, reason: Optional[str]) -> tuple[str, bool]:
+    """Return ``(subtitle, is_error)`` for the export-folder row."""
+    if not path:
+        return "No folder selected", False
+    if not reason:
+        return path, False
+    if "writable" in reason.lower():
+        return f"Folder not writable — {path}", True
+    return f"Folder not found — {path}", True
+
+
 # Re-export for call sites / tests that historically imported from here.
 expand_dropped_paths = expand_audio_paths
 
@@ -126,10 +151,16 @@ class InputFilesRow(Adw.ExpanderRow):
     def _on_drop_leave(self, _target: Gtk.DropTarget) -> None:
         self.remove_css_class("drop-highlight")
 
-    def set_paths(self, paths: Sequence[str], notify: bool = True) -> None:
+    def set_paths(
+        self,
+        paths: Sequence[str],
+        notify: bool = True,
+        *,
+        preserve_expansion: bool = False,
+    ) -> None:
         cleaned, result = sanitize_input_paths(paths)
         self.paths = cleaned
-        self._refresh()
+        self._refresh(preserve_expansion=preserve_expansion)
         if notify:
             from core.debug_log import debug
 
@@ -154,15 +185,16 @@ class InputFilesRow(Adw.ExpanderRow):
         if self._on_toast is not None:
             self._on_toast(message)
 
-    def _refresh(self) -> None:
+    def _refresh(self, *, preserve_expansion: bool = False) -> None:
+        was_expanded = self.get_expanded()
         self._refresh_subtitle()
         self._rebuild_file_rows()
         self._clear_button.set_sensitive(bool(self.paths))
-        # One file is fully summarized in the header; expand only for batches.
-        # Collapse by default so the header summary stays primary after selection.
-        multi = len(self.paths) > 1
-        self.set_enable_expansion(multi)
-        self.set_expanded(False)
+        enable, expanded = expander_state(
+            len(self.paths), was_expanded=was_expanded, preserve=preserve_expansion
+        )
+        self.set_enable_expansion(enable)
+        self.set_expanded(expanded)
 
     def _refresh_subtitle(self) -> None:
         if not self.paths:
@@ -202,7 +234,9 @@ class InputFilesRow(Adw.ExpanderRow):
             self._file_rows.append(row)
 
     def _on_remove_clicked(self, _button: Gtk.Button, path: str) -> None:
-        self.set_paths([p for p in self.paths if p != path])
+        self.set_paths(
+            [p for p in self.paths if p != path], preserve_expansion=True
+        )
 
     def _on_clear_clicked(self, _button: Gtk.Button) -> None:
         if self.paths:
@@ -292,17 +326,16 @@ class OutputFolderRow(Adw.ActionRow):
         return self.blocked_reason() is None
 
     def _refresh_subtitle(self) -> None:
-        if not self.path:
-            self.set_subtitle("No folder selected")
-            return
-        reason = export_path_blocked_reason(self.path)
-        if reason and self.path:
-            if "writable" in reason.lower():
-                set_row_subtitle(self, f"Folder not writable — {self.path}")
-            else:
-                set_row_subtitle(self, f"Folder not found — {self.path}")
-            return
-        set_row_subtitle(self, self.path)
+        subtitle, is_error = output_subtitle(
+            self.path, export_path_blocked_reason(self.path) if self.path else None
+        )
+        set_row_subtitle(self, subtitle)
+        # libadwaita's .error class tints the row so a stale or read-only export
+        # folder reads as a failure instead of an ordinary path.
+        if is_error:
+            self.add_css_class("error")
+        else:
+            self.remove_css_class("error")
 
     def _on_clicked(self, _button: Gtk.Button) -> None:
         dialog = folder_dialog("Select Output Folder", initial=self.path or None)

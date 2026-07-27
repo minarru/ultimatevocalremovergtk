@@ -134,28 +134,6 @@ def applicability_subtitle(
     return ""
 
 
-def non_applicable_toast(
-    context: str,
-    stack_name: str,
-    *,
-    active_method_key: str,
-    selected_models: Sequence[str],
-) -> Optional[str]:
-    applicable = applicable_stack_names(
-        context,
-        active_method_key=active_method_key,
-        selected_models=selected_models,
-    )
-    if stack_name in applicable:
-        return None
-    title = _STACK_TITLES.get(stack_name, stack_name)
-    if context == OPEN_CONTEXT_SEPARATION:
-        return f"{title} options are not used by the active separation method."
-    if context == OPEN_CONTEXT_ENSEMBLE:
-        return f"{title} options are not used by any selected ensemble member."
-    return f"{title} options do not apply in this context."
-
-
 def ensemble_context_banner(context: str) -> Optional[str]:
     if context != OPEN_CONTEXT_ENSEMBLE:
         return None

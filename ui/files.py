@@ -57,7 +57,7 @@ def _report_error(
     if callable(on_error):
         on_error(message)
         return
-    toast = getattr(window, "_toast", None)
+    toast = getattr(window, "toast", None)
     if callable(toast):
         toast(message)
 

@@ -1,4 +1,4 @@
-"""Regression: model-options sheet must not wrap settings callbacks after close."""
+"""Regression: model-options sheet must not touch view settings callbacks."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class ModelOptionsSheetCallbackTests(unittest.TestCase):
         view._on_settings_changed = MagicMock(name=f"{stack_name}_settings_changed")
         return view
 
-    def test_close_restores_settings_callbacks(self) -> None:
+    def test_present_and_close_leave_settings_callbacks_untouched(self) -> None:
         from gi.repository import Gtk
 
         from ui.model_options.sheet import ModelOptionsSheet
@@ -50,42 +50,20 @@ class ModelOptionsSheetCallbackTests(unittest.TestCase):
             views=[mdx, demucs],
             views_by_stack={"mdx": mdx, "demucs": demucs},
             settings=MagicMock(),
-            on_toast=MagicMock(),
         )
-        for view in (mdx, demucs):
-            sheet._wrap_settings_callback(view)
+        sheet.update_context(
+            context="separation",
+            active_method_key="Demucs",
+            selected_models=[],
+        )
 
-        self.assertIsNot(mdx._on_settings_changed, original_mdx)
-        self.assertIsNot(demucs._on_settings_changed, original_demucs)
+        self.assertIs(mdx._on_settings_changed, original_mdx)
+        self.assertIs(demucs._on_settings_changed, original_demucs)
 
         sheet._on_closed()
 
         self.assertIs(mdx._on_settings_changed, original_mdx)
         self.assertIs(demucs._on_settings_changed, original_demucs)
-        self.assertEqual(sheet._settings_wrappers, {})
-
-    def test_wrapped_callback_skips_toast_when_dialog_closed(self) -> None:
-        from gi.repository import Gtk
-
-        from ui.model_options.sheet import ModelOptionsSheet
-
-        parent = Gtk.Window()
-        mdx = self._make_view("mdx")
-        toast = MagicMock()
-        sheet = ModelOptionsSheet(
-            parent,
-            views=[mdx],
-            views_by_stack={"mdx": mdx},
-            settings=MagicMock(),
-            on_toast=toast,
-        )
-        sheet._context = "separation"
-        sheet._active_method_key = "Demucs"
-        sheet._wrap_settings_callback(mdx)
-
-        # Dialog is not presented, so get_mapped() is false.
-        mdx._on_settings_changed()
-        toast.assert_not_called()
 
 
 if __name__ == "__main__":
