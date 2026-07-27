@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import unittest
 
+from core.audio_tools import DUAL_INPUT_TOOLS
 from ui.window import drop_target_row_name
 
-_DUAL = {"Manual Ensemble", "Align Inputs"}
+_DUAL = DUAL_INPUT_TOOLS
 
 
 class DropRoutingTests(unittest.TestCase):
@@ -20,12 +21,12 @@ class DropRoutingTests(unittest.TestCase):
 
     def test_single_input_audio_tool_routes_to_its_input_row(self):
         self.assertEqual(
-            drop_target_row_name("audio_tools", "Change Pitch", _DUAL), "audio_tools"
+            drop_target_row_name("audio_tools", "Manual Ensemble", _DUAL), "audio_tools"
         )
 
     def test_dual_input_audio_tool_is_not_routed(self):
         self.assertIsNone(
-            drop_target_row_name("audio_tools", "Manual Ensemble", _DUAL)
+            drop_target_row_name("audio_tools", "Align Inputs", _DUAL)
         )
 
     def test_unknown_tab_is_not_routed(self):

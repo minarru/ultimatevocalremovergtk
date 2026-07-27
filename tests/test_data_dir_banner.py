@@ -16,6 +16,9 @@ class DataDirBannerStateTests(unittest.TestCase):
             revealed, _title = data_dir_banner_state(tmp)
             self.assertFalse(revealed)
 
+    @unittest.skipIf(
+        os.geteuid() == 0, "os.access(W_OK) ignores file mode for root"
+    )
     def test_read_only_folder_reveals_the_banner(self):
         with tempfile.TemporaryDirectory() as tmp:
             os.chmod(tmp, stat.S_IRUSR | stat.S_IXUSR)
@@ -25,6 +28,9 @@ class DataDirBannerStateTests(unittest.TestCase):
                 os.chmod(tmp, stat.S_IRWXU)
             self.assertTrue(revealed)
 
+    @unittest.skipIf(
+        os.geteuid() == 0, "os.access(W_OK) ignores file mode for root"
+    )
     def test_title_names_the_offending_folder(self):
         with tempfile.TemporaryDirectory() as tmp:
             os.chmod(tmp, stat.S_IRUSR | stat.S_IXUSR)
@@ -34,6 +40,9 @@ class DataDirBannerStateTests(unittest.TestCase):
                 os.chmod(tmp, stat.S_IRWXU)
             self.assertIn(tmp, title)
 
+    @unittest.skipIf(
+        os.geteuid() == 0, "os.access(W_OK) ignores file mode for root"
+    )
     def test_title_does_not_promise_a_chooser(self):
         # There is no in-app data-folder picker, so the copy must not tell the
         # user to "choose a writable location".

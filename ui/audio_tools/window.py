@@ -162,7 +162,7 @@ class AudioToolsPage:
         self.tool_stack = self._build_tool_stack()
         self.shared_group = self._build_shared_group()
 
-        self.columns_box, self._col_start, self._col_end = build_columns_box(
+        self.columns_box, _, _ = build_columns_box(
             left_groups=(self.files_group, select_group, self.tool_stack),
             right_groups=(self.shared_group,),
         )
@@ -528,6 +528,28 @@ class AudioToolsPage:
         finally:
             self._loading = False
 
+    def sync_processing_from_settings(self) -> None:
+        """Re-read the Processing-group rows Preferences can edit directly.
+
+        ``_sync_shared_from_settings`` only covers the block shared with every
+        tab (inputs/output/format/GPU/sample mode); normalization and the
+        amplification threshold are Audio-Tools-only rows that Preferences can
+        still edit (see ``ui/preferences.py``), so the light resync used after
+        applying Preferences (``MainWindow._sync_after_preferences``) needs its
+        own pass to keep them from going stale for the rest of the session.
+        """
+        self._loading = True
+        try:
+            s = self.settings
+            self.normalize_row.set_active(bool(s.get("is_normalization")))
+            try:
+                amp = float(s.get("amplification_threshold") or 0.0)
+            except (TypeError, ValueError):
+                amp = 0.0
+            self.amplification_row.set_value(max(0.0, min(1.0, amp)))
+        finally:
+            self._loading = False
+
     def _sync_tool_visibility(self) -> None:
         tool = self._current_tool()
         # Matchering has no tool settings page; hide the empty stack slot.
@@ -659,6 +681,7 @@ class AudioToolsPage:
         # Audio Tools does not use ``chosen_process_method``; just keep the
         # shared input/output selection in step with the other tabs.
         self._sync_shared_from_settings()
+        self.sync_processing_from_settings()
         self._refresh_apollo_models()
         self._sync_tool_visibility()
         self._refresh_dual_rows()

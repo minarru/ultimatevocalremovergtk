@@ -170,7 +170,7 @@ class OutputFormatRowTests(unittest.TestCase):
         row.persist_to_settings(settings)
         self.assertEqual(settings.get("mp3_bit_set"), new_value)
 
-    def test_each_dropdown_has_an_accessible_label(self):
+    def test_each_dropdown_has_a_tooltip(self):
         from gi.repository import Gtk
 
         from ui.widgets.format_row import OutputFormatRow
@@ -178,7 +178,9 @@ class OutputFormatRowTests(unittest.TestCase):
         row = OutputFormatRow(lambda: None)
         row.apply_from_settings(self._settings(save_format=MP3))
         # The row title only names the first control, so the quality dropdown
-        # must carry its own label for screen readers.
+        # must carry its own tooltip. GTK4/PyGObject exposes no read-back for
+        # accessible properties (Gtk.Accessible has no getter), so this only
+        # checks the tooltip text, not the accessible label itself.
         for drop in (row._format_drop, row._quality_drop):
             self.assertIsInstance(drop, Gtk.DropDown)
             self.assertTrue(drop.get_tooltip_text())

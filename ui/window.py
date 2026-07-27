@@ -898,12 +898,22 @@ class MainWindow(Adw.ApplicationWindow):
         for view in self._views:
             view.save(include_stem_only=(view is active))
         self.settings.set("chosen_process_method", self._active_view().method_key)
-        self.settings.set("input_paths", list(self.input_row.paths))
-        self.settings.set("export_path", self.output_row.path)
-        self.format_row.persist_to_settings(self.settings)
-        self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
-        self.settings.set("is_autocast", self.autocast_row.get_active())
-        self.settings.set("model_sample_mode", self.sample_row.get_active())
+        # The widgets below live on the Separation page only; they are kept in
+        # sync with ``settings`` while Separation is visible (see
+        # ``_activate_separation`` / ``_sync_shared_from_settings``), but go
+        # stale the moment another tab is shown — Ensemble and Audio Tools each
+        # have their own copies of these shared keys (format/quality, GPU,
+        # autocast, sample mode, input/output paths) that stay live instead.
+        # Flushing the stale Separation widgets here would clobber whatever the
+        # other tab's own widgets just wrote, so only do it when Separation is
+        # actually the visible tab.
+        if self.content_stack.get_visible_child_name() == "separation":
+            self.settings.set("input_paths", list(self.input_row.paths))
+            self.settings.set("export_path", self.output_row.path)
+            self.format_row.persist_to_settings(self.settings)
+            self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
+            self.settings.set("is_autocast", self.autocast_row.get_active())
+            self.settings.set("model_sample_mode", self.sample_row.get_active())
 
     # -- Run control ------------------------------------------------------------
 
