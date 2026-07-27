@@ -537,7 +537,6 @@ class AudioToolsPage:
             self.tool_stack.set_visible_child_name(tool)
         self.apollo_gpu_row.set_visible(tool == APOLLO_RESTORE)
         self._sync_files_visibility(tool)
-        self._sync_column_balance(tool)
         self._update_audio_banner()
 
     def _sync_files_visibility(self, tool: Optional[str] = None) -> None:
@@ -554,19 +553,6 @@ class AudioToolsPage:
             self.files_group.set_description(_ALIGN_FILES_DESCRIPTION)
         else:
             self.files_group.set_description(None)
-
-    def _sync_column_balance(self, tool: Optional[str] = None) -> None:
-        """Tuck Processing under Files when the tool stack is empty (Matchering)."""
-        tool = tool or self._current_tool()
-        parent = self.shared_group.get_parent()
-        if parent is not None:
-            parent.remove(self.shared_group)
-        if tool == MATCH_INPUTS:
-            self._col_start.append(self.shared_group)
-            self._col_end.set_visible(False)
-        else:
-            self._col_end.append(self.shared_group)
-            self._col_end.set_visible(True)
 
     def _update_audio_banner(self) -> None:
         """Page-level empty-state banner for Apollo models / dual input pairs."""
