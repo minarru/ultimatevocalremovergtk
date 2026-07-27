@@ -948,13 +948,30 @@ class MainWindow(Adw.ApplicationWindow):
 
     # -- Misc -------------------------------------------------------------------
 
+    def _sync_after_preferences(self) -> None:
+        """Cheap re-read of the keys Preferences shares with the visible tab.
+
+        Preferences only edits a handful of keys the processing pages mirror
+        (format, GPU, sample mode), so a full ``_load_from_settings`` — which
+        re-lists every model and reparents every option group — is far too
+        heavy for a single switch flip.
+        """
+        target = self._targets.get(self.content_stack.get_visible_child_name())
+        if target is not None:
+            target.on_activated()
+        self._refresh_start_readiness()
+
     def _on_open_settings(self, _action: Gio.SimpleAction, _param) -> None:
         from core.debug_log import debug
 
         debug("ui", "open settings")
         from .preferences import PreferencesDialog
 
-        dialog = PreferencesDialog(self.context, on_settings_reloaded=self._load_from_settings)
+        dialog = PreferencesDialog(
+            self.context,
+            on_settings_reloaded=self._load_from_settings,
+            on_settings_applied=self._sync_after_preferences,
+        )
         dialog.present(self)
 
     def _on_ensemble(self, _action: Gio.SimpleAction, _param) -> None:

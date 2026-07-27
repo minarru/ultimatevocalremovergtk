@@ -149,13 +149,23 @@ def _is_valid_profile_name(name: str) -> bool:
 
 
 class PreferencesDialog(Adw.PreferencesDialog):
-    """libadwaita settings dialog bound to the shared :class:`SettingsModel`."""
+    """libadwaita settings dialog bound to the shared :class:`SettingsModel`.
 
-    def __init__(self, context, on_settings_reloaded=None):
+    Two callbacks, deliberately asymmetric:
+
+    * ``on_settings_applied`` — fired after every debounced edit. Must be cheap:
+      the main window only needs to re-read the handful of keys it mirrors.
+    * ``on_settings_reloaded`` — fired only when the settings model is replaced
+      wholesale (profile load, reset to defaults), where a full rebuild of the
+      window's widgets is the point.
+    """
+
+    def __init__(self, context, on_settings_reloaded=None, on_settings_applied=None):
         super().__init__()
         self.context = context
         self.settings = context.settings
         self._on_settings_reloaded = on_settings_reloaded
+        self._on_settings_applied = on_settings_applied
         self._profiles = ProfileStore()
         # Guards programmatic widget updates from being treated as user edits.
         self._loading = False
@@ -564,8 +574,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
         error = self.context.try_save_settings(trigger="preferences")
         if error:
             self.add_toast(Adw.Toast.new(error))
-        elif self._on_settings_reloaded is not None:
-            self._on_settings_reloaded()
+        elif self._on_settings_applied is not None:
+            self._on_settings_applied()
         return GLib.SOURCE_REMOVE
 
     def _on_dialog_closed(self, *_args) -> None:
