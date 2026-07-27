@@ -105,6 +105,13 @@ class OutputFormatRow(Adw.ActionRow):
         set_row_icon(self, "waveform-symbolic")
         self._on_changed = on_changed
         self._syncing = False
+        #: Cached from the last ``apply_from_settings`` call so an interactive
+        #: format switch can restore the newly selected format's *stored*
+        #: quality value instead of resetting it to the spec default. ``None``
+        #: until the row has been applied at least once (e.g. constructed but
+        #: never loaded, as in some tests) — callers fall back to the default
+        #: in that case.
+        self._settings = None
 
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         box.set_valign(Gtk.Align.CENTER)
@@ -147,6 +154,7 @@ class OutputFormatRow(Adw.ActionRow):
 
     def apply_from_settings(self, settings) -> None:
         """Restore both dropdowns from ``settings`` without emitting changes."""
+        self._settings = settings
         self._syncing = True
         try:
             self.set_save_format(settings.get("save_format", WAV))
@@ -164,10 +172,18 @@ class OutputFormatRow(Adw.ActionRow):
     def _reload_quality(self, settings) -> None:
         spec = quality_spec(self.save_format)
         self._quality_drop.set_model(Gtk.StringList.new(list(spec.values)))
-        stored = settings.get(spec.setting_key, spec.default)
-        if not _select_string(self._quality_drop, str(stored)):
-            _select_string(self._quality_drop, spec.default)
+        self._select_quality_value(settings.get(spec.setting_key, spec.default), spec)
         self._apply_quality_labels(self.save_format)
+
+    def _select_quality_value(self, value, spec: QualitySpec) -> None:
+        if not _select_string(self._quality_drop, str(value)):
+            _select_string(self._quality_drop, spec.default)
+
+    def _stored_quality_value(self, spec: QualitySpec) -> str:
+        """The value saved for ``spec``'s key, or its default with no settings yet."""
+        if self._settings is None:
+            return spec.default
+        return self._settings.get(spec.setting_key, spec.default)
 
     def _apply_quality_labels(self, save_format: str) -> None:
         spec = quality_spec(save_format)
@@ -183,7 +199,10 @@ class OutputFormatRow(Adw.ActionRow):
         self._syncing = True
         try:
             self._quality_drop.set_model(Gtk.StringList.new(list(spec.values)))
-            _select_string(self._quality_drop, spec.default)
+            # Restore the newly selected format's own stored value (e.g. the
+            # WAV type from before an earlier switch to MP3), not the spec
+            # default — see the module docstring's WAV -> MP3 -> WAV contract.
+            self._select_quality_value(self._stored_quality_value(spec), spec)
             self._apply_quality_labels(self.save_format)
         finally:
             self._syncing = False

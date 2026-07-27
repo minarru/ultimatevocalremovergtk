@@ -102,6 +102,32 @@ class OutputFormatRowTests(unittest.TestCase):
         row.persist_to_settings(settings)
         self.assertEqual(settings.get("wav_type_set"), "PCM_24")
 
+    def test_switching_away_and_back_restores_the_dropdown_and_completes_the_round_trip(self):
+        """The full WAV -> MP3 -> WAV round trip promised by the module docstring.
+
+        Regression test: an interactive format switch used to reset the
+        quality dropdown to its spec *default* rather than restoring the
+        format's own stored value, so switching back to WAV after a detour
+        through MP3 silently overwrote a non-default ``wav_type_set`` (e.g.
+        "PCM_24") with "PCM_16" the moment the round trip was persisted.
+        """
+        from ui.widgets.format_row import OutputFormatRow
+
+        settings = self._settings(save_format=WAV, wav_type_set="PCM_24")
+        row = OutputFormatRow(lambda: None)
+        row.apply_from_settings(settings)
+
+        row.set_save_format(MP3)
+        row.persist_to_settings(settings)
+        self.assertEqual(settings.get("wav_type_set"), "PCM_24")
+        self.assertEqual(settings.get("mp3_bit_set"), "320k")
+
+        row.set_save_format(WAV)
+        self.assertEqual(row.quality_value, "PCM_24", "dropdown must show the restored value")
+        row.persist_to_settings(settings)
+
+        self.assertEqual(settings.get("wav_type_set"), "PCM_24")
+
     def test_on_changed_fires_for_both_dropdowns(self):
         from ui.widgets.format_row import OutputFormatRow
 
