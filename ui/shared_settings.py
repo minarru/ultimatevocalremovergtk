@@ -29,6 +29,16 @@ def sample_mode_subtitle(duration: int) -> str:
     return f"Process only the first {int(duration)} s"
 
 
+def gpu_dependent_enabled(is_gpu_conversion: bool) -> bool:
+    """Whether GPU-only options (FP16 autocast, device pick) should be editable.
+
+    ``is_autocast`` wraps CUDA ``torch.autocast`` (see ``engines/amp_runtime.py``)
+    and has no effect on CPU runs, so its row is dimmed rather than hidden —
+    per the GNOME HIG, an inapplicable control stays discoverable.
+    """
+    return bool(is_gpu_conversion)
+
+
 def apply_sample_mode_label(sample_row, duration: int) -> None:
     """Set the stable title + duration subtitle on a sample-mode switch row."""
     sample_row.set_title(SAMPLE_MODE_TITLE)

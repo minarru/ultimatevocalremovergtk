@@ -69,6 +69,7 @@ from .shared_settings import (
     apply_sample_mode_label,
     apply_shared_file_options,
     format_input_sanitize_toasts,
+    gpu_dependent_enabled,
     sample_mode_subtitle,
     sanitize_input_paths,
 )
@@ -671,6 +672,7 @@ class MainWindow(Adw.ApplicationWindow):
         set_combo_value(self.format_row, self.settings.get("save_format", WAV))
         self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
         self.autocast_row.set_active(bool(self.settings.get("is_autocast")))
+        self._sync_gpu_dependent_rows()
         apply_sample_mode_label(self.sample_row, self.settings.get("model_sample_mode_duration", 30))
         self.sample_row.set_active(bool(self.settings.get("model_sample_mode")))
 
@@ -734,6 +736,7 @@ class MainWindow(Adw.ApplicationWindow):
             autocast_row=self.autocast_row,
             sample_row=self.sample_row,
         )
+        self._sync_gpu_dependent_rows()
 
     def _activate_separation(self) -> None:
         self.settings.set("chosen_process_method", self._active_view().method_key)
@@ -839,6 +842,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_gpu_changed(self, *_args) -> None:
         self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
+        self._sync_gpu_dependent_rows()
         self._refresh_active_stem_metadata()
 
     def _on_autocast_changed(self, *_args) -> None:
@@ -852,6 +856,12 @@ class MainWindow(Adw.ApplicationWindow):
         view = self._active_view()
         if hasattr(view, "_update_stem_group_metadata"):
             view._update_stem_group_metadata()
+
+    def _sync_gpu_dependent_rows(self) -> None:
+        """Dim GPU-only options while GPU conversion is off."""
+        self.autocast_row.set_sensitive(
+            gpu_dependent_enabled(self.gpu_row.get_active())
+        )
 
     def _on_close_request(self, *_args) -> bool:
         return self._run_controller.handle_close_request(self._finalize_close)

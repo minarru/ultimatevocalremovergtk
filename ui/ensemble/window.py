@@ -110,6 +110,7 @@ from ..shared_settings import (
     SAMPLE_MODE_TITLE,
     apply_sample_mode_label,
     apply_shared_file_options,
+    gpu_dependent_enabled,
     sample_mode_subtitle,
 )
 from ..widgets.rows import (
@@ -462,6 +463,7 @@ class EnsemblePage:
             self.wav_ensemble_row.set_active(bool(self.settings.get("is_wav_ensemble")))
         finally:
             self._loading = False
+        self._sync_gpu_dependent_rows()
 
         self._rebuild_model_list(self.settings.get("selected_models") or [])
 
@@ -480,6 +482,7 @@ class EnsemblePage:
             )
         finally:
             self._loading = False
+        self._sync_gpu_dependent_rows()
 
     def _set_bool(self, key: str, value: bool, *, refresh_stems: bool = False) -> None:
         if self._loading:
@@ -506,6 +509,7 @@ class EnsemblePage:
         if not self._loading:
             self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
             self._update_stems_group_metadata()
+        self._sync_gpu_dependent_rows()
 
     def _on_autocast_changed(self, *_args) -> None:
         if not self._loading:
@@ -888,6 +892,12 @@ class EnsemblePage:
             if row is None:
                 continue
             row.set_sensitive(enabled)
+
+    def _sync_gpu_dependent_rows(self) -> None:
+        """Dim GPU-only options while GPU conversion is off."""
+        self.autocast_row.set_sensitive(
+            gpu_dependent_enabled(self.gpu_row.get_active())
+        )
 
     def _update_wav_ensemble_subtitle(self) -> None:
         row = getattr(self, "wav_ensemble_row", None)
