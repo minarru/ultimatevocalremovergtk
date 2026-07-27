@@ -193,6 +193,21 @@ when a 4-stem model is selected. No settings are cleared.
 Effect: the expanded section drops from ~600px (9 rows) to ~240px (3 rows) for
 the common 2-stem case.
 
+**Applicability in ensemble runs — verified, do not re-question.** Secondary
+models apply to ensemble members. `is_secondary_model_activated` is read from
+the per-architecture key for any non-secondary model with no ensemble gate
+(`core/model_data.py:456,490,573`), and there is dedicated ensemble handling
+downstream: the `is_4_stem_ensemble` branch (`:610`), the
+`ensemble_primary_stem` substitution (`:623`), and the `is_valid_ensemble`
+guard (`:606`). So the section stays in the per-architecture tabs, and §6's
+badge count is exactly the set of members a secondary configured there affects.
+
+Likewise the vocal splitter applies to ensemble runs — `_vocal_splitter_active`
+is a flat global check with no ensemble gate (`core/run_estimate.py:126-128`)
+and `vocal_splitter_model_data` runs for every non-secondary model
+(`core/model_data.py:654`). This confirms §3's placement in the Ensemble
+Processing group.
+
 ### 5. Live state disclosure
 
 A new module `ui/option_summaries.py` holds pure functions over a settings
