@@ -409,7 +409,7 @@ class DownloadQueueIndicator:
         action_button.add_css_class("circular")
         action_button.set_valign(Gtk.Align.CENTER)
         action_button.set_margin_start(20)
-        action_button.set_tooltip_text("Cancel download")
+        set_icon_button_a11y(action_button, "Cancel download")
         action_button.connect("clicked", self._on_cancel_clicked, item.item_id)
 
         grid.attach(status, 0, 0, 1, 1)
