@@ -35,6 +35,30 @@ _SHEET_MIN_WIDTH = 360
 _SHEET_MIN_HEIGHT = 294
 
 
+def _crossfade_banner_reveal(banner: Adw.Banner) -> bool:
+    """Fade the banner in instead of sliding it down, keeping the animation.
+
+    ``Adw.Banner`` wraps its content in a ``Gtk.Revealer`` whose default
+    ``slide-down`` transition grows the banner's height frame by frame. This
+    sheet's banner is an ``Adw.ToolbarView`` top bar, so every one of those
+    frames re-allocates the content beneath it -- measured at 13 distinct
+    scroller heights across one 250ms reveal, which renders as tearing along the
+    banner's bottom edge. ``crossfade`` reaches the final height in a single
+    layout pass (measured: 2) and animates opacity instead, so the reveal still
+    animates but the content below is laid out once.
+
+    The revealer is an implementation detail, so this degrades to leaving the
+    transition alone if libadwaita ever restructures. Returns whether it applied.
+    """
+    child = banner.get_first_child()
+    while child is not None:
+        if isinstance(child, Gtk.Revealer):
+            child.set_transition_type(Gtk.RevealerTransitionType.CROSSFADE)
+            return True
+        child = child.get_next_sibling()
+    return False
+
+
 def _build_sheet_columns():
     """Two content-sized columns for one tab page.
 
@@ -100,6 +124,7 @@ class ModelOptionsSheet:
         # inside the page's inset margins.
         self._banner = Adw.Banner()
         self._banner.set_revealed(False)
+        _crossfade_banner_reveal(self._banner)
         self._banner.connect("button-clicked", self._on_banner_switch)
 
         self.dialog = Adw.Dialog()
@@ -151,13 +176,6 @@ class ModelOptionsSheet:
         header.set_title_widget(self._switcher)
         toolbar.add_top_bar(header)
         toolbar.add_top_bar(self._banner)
-        # The default FLAT style draws a shadow under the top bars *only while
-        # the content is scrolled*. The banner's 250ms slide shrinks the viewport
-        # frame by frame, so the content briefly overflows, the scroll state
-        # flips, and the shadow flashes on and off under the banner -- a tearing
-        # line for the duration of the reveal. A constant border removes the
-        # dynamic decision, so the animation can stay.
-        toolbar.set_top_bar_style(Adw.ToolbarStyle.RAISED_BORDER)
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         inset_md(body)
