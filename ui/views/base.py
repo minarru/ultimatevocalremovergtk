@@ -332,6 +332,7 @@ class MethodView:
             return
         self._persist_stem_only()
         self._update_stem_group_metadata()
+        self._sync_secondary_slot_visibility()
         self._on_settings_changed()
 
     # Backwards-compatible alias used when switching method tabs.
@@ -665,6 +666,15 @@ class MethodView:
             visible = True if slot == "voc_inst" else four_stem
             for row in rows:
                 row.set_visible(visible)
+
+    def sync_dynamic_option_state(self) -> None:
+        """Re-evaluate option state that depends on settings edited elsewhere.
+
+        The options sheet reuses these view instances, so settings changed on
+        another page (ensemble stem pair, Demucs stem focus) must be re-read
+        when the sheet opens rather than only when this view is interacted with.
+        """
+        self._sync_secondary_slot_visibility()
 
     def _build_secondary_section(self) -> None:
         repo = self.context.repo

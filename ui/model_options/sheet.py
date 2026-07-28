@@ -198,6 +198,9 @@ class ModelOptionsSheet:
         self._active_method_key = active_method_key
         self._selected_models = list(selected_models or [])
 
+        for view in self._views:
+            view.sync_dynamic_option_state()
+
         banner_text = ensemble_context_banner(context)
         if banner_text:
             self._ensemble_banner.set_label(banner_text)

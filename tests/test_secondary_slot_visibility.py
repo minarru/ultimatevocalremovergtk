@@ -5,7 +5,12 @@ from __future__ import annotations
 import os
 import unittest
 
-from bundled.constants import ALL_STEMS, ENSEMBLE_MODE, FOUR_STEM_ENSEMBLE
+from bundled.constants import (
+    ALL_STEMS,
+    ENSEMBLE_MODE,
+    FOUR_STEM_ENSEMBLE,
+    MDX_ARCH_TYPE,
+)
 
 
 @unittest.skipUnless(
@@ -77,6 +82,81 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
         self.assertEqual(
             window.settings.get("mdx_bass_secondary_model"), "VR Arc: 1_HP-UVR"
         )
+
+    def test_the_real_demucs_stem_focus_combo_re_syncs_slot_visibility(self):
+        """Regression: changing focus through the widget must re-sync slots.
+
+        Drives the real ``Adw.ComboRow`` widgets a user interacts with
+        (model picker, then stem-focus picker) rather than calling
+        ``_sync_secondary_slot_visibility`` directly, so this exercises the
+        ``_on_demucs_focus_changed`` -> ``_notify`` ->
+        ``_on_save_stems_changed`` wiring, not just the predicate.
+        """
+        from ui.widgets.rows import set_combo_value
+
+        window = self._window()
+        view = self._view(window, "demucs")
+
+        # Pick a real installed-metadata Demucs model so the stem-focus combo
+        # is populated (``configure_demucs`` only runs once a model resolves).
+        self.assertTrue(set_combo_value(view.model_row, "v4 | hdemucs_mmi"))
+        self.assertEqual(view.save_stems.mode, "demucs")
+        self.assertEqual(window.settings.get("demucs_stems"), ALL_STEMS)
+        for slot in ("other", "bass", "drums"):
+            for row in view._secondary_slot_rows[slot]:
+                self.assertTrue(row.get_visible(), f"{slot} should start visible")
+
+        focus_row = view.save_stems._demucs_focus_row
+        self.assertTrue(set_combo_value(focus_row, "focus_vocals"))
+        self.assertEqual(window.settings.get("demucs_stems"), "Vocals")
+        for slot in ("other", "bass", "drums"):
+            for row in view._secondary_slot_rows[slot]:
+                self.assertFalse(
+                    row.get_visible(),
+                    f"{slot} should hide once the real combo drops to Vocals-only",
+                )
+
+    def test_the_options_sheet_re_syncs_reused_views_on_update_context(self):
+        """Regression: the sheet reuses view instances across opens.
+
+        Writes ``chosen_process_method`` / ``ensemble_main_stem`` the way
+        ``ui/ensemble/window.py`` does, then calls
+        ``ModelOptionsSheet.update_context`` (not the sync method directly)
+        and checks the reused MDX view picks up the new visibility.
+        """
+        from ui.model_options import OPEN_CONTEXT_ENSEMBLE
+        from ui.model_options.sheet import ModelOptionsSheet
+
+        window = self._window()
+        sheet = ModelOptionsSheet(
+            window,
+            views=window._views,
+            views_by_stack=window._views_by_stack,
+            settings=window.settings,
+        )
+        mdx_view = self._view(window, "mdx")
+        mdx_view._sync_secondary_slot_visibility()
+        for slot in ("other", "bass", "drums"):
+            for row in mdx_view._secondary_slot_rows[slot]:
+                self.assertFalse(row.get_visible(), f"{slot} should start hidden")
+
+        # Same two settings.set calls ui/ensemble/window.py makes: on_activated()
+        # sets chosen_process_method, _on_main_stem_changed sets the stem pair.
+        window.settings.set("chosen_process_method", ENSEMBLE_MODE)
+        window.settings.set("ensemble_main_stem", FOUR_STEM_ENSEMBLE)
+
+        sheet.update_context(
+            context=OPEN_CONTEXT_ENSEMBLE,
+            active_method_key=MDX_ARCH_TYPE,
+            selected_models=[],
+        )
+
+        for slot in ("other", "bass", "drums"):
+            for row in mdx_view._secondary_slot_rows[slot]:
+                self.assertTrue(
+                    row.get_visible(),
+                    f"{slot} should be visible after update_context re-syncs",
+                )
 
 
 if __name__ == "__main__":
