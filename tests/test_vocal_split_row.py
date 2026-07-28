@@ -32,17 +32,22 @@ class VocalSplitRowTests(unittest.TestCase):
 
     def _row(self):
         from ui.widgets.vocal_split_row import VocalSplitRow
+        from core.model_data import ModelRepository
 
-        class _Repo:
-            def karaoke_model_list(self, _settings):
-                return ["VR Arc: UVR-BVE-4B"]
+        repo = ModelRepository()
+
+        # Patch karaoke_model_list to return a test model
+        original_karaoke = repo.karaoke_model_list
+        def patched_karaoke(_settings):
+            return ["VR Arc: UVR-BVE-4B"]
+        repo.karaoke_model_list = patched_karaoke
 
         self.changed = 0
 
         def on_changed():
             self.changed += 1
 
-        return VocalSplitRow(_Repo(), on_changed)
+        return VocalSplitRow(repo, on_changed)
 
     def test_applies_stored_switches(self):
         row = self._row()
@@ -144,6 +149,28 @@ class VocalSplitRowTests(unittest.TestCase):
         row.apply_from_settings(self._settings())
         row.set_expanded(True)
         self.assertIn("UVR-BVE-4B", " ".join(combo_values(row.splitter_row)))
+
+    def test_model_list_shows_friendly_names_but_stores_full_tags(self):
+        """Combo displays friendly name (no arch prefix) but persists full tag."""
+        from ui.widgets.rows import combo_values, get_combo_value
+
+        row = self._row()
+        row.apply_from_settings(self._settings())
+        row.set_expanded(True)
+
+        # Displayed values should include the friendly name without prefix
+        displayed = combo_values(row.splitter_row)
+        self.assertIn("UVR-BVE-4B", displayed)
+        self.assertNotIn("VR Arc:", " ".join(displayed))
+
+        # Select the model and persist
+        row.split_switch.set_active(True)
+        row.splitter_row.set_selected(displayed.index("UVR-BVE-4B"))
+        settings = self._settings()
+        row.persist_to_settings(settings)
+
+        # Stored value should be the full tag
+        self.assertEqual(settings.get("set_vocal_splitter"), "VR Arc: UVR-BVE-4B")
 
 
 if __name__ == "__main__":

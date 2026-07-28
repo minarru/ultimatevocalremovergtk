@@ -17,11 +17,12 @@ iterate, so they only work inside a view.
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Callable
 
 from gi.repository import Adw
 
 from bundled.constants import DEVERB_MAPPER, NO_MODEL
+from core.model_display import format_tag_title
 
 from ..help_text import (
     IS_DEVERB_OPT_HELP,
@@ -181,7 +182,14 @@ class VocalSplitRow(Adw.ExpanderRow):
             values = []
         self._syncing = True
         try:
-            set_combo_tag_values(self.splitter_row, [NO_MODEL, *values])
+            tag_items = []
+            for tag in values:
+                try:
+                    friendly = format_tag_title(tag, self._repo)
+                except Exception:
+                    friendly = tag
+                tag_items.append((tag, friendly))
+            set_combo_tag_values(self.splitter_row, [NO_MODEL, *tag_items])
             set_combo_value(self.splitter_row, self._stored_splitter)
         finally:
             self._syncing = False
