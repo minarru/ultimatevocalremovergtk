@@ -64,6 +64,7 @@ from ..widgets.stem_only import SaveStemsSection
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
 from core.run_estimate import compose_stem_group_tooltip, estimate_workload, format_workload_line
 from ..help_text import RUN_WORKLOAD_HINT
+from ..option_summaries import four_stem_secondaries_apply
 
 # Per-stem secondary-model slots: (settings-key slot, display pair, primary stem,
 # secondary stem) used to build the four secondary-model selectors UVR exposes.
@@ -143,6 +144,7 @@ class MethodView:
         self._spin_rows = {}
         self._model_combos = []
         self._model_combos_populated = False
+        self._secondary_slot_rows = {}
         self._switch_dependent_appliers = []
         self.hints = HelpHintManager()
 
@@ -279,6 +281,7 @@ class MethodView:
         if self.has_model():
             self.save_stems.sync_from_settings()
         self._update_stem_group_metadata()
+        self._sync_secondary_slot_visibility()
 
     def _configure_save_stems(self, model) -> None:
         """Default: exclusive export filter for <=2-stem / VR-style models."""
@@ -645,6 +648,24 @@ class MethodView:
         for apply in getattr(self, "_switch_dependent_appliers", ()):
             apply()
 
+    def _sync_secondary_slot_visibility(self) -> None:
+        """Hide the secondary slots that cannot affect this run.
+
+        ``other`` / ``bass`` / ``drums`` only ever feed the engine's four-source
+        branch. Hiding rather than dimming is deliberate: the height is the
+        point, and stem count is a structural fact about the run rather than a
+        toggle the user is expected to flip. Stored values are untouched, so the
+        slots come back populated when a four-source run is selected again.
+        """
+        rows_by_slot = getattr(self, "_secondary_slot_rows", None)
+        if not rows_by_slot:
+            return
+        four_stem = four_stem_secondaries_apply(self.settings, self.method_key)
+        for slot, rows in rows_by_slot.items():
+            visible = True if slot == "voc_inst" else four_stem
+            for row in rows:
+                row.set_visible(visible)
+
     def _build_secondary_section(self) -> None:
         repo = self.context.repo
         settings = self.settings
@@ -669,26 +690,27 @@ class MethodView:
                 hint=SECONDARY_MODEL_ACTIVATE_HELP,
             )
             dependents = []
+            self._secondary_slot_rows = {}
             for slot, pair, primary, secondary in _SECONDARY_SLOTS:
                 model_key = f"{prefix}_{slot}_secondary_model"
                 scale_key = f"{prefix}_{slot}_secondary_model_scale"
                 provider = (lambda p=primary, s=secondary: repo.model_list(settings, p, s))
-                dependents.append(
-                    self._add_model_combo(self.secondary_expander, model_key, provider, pair, hint=SECONDARY_MODEL_HELP)
+                combo = self._add_model_combo(
+                    self.secondary_expander, model_key, provider, pair, hint=SECONDARY_MODEL_HELP
                 )
-                dependents.append(
-                    self.add_option_scale(
-                        self.secondary_expander,
-                        scale_key,
-                        f"{pair} influence",
-                        lower=0.01,
-                        upper=0.99,
-                        step=0.01,
-                        digits=2,
-                        hint=SECONDARY_MODEL_SCALE_HELP,
-                        store_float=True,
-                    )
+                scale = self.add_option_scale(
+                    self.secondary_expander,
+                    scale_key,
+                    f"{pair} influence",
+                    lower=0.01,
+                    upper=0.99,
+                    step=0.01,
+                    digits=2,
+                    hint=SECONDARY_MODEL_SCALE_HELP,
+                    store_float=True,
                 )
+                dependents.extend((combo, scale))
+                self._secondary_slot_rows[slot] = [combo, scale]
             self._bind_switch_dependents(activate, dependents)
             group.add(self.secondary_expander)
 
