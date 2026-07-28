@@ -82,6 +82,7 @@ from .widgets.format_row import OutputFormatRow
 from .widgets.log_panel import OVERLAY_MARGIN_BOTTOM, LogPanel
 from .widgets.rows import get_combo_value, make_combo_row, make_switch_row, set_combo_value
 from .widgets.download_queue_indicator import DownloadQueueIndicator
+from .widgets.vocal_split_row import VocalSplitRow
 from .download import init_download_queue_ui
 
 #: Cadence (ms) and step of the indeterminate progress pulse shown before the
@@ -208,6 +209,8 @@ class MainWindow(Adw.ApplicationWindow):
         self._options_page = None
         self._model_options_sheet = None
 
+        self._hint_manager = HelpHintManager()
+
         page = self._build_content()
         self.log_panel = LogPanel(
             on_expanded_changed=lambda *_: self._sync_options_bottom_clearance()
@@ -275,7 +278,6 @@ class MainWindow(Adw.ApplicationWindow):
         narrow.connect("unapply", self._on_breakpoint_wide)
         self.add_breakpoint(narrow)
 
-        self._hint_manager = HelpHintManager()
         self._stale_export_toast_shown = False
         self._stale_inputs_toast_shown = False
         self._register_hints()
@@ -625,6 +627,11 @@ class MainWindow(Adw.ApplicationWindow):
         self.sample_row.connect("notify::active", self._on_sample_changed)
         group.add(self.sample_row)
 
+        self.vocal_split_row = VocalSplitRow(
+            self.context.repo, self._on_vocal_split_changed, hints=self._hint_manager
+        )
+        group.add(self.vocal_split_row)
+
         return group
 
     def _install_actions(self) -> None:
@@ -682,6 +689,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.output_row.set_path(export_path, notify=False)
         self._maybe_notify_stale_export_path()
         self.format_row.apply_from_settings(self.settings)
+        self.vocal_split_row.apply_from_settings(self.settings)
         self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
         self.autocast_row.set_active(bool(self.settings.get("is_autocast")))
         self._sync_gpu_dependent_rows()
@@ -852,6 +860,9 @@ class MainWindow(Adw.ApplicationWindow):
     def _on_format_changed(self, *_args) -> None:
         self.format_row.persist_to_settings(self.settings)
 
+    def _on_vocal_split_changed(self, *_args) -> None:
+        self.vocal_split_row.persist_to_settings(self.settings)
+
     def _on_gpu_changed(self, *_args) -> None:
         self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
         self._sync_gpu_dependent_rows()
@@ -911,6 +922,7 @@ class MainWindow(Adw.ApplicationWindow):
             self.settings.set("input_paths", list(self.input_row.paths))
             self.settings.set("export_path", self.output_row.path)
             self.format_row.persist_to_settings(self.settings)
+            self.vocal_split_row.persist_to_settings(self.settings)
             self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
             self.settings.set("is_autocast", self.autocast_row.get_active())
             self.settings.set("model_sample_mode", self.sample_row.get_active())

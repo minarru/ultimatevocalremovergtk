@@ -104,6 +104,7 @@ from core.ensemble_presets import (
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
 from ..widgets.format_row import OutputFormatRow
+from ..widgets.vocal_split_row import VocalSplitRow
 from ..shared_settings import (
     SAMPLE_MODE_TITLE,
     apply_sample_mode_label,
@@ -428,6 +429,12 @@ class EnsemblePage:
         expander.add_row(self.wav_ensemble_row)
 
         group.add(expander)
+
+        self.vocal_split_row = VocalSplitRow(
+            self.context.repo, self._on_vocal_split_changed
+        )
+        group.add(self.vocal_split_row)
+
         return group
 
     # -- Settings load / persist ------------------------------------------------
@@ -444,6 +451,7 @@ class EnsemblePage:
             self.input_row.set_paths(self.settings.get("input_paths") or [], notify=False)
             self.output_row.set_path(self.settings.get("export_path") or "", notify=False)
             self.format_row.apply_from_settings(self.settings)
+            self.vocal_split_row.apply_from_settings(self.settings)
             self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
             self.autocast_row.set_active(bool(self.settings.get("is_autocast")))
             apply_sample_mode_label(self.sample_row, self.settings.get("model_sample_mode_duration", 30))
@@ -500,6 +508,10 @@ class EnsemblePage:
     def _on_format_changed(self, *_args) -> None:
         if not self._loading:
             self.format_row.persist_to_settings(self.settings)
+
+    def _on_vocal_split_changed(self, *_args) -> None:
+        if not self._loading:
+            self.vocal_split_row.persist_to_settings(self.settings)
 
     def _on_gpu_changed(self, *_args) -> None:
         if not self._loading:

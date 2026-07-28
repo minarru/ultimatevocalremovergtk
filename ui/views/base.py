@@ -22,14 +22,9 @@ from bundled.constants import (
     CHOOSE_MODEL_HELP,
     CLEAR_CACHE_HELP,
     DEMUCS_ARCH_TYPE,
-    DEVERB_MAPPER,
     DRUM_PAIR,
     DRUM_STEM,
     INST_STEM,
-    IS_DEVERB_OPT_HELP,
-    IS_DEVERB_VOC_HELP,
-    IS_VOC_SPLIT_INST_SAVE_SELECT_HELP,
-    IS_VOC_SPLIT_MODEL_SELECT_HELP,
     MDX_ARCH_TYPE,
     NO_MODEL,
     OTHER_PAIR,
@@ -43,7 +38,6 @@ from bundled.constants import (
     SECONDARY_STEM,
     VOCAL_PAIR,
     VOCAL_STEM,
-    VOC_SPLIT_MODEL_SELECT_HELP,
     VR_ARCH_TYPE,
 )
 
@@ -713,25 +707,6 @@ class MethodView:
             inst_mix_row = self.add_option_switch(self.preproc_expander, "is_demucs_pre_proc_model_inst_mix", "Save instrumental mixture", hint=PRE_PROC_MODEL_INST_MIX_HELP)
             self._bind_switch_dependents(activate, [model_row, inst_mix_row])
             group.add(self.preproc_expander)
-
-        # Vocal splitter and deverb (shared global options, surfaced per method).
-        self.voc_split_expander = Adw.ExpanderRow(title="Vocal splitter and deverb")
-        self.voc_split_expander.connect("notify::expanded", self._ensure_model_combos_populated)
-        split_activate = self.add_option_switch(self.voc_split_expander, "is_set_vocal_splitter", "Enable vocal split mode", hint=IS_VOC_SPLIT_MODEL_SELECT_HELP)
-        splitter_row = self._add_model_combo(
-            self.voc_split_expander,
-            "set_vocal_splitter",
-            lambda: repo.karaoke_model_list(settings),
-            "Vocal splitter model",
-            hint=VOC_SPLIT_MODEL_SELECT_HELP,
-        )
-        save_inst_row = self.add_option_switch(self.voc_split_expander, "is_save_inst_set_vocal_splitter", "Save split vocal instrumentals", hint=IS_VOC_SPLIT_INST_SAVE_SELECT_HELP)
-        self._bind_switch_dependents(split_activate, [splitter_row, save_inst_row])
-
-        deverb_activate = self.add_option_switch(self.voc_split_expander, "is_deverb_vocals", "Deverb vocals", hint=IS_DEVERB_VOC_HELP)
-        deverb_type_row = self.add_option_combo(self.voc_split_expander, "deverb_vocal_opt", "Deverb vocal type", list(DEVERB_MAPPER.keys()), hint=IS_DEVERB_OPT_HELP)
-        self._bind_switch_dependents(deverb_activate, [deverb_type_row])
-        group.add(self.voc_split_expander)
 
         # Change-model-defaults entry point.
         change_row = Adw.ActionRow(title="Change model defaults", subtitle="Edit or delete a model's stored parameters")

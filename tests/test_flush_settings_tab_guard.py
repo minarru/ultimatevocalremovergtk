@@ -62,6 +62,7 @@ class FlushSettingsTabGuardTests(unittest.TestCase):
         from ui.widgets.file_chooser import InputFilesRow, OutputFolderRow
         from ui.widgets.format_row import OutputFormatRow
         from ui.widgets.rows import make_switch_row
+        from ui.widgets.vocal_split_row import VocalSplitRow
         from ui.window import MainWindow
 
         window = MainWindow.__new__(MainWindow)
@@ -82,6 +83,10 @@ class FlushSettingsTabGuardTests(unittest.TestCase):
         window.gpu_row = make_switch_row("GPU conversion")
         window.autocast_row = make_switch_row("FP16 autocast")
         window.sample_row = make_switch_row("Sample mode")
+        # Repo is unused by ``persist_to_settings`` (only the lazily-populated
+        # model combo touches it, on expansion), so a stub suffices here.
+        window.vocal_split_row = VocalSplitRow(None, lambda: None)
+        window.vocal_split_row.apply_from_settings(window.settings)
         return window
 
     def test_ensemble_edit_survives_close_while_ensemble_visible(self):
