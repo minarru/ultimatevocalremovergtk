@@ -197,10 +197,21 @@ class SheetApplicabilityTests(unittest.TestCase):
         for stack_name, page in sheet._tab_pages.items():
             self.assertNotIn(page, ancestors, f"banner must not be inside {stack_name}")
 
-    def test_the_banner_reveals_without_animating(self):
-        """One shared banner relabels on every tab switch; each frame of the
-        250ms slide reflows the ToolbarView content below it, which renders as
-        a tearing artifact along the banner's bottom edge."""
+    def test_the_toolbar_separator_is_constant_not_scroll_driven(self):
+        """The default FLAT style only draws its top-bar shadow while content is
+        scrolled. The banner's reveal shrinks the viewport frame by frame, so a
+        FLAT toolbar flashes that shadow on and off for the whole animation."""
+        from gi.repository import Adw
+
+        sheet, _window = self._sheet()
+        toolbar = sheet.dialog.get_child()
+        self.assertIsInstance(toolbar, Adw.ToolbarView)
+        self.assertEqual(toolbar.get_top_bar_style(), Adw.ToolbarStyle.RAISED_BORDER)
+
+    def test_the_banner_keeps_its_reveal_animation(self):
+        """Regression: an earlier fix killed the animation to stop the artifact.
+        The artifact is addressed by the constant separator instead, so the
+        slide must still be there."""
         from gi.repository import Gtk
 
         sheet, _window = self._sheet()
@@ -213,7 +224,7 @@ class SheetApplicabilityTests(unittest.TestCase):
             child = child.get_next_sibling()
 
         self.assertIsNotNone(revealer, "Adw.Banner should wrap content in a Revealer")
-        self.assertEqual(revealer.get_transition_duration(), 0)
+        self.assertGreater(revealer.get_transition_duration(), 0)
 
     def test_one_banner_is_shared_across_tabs(self):
         """Switching tabs relabels the single banner rather than swapping widgets."""
