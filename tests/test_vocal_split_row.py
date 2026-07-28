@@ -136,6 +136,40 @@ class VocalSplitRowTests(unittest.TestCase):
         row.persist_to_settings(settings)
         self.assertEqual(settings.get("set_vocal_splitter"), "VR Arc: UVR-BVE-4B")
 
+    def test_persist_preserves_a_stored_tag_missing_from_the_model_list(self):
+        """A deleted/renamed model's tag must survive expansion, not be reset.
+
+        Regression: expanding the row used to rebuild the combo from just the
+        fresh (non-matching) list, silently landing the selection on index 0
+        (``NO_MODEL``) and then persisting that over the user's real choice.
+        """
+        settings = self._settings(set_vocal_splitter="VR Arc: 5_HP-Karaoke-UVR-DELETED")
+        row = self._row()
+        row.apply_from_settings(settings)
+        row.set_expanded(True)  # triggers _populate_models against the fresh list
+        row.persist_to_settings(settings)
+        self.assertEqual(
+            settings.get("set_vocal_splitter"), "VR Arc: 5_HP-Karaoke-UVR-DELETED"
+        )
+
+    def test_persist_preserves_a_stored_tag_when_karaoke_model_list_raises(self):
+        from ui.widgets.vocal_split_row import VocalSplitRow
+        from core.model_data import ModelRepository
+
+        repo = ModelRepository()
+
+        def raising_karaoke(_settings):
+            raise RuntimeError("catalogue unavailable")
+
+        repo.karaoke_model_list = raising_karaoke
+        row = VocalSplitRow(repo, lambda: None)
+
+        settings = self._settings(set_vocal_splitter="VR Arc: UVR-BVE-4B")
+        row.apply_from_settings(settings)
+        row.set_expanded(True)  # triggers _populate_models, which will raise internally
+        row.persist_to_settings(settings)
+        self.assertEqual(settings.get("set_vocal_splitter"), "VR Arc: UVR-BVE-4B")
+
     def test_dependent_rows_are_dimmed_while_their_switch_is_off(self):
         row = self._row()
         row.apply_from_settings(

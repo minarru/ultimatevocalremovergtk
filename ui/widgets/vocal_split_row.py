@@ -189,6 +189,18 @@ class VocalSplitRow(Adw.ExpanderRow):
                 except Exception:
                     friendly = tag
                 tag_items.append((tag, friendly))
+            # A stored tag absent from the fresh list -- a deleted/renamed model,
+            # an older catalogue, or ``karaoke_model_list`` raising -- must still
+            # be selectable, or selecting it here would silently rewrite it to
+            # ``NO_MODEL`` on the next persist. Keep it as its own entry rather
+            # than dropping it.
+            known_tags = {NO_MODEL, *(tag for tag, _ in tag_items)}
+            if self._stored_splitter not in known_tags:
+                try:
+                    friendly = format_tag_title(self._stored_splitter, self._repo)
+                except Exception:
+                    friendly = self._stored_splitter
+                tag_items.append((self._stored_splitter, friendly))
             set_combo_tag_values(self.splitter_row, [NO_MODEL, *tag_items])
             set_combo_value(self.splitter_row, self._stored_splitter)
         finally:
