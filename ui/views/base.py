@@ -64,7 +64,11 @@ from ..widgets.stem_only import SaveStemsSection
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
 from core.run_estimate import compose_stem_group_tooltip, estimate_workload, format_workload_line
 from ..help_text import RUN_WORKLOAD_HINT
-from ..option_summaries import four_stem_secondaries_apply
+from ..option_summaries import (
+    four_stem_secondaries_apply,
+    preproc_summary,
+    secondary_models_summary,
+)
 
 # Per-stem secondary-model slots: (settings-key slot, display pair, primary stem,
 # secondary stem) used to build the four secondary-model selectors UVR exposes.
@@ -281,7 +285,7 @@ class MethodView:
         if self.has_model():
             self.save_stems.sync_from_settings()
         self._update_stem_group_metadata()
-        self._sync_secondary_slot_visibility()
+        self.sync_dynamic_option_state()
 
     def _configure_save_stems(self, model) -> None:
         """Default: exclusive export filter for <=2-stem / VR-style models."""
@@ -332,7 +336,7 @@ class MethodView:
             return
         self._persist_stem_only()
         self._update_stem_group_metadata()
-        self._sync_secondary_slot_visibility()
+        self.sync_dynamic_option_state()
         self._on_settings_changed()
 
     # Backwards-compatible alias used when switching method tabs.
@@ -373,6 +377,7 @@ class MethodView:
             self._loading = False
         self._sync_switch_dependents()
         self.update_stem_labels()
+        self._sync_expander_summaries()
         self.hints.refresh()
 
     def save(self, *, include_stem_only: bool = True) -> None:
@@ -636,6 +641,10 @@ class MethodView:
             active = switch_row.get_active()
             for row in rows:
                 row.set_sensitive(active)
+            # Guarded: tests exercise this on a bare ``__new__`` instance, which
+            # has no settings to summarise.
+            if getattr(self, "settings", None) is not None:
+                self._refresh_expander_subtitles()
 
         switch_row.connect("notify::active", apply)
         # Guarded: tests exercise this method on a bare ``__new__`` instance.
@@ -675,6 +684,43 @@ class MethodView:
         when the sheet opens rather than only when this view is interacted with.
         """
         self._sync_secondary_slot_visibility()
+        if getattr(self, "settings", None) is not None:
+            self._refresh_expander_subtitles()
+
+    def _refresh_expander_subtitles(self) -> None:
+        """Subtitle-only half of :meth:`_sync_expander_summaries` (no expanding)."""
+        secondary = getattr(self, "secondary_expander", None)
+        if secondary is not None and self.secondary_prefix:
+            four_stem = four_stem_secondaries_apply(self.settings, self.method_key)
+            secondary.set_subtitle(
+                secondary_models_summary(
+                    self.settings, self.secondary_prefix, four_stem=four_stem
+                )
+            )
+        preproc = getattr(self, "preproc_expander", None)
+        if preproc is not None:
+            preproc.set_subtitle(preproc_summary(self.settings))
+
+    def _sync_expander_summaries(self) -> None:
+        """Refresh subtitles, then open whatever is switched on.
+
+        Expand only -- never auto-collapse. A section the user opened by hand
+        must not be shut on them by an unrelated settings reload.
+        """
+        self._refresh_expander_subtitles()
+        if (
+            getattr(self, "secondary_expander", None) is not None
+            and self.secondary_prefix
+            and self.settings.get(
+                f"{self.secondary_prefix}_is_secondary_model_activate"
+            )
+        ):
+            self.secondary_expander.set_expanded(True)
+        if (
+            getattr(self, "preproc_expander", None) is not None
+            and self.settings.get("is_demucs_pre_proc_model_activate")
+        ):
+            self.preproc_expander.set_expanded(True)
 
     def _build_secondary_section(self) -> None:
         repo = self.context.repo
