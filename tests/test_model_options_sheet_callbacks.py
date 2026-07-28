@@ -31,6 +31,7 @@ class ModelOptionsSheetCallbackTests(unittest.TestCase):
         view.title = stack_name
         view.advanced_group = Adw.PreferencesGroup()
         view.secondary_group = Adw.PreferencesGroup()
+        view.maintenance_group = Adw.PreferencesGroup()
         view._on_settings_changed = MagicMock(name=f"{stack_name}_settings_changed")
         return view
 
@@ -60,10 +61,10 @@ class ModelOptionsSheetCallbackTests(unittest.TestCase):
         self.assertIs(mdx._on_settings_changed, original_mdx)
         self.assertIs(demucs._on_settings_changed, original_demucs)
 
-        sheet._on_closed()
-
-        self.assertIs(mdx._on_settings_changed, original_mdx)
-        self.assertIs(demucs._on_settings_changed, original_demucs)
+        # The sheet no longer tracks parent width, so there is no dedicated
+        # close handler left to disconnect; constructing and updating context
+        # is the whole lifecycle that could touch a view's callbacks.
+        self.assertIsNotNone(sheet.dialog)
 
 
 if __name__ == "__main__":

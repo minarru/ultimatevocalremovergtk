@@ -6,24 +6,62 @@ from typing import Dict, Optional, Sequence
 
 from gi.repository import Adw, Gtk
 
-from ..dialogs.utils import configure_dialog_width, parent_window_width, present_modal_dialog
+from ..dialogs.utils import present_modal_dialog
 from ..spacing import inset_md
-from ..widgets.columns import build_columns_box, set_columns_narrow
 from .applicability import (
     OPEN_CONTEXT_AUDIO_TOOLS,
     OPEN_CONTEXT_ENSEMBLE,
     applicable_stack_names,
-    applicability_subtitle,
     default_stack_name,
     ensemble_context_banner,
     should_hide_unused_stacks,
 )
 
-_SHEET_WIDE_WIDTH = 900
-_SHEET_WIDE_HEIGHT = 560
-# Match the main window’s wide/narrow breakpoint (880sp) closely in pixels.
-# This keeps the sheet’s column flip aligned with the rest of the UI.
-_NARROW_BREAKPOINT = 880
+#: The sheet is a modal options surface, not a second window: it is capped
+#: rather than sized to the parent. Dropping parent-width tracking also drops
+#: the sheet's two call sites into the parent-width helper in dialogs/utils.py.
+_SHEET_WIDTH = 760
+#: Used when the parent's allocated height is not yet known (unrealized window).
+_SHEET_FALLBACK_HEIGHT = 560
+#: Never take more than this share of the parent's height.
+_SHEET_MAX_HEIGHT_FRACTION = 0.9
+#: Below this content width the two columns stack into one.
+_STACK_BREAKPOINT = 700
+
+
+def _build_sheet_columns():
+    """Two content-sized columns for one tab page.
+
+    Unlike ``ui.widgets.columns.build_columns_box`` these are **not**
+    homogeneous: the Inference group and the Extra models + Model maintenance
+    stack have genuinely different natural widths, and forcing them equal is
+    what left the MDX-Net tab showing two rows beside a column of expanders.
+    """
+    col_start = Gtk.Box(
+        orientation=Gtk.Orientation.VERTICAL,
+        spacing=18,
+        hexpand=True,
+        valign=Gtk.Align.START,
+    )
+    col_end = Gtk.Box(
+        orientation=Gtk.Orientation.VERTICAL,
+        spacing=18,
+        hexpand=True,
+        valign=Gtk.Align.START,
+    )
+    columns_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
+    columns_box.set_homogeneous(False)
+    columns_box.set_hexpand(True)
+    columns_box.append(col_start)
+    columns_box.append(col_end)
+    return columns_box, col_start, col_end
+
+
+def _set_sheet_columns_stacked(columns_box, stacked: bool) -> None:
+    """Flip a sheet columns box between stacked (narrow) and side-by-side."""
+    columns_box.set_orientation(
+        Gtk.Orientation.VERTICAL if stacked else Gtk.Orientation.HORIZONTAL
+    )
 
 
 class ModelOptionsSheet:
@@ -47,18 +85,12 @@ class ModelOptionsSheet:
         self._tab_columns: Dict[str, Gtk.Box] = {}
         self._tab_pages: Dict[str, Gtk.Widget] = {}
         self._tab_stack_pages: Dict[str, Adw.ViewStackPage] = {}
-        self._tab_subtitles: Dict[str, Gtk.Label] = {}
-        self._last_parent_width: int = 0
-        self._surface_handler: int = 0
-        self._parent_map_handler: int = 0
 
         self.dialog = Adw.Dialog()
         self.dialog.set_title("Model options")
-        # Initial desktop size (will be re-synced to parent on present()).
-        self.dialog.set_content_width(_SHEET_WIDE_WIDTH)
-        self.dialog.set_content_height(_SHEET_WIDE_HEIGHT)
+        self.dialog.set_content_width(_SHEET_WIDTH)
+        self.dialog.set_content_height(self._sheet_height())
         self.dialog.set_follows_content_size(False)
-        self.dialog.connect("closed", self._on_closed)
         self.dialog.connect("notify::content-width", self._sync_narrow_layout)
 
         self._ensemble_banner = Gtk.Label(wrap=True, xalign=0.0)
@@ -96,11 +128,7 @@ class ModelOptionsSheet:
         self.dialog.set_child(toolbar)
 
     def _build_tab_page(self, view) -> Gtk.Widget:
-        subtitle = Gtk.Label(xalign=0.0, wrap=True)
-        subtitle.add_css_class("dim-label")
-        self._tab_subtitles[view.stack_name] = subtitle
-
-        columns_box, col_start, col_end = build_columns_box()
+        columns_box, col_start, col_end = _build_sheet_columns()
         self._tab_columns[view.stack_name] = columns_box
 
         if view.advanced_group.get_parent() is not None:
@@ -111,9 +139,10 @@ class ModelOptionsSheet:
         )
         col_start.append(view.advanced_group)
 
-        if view.secondary_group.get_parent() is not None:
-            view.secondary_group.get_parent().remove(view.secondary_group)
-        col_end.append(view.secondary_group)
+        for group in (view.secondary_group, view.maintenance_group):
+            if group.get_parent() is not None:
+                group.get_parent().remove(group)
+            col_end.append(group)
 
         scroller = Gtk.ScrolledWindow()
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -123,65 +152,31 @@ class ModelOptionsSheet:
 
         page_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         page_box.set_vexpand(True)
-        page_box.append(subtitle)
         page_box.append(scroller)
         self._tab_pages[view.stack_name] = page_box
         return page_box
 
+    def _sheet_height(self) -> int:
+        """Content height: follow the content, bounded by the parent's height.
+
+        An ``Adw.Dialog`` cannot exceed its parent window, so the parent's
+        allocated height is the real ceiling. Before the parent is realized
+        ``get_height()`` returns 0 and the fallback applies.
+        """
+        parent_height = self._parent.get_height() if self._parent is not None else 0
+        if parent_height <= 1:
+            return _SHEET_FALLBACK_HEIGHT
+        return int(parent_height * _SHEET_MAX_HEIGHT_FRACTION)
+
     def _sync_narrow_layout(self, *_args) -> None:
-        # Drive stacking off actual allocated content width (not the initial
-        # requested width), so the sheet adapts as the parent/window shrinks.
+        # Drive stacking off actual allocated content width, so the sheet adapts
+        # when the parent window is narrower than the sheet's own cap.
         width = self.dialog.get_content_width()
         if width <= 0:
             width = self._parent.get_width() if self._parent is not None else 0
-        narrow = width > 0 and width < _NARROW_BREAKPOINT
+        stacked = 0 < width < _STACK_BREAKPOINT
         for columns_box in self._tab_columns.values():
-            set_columns_narrow(columns_box, narrow)
-
-    def _sync_from_parent_width(self, *_args) -> None:
-        """Resize the sheet when the parent window's allocated width changes."""
-        width = parent_window_width(self._parent, fallback=_SHEET_WIDE_WIDTH)
-        if width <= 0 or width == self._last_parent_width:
-            return
-        self._last_parent_width = width
-        self.dialog.set_content_width(width)
-        self._sync_narrow_layout()
-
-    def _start_width_tracking(self) -> None:
-        """Track parent surface width instead of a fixed 200ms poll."""
-        self._stop_width_tracking()
-        self._sync_from_parent_width()
-        if self._parent is None:
-            return
-
-        def attach_surface(*_args) -> None:
-            surface = self._parent.get_surface()
-            if surface is None or self._surface_handler:
-                return
-            self._surface_handler = surface.connect(
-                "notify::width", self._sync_from_parent_width
-            )
-
-        if self._parent.get_mapped():
-            attach_surface()
-        else:
-            self._parent_map_handler = self._parent.connect("map", attach_surface)
-
-    def _stop_width_tracking(self) -> None:
-        if self._surface_handler and self._parent is not None:
-            surface = self._parent.get_surface()
-            if surface is not None:
-                try:
-                    surface.disconnect(self._surface_handler)
-                except TypeError:
-                    pass
-            self._surface_handler = 0
-        if self._parent_map_handler and self._parent is not None:
-            try:
-                self._parent.disconnect(self._parent_map_handler)
-            except TypeError:
-                pass
-            self._parent_map_handler = 0
+            _set_sheet_columns_stacked(columns_box, stacked)
 
     def _on_tab_changed(self, *_args) -> None:
         self._refresh_applicability()
@@ -249,18 +244,10 @@ class ModelOptionsSheet:
         hide_unused = should_hide_unused_stacks(self._context, applicable)
         for stack_name, page in self._tab_pages.items():
             is_applicable = stack_name in applicable
-            subtitle = applicability_subtitle(
-                self._context,
-                stack_name,
-                active_method_key=self._active_method_key,
-                selected_models=self._selected_models,
-            )
-            self._tab_subtitles[stack_name].set_label(subtitle)
             stack_page = self._tab_stack_pages.get(stack_name)
             if stack_page is not None:
                 stack_page.set_visible(is_applicable if hide_unused else True)
-            # Separation keeps non-active arches editable for pre-config; the
-            # tab subtitle communicates that those values are unused.
+            # Separation keeps non-active arches editable for pre-config.
             # Empty ensemble dims everything until members are chosen.
             if empty_ensemble:
                 page.set_sensitive(False)
@@ -270,9 +257,6 @@ class ModelOptionsSheet:
                 page.set_sensitive(True)
             page.set_opacity(1.0)
 
-    def _on_closed(self, *_args) -> None:
-        self._stop_width_tracking()
-
     def present(
         self,
         *,
@@ -281,8 +265,8 @@ class ModelOptionsSheet:
         selected_models: Sequence[str],
         initial_stack: Optional[str] = None,
     ) -> None:
-        configure_dialog_width(self.dialog, self._parent, fallback=_SHEET_WIDE_WIDTH)
-        self._start_width_tracking()
+        self.dialog.set_content_width(_SHEET_WIDTH)
+        self.dialog.set_content_height(self._sheet_height())
         self.update_context(
             context=context,
             active_method_key=active_method_key,
