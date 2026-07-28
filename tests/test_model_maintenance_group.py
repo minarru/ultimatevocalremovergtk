@@ -41,25 +41,24 @@ class MaintenanceGroupTests(unittest.TestCase):
                 view.maintenance_group.get_title(), "Model maintenance", view.stack_name
             )
 
-    def test_the_change_row_left_the_extra_models_group(self):
+    @staticmethod
+    def _containing_group(row):
+        """The Adw.PreferencesGroup that ultimately contains ``row``, or None."""
         from gi.repository import Adw
 
+        current = row
+        while current is not None:
+            if isinstance(current, Adw.PreferencesGroup):
+                return current
+            current = current.get_parent()
+        return None
+
+    def test_the_change_row_left_the_extra_models_group(self):
         _window, views = self._views()
         for view in views:
-            # Walk up from change_row to find its containing PreferencesGroup
-            current = view.change_row
-            while current is not None:
-                if isinstance(current, Adw.PreferencesGroup):
-                    # Found the containing group
-                    self.assertIs(
-                        current,
-                        view.maintenance_group,
-                        view.stack_name,
-                    )
-                    return
-                current = current.get_parent()
-            # If we get here, change_row is not in any PreferencesGroup (error)
-            self.fail(f"{view.stack_name}: change_row not in any PreferencesGroup")
+            group = self._containing_group(view.change_row)
+            self.assertIsNotNone(group, f"{view.stack_name}: change_row not in any group")
+            self.assertIs(group, view.maintenance_group, view.stack_name)
 
     def test_maintenance_follows_secondary_in_the_group_order(self):
         _window, views = self._views()
