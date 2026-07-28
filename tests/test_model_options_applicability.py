@@ -9,7 +9,7 @@ from ui.model_options.applicability import (
     OPEN_CONTEXT_ENSEMBLE,
     OPEN_CONTEXT_SEPARATION,
     applicable_stack_names,
-    applicability_subtitle,
+    applicability_banner,
     default_stack_name,
     member_arch_counts,
     should_hide_unused_stacks,
@@ -74,18 +74,73 @@ class ModelOptionsApplicabilityTests(unittest.TestCase):
         )
         self.assertEqual(stack, "demucs")
 
-    def test_subtitle_ensemble_member_count(self) -> None:
-        selected = [
-            f"{VR_ARCH_TYPE}{ENSEMBLE_PARTITION}A",
-            f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}B",
-        ]
-        text = applicability_subtitle(
-            OPEN_CONTEXT_ENSEMBLE,
-            "mdx",
-            active_method_key=VR_ARCH_PM,
-            selected_models=selected,
+
+class ApplicabilityBannerTests(unittest.TestCase):
+    def test_applicable_separation_tab_gets_no_banner(self):
+        self.assertIsNone(
+            applicability_banner(
+                OPEN_CONTEXT_SEPARATION,
+                "mdx",
+                active_method_key=MDX_ARCH_TYPE,
+                selected_models=[],
+            )
         )
-        self.assertIn("1 of 2", text)
+
+    def test_inactive_separation_tab_names_the_active_method(self):
+        result = applicability_banner(
+            OPEN_CONTEXT_SEPARATION,
+            "vr",
+            active_method_key=MDX_ARCH_TYPE,
+            selected_models=[],
+        )
+        self.assertIsNotNone(result)
+        text, button = result
+        self.assertIn("MDX-Net", text)
+        self.assertIn("VR Architecture", button)
+
+    def test_unused_ensemble_tab_says_no_member_uses_it(self):
+        result = applicability_banner(
+            OPEN_CONTEXT_ENSEMBLE,
+            "demucs",
+            active_method_key="",
+            selected_models=[f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}Some Model"],
+        )
+        self.assertIsNotNone(result)
+        text, button = result
+        self.assertIn("no ensemble members", text.lower())
+        self.assertIsNone(button)
+
+    def test_used_ensemble_tab_gets_no_banner(self):
+        self.assertIsNone(
+            applicability_banner(
+                OPEN_CONTEXT_ENSEMBLE,
+                "mdx",
+                active_method_key="",
+                selected_models=[f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}Some Model"],
+            )
+        )
+
+    def test_empty_ensemble_prompts_for_members_on_every_tab(self):
+        for stack_name in ("vr", "mdx", "demucs"):
+            result = applicability_banner(
+                OPEN_CONTEXT_ENSEMBLE,
+                stack_name,
+                active_method_key="",
+                selected_models=[],
+            )
+            self.assertIsNotNone(result, stack_name)
+            text, button = result
+            self.assertIn("Select ensemble member models", text)
+            self.assertIsNone(button)
+
+    def test_audio_tools_context_is_never_applicable(self):
+        result = applicability_banner(
+            OPEN_CONTEXT_AUDIO_TOOLS,
+            "mdx",
+            active_method_key=MDX_ARCH_TYPE,
+            selected_models=[],
+        )
+        self.assertIsNotNone(result)
 
 
 if __name__ == "__main__":

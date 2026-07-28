@@ -99,13 +99,19 @@ def default_stack_name(
     return next(iter(views_by_stack))
 
 
-def applicability_subtitle(
+def applicability_banner(
     context: str,
     stack_name: str,
     *,
     active_method_key: str,
     selected_models: Sequence[str],
-) -> str:
+) -> Optional[tuple[str, Optional[str]]]:
+    """The banner for one architecture tab, or ``None`` when it needs none.
+
+    Returns ``(text, button_label)``. ``button_label`` is ``None`` for a banner
+    with no action. An applicable tab returns ``None`` outright -- absence of a
+    banner is what "this tab applies" looks like, so the common case is silent.
+    """
     applicable = applicable_stack_names(
         context,
         active_method_key=active_method_key,
@@ -114,24 +120,31 @@ def applicability_subtitle(
     title = _STACK_TITLES.get(stack_name, stack_name)
 
     if context == OPEN_CONTEXT_AUDIO_TOOLS:
-        return "Only applies to Separation and Ensemble runs"
+        return ("These options only apply to Separation and Ensemble runs.", None)
 
     if context == OPEN_CONTEXT_SEPARATION:
         if stack_name in applicable:
-            return f"Applies to the active {title} separation run"
-        return f"Not used — active method is not {title}"
+            return None
+        active_title = _STACK_TITLES.get(
+            stack_name_for_method_key(active_method_key) or "", "another architecture"
+        )
+        return (
+            f"Not used by this run — the active method is {active_title}.",
+            f"Switch to {title}",
+        )
 
     if context == OPEN_CONTEXT_ENSEMBLE:
-        counts = member_arch_counts(selected_models)
-        count = counts.get(stack_name, 0)
-        total = sum(counts.values())
-        if count == 0:
-            return "Not used — no ensemble members use this architecture"
-        if count == 1 and total == 1:
-            return "Applies to the ensemble member model"
-        return f"Applies to {count} of {total} ensemble member models"
+        if not applicable:
+            return (
+                "Select ensemble member models before editing "
+                "architecture-specific options.",
+                None,
+            )
+        if stack_name in applicable:
+            return None
+        return ("Not used — no ensemble members use this architecture.", None)
 
-    return ""
+    return None
 
 
 def ensemble_context_banner(context: str) -> Optional[str]:
