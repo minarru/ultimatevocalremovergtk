@@ -53,7 +53,8 @@ Gathered before design; the plan does not relitigate them.
 - "Change model defaults" gets its **own group at the bottom of each tab**.
 - **Vocal splitter + deverb moves to the main view**, into the "Processing"
   option-row group.
-- **Secondary models hides its non-applicable stem slots** for ≤2-stem models.
+- **Secondary models hides its non-applicable stem slots** whenever the run
+  cannot reach the engine's four-source path.
 - The sheet keeps **two columns**, fixed rather than removed (see §2).
 
 ## Design
@@ -172,26 +173,48 @@ as it is today.
 ### 4. Secondary models hides non-applicable stem slots
 
 `_SECONDARY_SLOTS` (`ui/views/base.py:76`) defines four slots: `voc_inst`,
-`other`, `bass`, `drums`. Show `voc_inst` always; show the other three only
-when the resolved primary model produces four stems.
+`other`, `bass`, `drums`. Show `voc_inst` always; show the other three only when
+the run can actually reach the engine's four-source path.
 
-`update_stem_labels()` (`ui/views/base.py:267`) already resolves the model and
-stores it as `self._resolved_model`, and calls the `_on_model_resolved(model)`
-hook — so the signal exists and the refresh point exists. Add a
-`_sync_secondary_slot_visibility()` pass that sets `visible` on the six rows
-(3 combos + 3 scales) for `other`/`bass`/`drums`, called from
-`update_stem_labels()`.
+**The rule is a property of the run, not of the selected model.** An earlier
+draft of this spec said "hide unless the resolved primary model produces four
+stems", derived from `update_stem_labels()`'s `self._resolved_model`. Tracing
+the engine showed that to be wrong. `core/model_data.py:609-610` gates the
+four-slot branch on:
+
+```python
+if is_valid_ensemble or self.is_4_stem_ensemble or is_multi_stem_ensemble_demucs:
+```
+
+which unfolds (`:604-607`) to three cases — a Demucs model with
+`demucs_stems == ALL_STEMS` outside ensemble mode; **any** member of a 4-stem
+ensemble, VR and MDX-Net included; and a Demucs member of a multi-stem
+ensemble. The model-stem-count rule would have wrongly hidden the slots on the
+VR and MDX-Net tabs during a 4-stem ensemble, where they are live.
+
+So the check is a pure function over settings plus the tab's architecture:
+
+```python
+def four_stem_secondaries_apply(settings, process_method: str) -> bool
+```
+
+mirroring the engine condition exactly, and living in `ui/option_summaries.py`
+(§5) so it is unit-testable without a display. `_sync_secondary_slot_visibility()`
+sets `visible` on the six rows (3 combos + 3 scales) for `other`/`bass`/`drums`
+from its result, and is called from `update_stem_labels()`
+(`ui/views/base.py:267`) — the existing refresh point, which already runs on
+load, on model change, and after stem-group changes.
 
 Hiding rather than dimming: dimming saves no height, and the height is the
 point. This is a deliberate departure from the `_bind_switch_dependents`
-dimming convention, justified because model stem count is a *structural* fact
-about the run, not a toggle the user is expected to flip.
+dimming convention, justified because whether a run has four sources is a
+*structural* fact, not a toggle the user is expected to flip.
 
 Values for hidden slots are untouched — they persist in settings and reappear
-when a 4-stem model is selected. No settings are cleared.
+when a four-source run is configured. No settings are cleared.
 
-Effect: the expanded section drops from ~600px (9 rows) to ~240px (3 rows) for
-the common 2-stem case.
+Effect: the expanded section drops from ~600px (9 rows) to ~240px (3 rows) in
+the common two-source case.
 
 **Applicability in ensemble runs — verified, do not re-question.** Secondary
 models apply to ensemble members. `is_secondary_model_activated` is read from
@@ -217,10 +240,15 @@ the `ui/` root rather than under `ui/model_options/` because both
 widget importing from `model_options` would invert the dependency:
 
 ```python
+def four_stem_secondaries_apply(settings, process_method: str) -> bool
 def secondary_models_summary(settings, prefix: str, *, four_stem: bool) -> str
 def preproc_summary(settings) -> str
 def vocal_split_summary(settings) -> str
 ```
+
+`four_stem_secondaries_apply` is §4's visibility rule. It lives here rather than
+in `applicability.py` because it is consumed by `ui/views/base.py`, which must
+not depend on `ui/model_options/`.
 
 Each returns a one-line subtitle. Conventions:
 
@@ -340,7 +368,7 @@ Against ~578px of content height at the default 1040×720 window:
 | Demucs | Inference 300 | Extra 160 + Maint 100 = 260 | 300 | yes |
 | MDX-Net | Inference 180 | Extra 100 + Maint 100 = 200 | 200 | yes |
 
-With Secondary models expanded on a 2-stem model (§4), the right column grows
+With Secondary models expanded on a two-source run (§4), the right column grows
 to ~380px — still within budget. A 4-stem model expands it to ~740px and
 scrolls, which is acceptable: at that point the user is deliberately working
 inside one section.
@@ -364,7 +392,7 @@ Separation and Ensemble pages.
 | `ui/window.py` | `VocalSplitRow` in Processing group; `on_switch_method` callback |
 | `ui/ensemble/window.py` | `VocalSplitRow` in Processing group |
 | `tests/test_option_summaries.py` | **new** — headless summariser tests |
-| `tests/test_secondary_slot_visibility.py` | **new** — 2-stem vs 4-stem slot rules |
+| `tests/test_secondary_slot_visibility.py` | **new** — four-source vs two-source slot rules |
 | `tests/test_model_options_applicability.py` | update for `applicability_banner` |
 | `tests/` (sheet) | badge numbers, banner presence/absence, two-column structure |
 
@@ -372,8 +400,10 @@ Separation and Ensemble pages.
 
 - **Headless (no display):** every function in `option_summaries.py`;
   `applicability_banner` across the three contexts × three stacks × empty and
-  populated member lists; the pure stem-count → visible-slots rule. These are
-  the bulk of the coverage.
+  populated member lists; `four_stem_secondaries_apply` across all three engine
+  cases (Demucs with all stems, 4-stem ensemble on every architecture,
+  multi-stem ensemble on Demucs only) plus the negatives. These are the bulk of
+  the coverage.
 - **GTK-guarded** (`@unittest.skipUnless(DISPLAY or WAYLAND_DISPLAY)`, with
   `gi.require_version` in `setUpClass`): sheet constructs; each tab page has two
   non-homogeneous columns that stack below the breakpoint; badge numbers match
@@ -394,9 +424,11 @@ Separation and Ensemble pages.
   `settings.get(key, default)` and degrades to `"Off"` / `"On — no model
   selected"` rather than raising. `SettingsModel` backfills missing keys from
   defaults on load, so this is defence in depth.
-- Model unresolved (no model chosen, or a hash miss) → §4 treats it as ≤2-stem
-  and shows only the `voc_inst` slot, matching how `update_stem_labels` already
-  degrades when `resolve_model_dry` returns `None`.
+- §4's visibility rule never touches the resolved model, so a hash miss or an
+  unchosen model cannot break it: `four_stem_secondaries_apply` reads only
+  `chosen_process_method`, `ensemble_main_stem` and `demucs_stems`, each with a
+  default, and returns `False` when none of the three engine cases match —
+  showing the `voc_inst` slot alone.
 - `Adw.ViewStackPage.set_badge_number` guarded with `hasattr`, so an older
   libadwaita degrades to no badges rather than crashing.
 
