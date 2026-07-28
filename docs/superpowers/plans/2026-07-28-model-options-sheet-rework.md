@@ -25,6 +25,20 @@
 
 Design spec: [docs/superpowers/specs/2026-07-27-model-options-sheet-design.md](../specs/2026-07-27-model-options-sheet-design.md)
 
+## Execution order
+
+**Tasks run 1 → 2 → 3 → 4 → 5 → 6 → 8 → 7 → 9.** Task 8 before Task 7 is
+deliberate, not a typo.
+
+Task 7 renames `applicability_subtitle` to `applicability_banner`, and
+`ui/model_options/sheet.py` imports and calls the old name. If Task 7 ran first
+it would have to leave a shim writing into `_tab_subtitles` — a label Task 8 is
+about to delete — so one commit would ship code written only to be removed.
+Running Task 8 first deletes the subtitle rendering and its import outright,
+leaving Task 7 free to rename a function nothing references.
+
+Task numbering is unchanged so the dependency notes in each task still line up.
+
 ## File Structure
 
 | File | Responsibility |
@@ -1967,21 +1981,13 @@ def applicability_banner(
 
 In `ui/model_options/__init__.py`, change `applicability_subtitle` to `applicability_banner` in both the import (line 8) and `__all__` (line 20).
 
-- [ ] **Step 6: Keep the sheet importable**
+- [ ] **Step 6: Confirm the sheet no longer references the old name**
 
-`ui/model_options/sheet.py` still imports and calls `applicability_subtitle` (lines 16, 249). Task 9 rewrites that call site properly. For now, change the import on line 16 to `applicability_banner` and replace the line 249-255 block with a temporary shim so the module still imports:
+Run: `rg -n "applicability_subtitle" ui/ tests/`
 
-```python
-            banner = applicability_banner(
-                self._context,
-                stack_name,
-                active_method_key=self._active_method_key,
-                selected_models=self._selected_models,
-            )
-            self._tab_subtitles[stack_name].set_label(banner[0] if banner else "")
-```
+Expected: **no matches.** Task 8 runs before this task (see "Execution order" at the top of this plan) and already deleted the sheet's subtitle rendering along with its import, so removing the function here breaks nothing.
 
-This is deliberately temporary — Task 9 deletes `_tab_subtitles` entirely.
+If there are matches, Task 8 was skipped or left work behind — stop and report rather than adding a shim.
 
 - [ ] **Step 7: Run the test to verify it passes**
 
@@ -2193,7 +2199,6 @@ from .applicability import (
     OPEN_CONTEXT_AUDIO_TOOLS,
     OPEN_CONTEXT_ENSEMBLE,
     applicable_stack_names,
-    applicability_banner,
     default_stack_name,
     ensemble_context_banner,
     should_hide_unused_stacks,
@@ -2376,9 +2381,11 @@ with:
         self.dialog.set_content_height(self._sheet_height())
 ```
 
-- [ ] **Step 11: Fix the temporary shim from Task 7**
+- [ ] **Step 11: Delete the per-page subtitle rendering**
 
-The Task 7 shim writes to `self._tab_subtitles`, which no longer exists. In `_refresh_applicability`, delete the `subtitle = ...` / `self._tab_subtitles[stack_name].set_label(...)` lines entirely. Task 9 adds the real banner rendering; for this commit the applicability pass just sets visibility and sensitivity.
+In `_refresh_applicability`, delete the `subtitle = applicability_subtitle(...)` call and the `self._tab_subtitles[stack_name].set_label(subtitle)` line entirely (lines 249-255). Task 7 then removes the now-unreferenced `applicability_subtitle` function itself, and Task 9 adds the real banner rendering. For this commit the applicability pass just sets visibility and sensitivity.
+
+Confirm the module no longer names it: `rg -n "applicability_subtitle" ui/model_options/sheet.py` must return nothing.
 
 - [ ] **Step 12: Run the layout test**
 
