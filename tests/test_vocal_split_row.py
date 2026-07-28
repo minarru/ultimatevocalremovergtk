@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from unittest.mock import patch
 
 
 @unittest.skipUnless(
@@ -21,6 +22,16 @@ class VocalSplitRowTests(unittest.TestCase):
 
         cls._app = Adw.Application(application_id="org.uvr.test.vocal-split-row")
         cls._app.register()
+
+        # Patch network fetch to prevent test hangup on network unavailability
+        cls._politrees_patcher = patch(
+            "core.politrees_catalog.load_politrees_links", return_value=None
+        )
+        cls._politrees_patcher.start()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._politrees_patcher.stop()
 
     def _settings(self, **overrides):
         from core.settings import SettingsModel
