@@ -96,7 +96,20 @@ class ModelOptionsSheet:
         self.dialog.set_content_width(_SHEET_WIDTH)
         self.dialog.set_content_height(self._sheet_height())
         self.dialog.set_follows_content_size(False)
-        self.dialog.connect("notify::content-width", self._sync_narrow_layout)
+
+        # ``notify::content-width`` only fires when code calls
+        # ``set_content_width`` -- it is the *requested* size, which after the
+        # width-cap change nothing updates post-construction, so it never fires
+        # again. An ``Adw.Breakpoint`` reacts to the dialog's real allocated
+        # width instead (the same mechanism ``MainWindow`` uses for its own
+        # narrow layout), so it fires whenever the parent window is actually
+        # narrower than the sheet's cap.
+        self._narrow_breakpoint = Adw.Breakpoint.new(
+            Adw.BreakpointCondition.parse(f"max-width: {_STACK_BREAKPOINT}sp")
+        )
+        self._narrow_breakpoint.connect("apply", self._on_narrow_breakpoint_apply)
+        self._narrow_breakpoint.connect("unapply", self._on_narrow_breakpoint_unapply)
+        self.dialog.add_breakpoint(self._narrow_breakpoint)
 
         self._stack = Adw.ViewStack()
         if hasattr(Adw, "InlineViewSwitcher"):
@@ -177,15 +190,13 @@ class ModelOptionsSheet:
             return _SHEET_FALLBACK_HEIGHT
         return int(parent_height * _SHEET_MAX_HEIGHT_FRACTION)
 
-    def _sync_narrow_layout(self, *_args) -> None:
-        # Drive stacking off actual allocated content width, so the sheet adapts
-        # when the parent window is narrower than the sheet's own cap.
-        width = self.dialog.get_content_width()
-        if width <= 0:
-            width = self._parent.get_width() if self._parent is not None else 0
-        stacked = 0 < width < _STACK_BREAKPOINT
+    def _on_narrow_breakpoint_apply(self, *_args) -> None:
         for columns_box in self._tab_columns.values():
-            _set_sheet_columns_stacked(columns_box, stacked)
+            _set_sheet_columns_stacked(columns_box, True)
+
+    def _on_narrow_breakpoint_unapply(self, *_args) -> None:
+        for columns_box in self._tab_columns.values():
+            _set_sheet_columns_stacked(columns_box, False)
 
     def _on_tab_changed(self, *_args) -> None:
         self._refresh_applicability()
@@ -245,7 +256,6 @@ class ModelOptionsSheet:
         if start_stack in self._views_by_stack:
             self._stack.set_visible_child_name(start_stack)
         self._refresh_applicability()
-        self._sync_narrow_layout()
 
     def _refresh_applicability(self) -> None:
         applicable = applicable_stack_names(
@@ -298,6 +308,11 @@ class ModelOptionsSheet:
         )
         if result is None:
             banner.set_revealed(False)
+            # ``Adw.Banner``'s reveal is animated, so a stale title/button from a
+            # previous context would flash before the hide finishes -- clear both
+            # so a re-reveal always starts from a blank banner.
+            banner.set_title("")
+            banner.set_button_label("")
             return
         text, button_label = result
         banner.set_title(text)

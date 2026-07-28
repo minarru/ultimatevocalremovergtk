@@ -117,6 +117,66 @@ class SheetLayoutTests(unittest.TestCase):
         sheet, _window = self._sheet()
         self.assertEqual(sheet._sheet_height(), sheet_module._SHEET_FALLBACK_HEIGHT)
 
+    # -- Regression: narrow-column stacking must react to the sheet's real
+    # allocated width, not the requested ``content-width`` (which nothing
+    # updates after construction and so never changes again). These tests
+    # actually present the dialog inside a parent window so the columns box
+    # gets a real GTK size allocation, rather than asserting on the frozen
+    # requested size the way the old (dead) coverage did.
+
+    def _pump(self, iterations: int = 200) -> None:
+        from gi.repository import GLib
+
+        context = GLib.MainContext.default()
+        for _ in range(iterations):
+            while context.pending():
+                context.iteration(False)
+
+    def _presented_sheet(self, parent_width: int):
+        sheet, window = self._sheet()
+        window.set_application(self._app)
+        window.set_default_size(parent_width, 480)
+        window.present()
+        sheet.present(
+            context="separation", active_method_key="MDX-Net", selected_models=[]
+        )
+        self._pump()
+        return sheet, window
+
+    def test_narrow_parent_stacks_the_columns(self):
+        from gi.repository import Gtk
+
+        from ui.model_options import sheet as sheet_module
+
+        sheet, window = self._presented_sheet(640)
+        self.addCleanup(window.close)
+        # Sanity: the allocated width, not the 760px requested cap, is what
+        # crossed the breakpoint.
+        self.assertLess(sheet.dialog.get_width(), sheet_module._STACK_BREAKPOINT)
+
+        for stack_name, columns_box in sheet._tab_columns.items():
+            self.assertEqual(
+                columns_box.get_orientation(),
+                Gtk.Orientation.VERTICAL,
+                f"{stack_name}: columns should stack under a narrow parent",
+            )
+
+    def test_wide_parent_keeps_the_columns_side_by_side(self):
+        from gi.repository import Gtk
+
+        from ui.model_options import sheet as sheet_module
+
+        sheet, window = self._presented_sheet(1100)
+        self.addCleanup(window.close)
+        self.assertGreaterEqual(sheet.dialog.get_width(), sheet_module._STACK_BREAKPOINT)
+
+        for stack_name, columns_box in sheet._tab_columns.items():
+            self.assertEqual(
+                columns_box.get_orientation(),
+                Gtk.Orientation.HORIZONTAL,
+                f"{stack_name}: columns should stay side-by-side under a wide parent",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
