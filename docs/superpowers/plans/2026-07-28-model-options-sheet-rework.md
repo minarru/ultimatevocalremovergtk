@@ -912,7 +912,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 **Files:**
 - Modify: `ui/views/base.py` (delete lines 717-734, the `voc_split_expander` block)
 - Modify: `ui/window.py:601-628` (`_build_shared_group`), `:684` (load), `:913` (flush)
-- Modify: `ui/ensemble/window.py:366-370` (Processing group), `:446` (load), `:502` (flush)
+- Modify: `ui/ensemble/window.py:366-370` (Processing group), `:446` (load), `:500-502` (change handler)
 - Test: `tests/test_vocal_split_placement.py`
 
 **Interfaces:**
@@ -920,9 +920,15 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Produces:
   - `MainWindow.vocal_split_row: VocalSplitRow`
   - `MainWindow._on_vocal_split_changed(*args) -> None`
-  - `EnsembleWindow.vocal_split_row: VocalSplitRow`
-  - `EnsembleWindow._on_vocal_split_changed(*args) -> None`
+  - `EnsemblePage.vocal_split_row: VocalSplitRow`
+  - `EnsemblePage._on_vocal_split_changed(*args) -> None`
   - `MethodView` no longer has `voc_split_expander`.
+
+**Facts already resolved — use these, do not re-derive:**
+- The embedded ensemble page is class **`EnsemblePage`** (`ui/ensemble/window.py:132`), held by `MainWindow` as **`self._ensemble_page`** (`ui/window.py:368`). There is no `EnsembleWindow` class and no `ensemble_view` attribute.
+- `MainWindow` has **no `_touch_settings` method.** Its `_on_format_changed` (`ui/window.py:852`) is simply `self.format_row.persist_to_settings(self.settings)`. Mirror that shape.
+- `EnsemblePage` guards its handlers with `self._loading` and reaches the repo as `self.context.repo`.
+- `MainWindow._hint_manager` is created at `ui/window.py:278`, before `_build_shared_group()` is called at `:341`, so passing `hints=self._hint_manager` from inside that builder is safe.
 
 - [ ] **Step 1: Confirm nothing else references the old expander**
 
@@ -984,16 +990,16 @@ class ProcessingGroupPlacementTests(unittest.TestCase):
         self.addCleanup(window.set_application, None)
         self.assertIsInstance(window.vocal_split_row, VocalSplitRow)
 
-    def test_ensemble_window_processing_group_hosts_the_row(self):
-        from ui.ensemble.window import EnsembleWindow
+    def test_ensemble_page_processing_group_hosts_the_row(self):
+        from ui.ensemble.window import EnsemblePage
         from ui.widgets.vocal_split_row import VocalSplitRow
         from ui.window import MainWindow
 
         window = MainWindow()
         self.addCleanup(window.set_application, None)
-        ensemble = window.ensemble_view
+        ensemble = window._ensemble_page
+        self.assertIsInstance(ensemble, EnsemblePage)
         self.assertIsInstance(ensemble.vocal_split_row, VocalSplitRow)
-        self.assertIsInstance(ensemble, EnsembleWindow)
 
     def test_the_two_pages_share_one_set_of_values(self):
         """They are global keys: editing one page must be visible on the other."""
@@ -1003,23 +1009,31 @@ class ProcessingGroupPlacementTests(unittest.TestCase):
         self.addCleanup(window.set_application, None)
         window.vocal_split_row.deverb_switch.set_active(True)
         window.vocal_split_row.persist_to_settings(window.settings)
-        window.ensemble_view.vocal_split_row.apply_from_settings(window.settings)
-        self.assertTrue(
-            window.ensemble_view.vocal_split_row.deverb_switch.get_active()
-        )
+        ensemble_row = window._ensemble_page.vocal_split_row
+        ensemble_row.apply_from_settings(window.settings)
+        self.assertTrue(ensemble_row.deverb_switch.get_active())
+
+    def test_audio_tools_does_not_get_the_row(self):
+        """Audio Tools runs no separations, so the globals do not belong there."""
+        from ui.window import MainWindow
+
+        window = MainWindow()
+        self.addCleanup(window.set_application, None)
+        audio_tools = window._pages["audio_tools"]
+        self.assertFalse(hasattr(audio_tools, "vocal_split_row"))
 
 
 if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 3: Find the real accessor for the embedded ensemble page**
+- [ ] **Step 3: Confirm the page registry key for the Audio Tools assertion**
 
-The test above assumes `MainWindow.ensemble_view`. Confirm the real attribute:
+The new `test_audio_tools_does_not_get_the_row` reads `window._pages["audio_tools"]`. Confirm that registry and its key exist:
 
-Run: `rg -n "EnsembleWindow\(" ui/window.py`
+Run: `rg -n "self\._pages" ui/window.py | head -5`
 
-Then read the surrounding lines to find what the instance is assigned to. Fix the test to use the real name before continuing. Do not rename the production attribute to match the test.
+`ui/window.py:404` shows a dict literal containing `"ensemble": self._ensemble_page`. Use whatever key that dict actually uses for the Audio Tools page. If there is no such registry, assert against whatever attribute holds the Audio Tools page instead — the point of the test is that the page has no `vocal_split_row`, not how you reach it.
 
 - [ ] **Step 4: Run the test to verify it fails**
 
@@ -1056,11 +1070,9 @@ In `_build_shared_group` (line 601), after `group.add(self.sample_row)` and befo
         group.add(self.vocal_split_row)
 ```
 
-- [ ] **Step 7: Check `_hint_manager` exists before `_build_shared_group` runs**
+- [ ] **Step 7: (already resolved — no action)**
 
-Run: `rg -n "_hint_manager" ui/window.py | head -3`
-
-`self._hint_manager` must be assigned **before** the line that calls `_build_shared_group` (line 339). If it is assigned later, pass `hints=None` here and instead register the five rows inside `_register_hints` (line 650) using `self._hint_manager.register(self.vocal_split_row.split_switch, ...)` and so on for each of the five public row attributes, importing the five help constants at the top of `ui/window.py`.
+`self._hint_manager` is assigned at `ui/window.py:278`, well before `_build_shared_group()` is called at `:341`, so the `hints=self._hint_manager` argument in Step 6 is safe as written. Confirm with `rg -n "_hint_manager = " ui/window.py` and move on.
 
 - [ ] **Step 8: Wire the Separation load and flush**
 
@@ -1070,15 +1082,14 @@ In `ui/window.py`, beside the existing `self.format_row.apply_from_settings(self
         self.vocal_split_row.apply_from_settings(self.settings)
 ```
 
-Add the change handler next to `_on_format_changed` (line 852):
+Add the change handler next to `_on_format_changed` (line 852), mirroring its shape exactly:
 
 ```python
     def _on_vocal_split_changed(self, *_args) -> None:
-        """The row already wrote its keys; just mark the settings dirty."""
-        self._touch_settings()
+        self.vocal_split_row.persist_to_settings(self.settings)
 ```
 
-Run `rg -n "def _touch_settings|_touch_settings\(\)" ui/window.py | head -3` to confirm that method exists on `MainWindow`. If it does not, mirror exactly what `_on_format_changed` does after its `persist_to_settings` call.
+`MainWindow` has no `_touch_settings` method — `_on_format_changed` is just a `persist_to_settings` call, and this matches it. The write is idempotent (the row also persists into the same settings object itself), which is deliberate: the handler keeps the same contract as every other row on this page rather than being a special case that silently relies on the widget.
 
 In the flush path beside `self.format_row.persist_to_settings(self.settings)` (line 913), add:
 
@@ -1090,7 +1101,7 @@ Match the surrounding indentation — that call sits inside the `content_stack.g
 
 - [ ] **Step 9: Do the same for the Ensemble page**
 
-In `ui/ensemble/window.py`, add the import beside the `OutputFormatRow` import (line 106):
+In `ui/ensemble/window.py` (the class is `EnsemblePage`, line 132), add the import beside the `OutputFormatRow` import (line 106):
 
 ```python
 from ..widgets.vocal_split_row import VocalSplitRow
@@ -1115,15 +1126,21 @@ Beside `self.format_row.apply_from_settings(self.settings)` (line 446):
             self.vocal_split_row.apply_from_settings(self.settings)
 ```
 
-Beside `self.format_row.persist_to_settings(self.settings)` (line 502), inside `_on_format_changed`'s neighbour, add a handler:
+Add a handler next to `_on_format_changed` (line 500), which reads:
+
+```python
+    def _on_format_changed(self, *_args) -> None:
+        if not self._loading:
+            self.format_row.persist_to_settings(self.settings)
+```
+
+Mirror it — do **not** delegate to it, or the ensemble page would persist the format row on a vocal-split change:
 
 ```python
     def _on_vocal_split_changed(self, *_args) -> None:
-        """The row already wrote its keys; persist alongside the format row."""
-        self._on_format_changed()
+        if not self._loading:
+            self.vocal_split_row.persist_to_settings(self.settings)
 ```
-
-Read `_on_format_changed` (line 500) first — if it does anything format-specific beyond persisting and marking dirty, write the equivalent dirty-marking call directly instead of delegating.
 
 - [ ] **Step 10: Run the placement test**
 
