@@ -70,6 +70,22 @@ class ProcessingGroupPlacementTests(unittest.TestCase):
         ensemble_row.apply_from_settings(window.settings)
         self.assertTrue(ensemble_row.deverb_switch.get_active())
 
+    def test_ensemble_row_carries_help_hints(self):
+        """Regression: before this branch all three tabs got hints on all five
+        rows. The Ensemble page hints with plain ``set_tooltip`` calls rather
+        than a ``HelpHintManager``, so ``VocalSplitRow`` needs an adapter to
+        still receive its ``hints=`` argument there.
+        """
+        from ui.help_text import VOC_SPLIT_MODEL_SELECT_HELP
+        from ui.window import MainWindow
+
+        window = MainWindow()
+        self.addCleanup(window.set_application, None)
+        ensemble_row = window._ensemble_page.vocal_split_row
+        self.assertEqual(
+            ensemble_row.splitter_row.get_tooltip_text(), VOC_SPLIT_MODEL_SELECT_HELP
+        )
+
     def test_audio_tools_does_not_get_the_row(self):
         """Audio Tools runs no separations, so the globals do not belong there."""
         from ui.window import MainWindow

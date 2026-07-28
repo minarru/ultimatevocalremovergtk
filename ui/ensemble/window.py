@@ -130,6 +130,20 @@ _REASON_STEM_PAIR = "Choose an ensemble stem pair"
 _REASON_TWO_MODELS = "Select two or more models"
 
 
+class _RowTooltipHints:
+    """Adapts :class:`VocalSplitRow`'s ``hints.register(widget, text)`` calls
+    to this page's plain :func:`set_tooltip` hinting.
+
+    ``EnsemblePage`` has no :class:`~ui.hints.HelpHintManager` -- every other
+    row here is hinted with a direct ``set_tooltip`` call -- so this is a
+    stateless one-off adapter rather than pulling in the manager.
+    """
+
+    def register(self, widget, text):
+        set_tooltip(widget, text)
+        return widget
+
+
 class EnsemblePage:
     """Embeddable Ensemble Mode page bound to the shared :class:`AppContext`.
 
@@ -431,7 +445,7 @@ class EnsemblePage:
         group.add(expander)
 
         self.vocal_split_row = VocalSplitRow(
-            self.context.repo, self._on_vocal_split_changed
+            self.context.repo, self._on_vocal_split_changed, hints=_RowTooltipHints()
         )
         group.add(self.vocal_split_row)
 
