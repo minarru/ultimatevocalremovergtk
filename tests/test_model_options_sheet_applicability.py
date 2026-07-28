@@ -197,6 +197,24 @@ class SheetApplicabilityTests(unittest.TestCase):
         for stack_name, page in sheet._tab_pages.items():
             self.assertNotIn(page, ancestors, f"banner must not be inside {stack_name}")
 
+    def test_the_banner_reveals_without_animating(self):
+        """One shared banner relabels on every tab switch; each frame of the
+        250ms slide reflows the ToolbarView content below it, which renders as
+        a tearing artifact along the banner's bottom edge."""
+        from gi.repository import Gtk
+
+        sheet, _window = self._sheet()
+        revealer = None
+        child = sheet._banner.get_first_child()
+        while child is not None:
+            if isinstance(child, Gtk.Revealer):
+                revealer = child
+                break
+            child = child.get_next_sibling()
+
+        self.assertIsNotNone(revealer, "Adw.Banner should wrap content in a Revealer")
+        self.assertEqual(revealer.get_transition_duration(), 0)
+
     def test_one_banner_is_shared_across_tabs(self):
         """Switching tabs relabels the single banner rather than swapping widgets."""
         sheet, _window = self._sheet()
