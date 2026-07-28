@@ -29,6 +29,10 @@ _SHEET_FALLBACK_HEIGHT = 560
 _SHEET_MAX_HEIGHT_FRACTION = 0.9
 #: Below this content width the two columns stack into one.
 _STACK_BREAKPOINT = 700
+#: Floor below which the dialog must not be allocated. Without it libadwaita
+#: warns and can size the dialog under its content's minimum, clipping rows.
+_SHEET_MIN_WIDTH = 360
+_SHEET_MIN_HEIGHT = 294
 
 
 def _build_sheet_columns():
@@ -103,6 +107,12 @@ class ModelOptionsSheet:
         self.dialog.set_content_width(_SHEET_WIDTH)
         self.dialog.set_content_height(self._sheet_height())
         self.dialog.set_follows_content_size(False)
+        # libadwaita warns ("AdwDialog does not have a minimum size") and will
+        # happily allocate the dialog below its content's minimum, which clips
+        # the children. Content width/height are only *preferred* sizes; these
+        # are the floor. Kept small enough that the stacked single-column layout
+        # below the breakpoint still fits.
+        self.dialog.set_size_request(_SHEET_MIN_WIDTH, _SHEET_MIN_HEIGHT)
 
         # ``notify::content-width`` only fires when code calls
         # ``set_content_width`` -- it is the *requested* size, which after the
