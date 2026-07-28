@@ -708,16 +708,23 @@ class MethodView:
             self._bind_switch_dependents(activate, [model_row, inst_mix_row])
             group.add(self.preproc_expander)
 
-        # Change-model-defaults entry point.
-        change_row = Adw.ActionRow(title="Change model defaults", subtitle="Edit or delete a model's stored parameters")
+        self.groups.append(self.secondary_group)
+
+        # Model maintenance: editing an architecture's stored model parameters
+        # is not an "extra model", so it gets its own group rather than sitting
+        # as a fourth sibling among the model selectors.
+        self.maintenance_group = Adw.PreferencesGroup(title="Model maintenance")
+        self.change_row = Adw.ActionRow(
+            title="Change model defaults",
+            subtitle="Edit or delete a model's stored parameters",
+        )
         change_button = Gtk.Button(label="Edit\u2026", valign=Gtk.Align.CENTER)
         change_button.connect("clicked", self._on_change_defaults)
-        change_row.add_suffix(change_button)
-        change_row.set_activatable_widget(change_button)
-        self.hints.register(change_row, CLEAR_CACHE_HELP)
-        group.add(change_row)
-
-        self.groups.append(self.secondary_group)
+        self.change_row.add_suffix(change_button)
+        self.change_row.set_activatable_widget(change_button)
+        self.hints.register(self.change_row, CLEAR_CACHE_HELP)
+        self.maintenance_group.add(self.change_row)
+        self.groups.append(self.maintenance_group)
 
     # -- Dialog wiring (owned entirely by the method views) --------------------
 
