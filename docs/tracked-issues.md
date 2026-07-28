@@ -42,6 +42,17 @@ Suggested labels on Codeberg: `backend`, `gpu`, `roformer`, `audio`, `roadmap`, 
 
 ---
 
+## Fork-only technical debt (items F1–)
+
+Deferred issues found in fork-specific (`ui/`) code during our own review, with
+no upstream Tkinter equivalent -- so no GitHub issue to link.
+
+| ID | Topic | Status | Priority | Upstream | Fork | Notes |
+|----|--------|--------|----------|----------|------|-------|
+| **F1** | Model-options sheet auto-expand hashes checkpoints synchronously | open | medium | n/a — fork-only (feature not in upstream) | — | `ui/views/base.py`'s `load()` (via `_sync_expander_summaries`) calls `Adw.ExpanderRow.set_expanded(True)` for every section whose activate switch was already on, to restore the user's last session. `set_expanded(True)` synchronously emits `notify::expanded`, which is bound to `_ensure_model_combos_populated` in `ui/views/base.py` and `_populate_models` in `ui/widgets/vocal_split_row.py` — both deliberately lazy (they hash every installed checkpoint) per the CLAUDE.md "heavy work stays lazy" invariant. Measured: `MainWindow()` construction goes from 94ms (no sections enabled) to 635ms (6.8x) with every auto-expanding section enabled, all synchronous on the main loop during window build. Found during the `model-options-sheet` branch's final review; deliberately not fixed there to avoid late churn. Suggested fix: when the expand happens during `load()`, defer the populate call via `idle_on_main` (`ui/dispatch.py`) instead of running it inline — the row still opens immediately (visual auto-expand preserved), but the hashing moves off the synchronous construction path. |
+
+---
+
 ## Product gaps (roadmap)
 
 | ID | Topic | Status | Priority | Upstream | Fork | Notes |
