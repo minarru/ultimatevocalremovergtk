@@ -69,17 +69,17 @@ def four_stem_secondaries_apply(settings, process_method: str) -> bool:
 
     Mirrors the engine's own branch in ``core/model_data.py`` (the
     ``is_valid_ensemble or is_4_stem_ensemble or is_multi_stem_ensemble_demucs``
-    condition): the four-slot path runs for a Demucs model exporting all stems,
-    for any member of a 4-stem ensemble, and for a Demucs member of a multi-stem
-    ensemble. In every other case those three slots are dead weight.
+    condition): the four-slot path runs for a Demucs model exporting all stems
+    (only outside ensemble mode), for any member of a 4-stem ensemble, and for
+    a Demucs member of a multi-stem ensemble. In every other case those three
+    slots are dead weight.
     """
     is_demucs = process_method == DEMUCS_ARCH_TYPE
     if settings.get("chosen_process_method") == ENSEMBLE_MODE:
         main_stem = settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
-        if main_stem == FOUR_STEM_ENSEMBLE:
-            return True
-        if main_stem == MULTI_STEM_ENSEMBLE and is_demucs:
-            return True
+        return main_stem == FOUR_STEM_ENSEMBLE or (
+            main_stem == MULTI_STEM_ENSEMBLE and is_demucs
+        )
     return is_demucs and settings.get("demucs_stems") == ALL_STEMS
 
 

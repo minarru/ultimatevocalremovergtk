@@ -12,6 +12,7 @@ from bundled.constants import (
     MDX_ARCH_TYPE,
     MULTI_STEM_ENSEMBLE,
     NO_MODEL,
+    VOCAL_PAIR,
 )
 from ui.option_summaries import (
     OFF,
@@ -61,6 +62,17 @@ class FourStemApplicabilityTests(unittest.TestCase):
         )
         self.assertTrue(four_stem_secondaries_apply(settings, DEMUCS_ARCH_TYPE))
         self.assertFalse(four_stem_secondaries_apply(settings, MDX_ARCH_TYPE))
+
+    def test_ensemble_with_a_plain_pair_does_not_use_four_slots(self):
+        """All-stems is a non-ensemble rule: core/model_data.py:606 gates it
+        on ``not is_ensemble_mode``, so an ordinary 2-stem ensemble must not
+        reach the four-slot path even with demucs_stems set to ALL_STEMS."""
+        settings = _Settings(
+            chosen_process_method=ENSEMBLE_MODE,
+            ensemble_main_stem=VOCAL_PAIR,
+            demucs_stems=ALL_STEMS,
+        )
+        self.assertFalse(four_stem_secondaries_apply(settings, DEMUCS_ARCH_TYPE))
 
 
 class SecondaryModelsSummaryTests(unittest.TestCase):
