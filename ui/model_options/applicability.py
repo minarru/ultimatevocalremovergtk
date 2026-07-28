@@ -70,8 +70,9 @@ def applicable_stack_names(
 def should_hide_unused_stacks(context: str, applicable: Iterable[str]) -> bool:
     """Whether non-applicable architecture tabs should be removed from the switcher.
 
-    Separation keeps every tab visible (active method is highlighted via
-    subtitle / default selection). Ensemble hides arches unused by members.
+    Separation keeps every tab visible (the inapplicable ones carry an
+    ``Adw.Banner`` explaining they are unused instead). Ensemble hides arches
+    unused by members.
     """
     return context == OPEN_CONTEXT_ENSEMBLE and bool(applicable)
 
