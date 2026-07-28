@@ -2055,6 +2055,36 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   - `ModelOptionsSheet._tab_columns: Dict[str, Gtk.Box]` retained (drives the stacking flip)
   - Removed: `_sync_from_parent_width`, `_start_width_tracking`, `_stop_width_tracking`, `_last_parent_width`, `_surface_handler`, `_parent_map_handler`, `_on_closed`, `_SHEET_WIDE_WIDTH`, `_SHEET_WIDE_HEIGHT`, `_NARROW_BREAKPOINT`
 
+**MUST NOT BE LOST — read before editing `sheet.py`.**
+
+Task 5 added a resync loop to `update_context`, and it fixed a Critical bug
+(the sheet reuses the same `MethodView` instances, so settings changed on
+another page left stale option state). It currently sits at
+`ui/model_options/sheet.py:201-202`, immediately after the three
+`self._context` / `self._active_method_key` / `self._selected_models`
+assignments and immediately before `banner_text = ensemble_context_banner(context)`:
+
+```python
+        for view in self._views:
+            view.sync_dynamic_option_state()
+```
+
+`update_context` is not itself on this task's rewrite list, but it calls
+`_refresh_applicability()` and `_sync_narrow_layout()` at its tail — both of
+which **are** being rewritten — so this loop is easy to delete as incidental.
+It must survive this task unchanged. `tests/test_secondary_slot_visibility.py`
+has a test that fails if it is removed; run that module before committing.
+
+**Other facts already resolved — use these, do not re-derive:**
+- **Every line number in the steps below is stale.** Seven commits have landed
+  since this plan was written. Locate each edit site by name with `rg`, never by
+  the quoted line number.
+- Task 4 added `MethodView.maintenance_group`. `_build_tab_page` must place it in
+  the end column below `secondary_group`, which the steps already say — but the
+  attribute now genuinely exists, so there is nothing to create.
+- `applicability_subtitle` still exists at this point in the sequence; Task 7
+  removes it *after* this task. Deleting its call here is correct and expected.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `tests/test_model_options_sheet_layout.py`:
