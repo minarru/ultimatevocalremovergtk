@@ -321,6 +321,7 @@ class MethodView:
 
     def _touch_settings(self) -> None:
         self._update_stem_group_metadata()
+        self._refresh_expander_subtitles()
         self._on_settings_changed()
 
     def _sync_stem_only_toggles(self) -> None:
@@ -688,8 +689,7 @@ class MethodView:
         when the sheet opens rather than only when this view is interacted with.
         """
         self._sync_secondary_slot_visibility()
-        if getattr(self, "settings", None) is not None:
-            self._refresh_expander_subtitles()
+        self._refresh_expander_subtitles()
 
     def _refresh_expander_subtitles(self) -> None:
         """Subtitle-only half of :meth:`_sync_expander_summaries` (no expanding)."""

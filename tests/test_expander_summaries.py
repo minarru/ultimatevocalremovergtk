@@ -123,6 +123,87 @@ class ExpanderSummaryTests(unittest.TestCase):
 
         self.assertEqual(view.secondary_expander.get_subtitle(), ON_NO_MODEL)
 
+    # -- Regression: every control that feeds a summary must refresh it, not
+    # just the activate switch (previously only ``_bind_switch_dependents``,
+    # ``sync_dynamic_option_state`` and ``_sync_expander_summaries`` reached
+    # ``_refresh_expander_subtitles`` -- combos, scales and non-activate
+    # switches wrote through ``_touch_settings`` and left the subtitle stale).
+
+    def test_picking_a_secondary_model_in_the_combo_updates_the_subtitle_live(self):
+        from bundled.constants import CHOOSE_MODEL
+        from ui.widgets.rows import set_combo_tag_values
+
+        window = self._window()
+        view = window._views_by_stack["mdx"]
+        window.settings.set("mdx_net_model", CHOOSE_MODEL)
+        window.settings.set("mdx_is_secondary_model_activate", True)
+        view.load()  # auto-expands the row, which populates (and readies) the combo
+
+        entry = next(
+            e for e in view._model_combos if e["key"] == "mdx_voc_inst_secondary_model"
+        )
+        self.assertTrue(entry["ready"])
+        # Seed a known option so the test doesn't depend on installed models.
+        set_combo_tag_values(
+            entry["row"],
+            ["No Model Selected", ("MDX-Net: 14_SP-UVR-4B-44100-2", "14_SP-UVR-4B-44100-2")],
+        )
+
+        entry["row"].set_selected(1)  # real widget signal, not a direct settings write
+
+        self.assertEqual(
+            window.settings.get("mdx_voc_inst_secondary_model"),
+            "MDX-Net: 14_SP-UVR-4B-44100-2",
+        )
+        self.assertIn("14_SP-UVR-4B-44100-2", view.secondary_expander.get_subtitle())
+
+    def test_dragging_the_influence_scale_updates_the_subtitle_live(self):
+        from bundled.constants import CHOOSE_MODEL
+        from ui.widgets.rows import set_scale_row_float
+
+        window = self._window()
+        view = window._views_by_stack["mdx"]
+        window.settings.set("mdx_net_model", CHOOSE_MODEL)
+        window.settings.set("mdx_is_secondary_model_activate", True)
+        window.settings.set(
+            "mdx_voc_inst_secondary_model", "MDX-Net: 14_SP-UVR-4B-44100-2"
+        )
+        window.settings.set("mdx_voc_inst_secondary_model_scale", 0.9)
+        view.load()
+        self.assertIn("(0.90)", view.secondary_expander.get_subtitle())
+
+        scale_row = view._scale_rows["mdx_voc_inst_secondary_model_scale"]
+        set_scale_row_float(scale_row, 0.5)  # real slider signal
+
+        self.assertEqual(window.settings.get("mdx_voc_inst_secondary_model_scale"), 0.5)
+        self.assertIn("(0.50)", view.secondary_expander.get_subtitle())
+        self.assertNotIn("(0.90)", view.secondary_expander.get_subtitle())
+
+    def test_toggling_save_instrumental_mixture_updates_the_preproc_subtitle_live(self):
+        from bundled.constants import CHOOSE_MODEL
+
+        window = self._window()
+        view = window._views_by_stack["demucs"]
+        # No Demucs *main* model selected: a dry-check resolution of a real
+        # >=3-stem model with the pre-process option active recurses inside
+        # ``core.model_data.ModelData`` (a separate, pre-existing issue) --
+        # irrelevant to this subtitle-wiring test, so keep it out of the way.
+        window.settings.set("demucs_model", CHOOSE_MODEL)
+        window.settings.set("is_demucs_pre_proc_model_activate", True)
+        window.settings.set("demucs_pre_proc_model", "Demucs: v4: hdemucs_mmi")
+        window.settings.set("is_demucs_pre_proc_model_inst_mix", False)
+        view.load()
+        self.assertNotIn(
+            "saves instrumental mixture", view.preproc_expander.get_subtitle()
+        )
+
+        switch_row = view._switch_rows["is_demucs_pre_proc_model_inst_mix"]
+        switch_row.set_active(True)  # real switch signal
+
+        self.assertIn(
+            "saves instrumental mixture", view.preproc_expander.get_subtitle()
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
