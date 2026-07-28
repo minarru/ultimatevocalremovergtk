@@ -7,6 +7,7 @@ import unittest
 
 from bundled.constants import (
     ALL_STEMS,
+    DEMUCS_ARCH_TYPE,
     ENSEMBLE_MODE,
     FOUR_STEM_ENSEMBLE,
     MDX_ARCH_TYPE,
@@ -56,6 +57,12 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
 
     def test_demucs_with_all_stems_shows_every_slot(self):
         window = self._window()
+        # ``four_stem_secondaries_apply`` special-cases Ensemble Mode ahead of
+        # ``demucs_stems`` -- force a known separation method regardless of
+        # whatever a previous session left persisted on disk (the app writes
+        # ``chosen_process_method='Ensemble Mode'`` whenever you quit on the
+        # Ensemble tab).
+        window.settings.set("chosen_process_method", DEMUCS_ARCH_TYPE)
         window.settings.set("demucs_stems", ALL_STEMS)
         view = self._view(window, "demucs")
         view._sync_secondary_slot_visibility()
@@ -95,6 +102,19 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
         from ui.widgets.rows import set_combo_value
 
         window = self._window()
+        # ``four_stem_secondaries_apply`` special-cases Ensemble Mode ahead of
+        # ``demucs_stems`` -- force a known separation method regardless of
+        # whatever a previous session left persisted on disk (the app writes
+        # ``chosen_process_method='Ensemble Mode'`` whenever you quit on the
+        # Ensemble tab).
+        window.settings.set("chosen_process_method", DEMUCS_ARCH_TYPE)
+        # Selecting a model does not reset ``demucs_stems`` -- ``configure_demucs``
+        # only (re)populates the focus combo's items; ``sync_from_settings`` then
+        # reflects whatever is already stored back into the combo without writing
+        # it (see ``SaveStemsSection._sync_demucs_from_settings``). So the starting
+        # "all stems" state below must be set explicitly, or this test would only
+        # be checking whatever a previous run (or a stale data.pkl) left behind.
+        window.settings.set("demucs_stems", ALL_STEMS)
         view = self._view(window, "demucs")
 
         # Pick a real installed-metadata Demucs model so the stem-focus combo
