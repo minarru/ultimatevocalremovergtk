@@ -85,8 +85,13 @@ class FlushSettingsTabGuardTests(unittest.TestCase):
         window.sample_row = make_switch_row("Sample mode")
         # Repo is unused by ``persist_to_settings`` (only the lazily-populated
         # model combo touches it, on expansion), so a stub suffices here.
+        # Deliberately not ``apply_from_settings``-ed: unlike ``format_row``,
+        # ``VocalSplitRow._on_row_changed`` persists straight through to
+        # whatever settings object it was last applied with, so leaving
+        # ``_settings`` unset here means a switch toggle below does not
+        # auto-persist -- only ``_flush_settings``'s own explicit call can,
+        # which is the behavior under test.
         window.vocal_split_row = VocalSplitRow(None, lambda: None)
-        window.vocal_split_row.apply_from_settings(window.settings)
         return window
 
     def test_ensemble_edit_survives_close_while_ensemble_visible(self):
@@ -137,10 +142,16 @@ class FlushSettingsTabGuardTests(unittest.TestCase):
         # interacting with the live Separation row would), then flush while
         # Separation is the visible tab: this must still persist normally.
         window.format_row._select_quality_value("PCM_24", quality_spec(WAV))
+        # Same for the vocal-split row: a regression that dropped its
+        # ``persist_to_settings`` call from inside the "separation" guard
+        # would leave this at the settings default and go uncaught by the
+        # format-only assertion below.
+        window.vocal_split_row.split_switch.set_active(True)
 
         MainWindow._flush_settings(window)
 
         self.assertEqual(window.settings.get("wav_type_set"), "PCM_24")
+        self.assertTrue(window.settings.get("is_set_vocal_splitter"))
 
 
 if __name__ == "__main__":

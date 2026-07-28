@@ -756,6 +756,7 @@ class MainWindow(Adw.ApplicationWindow):
             autocast_row=self.autocast_row,
             sample_row=self.sample_row,
         )
+        self.vocal_split_row.apply_from_settings(self.settings)
         self._sync_gpu_dependent_rows()
 
     def _activate_separation(self) -> None:

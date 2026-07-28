@@ -484,6 +484,7 @@ class EnsemblePage:
                 autocast_row=self.autocast_row,
                 sample_row=self.sample_row,
             )
+            self.vocal_split_row.apply_from_settings(self.settings)
         finally:
             self._loading = False
         self._sync_gpu_dependent_rows()

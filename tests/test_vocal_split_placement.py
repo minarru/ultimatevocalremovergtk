@@ -79,6 +79,73 @@ class ProcessingGroupPlacementTests(unittest.TestCase):
         audio_tools = window._audio_tools_page
         self.assertFalse(hasattr(audio_tools, "vocal_split_row"))
 
+    def test_tab_switch_refreshes_the_row_from_settings(self):
+        """A value set on one page must show up on the other after activation.
+
+        Drives the real activation path (``content_stack.set_visible_child_name``
+        -> ``_on_visible_child`` -> ``target.on_activated()`` ->
+        ``_activate_separation`` / ``EnsemblePage.on_activated``) rather than
+        calling ``apply_from_settings`` directly -- a test that bypassed
+        activation would pass even if the recurring sync never touched
+        ``vocal_split_row``.
+        """
+        from ui.window import MainWindow
+
+        window = MainWindow()
+        self.addCleanup(window.set_application, None)
+
+        # Separation -> settings: flip the switch as a user would.
+        window.vocal_split_row.split_switch.set_active(True)
+        self.assertTrue(window.settings.get("is_set_vocal_splitter"))
+
+        # Activate Ensemble for real; its row must pick up the new value.
+        window.content_stack.set_visible_child_name("ensemble")
+        ensemble_row = window._ensemble_page.vocal_split_row
+        self.assertTrue(
+            ensemble_row.split_switch.get_active(),
+            "Ensemble's vocal-split row is stale after tab activation",
+        )
+
+        # And the reverse direction: Ensemble -> settings -> Separation.
+        ensemble_row.deverb_switch.set_active(True)
+        self.assertTrue(window.settings.get("is_deverb_vocals"))
+
+        window.content_stack.set_visible_child_name("separation")
+        self.assertTrue(
+            window.vocal_split_row.deverb_switch.get_active(),
+            "Separation's vocal-split row is stale after tab activation",
+        )
+
+    def test_stale_row_does_not_clobber_an_unrelated_toggle(self):
+        """Reproduces the clobber: a stale row overwrites all five keys on edit.
+
+        Set a value on Separation, switch to Ensemble (which must refresh the
+        row from settings), then toggle an *unrelated* control in the now-
+        active Ensemble row. ``VocalSplitRow._on_row_changed`` persists all
+        five fields on every edit, so if the row were still stale the
+        unrelated toggle would silently revert ``is_set_vocal_splitter`` back
+        to ``False``.
+        """
+        from ui.window import MainWindow
+
+        window = MainWindow()
+        self.addCleanup(window.set_application, None)
+
+        window.vocal_split_row.split_switch.set_active(True)
+        self.assertTrue(window.settings.get("is_set_vocal_splitter"))
+
+        window.content_stack.set_visible_child_name("ensemble")
+        ensemble_row = window._ensemble_page.vocal_split_row
+
+        # An edit to a different control on the (now correctly synced) row.
+        ensemble_row.deverb_switch.set_active(True)
+
+        self.assertTrue(
+            window.settings.get("is_set_vocal_splitter"),
+            "toggling an unrelated control clobbered is_set_vocal_splitter "
+            "back to False -- the row was stale when the edit landed",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
