@@ -1580,12 +1580,18 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ### Task 6: Expander subtitles and auto-expand in the views
 
 **Files:**
-- Modify: `ui/views/base.py` (`_build_secondary_section`, `load`, `update_stem_labels`)
+- Modify: `ui/views/base.py` (`_build_secondary_section`, `load`, `update_stem_labels`, `sync_dynamic_option_state`, `_bind_switch_dependents`)
 - Test: `tests/test_expander_summaries.py`
 
 **Interfaces:**
-- Consumes: `ui.option_summaries.secondary_models_summary`, `preproc_summary`, `four_stem_secondaries_apply` (Task 1); `MethodView._sync_secondary_slot_visibility` (Task 5).
-- Produces: `MethodView._sync_expander_summaries() -> None`
+- Consumes: `ui.option_summaries.secondary_models_summary`, `preproc_summary`, `four_stem_secondaries_apply` (Task 1); `MethodView._sync_secondary_slot_visibility` and `MethodView.sync_dynamic_option_state` (Task 5).
+- Produces: `MethodView._sync_expander_summaries() -> None`, `MethodView._refresh_expander_subtitles() -> None`
+
+**Facts already resolved — use these, do not re-derive:**
+- **Line numbers in the steps below are stale.** Five commits have landed since this plan was written. Locate every edit site by *name* (`rg -n "def load\(" ui/views/base.py`), never by the line numbers quoted here.
+- Task 5 added `MethodView.sync_dynamic_option_state()`, a public method the options sheet calls for every view on open. It currently calls only `_sync_secondary_slot_visibility()`. **Extend it to also call `_refresh_expander_subtitles()`** — the sheet must show fresh subtitles for settings changed on another page, exactly as it now shows fresh slot visibility. Do not add an expand call there; auto-expand belongs only to `load()`.
+- Task 5 also added a `_sync_secondary_slot_visibility()` call to `_on_save_stems_changed`. The subtitle depends on the same `four_stem` value, so `_refresh_expander_subtitles()` must be kept in step with it wherever it is called.
+- `MethodView.__init__` initialises its registries around `self._model_combos = []`; `self._secondary_slot_rows = {}` was added there by Task 5.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1805,7 +1811,9 @@ Place it immediately before `self.hints.refresh()`.
 
 - [ ] **Step 7: Keep the secondary subtitle in step with slot visibility**
 
-`secondary_models_summary` takes `four_stem`, so its subtitle must never describe a slot the section is hiding. Task 5 put `_sync_secondary_slot_visibility()` at the end of `update_stem_labels`; add the subtitle refresh directly after it, so both halves move together:
+`secondary_models_summary` takes `four_stem`, so its subtitle must never describe a slot the section is hiding. Task 5 calls `_sync_secondary_slot_visibility()` from **three** places — find them all with `rg -n "_sync_secondary_slot_visibility" ui/views/base.py`. At the time of writing they are `update_stem_labels`, `_on_save_stems_changed`, and `sync_dynamic_option_state`.
+
+The subtitle must follow the same signal, so pair the refresh with the sync in each. The cleanest way is to put the pairing inside `sync_dynamic_option_state` and have the other two call *that*, rather than repeating two lines three times — but check that this does not change behaviour at any of the three call sites before doing it. If it would, add the refresh line at each site instead:
 
 ```python
         self._sync_secondary_slot_visibility()
@@ -1813,7 +1821,7 @@ Place it immediately before `self.hints.refresh()`.
             self._refresh_expander_subtitles()
 ```
 
-Subtitles only — not the full `_sync_expander_summaries`. `update_stem_labels` runs on every model change, and force-expanding a section on each one would fight a user who just collapsed it.
+Subtitles only at these sites — never the full `_sync_expander_summaries`. These run on every model change and every stem-focus change; force-expanding a section each time would fight a user who just collapsed it. Auto-expand happens only in `load()`.
 
 - [ ] **Step 8: Run the test to verify it passes**
 
