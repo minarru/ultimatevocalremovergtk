@@ -215,6 +215,28 @@ class SheetApplicabilityTests(unittest.TestCase):
         self.assertIsNotNone(revealer, "Adw.Banner should wrap content in a Revealer")
         self.assertEqual(revealer.get_transition_duration(), 0)
 
+    def test_top_bar_spacing_is_not_collapsed(self):
+        """Adw.ToolbarView stacks top bars in a box carrying libadwaita's
+        ``collapse-spacing`` class, which butts them flush. That suits two
+        header bars; a header above a banner reads cramped."""
+        from gi.repository import Gtk
+
+        sheet, _window = self._sheet()
+        toolbar = sheet.dialog.get_child()
+
+        found = []
+        stack = [toolbar]
+        while stack:
+            widget = stack.pop()
+            if isinstance(widget, Gtk.Box) and widget.has_css_class("collapse-spacing"):
+                found.append(widget)
+            child = widget.get_first_child()
+            while child is not None:
+                stack.append(child)
+                child = child.get_next_sibling()
+
+        self.assertEqual(found, [], "top-bar spacing should not be collapsed")
+
     def test_one_banner_is_shared_across_tabs(self):
         """Switching tabs relabels the single banner rather than swapping widgets."""
         sheet, _window = self._sheet()

@@ -57,6 +57,30 @@ def _disable_banner_animation(banner: Adw.Banner) -> bool:
     return False
 
 
+def _uncollapse_top_bar_spacing(toolbar: Adw.ToolbarView) -> bool:
+    """Let the header bar and the banner breathe.
+
+    ``Adw.ToolbarView`` stacks its top bars in an internal ``Gtk.Box`` carrying
+    libadwaita's ``collapse-spacing`` style class, which butts adjacent bars
+    flush together. That reads fine for two header bars; with a header above a
+    banner it looks cramped. Dropping the class restores the normal spacing.
+
+    The box is an implementation detail, so this walks for it defensively and
+    degrades to leaving the spacing alone. Returns whether it applied.
+    """
+    stack = [toolbar]
+    while stack:
+        widget = stack.pop()
+        if isinstance(widget, Gtk.Box) and widget.has_css_class("collapse-spacing"):
+            widget.remove_css_class("collapse-spacing")
+            return True
+        child = widget.get_first_child()
+        while child is not None:
+            stack.append(child)
+            child = child.get_next_sibling()
+    return False
+
+
 def _build_sheet_columns():
     """Two content-sized columns for one tab page.
 
@@ -174,8 +198,10 @@ class ModelOptionsSheet:
         header.set_title_widget(self._switcher)
         toolbar.add_top_bar(header)
         toolbar.add_top_bar(self._banner)
+        _uncollapse_top_bar_spacing(toolbar)
 
-        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        # No ``spacing`` -- ``body`` has a single child, so it would do nothing.
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         inset_md(body)
         body.append(self._stack)
         toolbar.set_content(body)
