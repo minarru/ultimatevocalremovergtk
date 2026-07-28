@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional, Sequence
+from typing import Callable, Dict, Optional, Sequence
 
 from gi.repository import Adw, Gtk
 
@@ -11,9 +11,11 @@ from ..spacing import inset_md
 from .applicability import (
     OPEN_CONTEXT_AUDIO_TOOLS,
     OPEN_CONTEXT_ENSEMBLE,
+    applicability_banner,
     applicable_stack_names,
     default_stack_name,
     ensemble_context_banner,
+    member_arch_counts,
     should_hide_unused_stacks,
 )
 
@@ -74,17 +76,20 @@ class ModelOptionsSheet:
         views: Sequence,
         views_by_stack: Dict[str, object],
         settings,
+        on_switch_method: Optional[Callable[[str], None]] = None,
     ):
         self._parent = parent
         self._views = list(views)
         self._views_by_stack = views_by_stack
         self._settings = settings
+        self._on_switch_method = on_switch_method
         self._context = ""
         self._active_method_key = ""
         self._selected_models: list[str] = []
         self._tab_columns: Dict[str, Gtk.Box] = {}
         self._tab_pages: Dict[str, Gtk.Widget] = {}
         self._tab_stack_pages: Dict[str, Adw.ViewStackPage] = {}
+        self._tab_banners: Dict[str, Adw.Banner] = {}
 
         self.dialog = Adw.Dialog()
         self.dialog.set_title("Model options")
@@ -92,10 +97,6 @@ class ModelOptionsSheet:
         self.dialog.set_content_height(self._sheet_height())
         self.dialog.set_follows_content_size(False)
         self.dialog.connect("notify::content-width", self._sync_narrow_layout)
-
-        self._ensemble_banner = Gtk.Label(wrap=True, xalign=0.0)
-        self._ensemble_banner.add_css_class("dim-label")
-        self._ensemble_banner.set_visible(False)
 
         self._stack = Adw.ViewStack()
         if hasattr(Adw, "InlineViewSwitcher"):
@@ -122,7 +123,6 @@ class ModelOptionsSheet:
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         inset_md(body)
-        body.append(self._ensemble_banner)
         body.append(self._stack)
         toolbar.set_content(body)
         self.dialog.set_child(toolbar)
@@ -130,6 +130,14 @@ class ModelOptionsSheet:
     def _build_tab_page(self, view) -> Gtk.Widget:
         columns_box, col_start, col_end = _build_sheet_columns()
         self._tab_columns[view.stack_name] = columns_box
+
+        banner = Adw.Banner()
+        banner.set_revealed(False)
+        banner.connect(
+            "button-clicked",
+            lambda _banner, name=view.stack_name: self._on_banner_switch(name),
+        )
+        self._tab_banners[view.stack_name] = banner
 
         if view.advanced_group.get_parent() is not None:
             view.advanced_group.get_parent().remove(view.advanced_group)
@@ -152,6 +160,7 @@ class ModelOptionsSheet:
 
         page_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         page_box.set_vexpand(True)
+        page_box.append(banner)
         page_box.append(scroller)
         self._tab_pages[view.stack_name] = page_box
         return page_box
@@ -181,6 +190,25 @@ class ModelOptionsSheet:
     def _on_tab_changed(self, *_args) -> None:
         self._refresh_applicability()
 
+    def _on_banner_switch(self, stack_name: str) -> None:
+        """Hand the architecture switch back to the window, then re-read state.
+
+        The sheet cannot switch methods itself: a correct switch also updates
+        the main page's method combo and rebuilds its columns. The window owns
+        both, so it does the work and the sheet just refreshes in place -- it
+        deliberately does not close, so the user can keep editing.
+        """
+        if self._on_switch_method is None:
+            return
+        self._on_switch_method(stack_name)
+        view = self._views_by_stack.get(stack_name)
+        self.update_context(
+            context=self._context,
+            active_method_key=getattr(view, "method_key", self._active_method_key),
+            selected_models=self._selected_models,
+            initial_stack=stack_name,
+        )
+
     def update_context(
         self,
         *,
@@ -196,12 +224,13 @@ class ModelOptionsSheet:
         for view in self._views:
             view.sync_dynamic_option_state()
 
-        banner_text = ensemble_context_banner(context)
-        if banner_text:
-            self._ensemble_banner.set_label(banner_text)
-            self._ensemble_banner.set_visible(True)
-        else:
-            self._ensemble_banner.set_visible(False)
+        # The standing ensemble explanation is context, not an alert, so it
+        # rides on the Inference group's description rather than a banner.
+        description = ensemble_context_banner(context) or (
+            "Advanced processing options for this architecture"
+        )
+        for view in self._views:
+            view.advanced_group.set_description(description)
 
         start_stack = initial_stack or default_stack_name(
             context,
@@ -224,30 +253,29 @@ class ModelOptionsSheet:
             active_method_key=self._active_method_key,
             selected_models=self._selected_models,
         )
-        empty_ensemble = (
-            self._context == OPEN_CONTEXT_ENSEMBLE and not applicable
+        empty_ensemble = self._context == OPEN_CONTEXT_ENSEMBLE and not applicable
+        counts = (
+            member_arch_counts(self._selected_models)
+            if self._context == OPEN_CONTEXT_ENSEMBLE
+            else {}
         )
-        if empty_ensemble:
-            self._ensemble_banner.set_label(
-                "Select ensemble member models before editing "
-                "architecture-specific options."
-            )
-            self._ensemble_banner.set_visible(True)
-        elif self._context == OPEN_CONTEXT_ENSEMBLE:
-            self._ensemble_banner.set_label(
-                ensemble_context_banner(self._context) or ""
-            )
-            self._ensemble_banner.set_visible(True)
         # Separation: keep every architecture tab visible so options are never
         # wiped by hiding the active ViewStack child. Ensemble: hide arches
         # that no selected member uses (still show all when the list is empty).
         hide_unused = should_hide_unused_stacks(self._context, applicable)
+
         for stack_name, page in self._tab_pages.items():
             is_applicable = stack_name in applicable
+            self._apply_banner(stack_name)
+
             stack_page = self._tab_stack_pages.get(stack_name)
             if stack_page is not None:
                 stack_page.set_visible(is_applicable if hide_unused else True)
-            # Separation keeps non-active arches editable for pre-config.
+                if hasattr(stack_page, "set_badge_number"):
+                    stack_page.set_badge_number(counts.get(stack_name, 0))
+
+            # Separation keeps non-active arches editable for pre-config; the
+            # page banner communicates that those values are unused.
             # Empty ensemble dims everything until members are chosen.
             if empty_ensemble:
                 page.set_sensitive(False)
@@ -256,6 +284,28 @@ class ModelOptionsSheet:
             else:
                 page.set_sensitive(True)
             page.set_opacity(1.0)
+
+    def _apply_banner(self, stack_name: str) -> None:
+        """Reveal, hide or relabel one page's banner from the applicability rule."""
+        banner = self._tab_banners.get(stack_name)
+        if banner is None:
+            return
+        result = applicability_banner(
+            self._context,
+            stack_name,
+            active_method_key=self._active_method_key,
+            selected_models=self._selected_models,
+        )
+        if result is None:
+            banner.set_revealed(False)
+            return
+        text, button_label = result
+        banner.set_title(text)
+        # Offering a switch we cannot perform would be a dead button.
+        banner.set_button_label(
+            button_label if button_label and self._on_switch_method else ""
+        )
+        banner.set_revealed(True)
 
     def present(
         self,
@@ -286,6 +336,7 @@ def open_model_options_sheet(
     active_method_key: str,
     selected_models: Sequence[str],
     initial_stack: Optional[str] = None,
+    on_switch_method: Optional[Callable[[str], None]] = None,
     existing: Optional[ModelOptionsSheet] = None,
 ) -> ModelOptionsSheet:
     if context == OPEN_CONTEXT_AUDIO_TOOLS:
@@ -298,6 +349,7 @@ def open_model_options_sheet(
             views=views,
             views_by_stack=views_by_stack,
             settings=settings,
+            on_switch_method=on_switch_method,
         )
     sheet.present(
         context=context,

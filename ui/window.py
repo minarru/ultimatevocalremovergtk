@@ -808,6 +808,18 @@ class MainWindow(Adw.ApplicationWindow):
             title = "Audio Tools"
         self._window_title.set_title(title)
 
+    def _on_sheet_switch_method(self, stack_name: str) -> None:
+        """Switch the active architecture from the model-options sheet.
+
+        Driving the method combo reuses ``_on_method_selected``, which shows the
+        view, writes ``chosen_process_method`` and refreshes start readiness --
+        the sheet has none of that reach on its own.
+        """
+        view = self._views_by_stack.get(stack_name)
+        if view is None:
+            return
+        set_combo_value(self.method_row, view.title)
+
     def _sync_model_options_action(self, tab_name: Optional[str] = None) -> None:
         """Model options only apply to Separation / Ensemble runs."""
         name = tab_name or self.content_stack.get_visible_child_name()
@@ -1148,6 +1160,7 @@ class MainWindow(Adw.ApplicationWindow):
             active_method_key=self._active_view().method_key,
             selected_models=selected_models,
             initial_stack=initial_stack,
+            on_switch_method=self._on_sheet_switch_method,
             existing=self._model_options_sheet,
         )
 
