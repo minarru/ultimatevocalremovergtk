@@ -76,6 +76,53 @@ class ExpanderSummaryTests(unittest.TestCase):
         self.assertFalse(hasattr(view, "preproc_expander"))
         view._sync_expander_summaries()  # must not raise
 
+    # -- Wiring: reached through the real call sites, not the transform directly --
+
+    def test_load_auto_expands_the_secondary_expander(self):
+        """``load()`` itself must trigger auto-expand -- not just the helper.
+
+        Every test above calls ``_sync_expander_summaries()`` directly, which
+        would stay green even if ``load()`` stopped calling it. This one drives
+        the behaviour through ``load()`` only, the way the options sheet
+        actually opens a view.
+        """
+        window = self._window()
+        view = window._views_by_stack["mdx"]
+        window.settings.set("mdx_is_secondary_model_activate", True)
+        view.secondary_expander.set_expanded(False)
+
+        view.load()
+
+        self.assertTrue(view.secondary_expander.get_expanded())
+
+    def test_load_refreshes_the_secondary_subtitle(self):
+        from ui.option_summaries import ON_NO_MODEL
+
+        window = self._window()
+        view = window._views_by_stack["mdx"]
+        window.settings.set("mdx_is_secondary_model_activate", True)
+
+        view.load()
+
+        self.assertEqual(view.secondary_expander.get_subtitle(), ON_NO_MODEL)
+
+    def test_toggling_the_real_switch_row_refreshes_the_subtitle(self):
+        """The "keep subtitles live" wiring (Step 5), reached through the actual
+        switch widget rather than by calling ``_refresh_expander_subtitles()``.
+        """
+        from ui.option_summaries import OFF, ON_NO_MODEL
+
+        window = self._window()
+        view = window._views_by_stack["mdx"]
+        window.settings.set("mdx_is_secondary_model_activate", False)
+        view.load()
+        self.assertEqual(view.secondary_expander.get_subtitle(), OFF)
+
+        switch_row = view._switch_rows["mdx_is_secondary_model_activate"]
+        switch_row.set_active(True)
+
+        self.assertEqual(view.secondary_expander.get_subtitle(), ON_NO_MODEL)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -641,10 +641,14 @@ class MethodView:
             active = switch_row.get_active()
             for row in rows:
                 row.set_sensitive(active)
-            # Guarded: tests exercise this on a bare ``__new__`` instance, which
-            # has no settings to summarise.
-            if getattr(self, "settings", None) is not None:
-                self._refresh_expander_subtitles()
+            # Unconditional: ``_bind_switch_dependents`` is only ever called from
+            # ``_build_secondary_section``, after ``__init__`` assigns
+            # ``self.settings`` -- there is no real ``MethodView`` on which this
+            # would run before settings exists. ``_refresh_expander_subtitles``
+            # itself is a safe no-op on a bare instance with no expanders built
+            # (both ``getattr(self, "..._expander", None)`` lookups return
+            # ``None`` before touching ``self.settings``).
+            self._refresh_expander_subtitles()
 
         switch_row.connect("notify::active", apply)
         # Guarded: tests exercise this method on a bare ``__new__`` instance.
