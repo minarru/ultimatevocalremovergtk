@@ -43,6 +43,11 @@ class SheetApplicabilityTests(unittest.TestCase):
         )
         return sheet, window
 
+    @staticmethod
+    def _show(sheet, stack_name):
+        """Bring a tab on screen; the sheet has one banner describing it."""
+        sheet._stack.set_visible_child_name(stack_name)
+
     def test_active_separation_tab_has_no_visible_banner(self):
         sheet, _window = self._sheet()
         sheet.update_context(
@@ -50,7 +55,8 @@ class SheetApplicabilityTests(unittest.TestCase):
             active_method_key=MDX_ARCH_TYPE,
             selected_models=[],
         )
-        self.assertFalse(sheet._tab_banners["mdx"].get_revealed())
+        self._show(sheet, "mdx")
+        self.assertFalse(sheet._banner.get_revealed())
 
     def test_inactive_separation_tab_reveals_a_banner(self):
         sheet, _window = self._sheet()
@@ -59,7 +65,8 @@ class SheetApplicabilityTests(unittest.TestCase):
             active_method_key=MDX_ARCH_TYPE,
             selected_models=[],
         )
-        banner = sheet._tab_banners["vr"]
+        self._show(sheet, "vr")
+        banner = sheet._banner
         self.assertTrue(banner.get_revealed())
         self.assertIn("MDX-Net", banner.get_title())
 
@@ -70,7 +77,8 @@ class SheetApplicabilityTests(unittest.TestCase):
             active_method_key=MDX_ARCH_TYPE,
             selected_models=[],
         )
-        self.assertIn("VR Architecture", sheet._tab_banners["vr"].get_button_label())
+        self._show(sheet, "vr")
+        self.assertIn("VR Architecture", sheet._banner.get_button_label())
 
     def test_no_button_without_a_switch_callback(self):
         sheet, _window = self._sheet(on_switch_method=None)
@@ -79,7 +87,8 @@ class SheetApplicabilityTests(unittest.TestCase):
             active_method_key=MDX_ARCH_TYPE,
             selected_models=[],
         )
-        self.assertFalse(sheet._tab_banners["vr"].get_button_label())
+        self._show(sheet, "vr")
+        self.assertFalse(sheet._banner.get_button_label())
 
     def test_ensemble_tabs_are_badged_with_member_counts(self):
         sheet, _window = self._sheet()
@@ -115,7 +124,8 @@ class SheetApplicabilityTests(unittest.TestCase):
             active_method_key=MDX_ARCH_TYPE,
             selected_models=[],
         )
-        sheet._tab_banners["vr"].emit("button-clicked")
+        self._show(sheet, "vr")
+        sheet._banner.emit("button-clicked")
         self.assertEqual(switched, ["vr"])
 
     def test_banner_switch_button_changes_the_main_window_method(self):
@@ -149,7 +159,8 @@ class SheetApplicabilityTests(unittest.TestCase):
             selected_models=[],
         )
 
-        sheet._tab_banners["vr"].emit("button-clicked")
+        sheet._stack.set_visible_child_name("vr")
+        sheet._banner.emit("button-clicked")
 
         self.assertEqual(window._active_view().method_key, VR_ARCH_PM)
         self.assertEqual(window.settings.get("chosen_process_method"), VR_ARCH_PM)
@@ -162,9 +173,43 @@ class SheetApplicabilityTests(unittest.TestCase):
             selected_models=[],
         )
         for stack_name in ("vr", "mdx", "demucs"):
-            banner = sheet._tab_banners[stack_name]
+            self._show(sheet, stack_name)
+            banner = sheet._banner
             self.assertTrue(banner.get_revealed(), stack_name)
             self.assertIn("Select ensemble member models", banner.get_title())
+
+    def test_the_banner_lives_in_the_toolbar_not_in_a_page(self):
+        """The banner is an ``Adw.ToolbarView`` top bar, so it renders flush
+        under the header rather than floating inside a page's inset margins."""
+        from gi.repository import Adw
+
+        sheet, _window = self._sheet()
+        ancestors = []
+        node = sheet._banner.get_parent()
+        while node is not None:
+            ancestors.append(node)
+            node = node.get_parent()
+
+        self.assertTrue(
+            any(isinstance(a, Adw.ToolbarView) for a in ancestors),
+            "banner should sit inside the ToolbarView",
+        )
+        for stack_name, page in sheet._tab_pages.items():
+            self.assertNotIn(page, ancestors, f"banner must not be inside {stack_name}")
+
+    def test_one_banner_is_shared_across_tabs(self):
+        """Switching tabs relabels the single banner rather than swapping widgets."""
+        sheet, _window = self._sheet()
+        sheet.update_context(
+            context=OPEN_CONTEXT_SEPARATION,
+            active_method_key=MDX_ARCH_TYPE,
+            selected_models=[],
+        )
+        self._show(sheet, "mdx")
+        self.assertFalse(sheet._banner.get_revealed())
+        self._show(sheet, "demucs")
+        self.assertTrue(sheet._banner.get_revealed())
+        self.assertIn("MDX-Net", sheet._banner.get_title())
 
 
 if __name__ == "__main__":

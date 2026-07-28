@@ -89,7 +89,14 @@ class ModelOptionsSheet:
         self._tab_columns: Dict[str, Gtk.Box] = {}
         self._tab_pages: Dict[str, Gtk.Widget] = {}
         self._tab_stack_pages: Dict[str, Adw.ViewStackPage] = {}
-        self._tab_banners: Dict[str, Adw.Banner] = {}
+        # One banner for the whole sheet, living in the toolbar's top bars right
+        # under the header rather than one per page inside the content. That is
+        # the libadwaita placement for ``Adw.Banner`` -- it renders flush with
+        # the dialog edges and attached to the header, instead of floating
+        # inside the page's inset margins.
+        self._banner = Adw.Banner()
+        self._banner.set_revealed(False)
+        self._banner.connect("button-clicked", self._on_banner_switch)
 
         self.dialog = Adw.Dialog()
         self.dialog.set_title("Model options")
@@ -133,6 +140,7 @@ class ModelOptionsSheet:
         header = Adw.HeaderBar()
         header.set_title_widget(self._switcher)
         toolbar.add_top_bar(header)
+        toolbar.add_top_bar(self._banner)
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         inset_md(body)
@@ -143,14 +151,6 @@ class ModelOptionsSheet:
     def _build_tab_page(self, view) -> Gtk.Widget:
         columns_box, col_start, col_end = _build_sheet_columns()
         self._tab_columns[view.stack_name] = columns_box
-
-        banner = Adw.Banner()
-        banner.set_revealed(False)
-        banner.connect(
-            "button-clicked",
-            lambda _banner, name=view.stack_name: self._on_banner_switch(name),
-        )
-        self._tab_banners[view.stack_name] = banner
 
         if view.advanced_group.get_parent() is not None:
             view.advanced_group.get_parent().remove(view.advanced_group)
@@ -173,7 +173,6 @@ class ModelOptionsSheet:
 
         page_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         page_box.set_vexpand(True)
-        page_box.append(banner)
         page_box.append(scroller)
         self._tab_pages[view.stack_name] = page_box
         return page_box
@@ -201,8 +200,12 @@ class ModelOptionsSheet:
     def _on_tab_changed(self, *_args) -> None:
         self._refresh_applicability()
 
-    def _on_banner_switch(self, stack_name: str) -> None:
+    def _on_banner_switch(self, *_args) -> None:
         """Hand the architecture switch back to the window, then re-read state.
+
+        The banner belongs to the sheet rather than to a page, so the target
+        architecture is whichever tab is on screen -- that is the one the banner
+        is describing.
 
         The sheet cannot switch methods itself: a correct switch also updates
         the main page's method combo and rebuilds its columns. The window owns
@@ -210,6 +213,9 @@ class ModelOptionsSheet:
         deliberately does not close, so the user can keep editing.
         """
         if self._on_switch_method is None:
+            return
+        stack_name = self._stack.get_visible_child_name()
+        if stack_name is None:
             return
         self._on_switch_method(stack_name)
         view = self._views_by_stack.get(stack_name)
@@ -274,9 +280,10 @@ class ModelOptionsSheet:
         # that no selected member uses (still show all when the list is empty).
         hide_unused = should_hide_unused_stacks(self._context, applicable)
 
+        self._refresh_banner()
+
         for stack_name, page in self._tab_pages.items():
             is_applicable = stack_name in applicable
-            self._apply_banner(stack_name)
 
             stack_page = self._tab_stack_pages.get(stack_name)
             if stack_page is not None:
@@ -295,10 +302,16 @@ class ModelOptionsSheet:
                 page.set_sensitive(True)
             page.set_opacity(1.0)
 
-    def _apply_banner(self, stack_name: str) -> None:
-        """Reveal, hide or relabel one page's banner from the applicability rule."""
-        banner = self._tab_banners.get(stack_name)
-        if banner is None:
+    def _refresh_banner(self) -> None:
+        """Reveal, hide or relabel the sheet banner for the visible tab.
+
+        There is one banner for the whole sheet, so it always describes whatever
+        tab is on screen; ``_on_tab_changed`` brings us back here on every switch.
+        """
+        banner = self._banner
+        stack_name = self._stack.get_visible_child_name()
+        if stack_name is None:
+            banner.set_revealed(False)
             return
         result = applicability_banner(
             self._context,
