@@ -35,25 +35,23 @@ _SHEET_MIN_WIDTH = 360
 _SHEET_MIN_HEIGHT = 294
 
 
-def _crossfade_banner_reveal(banner: Adw.Banner) -> bool:
-    """Fade the banner in instead of sliding it down, keeping the animation.
+def _disable_banner_animation(banner: Adw.Banner) -> bool:
+    """Make ``banner`` reveal instantly instead of sliding.
 
-    ``Adw.Banner`` wraps its content in a ``Gtk.Revealer`` whose default
-    ``slide-down`` transition grows the banner's height frame by frame. This
-    sheet's banner is an ``Adw.ToolbarView`` top bar, so every one of those
-    frames re-allocates the content beneath it -- measured at 13 distinct
-    scroller heights across one 250ms reveal, which renders as tearing along the
-    banner's bottom edge. ``crossfade`` reaches the final height in a single
-    layout pass (measured: 2) and animates opacity instead, so the reveal still
-    animates but the content below is laid out once.
+    ``Adw.Banner`` wraps its content in a ``Gtk.Revealer`` with a 250ms
+    ``slide-down`` transition. This sheet has one banner that relabels on every
+    tab switch, and each animation frame reflows the ``Adw.ToolbarView`` content
+    beneath it -- visible as a tearing artifact along the banner's bottom edge.
+    The animation earns nothing here: the banner is chrome describing the tab
+    you just moved to, not a notification arriving.
 
     The revealer is an implementation detail, so this degrades to leaving the
-    transition alone if libadwaita ever restructures. Returns whether it applied.
+    animation alone if libadwaita ever restructures. Returns whether it applied.
     """
     child = banner.get_first_child()
     while child is not None:
         if isinstance(child, Gtk.Revealer):
-            child.set_transition_type(Gtk.RevealerTransitionType.CROSSFADE)
+            child.set_transition_duration(0)
             return True
         child = child.get_next_sibling()
     return False
@@ -124,7 +122,7 @@ class ModelOptionsSheet:
         # inside the page's inset margins.
         self._banner = Adw.Banner()
         self._banner.set_revealed(False)
-        _crossfade_banner_reveal(self._banner)
+        _disable_banner_animation(self._banner)
         self._banner.connect("button-clicked", self._on_banner_switch)
 
         self.dialog = Adw.Dialog()
