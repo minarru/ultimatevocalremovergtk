@@ -565,7 +565,11 @@ class MainWindow(Adw.ApplicationWindow):
             self._on_inputs_changed,
             on_toast=self.toast,
             accept_any_getter=lambda: bool(self.settings.process.accept_any_input),
-            initial_folder_getter=lambda: (self.settings.process.input_paths or [None])[0],
+            initial_folder_getter=lambda: (
+                os.path.dirname(self.settings.process.input_paths[0])
+                if self.settings.process.input_paths
+                else None
+            ),
         )
         self.output_row = OutputFolderRow(self._on_output_changed, on_toast=self.toast)
         group.add(self.input_row)

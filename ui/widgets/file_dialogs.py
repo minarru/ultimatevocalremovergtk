@@ -37,16 +37,45 @@ def audio_file_filters(*, accept_any: bool = False) -> tuple[Gio.ListStore, Gtk.
     return filters, default
 
 
-def _initial_folder(path: Optional[str]) -> Optional[Gio.File]:
-    if not path:
-        return None
-    path = os.path.expanduser(path)
-    if os.path.isdir(path):
-        return Gio.File.new_for_path(path)
-    parent = os.path.dirname(path)
-    if parent and os.path.isdir(parent):
-        return Gio.File.new_for_path(parent)
+def resolve_existing_folder(path: Optional[str]) -> Optional[str]:
+    """Return a readable directory near ``path``, walking parents if needed.
+
+    Used to seed file dialogs. A missing remembered path must not leave the
+    initial folder unset: the XDG portal then reopens its own last folder,
+    which can be the same deleted path and surfaces a Nautilus error.
+    """
+    candidates: list[str] = []
+    if path:
+        current = os.path.expanduser(path)
+        if current and (os.path.isfile(current) or not os.path.isdir(current)):
+            current = os.path.dirname(current)
+        while current:
+            candidates.append(current)
+            parent = os.path.dirname(current)
+            if parent == current:
+                break
+            current = parent
+
+    home = os.path.expanduser("~")
+    if home and home not in candidates:
+        candidates.append(home)
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            if os.path.isdir(candidate) and os.access(candidate, os.R_OK | os.X_OK):
+                return candidate
+        except OSError:
+            continue
     return None
+
+
+def _initial_folder(path: Optional[str]) -> Optional[Gio.File]:
+    resolved = resolve_existing_folder(path)
+    if not resolved:
+        return None
+    return Gio.File.new_for_path(resolved)
 
 
 def audio_open_dialog(

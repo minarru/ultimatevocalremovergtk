@@ -38,6 +38,48 @@ class AudioFormatsTests(unittest.TestCase):
             self.assertEqual(result, [other])
 
 
+class ResolveExistingFolderTests(unittest.TestCase):
+    def test_uses_existing_directory(self):
+        from ui.widgets.file_dialogs import resolve_existing_folder
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(resolve_existing_folder(tmp), tmp)
+
+    def test_uses_parent_of_existing_file(self):
+        from ui.widgets.file_dialogs import resolve_existing_folder
+
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = os.path.join(tmp, "a.wav")
+            with open(audio, "wb") as handle:
+                handle.write(b"x")
+            self.assertEqual(resolve_existing_folder(audio), tmp)
+
+    def test_missing_path_falls_back_to_existing_ancestor_or_home(self):
+        from ui.widgets.file_dialogs import resolve_existing_folder
+
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = os.path.join(tmp, "gone", "deeper", "track.wav")
+            resolved = resolve_existing_folder(missing)
+            self.assertEqual(resolved, tmp)
+
+        missing_root = os.path.join(
+            tempfile.gettempdir(),
+            "uvr-missing-dir-xyz",
+            "also-gone",
+            "track.wav",
+        )
+        resolved = resolve_existing_folder(missing_root)
+        self.assertTrue(resolved)
+        self.assertTrue(os.path.isdir(resolved))
+
+    def test_none_falls_back_to_home(self):
+        from ui.widgets.file_dialogs import resolve_existing_folder
+
+        resolved = resolve_existing_folder(None)
+        self.assertTrue(resolved)
+        self.assertTrue(os.path.isdir(resolved))
+
+
 @unittest.skipUnless(
     os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),
     "GTK FileFilter construction needs a display",
