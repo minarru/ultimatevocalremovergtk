@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 from .debug_log import debug
 
@@ -79,7 +79,9 @@ def load_extra_models() -> Dict:
     return _cached
 
 
-def _merge_missing(base: Dict[str, object], extra: Dict[str, object]) -> Dict[str, object]:
+def _merge_missing(
+    base: Mapping[str, Any], extra: Mapping[str, Any]
+) -> Dict[str, Any]:
     """Add entries from ``extra`` that ``base`` does not already define."""
     merged = dict(base)
     added = 0
@@ -93,24 +95,24 @@ def _merge_missing(base: Dict[str, object], extra: Dict[str, object]) -> Dict[st
 
 
 def merge_extra_catalogues(
-    vr: Dict[str, object],
-    mdx: Dict[str, object],
-    demucs: Dict[str, object],
+    vr: Mapping[str, Any],
+    mdx: Mapping[str, Any],
+    demucs: Mapping[str, Any],
     extra: Optional[Dict] = None,
-) -> Tuple[Dict[str, object], Dict[str, object], Dict[str, object]]:
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """Merge fork-curated VR / MDX-family / Demucs entries into the catalogues."""
     data = load_extra_models() if extra is None else extra
     if not data:
-        return vr, mdx, demucs
+        return dict(vr), dict(mdx), dict(demucs)
 
     vr = _merge_missing(vr, data.get("vr_download_list", {}))
     demucs = _merge_missing(demucs, data.get("demucs_download_list", {}))
     for key in _EXTRA_MDX_SOURCE_KEYS:
         mdx = _merge_missing(mdx, data.get(key, {}))
-    return vr, mdx, demucs
+    return dict(vr), dict(mdx), dict(demucs)
 
 
-def apollo_download_list(extra: Optional[Dict] = None) -> Dict[str, object]:
+def apollo_download_list(extra: Optional[Dict] = None) -> Dict[str, Any]:
     """Return the curated Apollo restoration catalogue."""
     data = load_extra_models() if extra is None else extra
     entries = data.get(APOLLO_LIST_KEY, {})

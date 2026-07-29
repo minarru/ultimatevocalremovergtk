@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import threading
 import unittest
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 
@@ -97,7 +98,7 @@ class DownloadCenterStateTests(unittest.TestCase):
                 return "12 MB"
             return "5 MB"
 
-        win.manager.describe_selection_download_size.side_effect = describe
+        cast(Any, win.manager.describe_selection_download_size).side_effect = describe
 
         apply_done = threading.Event()
 

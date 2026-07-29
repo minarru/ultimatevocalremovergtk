@@ -239,6 +239,7 @@ class OutputCountExtraTests(unittest.TestCase):
             has_model=True,
         )
         self.assertIsNotNone(estimate)
+        assert estimate is not None
         self.assertEqual(estimate.output_count, 4)
         self.assertEqual(estimate.inference_passes, 2)
         self.assertIn("2 passes", estimate.format_summary())
@@ -281,6 +282,7 @@ class RunCostUnitTests(unittest.TestCase):
             has_model=True,
         )
         self.assertIsNotNone(estimate)
+        assert estimate is not None
         self.assertEqual(estimate.inference_passes, 1)
         self.assertEqual(estimate.run_tier, RunCostTier.TYPICAL)
 
@@ -406,6 +408,7 @@ class ProgressEtaTrackerTests(unittest.TestCase):
         tracker.update(0.25, 40.0, local_step=0.50, pass_index=1, pass_total=2, detail="Model 1/2")
         display = tracker.inference_display_fraction(0.25)
         self.assertIsNotNone(display)
+        assert display is not None
         self.assertAlmostEqual(display, 0.25, delta=0.05)
         text = tracker.format_text(0.25, 40.0, now=40.0)
         self.assertIn("Model 1/2", text)

@@ -70,6 +70,7 @@ class ResolveExistingFolderTests(unittest.TestCase):
         )
         resolved = resolve_existing_folder(missing_root)
         self.assertTrue(resolved)
+        assert resolved is not None
         self.assertTrue(os.path.isdir(resolved))
 
     def test_none_falls_back_to_home(self):
@@ -77,6 +78,7 @@ class ResolveExistingFolderTests(unittest.TestCase):
 
         resolved = resolve_existing_folder(None)
         self.assertTrue(resolved)
+        assert resolved is not None
         self.assertTrue(os.path.isdir(resolved))
 
 

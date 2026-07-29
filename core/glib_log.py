@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import warnings
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 _EMIT_HOOK: Optional[Callable[[str, str, int], None]] = None
 _INITIALIZED = False
-_GLIB: Optional[object] = None
+_GLIB: Any = None
 _WARNED_NO_GLIB = False
 
 

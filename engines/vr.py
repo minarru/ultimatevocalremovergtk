@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 import gc
 import gzip
@@ -49,6 +49,7 @@ from .orchestration import process_secondary_model
 class SeperateVR(SeperateAttributes):        
 
     def seperate(self):
+        self.model_run: Any
         if self.primary_model_name == self.model_basename and isinstance(self.primary_sources, tuple):
             y_spec, v_spec = self.primary_sources
             self.load_cached_sources()
@@ -222,7 +223,7 @@ class SeperateVR(SeperateAttributes):
                         from engines.amp_runtime import maybe_autocast
 
                         with maybe_autocast(device, self.settings):
-                            pred = self.model_run.predict_mask(X_batch)
+                            pred: Any = self.model_run.predict_mask(X_batch)
                         if torch.is_tensor(pred) and pred.dtype != torch.float32:
                             pred = pred.float()
                         if not pred.size()[3] > 0:

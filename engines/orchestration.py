@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 from bundled.constants import *
 from core.debug_log import trace_phase
@@ -23,7 +23,7 @@ def _engine_classes():
 
 
 def _build_seperator(
-    model: ModelConfig,
+    model: Any,
     process_data,
     *,
     main_model_primary_stem_4_stem=None,
@@ -105,7 +105,7 @@ def _build_seperator(
     raise NotImplementedError(f"engine for '{method}' is not available")
 
 
-def _run_seperator(seperator) -> object:
+def _run_seperator(seperator) -> Any:
     try:
         return seperator.seperate()
     finally:
@@ -121,7 +121,7 @@ def process_secondary_model(
     is_pre_proc_model=False,
     is_return_dual=True,
     main_model_primary=None,
-):
+) -> Any:
     with trace_phase(
         "separate",
         "secondary_model",
@@ -143,7 +143,10 @@ def process_secondary_model(
         secondary_sources = _run_seperator(seperator)
 
         if type(secondary_sources) is dict and not is_source_load and not is_pre_proc_model:
-            return gather_sources(secondary_model.primary_model_primary_stem, secondary_stem(secondary_model.primary_model_primary_stem), secondary_sources)
+            primary_stem = str(secondary_model.primary_model_primary_stem or "")
+            return gather_sources(
+                primary_stem, secondary_stem(primary_stem), secondary_sources
+            )
         return secondary_sources
 
 

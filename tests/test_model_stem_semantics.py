@@ -108,6 +108,7 @@ class StemDisplayOverridesTests(unittest.TestCase):
         )
         overrides = stem_display_overrides(model)
         self.assertEqual(overrides, VOCALS_OTHER_DISPLAY_OVERRIDES)
+        assert overrides is not None
         self.assertEqual(overrides["other"], INST_STEM)
         self.assertEqual(overrides["vocals"], VOCAL_STEM)
 
@@ -124,11 +125,13 @@ class StemDisplayOverridesTests(unittest.TestCase):
 
     def test_karaoke_display_overrides(self):
         overrides = stem_display_overrides(_Model(is_karaoke=True))
+        assert overrides is not None
         self.assertEqual(overrides[VOCAL_STEM], LEAD_VOCAL_STEM_LABEL)
         self.assertEqual(overrides[INST_STEM], INST_WITH_BACKING_VOCALS_STEM)
 
     def test_bv_display_overrides(self):
         overrides = stem_display_overrides(_Model(is_bv_model=True))
+        assert overrides is not None
         self.assertEqual(overrides[VOCAL_STEM], BV_VOCAL_STEM_LABEL)
         self.assertEqual(overrides[INST_STEM], INST_WITH_LEAD_VOCALS_STEM)
 
@@ -136,11 +139,13 @@ class StemDisplayOverridesTests(unittest.TestCase):
 class KaraokeBvExportLabelTests(unittest.TestCase):
     def test_karaoke_map(self):
         labels = karaoke_bv_export_labels(_Model(is_karaoke=True))
+        assert labels is not None
         self.assertEqual(labels[VOCAL_STEM], LEAD_VOCAL_STEM_LABEL)
         self.assertEqual(labels[INST_STEM], INST_WITH_BACKING_VOCALS_STEM)
 
     def test_bv_preferred_over_karaoke(self):
         labels = karaoke_bv_export_labels(_Model(is_karaoke=True, is_bv_model=True))
+        assert labels is not None
         self.assertEqual(labels[VOCAL_STEM], BV_VOCAL_STEM_LABEL)
         self.assertEqual(labels[INST_STEM], INST_WITH_LEAD_VOCALS_STEM)
 

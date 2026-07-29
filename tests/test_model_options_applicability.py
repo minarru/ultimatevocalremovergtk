@@ -94,8 +94,10 @@ class ApplicabilityBannerTests(unittest.TestCase):
             selected_models=[],
         )
         self.assertIsNotNone(result)
+        assert result is not None
         text, button = result
         self.assertIn("MDX-Net", text)
+        assert button is not None
         self.assertIn("VR Architecture", button)
 
     def test_unused_ensemble_tab_says_no_member_uses_it(self):
@@ -106,6 +108,7 @@ class ApplicabilityBannerTests(unittest.TestCase):
             selected_models=[f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}Some Model"],
         )
         self.assertIsNotNone(result)
+        assert result is not None
         text, button = result
         self.assertIn("no ensemble members", text.lower())
         self.assertIsNone(button)
@@ -129,6 +132,7 @@ class ApplicabilityBannerTests(unittest.TestCase):
                 selected_models=[],
             )
             self.assertIsNotNone(result, stack_name)
+            assert result is not None
             text, button = result
             self.assertIn("Select ensemble member models", text)
             self.assertIsNone(button)

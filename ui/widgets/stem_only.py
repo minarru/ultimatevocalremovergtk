@@ -1094,7 +1094,7 @@ class SaveStemsSection:
             self._section = section
 
         @property
-        def _chips(self) -> Dict[str, "_ChipProxy"]:
+        def _chips(self) -> Dict[str, "SaveStemsSection._ChipProxy"]:
             return {
                 stem: SaveStemsSection._ChipProxy(self._section, stem)
                 for stem in [ALL_STEMS, *self._section._subset_stems]

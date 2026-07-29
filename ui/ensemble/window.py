@@ -904,12 +904,12 @@ class EnsemblePage:
         if self._loading or self._syncing_preset:
             return
         main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
-        primary = get_combo_value(self.primary_algo_row)
+        primary = get_combo_value(self.primary_algo_row) or ""
         set_row_subtitle(self.primary_algo_row, algorithm_blurb(primary))
         if self._is_multi_or_four_stem(main_stem):
             self.settings.ensemble.type = primary
         else:
-            secondary = get_combo_value(self.secondary_algo_row)
+            secondary = get_combo_value(self.secondary_algo_row) or ""
             set_row_subtitle(self.secondary_algo_row, algorithm_blurb(secondary))
             self.settings.ensemble.type = format_ensemble_type(primary, secondary)
             self._syncing_preset = True

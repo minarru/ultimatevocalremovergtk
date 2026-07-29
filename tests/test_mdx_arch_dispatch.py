@@ -1,7 +1,9 @@
 """Tests for MDX-C architecture dispatch helpers."""
 
 import unittest
+from typing import Any
 
+ConfigDict: Any
 try:
     from ml_collections import ConfigDict
 except ImportError:

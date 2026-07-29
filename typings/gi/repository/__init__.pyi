@@ -45,6 +45,10 @@ class Gdk(metaclass=_GIType): ...
 
 class Pango(metaclass=_GIType): ...
 
+
+class PangoCairo(metaclass=_GIType): ...
+
+
 # Common annotation targets referenced across the GTK layer.
 GtkWidget = _Object
 AdwWidget = _Object

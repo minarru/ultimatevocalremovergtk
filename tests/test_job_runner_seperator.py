@@ -66,6 +66,7 @@ class JobRunnerSeperatorTests(unittest.TestCase):
                 return False
 
             def run_now(self):
+                assert self._target is not None
                 self._target(*self._args)
 
         with mock.patch.dict("sys.modules", {"kthread": mock.Mock(KThread=_DeferredThread)}):

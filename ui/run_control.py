@@ -432,7 +432,7 @@ class RunController:
     def _worker_is_running(self, target: Any) -> bool:
         window = self._window
         page = getattr(window, "_audio_tools_page", None)
-        if target is page:
+        if page is not None and target is page:
             return page.runner.is_running()
         return window.context.runner.is_running()
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from typing import Any
 
 from bundled.constants import WAV
 
@@ -65,7 +66,7 @@ class FlushSettingsTabGuardTests(unittest.TestCase):
         from ui.widgets.vocal_split_row import VocalSplitRow
         from ui.window import MainWindow
 
-        window = MainWindow.__new__(MainWindow)
+        window: Any = MainWindow.__new__(MainWindow)
         window.settings = Settings.defaults()
         window.content_stack = _StubContentStack(visible_tab)
 

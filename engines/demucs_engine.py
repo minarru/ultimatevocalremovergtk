@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import Any, cast, TYPE_CHECKING
 
 import gc
 import gzip
@@ -46,13 +46,14 @@ from .orchestration import process_secondary_model
 
 class SeperateDemucs(SeperateAttributes):
     def seperate(self):
+        self.demucs: Any
         samplerate = 44100
-        source = None
-        model_scale = None
-        stem_source = None
-        stem_source_secondary = None
-        inst_mix = None
-        inst_source = None
+        source: Any = None
+        model_scale: Any = None
+        stem_source: Any = None
+        stem_source_secondary: Any = None
+        inst_mix: Any = None
+        inst_source: Any = None
         is_no_write = False
         is_no_piano_guitar = False
         is_no_cache = False
@@ -269,6 +270,7 @@ class SeperateDemucs(SeperateAttributes):
     def demix_demucs(self, mix):
         with trace_phase("separate", "demix_demucs", engine="SeperateDemucs", model=self.model_basename):
             org_mix = mix
+            sources: Any = None
 
             if self.is_pitch_change:
                 mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
@@ -299,7 +301,7 @@ class SeperateDemucs(SeperateAttributes):
                         set_progress_bar=self.set_progress_bar,
                     )
                 else:
-                    sources = apply_model(
+                    sources = cast(Any, apply_model(
                         self.demucs,
                         mix_infer[None],
                         self.shifts,
@@ -308,7 +310,7 @@ class SeperateDemucs(SeperateAttributes):
                         static_shifts=1 if self.shifts == 0 else self.shifts,
                         set_progress_bar=self.set_progress_bar,
                         device=self.device,
-                    )[0]
+                    ))[0]
 
             sources = (sources.float() * ref.std() + ref.mean()).cpu().numpy()
             sources[[0, 1]] = sources[[1, 0]]

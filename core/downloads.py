@@ -20,7 +20,7 @@ import ssl
 import threading
 import time
 import urllib.request
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from bundled.constants import (
     ALL_TYPES,
@@ -146,11 +146,11 @@ class DownloadManager:
         self.latest_version: str = ""
 
         # VIP-merged, on-disk-aware catalogues (populated by ``refresh``).
-        self.vr_download_list: Dict[str, str] = {}
-        self.mdx_download_list: Dict[str, object] = {}
-        self.demucs_download_list: Dict[str, dict] = {}
+        self.vr_download_list: Dict[str, Any] = {}
+        self.mdx_download_list: Dict[str, Any] = {}
+        self.demucs_download_list: Dict[str, Any] = {}
         # Apollo restoration models are fork-curated only (no upstream list).
-        self.apollo_download_list: Dict[str, dict] = {}
+        self.apollo_download_list: Dict[str, Any] = {}
         self._size_warmup_lock = threading.Lock()
 
     # -- Catalogue + size cache -------------------------------------------------

@@ -22,7 +22,7 @@ class ProcessData:
     process_iteration: Callable
     check_run_control: Callable
     cached_source_callback: Callable
-    cached_model_source_holder: dict
+    cached_model_source_holder: Callable
     list_all_models: list
     is_ensemble_master: bool = False
     is_4_stem_ensemble: bool = False

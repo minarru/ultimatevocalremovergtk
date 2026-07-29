@@ -109,6 +109,7 @@ class TrySaveSettingsTests(unittest.TestCase):
         ):
             message = AppContext.try_save_settings(context, trigger="test")
         self.assertIsInstance(message, str)
+        assert message is not None
         self.assertIn("Couldn't save settings", message)
 
 

@@ -80,6 +80,7 @@ def apply_stem_level_options(
             for value in adjusted.values():
                 piece = np.asarray(value)[..., :n]
                 summed = piece if summed is None else summed + piece
+            assert summed is not None
             gain = match_gain_to_mix(summed, mix)
             if abs(gain - 1.0) > _GAIN_REPORT_TOL:
                 adjusted = {key: scale_audio(value, gain) for key, value in adjusted.items()}

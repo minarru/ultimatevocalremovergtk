@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 import gc
 import gzip
@@ -221,6 +221,7 @@ class SeperateMDX(SeperateAttributes):
 
     def seperate(self):
         samplerate = 44100
+        self.model_run: Any
     
         if self.primary_model_name == self.model_basename and isinstance(self.primary_sources, tuple):
             mix, source = self.primary_sources
@@ -298,7 +299,7 @@ class SeperateMDX(SeperateAttributes):
                 self.running_inference_console_write()
                 mix = prepare_mix(self.audio_file)
                 
-                source = self.demix(mix)
+                source: Any = self.demix(mix)
                 
                 if not self.is_vocal_split_model:
                     self.cache_source((mix, source))
@@ -566,7 +567,7 @@ class SeperateMDXC(SeperateAttributes):
             else:
                 self.mdxnet_stem_select = self.main_model_primary_stem_4_stem if self.main_model_primary_stem_4_stem else self.primary_model_primary_stem
             self.primary_stem = self.mdxnet_stem_select
-            self.secondary_stem = secondary_stem(self.mdxnet_stem_select)
+            self.secondary_stem = secondary_stem(str(self.mdxnet_stem_select or ""))
             self.is_primary_stem_only, self.is_secondary_stem_only = False, False
 
         # Restrict export to the user-chosen subset of this model's stems. The
@@ -629,7 +630,7 @@ class SeperateMDXC(SeperateAttributes):
                 if stem == VOCAL_STEM and not self.is_sec_bv_rebalance:
                     self.process_vocal_split_chain({VOCAL_STEM:stem})
         else:
-            working_sources = dict(sources) if isinstance(sources, dict) else sources
+            working_sources: Any = dict(sources) if isinstance(sources, dict) else sources
             if len(stem_list) == 1:
                 source_primary = working_sources  
             else:
@@ -736,7 +737,7 @@ class SeperateMDXC(SeperateAttributes):
             self._weight_cache_key = key
             cached = get_weight_cache().get(key)
             if cached and cached.module is not None:
-                model = materialize_module(cached.module, self.device)
+                model: Any = materialize_module(cached.module, self.device)
             else:
                 model = TFC_TDF_net(self.mdx_c_configs, device=self.device)
                 model.load_state_dict(_load_torch_checkpoint(self.model_path))
@@ -871,7 +872,7 @@ class SeperateMDXC(SeperateAttributes):
             self._weight_cache_key = key
             cached = get_weight_cache().get(key)
             if cached and cached.module is not None:
-                model = materialize_module(cached.module, device)
+                model: Any = materialize_module(cached.module, device)
             else:
                 model = _build_mdx_c_model(self.roformer_config)
                 checkpoint = _load_torch_checkpoint(self.model_path)

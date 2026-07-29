@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from bundled.constants import CKPT
 
@@ -161,7 +161,9 @@ def _yaml_name_from_ref(ref: object) -> Optional[str]:
     return None
 
 
-def build_checkpoint_yaml_index(catalogues: Iterable[Dict[str, object]]) -> Dict[str, str]:
+def build_checkpoint_yaml_index(
+    catalogues: Iterable[Mapping[str, Any]],
+) -> Dict[str, str]:
     """Map checkpoint basename to yaml basename from download catalogues."""
     index: Dict[str, str] = {}
     for catalogue in catalogues:

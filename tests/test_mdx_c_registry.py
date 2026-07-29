@@ -169,6 +169,7 @@ class RegisterMdxCCheckpointTests(unittest.TestCase):
 
                 second = register_mdx_c_checkpoint(checkpoint, yaml_name)
                 self.assertIsNotNone(second)
+                assert second is not None
                 self.assertFalse(second["is_roformer"])
             finally:
                 paths.MDX_HASH_DIR = original_hash_dir
@@ -291,6 +292,7 @@ class ModelDataCatalogFallbackTests(unittest.TestCase):
                 }
                 result = model_data.get_model_data(hash_dir, {})
                 mock_try.assert_called_once()
+                assert isinstance(result, dict)
                 self.assertEqual(result["config_yaml"], yaml_name)
 
 

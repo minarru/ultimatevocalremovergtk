@@ -433,7 +433,7 @@ class JobRunner:
         model_name = self.settings.get(_MODEL_KEY_BY_METHOD[method])
         return assemble_model(self.settings, self.repo, model_name, method)
 
-    def _count_true_models(self, models: List[ModelConfig]) -> int:
+    def _count_true_models(self, models: Sequence[Any]) -> int:
         """Progress denominator: shared with the Save stems workload estimate."""
         return count_inference_passes_from_models(models)
 

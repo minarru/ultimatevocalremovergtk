@@ -16,7 +16,7 @@ by the ``Ensembler`` in :mod:`core.job_runner`. Nothing here imports
 
 import json
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, cast
 
 from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
 
@@ -323,7 +323,7 @@ class _ModelConfigImplementation:
         is_vocal_split_model: bool = False,
     ):
         self.settings = settings
-        self.repo = repo
+        self.repo: Any = repo
 
         device_set = settings.get("device_set")
         self.DENOISER_MODEL = paths.DENOISER_MODEL_PATH
@@ -362,16 +362,16 @@ class _ModelConfigImplementation:
         # a config that defines a single ``training.target_instrument``.
         self.is_roformer = False
         self.is_target_instrument = False
-        self.model_type = ""
+        self.model_type: Any = ""
         self.is_mdx_combine_stems = settings.get("is_mdx23_combine_stems")
         self.is_mdx_include_stem_complement = settings.get("is_mdx_include_stem_complement")
-        self.mdx_c_configs = None
-        self.mdx_model_stems = []
-        self.mdx_dim_f_set = None
-        self.mdx_dim_t_set = None
+        self.mdx_c_configs: Any = None
+        self.mdx_model_stems: Any = []
+        self.mdx_dim_f_set: Any = None
+        self.mdx_dim_t_set: Any = None
         self.mdx_stem_count = 1
-        self.compensate = None
-        self.mdx_n_fft_scale_set = None
+        self.compensate: Any = None
+        self.mdx_n_fft_scale_set: Any = None
         self.wav_type_set = resolve_wav_type_set(settings)
         self.device_set = device_set.split(":")[-1].strip() if ":" in device_set else device_set
         self.mp3_bit_set = settings.get("mp3_bit_set")
@@ -381,17 +381,18 @@ class _ModelConfigImplementation:
         self.is_mixer_mode = False
         self.demucs_stems = settings.get("demucs_stems")
         self.is_demucs_combine_stems = settings.get("is_demucs_combine_stems")
-        self.demucs_source_list = []
+        self.demucs_source_list: Any = []
+        self.demucs_source_map: Any = {}
         self.demucs_stem_count = 0
         self.mixer_path = paths.MDX_MIXER_PATH
         self.model_name = model_name
         self.process_method = selected_process_method
         self.model_status = False if self.model_name == CHOOSE_MODEL or self.model_name == NO_MODEL else True
         # Always defined: hash / path lookup may leave this unset for missing files.
-        self.model_data = None
-        self.primary_stem = None
-        self.secondary_stem = None
-        self.primary_stem_native = None
+        self.model_data: Any = None
+        self.primary_stem: Any = None
+        self.secondary_stem: Any = None
+        self.primary_stem_native: Any = None
         self.is_ensemble_mode = False
         self.ensemble_primary_stem = None
         self.ensemble_secondary_stem = None
@@ -406,8 +407,8 @@ class _ModelConfigImplementation:
         self.pre_proc_model_activated = False
         self.is_pre_proc_model = is_pre_proc_model
         self.is_dry_check = is_dry_check
-        self.model_samplerate = 44100
-        self.model_capacity = 32, 128
+        self.model_samplerate: Any = 44100
+        self.model_capacity: Any = (32, 128)
         self.is_vr_51_model = False
         self.is_demucs_pre_proc_model_inst_mix = False
         self.secondary_model_4_stem = []
@@ -885,7 +886,7 @@ class _ModelConfigImplementation:
         if self.is_dry_check:
             return None
         if callable(self.repo.on_unrecognized_model):
-            return self.repo.on_unrecognized_model(self)
+            return self.repo.on_unrecognized_model(cast(Any, self))
         return None
 
     def get_model_hash(self):

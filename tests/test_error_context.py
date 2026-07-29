@@ -113,6 +113,8 @@ class ErrorContextTests(unittest.TestCase):
             aggression_setting = 0.05
             model_samplerate = 44100
             is_secondary_model_activated = False
+            demucs_stems = ""
+            overlap = 0.0
 
         with unittest.mock.patch(
             "core.error_context.display_name_for_model",

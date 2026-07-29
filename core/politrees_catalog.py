@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from bundled.constants import POLITREES_MODEL_LINKS_URL
 
@@ -105,7 +105,9 @@ def load_politrees_links(*, force: bool = False) -> Optional[Dict]:
     return data
 
 
-def merge_supplemental_list(base: Dict[str, object], extra: Dict[str, object]) -> Dict[str, object]:
+def merge_supplemental_list(
+    base: Mapping[str, Any], extra: Mapping[str, Any]
+) -> Dict[str, Any]:
     """Add catalogue entries present in ``extra`` but not in ``base``."""
     merged = dict(base)
     added = 0
@@ -119,13 +121,13 @@ def merge_supplemental_list(base: Dict[str, object], extra: Dict[str, object]) -
 
 
 def merge_politrees_catalogues(
-    vr: Dict[str, object],
-    mdx: Dict[str, object],
-    demucs: Dict[str, object],
+    vr: Mapping[str, Any],
+    mdx: Mapping[str, Any],
+    demucs: Mapping[str, Any],
     politrees: Optional[Dict],
-) -> Tuple[Dict[str, object], Dict[str, object], Dict[str, object]]:
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     if not politrees:
-        return vr, mdx, demucs
+        return dict(vr), dict(mdx), dict(demucs)
 
     vr = merge_supplemental_list(vr, politrees.get("vr_download_list", {}))
     demucs = merge_supplemental_list(demucs, politrees.get("demucs_download_list", {}))
@@ -133,7 +135,7 @@ def merge_politrees_catalogues(
     for key in _POLITREES_MDX_SOURCE_KEYS:
         mdx = merge_supplemental_list(mdx, politrees.get(key, {}))
 
-    return vr, mdx, demucs
+    return dict(vr), dict(mdx), dict(demucs)
 
 
 def build_weight_url_index(links_data: Dict) -> Dict[str, str]:
@@ -207,7 +209,8 @@ def resolve_vr_jobs(model: object, model_repo: str) -> List[Tuple[str, str]]:
             else:
                 jobs.append((f"{model_repo}{filename}", os.path.join(paths.VR_MODELS_DIR, filename)))
         return jobs
-    return [(f"{model_repo}{model}", os.path.join(paths.VR_MODELS_DIR, model))]
+    filename = str(model)
+    return [(f"{model_repo}{filename}", os.path.join(paths.VR_MODELS_DIR, filename))]
 
 
 def resolve_mdx_jobs(model: object, model_repo: str) -> List[Tuple[str, str]]:
@@ -230,7 +233,8 @@ def resolve_mdx_jobs(model: object, model_repo: str) -> List[Tuple[str, str]]:
 
                 ensure_mdx_c_config(ref)
         return jobs
-    return [(f"{model_repo}{model}", os.path.join(paths.MDX_MODELS_DIR, model))]
+    filename = str(model)
+    return [(f"{model_repo}{filename}", os.path.join(paths.MDX_MODELS_DIR, filename))]
 
 
 def apollo_checkpoint_filename(model: object) -> str:

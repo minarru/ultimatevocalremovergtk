@@ -144,3 +144,4 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     from .shutdown import finalize_process_exit
 
     finalize_process_exit(status)
+    return status

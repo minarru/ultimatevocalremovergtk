@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import asdict, dataclass, field, fields
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from bundled.constants import (
     ALL_STEMS,
@@ -37,8 +37,8 @@ T = TypeVar("T")
 def _merge_dataclass(cls: type[T], base: T, overrides: dict[str, Any] | None) -> T:
     if not overrides:
         return copy.deepcopy(base)
-    valid = {f.name for f in fields(base)}
-    merged = asdict(base)
+    valid = {f.name for f in fields(cast(Any, base))}
+    merged = asdict(cast(Any, base))
     for key, value in overrides.items():
         if key in valid:
             merged[key] = copy.deepcopy(value)
@@ -72,7 +72,7 @@ class ProcessSettings:
     last_dir: str | None = None
     sample_mode: bool = False
     sample_mode_duration: int = 30
-    long_file_chunk_seconds: int = 0
+    long_file_chunk_seconds: float = 0.0
     long_file_chunk_overlap_seconds: float = 2.0
     semitone_shift: str = "0"
     user_code: str = ""

@@ -32,6 +32,7 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
         action._uvr_model_name = "MDX-Net Model: Kim Vocal 2"
         resolved = resolve_catalogue_action_row(action)
         self.assertIs(resolved, action)
+        assert resolved is not None
         self.assertEqual(resolved._uvr_model_name, "MDX-Net Model: Kim Vocal 2")
 
     def test_internal_child_is_not_the_action_row(self) -> None:

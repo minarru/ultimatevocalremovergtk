@@ -33,6 +33,7 @@ class ModelDataMergeTests(unittest.TestCase):
             model_data.repo = None
 
             merged = model_data.get_model_data(tmp, hash_mapper)
+            assert isinstance(merged, dict)
             self.assertEqual(merged["config_yaml"], "config_musdb18_scnet_large.yaml")
             self.assertFalse(merged["is_roformer"])
             self.assertEqual(merged["model_type"], "SCNet")
@@ -75,7 +76,7 @@ class ModelDataMergeTests(unittest.TestCase):
                 paths.MDX_C_CONFIG_PATH = original_config_dir
 
             self.assertIsNotNone(result)
-            assert result is not None
+            assert isinstance(result, dict)
             self.assertEqual(result["config_yaml"], yaml_name)
             self.assertEqual(result["model_type"], "SCNet")
 

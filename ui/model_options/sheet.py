@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Dict, Optional, Sequence
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence
 
 from gi.repository import Adw, Gtk
 
@@ -124,7 +124,7 @@ class ModelOptionsSheet:
         parent: Gtk.Window,
         *,
         views: Sequence,
-        views_by_stack: Dict[str, object],
+        views_by_stack: Mapping[str, Any],
         settings,
         on_switch_method: Optional[Callable[[str], None]] = None,
     ):
@@ -417,7 +417,7 @@ def open_model_options_sheet(
     parent: Gtk.Window,
     *,
     views: Sequence,
-    views_by_stack: Dict[str, object],
+    views_by_stack: Mapping[str, Any],
     settings,
     context: str,
     active_method_key: str,

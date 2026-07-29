@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Optional, Sequence
+from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from bundled.constants import (
     DEMUCS_ARCH_TYPE,
@@ -82,7 +82,7 @@ def default_stack_name(
     *,
     active_method_key: str,
     selected_models: Sequence[str],
-    views_by_stack: dict,
+    views_by_stack: Mapping[str, Any],
 ) -> str:
     applicable = applicable_stack_names(
         context,

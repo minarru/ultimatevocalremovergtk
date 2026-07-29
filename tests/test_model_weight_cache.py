@@ -59,6 +59,7 @@ class WeightCacheTests(unittest.TestCase):
         module.cpu.assert_called()
         hit = cache.get(key)
         self.assertIsNotNone(hit)
+        assert hit is not None
         self.assertIs(hit.module, module)
 
     def test_put_keeps_accelerator_resident(self) -> None:
@@ -202,6 +203,7 @@ class WeightCacheTests(unittest.TestCase):
         self.assertIsNone(separator.model_run)
         hit = cache.get(key)
         self.assertIsNotNone(hit)
+        assert hit is not None
         self.assertIs(hit.module, module)
 
     def test_vram_headroom_thresholds(self) -> None:

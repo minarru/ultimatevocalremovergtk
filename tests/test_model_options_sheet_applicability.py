@@ -213,6 +213,7 @@ class SheetApplicabilityTests(unittest.TestCase):
             child = child.get_next_sibling()
 
         self.assertIsNotNone(revealer, "Adw.Banner should wrap content in a Revealer")
+        assert revealer is not None
         self.assertEqual(revealer.get_transition_duration(), 0)
 
     def test_top_bar_spacing_is_not_collapsed(self):
