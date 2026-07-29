@@ -174,7 +174,7 @@ class RunController:
         set_run_error_context(**self._snapshot_error_context(target))
         debug("ui", f"begin_run target={type(target).__name__} engines_imported={engines_imported()} warm={warm_status()}")
         self._running_target = target
-        self._run_output_dir = self._window.settings.get("export_path") or ""
+        self._run_output_dir = self._window.settings.process.export_path or ""
         self._run_label = self._run_label_for(target)
         self._window.log_panel.set_run_label(self._run_label)
         self._run_started_at = time.monotonic()

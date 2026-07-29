@@ -95,7 +95,7 @@ class ViewInputs:
         self.context = app_context
         self.settings = app_context.settings
         self._on_inputs_changed = on_inputs_changed
-        self.paths = list(self.settings.get("input_paths") or [])
+        self.paths = list(self.settings.process.input_paths or [])
         self._rows = {}
         self._status = {}  # path -> (is_valid, info) after verify
         self._verifying = False
@@ -226,7 +226,7 @@ class ViewInputs:
             self.verify_button.add_css_class("suggested-action")
 
     def _commit_paths(self) -> None:
-        self.settings.set("input_paths", list(self.paths))
+        self.settings.process.input_paths = list(self.paths)
         error = self.context.try_save_settings(trigger="verify-inputs")
         if error:
             self._toast(error)
@@ -273,7 +273,7 @@ class ViewInputs:
         initial = os.path.dirname(self.paths[0]) if self.paths else None
         dialog = audio_open_dialog(
             "Select Audio Files",
-            accept_any=bool(self.settings.get("is_accept_any_input")),
+            accept_any=bool(self.settings.process.accept_any_input),
             initial=initial,
         )
         dialog.open_multiple(self.window, None, self._on_add_finished)

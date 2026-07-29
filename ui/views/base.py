@@ -4,7 +4,7 @@ Each processing method (VR Architecture, MDX-Net, Demucs) contributes one
 :class:`MethodView`. A view owns the method's model dropdown plus the
 main-window options that the Tk app shows for that method
 (``update_main_widget_states``), and knows how to read/write its slice of the
-:class:`~core.settings.SettingsModel` using the exact ``DEFAULT_DATA`` keys.
+typed :class:`~core.settings.Settings`.
 
 The window builds a ``Gtk.Stack`` from :data:`METHOD_VIEWS` and a "Process
 method" ``Adw.ComboRow`` to choose between them, so additional method panels can
@@ -69,6 +69,7 @@ from ..option_summaries import (
     preproc_summary,
     secondary_models_summary,
 )
+from ..settings_bind import get_flat, set_flat
 
 # Per-stem secondary-model slots: (settings-key slot, display pair, primary stem,
 # secondary stem) used to build the four secondary-model selectors UVR exposes.
@@ -220,12 +221,12 @@ class MethodView:
             score_texts=[(display, basename) for display, basename in zip(names, basenames)],
         )
         set_combo_values(self.model_row, [CHOOSE_MODEL, *names])
-        stored = self.settings.get(self.model_key, CHOOSE_MODEL)
+        stored = get_flat(self.settings, self.model_key, CHOOSE_MODEL)
         if stored not in (CHOOSE_MODEL, NO_MODEL, None):
             display = current_display_for_stored_model(stored, basenames, arch, repo)
             if display != stored:
                 stored = display
-                self.settings.set(self.model_key, display)
+                set_flat(self.settings, self.model_key, display)
         set_combo_value(self.model_row, stored)
 
     def refresh_models(self) -> None:
@@ -253,7 +254,7 @@ class MethodView:
             return
         from core.debug_log import debug, preview_text
 
-        self.settings.set(self.model_key, self.selected_model())
+        set_flat(self.settings, self.model_key, self.selected_model())
         name = self.selected_model()
         debug(
             "model",
@@ -382,7 +383,7 @@ class MethodView:
         self.hints.refresh()
 
     def save(self, *, include_stem_only: bool = True) -> None:
-        self.settings.set(self.model_key, self.selected_model())
+        set_flat(self.settings, self.model_key, self.selected_model())
         if include_stem_only:
             self._persist_stem_only()
         self.save_options()
@@ -477,33 +478,33 @@ class MethodView:
     def _on_option_combo(self, key, row) -> None:
         if self._loading:
             return
-        self.settings.set(key, get_combo_value(row))
+        set_flat(self.settings, key, get_combo_value(row))
         self._touch_settings()
 
     def _on_option_scale(self, key, row) -> None:
         if self._loading:
             return
         if getattr(row, "_uvr_store_float", False):
-            self.settings.set(key, round(get_scale_row_float(row), 2))
+            set_flat(self.settings, key, round(get_scale_row_float(row), 2))
         else:
-            self.settings.set(key, get_scale_row_value(row))
+            set_flat(self.settings, key, get_scale_row_value(row))
         self._touch_settings()
 
     def _on_option_switch(self, key, row) -> None:
         if self._loading:
             return
-        self.settings.set(key, row.get_active())
+        set_flat(self.settings, key, row.get_active())
         self._touch_settings()
 
     def _on_option_spin(self, key, row) -> None:
         if self._loading:
             return
-        self.settings.set(key, round(row.get_value(), 2))
+        set_flat(self.settings, key, round(row.get_value(), 2))
         self._touch_settings()
 
     def _load_scales(self) -> None:
         for key, row in self._scale_rows.items():
-            value = self.settings.get(key)
+            value = get_flat(self.settings, key)
             if getattr(row, "_uvr_store_float", False):
                 try:
                     set_scale_row_float(row, float(value))
@@ -515,28 +516,28 @@ class MethodView:
     def _save_scales(self) -> None:
         for key, row in self._scale_rows.items():
             if getattr(row, "_uvr_store_float", False):
-                self.settings.set(key, round(get_scale_row_float(row), 2))
+                set_flat(self.settings, key, round(get_scale_row_float(row), 2))
             else:
-                self.settings.set(key, get_scale_row_value(row))
+                set_flat(self.settings, key, get_scale_row_value(row))
 
     def _load_switches(self) -> None:
         for key, row in self._switch_rows.items():
-            row.set_active(bool(self.settings.get(key)))
+            row.set_active(bool(get_flat(self.settings, key)))
 
     def _save_switches(self) -> None:
         for key, row in self._switch_rows.items():
-            self.settings.set(key, row.get_active())
+            set_flat(self.settings, key, row.get_active())
 
     def _load_spins(self) -> None:
         for key, row in self._spin_rows.items():
             try:
-                row.set_value(float(self.settings.get(key)))
+                row.set_value(float(get_flat(self.settings, key)))
             except (TypeError, ValueError):
                 pass
 
     def _save_spins(self) -> None:
         for key, row in self._spin_rows.items():
-            self.settings.set(key, round(row.get_value(), 2))
+            set_flat(self.settings, key, round(row.get_value(), 2))
 
     # -- Subclass hooks ---------------------------------------------------------
 
@@ -552,12 +553,12 @@ class MethodView:
     def load_options(self) -> None:
         """Set method-specific combo rows from settings."""
         for key, row in self._option_rows.items():
-            set_combo_value(row, self.settings.get(key))
+            set_combo_value(row, get_flat(self.settings, key))
 
     def save_options(self) -> None:
         """Write method-specific combo rows back to settings."""
         for key, row in self._option_rows.items():
-            self.settings.set(key, get_combo_value(row))
+            set_flat(self.settings, key, get_combo_value(row))
 
     def add_advanced_combo(self, key, title, values, subtitle=None, hint=None):
         return self.add_option_combo(self.advanced_group, key, title, values, subtitle, hint=hint)
@@ -589,7 +590,7 @@ class MethodView:
         is only written back once the (expensive) model list has been resolved,
         avoiding clobbering the stored tag with ``NO_MODEL``.
         """
-        stored = self.settings.get(key, NO_MODEL)
+        stored = get_flat(self.settings, key, NO_MODEL)
         initial = [NO_MODEL] if stored in (NO_MODEL, None) else [NO_MODEL, stored]
         row = make_combo_row(title, initial)
         use_wrapping_list(row)
@@ -605,7 +606,7 @@ class MethodView:
         entry = next((e for e in self._model_combos if e["key"] == key), None)
         if entry and not entry["ready"]:
             return
-        self.settings.set(key, get_combo_value(row))
+        set_flat(self.settings, key, get_combo_value(row))
         self._touch_settings()
 
     def _ensure_model_combos_populated(self, *_args) -> None:
@@ -624,7 +625,9 @@ class MethodView:
                     for tag in values
                 ]
                 set_combo_tag_values(entry["row"], [NO_MODEL, *tag_items])
-                set_combo_value(entry["row"], self.settings.get(entry["key"], NO_MODEL))
+                set_combo_value(
+                    entry["row"], get_flat(self.settings, entry["key"], NO_MODEL)
+                )
                 entry["ready"] = True
         finally:
             self._populating_models = False
@@ -715,14 +718,15 @@ class MethodView:
         if (
             getattr(self, "secondary_expander", None) is not None
             and self.secondary_prefix
-            and self.settings.get(
+            and get_flat(
+                self.settings,
                 f"{self.secondary_prefix}_is_secondary_model_activate"
             )
         ):
             self.secondary_expander.set_expanded(True)
         if (
             getattr(self, "preproc_expander", None) is not None
-            and self.settings.get("is_demucs_pre_proc_model_activate")
+            and self.settings.demucs.is_pre_proc_model_activate
         ):
             self.preproc_expander.set_expanded(True)
 

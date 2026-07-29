@@ -363,7 +363,7 @@ def start_download_size_cache_warmup(app_context) -> None:
 
     def worker() -> None:
         manager = _get_manager(app_context)
-        code = app_context.settings.get("user_code", "")
+        code = app_context.settings.process.user_code
         if code:
             manager.validate_vip_code(code)
         if manager.ensure_catalogues():
@@ -421,7 +421,7 @@ def open_vip_code_dialog(parent, app_context, on_validated=None):
     page.add(group)
 
     code_row = Adw.EntryRow(title="Code")
-    code_row.set_text(settings.get("user_code", ""))
+    code_row.set_text(settings.process.user_code)
     group.add(code_row)
 
     def toast(message: str) -> None:
@@ -431,7 +431,7 @@ def open_vip_code_dialog(parent, app_context, on_validated=None):
         code = code_row.get_text().strip()
         unlocked = manager.validate_vip_code(code)
         if unlocked:
-            settings.set("user_code", code)
+            settings.process.user_code = code
             error = app_context.try_save_settings(trigger="vip")
             if error:
                 toast(error)

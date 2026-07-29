@@ -9,6 +9,7 @@ from gi.repository import Gio, GLib, Gtk
 from core.debug_log import debug
 
 from . import APP_ID
+from .settings_bind import get_flat
 
 NOTIFY_PROCESS_COMPLETE = "notify_process_complete"
 NOTIFY_PROCESS_FAILED = "notify_process_failed"
@@ -36,7 +37,7 @@ _NOTIFY_ICONS = {
 def notification_enabled(settings, key: str) -> bool:
     if key not in NOTIFICATION_SETTING_KEYS:
         return True
-    return bool(settings.get(key, True))
+    return bool(get_flat(settings, key, True))
 
 
 def send_desktop_notification(

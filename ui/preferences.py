@@ -3,8 +3,8 @@
 This is the GTK4 / libadwaita port of ``UVR.py``'s ``menu_settings`` window
 (tabs 1 and 2 - general + additional/audio-format/process settings). It exposes
 the same options the Tkinter settings window does and binds every control to the
-shared :class:`core.settings.SettingsModel` through
-:class:`ui.context.AppContext`, using the exact ``DEFAULT_DATA`` keys.
+shared typed :class:`core.settings.Settings` through
+:class:`ui.context.AppContext`.
 
 Covered (Phase 2):
 
@@ -60,6 +60,7 @@ from .help_text import (
     REMOVE_PROFILE_HINT,
 )
 from .hints import set_icon_button_a11y, set_tooltip
+from .settings_bind import get_flat, set_flat
 from .widgets.rows import get_combo_value, make_combo_row, set_combo_value
 
 _PERSIST_DEBOUNCE_MS = 250
@@ -148,7 +149,7 @@ def _is_valid_profile_name(name: str) -> bool:
 
 
 class PreferencesDialog(Adw.PreferencesDialog):
-    """libadwaita settings dialog bound to the shared :class:`SettingsModel`.
+    """libadwaita settings dialog bound to the shared typed settings.
 
     Two callbacks, deliberately asymmetric:
 
@@ -423,7 +424,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
     def _reload_widgets(self) -> None:
         self._loading = True
         try:
-            scheme = self.settings.get("color_scheme", "auto")
+            scheme = self.settings.ui.color_scheme or "auto"
             scheme_index = next(
                 (i for i, (_label, value) in enumerate(_COLOR_SCHEME_OPTIONS) if value == scheme),
                 0,
@@ -431,36 +432,36 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self.color_scheme_row.set_selected(scheme_index)
 
             for key, row in self._process_switches.items():
-                row.set_active(bool(self.settings.get(key)))
+                row.set_active(bool(get_flat(self.settings, key)))
             try:
-                amp = float(self.settings.get("amplification_threshold") or 0.0)
+                amp = float(self.settings.process.amplification_threshold or 0.0)
             except (TypeError, ValueError):
                 amp = 0.0
             self.amplification_row.set_value(max(0.0, min(1.0, amp)))
             self._refresh_output_name_preview()
 
             for key, row in self._notification_switches.items():
-                row.set_active(bool(self.settings.get(key, True)))
+                row.set_active(bool(get_flat(self.settings, key, True)))
 
             if hasattr(self, "directml_row"):
-                self.directml_row.set_active(bool(self.settings.get("is_use_directml")))
-            if not set_combo_value(self.device_row, self.settings.get("device_set", DEFAULT)):
+                self.directml_row.set_active(bool(self.settings.process.use_directml))
+            if not set_combo_value(self.device_row, self.settings.process.device or DEFAULT):
                 set_combo_value(self.device_row, DEFAULT)
 
             from ui.shared_settings import gpu_dependent_enabled
 
             self.device_row.set_sensitive(
-                gpu_dependent_enabled(self.settings.get("is_gpu_conversion"))
+                gpu_dependent_enabled(self.settings.process.use_gpu)
             )
 
-            self.sample_mode_row.set_active(bool(self.settings.get("model_sample_mode")))
+            self.sample_mode_row.set_active(bool(self.settings.process.sample_mode))
             self.cleanup_ensemble_temps_row.set_active(
-                bool(self.settings.get("is_cleanup_ensemble_temps", True))
+                bool(self.settings.ensemble.cleanup_temps)
             )
             self.auto_update_model_params_row.set_active(
-                bool(self.settings.get("is_auto_update_model_params", True))
+                bool(self.settings.process.auto_update_model_params)
             )
-            duration = self.settings.get("model_sample_mode_duration", 30)
+            duration = self.settings.process.sample_mode_duration
             try:
                 duration = float(duration)
             except (TypeError, ValueError):
@@ -469,12 +470,14 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self._update_sample_duration_subtitle(duration)
 
             try:
-                long_chunk = float(self.settings.get("long_file_chunk_seconds") or 0)
+                long_chunk = float(self.settings.process.long_file_chunk_seconds or 0)
             except (TypeError, ValueError):
                 long_chunk = 0.0
             self.long_chunk_row.set_value(max(0.0, min(3600.0, long_chunk)))
             try:
-                long_overlap = float(self.settings.get("long_file_chunk_overlap_seconds") or 2.0)
+                long_overlap = float(
+                    self.settings.process.long_file_chunk_overlap_seconds or 2.0
+                )
             except (TypeError, ValueError):
                 long_overlap = 2.0
             self.long_chunk_overlap_row.set_value(max(0.0, min(30.0, long_overlap)))
@@ -503,7 +506,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
     def _on_bool_changed(self, row, _pspec, key) -> None:
         if self._loading:
             return
-        self.settings.set(key, bool(row.get_active()))
+        set_flat(self.settings, key, bool(row.get_active()))
         if key in _NAMING_PREVIEW_KEYS:
             self._refresh_output_name_preview()
         self._persist()
@@ -512,19 +515,21 @@ class PreferencesDialog(Adw.PreferencesDialog):
         if self._loading:
             return
         value = float(row.get_value())
-        self.settings.set("amplification_threshold", max(0.0, min(1.0, value)))
+        self.settings.process.amplification_threshold = max(0.0, min(1.0, value))
         self._persist()
 
     def _on_long_chunk_changed(self, row, _pspec) -> None:
         if self._loading:
             return
-        self.settings.set("long_file_chunk_seconds", int(round(float(row.get_value()))))
+        self.settings.process.long_file_chunk_seconds = int(
+            round(float(row.get_value()))
+        )
         self._persist()
 
     def _on_long_chunk_overlap_changed(self, row, _pspec) -> None:
         if self._loading:
             return
-        self.settings.set("long_file_chunk_overlap_seconds", float(row.get_value()))
+        self.settings.process.long_file_chunk_overlap_seconds = float(row.get_value())
         self._persist()
 
     def _refresh_output_name_preview(self) -> None:
@@ -539,7 +544,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         if index == Gtk.INVALID_LIST_POSITION:
             return
         value = _COLOR_SCHEME_OPTIONS[index][1]
-        self.settings.set("color_scheme", value)
+        self.settings.ui.color_scheme = value
         self._persist()
         apply_color_scheme(value)
 
@@ -549,14 +554,14 @@ class PreferencesDialog(Adw.PreferencesDialog):
         value = get_combo_value(row)
         if value is None:
             return
-        self.settings.set(key, value)
+        set_flat(self.settings, key, value)
         self._persist()
 
     def _on_duration_changed(self, row, _pspec) -> None:
         if self._loading:
             return
         value = int(row.get_value())
-        self.settings.set("model_sample_mode_duration", value)
+        self.settings.process.sample_mode_duration = value
         self._update_sample_duration_subtitle(value)
         self._persist()
 

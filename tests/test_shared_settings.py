@@ -4,6 +4,7 @@ import unittest
 from unittest import mock
 
 from bundled.constants import FLAC, WAV
+from core.settings import Settings
 from ui.shared_settings import (
     INPUT_FILES_MAX,
     INPUT_FILES_WARN,
@@ -20,14 +21,8 @@ from ui.shared_settings import (
 
 
 class _FakeSettings:
-    def __init__(self, data):
-        self._data = dict(data)
-
-    def get(self, key, default=None):
-        return self._data.get(key, default)
-
-    def set(self, key, value):
-        self._data[key] = value
+    def __new__(cls, data):
+        return Settings.from_flat(data)
 
 
 class _FakeInputRow:
@@ -79,7 +74,7 @@ class _FakeFormatRow:
         self.applied_from = None
 
     def apply_from_settings(self, settings):
-        self.applied_from = settings.get("save_format")
+        self.applied_from = settings.process.save_format
 
 
 class ExportPathValidationTests(unittest.TestCase):
@@ -308,7 +303,7 @@ class ApplySharedFileOptionsTests(unittest.TestCase):
             input_row = _FakeInputRow()
             apply_shared_file_options(settings, input_row=input_row)
             self.assertEqual(input_row.paths, [input_path])
-            self.assertEqual(settings.get("input_paths"), [input_path])
+            self.assertEqual(settings.process.input_paths, [input_path])
         finally:
             os.remove(input_path)
 

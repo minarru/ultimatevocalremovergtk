@@ -25,8 +25,8 @@ It offers the UVR audio tools as selectable sub-modes:
 Heavy work runs on :class:`core.AudioToolRunner`'s ``KThread`` worker; all
 progress / console / completion callbacks are marshaled onto the GTK main loop
 through the caller-supplied callbacks (built with
-:func:`ui.dispatch.gtk_job_callbacks`). Options bind to the exact
-``DEFAULT_DATA`` keys via the shared ``SettingsModel``.
+:func:`ui.dispatch.gtk_job_callbacks`). Options bind to the shared typed
+settings.
 """
 
 import os
@@ -79,6 +79,7 @@ from ..help_text import (
 )
 from ..hints import HelpHintManager, set_icon_button_a11y, set_tooltip
 from ..shared_settings import apply_shared_file_options
+from ..settings_bind import set_flat
 from ..widgets.columns import build_columns_box, wrap_options_scroller
 from ..widgets.dual_inputs import DualInputsRow
 from ..widgets.file_chooser import InputFilesRow, OutputFolderRow
@@ -142,7 +143,7 @@ class AudioToolsPage:
         self._loading = False
         self._dual_pairs: List[Tuple[str, str]] = [
             (str(p[0]), str(p[1]))
-            for p in (self.settings.get("DualBatch_inputPaths") or [])
+            for p in (self.settings.audio_tools.dual_batch_input_paths or [])
             if len(p) == 2
         ]
         self._runner = None
@@ -206,7 +207,7 @@ class AudioToolsPage:
         self.inputs_row = InputFilesRow(
             self._on_inputs_changed,
             on_toast=self.window.toast,
-            accept_any_getter=lambda: bool(self.settings.get("is_accept_any_input")),
+            accept_any_getter=lambda: bool(self.settings.process.accept_any_input),
         )
         self.hints.register(self.inputs_row, INPUT_FOLDER_ENTRY_HELP)
         # Back-compat aliases for callers that still look up per-tool rows.
@@ -401,7 +402,7 @@ class AudioToolsPage:
 
         found = list_apollo_models()
         models = [CHOOSE_MODEL, *found]
-        stored = self.settings.get("apollo_model") or CHOOSE_MODEL
+        stored = self.settings.audio_tools.apollo_model or CHOOSE_MODEL
         was_loading = self._loading
         self._loading = True
         try:
@@ -465,7 +466,7 @@ class AudioToolsPage:
     def _set(self, key: str, value) -> None:
         if self._loading:
             return
-        self.settings.set(key, value)
+        set_flat(self.settings, key, value)
 
     def _current_tool(self) -> str:
         return get_combo_value(self.tool_row) or MANUAL_ENSEMBLE
@@ -638,7 +639,7 @@ class AudioToolsPage:
         if self._loading:
             return
         tool = self._current_tool()
-        self.settings.set("chosen_audio_tool", tool)
+        self.settings.audio_tools.chosen_audio_tool = tool
         self._sync_tool_visibility()
         self._refresh_dual_rows()
 
@@ -651,7 +652,7 @@ class AudioToolsPage:
         if self._loading:
             return
         paths = list(self.inputs_row.paths)
-        self.settings.set("input_paths", paths)
+        self.settings.process.input_paths = paths
         self.context.prune_unreadable_input_paths(paths)
         self.window._refresh_start_readiness()
 
@@ -666,13 +667,15 @@ class AudioToolsPage:
 
     def _on_dual_confirmed(self, pairs: List[Tuple[str, str]]) -> None:
         self._dual_pairs = [(str(a), str(b)) for a, b in pairs]
-        self.settings.set("DualBatch_inputPaths", [list(p) for p in self._dual_pairs])
+        self.settings.audio_tools.dual_batch_input_paths = [
+            list(p) for p in self._dual_pairs
+        ]
         if self._dual_pairs:
             first = self._dual_pairs[0]
-            self.settings.set("fileOneEntry_Full", first[0])
-            self.settings.set("fileTwoEntry_Full", first[1])
-            self.settings.set("fileOneEntry", os.path.basename(first[0]))
-            self.settings.set("fileTwoEntry", os.path.basename(first[1]))
+            self.settings.audio_tools.file_one_entry_full = first[0]
+            self.settings.audio_tools.file_two_entry_full = first[1]
+            self.settings.audio_tools.file_one_entry = os.path.basename(first[0])
+            self.settings.audio_tools.file_two_entry = os.path.basename(first[1])
         self._refresh_dual_rows()
 
     # -- Run target interface --------------------------------------------------

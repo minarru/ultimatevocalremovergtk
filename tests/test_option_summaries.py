@@ -14,6 +14,7 @@ from bundled.constants import (
     NO_MODEL,
     VOCAL_PAIR,
 )
+from core.settings import Settings
 from ui.option_summaries import (
     OFF,
     ON_NO_MODEL,
@@ -25,13 +26,10 @@ from ui.option_summaries import (
 
 
 class _Settings:
-    """Minimal stand-in for SettingsModel: a dict with .get(key, default)."""
+    """Build real typed settings with concise flat-key overrides."""
 
-    def __init__(self, **values):
-        self._values = dict(values)
-
-    def get(self, key, default=None):
-        return self._values.get(key, default)
+    def __new__(cls, **values):
+        return Settings.from_flat(values)
 
 
 class FourStemApplicabilityTests(unittest.TestCase):

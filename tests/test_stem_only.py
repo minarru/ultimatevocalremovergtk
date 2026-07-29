@@ -10,6 +10,7 @@ from bundled.constants import (
     SECONDARY_STEM,
     VOCAL_STEM,
 )
+from core.settings import SettingsModel
 from ui.widgets.stem_only import (
     SaveStemsSection,
     _QUICK_ALL,
@@ -24,12 +25,12 @@ from ui.widgets.stem_only import (
 )
 
 
-class _Settings(dict):
-    def get(self, key, default=None):
-        return super().get(key, default)
+class _Settings(SettingsModel):
+    def __getitem__(self, key):
+        return self.get(key)
 
-    def set(self, key, value):
-        self[key] = value
+    def __setitem__(self, key, value):
+        self.set(key, value)
 
 
 class StemDisplayLabelTests(unittest.TestCase):

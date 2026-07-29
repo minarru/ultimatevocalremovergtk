@@ -27,6 +27,7 @@ from .headless_run import (
     run_separation_sync,
     settings_summary,
 )
+from .settings import Settings
 
 _REQUIRED_RUNTIME_MODULES = ("kthread", "soundfile")
 
@@ -134,7 +135,7 @@ def _cmd_separate(args: argparse.Namespace) -> int:
 
     os.makedirs(args.output, exist_ok=True)
     try:
-        settings = build_settings(
+        settings: Settings = build_settings(
             settings_path=args.settings,
             export_path=os.path.abspath(args.output),
             method=args.method,

@@ -13,9 +13,8 @@ from ui.notifications import (
 
 
 class NotificationEnabledTests(unittest.TestCase):
-    def test_defaults_to_enabled_when_missing(self) -> None:
+    def test_defaults_to_enabled(self) -> None:
         settings = SettingsModel()
-        settings._data.pop(NOTIFY_PROCESS_COMPLETE)
         self.assertTrue(notification_enabled(settings, NOTIFY_PROCESS_COMPLETE))
 
     def test_respects_disabled_setting(self) -> None:

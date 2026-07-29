@@ -40,6 +40,7 @@ from core.model_stem_semantics import (
 
 from .base import MethodView, register_method_view
 from ..help_text import MDX_INCLUDE_COMPLEMENT_HELP, MDX_OVERLAP_HINT, MDX_SEGMENT_SIZE_HINT
+from ..settings_bind import get_flat, set_flat
 from ..widgets.rows import (
     get_scale_row_value,
     make_discrete_scale_row,
@@ -134,12 +135,12 @@ class MDXView(MethodView):
             return
         if self._segment_is_mdx_c:
             if value == DEF_OPT:
-                self.settings.set("is_mdx_c_seg_def", True)
+                self.settings.mdx.is_mdx_c_seg_def = True
             else:
-                self.settings.set("is_mdx_c_seg_def", False)
-                self.settings.set("mdx_segment_size", value)
+                self.settings.mdx.is_mdx_c_seg_def = False
+                self.settings.mdx.segment_size = value
         elif value != DEF_OPT:
-            self.settings.set("mdx_segment_size", value)
+            self.settings.mdx.segment_size = value
 
     def _on_segment_changed(self, *_args):
         if self._loading:
@@ -152,7 +153,7 @@ class MDXView(MethodView):
             return
         value = get_scale_row_value(self.overlap_row)
         if value is not None:
-            self.settings.set(self._overlap_key(), value)
+            set_flat(self.settings, self._overlap_key(), value)
             self._touch_settings()
 
     def _apply_mdx_c_segment_default_mark(self) -> None:
@@ -171,16 +172,16 @@ class MDXView(MethodView):
             if self._segment_is_mdx_c:
                 reconfigure_discrete_scale(self.segment_row, _MDX_C_SEGMENT_VALUES)
                 self._apply_mdx_c_segment_default_mark()
-                if self.settings.get("is_mdx_c_seg_def"):
+                if self.settings.mdx.is_mdx_c_seg_def:
                     set_scale_row_value(self.segment_row, DEF_OPT)
                 else:
-                    stored = str(self.settings.get("mdx_segment_size", DEFAULT_DATA["mdx_segment_size"]))
+                    stored = str(self.settings.mdx.segment_size)
                     if not set_scale_row_value(self.segment_row, stored):
                         set_scale_row_value(self.segment_row, str(DEFAULT_DATA["mdx_segment_size"]))
             else:
                 reconfigure_numeric_scale(self.segment_row, 32, 4000, step=32, digits=0)
                 set_scale_default_mark(self.segment_row, DEFAULT_DATA["mdx_segment_size"])
-                stored = self.settings.get("mdx_segment_size", DEFAULT_DATA["mdx_segment_size"])
+                stored = self.settings.mdx.segment_size
                 if not set_scale_row_value(self.segment_row, stored):
                     set_scale_row_value(self.segment_row, DEFAULT_DATA["mdx_segment_size"])
         finally:
@@ -188,7 +189,7 @@ class MDXView(MethodView):
 
     def _refresh_overlap(self):
         """Reconfigure the overlap slider for the current model type."""
-        stored = self.settings.get(self._overlap_key())
+        stored = get_flat(self.settings, self._overlap_key())
         was_loading = self._loading
         self._loading = True
         try:
@@ -234,9 +235,9 @@ class MDXView(MethodView):
         # primary stem name in ``mdx_stems``, not ``All Stems`` (that value is
         # only meaningful for 3+ stem MDX23C models).
         if 0 < len(stems) < 3:
-            self.settings.set("mdx_stems", stems[0])
-        elif len(stems) >= 3 and self.settings.get("mdx_stems") not in (*stems, ALL_STEMS):
-            self.settings.set("mdx_stems", ALL_STEMS)
+            self.settings.mdx.stems = stems[0]
+        elif len(stems) >= 3 and self.settings.mdx.stems not in (*stems, ALL_STEMS):
+            self.settings.mdx.stems = ALL_STEMS
         apply_karaoke_quick_export_default(
             self.settings,
             model,
@@ -249,7 +250,10 @@ class MDXView(MethodView):
         self._refresh_segment()
         overlap_value = get_scale_row_value(self.overlap_row)
         if overlap_value is not None:
-            set_scale_row_value(self.overlap_row, str(self.settings.get(self._overlap_key(), overlap_value)))
+            set_scale_row_value(
+                self.overlap_row,
+                str(get_flat(self.settings, self._overlap_key(), overlap_value)),
+            )
 
     def save_options(self):
         super().save_options()
@@ -258,7 +262,7 @@ class MDXView(MethodView):
         self._persist_segment_value(get_scale_row_value(self.segment_row))
         overlap_value = get_scale_row_value(self.overlap_row)
         if overlap_value is not None:
-            self.settings.set(self._overlap_key(), overlap_value)
+            set_flat(self.settings, self._overlap_key(), overlap_value)
 
     def build_advanced(self, group):
         self.add_advanced_scale("mdx_batch_size", "Batch size", values=BATCH_SIZE, hint=BATCH_SIZE_HELP)

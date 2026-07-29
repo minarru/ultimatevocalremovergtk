@@ -12,6 +12,7 @@ from bundled.constants import (
     VOCAL_STEM,
     VR_ARCH_TYPE,
 )
+from core.settings import SettingsModel
 from core.run_estimate import (
     ProgressEtaTracker,
     RunCostTier,
@@ -35,12 +36,12 @@ from ui.widgets.stem_only import (
 )
 
 
-class _Settings(dict):
-    def get(self, key, default=None):
-        return super().get(key, default)
+class _Settings(SettingsModel):
+    def __getitem__(self, key):
+        return self.get(key)
 
-    def set(self, key, value):
-        self[key] = value
+    def __setitem__(self, key, value):
+        self.set(key, value)
 
 
 class TierClassificationTests(unittest.TestCase):
@@ -219,6 +220,7 @@ class OutputCountExtraTests(unittest.TestCase):
             {
                 "ensemble_main_stem": FOUR_STEM_ENSEMBLE,
                 "selected_models": ["a", "b"],
+                "is_save_all_outputs_ensemble": False,
                 "is_gpu_conversion": True,
                 "model_sample_mode": False,
                 "model_sample_mode_duration": 30,

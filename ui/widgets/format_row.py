@@ -28,6 +28,7 @@ from bundled.constants import (
 
 from ui.help_text import FLAC_BIT_DEPTH_HINT, OUTPUT_FORMAT_HINT, WAV_TYPE_HINT
 
+from ..settings_bind import get_flat, set_flat
 from .rows import set_row_icon
 
 #: Minimum width for the quality dropdown so it doesn't resize when the model
@@ -157,22 +158,22 @@ class OutputFormatRow(Adw.ActionRow):
         self._settings = settings
         self._syncing = True
         try:
-            self.set_save_format(settings.get("save_format", WAV))
+            self.set_save_format(settings.process.save_format or WAV)
             self._reload_quality(settings)
         finally:
             self._syncing = False
 
     def persist_to_settings(self, settings) -> None:
         """Write the format and *only its own* quality key back to ``settings``."""
-        settings.set("save_format", self.save_format)
-        settings.set(self.quality_key, self.quality_value)
+        settings.process.save_format = self.save_format
+        set_flat(settings, self.quality_key, self.quality_value)
 
     # -- Internals --------------------------------------------------------------
 
     def _reload_quality(self, settings) -> None:
         spec = quality_spec(self.save_format)
         self._quality_drop.set_model(Gtk.StringList.new(list(spec.values)))
-        self._select_quality_value(settings.get(spec.setting_key, spec.default), spec)
+        self._select_quality_value(get_flat(settings, spec.setting_key, spec.default), spec)
         self._apply_quality_labels(self.save_format)
 
     def _select_quality_value(self, value, spec: QualitySpec) -> None:
@@ -183,7 +184,7 @@ class OutputFormatRow(Adw.ActionRow):
         """The value saved for ``spec``'s key, or its default with no settings yet."""
         if self._settings is None:
             return spec.default
-        return self._settings.get(spec.setting_key, spec.default)
+        return get_flat(self._settings, spec.setting_key, spec.default)
 
     def _apply_quality_labels(self, save_format: str) -> None:
         spec = quality_spec(save_format)

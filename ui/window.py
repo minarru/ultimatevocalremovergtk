@@ -187,10 +187,10 @@ class MainWindow(Adw.ApplicationWindow):
         # stays under the 880sp breakpoint so it never fights the wide/narrow
         # column flip.
         self.set_size_request(640, 560)
-        width = int(self.settings.get("window_width", 1040) or 1040)
-        height = int(self.settings.get("window_height", 720) or 720)
+        width = int(self.settings.ui.window_width or 1040)
+        height = int(self.settings.ui.window_height or 720)
         self.set_default_size(width, height)
-        if bool(self.settings.get("window_maximized")):
+        if self.settings.ui.window_maximized:
             self.maximize()
 
         self._views = [view_cls(self.context, self._on_settings_changed) for view_cls in METHOD_VIEWS]
@@ -564,8 +564,8 @@ class MainWindow(Adw.ApplicationWindow):
         self.input_row = InputFilesRow(
             self._on_inputs_changed,
             on_toast=self.toast,
-            accept_any_getter=lambda: bool(self.settings.get("is_accept_any_input")),
-            initial_folder_getter=lambda: (self.settings.get("input_paths") or [None])[0],
+            accept_any_getter=lambda: bool(self.settings.process.accept_any_input),
+            initial_folder_getter=lambda: (self.settings.process.input_paths or [None])[0],
         )
         self.output_row = OutputFolderRow(self._on_output_changed, on_toast=self.toast)
         group.add(self.input_row)
@@ -618,7 +618,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.autocast_row.connect("notify::active", self._on_autocast_changed)
         group.add(self.autocast_row)
 
-        duration = self.settings.get("model_sample_mode_duration", 30)
+        duration = self.settings.process.sample_mode_duration
         self.sample_row = make_switch_row(
             SAMPLE_MODE_TITLE,
             sample_mode_subtitle(duration),
@@ -679,24 +679,26 @@ class MainWindow(Adw.ApplicationWindow):
         for view in self._views:
             view.load()
 
-        raw_inputs = self.settings.get("input_paths") or []
+        raw_inputs = self.settings.process.input_paths or []
         cleaned_inputs, input_result = sanitize_input_paths(raw_inputs)
         if cleaned_inputs != raw_inputs:
-            self.settings.set("input_paths", cleaned_inputs)
+            self.settings.process.input_paths = cleaned_inputs
         self.input_row.set_paths(cleaned_inputs, notify=False)
         self._maybe_notify_stale_inputs(input_result)
-        export_path = self.settings.get("export_path") or ""
+        export_path = self.settings.process.export_path or ""
         self.output_row.set_path(export_path, notify=False)
         self._maybe_notify_stale_export_path()
         self.format_row.apply_from_settings(self.settings)
         self.vocal_split_row.apply_from_settings(self.settings)
-        self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
-        self.autocast_row.set_active(bool(self.settings.get("is_autocast")))
+        self.gpu_row.set_active(bool(self.settings.process.use_gpu))
+        self.autocast_row.set_active(bool(self.settings.process.autocast))
         self._sync_gpu_dependent_rows()
-        apply_sample_mode_label(self.sample_row, self.settings.get("model_sample_mode_duration", 30))
-        self.sample_row.set_active(bool(self.settings.get("model_sample_mode")))
+        apply_sample_mode_label(
+            self.sample_row, self.settings.process.sample_mode_duration
+        )
+        self.sample_row.set_active(bool(self.settings.process.sample_mode))
 
-        method = self.settings.get("chosen_process_method") or MDX_ARCH_TYPE
+        method = self.settings.process.method or MDX_ARCH_TYPE
         method = _METHOD_SETTING_ALIASES.get(method, method)
         view = self._views_by_method.get(method) or self._views_by_method.get(MDX_ARCH_TYPE) or self._views[0]
         self._syncing_method_combo = True
@@ -760,7 +762,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._sync_gpu_dependent_rows()
 
     def _activate_separation(self) -> None:
-        self.settings.set("chosen_process_method", self._active_view().method_key)
+        self.settings.process.method = self._active_view().method_key
         self._sync_shared_from_settings()
         if self._current_view is not None:
             self._populate_columns()
@@ -781,7 +783,7 @@ class MainWindow(Adw.ApplicationWindow):
         if target is None:
             return
         if name != "ensemble":
-            self.settings.set("chosen_process_method", self._active_view().method_key)
+            self.settings.process.method = self._active_view().method_key
         self._run_target = target
         self._sync_narrow_window_title(name)
         self._sync_model_options_action(name)
@@ -850,24 +852,24 @@ class MainWindow(Adw.ApplicationWindow):
         if view is None:
             return
         self._show_method(view)
-        self.settings.set("chosen_process_method", view.method_key)
+        self.settings.process.method = view.method_key
         self._refresh_start_readiness()
 
     def _on_inputs_changed(self) -> None:
         paths = list(self.input_row.paths)
-        self.settings.set("input_paths", paths)
+        self.settings.process.input_paths = paths
         self.context.prune_unreadable_input_paths(paths)
         self._refresh_start_readiness()
 
     def _on_external_inputs_changed(self, paths) -> None:
         paths = list(paths)
         self.input_row.set_paths(paths, notify=False)
-        self.settings.set("input_paths", paths)
+        self.settings.process.input_paths = paths
         self.context.prune_unreadable_input_paths(paths)
         self._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
-        self.settings.set("export_path", self.output_row.path)
+        self.settings.process.export_path = self.output_row.path
         self._refresh_start_readiness()
 
     def _on_format_changed(self, *_args) -> None:
@@ -877,15 +879,15 @@ class MainWindow(Adw.ApplicationWindow):
         self.vocal_split_row.persist_to_settings(self.settings)
 
     def _on_gpu_changed(self, *_args) -> None:
-        self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
+        self.settings.process.use_gpu = self.gpu_row.get_active()
         self._sync_gpu_dependent_rows()
         self._refresh_active_stem_metadata()
 
     def _on_autocast_changed(self, *_args) -> None:
-        self.settings.set("is_autocast", self.autocast_row.get_active())
+        self.settings.process.autocast = self.autocast_row.get_active()
 
     def _on_sample_changed(self, *_args) -> None:
-        self.settings.set("model_sample_mode", self.sample_row.get_active())
+        self.settings.process.sample_mode = self.sample_row.get_active()
         self._refresh_active_stem_metadata()
 
     def _refresh_active_stem_metadata(self) -> None:
@@ -913,15 +915,15 @@ class MainWindow(Adw.ApplicationWindow):
         if not self.is_maximized():
             width, height = self.get_default_size()
             if width > 0 and height > 0:
-                self.settings.set("window_width", width)
-                self.settings.set("window_height", height)
-        self.settings.set("window_maximized", self.is_maximized())
+                self.settings.ui.window_width = width
+                self.settings.ui.window_height = height
+        self.settings.ui.window_maximized = self.is_maximized()
 
     def _flush_settings(self) -> None:
         active = self._active_view()
         for view in self._views:
             view.save(include_stem_only=(view is active))
-        self.settings.set("chosen_process_method", self._active_view().method_key)
+        self.settings.process.method = self._active_view().method_key
         # The widgets below live on the Separation page only; they are kept in
         # sync with ``settings`` while Separation is visible (see
         # ``_activate_separation`` / ``_sync_shared_from_settings``), but go
@@ -932,13 +934,13 @@ class MainWindow(Adw.ApplicationWindow):
         # other tab's own widgets just wrote, so only do it when Separation is
         # actually the visible tab.
         if self.content_stack.get_visible_child_name() == "separation":
-            self.settings.set("input_paths", list(self.input_row.paths))
-            self.settings.set("export_path", self.output_row.path)
+            self.settings.process.input_paths = list(self.input_row.paths)
+            self.settings.process.export_path = self.output_row.path
             self.format_row.persist_to_settings(self.settings)
             self.vocal_split_row.persist_to_settings(self.settings)
-            self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
-            self.settings.set("is_autocast", self.autocast_row.get_active())
-            self.settings.set("model_sample_mode", self.sample_row.get_active())
+            self.settings.process.use_gpu = self.gpu_row.get_active()
+            self.settings.process.autocast = self.autocast_row.get_active()
+            self.settings.process.sample_mode = self.sample_row.get_active()
 
     # -- Run control ------------------------------------------------------------
 
@@ -1147,7 +1149,7 @@ class MainWindow(Adw.ApplicationWindow):
             return
 
         selected_models = (
-            self.settings.get("selected_models") or []
+            self.settings.ensemble.selected_models or []
             if context == OPEN_CONTEXT_ENSEMBLE
             else []
         )

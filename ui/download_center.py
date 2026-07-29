@@ -112,7 +112,7 @@ class DownloadCenterWindow:
         self._purpose = PURPOSE_ALL
         self._sort_mode = SORT_NAME
 
-        saved_code = self.settings.get("user_code", "")
+        saved_code = self.settings.process.user_code
         if saved_code:
             self.manager.validate_vip_code(saved_code)
 
@@ -490,7 +490,7 @@ class DownloadCenterWindow:
 
     def _refresh_worker(self) -> None:
         is_online = self.manager.refresh()
-        if is_online and self.settings.get("is_auto_update_model_params", True):
+        if is_online and self.settings.process.auto_update_model_params:
             self.manager.update_model_settings(self.context.repo)
         available = self.manager.available_downloads() if is_online else {}
         idle_on_main(self._refresh_done, is_online, available)
