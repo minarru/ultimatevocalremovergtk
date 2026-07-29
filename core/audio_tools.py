@@ -13,7 +13,7 @@ Every heavy dependency (``librosa`` / ``soundfile`` / ``scipy`` via
 ``pydub`` for non-WAV export, ``kthread``) is imported lazily inside the worker
 so this module - and any view that imports it - stays importable on a bare
 Python (no torch / ML stack) install. Options are read from a
-:class:`~core.settings.SettingsModel` using the exact ``DEFAULT_DATA`` keys.
+:class:`~core.settings.Settings` through its flat compatibility accessors.
 """
 
 import os
@@ -43,7 +43,7 @@ from .export_naming import sanitize_filename_component
 from .job_runner import JobCallbacks
 from .run_control import ProcessStopped, check_stopped, pausable_callback
 from .inference_cleanup import release_inference_memory as _release_inference_resources
-from .settings import SettingsModel
+from .settings import Settings
 
 #: Tools that operate on a flat list of single input files.
 SINGLE_INPUT_TOOLS = (MANUAL_ENSEMBLE, TIME_STRETCH, CHANGE_PITCH, APOLLO_RESTORE)
@@ -54,12 +54,12 @@ DUAL_INPUT_TOOLS = (ALIGN_INPUTS, MATCH_INPUTS)
 class AudioTools:
     """Per-run configuration + tool implementations (port of ``UVR.AudioTools``).
 
-    Reads every option from the shared :class:`SettingsModel` (instead of Tk
+    Reads every option from the shared :class:`Settings` (instead of Tk
     variables) and exposes the same tool methods that ``process_tool_start``
     dispatches to.
     """
 
-    def __init__(self, settings: SettingsModel):
+    def __init__(self, settings: Settings):
         self.settings = settings
         time_stamp = round(time.time())
         self.main_export_path = Path(settings.get("export_path") or "")
@@ -293,7 +293,7 @@ class AudioToolRunner:
     callbacks so they execute on the main loop.
     """
 
-    def __init__(self, settings: SettingsModel):
+    def __init__(self, settings: Settings):
         self.settings = settings
         self._thread = None
         self._is_stopped = False

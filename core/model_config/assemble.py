@@ -15,28 +15,22 @@ from bundled.constants import (
 
 if TYPE_CHECKING:
     from ..model_data import ModelRepository
-    from ..settings import SettingsModel
+    from ..settings import Settings
     from . import ModelConfig
 
 
 def assemble_model(
-    settings: "SettingsModel",
+    settings: "Settings",
     repo: "ModelRepository",
     model: Optional[str] = None,
     arch_type: str = ENSEMBLE_MODE,
 ) -> List["ModelConfig"]:
-    """Build the model configurations for one separation run.
+    """Build the model configurations for one separation run."""
+    from .config import ModelConfig
 
-    The model class is resolved through :mod:`core.model_data` at call time so
-    legacy callers that patch ``core.model_data.ModelData`` keep working during
-    the compatibility window.
-    """
-    from .. import model_data as compatibility
-
-    model_type = compatibility.ModelData
     if arch_type == ENSEMBLE_MODE:
         selected = settings.get("selected_models") or []
-        models = [model_type(settings, repo, name) for name in selected]
+        models = [ModelConfig(settings, repo, name) for name in selected]
         valid = [item for item in models if item.model_status]
         skipped = len(models) - len(valid)
         if skipped:
@@ -58,11 +52,11 @@ def assemble_model(
     if not model:
         raise ValueError(f"assemble_model requires a model name for {arch_type}")
     if arch_type == ENSEMBLE_CHECK:
-        return [model_type(settings, repo, model)]
+        return [ModelConfig(settings, repo, model)]
     if arch_type in (VR_ARCH_TYPE, VR_ARCH_PM):
-        return [model_type(settings, repo, model, VR_ARCH_TYPE)]
+        return [ModelConfig(settings, repo, model, VR_ARCH_TYPE)]
     if arch_type == MDX_ARCH_TYPE:
-        return [model_type(settings, repo, model, MDX_ARCH_TYPE)]
+        return [ModelConfig(settings, repo, model, MDX_ARCH_TYPE)]
     if arch_type == DEMUCS_ARCH_TYPE:
-        return [model_type(settings, repo, model, DEMUCS_ARCH_TYPE)]
+        return [ModelConfig(settings, repo, model, DEMUCS_ARCH_TYPE)]
     raise NotImplementedError(f"assemble_model: arch_type '{arch_type}' is not supported")

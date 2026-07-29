@@ -9,7 +9,7 @@ from core.audio_io import (
     resolve_wav_type_set,
     save_format,
 )
-from core.settings import SettingsModel
+from core.settings import Settings
 
 
 class FlacExportParametersTests(unittest.TestCase):
@@ -56,15 +56,15 @@ class SaveFormatFlacTests(unittest.TestCase):
 
 class ResolveWavTypeSetTests(unittest.TestCase):
     def test_pcm_16_passthrough(self):
-        settings = SettingsModel({"wav_type_set": "PCM_16", "save_format": WAV})
+        settings = Settings.from_flat({"wav_type_set": "PCM_16", "save_format": WAV})
         self.assertEqual(resolve_wav_type_set(settings), "PCM_16")
 
     def test_64_bit_float_non_wav(self):
-        settings = SettingsModel({"wav_type_set": "64-bit Float", "save_format": "FLAC"})
+        settings = Settings.from_flat({"wav_type_set": "64-bit Float", "save_format": "FLAC"})
         self.assertEqual(resolve_wav_type_set(settings), "FLOAT")
 
     def test_64_bit_float_wav(self):
-        settings = SettingsModel({"wav_type_set": "64-bit Float", "save_format": WAV})
+        settings = Settings.from_flat({"wav_type_set": "64-bit Float", "save_format": WAV})
         self.assertEqual(resolve_wav_type_set(settings), "DOUBLE")
 
 

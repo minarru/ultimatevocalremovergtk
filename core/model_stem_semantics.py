@@ -394,7 +394,7 @@ def export_intent_from_fields(
 
 
 def export_intent_from_model(model) -> str:
-    """Infer export intent from a resolved :class:`ModelData` instance."""
+    """Infer export intent from a resolved :class:`ModelConfig` instance."""
     if model is None:
         return INTENT_UNKNOWN
     model_data = getattr(model, "model_data", None)

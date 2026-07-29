@@ -9,12 +9,12 @@ Two flows from ``UVR.py`` are reproduced here, both writing to the *same*
   :attr:`core.ModelRepository.on_unrecognized_model`. It prompts for the
   architecture-specific parameters (VR: stem / param file / 5.1 channels;
   MDX-Net: stem / dim_f / dim_t / n_fft / compensate; MDX-C: config yaml),
-  persists them, and returns the dict ``ModelData`` expects.
+  persists them, and returns the dict ``ModelConfig`` expects.
 * **Change model defaults** - :func:`show_change_defaults_dialog` lets the user
   pick a known model and edit or delete its stored parameters.
 
 The parameter dialog is synchronous (it returns the chosen parameters to the
-``ModelData`` constructor). It uses :class:`Adw.Dialog` with a nested
+``ModelConfig`` constructor). It uses :class:`Adw.Dialog` with a nested
 :class:`GLib.MainLoop`; when the request originates on the separation worker
 thread it is marshalled onto the GTK main loop and the worker blocks until the
 user responds.
@@ -52,7 +52,8 @@ from bundled.constants import (
 
 from core import paths
 from core.mdx_c_registry import infer_mdx_c_architecture
-from core.model_data import ModelData, load_mdx_c_config
+from core.model_config import ModelConfig
+from core.model_data import load_mdx_c_config
 from core.model_display import display_name_for_model
 from ..hints import set_tooltip
 from ..spacing import inset_md
@@ -529,7 +530,13 @@ def show_change_defaults_dialog(context, parent):
         tag = get_combo_value(model_row)
         if not tag or tag == NO_MODEL:
             return None
-        return ModelData(settings, repo, tag, is_dry_check=True, is_get_hash_dir_only=is_get_hash_dir_only)
+        return ModelConfig(
+            settings,
+            repo,
+            tag,
+            is_dry_check=True,
+            is_get_hash_dir_only=is_get_hash_dir_only,
+        )
 
     def on_change(_button):
         model_data = selected_model_data()

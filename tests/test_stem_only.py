@@ -10,7 +10,7 @@ from bundled.constants import (
     SECONDARY_STEM,
     VOCAL_STEM,
 )
-from core.settings import SettingsModel
+from core.settings import Settings
 from ui.widgets.stem_only import (
     SaveStemsSection,
     _QUICK_ALL,
@@ -25,7 +25,11 @@ from ui.widgets.stem_only import (
 )
 
 
-class _Settings(SettingsModel):
+class _Settings(Settings):
+    def __init__(self, data=None):
+        super().__init__()
+        self.update(data or {})
+
     def __getitem__(self, key):
         return self.get(key)
 

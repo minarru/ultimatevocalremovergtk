@@ -2,6 +2,14 @@
 
 Design note for the typed settings / `ModelConfig` rewrite (`rewrite/typed-settings-model`).
 
+## Cutover status
+
+The typed API cutover landed in Phase 6. New code imports `Settings`,
+`ModelConfig`, `assemble_model`, and `ProcessData`; the legacy public
+`SettingsModel`, `ModelData`, and `assemble_model_data` names were removed.
+`data.pkl` remains read-only migration input, while all settings writes use
+`settings.json`.
+
 ## Module layout
 
 | Path | Role |

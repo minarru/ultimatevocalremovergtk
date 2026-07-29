@@ -1,7 +1,7 @@
-"""Tk-free port of ``UVR.py``'s ``ModelData`` / ``assemble_model_data``.
+"""Model repository and implementation for typed model configuration.
 
 This rebuilds the per-run model configuration that the ``separate.py`` engines
-consume, but reads every value from a :class:`~core.settings.SettingsModel`
+consume, but reads every value from a :class:`~core.settings.Settings`
 instead of Tkinter variables and the root window. The MD5 model-discovery logic
 is preserved verbatim.
 
@@ -36,7 +36,7 @@ from .model_display import (
     resolve_vr_model_basename,
 )
 from .audio_io import resolve_wav_type_set
-from .settings import SettingsModel
+from .settings import Settings
 
 _MDX_C_YAML_LOADER = None
 
@@ -89,7 +89,7 @@ class ModelRepository:
 
     Mirrors the ``vr_hash_MAPPER`` / ``mdx_hash_MAPPER`` / ``*_name_select_MAPPER``
     attributes and the ``model_hash_table`` that live on ``MainWindow``. Created
-    once and shared by every :class:`ModelData` built for a run.
+    once and shared by every :class:`ModelConfig` built for a run.
     """
 
     def __init__(self):
@@ -101,7 +101,7 @@ class ModelRepository:
         # Phase 3 hook: later phases set this to a callable that prompts the user
         # for parameters of an unrecognized model. Returning ``None`` (the
         # default) simply marks such models as unavailable.
-        self.on_unrecognized_model: Optional[Callable[["ModelData"], Any]] = None
+        self.on_unrecognized_model: Optional[Callable[["ModelConfig"], Any]] = None
         self._stem_check_cache = None
         self.reload_mappers()
 
@@ -186,10 +186,10 @@ class ModelRepository:
         """VR + MDX model tags - the pool UVR exposes in change-model-defaults."""
         return self.list_vr_model_tags() + self.list_mdx_model_tags()
 
-    def stem_check(self, settings: "SettingsModel") -> List["ModelData"]:
-        """Build a (cached) dry-check ``ModelData`` for every discovered model.
+    def stem_check(self, settings: Settings) -> List["ModelConfig"]:
+        """Build a cached dry-check ``ModelConfig`` for every discovered model.
 
-        Equivalent to ``assemble_model_data(arch_type=ENSEMBLE_STEM_CHECK)``;
+        Equivalent to ``assemble_model(arch_type=ENSEMBLE_STEM_CHECK)``;
         each model's hash/params are resolved so callers can filter by stem. The
         result is cached against the current model set so the (file-hashing) work
         only happens once per change.
@@ -197,8 +197,8 @@ class ModelRepository:
         tags = tuple(self.all_model_tags())
         if self._stem_check_cache is not None and self._stem_check_cache[0] == tags:
             return self._stem_check_cache[1]
-        model_data: List[ModelData] = [
-            ModelData(settings, self, tag, is_dry_check=True) for tag in tags
+        model_data: List[ModelConfig] = [
+            ModelConfig(settings, self, tag, is_dry_check=True) for tag in tags
         ]
         self._stem_check_cache = (tags, model_data)
         return model_data
@@ -211,7 +211,7 @@ class ModelRepository:
 
     def model_list(
         self,
-        settings: "SettingsModel",
+        settings: Settings,
         primary_stem: str,
         secondary_stem: str,
         is_4_stem_check: bool = False,
@@ -220,7 +220,7 @@ class ModelRepository:
         """Tk-free port of ``MainWindow.model_list`` (secondary-model filtering)."""
         stem_check = self.stem_check(settings)
 
-        def matches_stem(model: "ModelData") -> bool:
+        def matches_stem(model: "ModelConfig") -> bool:
             primary_match = model.primary_stem in {primary_stem, secondary_stem}
             mdx_stem_match = primary_stem in model.mdx_model_stems and model.mdx_stem_count <= 2
             return (primary_match or mdx_stem_match) if is_no_demucs else (primary_match or primary_stem in model.mdx_model_stems)
@@ -233,16 +233,16 @@ class ModelRepository:
                 result.append(model.model_and_process_tag)
         return result
 
-    def karaoke_model_list(self, settings: "SettingsModel") -> List[str]:
-        """Port of ``assemble_model_data(arch_type=KARAOKEE_CHECK)`` - vocal-split pool."""
+    def karaoke_model_list(self, settings: Settings) -> List[str]:
+        """Build the dry-check vocal-split model pool."""
         model_list: List[str] = []
         for tag in self.default_change_model_tags():
-            model = ModelData(settings, self, tag, is_dry_check=True)
+            model = ModelConfig(settings, self, tag, is_dry_check=True)
             if model.model_status and (model.is_karaoke or model.is_bv_model):
                 model_list.append(model.model_and_process_tag)
         return model_list
 
-    def ensemble_model_list(self, settings: "SettingsModel", ensemble_main_stem: str) -> List[str]:
+    def ensemble_model_list(self, settings: Settings, ensemble_main_stem: str) -> List[str]:
         """Models compatible with the chosen ensemble main-stem pair.
 
         Port of ``selection_action_ensemble_stems``'s call to ``model_list``:
@@ -259,23 +259,23 @@ class ModelRepository:
         stems = ensemble_main_stem.partition("/")
         return self.model_list(settings, stems[0], stems[2])
 
-    def resolve_model_dry(self, settings: "SettingsModel", process_method: str, model_name: str):
-        """Resolve ``model_name`` to a dry-check :class:`ModelData` (or ``None``).
+    def resolve_model_dry(self, settings: Settings, process_method: str, model_name: str):
+        """Resolve ``model_name`` to a dry-check :class:`ModelConfig` (or ``None``).
 
         Lets the UI inspect a selected model (its stems, MDX-C type, ...) without
         committing to a run. Returns ``None`` when the model can't be resolved
         without prompting. Callers reuse the single returned object instead of
-        rebuilding ``ModelData`` (which hashes the model file) more than once.
+        rebuilding ``ModelConfig`` (which hashes the model file) more than once.
         """
         try:
-            return ModelData(settings, self, model_name, process_method, is_dry_check=True)
+            return ModelConfig(settings, self, model_name, process_method, is_dry_check=True)
         except (FileNotFoundError, ValueError, KeyError, OSError, json.JSONDecodeError) as exc:
             from .debug_log import debug
 
             debug("model", f"resolve_model_dry failed model={model_name!r} error={type(exc).__name__}: {exc}")
             return None
 
-    def stem_labels_for_model(self, settings: "SettingsModel", process_method: str, model_name: str):
+    def stem_labels_for_model(self, settings: Settings, process_method: str, model_name: str):
         """Return ``(primary_stem, secondary_stem)`` for the selected model.
 
         Used to label the per-model stem-only toggles; returns ``(None, None)``
@@ -308,7 +308,7 @@ class _ModelConfigImplementation:
 
     def __init__(
         self,
-        settings: SettingsModel,
+        settings: Settings,
         repo: ModelRepository,
         model_name: str,
         selected_process_method: str = ENSEMBLE_MODE,
@@ -653,7 +653,7 @@ class _ModelConfigImplementation:
     # -- Secondary / vocal-split / pre-process resolution -----------------------
     # Faithful Tk-free ports of ``MainWindow.process_determine_*`` /
     # ``vocal_splitter_model_data`` / ``secondary_model_data`` reading the same
-    # ``DEFAULT_DATA`` settings keys instead of Tk variables.
+        # flat settings keys instead of Tk variables.
 
     def vocal_splitter_model_data(self):
         self.vocal_split_model = None
@@ -870,7 +870,7 @@ class _ModelConfigImplementation:
         return self.get_model_data_from_popup()
 
     def change_model_data(self):
-        """Port of ``ModelData.change_model_data`` (change-model-defaults flow)."""
+        """Port of the legacy change-model-defaults flow."""
         if self.is_get_hash_dir_only:
             return None
         return self.get_model_data_from_popup()
@@ -878,8 +878,8 @@ class _ModelConfigImplementation:
     def get_model_data_from_popup(self):
         """Resolve unknown model parameters via the front-end hook.
 
-        Mirrors ``ModelData.get_model_data_from_popup``: dry checks never prompt,
-        and the GTK layer installs :attr:`ModelRepository.on_unrecognized_model`
+        Dry checks never prompt, and the GTK layer installs
+        :attr:`ModelRepository.on_unrecognized_model`
         to present the parameter dialog and persist the result.
         """
         if self.is_dry_check:
@@ -1058,7 +1058,7 @@ def _secondary_keys_for_stem(prefix: str, main_model_primary_stem: str):
 
 
 def process_determine_secondary_model(
-    settings: SettingsModel,
+    settings: Settings,
     repo: ModelRepository,
     process_method: str,
     main_model_primary_stem: str,
@@ -1078,7 +1078,7 @@ def process_determine_secondary_model(
 
     secondary_model = None
     if secondary_model_name and secondary_model_name != NO_MODEL:
-        secondary_model = ModelData(
+        secondary_model = ModelConfig(
             settings,
             repo,
             secondary_model_name,
@@ -1093,11 +1093,11 @@ def process_determine_secondary_model(
     return secondary_model, secondary_model_scale
 
 
-def process_determine_demucs_pre_proc_model(settings: SettingsModel, repo: ModelRepository, primary_stem=None):
+def process_determine_demucs_pre_proc_model(settings: Settings, repo: ModelRepository, primary_stem=None):
     """Tk-free port of ``MainWindow.process_determine_demucs_pre_proc_model``."""
     pre_proc_name = settings.get("demucs_pre_proc_model", NO_MODEL)
     if pre_proc_name != NO_MODEL and settings.get("is_demucs_pre_proc_model_activate"):
-        pre_proc_model = ModelData(
+        pre_proc_model = ModelConfig(
             settings,
             repo,
             pre_proc_name,
@@ -1109,22 +1109,17 @@ def process_determine_demucs_pre_proc_model(settings: SettingsModel, repo: Model
     return None
 
 
-def process_determine_vocal_split_model(settings: SettingsModel, repo: ModelRepository):
+def process_determine_vocal_split_model(settings: Settings, repo: ModelRepository):
     """Tk-free port of ``MainWindow.process_determine_vocal_split_model``."""
     split_name = settings.get("set_vocal_splitter", NO_MODEL)
     if split_name != NO_MODEL and settings.get("is_set_vocal_splitter"):
-        vocal_splitter_model = ModelData(settings, repo, split_name, is_vocal_split_model=True)
+        vocal_splitter_model = ModelConfig(settings, repo, split_name, is_vocal_split_model=True)
         if vocal_splitter_model.model_status:
             return vocal_splitter_model
     return None
 
 
 from .model_config.config import ModelConfig
-from .model_config.assemble import assemble_model
-
-# Compatibility aliases retained for callers and tests during the cutover.
-ModelData = ModelConfig
-assemble_model_data = assemble_model
 
 
 # -- Saved ensembles (UVR persists these as JSON in ``ensembles/``) -----------

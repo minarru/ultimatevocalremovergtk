@@ -100,7 +100,7 @@ class ApolloModelData:
         self.is_model_status = bool(self.extracted_params)
 
     def get_model_hash(self):
-        """MD5 of the checkpoint (cached). Mirrors ``ModelData.get_model_hash``."""
+        """MD5 of the checkpoint (cached). Mirrors model-config hash lookup."""
         model_hash = None
         model_status = True
 

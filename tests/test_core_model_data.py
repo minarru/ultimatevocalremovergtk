@@ -2,13 +2,13 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from bundled.constants import DEFAULT, ENSEMBLE_MODE, MDX_ARCH_TYPE, VR_ARCH_TYPE
-from core.model_data import ModelData, assemble_model_data
-from core.settings import SettingsModel
+from core.model_config import ModelConfig, assemble_model
+from core.settings import Settings
 
 
 class OverlapMdxDefaultTests(unittest.TestCase):
     def test_default_overlap_mdx_is_float(self):
-        settings = SettingsModel({"overlap_mdx": DEFAULT})
+        settings = Settings.from_flat({"overlap_mdx": DEFAULT})
         repo = MagicMock()
         repo.vr_hash_MAPPER = {}
         repo.model_hash_table = {}
@@ -18,15 +18,15 @@ class OverlapMdxDefaultTests(unittest.TestCase):
             self.model_hash = None
             self.model_status = False
 
-        with patch.object(ModelData, "get_model_hash", fake_get_model_hash):
-            model = ModelData(settings, repo, "missing.pth", VR_ARCH_TYPE, is_dry_check=True)
+        with patch.object(ModelConfig, "get_model_hash", fake_get_model_hash):
+            model = ModelConfig(settings, repo, "missing.pth", VR_ARCH_TYPE, is_dry_check=True)
         self.assertEqual(model.overlap_mdx, 0.25)
         self.assertIsInstance(model.overlap_mdx, float)
 
 
 class AssembleEnsembleTests(unittest.TestCase):
     def test_filters_invalid_members(self):
-        settings = SettingsModel(
+        settings = Settings.from_flat(
             {
                 "selected_models": [
                     f"{VR_ARCH_TYPE}: good",
@@ -42,12 +42,12 @@ class AssembleEnsembleTests(unittest.TestCase):
         bad = MagicMock()
         bad.model_status = False
 
-        with patch("core.model_data.ModelData", side_effect=[good, bad]):
+        with patch("core.model_config.config.ModelConfig", side_effect=[good, bad]):
             with self.assertRaises(ValueError):
-                assemble_model_data(settings, repo, arch_type=ENSEMBLE_MODE)
+                assemble_model(settings, repo, arch_type=ENSEMBLE_MODE)
 
     def test_returns_valid_members(self):
-        settings = SettingsModel(
+        settings = Settings.from_flat(
             {
                 "selected_models": [
                     f"{VR_ARCH_TYPE}: a",
@@ -63,8 +63,8 @@ class AssembleEnsembleTests(unittest.TestCase):
         second = MagicMock()
         second.model_status = True
 
-        with patch("core.model_data.ModelData", side_effect=[first, second]):
-            models = assemble_model_data(settings, repo, arch_type=ENSEMBLE_MODE)
+        with patch("core.model_config.config.ModelConfig", side_effect=[first, second]):
+            models = assemble_model(settings, repo, arch_type=ENSEMBLE_MODE)
         self.assertEqual(models, [first, second])
 
 

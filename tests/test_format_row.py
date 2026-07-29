@@ -57,9 +57,9 @@ class OutputFormatRowTests(unittest.TestCase):
         cls._app.register()
 
     def _settings(self, **overrides):
-        from core.settings import SettingsModel
+        from core.settings import Settings
 
-        settings = SettingsModel()
+        settings = Settings.defaults()
         for key, value in overrides.items():
             settings.set(key, value)
         return settings

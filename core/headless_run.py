@@ -49,7 +49,7 @@ _MODEL_SECTION_BY_METHOD = {
     DEMUCS_ARCH_TYPE: "demucs",
 }
 
-# Settings method → architecture key used by model_display / ModelData.
+# Settings method → architecture key used by model display / ModelConfig.
 _ARCH_FOR_METHOD = {
     VR_ARCH_PM: VR_ARCH_TYPE,
     MDX_ARCH_TYPE: MDX_ARCH_TYPE,
@@ -180,7 +180,7 @@ def _resolve_among_installed(
 
 
 def resolve_cli_model_arg(method: str, model_arg: str, repo: Optional[Any] = None) -> str:
-    """Normalize a CLI ``--model`` to the label :class:`ModelData` expects.
+    """Normalize a CLI ``--model`` to the label :class:`ModelConfig` expects.
 
     Accepts:
     - GUI display names (unchanged when already known)

@@ -3,7 +3,7 @@
 The Tk UI binds dozens of option menus and checkbuttons directly to
 ``tk.StringVar`` / ``tk.BooleanVar``. These helpers provide the equivalent for
 libadwaita rows: build a combo backed by a ``Gtk.StringList`` and read/write the
-selected value as the plain string the :class:`~core.settings.SettingsModel`
+selected value as the plain string the :class:`~core.settings.Settings`
 expects (mirroring how Tk stores every option as a string).
 """
 

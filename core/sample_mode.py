@@ -8,7 +8,7 @@ from typing import Callable, List, Optional, Sequence
 
 from . import paths
 from .debug_log import debug
-from .settings import SettingsModel
+from .settings import Settings
 
 FallbackCallback = Callable[[str, Exception], None]
 
@@ -21,7 +21,7 @@ def _clip_cache_path(source: str, duration: int) -> str:
 
 
 def prepare_input_paths(
-    settings: SettingsModel,
+    settings: Settings,
     input_paths: Sequence[str],
     *,
     on_fallback: Optional[FallbackCallback] = None,

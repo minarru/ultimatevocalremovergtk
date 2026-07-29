@@ -230,10 +230,10 @@ def count_inference_passes(
     """Return expected inference passes for the current method settings."""
     if method_key == ENSEMBLE_MODE:
         if repo is not None:
-            from .model_data import assemble_model_data
+            from .model_config import assemble_model
 
             try:
-                models = assemble_model_data(settings, repo, arch_type=ENSEMBLE_MODE)
+                models = assemble_model(settings, repo, arch_type=ENSEMBLE_MODE)
                 if models:
                     return count_inference_passes_from_models(models)
             except (ValueError, NotImplementedError):
@@ -242,10 +242,10 @@ def count_inference_passes(
         return max(1, len(selected))
 
     if repo is not None and model_name and model_name not in (None, NO_MODEL, ""):
-        from .model_data import assemble_model_data
+        from .model_config import assemble_model
 
         try:
-            models = assemble_model_data(settings, repo, model_name, method_key)
+            models = assemble_model(settings, repo, model_name, method_key)
             valid = [m for m in models if getattr(m, "model_status", False)]
             if valid:
                 return count_inference_passes_from_models(valid)
@@ -272,10 +272,10 @@ def _multi_stem_base_outputs(settings, repo=None) -> int:
     """Stem file count for Multi-stem Ensemble (at least 4)."""
     if repo is None:
         return 4
-    from .model_data import assemble_model_data
+    from .model_config import assemble_model
 
     try:
-        models = assemble_model_data(settings, repo, arch_type=ENSEMBLE_MODE)
+        models = assemble_model(settings, repo, arch_type=ENSEMBLE_MODE)
     except (ValueError, NotImplementedError):
         return 4
     for model in models:

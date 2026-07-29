@@ -53,7 +53,7 @@ _SECONDARY_PAIRS: Tuple[Tuple[str, str], ...] = (
 def _model_label(tag) -> str:
     """Strip the ``"<arch>: "`` prefix from a stored model tag.
 
-    Stored values come from ``ModelData.model_and_process_tag`` (e.g.
+    Stored values come from ``ModelConfig.model_and_process_tag`` (e.g.
     ``"MDX-Net: UVR-MDX-NET Inst HQ 3"``). Subtitles are tight on space and the
     architecture is already implied by the tab, so only the model name is kept.
     Returns ``""`` for an unset model, which callers treat as "not configured".

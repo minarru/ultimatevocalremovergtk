@@ -18,7 +18,7 @@ For GLib debug logging details and component names, see also `core/debug_log.py`
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `UVR_DATA_DIR` | Writable checkout root, else OS user data dir | Models, settings (`data.pkl`), profiles, ensembles, sample/ensemble temps |
+| `UVR_DATA_DIR` | Writable checkout root, else OS user data dir | Models, settings (`settings.json`), profiles, ensembles, sample/ensemble temps |
 | `UVR_CACHE_DIR` | OS cache dir (`~/.cache/uvr` on Linux) | Download size cache and Politrees catalogue JSON |
 
 On first use, legacy copies of `download_size_cache.json` / `politrees_model_links.json` in the checkout root or `UVR_DATA_DIR` are moved into `UVR_CACHE_DIR`.
@@ -105,7 +105,7 @@ Drive the same `JobRunner` path as the GUI without GTK:
 Notes:
 
 - Ensemble mode is rejected in v1 (`--method mdx|demucs|vr`).
-- CLI overrides are **not** written back to `data.pkl`.
+- CLI overrides are **not** written back to `settings.json`.
 - Autocast: unset `UVR_AUTOCAST` uses the persisted `is_autocast` setting; `--env UVR_AUTOCAST=…` overrides for A/B benches.
 - `--model` accepts GUI display names, on-disk basenames/filenames, or a
   **unique** substring of those (`karaoke_frazer` → Frazer Roformer when only

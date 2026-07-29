@@ -34,7 +34,7 @@ from core.headless_run import (
     resolve_method,
     settings_summary,
 )
-from core.settings import SettingsModel
+from core.settings import Settings
 
 
 class ResolveCliModelArgTests(unittest.TestCase):
@@ -122,7 +122,7 @@ class ResolveCliModelArgTests(unittest.TestCase):
         repo.list_vr_models.return_value = ["5_HP-Karaoke-UVR"]
         with tempfile.TemporaryDirectory() as tmp:
             settings_path = os.path.join(tmp, "settings.json")
-            SettingsModel(path=settings_path).save()
+            Settings.defaults().save(settings_path)
             with mock.patch(
                 "core.model_display.map_basenames_to_display",
                 return_value=["v5: 5_HP-Karaoke-UVR"],
@@ -148,7 +148,7 @@ class ApplyStemsOverrideTests(unittest.TestCase):
         self.assertEqual(parse_cli_stems("inst"), {"instrumental"})
 
     def test_both_clears_exclusive_flags(self) -> None:
-        settings = SettingsModel()
+        settings = Settings.defaults()
         settings.set("is_primary_stem_only", True)
         settings.set("is_secondary_stem_only", True)
         settings.set("mdx_stems_selected", [VOCAL_STEM])
@@ -163,7 +163,7 @@ class ApplyStemsOverrideTests(unittest.TestCase):
         self.assertEqual(settings.get("mdx_stems_selected"), [])
 
     def test_instrumental_matches_gui_quick_mode(self) -> None:
-        settings = SettingsModel()
+        settings = Settings.defaults()
         apply_stems_override(settings, "instrumental")
         self.assertFalse(settings.get("is_primary_stem_only"))
         self.assertTrue(settings.get("is_secondary_stem_only"))
@@ -172,7 +172,7 @@ class ApplyStemsOverrideTests(unittest.TestCase):
     def test_build_settings_stems(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings_path = os.path.join(tmp, "settings.json")
-            SettingsModel(path=settings_path).save()
+            Settings.defaults().save(settings_path)
             settings = build_settings(
                 settings_path=settings_path,
                 export_path="/tmp/out",
@@ -203,7 +203,8 @@ class BuildSettingsTests(unittest.TestCase):
     def test_overrides_and_stable_names(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings_path = os.path.join(tmp, "settings.json")
-            base = SettingsModel(path=settings_path)
+            base = Settings.defaults()
+            base.path = settings_path
             base.set("chosen_process_method", MDX_ARCH_TYPE)
             base.set("mdx_net_model", "Old Model")
             base.set("is_create_model_folder", True)
@@ -236,13 +237,14 @@ class BuildSettingsTests(unittest.TestCase):
             self.assertFalse(settings.get("is_testing_audio"))
             self.assertFalse(settings.get("is_add_model_name"))
             # Must not persist overrides.
-            reloaded = SettingsModel.load(settings_path)
+            reloaded = Settings.load(settings_path)
             self.assertEqual(reloaded.get("mdx_net_model"), "Old Model")
 
     def test_rejects_ensemble(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             settings_path = os.path.join(tmp, "settings.json")
-            base = SettingsModel(path=settings_path)
+            base = Settings.defaults()
+            base.path = settings_path
             base.set("chosen_process_method", ENSEMBLE_MODE)
             base.save()
             with self.assertRaises(ValueError):
@@ -316,7 +318,7 @@ class CliArgparseTests(unittest.TestCase):
     @mock.patch("core.cli.run_separation_sync")
     @mock.patch("core.cli.build_settings")
     def test_separate_main_success(self, mock_build, mock_run) -> None:
-        mock_build.return_value = SettingsModel()
+        mock_build.return_value = Settings.defaults()
         mock_run.return_value = HeadlessResult(
             ok=True, elapsed_s=1.25, export_path="/tmp/out"
         )
@@ -364,7 +366,7 @@ class CliArgparseTests(unittest.TestCase):
 
 class SettingsSummaryTests(unittest.TestCase):
     def test_summary_keys(self) -> None:
-        settings = SettingsModel()
+        settings = Settings.defaults()
         settings.set("chosen_process_method", MDX_ARCH_TYPE)
         settings.set("mdx_net_model", "Model X")
         summary = settings_summary(settings)

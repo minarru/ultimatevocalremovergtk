@@ -40,6 +40,7 @@ from bundled.constants import (
     VOCAL_STEM,
     VR_ARCH_TYPE,
 )
+from core.settings import Settings
 
 from ..hints import HelpHintManager
 from ..widgets.rows import (
@@ -70,6 +71,8 @@ from ..option_summaries import (
     secondary_models_summary,
 )
 from ..settings_bind import get_flat, set_flat
+
+_DEFAULT_SETTINGS = Settings.defaults()
 
 # Per-stem secondary-model slots: (settings-key slot, display pair, primary stem,
 # secondary stem) used to build the four secondary-model selectors UVR exposes.
@@ -348,13 +351,13 @@ class MethodView:
     def _on_model_resolved(self, model) -> None:
         """Hook called after the selected model is dry-resolved (on change/load).
 
-        ``model`` is a dry-check :class:`~core.ModelData` or ``None`` when no
+        ``model`` is a dry-check :class:`~core.ModelConfig` or ``None`` when no
         model is selected / it couldn't be resolved. Subclasses override to react
         to model-specific attributes (e.g. MDX-C vs classic MDX). Default no-op.
         """
 
-    #: Arch type used to build ``ModelData`` (VR's panel key differs from its
-    #: ``ModelData`` process method); defaults to :attr:`method_key`.
+    #: Arch type used to build ``ModelConfig`` (VR's panel key differs from its
+    #: process method); defaults to :attr:`method_key`.
     resolution_method_key: str = ""
 
     @property
@@ -431,8 +434,6 @@ class MethodView:
         store_float=False,
     ):
         """Add a constrained slider row bound to settings ``key``."""
-        from bundled.constants import DEFAULT_DATA
-
         from ..widgets.rows import (
             make_discrete_scale_row,
             make_numeric_scale_row,
@@ -446,8 +447,9 @@ class MethodView:
                 raise ValueError("lower and upper are required when values is None")
             row = make_numeric_scale_row(title, lower, upper, step=step, digits=digits, subtitle=subtitle)
         row._uvr_store_float = store_float
-        if key in DEFAULT_DATA:
-            set_scale_default_mark(row, DEFAULT_DATA[key])
+        default_value = _DEFAULT_SETTINGS.get(key)
+        if default_value is not None:
+            set_scale_default_mark(row, default_value)
         row._uvr_scale.connect(
             "value-changed",
             lambda *_a, k=key, r=row: self._on_option_scale(k, r),

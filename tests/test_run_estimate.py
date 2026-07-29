@@ -12,7 +12,7 @@ from bundled.constants import (
     VOCAL_STEM,
     VR_ARCH_TYPE,
 )
-from core.settings import SettingsModel
+from core.settings import Settings
 from core.run_estimate import (
     ProgressEtaTracker,
     RunCostTier,
@@ -36,7 +36,11 @@ from ui.widgets.stem_only import (
 )
 
 
-class _Settings(SettingsModel):
+class _Settings(Settings):
+    def __init__(self, data=None):
+        super().__init__()
+        self.update(data or {})
+
     def __getitem__(self, key):
         return self.get(key)
 
@@ -153,17 +157,17 @@ class InferencePassTests(unittest.TestCase):
                 model_status=True,
             ),
         ]
-        import core.model_data as model_data
+        import core.model_config as model_config
 
-        original = model_data.assemble_model_data
-        model_data.assemble_model_data = lambda *a, **k: assembled
+        original = model_config.assemble_model
+        model_config.assemble_model = lambda *a, **k: assembled
         try:
             self.assertEqual(
                 count_inference_passes(settings, method_key=ENSEMBLE_MODE, repo=_Repo()),
                 3,
             )
         finally:
-            model_data.assemble_model_data = original
+            model_config.assemble_model = original
 
 
 class OutputCountExtraTests(unittest.TestCase):

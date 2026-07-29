@@ -58,7 +58,7 @@ class FlushSettingsTabGuardTests(unittest.TestCase):
 
     def _window(self, *, visible_tab: str):
         """A bare MainWindow with only the widgets ``_flush_settings`` touches."""
-        from core.settings import SettingsModel
+        from core.settings import Settings
         from ui.widgets.file_chooser import InputFilesRow, OutputFolderRow
         from ui.widgets.format_row import OutputFormatRow
         from ui.widgets.rows import make_switch_row
@@ -66,7 +66,7 @@ class FlushSettingsTabGuardTests(unittest.TestCase):
         from ui.window import MainWindow
 
         window = MainWindow.__new__(MainWindow)
-        window.settings = SettingsModel()
+        window.settings = Settings.defaults()
         window.content_stack = _StubContentStack(visible_tab)
 
         stub_view = _StubView()

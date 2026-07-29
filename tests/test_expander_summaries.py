@@ -186,7 +186,7 @@ class ExpanderSummaryTests(unittest.TestCase):
         view = window._views_by_stack["demucs"]
         # No Demucs *main* model selected: a dry-check resolution of a real
         # >=3-stem model with the pre-process option active recurses inside
-        # ``core.model_data.ModelData`` (a separate, pre-existing issue) --
+        # ``core.model_config.ModelConfig`` (a separate, pre-existing issue) --
         # irrelevant to this subtitle-wiring test, so keep it out of the way.
         window.settings.set("demucs_model", CHOOSE_MODEL)
         window.settings.set("is_demucs_pre_proc_model_activate", True)

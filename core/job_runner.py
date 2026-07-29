@@ -55,7 +55,7 @@ from .model_config import ModelConfig, assemble_model
 from .model_data import ModelRepository
 from .process_data import ProcessData
 from .sample_mode import prepare_input_paths
-from .settings import SettingsModel
+from .settings import Settings
 from .run_control import ProcessStopped, check_stopped, pausable_callback
 from .run_estimate import combine_progress_local_step, count_inference_passes_from_models
 from .debug_log import debug, debug_elapsed, next_seq, preview_text, set_correlation_seq, verbose
@@ -138,7 +138,7 @@ def _progress_detail(
     return " · ".join(parts) if parts else None
 
 
-def _long_file_chunk_settings(settings: SettingsModel) -> tuple:
+def _long_file_chunk_settings(settings: Settings) -> tuple:
     """Return ``(chunk_seconds, overlap_seconds)``; chunk ``<= 0`` means off."""
     try:
         chunk_seconds = float(settings.get("long_file_chunk_seconds") or 0.0)
@@ -260,7 +260,7 @@ class JobCallbacks:
 class JobRunner:
     """Runs separation on a ``KThread`` worker and reports through callbacks."""
 
-    def __init__(self, settings: SettingsModel, repo: Optional[ModelRepository] = None):
+    def __init__(self, settings: Settings, repo: Optional[ModelRepository] = None):
         self.settings = settings
         self.repo = repo or ModelRepository()
         self._thread = None
@@ -1138,12 +1138,12 @@ def _extract_stems(audio_file_base: str, export_path: str) -> List[str]:
 class Ensembler:
     """Tk-free port of ``UVR.py``'s ``Ensembler`` (output combination only).
 
-    Reads its configuration from the :class:`SettingsModel` rather than the Tk
+    Reads its configuration from :class:`~core.settings.Settings` rather than Tk
     root window, and lazily imports the heavy ``spec_utils`` / ``separate``
     helpers only when actually combining audio, keeping construction torch-free.
     """
 
-    def __init__(self, settings: SettingsModel, is_manual_ensemble: bool = False):
+    def __init__(self, settings: Settings, is_manual_ensemble: bool = False):
         self.settings = settings
         self.is_save_all_outputs_ensemble = settings.get("is_save_all_outputs_ensemble")
 

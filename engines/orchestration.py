@@ -11,7 +11,7 @@ from ml import spec_utils
 from .mix import gather_sources
 
 if TYPE_CHECKING:
-    from core.model_data import ModelData
+    from core.model_config import ModelConfig
 
 
 def _engine_classes():
@@ -23,7 +23,7 @@ def _engine_classes():
 
 
 def _build_seperator(
-    model: ModelData,
+    model: ModelConfig,
     process_data,
     *,
     main_model_primary_stem_4_stem=None,
@@ -113,7 +113,7 @@ def _run_seperator(seperator) -> object:
 
 
 def process_secondary_model(
-    secondary_model: ModelData,
+    secondary_model: ModelConfig,
     process_data,
     main_model_primary_stem_4_stem=None,
     is_source_load=False,
@@ -148,7 +148,7 @@ def process_secondary_model(
 
 
 def process_chain_model(
-    secondary_model: ModelData,
+    secondary_model: ModelConfig,
     process_data,
     vocal_stem_path,
     master_vocal_source,

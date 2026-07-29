@@ -6,7 +6,7 @@ import unittest
 from unittest import mock
 
 from bundled.constants import DEFAULT_DATA
-from core.settings import Settings, SettingsModel
+from core.settings import Settings
 
 
 class SettingsJsonTests(unittest.TestCase):
@@ -97,12 +97,6 @@ class SettingsJsonTests(unittest.TestCase):
                 loaded = Settings.load(path)
             recommend.assert_not_called()
             self.assertFalse(loaded.get("is_autocast"))
-
-    def test_settings_model_is_settings_subclass(self):
-        self.assertTrue(issubclass(SettingsModel, Settings))
-        model = SettingsModel({"export_path": "/compat"})
-        self.assertEqual(model.get("export_path"), "/compat")
-
 
 class TrySaveSettingsTests(unittest.TestCase):
     def test_returns_message_instead_of_raising(self):

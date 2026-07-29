@@ -22,12 +22,12 @@ from .vr_utils import vr_denoiser
 from .orchestration import process_chain_model
 
 if TYPE_CHECKING:
-    from core.model_data import ModelData
+    from core.model_config import ModelConfig
     from core.process_data import ProcessData
 
 cpu = torch.device('cpu')
 class SeperateAttributes:
-    def __init__(self, model_data: ModelData, 
+    def __init__(self, model_data: ModelConfig,
                  process_data: ProcessData, 
                  main_model_primary_stem_4_stem=None, 
                  main_process_method=None, 

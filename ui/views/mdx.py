@@ -2,7 +2,7 @@
 
 Covers both classic MDX-Net (``.onnx`` / ``.ckpt``) and MDX23C / MDX-C
 (``config_yaml``) models: the latter live in the same model directory and are
-auto-detected by :class:`core.ModelData` (``is_mdx_c``), so the
+auto-detected by :class:`core.ModelConfig` (``is_mdx_c``), so the
 :class:`core.JobRunner` selects ``SeperateMDXC`` vs ``SeperateMDX`` at run
 time. There is therefore one MDX model dropdown here, exactly as in the Tk app.
 """
@@ -13,7 +13,6 @@ from bundled.constants import (
     BATCH_SIZE,
     BATCH_SIZE_HELP,
     COMPENSATE_HELP,
-    DEFAULT_DATA,
     DEF_OPT,
     DRUM_STEM,
     INST_STEM,
@@ -30,6 +29,7 @@ from bundled.constants import (
     VOCAL_STEM,
     VOL_COMPENSATION,
 )
+from core.settings import Settings
 
 from core.model_stem_semantics import (
     apply_karaoke_quick_export_default,
@@ -67,6 +67,7 @@ _MDX_STEM_OPTIONS = (
 )
 
 _MDX_C_SEGMENT_VALUES = (DEF_OPT, *[str(v) for v in MDX_SEGMENTS])
+_MDX_DEFAULTS = Settings.defaults().mdx
 
 
 def mdx_c_default_segment_size(model) -> int | None:
@@ -177,13 +178,13 @@ class MDXView(MethodView):
                 else:
                     stored = str(self.settings.mdx.segment_size)
                     if not set_scale_row_value(self.segment_row, stored):
-                        set_scale_row_value(self.segment_row, str(DEFAULT_DATA["mdx_segment_size"]))
+                        set_scale_row_value(self.segment_row, str(_MDX_DEFAULTS.segment_size))
             else:
                 reconfigure_numeric_scale(self.segment_row, 32, 4000, step=32, digits=0)
-                set_scale_default_mark(self.segment_row, DEFAULT_DATA["mdx_segment_size"])
+                set_scale_default_mark(self.segment_row, _MDX_DEFAULTS.segment_size)
                 stored = self.settings.mdx.segment_size
                 if not set_scale_row_value(self.segment_row, stored):
-                    set_scale_row_value(self.segment_row, DEFAULT_DATA["mdx_segment_size"])
+                    set_scale_row_value(self.segment_row, _MDX_DEFAULTS.segment_size)
         finally:
             self._loading = was_loading
 
@@ -195,13 +196,13 @@ class MDXView(MethodView):
         try:
             if self._overlap_is_mdx_c:
                 reconfigure_numeric_scale(self.overlap_row, 2, max(MDX23_OVERLAP), step=1, digits=0)
-                set_scale_default_mark(self.overlap_row, DEFAULT_DATA["overlap_mdx23"])
+                set_scale_default_mark(self.overlap_row, _MDX_DEFAULTS.overlap_mdx23)
             else:
                 reconfigure_discrete_scale(self.overlap_row, [str(v) for v in MDX_OVERLAP])
-                set_scale_default_mark(self.overlap_row, DEFAULT_DATA["overlap_mdx"])
+                set_scale_default_mark(self.overlap_row, _MDX_DEFAULTS.overlap_mdx)
             if stored is None or not set_scale_row_value(self.overlap_row, str(stored)):
                 if self._overlap_is_mdx_c:
-                    set_scale_row_value(self.overlap_row, str(DEFAULT_DATA["overlap_mdx23"]))
+                    set_scale_row_value(self.overlap_row, str(_MDX_DEFAULTS.overlap_mdx23))
                 else:
                     set_scale_row_value(self.overlap_row, str(MDX_OVERLAP[0]))
         finally:

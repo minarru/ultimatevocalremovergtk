@@ -2,19 +2,19 @@ import unittest
 from unittest.mock import MagicMock
 
 from bundled.constants import CHOOSE_MODEL, VR_ARCH_TYPE
-from core import ModelConfig, ModelData, assemble_model, assemble_model_data
+from core import ModelConfig, ProcessData, Settings, assemble_model
 from core.model_config import DeviceOptions
-from core.settings import SettingsModel
 
 
-class ModelConfigCompatibilityTests(unittest.TestCase):
-    def test_legacy_names_are_identity_aliases(self):
-        self.assertIs(ModelData, ModelConfig)
-        self.assertIs(assemble_model_data, assemble_model)
+class ModelConfigPublicApiTests(unittest.TestCase):
+    def test_typed_names_are_public(self):
         self.assertEqual(ModelConfig.__module__, "core.model_config.config")
+        self.assertEqual(ProcessData.__module__, "core.process_data")
+        self.assertEqual(Settings.__module__, "core.settings.model")
+        self.assertEqual(assemble_model.__module__, "core.model_config.assemble")
 
     def test_device_options_expose_boolean_gpu_state(self):
-        settings = SettingsModel(
+        settings = Settings.from_flat(
             {
                 "is_gpu_conversion": 1,
                 "device_set": "CUDA: 2",

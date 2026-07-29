@@ -32,7 +32,7 @@ from .export import save_format
 from .vr_utils import vr_denoiser, loading_mix
 
 if TYPE_CHECKING:
-    from core.model_data import ModelData
+    from core.model_config import ModelConfig
 
 cpu = torch.device('cpu')
 warnings.filterwarnings("ignore")

@@ -34,9 +34,9 @@ class VocalSplitRowTests(unittest.TestCase):
         cls._politrees_patcher.stop()
 
     def _settings(self, **overrides):
-        from core.settings import SettingsModel
+        from core.settings import Settings
 
-        settings = SettingsModel()
+        settings = Settings.defaults()
         for key, value in overrides.items():
             settings.set(key, value)
         return settings

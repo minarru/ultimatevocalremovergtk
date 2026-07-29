@@ -15,7 +15,7 @@ separation surface. It provides:
   callbacks land on the GTK main loop.
 
 Settings are persisted through the shared :class:`ui.context.AppContext`
-using the exact ``DEFAULT_DATA`` keys, so the Phase 2 settings window and the
+using the flat compatibility keys, so the settings window and the
 Phase 3 advanced panels read and write the same model.
 
 Settings, Ensemble, Audio Tools, the Download Center, About, Updates, the

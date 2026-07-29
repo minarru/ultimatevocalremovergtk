@@ -39,7 +39,7 @@ from .mdx_classic_batch import (
 from .vr_utils import vr_denoiser, loading_mix
 
 if TYPE_CHECKING:
-    from core.model_data import ModelData
+    from core.model_config import ModelConfig
 
 # onnxruntime reports CUDA OOM through its own exception types rather than
 # torch.cuda.OutOfMemoryError, so the ORT-backed classic MDX path (the

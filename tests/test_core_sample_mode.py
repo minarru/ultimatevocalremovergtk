@@ -7,12 +7,12 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from core.sample_mode import prepare_input_paths
-from core.settings import SettingsModel
+from core.settings import Settings
 
 
 class SampleModeTests(unittest.TestCase):
     def test_disabled_returns_original_paths(self):
-        settings = SettingsModel({"model_sample_mode": False})
+        settings = Settings.from_flat({"model_sample_mode": False})
         paths = ["/tmp/song.wav"]
         self.assertEqual(prepare_input_paths(settings, paths), paths)
 
@@ -22,7 +22,7 @@ class SampleModeTests(unittest.TestCase):
             with open(source, "wb") as handle:
                 handle.write(b"wav")
 
-            settings = SettingsModel(
+            settings = Settings.from_flat(
                 {
                     "model_sample_mode": True,
                     "model_sample_mode_duration": 5,
@@ -46,7 +46,7 @@ class SampleModeTests(unittest.TestCase):
             with open(source, "wb") as handle:
                 handle.write(b"wav")
 
-            settings = SettingsModel(
+            settings = Settings.from_flat(
                 {
                     "model_sample_mode": True,
                     "model_sample_mode_duration": 5,
