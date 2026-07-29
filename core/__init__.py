@@ -3,7 +3,8 @@
 ``core`` decouples UVR's audio backend from Tkinter so it can be driven by the
 GTK4/libadwaita UI (``ui``) or any other front end. It exposes:
 
-* :class:`SettingsModel` - the flat ``DEFAULT_DATA`` schema with pickle persistence.
+* :class:`SettingsModel` / :class:`~core.settings.Settings` - typed settings
+  persisted as ``settings.json`` (legacy ``data.pkl`` is imported once).
 * :class:`ModelData` / :func:`assemble_model_data` - Tk-free per-run config assembly.
 * :class:`ModelRepository` - model discovery and MD5 hash/model-data resolution.
 * :class:`JobRunner` / :class:`JobCallbacks` - the ``KThread`` separation worker.
@@ -26,9 +27,10 @@ from .model_data import (
     load_ensemble,
     save_ensemble,
 )
-from .settings import SettingsModel
+from .settings import Settings, SettingsModel
 
 __all__ = [
+    "Settings",
     "SettingsModel",
     "ModelData",
     "ModelRepository",

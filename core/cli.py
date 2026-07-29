@@ -91,7 +91,7 @@ def _add_common_separate_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--settings",
         default=None,
-        help="Path to data.pkl (default: UVR data dir settings file)",
+        help="Path to settings.json (default: UVR data dir settings file)",
     )
     parser.add_argument(
         "--cpu",

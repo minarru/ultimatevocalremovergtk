@@ -121,7 +121,7 @@ class ResolveCliModelArgTests(unittest.TestCase):
         repo = mock.MagicMock()
         repo.list_vr_models.return_value = ["5_HP-Karaoke-UVR"]
         with tempfile.TemporaryDirectory() as tmp:
-            settings_path = os.path.join(tmp, "data.pkl")
+            settings_path = os.path.join(tmp, "settings.json")
             SettingsModel(path=settings_path).save()
             with mock.patch(
                 "core.model_display.map_basenames_to_display",
@@ -171,7 +171,7 @@ class ApplyStemsOverrideTests(unittest.TestCase):
 
     def test_build_settings_stems(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            settings_path = os.path.join(tmp, "data.pkl")
+            settings_path = os.path.join(tmp, "settings.json")
             SettingsModel(path=settings_path).save()
             settings = build_settings(
                 settings_path=settings_path,
@@ -202,7 +202,7 @@ class ResolveMethodTests(unittest.TestCase):
 class BuildSettingsTests(unittest.TestCase):
     def test_overrides_and_stable_names(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            settings_path = os.path.join(tmp, "data.pkl")
+            settings_path = os.path.join(tmp, "settings.json")
             base = SettingsModel(path=settings_path)
             base.set("chosen_process_method", MDX_ARCH_TYPE)
             base.set("mdx_net_model", "Old Model")
@@ -241,7 +241,7 @@ class BuildSettingsTests(unittest.TestCase):
 
     def test_rejects_ensemble(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            settings_path = os.path.join(tmp, "data.pkl")
+            settings_path = os.path.join(tmp, "settings.json")
             base = SettingsModel(path=settings_path)
             base.set("chosen_process_method", ENSEMBLE_MODE)
             base.save()

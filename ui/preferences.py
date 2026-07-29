@@ -39,7 +39,6 @@ from gi.repository import Adw, GLib, Gtk
 
 from bundled.constants import (
     DEFAULT,
-    DEFAULT_DATA,
     GPU_DEVICE_NUM_OPTS,
     IS_CUDA_SELECT_HELP,
     REG_SAVE_INPUT,
@@ -684,8 +683,16 @@ class PreferencesDialog(Adw.PreferencesDialog):
         if data is None:
             self.add_toast(Adw.Toast.new(f'Could not load profile "{name}"'))
             return
-        # Only adopt keys the settings schema knows about.
-        self.settings.update({k: v for k, v in data.items() if k in DEFAULT_DATA})
+        # Adopt flat keys the typed schema knows about (includes ensemble keys
+        # that were never in DEFAULT_DATA). Nested profile JSON is accepted too.
+        from core.settings.flat_map import FLAT_TO_PATH
+        from core.settings.model import Settings as TypedSettings
+
+        if "schema_version" in data or "process" in data:
+            loaded = TypedSettings.from_json_dict(data)
+            self.settings.update(loaded.to_dict())
+        else:
+            self.settings.update({k: v for k, v in data.items() if k in FLAT_TO_PATH})
         error = self.context.try_save_settings(trigger="profile-load")
         if error:
             self.add_toast(Adw.Toast.new(error))

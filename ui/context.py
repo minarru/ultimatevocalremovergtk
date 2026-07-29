@@ -1,7 +1,7 @@
 """Shared application context for the GTK front end.
 
-Holds the single :class:`~core.SettingsModel` (loaded from ``data.pkl``) plus
-lazily-created :class:`~core.ModelRepository` and :class:`~core.JobRunner`
+Holds the single :class:`~core.settings.Settings` (loaded from ``settings.json``)
+plus lazily-created :class:`~core.ModelRepository` and :class:`~core.JobRunner`
 instances. The repository and runner are created on first use so the window can
 be constructed without importing the heavy ML stack (``torch`` / ``separate.py``
 are only pulled in once a separation actually starts).
@@ -16,15 +16,16 @@ shares the same :attr:`~core.ModelRepository.on_unrecognized_model` handler.
 
 from typing import Callable, Optional, Sequence
 
-from core import ModelRepository, SettingsModel
+from core import ModelRepository
 from core.debug_log import debug
+from core.settings import Settings
 
 from .shared_settings import prune_unreadable_paths
 
 
 class AppContext:
     def __init__(self):
-        self.settings = SettingsModel.load()
+        self.settings = Settings.load()
         self._repo = None
         self._runner = None
         self._get_dialog_parent: Optional[Callable[[], object]] = None
