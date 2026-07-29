@@ -38,6 +38,12 @@ from bundled.constants import (
 
 from . import paths
 from .audio_io import resolve_wav_type_set
+from .model_stem_semantics import canonical_ensemble_stem_tag
+
+
+def _ensemble_stem_bucket(stem_tag: str) -> str:
+    """Canonical key for multi-stem ensemble combine buckets."""
+    return canonical_ensemble_stem_tag(stem_tag)
 from .export_naming import (
     format_stem_basename,
     format_track_base,
@@ -975,15 +981,21 @@ class JobRunner:
                         member_stems = self._run_seperator(seperator) or {}
                         if chunked:
                             for stem_tag, arr in member_stems.items():
-                                member_stem_parts.setdefault(stem_tag, []).append(arr)
+                                member_stem_parts.setdefault(
+                                    _ensemble_stem_bucket(stem_tag), []
+                                ).append(arr)
                         else:
                             for stem_tag, arr in member_stems.items():
-                                ensemble_stem_arrays.setdefault(stem_tag, []).append(arr)
+                                ensemble_stem_arrays.setdefault(
+                                    _ensemble_stem_bucket(stem_tag), []
+                                ).append(arr)
                         debug("worker", f"ensemble separate done engine={engine}")
 
                     if chunked:
                         for stem_tag, parts in member_stem_parts.items():
-                            ensemble_stem_arrays.setdefault(stem_tag, []).append(
+                            ensemble_stem_arrays.setdefault(
+                                _ensemble_stem_bucket(stem_tag), []
+                            ).append(
                                 concat_stems(parts, overlap_samples=ov_samples)
                             )
                     callbacks.console("\n")
@@ -1072,19 +1084,38 @@ class JobRunner:
 
 
 def _capture_separator_stem_arrays(seperator) -> dict:
-    """Copy stem waveforms buffered by an ensemble member before release."""
+    """Copy stem waveforms buffered by an ensemble member before release.
+
+    Stem tags are passed through :func:`canonical_ensemble_stem_tag` so yaml
+    lowercase labels and Demucs Title Case share one combine bucket.
+    """
+    from core.model_stem_semantics import canonical_ensemble_stem_tag
+
     buffers = getattr(seperator, "_ensemble_stem_buffers", None) or {}
     if not buffers:
         return {}
     import numpy as np
 
-    return {name: np.array(arr, copy=True) for name, arr in buffers.items()}
+    captured: dict = {}
+    for name, arr in buffers.items():
+        key = canonical_ensemble_stem_tag(name)
+        if key in captured and key != name:
+            debug(
+                "worker",
+                f"ensemble stem tag collision merging {name!r} into {key!r}",
+            )
+        captured[key] = np.array(arr, copy=True)
+    return captured
 
 
 def _capture_separator_stem_paths(seperator) -> dict:
     """Copy deferred stem export paths buffered alongside stem arrays."""
+    from core.model_stem_semantics import canonical_ensemble_stem_tag
+
     paths = getattr(seperator, "_ensemble_stem_paths", None) or {}
-    return dict(paths)
+    return {
+        canonical_ensemble_stem_tag(name): path for name, path in paths.items()
+    }
 
 
 def _extract_stems(audio_file_base: str, export_path: str) -> List[str]:
@@ -1092,8 +1123,11 @@ def _extract_stems(audio_file_base: str, export_path: str) -> List[str]:
 
     Finds the stem tags (the ``(...)`` suffix) shared by more than one of the
     per-member output files, i.e. the stems that actually have something to
-    ensemble for a 4-/multi-stem run.
+    ensemble for a 4-/multi-stem run. Tags are canonicalized so ``vocals`` and
+    ``Vocals`` count toward the same stem.
     """
+    from core.model_stem_semantics import canonical_ensemble_stem_tag
+
     if not os.path.isdir(export_path):
         return []
     filenames = [name for name in os.listdir(export_path) if name.startswith(audio_file_base)]
@@ -1102,7 +1136,7 @@ def _extract_stems(audio_file_base: str, export_path: str) -> List[str]:
     for filename in filenames:
         match = re.search(pattern, filename)
         if match:
-            stem_list.append(match.group(1))
+            stem_list.append(canonical_ensemble_stem_tag(match.group(1)))
     counter = Counter(stem_list)
     return list({item for item in stem_list if counter[item] > 1})
 
@@ -1178,15 +1212,24 @@ class Ensembler:
             # Single-token algorithm (no slash); never use an empty secondary partition.
             raw_type = self.settings.get("ensemble_type", MAX_MIN)
             algorithm = raw_type.partition("/")[0].strip() or MAX_SPEC
-            stem_tag = stem
+            stem_tag = canonical_ensemble_stem_tag(stem)
         elif is_inst_mix:
             algorithm = self.secondary_algorithm
             stem_tag = f"{self.ensemble_secondary_stem} {INST_STEM}"
         else:
             algorithm = self.primary_algorithm if stem == PRIMARY_STEM else self.secondary_algorithm
-            stem_tag = self.ensemble_primary_stem if stem == PRIMARY_STEM else self.ensemble_secondary_stem
+            stem_tag = (
+                canonical_ensemble_stem_tag(self.ensemble_primary_stem)
+                if stem == PRIMARY_STEM
+                else canonical_ensemble_stem_tag(self.ensemble_secondary_stem)
+            )
 
         array_inputs = list((stem_arrays or {}).get(stem_tag, []))
+        if not array_inputs and stem_arrays:
+            # Belt-and-suspenders for mixed casing left in older in-memory maps.
+            for key, values in stem_arrays.items():
+                if canonical_ensemble_stem_tag(key) == stem_tag:
+                    array_inputs.extend(values)
         stem_suffix = f" ({sanitize_filename_component(stem_tag)}).wav"
         # Member files are ``{final_base} {model} ({stem}).wav``; match by track prefix.
         match_prefix = audio_file_base
@@ -1195,6 +1238,11 @@ class Ensembler:
         stem_outputs = self.get_files_to_ensemble(
             folder=export_path, prefix=match_prefix, suffix=stem_suffix
         )
+        if len(stem_outputs) <= 1:
+            # Disk fallback: member files may still use yaml lowercase tags.
+            stem_outputs = self.get_files_to_ensemble_for_stem(
+                folder=export_path, prefix=match_prefix, stem_tag=stem_tag
+            )
         audio_file_output = format_stem_basename(audio_file_base, stem_tag)
         stem_save_path = os.path.join(f"{self.main_export_path}", f"{audio_file_output}.wav")
 
@@ -1241,3 +1289,24 @@ class Ensembler:
             for name in os.listdir(folder)
             if name.startswith(prefix) and name.endswith(suffix)
         ]
+
+    def get_files_to_ensemble_for_stem(self, folder="", prefix="", stem_tag=""):
+        """Like :meth:`get_files_to_ensemble`, but match stem tags case-insensitively.
+
+        Used when member files were written with yaml lowercase ``(vocals)``
+        while the combine step looks for canonical ``(Vocals)``.
+        """
+        if not os.path.isdir(folder) or not stem_tag:
+            return []
+        wanted = canonical_ensemble_stem_tag(stem_tag).casefold()
+        pattern = re.compile(r"\(([^()]+)\)\.(?:wav|flac|mp3)$", re.IGNORECASE)
+        matches = []
+        for name in os.listdir(folder):
+            if not name.startswith(prefix):
+                continue
+            match = pattern.search(name)
+            if not match:
+                continue
+            if canonical_ensemble_stem_tag(match.group(1)).casefold() == wanted:
+                matches.append(os.path.join(folder, name))
+        return matches

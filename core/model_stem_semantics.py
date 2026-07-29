@@ -10,16 +10,24 @@ from typing import Dict, List, Mapping, Optional, Sequence, Set
 
 from bundled.constants import (
     ALL_STEMS,
+    BASS_STEM,
     BV_VOCAL_STEM,
     BV_VOCAL_STEM_LABEL,
+    DRUM_STEM,
+    GUITAR_STEM,
     INST_STEM,
     INST_WITH_BACKING_VOCALS_STEM,
     INST_WITH_LEAD_VOCALS_STEM,
     LEAD_VOCAL_STEM,
     LEAD_VOCAL_STEM_LABEL,
+    NO_BASS_STEM,
+    NO_DRUM_STEM,
+    NO_GUITAR_STEM,
     NO_OTHER_STEM,
+    NO_PIANO_STEM,
     NO_STEM,
     OTHER_STEM,
+    PIANO_STEM,
     VOCAL_STEM,
 )
 
@@ -435,14 +443,15 @@ def karaoke_bv_export_labels(model) -> Optional[Dict[str, str]]:
 def export_stem_label(model, stem: str, *, for_ensemble: bool = False) -> str:
     """Map a logic stem to the filename/UI export label.
 
-    Ensemble members keep native ``Vocals`` / ``Instrumental`` so combine
-    matching stays stable. Vocal-splitter codes ``lead_only`` / ``backing_only``
-    always become human labels when not in ensemble mode.
+    Ensemble members use :func:`canonical_ensemble_stem_tag` so yaml lowercase
+    stems (``vocals``) and Demucs Title Case (``Vocals``) land in the same
+    combine bucket. Karaoke/BV identity codes stay untouched in ensemble mode.
+    Outside ensemble mode, vocal-splitter codes become human labels.
     """
     if not stem:
         return stem
     if for_ensemble:
-        return stem
+        return canonical_ensemble_stem_tag(stem)
     # Splitter identity codes → human labels even when the parent model is not
     # flagged karaoke/BV on this object (flags live on the split model).
     if stem == LEAD_VOCAL_STEM:
@@ -652,6 +661,83 @@ def normalize_stem_label(stem: str) -> str:
     if low == "other":
         return "Other"
     return stem
+
+
+# Known MUSDB / UVR stems that must share one ensemble bucket regardless of
+# yaml vs Demucs casing. Specialty labels (Speech, Lead Vocals, …) are excluded
+# on purpose so they are never folded into Vocals/Other.
+_ENSEMBLE_STEM_ALIASES = {
+    "vocals": VOCAL_STEM,
+    "vocal": VOCAL_STEM,
+    "voc": VOCAL_STEM,
+    "instrumental": INST_STEM,
+    "inst": INST_STEM,
+    "other": OTHER_STEM,
+    "bass": BASS_STEM,
+    "drums": DRUM_STEM,
+    "guitar": GUITAR_STEM,
+    "piano": PIANO_STEM,
+    "no other": NO_OTHER_STEM,
+    "no bass": NO_BASS_STEM,
+    "no drums": NO_DRUM_STEM,
+    "no guitar": NO_GUITAR_STEM,
+    "no piano": NO_PIANO_STEM,
+}
+
+_ENSEMBLE_STEM_PRESERVE = frozenset(
+    {
+        LEAD_VOCAL_STEM,
+        BV_VOCAL_STEM,
+        LEAD_VOCAL_STEM_LABEL,
+        BV_VOCAL_STEM_LABEL,
+        INST_WITH_LEAD_VOCALS_STEM,
+        INST_WITH_BACKING_VOCALS_STEM,
+    }
+)
+
+_ENSEMBLE_STEM_CANONICAL = frozenset(_ENSEMBLE_STEM_ALIASES.values()) | frozenset(
+    {
+        VOCAL_STEM,
+        INST_STEM,
+        OTHER_STEM,
+        BASS_STEM,
+        DRUM_STEM,
+        GUITAR_STEM,
+        PIANO_STEM,
+        NO_OTHER_STEM,
+        NO_BASS_STEM,
+        NO_DRUM_STEM,
+        NO_GUITAR_STEM,
+        NO_PIANO_STEM,
+    }
+)
+
+
+def canonical_ensemble_stem_tag(stem: str) -> str:
+    """Normalize a stem tag for multi-stem ensemble bucketing and filenames.
+
+    Only folds well-known aliases (``vocals`` → ``Vocals``, ``drums`` →
+    ``Drums``, …). Leaves karaoke/BV identity codes and specialty stems
+    (Speech, Lead Vocals, Sfx, …) unchanged so they never merge with MUSDB
+    stems by accident.
+    """
+    if not stem:
+        return stem
+    stripped = str(stem).strip()
+    if not stripped:
+        return stripped
+    if stripped in _ENSEMBLE_STEM_PRESERVE:
+        return stripped
+    if stripped in _ENSEMBLE_STEM_CANONICAL:
+        return stripped
+    aliased = _ENSEMBLE_STEM_ALIASES.get(stripped.casefold())
+    if aliased is not None:
+        return aliased
+    # Title Case / odd casing of a known label (e.g. ``VOCALS`` → ``Vocals``).
+    for label in _ENSEMBLE_STEM_CANONICAL:
+        if label.casefold() == stripped.casefold():
+            return label
+    return stripped
 
 
 def backend_focus_label(

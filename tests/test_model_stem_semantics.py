@@ -163,10 +163,45 @@ class KaraokeBvExportLabelTests(unittest.TestCase):
             LEAD_VOCAL_STEM,
         )
 
+    def test_export_stem_label_ensemble_canonicalizes_yaml_casing(self):
+        model = _Model()
+        self.assertEqual(export_stem_label(model, "vocals", for_ensemble=True), VOCAL_STEM)
+        self.assertEqual(export_stem_label(model, "drums", for_ensemble=True), "Drums")
+        self.assertEqual(export_stem_label(model, "bass", for_ensemble=True), "Bass")
+        self.assertEqual(export_stem_label(model, "other", for_ensemble=True), "Other")
+
     def test_export_stem_label_splitter_codes(self):
         model = _Model()
         self.assertEqual(export_stem_label(model, LEAD_VOCAL_STEM), LEAD_VOCAL_STEM_LABEL)
         self.assertEqual(export_stem_label(model, BV_VOCAL_STEM), BV_VOCAL_STEM_LABEL)
+
+
+class EnsembleStemCanonicalizationTests(unittest.TestCase):
+    def test_folds_known_aliases_only(self):
+        from core.model_stem_semantics import canonical_ensemble_stem_tag
+
+        self.assertEqual(canonical_ensemble_stem_tag("vocals"), VOCAL_STEM)
+        self.assertEqual(canonical_ensemble_stem_tag("VOCALS"), VOCAL_STEM)
+        self.assertEqual(canonical_ensemble_stem_tag("Drums"), "Drums")
+        self.assertEqual(canonical_ensemble_stem_tag("drums"), "Drums")
+        self.assertEqual(canonical_ensemble_stem_tag("instrumental"), INST_STEM)
+
+    def test_preserves_specialty_and_karaoke_labels(self):
+        from core.model_stem_semantics import canonical_ensemble_stem_tag
+
+        self.assertEqual(canonical_ensemble_stem_tag(LEAD_VOCAL_STEM), LEAD_VOCAL_STEM)
+        self.assertEqual(canonical_ensemble_stem_tag(LEAD_VOCAL_STEM_LABEL), LEAD_VOCAL_STEM_LABEL)
+        self.assertEqual(canonical_ensemble_stem_tag("Speech"), "Speech")
+        self.assertEqual(canonical_ensemble_stem_tag("Sfx"), "Sfx")
+        self.assertEqual(canonical_ensemble_stem_tag("Music"), "Music")
+
+    def test_does_not_fold_lead_vocals_into_vocals(self):
+        from core.model_stem_semantics import canonical_ensemble_stem_tag
+
+        self.assertNotEqual(
+            canonical_ensemble_stem_tag(LEAD_VOCAL_STEM_LABEL),
+            VOCAL_STEM,
+        )
 
 
 class KaraokeDetectionTests(unittest.TestCase):
