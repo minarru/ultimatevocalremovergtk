@@ -147,7 +147,7 @@ class SeperateDemucs(SeperateAttributes):
             else:
                 self.demucs_source_map = DEMUCS_6_SOURCE_MAPPER if len(source) == 6 else DEMUCS_4_SOURCE_MAPPER
 
-                if len(source) == 6 and self.process_data['is_ensemble_master'] or len(source) == 6 and self.is_secondary_model:
+                if len(source) == 6 and self.process_data.is_ensemble_master or len(source) == 6 and self.is_secondary_model:
                     is_no_piano_guitar = True
                     six_stem_other_source = list(source)
                     six_stem_other_source = [i for n, i in enumerate(source) if n in [self.demucs_source_map[OTHER_STEM], self.demucs_source_map[GUITAR_STEM], self.demucs_source_map[PIANO_STEM]]]
@@ -160,7 +160,7 @@ class SeperateDemucs(SeperateAttributes):
         if not self.is_vocal_split_model:
             self.cache_source(source)
         
-        if (self.demucs_stems == ALL_STEMS and not self.process_data['is_ensemble_master']) or self.is_4_stem_ensemble and not self.is_return_dual:
+        if (self.demucs_stems == ALL_STEMS and not self.process_data.is_ensemble_master) or self.is_4_stem_ensemble and not self.is_return_dual:
             if isinstance(source, np.ndarray) and (
                 self.is_match_mix_level or self.is_prevent_export_clipping
             ):

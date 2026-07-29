@@ -8,6 +8,12 @@ from typing import Any, Callable
 
 @dataclass
 class ProcessData:
+    """Typed per-run callbacks and routing flags for engines.
+
+    ``audio_file`` is a filesystem path (``str``) or a pre-decoded mix
+    (``np.ndarray``) when long-file chunking is active.
+    """
+
     export_path: str
     audio_file_base: str
     audio_file: Any  # str | ndarray

@@ -583,7 +583,7 @@ class SeperateMDXC(SeperateAttributes):
             mdxnet_stem_select=self.mdxnet_stem_select,
             is_secondary_model=self.is_secondary_model,
             is_pre_proc_model=self.is_pre_proc_model,
-            is_ensemble_master=self.process_data['is_ensemble_master'],
+            is_ensemble_master=self.process_data.is_ensemble_master,
             is_4_stem_ensemble=self.is_4_stem_ensemble,
             is_primary_stem_only=self.is_primary_stem_only,
             is_secondary_stem_only=self.is_secondary_stem_only,

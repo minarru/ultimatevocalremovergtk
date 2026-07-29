@@ -298,8 +298,13 @@ def _list_models(directory: str, extensions) -> List[str]:
     return sorted(names)
 
 
-class ModelData:
-    """Tk-free equivalent of ``UVR.py``'s ``ModelData`` for a single model."""
+class _ModelConfigImplementation:
+    """Private implementation retained while repository logic is extracted.
+
+    The public :class:`core.model_config.ModelConfig` subclasses this during the
+    compatibility window. Keeping the proven resolution logic here avoids
+    duplicating it while ``ModelRepository`` remains in this module.
+    """
 
     def __init__(
         self,
@@ -326,7 +331,8 @@ class ModelData:
         self.is_deverb_vocals = settings.get("is_deverb_vocals") if os.path.isfile(paths.DEVERBER_MODEL_PATH) else False
         self.deverb_vocal_opt = DEVERB_MAPPER[settings.get("deverb_vocal_opt")]
         self.is_denoise_model = True if settings.get("denoise_option") == DENOISE_M and os.path.isfile(paths.DENOISER_MODEL_PATH) else False
-        self.is_gpu_conversion = 0 if settings.get("is_gpu_conversion") else -1
+        self.is_gpu_conversion = bool(settings.get("is_gpu_conversion"))
+        self.use_gpu = self.is_gpu_conversion
         self.is_normalization = settings.get("is_normalization")
         self.is_match_mix_level = bool(settings.get("is_match_mix_level"))
         self.is_prevent_export_clipping = bool(settings.get("is_prevent_export_clipping"))
@@ -642,6 +648,7 @@ class ModelData:
         self.is_save_vocal_only = self.check_only_selection_stem(IS_SAVE_VOC_ONLY)
 
         self.vocal_splitter_model_data()
+        self._sync_option_groups()
 
     # -- Secondary / vocal-split / pre-process resolution -----------------------
     # Faithful Tk-free ports of ``MainWindow.process_determine_*`` /
@@ -897,6 +904,136 @@ class ModelData:
             if self.model_hash:
                 cache.update({self.model_path: self.model_hash})
 
+    def _sync_option_groups(self) -> None:
+        """Snapshot flat compatibility attributes into typed option groups."""
+        from .model_config.base import (
+            DeviceOptions,
+            EnsembleMemberFlags,
+            ExportOptions,
+            ModelIdentity,
+            SecondaryChain,
+            StemRouting,
+        )
+        from .model_config.demucs import DemucsOptions
+        from .model_config.mdx import MDXOptions
+        from .model_config.vr import VROptions
+
+        self.identity = ModelIdentity(
+            model_name=self.model_name,
+            process_method=self.process_method,
+            model_path=getattr(self, "model_path", None),
+            model_basename=self.model_basename,
+            model_hash=getattr(self, "model_hash", None),
+            model_status=bool(self.model_status),
+            model_and_process_tag=getattr(self, "model_and_process_tag", None),
+        )
+        self.export_options = ExportOptions(
+            wav_type_set=self.wav_type_set,
+            mp3_bit_set=self.mp3_bit_set,
+            flac_bit_set=self.flac_bit_set,
+            save_format=self.save_format,
+            is_normalization=bool(self.is_normalization),
+            is_match_mix_level=bool(self.is_match_mix_level),
+            is_prevent_export_clipping=bool(self.is_prevent_export_clipping),
+            amplification_threshold=self.amplification_threshold,
+        )
+        self.device_options = DeviceOptions(
+            use_gpu=bool(self.use_gpu),
+            device_set=self.device_set,
+            is_use_directml=bool(self.is_use_directml),
+        )
+        self.ensemble_flags = EnsembleMemberFlags(
+            is_ensemble_mode=bool(self.is_ensemble_mode),
+            is_4_stem_ensemble=bool(self.is_4_stem_ensemble),
+            is_multi_stem_ensemble=bool(self.is_multi_stem_ensemble),
+            ensemble_primary_stem=self.ensemble_primary_stem,
+            ensemble_secondary_stem=self.ensemble_secondary_stem,
+        )
+        self.stem_routing = StemRouting(
+            primary_stem=self.primary_stem,
+            secondary_stem=self.secondary_stem,
+            primary_stem_native=self.primary_stem_native,
+            primary_model_primary_stem=self.primary_model_primary_stem,
+            is_primary_stem_only=bool(self.is_primary_stem_only),
+            is_secondary_stem_only=bool(self.is_secondary_stem_only),
+            mdx_model_stems=tuple(self.mdx_model_stems),
+            demucs_source_list=tuple(self.demucs_source_list),
+        )
+        self.secondary_chain = SecondaryChain(
+            secondary_model=self.secondary_model,
+            secondary_model_scale=self.secondary_model_scale,
+            secondary_model_4_stem=tuple(self.secondary_model_4_stem),
+            secondary_model_4_stem_scale=tuple(self.secondary_model_4_stem_scale),
+            pre_proc_model=self.pre_proc_model,
+            vocal_split_model=self.vocal_split_model,
+            is_secondary_model_activated=bool(self.is_secondary_model_activated),
+            pre_proc_model_activated=bool(self.pre_proc_model_activated),
+            is_vocal_split_model_activated=bool(
+                self.is_vocal_split_model_activated
+            ),
+        )
+        self.vr_options = (
+            VROptions(
+                aggression_setting=self.aggression_setting,
+                is_tta=bool(self.is_tta),
+                is_post_process=bool(self.is_post_process),
+                window_size=self.window_size,
+                batch_size=self.batch_size,
+                crop_size=self.crop_size,
+                is_high_end_process=self.is_high_end_process,
+                post_process_threshold=self.post_process_threshold,
+                model_capacity=self.model_capacity,
+                model_samplerate=self.model_samplerate,
+                vr_model_param=getattr(self, "vr_model_param", None),
+                is_vr_51_model=bool(self.is_vr_51_model),
+            )
+            if self.process_method == VR_ARCH_TYPE
+            else None
+        )
+        self.mdx_options = (
+            MDXOptions(
+                margin=self.margin,
+                chunks=self.chunks,
+                mdx_segment_size=self.mdx_segment_size,
+                mdx_batch_size=self.mdx_batch_size,
+                mdxnet_stem_select=self.mdxnet_stem_select,
+                mdxnet_stems_selected=tuple(self.mdxnet_stems_selected),
+                overlap_mdx=self.overlap_mdx,
+                overlap_mdx23=self.overlap_mdx23,
+                is_mdx_ckpt=bool(self.is_mdx_ckpt),
+                is_mdx_c=bool(self.is_mdx_c),
+                is_roformer=bool(self.is_roformer),
+                is_target_instrument=bool(self.is_target_instrument),
+                model_type=self.model_type,
+                mdx_c_configs=self.mdx_c_configs,
+                mdx_model_stems=tuple(self.mdx_model_stems),
+                mdx_stem_count=self.mdx_stem_count,
+                compensate=self.compensate,
+                mdx_dim_f_set=self.mdx_dim_f_set,
+                mdx_dim_t_set=self.mdx_dim_t_set,
+                mdx_n_fft_scale_set=self.mdx_n_fft_scale_set,
+            )
+            if self.process_method == MDX_ARCH_TYPE
+            else None
+        )
+        self.demucs_options = (
+            DemucsOptions(
+                margin_demucs=self.margin_demucs,
+                chunks_demucs=self.chunks_demucs,
+                shifts=self.shifts,
+                is_split_mode=bool(self.is_split_mode),
+                segment=self.segment,
+                is_chunk_demucs=bool(self.is_chunk_demucs),
+                demucs_stems=self.demucs_stems,
+                is_demucs_combine_stems=bool(self.is_demucs_combine_stems),
+                demucs_source_list=tuple(self.demucs_source_list),
+                demucs_source_map=getattr(self, "demucs_source_map", None),
+                demucs_stem_count=self.demucs_stem_count,
+                demucs_version=getattr(self, "demucs_version", None),
+            )
+            if self.process_method == DEMUCS_ARCH_TYPE
+            else None
+        )
 
 _SECONDARY_PREFIX_BY_METHOD = {
     VR_ARCH_TYPE: "vr",
@@ -982,51 +1119,12 @@ def process_determine_vocal_split_model(settings: SettingsModel, repo: ModelRepo
     return None
 
 
-def assemble_model_data(
-    settings: SettingsModel,
-    repo: ModelRepository,
-    model: Optional[str] = None,
-    arch_type: str = ENSEMBLE_MODE,
-) -> List[ModelData]:
-    """Tk-free port of ``MainWindow.assemble_model_data`` (UVR.py L1687).
+from .model_config.config import ModelConfig
+from .model_config.assemble import assemble_model
 
-    Supports the single-model architectures (VR / MDX-Net / MDX-C / Demucs), the
-    ensemble run (``ENSEMBLE_MODE`` builds one :class:`ModelData` per selected
-    member) and the ensemble single-model check (``ENSEMBLE_CHECK``). The stem /
-    karaoke dry-checks are served by :class:`ModelRepository` instead.
-    """
-    if arch_type == ENSEMBLE_MODE:
-        selected = settings.get("selected_models") or []
-        models = [ModelData(settings, repo, name) for name in selected]
-        valid = [model for model in models if model.model_status]
-        skipped = len(models) - len(valid)
-        if skipped:
-            from .debug_log import debug
-
-            debug(
-                "model",
-                f"assemble_model_data skipped={skipped} valid={len(valid)} "
-                f"({skipped} ensemble member(s) could not be resolved)",
-            )
-        if len(valid) < 2 and len(selected) >= 2:
-            raise ValueError(
-                "Too few valid ensemble members; check that selected models are installed."
-            )
-        from .debug_log import debug
-
-        debug("model", f"assemble_model_data ensemble members={len(valid)}")
-        return valid
-    if not model:
-        raise ValueError(f"assemble_model_data requires a model name for {arch_type}")
-    if arch_type == ENSEMBLE_CHECK:
-        return [ModelData(settings, repo, model)]
-    if arch_type in (VR_ARCH_TYPE, VR_ARCH_PM):
-        return [ModelData(settings, repo, model, VR_ARCH_TYPE)]
-    if arch_type == MDX_ARCH_TYPE:
-        return [ModelData(settings, repo, model, MDX_ARCH_TYPE)]
-    if arch_type == DEMUCS_ARCH_TYPE:
-        return [ModelData(settings, repo, model, DEMUCS_ARCH_TYPE)]
-    raise NotImplementedError(f"assemble_model_data: arch_type '{arch_type}' is not supported")
+# Compatibility aliases retained for callers and tests during the cutover.
+ModelData = ModelConfig
+assemble_model_data = assemble_model
 
 
 # -- Saved ensembles (UVR persists these as JSON in ``ensembles/``) -----------

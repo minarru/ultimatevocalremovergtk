@@ -51,11 +51,9 @@ from .export_naming import (
     testing_timestamp_prefix,
     track_basename_from_path,
 )
-from .model_data import (
-    ModelData,
-    ModelRepository,
-    assemble_model_data,
-)
+from .model_config import ModelConfig, assemble_model
+from .model_data import ModelRepository
+from .process_data import ProcessData
 from .sample_mode import prepare_input_paths
 from .settings import SettingsModel
 from .run_control import ProcessStopped, check_stopped, pausable_callback
@@ -71,11 +69,11 @@ from .inference_cleanup import (
 )
 
 
-def collect_run_model_paths(models: Sequence[ModelData]) -> set:
+def collect_run_model_paths(models: Sequence[ModelConfig]) -> set:
     """Collect on-disk model paths for every model participating in this run."""
     found: set = set()
 
-    def add(model: Optional[ModelData]) -> None:
+    def add(model: Optional[ModelConfig]) -> None:
         if model is None:
             return
         path = getattr(model, "model_path", None)
@@ -109,7 +107,7 @@ _MODEL_KEY_BY_METHOD = {
 }
 
 
-def _model_output_label(model: ModelData) -> str:
+def _model_output_label(model: ModelConfig) -> str:
     """Return the user-facing model label for export paths and test mode."""
     label = display_name_for_model(model.process_method, model.model_name, model.repo)
     return label or model.model_basename or ""
@@ -427,19 +425,19 @@ class JobRunner:
 
     # -- Worker -----------------------------------------------------------------
 
-    def resolve_models(self) -> List[ModelData]:
-        """Build the ``ModelData`` list for the currently chosen method."""
+    def resolve_models(self) -> List[ModelConfig]:
+        """Build the ``ModelConfig`` list for the currently chosen method."""
         method = self.settings.get("chosen_process_method")
         if method not in _MODEL_KEY_BY_METHOD:
             raise NotImplementedError(f"process method '{method}' is implemented in a later phase")
         model_name = self.settings.get(_MODEL_KEY_BY_METHOD[method])
-        return assemble_model_data(self.settings, self.repo, model_name, method)
+        return assemble_model(self.settings, self.repo, model_name, method)
 
-    def _count_true_models(self, models: List[ModelData]) -> int:
+    def _count_true_models(self, models: List[ModelConfig]) -> int:
         """Progress denominator: shared with the Save stems workload estimate."""
         return count_inference_passes_from_models(models)
 
-    def _build_all_models(self, models: List[ModelData]) -> None:
+    def _build_all_models(self, models: List[ModelConfig]) -> None:
         """Port of ``cached_source_model_list_check``'s ``all_models`` list.
 
         The engines use ``list_all_models`` to decide whether a referenced
@@ -464,7 +462,7 @@ class JobRunner:
                 demucs_4_stem.extend(n for n in m.secondary_model_4_stem_model_names_list if n)
         self.all_models = [n for n in primary + secondary + pre_proc + demucs_4_stem if n]
 
-    def _set_run_protect_identities(self, models: List[ModelData]) -> None:
+    def _set_run_protect_identities(self, models: List[ModelConfig]) -> None:
         from engines.model_weight_cache import model_file_identity
 
         identities = set()
@@ -688,23 +686,21 @@ class JobRunner:
                             # Avoid cache hits from a prior chunk for the same model.
                             self._cached_sources_clear()
 
-                        process_data = {
-                            "model_data": current_model,
-                            "export_path": model_export_path,
-                            "audio_file_base": audio_file_base,
-                            "audio_file": mix_slice if chunked else decoded_mix,
-                            "audio_file_path": audio_file,
-                            "set_progress_bar": set_progress_bar,
-                            "write_to_console": write_to_console,
-                            "process_iteration": pausable_callback(self, self._process_iteration),
-                            "check_run_control": pausable_callback(self, lambda: check_stopped(self)),
-                            "cached_source_callback": self._cached_source_callback,
-                            "cached_model_source_holder": self._cached_model_source_holder,
-                            "list_all_models": self.all_models,
-                            "is_ensemble_master": False,
-                            "is_4_stem_ensemble": False,
-                            "capture_stems_only": chunked,
-                        }
+                        process_data = ProcessData(
+                            export_path=model_export_path,
+                            audio_file_base=audio_file_base,
+                            audio_file=mix_slice if chunked else decoded_mix,
+                            set_progress_bar=set_progress_bar,
+                            write_to_console=write_to_console,
+                            process_iteration=pausable_callback(self, self._process_iteration),
+                            check_run_control=pausable_callback(self, lambda: check_stopped(self)),
+                            cached_source_callback=self._cached_source_callback,
+                            cached_model_source_holder=self._cached_model_source_holder,
+                            list_all_models=self.all_models,
+                            is_ensemble_master=False,
+                            is_4_stem_ensemble=False,
+                            capture_stems_only=chunked,
+                        )
 
                         if current_model.process_method == VR_ARCH_TYPE:
                             seperator = SeperateVR(current_model, process_data)
@@ -798,7 +794,7 @@ class JobRunner:
 
         try:
             input_paths = self._prepare_paths_for_run(input_paths, callbacks)
-            models = assemble_model_data(self.settings, self.repo, arch_type=ENSEMBLE_MODE)
+            models = assemble_model(self.settings, self.repo, arch_type=ENSEMBLE_MODE)
             if len(models) <= 1:
                 raise RuntimeError("Select at least two models to run an ensemble")
 
@@ -942,26 +938,24 @@ class JobRunner:
                         if chunked:
                             self._cached_sources_clear()
 
-                        process_data = {
-                            "model_data": current_model,
-                            "export_path": export_path,
-                            "audio_file_base": audio_file_base,
-                            "audio_file": mix_slice if chunked else decoded_mix,
-                            "audio_file_path": audio_file,
-                            "set_progress_bar": set_progress_bar,
-                            "write_to_console": write_to_console,
-                            "process_iteration": pausable_callback(self, self._process_iteration),
-                            "check_run_control": pausable_callback(self, lambda: check_stopped(self)),
-                            "cached_source_callback": self._cached_source_callback,
-                            "cached_model_source_holder": self._cached_model_source_holder,
-                            "list_all_models": self.all_models,
-                            "is_ensemble_master": True,
-                            "is_4_stem_ensemble": is_4_stem,
-                            "is_save_all_outputs_ensemble": bool(
+                        process_data = ProcessData(
+                            export_path=export_path,
+                            audio_file_base=audio_file_base,
+                            audio_file=mix_slice if chunked else decoded_mix,
+                            set_progress_bar=set_progress_bar,
+                            write_to_console=write_to_console,
+                            process_iteration=pausable_callback(self, self._process_iteration),
+                            check_run_control=pausable_callback(self, lambda: check_stopped(self)),
+                            cached_source_callback=self._cached_source_callback,
+                            cached_model_source_holder=self._cached_model_source_holder,
+                            list_all_models=self.all_models,
+                            is_ensemble_master=True,
+                            is_4_stem_ensemble=is_4_stem,
+                            is_save_all_outputs_ensemble=bool(
                                 self.settings.get("is_save_all_outputs_ensemble")
                             ),
-                            "capture_stems_only": chunked,
-                        }
+                            capture_stems_only=chunked,
+                        )
 
                         if current_model.process_method == VR_ARCH_TYPE:
                             seperator = SeperateVR(current_model, process_data)

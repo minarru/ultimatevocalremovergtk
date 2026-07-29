@@ -93,7 +93,8 @@ class AudioTools:
         self.apollo_overlap_val = int(settings.get("apollo_overlap"))
         self.apollo_chunk_val = int(settings.get("apollo_chunk_size"))
         self.apollo_model_location = os.path.join(paths.APOLLO_MODELS_DIR, self.apollo_model or "")
-        self.is_gpu_conversion = 0 if settings.get("is_gpu_conversion") else -1
+        self.use_gpu = bool(settings.get("is_gpu_conversion"))
+        self.is_gpu_conversion = self.use_gpu  # back-compat alias
         self.is_use_directml = bool(settings.get("is_use_directml"))
         from bundled.constants import is_macos
 
@@ -255,7 +256,7 @@ class AudioTools:
         )
 
         backend = resolve_inference_backend(
-            is_gpu_conversion=self.is_gpu_conversion,
+            use_gpu=self.use_gpu,
             device_set=self.device_set or DEFAULT,
             is_use_directml=self.is_use_directml,
             is_macos=self.is_macos,

@@ -129,7 +129,7 @@ def process_secondary_model(
         method=secondary_model.process_method,
     ):
         if not is_pre_proc_model:
-            process_iteration = process_data['process_iteration']
+            process_iteration = process_data.process_iteration
             process_iteration()
 
         seperator = _build_seperator(
@@ -154,7 +154,7 @@ def process_chain_model(
     master_vocal_source,
     master_inst_source=None,
 ):
-    process_iteration = process_data['process_iteration']
+    process_iteration = process_data.process_iteration
     process_iteration()
 
     if secondary_model.bv_model_rebalance:

@@ -23,11 +23,12 @@ from .orchestration import process_chain_model
 
 if TYPE_CHECKING:
     from core.model_data import ModelData
+    from core.process_data import ProcessData
 
 cpu = torch.device('cpu')
 class SeperateAttributes:
     def __init__(self, model_data: ModelData, 
-                 process_data: dict, 
+                 process_data: ProcessData, 
                  main_model_primary_stem_4_stem=None, 
                  main_process_method=None, 
                  is_return_dual=True, 
@@ -41,9 +42,9 @@ class SeperateAttributes:
         self.progress_value = 0
         self._save_stem_total = 1
         self._save_stem_index = 0
-        self.set_progress_bar = process_data['set_progress_bar']
-        self.write_to_console = process_data['write_to_console']
-        self.check_run_control = process_data.get('check_run_control', lambda: None)
+        self.set_progress_bar = process_data.set_progress_bar
+        self.write_to_console = process_data.write_to_console
+        self.check_run_control = process_data.check_run_control
         if vocal_stem_path:
             self.audio_file, self.audio_file_base = vocal_stem_path
 
@@ -62,15 +63,15 @@ class SeperateAttributes:
 
             self.audio_file_base_voc_split = _voc_split_path
         else:
-            self.audio_file = process_data['audio_file']
-            self.audio_file_base = process_data['audio_file_base']
+            self.audio_file = process_data.audio_file
+            self.audio_file_base = process_data.audio_file_base
             self.audio_file_base_voc_split = None
-        self.export_path = process_data['export_path']
-        self.cached_source_callback = process_data['cached_source_callback']
-        self.cached_model_source_holder = process_data['cached_model_source_holder']
-        self.is_4_stem_ensemble = process_data['is_4_stem_ensemble']
-        self.list_all_models = process_data['list_all_models']
-        self.process_iteration = process_data['process_iteration']
+        self.export_path = process_data.export_path
+        self.cached_source_callback = process_data.cached_source_callback
+        self.cached_model_source_holder = process_data.cached_model_source_holder
+        self.is_4_stem_ensemble = process_data.is_4_stem_ensemble
+        self.list_all_models = process_data.list_all_models
+        self.process_iteration = process_data.process_iteration
         self.is_return_dual = is_return_dual
         self.settings = model_data.settings
         self.is_pitch_change = model_data.is_pitch_change
@@ -120,10 +121,10 @@ class SeperateAttributes:
         self.is_secondary_stem_only = model_data.is_secondary_stem_only if not self.is_secondary_model else model_data.is_primary_model_secondary_stem_only      
         self.is_ensemble_mode = model_data.is_ensemble_mode
         self.is_save_all_outputs_ensemble = bool(
-            process_data.get("is_save_all_outputs_ensemble", False)
+            process_data.is_save_all_outputs_ensemble
         )
         # Long-file chunking / ensemble scratch: keep stem arrays, skip disk write.
-        self.capture_stems_only = bool(process_data.get("capture_stems_only", False))
+        self.capture_stems_only = bool(process_data.capture_stems_only)
         self._ensemble_stem_buffers = {}
         self._ensemble_stem_paths = {}
         self.secondary_model = model_data.secondary_model #
@@ -171,7 +172,7 @@ class SeperateAttributes:
         self.device_set = model_data.device_set
         self._backend_name = "cpu"
         backend = resolve_inference_backend(
-            is_gpu_conversion=self.is_gpu_conversion,
+            use_gpu=bool(self.is_gpu_conversion),
             device_set=self.device_set,
             is_use_directml=model_data.is_use_directml,
             is_macos=is_macos,
@@ -217,8 +218,8 @@ class SeperateAttributes:
             if self.is_mdx_c:
                 if not self.is_4_stem_ensemble:
                     if not self.is_target_instrument:
-                        self.primary_stem = model_data.ensemble_primary_stem if process_data['is_ensemble_master'] else model_data.primary_stem
-                        self.secondary_stem = model_data.ensemble_secondary_stem if process_data['is_ensemble_master'] else model_data.secondary_stem
+                        self.primary_stem = model_data.ensemble_primary_stem if process_data.is_ensemble_master else model_data.primary_stem
+                        self.secondary_stem = model_data.ensemble_secondary_stem if process_data.is_ensemble_master else model_data.secondary_stem
             else:
                 dim_f_set = model_data.mdx_dim_f_set
                 dim_t_set = model_data.mdx_dim_t_set
@@ -250,8 +251,8 @@ class SeperateAttributes:
             self.pre_proc_model = model_data.pre_proc_model
             self.device = cpu if self.is_other_gpu and not self.demucs_version in [DEMUCS_V3, DEMUCS_V4] else self.device
 
-            self.primary_stem = model_data.ensemble_primary_stem if process_data['is_ensemble_master'] else model_data.primary_stem
-            self.secondary_stem = model_data.ensemble_secondary_stem if process_data['is_ensemble_master'] else model_data.secondary_stem
+            self.primary_stem = model_data.ensemble_primary_stem if process_data.is_ensemble_master else model_data.primary_stem
+            self.secondary_stem = model_data.ensemble_secondary_stem if process_data.is_ensemble_master else model_data.secondary_stem
 
             if (self.is_multi_stem_ensemble or self.is_4_stem_ensemble) and not self.is_secondary_model:
                 self.is_return_dual = False
@@ -265,7 +266,7 @@ class SeperateAttributes:
                     self.primary_stem = secondary_stem(main_model_primary)
                     self.secondary_stem = main_model_primary
 
-            if self.is_secondary_model and not process_data['is_ensemble_master']:
+            if self.is_secondary_model and not process_data.is_ensemble_master:
                 if not self.demucs_stem_count == 2 and model_data.primary_model_primary_stem == INST_STEM:
                     self.primary_stem = VOCAL_STEM
                     self.secondary_stem = INST_STEM
@@ -298,7 +299,7 @@ class SeperateAttributes:
 
         # For ensemble master that's not a 4-stem ensemble, and not mdx_c
         # (or a target-instrument model, e.g. a roformer, in an ensemble master).
-        if (self.process_data['is_ensemble_master'] and not self.is_4_stem_ensemble and not self.is_mdx_c) or (self.process_data['is_ensemble_master'] and self.is_target_instrument):
+        if (self.process_data.is_ensemble_master and not self.is_4_stem_ensemble and not self.is_mdx_c) or (self.process_data.is_ensemble_master and self.is_target_instrument):
             if self.ensemble_primary_stem != self.primary_stem:
                 self.is_primary_stem_only, self.is_secondary_stem_only = self.is_secondary_stem_only, self.is_primary_stem_only
             
