@@ -28,6 +28,7 @@ through the caller-supplied callbacks (built with
 :func:`ui.dispatch.gtk_job_callbacks`). Options bind to the shared typed
 settings.
 """
+import typing
 
 import os
 from typing import List, Optional, Tuple
@@ -134,7 +135,7 @@ class AudioToolsPage:
     ``AppContext.save_settings`` on close.
     """
 
-    def __init__(self, window, context):
+    def __init__(self, window: typing.Any, context: typing.Any):
         # ``window`` is the MainWindow; the page borrows it for toasts, dialog
         # parenting and the shared run-control helpers.
         self.window = window
@@ -388,7 +389,7 @@ class AudioToolsPage:
         box.append(self.apollo_group)
         return box
 
-    def _on_apollo_model_changed(self, *_args) -> None:
+    def _on_apollo_model_changed(self, *_args: typing.Any) -> None:
         self._set("apollo_model", get_combo_value(self.apollo_model_row))
         self.window._refresh_start_readiness()
 
@@ -463,7 +464,7 @@ class AudioToolsPage:
 
     # -- Settings load / persist -----------------------------------------------
 
-    def _set(self, key: str, value) -> None:
+    def _set(self, key: str, value: typing.Any) -> None:
         if self._loading:
             return
         set_flat(self.settings, key, value)
@@ -608,7 +609,7 @@ class AudioToolsPage:
         self._audio_banner.set_revealed(False)
         self.window._refresh_start_readiness()
 
-    def _on_audio_banner_clicked(self, *_args) -> None:
+    def _on_audio_banner_clicked(self, *_args: typing.Any) -> None:
         if self._banner_mode == "apollo":
             # Apollo models are downloadable now, so the empty state sends users
             # to the Download Center. Manual placement stays available via the
@@ -618,7 +619,7 @@ class AudioToolsPage:
         elif self._banner_mode == "dual":
             self._on_open_dual_editor()
 
-    def _on_view_inputs_clicked(self, *_args) -> None:
+    def _on_view_inputs_clicked(self, *_args: typing.Any) -> None:
         """Open the pair editor for dual tools; otherwise the shared verifier."""
         from core.audio_tools import DUAL_INPUT_TOOLS
 
@@ -635,7 +636,7 @@ class AudioToolsPage:
 
     # -- Signal handlers -------------------------------------------------------
 
-    def _on_tool_changed(self, *_args) -> None:
+    def _on_tool_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         tool = self._current_tool()
@@ -643,7 +644,7 @@ class AudioToolsPage:
         self._sync_tool_visibility()
         self._refresh_dual_rows()
 
-    def _on_format_changed(self, *_args) -> None:
+    def _on_format_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         self.format_row.persist_to_settings(self.settings)
@@ -660,7 +661,7 @@ class AudioToolsPage:
         self._set("export_path", self.output_row.path)
         self.window._refresh_start_readiness()
 
-    def _on_open_dual_editor(self, *_args) -> None:
+    def _on_open_dual_editor(self, *_args: typing.Any) -> None:
         labels = _TOOL_LABELS[1] if self._current_tool() == MATCH_INPUTS else _TOOL_LABELS[0]
         dialog = DualBatchDialog(self.window, labels, self._dual_pairs, self._on_dual_confirmed)
         dialog.present()
@@ -731,7 +732,7 @@ class AudioToolsPage:
             return _REASON_APOLLO_MODEL
         return None
 
-    def start(self, callbacks) -> None:
+    def start(self, callbacks: typing.Any) -> None:
         # Input/output/tool readiness is validated by ``MainWindow._on_start``
         # before dispatch; the Apollo model resolution below still surfaces its
         # own dialog/toast for the deeper model-recognition cases.

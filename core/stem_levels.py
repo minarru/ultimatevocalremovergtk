@@ -1,6 +1,7 @@
 """Post-separation stem level helpers (match mix / prevent PCM clipping)."""
 
 from __future__ import annotations
+import typing
 
 from typing import Dict, List, Mapping, MutableMapping, Optional, Tuple
 
@@ -10,7 +11,7 @@ _GAIN_EPS = 1e-12
 _GAIN_REPORT_TOL = 1e-3
 
 
-def _as_float_array(audio) -> np.ndarray:
+def _as_float_array(audio: typing.Any) -> np.ndarray:
     return np.asarray(audio, dtype=np.float64)
 
 

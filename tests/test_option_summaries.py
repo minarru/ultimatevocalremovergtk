@@ -1,6 +1,7 @@
 """Pure settings-to-subtitle summaries for collapsible option sections."""
 
 from __future__ import annotations
+import typing
 
 import unittest
 
@@ -28,7 +29,7 @@ from ui.option_summaries import (
 class _Settings:
     """Build real typed settings with concise flat-key overrides."""
 
-    def __new__(cls, **values):
+    def __new__(cls, **values: typing.Any):
         return Settings.from_flat(values)
 
 

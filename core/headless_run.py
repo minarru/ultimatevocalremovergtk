@@ -29,6 +29,7 @@ from bundled.constants import (
 from .job_runner import JobCallbacks, JobRunner
 from .paths import SETTINGS_DATA_FILE
 from .settings import Settings
+from .types import ProcessMethod
 
 METHOD_ALIASES = {
     "mdx": MDX_ARCH_TYPE,
@@ -354,7 +355,7 @@ def build_settings(
 
     resolved_method = resolve_method(method) if method else None
     if resolved_method is not None:
-        settings.process.method = resolved_method
+        settings.process.method = ProcessMethod(resolved_method)
 
     chosen = settings.process.method
     if chosen == ENSEMBLE_MODE:

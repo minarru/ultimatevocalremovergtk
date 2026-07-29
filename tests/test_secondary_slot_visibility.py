@@ -1,6 +1,7 @@
 """Secondary stem slots that cannot affect the run are hidden, not dimmed."""
 
 from __future__ import annotations
+import typing
 
 import os
 import unittest
@@ -37,7 +38,7 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
         self.addCleanup(window.set_application, None)
         return window
 
-    def _view(self, window, stack_name):
+    def _view(self, window: typing.Any, stack_name: typing.Any):
         return window._views_by_stack[stack_name]
 
     def test_mdx_hides_other_bass_drums_by_default(self):

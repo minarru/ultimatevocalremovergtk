@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, TYPE_CHECKING
+from typing import Any, Sequence, TYPE_CHECKING
 
 import os
 
@@ -27,15 +27,18 @@ if TYPE_CHECKING:
 
 cpu = torch.device('cpu')
 class SeperateAttributes:
-    def __init__(self, model_data: ModelConfig,
-                 process_data: ProcessData, 
-                 main_model_primary_stem_4_stem=None, 
-                 main_process_method=None, 
-                 is_return_dual=True, 
-                 main_model_primary=None, 
-                 vocal_stem_path=None, 
-                 master_inst_source=None,
-                 master_vocal_source=None):
+    def __init__(
+        self,
+        model_data: ModelConfig,
+        process_data: ProcessData,
+        main_model_primary_stem_4_stem: str | None = None,
+        main_process_method: str | None = None,
+        is_return_dual: bool = True,
+        main_model_primary: str | None = None,
+        vocal_stem_path: Sequence[Any] | None = None,
+        master_inst_source: Any = None,
+        master_vocal_source: Any = None,
+    ) -> None:
         
         self.list_all_models: list
         self.process_data = process_data
@@ -49,7 +52,7 @@ class SeperateAttributes:
         if vocal_stem_path:
             self.audio_file, self.audio_file_base = vocal_stem_path
 
-            def _voc_split_path(export_stem: str):
+            def _voc_split_path(export_stem: str) -> str:
                 base = self.audio_file_base
                 for suffix in (
                     f" ({VOCAL_STEM})",
@@ -295,7 +298,7 @@ class SeperateAttributes:
                                    'split_bin': self.mp.param['band'][1]['crop_stop'], 
                                    'aggr_correction': self.mp.param.get('aggr_correction')}
             
-    def check_label_secondary_stem_runs(self):
+    def check_label_secondary_stem_runs(self) -> None:
 
         # For ensemble master that's not a 4-stem ensemble, and not mdx_c
         # (or a target-instrument model, e.g. a roformer, in an ensemble master).
@@ -308,7 +311,7 @@ class SeperateAttributes:
             self.is_primary_stem_only = False
             self.is_secondary_stem_only = False
             
-    def start_inference_console_write(self):
+    def start_inference_console_write(self) -> None:
         if self.is_secondary_model and not self.is_pre_proc_model and not self.is_vocal_split_model:
             self.write_to_console(INFERENCE_STEP_2_SEC(self.process_method, self.model_display_label))
         
@@ -330,7 +333,7 @@ class SeperateAttributes:
         local = save_progress_local_step(index, total)
         self.set_progress_bar(local)
 
-    def running_inference_console_write(self, is_no_write=False):
+    def running_inference_console_write(self, is_no_write: bool = False) -> None:
         self.write_to_console(DONE, base_text='') if not is_no_write else None
         self.set_progress_bar(0.05) if not is_no_write else None
         
@@ -343,7 +346,9 @@ class SeperateAttributes:
         else:
             self.write_to_console(INFERENCE_STEP_1)
         
-    def running_inference_progress_bar(self, length, is_match_mix=False):
+    def running_inference_progress_bar(
+        self, length: float, is_match_mix: bool = False
+    ) -> None:
         if not is_match_mix:
             self.progress_value += 1
 
@@ -352,7 +357,7 @@ class SeperateAttributes:
   
             self.set_progress_bar(0.1, (0.8/length*self.progress_value))
         
-    def load_cached_sources(self):
+    def load_cached_sources(self) -> None:
         
         if self.is_secondary_model and not self.is_pre_proc_model:
             self.write_to_console(INFERENCE_STEP_2_SEC_CACHED_MODOEL(self.process_method, self.model_display_label))
@@ -361,7 +366,7 @@ class SeperateAttributes:
         else:
             self.write_to_console(INFERENCE_STEP_2_PRIMARY_CACHED, "")
             
-    def cache_source(self, secondary_sources):
+    def cache_source(self, secondary_sources: Any) -> None:
         
         model_occurrences = self.list_all_models.count(self.model_basename)
         
@@ -375,13 +380,13 @@ class SeperateAttributes:
             if self.process_method == DEMUCS_ARCH_TYPE:
                 self.cached_model_source_holder(DEMUCS_ARCH_TYPE, secondary_sources, self.model_basename)
            
-    def process_vocal_split_chain(self, sources: dict):
+    def process_vocal_split_chain(self, sources: dict[str, Any]) -> Any:
         with trace_phase("separate", "vocal_split_chain", model=self.model_basename):
             return self._process_vocal_split_chain(sources)
 
-    def _process_vocal_split_chain(self, sources: dict):
+    def _process_vocal_split_chain(self, sources: dict[str, Any]) -> Any:
         
-        def is_valid_vocal_split_condition(master_vocal_source):
+        def is_valid_vocal_split_condition(master_vocal_source: Any) -> bool:
             """Checks if conditions for vocal split processing are met."""
             conditions = [
                 isinstance(master_vocal_source, np.ndarray),
@@ -406,7 +411,12 @@ class SeperateAttributes:
                 master_inst_source=master_inst_source
             )
   
-    def process_secondary_stem(self, stem_source, secondary_model_source=None, model_scale=None):
+    def process_secondary_stem(
+        self,
+        stem_source: Any,
+        secondary_model_source: Any = None,
+        model_scale: float | None = None,
+    ) -> Any:
         if not self.is_secondary_model:
             if self.is_secondary_model_activated and isinstance(secondary_model_source, np.ndarray):
                 secondary_model_scale = model_scale if model_scale else self.secondary_model_scale
@@ -422,10 +432,10 @@ class SeperateAttributes:
 
     def apply_export_stem_levels(
         self,
-        sources: dict,
-        mix,
+        sources: dict[str, Any],
+        mix: Any,
         *,
-        stem_keys=None,
+        stem_keys: Sequence[str] | None = None,
         allow_match_mix: bool = True,
     ) -> dict:
         """Optionally match multi-stem levels to ``mix`` and/or prevent PCM clipping."""
@@ -456,15 +466,28 @@ class SeperateAttributes:
             self.write_to_console(f"{message}\n")
         return sources
 
-    def final_process(self, stem_path, source, secondary_source, stem_name, samplerate):
+    def final_process(
+        self,
+        stem_path: str,
+        source: Any,
+        secondary_source: Any,
+        stem_name: str,
+        samplerate: int,
+    ) -> dict[str, Any]:
         with trace_phase("separate", "final_process", stem=stem_name, model=self.model_basename):
             source = self.process_secondary_stem(source, secondary_source)
             self.write_audio(stem_path, source, samplerate, stem_name=stem_name)
             return {stem_name: source}
     
-    def write_audio(self, stem_path: str, stem_source, samplerate, stem_name=None):
+    def write_audio(
+        self,
+        stem_path: str,
+        stem_source: Any,
+        samplerate: int,
+        stem_name: str | None = None,
+    ) -> None:
         
-        def save_audio_file(path, source):
+        def save_audio_file(path: str, source: Any) -> None:
             # Ensemble scratch / long-file chunking: keep arrays in memory and
             # skip disk when the caller asked to capture stems only, or when
             # this is an ensemble member that should not keep every output.
@@ -531,7 +554,11 @@ class SeperateAttributes:
             if is_not_ensemble:
                 save_format(path, self.save_format, self.mp3_bit_set, self.flac_bit_set)
 
-        def save_voc_split_instrumental(stem_name, stem_source, is_inst_invert=False):
+        def save_voc_split_instrumental(
+            stem_name: str | None,
+            stem_source: Any,
+            is_inst_invert: bool = False,
+        ) -> None:
             inst_stem_name = (
                 INST_WITH_LEAD_VOCALS_STEM
                 if stem_name == LEAD_VOCAL_STEM
@@ -542,12 +569,16 @@ class SeperateAttributes:
             inst_stem_source = spec_utils.combine_arrarys([self.master_inst_source, stem_source], is_swap=True)
             save_with_message(inst_stem_path, inst_stem_name, inst_stem_source)
 
-        def save_voc_split_vocal(stem_name, stem_source):
+        def save_voc_split_vocal(
+            stem_name: str | None, stem_source: Any
+        ) -> None:
             voc_split_stem_name = LEAD_VOCAL_STEM_LABEL if stem_name == LEAD_VOCAL_STEM else BV_VOCAL_STEM_LABEL
             voc_split_stem_path = self.audio_file_base_voc_split(voc_split_stem_name)
             save_with_message(voc_split_stem_path, voc_split_stem_name, stem_source)
 
-        def save_with_message(stem_path, stem_name, stem_source):
+        def save_with_message(
+            stem_path: str, stem_name: str | None, stem_source: Any
+        ) -> None:
             is_deverb = self.is_deverb_vocals and (
                 self.deverb_vocal_opt == stem_name or
                 (self.deverb_vocal_opt == 'ALL' and 
@@ -561,7 +592,7 @@ class SeperateAttributes:
             save_audio_file(stem_path, stem_source)
             self.write_to_console(DONE, base_text='')
             
-        def deverb_vocals(stem_path:str, stem_source):
+        def deverb_vocals(stem_path: str, stem_source: Any) -> None:
             self.write_to_console(INFERENCE_STEP_DEVERBING, base_text='')
             stem_source_deverbed, stem_source_2 = vr_denoiser(
                 stem_source,
@@ -603,13 +634,13 @@ class SeperateAttributes:
         if stem_name == VOCAL_STEM:
             self.master_vocal_path = stem_path
 
-    def pitch_fix(self, source, sr_pitched, org_mix):
+    def pitch_fix(self, source: Any, sr_pitched: float, org_mix: Any) -> Any:
         semitone_shift = self.semitone_shift
         source = spec_utils.change_pitch_semitones(source, sr_pitched, semitone_shift=semitone_shift)[0]
         source = spec_utils.match_array_shapes(source, org_mix)
         return source
     
-    def match_frequency_pitch(self, mix):
+    def match_frequency_pitch(self, mix: Any) -> Any:
         source = mix
         if self.is_match_frequency_pitch and self.is_pitch_change:
             source, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)

@@ -16,6 +16,7 @@ iterate, so they only work inside a view.
 """
 
 from __future__ import annotations
+import typing
 
 from typing import Callable
 
@@ -49,9 +50,9 @@ class VocalSplitRow(Adw.ExpanderRow):
 
     def __init__(
         self,
-        repo,
+        repo: typing.Any,
         on_changed: Callable[[], None],
-        hints=None,
+        hints: typing.Any=None,
     ):
         super().__init__(title="Vocal splitter and deverb")
         self._repo = repo
@@ -104,7 +105,7 @@ class VocalSplitRow(Adw.ExpanderRow):
 
     # -- Settings ---------------------------------------------------------------
 
-    def apply_from_settings(self, settings) -> None:
+    def apply_from_settings(self, settings: typing.Any) -> None:
         """Restore every row from ``settings`` without emitting changes."""
         self._settings = settings
         process = settings.process
@@ -137,7 +138,7 @@ class VocalSplitRow(Adw.ExpanderRow):
         if self.split_switch.get_active() or self.deverb_switch.get_active():
             self.set_expanded(True)
 
-    def persist_to_settings(self, settings) -> None:
+    def persist_to_settings(self, settings: typing.Any) -> None:
         """Write every global vocal-split key back to ``settings``."""
         process = settings.process
         process.vocal_splitter_enabled = self.split_switch.get_active()
@@ -172,7 +173,7 @@ class VocalSplitRow(Adw.ExpanderRow):
         self.save_inst_switch.set_sensitive(split_on)
         self.deverb_row.set_sensitive(self.deverb_switch.get_active())
 
-    def _populate_models(self, *_args) -> None:
+    def _populate_models(self, *_args: typing.Any) -> None:
         if self._models_ready or not self.get_expanded():
             return
         self._models_ready = True
@@ -206,7 +207,7 @@ class VocalSplitRow(Adw.ExpanderRow):
         finally:
             self._syncing = False
 
-    def _on_row_changed(self, *_args) -> None:
+    def _on_row_changed(self, *_args: typing.Any) -> None:
         if self._syncing:
             return
         self._sync_dependents()

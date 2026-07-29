@@ -1,6 +1,7 @@
 """Unit tests for headless CLI helpers (no GPU / no real separation)."""
 
 from __future__ import annotations
+import typing
 
 import json
 import os
@@ -317,7 +318,7 @@ class CliArgparseTests(unittest.TestCase):
 
     @mock.patch("core.cli.run_separation_sync")
     @mock.patch("core.cli.build_settings")
-    def test_separate_main_success(self, mock_build, mock_run) -> None:
+    def test_separate_main_success(self, mock_build: typing.Any, mock_run: typing.Any) -> None:
         mock_build.return_value = Settings.defaults()
         mock_run.return_value = HeadlessResult(
             ok=True, elapsed_s=1.25, export_path="/tmp/out"
@@ -329,7 +330,7 @@ class CliArgparseTests(unittest.TestCase):
 
     @mock.patch("core.cli.subprocess.run")
     @mock.patch("core.cli.compare_stem_dirs")
-    def test_bench_ab_subprocess_wiring(self, mock_compare, mock_run) -> None:
+    def test_bench_ab_subprocess_wiring(self, mock_compare: typing.Any, mock_run: typing.Any) -> None:
         mock_run.return_value = mock.Mock(returncode=0)
         from core.bench_metrics import StemCompareReport
 

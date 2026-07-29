@@ -1,6 +1,7 @@
 """Trusted checkpoint loading compatible with PyTorch 2.6+."""
 
 from __future__ import annotations
+import typing
 
 import importlib
 import sys
@@ -132,7 +133,7 @@ def as_model_state_dict(obj: Any) -> Any:
     return obj
 
 
-def load_torch_checkpoint(path, map_location: Any = "cpu", **kwargs):
+def load_torch_checkpoint(path: typing.Any, map_location: Any = "cpu", **kwargs: typing.Any):
     """Load a trusted UVR/Demucs/VR checkpoint.
 
     PyTorch 2.6+ defaults ``weights_only=True``, which rejects pickled model

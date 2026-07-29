@@ -7,13 +7,21 @@ the latest in-memory settings without writing spurious changes back.
 """
 
 from __future__ import annotations
+import typing
 
 import os
 from dataclasses import dataclass, replace
-from typing import AbstractSet, Iterable, Optional, Protocol, Sequence
+from typing import AbstractSet, Iterable, Optional, Sequence
 
 from bundled.constants import WAV
 from core.settings import Settings
+from .protocols import (
+    FormatRow,
+    InputPathsRow,
+    OutputPathRow,
+    SampleModeRow,
+    SwitchRow,
+)
 
 INPUT_FILES_WARN = 100
 INPUT_FILES_MAX = 500
@@ -38,7 +46,7 @@ def gpu_dependent_enabled(is_gpu_conversion: bool) -> bool:
     return bool(is_gpu_conversion)
 
 
-def apply_sample_mode_label(sample_row, duration: int) -> None:
+def apply_sample_mode_label(sample_row: typing.Any, duration: int) -> None:
     """Set the stable title + duration subtitle on a sample-mode switch row."""
     sample_row.set_title(SAMPLE_MODE_TITLE)
     if hasattr(sample_row, "set_subtitle"):
@@ -175,30 +183,6 @@ def format_input_sanitize_toasts(
     return messages
 
 
-class _InputPathsRow(Protocol):
-    def set_paths(self, paths: Sequence[str], notify: bool = ...) -> None: ...
-
-
-class _OutputPathRow(Protocol):
-    def set_path(self, path: str, notify: bool = ...) -> None: ...
-
-
-class _SwitchRow(Protocol):
-    def set_active(self, active: bool) -> None: ...
-
-
-class _SampleModeRow(Protocol):
-    def set_title(self, title: str) -> None: ...
-
-    def set_subtitle(self, subtitle: str) -> None: ...
-
-    def set_active(self, active: bool) -> None: ...
-
-
-class _FormatRow(Protocol):
-    def apply_from_settings(self, settings: Settings) -> None: ...
-
-
 @dataclass(frozen=True)
 class SharedFileOptions:
     input_paths: list[str]
@@ -227,13 +211,13 @@ def read_shared_file_options(settings: Settings) -> SharedFileOptions:
 def apply_shared_file_options(
     settings: Settings,
     *,
-    input_row: Optional[_InputPathsRow] = None,
-    input_rows: Optional[Iterable[_InputPathsRow]] = None,
-    output_row: Optional[_OutputPathRow] = None,
-    format_row: Optional[_FormatRow] = None,
-    gpu_row: Optional[_SwitchRow] = None,
-    autocast_row: Optional[_SwitchRow] = None,
-    sample_row: Optional[_SampleModeRow] = None,
+    input_row: Optional[InputPathsRow] = None,
+    input_rows: Optional[Iterable[InputPathsRow]] = None,
+    output_row: Optional[OutputPathRow] = None,
+    format_row: Optional[FormatRow] = None,
+    gpu_row: Optional[SwitchRow] = None,
+    autocast_row: Optional[SwitchRow] = None,
+    sample_row: Optional[SampleModeRow] = None,
 ) -> SharedFileOptions:
     """Push shared settings values into the supplied option rows."""
     options = read_shared_file_options(settings)
@@ -242,7 +226,7 @@ def apply_shared_file_options(
         settings.process.input_paths = cleaned
         options = replace(options, input_paths=cleaned)
 
-    rows: list[_InputPathsRow] = []
+    rows: list[InputPathsRow] = []
     if input_row is not None:
         rows.append(input_row)
     if input_rows is not None:

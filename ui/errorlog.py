@@ -13,6 +13,7 @@ with *Copy All Text* and *Report Issue* buttons. This module reproduces that:
 """
 
 from __future__ import annotations
+import typing
 
 import threading
 from typing import Callable, Optional
@@ -346,7 +347,7 @@ def _friendly_error_message(exception: BaseException) -> Optional[str]:
     return text or None
 
 
-def open_error_log(parent_window, message=None):
+def open_error_log(parent_window: typing.Any, message: typing.Any=None):
     """Open the Error Console window. Wire this to a ``win.error_log`` action.
 
     When ``message`` is given it is shown (and recorded) instead of the stored
@@ -413,7 +414,7 @@ def open_error_log(parent_window, message=None):
     return window
 
 
-def _on_error_log_window_closed(_window) -> bool:
+def _on_error_log_window_closed(_window: typing.Any) -> bool:
     global _ERROR_LOG_WINDOW, _ERROR_LOG_BUFFER
     _ERROR_LOG_WINDOW = None
     _ERROR_LOG_BUFFER = None

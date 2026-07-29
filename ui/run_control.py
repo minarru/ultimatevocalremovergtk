@@ -8,6 +8,7 @@ delegates on the window.
 """
 
 from __future__ import annotations
+import typing
 
 import os
 import threading
@@ -68,7 +69,7 @@ def _starting_progress_text() -> str:
     return _PROGRESS_LOADING_ENGINES
 
 
-def target_blocked_reason(target) -> Optional[str]:
+def target_blocked_reason(target: typing.Any) -> Optional[str]:
     """Return a target readiness reason without allowing UI validation to fail."""
     if target is None:
         return "Choose a processing mode"
@@ -146,7 +147,7 @@ class RunController:
         self._begin_exit_cleanup()
         return False
 
-    def handle_start(self, target) -> None:
+    def handle_start(self, target: typing.Any) -> None:
         """Validate readiness, then hand off to the active run target."""
         reason = target_blocked_reason(target)
         if reason is not None:
@@ -164,7 +165,7 @@ class RunController:
         debug("ui", f"handle_start -> {type(target).__name__}.start()")
         target.start(callbacks)
 
-    def begin_run(self, target) -> None:
+    def begin_run(self, target: typing.Any) -> None:
         """Shared bookkeeping when any run target starts its worker."""
         from core.error_context import clear_run_error_context, set_run_error_context
 
@@ -218,7 +219,7 @@ class RunController:
         debug("ui", "handle_stop presenting confirm dialog")
         self._present_stop_confirm()
 
-    def _run_label_for(self, target) -> str:
+    def _run_label_for(self, target: typing.Any) -> str:
         window = self._window
         if target is window._separation_target:
             return "Separation"
@@ -248,7 +249,7 @@ class RunController:
             if run is not None:
                 self._defer_dialog_action(run, label="stop-closed")
 
-        def on_response(_dlg, response: str) -> None:
+        def on_response(_dlg: typing.Any, response: str) -> None:
             self._stop_confirm_dialog = None
             if response == "stop":
                 captured = self._running_target or target
@@ -291,7 +292,7 @@ class RunController:
             if run is not None:
                 self._defer_dialog_action(run, label="shutdown-closed")
 
-        def on_response(_dlg, response: str) -> None:
+        def on_response(_dlg: typing.Any, response: str) -> None:
             self._shutdown_dialog = None
             if response == "quit":
                 captured = self._running_target or target
@@ -559,7 +560,7 @@ class RunController:
         detail: Optional[str] = None,
         combine_index: Optional[int] = None,
         combine_total: Optional[int] = None,
-        **_extra,
+        **_extra: typing.Any,
     ) -> None:
         if self._run_ui_suspended:
             return
@@ -628,7 +629,7 @@ class RunController:
         self._window._stop_pulse()
         self._window.log_panel.set_progress_fraction(display)
 
-    def _progress_text(self, fraction: float, local_step: Optional[float] = None, **kwargs) -> str:
+    def _progress_text(self, fraction: float, local_step: Optional[float] = None, **kwargs: typing.Any) -> str:
         now = time.monotonic()
         elapsed = max(0.0, now - self._run_started_at)
         self._eta_tracker.update(fraction, now, local_step=local_step, **kwargs)
@@ -652,7 +653,7 @@ class RunController:
             on_copied=lambda: window.toast("Report copied to clipboard"),
         )
 
-    def _snapshot_error_context(self, target) -> dict:
+    def _snapshot_error_context(self, target: typing.Any) -> dict:
         from core.error_context import (
             build_audio_tools_context,
             build_ensemble_context,

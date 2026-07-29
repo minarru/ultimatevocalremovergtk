@@ -15,7 +15,8 @@ class Stem(str, Enum):
 
 
 class ProcessMethod(str, Enum):
-    VR = "VR Arc"
+    VR = "VR Architecture"
+    VR_ARCH = "VR Arc"
     MDX = "MDX-Net"
     DEMUCS = "Demucs"
     ENSEMBLE = "Ensemble Mode"

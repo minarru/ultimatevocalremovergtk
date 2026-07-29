@@ -10,6 +10,7 @@ The window builds a ``Gtk.Stack`` from :data:`METHOD_VIEWS` and a "Process
 method" ``Adw.ComboRow`` to choose between them, so additional method panels can
 be registered by appending to the registry without touching the window assembly.
 """
+import typing
 
 from typing import Callable, List, Optional, Type
 
@@ -84,7 +85,7 @@ _SECONDARY_SLOTS = (
 )
 
 
-def apply_name_mapper(names, name_mapper, *, catalogue_index=None, arch=None, repo=None) -> List[str]:
+def apply_name_mapper(names: typing.Any, name_mapper: typing.Any, *, catalogue_index: typing.Any=None, arch: typing.Any=None, repo: typing.Any=None) -> List[str]:
     """Map on-disk basenames to runtime display labels."""
     if arch and repo:
         return map_basenames_to_display(names, arch, repo)
@@ -98,7 +99,7 @@ def apply_name_mapper(names, name_mapper, *, catalogue_index=None, arch=None, re
     ]
 
 
-def current_display_for_stored_model(stored, basenames, arch, repo) -> str:
+def current_display_for_stored_model(stored: typing.Any, basenames: typing.Any, arch: typing.Any, repo: typing.Any) -> str:
     """Resolve a stored picker value to the current runtime display label.
 
     Accepts an on-disk basename or an older mapper/catalogue alias and returns
@@ -141,7 +142,7 @@ class MethodView:
     #: Whether this method exposes the Demucs pre-process model selector.
     has_preproc: bool = False
 
-    def __init__(self, context, on_settings_changed: Callable[[], None]):
+    def __init__(self, context: typing.Any, on_settings_changed: Callable[[], None]):
         self.context = context
         self.settings = context.settings
         self._on_settings_changed = on_settings_changed
@@ -252,7 +253,7 @@ class MethodView:
     def has_model(self) -> bool:
         return self.selected_model() not in (CHOOSE_MODEL, None)
 
-    def _on_model_changed(self, *_args) -> None:
+    def _on_model_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         from core.debug_log import debug, preview_text
@@ -291,7 +292,7 @@ class MethodView:
         self._update_stem_group_metadata()
         self.sync_dynamic_option_state()
 
-    def _configure_save_stems(self, model) -> None:
+    def _configure_save_stems(self, model: typing.Any) -> None:
         """Default: exclusive export filter for <=2-stem / VR-style models."""
         self.save_stems.configure_exclusive(
             primary_stem=self._resolved_primary_stem,
@@ -348,7 +349,7 @@ class MethodView:
     def _sync_only_active(self) -> None:
         self._sync_stem_only_toggles()
 
-    def _on_model_resolved(self, model) -> None:
+    def _on_model_resolved(self, model: typing.Any) -> None:
         """Hook called after the selected model is dry-resolved (on change/load).
 
         ``model`` is a dry-check :class:`~core.ModelConfig` or ``None`` when no
@@ -397,20 +398,20 @@ class MethodView:
     # -- Method-specific option controls ---------------------------------------
 
     @staticmethod
-    def _add_row(container, row) -> None:
+    def _add_row(container: typing.Any, row: typing.Any) -> None:
         """Add ``row`` to a ``PreferencesGroup`` (``add``) or ``ExpanderRow`` (``add_row``)."""
         if isinstance(container, Adw.ExpanderRow):
             container.add_row(row)
         else:
             container.add(row)
 
-    def _hint(self, row, hint):
+    def _hint(self, row: typing.Any, hint: typing.Any):
         """Register ``row`` with the view's help-hint manager when ``hint`` is set."""
         if hint:
             self.hints.register(row, hint)
         return row
 
-    def add_option_combo(self, group, key, title, values, subtitle=None, hint=None):
+    def add_option_combo(self, group: typing.Any, key: typing.Any, title: typing.Any, values: typing.Any, subtitle: typing.Any=None, hint: typing.Any=None):
         """Add a combo row bound to settings ``key`` (stored as a string)."""
         row = make_combo_row(title, values, subtitle)
         row.connect("notify::selected", lambda *_a, k=key, r=row: self._on_option_combo(k, r))
@@ -420,18 +421,18 @@ class MethodView:
 
     def add_option_scale(
         self,
-        group,
-        key,
-        title,
+        group: typing.Any,
+        key: typing.Any,
+        title: typing.Any,
         *,
-        values=None,
+        values: typing.Any=None,
         lower: Optional[float] = None,
         upper: Optional[float] = None,
         step: float = 1,
-        digits=0,
-        subtitle=None,
-        hint=None,
-        store_float=False,
+        digits: typing.Any=0,
+        subtitle: typing.Any=None,
+        hint: typing.Any=None,
+        store_float: typing.Any=False,
     ):
         """Add a constrained slider row bound to settings ``key``."""
         from ..widgets.rows import (
@@ -458,7 +459,7 @@ class MethodView:
         self._scale_rows[key] = row
         return self._hint(row, hint)
 
-    def add_option_switch(self, group, key, title, subtitle=None, hint=None):
+    def add_option_switch(self, group: typing.Any, key: typing.Any, title: typing.Any, subtitle: typing.Any=None, hint: typing.Any=None):
         """Add a switch row bound to boolean settings ``key``."""
         row = make_switch_row(title, subtitle)
         row.connect("notify::active", lambda *_a, k=key, r=row: self._on_option_switch(k, r))
@@ -466,7 +467,7 @@ class MethodView:
         self._switch_rows[key] = row
         return self._hint(row, hint)
 
-    def add_option_spin(self, group, key, title, lower, upper, step, digits=2, subtitle=None, hint=None):
+    def add_option_spin(self, group: typing.Any, key: typing.Any, title: typing.Any, lower: typing.Any, upper: typing.Any, step: typing.Any, digits: typing.Any=2, subtitle: typing.Any=None, hint: typing.Any=None):
         """Add a spin row bound to a numeric settings ``key`` (stored as float)."""
         adjustment = Gtk.Adjustment(lower=lower, upper=upper, step_increment=step)
         row = Adw.SpinRow(title=title, adjustment=adjustment, digits=digits)
@@ -477,13 +478,13 @@ class MethodView:
         self._spin_rows[key] = row
         return self._hint(row, hint)
 
-    def _on_option_combo(self, key, row) -> None:
+    def _on_option_combo(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading:
             return
         set_flat(self.settings, key, get_combo_value(row))
         self._touch_settings()
 
-    def _on_option_scale(self, key, row) -> None:
+    def _on_option_scale(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading:
             return
         if getattr(row, "_uvr_store_float", False):
@@ -492,13 +493,13 @@ class MethodView:
             set_flat(self.settings, key, get_scale_row_value(row))
         self._touch_settings()
 
-    def _on_option_switch(self, key, row) -> None:
+    def _on_option_switch(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading:
             return
         set_flat(self.settings, key, row.get_active())
         self._touch_settings()
 
-    def _on_option_spin(self, key, row) -> None:
+    def _on_option_spin(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading:
             return
         set_flat(self.settings, key, round(row.get_value(), 2))
@@ -562,10 +563,10 @@ class MethodView:
         for key, row in self._option_rows.items():
             set_flat(self.settings, key, get_combo_value(row))
 
-    def add_advanced_combo(self, key, title, values, subtitle=None, hint=None):
+    def add_advanced_combo(self, key: typing.Any, title: typing.Any, values: typing.Any, subtitle: typing.Any=None, hint: typing.Any=None):
         return self.add_option_combo(self.advanced_group, key, title, values, subtitle, hint=hint)
 
-    def add_advanced_scale(self, key, title, *, values=None, lower=None, upper=None, step=1, digits=0, subtitle=None, hint=None, store_float=False):
+    def add_advanced_scale(self, key: typing.Any, title: typing.Any, *, values: typing.Any=None, lower: typing.Any=None, upper: typing.Any=None, step: typing.Any=1, digits: typing.Any=0, subtitle: typing.Any=None, hint: typing.Any=None, store_float: typing.Any=False):
         return self.add_option_scale(
             self.advanced_group,
             key,
@@ -580,12 +581,12 @@ class MethodView:
             store_float=store_float,
         )
 
-    def add_advanced_switch(self, key, title, subtitle=None, hint=None):
+    def add_advanced_switch(self, key: typing.Any, title: typing.Any, subtitle: typing.Any=None, hint: typing.Any=None):
         return self.add_option_switch(self.advanced_group, key, title, subtitle, hint=hint)
 
     # -- Secondary / pre-process / vocal-splitter model selection --------------
 
-    def _add_model_combo(self, container, key, provider, title, hint=None):
+    def _add_model_combo(self, container: typing.Any, key: typing.Any, provider: typing.Any, title: typing.Any, hint: typing.Any=None):
         """Add a model-picker combo (lazily populated to avoid startup hashing).
 
         The combo is registered separately from :attr:`_option_rows` so its value
@@ -602,7 +603,7 @@ class MethodView:
         self._model_combos.append({"row": row, "key": key, "provider": provider, "ready": False})
         return self._hint(row, hint)
 
-    def _on_model_combo(self, key, row) -> None:
+    def _on_model_combo(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading or getattr(self, "_populating_models", False):
             return
         entry = next((e for e in self._model_combos if e["key"] == key), None)
@@ -611,7 +612,7 @@ class MethodView:
         set_flat(self.settings, key, get_combo_value(row))
         self._touch_settings()
 
-    def _ensure_model_combos_populated(self, *_args) -> None:
+    def _ensure_model_combos_populated(self, *_args: typing.Any) -> None:
         if self._model_combos_populated:
             return
         self._model_combos_populated = True
@@ -634,7 +635,7 @@ class MethodView:
         finally:
             self._populating_models = False
 
-    def _bind_switch_dependents(self, switch_row, dependents) -> None:
+    def _bind_switch_dependents(self, switch_row: typing.Any, dependents: typing.Any) -> None:
         """Dim ``dependents`` whenever ``switch_row`` is off.
 
         Mirrors the pattern already used for the Ensemble algorithm rows: an
@@ -643,7 +644,7 @@ class MethodView:
         """
         rows = [row for row in dependents if row is not None]
 
-        def apply(*_args) -> None:
+        def apply(*_args: typing.Any) -> None:
             active = switch_row.get_active()
             for row in rows:
                 row.set_sensitive(active)
@@ -831,7 +832,7 @@ class MethodView:
         app = Gio.Application.get_default()
         return app.get_active_window() if app is not None else None
 
-    def _on_change_defaults(self, _button) -> None:
+    def _on_change_defaults(self, _button: typing.Any) -> None:
         from ..dialogs.model_params import show_change_defaults_dialog
 
         show_change_defaults_dialog(self.context, self._window_root())

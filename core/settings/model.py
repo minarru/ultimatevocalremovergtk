@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import asdict, dataclass, field, fields
+from enum import Enum
 from typing import Any, TypeVar, cast
 
 from bundled.constants import (
@@ -21,17 +22,27 @@ from bundled.constants import (
     DEMUCS_SEGMENTS,
     MANUAL_ENSEMBLE_OPTIONS,
     MAX_MIN,
-    MDX_ARCH_TYPE,
     MDX_OVERLAP,
     NO_MODEL,
-    WAV,
 )
+from core.types import ProcessMethod, SaveFormat
 
-from .coerce import coerce_json_dict
+from .coerce import coerce_field, coerce_json_dict
 from .defaults import SETTINGS_SCHEMA_VERSION, default_settings_dict
 from .flat_map import FLAT_TO_PATH
 
 T = TypeVar("T")
+
+
+def _json_value(value: Any) -> Any:
+    """Convert enums in dataclass payloads to stable JSON scalar values."""
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, dict):
+        return {key: _json_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_value(item) for item in value]
+    return value
 
 
 def _merge_dataclass(cls: type[T], base: T, overrides: dict[str, Any] | None) -> T:
@@ -47,7 +58,7 @@ def _merge_dataclass(cls: type[T], base: T, overrides: dict[str, Any] | None) ->
 
 @dataclass
 class ProcessSettings:
-    method: str = MDX_ARCH_TYPE
+    method: ProcessMethod = ProcessMethod.MDX
     use_gpu: bool = False
     autocast: bool = False
     use_directml: bool = False
@@ -63,7 +74,7 @@ class ProcessSettings:
     amplification_threshold: float = 0.0
     create_model_folder: bool = False
     auto_update_model_params: bool = True
-    save_format: str = WAV
+    save_format: SaveFormat = SaveFormat.WAV
     wav_type: str = "PCM_16"
     mp3_bitrate: str = "320k"
     flac_bit_depth: str = "16-bit"
@@ -234,7 +245,7 @@ class Settings:
         return cls.from_json_dict(default_settings_dict())
 
     def to_json_dict(self) -> dict[str, Any]:
-        return {
+        return _json_value({
             "schema_version": self.schema_version,
             "process": asdict(self.process),
             "vr": asdict(self.vr),
@@ -243,7 +254,7 @@ class Settings:
             "ensemble": asdict(self.ensemble),
             "audio_tools": asdict(self.audio_tools),
             "ui": asdict(self.ui),
-        }
+        })
 
     @classmethod
     def from_json_dict(cls, data: dict[str, Any]) -> Settings:
@@ -283,7 +294,11 @@ class Settings:
             return
         section_name, field_name = mapping
         section = getattr(self, section_name)
-        setattr(section, field_name, value)
+        setattr(
+            section,
+            field_name,
+            coerce_field(section_name, field_name, value),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {flat_key: self.get(flat_key) for flat_key in FLAT_TO_PATH}

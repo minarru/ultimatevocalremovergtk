@@ -8,6 +8,7 @@ the Legal page and the release notes).
 
 Entry point: :func:`open_about`.
 """
+import typing
 
 from gi.repository import Adw, GLib, Gtk
 
@@ -73,7 +74,7 @@ def _changelog_to_markup(text: str) -> str:
     return "".join(paragraphs)
 
 
-def _enrich_about(about) -> None:
+def _enrich_about(about: typing.Any) -> None:
     """Apply credits/resources/license/changelog to an about dialog/window.
 
     The same setters exist on both ``Adw.AboutDialog`` and ``Adw.AboutWindow``.
@@ -96,7 +97,7 @@ def _enrich_about(about) -> None:
         about.set_release_notes_version(VERSION or "")
 
 
-def open_about(parent_window):
+def open_about(parent_window: typing.Any):
     """Open an About dialog summarising UVR. Wire this to a ``win.about`` action."""
     from .resources import register_gresources
 

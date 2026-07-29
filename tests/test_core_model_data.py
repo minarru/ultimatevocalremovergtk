@@ -1,3 +1,4 @@
+import typing
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -14,7 +15,7 @@ class OverlapMdxDefaultTests(unittest.TestCase):
         repo.model_hash_table = {}
         repo.on_unrecognized_model = None
 
-        def fake_get_model_hash(self):
+        def fake_get_model_hash(self: typing.Any):
             self.model_hash = None
             self.model_status = False
 

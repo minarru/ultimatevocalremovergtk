@@ -1,3 +1,4 @@
+import typing
 import unittest
 from types import SimpleNamespace
 
@@ -37,14 +38,14 @@ from ui.widgets.stem_only import (
 
 
 class _Settings(Settings):
-    def __init__(self, data=None):
+    def __init__(self, data: typing.Any=None):
         super().__init__()
         self.update(data or {})
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: typing.Any):
         return self.get(key)
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: typing.Any, value: typing.Any):
         self.set(key, value)
 
 
@@ -509,7 +510,7 @@ class JobProgressCallbackTests(unittest.TestCase):
 
         seen = {}
 
-        def on_progress(fraction, **kwargs):
+        def on_progress(fraction: typing.Any, **kwargs: typing.Any):
             seen["fraction"] = fraction
             seen.update(kwargs)
 

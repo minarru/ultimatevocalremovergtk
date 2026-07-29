@@ -10,6 +10,7 @@ graceful fallback to :class:`Gtk.ShortcutsWindow` on older runtimes.
 
 Entry point: :func:`present_shortcuts`.
 """
+import typing
 
 from typing import List, Tuple
 
@@ -79,7 +80,7 @@ def _build_adw_dialog() -> "Adw.ShortcutsDialog":
     return dialog
 
 
-def _build_gtk_window(parent_window) -> "Gtk.ShortcutsWindow":
+def _build_gtk_window(parent_window: typing.Any) -> "Gtk.ShortcutsWindow":
     section = Gtk.ShortcutsSection(visible=True)
     for section_title, items in _SECTIONS:
         group = Gtk.ShortcutsGroup(title=section_title, visible=True)
@@ -102,7 +103,7 @@ def _build_gtk_window(parent_window) -> "Gtk.ShortcutsWindow":
     return window
 
 
-def present_shortcuts(parent_window) -> None:
+def present_shortcuts(parent_window: typing.Any) -> None:
     """Build and present the Keyboard Shortcuts overview for ``parent_window``."""
     if hasattr(Adw, "ShortcutsDialog"):
         _build_adw_dialog().present(parent_window)

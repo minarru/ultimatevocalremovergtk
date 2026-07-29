@@ -5,6 +5,7 @@ file manager via :class:`Gtk.DropTarget` (``Gdk.FileList``) and also open a
 native :class:`Gtk.FileDialog`. Selections are reported through an ``on_changed``
 callback so the window can persist them to the settings model.
 """
+import typing
 
 import os
 from typing import AbstractSet, Callable, List, Optional, Sequence
@@ -250,7 +251,7 @@ class InputFilesRow(Adw.ExpanderRow):
         )
         dialog.open_multiple(self.get_root(), None, self._on_open_finished)
 
-    def _on_open_finished(self, dialog: Gtk.FileDialog, result) -> None:
+    def _on_open_finished(self, dialog: Gtk.FileDialog, result: typing.Any) -> None:
         try:
             files = dialog.open_multiple_finish(result)
         except GLib.Error as exc:
@@ -261,7 +262,7 @@ class InputFilesRow(Adw.ExpanderRow):
         if paths:
             self.set_paths(merge_input_paths(self.paths, paths))
 
-    def _on_drop(self, _target: Gtk.DropTarget, value, _x: float, _y: float) -> bool:
+    def _on_drop(self, _target: Gtk.DropTarget, value: typing.Any, _x: float, _y: float) -> bool:
         self.remove_css_class("drop-highlight")
         try:
             files = value.get_files()
@@ -341,7 +342,7 @@ class OutputFolderRow(Adw.ActionRow):
         dialog = folder_dialog("Select Output Folder", initial=self.path or None)
         dialog.select_folder(self.get_root(), None, self._on_select_finished)
 
-    def _on_select_finished(self, dialog: Gtk.FileDialog, result) -> None:
+    def _on_select_finished(self, dialog: Gtk.FileDialog, result: typing.Any) -> None:
         try:
             folder = dialog.select_folder_finish(result)
         except GLib.Error as exc:
@@ -351,7 +352,7 @@ class OutputFolderRow(Adw.ActionRow):
         if folder and folder.get_path():
             self.set_path(folder.get_path())
 
-    def _on_drop(self, _target: Gtk.DropTarget, value, _x: float, _y: float) -> bool:
+    def _on_drop(self, _target: Gtk.DropTarget, value: typing.Any, _x: float, _y: float) -> bool:
         self.remove_css_class("drop-highlight")
         try:
             files = value.get_files()

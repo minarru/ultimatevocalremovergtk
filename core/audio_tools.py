@@ -15,6 +15,7 @@ so this module - and any view that imports it - stays importable on a bare
 Python (no torch / ML stack) install. Options are read from a
 :class:`~core.settings.Settings` through its flat compatibility accessors.
 """
+import typing
 
 import os
 import time
@@ -62,44 +63,49 @@ class AudioTools:
     def __init__(self, settings: Settings):
         self.settings = settings
         time_stamp = round(time.time())
-        self.main_export_path = Path(settings.get("export_path") or "")
+        process = settings.process
+        mdx = settings.mdx
+        audio_tools = settings.audio_tools
+        self.main_export_path = Path(process.export_path or "")
         self.wav_type_set = resolve_wav_type_set(settings)
-        self.is_normalization = bool(settings.get("is_normalization"))
+        self.is_normalization = bool(process.normalization)
         try:
-            self.amplification_threshold = float(settings.get("amplification_threshold") or 0.0)
+            self.amplification_threshold = float(
+                process.amplification_threshold or 0.0
+            )
         except (TypeError, ValueError):
             self.amplification_threshold = 0.0
-        self.is_wav_ensemble = bool(settings.get("is_wav_ensemble"))
-        self.is_testing_audio = f"{time_stamp} " if settings.get("is_testing_audio") else ""
-        self.save_format_sel = settings.get("save_format")
-        self.mp3_bit_set = settings.get("mp3_bit_set")
-        self.flac_bit_set = settings.get("flac_bit_set", "16-bit")
+        self.is_wav_ensemble = bool(settings.ensemble.wav_ensemble)
+        self.is_testing_audio = f"{time_stamp} " if process.testing_audio else ""
+        self.save_format_sel = process.save_format.value
+        self.mp3_bit_set = process.mp3_bitrate
+        self.flac_bit_set = process.flac_bit_depth
 
         # Align-tool options (mapped through the same constants UVR uses).
-        self.align_window = TIME_WINDOW_MAPPER[settings.get("time_window")]
-        self.align_intro_val = INTRO_MAPPER[settings.get("intro_analysis")]
-        self.db_analysis_val = VOLUME_MAPPER[settings.get("db_analysis")]
-        self.is_save_align = bool(settings.get("is_save_align"))
-        self.is_match_silence = bool(settings.get("is_match_silence"))
-        self.is_spec_match = bool(settings.get("is_spec_match"))
-        self.phase_option = settings.get("phase_option")
-        self.phase_shifts = PHASE_SHIFTS_OPT[settings.get("phase_shifts")]
+        self.align_window = TIME_WINDOW_MAPPER[audio_tools.time_window]
+        self.align_intro_val = INTRO_MAPPER[audio_tools.intro_analysis]
+        self.db_analysis_val = VOLUME_MAPPER[audio_tools.db_analysis]
+        self.is_save_align = bool(mdx.is_save_align)
+        self.is_match_silence = bool(mdx.is_match_silence)
+        self.is_spec_match = bool(mdx.is_spec_match)
+        self.phase_option = mdx.phase_option
+        self.phase_shifts = PHASE_SHIFTS_OPT[mdx.phase_shifts]
 
         # Apollo restore options. Device selection follows the local CUDA/CPU
         # convention used by separate.py / model_data.py.
         from core import paths
 
-        self.apollo_model = settings.get("apollo_model")
-        self.apollo_overlap_val = int(settings.get("apollo_overlap"))
-        self.apollo_chunk_val = int(settings.get("apollo_chunk_size"))
+        self.apollo_model = audio_tools.apollo_model
+        self.apollo_overlap_val = int(audio_tools.apollo_overlap)
+        self.apollo_chunk_val = int(audio_tools.apollo_chunk_size)
         self.apollo_model_location = os.path.join(paths.APOLLO_MODELS_DIR, self.apollo_model or "")
-        self.use_gpu = bool(settings.get("is_gpu_conversion"))
+        self.use_gpu = bool(process.use_gpu)
         self.is_gpu_conversion = self.use_gpu  # back-compat alias
-        self.is_use_directml = bool(settings.get("is_use_directml"))
+        self.is_use_directml = bool(process.use_directml)
         from bundled.constants import is_macos
 
         self.is_macos = is_macos
-        device_set = settings.get("device_set") or DEFAULT
+        device_set = process.device or DEFAULT
         self.device_set = device_set.split(":")[-1].strip() if ":" in device_set else device_set
 
     # -- save_format helper bound to the current settings ----------------------
@@ -112,7 +118,7 @@ class AudioTools:
     def ensemble_manual(self, audio_inputs: Sequence[str], audio_file_base: str) -> None:
         from ml import spec_utils
 
-        algorithm = self.settings.get("choose_algorithm")
+        algorithm = self.settings.audio_tools.choose_algorithm
         track = sanitize_filename_component(audio_file_base) or "audio"
         algorithm_part = sanitize_filename_component(str(algorithm or ""))
         name = f"{self.is_testing_audio}{track}"
@@ -148,11 +154,13 @@ class AudioTools:
 
         is_pitch = tool == CHANGE_PITCH
         if is_pitch:
-            rate = float(self.settings.get("pitch_rate"))
-            is_time_correction = bool(self.settings.get("is_time_correction"))
+            rate = float(self.settings.audio_tools.pitch_rate)
+            is_time_correction = bool(
+                self.settings.audio_tools.is_time_correction
+            )
             file_text = " pitch shifted"
         else:
-            rate = float(self.settings.get("time_stretch_rate"))
+            rate = float(self.settings.audio_tools.time_stretch_rate)
             is_time_correction = True
             file_text = " time stretched"
 
@@ -382,7 +390,7 @@ class AudioToolRunner:
         time_elapsed = lambda: f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
 
         try:
-            export_path = self.settings.get("export_path")
+            export_path = self.settings.process.export_path
             if not export_path or not os.path.isdir(export_path):
                 raise ValueError("A valid output folder is required.")
 
@@ -421,7 +429,7 @@ class AudioToolRunner:
         else:
             _release_inference_resources(self)
 
-    def _run_manual_ensemble(self, audio_tool, inputs, callbacks) -> None:
+    def _run_manual_ensemble(self, audio_tool: typing.Any, inputs: typing.Any, callbacks: typing.Any) -> None:
         if len(inputs) <= 1:
             raise ValueError("Manual Ensemble needs at least two input files.")
         missing = [p for p in inputs if not os.path.isfile(p)]
@@ -435,7 +443,7 @@ class AudioToolRunner:
         callbacks.console("\nProcessing...\n")
         callbacks.progress(0.5)
 
-        algorithm = self.settings.get("choose_algorithm")
+        algorithm = self.settings.audio_tools.choose_algorithm
         if algorithm == COMBINE_INPUTS:
             audio_tool.combine_audio(inputs, audio_file_base)
         else:
@@ -443,7 +451,7 @@ class AudioToolRunner:
         callbacks.progress(1.0)
         callbacks.console("Done\n")
 
-    def _run_pitch_time(self, audio_tool, tool, inputs, callbacks) -> None:
+    def _run_pitch_time(self, audio_tool: typing.Any, tool: typing.Any, inputs: typing.Any, callbacks: typing.Any) -> None:
         if not inputs:
             raise ValueError("Select at least one input file.")
         total = len(inputs)
@@ -461,7 +469,7 @@ class AudioToolRunner:
             callbacks.progress(file_num / total)
             callbacks.console(f"{base_text}Done\n")
 
-    def _run_apollo(self, audio_tool, inputs, callbacks) -> None:
+    def _run_apollo(self, audio_tool: typing.Any, inputs: typing.Any, callbacks: typing.Any) -> None:
         if not inputs:
             raise ValueError("Select at least one input file.")
 
@@ -484,7 +492,7 @@ class AudioToolRunner:
             callbacks.console(f"{base_text}Restoring...\n")
             audio_file_base = _basename_no_ext(audio_file)
 
-            def set_progress_bar(step, inference_iterations=0, _file_num=file_num):
+            def set_progress_bar(step: typing.Any, inference_iterations: typing.Any=0, _file_num: typing.Any=file_num):
                 fraction = (_file_num - 1 + min(1.0, step + inference_iterations)) / total
                 callbacks.progress(fraction)
 
@@ -498,7 +506,7 @@ class AudioToolRunner:
             callbacks.progress(file_num / total)
             callbacks.console(f"{base_text}Done\n")
 
-    def _run_dual(self, audio_tool, tool, dual_pairs, callbacks) -> None:
+    def _run_dual(self, audio_tool: typing.Any, tool: typing.Any, dual_pairs: typing.Any, callbacks: typing.Any) -> None:
         if not dual_pairs:
             raise ValueError("Provide at least one input pair.")
         total = len(dual_pairs)
@@ -524,7 +532,7 @@ class AudioToolRunner:
                 self, lambda text, base=base_text: callbacks.console(base + text)
             )
 
-            def set_progress_bar(step, inference_iterations=0, _file_num=file_num):
+            def set_progress_bar(step: typing.Any, inference_iterations: typing.Any=0, _file_num: typing.Any=file_num):
                 fraction = (_file_num - 1 + min(1.0, step + inference_iterations)) / total
                 callbacks.progress(fraction)
 

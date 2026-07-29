@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.settings import Settings
+from core.settings.coerce import coerce_field
 from core.settings.flat_map import FLAT_TO_PATH
 
 _MISSING = object()
@@ -24,7 +25,11 @@ def get_path(settings: Settings, path: str, default: Any = _MISSING) -> Any:
 def set_path(settings: Settings, path: str, value: Any) -> None:
     """Write a ``section.field`` path on nested :class:`Settings`."""
     section_name, field_name = path.split(".", 1)
-    setattr(getattr(settings, section_name), field_name, value)
+    setattr(
+        getattr(settings, section_name),
+        field_name,
+        coerce_field(section_name, field_name, value),
+    )
 
 
 def get_flat(settings: Settings, key: str, default: Any = None) -> Any:

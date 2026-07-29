@@ -6,6 +6,7 @@ from core.export_naming import (
     preview_output_name,
     sanitize_filename_component,
 )
+from core.settings import Settings
 
 
 class SanitizeTests(unittest.TestCase):
@@ -84,24 +85,36 @@ class EnsembleFinalBaseTests(unittest.TestCase):
 
 class PreviewOutputNameTests(unittest.TestCase):
     def test_defaults(self):
+        settings = Settings.from_flat(
+            {
+                "is_testing_audio": False,
+                "is_add_model_name": False,
+                "save_format": "WAV",
+            }
+        )
         self.assertEqual(
-            preview_output_name({"is_testing_audio": False, "is_add_model_name": False, "save_format": "WAV"}),
+            preview_output_name(settings),
             "song (Vocals).wav",
         )
 
     def test_model_and_timestamp(self):
-        name = preview_output_name(
+        settings = Settings.from_flat(
             {
                 "is_testing_audio": True,
                 "is_add_model_name": True,
                 "save_format": "FLAC",
             }
         )
+        name = preview_output_name(
+            settings
+        )
         self.assertEqual(name, "1710000000 song UVR-MDX-Net (Vocals).flac")
 
     def test_multi_file_preview(self):
         self.assertEqual(
-            preview_output_name({"save_format": "WAV"}, multi_file=True),
+            preview_output_name(
+                Settings.from_flat({"save_format": "WAV"}), multi_file=True
+            ),
             "1-song (Vocals).wav",
         )
 

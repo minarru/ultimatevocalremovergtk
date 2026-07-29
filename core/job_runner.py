@@ -10,13 +10,14 @@ Supports single-model separation, ensemble runs, sample mode, and secondary /
 vocal-splitter / Demucs pre-process machinery. Audio tools live in
 :mod:`core.audio_tools`.
 """
+import typing
 
 import os
 import re
 import time
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Sequence
 
 from bundled.constants import (
     CHOOSE_ENSEMBLE_OPTION,
@@ -62,16 +63,21 @@ from .debug_log import debug, debug_elapsed, next_seq, preview_text, set_correla
 from .error_context import snapshot_worker_file
 from .model_display import display_name_for_model
 from .separate_import import import_separate_engines
+from .types import ProcessMethod
 from .inference_cleanup import (
     clear_source_mapper,
     release_inference_memory as _release_inference_resources,
     release_separator,
 )
 
+if TYPE_CHECKING:
+    from engines.model_weight_cache import FileIdentity
+    from kthread import KThread
 
-def collect_run_model_paths(models: Sequence[ModelConfig]) -> set:
+
+def collect_run_model_paths(models: Sequence[ModelConfig]) -> set[str]:
     """Collect on-disk model paths for every model participating in this run."""
-    found: set = set()
+    found: set[str] = set()
 
     def add(model: Optional[ModelConfig]) -> None:
         if model is None:
@@ -93,7 +99,7 @@ def collect_run_model_paths(models: Sequence[ModelConfig]) -> set:
     return found
 
 
-def _decoded_mix_for_process(audio_file):
+def _decoded_mix_for_process(audio_file: typing.Any):
     """Decode once per track so ensemble / secondary models reuse the same mix."""
     from engines.mix import prepare_mix
 
@@ -117,7 +123,7 @@ def _progress_detail(
     *,
     file_num: int,
     file_total: int,
-    model,
+    model: typing.Any,
     model_num: int,
     model_count: int,
     chunk_num: int = 0,
@@ -141,11 +147,13 @@ def _progress_detail(
 def _long_file_chunk_settings(settings: Settings) -> tuple:
     """Return ``(chunk_seconds, overlap_seconds)``; chunk ``<= 0`` means off."""
     try:
-        chunk_seconds = float(settings.get("long_file_chunk_seconds") or 0.0)
+        chunk_seconds = float(settings.process.long_file_chunk_seconds or 0.0)
     except (TypeError, ValueError):
         chunk_seconds = 0.0
     try:
-        overlap_seconds = float(settings.get("long_file_chunk_overlap_seconds") or 0.0)
+        overlap_seconds = float(
+            settings.process.long_file_chunk_overlap_seconds or 0.0
+        )
     except (TypeError, ValueError):
         overlap_seconds = 0.0
     return chunk_seconds, overlap_seconds
@@ -157,10 +165,10 @@ def _write_captured_stems(
     *,
     is_normalization: bool,
     amplification_threshold: float,
-    wav_type_set,
-    save_format_name,
-    mp3_bit_set,
-    flac_bit_set,
+    wav_type_set: typing.Any,
+    save_format_name: typing.Any,
+    mp3_bit_set: typing.Any,
+    flac_bit_set: typing.Any,
 ) -> None:
     """Write deferred stem arrays to their original export paths."""
     import soundfile as sf
@@ -263,18 +271,18 @@ class JobRunner:
     def __init__(self, settings: Settings, repo: Optional[ModelRepository] = None):
         self.settings = settings
         self.repo = repo or ModelRepository()
-        self._thread = None
+        self._thread: Optional[KThread] = None
         self._is_stopped = False
         self._is_paused = False
         self.iteration = 0
         self.true_model_count = 0
         # Per-run secondary-source caches consumed by the engines.
-        self._vr_cache_source_mapper: dict = {}
-        self._mdx_cache_source_mapper: dict = {}
-        self._demucs_cache_source_mapper: dict = {}
+        self._vr_cache_source_mapper: dict[str, Any] = {}
+        self._mdx_cache_source_mapper: dict[str, Any] = {}
+        self._demucs_cache_source_mapper: dict[str, Any] = {}
         self.all_models: List[str] = []
-        self._active_separator = None
-        self._run_protect_identities: set = set()
+        self._active_separator: Any = None
+        self._run_protect_identities: set[FileIdentity] = set()
         self._last_backend_name: Optional[str] = None
 
     # -- Public control ---------------------------------------------------------
@@ -291,7 +299,7 @@ class JobRunner:
         """
         if self.is_running():
             return
-        if self.settings.get("chosen_process_method") == ENSEMBLE_MODE:
+        if self.settings.process.method == ProcessMethod.ENSEMBLE:
             self.start_ensemble(input_paths, callbacks)
             return
         from kthread import KThread
@@ -326,7 +334,7 @@ class JobRunner:
         self, input_paths: List[str], callbacks: JobCallbacks
     ) -> List[str]:
         """Build sample clips on the worker thread and report any fallbacks."""
-        if self.settings.get("model_sample_mode"):
+        if self.settings.process.sample_mode:
             callbacks.console("Preparing sample clips...\n")
             callbacks.progress(0.0, detail="Preparing sample clips")
 
@@ -403,17 +411,17 @@ class JobRunner:
         self._mdx_cache_source_mapper = {}
         self._demucs_cache_source_mapper = {}
 
-    def _cached_source_callback(self, process_method, model_name=None):
+    def _cached_source_callback(self, process_method: typing.Any, model_name: typing.Any=None):
         mapper = self._mapper_for(process_method)
         if model_name and model_name in mapper:
             return model_name, mapper[model_name]
         return None, None
 
-    def _cached_model_source_holder(self, process_method, sources, model_name=None):
+    def _cached_model_source_holder(self, process_method: typing.Any, sources: typing.Any, model_name: typing.Any=None):
         mapper = self._mapper_for(process_method)
         mapper[model_name] = sources
 
-    def _mapper_for(self, process_method) -> dict:
+    def _mapper_for(self, process_method: typing.Any) -> dict:
         if process_method == VR_ARCH_TYPE:
             return self._vr_cache_source_mapper
         if process_method == MDX_ARCH_TYPE:
@@ -427,11 +435,18 @@ class JobRunner:
 
     def resolve_models(self) -> List[ModelConfig]:
         """Build the ``ModelConfig`` list for the currently chosen method."""
-        method = self.settings.get("chosen_process_method")
-        if method not in _MODEL_KEY_BY_METHOD:
-            raise NotImplementedError(f"process method '{method}' is implemented in a later phase")
-        model_name = self.settings.get(_MODEL_KEY_BY_METHOD[method])
-        return assemble_model(self.settings, self.repo, model_name, method)
+        method = ProcessMethod(self.settings.process.method)
+        if method is ProcessMethod.VR:
+            model_name = self.settings.vr.model
+        elif method is ProcessMethod.MDX:
+            model_name = self.settings.mdx.model
+        elif method is ProcessMethod.DEMUCS:
+            model_name = self.settings.demucs.model
+        else:
+            raise NotImplementedError(
+                f"process method '{method.value}' is implemented in a later phase"
+            )
+        return assemble_model(self.settings, self.repo, model_name, method.value)
 
     def _count_true_models(self, models: Sequence[Any]) -> int:
         """Progress denominator: shared with the Save stems workload estimate."""
@@ -484,7 +499,7 @@ class JobRunner:
 
         target = device
         if target is None:
-            target = self.settings.get("device_set")
+            target = self.settings.process.device
         action = ensure_weight_cache_vram_headroom(
             target,
             protect_identities=self._run_protect_identities or None,
@@ -499,7 +514,7 @@ class JobRunner:
                 "Low GPU memory — freed all cached models for this run\n"
             )
 
-    def _run_seperator(self, seperator):
+    def _run_seperator(self, seperator: typing.Any):
         """Run one separator and return captured stem arrays (for ensemble RAM path)."""
         self._active_separator = seperator
         self._last_backend_name = getattr(seperator, "_backend_name", None)
@@ -544,7 +559,7 @@ class JobRunner:
 
         try:
             input_paths = self._prepare_paths_for_run(input_paths, callbacks)
-            export_path = self.settings.get("export_path")
+            export_path = self.settings.process.export_path
             if not export_path:
                 raise ValueError("export_path is required")
             resolve_started = time.perf_counter()
@@ -592,7 +607,7 @@ class JobRunner:
             }
 
             def make_progress():
-                def set_progress_bar(step, inference_iterations=0):
+                def set_progress_bar(step: typing.Any, inference_iterations: typing.Any=0):
                     nonlocal last_progress_fraction
                     total_count = max(1, self.true_model_count * total_chunk_units)
                     base = 1.0 / total_count
@@ -617,7 +632,9 @@ class JobRunner:
                 return set_progress_bar
 
             try:
-                amp_threshold = float(self.settings.get("amplification_threshold") or 0.0)
+                amp_threshold = float(
+                    self.settings.process.amplification_threshold or 0.0
+                )
             except (TypeError, ValueError):
                 amp_threshold = 0.0
 
@@ -659,14 +676,14 @@ class JobRunner:
                     model_label = _model_output_label(current_model)
                     audio_file_base = format_track_base(
                         track=track_title,
-                        model=model_label if self.settings.get("is_add_model_name") else None,
+                        model=model_label if self.settings.process.add_model_name else None,
                         file_index=file_num,
                         file_total=total_files,
                         timestamp=testing_timestamp_prefix(self.settings),
                     )
 
                     model_export_path = export_path
-                    if self.settings.get("is_create_model_folder"):
+                    if self.settings.process.create_model_folder:
                         if model_label:
                             model_export_path = os.path.join(
                                 export_path,
@@ -734,12 +751,12 @@ class JobRunner:
                         _write_captured_stems(
                             final_stems,
                             stem_paths,
-                            is_normalization=bool(self.settings.get("is_normalization")),
+                            is_normalization=bool(self.settings.process.normalization),
                             amplification_threshold=amp_threshold,
                             wav_type_set=resolve_wav_type_set(self.settings),
-                            save_format_name=self.settings.get("save_format"),
-                            mp3_bit_set=self.settings.get("mp3_bit_set"),
-                            flac_bit_set=self.settings.get("flac_bit_set", "16-bit"),
+                            save_format_name=self.settings.process.save_format.value,
+                            mp3_bit_set=self.settings.process.mp3_bitrate,
+                            flac_bit_set=self.settings.process.flac_bit_depth,
                         )
 
                 clear_gpu_cache(getattr(self, "_last_backend_name", None))
@@ -800,7 +817,7 @@ class JobRunner:
 
             ensemble = Ensembler(self.settings)
             export_path = ensemble.ensemble_folder_name
-            ensemble_main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+            ensemble_main_stem = self.settings.ensemble.main_stem
             is_4_stem = ensemble_main_stem in (FOUR_STEM_ENSEMBLE, MULTI_STEM_ENSEMBLE)
 
             self.iteration = 0
@@ -845,7 +862,7 @@ class JobRunner:
             }
 
             def make_progress():
-                def set_progress_bar(step, inference_iterations=0):
+                def set_progress_bar(step: typing.Any, inference_iterations: typing.Any=0):
                     nonlocal last_progress_fraction
                     total_count = max(1, self.true_model_count * total_chunk_units)
                     base = 1.0 / total_count
@@ -952,7 +969,7 @@ class JobRunner:
                             is_ensemble_master=True,
                             is_4_stem_ensemble=is_4_stem,
                             is_save_all_outputs_ensemble=bool(
-                                self.settings.get("is_save_all_outputs_ensemble")
+                                self.settings.ensemble.save_all_outputs
                             ),
                             capture_stems_only=chunked,
                         )
@@ -1011,9 +1028,9 @@ class JobRunner:
                         (output_stem, {"is_4_stem": True}) for output_stem in stem_names
                     ]
                 else:
-                    if not self.settings.get("is_secondary_stem_only"):
+                    if not self.settings.process.secondary_stem_only:
                         combine_steps.append((PRIMARY_STEM, {}))
-                    if not self.settings.get("is_primary_stem_only"):
+                    if not self.settings.process.primary_stem_only:
                         combine_steps.append((SECONDARY_STEM, {}))
                         combine_steps.append((SECONDARY_STEM, {"is_inst_mix": True}))
 
@@ -1077,7 +1094,7 @@ class JobRunner:
             _release_inference_resources(self)
 
 
-def _capture_separator_stem_arrays(seperator) -> dict:
+def _capture_separator_stem_arrays(seperator: typing.Any) -> dict:
     """Copy stem waveforms buffered by an ensemble member before release.
 
     Stem tags are passed through :func:`canonical_ensemble_stem_tag` so yaml
@@ -1102,7 +1119,7 @@ def _capture_separator_stem_arrays(seperator) -> dict:
     return captured
 
 
-def _capture_separator_stem_paths(seperator) -> dict:
+def _capture_separator_stem_paths(seperator: typing.Any) -> dict:
     """Copy deferred stem export paths buffered alongside stem arrays."""
     from core.model_stem_semantics import canonical_ensemble_stem_tag
 
@@ -1145,23 +1162,23 @@ class Ensembler:
 
     def __init__(self, settings: Settings, is_manual_ensemble: bool = False):
         self.settings = settings
-        self.is_save_all_outputs_ensemble = settings.get("is_save_all_outputs_ensemble")
+        self.is_save_all_outputs_ensemble = settings.ensemble.save_all_outputs
 
-        chosen = settings.get("chosen_ensemble", CHOOSE_ENSEMBLE_OPTION)
+        chosen = settings.ensemble.chosen_ensemble
         if chosen and chosen != CHOOSE_ENSEMBLE_OPTION:
             chosen_ensemble_name = sanitize_filename_component(chosen) or "Ensembled"
         else:
             chosen_ensemble_name = "Ensembled"
         from core.ensemble_algorithms import parse_ensemble_type
 
-        ensemble_type_value = settings.get("ensemble_type", MAX_MIN)
+        ensemble_type_value = settings.ensemble.type
         primary_algorithm, secondary_algorithm = parse_ensemble_type(ensemble_type_value)
-        ensemble_main_stem_pair = settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR).partition("/")
+        ensemble_main_stem_pair = settings.ensemble.main_stem.partition("/")
         time_stamp = round(time.time())
 
-        self.main_export_path = settings.get("export_path")
+        self.main_export_path = settings.process.export_path
         self.append_ensemble_label = (
-            chosen_ensemble_name if settings.get("is_append_ensemble_name") else None
+            chosen_ensemble_name if settings.ensemble.append_ensemble_name else None
         )
         ensemble_folder_root = self.main_export_path if self.is_save_all_outputs_ensemble else paths.ENSEMBLE_TEMP_PATH
         folder_label = sanitize_filename_component(chosen_ensemble_name.replace(" ", "_")) or "Ensembled"
@@ -1171,27 +1188,29 @@ class Ensembler:
         self.secondary_algorithm = secondary_algorithm
         self.ensemble_primary_stem = ensemble_main_stem_pair[0]
         self.ensemble_secondary_stem = ensemble_main_stem_pair[2]
-        self.is_normalization = settings.get("is_normalization")
+        self.is_normalization = settings.process.normalization
         try:
-            self.amplification_threshold = float(settings.get("amplification_threshold") or 0.0)
+            self.amplification_threshold = float(
+                settings.process.amplification_threshold or 0.0
+            )
         except (TypeError, ValueError):
             self.amplification_threshold = 0.0
-        self.is_wav_ensemble = settings.get("is_wav_ensemble")
+        self.is_wav_ensemble = settings.ensemble.wav_ensemble
         self.wav_type_set = resolve_wav_type_set(settings)
-        self.mp3_bit_set = settings.get("mp3_bit_set")
-        self.flac_bit_set = settings.get("flac_bit_set", "16-bit")
-        self.save_format = settings.get("save_format")
+        self.mp3_bit_set = settings.process.mp3_bitrate
+        self.flac_bit_set = settings.process.flac_bit_depth
+        self.save_format = settings.process.save_format.value
         if not is_manual_ensemble:
             os.makedirs(self.ensemble_folder_name, exist_ok=True)
 
     def ensemble_outputs(
         self,
-        audio_file_base,
-        export_path,
-        stem,
-        is_4_stem=False,
-        is_inst_mix=False,
-        stem_arrays=None,
+        audio_file_base: typing.Any,
+        export_path: typing.Any,
+        stem: typing.Any,
+        is_4_stem: typing.Any=False,
+        is_inst_mix: typing.Any=False,
+        stem_arrays: typing.Any=None,
     ):
         """Combine the per-member outputs for ``stem`` with the chosen algorithm.
 
@@ -1204,7 +1223,7 @@ class Ensembler:
 
         if is_4_stem:
             # Single-token algorithm (no slash); never use an empty secondary partition.
-            raw_type = self.settings.get("ensemble_type", MAX_MIN)
+            raw_type = self.settings.ensemble.type
             algorithm = raw_type.partition("/")[0].strip() or MAX_SPEC
             stem_tag = canonical_ensemble_stem_tag(stem)
         elif is_inst_mix:
@@ -1274,7 +1293,7 @@ class Ensembler:
                 except OSError:
                     pass
 
-    def get_files_to_ensemble(self, folder="", prefix="", suffix=""):
+    def get_files_to_ensemble(self, folder: typing.Any="", prefix: typing.Any="", suffix: typing.Any=""):
         """Grab all the per-member output files to be ensembled for one stem."""
         if not os.path.isdir(folder):
             return []
@@ -1284,7 +1303,7 @@ class Ensembler:
             if name.startswith(prefix) and name.endswith(suffix)
         ]
 
-    def get_files_to_ensemble_for_stem(self, folder="", prefix="", stem_tag=""):
+    def get_files_to_ensemble_for_stem(self, folder: typing.Any="", prefix: typing.Any="", stem_tag: typing.Any=""):
         """Like :meth:`get_files_to_ensemble`, but match stem tags case-insensitively.
 
         Used when member files were written with yaml lowercase ``(vocals)``

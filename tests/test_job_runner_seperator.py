@@ -1,4 +1,5 @@
 """JobRunner separator lifecycle."""
+import typing
 
 import unittest
 from unittest import mock
@@ -53,7 +54,7 @@ class JobRunnerSeperatorTests(unittest.TestCase):
         created: list = []
 
         class _DeferredThread:
-            def __init__(self, target=None, args=()):
+            def __init__(self, target: typing.Any=None, args: typing.Any=()):
                 self._target = target
                 self._args = args
                 created.append(self)

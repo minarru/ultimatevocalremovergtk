@@ -1,6 +1,7 @@
 """Desktop notification helpers with per-type settings gates."""
 
 from __future__ import annotations
+import typing
 
 from typing import Optional
 
@@ -34,7 +35,7 @@ _NOTIFY_ICONS = {
 }
 
 
-def notification_enabled(settings, key: str) -> bool:
+def notification_enabled(settings: typing.Any, key: str) -> bool:
     if key not in NOTIFICATION_SETTING_KEYS:
         return True
     return bool(get_flat(settings, key, True))
@@ -42,7 +43,7 @@ def notification_enabled(settings, key: str) -> bool:
 
 def send_desktop_notification(
     app: Optional[Gtk.Application],
-    settings,
+    settings: typing.Any,
     *,
     setting_key: str,
     ident: str,

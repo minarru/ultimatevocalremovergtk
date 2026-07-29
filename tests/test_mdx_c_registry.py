@@ -1,4 +1,5 @@
 """Tests for MDX-C catalogue auto-registration."""
+import typing
 
 import json
 import os
@@ -303,7 +304,7 @@ class LoadMdxCatalogIndexTests(unittest.TestCase):
         self.assertIsNone(yaml_for_checkpoint("missing.ckpt", index=index))
 
     @patch("core.mdx_c_registry._load_manual_download_cache")
-    def test_load_index_from_manual_cache(self, mock_cache) -> None:
+    def test_load_index_from_manual_cache(self, mock_cache: typing.Any) -> None:
         mock_cache.return_value = {
             "roformer_download_list": {
                 "Test": {

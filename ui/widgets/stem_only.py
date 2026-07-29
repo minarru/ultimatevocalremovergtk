@@ -1,6 +1,7 @@
 """Save-stems controls: exclusive export, MDX subset, and Demucs focus."""
 
 from __future__ import annotations
+import typing
 
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Set, Tuple
@@ -113,7 +114,7 @@ _COMPLEMENT_DISPLAY: Dict[str, str] = {
 _LEAD_VOCAL_PAIR_LABELS = VOCALS_OTHER_DISPLAY_OVERRIDES
 
 
-def roformer_lead_vocal_label_overrides(model) -> Optional[Dict[str, str]]:
+def roformer_lead_vocal_label_overrides(model: typing.Any) -> Optional[Dict[str, str]]:
     """Return stem display overrides for the selected model."""
     return stem_display_overrides(model)
 
@@ -262,7 +263,7 @@ def _fill_export_combo(row: Adw.ComboRow, options: List[StemOnlyOption]) -> Dict
     return {opt.name: opt for opt in options}
 
 
-def _exclusive_name_from_settings(settings, primary_key: str, secondary_key: str) -> str:
+def _exclusive_name_from_settings(settings: typing.Any, primary_key: str, secondary_key: str) -> str:
     primary_on = bool(get_flat(settings, primary_key))
     secondary_on = bool(get_flat(settings, secondary_key))
     if primary_on and not secondary_on:
@@ -272,7 +273,7 @@ def _exclusive_name_from_settings(settings, primary_key: str, secondary_key: str
     return _TOGGLE_ALL
 
 
-def _persist_exclusive_choice(settings, primary_key: str, secondary_key: str, name: str) -> None:
+def _persist_exclusive_choice(settings: typing.Any, primary_key: str, secondary_key: str, name: str) -> None:
     set_flat(settings, primary_key, name == primary_key)
     set_flat(settings, secondary_key, name == secondary_key)
 
@@ -289,7 +290,7 @@ def _export_label_for_choice(name: str, options: Dict[str, StemOnlyOption]) -> s
 class SaveStemsSection:
     """Unified Save stems widget for method views and ensemble."""
 
-    def __init__(self, *, settings, on_changed: Optional[Callable[[], None]] = None):
+    def __init__(self, *, settings: typing.Any, on_changed: Optional[Callable[[], None]] = None):
         self.settings = settings
         self._on_changed = on_changed
         self._loading = False
@@ -633,7 +634,7 @@ class SaveStemsSection:
 
     # -- Exclusive -------------------------------------------------------------
 
-    def _on_exclusive_changed(self, *_args) -> None:
+    def _on_exclusive_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         self._notify()
@@ -845,7 +846,7 @@ class SaveStemsSection:
         finally:
             self._loading = was_loading
 
-    def _open_custom_stems_dialog(self, *_args) -> None:
+    def _open_custom_stems_dialog(self, *_args: typing.Any) -> None:
         if self._subset_mode == "custom":
             self._draft_custom_all = self._custom_all
             self._draft_custom_selected = set(self._custom_selected)
@@ -912,7 +913,7 @@ class SaveStemsSection:
         self._custom_dialog.close()
         self._notify()
 
-    def _on_quick_export_changed(self, *_args) -> None:
+    def _on_quick_export_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         mode = get_combo_value(self._quick_row) or _QUICK_ALL
@@ -1039,13 +1040,13 @@ class SaveStemsSection:
             return summary.replace("Exporting", f"{focus_label} focus —", 1)
         return f"{focus_label} focus — {focus_label} only"
 
-    def _on_demucs_focus_changed(self, *_args) -> None:
+    def _on_demucs_focus_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         self._update_demucs_export_visibility(from_settings=False)
         self._notify()
 
-    def _on_demucs_export_changed(self, *_args) -> None:
+    def _on_demucs_export_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         self._notify()
@@ -1100,7 +1101,7 @@ class SaveStemsSection:
                 for stem in [ALL_STEMS, *self._section._subset_stems]
             }
 
-        def rebuild(self, stems: List[str], *, stem_label_overrides=None) -> None:
+        def rebuild(self, stems: List[str], *, stem_label_overrides: typing.Any=None) -> None:
             self._section._subset_stems = list(stems)
             if stem_label_overrides is not None:
                 self._section._stem_label_overrides = stem_label_overrides

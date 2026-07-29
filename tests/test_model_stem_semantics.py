@@ -1,3 +1,4 @@
+import typing
 import unittest
 
 from bundled.constants import (
@@ -41,18 +42,18 @@ from core.model_stem_semantics import (
 
 
 class _Training:
-    def __init__(self, instruments, target=""):
+    def __init__(self, instruments: typing.Any, target: typing.Any=""):
         self.instruments = instruments
         self.target_instrument = target
 
 
 class _Config:
-    def __init__(self, instruments, target=""):
+    def __init__(self, instruments: typing.Any, target: typing.Any=""):
         self.training = _Training(instruments, target)
 
 
 class _Model:
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: typing.Any):
         self.is_roformer = kwargs.get("is_roformer", False)
         self.is_karaoke = kwargs.get("is_karaoke", False)
         self.is_bv_model = kwargs.get("is_bv_model", False)
@@ -314,10 +315,10 @@ class QuickExportSemanticsTests(unittest.TestCase):
 
     def test_apply_karaoke_default_sets_instrumental_flags(self):
         class _Settings(dict):
-            def get(self, key, default=None):
+            def get(self, key: typing.Any, default: typing.Any=None):
                 return super().get(key, default)
 
-            def set(self, key, value):
+            def set(self, key: typing.Any, value: typing.Any):
                 self[key] = value
 
         settings = _Settings(

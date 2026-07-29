@@ -1,4 +1,5 @@
 """Tests for desktop notification preference gates."""
+import typing
 
 import unittest
 from unittest.mock import MagicMock, patch
@@ -25,7 +26,7 @@ class NotificationEnabledTests(unittest.TestCase):
 
 class SendDesktopNotificationTests(unittest.TestCase):
     @patch("ui.notifications.Gio.Notification.new")
-    def test_skips_when_setting_disabled(self, new_notification) -> None:
+    def test_skips_when_setting_disabled(self, new_notification: typing.Any) -> None:
         settings = Settings.defaults()
         settings.set(NOTIFY_PROCESS_COMPLETE, False)
         send_desktop_notification(

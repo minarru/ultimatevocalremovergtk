@@ -1,4 +1,5 @@
 """Tests for Politrees catalogue merge and download resolution."""
+import typing
 
 import os
 import tempfile
@@ -94,7 +95,7 @@ class DownloadManagerPolitreesTests(unittest.TestCase):
         clear_politrees_cache()
 
     @patch("core.downloads.load_politrees_links")
-    def test_refresh_merges_politrees_models(self, mock_load) -> None:
+    def test_refresh_merges_politrees_models(self, mock_load: typing.Any) -> None:
         mock_load.return_value = {
             "roformer_download_list": {
                 "Extra Roformer": {

@@ -1,4 +1,5 @@
 """Tests for the background download queue."""
+import typing
 
 import os
 import tempfile
@@ -51,7 +52,7 @@ class DownloadQueueTests(unittest.TestCase):
         started = threading.Event()
         release = threading.Event()
 
-        def blocking_download(jobs, **kwargs):
+        def blocking_download(jobs: typing.Any, **kwargs: typing.Any):
             started.set()
             release.wait(timeout=5)
             return "complete"

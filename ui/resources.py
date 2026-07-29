@@ -1,4 +1,5 @@
 """Load bundled GResource assets (custom icon theme) at startup."""
+import typing
 
 import os
 import shutil
@@ -150,7 +151,7 @@ def load_application_styles() -> bool:
     return True
 
 
-def _enable_dev_css(display) -> None:
+def _enable_dev_css(display: typing.Any) -> None:
     """Load on-disk ``style.css`` at user priority with live reload."""
     global _dev_css_provider, _dev_css_monitor
     if _dev_css_provider is not None:
@@ -166,7 +167,7 @@ def _enable_dev_css(display) -> None:
         Gtk.STYLE_PROVIDER_PRIORITY_USER,
     )
 
-    def reload_css(*_args) -> None:
+    def reload_css(*_args: typing.Any) -> None:
         try:
             provider.load_from_path(_SOURCE_STYLE_CSS)
         except GLib.Error:

@@ -6,6 +6,7 @@ auto-detected by :class:`core.ModelConfig` (``is_mdx_c``), so the
 :class:`core.JobRunner` selects ``SeperateMDXC`` vs ``SeperateMDX`` at run
 time. There is therefore one MDX model dropdown here, exactly as in the Tk app.
 """
+import typing
 
 from bundled.constants import (
     ALL_STEMS,
@@ -70,7 +71,7 @@ _MDX_C_SEGMENT_VALUES = (DEF_OPT, *[str(v) for v in MDX_SEGMENTS])
 _MDX_DEFAULTS = Settings.defaults().mdx
 
 
-def mdx_c_default_segment_size(model) -> int | None:
+def mdx_c_default_segment_size(model: typing.Any) -> int | None:
     """Return MDX-C / MDX23C yaml ``inference.dim_t``, or ``None`` if unknown."""
     if not model or not getattr(model, "is_mdx_c", False):
         return None
@@ -109,7 +110,7 @@ class MDXView(MethodView):
     def name_mapper(self):
         return self.context.repo.mdx_name_select_MAPPER
 
-    def build_options(self, group):
+    def build_options(self, group: typing.Any):
         # Segment / overlap both follow the selected model type: classic MDX-Net
         # uses a numeric segment size and a small discrete overlap set, while
         # MDX-C exposes "Default" (yaml dim_t) on the segment slider and a 2-50
@@ -130,7 +131,7 @@ class MDXView(MethodView):
     def _overlap_key(self):
         return "overlap_mdx23" if self._overlap_is_mdx_c else "overlap_mdx"
 
-    def _persist_segment_value(self, value) -> None:
+    def _persist_segment_value(self, value: typing.Any) -> None:
         """Write segment slider state without clearing MDX-C Default across models."""
         if value is None:
             return
@@ -143,13 +144,13 @@ class MDXView(MethodView):
         elif value != DEF_OPT:
             self.settings.mdx.segment_size = value
 
-    def _on_segment_changed(self, *_args):
+    def _on_segment_changed(self, *_args: typing.Any):
         if self._loading:
             return
         self._persist_segment_value(get_scale_row_value(self.segment_row))
         self._touch_settings()
 
-    def _on_overlap_changed(self, *_args):
+    def _on_overlap_changed(self, *_args: typing.Any):
         if self._loading:
             return
         value = get_scale_row_value(self.overlap_row)
@@ -208,7 +209,7 @@ class MDXView(MethodView):
         finally:
             self._loading = was_loading
 
-    def _configure_save_stems(self, model) -> None:
+    def _configure_save_stems(self, model: typing.Any) -> None:
         stems = list(getattr(model, "mdx_model_stems", []) or []) if model else []
         ordered = [s for s in _MDX_STEM_OPTIONS if s in stems]
         ordered += [s for s in stems if s not in _MDX_STEM_OPTIONS]
@@ -225,7 +226,7 @@ class MDXView(MethodView):
         else:
             super()._configure_save_stems(model)
 
-    def _on_model_resolved(self, model):
+    def _on_model_resolved(self, model: typing.Any):
         is_mdx_c = bool(model and getattr(model, "is_mdx_c", False))
         self._segment_is_mdx_c = is_mdx_c
         self._overlap_is_mdx_c = is_mdx_c
@@ -265,7 +266,7 @@ class MDXView(MethodView):
         if overlap_value is not None:
             set_flat(self.settings, self._overlap_key(), overlap_value)
 
-    def build_advanced(self, group):
+    def build_advanced(self, group: typing.Any):
         self.add_advanced_scale("mdx_batch_size", "Batch size", values=BATCH_SIZE, hint=BATCH_SIZE_HELP)
         self.add_option_combo(group, "denoise_option", "Denoise", MDX_DENOISE_OPTION, hint=IS_DENOISE_HELP)
         self.add_option_scale(group, "compensate", "Volume compensation", values=VOL_COMPENSATION, hint=COMPENSATE_HELP)

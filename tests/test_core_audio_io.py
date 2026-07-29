@@ -1,3 +1,4 @@
+import typing
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -31,7 +32,7 @@ class SaveFormatFlacTests(unittest.TestCase):
     @patch("soundfile.write")
     @patch("soundfile.read", return_value=(MagicMock(), 44100))
     @patch("os.remove")
-    def test_direct_flac_rewrite_skips_pydub(self, remove, _read, write):
+    def test_direct_flac_rewrite_skips_pydub(self, remove: typing.Any, _read: typing.Any, write: typing.Any):
         save_format("/tmp/stem.wav", "FLAC", "320k", "24-bit")
         write.assert_called_once()
         self.assertEqual(write.call_args[0][0], "/tmp/stem.flac")
@@ -40,7 +41,7 @@ class SaveFormatFlacTests(unittest.TestCase):
 
     @patch("pydub.AudioSegment")
     @patch("soundfile.read", side_effect=RuntimeError("boom"))
-    def test_flac_export_falls_back_to_pydub_parameters(self, _read, audio_segment_cls):
+    def test_flac_export_falls_back_to_pydub_parameters(self, _read: typing.Any, audio_segment_cls: typing.Any):
         segment = MagicMock()
         audio_segment_cls.from_wav.return_value = segment
 

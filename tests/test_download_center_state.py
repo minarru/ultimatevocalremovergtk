@@ -9,6 +9,7 @@ Covers two fixes:
 """
 
 from __future__ import annotations
+import typing
 
 import os
 import threading
@@ -91,7 +92,7 @@ class DownloadCenterStateTests(unittest.TestCase):
         a_started = threading.Event()
         a_release = threading.Event()
 
-        def describe(name, arch):
+        def describe(name: typing.Any, arch: typing.Any):
             if name == "Model A":
                 a_started.set()
                 a_release.wait(timeout=5)
@@ -102,7 +103,7 @@ class DownloadCenterStateTests(unittest.TestCase):
 
         apply_done = threading.Event()
 
-        def fake_idle_on_main(func, *args, **kwargs):
+        def fake_idle_on_main(func: typing.Any, *args: typing.Any, **kwargs: typing.Any):
             func(*args, **kwargs)
             apply_done.set()
 

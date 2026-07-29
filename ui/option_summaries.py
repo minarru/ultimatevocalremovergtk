@@ -12,6 +12,7 @@ headlessly. They live at the ``ui/`` root rather than under
 """
 
 from __future__ import annotations
+import typing
 
 from typing import List, Tuple
 
@@ -50,7 +51,7 @@ _SECONDARY_PAIRS: Tuple[Tuple[str, str], ...] = (
 )
 
 
-def _model_label(tag) -> str:
+def _model_label(tag: typing.Any) -> str:
     """Strip the ``"<arch>: "`` prefix from a stored model tag.
 
     Stored values come from ``ModelConfig.model_and_process_tag`` (e.g.
@@ -65,7 +66,7 @@ def _model_label(tag) -> str:
     return name if separator else text
 
 
-def four_stem_secondaries_apply(settings, process_method: str) -> bool:
+def four_stem_secondaries_apply(settings: typing.Any, process_method: str) -> bool:
     """Whether the ``other`` / ``bass`` / ``drums`` secondary slots can affect a run.
 
     Mirrors the engine's own branch in ``core/model_data.py`` (the
@@ -84,7 +85,7 @@ def four_stem_secondaries_apply(settings, process_method: str) -> bool:
     return is_demucs and settings.demucs.stems == ALL_STEMS
 
 
-def secondary_models_summary(settings, prefix: str, *, four_stem: bool) -> str:
+def secondary_models_summary(settings: typing.Any, prefix: str, *, four_stem: bool) -> str:
     """One-line state of the per-architecture secondary-model section.
 
     ``four_stem`` must match what the section actually shows (see
@@ -112,7 +113,7 @@ def secondary_models_summary(settings, prefix: str, *, four_stem: bool) -> str:
     return _SEP.join(parts) if parts else ON_NO_MODEL
 
 
-def preproc_summary(settings) -> str:
+def preproc_summary(settings: typing.Any) -> str:
     """One-line state of the Demucs pre-process-model section."""
     if not settings.demucs.is_pre_proc_model_activate:
         return OFF
@@ -124,7 +125,7 @@ def preproc_summary(settings) -> str:
     return name
 
 
-def vocal_split_summary(settings) -> str:
+def vocal_split_summary(settings: typing.Any) -> str:
     """One-line state of the vocal-splitter and deverb section.
 
     This section holds two independent switches, so it is ``OFF`` only when both

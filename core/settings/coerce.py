@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.types import ProcessMethod, SaveFormat
+
 
 def as_bool(value: Any, default: bool = False) -> bool:
     if value is None:
@@ -149,21 +151,35 @@ _FLOAT_FIELDS: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
+_ENUM_FIELDS = {
+    ("process", "method"): ProcessMethod,
+    ("process", "save_format"): SaveFormat,
+}
+
+
+def coerce_field(section_name: str, field: str, value: Any) -> Any:
+    """Coerce one nested setting value through the canonical field rules."""
+    path = (section_name, field)
+    if path in _BOOL_FIELDS:
+        return as_bool(value)
+    if path in _INT_FIELDS:
+        return as_int(value)
+    if path in _FLOAT_FIELDS:
+        return as_float(value)
+    if enum_type := _ENUM_FIELDS.get(path):
+        try:
+            return enum_type(value)
+        except (TypeError, ValueError):
+            return value
+    return value
+
 
 def _coerce_section(section_name: str, section_data: Any) -> dict[str, Any]:
     if not isinstance(section_data, dict):
         return {}
     coerced: dict[str, Any] = {}
     for field, value in section_data.items():
-        path = (section_name, field)
-        if path in _BOOL_FIELDS:
-            coerced[field] = as_bool(value)
-        elif path in _INT_FIELDS:
-            coerced[field] = as_int(value)
-        elif path in _FLOAT_FIELDS:
-            coerced[field] = as_float(value)
-        else:
-            coerced[field] = value
+        coerced[field] = coerce_field(section_name, field, value)
     return coerced
 
 

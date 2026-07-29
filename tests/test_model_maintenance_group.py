@@ -1,6 +1,7 @@
 """Change-model-defaults lives in its own group, not among the extra models."""
 
 from __future__ import annotations
+import typing
 
 import os
 import unittest
@@ -42,7 +43,7 @@ class MaintenanceGroupTests(unittest.TestCase):
             )
 
     @staticmethod
-    def _containing_group(row):
+    def _containing_group(row: typing.Any):
         """The Adw.PreferencesGroup that ultimately contains ``row``, or None."""
         from gi.repository import Adw
 

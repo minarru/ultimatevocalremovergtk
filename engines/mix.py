@@ -1,4 +1,5 @@
 """Mix preparation helpers."""
+import typing
 import audioread
 import librosa
 import numpy as np
@@ -6,7 +7,7 @@ from scipy import signal
 
 from core.debug_log import trace_phase
 
-def gather_sources(primary_stem_name, secondary_stem_name, secondary_sources: dict):
+def gather_sources(primary_stem_name: typing.Any, secondary_stem_name: typing.Any, secondary_sources: dict):
     
     source_primary = False
     source_secondary = False
@@ -39,7 +40,7 @@ def _as_channel_first(mix: np.ndarray) -> np.ndarray:
     raise ValueError(f"unsupported mix shape for prepare_mix: {arr.shape}")
 
 
-def prepare_mix(mix):
+def prepare_mix(mix: typing.Any):
     """Decode a path to stereo float32 at 44.1 kHz, or normalize an ndarray.
 
     Idempotent for already-decoded ``(2, N)`` mixes so ensemble / secondary /
@@ -58,13 +59,13 @@ def prepare_mix(mix):
 
         return _as_channel_first(mix)
 
-def rerun_mp3(audio_file, sample_rate=44100):
+def rerun_mp3(audio_file: typing.Any, sample_rate: typing.Any=44100):
 
     with audioread.audio_open(audio_file) as f:
         track_length = int(f.duration)
 
     return librosa.load(audio_file, duration=track_length, mono=False, sr=sample_rate)[0]
-def pitch_shift(mix):
+def pitch_shift(mix: typing.Any):
     new_sr = 31183
 
     # Resample audio file
@@ -72,6 +73,6 @@ def pitch_shift(mix):
     
     return resampled_audio
 
-def list_to_dictionary(lst):
+def list_to_dictionary(lst: typing.Any):
     dictionary = {item: index for index, item in enumerate(lst)}
     return dictionary

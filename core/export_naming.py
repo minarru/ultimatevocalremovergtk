@@ -16,6 +16,7 @@ import time
 from typing import Optional
 
 from bundled.constants import WAV
+from .settings import Settings
 
 # Characters unsafe in a single path component on common platforms.
 _UNSAFE = re.compile(r'[/\\:\0<>"|?*]')
@@ -77,9 +78,9 @@ def stem_wav_path(export_path: str, track_base: str, stem: str) -> str:
     return os.path.join(export_path, f"{format_stem_basename(track_base, stem)}.wav")
 
 
-def testing_timestamp_prefix(settings) -> Optional[str]:
+def testing_timestamp_prefix(settings: Settings) -> Optional[str]:
     """Return a timestamp string when Settings test mode is on, else ``None``."""
-    if not settings.get("is_testing_audio"):
+    if not settings.process.testing_audio:
         return None
     return str(round(time.time()))
 
@@ -89,14 +90,14 @@ def track_basename_from_path(audio_file: str) -> str:
     return sanitize_filename_component(os.path.splitext(os.path.basename(audio_file))[0]) or "audio"
 
 
-def preview_output_name(settings, *, multi_file: bool = False) -> str:
+def preview_output_name(settings: Settings, *, multi_file: bool = False) -> str:
     """Example filename for Preferences, reflecting current naming toggles."""
     track = "song"
     stem = "Vocals"
     model = None
-    if settings.get("is_add_model_name"):
+    if settings.process.add_model_name:
         model = "UVR-MDX-Net"
-    timestamp = "1710000000" if settings.get("is_testing_audio") else None
+    timestamp = "1710000000" if settings.process.testing_audio else None
     file_total = 2 if multi_file else 1
     file_index = 1 if multi_file else None
     base = format_track_base(
@@ -106,7 +107,7 @@ def preview_output_name(settings, *, multi_file: bool = False) -> str:
         file_total=file_total,
         timestamp=timestamp,
     )
-    ext = (settings.get("save_format") or WAV).lower()
+    ext = (settings.process.save_format.value or WAV).lower()
     if ext == "wav":
         suffix = ".wav"
     elif ext == "flac":

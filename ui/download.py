@@ -1,6 +1,7 @@
 """Download Center entry point, VIP / manual dialogs, and shared download services."""
 
 from __future__ import annotations
+import typing
 
 import os
 import threading
@@ -40,7 +41,7 @@ from .download_center import DownloadCenterWindow
 from .widgets.download_queue_indicator import DownloadQueueIndicator
 
 
-def download_batch_message(items) -> tuple[str, bool]:
+def download_batch_message(items: typing.Any) -> tuple[str, bool]:
     """Summarize terminal download outcomes for an honest in-app toast."""
     ready = sum(
         1 for item in items if item.status in (STATUS_COMPLETE, STATUS_EXISTS)
@@ -67,7 +68,7 @@ def download_batch_message(items) -> tuple[str, bool]:
     return "Downloads finished", False
 
 
-def _get_manager(app_context) -> DownloadManager:
+def _get_manager(app_context: typing.Any) -> DownloadManager:
     manager = getattr(app_context, "_download_manager", None)
     if manager is None:
         manager = DownloadManager()
@@ -75,7 +76,7 @@ def _get_manager(app_context) -> DownloadManager:
     return manager
 
 
-def _get_queue(app_context, manager: DownloadManager) -> DownloadQueue:
+def _get_queue(app_context: typing.Any, manager: DownloadManager) -> DownloadQueue:
     queue = getattr(app_context, "_download_queue", None)
     if queue is None:
         queue = DownloadQueue(manager, on_changed=lambda: None, repo=app_context.repo)
@@ -84,11 +85,11 @@ def _get_queue(app_context, manager: DownloadManager) -> DownloadQueue:
 
 
 def _send_download_notifications(
-    app,
-    settings,
+    app: typing.Any,
+    settings: typing.Any,
     queue: DownloadQueue,
     *,
-    items=None,
+    items: typing.Any=None,
 ) -> None:
     items = queue.items() if items is None else list(items)
     complete = sum(1 for item in items if item.status == "complete")
@@ -131,7 +132,7 @@ def _send_download_notifications(
         )
 
 
-def init_download_queue_ui(main_window, app_context, *, on_models_changed=None) -> DownloadQueueIndicator:
+def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any, *, on_models_changed: typing.Any=None) -> DownloadQueueIndicator:
     """Wire the header download indicator and app-level queue callbacks."""
     manager = _get_manager(app_context)
     queue = _get_queue(app_context, manager)
@@ -199,7 +200,7 @@ def init_download_queue_ui(main_window, app_context, *, on_models_changed=None) 
     return indicator
 
 
-def _auto_open_popover(main_window, indicator: DownloadQueueIndicator) -> None:
+def _auto_open_popover(main_window: typing.Any, indicator: DownloadQueueIndicator) -> None:
     """Dev-only (UVR_DEBUG_QUEUE_POPUP): open the popover once the window maps.
 
     Autohide is disabled so the popover stays open when focus moves to the GTK
@@ -207,7 +208,7 @@ def _auto_open_popover(main_window, indicator: DownloadQueueIndicator) -> None:
     """
     indicator.dev_disable_autohide()
 
-    def open_once(*_args) -> None:
+    def open_once(*_args: typing.Any) -> None:
         indicator.refresh()
         indicator.popup()
         if handler_id[0] is not None:
@@ -355,7 +356,7 @@ def _start_chip_debug_cycle(
     GLib.timeout_add_seconds(interval_s, on_timeout)
 
 
-def start_download_size_cache_warmup(app_context) -> None:
+def start_download_size_cache_warmup(app_context: typing.Any) -> None:
     """Prefetch model download sizes on a background thread (7-day cache TTL)."""
     if getattr(app_context, "_size_cache_warmup_started", False):
         return
@@ -375,7 +376,7 @@ def start_download_size_cache_warmup(app_context) -> None:
     threading.Thread(target=worker, daemon=True).start()
 
 
-def open_download_center(parent_window, app_context, on_models_changed=None):
+def open_download_center(parent_window: typing.Any, app_context: typing.Any, on_models_changed: typing.Any=None):
     """Open or raise the Download Center utility window."""
     center = getattr(app_context, "_download_center_window", None)
     if center is not None:
@@ -400,7 +401,7 @@ def open_download_center(parent_window, app_context, on_models_changed=None):
 # VIP code dialog
 # ---------------------------------------------------------------------------
 
-def open_vip_code_dialog(parent, app_context, on_validated=None):
+def open_vip_code_dialog(parent: typing.Any, app_context: typing.Any, on_validated: typing.Any=None):
     manager = _get_manager(app_context)
     settings = app_context.settings
 
@@ -427,7 +428,7 @@ def open_vip_code_dialog(parent, app_context, on_validated=None):
     def toast(message: str) -> None:
         toast_overlay.add_toast(Adw.Toast.new(message))
 
-    def on_confirm(_button):
+    def on_confirm(_button: typing.Any):
         code = code_row.get_text().strip()
         unlocked = manager.validate_vip_code(code)
         if unlocked:
@@ -481,7 +482,7 @@ def open_vip_code_dialog(parent, app_context, on_validated=None):
 # Manual downloads dialog
 # ---------------------------------------------------------------------------
 
-def open_manual_downloads(parent, app_context):
+def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
     manager = _get_manager(app_context)
     data = manager.manual_download_data()
 

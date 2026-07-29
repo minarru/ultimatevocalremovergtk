@@ -1,3 +1,4 @@
+import typing
 import os
 from contextlib import contextmanager
 
@@ -136,7 +137,7 @@ def test_trace_phase_logs_when_enabled():
     assert any("phase=demix done" in msg for msg in messages)
 
 
-def test_debug_mirrors_to_log_file(tmp_path):
+def test_debug_mirrors_to_log_file(tmp_path: typing.Any):
     emitted: list[str] = []
 
     def _hook(_domain: str, message: str, _level: int) -> None:
@@ -153,7 +154,7 @@ def test_debug_mirrors_to_log_file(tmp_path):
     assert log_path.read_text(encoding="utf-8") == "uvr-ui: mirror test\n"
 
 
-def test_emit_integration_glib(capfd):
+def test_emit_integration_glib(capfd: typing.Any):
     os.environ["G_MESSAGES_DEBUG"] = "uvr"
     debug_log._DOMAINS = None
     debug_log._GMD_NORMALIZED = False

@@ -20,6 +20,7 @@ Every control binds to the same settings keys the Tk app uses
 ``chosen_ensemble`` / ``is_save_all_outputs_ensemble`` / ...), so saved
 ensembles are interchangeable with ``UVR.py``.
 """
+import typing
 
 import os
 from typing import Dict, List, Optional
@@ -33,6 +34,7 @@ from core.run_estimate import (
     format_workload_line,
 )
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
+from core.types import ProcessMethod
 from bundled.constants import (
     CHUNK_MIN,
     CHOOSE_ENSEMBLE_OPTION,
@@ -140,7 +142,7 @@ class _RowTooltipHints:
     stateless one-off adapter rather than pulling in the manager.
     """
 
-    def register(self, widget, text):
+    def register(self, widget: typing.Any, text: typing.Any):
         set_tooltip(widget, text)
         return widget
 
@@ -159,7 +161,7 @@ class EnsemblePage:
     #: Label used when recording errors to the shared error log.
     error_key = ENSEMBLE_MODE
 
-    def __init__(self, window, context):
+    def __init__(self, window: typing.Any, context: typing.Any):
         # ``window`` is the MainWindow; the page borrows it for toasts, dialog
         # parenting and the shared run-control helpers.
         self.window = window
@@ -532,25 +534,25 @@ class EnsemblePage:
         self.settings.process.export_path = self.output_row.path
         self.window._refresh_start_readiness()
 
-    def _on_format_changed(self, *_args) -> None:
+    def _on_format_changed(self, *_args: typing.Any) -> None:
         if not self._loading:
             self.format_row.persist_to_settings(self.settings)
 
-    def _on_vocal_split_changed(self, *_args) -> None:
+    def _on_vocal_split_changed(self, *_args: typing.Any) -> None:
         if not self._loading:
             self.vocal_split_row.persist_to_settings(self.settings)
 
-    def _on_gpu_changed(self, *_args) -> None:
+    def _on_gpu_changed(self, *_args: typing.Any) -> None:
         if not self._loading:
             self.settings.process.use_gpu = self.gpu_row.get_active()
             self._update_stems_group_metadata()
         self._sync_gpu_dependent_rows()
 
-    def _on_autocast_changed(self, *_args) -> None:
+    def _on_autocast_changed(self, *_args: typing.Any) -> None:
         if not self._loading:
             self.settings.process.autocast = self.autocast_row.get_active()
 
-    def _on_sample_changed(self, *_args) -> None:
+    def _on_sample_changed(self, *_args: typing.Any) -> None:
         if not self._loading:
             self.settings.process.sample_mode = self.sample_row.get_active()
             self._update_stems_group_metadata()
@@ -652,7 +654,7 @@ class EnsemblePage:
             self.settings.ensemble.chosen_ensemble or CHOOSE_ENSEMBLE_OPTION,
         )
 
-    def _on_saved_selected(self, *_args) -> None:
+    def _on_saved_selected(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         name = get_combo_value(self.saved_row)
@@ -728,7 +730,7 @@ class EnsemblePage:
             dialog.set_default_response("cancel")
         dialog.set_close_response("cancel")
 
-        def on_response(_dlg, response):
+        def on_response(_dlg: typing.Any, response: typing.Any):
             if response != "download" or not entries:
                 return
             ids = queue.enqueue_many(entries)
@@ -761,7 +763,7 @@ class EnsemblePage:
         dialog.set_default_response("save")
         dialog.set_close_response("cancel")
 
-        def on_response(_dlg, response):
+        def on_response(_dlg: typing.Any, response: typing.Any):
             if response == "save":
                 name = entry.get_text().strip()
                 if name:
@@ -807,7 +809,7 @@ class EnsemblePage:
         dialog.connect("response", self._on_delete_confirmed, name)
         dialog.present(self.window)
 
-    def _on_delete_confirmed(self, _dialog, response, name: str) -> None:
+    def _on_delete_confirmed(self, _dialog: typing.Any, response: typing.Any, name: str) -> None:
         if response != "delete":
             return
         if delete_ensemble(name):
@@ -865,7 +867,7 @@ class EnsemblePage:
         self._update_wav_ensemble_subtitle()
         self._update_ensemble_options_summary()
 
-    def _on_main_stem_changed(self, *_args) -> None:
+    def _on_main_stem_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         main_stem = get_combo_value(self.main_stem_row)
@@ -880,7 +882,7 @@ class EnsemblePage:
         self._rebuild_stem_only_toggles()
         self._update_ensemble_options_summary()
 
-    def _on_preset_changed(self, *_args) -> None:
+    def _on_preset_changed(self, *_args: typing.Any) -> None:
         if self._loading or self._syncing_preset:
             return
         preset = get_combo_value(self.preset_row)
@@ -900,7 +902,7 @@ class EnsemblePage:
         self._update_wav_ensemble_subtitle()
         self._update_ensemble_options_summary()
 
-    def _on_ensemble_type_changed(self, *_args) -> None:
+    def _on_ensemble_type_changed(self, *_args: typing.Any) -> None:
         if self._loading or self._syncing_preset:
             return
         main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
@@ -1118,23 +1120,23 @@ class EnsemblePage:
             )
         )
 
-    def _on_models_search_changed(self, *_args) -> None:
+    def _on_models_search_changed(self, *_args: typing.Any) -> None:
         self.models_listbox.invalidate_filter()
         self._update_models_dialog_status()
 
-    def _on_models_select_all(self, *_args) -> None:
+    def _on_models_select_all(self, *_args: typing.Any) -> None:
         for tag in self._visible_model_tags():
             check = self._model_checks.get(tag)
             if check is not None and not check.get_active():
                 check.set_active(True)
 
-    def _on_models_clear(self, *_args) -> None:
+    def _on_models_clear(self, *_args: typing.Any) -> None:
         for tag in self._visible_model_tags():
             check = self._model_checks.get(tag)
             if check is not None and check.get_active():
                 check.set_active(False)
 
-    def _open_models_dialog(self, *_args) -> None:
+    def _open_models_dialog(self, *_args: typing.Any) -> None:
         if not self._stem_pair_chosen():
             return
         search = getattr(self, "models_search", None)
@@ -1148,7 +1150,7 @@ class EnsemblePage:
         self._rebuild_model_list(preselected)
         present_modal_dialog(self.models_dialog, self.window)
 
-    def _open_member_model_options(self, *_args) -> None:
+    def _open_member_model_options(self, *_args: typing.Any) -> None:
         if not self._stem_pair_chosen():
             return
         from ..model_options import OPEN_CONTEXT_ENSEMBLE, stack_name_for_member_tag
@@ -1161,7 +1163,7 @@ class EnsemblePage:
         initial_stack = stack_name_for_member_tag(selected[-1]) if selected else None
         self.window._open_model_options(context=OPEN_CONTEXT_ENSEMBLE, initial_stack=initial_stack)
 
-    def _on_models_dialog_closed(self, *_args) -> None:
+    def _on_models_dialog_closed(self, *_args: typing.Any) -> None:
         self._update_models_summary()
         self._rebuild_stem_only_toggles()
         from core.debug_log import debug
@@ -1190,7 +1192,7 @@ class EnsemblePage:
         depends on the method for the multi-stem ensemble - is rebuilt with the
         correct method in effect.
         """
-        self.settings.process.method = ENSEMBLE_MODE
+        self.settings.process.method = ProcessMethod.ENSEMBLE
         self._sync_shared_from_settings()
         preselected = (
             self._selected_model_tags()
@@ -1238,9 +1240,9 @@ class EnsemblePage:
         banner.set_revealed(reason is not None)
         self.window._refresh_start_readiness()
 
-    def start(self, callbacks) -> None:
+    def start(self, callbacks: typing.Any) -> None:
         # Readiness is validated by ``MainWindow._on_start`` before dispatch.
-        self.settings.process.method = ENSEMBLE_MODE
+        self.settings.process.method = ProcessMethod.ENSEMBLE
         self._persist_selected_models()
 
         input_paths = list(self.input_row.paths)

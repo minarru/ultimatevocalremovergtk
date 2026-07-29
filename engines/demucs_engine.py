@@ -1,4 +1,5 @@
 from __future__ import annotations
+import typing
 from typing import Any, cast, TYPE_CHECKING
 
 import gc
@@ -45,7 +46,9 @@ from vendor.demucs.utils import apply_model_v1, apply_model_v2
 from .orchestration import process_secondary_model
 
 class SeperateDemucs(SeperateAttributes):
-    def seperate(self):
+    def seperate(
+        self,
+    ) -> dict[str, Any] | np.ndarray[Any, Any] | None:
         self.demucs: Any
         samplerate = 44100
         source: Any = None
@@ -207,7 +210,7 @@ class SeperateDemucs(SeperateAttributes):
             self.begin_save_phase(max(1, save_writes))
 
             if not self.is_primary_stem_only:
-                def secondary_save(sec_stem_name, source, raw_mixture=None, is_inst_mixture=False):
+                def secondary_save(sec_stem_name: typing.Any, source: typing.Any, raw_mixture: typing.Any=None, is_inst_mixture: typing.Any=False):
                     nonlocal mix
                     secondary_source = self.secondary_source if not is_inst_mixture else None
                     secondary_stem_path = self.stem_export_wav_path(sec_stem_name)
@@ -267,7 +270,7 @@ class SeperateDemucs(SeperateAttributes):
             if self.is_secondary_model:    
                 return secondary_sources
     
-    def demix_demucs(self, mix):
+    def demix_demucs(self, mix: typing.Any):
         with trace_phase("separate", "demix_demucs", engine="SeperateDemucs", model=self.model_basename):
             org_mix = mix
             sources: Any = None

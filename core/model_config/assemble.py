@@ -29,7 +29,7 @@ def assemble_model(
     from .config import ModelConfig
 
     if arch_type == ENSEMBLE_MODE:
-        selected = settings.get("selected_models") or []
+        selected = settings.ensemble.selected_models or []
         models = [ModelConfig(settings, repo, name) for name in selected]
         valid = [item for item in models if item.model_status]
         skipped = len(models) - len(valid)

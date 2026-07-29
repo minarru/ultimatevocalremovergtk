@@ -1,4 +1,5 @@
 """MDX export routing and complement helpers."""
+import typing
 
 import unittest
 from unittest import mock
@@ -10,7 +11,7 @@ from engines.mdx import derive_mdx_complement, mdx_export_routing_flags
 
 
 class MDXExportRoutingTests(unittest.TestCase):
-    def _base_kwargs(self, **overrides):
+    def _base_kwargs(self, **overrides: typing.Any):
         values = dict(
             stem_list=["Vocals", "Instrumental", "Drums", "Bass"],
             selected_stems=["Vocals"],

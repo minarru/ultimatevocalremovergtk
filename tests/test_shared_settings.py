@@ -1,3 +1,4 @@
+import typing
 import os
 import tempfile
 import unittest
@@ -21,7 +22,7 @@ from ui.shared_settings import (
 
 
 class _FakeSettings:
-    def __new__(cls, data):
+    def __new__(cls, data: typing.Any):
         return Settings.from_flat(data)
 
 
@@ -30,7 +31,7 @@ class _FakeInputRow:
         self.paths = None
         self.notify = None
 
-    def set_paths(self, paths, notify=True):
+    def set_paths(self, paths: typing.Any, notify: typing.Any=True):
         self.paths = list(paths)
         self.notify = notify
 
@@ -40,7 +41,7 @@ class _FakeOutputRow:
         self.path = None
         self.notify = None
 
-    def set_path(self, path, notify=True):
+    def set_path(self, path: typing.Any, notify: typing.Any=True):
         self.path = path
         self.notify = notify
 
@@ -49,7 +50,7 @@ class _FakeSwitchRow:
     def __init__(self):
         self.active = None
 
-    def set_active(self, active):
+    def set_active(self, active: typing.Any):
         self.active = active
 
 
@@ -59,13 +60,13 @@ class _FakeSampleRow:
         self.subtitle = None
         self.active = None
 
-    def set_title(self, title):
+    def set_title(self, title: typing.Any):
         self.title = title
 
-    def set_subtitle(self, subtitle):
+    def set_subtitle(self, subtitle: typing.Any):
         self.subtitle = subtitle
 
-    def set_active(self, active):
+    def set_active(self, active: typing.Any):
         self.active = active
 
 
@@ -73,7 +74,7 @@ class _FakeFormatRow:
     def __init__(self):
         self.applied_from = None
 
-    def apply_from_settings(self, settings):
+    def apply_from_settings(self, settings: typing.Any):
         self.applied_from = settings.process.save_format
 
 

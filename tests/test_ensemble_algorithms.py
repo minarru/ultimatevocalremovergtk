@@ -1,6 +1,7 @@
 """Unit tests for ensemble algorithm atoms and Primary/Secondary helpers."""
 
 from __future__ import annotations
+import typing
 
 import unittest
 
@@ -28,7 +29,7 @@ from core.ensemble_algorithms import (
 from ml.spec_utils import ensembling, ensemble_wav
 
 
-def _pairwise_mag_reduce(algorithm: str, members):
+def _pairwise_mag_reduce(algorithm: str, members: typing.Any):
     """Legacy pairwise Max/Min reduce used as a golden reference (equal lengths)."""
     out = members[0].copy()
     for other in members[1:]:

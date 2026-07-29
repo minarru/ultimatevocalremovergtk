@@ -1,6 +1,7 @@
 """Nautilus-style download queue chip and popover for the main window header."""
 
 from __future__ import annotations
+import typing
 
 import os
 from dataclasses import dataclass
@@ -258,7 +259,7 @@ class DownloadQueueIndicator:
         """Show the download queue popover (toggle pressed state on the chip)."""
         self.widget.popup()
 
-    def _on_menu_button_mapped(self, *_args) -> None:
+    def _on_menu_button_mapped(self, *_args: typing.Any) -> None:
         """Apply libadwaita chip styling to the inner toggle (not the MenuButton shell)."""
         toggle = self.widget.get_first_child()
         if toggle is None:
@@ -347,10 +348,10 @@ class DownloadQueueIndicator:
                 self._schedule_remove_finished()
             self._defer_remove_on_close = False
 
-    def _on_popover_notify_visible(self, _popover, _pspec) -> None:
+    def _on_popover_notify_visible(self, _popover: typing.Any, _pspec: typing.Any) -> None:
         self.on_popover_visibility_changed(self._popover.get_visible())
 
-    def _on_cancel_clicked(self, _button, item_id: str) -> None:
+    def _on_cancel_clicked(self, _button: typing.Any, item_id: str) -> None:
         if self._queue is None:
             return
         for item in self._queue.items():

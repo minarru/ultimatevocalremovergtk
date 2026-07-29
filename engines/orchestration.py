@@ -1,4 +1,5 @@
 from __future__ import annotations
+import typing
 
 import os
 from typing import Any, TYPE_CHECKING
@@ -24,15 +25,15 @@ def _engine_classes():
 
 def _build_seperator(
     model: Any,
-    process_data,
+    process_data: typing.Any,
     *,
-    main_model_primary_stem_4_stem=None,
-    main_process_method=None,
-    is_return_dual=True,
-    main_model_primary=None,
-    vocal_stem_path=None,
-    master_inst_source=None,
-    master_vocal_source=None,
+    main_model_primary_stem_4_stem: typing.Any=None,
+    main_process_method: typing.Any=None,
+    is_return_dual: typing.Any=True,
+    main_model_primary: typing.Any=None,
+    vocal_stem_path: typing.Any=None,
+    master_inst_source: typing.Any=None,
+    master_vocal_source: typing.Any=None,
 ):
     SeperateVR, SeperateMDX, SeperateMDXC, SeperateDemucs = _engine_classes()
     method = model.process_method
@@ -105,7 +106,7 @@ def _build_seperator(
     raise NotImplementedError(f"engine for '{method}' is not available")
 
 
-def _run_seperator(seperator) -> Any:
+def _run_seperator(seperator: typing.Any) -> Any:
     try:
         return seperator.seperate()
     finally:
@@ -114,13 +115,13 @@ def _run_seperator(seperator) -> Any:
 
 def process_secondary_model(
     secondary_model: ModelConfig,
-    process_data,
-    main_model_primary_stem_4_stem=None,
-    is_source_load=False,
-    main_process_method=None,
-    is_pre_proc_model=False,
-    is_return_dual=True,
-    main_model_primary=None,
+    process_data: typing.Any,
+    main_model_primary_stem_4_stem: typing.Any=None,
+    is_source_load: typing.Any=False,
+    main_process_method: typing.Any=None,
+    is_pre_proc_model: typing.Any=False,
+    is_return_dual: typing.Any=True,
+    main_model_primary: typing.Any=None,
 ) -> Any:
     with trace_phase(
         "separate",
@@ -152,10 +153,10 @@ def process_secondary_model(
 
 def process_chain_model(
     secondary_model: ModelConfig,
-    process_data,
-    vocal_stem_path,
-    master_vocal_source,
-    master_inst_source=None,
+    process_data: typing.Any,
+    vocal_stem_path: typing.Any,
+    master_vocal_source: typing.Any,
+    master_inst_source: typing.Any=None,
 ):
     process_iteration = process_data.process_iteration
     process_iteration()

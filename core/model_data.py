@@ -13,6 +13,7 @@ store) is ported here too; the combination of the per-model outputs is performed
 by the ``Ensembler`` in :mod:`core.job_runner`. Nothing here imports
 ``tkinter``.
 """
+import typing
 
 import json
 import os
@@ -56,7 +57,7 @@ def load_mdx_c_config(path: str) -> dict:
         class MdxCYamlLoader(yaml.SafeLoader):
             pass
 
-        def _construct_python_tuple(loader, node):
+        def _construct_python_tuple(loader: typing.Any, node: typing.Any):
             return tuple(loader.construct_sequence(node))
 
         yaml.add_constructor(
@@ -70,7 +71,7 @@ def load_mdx_c_config(path: str) -> dict:
         return yaml.load(config_file, Loader=_MDX_C_YAML_LOADER)
 
 
-def _mdx_c_training(config) -> Any:
+def _mdx_c_training(config: typing.Any) -> Any:
     """Return the ``training`` section from an MDX-C yaml config object."""
     training = getattr(config, "training", None)
     if training is None and isinstance(config, dict):
@@ -287,7 +288,7 @@ class ModelRepository:
         return model.primary_stem, model.secondary_stem
 
 
-def _list_models(directory: str, extensions) -> List[str]:
+def _list_models(directory: str, extensions: typing.Any) -> List[str]:
     if not os.path.isdir(directory):
         return []
     names = []
@@ -324,37 +325,55 @@ class _ModelConfigImplementation:
     ):
         self.settings = settings
         self.repo: Any = repo
+        process = settings.process
+        vr = settings.vr
+        mdx = settings.mdx
+        demucs = settings.demucs
+        ensemble = settings.ensemble
 
-        device_set = settings.get("device_set")
+        device_set = process.device
         self.DENOISER_MODEL = paths.DENOISER_MODEL_PATH
         self.DEVERBER_MODEL = paths.DEVERBER_MODEL_PATH
-        self.is_deverb_vocals = settings.get("is_deverb_vocals") if os.path.isfile(paths.DEVERBER_MODEL_PATH) else False
-        self.deverb_vocal_opt = DEVERB_MAPPER[settings.get("deverb_vocal_opt")]
-        self.is_denoise_model = True if settings.get("denoise_option") == DENOISE_M and os.path.isfile(paths.DENOISER_MODEL_PATH) else False
-        self.is_gpu_conversion = bool(settings.get("is_gpu_conversion"))
+        self.is_deverb_vocals = (
+            process.deverb_vocals
+            if os.path.isfile(paths.DEVERBER_MODEL_PATH)
+            else False
+        )
+        self.deverb_vocal_opt = DEVERB_MAPPER[process.deverb_vocal_opt]
+        self.is_denoise_model = bool(
+            mdx.denoise_option == DENOISE_M
+            and os.path.isfile(paths.DENOISER_MODEL_PATH)
+        )
+        self.is_gpu_conversion = bool(process.use_gpu)
         self.use_gpu = self.is_gpu_conversion
-        self.is_normalization = settings.get("is_normalization")
-        self.is_match_mix_level = bool(settings.get("is_match_mix_level"))
-        self.is_prevent_export_clipping = bool(settings.get("is_prevent_export_clipping"))
+        self.is_normalization = process.normalization
+        self.is_match_mix_level = bool(process.match_mix_level)
+        self.is_prevent_export_clipping = bool(process.prevent_export_clipping)
         try:
-            self.amplification_threshold = float(settings.get("amplification_threshold") or 0.0)
+            self.amplification_threshold = float(
+                process.amplification_threshold or 0.0
+            )
         except (TypeError, ValueError):
             self.amplification_threshold = 0.0
-        self.is_use_directml = bool(settings.get("is_use_directml"))
-        self.is_primary_stem_only = settings.get("is_primary_stem_only")
-        self.is_secondary_stem_only = settings.get("is_secondary_stem_only")
-        self.is_denoise = True if settings.get("denoise_option") != DENOISE_NONE else False
-        self.is_mdx_c_seg_def = settings.get("is_mdx_c_seg_def")
-        self.mdx_batch_size = 1 if settings.get("mdx_batch_size") == DEF_OPT else int(settings.get("mdx_batch_size"))
-        self.mdxnet_stem_select = settings.get("mdx_stems")
-        self.mdxnet_stems_selected = settings.get("mdx_stems_selected") or []
-        self.overlap = float(settings.get("overlap")) if settings.get("overlap") != DEFAULT else 0.25
-        overlap_mdx_val = settings.get("overlap_mdx")
+        self.is_use_directml = bool(process.use_directml)
+        self.is_primary_stem_only = process.primary_stem_only
+        self.is_secondary_stem_only = process.secondary_stem_only
+        self.is_denoise = mdx.denoise_option != DENOISE_NONE
+        self.is_mdx_c_seg_def = mdx.is_mdx_c_seg_def
+        self.mdx_batch_size = (
+            1 if mdx.batch_size == DEF_OPT else int(mdx.batch_size)
+        )
+        self.mdxnet_stem_select = mdx.stems
+        self.mdxnet_stems_selected = mdx.stems_selected or []
+        self.overlap = (
+            float(demucs.overlap) if demucs.overlap != DEFAULT else 0.25
+        )
+        overlap_mdx_val = mdx.overlap_mdx
         self.overlap_mdx = float(overlap_mdx_val) if overlap_mdx_val != DEFAULT else 0.25
-        self.overlap_mdx23 = int(float(settings.get("overlap_mdx23")))
-        self.semitone_shift = float(settings.get("semitone_shift"))
+        self.overlap_mdx23 = int(float(mdx.overlap_mdx23))
+        self.semitone_shift = float(process.semitone_shift)
         self.is_pitch_change = False if self.semitone_shift == 0 else True
-        self.is_match_frequency_pitch = settings.get("is_match_frequency_pitch")
+        self.is_match_frequency_pitch = mdx.is_match_frequency_pitch
         self.is_mdx_ckpt = False
         self.is_mdx_c = False
         # Roformer models are MDX-C-style nets selected by their yaml config
@@ -363,8 +382,8 @@ class _ModelConfigImplementation:
         self.is_roformer = False
         self.is_target_instrument = False
         self.model_type: Any = ""
-        self.is_mdx_combine_stems = settings.get("is_mdx23_combine_stems")
-        self.is_mdx_include_stem_complement = settings.get("is_mdx_include_stem_complement")
+        self.is_mdx_combine_stems = mdx.is_mdx23_combine_stems
+        self.is_mdx_include_stem_complement = mdx.is_mdx_include_stem_complement
         self.mdx_c_configs: Any = None
         self.mdx_model_stems: Any = []
         self.mdx_dim_f_set: Any = None
@@ -374,13 +393,13 @@ class _ModelConfigImplementation:
         self.mdx_n_fft_scale_set: Any = None
         self.wav_type_set = resolve_wav_type_set(settings)
         self.device_set = device_set.split(":")[-1].strip() if ":" in device_set else device_set
-        self.mp3_bit_set = settings.get("mp3_bit_set")
-        self.flac_bit_set = settings.get("flac_bit_set", "16-bit")
-        self.save_format = settings.get("save_format")
-        self.is_invert_spec = settings.get("is_invert_spec")
+        self.mp3_bit_set = process.mp3_bitrate
+        self.flac_bit_set = process.flac_bit_depth
+        self.save_format = process.save_format.value
+        self.is_invert_spec = mdx.is_invert_spec
         self.is_mixer_mode = False
-        self.demucs_stems = settings.get("demucs_stems")
-        self.is_demucs_combine_stems = settings.get("is_demucs_combine_stems")
+        self.demucs_stems = demucs.stems
+        self.is_demucs_combine_stems = demucs.is_demucs_combine_stems
         self.demucs_source_list: Any = []
         self.demucs_source_map: Any = {}
         self.demucs_stem_count = 0
@@ -434,7 +453,7 @@ class _ModelConfigImplementation:
         self.vocal_split_model = None
         self.is_vocal_split_model = is_vocal_split_model
         self.is_vocal_split_model_activated = False
-        self.is_save_inst_vocal_splitter = settings.get("is_save_inst_set_vocal_splitter")
+        self.is_save_inst_vocal_splitter = process.save_inst_vocal_splitter
         # Computed at the end of __init__ once the primary/secondary stems are
         # resolved (UVR reads them from the live stem-only labels instead).
         self.is_inst_only_voc_splitter = False
@@ -450,25 +469,36 @@ class _ModelConfigImplementation:
             is_not_secondary_or_pre_proc = not is_secondary_model and not is_pre_proc_model
             self.is_ensemble_mode = is_not_secondary_or_pre_proc
 
-            ensemble_main_stem = settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+            ensemble_main_stem = ensemble.main_stem
             if ensemble_main_stem == FOUR_STEM_ENSEMBLE:
                 self.is_4_stem_ensemble = self.is_ensemble_mode
-            elif ensemble_main_stem == MULTI_STEM_ENSEMBLE and settings.get("chosen_process_method") == ENSEMBLE_MODE:
+            elif (
+                ensemble_main_stem == MULTI_STEM_ENSEMBLE
+                and process.method == ENSEMBLE_MODE
+            ):
                 self.is_multi_stem_ensemble = True
 
             is_not_vocal_stem = self.ensemble_primary_stem != VOCAL_STEM
-            self.pre_proc_model_activated = settings.get("is_demucs_pre_proc_model_activate") if is_not_vocal_stem else False
+            self.pre_proc_model_activated = (
+                demucs.is_pre_proc_model_activate if is_not_vocal_stem else False
+            )
 
         if self.process_method == VR_ARCH_TYPE:
-            self.is_secondary_model_activated = settings.get("vr_is_secondary_model_activate") if not is_secondary_model else False
-            self.aggression_setting = float(int(settings.get("aggression_setting")) / 100)
-            self.is_tta = settings.get("is_tta")
-            self.is_post_process = settings.get("is_post_process")
-            self.window_size = int(settings.get("window_size"))
-            self.batch_size = 1 if settings.get("batch_size") == DEF_OPT else int(settings.get("batch_size"))
-            self.crop_size = int(settings.get("crop_size"))
-            self.is_high_end_process = "mirroring" if settings.get("is_high_end_process") else "None"
-            self.post_process_threshold = float(settings.get("post_process_threshold"))
+            self.is_secondary_model_activated = (
+                vr.is_secondary_model_activate if not is_secondary_model else False
+            )
+            self.aggression_setting = float(int(vr.aggression_setting) / 100)
+            self.is_tta = vr.is_tta
+            self.is_post_process = vr.is_post_process
+            self.window_size = int(vr.window_size)
+            self.batch_size = (
+                1 if vr.batch_size == DEF_OPT else int(vr.batch_size)
+            )
+            self.crop_size = int(vr.crop_size)
+            self.is_high_end_process = (
+                "mirroring" if vr.is_high_end_process else "None"
+            )
+            self.post_process_threshold = float(vr.post_process_threshold)
             self.model_capacity = 32, 128
             self.get_vr_model_path()
             self.get_model_hash()
@@ -494,10 +524,12 @@ class _ModelConfigImplementation:
                     self.model_status = False
 
         if self.process_method == MDX_ARCH_TYPE:
-            self.is_secondary_model_activated = settings.get("mdx_is_secondary_model_activate") if not is_secondary_model else False
-            self.margin = int(settings.get("margin"))
+            self.is_secondary_model_activated = (
+                mdx.is_secondary_model_activate if not is_secondary_model else False
+            )
+            self.margin = int(mdx.margin)
             self.chunks = 0
-            self.mdx_segment_size = int(settings.get("mdx_segment_size"))
+            self.mdx_segment_size = int(mdx.segment_size)
             self.get_mdx_model_path()
             self.get_model_hash()
             if self.model_hash:
@@ -566,7 +598,11 @@ class _ModelConfigImplementation:
                         else:
                             self.model_status = False
                     else:
-                        self.compensate = self.model_data["compensate"] if settings.get("compensate") == AUTO_SELECT else float(settings.get("compensate"))
+                        self.compensate = (
+                            self.model_data["compensate"]
+                            if mdx.compensate == AUTO_SELECT
+                            else float(mdx.compensate)
+                        )
                         self.mdx_dim_f_set = self.model_data["mdx_dim_f_set"]
                         self.mdx_dim_t_set = self.model_data["mdx_dim_t_set"]
                         self.mdx_n_fft_scale_set = self.model_data["mdx_n_fft_scale_set"]
@@ -577,17 +613,31 @@ class _ModelConfigImplementation:
                     self.model_status = False
 
         if self.process_method == DEMUCS_ARCH_TYPE:
-            self.is_secondary_model_activated = settings.get("demucs_is_secondary_model_activate") if not is_secondary_model else False
+            self.is_secondary_model_activated = (
+                demucs.is_secondary_model_activate if not is_secondary_model else False
+            )
             if not self.is_ensemble_mode:
-                self.pre_proc_model_activated = settings.get("is_demucs_pre_proc_model_activate") if settings.get("demucs_stems") not in [VOCAL_STEM, INST_STEM] else False
-            self.margin_demucs = int(settings.get("margin_demucs"))
+                self.pre_proc_model_activated = (
+                    demucs.is_pre_proc_model_activate
+                    if demucs.stems not in [VOCAL_STEM, INST_STEM]
+                    else False
+                )
+            self.margin_demucs = int(demucs.margin_demucs)
             self.chunks_demucs = 0
-            self.shifts = int(settings.get("shifts"))
-            self.is_split_mode = settings.get("is_split_mode")
-            self.segment = settings.get("segment")
-            self.is_chunk_demucs = settings.get("is_chunk_demucs")
-            self.is_primary_stem_only = settings.get("is_primary_stem_only") if self.is_ensemble_mode else settings.get("is_primary_stem_only_Demucs")
-            self.is_secondary_stem_only = settings.get("is_secondary_stem_only") if self.is_ensemble_mode else settings.get("is_secondary_stem_only_Demucs")
+            self.shifts = int(demucs.shifts)
+            self.is_split_mode = demucs.is_split_mode
+            self.segment = demucs.segment
+            self.is_chunk_demucs = demucs.is_chunk_demucs
+            self.is_primary_stem_only = (
+                process.primary_stem_only
+                if self.is_ensemble_mode
+                else demucs.is_primary_stem_only
+            )
+            self.is_secondary_stem_only = (
+                process.secondary_stem_only
+                if self.is_ensemble_mode
+                else demucs.is_secondary_stem_only
+            )
             self.get_demucs_model_data()
             self.get_demucs_model_path()
 
@@ -609,7 +659,7 @@ class _ModelConfigImplementation:
         # -- Secondary model resolution (ported from UVR.py L686-L715) ----------
         is_secondary_activated_and_status = self.is_secondary_model_activated and self.model_status
         is_demucs = self.process_method == DEMUCS_ARCH_TYPE
-        is_all_stems = settings.get("demucs_stems") == ALL_STEMS
+        is_all_stems = demucs.stems == ALL_STEMS
         is_valid_ensemble = not self.is_ensemble_mode and is_all_stems and is_demucs
         is_multi_stem_ensemble_demucs = self.is_multi_stem_ensemble and is_demucs
 
@@ -634,7 +684,9 @@ class _ModelConfigImplementation:
             if self.demucs_stem_count >= 3 and self.pre_proc_model_activated:
                 self.pre_proc_model = process_determine_demucs_pre_proc_model(self.settings, self.repo, self.primary_stem)
                 self.pre_proc_model_activated = True if self.pre_proc_model else False
-                self.is_demucs_pre_proc_model_inst_mix = settings.get("is_demucs_pre_proc_model_inst_mix") if self.pre_proc_model else False
+                self.is_demucs_pre_proc_model_inst_mix = (
+                    demucs.is_pre_proc_model_inst_mix if self.pre_proc_model else False
+                )
 
         if self.is_vocal_split_model and self.model_status:
             self.is_secondary_model_activated = False
@@ -665,7 +717,7 @@ class _ModelConfigImplementation:
             if self.vocal_split_model and self.vocal_split_model.bv_model_rebalance:
                 self.is_sec_bv_rebalance = True
 
-    def secondary_model_data(self, primary_stem):
+    def secondary_model_data(self, primary_stem: typing.Any):
         secondary_model, secondary_model_scale = process_determine_secondary_model(
             self.settings,
             self.repo,
@@ -680,19 +732,19 @@ class _ModelConfigImplementation:
         if self.secondary_model:
             self.is_secondary_model_activated = False if self.secondary_model.model_basename == self.model_basename else True
 
-    def return_ensemble_stems(self, is_primary=False):
+    def return_ensemble_stems(self, is_primary: typing.Any=False):
         """Port of ``MainWindow.return_ensemble_stems``.
 
         Splits the chosen ensemble main-stem pair (e.g. ``"Vocals/Instrumental"``)
         into its primary/secondary halves, reading the value from the settings
         model instead of ``ensemble_main_stem_var``.
         """
-        ensemble_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR).partition("/")
+        ensemble_stem = self.settings.ensemble.main_stem.partition("/")
         if is_primary:
             return ensemble_stem[0]
         return ensemble_stem[0], ensemble_stem[2]
 
-    def check_only_selection_stem(self, checktype):
+    def check_only_selection_stem(self, checktype: typing.Any):
         """Port of ``MainWindow.check_only_selection_stem``.
 
         UVR reads the live stem-only checkbox labels (set by
@@ -700,7 +752,7 @@ class _ModelConfigImplementation:
         derives the same labels from the model's resolved primary/secondary
         stems instead.
         """
-        chosen_method = self.settings.get("chosen_process_method")
+        chosen_method = self.settings.process.method
         is_demucs = chosen_method == DEMUCS_ARCH_TYPE
 
         # In ensemble mode the stem-only labels follow the chosen ensemble pair
@@ -715,14 +767,14 @@ class _ModelConfigImplementation:
         stem_primary_label = f"{primary_for_label} Only" if primary_for_label else ""
         stem_secondary_label = f"{secondary_for_label} Only" if secondary_for_label else ""
         if is_demucs:
-            stem_primary_bool = self.settings.get("is_primary_stem_only_Demucs")
-            stem_secondary_bool = self.settings.get("is_secondary_stem_only_Demucs")
+            stem_primary_bool = self.settings.demucs.is_primary_stem_only
+            stem_secondary_bool = self.settings.demucs.is_secondary_stem_only
         else:
-            stem_primary_bool = self.settings.get("is_primary_stem_only")
-            stem_secondary_bool = self.settings.get("is_secondary_stem_only")
+            stem_primary_bool = self.settings.process.primary_stem_only
+            stem_secondary_bool = self.settings.process.secondary_stem_only
 
-        is_save_inst_splitter = self.settings.get("is_save_inst_set_vocal_splitter")
-        has_voc_splitter = self.settings.get("set_vocal_splitter") != NO_MODEL
+        is_save_inst_splitter = self.settings.process.save_inst_vocal_splitter
+        has_voc_splitter = self.settings.process.vocal_splitter != NO_MODEL
 
         if checktype == VOCAL_STEM_ONLY:
             return not (
@@ -837,7 +889,7 @@ class _ModelConfigImplementation:
             self.primary_stem = PRIMARY_STEM if self.demucs_stems == ALL_STEMS else self.demucs_stems
             self.secondary_stem = secondary_stem(str(self.primary_stem or ""))
 
-    def get_model_data(self, model_hash_dir, hash_mapper: dict):
+    def get_model_data(self, model_hash_dir: typing.Any, hash_mapper: dict):
         mapped = None
         for model_hash, model_settings in hash_mapper.items():
             if self.model_hash in model_hash:
@@ -1043,19 +1095,17 @@ _SECONDARY_PREFIX_BY_METHOD = {
 }
 
 
-def _secondary_keys_for_stem(prefix: str, main_model_primary_stem: str):
-    """Return the (model_key, scale_key) for a primary stem (UVR L6616-6627)."""
+def _secondary_slot_for_stem(main_model_primary_stem: str) -> Optional[str]:
+    """Return the nested secondary-model slot for a primary stem."""
     if main_model_primary_stem in (VOCAL_STEM, INST_STEM):
-        slot = "voc_inst"
+        return "voc_inst"
     elif main_model_primary_stem in (OTHER_STEM, NO_OTHER_STEM):
-        slot = "other"
+        return "other"
     elif main_model_primary_stem in (DRUM_STEM, NO_DRUM_STEM):
-        slot = "drums"
+        return "drums"
     elif main_model_primary_stem in (BASS_STEM, NO_BASS_STEM):
-        slot = "bass"
-    else:
-        return None, None
-    return f"{prefix}_{slot}_secondary_model", f"{prefix}_{slot}_secondary_model_scale"
+        return "bass"
+    return None
 
 
 def process_determine_secondary_model(
@@ -1071,9 +1121,14 @@ def process_determine_secondary_model(
     if prefix is None:
         return None, None
 
-    model_key, scale_key = _secondary_keys_for_stem(prefix, main_model_primary_stem)
-    secondary_model_name = settings.get(model_key, NO_MODEL) if model_key else NO_MODEL
-    secondary_model_scale = settings.get(scale_key) if scale_key else None
+    slot = _secondary_slot_for_stem(main_model_primary_stem)
+    section = getattr(settings, prefix)
+    secondary_model_name = (
+        getattr(section, f"{slot}_secondary_model") if slot else NO_MODEL
+    )
+    secondary_model_scale = (
+        getattr(section, f"{slot}_secondary_model_scale") if slot else None
+    )
     if secondary_model_scale:
         secondary_model_scale = float(secondary_model_scale)
 
@@ -1094,10 +1149,10 @@ def process_determine_secondary_model(
     return secondary_model, secondary_model_scale
 
 
-def process_determine_demucs_pre_proc_model(settings: Settings, repo: ModelRepository, primary_stem=None):
+def process_determine_demucs_pre_proc_model(settings: Settings, repo: ModelRepository, primary_stem: typing.Any=None):
     """Tk-free port of ``MainWindow.process_determine_demucs_pre_proc_model``."""
-    pre_proc_name = settings.get("demucs_pre_proc_model", NO_MODEL)
-    if pre_proc_name != NO_MODEL and settings.get("is_demucs_pre_proc_model_activate"):
+    pre_proc_name = settings.demucs.pre_proc_model
+    if pre_proc_name != NO_MODEL and settings.demucs.is_pre_proc_model_activate:
         pre_proc_model = ModelConfig(
             settings,
             repo,
@@ -1112,8 +1167,8 @@ def process_determine_demucs_pre_proc_model(settings: Settings, repo: ModelRepos
 
 def process_determine_vocal_split_model(settings: Settings, repo: ModelRepository):
     """Tk-free port of ``MainWindow.process_determine_vocal_split_model``."""
-    split_name = settings.get("set_vocal_splitter", NO_MODEL)
-    if split_name != NO_MODEL and settings.get("is_set_vocal_splitter"):
+    split_name = settings.process.vocal_splitter
+    if split_name != NO_MODEL and settings.process.vocal_splitter_enabled:
         vocal_splitter_model = ModelConfig(settings, repo, split_name, is_vocal_split_model=True)
         if vocal_splitter_model.model_status:
             return vocal_splitter_model
@@ -1144,7 +1199,7 @@ def list_saved_ensembles() -> List[str]:
     return sorted(names)
 
 
-def save_ensemble(name: str, ensemble_main_stem: str, ensemble_type: str, selected_models) -> str:
+def save_ensemble(name: str, ensemble_main_stem: str, ensemble_type: str, selected_models: typing.Any) -> str:
     """Persist an ensemble exactly like ``pop_up_save_ensemble_sub_json_dump``.
 
     The JSON schema matches UVR's (``ensemble_main_stem`` / ``ensemble_type`` /

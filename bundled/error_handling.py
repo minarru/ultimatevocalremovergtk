@@ -1,3 +1,4 @@
+import typing
 from datetime import datetime
 import os
 import traceback
@@ -82,7 +83,7 @@ ERROR_MAPPER = {
                         ('The application was not able to process the given audiofile. Please convert the audiofile to another format and try again.'),
 }
 
-def error_text(process_method, exception, context: str = ""):
+def error_text(process_method: str, exception: typing.Any, context: str = ""):
                  
     traceback_text = ''.join(traceback.format_tb(exception.__traceback__))
     message = f'{type(exception).__name__}: "{exception}"\nTraceback Error: "\n{traceback_text}"\n'
@@ -101,7 +102,7 @@ def error_text(process_method, exception, context: str = ""):
         
     return f"{process}{context_block}{final_message}{error_message}"
 
-def error_dialouge(exception):
+def error_dialouge(exception: typing.Any):
     
     error_name = f'{type(exception).__name__}'
     traceback_text = ''.join(traceback.format_tb(exception.__traceback__))

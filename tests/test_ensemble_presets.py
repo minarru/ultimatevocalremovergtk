@@ -1,6 +1,7 @@
 """Tests for curated ensemble recipe loading and member resolution."""
 
 from __future__ import annotations
+import typing
 
 import unittest
 from unittest import mock
@@ -68,7 +69,7 @@ class ResolveAndDownloadTests(unittest.TestCase):
     def test_classify_missing_members(self) -> None:
         repo = mock.Mock()
 
-        def _installed(tag, _repo):
+        def _installed(tag: typing.Any, _repo: typing.Any):
             return tag.endswith(": A")
 
         with mock.patch(

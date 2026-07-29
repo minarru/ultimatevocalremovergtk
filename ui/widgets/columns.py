@@ -8,6 +8,7 @@ layout (margins, spacing, clamp width, scroller minimum width and the
 wide/narrow flip) identical, and lets :class:`ui.window.MainWindow` drive
 every page's ``columns_box`` from one breakpoint handler.
 """
+import typing
 
 from typing import Optional
 
@@ -37,7 +38,7 @@ def make_column() -> Gtk.Box:
     )
 
 
-def build_columns_box(left_groups=(), right_groups=()):
+def build_columns_box(left_groups: typing.Any=(), right_groups: typing.Any=()):
     """Build the horizontal ``columns_box`` and its two child columns.
 
     ``left_groups`` / ``right_groups`` are appended to the start/end columns in

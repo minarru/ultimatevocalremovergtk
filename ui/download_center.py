@@ -1,6 +1,7 @@
 """Download Center window — catalogue browser and download queue."""
 
 from __future__ import annotations
+import typing
 
 import os
 import threading
@@ -86,11 +87,11 @@ class DownloadCenterWindow:
 
     def __init__(
         self,
-        parent,
-        app_context,
+        parent: typing.Any,
+        app_context: typing.Any,
         manager: DownloadManager,
         queue: DownloadQueue,
-        on_models_changed=None,
+        on_models_changed: typing.Any=None,
     ):
         self.parent = parent
         self.context = app_context
@@ -143,7 +144,7 @@ class DownloadCenterWindow:
         if not self._available:
             self.start_refresh()
 
-    def _on_close_request(self, _window) -> bool:
+    def _on_close_request(self, _window: typing.Any) -> bool:
         self.window.set_visible(False)
         return True
 
@@ -317,7 +318,7 @@ class DownloadCenterWindow:
         self._update_catalogue_page_state(arch)
         self._update_download_button()
 
-    def _on_purpose_changed(self, *_args) -> None:
+    def _on_purpose_changed(self, *_args: typing.Any) -> None:
         label = get_combo_value(self.purpose_row) or PURPOSE_FILTER_OPTIONS[0][1]
         self._purpose = next(
             (value for value, text in PURPOSE_FILTER_OPTIONS if text == label),
@@ -325,7 +326,7 @@ class DownloadCenterWindow:
         )
         self._invalidate_all_filters()
 
-    def _on_sort_changed(self, *_args) -> None:
+    def _on_sort_changed(self, *_args: typing.Any) -> None:
         label = get_combo_value(self.sort_row) or SORT_OPTIONS[0][1]
         self._sort_mode = next(
             (value for value, text in SORT_OPTIONS if text == label),
@@ -339,7 +340,7 @@ class DownloadCenterWindow:
             self._update_catalogue_page_state(arch)
         self._update_download_button()
 
-    def _on_catalogue_tab_changed(self, *_args) -> None:
+    def _on_catalogue_tab_changed(self, *_args: typing.Any) -> None:
         self._update_download_button()
 
     def _add_model_row(self, arch: str, name: str) -> None:

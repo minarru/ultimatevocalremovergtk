@@ -1,6 +1,7 @@
 """Run context captured for separation / ensemble / audio-tool error logs."""
 
 from __future__ import annotations
+import typing
 
 import os
 import threading
@@ -206,7 +207,7 @@ def non_default_setting_lines(settings: Settings) -> List[str]:
     return lines
 
 
-def model_summary_lines(model) -> List[str]:
+def model_summary_lines(model: typing.Any) -> List[str]:
     label = display_name_for_model(model.process_method, model.model_name, model.repo)
     lines = [
         f"model={label or model.model_name}",
@@ -318,7 +319,7 @@ def format_error_context(context: Optional[Dict[str, Any]] = None) -> str:
 
 def build_separation_context(
     settings: Settings,
-    repo,
+    repo: typing.Any,
     input_paths: Sequence[str],
     method_key: str,
 ) -> Dict[str, Any]:
@@ -367,7 +368,7 @@ def build_audio_tools_context(
     }
 
 
-def snapshot_worker_file(path: str, model=None) -> None:
+def snapshot_worker_file(path: str, model: typing.Any=None) -> None:
     """Update context with the file/model currently being processed."""
     fields: Dict[str, Any] = {
         "audio": probe_audio_file(path),
