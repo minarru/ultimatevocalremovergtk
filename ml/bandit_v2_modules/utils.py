@@ -1,38 +1,39 @@
+from __future__ import annotations
+
 import os
 from abc import abstractmethod
-from typing import Callable
+from typing import Any, Callable, List, Tuple
 
 import numpy as np
 import torch
 from librosa import hz_to_midi, midi_to_hz
-try:
-    from torchaudio import functional as taF
-except ImportError:  # pragma: no cover
-    taF = None
+from torch import Tensor
+
+from torchaudio import functional as taF
 
 # from spafe.fbanks import bark_fbanks
 # from spafe.utils.converters import erb2hz, hz2bark, hz2erb
 
 
-def band_widths_from_specs(band_specs):
+def band_widths_from_specs(band_specs: Any) -> Any:
     return [e - i for i, e in band_specs]
 
 
-def check_nonzero_bandwidth(band_specs):
+def check_nonzero_bandwidth(band_specs: Any) -> Any:
     # pprint(band_specs)
     for fstart, fend in band_specs:
         if fend - fstart <= 0:
             raise ValueError("Bands cannot be zero-width")
 
 
-def check_no_overlap(band_specs):
+def check_no_overlap(band_specs: Any) -> Any:
     fend_prev = -1
     for fstart_curr, fend_curr in band_specs:
         if fstart_curr <= fend_prev:
             raise ValueError("Bands cannot overlap")
 
 
-def check_no_gap(band_specs):
+def check_no_gap(band_specs: Any) -> Any:
     fstart, _ = band_specs[0]
     assert fstart == 0
 
@@ -61,10 +62,10 @@ class BandsplitSpecification:
         self.above20k = [(self.split20k, self.max_index)]
         self.above16k = [(self.split16k, self.split20k)] + self.above20k
 
-    def index_to_hertz(self, index: int):
+    def index_to_hertz(self, index: int) -> Any:
         return index * self.fs / self.nfft
 
-    def hertz_to_index(self, hz: float, round: bool = True):
+    def hertz_to_index(self, hz: float, round: bool = True) -> Any:
         index = hz * self.nfft / self.fs
 
         if round:
@@ -72,7 +73,7 @@ class BandsplitSpecification:
 
         return index
 
-    def get_band_specs_with_bandwidth(self, start_index, end_index, bandwidth_hz):
+    def get_band_specs_with_bandwidth(self, start_index: Any, end_index: Any, bandwidth_hz: Any) -> Any:
         band_specs = []
         lower = start_index
 
@@ -86,7 +87,7 @@ class BandsplitSpecification:
         return band_specs
 
     @abstractmethod
-    def get_band_specs(self):
+    def get_band_specs(self) -> Any:
         raise NotImplementedError
 
 
@@ -96,16 +97,16 @@ class VocalBandsplitSpecification(BandsplitSpecification):
 
         self.version = version
 
-    def get_band_specs(self):
+    def get_band_specs(self) -> Any:
         return getattr(self, f"version{self.version}")()
 
     @property
-    def version1(self):
+    def version1(self) -> Any:
         return self.get_band_specs_with_bandwidth(
             start_index=0, end_index=self.max_index, bandwidth_hz=1000
         )
 
-    def version2(self):
+    def version2(self) -> Any:
         below16k = self.get_band_specs_with_bandwidth(
             start_index=0, end_index=self.split16k, bandwidth_hz=1000
         )
@@ -115,7 +116,7 @@ class VocalBandsplitSpecification(BandsplitSpecification):
 
         return below16k + below20k + self.above20k
 
-    def version3(self):
+    def version3(self) -> Any:
         below8k = self.get_band_specs_with_bandwidth(
             start_index=0, end_index=self.split8k, bandwidth_hz=1000
         )
@@ -125,7 +126,7 @@ class VocalBandsplitSpecification(BandsplitSpecification):
 
         return below8k + below16k + self.above16k
 
-    def version4(self):
+    def version4(self) -> Any:
         below1k = self.get_band_specs_with_bandwidth(
             start_index=0, end_index=self.split1k, bandwidth_hz=100
         )
@@ -138,7 +139,7 @@ class VocalBandsplitSpecification(BandsplitSpecification):
 
         return below1k + below8k + below16k + self.above16k
 
-    def version5(self):
+    def version5(self) -> Any:
         below1k = self.get_band_specs_with_bandwidth(
             start_index=0, end_index=self.split1k, bandwidth_hz=100
         )
@@ -150,7 +151,7 @@ class VocalBandsplitSpecification(BandsplitSpecification):
         )
         return below1k + below16k + below20k + self.above20k
 
-    def version6(self):
+    def version6(self) -> Any:
         below1k = self.get_band_specs_with_bandwidth(
             start_index=0, end_index=self.split1k, bandwidth_hz=100
         )
@@ -165,7 +166,7 @@ class VocalBandsplitSpecification(BandsplitSpecification):
         )
         return below1k + below4k + below8k + below16k + self.above16k
 
-    def version7(self):
+    def version7(self) -> Any:
         below1k = self.get_band_specs_with_bandwidth(
             start_index=0, end_index=self.split1k, bandwidth_hz=100
         )
@@ -193,7 +194,7 @@ class BassBandsplitSpecification(BandsplitSpecification):
     def __init__(self, nfft: int, fs: int, version: str = "7") -> None:
         super().__init__(nfft=nfft, fs=fs)
 
-    def get_band_specs(self):
+    def get_band_specs(self) -> Any:
         below500 = self.get_band_specs_with_bandwidth(
             start_index=0, end_index=self.split500, bandwidth_hz=50
         )
@@ -218,7 +219,7 @@ class DrumBandsplitSpecification(BandsplitSpecification):
     def __init__(self, nfft: int, fs: int) -> None:
         super().__init__(nfft=nfft, fs=fs)
 
-    def get_band_specs(self):
+    def get_band_specs(self) -> Any:
         below1k = self.get_band_specs_with_bandwidth(
             start_index=0, end_index=self.split1k, bandwidth_hz=50
         )
@@ -247,7 +248,7 @@ class PerceptualBandsplitSpecification(BandsplitSpecification):
         fbank_fn: Callable[[int, int, float, float, int], torch.Tensor],
         n_bands: int,
         f_min: float = 0.0,
-        f_max: float = None,
+        f_max: float | None = None,
     ) -> None:
         super().__init__(nfft=nfft, fs=fs)
         self.n_bands = n_bands
@@ -275,10 +276,10 @@ class PerceptualBandsplitSpecification(BandsplitSpecification):
         self.freq_weights = freq_weights
         self.band_specs = band_specs
 
-    def get_band_specs(self):
+    def get_band_specs(self) -> Any:
         return self.band_specs
 
-    def get_freq_weights(self):
+    def get_freq_weights(self) -> Any:
         return self.freq_weights
 
     def save_to_file(self, dir_path: str) -> None:
@@ -297,7 +298,13 @@ class PerceptualBandsplitSpecification(BandsplitSpecification):
             )
 
 
-def mel_filterbank(n_bands, fs, f_min, f_max, n_freqs):
+def mel_filterbank(
+    n_bands: int,
+    fs: int,
+    f_min: float,
+    f_max: float,
+    n_freqs: int,
+) -> Tensor:
     fb = taF.melscale_fbanks(
         n_mels=n_bands,
         sample_rate=fs,
@@ -313,7 +320,7 @@ def mel_filterbank(n_bands, fs, f_min, f_max, n_freqs):
 
 class MelBandsplitSpecification(PerceptualBandsplitSpecification):
     def __init__(
-        self, nfft: int, fs: int, n_bands: int, f_min: float = 0.0, f_max: float = None
+        self, nfft: int, fs: int, n_bands: int, f_min: float = 0.0, f_max: float | None = None
     ) -> None:
         super().__init__(
             fbank_fn=mel_filterbank,
@@ -325,7 +332,7 @@ class MelBandsplitSpecification(PerceptualBandsplitSpecification):
         )
 
 
-def musical_filterbank(n_bands, fs, f_min, f_max, n_freqs, scale="constant"):
+def musical_filterbank(n_bands: Any, fs: Any, f_min: Any, f_max: Any, n_freqs: Any, scale: Any="constant") -> Any:
     nfft = 2 * (n_freqs - 1)
     df = fs / nfft
     # init freqs
@@ -337,7 +344,7 @@ def musical_filterbank(n_bands, fs, f_min, f_max, n_freqs, scale="constant"):
     n_octaves_per_band = n_octaves / n_bands
     bandwidth_mult = np.power(2.0, n_octaves_per_band)
 
-    low_midi = max(0, hz_to_midi(f_min))
+    low_midi = max(0.0, float(hz_to_midi(f_min)))
     high_midi = hz_to_midi(f_max)
     midi_points = np.linspace(low_midi, high_midi, n_bands)
     hz_pts = midi_to_hz(midi_points)
@@ -361,7 +368,7 @@ def musical_filterbank(n_bands, fs, f_min, f_max, n_freqs, scale="constant"):
 
 class MusicalBandsplitSpecification(PerceptualBandsplitSpecification):
     def __init__(
-        self, nfft: int, fs: int, n_bands: int, f_min: float = 0.0, f_max: float = None
+        self, nfft: int, fs: int, n_bands: int, f_min: float = 0.0, f_max: float | None = None
     ) -> None:
         super().__init__(
             fbank_fn=musical_filterbank,

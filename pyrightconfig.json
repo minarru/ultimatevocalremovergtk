@@ -4,19 +4,22 @@
     "core",
     "engines",
     "tests",
-    "bundled"
+    "bundled",
+    "ml",
+    "scripts",
+    "__version__.py"
   ],
   "exclude": [
     "**/__pycache__",
     "**/.venv",
     "**/node_modules",
     "vendor/demucs",
-    "ml",
     "models"
   ],
   "venvPath": ".",
   "venv": ".venv",
   "stubPath": "typings",
+  "extraPaths": ["scripts"],
   "pythonVersion": "3.14",
   "pythonPlatform": "Linux",
   "typeCheckingMode": "basic",

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 from torch.nn.modules.rnn import LSTM
@@ -12,12 +14,12 @@ class FeatureConversion(nn.Module):
         inverse (bool): If True, uses ifft; otherwise, uses rfft.
     """
 
-    def __init__(self, channels, inverse):
+    def __init__(self, channels: int, inverse: bool) -> None:
         super().__init__()
         self.inverse = inverse
         self.channels = channels
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # B, C, F, T = x.shape
         if self.inverse:
             x = x.float()
@@ -44,7 +46,7 @@ class DualPathRNN(nn.Module):
         bidirectional (bool): If True, becomes a bidirectional LSTM.
     """
 
-    def __init__(self, d_model, expand, bidirectional=True):
+    def __init__(self, d_model: int, expand: int, bidirectional: bool = True) -> None:
         super(DualPathRNN, self).__init__()
 
         self.d_model = d_model
@@ -55,10 +57,10 @@ class DualPathRNN(nn.Module):
         self.linear_layers = nn.ModuleList([nn.Linear(self.hidden_size * 2, self.d_model) for _ in range(2)])
         self.norm_layers = nn.ModuleList([nn.GroupNorm(1, d_model) for _ in range(2)])
 
-    def _init_lstm_layer(self, d_model, hidden_size):
+    def _init_lstm_layer(self, d_model: int, hidden_size: int) -> LSTM:
         return LSTM(d_model, hidden_size, num_layers=1, bidirectional=self.bidirectional, batch_first=True)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, C, F, T = x.shape
 
         # Process dual-path rnn
@@ -93,7 +95,7 @@ class SeparationNet(nn.Module):
     - num_layers (int): Number of dual-path layers.
     """
 
-    def __init__(self, channels, expand=1, num_layers=6):
+    def __init__(self, channels: int, expand: int = 1, num_layers: int = 6) -> None:
         super(SeparationNet, self).__init__()
 
         self.num_layers = num_layers
@@ -106,7 +108,7 @@ class SeparationNet(nn.Module):
             FeatureConversion(channels * 2, inverse=False if i % 2 == 0 else True) for i in range(num_layers)
         ])
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         for i in range(self.num_layers):
             x = self.dp_modules[i](x)
             x = self.feature_conversion[i](x)

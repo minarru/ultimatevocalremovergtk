@@ -1,19 +1,23 @@
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from typing import Any
+
 from .base_model import BaseModel
 from ml.stft_device import needs_cpu_stft, torch_istft, torch_stft
 
 class RMSNorm(nn.Module):
-    def __init__(self, dimension, groups=1):
+    def __init__(self, dimension: int, groups: int = 1) -> None:
         super().__init__()
         
         self.weight = nn.Parameter(torch.ones(dimension))
         self.groups = groups
         self.eps = 1e-5
 
-    def forward(self, input):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         # input size: (B, N, T)
         B, N, T = input.shape
         assert N % self.groups == 0
@@ -29,7 +33,7 @@ class RMVN(nn.Module):
     """
     Rescaled MVN.
     """
-    def __init__(self, dimension, groups=1):
+    def __init__(self, dimension: int, groups: int = 1) -> None:
         super(RMVN, self).__init__()
         
         self.mean = nn.Parameter(torch.zeros(dimension))
@@ -37,7 +41,7 @@ class RMVN(nn.Module):
         self.groups = groups
         self.eps = 1e-5
 
-    def forward(self, input):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         # input size: (B, N, *)
         B, N = input.shape[:2]
         assert N % self.groups == 0
@@ -53,8 +57,20 @@ class Roformer(nn.Module):
     """
     Transformer with rotary positional embedding.
     """
-    def __init__(self, input_size, hidden_size, num_head=8, theta=10000, window=10000, 
-                 input_drop=0., attention_drop=0., causal=True):
+    cos_freq: torch.Tensor
+    sin_freq: torch.Tensor
+
+    def __init__(
+        self,
+        input_size: int,
+        hidden_size: int,
+        num_head: int = 8,
+        theta: int = 10000,
+        window: int = 10000,
+        input_drop: float = 0.0,
+        attention_drop: float = 0.0,
+        causal: bool = True,
+    ) -> None:
         super().__init__()
 
         self.input_size = input_size
@@ -82,7 +98,7 @@ class Roformer(nn.Module):
                                 )
         self.MLP_output = nn.Conv1d(self.input_size*4, self.input_size, 1, bias=False)
 
-    def _calc_rotary_emb(self):
+    def _calc_rotary_emb(self) -> tuple[torch.Tensor, torch.Tensor]:
         freq = 1. / (self.theta ** (torch.arange(0, self.hidden_size, 2)[:(self.hidden_size // 2)] / self.hidden_size))  # theta_i
         freq = freq.reshape(1, -1)  # 1, N//2
         pos = torch.arange(0, self.window).reshape(-1, 1)  # win, 1
@@ -93,7 +109,7 @@ class Roformer(nn.Module):
 
         return cos_freq, sin_freq
     
-    def _add_rotary_emb(self, feature, pos):
+    def _add_rotary_emb(self, feature: torch.Tensor, pos: int) -> torch.Tensor:
         # feature shape: ..., N
         N = feature.shape[-1]
 
@@ -107,7 +123,7 @@ class Roformer(nn.Module):
     
         return feature_rope.reshape(feature.shape)
 
-    def _add_rotary_sequence(self, feature):
+    def _add_rotary_sequence(self, feature: torch.Tensor) -> torch.Tensor:
         # feature shape: ..., T, N
         T, N = feature.shape[-2:]
         feature_reshape = feature.reshape(-1, T, N)
@@ -120,7 +136,9 @@ class Roformer(nn.Module):
     
         return feature_rope.reshape(feature.shape)
     
-    def forward(self, input):
+    def forward(
+        self, input: torch.Tensor
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
         # input shape: B, N, T
 
         B, _, T = input.shape
@@ -142,7 +160,13 @@ class Roformer(nn.Module):
         return output, (K_rot, V)
     
 class ConvActNorm1d(nn.Module):
-    def __init__(self, in_channel, hidden_channel, kernel=7, causal=False):
+    def __init__(
+        self,
+        in_channel: int,
+        hidden_channel: int,
+        kernel: int = 7,
+        causal: bool = False,
+    ) -> None:
         super(ConvActNorm1d, self).__init__()
         
         self.in_channel = in_channel
@@ -163,7 +187,7 @@ class ConvActNorm1d(nn.Module):
                                       nn.Conv1d(hidden_channel, in_channel, 1)
                                      )
         
-    def forward(self, input):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         
         output = self.conv(input)
         if self.causal:
@@ -171,7 +195,7 @@ class ConvActNorm1d(nn.Module):
         return input + output
 
 class ICB(nn.Module):
-    def __init__(self, in_channel, kernel=7, causal=False):
+    def __init__(self, in_channel: int, kernel: int = 7, causal: bool = False) -> None:
         super(ICB, self).__init__()
         
         self.blocks = nn.Sequential(ConvActNorm1d(in_channel, in_channel*4, kernel, causal=causal),
@@ -179,12 +203,12 @@ class ICB(nn.Module):
                                     ConvActNorm1d(in_channel, in_channel*4, kernel, causal=causal)
                                     )
         
-    def forward(self, input):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         
         return self.blocks(input)
 
 class BSNet(nn.Module):
-    def __init__(self, feature_dim, kernel=7):
+    def __init__(self, feature_dim: int, kernel: int = 7) -> None:
         super(BSNet, self).__init__()
 
         self.feature_dim = feature_dim
@@ -192,7 +216,7 @@ class BSNet(nn.Module):
         self.band_net = Roformer(self.feature_dim, self.feature_dim, num_head=8, window=100, causal=False)
         self.seq_net = ICB(self.feature_dim, kernel=kernel)
 
-    def forward(self, input):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         # input shape: B, nband, N, T
 
         B, nband, N, T = input.shape
@@ -208,13 +232,15 @@ class BSNet(nn.Module):
         return output
     
 class Apollo(BaseModel):
+    net: nn.Sequential
+
     def __init__(
         self, 
         sr: int,
         win: int,
         feature_dim: int,
-        layer: int
-    ):
+        layer: int,
+    ) -> None:
         super().__init__(sample_rate=sr)
         
         self.sr = sr
@@ -237,10 +263,10 @@ class Apollo(BaseModel):
                                          nn.Conv1d(self.band_width[i]*2+1, self.feature_dim, 1))
                           )
 
-        self.net = []
+        net_layers: list[BSNet] = []
         for _ in range(layer):
-            self.net.append(BSNet(self.feature_dim))
-        self.net = nn.Sequential(*self.net)
+            net_layers.append(BSNet(self.feature_dim))
+        self.net = nn.Sequential(*net_layers)
         
         self.output = nn.ModuleList([])
         for i in range(self.nband):
@@ -250,8 +276,9 @@ class Apollo(BaseModel):
                                                 )
                                   )
 
-    def spec_band_split(self, input):
-
+    def spec_band_split(
+        self, input: torch.Tensor
+    ) -> tuple[list[torch.Tensor], torch.Tensor]:
         B, nch, nsample = input.shape
         device = input.device
 
@@ -266,26 +293,26 @@ class Apollo(BaseModel):
             return_complex=True,
         )
 
-        subband_spec_norm = []
-        subband_power = []
+        subband_spec_norm: list[torch.Tensor] = []
+        subband_power_parts: list[torch.Tensor] = []
         band_idx = 0
         for i in range(self.nband):
             this_spec = spec[:,band_idx:band_idx+self.band_width[i]]
-            subband_power.append((this_spec.abs().pow(2).sum(1) + self.eps).sqrt().unsqueeze(1))  # B, 1, T
-            normalized_spec = torch.complex(this_spec.real / subband_power[-1], this_spec.imag / subband_power[-1])
+            subband_power_parts.append((this_spec.abs().pow(2).sum(1) + self.eps).sqrt().unsqueeze(1))  # B, 1, T
+            normalized_spec = torch.complex(this_spec.real / subband_power_parts[-1], this_spec.imag / subband_power_parts[-1])
             subband_spec_norm.append(normalized_spec)
             band_idx += self.band_width[i]
-        subband_power = torch.cat(subband_power, 1)  # B, nband, T
+        subband_power = torch.cat(subband_power_parts, 1)  # B, nband, T
 
         return subband_spec_norm, subband_power
 
-    def feature_extractor(self, input):
+    def feature_extractor(self, input: torch.Tensor) -> torch.Tensor:
         device = input.device
         bounce = needs_cpu_stft(device)
         subband_spec_norm, subband_power = self.spec_band_split(input)
 
         # Move real-valued features to the model device before BN / BSNet.
-        subband_feature = []
+        subband_feature: list[torch.Tensor] = []
         for i in range(self.nband):
             concat_spec = torch.cat(
                 [
@@ -298,11 +325,11 @@ class Apollo(BaseModel):
             if bounce:
                 concat_spec = concat_spec.to(device)
             subband_feature.append(self.BN[i](concat_spec))
-        subband_feature = torch.stack(subband_feature, 1)  # B, nband, N, T
+        subband_feature_tensor = torch.stack(subband_feature, 1)  # B, nband, N, T
 
-        return subband_feature
+        return subband_feature_tensor
         
-    def forward(self, input):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         B, nch, nsample = input.shape
         device = input.device
         bounce = needs_cpu_stft(device)
@@ -311,17 +338,17 @@ class Apollo(BaseModel):
         subband_feature = self.feature_extractor(input)
         feature = self.net(subband_feature)
 
-        est_spec = []
+        est_spec: list[torch.Tensor] = []
         for i in range(self.nband):
             this_RI = self.output[i](feature[:,i]).view(B*nch, 2, self.band_width[i], -1)
             if bounce:
                 this_RI = this_RI.cpu()
             RI_input = torch.complex(this_RI[:,0], this_RI[:,1])
             est_spec.append(RI_input)
-        est_spec = torch.cat(est_spec, 1)
-        window = torch.hann_window(self.win, device=est_spec.device)
+        est_spec_cat = torch.cat(est_spec, 1)
+        window = torch.hann_window(self.win, device=est_spec_cat.device)
         output = torch_istft(
-            est_spec,
+            est_spec_cat,
             n_fft=self.win,
             hop_length=self.stride,
             window=window,
@@ -333,6 +360,6 @@ class Apollo(BaseModel):
 
         return output
     
-    def get_model_args(self):
+    def get_model_args(self) -> dict[str, Any]:
         model_args = {"n_sample_rate": 2}
         return model_args

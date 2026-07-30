@@ -10,6 +10,8 @@ collapse them into one NN package. Dead unused modules (e.g. FiLM) are removed
 instead of a risky full merge.
 """
 
+from __future__ import annotations
+
 from ml.bandit_bsrnn.bsrnn.wrapper import (
     MultiMaskMultiSourceBandSplitRNNSimple as MultiMaskMultiSourceBandSplitRNN,
 )

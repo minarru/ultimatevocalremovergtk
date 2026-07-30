@@ -1,4 +1,6 @@
-from typing import List, Tuple
+from __future__ import annotations
+
+from typing import List, Tuple, cast
 
 import torch
 from torch import nn
@@ -47,7 +49,7 @@ class NormFC(nn.Module):
 
         self.combined = nn.Sequential(norm, fc)
 
-    def forward(self, xb):
+    def forward(self, xb: torch.Tensor) -> torch.Tensor:
         return checkpoint_sequential(self.combined, 1, xb, use_reentrant=False)
 
 
@@ -73,34 +75,33 @@ class BandSplitModule(nn.Module):
             check_no_overlap(band_specs)
 
         self.band_specs = band_specs
-        # list of [fstart, fend) in index.
-        # Note that fend is exclusive.
         self.band_widths = band_widths_from_specs(band_specs)
         self.n_bands = len(band_specs)
         self.emb_dim = emb_dim
 
         try:
-            self.norm_fc_modules = nn.ModuleList(
-                [  # type: ignore
-                    torch.compile(
-                        NormFC(
-                            emb_dim=emb_dim,
-                            bandwidth=bw,
-                            in_channels=in_channels,
-                            normalize_channel_independently=normalize_channel_independently,
-                            treat_channel_as_feature=treat_channel_as_feature,
-                        ),
-                        disable=True,
-                    )
-                    for bw in self.band_widths
-                ]
-            )
-        except Exception as e:
-            self.norm_fc_modules = nn.ModuleList(
-                [  # type: ignore
+            compiled_modules = [
+                torch.compile(
                     NormFC(
                         emb_dim=emb_dim,
-                        bandwidth=bw,
+                        bandwidth=int(bw),
+                        in_channels=in_channels,
+                        normalize_channel_independently=normalize_channel_independently,
+                        treat_channel_as_feature=treat_channel_as_feature,
+                    ),
+                    disable=True,
+                )
+                for bw in self.band_widths
+            ]
+            self.norm_fc_modules = nn.ModuleList(
+                cast(List[nn.Module], compiled_modules)
+            )
+        except Exception:
+            self.norm_fc_modules = nn.ModuleList(
+                [
+                    NormFC(
+                        emb_dim=emb_dim,
+                        bandwidth=int(bw),
                         in_channels=in_channels,
                         normalize_channel_independently=normalize_channel_independently,
                         treat_channel_as_feature=treat_channel_as_feature,
@@ -109,9 +110,7 @@ class BandSplitModule(nn.Module):
                 ]
             )
 
-    def forward(self, x: torch.Tensor):
-        # x = complex spectrogram (batch, in_chan, n_freq, n_time)
-
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch, in_chan, band_width, n_time = x.shape
 
         z = torch.zeros(
@@ -122,7 +121,7 @@ class BandSplitModule(nn.Module):
 
         for i, nfm in enumerate(self.norm_fc_modules):
             fstart, fend = self.band_specs[i]
-            xb = x[:, :, :, fstart:fend]
+            xb = x[:, :, :, int(fstart) : int(fend)]
             xb = torch.view_as_real(xb)
             xb = torch.reshape(xb, (batch, n_time, -1))
             z[:, i, :, :] = nfm(xb)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Dict, Iterator, Optional
+from typing import Any, Dict, Iterator, Optional, cast
 
 import torch
 from torch import nn
@@ -43,7 +43,7 @@ class SpectralComponent(nn.Module):
         normalized: bool = True,
         pad_mode: str = "constant",
         onesided: bool = True,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__()
         del kwargs, wkwargs, window_fn, pad_mode, onesided
@@ -58,7 +58,7 @@ class SpectralComponent(nn.Module):
         self.register_buffer("window", torch.hann_window(self.win_length), persistent=False)
 
     def _window_for(self, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
-        return self.window.to(device=device, dtype=dtype)
+        return cast(torch.Tensor, self.window.to(device=device, dtype=dtype))
 
     def stft(self, audio: torch.Tensor) -> torch.Tensor:
         """Return complex spectrogram ``(batch, channels, freq, time)``."""

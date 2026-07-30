@@ -5,6 +5,8 @@ from __future__ import annotations
 import gc
 import hashlib
 import json
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Optional
 
 import librosa
@@ -14,9 +16,9 @@ import torch
 import ml.apollo_model_data as models
 
 
-def load_audio(file_path):
+def load_audio(file_path: str | Path) -> tuple[torch.Tensor, int]:
     audio, samplerate = librosa.load(file_path, mono=False, sr=44100)
-    return torch.from_numpy(audio), samplerate
+    return torch.from_numpy(audio), int(samplerate)
 
 
 def _getWindowingArray(window_size: int, fade_size: int) -> torch.Tensor:
@@ -32,7 +34,7 @@ def _getWindowingArray(window_size: int, fade_size: int) -> torch.Tensor:
     return window
 
 
-def _apollo_param_fingerprint(extracted_params: Optional[dict], config: Any) -> str:
+def _apollo_param_fingerprint(extracted_params: Optional[dict[str, Any]], config: Any) -> str:
     payload = {
         "params": extracted_params or {},
         "config": str(config) if config is not None else "",
@@ -41,23 +43,23 @@ def _apollo_param_fingerprint(extracted_params: Optional[dict], config: Any) -> 
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
-def dBgain(audio, volume_gain_dB):
+def dBgain(audio: torch.Tensor, volume_gain_dB: float) -> torch.Tensor:
     gain = 10 ** (volume_gain_dB / 20)
     gained_audio = audio * gain
     return gained_audio
 
 
 def restore_process(
-    input_wav,
-    ckpt_path,
-    overlap=2,
-    chunk_size=10,
-    set_progress_bar=None,
-    device=None,
-    extracted_params=None,
-    config=None,
-    settings=None,
-):
+    input_wav: str | Path,
+    ckpt_path: str | Path,
+    overlap: int = 2,
+    chunk_size: int = 10,
+    set_progress_bar: Callable[[float, float], None] | None = None,
+    device: str | torch.device | None = None,
+    extracted_params: dict[str, Any] | None = None,
+    config: Any = None,
+    settings: Any = None,
+) -> np.ndarray:
 
     if device is None:
         device = "cpu"
@@ -86,7 +88,7 @@ def restore_process(
         cache.put(key, module=model)
         model = materialize_module(model, device)
 
-    def process_chunk(chunk):
+    def process_chunk(chunk: torch.Tensor) -> torch.Tensor:
         from engines.amp_runtime import maybe_autocast
 
         chunk = chunk.unsqueeze(0).to(device)
@@ -95,7 +97,7 @@ def restore_process(
                 out = model(chunk).squeeze(0).squeeze(0)
             return out.float().cpu()
 
-    def progress_bar_ui(length):
+    def progress_bar_ui(length: int) -> None:
         global progress_value
         progress_value += 1
 
@@ -104,11 +106,12 @@ def restore_process(
 
         iter_val = (0.90 / length * progress_value)
         iter_val = 0.99 if iter_val >= 1.0 else iter_val
-        set_progress_bar(0.1, iter_val)
+        if set_progress_bar is not None:
+            set_progress_bar(0.1, iter_val)
 
     audio_data, samplerate = load_audio(input_wav)
 
-    C = chunk_size * samplerate
+    C = int(chunk_size * samplerate)
     N = overlap
 
     step = C // N if overlap else C
@@ -117,7 +120,7 @@ def restore_process(
     fade_sec = 3 if chunk_size >= 3 else chunk_size
     # Clamp once so start/finish overrides cannot wipe the whole window.
     fade_size = max(0, min(int(fade_sec * samplerate), C // 2))
-    border = C - step
+    border = int(C - step)
 
     if len(audio_data.shape) == 1:
         audio_data = audio_data.unsqueeze(0)

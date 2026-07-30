@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from pprint import pprint
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 from torch import nn
@@ -22,7 +24,7 @@ from .core import (
     SingleMaskBandsplitCoreTransformer,
 )
 
-def get_band_specs(band_specs, n_fft, fs, n_bands=None):
+def get_band_specs(band_specs: Any, n_fft: Any, fs: Any, n_bands: Any=None) -> Any:
     if band_specs in ["dnr:speech", "dnr:vox7", "musdb:vocals", "musdb:vox7"]:
         bsm = VocalBandsplitSpecification(
                 nfft=n_fft, fs=fs
@@ -85,7 +87,7 @@ def get_band_specs(band_specs, n_fft, fs, n_bands=None):
     return bsm, freq_weights, overlapping_band
 
 
-def get_band_specs_map(band_specs_map, n_fft, fs, n_bands=None):
+def get_band_specs_map(band_specs_map: Any, n_fft: Any, fs: Any, n_bands: Any=None) -> Any:
     if band_specs_map == "musdb:all":
         bsm = {
                 "vocals": VocalBandsplitSpecification(
@@ -129,14 +131,15 @@ def get_band_specs_map(band_specs_map, n_fft, fs, n_bands=None):
 class BandSplitWrapperBase(nn.Module):
     bsrnn: nn.Module
     
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__()
 
 
 class SingleMaskMultiSourceBandSplitBase(
         BandSplitWrapperBase,
-        _SpectralComponent
+        _SpectralComponent,
 ):
+    bsrnn: nn.ModuleDict
     def __init__(
             self,
             band_specs_map: Union[str, Dict[str, List[Tuple[float, float]]]],
@@ -151,7 +154,7 @@ class SingleMaskMultiSourceBandSplitBase(
             normalized: bool = True,
             pad_mode: str = "constant",
             onesided: bool = True,
-            n_bands: int = None,
+            n_bands: Optional[int] = None,
     ) -> None:
         super().__init__(
                 n_fft=n_fft,
@@ -176,7 +179,7 @@ class SingleMaskMultiSourceBandSplitBase(
 
         self.stems = list(self.band_specs_map.keys())
 
-    def forward(self, batch):
+    def forward(self, batch: Any) -> Any:
         audio = batch["audio"]
         mixture = audio["mixture"]
         with mps_compatible_module_device(self, mixture) as orig_device:
@@ -194,8 +197,8 @@ class SingleMaskMultiSourceBandSplitBase(
 
             output = {"spectrogram": {}, "audio": {}}
 
-            for stem, bsrnn in self.bsrnn.items():
-                S = bsrnn(X)
+            for stem, bsrnn_mod in cast(nn.ModuleDict, self.bsrnn).items():
+                S = cast(nn.Module, bsrnn_mod)(X)
                 s = self.istft(S, length)
                 if needs_cpu_stft(orig_device):
                     s = s.to(orig_device)
@@ -225,7 +228,7 @@ class MultiMaskMultiSourceBandSplitBase(
             normalized: bool = True,
             pad_mode: str = "constant",
             onesided: bool = True,
-            n_bands: int = None,
+            n_bands: Optional[int] = None,
     ) -> None:
         super().__init__(
                 n_fft=n_fft,
@@ -250,7 +253,7 @@ class MultiMaskMultiSourceBandSplitBase(
 
         self.stems = stems
 
-    def forward(self, batch):
+    def forward(self, batch: Any) -> Any:
         # with torch.no_grad():
         audio = batch["audio"]
         cond = batch.get("condition", None)
@@ -302,7 +305,7 @@ class MultiMaskMultiSourceBandSplitBaseSimple(
             normalized: bool = True,
             pad_mode: str = "constant",
             onesided: bool = True,
-            n_bands: int = None,
+            n_bands: Optional[int] = None,
     ) -> None:
         super().__init__(
                 n_fft=n_fft,
@@ -327,7 +330,7 @@ class MultiMaskMultiSourceBandSplitBaseSimple(
 
         self.stems = stems
 
-    def forward(self, batch):
+    def forward(self, batch: Any) -> Any:
         with mps_compatible_module_device(self, batch) as orig_device:
             wav = batch.cpu() if needs_cpu_stft(orig_device) else batch
             with torch.no_grad():
@@ -515,7 +518,7 @@ class MultiMaskMultiSourceBandSplitRNN(MultiMaskMultiSourceBandSplitBase):
             normalized: bool = True,
             pad_mode: str = "constant",
             onesided: bool = True,
-            n_bands: int = None,
+            n_bands: Optional[int] = None,
             use_freq_weights: bool = True,
             normalize_input: bool = False,
             mult_add_mask: bool = False,
@@ -605,7 +608,7 @@ class MultiMaskMultiSourceBandSplitRNNSimple(MultiMaskMultiSourceBandSplitBaseSi
             normalized: bool = True,
             pad_mode: str = "constant",
             onesided: bool = True,
-            n_bands: int = None,
+            n_bands: Optional[int] = None,
             use_freq_weights: bool = True,
             normalize_input: bool = False,
             mult_add_mask: bool = False,
@@ -697,7 +700,7 @@ class MultiMaskMultiSourceBandSplitTransformer(
             normalized: bool = True,
             pad_mode: str = "constant",
             onesided: bool = True,
-            n_bands: int = None,
+            n_bands: Optional[int] = None,
             use_freq_weights: bool = True,
             normalize_input: bool = False,
             mult_add_mask: bool = False
@@ -779,7 +782,7 @@ class MultiMaskMultiSourceBandSplitConv(
             normalized: bool = True,
             pad_mode: str = "constant",
             onesided: bool = True,
-            n_bands: int = None,
+            n_bands: Optional[int] = None,
             use_freq_weights: bool = True,
             normalize_input: bool = False,
             mult_add_mask: bool = False
@@ -860,7 +863,7 @@ class PatchingMaskMultiSourceBandSplitRNN(MultiMaskMultiSourceBandSplitBase):
             normalized: bool = True,
             pad_mode: str = "constant",
             onesided: bool = True,
-            n_bands: int = None,
+            n_bands: Optional[int] = None,
     ) -> None:
         super().__init__(
                 stems=stems,

@@ -1,11 +1,26 @@
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import cast
+
 import torch
-from torch import nn
+from torch import Tensor, nn
 import torch.nn.functional as F
 from . import layers_new as layers
 
+DilationPairs = Sequence[int | tuple[int, int]]
+
+
 class BaseNet(nn.Module):
 
-    def __init__(self, nin, nout, nin_lstm, nout_lstm, dilations=((4, 2), (8, 4), (12, 6))):
+    def __init__(
+        self,
+        nin: int,
+        nout: int,
+        nin_lstm: int,
+        nout_lstm: int,
+        dilations: DilationPairs = ((4, 2), (8, 4), (12, 6)),
+    ) -> None:
         super(BaseNet, self).__init__()
         self.enc1 = layers.Conv2DBNActiv(nin, nout, 3, 1, 1)
         self.enc2 = layers.Encoder(nout, nout * 2, 3, 2, 1)
@@ -21,7 +36,7 @@ class BaseNet(nn.Module):
         self.lstm_dec2 = layers.LSTMModule(nout * 2, nin_lstm, nout_lstm)
         self.dec1 = layers.Decoder(nout * (1 + 2) + 1, nout * 1, 3, 1, 1)
 
-    def __call__(self, x):
+    def __call__(self, x: Tensor) -> Tensor:
         e1 = self.enc1(x)
         e2 = self.enc2(e1)
         e3 = self.enc3(e2)
@@ -40,7 +55,13 @@ class BaseNet(nn.Module):
 
 class CascadedNet(nn.Module):
 
-    def __init__(self, n_fft, nn_arch_size=51000, nout=32, nout_lstm=128):
+    def __init__(
+        self,
+        n_fft: int,
+        nn_arch_size: int = 51000,
+        nout: int = 32,
+        nout_lstm: int = 128,
+    ) -> None:
         super(CascadedNet, self).__init__()
         self.max_bin = n_fft // 2
         self.output_bin = n_fft // 2 + 1
@@ -67,7 +88,7 @@ class CascadedNet(nn.Module):
         self.out = nn.Conv2d(nout, 2, 1, bias=False)
         self.aux_out = nn.Conv2d(3 * nout // 4, 2, 1, bias=False)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:
         x = x[:, :, :self.max_bin]
 
         bandw = x.size()[2] // 2
@@ -105,21 +126,23 @@ class CascadedNet(nn.Module):
         else:
             return mask
 
-    def predict_mask(self, x):
-        mask = self.forward(x)
+    def predict_mask(self, x: Tensor) -> Tensor:
+        mask = cast(Tensor, self.forward(x))
 
         if self.offset > 0:
-            mask = mask[:, :, :, self.offset:-self.offset]
+            end = -self.offset
+            mask = cast(Tensor, mask)[:, :, :, self.offset:end]
             assert mask.size()[3] > 0
 
         return mask
 
-    def predict(self, x):
-        mask = self.forward(x)
+    def predict(self, x: Tensor) -> Tensor:
+        mask = cast(Tensor, self.forward(x))
         pred_mag = x * mask
 
         if self.offset > 0:
-            pred_mag = pred_mag[:, :, :, self.offset:-self.offset]
+            end = -self.offset
+            pred_mag = cast(Tensor, pred_mag)[:, :, :, self.offset:end]
             assert pred_mag.size()[3] > 0
 
         return pred_mag

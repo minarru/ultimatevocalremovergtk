@@ -1,9 +1,12 @@
+from __future__ import annotations
+
+from collections import namedtuple
 from functools import wraps
 from packaging import version
-from collections import namedtuple
+from typing import Callable, TypeVar
 
 import torch
-from torch import nn, einsum
+from torch import Tensor, einsum, nn
 import torch.nn.functional as F
 
 from einops import rearrange, reduce
@@ -14,13 +17,15 @@ FlashAttentionConfig = namedtuple('FlashAttentionConfig', ['enable_flash', 'enab
 
 # helpers
 
-def exists(val):
+def exists(val: object) -> bool:
     return val is not None
 
-def once(fn):
+T = TypeVar('T')
+
+def once(fn: Callable[[T], object]) -> Callable[[T], object | None]:
     called = False
     @wraps(fn)
-    def inner(x):
+    def inner(x: T) -> object | None:
         nonlocal called
         if called:
             return
@@ -35,9 +40,9 @@ print_once = once(print)
 class Attend(nn.Module):
     def __init__(
         self,
-        dropout = 0.,
-        flash = False
-    ):
+        dropout: float = 0.,
+        flash: bool = False
+    ) -> None:
         super().__init__()
         self.dropout = dropout
         self.attn_dropout = nn.Dropout(dropout)
@@ -48,7 +53,7 @@ class Attend(nn.Module):
         # determine efficient attention configs for cuda and cpu
 
         self.cpu_config = FlashAttentionConfig(True, True, True)
-        self.cuda_config = None
+        self.cuda_config: FlashAttentionConfig | None = None
 
         if not torch.cuda.is_available() or not flash:
             return
@@ -61,12 +66,16 @@ class Attend(nn.Module):
         else:
             self.cuda_config = FlashAttentionConfig(False, True, True)
 
-    def flash_attn(self, q, k, v):
+    def flash_attn(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:
         _, heads, q_len, _, k_len, is_cuda, device = *q.shape, k.shape[-2], q.is_cuda, q.device
 
         # Check if there is a compatible device for flash attention
 
-        config = self.cuda_config if is_cuda else self.cpu_config
+        if is_cuda:
+            assert self.cuda_config is not None
+            config = self.cuda_config
+        else:
+            config = self.cpu_config
 
         # pytorch 2.0 flash attn: q, k, v, mask, dropout, softmax_scale
 
@@ -78,7 +87,7 @@ class Attend(nn.Module):
 
         return out
 
-    def forward(self, q, k, v):
+    def forward(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:
         """
         einstein notation
         b - batch

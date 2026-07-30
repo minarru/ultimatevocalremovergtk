@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import shutil
 import subprocess
@@ -7,6 +9,7 @@ import tempfile
 import numpy as np
 import six
 import soundfile as sf
+from typing import Any
 
 __all__ = ['time_stretch', 'pitch_shift']
 
@@ -28,7 +31,7 @@ def _resolve_rubberband() -> str | None:
     return shutil.which("rubberband")
 
 
-def __rubberband(y, sr, **kwargs):
+def __rubberband(y: np.ndarray, sr: int, **kwargs: Any) -> np.ndarray:
 
     assert sr > 0
 
@@ -74,7 +77,9 @@ def __rubberband(y, sr, **kwargs):
 
     return y_out
 
-def time_stretch(y, sr, rate, rbargs=None):
+def time_stretch(
+    y: np.ndarray, sr: int, rate: float, rbargs: dict[str, Any] | None = None
+) -> np.ndarray:
     if rate <= 0:
         raise ValueError('rate must be strictly positive')
 
@@ -88,8 +93,9 @@ def time_stretch(y, sr, rate, rbargs=None):
 
     return __rubberband(y, sr, **rbargs)
 
-def pitch_shift(y, sr, n_steps, rbargs=None):
-
+def pitch_shift(
+    y: np.ndarray, sr: int, n_steps: float, rbargs: dict[str, Any] | None = None
+) -> np.ndarray:
     if n_steps == 0:
         return y
 
