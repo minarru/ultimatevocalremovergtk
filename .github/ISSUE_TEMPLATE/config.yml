@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Tracked backlog (items 1–7 + roadmap)
-    url: https://codeberg.org/jawlet/ultimatevocalremovergtk/src/branch/main/docs/tracked-issues.md
+    url: https://github.com/minarru/ultimatevocalremovergtk/blob/main/docs/tracked-issues.md
     about: Known upstream-applicable bugs and product gaps — check before filing duplicates

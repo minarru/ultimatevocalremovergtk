@@ -1,14 +1,16 @@
 # Tracked issues backlog
 
-Fork-specific tracking for **upstream-applicable** bugs (shared `core/`, `engines/`, `ml/`, `vendor/`) and **product gaps** called out in upstream demand. These are not duplicates of every open GitHub thread — they are the items we actively watch or plan to address on [Codeberg](https://codeberg.org/jawlet/ultimatevocalremovergtk/issues).
+Fork-specific tracking for **upstream-applicable** bugs (shared `core/`, `engines/`, `ml/`, `vendor/`) and **product gaps** called out in upstream demand. These are not duplicates of every open upstream GitHub thread — they are the items we actively watch or plan to address on [GitHub Issues](https://github.com/minarru/ultimatevocalremovergtk/issues).
 
 **How to use this file**
 
-1. Before filing a bug, search [Codeberg issues](https://codeberg.org/jawlet/ultimatevocalremovergtk/issues) and this list.
-2. When work starts, open a Codeberg issue and put its number in the **Fork** column below.
+1. Before filing a bug, search [GitHub issues](https://github.com/minarru/ultimatevocalremovergtk/issues) and this list.
+2. When work starts, open a GitHub issue and put its number in the **Fork** column below (or replace an archived Codeberg link).
 3. Update **Status** as work progresses: `open` → `in progress` → `done` / `wontfix`.
 
-Suggested labels on Codeberg: `backend`, `gpu`, `roformer`, `audio`, `roadmap`, `upstream-parity`.
+Suggested labels: `backend`, `gpu`, `roformer`, `audio`, `roadmap`, `upstream-parity`.
+
+The **Fork** column may still link to historical Codeberg issues from before the host cutover; those IDs are archival only.
 
 ---
 
@@ -59,7 +61,7 @@ no upstream Tkinter equivalent -- so no GitHub issue to link.
 | ID | Topic | Status | Priority | Upstream | Fork | Notes |
 |----|--------|--------|----------|----------|------|-------|
 | **P1** | CLI / headless batch automation | open | medium | [#678](https://github.com/Anjok07/ultimatevocalremovergui/issues/678), [#359](https://github.com/Anjok07/ultimatevocalremovergui/issues/359), [#1288](https://github.com/Anjok07/ultimatevocalremovergui/issues/1288) | [#8](https://codeberg.org/jawlet/ultimatevocalremovergtk/issues/8) | No CLI in fork today. Valid roadmap item if users want scripted runs without GTK. |
-| **P2** | Flatpak distribution | open | low | [#854](https://github.com/Anjok07/ultimatevocalremovergui/issues/854) | [#9](https://codeberg.org/jawlet/ultimatevocalremovergtk/issues/9) | Skeleton manifest: `packaging/org.uvr.UltimateVocalRemover.yaml`. Not published to Flathub or Codeberg releases as Flatpak yet. |
+| **P2** | Flatpak distribution | open | low | [#854](https://github.com/Anjok07/ultimatevocalremovergui/issues/854) | [#9](https://codeberg.org/jawlet/ultimatevocalremovergtk/issues/9) | Skeleton manifest: `packaging/org.uvr.UltimateVocalRemover.yaml`. Not published to Flathub or GitHub releases as Flatpak yet. |
 | **P3** | Linux update UX | partial | low | [#707](https://github.com/Anjok07/ultimatevocalremovergui/issues/707) | [#10](https://codeberg.org/jawlet/ultimatevocalremovergtk/issues/10) | Fork uses `release.json` + source upgrade (README **Upgrading**), not upstream patch zips. Remaining gap: packaged install paths (e.g. Flatpak) if we ship them later. |
 
 ---

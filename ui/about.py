@@ -108,7 +108,7 @@ def open_about(parent_window: typing.Any):
         application_icon=APP_ID,
         version=VERSION or "v1.0.0",
         comments="A GUI for vocal/instrumental separation using state-of-the-art AI models.",
-        website="https://codeberg.org/jawlet/ultimatevocalremovergtk",
+        website="https://github.com/minarru/ultimatevocalremovergtk",
         issue_url=FORK_ISSUE_URL,
         developer_name="Anjok07 & Aufr33",
         developers=["Anjok07", "Aufr33", "DilanBoskan"],

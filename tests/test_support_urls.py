@@ -8,9 +8,11 @@ from core.support_urls import fork_issue_url
 
 
 class ForkIssueUrlTests(unittest.TestCase):
-    def test_points_at_codeberg(self) -> None:
+    def test_points_at_github(self) -> None:
         url = fork_issue_url(log_text="sample error")
-        self.assertTrue(url.startswith("https://codeberg.org/jawlet/ultimatevocalremovergtk/issues/new?"))
+        self.assertTrue(
+            url.startswith("https://github.com/minarru/ultimatevocalremovergtk/issues/new?")
+        )
 
     def test_body_contains_version_and_log(self) -> None:
         url = fork_issue_url(log_text="Traceback Error\nRuntimeError: boom")
@@ -29,8 +31,9 @@ class ForkIssueUrlTests(unittest.TestCase):
         self.assertIn("truncated", body)
 
     def test_issue_link_constant(self) -> None:
-        self.assertIn("codeberg.org/jawlet/ultimatevocalremovergtk", ISSUE_LINK)
+        self.assertIn("github.com/minarru/ultimatevocalremovergtk", ISSUE_LINK)
         self.assertNotIn("Anjok07", ISSUE_LINK)
+        self.assertNotIn("codeberg.org", ISSUE_LINK)
 
 
 if __name__ == "__main__":
