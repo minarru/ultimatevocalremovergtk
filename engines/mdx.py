@@ -324,10 +324,6 @@ class SeperateMDX(SeperateAttributes):
                         if mdx_net_cut
                         else self.match_frequency_pitch(mix)
                     )
-                    if not isinstance(raw_mix, np.ndarray):
-                        raise TypeError(
-                            f"invert_stem expects ndarray mixture, got {type(raw_mix)!r}"
-                        )
                     self.secondary_source = spec_utils.invert_stem(raw_mix, source)
                 else:
                     self.secondary_source = mix.T - source.T

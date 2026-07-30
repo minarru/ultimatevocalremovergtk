@@ -115,7 +115,6 @@ _BOOL_FIELDS: frozenset[tuple[str, str]] = frozenset(
 _INT_FIELDS: frozenset[tuple[str, str]] = frozenset(
     {
         ("process", "sample_mode_duration"),
-        ("process", "long_file_chunk_seconds"),
         ("vr", "aggression_setting"),
         ("vr", "window_size"),
         ("vr", "crop_size"),
@@ -131,6 +130,7 @@ _INT_FIELDS: frozenset[tuple[str, str]] = frozenset(
 _FLOAT_FIELDS: frozenset[tuple[str, str]] = frozenset(
     {
         ("process", "amplification_threshold"),
+        ("process", "long_file_chunk_seconds"),
         ("process", "long_file_chunk_overlap_seconds"),
         ("vr", "post_process_threshold"),
         ("vr", "voc_inst_secondary_model_scale"),
