@@ -351,7 +351,11 @@ def cmb_spectrogram_to_wave(spec_m: np.ndarray, mp: Any, extra_bins_h: int | Non
 
     for d in range(1, bands_n + 1):
         bp = mp.param['band'][d]
-        spec_s = np.ndarray(shape=(2, bp['n_fft'] // 2 + 1, spec_m.shape[2]), dtype=complex)
+        # Must be zeroed, not np.ndarray(): only [crop_start, crop_stop) is
+        # filled below, and nothing clears the top band's [crop_stop, N) — the
+        # high-pass filter zeroes the low end and multiplies the high end by 1.
+        # Uninitialized heap contents there reach the iSTFT and the waveform.
+        spec_s = np.zeros(shape=(2, bp['n_fft'] // 2 + 1, spec_m.shape[2]), dtype=complex)
         h = bp['crop_stop'] - bp['crop_start']
         spec_s[:, bp['crop_start']:bp['crop_stop'], :] = spec_m[:, offset:offset+h, :]
                 
