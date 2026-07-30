@@ -35,7 +35,8 @@ jobs:
 
       - name: Create virtual environment
         run: |
-          python3 -m venv .venv
+          # Match install_packages.sh: system GTK/gi via python3-gi.
+          python3 -m venv --system-site-packages .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt
 
