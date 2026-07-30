@@ -9,7 +9,10 @@ import torch
 from librosa import hz_to_midi, midi_to_hz
 from torch import Tensor
 
-from torchaudio import functional as taF
+try:
+    from torchaudio import functional as taF
+except ImportError:  # pragma: no cover - optional at runtime
+    taF = None
 
 # from spafe.fbanks import bark_fbanks
 # from spafe.utils.converters import erb2hz, hz2bark, hz2erb
@@ -305,6 +308,8 @@ def mel_filterbank(
     f_max: float,
     n_freqs: int,
 ) -> Tensor:
+    if taF is None:
+        raise ImportError("torchaudio is required for mel filterbanks")
     fb = taF.melscale_fbanks(
         n_mels=n_bands,
         sample_rate=fs,
