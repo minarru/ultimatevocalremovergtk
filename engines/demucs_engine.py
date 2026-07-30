@@ -128,8 +128,12 @@ class SeperateDemucs(SeperateAttributes):
                         self.model_path = gzip.open(self.model_path, "rb")
                     klass, args, kwargs, state = load_torch_checkpoint(self.model_path)
                     self.demucs = klass(*args, **kwargs)
-                    self.demucs.to(self.device) 
+                    self.demucs.to(self.device)
                     self.demucs.load_state_dict(state)
+                    # v1 Tasnet checkpoints built with norm_type="BN" carry
+                    # BatchNorm; left in train mode they normalise on the chunk
+                    # instead of the running stats. v2/v3+ already do this.
+                    self.demucs.eval()
                 elif self.demucs_version == DEMUCS_V2:
                     self.demucs = auto_load_demucs_model_v2(self.demucs_source_list, self.model_path)
                     self.demucs.to(self.device) 
