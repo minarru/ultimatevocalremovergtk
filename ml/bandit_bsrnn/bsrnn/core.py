@@ -1,4 +1,6 @@
-from typing import Dict, List, Optional, Tuple
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import torch
 from torch import nn
@@ -8,7 +10,9 @@ from ml.bandit_bsrnn.bsrnn import BandsplitCoreBase
 from .bandsplit import BandSplitModule
 from .maskestim import (
     MaskEstimationModule,
-    OverlappingMaskEstimationModule
+    MultAddMaskEstimationModule,
+    OverlappingMaskEstimationModule,
+    PatchingMaskEstimationModule,
 )
 from .tfmodel import (
     ConvolutionalTimeFreqModule,
@@ -18,10 +22,18 @@ from .tfmodel import (
 
 
 class MultiMaskBandSplitCoreBase(BandsplitCoreBase):
+    mask_estim: nn.ModuleDict
+
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, x, cond=None, compute_residual: bool = True):
+    def forward(
+        self,
+        x: torch.Tensor,
+        cond: Optional[torch.Tensor] = None,
+        compute_residual: bool = True,
+    ) -> Dict[str, Dict[str, Dict[str, torch.Tensor]]]:
+        del compute_residual
         # x = complex spectrogram (batch, in_chan, n_freq, n_time)
         # print(x.shape)
         batch, in_chan, n_freq, n_time = x.shape
@@ -43,7 +55,7 @@ class MultiMaskBandSplitCoreBase(BandsplitCoreBase):
         out = {}
 
         for stem, mem in self.mask_estim.items():
-            m = mem(q, cond=cond)
+            m = cast(nn.Module, mem)(q, cond=cond)
 
             # if torch.any(torch.isnan(m)):
             #     raise ValueError("m nan", stem)
@@ -65,14 +77,14 @@ class MultiMaskBandSplitCoreBase(BandsplitCoreBase):
                                cond_dim: int,
                                hidden_activation: str,
                                 
-                                hidden_activation_kwargs: Optional[Dict] = None,
+                                hidden_activation_kwargs: Optional[Dict[str, Any]] = None,
                                 complex_mask: bool = True,
                                 overlapping_band: bool = False,
                                 freq_weights: Optional[List[torch.Tensor]] = None,
                                 n_freq: Optional[int] = None,
                                 use_freq_weights: bool = True,
                                 mult_add_mask: bool = False
-                                ):
+                                ) -> Any:
         if hidden_activation_kwargs is None:
             hidden_activation_kwargs = {}
 
@@ -127,7 +139,6 @@ class MultiMaskBandSplitCoreBase(BandsplitCoreBase):
                                     band_specs=band_specs,
                                     emb_dim=emb_dim,
                                     mlp_dim=mlp_dim,
-                                    cond_dim=cond_dim,
                                     in_channel=in_channel,
                                     hidden_activation=hidden_activation,
                                     hidden_activation_kwargs=hidden_activation_kwargs,
@@ -145,7 +156,7 @@ class MultiMaskBandSplitCoreBase(BandsplitCoreBase):
                               normalize_channel_independently: bool = False,
                               treat_channel_as_feature: bool = True,
                               emb_dim: int = 128
-                              ):
+                              ) -> Any:
         self.band_split = BandSplitModule(
                         in_channel=in_channel,
                         band_specs=band_specs,
@@ -157,14 +168,17 @@ class MultiMaskBandSplitCoreBase(BandsplitCoreBase):
                 )
 
 class SingleMaskBandsplitCoreBase(BandsplitCoreBase):
-    def __init__(self, **kwargs) -> None:
+    mask_estim: nn.Module
+
+    def __init__(self, **kwargs: Any) -> None:
+        del kwargs
         super().__init__()
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x = complex spectrogram (batch, in_chan, n_freq, n_time)
         z = self.band_split(x)  # (batch, emb_dim, n_band, n_time)
         q = self.tf_model(z)  # (batch, emb_dim, n_band, n_time)
-        m = self.mask_estim(q)  # (batch, in_chan, n_freq, n_time)
+        m = cast(nn.Module, self.mask_estim)(q)  # (batch, in_chan, n_freq, n_time)
 
         s = self.mask(x, m)
 
@@ -189,10 +203,12 @@ class SingleMaskBandsplitCoreRNN(
             rnn_type: str = "LSTM",
             mlp_dim: int = 512,
             hidden_activation: str = "Tanh",
-            hidden_activation_kwargs: Optional[Dict] = None,
+            hidden_activation_kwargs: Optional[Dict[str, Any]] = None,
             complex_mask: bool = True,
     ) -> None:
         super().__init__()
+        if hidden_activation_kwargs is None:
+            hidden_activation_kwargs = {}
         self.band_split = (BandSplitModule(
                 in_channel=in_channel,
                 band_specs=band_specs,
@@ -238,10 +254,12 @@ class SingleMaskBandsplitCoreTransformer(
             tf_dropout: float = 0.0,
             mlp_dim: int = 512,
             hidden_activation: str = "Tanh",
-            hidden_activation_kwargs: Optional[Dict] = None,
+            hidden_activation_kwargs: Optional[Dict[str, Any]] = None,
             complex_mask: bool = True,
     ) -> None:
         super().__init__()
+        if hidden_activation_kwargs is None:
+            hidden_activation_kwargs = {}
         self.band_split = BandSplitModule(
                 in_channel=in_channel,
                 band_specs=band_specs,
@@ -287,7 +305,7 @@ class MultiSourceMultiMaskBandSplitCoreRNN(MultiMaskBandSplitCoreBase):
             mlp_dim: int = 512,
             cond_dim: int = 0,
             hidden_activation: str = "Tanh",
-            hidden_activation_kwargs: Optional[Dict] = None,
+            hidden_activation_kwargs: Optional[Dict[str, Any]] = None,
             complex_mask: bool = True,
             overlapping_band: bool = False,
             freq_weights: Optional[List[torch.Tensor]] = None,
@@ -338,8 +356,7 @@ class MultiSourceMultiMaskBandSplitCoreRNN(MultiMaskBandSplitCoreBase):
         )
 
     @staticmethod
-    def _mult_add_mask(x, m):
-
+    def _mult_add_mask(x: torch.Tensor, m: torch.Tensor) -> torch.Tensor:
         assert m.ndim == 5
 
         mm = m[..., 0]
@@ -349,12 +366,10 @@ class MultiSourceMultiMaskBandSplitCoreRNN(MultiMaskBandSplitCoreBase):
 
         return x * mm + am
 
-    def mask(self, x, m):
+    def mask(self, x: torch.Tensor, m: torch.Tensor) -> torch.Tensor:
         if self.mult_add_mask:
-
             return self._mult_add_mask(x, m)
-        else:
-            return super().mask(x, m)
+        return super().mask(x, m)
 
 
 class MultiSourceMultiMaskBandSplitCoreTransformer(
@@ -376,7 +391,7 @@ class MultiSourceMultiMaskBandSplitCoreTransformer(
             tf_dropout: float = 0.0,
             mlp_dim: int = 512,
             hidden_activation: str = "Tanh",
-            hidden_activation_kwargs: Optional[Dict] = None,
+            hidden_activation_kwargs: Optional[Dict[str, Any]] = None,
             complex_mask: bool = True,
             overlapping_band: bool = False,
             freq_weights: Optional[List[torch.Tensor]] = None,
@@ -442,7 +457,7 @@ class MultiSourceMultiMaskBandSplitCoreConv(
             tf_dropout: float = 0.0,
             mlp_dim: int = 512,
             hidden_activation: str = "Tanh",
-            hidden_activation_kwargs: Optional[Dict] = None,
+            hidden_activation_kwargs: Optional[Dict[str, Any]] = None,
             complex_mask: bool = True,
             overlapping_band: bool = False,
             freq_weights: Optional[List[torch.Tensor]] = None,
@@ -492,9 +507,9 @@ class PatchingMaskBandsplitCoreBase(MultiMaskBandSplitCoreBase):
     def __init__(self) -> None:
         super().__init__()
 
-    def mask(self, x, m):
+    def mask(self, x: torch.Tensor, m: torch.Tensor) -> torch.Tensor:
         # x.shape = (batch, n_channel, n_freq, n_time)
-        # m.shape = (kernel_freq, kernel_time, batch, n_channel, n_freq, n_time)
+        # m.shape = (batch, n_channel, kernel_freq, kernel_time, n_freq, n_time)
 
         _, n_channel, kernel_freq, kernel_time, n_freq, n_time = m.shape
         padding = ((kernel_freq - 1) // 2, (kernel_time - 1) // 2)
@@ -538,7 +553,7 @@ class PatchingMaskBandsplitCoreBase(MultiMaskBandSplitCoreBase):
 
         return s
 
-    def old_mask(self, x, m):
+    def old_mask(self, x: torch.Tensor, m: torch.Tensor) -> torch.Tensor:
         # x.shape = (batch, n_channel, n_freq, n_time)
         # m.shape = (kernel_freq, kernel_time, batch, n_channel, n_freq, n_time)
 
@@ -602,7 +617,7 @@ class MultiSourceMultiPatchingMaskBandSplitCoreRNN(
             rnn_type: str = "LSTM",
             mlp_dim: int = 512,
             hidden_activation: str = "Tanh",
-            hidden_activation_kwargs: Optional[Dict] = None,
+            hidden_activation_kwargs: Optional[Dict[str, Any]] = None,
             complex_mask: bool = True,
             overlapping_band: bool = False,
             freq_weights: Optional[List[torch.Tensor]] = None,

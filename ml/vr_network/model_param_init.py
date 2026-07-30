@@ -1,6 +1,10 @@
-import json
+from __future__ import annotations
 
-default_param = {}
+import json
+from collections.abc import Iterable
+from typing import Any
+
+default_param: dict[str, Any] = {}
 default_param['bins'] = -1
 default_param['unstable_bins'] = -1 # training only
 default_param['stable_bins'] = -1 # training only
@@ -11,8 +15,8 @@ default_param['band'] = {}
 
 N_BINS = 'n_bins'
 
-def int_keys(d):
-    r = {}
+def int_keys(d: Iterable[tuple[str, Any]]) -> dict[str | int, Any]:
+    r: dict[str | int, Any] = {}
     for k, v in d:
         if k.isdigit():
             k = int(k)
@@ -20,7 +24,9 @@ def int_keys(d):
     return r
     
 class ModelParameters(object):
-    def __init__(self, config_path=''):
+    param: dict[str | int, Any]
+
+    def __init__(self, config_path: str = '') -> None:
         with open(config_path, 'r') as f:
                 self.param = json.loads(f.read(), object_pairs_hook=int_keys)
                 

@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -471,7 +471,7 @@ def _fetch_yaml(url: str, yaml_name: str) -> Optional[str]:
     return _fetch_cached(url, YAML_CACHE_DIR, yaml_name)
 
 
-def _training_fields(training) -> Tuple[List[str], str]:
+def _training_fields(training: Any) -> Tuple[List[str], str]:
     if training is None:
         return [], ""
     if isinstance(training, dict):
@@ -677,7 +677,7 @@ def _parse_catalogue_entry(
     source: str,
     family: str,
     label: str,
-    payload,
+    payload: Any,
     ctx: CatalogueContext,
     hash_json: str = "",
     weight_dir: str = "",

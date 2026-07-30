@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import warnings
+from typing import cast
 
 import torch
-import torch.backends.cuda
 from torch import nn
 from torch.nn.modules import rnn
 from torch.utils.checkpoint import checkpoint_sequential
@@ -22,7 +24,6 @@ class ResidualRNN(nn.Module):
         use_batch_trick: bool = True,
         use_layer_norm: bool = True,
     ) -> None:
-        # n_group is the size of the 2nd dim
         super().__init__()
 
         assert use_layer_norm
@@ -46,9 +47,7 @@ class ResidualRNN(nn.Module):
         if not self.use_batch_trick:
             warnings.warn("NOT USING BATCH TRICK IS EXTREMELY SLOW!!")
 
-    def forward(self, z):
-        # z = (batch, n_uncrossed, n_across, emb_dim)
-
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
         z0 = torch.clone(z)
         z = self.norm(z)
 
@@ -57,11 +56,8 @@ class ResidualRNN(nn.Module):
         z = self.rnn(z)[0]
         z = torch.reshape(z, (batch, n_uncrossed, n_across, -1))
 
-        z = self.fc(z)  # (batch, n_uncrossed, n_across, emb_dim)
-
-        z = z + z0
-
-        return z
+        z = self.fc(z)
+        return z + z0
 
 
 class Transpose(nn.Module):
@@ -70,11 +66,13 @@ class Transpose(nn.Module):
         self.dim0 = dim0
         self.dim1 = dim1
 
-    def forward(self, z):
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
         return z.transpose(self.dim0, self.dim1)
 
 
 class SeqBandModellingModule(TimeFrequencyModellingModule):
+    seqband: nn.ModuleList | nn.Sequential
+
     def __init__(
         self,
         n_modules: int = 12,
@@ -82,7 +80,7 @@ class SeqBandModellingModule(TimeFrequencyModellingModule):
         rnn_dim: int = 256,
         bidirectional: bool = True,
         rnn_type: str = "LSTM",
-        parallel_mode=False,
+        parallel_mode: bool = False,
     ) -> None:
         super().__init__()
 
@@ -110,7 +108,7 @@ class SeqBandModellingModule(TimeFrequencyModellingModule):
                     )
                 )
         else:
-            seqband = []
+            seqband: list[nn.Module] = []
             for _ in range(2 * n_modules):
                 seqband += [
                     ResidualRNN(
@@ -126,20 +124,22 @@ class SeqBandModellingModule(TimeFrequencyModellingModule):
 
         self.parallel_mode = parallel_mode
 
-    def forward(self, z):
-        # z = (batch, n_bands, n_time, emb_dim)
-
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
         if self.parallel_mode:
-            for sbm_pair in self.seqband:
-                # z: (batch, n_bands, n_time, emb_dim)
-                sbm_t, sbm_f = sbm_pair[0], sbm_pair[1]
-                zt = sbm_t(z)  # (batch, n_bands, n_time, emb_dim)
-                zf = sbm_f(z.transpose(1, 2))  # (batch, n_time, n_bands, emb_dim)
+            seqband = cast(nn.ModuleList, self.seqband)
+            for sbm_pair in seqband:
+                pair = cast(nn.ModuleList, sbm_pair)
+                sbm_t = cast(ResidualRNN, pair[0])
+                sbm_f = cast(ResidualRNN, pair[1])
+                zt = sbm_t(z)
+                zf = sbm_f(z.transpose(1, 2))
                 z = zt + zf.transpose(1, 2)
         else:
             z = checkpoint_sequential(
-                self.seqband, self.n_modules, z, use_reentrant=False
+                cast(nn.Sequential, self.seqband),
+                self.n_modules,
+                z,
+                use_reentrant=False,
             )
 
-        q = z
-        return q  # (batch, n_bands, n_time, emb_dim)
+        return z

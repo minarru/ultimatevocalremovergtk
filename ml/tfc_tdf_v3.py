@@ -1,18 +1,27 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+from functools import partial
+from typing import Any, TypeAlias, cast
+
 import torch
 import torch.nn as nn
-from functools import partial
 
 from ml.stft_device import needs_cpu_stft, torch_istft, torch_stft
 
+NormFactory: TypeAlias = Callable[[int], nn.Module]
+Scale: TypeAlias = tuple[int, int]
+
+
 class STFT:
-    def __init__(self, n_fft, hop_length, dim_f, device):
+    def __init__(self, n_fft: int, hop_length: int, dim_f: int, device: torch.device | str) -> None:
         self.n_fft = n_fft
         self.hop_length = hop_length
         self.window = torch.hann_window(window_length=self.n_fft, periodic=True)
         self.dim_f = dim_f
         self.device = device
 
-    def __call__(self, x):
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
         window = self.window.to(x.device)
         batch_dims = x.shape[:-2]
         c, t = x.shape[-2:]
@@ -29,7 +38,7 @@ class STFT:
         x = x.reshape([*batch_dims, c, 2, -1, x.shape[-1]]).reshape([*batch_dims, c * 2, -1, x.shape[-1]])
         return x[..., :self.dim_f, :]
 
-    def inverse(self, x):
+    def inverse(self, x: torch.Tensor) -> torch.Tensor:
         # Complex pad + istft: bounce the whole inverse path on MPS.
         orig_device = x.device
         bounce = needs_cpu_stft(orig_device)
@@ -57,8 +66,9 @@ class STFT:
             x = x.to(orig_device)
         return x
 
-def get_norm(norm_type):
-    def norm(c, norm_type):
+
+def get_norm(norm_type: str) -> NormFactory:
+    def norm(c: int, norm_type: str = norm_type) -> nn.Module:
         if norm_type == 'BatchNorm':
             return nn.BatchNorm2d(c)
         elif norm_type == 'InstanceNorm':
@@ -72,7 +82,7 @@ def get_norm(norm_type):
     return partial(norm, norm_type=norm_type)
 
 
-def get_act(act_type):
+def get_act(act_type: str) -> nn.Module:
     if act_type == 'gelu':
         return nn.GELU()
     elif act_type == 'relu':
@@ -85,7 +95,14 @@ def get_act(act_type):
 
 
 class Upscale(nn.Module):
-    def __init__(self, in_c, out_c, scale, norm, act):
+    def __init__(
+        self,
+        in_c: int,
+        out_c: int,
+        scale: Scale,
+        norm: NormFactory,
+        act: nn.Module,
+    ) -> None:
         super().__init__()
         self.conv = nn.Sequential(
             norm(in_c),
@@ -93,12 +110,19 @@ class Upscale(nn.Module):
             nn.ConvTranspose2d(in_channels=in_c, out_channels=out_c, kernel_size=scale, stride=scale, bias=False)
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.conv(x)
 
 
 class Downscale(nn.Module):
-    def __init__(self, in_c, out_c, scale, norm, act):
+    def __init__(
+        self,
+        in_c: int,
+        out_c: int,
+        scale: Scale,
+        norm: NormFactory,
+        act: nn.Module,
+    ) -> None:
         super().__init__()
         self.conv = nn.Sequential(
             norm(in_c),
@@ -106,43 +130,69 @@ class Downscale(nn.Module):
             nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=scale, stride=scale, bias=False)
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.conv(x)
 
 
+class _ResidualBlock(nn.Module):
+    tfc1: nn.Sequential
+    tdf: nn.Sequential
+    tfc2: nn.Sequential
+    shortcut: nn.Conv2d
+
+    def __init__(
+        self,
+        in_c: int,
+        c: int,
+        f: int,
+        bn: int,
+        norm: NormFactory,
+        act: nn.Module,
+    ) -> None:
+        super().__init__()
+        self.tfc1 = nn.Sequential(
+            norm(in_c),
+            act,
+            nn.Conv2d(in_c, c, 3, 1, 1, bias=False),
+        )
+        self.tdf = nn.Sequential(
+            norm(c),
+            act,
+            nn.Linear(f, f // bn, bias=False),
+            norm(c),
+            act,
+            nn.Linear(f // bn, f, bias=False),
+        )
+        self.tfc2 = nn.Sequential(
+            norm(c),
+            act,
+            nn.Conv2d(c, c, 3, 1, 1, bias=False),
+        )
+        self.shortcut = nn.Conv2d(in_c, c, 1, 1, 0, bias=False)
+
+
 class TFC_TDF(nn.Module):
-    def __init__(self, in_c, c, l, f, bn, norm, act):
+    def __init__(
+        self,
+        in_c: int,
+        c: int,
+        l: int,
+        f: int,
+        bn: int,
+        norm: NormFactory,
+        act: nn.Module,
+    ) -> None:
         super().__init__()
 
         self.blocks = nn.ModuleList()
         for i in range(l):
-            block = nn.Module()
-
-            block.tfc1 = nn.Sequential(
-                norm(in_c),
-                act,
-                nn.Conv2d(in_c, c, 3, 1, 1, bias=False),
-            )
-            block.tdf = nn.Sequential(
-                norm(c),
-                act,
-                nn.Linear(f, f // bn, bias=False),
-                norm(c),
-                act,
-                nn.Linear(f // bn, f, bias=False),
-            )
-            block.tfc2 = nn.Sequential(
-                norm(c),
-                act,
-                nn.Conv2d(c, c, 3, 1, 1, bias=False),
-            )
-            block.shortcut = nn.Conv2d(in_c, c, 1, 1, 0, bias=False)
-
+            block = _ResidualBlock(in_c, c, f, bn, norm, act)
             self.blocks.append(block)
             in_c = c
 
-    def forward(self, x):
-        for block in self.blocks:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for raw_block in self.blocks:
+            block = cast(_ResidualBlock, raw_block)
             s = block.shortcut(x)
             x = block.tfc1(x)
             x = x + block.tdf(x)
@@ -151,8 +201,18 @@ class TFC_TDF(nn.Module):
         return x
 
 
+class _EncoderBlock(nn.Module):
+    tfc_tdf: TFC_TDF
+    downscale: Downscale
+
+
+class _DecoderBlock(nn.Module):
+    upscale: Upscale
+    tfc_tdf: TFC_TDF
+
+
 class TFC_TDF_net(nn.Module):
-    def __init__(self, config, device):
+    def __init__(self, config: Any, device: torch.device | str) -> None:
         super().__init__()
         self.config = config
         self.device = device
@@ -165,7 +225,7 @@ class TFC_TDF_net(nn.Module):
 
         dim_c = self.num_subbands * config.audio.num_channels * 2
         n = config.model.num_scales
-        scale = config.model.scale
+        scale: Scale = tuple(config.model.scale)
         l = config.model.num_blocks_per_scale
         c = config.model.num_channels
         g = config.model.growth
@@ -176,7 +236,7 @@ class TFC_TDF_net(nn.Module):
 
         self.encoder_blocks = nn.ModuleList()
         for i in range(n):
-            block = nn.Module()
+            block = _EncoderBlock()
             block.tfc_tdf = TFC_TDF(c, c, l, f, bn, norm, act)
             block.downscale = Downscale(c, c + g, scale, norm, act)
             f = f // scale[1]
@@ -187,7 +247,7 @@ class TFC_TDF_net(nn.Module):
 
         self.decoder_blocks = nn.ModuleList()
         for i in range(n):
-            block = nn.Module()
+            block = _DecoderBlock()
             block.upscale = Upscale(c, c - g, scale, norm, act)
             f = f * scale[1]
             c -= g
@@ -202,21 +262,21 @@ class TFC_TDF_net(nn.Module):
 
         self.stft = STFT(config.audio.n_fft, config.audio.hop_length, config.audio.dim_f, self.device)
 
-    def cac2cws(self, x):
+    def cac2cws(self, x: torch.Tensor) -> torch.Tensor:
         k = self.num_subbands
         b, c, f, t = x.shape
         x = x.reshape(b, c, k, f // k, t)
         x = x.reshape(b, c * k, f // k, t)
         return x
 
-    def cws2cac(self, x):
+    def cws2cac(self, x: torch.Tensor) -> torch.Tensor:
         k = self.num_subbands
         b, c, f, t = x.shape
         x = x.reshape(b, c // k, k, f, t)
         x = x.reshape(b, c // k, f * k, t)
         return x
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
 
         x = self.stft(x)
 
@@ -227,14 +287,16 @@ class TFC_TDF_net(nn.Module):
         x = x.transpose(-1, -2)
 
         encoder_outputs = []
-        for block in self.encoder_blocks:
+        for raw_block in self.encoder_blocks:
+            block = cast(_EncoderBlock, raw_block)
             x = block.tfc_tdf(x)
             encoder_outputs.append(x)
             x = block.downscale(x)
 
         x = self.bottleneck_block(x)
 
-        for block in self.decoder_blocks:
+        for raw_block in self.decoder_blocks:
+            block = cast(_DecoderBlock, raw_block)
             x = block.upscale(x)
             x = torch.cat([x, encoder_outputs.pop()], 1)
             x = block.tfc_tdf(x)
@@ -254,5 +316,3 @@ class TFC_TDF_net(nn.Module):
         x = self.stft.inverse(x)
 
         return x
-
-

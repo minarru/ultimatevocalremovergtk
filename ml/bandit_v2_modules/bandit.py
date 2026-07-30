@@ -1,4 +1,6 @@
-from typing import Dict, List, Optional
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, cast
 
 import torch
 from torch import nn
@@ -18,6 +20,8 @@ class BaseEndToEndModule(nn.Module):
 
 
 class BaseBandit(BaseEndToEndModule):
+    stems: List[str]
+    _spectral: SpectralComponent
     def __init__(
         self,
         in_channels: int,
@@ -43,7 +47,7 @@ class BaseBandit(BaseEndToEndModule):
         normalized: bool = True,
         pad_mode: str = "constant",
         onesided: bool = True,
-    ):
+    ) -> None:
         super().__init__()
 
         self.in_channels = in_channels
@@ -94,7 +98,7 @@ class BaseBandit(BaseEndToEndModule):
         center: bool = True,
         pad_mode: str = "constant",
         onesided: bool = True,
-    ):
+    ) -> Any:
         assert power is None
         del window_fn, wkwargs, pad_mode, onesided
         self._spectral = SpectralComponent(
@@ -118,7 +122,7 @@ class BaseBandit(BaseEndToEndModule):
         emb_dim: int = 128,
         n_fft: int = 2048,
         fs: int = 44100,
-    ):
+    ) -> Any:
         assert band_type == "musical"
 
         self.band_specs = MusicalBandsplitSpecification(
@@ -142,7 +146,7 @@ class BaseBandit(BaseEndToEndModule):
         rnn_dim: int = 256,
         bidirectional: bool = True,
         rnn_type: str = "LSTM",
-    ):
+    ) -> Any:
         try:
             self.tf_model = torch.compile(
                 SeqBandModellingModule(
@@ -163,10 +167,10 @@ class BaseBandit(BaseEndToEndModule):
                     rnn_type=rnn_type,
                 )
 
-    def mask(self, x, m):
+    def mask(self, x: Any, m: Any) -> Any:
         return x * m
 
-    def forward(self, batch, mode="train"):
+    def forward(self, batch: Any, mode: Any="train") -> Any:
         # Model takes mono as input we give stereo, so we do process of each channel independently
         init_shape = batch.shape
         if not isinstance(batch, dict):
@@ -210,7 +214,7 @@ class BaseBandit(BaseEndToEndModule):
                 out = out.to(orig_device)
             return out
 
-    def encode(self, batch):
+    def encode(self, batch: Any) -> Any:
         x = batch["mixture"]["spectrogram"]
         length = batch["mixture"]["audio"].shape[-1]
 
@@ -219,7 +223,7 @@ class BaseBandit(BaseEndToEndModule):
 
         return x, q, length
 
-    def separate(self, batch):
+    def separate(self, batch: Any) -> Any:
         raise NotImplementedError
 
 
@@ -255,11 +259,11 @@ class Bandit(BaseBandit):
         pad_mode: str = "constant",
         onesided: bool = True,
         fs: int = 44100,
-        stft_precisions="32",
-        bandsplit_precisions="bf16",
-        tf_model_precisions="bf16",
-        mask_estim_precisions="bf16",
-    ):
+        stft_precisions: Any="32",
+        bandsplit_precisions: Any="bf16",
+        tf_model_precisions: Any="bf16",
+        mask_estim_precisions: Any="bf16",
+    ) -> None:
         super().__init__(
             in_channels=in_channels,
             band_type=band_type,
@@ -311,7 +315,7 @@ class Bandit(BaseBandit):
         complex_mask: bool = True,
         n_freq: Optional[int] = None,
         use_freq_weights: bool = False,
-    ):
+    ) -> Any:
         if hidden_activation_kwargs is None:
             hidden_activation_kwargs = {}
 
@@ -335,7 +339,7 @@ class Bandit(BaseBandit):
             }
         )
 
-    def separate(self, batch):
+    def separate(self, batch: Any) -> Any:
         batch["estimates"] = {}
 
         x, q, length = self.encode(batch)

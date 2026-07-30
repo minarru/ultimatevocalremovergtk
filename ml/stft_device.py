@@ -7,21 +7,25 @@ tensors for the STFT / iSTFT calls themselves.
 
 from __future__ import annotations
 
+from typing import Any
+
 import torch
 
 
-def device_type(device) -> str:
+def device_type(device: str | torch.device) -> str:
     if isinstance(device, torch.device):
         return device.type
     return torch.device(device).type
 
 
-def needs_cpu_stft(device) -> bool:
+def needs_cpu_stft(device: str | torch.device) -> bool:
     """Return True when STFT should run on CPU for this device."""
     return device_type(device) not in ("cuda", "cpu")
 
 
-def torch_stft(input: torch.Tensor, *, window=None, **kwargs) -> torch.Tensor:
+def torch_stft(
+    input: torch.Tensor, *, window: torch.Tensor | None = None, **kwargs: Any
+) -> torch.Tensor:
     """``torch.stft`` with an automatic CPU bounce.
 
     Real spectrograms are restored to ``input.device``. Complex results stay on
@@ -38,7 +42,9 @@ def torch_stft(input: torch.Tensor, *, window=None, **kwargs) -> torch.Tensor:
     return out.to(device)
 
 
-def torch_istft(input: torch.Tensor, *, window=None, **kwargs) -> torch.Tensor:
+def torch_istft(
+    input: torch.Tensor, *, window: torch.Tensor | None = None, **kwargs: Any
+) -> torch.Tensor:
     """``torch.istft`` with an automatic CPU bounce.
 
     When ``input`` is already on CPU (typical after a complex-mask path), the

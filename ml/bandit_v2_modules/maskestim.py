@@ -1,4 +1,6 @@
-from typing import Dict, List, Optional, Tuple, Type
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Tuple, Type, cast
 
 import torch
 from torch import nn
@@ -21,9 +23,9 @@ class BaseNormMLP(nn.Module):
         bandwidth: int,
         in_channels: Optional[int],
         hidden_activation: str = "Tanh",
-        hidden_activation_kwargs=None,
+        hidden_activation_kwargs: Optional[Dict[str, Any]] = None,
         complex_mask: bool = True,
-    ):
+    ) -> None:
         super().__init__()
         if hidden_activation_kwargs is None:
             hidden_activation_kwargs = {}
@@ -50,7 +52,7 @@ class NormMLP(BaseNormMLP):
         bandwidth: int,
         in_channels: Optional[int],
         hidden_activation: str = "Tanh",
-        hidden_activation_kwargs=None,
+        hidden_activation_kwargs: Optional[Dict[str, Any]] = None,
         complex_mask: bool = True,
     ) -> None:
         super().__init__(
@@ -63,6 +65,7 @@ class NormMLP(BaseNormMLP):
             complex_mask=complex_mask,
         )
 
+        assert in_channels is not None
         self.output = nn.Sequential(
             nn.Linear(
                 in_features=mlp_dim,
@@ -75,35 +78,26 @@ class NormMLP(BaseNormMLP):
             self.combined = torch.compile(
                 nn.Sequential(self.norm, self.hidden, self.output), disable=True
             )
-        except Exception as e:
+        except Exception:
             self.combined = nn.Sequential(self.norm, self.hidden, self.output)
 
-    def reshape_output(self, mb):
-        # print(mb.shape)
+    def reshape_output(self, mb: torch.Tensor) -> torch.Tensor:
         batch, n_time, _ = mb.shape
+        in_channels = cast(int, self.in_channels)
         if self.complex_mask:
             mb = mb.reshape(
-                batch, n_time, self.in_channels, self.bandwidth, self.reim
+                batch, n_time, in_channels, self.bandwidth, self.reim
             ).contiguous()
-            # print(mb.shape)
-            mb = torch.view_as_complex(mb)  # (batch, n_time, in_channels, bandwidth)
+            mb = torch.view_as_complex(mb)
         else:
-            mb = mb.reshape(batch, n_time, self.in_channels, self.bandwidth)
+            mb = mb.reshape(batch, n_time, in_channels, self.bandwidth)
 
-        mb = torch.permute(mb, (0, 2, 3, 1))  # (batch, in_channels, bandwidth, n_time)
-
+        mb = torch.permute(mb, (0, 2, 3, 1))
         return mb
 
-    def forward(self, qb):
-        # qb = (batch, n_time, emb_dim)
-        # qb = self.norm(qb)  # (batch, n_time, emb_dim)
-        # qb = self.hidden(qb)  # (batch, n_time, mlp_dim)
-        # mb = self.output(qb)  # (batch, n_time, bandwidth * in_channels * reim)
-
+    def forward(self, qb: torch.Tensor) -> torch.Tensor:
         mb = checkpoint_sequential(self.combined, 2, qb, use_reentrant=False)
-        mb = self.reshape_output(mb)  # (batch, in_channels, bandwidth, n_time)
-
-        return mb
+        return self.reshape_output(mb)
 
 
 class MaskEstimationModuleSuperBase(nn.Module):
@@ -118,10 +112,10 @@ class MaskEstimationModuleBase(MaskEstimationModuleSuperBase):
         mlp_dim: int,
         in_channels: Optional[int],
         hidden_activation: str = "Tanh",
-        hidden_activation_kwargs: Dict = None,
+        hidden_activation_kwargs: Optional[Dict[str, Any]] = None,
         complex_mask: bool = True,
         norm_mlp_cls: Type[nn.Module] = NormMLP,
-        norm_mlp_kwargs: Dict = None,
+        norm_mlp_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         super().__init__()
 
@@ -150,41 +144,36 @@ class MaskEstimationModuleBase(MaskEstimationModuleSuperBase):
             ]
         )
 
-    def compute_masks(self, q):
-        batch, n_bands, n_time, emb_dim = q.shape
-
-        masks = []
+    def compute_masks(self, q: torch.Tensor) -> List[torch.Tensor]:
+        masks: List[torch.Tensor] = []
 
         for b, nmlp in enumerate(self.norm_mlp):
-            # print(f"maskestim/{b:02d}")
             qb = q[:, b, :, :]
             mb = nmlp(qb)
             masks.append(mb)
 
         return masks
 
-    def compute_mask(self, q, b):
-        batch, n_bands, n_time, emb_dim = q.shape
+    def compute_mask(self, q: torch.Tensor, b: int) -> torch.Tensor:
         qb = q[:, b, :, :]
-        mb = self.norm_mlp[b](qb)
-        return mb
+        return cast(NormMLP, self.norm_mlp[b])(qb)
 
 
 class OverlappingMaskEstimationModule(MaskEstimationModuleBase):
     def __init__(
         self,
-        in_channels: int,
+        in_channels: Optional[int],
         band_specs: List[Tuple[float, float]],
-        freq_weights: List[torch.Tensor],
-        n_freq: int,
+        freq_weights: Optional[List[torch.Tensor]],
+        n_freq: Optional[int],
         emb_dim: int,
         mlp_dim: int,
         cond_dim: int = 0,
         hidden_activation: str = "Tanh",
-        hidden_activation_kwargs: Dict = None,
+        hidden_activation_kwargs: Optional[Dict[str, Any]] = None,
         complex_mask: bool = True,
         norm_mlp_cls: Type[nn.Module] = NormMLP,
-        norm_mlp_kwargs: Dict = None,
+        norm_mlp_kwargs: Optional[Dict[str, Any]] = None,
         use_freq_weights: bool = False,
     ) -> None:
         check_nonzero_bandwidth(band_specs)
@@ -213,14 +202,15 @@ class OverlappingMaskEstimationModule(MaskEstimationModuleBase):
             for i, fw in enumerate(freq_weights):
                 self.register_buffer(f"freq_weights/{i}", fw)
 
-                self.use_freq_weights = use_freq_weights
+            self.use_freq_weights = use_freq_weights
         else:
             self.use_freq_weights = False
 
-    def forward(self, q):
-        # q = (batch, n_bands, n_time, emb_dim)
+    def forward(self, q: torch.Tensor) -> torch.Tensor:
+        batch, n_bands, n_time, _emb_dim = q.shape
 
-        batch, n_bands, n_time, emb_dim = q.shape
+        assert self.in_channels is not None
+        assert self.n_freq is not None
 
         masks = torch.zeros(
             (batch, self.in_channels, self.n_freq, n_time),
@@ -230,13 +220,12 @@ class OverlappingMaskEstimationModule(MaskEstimationModuleBase):
 
         for im in range(n_bands):
             fstart, fend = self.band_specs[im]
-
             mask = self.compute_mask(q, im)
 
             if self.use_freq_weights:
                 fw = self.get_buffer(f"freq_weights/{im}")[:, None]
                 mask = mask * fw
-            masks[:, :, fstart:fend, :] += mask
+            masks[:, :, int(fstart) : int(fend), :] += mask
 
         return masks
 
@@ -249,10 +238,11 @@ class MaskEstimationModule(OverlappingMaskEstimationModule):
         mlp_dim: int,
         in_channels: Optional[int],
         hidden_activation: str = "Tanh",
-        hidden_activation_kwargs: Dict = None,
+        hidden_activation_kwargs: Optional[Dict[str, Any]] = None,
         complex_mask: bool = True,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
+        del kwargs
         check_nonzero_bandwidth(band_specs)
         check_no_gap(band_specs)
         check_no_overlap(band_specs)
@@ -268,14 +258,11 @@ class MaskEstimationModule(OverlappingMaskEstimationModule):
             complex_mask=complex_mask,
         )
 
-    def forward(self, q, cond=None):
-        # q = (batch, n_bands, n_time, emb_dim)
-
-        masks = self.compute_masks(
-            q
-        )  # [n_bands  * (batch, in_channels, bandwidth, n_time)]
-
-        # TODO: currently this requires band specs to have no gap and no overlap
-        masks = torch.concat(masks, dim=2)  # (batch, in_channels, n_freq, n_time)
-
-        return masks
+    def forward(
+        self,
+        q: torch.Tensor,
+        cond: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        del cond
+        masks = self.compute_masks(q)
+        return torch.concat(masks, dim=2)

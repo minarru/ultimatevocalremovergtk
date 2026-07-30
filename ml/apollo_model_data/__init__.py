@@ -9,12 +9,11 @@ from .apollo import Apollo
 
 __all__ = [
     "BaseModel",
-    "GullFullband",
-    "Apollo"
+    "Apollo",
 ]
 
 
-def register_model(custom_model):
+def register_model(custom_model: type) -> None:
     """Register a custom model, gettable with `models.get`.
 
     Args:
@@ -31,7 +30,7 @@ def register_model(custom_model):
     globals().update({custom_model.__name__: custom_model})
 
 
-def get(identifier):
+def get(identifier: str) -> type:
     """Returns an model class from a string (case-insensitive).
 
     Args:

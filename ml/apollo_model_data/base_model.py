@@ -4,6 +4,11 @@
 # LastEditors: Please set LastEditors
 # LastEditTime: 2022-05-26 18:06:22
 ###
+from __future__ import annotations
+
+from os import PathLike
+from typing import Any
+
 import torch
 import torch.nn as nn
 from core.torch_checkpoint import load_torch_checkpoint
@@ -11,7 +16,7 @@ from core.torch_checkpoint import load_torch_checkpoint
 #from huggingface_hub import PyTorchModelHubMixin
 
 
-def _unsqueeze_to_3d(x):
+def _unsqueeze_to_3d(x: torch.Tensor) -> torch.Tensor:
     """Normalize shape of `x` to [batch, n_chan, time]."""
     if x.ndim == 1:
         return x.reshape(1, 1, -1)
@@ -21,7 +26,7 @@ def _unsqueeze_to_3d(x):
         return x
 
 
-def pad_to_appropriate_length(x, lcm):
+def pad_to_appropriate_length(x: torch.Tensor, lcm: int) -> torch.Tensor:
     values_to_pad = int(x.shape[-1]) % lcm
     if values_to_pad:
         appropriate_shape = x.shape
@@ -36,21 +41,21 @@ def pad_to_appropriate_length(x, lcm):
 
 
 class BaseModel(nn.Module):
-    def __init__(self, sample_rate, in_chan=1):
+    def __init__(self, sample_rate: int, in_chan: int = 1) -> None:
         super().__init__()
         self._sample_rate = sample_rate
         self._in_chan = in_chan
 
-    def forward(self, *args, **kwargs):
+    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         raise NotImplementedError
 
-    def sample_rate(self,):
+    def sample_rate(self,) -> int:
         return self._sample_rate
 
     @staticmethod
-    def load_state_dict_in_audio(model, pretrained_dict):
+    def load_state_dict_in_audio(model: nn.Module, pretrained_dict: dict[str, torch.Tensor]) -> nn.Module:
         model_dict = model.state_dict()
-        update_dict = {}
+        update_dict: dict[str, torch.Tensor] = {}
         for k, v in pretrained_dict.items():
             if "audio_model" in k:
                 update_dict[k[12:]] = v
@@ -59,7 +64,9 @@ class BaseModel(nn.Module):
         return model
 
     @staticmethod
-    def from_pretrain(pretrained_model_conf_or_path, *args, **kwargs):
+    def from_pretrain(
+        pretrained_model_conf_or_path: str | PathLike[str], *args: Any, **kwargs: Any
+    ) -> BaseModel:
         from . import get
 
         conf = load_torch_checkpoint(
@@ -72,7 +79,7 @@ class BaseModel(nn.Module):
         model.load_state_dict(conf["state_dict"])
         return model
 
-    def serialize(self):
+    def serialize(self) -> dict[str, Any]:
         import pytorch_lightning as pl  # Not used in torch.hub
 
         model_conf = dict(
@@ -83,15 +90,16 @@ class BaseModel(nn.Module):
         # Additional infos
         infos = dict()
         infos["software_versions"] = dict(
-            torch_version=torch.__version__, pytorch_lightning_version=pl.__version__,
+            torch_version=torch.__version__,
+            pytorch_lightning_version=getattr(pl, "__version__", "unknown"),
         )
         model_conf["infos"] = infos
         return model_conf
 
-    def get_state_dict(self):
+    def get_state_dict(self) -> dict[str, torch.Tensor]:
         """In case the state dict needs to be modified before sharing the model."""
         return self.state_dict()
 
-    def get_model_args(self):
+    def get_model_args(self) -> dict[str, Any]:
         """Should return args to re-instantiate the class."""
         raise NotImplementedError

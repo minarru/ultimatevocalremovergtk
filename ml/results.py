@@ -44,5 +44,5 @@ def pcm16(file: str) -> Result:
 def pcm24(file: str) -> Result:
     return Result(file, "PCM_24")
 
-def save_audiofile(file: str, wav_set="PCM_16") -> Result:
+def save_audiofile(file: str, wav_set: str = "PCM_16") -> Result:
     return Result(file, wav_set)

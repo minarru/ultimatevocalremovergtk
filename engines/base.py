@@ -419,8 +419,12 @@ class SeperateAttributes:
     ) -> Any:
         if not self.is_secondary_model:
             if self.is_secondary_model_activated and isinstance(secondary_model_source, np.ndarray):
-                secondary_model_scale = model_scale if model_scale else self.secondary_model_scale
-                stem_source = spec_utils.average_dual_sources(stem_source, secondary_model_source, secondary_model_scale)
+                scale = model_scale if model_scale is not None else self.secondary_model_scale
+                if scale is None:
+                    scale = 0.5
+                stem_source = spec_utils.average_dual_sources(
+                    stem_source, secondary_model_source, float(scale)
+                )
   
         return stem_source
     
@@ -636,7 +640,9 @@ class SeperateAttributes:
 
     def pitch_fix(self, source: Any, sr_pitched: float, org_mix: Any) -> Any:
         semitone_shift = self.semitone_shift
-        source = spec_utils.change_pitch_semitones(source, sr_pitched, semitone_shift=semitone_shift)[0]
+        source = spec_utils.change_pitch_semitones(
+            source, int(sr_pitched), semitone_shift=semitone_shift
+        )[0]
         source = spec_utils.match_array_shapes(source, org_mix)
         return source
     
