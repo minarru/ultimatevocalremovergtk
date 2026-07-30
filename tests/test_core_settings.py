@@ -29,6 +29,47 @@ class SettingsJsonTests(unittest.TestCase):
             loaded = Settings.load(path)
             self.assertEqual(loaded.get("save_format"), DEFAULT_DATA["save_format"])
 
+    def test_corrupt_file_is_preserved_not_overwritten(self):
+        """A settings.json we cannot parse must survive as a .bad sidecar.
+
+        Otherwise the fallback-to-defaults path lets the next save silently
+        replace the user's entire configuration.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "settings.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("not-json{")
+
+            loaded = Settings.load(path)
+            loaded.set("export_path", "/tmp/out")
+            loaded.save(path)
+
+            self.assertTrue(os.path.isfile(f"{path}.bad"))
+            with open(f"{path}.bad", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "not-json{")
+
+    def test_repeated_corruption_keeps_earlier_preserved_copies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "settings.json")
+            for marker in ("first{", "second{"):
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(marker)
+                Settings.load(path)
+
+            with open(f"{path}.bad", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "first{")
+            with open(f"{path}.bad.2", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "second{")
+
+    def test_long_file_chunk_seconds_keeps_fractional_value(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "settings.json")
+            model = Settings.defaults()
+            model.path = path
+            model.process.long_file_chunk_seconds = 90.5
+            model.save(path)
+            self.assertEqual(Settings.load(path).process.long_file_chunk_seconds, 90.5)
+
     def test_unknown_keys_stripped_on_json_load(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "settings.json")

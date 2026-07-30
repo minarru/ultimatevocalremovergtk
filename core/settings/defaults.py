@@ -53,7 +53,7 @@ def default_process() -> dict:
         "last_dir": None,
         "sample_mode": False,
         "sample_mode_duration": 30,
-        "long_file_chunk_seconds": 0,
+        "long_file_chunk_seconds": 0.0,
         "long_file_chunk_overlap_seconds": 2.0,
         "semitone_shift": "0",
         "user_code": "",

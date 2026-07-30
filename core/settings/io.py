@@ -7,6 +7,7 @@ import os
 import pickle
 from typing import Any
 
+from core import glib_log
 from core.debug_log import debug
 from core.paths import (
     SETTINGS_JSON_FILE,
@@ -16,6 +17,51 @@ from core.paths import (
 
 from .coerce import coerce_json_dict
 from .model import Settings
+
+#: Cap on ``settings.json.bad`` siblings kept before we stop moving files aside.
+_MAX_PRESERVED = 5
+
+
+def _preserve_unreadable(path: str, exc: Exception) -> None:
+    """Move an unloadable settings file aside and warn, before defaults win.
+
+    Without this, a settings.json we failed to read is silently replaced by
+    defaults on the next save, losing the user's whole configuration. Mirrors
+    how the legacy pickle import preserves ``data.pkl`` as ``data.pkl.bak``.
+    """
+    target = f"{path}.bad"
+    if os.path.exists(target):
+        for n in range(2, _MAX_PRESERVED + 1):
+            candidate = f"{path}.bad.{n}"
+            if not os.path.exists(candidate):
+                target = candidate
+                break
+        else:
+            glib_log.emit(
+                "uvr-settings",
+                f"settings file unreadable ({type(exc).__name__}: {exc}); "
+                f"{_MAX_PRESERVED} copies already preserved, leaving {path} in place",
+                level="warning",
+            )
+            return
+
+    try:
+        os.rename(path, target)
+    except OSError as rename_exc:
+        glib_log.emit(
+            "uvr-settings",
+            f"settings file unreadable ({type(exc).__name__}: {exc}) and could not "
+            f"be preserved ({rename_exc}); continuing with defaults",
+            level="warning",
+        )
+        return
+
+    glib_log.emit(
+        "uvr-settings",
+        f"settings file unreadable ({type(exc).__name__}: {exc}); "
+        f"preserved as {target}, continuing with defaults",
+        level="warning",
+    )
 
 
 def save_settings(settings: Settings, path: str | None = None) -> None:
@@ -102,6 +148,7 @@ def load_settings(path: str | None = None) -> Settings:
                 "settings",
                 f"load_settings json failed error={type(exc).__name__}: {exc}",
             )
+            _preserve_unreadable(json_path, exc)
 
     pkl_path = SETTINGS_PICKLE_FILE
     if os.path.isfile(pkl_path):

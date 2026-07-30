@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple
 
 from bundled.constants import (
     ALL_STEMS,
-    CHOOSE_STEM_PAIR,
     DEMUCS_ARCH_TYPE,
     ENSEMBLE_MODE,
     FOUR_STEM_ENSEMBLE,
@@ -22,20 +21,6 @@ from bundled.constants import (
 
 if TYPE_CHECKING:
     from .settings import Settings
-
-_MODEL_KEY_BY_METHOD = {
-    VR_ARCH_PM: "vr_model",
-    VR_ARCH_TYPE: "vr_model",
-    MDX_ARCH_TYPE: "mdx_net_model",
-    DEMUCS_ARCH_TYPE: "demucs_model",
-}
-
-_SECONDARY_ACTIVATE_KEY = {
-    VR_ARCH_PM: "vr_is_secondary_model_activate",
-    VR_ARCH_TYPE: "vr_is_secondary_model_activate",
-    MDX_ARCH_TYPE: "mdx_is_secondary_model_activate",
-    DEMUCS_ARCH_TYPE: "demucs_is_secondary_model_activate",
-}
 
 # Engine progress mapping (see engines/base.py).
 _LOAD_END = 0.10

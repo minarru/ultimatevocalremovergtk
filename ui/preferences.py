@@ -522,9 +522,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
     def _on_long_chunk_changed(self, row: typing.Any, _pspec: typing.Any) -> None:
         if self._loading:
             return
-        self.settings.process.long_file_chunk_seconds = int(
-            round(float(row.get_value()))
-        )
+        # The row is digits=0, so this is already whole; store it as the float
+        # the field declares so CLI-set fractional values survive a reload too.
+        self.settings.process.long_file_chunk_seconds = float(row.get_value())
         self._persist()
 
     def _on_long_chunk_overlap_changed(self, row: typing.Any, _pspec: typing.Any) -> None:

@@ -71,7 +71,12 @@ def vr_denoiser(
     is_deverber: typing.Any=False,
     model_path: typing.Any=None,
     settings: typing.Any=None,
-):
+) -> typing.Any:
+    """Denoise ``X``; returns ``(wave, wave_2)`` when ``is_deverber``, else ``wave``.
+
+    The return shape is switched by a runtime flag, so it stays ``Any`` rather
+    than a union callers would have to narrow at every site.
+    """
     batchsize = 4
 
     if is_deverber:

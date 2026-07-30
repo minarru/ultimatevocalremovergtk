@@ -166,17 +166,18 @@ def spectrogram_to_image(spec: np.ndarray, mode: str = 'magnitude') -> np.ndarra
 
     y -= y.min()
     y *= 255 / y.max()
-    img = np.uint8(y)
+    img = cast(np.ndarray, np.uint8(y))
 
     if y.ndim == 3:
-        img_arr = cast(np.ndarray, img)
-        img = img_arr.transpose(1, 2, 0)
+        # Both operands must be the transposed (H, W, C) view: the max is over
+        # channels, not over W.
+        img = img.transpose(1, 2, 0)
         img = np.concatenate([
-            np.max(img_arr, axis=2, keepdims=True),
+            np.max(img, axis=2, keepdims=True),
             img,
         ], axis=2)
 
-    return cast(np.ndarray, img)
+    return img
 
 def reduce_vocal_aggressively(X: np.ndarray, y: np.ndarray, softmask: float) -> np.ndarray:
     v = X - y
@@ -847,7 +848,13 @@ def match_mono_array_shapes(array_1: np.ndarray, array_2: np.ndarray) -> np.ndar
         
     return array_1
 
-def change_pitch_semitones(y: np.ndarray, sr: int, semitone_shift: float) -> tuple[np.ndarray, float]:
+def change_pitch_semitones(y: np.ndarray, sr: float, semitone_shift: float) -> tuple[np.ndarray, float]:
+    """Resample ``y`` by a semitone factor, returning the audio and its new rate.
+
+    ``sr`` is a float because the rate this returns is itself fractional
+    (``sr * 2 ** (shift / 12)``), and is fed straight back in to undo the shift.
+    Rounding it there would leave the round-trip slightly off the original rate.
+    """
     factor = 2 ** (semitone_shift / 12)  # Convert semitone shift to factor for resampling
     y_pitch_tuned = []
     for y_channel in y:
