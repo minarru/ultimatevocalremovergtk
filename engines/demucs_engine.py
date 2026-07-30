@@ -45,6 +45,34 @@ from vendor.demucs.pretrained import get_model as _gm
 from vendor.demucs.utils import apply_model_v1, apply_model_v2
 from .orchestration import process_secondary_model
 
+
+def secondary_4_stem_slot(
+    secondary_models: Any,
+    secondary_scales: Any,
+    stem_value: int,
+) -> tuple[Any, Any]:
+    """Return ``(model, scale)`` for one 4-stem slot, or ``(None, None)``.
+
+    Each stem resolves independently. Secondary models are configured per stem
+    and ``is_secondary_model_activated`` is true when *any* stem has one, so a
+    stem with no model of its own must come back empty rather than inherit the
+    previous stem's model or blend scale — otherwise it gets mixed with another
+    stem's audio. Out-of-range slots (guitar/piano in 6-stem output) are empty
+    too; only the four base stems have secondary entries.
+    """
+    if not secondary_models or stem_value < 0 or stem_value >= len(secondary_models):
+        return None, None
+    model = secondary_models[stem_value]
+    if not model:
+        return None, None
+    scale = (
+        secondary_scales[stem_value]
+        if secondary_scales is not None and stem_value < len(secondary_scales)
+        else None
+    )
+    return model, scale
+
+
 class SeperateDemucs(SeperateAttributes):
     def seperate(
         self,
@@ -52,9 +80,7 @@ class SeperateDemucs(SeperateAttributes):
         self.demucs: Any
         samplerate = 44100
         source: Any = None
-        model_scale: Any = None
         stem_source: Any = None
-        stem_source_secondary: Any = None
         inst_mix: Any = None
         inst_source: Any = None
         is_no_write = False
@@ -179,16 +205,21 @@ class SeperateDemucs(SeperateAttributes):
                     source[stem_value] = stem_dict[stem_name]
             self.begin_save_phase(len(self.demucs_source_map))
             for stem_name, stem_value in self.demucs_source_map.items():
-                if self.is_secondary_model_activated and not self.is_secondary_model and not stem_value >= 4:
-                    if self.secondary_model_4_stem[stem_value]:
-                        model_scale = self.secondary_model_4_stem_scale[stem_value]
-                        stem_source_secondary = process_secondary_model(self.secondary_model_4_stem[stem_value], self.process_data, main_model_primary_stem_4_stem=stem_name, is_source_load=True, is_return_dual=False)
-                        if isinstance(stem_source_secondary, np.ndarray):
-                            stem_source_secondary = stem_source_secondary[1 if self.secondary_model_4_stem[stem_value].demucs_stem_count == 2 else stem_value].T
-                        elif type(stem_source_secondary) is dict:
-                            stem_source_secondary = stem_source_secondary[stem_name]
-                            
-                stem_source_secondary = None if stem_value >= 4 else stem_source_secondary
+                # Resolve per stem: both must reset each iteration or a stem with
+                # no secondary model of its own blends with the previous stem's.
+                slot_model, model_scale = secondary_4_stem_slot(
+                    self.secondary_model_4_stem,
+                    self.secondary_model_4_stem_scale,
+                    stem_value,
+                )
+                stem_source_secondary = None
+                if self.is_secondary_model_activated and not self.is_secondary_model and slot_model:
+                    stem_source_secondary = process_secondary_model(slot_model, self.process_data, main_model_primary_stem_4_stem=stem_name, is_source_load=True, is_return_dual=False)
+                    if isinstance(stem_source_secondary, np.ndarray):
+                        stem_source_secondary = stem_source_secondary[1 if slot_model.demucs_stem_count == 2 else stem_value].T
+                    elif type(stem_source_secondary) is dict:
+                        stem_source_secondary = stem_source_secondary[stem_name]
+
                 stem_path = self.stem_export_wav_path(stem_name)
                 stem_source = source[stem_value].T
                 
