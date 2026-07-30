@@ -1,3 +1,4 @@
+import typing
 import unittest
 from unittest.mock import MagicMock
 
@@ -10,6 +11,7 @@ from bundled.constants import (
     SECONDARY_STEM,
     VOCAL_STEM,
 )
+from core.settings import Settings
 from ui.widgets.stem_only import (
     SaveStemsSection,
     _QUICK_ALL,
@@ -24,12 +26,16 @@ from ui.widgets.stem_only import (
 )
 
 
-class _Settings(dict):
-    def get(self, key, default=None):
-        return super().get(key, default)
+class _Settings(Settings):
+    def __init__(self, data: typing.Any=None):
+        super().__init__()
+        self.update(data or {})
 
-    def set(self, key, value):
-        self[key] = value
+    def __getitem__(self, key: typing.Any):
+        return self.get(key)
+
+    def __setitem__(self, key: typing.Any, value: typing.Any):
+        self.set(key, value)
 
 
 class StemDisplayLabelTests(unittest.TestCase):

@@ -1,6 +1,7 @@
 """Post-separation stem level helpers (match mix / prevent PCM clipping)."""
 
 from __future__ import annotations
+import typing
 
 from typing import Dict, List, Mapping, MutableMapping, Optional, Tuple
 
@@ -10,7 +11,7 @@ _GAIN_EPS = 1e-12
 _GAIN_REPORT_TOL = 1e-3
 
 
-def _as_float_array(audio) -> np.ndarray:
+def _as_float_array(audio: typing.Any) -> np.ndarray:
     return np.asarray(audio, dtype=np.float64)
 
 
@@ -80,6 +81,7 @@ def apply_stem_level_options(
             for value in adjusted.values():
                 piece = np.asarray(value)[..., :n]
                 summed = piece if summed is None else summed + piece
+            assert summed is not None
             gain = match_gain_to_mix(summed, mix)
             if abs(gain - 1.0) > _GAIN_REPORT_TOL:
                 adjusted = {key: scale_audio(value, gain) for key, value in adjusted.items()}

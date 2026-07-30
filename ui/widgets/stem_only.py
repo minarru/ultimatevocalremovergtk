@@ -1,6 +1,7 @@
 """Save-stems controls: exclusive export, MDX subset, and Demucs focus."""
 
 from __future__ import annotations
+import typing
 
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Set, Tuple
@@ -45,6 +46,7 @@ from ..help_text import (
     secondary_stem_only_tooltip,
 )
 from ..markup import set_row_subtitle
+from ..settings_bind import get_flat, set_flat
 from ..spacing import inset_md
 from .rows import get_combo_value, make_combo_row, set_combo_tag_values, set_combo_value
 
@@ -112,7 +114,7 @@ _COMPLEMENT_DISPLAY: Dict[str, str] = {
 _LEAD_VOCAL_PAIR_LABELS = VOCALS_OTHER_DISPLAY_OVERRIDES
 
 
-def roformer_lead_vocal_label_overrides(model) -> Optional[Dict[str, str]]:
+def roformer_lead_vocal_label_overrides(model: typing.Any) -> Optional[Dict[str, str]]:
     """Return stem display overrides for the selected model."""
     return stem_display_overrides(model)
 
@@ -261,9 +263,9 @@ def _fill_export_combo(row: Adw.ComboRow, options: List[StemOnlyOption]) -> Dict
     return {opt.name: opt for opt in options}
 
 
-def _exclusive_name_from_settings(settings, primary_key: str, secondary_key: str) -> str:
-    primary_on = bool(settings.get(primary_key))
-    secondary_on = bool(settings.get(secondary_key))
+def _exclusive_name_from_settings(settings: typing.Any, primary_key: str, secondary_key: str) -> str:
+    primary_on = bool(get_flat(settings, primary_key))
+    secondary_on = bool(get_flat(settings, secondary_key))
     if primary_on and not secondary_on:
         return primary_key
     if secondary_on and not primary_on:
@@ -271,9 +273,9 @@ def _exclusive_name_from_settings(settings, primary_key: str, secondary_key: str
     return _TOGGLE_ALL
 
 
-def _persist_exclusive_choice(settings, primary_key: str, secondary_key: str, name: str) -> None:
-    settings.set(primary_key, name == primary_key)
-    settings.set(secondary_key, name == secondary_key)
+def _persist_exclusive_choice(settings: typing.Any, primary_key: str, secondary_key: str, name: str) -> None:
+    set_flat(settings, primary_key, name == primary_key)
+    set_flat(settings, secondary_key, name == secondary_key)
 
 
 def _export_label_for_choice(name: str, options: Dict[str, StemOnlyOption]) -> str:
@@ -288,7 +290,7 @@ def _export_label_for_choice(name: str, options: Dict[str, StemOnlyOption]) -> s
 class SaveStemsSection:
     """Unified Save stems widget for method views and ensemble."""
 
-    def __init__(self, *, settings, on_changed: Optional[Callable[[], None]] = None):
+    def __init__(self, *, settings: typing.Any, on_changed: Optional[Callable[[], None]] = None):
         self.settings = settings
         self._on_changed = on_changed
         self._loading = False
@@ -632,7 +634,7 @@ class SaveStemsSection:
 
     # -- Exclusive -------------------------------------------------------------
 
-    def _on_exclusive_changed(self, *_args) -> None:
+    def _on_exclusive_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         self._notify()
@@ -711,15 +713,15 @@ class SaveStemsSection:
             self._set_custom_selection(selected, highlight_all_when_empty=True)
 
     def _stored_subset_selection(self) -> Tuple[str, Set[str]]:
-        selected = list(self.settings.get("mdx_stems_selected") or [])
+        selected = list(self.settings.mdx.stems_selected or [])
         if not selected:
-            legacy = self.settings.get("mdx_stems")
+            legacy = self.settings.mdx.stems
             if legacy and legacy != ALL_STEMS:
                 selected = [legacy]
         selected_set = set(selected)
         stem_set = set(self._subset_stems)
-        primary_on = bool(self.settings.get(self._primary_key))
-        secondary_on = bool(self.settings.get(self._secondary_key))
+        primary_on = bool(get_flat(self.settings, self._primary_key))
+        secondary_on = bool(get_flat(self.settings, self._secondary_key))
 
         if self._vocal_stem_in_subset() and self._selection_matches_vocal_stem(selected_set):
             if secondary_on and not primary_on:
@@ -742,33 +744,35 @@ class SaveStemsSection:
     def _persist_subset(self) -> None:
         if self._subset_mode != "custom":
             if self._subset_mode == _QUICK_ALL:
-                self.settings.set("mdx_stems_selected", [])
-                self.settings.set("mdx_stems", ALL_STEMS)
-                self.settings.set(self._primary_key, False)
-                self.settings.set(self._secondary_key, False)
+                self.settings.mdx.stems_selected = []
+                self.settings.mdx.stems = ALL_STEMS
+                set_flat(self.settings, self._primary_key, False)
+                set_flat(self.settings, self._secondary_key, False)
             elif self._subset_mode == _QUICK_INSTRUMENTAL:
-                self.settings.set("mdx_stems_selected", [VOCAL_STEM])
-                self.settings.set("mdx_stems", VOCAL_STEM)
-                self.settings.set(self._primary_key, False)
-                self.settings.set(self._secondary_key, True)
+                self.settings.mdx.stems_selected = [VOCAL_STEM]
+                self.settings.mdx.stems = VOCAL_STEM
+                set_flat(self.settings, self._primary_key, False)
+                set_flat(self.settings, self._secondary_key, True)
             elif self._subset_mode == _QUICK_VOCALS:
-                self.settings.set("mdx_stems_selected", [VOCAL_STEM])
-                self.settings.set("mdx_stems", VOCAL_STEM)
-                self.settings.set(self._primary_key, True)
-                self.settings.set(self._secondary_key, False)
+                self.settings.mdx.stems_selected = [VOCAL_STEM]
+                self.settings.mdx.stems = VOCAL_STEM
+                set_flat(self.settings, self._primary_key, True)
+                set_flat(self.settings, self._secondary_key, False)
             return
 
         if self._custom_all or not self._custom_selected or self._custom_selected >= set(
             self._subset_stems
         ):
-            self.settings.set("mdx_stems_selected", [])
-            self.settings.set("mdx_stems", ALL_STEMS)
+            self.settings.mdx.stems_selected = []
+            self.settings.mdx.stems = ALL_STEMS
         else:
             selected = [stem for stem in self._subset_stems if stem in self._custom_selected]
-            self.settings.set("mdx_stems_selected", selected)
-            self.settings.set("mdx_stems", selected[0] if len(selected) == 1 else ALL_STEMS)
-        self.settings.set(self._primary_key, False)
-        self.settings.set(self._secondary_key, False)
+            self.settings.mdx.stems_selected = selected
+            self.settings.mdx.stems = (
+                selected[0] if len(selected) == 1 else ALL_STEMS
+            )
+        set_flat(self.settings, self._primary_key, False)
+        set_flat(self.settings, self._secondary_key, False)
 
     def _subset_export_summary(self) -> str:
         if self._subset_mode == _QUICK_INSTRUMENTAL:
@@ -842,7 +846,7 @@ class SaveStemsSection:
         finally:
             self._loading = was_loading
 
-    def _open_custom_stems_dialog(self, *_args) -> None:
+    def _open_custom_stems_dialog(self, *_args: typing.Any) -> None:
         if self._subset_mode == "custom":
             self._draft_custom_all = self._custom_all
             self._draft_custom_selected = set(self._custom_selected)
@@ -909,7 +913,7 @@ class SaveStemsSection:
         self._custom_dialog.close()
         self._notify()
 
-    def _on_quick_export_changed(self, *_args) -> None:
+    def _on_quick_export_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         mode = get_combo_value(self._quick_row) or _QUICK_ALL
@@ -941,9 +945,9 @@ class SaveStemsSection:
         return self._demucs_active_name() not in (_QUICK_ALL, _FOCUS_INSTRUMENTAL, _FOCUS_VOCALS)
 
     def _sync_demucs_from_settings(self) -> None:
-        focus = self.settings.get("demucs_stems", ALL_STEMS)
-        primary_on = bool(self.settings.get(self._primary_key))
-        secondary_on = bool(self.settings.get(self._secondary_key))
+        focus = self.settings.demucs.stems or ALL_STEMS
+        primary_on = bool(get_flat(self.settings, self._primary_key))
+        secondary_on = bool(get_flat(self.settings, self._secondary_key))
 
         if focus == ALL_STEMS:
             active = _QUICK_ALL
@@ -978,11 +982,11 @@ class SaveStemsSection:
                         self.settings, self._primary_key, self._secondary_key
                     )
                 else:
-                    if not self.settings.get(self._primary_key) and not self.settings.get(
-                        self._secondary_key
+                    if not get_flat(self.settings, self._primary_key) and not get_flat(
+                        self.settings, self._secondary_key
                     ):
-                        self.settings.set(self._primary_key, True)
-                        self.settings.set(self._secondary_key, False)
+                        set_flat(self.settings, self._primary_key, True)
+                        set_flat(self.settings, self._secondary_key, False)
                     name = _exclusive_name_from_settings(
                         self.settings, self._primary_key, self._secondary_key
                     )
@@ -996,30 +1000,30 @@ class SaveStemsSection:
     def _persist_demucs(self) -> None:
         active = self._demucs_active_name()
         if active == _QUICK_ALL:
-            self.settings.set("demucs_stems", ALL_STEMS)
-            self.settings.set(self._primary_key, False)
-            self.settings.set(self._secondary_key, False)
+            self.settings.demucs.stems = ALL_STEMS
+            set_flat(self.settings, self._primary_key, False)
+            set_flat(self.settings, self._secondary_key, False)
             return
         if active == _FOCUS_INSTRUMENTAL:
-            self.settings.set("demucs_stems", VOCAL_STEM)
-            self.settings.set(self._primary_key, False)
-            self.settings.set(self._secondary_key, True)
+            self.settings.demucs.stems = VOCAL_STEM
+            set_flat(self.settings, self._primary_key, False)
+            set_flat(self.settings, self._secondary_key, True)
             return
         if active == _FOCUS_VOCALS:
-            self.settings.set("demucs_stems", VOCAL_STEM)
-            self.settings.set(self._primary_key, True)
-            self.settings.set(self._secondary_key, False)
+            self.settings.demucs.stems = VOCAL_STEM
+            set_flat(self.settings, self._primary_key, True)
+            set_flat(self.settings, self._secondary_key, False)
             return
 
-        self.settings.set("demucs_stems", active)
+        self.settings.demucs.stems = active
         if self._demucs_export_row.get_visible():
             name = get_combo_value(self._demucs_export_row) or _TOGGLE_ALL
             _persist_exclusive_choice(
                 self.settings, self._primary_key, self._secondary_key, name
             )
         else:
-            self.settings.set(self._primary_key, True)
-            self.settings.set(self._secondary_key, False)
+            set_flat(self.settings, self._primary_key, True)
+            set_flat(self.settings, self._secondary_key, False)
 
     def _demucs_export_summary(self) -> str:
         if self._demucs_is_all_stems():
@@ -1036,13 +1040,13 @@ class SaveStemsSection:
             return summary.replace("Exporting", f"{focus_label} focus —", 1)
         return f"{focus_label} focus — {focus_label} only"
 
-    def _on_demucs_focus_changed(self, *_args) -> None:
+    def _on_demucs_focus_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         self._update_demucs_export_visibility(from_settings=False)
         self._notify()
 
-    def _on_demucs_export_changed(self, *_args) -> None:
+    def _on_demucs_export_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         self._notify()
@@ -1091,13 +1095,13 @@ class SaveStemsSection:
             self._section = section
 
         @property
-        def _chips(self) -> Dict[str, "_ChipProxy"]:
+        def _chips(self) -> Dict[str, "SaveStemsSection._ChipProxy"]:
             return {
                 stem: SaveStemsSection._ChipProxy(self._section, stem)
                 for stem in [ALL_STEMS, *self._section._subset_stems]
             }
 
-        def rebuild(self, stems: List[str], *, stem_label_overrides=None) -> None:
+        def rebuild(self, stems: List[str], *, stem_label_overrides: typing.Any=None) -> None:
             self._section._subset_stems = list(stems)
             if stem_label_overrides is not None:
                 self._section._stem_label_overrides = stem_label_overrides

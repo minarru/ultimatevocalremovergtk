@@ -1,6 +1,7 @@
 """Trusted checkpoint loading compatible with PyTorch 2.6+."""
 
 from __future__ import annotations
+import typing
 
 import importlib
 import sys
@@ -95,13 +96,13 @@ def ensure_optional_checkpoint_stubs() -> None:
                 continue
             module = types.ModuleType(name)
             sys.modules[name] = module
-        adamw = sys.modules["bitsandbytes.optim.adamw"]
+        adamw: Any = sys.modules["bitsandbytes.optim.adamw"]
         if not hasattr(adamw, "AdamW8bit"):
             adamw.AdamW8bit = type("AdamW8bit", (_UnpickleStub,), {})
-        optim = sys.modules["bitsandbytes.optim"]
+        optim: Any = sys.modules["bitsandbytes.optim"]
         if not hasattr(optim, "adamw"):
             optim.adamw = adamw
-        root = sys.modules["bitsandbytes"]
+        root: Any = sys.modules["bitsandbytes"]
         if not hasattr(root, "optim"):
             root.optim = optim
 
@@ -132,7 +133,7 @@ def as_model_state_dict(obj: Any) -> Any:
     return obj
 
 
-def load_torch_checkpoint(path, map_location: Any = "cpu", **kwargs):
+def load_torch_checkpoint(path: typing.Any, map_location: Any = "cpu", **kwargs: typing.Any):
     """Load a trusted UVR/Demucs/VR checkpoint.
 
     PyTorch 2.6+ defaults ``weights_only=True``, which rejects pickled model

@@ -127,13 +127,13 @@ def _directml_torch_device(device_set: str) -> Any:
 
 def resolve_inference_backend(
     *,
-    is_gpu_conversion: int,
+    use_gpu: bool,
     device_set: str = DEFAULT,
     is_use_directml: bool = False,
     is_macos: bool = False,
 ) -> InferenceBackend:
     """Pick PyTorch device and ONNX providers from settings and runtime state."""
-    if is_gpu_conversion < 0:
+    if not use_gpu:
         return _log_backend(
             InferenceBackend(
                 torch_device=CPU,

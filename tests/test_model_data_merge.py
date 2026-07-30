@@ -8,7 +8,8 @@ from bundled.constants import MDX_ARCH_TYPE
 from core import paths
 from core.downloads import DownloadManager
 from core.mdx_c_registry import compute_checkpoint_hash
-from core.model_data import ModelData, ModelRepository
+from core.model_config import ModelConfig
+from core.model_data import ModelRepository
 
 
 class ModelDataMergeTests(unittest.TestCase):
@@ -25,13 +26,14 @@ class ModelDataMergeTests(unittest.TestCase):
             with open(os.path.join(tmp, f"{model_hash}.json"), "w", encoding="utf-8") as handle:
                 json.dump({"is_roformer": False}, handle)
 
-            model_data = ModelData.__new__(ModelData)
+            model_data = ModelConfig.__new__(ModelConfig)
             model_data.model_hash = model_hash
             model_data.is_dry_check = True
             model_data.is_get_hash_dir_only = False
             model_data.repo = None
 
             merged = model_data.get_model_data(tmp, hash_mapper)
+            assert isinstance(merged, dict)
             self.assertEqual(merged["config_yaml"], "config_musdb18_scnet_large.yaml")
             self.assertFalse(merged["is_roformer"])
             self.assertEqual(merged["model_type"], "SCNet")
@@ -57,7 +59,7 @@ class ModelDataMergeTests(unittest.TestCase):
                 paths.MDX_HASH_DIR = hash_dir
                 paths.MDX_C_CONFIG_PATH = config_dir
 
-                model_data = ModelData.__new__(ModelData)
+                model_data = ModelConfig.__new__(ModelConfig)
                 model_data.model_hash = compute_checkpoint_hash(checkpoint)
                 model_data.process_method = MDX_ARCH_TYPE
                 model_data.is_mdx_ckpt = True
@@ -74,7 +76,7 @@ class ModelDataMergeTests(unittest.TestCase):
                 paths.MDX_C_CONFIG_PATH = original_config_dir
 
             self.assertIsNotNone(result)
-            assert result is not None
+            assert isinstance(result, dict)
             self.assertEqual(result["config_yaml"], yaml_name)
             self.assertEqual(result["model_type"], "SCNet")
 

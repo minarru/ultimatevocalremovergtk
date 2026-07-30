@@ -1,4 +1,5 @@
 """VR denoiser and multi-band mix loading."""
+import typing
 import os
 
 import numpy as np
@@ -23,18 +24,18 @@ def scale_mag_pad_inplace(mag_pad: np.ndarray) -> np.ndarray:
     return mag_pad
 
 
-def _band_res_type(bp):
+def _band_res_type(bp: typing.Any):
     if OPERATING_SYSTEM == 'Darwin':
         return 'polyphase' if SYSTEM_PROC == ARM or ARM in SYSTEM_ARCH else bp['res_type']
     return bp['res_type']
 
 
 def multiband_waves_to_spectrogram(
-    X_wave,
-    mp,
+    X_wave: typing.Any,
+    mp: typing.Any,
     *,
-    is_v51_model=False,
-    use_model_res_type=True,
+    is_v51_model: typing.Any=False,
+    use_model_res_type: typing.Any=True,
 ):
     """Convert a multiband wave dict into a combined VR spectrogram."""
     X_spec_s = {}
@@ -62,14 +63,14 @@ def multiband_waves_to_spectrogram(
 
 
 def vr_denoiser(
-    X,
-    device,
-    hop_length=1024,
-    n_fft=2048,
-    cropsize=256,
-    is_deverber=False,
-    model_path=None,
-    settings=None,
+    X: typing.Any,
+    device: typing.Any,
+    hop_length: typing.Any=1024,
+    n_fft: typing.Any=2048,
+    cropsize: typing.Any=256,
+    is_deverber: typing.Any=False,
+    model_path: typing.Any=None,
+    settings: typing.Any=None,
 ):
     batchsize = 4
 
@@ -173,7 +174,7 @@ def vr_denoiser(
     else:
         return wave
 
-def loading_mix(X, mp):
+def loading_mix(X: typing.Any, mp: typing.Any):
 
     bands_n = len(mp.param['band'])
     X_wave = {bands_n: X}

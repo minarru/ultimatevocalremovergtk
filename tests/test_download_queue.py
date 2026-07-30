@@ -1,4 +1,5 @@
 """Tests for the background download queue."""
+import typing
 
 import os
 import tempfile
@@ -51,7 +52,7 @@ class DownloadQueueTests(unittest.TestCase):
         started = threading.Event()
         release = threading.Event()
 
-        def blocking_download(jobs, **kwargs):
+        def blocking_download(jobs: typing.Any, **kwargs: typing.Any):
             started.set()
             release.wait(timeout=5)
             return "complete"
@@ -60,6 +61,7 @@ class DownloadQueueTests(unittest.TestCase):
         self.queue.enqueue("First", "MDX-Net")
         started.wait(timeout=5)
         second_id = self.queue.enqueue("Second", "MDX-Net")
+        assert second_id is not None
 
         # Second item is still STATUS_QUEUED (worker is busy on the first).
         self.queue.cancel(second_id)

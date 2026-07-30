@@ -14,6 +14,9 @@ from core.demucs_models import (
 
 class DemucsBagMemberTests(unittest.TestCase):
     def test_hdemucs_mmi_bag_lists_member_sig(self):
+        yaml_path = os.path.join(paths.DEMUCS_NEWER_REPO_DIR, "hdemucs_mmi.yaml")
+        if not os.path.isfile(yaml_path):
+            self.skipTest("hdemucs_mmi.yaml not present (downloaded weights only)")
         sigs = demucs_yaml_bag_member_sigs(paths.DEMUCS_NEWER_REPO_DIR)
         self.assertIn("75fc33f5", sigs)
 

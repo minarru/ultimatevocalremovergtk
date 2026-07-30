@@ -4,9 +4,9 @@
 
 Linux port of [Ultimate Vocal Remover](https://github.com/Anjok07/ultimatevocalremovergui) with a **GTK4 / libadwaita** interface (PyGObject). **GTK release v1.0.0**, based on upstream **v5.6**, including **Apollo** restoration and **BS-Roformer / Mel-Band Roformer** support.
 
-**Source:** [codeberg.org/jawlet/ultimatevocalremovergtk](https://codeberg.org/jawlet/ultimatevocalremovergtk) (canonical) · **Mirror:** [github.com/minarru/ultimatevocalremovergtk](https://github.com/minarru/ultimatevocalremovergtk) · **Releases:** [codeberg.org/jawlet/ultimatevocalremovergtk/releases](https://codeberg.org/jawlet/ultimatevocalremovergtk/releases)
+**Source:** [github.com/minarru/ultimatevocalremovergtk](https://github.com/minarru/ultimatevocalremovergtk) · **Releases:** [github.com/minarru/ultimatevocalremovergtk/releases](https://github.com/minarru/ultimatevocalremovergtk/releases)
 
-Report bugs and open pull requests on **Codeberg only**. GitHub is a read-only code mirror — see [docs/mirroring.md](docs/mirroring.md) for setup and maintenance.
+Report bugs and open pull requests on **GitHub**. The former Codeberg repo is archived — see [docs/mirroring.md](docs/mirroring.md).
 
 ## About
 
@@ -41,11 +41,11 @@ Supported separation backends in this port:
 ### 1. Get the source
 
 ```bash
-git clone https://codeberg.org/jawlet/ultimatevocalremovergtk.git
+git clone https://github.com/minarru/ultimatevocalremovergtk.git
 cd ultimatevocalremovergtk
 ```
 
-Or download a source archive from the [Codeberg repository](https://codeberg.org/jawlet/ultimatevocalremovergtk).
+Or download a source archive from the [GitHub repository](https://github.com/minarru/ultimatevocalremovergtk).
 
 ### 2. Install system packages
 
@@ -141,7 +141,7 @@ git pull
 ./run_uvr.sh
 ```
 
-Check [Releases](https://codeberg.org/jawlet/ultimatevocalremovergtk/releases) for release notes. The app’s **Application Version** dialog (Settings menu) compares your running version against `packaging/release.json` on Codeberg.
+Check [Releases](https://github.com/minarru/ultimatevocalremovergtk/releases) for release notes. The app’s **Application Version** dialog (Settings menu) compares your running version against `packaging/release.json` on GitHub.
 
 ## Models
 
@@ -181,7 +181,7 @@ Source code is grouped by layer at the repository root:
 
 **Bundled (shipped with the repo):** `bundled/`, model metadata under `models/`, `ml/` VR parameter JSON, `vendor/`.
 
-**Runtime (your machine, not in git):** `data.pkl`, `profiles/*.json`, `ensembles/*.json`, `ensemble_temps/`, downloaded model weights. In a writable checkout these live at the repo root; otherwise they resolve under `DATA_DIR` (see `core/paths.py`).
+**Runtime (your machine, not in git):** `settings.json`, `profiles/*.json`, `ensembles/*.json`, `ensemble_temps/`, downloaded model weights. In a writable checkout these live at the repo root; otherwise they resolve under `DATA_DIR` (see `core/paths.py`). Legacy `data.pkl` is imported once when present.
 
 ## Notes
 
@@ -206,7 +206,7 @@ Source code is grouped by layer at the repository root:
 
 For shared dependency questions (FFmpeg, Rubber Band, etc.), upstream [GitHub Issues](https://github.com/Anjok07/ultimatevocalremovergui/issues) may still be useful.
 
-Report bugs in **this GTK fork** on [Codeberg Issues](https://codeberg.org/jawlet/ultimatevocalremovergtk/issues). Use **Report Issue** in the Error Log to pre-fill version and log details.
+Report bugs in **this GTK fork** on [GitHub Issues](https://github.com/minarru/ultimatevocalremovergtk/issues). Use **Report Issue** in the Error Log to pre-fill version and log details.
 
 Known upstream-applicable bugs and roadmap gaps are tracked in [docs/tracked-issues.md](docs/tracked-issues.md) (items 1–7 + product gaps).
 

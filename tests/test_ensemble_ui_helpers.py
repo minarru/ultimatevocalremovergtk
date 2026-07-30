@@ -32,6 +32,7 @@ class PresetMappingTests(unittest.TestCase):
     def test_recommended_round_trip(self) -> None:
         pair = pair_for_preset(RECOMMENDED_PRESET)
         self.assertEqual(pair, (MAX_SPEC, MIN_SPEC))
+        assert pair is not None
         self.assertEqual(preset_for_pair(*pair), RECOMMENDED_PRESET)
 
     def test_named_presets(self) -> None:

@@ -23,7 +23,7 @@ _TOOLS_LOGGED = False
 def _bundled_tool(name: str) -> Optional[str]:
     """Return a bundled executable next to ml or the PyInstaller bundle root."""
     if getattr(sys, "frozen", False):
-        base = sys._MEIPASS
+        base = getattr(sys, "_MEIPASS")
     else:
         base = os.path.join(BASE_PATH, "ml")
     for candidate in (

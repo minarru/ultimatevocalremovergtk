@@ -3,8 +3,9 @@ import unittest
 
 from bundled.constants import CKPT, ONNX
 from core import paths
-from core.model_data import ModelData, ModelRepository
-from core.settings import SettingsModel
+from core.model_config import ModelConfig
+from core.model_data import ModelRepository
+from core.settings import Settings
 
 
 class MdxModelPathTests(unittest.TestCase):
@@ -14,10 +15,10 @@ class MdxModelPathTests(unittest.TestCase):
         if not os.path.isfile(ckpt_path):
             self.skipTest("BandSplit becruily ckpt not present in workspace")
 
-        settings = SettingsModel()
+        settings = Settings.defaults()
         repo = ModelRepository()
         repo.reload_mappers()
-        model_data = ModelData(
+        model_data = ModelConfig(
             settings,
             repo,
             model_name,
@@ -40,7 +41,7 @@ class MdxModelPathTests(unittest.TestCase):
             def mdx_catalogue_display_index(self):
                 return {}
 
-        model_data = object.__new__(ModelData)
+        model_data = object.__new__(ModelConfig)
         model_data.repo = _FakeRepo()
         model_data.model_name = "Some Friendly Name"
         model_data.is_mdx_ckpt = False

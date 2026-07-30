@@ -21,23 +21,33 @@ from ui.download_center import catalogue_matches
 class ParseSdrScoreTests(unittest.TestCase):
     def test_float_sdr_in_filename(self) -> None:
         self.assertAlmostEqual(
-            parse_sdr_score("model_bs_roformer_ep_317_sdr_12.9755.ckpt"),
+            float(parse_sdr_score("model_bs_roformer_ep_317_sdr_12.9755.ckpt") or 0.0),
             12.9755,
             places=4,
         )
 
     def test_int_coded_sdr_in_label(self) -> None:
-        self.assertAlmostEqual(parse_sdr_score("MelBand Roformer | SDR 1143 by Viperx"), 11.43)
+        self.assertAlmostEqual(
+            float(parse_sdr_score("MelBand Roformer | SDR 1143 by Viperx") or 0.0),
+            11.43,
+        )
 
     def test_viperx_abbreviation(self) -> None:
-        self.assertAlmostEqual(parse_sdr_score("BS-Roformer-Viperx-1297"), 12.97)
+        self.assertAlmostEqual(
+            float(parse_sdr_score("BS-Roformer-Viperx-1297") or 0.0), 12.97
+        )
 
     def test_missing_score_returns_none(self) -> None:
         self.assertIsNone(parse_sdr_score("UVR-MDX-NET-Inst_HQ_5.onnx"))
 
     def test_best_of_multiple_texts(self) -> None:
         self.assertAlmostEqual(
-            parse_sdr_score("friendly name", "model_sdr_10.2.ckpt", "other_sdr_11.5.ckpt"),
+            float(
+                parse_sdr_score(
+                    "friendly name", "model_sdr_10.2.ckpt", "other_sdr_11.5.ckpt"
+                )
+                or 0.0
+            ),
             11.5,
         )
 

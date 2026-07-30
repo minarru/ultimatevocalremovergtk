@@ -81,7 +81,7 @@ def model_file_identity(model_path: str) -> Optional[FileIdentity]:
         return (str(model_path), 0, 0)
 
 
-def _key_identity(key: tuple) -> Optional[FileIdentity]:
+def _key_identity(key: tuple[Any, ...]) -> Optional[FileIdentity]:
     if len(key) > 1 and isinstance(key[1], tuple) and len(key[1]) == 3:
         return key[1]  # type: ignore[return-value]
     return None
@@ -130,12 +130,12 @@ class ModelWeightCache:
 
     def __init__(self, max_entries: int = 4) -> None:
         self.max_entries = max(1, int(max_entries))
-        self._items: OrderedDict[tuple, CachedWeights] = OrderedDict()
+        self._items: OrderedDict[tuple[Any, ...], CachedWeights] = OrderedDict()
         self._lock = threading.Lock()
         # At most one accelerator-resident module; others stay parked on CPU.
-        self._device_resident_key: Optional[tuple] = None
+        self._device_resident_key: Optional[tuple[Any, ...]] = None
 
-    def get(self, key: tuple) -> Optional[CachedWeights]:
+    def get(self, key: tuple[Any, ...]) -> Optional[CachedWeights]:
         with self._lock:
             handle = self._items.get(key)
             if handle is None:
@@ -146,7 +146,7 @@ class ModelWeightCache:
 
     def put(
         self,
-        key: tuple,
+        key: tuple[Any, ...],
         *,
         module: Any = None,
         ort_session: Any = None,
@@ -185,9 +185,16 @@ class ModelWeightCache:
                 _evicted_key, evicted = self._items.popitem(last=False)
                 if self._device_resident_key == _evicted_key:
                     self._device_resident_key = None
-                debug("cache", f"weight cache evict kind={_evicted_key[0]!r}")
+                debug(
+                    "cache",
+                    f"weight cache evict kind={next(iter(_evicted_key), '')!r}",
+                )
                 self._destroy(evicted)
-            debug("cache", f"weight cache store kind={key[0]!r} size={len(self._items)}")
+            debug(
+                "cache",
+                f"weight cache store kind={next(iter(key), '')!r} "
+                f"size={len(self._items)}",
+            )
 
     def stash_separator(self, separator: Any) -> bool:
         """Move model handles from ``separator`` into the cache without destroying them."""
@@ -298,7 +305,9 @@ class ModelWeightCache:
                 self._device_resident_key = None
         return touched
 
-    def _park_device_resident_locked(self, *, except_key: Optional[tuple] = None) -> None:
+    def _park_device_resident_locked(
+        self, *, except_key: Optional[tuple[Any, ...]] = None
+    ) -> None:
         key = self._device_resident_key
         if key is None or key == except_key:
             return

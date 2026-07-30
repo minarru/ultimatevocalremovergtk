@@ -1,9 +1,11 @@
+import typing
 import os
 import tempfile
 import unittest
 from unittest import mock
 
 from bundled.constants import FLAC, WAV
+from core.settings import Settings
 from ui.shared_settings import (
     INPUT_FILES_MAX,
     INPUT_FILES_WARN,
@@ -20,14 +22,8 @@ from ui.shared_settings import (
 
 
 class _FakeSettings:
-    def __init__(self, data):
-        self._data = dict(data)
-
-    def get(self, key, default=None):
-        return self._data.get(key, default)
-
-    def set(self, key, value):
-        self._data[key] = value
+    def __new__(cls, data: typing.Any):
+        return Settings.from_flat(data)
 
 
 class _FakeInputRow:
@@ -35,7 +31,7 @@ class _FakeInputRow:
         self.paths = None
         self.notify = None
 
-    def set_paths(self, paths, notify=True):
+    def set_paths(self, paths: typing.Any, notify: typing.Any=True):
         self.paths = list(paths)
         self.notify = notify
 
@@ -45,7 +41,7 @@ class _FakeOutputRow:
         self.path = None
         self.notify = None
 
-    def set_path(self, path, notify=True):
+    def set_path(self, path: typing.Any, notify: typing.Any=True):
         self.path = path
         self.notify = notify
 
@@ -54,7 +50,7 @@ class _FakeSwitchRow:
     def __init__(self):
         self.active = None
 
-    def set_active(self, active):
+    def set_active(self, active: typing.Any):
         self.active = active
 
 
@@ -64,13 +60,13 @@ class _FakeSampleRow:
         self.subtitle = None
         self.active = None
 
-    def set_title(self, title):
+    def set_title(self, title: typing.Any):
         self.title = title
 
-    def set_subtitle(self, subtitle):
+    def set_subtitle(self, subtitle: typing.Any):
         self.subtitle = subtitle
 
-    def set_active(self, active):
+    def set_active(self, active: typing.Any):
         self.active = active
 
 
@@ -78,8 +74,8 @@ class _FakeFormatRow:
     def __init__(self):
         self.applied_from = None
 
-    def apply_from_settings(self, settings):
-        self.applied_from = settings.get("save_format")
+    def apply_from_settings(self, settings: typing.Any):
+        self.applied_from = settings.process.save_format
 
 
 class ExportPathValidationTests(unittest.TestCase):
@@ -308,7 +304,7 @@ class ApplySharedFileOptionsTests(unittest.TestCase):
             input_row = _FakeInputRow()
             apply_shared_file_options(settings, input_row=input_row)
             self.assertEqual(input_row.paths, [input_path])
-            self.assertEqual(settings.get("input_paths"), [input_path])
+            self.assertEqual(settings.process.input_paths, [input_path])
         finally:
             os.remove(input_path)
 

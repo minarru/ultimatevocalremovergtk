@@ -20,6 +20,7 @@ Every control binds to the same settings keys the Tk app uses
 ``chosen_ensemble`` / ``is_save_all_outputs_ensemble`` / ...), so saved
 ensembles are interchangeable with ``UVR.py``.
 """
+import typing
 
 import os
 from typing import Dict, List, Optional
@@ -33,6 +34,7 @@ from core.run_estimate import (
     format_workload_line,
 )
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
+from core.types import ProcessMethod
 from bundled.constants import (
     CHUNK_MIN,
     CHOOSE_ENSEMBLE_OPTION,
@@ -112,6 +114,7 @@ from ..shared_settings import (
     gpu_dependent_enabled,
     sample_mode_subtitle,
 )
+from ..settings_bind import set_flat
 from ..widgets.rows import (
     get_combo_value,
     make_combo_row,
@@ -139,7 +142,7 @@ class _RowTooltipHints:
     stateless one-off adapter rather than pulling in the manager.
     """
 
-    def register(self, widget, text):
+    def register(self, widget: typing.Any, text: typing.Any):
         set_tooltip(widget, text)
         return widget
 
@@ -158,7 +161,7 @@ class EnsemblePage:
     #: Label used when recording errors to the shared error log.
     error_key = ENSEMBLE_MODE
 
-    def __init__(self, window, context):
+    def __init__(self, window: typing.Any, context: typing.Any):
         # ``window`` is the MainWindow; the page borrows it for toasts, dialog
         # parenting and the shared run-control helpers.
         self.window = window
@@ -208,7 +211,7 @@ class EnsemblePage:
         self.input_row = InputFilesRow(
             self._on_inputs_changed,
             on_toast=self.window.toast,
-            accept_any_getter=lambda: bool(self.settings.get("is_accept_any_input")),
+            accept_any_getter=lambda: bool(self.settings.process.accept_any_input),
         )
         set_tooltip(self.input_row, INPUT_FOLDER_ENTRY_HELP)
         self.output_row = OutputFolderRow(self._on_output_changed, on_toast=self.window.toast)
@@ -397,7 +400,7 @@ class EnsemblePage:
         self.autocast_row.connect("notify::active", self._on_autocast_changed)
         group.add(self.autocast_row)
 
-        duration = self.settings.get("model_sample_mode_duration", 30)
+        duration = self.settings.process.sample_mode_duration
         self.sample_row = make_switch_row(
             SAMPLE_MODE_TITLE,
             sample_mode_subtitle(duration),
@@ -462,28 +465,39 @@ class EnsemblePage:
         """
         self._loading = True
         try:
-            self.input_row.set_paths(self.settings.get("input_paths") or [], notify=False)
-            self.output_row.set_path(self.settings.get("export_path") or "", notify=False)
+            self.input_row.set_paths(
+                self.settings.process.input_paths or [], notify=False
+            )
+            self.output_row.set_path(
+                self.settings.process.export_path or "", notify=False
+            )
             self.format_row.apply_from_settings(self.settings)
             self.vocal_split_row.apply_from_settings(self.settings)
-            self.gpu_row.set_active(bool(self.settings.get("is_gpu_conversion")))
-            self.autocast_row.set_active(bool(self.settings.get("is_autocast")))
-            apply_sample_mode_label(self.sample_row, self.settings.get("model_sample_mode_duration", 30))
-            self.sample_row.set_active(bool(self.settings.get("model_sample_mode")))
+            self.gpu_row.set_active(bool(self.settings.process.use_gpu))
+            self.autocast_row.set_active(bool(self.settings.process.autocast))
+            apply_sample_mode_label(
+                self.sample_row, self.settings.process.sample_mode_duration
+            )
+            self.sample_row.set_active(bool(self.settings.process.sample_mode))
 
             self._refresh_saved_list()
-            set_combo_value(self.main_stem_row, self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR))
+            set_combo_value(
+                self.main_stem_row,
+                self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR,
+            )
             self._refresh_ensemble_type_values()
 
             self._rebuild_stem_only_toggles()
-            self.save_all_row.set_active(bool(self.settings.get("is_save_all_outputs_ensemble")))
-            self.append_name_row.set_active(bool(self.settings.get("is_append_ensemble_name")))
-            self.wav_ensemble_row.set_active(bool(self.settings.get("is_wav_ensemble")))
+            self.save_all_row.set_active(bool(self.settings.ensemble.save_all_outputs))
+            self.append_name_row.set_active(
+                bool(self.settings.ensemble.append_ensemble_name)
+            )
+            self.wav_ensemble_row.set_active(bool(self.settings.ensemble.wav_ensemble))
         finally:
             self._loading = False
         self._sync_gpu_dependent_rows()
 
-        self._rebuild_model_list(self.settings.get("selected_models") or [])
+        self._rebuild_model_list(self.settings.ensemble.selected_models or [])
 
     def _sync_shared_from_settings(self) -> None:
         """Re-read the keys shared across tabs (inputs / output / format / ...)."""
@@ -506,45 +520,45 @@ class EnsemblePage:
     def _set_bool(self, key: str, value: bool, *, refresh_stems: bool = False) -> None:
         if self._loading:
             return
-        self.settings.set(key, value)
+        set_flat(self.settings, key, value)
         if refresh_stems:
             self._update_stems_group_metadata()
 
     def _on_inputs_changed(self) -> None:
         paths = list(self.input_row.paths)
-        self.settings.set("input_paths", paths)
+        self.settings.process.input_paths = paths
         self.context.prune_unreadable_input_paths(paths)
         self.window._refresh_start_readiness()
 
     def _on_output_changed(self) -> None:
-        self.settings.set("export_path", self.output_row.path)
+        self.settings.process.export_path = self.output_row.path
         self.window._refresh_start_readiness()
 
-    def _on_format_changed(self, *_args) -> None:
+    def _on_format_changed(self, *_args: typing.Any) -> None:
         if not self._loading:
             self.format_row.persist_to_settings(self.settings)
 
-    def _on_vocal_split_changed(self, *_args) -> None:
+    def _on_vocal_split_changed(self, *_args: typing.Any) -> None:
         if not self._loading:
             self.vocal_split_row.persist_to_settings(self.settings)
 
-    def _on_gpu_changed(self, *_args) -> None:
+    def _on_gpu_changed(self, *_args: typing.Any) -> None:
         if not self._loading:
-            self.settings.set("is_gpu_conversion", self.gpu_row.get_active())
+            self.settings.process.use_gpu = self.gpu_row.get_active()
             self._update_stems_group_metadata()
         self._sync_gpu_dependent_rows()
 
-    def _on_autocast_changed(self, *_args) -> None:
+    def _on_autocast_changed(self, *_args: typing.Any) -> None:
         if not self._loading:
-            self.settings.set("is_autocast", self.autocast_row.get_active())
+            self.settings.process.autocast = self.autocast_row.get_active()
 
-    def _on_sample_changed(self, *_args) -> None:
+    def _on_sample_changed(self, *_args: typing.Any) -> None:
         if not self._loading:
-            self.settings.set("model_sample_mode", self.sample_row.get_active())
+            self.settings.process.sample_mode = self.sample_row.get_active()
             self._update_stems_group_metadata()
 
     def _ensemble_stem_pair(self) -> tuple[str | None, str | None]:
-        main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
         if main_stem and main_stem != CHOOSE_STEM_PAIR and "/" in main_stem:
             primary_stem, secondary_stem = main_stem.split("/", 1)
             return primary_stem, secondary_stem
@@ -566,7 +580,7 @@ class EnsemblePage:
     def _rebuild_stem_only_toggles(self) -> None:
         primary_stem, secondary_stem = self._ensemble_stem_pair()
         has_pair = bool(primary_stem and secondary_stem)
-        main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
         is_multi = self._is_multi_or_four_stem(main_stem)
         # Dual-stem: full Save stems toggles. 4-stem / multi-stem: summary-only.
         # Choose stem pair: hide the group.
@@ -592,7 +606,7 @@ class EnsemblePage:
             self.stems_group.set_description("")
             return
         primary_stem, _secondary = self._ensemble_stem_pair()
-        main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
         is_multi = self._is_multi_or_four_stem(main_stem)
         has_run = bool(primary_stem) or is_multi
         repo = self.window.context.repo
@@ -635,14 +649,17 @@ class EnsemblePage:
         curated = [curated_combo_label(preset_id) for preset_id in list_curated_ensembles()]
         names = list_saved_ensembles()
         set_combo_values(self.saved_row, [CHOOSE_ENSEMBLE_OPTION, *curated, *names])
-        set_combo_value(self.saved_row, self.settings.get("chosen_ensemble", CHOOSE_ENSEMBLE_OPTION))
+        set_combo_value(
+            self.saved_row,
+            self.settings.ensemble.chosen_ensemble or CHOOSE_ENSEMBLE_OPTION,
+        )
 
-    def _on_saved_selected(self, *_args) -> None:
+    def _on_saved_selected(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         name = get_combo_value(self.saved_row)
         if not name or name == CHOOSE_ENSEMBLE_OPTION:
-            self.settings.set("chosen_ensemble", CHOOSE_ENSEMBLE_OPTION)
+            self.settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
             return
         curated_id = curated_id_from_combo_label(name)
         if curated_id is not None:
@@ -650,24 +667,24 @@ class EnsemblePage:
             if not data:
                 self._toast(f"Could not load curated recipe '{curated_id}'.")
                 return
-            self.settings.set("chosen_ensemble", name)
+            self.settings.ensemble.chosen_ensemble = name
             self._apply_saved_ensemble(data, curated_id=curated_id)
             return
         data = load_ensemble(name)
         if not data:
             self._toast(f"Could not load ensemble '{name}'.")
             return
-        self.settings.set("chosen_ensemble", name)
+        self.settings.ensemble.chosen_ensemble = name
         self._apply_saved_ensemble(data)
 
     def _apply_saved_ensemble(self, data: dict, *, curated_id: Optional[str] = None) -> None:
         self._loading = True
         try:
             main_stem = data.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
-            self.settings.set("ensemble_main_stem", main_stem)
+            self.settings.ensemble.main_stem = main_stem
             set_combo_value(self.main_stem_row, main_stem)
             ensemble_type = data.get("ensemble_type", MAX_MIN)
-            self.settings.set("ensemble_type", ensemble_type)
+            self.settings.ensemble.type = ensemble_type
             self._refresh_ensemble_type_values()
         finally:
             self._loading = False
@@ -713,7 +730,7 @@ class EnsemblePage:
             dialog.set_default_response("cancel")
         dialog.set_close_response("cancel")
 
-        def on_response(_dlg, response):
+        def on_response(_dlg: typing.Any, response: typing.Any):
             if response != "download" or not entries:
                 return
             ids = queue.enqueue_many(entries)
@@ -746,7 +763,7 @@ class EnsemblePage:
         dialog.set_default_response("save")
         dialog.set_close_response("cancel")
 
-        def on_response(_dlg, response):
+        def on_response(_dlg: typing.Any, response: typing.Any):
             if response == "save":
                 name = entry.get_text().strip()
                 if name:
@@ -761,14 +778,14 @@ class EnsemblePage:
         try:
             save_ensemble(
                 name,
-                self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR),
-                self.settings.get("ensemble_type", MAX_MIN),
+                self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR,
+                self.settings.ensemble.type or MAX_MIN,
                 selected,
             )
         except OSError as exc:
             self._toast(f"Couldn't save ensemble: {exc}")
             return
-        self.settings.set("chosen_ensemble", name)
+        self.settings.ensemble.chosen_ensemble = name
         self._refresh_saved_list()
         self._toast(f"Saved ensemble '{name}'.")
 
@@ -792,11 +809,11 @@ class EnsemblePage:
         dialog.connect("response", self._on_delete_confirmed, name)
         dialog.present(self.window)
 
-    def _on_delete_confirmed(self, _dialog, response, name: str) -> None:
+    def _on_delete_confirmed(self, _dialog: typing.Any, response: typing.Any, name: str) -> None:
         if response != "delete":
             return
         if delete_ensemble(name):
-            self.settings.set("chosen_ensemble", CHOOSE_ENSEMBLE_OPTION)
+            self.settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
             self._refresh_saved_list()
             self._toast(f"Deleted ensemble '{name}'.")
         else:
@@ -808,9 +825,9 @@ class EnsemblePage:
         return main_stem in (FOUR_STEM_ENSEMBLE, MULTI_STEM_ENSEMBLE)
 
     def _refresh_ensemble_type_values(self) -> None:
-        main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
         multi = self._is_multi_or_four_stem(main_stem)
-        current = self.settings.get("ensemble_type", MAX_MIN)
+        current = self.settings.ensemble.type or MAX_MIN
         primary, secondary = parse_ensemble_type(current)
         primary_stem, secondary_stem = self._ensemble_stem_pair()
         primary_title, secondary_title = algorithm_row_titles(
@@ -834,13 +851,13 @@ class EnsemblePage:
                 self.preset_row.set_visible(False)
                 self.secondary_algo_row.set_visible(False)
                 if current != primary:
-                    self.settings.set("ensemble_type", primary)
+                    self.settings.ensemble.type = primary
             else:
                 self.preset_row.set_visible(True)
                 self.secondary_algo_row.set_visible(True)
                 paired = format_ensemble_type(primary, secondary)
                 if current != paired:
-                    self.settings.set("ensemble_type", paired)
+                    self.settings.ensemble.type = paired
                 set_combo_value(self.preset_row, preset_for_pair(primary, secondary))
         finally:
             self._syncing_preset = False
@@ -850,12 +867,12 @@ class EnsemblePage:
         self._update_wav_ensemble_subtitle()
         self._update_ensemble_options_summary()
 
-    def _on_main_stem_changed(self, *_args) -> None:
+    def _on_main_stem_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         main_stem = get_combo_value(self.main_stem_row)
-        self.settings.set("ensemble_main_stem", main_stem)
-        self.settings.set("chosen_ensemble", CHOOSE_ENSEMBLE_OPTION)
+        self.settings.ensemble.main_stem = main_stem
+        self.settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         set_combo_value(self.saved_row, CHOOSE_ENSEMBLE_OPTION)
         self._refresh_ensemble_type_values()
         # Rebuild the model list for the new stem pair first: stem-only
@@ -865,7 +882,7 @@ class EnsemblePage:
         self._rebuild_stem_only_toggles()
         self._update_ensemble_options_summary()
 
-    def _on_preset_changed(self, *_args) -> None:
+    def _on_preset_changed(self, *_args: typing.Any) -> None:
         if self._loading or self._syncing_preset:
             return
         preset = get_combo_value(self.preset_row)
@@ -879,24 +896,24 @@ class EnsemblePage:
             set_combo_value(self.secondary_algo_row, secondary)
             set_row_subtitle(self.primary_algo_row, algorithm_blurb(primary))
             set_row_subtitle(self.secondary_algo_row, algorithm_blurb(secondary))
-            self.settings.set("ensemble_type", format_ensemble_type(primary, secondary))
+            self.settings.ensemble.type = format_ensemble_type(primary, secondary)
         finally:
             self._syncing_preset = False
         self._update_wav_ensemble_subtitle()
         self._update_ensemble_options_summary()
 
-    def _on_ensemble_type_changed(self, *_args) -> None:
+    def _on_ensemble_type_changed(self, *_args: typing.Any) -> None:
         if self._loading or self._syncing_preset:
             return
-        main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
-        primary = get_combo_value(self.primary_algo_row)
+        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
+        primary = get_combo_value(self.primary_algo_row) or ""
         set_row_subtitle(self.primary_algo_row, algorithm_blurb(primary))
         if self._is_multi_or_four_stem(main_stem):
-            self.settings.set("ensemble_type", primary)
+            self.settings.ensemble.type = primary
         else:
-            secondary = get_combo_value(self.secondary_algo_row)
+            secondary = get_combo_value(self.secondary_algo_row) or ""
             set_row_subtitle(self.secondary_algo_row, algorithm_blurb(secondary))
-            self.settings.set("ensemble_type", format_ensemble_type(primary, secondary))
+            self.settings.ensemble.type = format_ensemble_type(primary, secondary)
             self._syncing_preset = True
             try:
                 set_combo_value(self.preset_row, preset_for_pair(primary, secondary))
@@ -926,8 +943,8 @@ class EnsemblePage:
         row = getattr(self, "wav_ensemble_row", None)
         if row is None:
             return
-        main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
-        primary, secondary = parse_ensemble_type(self.settings.get("ensemble_type", MAX_MIN))
+        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
+        primary, secondary = parse_ensemble_type(self.settings.ensemble.type or MAX_MIN)
         if self._is_multi_or_four_stem(main_stem):
             uses_chunk = primary == CHUNK_MIN
         else:
@@ -938,10 +955,10 @@ class EnsemblePage:
         group = getattr(self, "ensemble_group", None)
         if group is None:
             return
-        main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
         multi = self._is_multi_or_four_stem(main_stem)
         primary_stem, secondary_stem = self._ensemble_stem_pair()
-        primary, secondary = parse_ensemble_type(self.settings.get("ensemble_type", MAX_MIN))
+        primary, secondary = parse_ensemble_type(self.settings.ensemble.type or MAX_MIN)
         group.set_description(
             ensemble_options_summary(
                 stem_chosen=self._stem_pair_chosen(),
@@ -967,7 +984,7 @@ class EnsemblePage:
         self._model_checks = {}
         self._model_row_text = {}
 
-        main_stem = self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
         if main_stem == CHOOSE_STEM_PAIR:
             self.models_listbox.append(
                 Adw.ActionRow(title="Choose a stem pair to list models")
@@ -1024,14 +1041,14 @@ class EnsemblePage:
         """Prefer live checklist state; fall back to persisted settings."""
         if self._model_checks:
             return self._selected_model_tags()
-        return list(self.settings.get("selected_models") or [])
+        return list(self.settings.ensemble.selected_models or [])
 
     def _persist_selected_models(self) -> None:
-        self.settings.set("selected_models", self._selected_model_tags())
+        self.settings.ensemble.selected_models = self._selected_model_tags()
 
     def _models_summary(self) -> str:
         """Single-line description of the current member-model selection."""
-        if self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR) == CHOOSE_STEM_PAIR:
+        if (self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR) == CHOOSE_STEM_PAIR:
             return "Choose a stem pair first"
         count = len(self._effective_selected_models())
         if count == 0:
@@ -1041,7 +1058,7 @@ class EnsemblePage:
         return f"{count} models selected"
 
     def _stem_pair_chosen(self) -> bool:
-        return self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR) != CHOOSE_STEM_PAIR
+        return (self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR) != CHOOSE_STEM_PAIR
 
     def _update_member_models_sensitivity(self) -> None:
         """Dim Member models rows until a stem pair is chosen."""
@@ -1103,53 +1120,61 @@ class EnsemblePage:
             )
         )
 
-    def _on_models_search_changed(self, *_args) -> None:
+    def _on_models_search_changed(self, *_args: typing.Any) -> None:
         self.models_listbox.invalidate_filter()
         self._update_models_dialog_status()
 
-    def _on_models_select_all(self, *_args) -> None:
+    def _on_models_select_all(self, *_args: typing.Any) -> None:
         for tag in self._visible_model_tags():
             check = self._model_checks.get(tag)
             if check is not None and not check.get_active():
                 check.set_active(True)
 
-    def _on_models_clear(self, *_args) -> None:
+    def _on_models_clear(self, *_args: typing.Any) -> None:
         for tag in self._visible_model_tags():
             check = self._model_checks.get(tag)
             if check is not None and check.get_active():
                 check.set_active(False)
 
-    def _open_models_dialog(self, *_args) -> None:
+    def _open_models_dialog(self, *_args: typing.Any) -> None:
         if not self._stem_pair_chosen():
             return
         search = getattr(self, "models_search", None)
         if search is not None:
             search.set_text("")
-        preselected = self._selected_model_tags() if self._model_checks else (self.settings.get("selected_models") or [])
+        preselected = (
+            self._selected_model_tags()
+            if self._model_checks
+            else (self.settings.ensemble.selected_models or [])
+        )
         self._rebuild_model_list(preselected)
         present_modal_dialog(self.models_dialog, self.window)
 
-    def _open_member_model_options(self, *_args) -> None:
+    def _open_member_model_options(self, *_args: typing.Any) -> None:
         if not self._stem_pair_chosen():
             return
         from ..model_options import OPEN_CONTEXT_ENSEMBLE, stack_name_for_member_tag
 
-        selected = self._selected_model_tags() or self.settings.get("selected_models") or []
+        selected = (
+            self._selected_model_tags()
+            or self.settings.ensemble.selected_models
+            or []
+        )
         initial_stack = stack_name_for_member_tag(selected[-1]) if selected else None
         self.window._open_model_options(context=OPEN_CONTEXT_ENSEMBLE, initial_stack=initial_stack)
 
-    def _on_models_dialog_closed(self, *_args) -> None:
+    def _on_models_dialog_closed(self, *_args: typing.Any) -> None:
         self._update_models_summary()
         self._rebuild_stem_only_toggles()
         from core.debug_log import debug
 
-        stem = self.settings.get("ensemble_main_stem", "")
+        stem = self.settings.ensemble.main_stem
         models = len(self._selected_model_tags())
         debug("ui", f"ensemble models selected count={models} stem={stem}")
 
     def _on_model_toggled(self, _check: Gtk.CheckButton) -> None:
         # Changing the member set detaches the run from any saved ensemble.
-        self.settings.set("chosen_ensemble", CHOOSE_ENSEMBLE_OPTION)
+        self.settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         if not self._loading:
             set_combo_value(self.saved_row, CHOOSE_ENSEMBLE_OPTION)
         self._persist_selected_models()
@@ -1167,9 +1192,13 @@ class EnsemblePage:
         depends on the method for the multi-stem ensemble - is rebuilt with the
         correct method in effect.
         """
-        self.settings.set("chosen_process_method", ENSEMBLE_MODE)
+        self.settings.process.method = ProcessMethod.ENSEMBLE
         self._sync_shared_from_settings()
-        preselected = self._selected_model_tags() if self._model_checks else (self.settings.get("selected_models") or [])
+        preselected = (
+            self._selected_model_tags()
+            if self._model_checks
+            else (self.settings.ensemble.selected_models or [])
+        )
         self._rebuild_model_list(preselected)
 
     def on_deactivated(self) -> None:
@@ -1182,7 +1211,7 @@ class EnsemblePage:
         Excludes input/output readiness (those rows carry their own affordances);
         this is what the empty-state banner surfaces.
         """
-        if self.settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR) == CHOOSE_STEM_PAIR:
+        if (self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR) == CHOOSE_STEM_PAIR:
             return _REASON_STEM_PAIR
         if len(self._effective_selected_models()) <= 1:
             return _REASON_TWO_MODELS
@@ -1211,9 +1240,9 @@ class EnsemblePage:
         banner.set_revealed(reason is not None)
         self.window._refresh_start_readiness()
 
-    def start(self, callbacks) -> None:
+    def start(self, callbacks: typing.Any) -> None:
         # Readiness is validated by ``MainWindow._on_start`` before dispatch.
-        self.settings.set("chosen_process_method", ENSEMBLE_MODE)
+        self.settings.process.method = ProcessMethod.ENSEMBLE
         self._persist_selected_models()
 
         input_paths = list(self.input_row.paths)
@@ -1225,7 +1254,7 @@ class EnsemblePage:
                 self._toast(error)
             from core.debug_log import debug
 
-            stem = self.settings.get("ensemble_main_stem", "")
+            stem = self.settings.ensemble.main_stem
             models = len(self._selected_model_tags())
             debug("ui", f"ensemble start files={len(input_paths)} models={models} stem={stem}")
             self.context.runner.start_ensemble(input_paths, callbacks)

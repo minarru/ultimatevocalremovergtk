@@ -6,6 +6,7 @@ Codeberg for a newer source release. Upgrade is documented on the release page
 
 Entry point: :func:`open_update_view` (wire to a ``win.updates`` action).
 """
+import typing
 
 import threading
 
@@ -19,7 +20,7 @@ from .dispatch import idle_on_main
 from .files import open_uri_in_browser
 
 
-def _get_manager(app_context) -> DownloadManager:
+def _get_manager(app_context: typing.Any) -> DownloadManager:
     if app_context is None:
         return DownloadManager()
     manager = getattr(app_context, "_download_manager", None)
@@ -30,7 +31,7 @@ def _get_manager(app_context) -> DownloadManager:
 
 
 class UpdateView:
-    def __init__(self, parent, app_context=None):
+    def __init__(self, parent: typing.Any, app_context: typing.Any=None):
         self.parent = parent
         self.context = app_context
         self.manager = _get_manager(app_context)
@@ -88,7 +89,7 @@ class UpdateView:
         status = self.manager.check_release()
         idle_on_main(self._check_done, status)
 
-    def _check_done(self, status) -> None:
+    def _check_done(self, status: typing.Any) -> None:
         self.update_button.set_sensitive(True)
         self._update_link = status.get("update_link") or FORK_RELEASE_PAGE
 
@@ -109,7 +110,7 @@ class UpdateView:
                 self.upgrade_row.set_visible(True)
             self.update_button.set_label("View release notes")
 
-    def _on_check_or_update(self, _button) -> None:
+    def _on_check_or_update(self, _button: typing.Any) -> None:
         label = self.update_button.get_label()
         if label == "Check again":
             self._check()
@@ -117,7 +118,7 @@ class UpdateView:
             open_uri_in_browser(self.parent, self._update_link)
 
 
-def open_update_view(parent_window, app_context=None):
+def open_update_view(parent_window: typing.Any, app_context: typing.Any=None):
     """Open the version / update view. Wire this to a ``win.updates`` action."""
     view = UpdateView(parent_window, app_context)
     view.present()

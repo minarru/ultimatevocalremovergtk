@@ -3,6 +3,7 @@
 import os
 import tempfile
 import unittest
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
 
@@ -67,7 +68,7 @@ class EnsureMdxCConfigTests(unittest.TestCase):
                 resp.__enter__ = MagicMock(return_value=resp)
                 resp.__exit__ = MagicMock(return_value=False)
                 return resp
-            raise HTTPError(url, 404, "not found", None, None)
+            raise HTTPError(url, 404, "not found", cast(Any, None), None)
 
         with patch("core.mdx_config_fetch._urlopen", side_effect=fake_urlopen):
             self.assertTrue(ensure_mdx_c_config(name))
@@ -81,14 +82,14 @@ class EnsureMdxCConfigTests(unittest.TestCase):
 
         def fake_urlopen(url: str):
             if "TRvlvr/application_data" in url:
-                raise HTTPError(url, 404, "not found", None, None)
+                raise HTTPError(url, 404, "not found", cast(Any, None), None)
             if "Politrees/UVR_resources" in url and url.endswith(name):
                 resp = MagicMock()
                 resp.read.return_value = body
                 resp.__enter__ = MagicMock(return_value=resp)
                 resp.__exit__ = MagicMock(return_value=False)
                 return resp
-            raise HTTPError(url, 404, "not found", None, None)
+            raise HTTPError(url, 404, "not found", cast(Any, None), None)
 
         with patch("core.mdx_config_fetch._urlopen", side_effect=fake_urlopen):
             self.assertTrue(ensure_mdx_c_config(name))
@@ -98,7 +99,7 @@ class EnsureMdxCConfigTests(unittest.TestCase):
 
     def test_all_sources_fail(self) -> None:
         def fake_urlopen(url: str):
-            raise HTTPError(url, 404, "not found", None, None)
+            raise HTTPError(url, 404, "not found", cast(Any, None), None)
 
         with patch("core.mdx_config_fetch._urlopen", side_effect=fake_urlopen):
             self.assertFalse(ensure_mdx_c_config("missing_everywhere.yaml"))

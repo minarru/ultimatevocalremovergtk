@@ -8,7 +8,7 @@ from typing import Callable, List, Optional, Sequence
 
 from . import paths
 from .debug_log import debug
-from .settings import SettingsModel
+from .settings import Settings
 
 FallbackCallback = Callable[[str, Exception], None]
 
@@ -21,7 +21,7 @@ def _clip_cache_path(source: str, duration: int) -> str:
 
 
 def prepare_input_paths(
-    settings: SettingsModel,
+    settings: Settings,
     input_paths: Sequence[str],
     *,
     on_fallback: Optional[FallbackCallback] = None,
@@ -32,10 +32,10 @@ def prepare_input_paths(
     ``on_fallback`` is invoked (if provided) so callers can surface the
     fallback instead of silently turning a preview into a full-length run.
     """
-    if not settings.get("model_sample_mode"):
+    if not settings.process.sample_mode:
         return list(input_paths)
 
-    duration = max(1, int(settings.get("model_sample_mode_duration", 30) or 30))
+    duration = max(1, int(settings.process.sample_mode_duration or 30))
     os.makedirs(paths.SAMPLE_CLIP_PATH, exist_ok=True)
 
     prepared: List[str] = []

@@ -9,16 +9,17 @@ Two flows from ``UVR.py`` are reproduced here, both writing to the *same*
   :attr:`core.ModelRepository.on_unrecognized_model`. It prompts for the
   architecture-specific parameters (VR: stem / param file / 5.1 channels;
   MDX-Net: stem / dim_f / dim_t / n_fft / compensate; MDX-C: config yaml),
-  persists them, and returns the dict ``ModelData`` expects.
+  persists them, and returns the dict ``ModelConfig`` expects.
 * **Change model defaults** - :func:`show_change_defaults_dialog` lets the user
   pick a known model and edit or delete its stored parameters.
 
 The parameter dialog is synchronous (it returns the chosen parameters to the
-``ModelData`` constructor). It uses :class:`Adw.Dialog` with a nested
+``ModelConfig`` constructor). It uses :class:`Adw.Dialog` with a nested
 :class:`GLib.MainLoop`; when the request originates on the separation worker
 thread it is marshalled onto the GTK main loop and the worker blocks until the
 user responds.
 """
+import typing
 
 import json
 import os
@@ -52,7 +53,8 @@ from bundled.constants import (
 
 from core import paths
 from core.mdx_c_registry import infer_mdx_c_architecture
-from core.model_data import ModelData, load_mdx_c_config
+from core.model_config import ModelConfig
+from core.model_data import load_mdx_c_config
 from core.model_display import display_name_for_model
 from ..hints import set_tooltip
 from ..spacing import inset_md
@@ -71,7 +73,7 @@ from ..widgets.rows import (
 # Thread marshalling
 # ---------------------------------------------------------------------------
 
-def _run_on_main(func):
+def _run_on_main(func: typing.Any):
     """Run ``func`` on the GTK main loop and return its result (blocking)."""
     if threading.current_thread() is threading.main_thread():
         return func()
@@ -95,7 +97,7 @@ def _run_on_main(func):
 # Existing-parameter lookup (for change-defaults prefill)
 # ---------------------------------------------------------------------------
 
-def _hash_dir_for(process_method):
+def _hash_dir_for(process_method: typing.Any):
     if process_method == VR_ARCH_TYPE:
         return paths.VR_HASH_DIR
     if process_method == MDX_ARCH_TYPE:
@@ -103,7 +105,7 @@ def _hash_dir_for(process_method):
     return None
 
 
-def _existing_params(context, model_data):
+def _existing_params(context: typing.Any, model_data: typing.Any):
     """Return the model's currently-stored parameters, if any."""
     hash_dir = _hash_dir_for(model_data.process_method)
     if not hash_dir or not model_data.model_hash:
@@ -122,7 +124,7 @@ def _existing_params(context, model_data):
     return None
 
 
-def _write_params(model_data, params):
+def _write_params(model_data: typing.Any, params: typing.Any):
     """Persist ``params`` to ``<hash>.json`` next to the model-data cache."""
     hash_dir = _hash_dir_for(model_data.process_method)
     if not hash_dir or not model_data.model_hash:
@@ -132,7 +134,7 @@ def _write_params(model_data, params):
         handle.write(json.dumps(params, indent=4))
 
 
-def _list_param_files(directory, extension):
+def _list_param_files(directory: typing.Any, extension: typing.Any):
     if not os.path.isdir(directory):
         return []
     return sorted(os.path.splitext(name)[0] for name in os.listdir(directory) if name.endswith(extension))
@@ -145,7 +147,7 @@ def _list_param_files(directory, extension):
 class _ParamDialog:
     """Modal parameter editor returning the chosen params dict (or ``None``)."""
 
-    def __init__(self, context, parent, model_data, existing=None):
+    def __init__(self, context: typing.Any, parent: typing.Any, model_data: typing.Any, existing: typing.Any=None):
         self.context = context
         self.parent = parent
         self.model_data = model_data
@@ -164,7 +166,7 @@ class _ParamDialog:
 
     # -- Layout -------------------------------------------------------------
 
-    def _build(self, page):
+    def _build(self, page: typing.Any):
         method = self.model_data.process_method
         is_ckpt = getattr(self.model_data, "is_mdx_ckpt", False) or str(self.model_data.model_path).endswith(CKPT)
         repo = getattr(self.model_data, "repo", None)
@@ -186,12 +188,12 @@ class _ParamDialog:
         else:
             self._build_mdx(group)
 
-    def _add_stem_row(self, group):
+    def _add_stem_row(self, group: typing.Any):
         self.stem_row = make_combo_row("Primary stem", list(STEM_SET_MENU))
         set_combo_value(self.stem_row, self.existing.get("primary_stem", VOCAL_STEM))
         group.add(self.stem_row)
 
-    def _add_karaoke_rows(self, group):
+    def _add_karaoke_rows(self, group: typing.Any):
         self.kara_row = Adw.SwitchRow(title="Karaoke model")
         self.kara_row.set_active(bool(self.existing.get(IS_KARAOKEE, False)))
         group.add(self.kara_row)
@@ -202,7 +204,7 @@ class _ParamDialog:
         set_scale_row_value(self.balance_row, str(self.existing.get(IS_BV_MODEL_REBAL, 0)))
         group.add(self.balance_row)
 
-    def _build_vr(self, group):
+    def _build_vr(self, group: typing.Any):
         self._add_stem_row(group)
         params = _list_param_files(paths.VR_PARAM_DIR, ".json") or [NONE_SELECTED]
         self.vr_param_row = make_combo_row("Model parameters", params)
@@ -221,7 +223,7 @@ class _ParamDialog:
 
         self._add_karaoke_rows(group)
 
-    def _build_mdx(self, group):
+    def _build_mdx(self, group: typing.Any):
         self._add_stem_row(group)
         detected = self._detect_mdx_shapes()
         self.dim_f_row = self._entry_row("Dim_f", self.existing.get("mdx_dim_f_set", detected.get("dim_f", MDX_POP_DIMF[0])))
@@ -234,7 +236,7 @@ class _ParamDialog:
         group.add(self.compensate_row)
         self._add_karaoke_rows(group)
 
-    def _build_mdx_c(self, group):
+    def _build_mdx_c(self, group: typing.Any):
         yamls = _list_param_files(paths.MDX_C_CONFIG_PATH, ".yaml") or [NONE_SELECTED]
         self.mdx_c_row = make_combo_row("Model configuration", yamls)
         existing_yaml = self.existing.get("config_yaml", "")
@@ -252,7 +254,7 @@ class _ParamDialog:
         self._update_mdx_c_architecture_hint()
         self.stem_row = None  # not used for MDX-C
 
-    def _on_mdx_c_yaml_changed(self, *_args):
+    def _on_mdx_c_yaml_changed(self, *_args: typing.Any):
         self._update_mdx_c_architecture_hint()
 
     def _update_mdx_c_architecture_hint(self):
@@ -269,7 +271,7 @@ class _ParamDialog:
             self.arch_row.set_subtitle("Unknown (select yaml)")
 
     @staticmethod
-    def _entry_row(title, value):
+    def _entry_row(title: typing.Any, value: typing.Any):
         row = Adw.EntryRow(title=title)
         row.set_text(str(value))
         return row
@@ -378,7 +380,7 @@ class _ParamDialog:
         return result
 
 
-def _run_param_dialog(context, parent, model_data):
+def _run_param_dialog(context: typing.Any, parent: typing.Any, model_data: typing.Any):
     from core.debug_log import debug, preview_text
 
     model_name = getattr(model_data, "model_name", None) or getattr(model_data, "model_basename", "?")
@@ -394,10 +396,10 @@ def _run_param_dialog(context, parent, model_data):
     return result
 
 
-def make_unrecognized_handler(context, get_parent):
+def make_unrecognized_handler(context: typing.Any, get_parent: typing.Any):
     """Build the ``on_unrecognized_model`` hook (runs the dialog on the UI loop)."""
 
-    def handler(model_data):
+    def handler(model_data: typing.Any):
         return _run_on_main(lambda: _run_param_dialog(context, get_parent(), model_data))
 
     return handler
@@ -415,7 +417,7 @@ class _ApolloParamDialog:
     returned dict to ``<hash>.json`` so the model is recognised next time.
     """
 
-    def __init__(self, parent, apollo_model_data):
+    def __init__(self, parent: typing.Any, apollo_model_data: typing.Any):
         from bundled.constants import (
             APOLLO_MODEL_PARAMETERS_TEXT,
             NONE_SELECTED,
@@ -462,10 +464,10 @@ class _ApolloParamDialog:
         )
 
 
-def make_apollo_unrecognized_handler(get_parent):
+def make_apollo_unrecognized_handler(get_parent: typing.Any):
     """Build the Apollo ``on_unrecognized`` hook (runs the dialog on the UI loop)."""
 
-    def handler(apollo_model_data):
+    def handler(apollo_model_data: typing.Any):
         from core.debug_log import debug, preview_text
 
         name = getattr(apollo_model_data, "apollo_model_name", None) or "?"
@@ -484,7 +486,7 @@ def make_apollo_unrecognized_handler(get_parent):
 # Change-model-defaults dialog
 # ---------------------------------------------------------------------------
 
-def show_change_defaults_dialog(context, parent):
+def show_change_defaults_dialog(context: typing.Any, parent: typing.Any):
     """Modal editor to change or delete a known model's stored parameters."""
     repo = context.repo
     settings = context.settings
@@ -525,13 +527,19 @@ def show_change_defaults_dialog(context, parent):
     def toast(message: str) -> None:
         toast_overlay.add_toast(Adw.Toast.new(message))
 
-    def selected_model_data(is_get_hash_dir_only=False):
+    def selected_model_data(is_get_hash_dir_only: typing.Any=False):
         tag = get_combo_value(model_row)
         if not tag or tag == NO_MODEL:
             return None
-        return ModelData(settings, repo, tag, is_dry_check=True, is_get_hash_dir_only=is_get_hash_dir_only)
+        return ModelConfig(
+            settings,
+            repo,
+            tag,
+            is_dry_check=True,
+            is_get_hash_dir_only=is_get_hash_dir_only,
+        )
 
-    def on_change(_button):
+    def on_change(_button: typing.Any):
         model_data = selected_model_data()
         if model_data is None:
             toast("Select a model first.")
@@ -542,7 +550,7 @@ def show_change_defaults_dialog(context, parent):
         else:
             toast("No changes made.")
 
-    def on_delete(_button):
+    def on_delete(_button: typing.Any):
         model_data = selected_model_data(is_get_hash_dir_only=True)
         if model_data is None:
             toast("Select a model first.")
@@ -568,7 +576,7 @@ def show_change_defaults_dialog(context, parent):
         dialog.connect("response", on_delete_confirmed, hash_file)
         dialog.present(parent)
 
-    def on_delete_confirmed(_dialog, response, hash_file: str):
+    def on_delete_confirmed(_dialog: typing.Any, response: typing.Any, hash_file: str):
         if response != "delete":
             return
         if hash_file and os.path.isfile(hash_file):

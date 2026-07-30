@@ -34,12 +34,12 @@ DONATE_LINK_PATREON = "https://www.patreon.com/uvr"
 NORMAL_REPO = "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/"
 
 FORK_RELEASE_JSON_URL = (
-    "https://codeberg.org/jawlet/ultimatevocalremovergtk/raw/branch/main/packaging/release.json"
+    "https://raw.githubusercontent.com/minarru/ultimatevocalremovergtk/main/packaging/release.json"
 )
 
-FORK_RELEASE_PAGE = "https://codeberg.org/jawlet/ultimatevocalremovergtk/releases"
+FORK_RELEASE_PAGE = "https://github.com/minarru/ultimatevocalremovergtk/releases"
 
-FORK_ISSUE_URL = "https://codeberg.org/jawlet/ultimatevocalremovergtk/issues/new"
+FORK_ISSUE_URL = "https://github.com/minarru/ultimatevocalremovergtk/issues/new"
 
 ISSUE_LINK = FORK_ISSUE_URL
 

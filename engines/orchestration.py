@@ -1,7 +1,8 @@
 from __future__ import annotations
+import typing
 
 import os
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 from bundled.constants import *
 from core.debug_log import trace_phase
@@ -11,7 +12,7 @@ from ml import spec_utils
 from .mix import gather_sources
 
 if TYPE_CHECKING:
-    from core.model_data import ModelData
+    from core.model_config import ModelConfig
 
 
 def _engine_classes():
@@ -23,16 +24,16 @@ def _engine_classes():
 
 
 def _build_seperator(
-    model: ModelData,
-    process_data,
+    model: Any,
+    process_data: typing.Any,
     *,
-    main_model_primary_stem_4_stem=None,
-    main_process_method=None,
-    is_return_dual=True,
-    main_model_primary=None,
-    vocal_stem_path=None,
-    master_inst_source=None,
-    master_vocal_source=None,
+    main_model_primary_stem_4_stem: typing.Any=None,
+    main_process_method: typing.Any=None,
+    is_return_dual: typing.Any=True,
+    main_model_primary: typing.Any=None,
+    vocal_stem_path: typing.Any=None,
+    master_inst_source: typing.Any=None,
+    master_vocal_source: typing.Any=None,
 ):
     SeperateVR, SeperateMDX, SeperateMDXC, SeperateDemucs = _engine_classes()
     method = model.process_method
@@ -105,7 +106,7 @@ def _build_seperator(
     raise NotImplementedError(f"engine for '{method}' is not available")
 
 
-def _run_seperator(seperator) -> object:
+def _run_seperator(seperator: typing.Any) -> Any:
     try:
         return seperator.seperate()
     finally:
@@ -113,15 +114,15 @@ def _run_seperator(seperator) -> object:
 
 
 def process_secondary_model(
-    secondary_model: ModelData,
-    process_data,
-    main_model_primary_stem_4_stem=None,
-    is_source_load=False,
-    main_process_method=None,
-    is_pre_proc_model=False,
-    is_return_dual=True,
-    main_model_primary=None,
-):
+    secondary_model: ModelConfig,
+    process_data: typing.Any,
+    main_model_primary_stem_4_stem: typing.Any=None,
+    is_source_load: typing.Any=False,
+    main_process_method: typing.Any=None,
+    is_pre_proc_model: typing.Any=False,
+    is_return_dual: typing.Any=True,
+    main_model_primary: typing.Any=None,
+) -> Any:
     with trace_phase(
         "separate",
         "secondary_model",
@@ -129,7 +130,7 @@ def process_secondary_model(
         method=secondary_model.process_method,
     ):
         if not is_pre_proc_model:
-            process_iteration = process_data['process_iteration']
+            process_iteration = process_data.process_iteration
             process_iteration()
 
         seperator = _build_seperator(
@@ -143,18 +144,21 @@ def process_secondary_model(
         secondary_sources = _run_seperator(seperator)
 
         if type(secondary_sources) is dict and not is_source_load and not is_pre_proc_model:
-            return gather_sources(secondary_model.primary_model_primary_stem, secondary_stem(secondary_model.primary_model_primary_stem), secondary_sources)
+            primary_stem = str(secondary_model.primary_model_primary_stem or "")
+            return gather_sources(
+                primary_stem, secondary_stem(primary_stem), secondary_sources
+            )
         return secondary_sources
 
 
 def process_chain_model(
-    secondary_model: ModelData,
-    process_data,
-    vocal_stem_path,
-    master_vocal_source,
-    master_inst_source=None,
+    secondary_model: ModelConfig,
+    process_data: typing.Any,
+    vocal_stem_path: typing.Any,
+    master_vocal_source: typing.Any,
+    master_inst_source: typing.Any=None,
 ):
-    process_iteration = process_data['process_iteration']
+    process_iteration = process_data.process_iteration
     process_iteration()
 
     if secondary_model.bv_model_rebalance:

@@ -5,13 +5,13 @@ from pathlib import Path
 
 from bundled.constants import WAV
 
-from .settings import SettingsModel
+from .settings import Settings
 
 
-def resolve_wav_type_set(settings: SettingsModel) -> str:
+def resolve_wav_type_set(settings: Settings) -> str:
     """Reproduce ``MainWindow.process_check_wav_type``."""
-    wav_type = settings.get("wav_type_set")
-    save_format_sel = settings.get("save_format")
+    wav_type = settings.process.wav_type
+    save_format_sel = settings.process.save_format
     if wav_type == "32-bit Float":
         return "FLOAT"
     if wav_type == "64-bit Float":

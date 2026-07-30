@@ -1,0 +1,2 @@
+# Dev / CI tooling (not required at runtime).
+pyright==1.1.403

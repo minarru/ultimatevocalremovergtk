@@ -4,12 +4,13 @@ Each processing method (VR Architecture, MDX-Net, Demucs) contributes one
 :class:`MethodView`. A view owns the method's model dropdown plus the
 main-window options that the Tk app shows for that method
 (``update_main_widget_states``), and knows how to read/write its slice of the
-:class:`~core.settings.SettingsModel` using the exact ``DEFAULT_DATA`` keys.
+typed :class:`~core.settings.Settings`.
 
 The window builds a ``Gtk.Stack`` from :data:`METHOD_VIEWS` and a "Process
 method" ``Adw.ComboRow`` to choose between them, so additional method panels can
 be registered by appending to the registry without touching the window assembly.
 """
+import typing
 
 from typing import Callable, List, Optional, Type
 
@@ -40,6 +41,7 @@ from bundled.constants import (
     VOCAL_STEM,
     VR_ARCH_TYPE,
 )
+from core.settings import Settings
 
 from ..hints import HelpHintManager
 from ..widgets.rows import (
@@ -69,6 +71,9 @@ from ..option_summaries import (
     preproc_summary,
     secondary_models_summary,
 )
+from ..settings_bind import get_flat, set_flat
+
+_DEFAULT_SETTINGS = Settings.defaults()
 
 # Per-stem secondary-model slots: (settings-key slot, display pair, primary stem,
 # secondary stem) used to build the four secondary-model selectors UVR exposes.
@@ -80,7 +85,7 @@ _SECONDARY_SLOTS = (
 )
 
 
-def apply_name_mapper(names, name_mapper, *, catalogue_index=None, arch=None, repo=None) -> List[str]:
+def apply_name_mapper(names: typing.Any, name_mapper: typing.Any, *, catalogue_index: typing.Any=None, arch: typing.Any=None, repo: typing.Any=None) -> List[str]:
     """Map on-disk basenames to runtime display labels."""
     if arch and repo:
         return map_basenames_to_display(names, arch, repo)
@@ -94,7 +99,7 @@ def apply_name_mapper(names, name_mapper, *, catalogue_index=None, arch=None, re
     ]
 
 
-def current_display_for_stored_model(stored, basenames, arch, repo) -> str:
+def current_display_for_stored_model(stored: typing.Any, basenames: typing.Any, arch: typing.Any, repo: typing.Any) -> str:
     """Resolve a stored picker value to the current runtime display label.
 
     Accepts an on-disk basename or an older mapper/catalogue alias and returns
@@ -137,7 +142,7 @@ class MethodView:
     #: Whether this method exposes the Demucs pre-process model selector.
     has_preproc: bool = False
 
-    def __init__(self, context, on_settings_changed: Callable[[], None]):
+    def __init__(self, context: typing.Any, on_settings_changed: Callable[[], None]):
         self.context = context
         self.settings = context.settings
         self._on_settings_changed = on_settings_changed
@@ -220,12 +225,12 @@ class MethodView:
             score_texts=[(display, basename) for display, basename in zip(names, basenames)],
         )
         set_combo_values(self.model_row, [CHOOSE_MODEL, *names])
-        stored = self.settings.get(self.model_key, CHOOSE_MODEL)
+        stored = get_flat(self.settings, self.model_key, CHOOSE_MODEL)
         if stored not in (CHOOSE_MODEL, NO_MODEL, None):
             display = current_display_for_stored_model(stored, basenames, arch, repo)
             if display != stored:
                 stored = display
-                self.settings.set(self.model_key, display)
+                set_flat(self.settings, self.model_key, display)
         set_combo_value(self.model_row, stored)
 
     def refresh_models(self) -> None:
@@ -248,12 +253,12 @@ class MethodView:
     def has_model(self) -> bool:
         return self.selected_model() not in (CHOOSE_MODEL, None)
 
-    def _on_model_changed(self, *_args) -> None:
+    def _on_model_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
         from core.debug_log import debug, preview_text
 
-        self.settings.set(self.model_key, self.selected_model())
+        set_flat(self.settings, self.model_key, self.selected_model())
         name = self.selected_model()
         debug(
             "model",
@@ -287,7 +292,7 @@ class MethodView:
         self._update_stem_group_metadata()
         self.sync_dynamic_option_state()
 
-    def _configure_save_stems(self, model) -> None:
+    def _configure_save_stems(self, model: typing.Any) -> None:
         """Default: exclusive export filter for <=2-stem / VR-style models."""
         self.save_stems.configure_exclusive(
             primary_stem=self._resolved_primary_stem,
@@ -344,16 +349,16 @@ class MethodView:
     def _sync_only_active(self) -> None:
         self._sync_stem_only_toggles()
 
-    def _on_model_resolved(self, model) -> None:
+    def _on_model_resolved(self, model: typing.Any) -> None:
         """Hook called after the selected model is dry-resolved (on change/load).
 
-        ``model`` is a dry-check :class:`~core.ModelData` or ``None`` when no
+        ``model`` is a dry-check :class:`~core.ModelConfig` or ``None`` when no
         model is selected / it couldn't be resolved. Subclasses override to react
         to model-specific attributes (e.g. MDX-C vs classic MDX). Default no-op.
         """
 
-    #: Arch type used to build ``ModelData`` (VR's panel key differs from its
-    #: ``ModelData`` process method); defaults to :attr:`method_key`.
+    #: Arch type used to build ``ModelConfig`` (VR's panel key differs from its
+    #: process method); defaults to :attr:`method_key`.
     resolution_method_key: str = ""
 
     @property
@@ -382,7 +387,7 @@ class MethodView:
         self.hints.refresh()
 
     def save(self, *, include_stem_only: bool = True) -> None:
-        self.settings.set(self.model_key, self.selected_model())
+        set_flat(self.settings, self.model_key, self.selected_model())
         if include_stem_only:
             self._persist_stem_only()
         self.save_options()
@@ -393,20 +398,20 @@ class MethodView:
     # -- Method-specific option controls ---------------------------------------
 
     @staticmethod
-    def _add_row(container, row) -> None:
+    def _add_row(container: typing.Any, row: typing.Any) -> None:
         """Add ``row`` to a ``PreferencesGroup`` (``add``) or ``ExpanderRow`` (``add_row``)."""
         if isinstance(container, Adw.ExpanderRow):
             container.add_row(row)
         else:
             container.add(row)
 
-    def _hint(self, row, hint):
+    def _hint(self, row: typing.Any, hint: typing.Any):
         """Register ``row`` with the view's help-hint manager when ``hint`` is set."""
         if hint:
             self.hints.register(row, hint)
         return row
 
-    def add_option_combo(self, group, key, title, values, subtitle=None, hint=None):
+    def add_option_combo(self, group: typing.Any, key: typing.Any, title: typing.Any, values: typing.Any, subtitle: typing.Any=None, hint: typing.Any=None):
         """Add a combo row bound to settings ``key`` (stored as a string)."""
         row = make_combo_row(title, values, subtitle)
         row.connect("notify::selected", lambda *_a, k=key, r=row: self._on_option_combo(k, r))
@@ -416,22 +421,20 @@ class MethodView:
 
     def add_option_scale(
         self,
-        group,
-        key,
-        title,
+        group: typing.Any,
+        key: typing.Any,
+        title: typing.Any,
         *,
-        values=None,
+        values: typing.Any=None,
         lower: Optional[float] = None,
         upper: Optional[float] = None,
         step: float = 1,
-        digits=0,
-        subtitle=None,
-        hint=None,
-        store_float=False,
+        digits: typing.Any=0,
+        subtitle: typing.Any=None,
+        hint: typing.Any=None,
+        store_float: typing.Any=False,
     ):
         """Add a constrained slider row bound to settings ``key``."""
-        from bundled.constants import DEFAULT_DATA
-
         from ..widgets.rows import (
             make_discrete_scale_row,
             make_numeric_scale_row,
@@ -445,8 +448,9 @@ class MethodView:
                 raise ValueError("lower and upper are required when values is None")
             row = make_numeric_scale_row(title, lower, upper, step=step, digits=digits, subtitle=subtitle)
         row._uvr_store_float = store_float
-        if key in DEFAULT_DATA:
-            set_scale_default_mark(row, DEFAULT_DATA[key])
+        default_value = _DEFAULT_SETTINGS.get(key)
+        if default_value is not None:
+            set_scale_default_mark(row, default_value)
         row._uvr_scale.connect(
             "value-changed",
             lambda *_a, k=key, r=row: self._on_option_scale(k, r),
@@ -455,7 +459,7 @@ class MethodView:
         self._scale_rows[key] = row
         return self._hint(row, hint)
 
-    def add_option_switch(self, group, key, title, subtitle=None, hint=None):
+    def add_option_switch(self, group: typing.Any, key: typing.Any, title: typing.Any, subtitle: typing.Any=None, hint: typing.Any=None):
         """Add a switch row bound to boolean settings ``key``."""
         row = make_switch_row(title, subtitle)
         row.connect("notify::active", lambda *_a, k=key, r=row: self._on_option_switch(k, r))
@@ -463,7 +467,7 @@ class MethodView:
         self._switch_rows[key] = row
         return self._hint(row, hint)
 
-    def add_option_spin(self, group, key, title, lower, upper, step, digits=2, subtitle=None, hint=None):
+    def add_option_spin(self, group: typing.Any, key: typing.Any, title: typing.Any, lower: typing.Any, upper: typing.Any, step: typing.Any, digits: typing.Any=2, subtitle: typing.Any=None, hint: typing.Any=None):
         """Add a spin row bound to a numeric settings ``key`` (stored as float)."""
         adjustment = Gtk.Adjustment(lower=lower, upper=upper, step_increment=step)
         row = Adw.SpinRow(title=title, adjustment=adjustment, digits=digits)
@@ -474,36 +478,36 @@ class MethodView:
         self._spin_rows[key] = row
         return self._hint(row, hint)
 
-    def _on_option_combo(self, key, row) -> None:
+    def _on_option_combo(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading:
             return
-        self.settings.set(key, get_combo_value(row))
+        set_flat(self.settings, key, get_combo_value(row))
         self._touch_settings()
 
-    def _on_option_scale(self, key, row) -> None:
+    def _on_option_scale(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading:
             return
         if getattr(row, "_uvr_store_float", False):
-            self.settings.set(key, round(get_scale_row_float(row), 2))
+            set_flat(self.settings, key, round(get_scale_row_float(row), 2))
         else:
-            self.settings.set(key, get_scale_row_value(row))
+            set_flat(self.settings, key, get_scale_row_value(row))
         self._touch_settings()
 
-    def _on_option_switch(self, key, row) -> None:
+    def _on_option_switch(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading:
             return
-        self.settings.set(key, row.get_active())
+        set_flat(self.settings, key, row.get_active())
         self._touch_settings()
 
-    def _on_option_spin(self, key, row) -> None:
+    def _on_option_spin(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading:
             return
-        self.settings.set(key, round(row.get_value(), 2))
+        set_flat(self.settings, key, round(row.get_value(), 2))
         self._touch_settings()
 
     def _load_scales(self) -> None:
         for key, row in self._scale_rows.items():
-            value = self.settings.get(key)
+            value = get_flat(self.settings, key)
             if getattr(row, "_uvr_store_float", False):
                 try:
                     set_scale_row_float(row, float(value))
@@ -515,28 +519,28 @@ class MethodView:
     def _save_scales(self) -> None:
         for key, row in self._scale_rows.items():
             if getattr(row, "_uvr_store_float", False):
-                self.settings.set(key, round(get_scale_row_float(row), 2))
+                set_flat(self.settings, key, round(get_scale_row_float(row), 2))
             else:
-                self.settings.set(key, get_scale_row_value(row))
+                set_flat(self.settings, key, get_scale_row_value(row))
 
     def _load_switches(self) -> None:
         for key, row in self._switch_rows.items():
-            row.set_active(bool(self.settings.get(key)))
+            row.set_active(bool(get_flat(self.settings, key)))
 
     def _save_switches(self) -> None:
         for key, row in self._switch_rows.items():
-            self.settings.set(key, row.get_active())
+            set_flat(self.settings, key, row.get_active())
 
     def _load_spins(self) -> None:
         for key, row in self._spin_rows.items():
             try:
-                row.set_value(float(self.settings.get(key)))
+                row.set_value(float(get_flat(self.settings, key)))
             except (TypeError, ValueError):
                 pass
 
     def _save_spins(self) -> None:
         for key, row in self._spin_rows.items():
-            self.settings.set(key, round(row.get_value(), 2))
+            set_flat(self.settings, key, round(row.get_value(), 2))
 
     # -- Subclass hooks ---------------------------------------------------------
 
@@ -552,17 +556,17 @@ class MethodView:
     def load_options(self) -> None:
         """Set method-specific combo rows from settings."""
         for key, row in self._option_rows.items():
-            set_combo_value(row, self.settings.get(key))
+            set_combo_value(row, get_flat(self.settings, key))
 
     def save_options(self) -> None:
         """Write method-specific combo rows back to settings."""
         for key, row in self._option_rows.items():
-            self.settings.set(key, get_combo_value(row))
+            set_flat(self.settings, key, get_combo_value(row))
 
-    def add_advanced_combo(self, key, title, values, subtitle=None, hint=None):
+    def add_advanced_combo(self, key: typing.Any, title: typing.Any, values: typing.Any, subtitle: typing.Any=None, hint: typing.Any=None):
         return self.add_option_combo(self.advanced_group, key, title, values, subtitle, hint=hint)
 
-    def add_advanced_scale(self, key, title, *, values=None, lower=None, upper=None, step=1, digits=0, subtitle=None, hint=None, store_float=False):
+    def add_advanced_scale(self, key: typing.Any, title: typing.Any, *, values: typing.Any=None, lower: typing.Any=None, upper: typing.Any=None, step: typing.Any=1, digits: typing.Any=0, subtitle: typing.Any=None, hint: typing.Any=None, store_float: typing.Any=False):
         return self.add_option_scale(
             self.advanced_group,
             key,
@@ -577,19 +581,19 @@ class MethodView:
             store_float=store_float,
         )
 
-    def add_advanced_switch(self, key, title, subtitle=None, hint=None):
+    def add_advanced_switch(self, key: typing.Any, title: typing.Any, subtitle: typing.Any=None, hint: typing.Any=None):
         return self.add_option_switch(self.advanced_group, key, title, subtitle, hint=hint)
 
     # -- Secondary / pre-process / vocal-splitter model selection --------------
 
-    def _add_model_combo(self, container, key, provider, title, hint=None):
+    def _add_model_combo(self, container: typing.Any, key: typing.Any, provider: typing.Any, title: typing.Any, hint: typing.Any=None):
         """Add a model-picker combo (lazily populated to avoid startup hashing).
 
         The combo is registered separately from :attr:`_option_rows` so its value
         is only written back once the (expensive) model list has been resolved,
         avoiding clobbering the stored tag with ``NO_MODEL``.
         """
-        stored = self.settings.get(key, NO_MODEL)
+        stored = get_flat(self.settings, key, NO_MODEL)
         initial = [NO_MODEL] if stored in (NO_MODEL, None) else [NO_MODEL, stored]
         row = make_combo_row(title, initial)
         use_wrapping_list(row)
@@ -599,16 +603,16 @@ class MethodView:
         self._model_combos.append({"row": row, "key": key, "provider": provider, "ready": False})
         return self._hint(row, hint)
 
-    def _on_model_combo(self, key, row) -> None:
+    def _on_model_combo(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading or getattr(self, "_populating_models", False):
             return
         entry = next((e for e in self._model_combos if e["key"] == key), None)
         if entry and not entry["ready"]:
             return
-        self.settings.set(key, get_combo_value(row))
+        set_flat(self.settings, key, get_combo_value(row))
         self._touch_settings()
 
-    def _ensure_model_combos_populated(self, *_args) -> None:
+    def _ensure_model_combos_populated(self, *_args: typing.Any) -> None:
         if self._model_combos_populated:
             return
         self._model_combos_populated = True
@@ -624,12 +628,14 @@ class MethodView:
                     for tag in values
                 ]
                 set_combo_tag_values(entry["row"], [NO_MODEL, *tag_items])
-                set_combo_value(entry["row"], self.settings.get(entry["key"], NO_MODEL))
+                set_combo_value(
+                    entry["row"], get_flat(self.settings, entry["key"], NO_MODEL)
+                )
                 entry["ready"] = True
         finally:
             self._populating_models = False
 
-    def _bind_switch_dependents(self, switch_row, dependents) -> None:
+    def _bind_switch_dependents(self, switch_row: typing.Any, dependents: typing.Any) -> None:
         """Dim ``dependents`` whenever ``switch_row`` is off.
 
         Mirrors the pattern already used for the Ensemble algorithm rows: an
@@ -638,7 +644,7 @@ class MethodView:
         """
         rows = [row for row in dependents if row is not None]
 
-        def apply(*_args) -> None:
+        def apply(*_args: typing.Any) -> None:
             active = switch_row.get_active()
             for row in rows:
                 row.set_sensitive(active)
@@ -715,14 +721,15 @@ class MethodView:
         if (
             getattr(self, "secondary_expander", None) is not None
             and self.secondary_prefix
-            and self.settings.get(
+            and get_flat(
+                self.settings,
                 f"{self.secondary_prefix}_is_secondary_model_activate"
             )
         ):
             self.secondary_expander.set_expanded(True)
         if (
             getattr(self, "preproc_expander", None) is not None
-            and self.settings.get("is_demucs_pre_proc_model_activate")
+            and self.settings.demucs.is_pre_proc_model_activate
         ):
             self.preproc_expander.set_expanded(True)
 
@@ -825,7 +832,7 @@ class MethodView:
         app = Gio.Application.get_default()
         return app.get_active_window() if app is not None else None
 
-    def _on_change_defaults(self, _button) -> None:
+    def _on_change_defaults(self, _button: typing.Any) -> None:
         from ..dialogs.model_params import show_change_defaults_dialog
 
         show_change_defaults_dialog(self.context, self._window_root())

@@ -1,3 +1,4 @@
+import typing
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -9,7 +10,7 @@ from core.audio_io import (
     resolve_wav_type_set,
     save_format,
 )
-from core.settings import SettingsModel
+from core.settings import Settings
 
 
 class FlacExportParametersTests(unittest.TestCase):
@@ -31,7 +32,7 @@ class SaveFormatFlacTests(unittest.TestCase):
     @patch("soundfile.write")
     @patch("soundfile.read", return_value=(MagicMock(), 44100))
     @patch("os.remove")
-    def test_direct_flac_rewrite_skips_pydub(self, remove, _read, write):
+    def test_direct_flac_rewrite_skips_pydub(self, remove: typing.Any, _read: typing.Any, write: typing.Any):
         save_format("/tmp/stem.wav", "FLAC", "320k", "24-bit")
         write.assert_called_once()
         self.assertEqual(write.call_args[0][0], "/tmp/stem.flac")
@@ -40,7 +41,7 @@ class SaveFormatFlacTests(unittest.TestCase):
 
     @patch("pydub.AudioSegment")
     @patch("soundfile.read", side_effect=RuntimeError("boom"))
-    def test_flac_export_falls_back_to_pydub_parameters(self, _read, audio_segment_cls):
+    def test_flac_export_falls_back_to_pydub_parameters(self, _read: typing.Any, audio_segment_cls: typing.Any):
         segment = MagicMock()
         audio_segment_cls.from_wav.return_value = segment
 
@@ -56,15 +57,15 @@ class SaveFormatFlacTests(unittest.TestCase):
 
 class ResolveWavTypeSetTests(unittest.TestCase):
     def test_pcm_16_passthrough(self):
-        settings = SettingsModel({"wav_type_set": "PCM_16", "save_format": WAV})
+        settings = Settings.from_flat({"wav_type_set": "PCM_16", "save_format": WAV})
         self.assertEqual(resolve_wav_type_set(settings), "PCM_16")
 
     def test_64_bit_float_non_wav(self):
-        settings = SettingsModel({"wav_type_set": "64-bit Float", "save_format": "FLAC"})
+        settings = Settings.from_flat({"wav_type_set": "64-bit Float", "save_format": "FLAC"})
         self.assertEqual(resolve_wav_type_set(settings), "FLOAT")
 
     def test_64_bit_float_wav(self):
-        settings = SettingsModel({"wav_type_set": "64-bit Float", "save_format": WAV})
+        settings = Settings.from_flat({"wav_type_set": "64-bit Float", "save_format": WAV})
         self.assertEqual(resolve_wav_type_set(settings), "DOUBLE")
 
 

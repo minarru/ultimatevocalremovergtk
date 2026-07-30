@@ -1,4 +1,5 @@
 """Tests for fork release metadata and semver helpers."""
+import typing
 
 import json
 import unittest
@@ -51,7 +52,7 @@ class ReleaseUpdateStatusTests(unittest.TestCase):
             def __enter__(self):
                 return self
 
-            def __exit__(self, *args):
+            def __exit__(self, *args: typing.Any):
                 return False
 
         with patch("core.version_info._urlopen", return_value=FakeResponse()):

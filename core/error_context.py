@@ -1,6 +1,7 @@
 """Run context captured for separation / ensemble / audio-tool error logs."""
 
 from __future__ import annotations
+import typing
 
 import os
 import threading
@@ -9,7 +10,6 @@ from typing import Any, Dict, List, Optional, Sequence
 from bundled.constants import (
     CHOOSE_MODEL,
     DEFAULT,
-    DEFAULT_DATA,
     DEMUCS_ARCH_TYPE,
     ENSEMBLE_MODE,
     MDX_ARCH_TYPE,
@@ -17,6 +17,8 @@ from bundled.constants import (
     VR_ARCH_TYPE,
 )
 from core.model_display import display_name_for_model
+from core.settings import Settings
+from core.settings.flat_map import FLAT_TO_PATH
 
 _LOCK = threading.Lock()
 # Deliberately one shared dict, not per-thread: RunController exposes a
@@ -187,13 +189,16 @@ def probe_audio_file(path: str) -> Dict[str, Any]:
         return info
 
 
-def non_default_setting_lines(settings) -> List[str]:
+def non_default_setting_lines(settings: Settings) -> List[str]:
+    defaults = Settings.defaults()
     lines: List[str] = []
     for key in _PROCESS_SETTING_KEYS:
-        if key not in DEFAULT_DATA:
+        path = FLAT_TO_PATH.get(key)
+        if path is None:
             continue
-        value = settings.get(key)
-        default = DEFAULT_DATA[key]
+        section_name, field_name = path
+        value = getattr(getattr(settings, section_name), field_name)
+        default = getattr(getattr(defaults, section_name), field_name)
         if value == default:
             continue
         if value == DEFAULT and default != DEFAULT:
@@ -202,7 +207,7 @@ def non_default_setting_lines(settings) -> List[str]:
     return lines
 
 
-def model_summary_lines(model) -> List[str]:
+def model_summary_lines(model: typing.Any) -> List[str]:
     label = display_name_for_model(model.process_method, model.model_name, model.repo)
     lines = [
         f"model={label or model.model_name}",
@@ -312,9 +317,19 @@ def format_error_context(context: Optional[Dict[str, Any]] = None) -> str:
     return "\n".join(lines)
 
 
-def build_separation_context(settings, repo, input_paths: Sequence[str], method_key: str) -> Dict[str, Any]:
+def build_separation_context(
+    settings: Settings,
+    repo: typing.Any,
+    input_paths: Sequence[str],
+    method_key: str,
+) -> Dict[str, Any]:
     model_setting = _MODEL_SETTING_BY_METHOD.get(method_key)
-    model_name = settings.get(model_setting) if model_setting else None
+    model_path = FLAT_TO_PATH.get(model_setting) if model_setting else None
+    model_name = (
+        getattr(getattr(settings, model_path[0]), model_path[1])
+        if model_path
+        else None
+    )
     models: List[str] = []
     if model_name and model_name not in (CHOOSE_MODEL, "", None):
         label = display_name_for_model(method_key, model_name, repo)
@@ -328,8 +343,10 @@ def build_separation_context(settings, repo, input_paths: Sequence[str], method_
     }
 
 
-def build_ensemble_context(settings, input_paths: Sequence[str]) -> Dict[str, Any]:
-    models = list(settings.get("selected_models") or [])
+def build_ensemble_context(
+    settings: Settings, input_paths: Sequence[str]
+) -> Dict[str, Any]:
+    models = list(settings.ensemble.selected_models or [])
     return {
         "process": ENSEMBLE_MODE,
         "models": models,
@@ -339,7 +356,7 @@ def build_ensemble_context(settings, input_paths: Sequence[str]) -> Dict[str, An
 
 
 def build_audio_tools_context(
-    settings,
+    settings: Settings,
     tool: str,
     input_paths: Sequence[str],
 ) -> Dict[str, Any]:
@@ -351,7 +368,7 @@ def build_audio_tools_context(
     }
 
 
-def snapshot_worker_file(path: str, model=None) -> None:
+def snapshot_worker_file(path: str, model: typing.Any=None) -> None:
     """Update context with the file/model currently being processed."""
     fields: Dict[str, Any] = {
         "audio": probe_audio_file(path),

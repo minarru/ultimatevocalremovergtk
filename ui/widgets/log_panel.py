@@ -4,6 +4,7 @@ Replaces ``Adw.BottomSheet`` with a simple revealer-based panel: the log body
 expands above the always-visible run controls, toggled by an ExpanderRow-style
 arrow button (no drag gestures).
 """
+import typing
 
 from typing import Callable, Optional
 
@@ -341,7 +342,7 @@ class LogPanel(Gtk.Box):
         self._log_revealer.set_reveal_child(expanded)
         self._notify_expanded_changed(expanded)
 
-    def _on_log_revealed(self, revealer: Gtk.Revealer, _pspec) -> None:
+    def _on_log_revealed(self, revealer: Gtk.Revealer, _pspec: typing.Any) -> None:
         if not revealer.get_child_revealed():
             return
         debug("ui", "log_panel child revealed resume_scroll")

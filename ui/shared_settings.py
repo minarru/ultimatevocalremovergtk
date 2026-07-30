@@ -1,4 +1,4 @@
-"""Cross-tab file, output and format options synced from :class:`~core.SettingsModel`.
+"""Cross-tab file, output and format options synced from typed settings.
 
 Input paths, the export folder, output format, GPU conversion and sample mode
 are shared across the Separation, Ensemble and Audio Tools surfaces. Call
@@ -7,12 +7,21 @@ the latest in-memory settings without writing spurious changes back.
 """
 
 from __future__ import annotations
+import typing
 
 import os
 from dataclasses import dataclass, replace
-from typing import AbstractSet, Iterable, Optional, Protocol, Sequence
+from typing import AbstractSet, Iterable, Optional, Sequence
 
 from bundled.constants import WAV
+from core.settings import Settings
+from .protocols import (
+    FormatRow,
+    InputPathsRow,
+    OutputPathRow,
+    SampleModeRow,
+    SwitchRow,
+)
 
 INPUT_FILES_WARN = 100
 INPUT_FILES_MAX = 500
@@ -37,7 +46,7 @@ def gpu_dependent_enabled(is_gpu_conversion: bool) -> bool:
     return bool(is_gpu_conversion)
 
 
-def apply_sample_mode_label(sample_row, duration: int) -> None:
+def apply_sample_mode_label(sample_row: typing.Any, duration: int) -> None:
     """Set the stable title + duration subtitle on a sample-mode switch row."""
     sample_row.set_title(SAMPLE_MODE_TITLE)
     if hasattr(sample_row, "set_subtitle"):
@@ -174,30 +183,6 @@ def format_input_sanitize_toasts(
     return messages
 
 
-class _InputPathsRow(Protocol):
-    def set_paths(self, paths: Sequence[str], notify: bool = ...) -> None: ...
-
-
-class _OutputPathRow(Protocol):
-    def set_path(self, path: str, notify: bool = ...) -> None: ...
-
-
-class _SwitchRow(Protocol):
-    def set_active(self, active: bool) -> None: ...
-
-
-class _SampleModeRow(Protocol):
-    def set_title(self, title: str) -> None: ...
-
-    def set_subtitle(self, subtitle: str) -> None: ...
-
-    def set_active(self, active: bool) -> None: ...
-
-
-class _FormatRow(Protocol):
-    def apply_from_settings(self, settings) -> None: ...
-
-
 @dataclass(frozen=True)
 class SharedFileOptions:
     input_paths: list[str]
@@ -209,38 +194,39 @@ class SharedFileOptions:
     model_sample_mode: bool
 
 
-def read_shared_file_options(settings) -> SharedFileOptions:
+def read_shared_file_options(settings: Settings) -> SharedFileOptions:
     """Read the keys every mode page shares from ``settings``."""
+    process = settings.process
     return SharedFileOptions(
-        input_paths=list(settings.get("input_paths") or []),
-        export_path=settings.get("export_path") or "",
-        save_format=settings.get("save_format", WAV),
-        is_gpu_conversion=bool(settings.get("is_gpu_conversion")),
-        is_autocast=bool(settings.get("is_autocast")),
-        sample_duration=int(settings.get("model_sample_mode_duration", 30) or 30),
-        model_sample_mode=bool(settings.get("model_sample_mode")),
+        input_paths=list(process.input_paths or []),
+        export_path=process.export_path or "",
+        save_format=process.save_format or WAV,
+        is_gpu_conversion=bool(process.use_gpu),
+        is_autocast=bool(process.autocast),
+        sample_duration=int(process.sample_mode_duration or 30),
+        model_sample_mode=bool(process.sample_mode),
     )
 
 
 def apply_shared_file_options(
-    settings,
+    settings: Settings,
     *,
-    input_row: Optional[_InputPathsRow] = None,
-    input_rows: Optional[Iterable[_InputPathsRow]] = None,
-    output_row: Optional[_OutputPathRow] = None,
-    format_row: Optional[_FormatRow] = None,
-    gpu_row: Optional[_SwitchRow] = None,
-    autocast_row: Optional[_SwitchRow] = None,
-    sample_row: Optional[_SampleModeRow] = None,
+    input_row: Optional[InputPathsRow] = None,
+    input_rows: Optional[Iterable[InputPathsRow]] = None,
+    output_row: Optional[OutputPathRow] = None,
+    format_row: Optional[FormatRow] = None,
+    gpu_row: Optional[SwitchRow] = None,
+    autocast_row: Optional[SwitchRow] = None,
+    sample_row: Optional[SampleModeRow] = None,
 ) -> SharedFileOptions:
     """Push shared settings values into the supplied option rows."""
     options = read_shared_file_options(settings)
     cleaned, _result = sanitize_input_paths(options.input_paths)
     if cleaned != options.input_paths:
-        settings.set("input_paths", cleaned)
+        settings.process.input_paths = cleaned
         options = replace(options, input_paths=cleaned)
 
-    rows: list[_InputPathsRow] = []
+    rows: list[InputPathsRow] = []
     if input_row is not None:
         rows.append(input_row)
     if input_rows is not None:

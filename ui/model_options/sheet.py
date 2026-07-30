@@ -1,8 +1,9 @@
 """Floating model-options sheet (``Adw.Dialog``) with per-architecture tabs."""
 
 from __future__ import annotations
+import typing
 
-from typing import Callable, Dict, Optional, Sequence
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence
 
 from gi.repository import Adw, Gtk
 
@@ -109,7 +110,7 @@ def _build_sheet_columns():
     return columns_box, col_start, col_end
 
 
-def _set_sheet_columns_stacked(columns_box, stacked: bool) -> None:
+def _set_sheet_columns_stacked(columns_box: typing.Any, stacked: bool) -> None:
     """Flip a sheet columns box between stacked (narrow) and side-by-side."""
     columns_box.set_orientation(
         Gtk.Orientation.VERTICAL if stacked else Gtk.Orientation.HORIZONTAL
@@ -124,8 +125,8 @@ class ModelOptionsSheet:
         parent: Gtk.Window,
         *,
         views: Sequence,
-        views_by_stack: Dict[str, object],
-        settings,
+        views_by_stack: Mapping[str, Any],
+        settings: typing.Any,
         on_switch_method: Optional[Callable[[str], None]] = None,
     ):
         self._parent = parent
@@ -207,7 +208,7 @@ class ModelOptionsSheet:
         toolbar.set_content(body)
         self.dialog.set_child(toolbar)
 
-    def _build_tab_page(self, view) -> Gtk.Widget:
+    def _build_tab_page(self, view: typing.Any) -> Gtk.Widget:
         columns_box, col_start, col_end = _build_sheet_columns()
         self._tab_columns[view.stack_name] = columns_box
 
@@ -248,18 +249,18 @@ class ModelOptionsSheet:
             return _SHEET_FALLBACK_HEIGHT
         return int(parent_height * _SHEET_MAX_HEIGHT_FRACTION)
 
-    def _on_narrow_breakpoint_apply(self, *_args) -> None:
+    def _on_narrow_breakpoint_apply(self, *_args: typing.Any) -> None:
         for columns_box in self._tab_columns.values():
             _set_sheet_columns_stacked(columns_box, True)
 
-    def _on_narrow_breakpoint_unapply(self, *_args) -> None:
+    def _on_narrow_breakpoint_unapply(self, *_args: typing.Any) -> None:
         for columns_box in self._tab_columns.values():
             _set_sheet_columns_stacked(columns_box, False)
 
-    def _on_tab_changed(self, *_args) -> None:
+    def _on_tab_changed(self, *_args: typing.Any) -> None:
         self._refresh_applicability()
 
-    def _on_banner_switch(self, *_args) -> None:
+    def _on_banner_switch(self, *_args: typing.Any) -> None:
         """Hand the architecture switch back to the window, then re-read state.
 
         The banner belongs to the sheet rather than to a page, so the target
@@ -417,8 +418,8 @@ def open_model_options_sheet(
     parent: Gtk.Window,
     *,
     views: Sequence,
-    views_by_stack: Dict[str, object],
-    settings,
+    views_by_stack: Mapping[str, Any],
+    settings: typing.Any,
     context: str,
     active_method_key: str,
     selected_models: Sequence[str],

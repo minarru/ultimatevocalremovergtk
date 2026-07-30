@@ -1,4 +1,5 @@
 """Shared helpers for modal ``Adw.Dialog`` presentation."""
+import typing
 
 from collections.abc import Callable
 from typing import Any
@@ -50,7 +51,7 @@ def _find_dimming_widget(root: Gtk.Widget) -> Gtk.Widget | None:
     return None
 
 
-def _install_backdrop_dismiss(dimming: Gtk.Widget, on_dismiss) -> None:
+def _install_backdrop_dismiss(dimming: Gtk.Widget, on_dismiss: typing.Any) -> None:
     if getattr(dimming, "_uvr_backdrop_dismiss", False):
         return
     gesture = Gtk.GestureClick()

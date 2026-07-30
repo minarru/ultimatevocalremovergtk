@@ -1,6 +1,7 @@
 """Circular progress ring with finish morph (Nautilus ProgressPaintable)."""
 
 from __future__ import annotations
+import typing
 
 from typing import TYPE_CHECKING, Optional
 
@@ -98,7 +99,7 @@ class ProgressRing(Gtk.Overlay):
             except (AttributeError, TypeError):
                 pass
 
-    def _on_anim_value(self, value: float, _user_data=None) -> None:
+    def _on_anim_value(self, value: float, _user_data: typing.Any=None) -> None:
         if value is None:
             return
         self._set_check_progress(float(value))
@@ -130,10 +131,10 @@ class ProgressRing(Gtk.Overlay):
     def _on_draw(
         self,
         _area: Gtk.DrawingArea,
-        cr,
+        cr: typing.Any,
         width: float,
         height: float,
-        _user_data,
+        _user_data: typing.Any,
     ) -> None:
         if (self._check_progress or 0.0) >= 1.0:
             return

@@ -1,3 +1,4 @@
+import typing
 import unittest
 
 from ui.hints import set_icon_button_a11y, set_tooltip
@@ -7,7 +8,7 @@ class _TooltipWidget:
     def __init__(self):
         self.tooltip = "unset"
 
-    def set_tooltip_text(self, text):
+    def set_tooltip_text(self, text: typing.Any):
         self.tooltip = text
 
 
@@ -16,7 +17,7 @@ class _A11yWidget(_TooltipWidget):
         super().__init__()
         self.props = {}
 
-    def update_property(self, properties, values):
+    def update_property(self, properties: typing.Any, values: typing.Any):
         for prop, value in zip(properties, values):
             self.props[prop] = value
 

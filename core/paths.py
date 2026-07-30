@@ -21,7 +21,7 @@ separate, user-writable location:
 1. ``$UVR_DATA_DIR`` if set.
 2. Else :data:`BASE_PATH` when it is writable (preserves the historic
    "portable" layout for dev checkouts / tarball installs, so existing
-   ``./models`` and ``./data.pkl`` keep working unchanged).
+   ``./models`` and settings under the data dir keep working unchanged).
 3. Else the OS-default user data dir from :mod:`core.platform` (XDG on Linux,
    ``%LOCALAPPDATA%`` on Windows, ``~/Library/Application Support`` on macOS).
 """
@@ -89,7 +89,12 @@ SAMPLE_CLIP_PATH = os.path.join(DATA_DIR, "temp_sample_clips")
 ENSEMBLE_TEMP_PATH = os.path.join(DATA_DIR, "ensemble_temps")
 ENSEMBLE_TEMP_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
 
-SETTINGS_DATA_FILE = os.path.join(DATA_DIR, "data.pkl")
+#: Canonical settings path (JSON). Legacy pickle is imported once then renamed
+#: to ``SETTINGS_PICKLE_BAK``.
+SETTINGS_JSON_FILE = os.path.join(DATA_DIR, "settings.json")
+SETTINGS_DATA_FILE = SETTINGS_JSON_FILE  # back-compat alias for callers/tests
+SETTINGS_PICKLE_FILE = os.path.join(DATA_DIR, "data.pkl")
+SETTINGS_PICKLE_BAK = os.path.join(DATA_DIR, "data.pkl.bak")
 
 # Download / catalogue JSON caches (under CACHE_DIR so portable checkouts stay clean).
 DOWNLOAD_SIZE_CACHE_FILE = os.path.join(CACHE_DIR, "download_size_cache.json")

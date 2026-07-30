@@ -26,8 +26,9 @@
   "reportUnknownMemberType": "none",
   "reportUnknownArgumentType": "none",
   "reportUnknownVariableType": "none",
+  // Unknown parameter types remain disabled; third-party GI/ML APIs make this too noisy.
   "reportUnknownParameterType": "none",
-  "reportMissingParameterType": "none",
+  "reportMissingParameterType": "error",
   "reportUnusedCallResult": "none",
   "reportImplicitOverride": "none",
   "reportPrivateUsage": "none",

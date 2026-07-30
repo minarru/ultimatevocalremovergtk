@@ -4,14 +4,15 @@ Each function turns a settings mapping into the one-line subtitle shown on a
 collapsed ``Adw.ExpanderRow``, so a user can see whether a section is on, and
 what it will do, without opening it.
 
-No GTK import: these are plain functions over ``settings.get`` and are unit
-tested headlessly. They live at the ``ui/`` root rather than under
+No GTK import: these are plain functions over typed settings and are unit tested
+headlessly. They live at the ``ui/`` root rather than under
 ``ui/model_options/`` because both :mod:`ui.views.base` and
 :mod:`ui.widgets.vocal_split_row` consume them, and a widget importing from
 ``model_options`` would invert the dependency.
 """
 
 from __future__ import annotations
+import typing
 
 from typing import List, Tuple
 
@@ -29,6 +30,7 @@ from bundled.constants import (
     OTHER_PAIR,
     VOCAL_PAIR,
 )
+from .settings_bind import get_flat
 
 #: Subtitle for a section whose every activate switch is off.
 OFF = "Off"
@@ -49,10 +51,10 @@ _SECONDARY_PAIRS: Tuple[Tuple[str, str], ...] = (
 )
 
 
-def _model_label(tag) -> str:
+def _model_label(tag: typing.Any) -> str:
     """Strip the ``"<arch>: "`` prefix from a stored model tag.
 
-    Stored values come from ``ModelData.model_and_process_tag`` (e.g.
+    Stored values come from ``ModelConfig.model_and_process_tag`` (e.g.
     ``"MDX-Net: UVR-MDX-NET Inst HQ 3"``). Subtitles are tight on space and the
     architecture is already implied by the tab, so only the model name is kept.
     Returns ``""`` for an unset model, which callers treat as "not configured".
@@ -64,7 +66,7 @@ def _model_label(tag) -> str:
     return name if separator else text
 
 
-def four_stem_secondaries_apply(settings, process_method: str) -> bool:
+def four_stem_secondaries_apply(settings: typing.Any, process_method: str) -> bool:
     """Whether the ``other`` / ``bass`` / ``drums`` secondary slots can affect a run.
 
     Mirrors the engine's own branch in ``core/model_data.py`` (the
@@ -75,31 +77,33 @@ def four_stem_secondaries_apply(settings, process_method: str) -> bool:
     slots are dead weight.
     """
     is_demucs = process_method == DEMUCS_ARCH_TYPE
-    if settings.get("chosen_process_method") == ENSEMBLE_MODE:
-        main_stem = settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+    if settings.process.method == ENSEMBLE_MODE:
+        main_stem = settings.ensemble.main_stem or CHOOSE_STEM_PAIR
         return main_stem == FOUR_STEM_ENSEMBLE or (
             main_stem == MULTI_STEM_ENSEMBLE and is_demucs
         )
-    return is_demucs and settings.get("demucs_stems") == ALL_STEMS
+    return is_demucs and settings.demucs.stems == ALL_STEMS
 
 
-def secondary_models_summary(settings, prefix: str, *, four_stem: bool) -> str:
+def secondary_models_summary(settings: typing.Any, prefix: str, *, four_stem: bool) -> str:
     """One-line state of the per-architecture secondary-model section.
 
     ``four_stem`` must match what the section actually shows (see
     :func:`four_stem_secondaries_apply`) so the subtitle never describes a slot
     the user cannot see.
     """
-    if not settings.get(f"{prefix}_is_secondary_model_activate"):
+    if not get_flat(settings, f"{prefix}_is_secondary_model_activate"):
         return OFF
 
     pairs = _SECONDARY_PAIRS if four_stem else _SECONDARY_PAIRS[:1]
     parts: List[str] = []
     for slot, label in pairs:
-        name = _model_label(settings.get(f"{prefix}_{slot}_secondary_model", NO_MODEL))
+        name = _model_label(
+            get_flat(settings, f"{prefix}_{slot}_secondary_model", NO_MODEL)
+        )
         if not name:
             continue
-        scale = settings.get(f"{prefix}_{slot}_secondary_model_scale", 0.9)
+        scale = get_flat(settings, f"{prefix}_{slot}_secondary_model_scale", 0.9)
         try:
             scale_text = f"{float(scale):.2f}"
         except (TypeError, ValueError):
@@ -109,33 +113,33 @@ def secondary_models_summary(settings, prefix: str, *, four_stem: bool) -> str:
     return _SEP.join(parts) if parts else ON_NO_MODEL
 
 
-def preproc_summary(settings) -> str:
+def preproc_summary(settings: typing.Any) -> str:
     """One-line state of the Demucs pre-process-model section."""
-    if not settings.get("is_demucs_pre_proc_model_activate"):
+    if not settings.demucs.is_pre_proc_model_activate:
         return OFF
-    name = _model_label(settings.get("demucs_pre_proc_model", NO_MODEL))
+    name = _model_label(settings.demucs.pre_proc_model or NO_MODEL)
     if not name:
         return ON_NO_MODEL
-    if settings.get("is_demucs_pre_proc_model_inst_mix"):
+    if settings.demucs.is_pre_proc_model_inst_mix:
         return f"{name}{_SEP}saves instrumental mixture"
     return name
 
 
-def vocal_split_summary(settings) -> str:
+def vocal_split_summary(settings: typing.Any) -> str:
     """One-line state of the vocal-splitter and deverb section.
 
     This section holds two independent switches, so it is ``OFF`` only when both
     are off; otherwise the enabled halves are joined.
     """
-    split_on = bool(settings.get("is_set_vocal_splitter"))
-    deverb_on = bool(settings.get("is_deverb_vocals"))
+    split_on = bool(settings.process.vocal_splitter_enabled)
+    deverb_on = bool(settings.process.deverb_vocals)
     if not split_on and not deverb_on:
         return OFF
 
     parts: List[str] = []
     if split_on:
-        name = _model_label(settings.get("set_vocal_splitter", NO_MODEL))
+        name = _model_label(settings.process.vocal_splitter or NO_MODEL)
         parts.append(name if name else ON_NO_MODEL)
     if deverb_on:
-        parts.append(f"deverb: {settings.get('deverb_vocal_opt', 'Main Vocals Only')}")
+        parts.append(f"deverb: {settings.process.deverb_vocal_opt}")
     return _SEP.join(parts)

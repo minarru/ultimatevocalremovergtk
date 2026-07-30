@@ -1,6 +1,7 @@
 """Bundled curated ensemble recipes (model combos + algorithm pairs)."""
 
 from __future__ import annotations
+import typing
 
 import json
 import os
@@ -75,7 +76,7 @@ def load_curated_ensemble(preset_id: str) -> Optional[dict]:
     return data
 
 
-def resolve_member_tag(tag: str, repo) -> str:
+def resolve_member_tag(tag: str, repo: typing.Any) -> str:
     """Rewrite an ensemble tag to the current installed display label when possible."""
     arch, model_name = parse_model_tag(tag)
     if not arch or not model_name:
@@ -87,11 +88,11 @@ def resolve_member_tag(tag: str, repo) -> str:
     return f"{arch}{ENSEMBLE_PARTITION}{display}"
 
 
-def resolve_member_tags(tags: Sequence[str], repo) -> List[str]:
+def resolve_member_tags(tags: Sequence[str], repo: typing.Any) -> List[str]:
     return [resolve_member_tag(tag, repo) for tag in tags]
 
 
-def _installed_basenames(repo, arch: str) -> set:
+def _installed_basenames(repo: typing.Any, arch: str) -> set:
     if arch == VR_ARCH_TYPE:
         return set(repo.list_vr_models())
     if arch == MDX_ARCH_TYPE:
@@ -101,7 +102,7 @@ def _installed_basenames(repo, arch: str) -> set:
     return set()
 
 
-def member_is_installed(tag: str, repo) -> bool:
+def member_is_installed(tag: str, repo: typing.Any) -> bool:
     arch, model_name = parse_model_tag(tag)
     if not arch or not model_name:
         return False
@@ -116,7 +117,7 @@ def member_is_installed(tag: str, repo) -> bool:
 
 def classify_preset_members(
     tags: Sequence[str],
-    repo,
+    repo: typing.Any,
 ) -> Tuple[List[str], List[str]]:
     """Return ``(installed_tags, missing_tags)`` after display-name resolution."""
     installed: List[str] = []
@@ -130,7 +131,7 @@ def classify_preset_members(
     return installed, missing
 
 
-def _catalogue_for_arch(manager, arch: str) -> Dict[str, object]:
+def _catalogue_for_arch(manager: typing.Any, arch: str) -> Dict[str, object]:
     if arch == VR_ARCH_TYPE:
         return getattr(manager, "vr_download_list", {}) or {}
     if arch == MDX_ARCH_TYPE:
@@ -140,7 +141,7 @@ def _catalogue_for_arch(manager, arch: str) -> Dict[str, object]:
     return {}
 
 
-def find_download_selection(tag: str, manager) -> Optional[Tuple[str, str]]:
+def find_download_selection(tag: str, manager: typing.Any) -> Optional[Tuple[str, str]]:
     """Map an ensemble tag to ``(catalogue_selectable, arch)`` for enqueue."""
     arch, model_name = parse_model_tag(tag)
     if not arch or not model_name:
@@ -181,7 +182,7 @@ def find_download_selection(tag: str, manager) -> Optional[Tuple[str, str]]:
 
 def download_entries_for_missing(
     missing_tags: Iterable[str],
-    manager,
+    manager: typing.Any,
 ) -> Tuple[List[Tuple[str, str]], List[str]]:
     """Return ``(enqueue_entries, unresolved_tags)`` for missing preset members."""
     entries: List[Tuple[str, str]] = []

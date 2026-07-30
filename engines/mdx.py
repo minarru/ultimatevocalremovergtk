@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+import typing
+from typing import Any, TYPE_CHECKING
 
 import gc
 import gzip
@@ -39,7 +40,7 @@ from .mdx_classic_batch import (
 from .vr_utils import vr_denoiser, loading_mix
 
 if TYPE_CHECKING:
-    from core.model_data import ModelData
+    from core.model_config import ModelConfig
 
 # onnxruntime reports CUDA OOM through its own exception types rather than
 # torch.cuda.OutOfMemoryError, so the ORT-backed classic MDX path (the
@@ -74,7 +75,7 @@ def _load_torch_checkpoint(path: str):
     return as_model_state_dict(load_torch_checkpoint(path, map_location="cpu"))
 
 
-def _mdx_c_hop_length(config) -> int:
+def _mdx_c_hop_length(config: typing.Any) -> int:
     model_cfg = getattr(config, 'model', None)
     if model_cfg is not None:
         if hasattr(model_cfg, 'hop_size'):
@@ -92,7 +93,7 @@ def _mdx_c_hop_length(config) -> int:
     raise ValueError('MDX-C config is missing hop_length / hop_size.')
 
 
-def _filter_init_kwargs(model_cls, cfg) -> dict:
+def _filter_init_kwargs(model_cls: typing.Any, cfg: typing.Any) -> dict:
     """Drop YAML keys that are not accepted by a model class ``__init__``."""
     params = inspect.signature(model_cls.__init__).parameters
     if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
@@ -101,7 +102,7 @@ def _filter_init_kwargs(model_cls, cfg) -> dict:
     return {key: cfg[key] for key in cfg if key in allowed}
 
 
-def _build_mdx_c_model(config):
+def _build_mdx_c_model(config: typing.Any):
     if getattr(config, 'cls', None) == 'Bandit':
         from ml.bandit import Bandit
 
@@ -134,7 +135,7 @@ def _mdx_pitch_reference_sr() -> int:
     return 44100
 
 
-def select_roformer_ola_window(start, chunk_size, mix_length, window_start, window_middle, window_finish):
+def select_roformer_ola_window(start: typing.Any, chunk_size: typing.Any, mix_length: typing.Any, window_start: typing.Any, window_middle: typing.Any, window_finish: typing.Any):
     """Pick the OLA fade window for one Roformer chunk.
 
     The final inference flush can contain several chunk starts; only a chunk
@@ -149,16 +150,16 @@ def select_roformer_ola_window(start, chunk_size, mix_length, window_start, wind
 
 def mdx_export_routing_flags(
     *,
-    stem_list,
-    selected_stems,
-    mdxnet_stem_select,
-    is_secondary_model,
-    is_pre_proc_model,
-    is_ensemble_master,
-    is_4_stem_ensemble,
-    is_primary_stem_only,
-    is_secondary_stem_only,
-    include_stem_complement,
+    stem_list: typing.Any,
+    selected_stems: typing.Any,
+    mdxnet_stem_select: typing.Any,
+    is_secondary_model: typing.Any,
+    is_pre_proc_model: typing.Any,
+    is_ensemble_master: typing.Any,
+    is_4_stem_ensemble: typing.Any,
+    is_primary_stem_only: typing.Any,
+    is_secondary_stem_only: typing.Any,
+    include_stem_complement: typing.Any,
 ):
     is_full_selection = (not selected_stems) or set(selected_stems) == set(stem_list)
     is_all_stems = mdxnet_stem_select == ALL_STEMS
@@ -209,7 +210,7 @@ def mdx_export_routing_flags(
     }
 
 
-def derive_mdx_complement(native_source, mix, *, invert_spec=False, match_frequency_pitch=None):
+def derive_mdx_complement(native_source: typing.Any, mix: typing.Any, *, invert_spec: typing.Any=False, match_frequency_pitch: typing.Any=None):
     raw_mix = match_frequency_pitch(mix) if match_frequency_pitch is not None else mix
     shaped = spec_utils.to_shape(native_source, raw_mix.shape)
     if invert_spec:
@@ -219,8 +220,9 @@ def derive_mdx_complement(native_source, mix, *, invert_spec=False, match_freque
 
 class SeperateMDX(SeperateAttributes):        
 
-    def seperate(self):
+    def seperate(self) -> dict[str, Any] | None:
         samplerate = 44100
+        self.model_run: Any
     
         if self.primary_model_name == self.model_basename and isinstance(self.primary_sources, tuple):
             mix, source = self.primary_sources
@@ -298,7 +300,7 @@ class SeperateMDX(SeperateAttributes):
                 self.running_inference_console_write()
                 mix = prepare_mix(self.audio_file)
                 
-                source = self.demix(mix)
+                source: Any = self.demix(mix)
                 
                 if not self.is_vocal_split_model:
                     self.cache_source((mix, source))
@@ -350,7 +352,7 @@ class SeperateMDX(SeperateAttributes):
         self.gen_size = self.chunk_size-2*self.trim
         self.stft = STFT(self.n_fft, self.hop, self.dim_f, self.device)
 
-    def demix(self, mix, is_match_mix=False):
+    def demix(self, mix: typing.Any, is_match_mix: typing.Any=False):
         with trace_phase(
             "separate",
             "demix",
@@ -404,7 +406,7 @@ class SeperateMDX(SeperateAttributes):
                     window_cache[length] = cached
                 return cached.expand(1, 2, -1)
 
-            def _scatter_ola(tar_waves, meta) -> None:
+            def _scatter_ola(tar_waves: typing.Any, meta: typing.Any) -> None:
                 for item_idx, (start, end, chunk_size_actual) in enumerate(meta):
                     item = tar_waves[item_idx : item_idx + 1]
                     if overlap != 0:
@@ -493,7 +495,7 @@ class SeperateMDX(SeperateAttributes):
 
             return source
 
-    def run_model(self, mix, is_match_mix=False):
+    def run_model(self, mix: typing.Any, is_match_mix: typing.Any=False):
         """Run STFT → model → iSTFT and return a device-resident waveform tensor."""
         from engines.amp_runtime import maybe_autocast
 
@@ -521,7 +523,7 @@ class SeperateMDX(SeperateAttributes):
 
 class SeperateMDXC(SeperateAttributes):        
 
-    def seperate(self):
+    def seperate(self) -> dict[str, Any] | None:
         # A *roformer* model whose single target_instrument is the vocal stem is
         # treated as a vocals+instrumental model: ``demix`` derives the
         # instrumental as ``mixture - vocals``. Classic (non-roformer) MDX-C
@@ -566,7 +568,7 @@ class SeperateMDXC(SeperateAttributes):
             else:
                 self.mdxnet_stem_select = self.main_model_primary_stem_4_stem if self.main_model_primary_stem_4_stem else self.primary_model_primary_stem
             self.primary_stem = self.mdxnet_stem_select
-            self.secondary_stem = secondary_stem(self.mdxnet_stem_select)
+            self.secondary_stem = secondary_stem(str(self.mdxnet_stem_select or ""))
             self.is_primary_stem_only, self.is_secondary_stem_only = False, False
 
         # Restrict export to the user-chosen subset of this model's stems. The
@@ -583,7 +585,7 @@ class SeperateMDXC(SeperateAttributes):
             mdxnet_stem_select=self.mdxnet_stem_select,
             is_secondary_model=self.is_secondary_model,
             is_pre_proc_model=self.is_pre_proc_model,
-            is_ensemble_master=self.process_data['is_ensemble_master'],
+            is_ensemble_master=self.process_data.is_ensemble_master,
             is_4_stem_ensemble=self.is_4_stem_ensemble,
             is_primary_stem_only=self.is_primary_stem_only,
             is_secondary_stem_only=self.is_secondary_stem_only,
@@ -629,7 +631,7 @@ class SeperateMDXC(SeperateAttributes):
                 if stem == VOCAL_STEM and not self.is_sec_bv_rebalance:
                     self.process_vocal_split_chain({VOCAL_STEM:stem})
         else:
-            working_sources = dict(sources) if isinstance(sources, dict) else sources
+            working_sources: Any = dict(sources) if isinstance(sources, dict) else sources
             if len(stem_list) == 1:
                 source_primary = working_sources  
             else:
@@ -692,7 +694,7 @@ class SeperateMDXC(SeperateAttributes):
         if self.is_secondary_model or self.is_pre_proc_model:
             return secondary_sources
 
-    def overlap_add(self, result, counter, x, l, j, start, window):
+    def overlap_add(self, result: typing.Any, counter: typing.Any, x: typing.Any, l: typing.Any, j: typing.Any, start: typing.Any, window: typing.Any):
         if x.device != result.device:
             x = x.to(result.device)
         end = min(start + l, result.shape[-1])
@@ -705,7 +707,7 @@ class SeperateMDXC(SeperateAttributes):
         counter[..., start:end] += window_chunk
         return result
 
-    def demix(self, mix):
+    def demix(self, mix: typing.Any):
         if self.is_roformer:
             return self.demix_roformer(mix)
 
@@ -736,7 +738,7 @@ class SeperateMDXC(SeperateAttributes):
             self._weight_cache_key = key
             cached = get_weight_cache().get(key)
             if cached and cached.module is not None:
-                model = materialize_module(cached.module, self.device)
+                model: Any = materialize_module(cached.module, self.device)
             else:
                 model = TFC_TDF_net(self.mdx_c_configs, device=self.device)
                 model.load_state_dict(_load_torch_checkpoint(self.model_path))
@@ -841,7 +843,7 @@ class SeperateMDXC(SeperateAttributes):
                     del mix
                 # Keep weights on self._inference_model for release_separator / weight cache.
 
-    def demix_roformer(self, mix):
+    def demix_roformer(self, mix: typing.Any):
         with trace_phase(
             "separate",
             "demix_roformer",
@@ -871,7 +873,7 @@ class SeperateMDXC(SeperateAttributes):
             self._weight_cache_key = key
             cached = get_weight_cache().get(key)
             if cached and cached.module is not None:
-                model = materialize_module(cached.module, device)
+                model: Any = materialize_module(cached.module, device)
             else:
                 model = _build_mdx_c_model(self.roformer_config)
                 checkpoint = _load_torch_checkpoint(self.model_path)

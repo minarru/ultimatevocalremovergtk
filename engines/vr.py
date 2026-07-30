@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+import typing
+from typing import Any, TYPE_CHECKING
 
 import gc
 import gzip
@@ -36,7 +37,7 @@ from .vr_utils import (
 )
 
 if TYPE_CHECKING:
-    from core.model_data import ModelData
+    from core.model_config import ModelConfig
 
 cpu = torch.device('cpu')
 warnings.filterwarnings("ignore")
@@ -48,7 +49,8 @@ from .orchestration import process_secondary_model
 
 class SeperateVR(SeperateAttributes):        
 
-    def seperate(self):
+    def seperate(self) -> dict[str, Any] | None:
+        self.model_run: Any
         if self.primary_model_name == self.model_basename and isinstance(self.primary_sources, tuple):
             y_spec, v_spec = self.primary_sources
             self.load_cached_sources()
@@ -195,9 +197,9 @@ class SeperateVR(SeperateAttributes):
         del X_wave, X_spec_s
         return X_spec
 
-    def inference_vr(self, X_spec, device, aggressiveness):
+    def inference_vr(self, X_spec: typing.Any, device: typing.Any, aggressiveness: typing.Any):
         with trace_phase("separate", "inference_vr", engine="SeperateVR", model=self.model_basename):
-            def _execute(X_mag_pad, roi_size):
+            def _execute(X_mag_pad: typing.Any, roi_size: typing.Any):
                 patches = (X_mag_pad.shape[2] - 2 * self.model_run.offset) // roi_size
                 total_iterations = patches//self.batch_size if not self.is_tta else (patches//self.batch_size)*2
                 self.model_run.eval()
@@ -222,7 +224,7 @@ class SeperateVR(SeperateAttributes):
                         from engines.amp_runtime import maybe_autocast
 
                         with maybe_autocast(device, self.settings):
-                            pred = self.model_run.predict_mask(X_batch)
+                            pred: Any = self.model_run.predict_mask(X_batch)
                         if torch.is_tensor(pred) and pred.dtype != torch.float32:
                             pred = pred.float()
                         if not pred.size()[3] > 0:
@@ -235,7 +237,7 @@ class SeperateVR(SeperateAttributes):
                     mask = torch.cat(mask_parts, dim=2).detach().cpu().numpy()
                 return mask
 
-            def postprocess(mask, X_mag, X_phase):
+            def postprocess(mask: typing.Any, X_mag: typing.Any, X_phase: typing.Any):
                 is_non_accom_stem = False
                 for stem in NON_ACCOM_STEMS:
                     if stem == self.primary_stem:
@@ -273,7 +275,7 @@ class SeperateVR(SeperateAttributes):
             
             return y_spec, v_spec
 
-    def spec_to_wav(self, spec):
+    def spec_to_wav(self, spec: typing.Any):
         if self.high_end_process.startswith('mirroring') and isinstance(self.input_high_end, np.ndarray) and self.input_high_end_h:        
             input_high_end_ = spec_utils.mirroring(self.high_end_process, spec, self.input_high_end, self.mp)
             wav = spec_utils.cmb_spectrogram_to_wave(spec, self.mp, self.input_high_end_h, input_high_end_, is_v51_model=self.is_vr_51_model)       

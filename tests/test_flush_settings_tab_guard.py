@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from typing import Any
 
 from bundled.constants import WAV
 
@@ -58,15 +59,15 @@ class FlushSettingsTabGuardTests(unittest.TestCase):
 
     def _window(self, *, visible_tab: str):
         """A bare MainWindow with only the widgets ``_flush_settings`` touches."""
-        from core.settings import SettingsModel
+        from core.settings import Settings
         from ui.widgets.file_chooser import InputFilesRow, OutputFolderRow
         from ui.widgets.format_row import OutputFormatRow
         from ui.widgets.rows import make_switch_row
         from ui.widgets.vocal_split_row import VocalSplitRow
         from ui.window import MainWindow
 
-        window = MainWindow.__new__(MainWindow)
-        window.settings = SettingsModel()
+        window: Any = MainWindow.__new__(MainWindow)
+        window.settings = Settings.defaults()
         window.content_stack = _StubContentStack(visible_tab)
 
         stub_view = _StubView()

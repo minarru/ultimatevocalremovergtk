@@ -16,6 +16,7 @@ iterate, so they only work inside a view.
 """
 
 from __future__ import annotations
+import typing
 
 from typing import Callable
 
@@ -49,9 +50,9 @@ class VocalSplitRow(Adw.ExpanderRow):
 
     def __init__(
         self,
-        repo,
+        repo: typing.Any,
         on_changed: Callable[[], None],
-        hints=None,
+        hints: typing.Any=None,
     ):
         super().__init__(title="Vocal splitter and deverb")
         self._repo = repo
@@ -104,19 +105,20 @@ class VocalSplitRow(Adw.ExpanderRow):
 
     # -- Settings ---------------------------------------------------------------
 
-    def apply_from_settings(self, settings) -> None:
+    def apply_from_settings(self, settings: typing.Any) -> None:
         """Restore every row from ``settings`` without emitting changes."""
         self._settings = settings
-        self._stored_splitter = settings.get("set_vocal_splitter", NO_MODEL) or NO_MODEL
+        process = settings.process
+        self._stored_splitter = process.vocal_splitter or NO_MODEL
         self._syncing = True
         try:
-            self.split_switch.set_active(bool(settings.get("is_set_vocal_splitter")))
+            self.split_switch.set_active(bool(process.vocal_splitter_enabled))
             self.save_inst_switch.set_active(
-                bool(settings.get("is_save_inst_set_vocal_splitter"))
+                bool(process.save_inst_vocal_splitter)
             )
-            self.deverb_switch.set_active(bool(settings.get("is_deverb_vocals")))
+            self.deverb_switch.set_active(bool(process.deverb_vocals))
             set_combo_value(
-                self.deverb_row, settings.get("deverb_vocal_opt", _DEFAULT_DEVERB)
+                self.deverb_row, process.deverb_vocal_opt or _DEFAULT_DEVERB
             )
             if not self._models_ready:
                 seed = (
@@ -136,22 +138,21 @@ class VocalSplitRow(Adw.ExpanderRow):
         if self.split_switch.get_active() or self.deverb_switch.get_active():
             self.set_expanded(True)
 
-    def persist_to_settings(self, settings) -> None:
+    def persist_to_settings(self, settings: typing.Any) -> None:
         """Write every global vocal-split key back to ``settings``."""
-        settings.set("is_set_vocal_splitter", self.split_switch.get_active())
-        settings.set(
-            "is_save_inst_set_vocal_splitter", self.save_inst_switch.get_active()
-        )
-        settings.set("is_deverb_vocals", self.deverb_switch.get_active())
-        settings.set(
-            "deverb_vocal_opt", get_combo_value(self.deverb_row) or _DEFAULT_DEVERB
+        process = settings.process
+        process.vocal_splitter_enabled = self.split_switch.get_active()
+        process.save_inst_vocal_splitter = self.save_inst_switch.get_active()
+        process.deverb_vocals = self.deverb_switch.get_active()
+        process.deverb_vocal_opt = (
+            get_combo_value(self.deverb_row) or _DEFAULT_DEVERB
         )
         # Only trust the combo once its real list has loaded; before that it is
         # a seeded placeholder and the stored tag is authoritative.
         if self._models_ready:
-            settings.set("set_vocal_splitter", get_combo_value(self.splitter_row))
+            process.vocal_splitter = get_combo_value(self.splitter_row)
         else:
-            settings.set("set_vocal_splitter", self._stored_splitter)
+            process.vocal_splitter = self._stored_splitter
 
     def refresh_summary(self) -> None:
         """Re-read the section's subtitle from the cached settings."""
@@ -172,7 +173,7 @@ class VocalSplitRow(Adw.ExpanderRow):
         self.save_inst_switch.set_sensitive(split_on)
         self.deverb_row.set_sensitive(self.deverb_switch.get_active())
 
-    def _populate_models(self, *_args) -> None:
+    def _populate_models(self, *_args: typing.Any) -> None:
         if self._models_ready or not self.get_expanded():
             return
         self._models_ready = True
@@ -206,7 +207,7 @@ class VocalSplitRow(Adw.ExpanderRow):
         finally:
             self._syncing = False
 
-    def _on_row_changed(self, *_args) -> None:
+    def _on_row_changed(self, *_args: typing.Any) -> None:
         if self._syncing:
             return
         self._sync_dependents()

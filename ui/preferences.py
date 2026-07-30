@@ -3,8 +3,8 @@
 This is the GTK4 / libadwaita port of ``UVR.py``'s ``menu_settings`` window
 (tabs 1 and 2 - general + additional/audio-format/process settings). It exposes
 the same options the Tkinter settings window does and binds every control to the
-shared :class:`core.settings.SettingsModel` through
-:class:`ui.context.AppContext`, using the exact ``DEFAULT_DATA`` keys.
+shared typed :class:`core.settings.Settings` through
+:class:`ui.context.AppContext`.
 
 Covered (Phase 2):
 
@@ -28,6 +28,7 @@ Anything advanced/per-method (secondary models, vocal splitter, change-model
 defaults, deverb, the download center, ...) is intentionally left to later
 phases.
 """
+import typing
 
 import json
 import os
@@ -39,7 +40,6 @@ from gi.repository import Adw, GLib, Gtk
 
 from bundled.constants import (
     DEFAULT,
-    DEFAULT_DATA,
     GPU_DEVICE_NUM_OPTS,
     IS_CUDA_SELECT_HELP,
     REG_SAVE_INPUT,
@@ -61,6 +61,7 @@ from .help_text import (
     REMOVE_PROFILE_HINT,
 )
 from .hints import set_icon_button_a11y, set_tooltip
+from .settings_bind import get_flat, set_flat
 from .widgets.rows import get_combo_value, make_combo_row, set_combo_value
 
 _PERSIST_DEBOUNCE_MS = 250
@@ -149,7 +150,7 @@ def _is_valid_profile_name(name: str) -> bool:
 
 
 class PreferencesDialog(Adw.PreferencesDialog):
-    """libadwaita settings dialog bound to the shared :class:`SettingsModel`.
+    """libadwaita settings dialog bound to the shared typed settings.
 
     Two callbacks, deliberately asymmetric:
 
@@ -160,7 +161,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
       window's widgets is the point.
     """
 
-    def __init__(self, context, on_settings_reloaded=None, on_settings_applied=None):
+    def __init__(self, context: typing.Any, on_settings_reloaded: typing.Any=None, on_settings_applied: typing.Any=None):
         super().__init__()
         self.context = context
         self.settings = context.settings
@@ -424,7 +425,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
     def _reload_widgets(self) -> None:
         self._loading = True
         try:
-            scheme = self.settings.get("color_scheme", "auto")
+            scheme = self.settings.ui.color_scheme or "auto"
             scheme_index = next(
                 (i for i, (_label, value) in enumerate(_COLOR_SCHEME_OPTIONS) if value == scheme),
                 0,
@@ -432,36 +433,36 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self.color_scheme_row.set_selected(scheme_index)
 
             for key, row in self._process_switches.items():
-                row.set_active(bool(self.settings.get(key)))
+                row.set_active(bool(get_flat(self.settings, key)))
             try:
-                amp = float(self.settings.get("amplification_threshold") or 0.0)
+                amp = float(self.settings.process.amplification_threshold or 0.0)
             except (TypeError, ValueError):
                 amp = 0.0
             self.amplification_row.set_value(max(0.0, min(1.0, amp)))
             self._refresh_output_name_preview()
 
             for key, row in self._notification_switches.items():
-                row.set_active(bool(self.settings.get(key, True)))
+                row.set_active(bool(get_flat(self.settings, key, True)))
 
             if hasattr(self, "directml_row"):
-                self.directml_row.set_active(bool(self.settings.get("is_use_directml")))
-            if not set_combo_value(self.device_row, self.settings.get("device_set", DEFAULT)):
+                self.directml_row.set_active(bool(self.settings.process.use_directml))
+            if not set_combo_value(self.device_row, self.settings.process.device or DEFAULT):
                 set_combo_value(self.device_row, DEFAULT)
 
             from ui.shared_settings import gpu_dependent_enabled
 
             self.device_row.set_sensitive(
-                gpu_dependent_enabled(self.settings.get("is_gpu_conversion"))
+                gpu_dependent_enabled(self.settings.process.use_gpu)
             )
 
-            self.sample_mode_row.set_active(bool(self.settings.get("model_sample_mode")))
+            self.sample_mode_row.set_active(bool(self.settings.process.sample_mode))
             self.cleanup_ensemble_temps_row.set_active(
-                bool(self.settings.get("is_cleanup_ensemble_temps", True))
+                bool(self.settings.ensemble.cleanup_temps)
             )
             self.auto_update_model_params_row.set_active(
-                bool(self.settings.get("is_auto_update_model_params", True))
+                bool(self.settings.process.auto_update_model_params)
             )
-            duration = self.settings.get("model_sample_mode_duration", 30)
+            duration = self.settings.process.sample_mode_duration
             try:
                 duration = float(duration)
             except (TypeError, ValueError):
@@ -470,12 +471,14 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self._update_sample_duration_subtitle(duration)
 
             try:
-                long_chunk = float(self.settings.get("long_file_chunk_seconds") or 0)
+                long_chunk = float(self.settings.process.long_file_chunk_seconds or 0)
             except (TypeError, ValueError):
                 long_chunk = 0.0
             self.long_chunk_row.set_value(max(0.0, min(3600.0, long_chunk)))
             try:
-                long_overlap = float(self.settings.get("long_file_chunk_overlap_seconds") or 2.0)
+                long_overlap = float(
+                    self.settings.process.long_file_chunk_overlap_seconds or 2.0
+                )
             except (TypeError, ValueError):
                 long_overlap = 2.0
             self.long_chunk_overlap_row.set_value(max(0.0, min(30.0, long_overlap)))
@@ -484,7 +487,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         finally:
             self._loading = False
 
-    def _refresh_profile_list(self, select=None) -> None:
+    def _refresh_profile_list(self, select: typing.Any=None) -> None:
         profiles = self._profiles.list_profiles()
         values = profiles if profiles else [_NO_PROFILES]
         # set_combo_values lives in rows.py; rebuild the model here to stay self-contained.
@@ -496,36 +499,38 @@ class PreferencesDialog(Adw.PreferencesDialog):
         if select and select in profiles:
             set_combo_value(self.profile_combo, select)
 
-    def _update_sample_duration_subtitle(self, duration) -> None:
+    def _update_sample_duration_subtitle(self, duration: typing.Any) -> None:
         self.sample_duration_row.set_subtitle(SAMPLE_MODE_CHECKBOX(int(duration)))
 
     # -- Change handlers --------------------------------------------------------
 
-    def _on_bool_changed(self, row, _pspec, key) -> None:
+    def _on_bool_changed(self, row: typing.Any, _pspec: typing.Any, key: typing.Any) -> None:
         if self._loading:
             return
-        self.settings.set(key, bool(row.get_active()))
+        set_flat(self.settings, key, bool(row.get_active()))
         if key in _NAMING_PREVIEW_KEYS:
             self._refresh_output_name_preview()
         self._persist()
 
-    def _on_amplification_changed(self, row, _pspec) -> None:
+    def _on_amplification_changed(self, row: typing.Any, _pspec: typing.Any) -> None:
         if self._loading:
             return
         value = float(row.get_value())
-        self.settings.set("amplification_threshold", max(0.0, min(1.0, value)))
+        self.settings.process.amplification_threshold = max(0.0, min(1.0, value))
         self._persist()
 
-    def _on_long_chunk_changed(self, row, _pspec) -> None:
+    def _on_long_chunk_changed(self, row: typing.Any, _pspec: typing.Any) -> None:
         if self._loading:
             return
-        self.settings.set("long_file_chunk_seconds", int(round(float(row.get_value()))))
+        self.settings.process.long_file_chunk_seconds = int(
+            round(float(row.get_value()))
+        )
         self._persist()
 
-    def _on_long_chunk_overlap_changed(self, row, _pspec) -> None:
+    def _on_long_chunk_overlap_changed(self, row: typing.Any, _pspec: typing.Any) -> None:
         if self._loading:
             return
-        self.settings.set("long_file_chunk_overlap_seconds", float(row.get_value()))
+        self.settings.process.long_file_chunk_overlap_seconds = float(row.get_value())
         self._persist()
 
     def _refresh_output_name_preview(self) -> None:
@@ -533,31 +538,31 @@ class PreferencesDialog(Adw.PreferencesDialog):
             return
         self.output_name_preview_row.set_subtitle(preview_output_name(self.settings))
 
-    def _on_color_scheme_changed(self, row, _pspec) -> None:
+    def _on_color_scheme_changed(self, row: typing.Any, _pspec: typing.Any) -> None:
         if self._loading:
             return
         index = row.get_selected()
         if index == Gtk.INVALID_LIST_POSITION:
             return
         value = _COLOR_SCHEME_OPTIONS[index][1]
-        self.settings.set("color_scheme", value)
+        self.settings.ui.color_scheme = value
         self._persist()
         apply_color_scheme(value)
 
-    def _on_combo_changed(self, row, _pspec, key) -> None:
+    def _on_combo_changed(self, row: typing.Any, _pspec: typing.Any, key: typing.Any) -> None:
         if self._loading:
             return
         value = get_combo_value(row)
         if value is None:
             return
-        self.settings.set(key, value)
+        set_flat(self.settings, key, value)
         self._persist()
 
-    def _on_duration_changed(self, row, _pspec) -> None:
+    def _on_duration_changed(self, row: typing.Any, _pspec: typing.Any) -> None:
         if self._loading:
             return
         value = int(row.get_value())
-        self.settings.set("model_sample_mode_duration", value)
+        self.settings.process.sample_mode_duration = value
         self._update_sample_duration_subtitle(value)
         self._persist()
 
@@ -578,14 +583,14 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self._on_settings_applied()
         return GLib.SOURCE_REMOVE
 
-    def _on_dialog_closed(self, *_args) -> None:
+    def _on_dialog_closed(self, *_args: typing.Any) -> None:
         if self._persist_timeout_id:
             GLib.source_remove(self._persist_timeout_id)
             self._persist_timeout_id = 0
             self._flush_persist()
 
     @staticmethod
-    def _device_row_options(devices):
+    def _device_row_options(devices: typing.Any):
         if devices:
             opts = [DEFAULT] + [idx for idx, _name in devices]
             subtitle = "Detected: " + ", ".join(
@@ -603,7 +608,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.context.gpu_devices = devices
         idle_on_main(self._apply_gpu_devices, devices)
 
-    def _apply_gpu_devices(self, devices) -> None:
+    def _apply_gpu_devices(self, devices: typing.Any) -> None:
         if not hasattr(self, "device_row"):
             return
         current = get_combo_value(self.device_row)
@@ -621,7 +626,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
     # -- Profiles ---------------------------------------------------------------
 
-    def _on_save_profile(self, entry_row) -> None:
+    def _on_save_profile(self, entry_row: typing.Any) -> None:
         name = entry_row.get_text().strip()
         if not _is_valid_profile_name(name):
             self.add_toast(Adw.Toast.new("Invalid name. Use up to 25 letters, numbers, spaces or dashes"))
@@ -642,12 +647,12 @@ class PreferencesDialog(Adw.PreferencesDialog):
             return
         self._write_profile(entry_row, name)
 
-    def _on_save_profile_confirmed(self, _dialog, response, entry_row, name: str) -> None:
+    def _on_save_profile_confirmed(self, _dialog: typing.Any, response: typing.Any, entry_row: typing.Any, name: str) -> None:
         if response != "replace":
             return
         self._write_profile(entry_row, name)
 
-    def _write_profile(self, entry_row, name: str) -> None:
+    def _write_profile(self, entry_row: typing.Any, name: str) -> None:
         error = self._profiles.save(name, self.settings.to_dict())
         if error:
             self.add_toast(Adw.Toast.new(error))
@@ -661,7 +666,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._refresh_profile_list(select=name.replace(" ", "_"))
         self.add_toast(Adw.Toast.new(f'Saved profile "{name}"'))
 
-    def _on_load_profile(self, _button) -> None:
+    def _on_load_profile(self, _button: typing.Any) -> None:
         name = get_combo_value(self.profile_combo)
         if not name or name == _NO_PROFILES:
             return
@@ -677,15 +682,23 @@ class PreferencesDialog(Adw.PreferencesDialog):
         dialog.connect("response", self._on_load_profile_confirmed, name)
         dialog.present(self)
 
-    def _on_load_profile_confirmed(self, _dialog, response, name: str) -> None:
+    def _on_load_profile_confirmed(self, _dialog: typing.Any, response: typing.Any, name: str) -> None:
         if response != "load":
             return
         data = self._profiles.load(name)
         if data is None:
             self.add_toast(Adw.Toast.new(f'Could not load profile "{name}"'))
             return
-        # Only adopt keys the settings schema knows about.
-        self.settings.update({k: v for k, v in data.items() if k in DEFAULT_DATA})
+        # Adopt flat keys the typed schema knows about (includes ensemble keys
+        # that were never in DEFAULT_DATA). Nested profile JSON is accepted too.
+        from core.settings.flat_map import FLAT_TO_PATH
+        from core.settings.model import Settings as TypedSettings
+
+        if "schema_version" in data or "process" in data:
+            loaded = TypedSettings.from_json_dict(data)
+            self.settings.update(loaded.to_dict())
+        else:
+            self.settings.update({k: v for k, v in data.items() if k in FLAT_TO_PATH})
         error = self.context.try_save_settings(trigger="profile-load")
         if error:
             self.add_toast(Adw.Toast.new(error))
@@ -697,7 +710,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self._on_settings_reloaded()
         self.add_toast(Adw.Toast.new(f'Loaded profile "{name}"'))
 
-    def _on_remove_profile(self, _button) -> None:
+    def _on_remove_profile(self, _button: typing.Any) -> None:
         name = get_combo_value(self.profile_combo)
         if not name or name == _NO_PROFILES:
             return
@@ -713,7 +726,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         dialog.connect("response", self._on_remove_confirmed, name)
         dialog.present(self)
 
-    def _on_remove_confirmed(self, _dialog, response, name) -> None:
+    def _on_remove_confirmed(self, _dialog: typing.Any, response: typing.Any, name: typing.Any) -> None:
         if response != "remove":
             return
         removed, error = self._profiles.remove(name)
@@ -732,7 +745,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
     # -- Reset ------------------------------------------------------------------
 
-    def _on_reset_clicked(self, _button) -> None:
+    def _on_reset_clicked(self, _button: typing.Any) -> None:
         dialog = Adw.AlertDialog(
             heading="Reset all settings?",
             body="Every option will be restored to its default value. This cannot be undone.",
@@ -745,7 +758,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         dialog.connect("response", self._on_reset_confirmed)
         dialog.present(self)
 
-    def _on_reset_confirmed(self, _dialog, response) -> None:
+    def _on_reset_confirmed(self, _dialog: typing.Any, response: typing.Any) -> None:
         if response != "reset":
             return
         from core.debug_log import debug

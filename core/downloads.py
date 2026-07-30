@@ -12,6 +12,7 @@ Everything here is import-safe without ``torch``: only the standard library plus
 Network and disk work happens on caller-supplied worker threads; this module
 never touches any UI toolkit and reports progress through plain callbacks.
 """
+import typing
 
 import errno
 import json
@@ -20,7 +21,7 @@ import ssl
 import threading
 import time
 import urllib.request
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from bundled.constants import (
     ALL_TYPES,
@@ -146,11 +147,11 @@ class DownloadManager:
         self.latest_version: str = ""
 
         # VIP-merged, on-disk-aware catalogues (populated by ``refresh``).
-        self.vr_download_list: Dict[str, str] = {}
-        self.mdx_download_list: Dict[str, object] = {}
-        self.demucs_download_list: Dict[str, dict] = {}
+        self.vr_download_list: Dict[str, Any] = {}
+        self.mdx_download_list: Dict[str, Any] = {}
+        self.demucs_download_list: Dict[str, Any] = {}
         # Apollo restoration models are fork-curated only (no upstream list).
-        self.apollo_download_list: Dict[str, dict] = {}
+        self.apollo_download_list: Dict[str, Any] = {}
         self._size_warmup_lock = threading.Lock()
 
     # -- Catalogue + size cache -------------------------------------------------
@@ -450,8 +451,8 @@ class DownloadManager:
         jobs: List[Tuple[str, str]],
         on_progress: Optional[Callable[[float], None]] = None,
         on_info: Optional[Callable[[str], None]] = None,
-        stop_event=None,
-        repo=None,
+        stop_event: typing.Any=None,
+        repo: typing.Any=None,
     ) -> str:
         """Download every ``(url, save_path)`` job sequentially.
 
@@ -514,10 +515,10 @@ class DownloadManager:
         return result
 
     @staticmethod
-    def _download_stopped(stop_event) -> bool:
+    def _download_stopped(stop_event: typing.Any) -> bool:
         return stop_event is not None and stop_event.is_set()
 
-    def _finalize_part_file(self, tmp_path: str, save_path: str, stop_event) -> None:
+    def _finalize_part_file(self, tmp_path: str, save_path: str, stop_event: typing.Any) -> None:
         """Rename a completed ``.part`` file unless the download was cancelled."""
         if self._download_stopped(stop_event):
             return
@@ -529,7 +530,7 @@ class DownloadManager:
             )
         os.replace(tmp_path, save_path)
 
-    def _download_file(self, url, save_path, index, total, on_progress, stop_event, on_info=None) -> None:
+    def _download_file(self, url: typing.Any, save_path: typing.Any, index: typing.Any, total: typing.Any, on_progress: typing.Any, stop_event: typing.Any, on_info: typing.Any=None) -> None:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         tmp_path = f"{save_path}.part"
         try:
@@ -562,7 +563,7 @@ class DownloadManager:
                     pass
             raise
 
-    def _download_file_url(self, url, tmp_path, index, total, on_progress, stop_event, on_info=None) -> None:
+    def _download_file_url(self, url: typing.Any, tmp_path: typing.Any, index: typing.Any, total: typing.Any, on_progress: typing.Any, stop_event: typing.Any, on_info: typing.Any=None) -> None:
         try:
             with _urlopen(url) as response:
                 length_header = response.getheader("Content-Length")
@@ -612,7 +613,7 @@ class DownloadManager:
 
     # -- Model-data mapper refresh ----------------------------------------------
 
-    def update_model_settings(self, repo=None) -> bool:
+    def update_model_settings(self, repo: typing.Any=None) -> bool:
         """Download and persist the four model-data mapper JSON files.
 
         Port of ``download_model_settings``; on any failure existing local files
@@ -696,7 +697,7 @@ class DownloadManager:
             return {}
 
     @staticmethod
-    def manual_links(arch_type: str, model) -> List[Tuple[str, str]]:
+    def manual_links(arch_type: str, model: typing.Any) -> List[Tuple[str, str]]:
         """Return ``[(label, url), ...]`` direct links for a manual-download entry."""
         return manual_links_for_model(arch_type, model, NORMAL_REPO)
 

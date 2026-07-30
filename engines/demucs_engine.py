@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+import typing
+from typing import Any, cast, TYPE_CHECKING
 
 import gc
 import gzip
@@ -32,7 +33,7 @@ from .export import save_format
 from .vr_utils import vr_denoiser, loading_mix
 
 if TYPE_CHECKING:
-    from core.model_data import ModelData
+    from core.model_config import ModelConfig
 
 cpu = torch.device('cpu')
 warnings.filterwarnings("ignore")
@@ -45,14 +46,17 @@ from vendor.demucs.utils import apply_model_v1, apply_model_v2
 from .orchestration import process_secondary_model
 
 class SeperateDemucs(SeperateAttributes):
-    def seperate(self):
+    def seperate(
+        self,
+    ) -> dict[str, Any] | np.ndarray[Any, Any] | None:
+        self.demucs: Any
         samplerate = 44100
-        source = None
-        model_scale = None
-        stem_source = None
-        stem_source_secondary = None
-        inst_mix = None
-        inst_source = None
+        source: Any = None
+        model_scale: Any = None
+        stem_source: Any = None
+        stem_source_secondary: Any = None
+        inst_mix: Any = None
+        inst_source: Any = None
         is_no_write = False
         is_no_piano_guitar = False
         is_no_cache = False
@@ -147,7 +151,7 @@ class SeperateDemucs(SeperateAttributes):
             else:
                 self.demucs_source_map = DEMUCS_6_SOURCE_MAPPER if len(source) == 6 else DEMUCS_4_SOURCE_MAPPER
 
-                if len(source) == 6 and self.process_data['is_ensemble_master'] or len(source) == 6 and self.is_secondary_model:
+                if len(source) == 6 and self.process_data.is_ensemble_master or len(source) == 6 and self.is_secondary_model:
                     is_no_piano_guitar = True
                     six_stem_other_source = list(source)
                     six_stem_other_source = [i for n, i in enumerate(source) if n in [self.demucs_source_map[OTHER_STEM], self.demucs_source_map[GUITAR_STEM], self.demucs_source_map[PIANO_STEM]]]
@@ -160,7 +164,7 @@ class SeperateDemucs(SeperateAttributes):
         if not self.is_vocal_split_model:
             self.cache_source(source)
         
-        if (self.demucs_stems == ALL_STEMS and not self.process_data['is_ensemble_master']) or self.is_4_stem_ensemble and not self.is_return_dual:
+        if (self.demucs_stems == ALL_STEMS and not self.process_data.is_ensemble_master) or self.is_4_stem_ensemble and not self.is_return_dual:
             if isinstance(source, np.ndarray) and (
                 self.is_match_mix_level or self.is_prevent_export_clipping
             ):
@@ -206,7 +210,7 @@ class SeperateDemucs(SeperateAttributes):
             self.begin_save_phase(max(1, save_writes))
 
             if not self.is_primary_stem_only:
-                def secondary_save(sec_stem_name, source, raw_mixture=None, is_inst_mixture=False):
+                def secondary_save(sec_stem_name: typing.Any, source: typing.Any, raw_mixture: typing.Any=None, is_inst_mixture: typing.Any=False):
                     nonlocal mix
                     secondary_source = self.secondary_source if not is_inst_mixture else None
                     secondary_stem_path = self.stem_export_wav_path(sec_stem_name)
@@ -266,9 +270,10 @@ class SeperateDemucs(SeperateAttributes):
             if self.is_secondary_model:    
                 return secondary_sources
     
-    def demix_demucs(self, mix):
+    def demix_demucs(self, mix: typing.Any):
         with trace_phase("separate", "demix_demucs", engine="SeperateDemucs", model=self.model_basename):
             org_mix = mix
+            sources: Any = None
 
             if self.is_pitch_change:
                 mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
@@ -299,7 +304,7 @@ class SeperateDemucs(SeperateAttributes):
                         set_progress_bar=self.set_progress_bar,
                     )
                 else:
-                    sources = apply_model(
+                    sources = cast(Any, apply_model(
                         self.demucs,
                         mix_infer[None],
                         self.shifts,
@@ -308,7 +313,7 @@ class SeperateDemucs(SeperateAttributes):
                         static_shifts=1 if self.shifts == 0 else self.shifts,
                         set_progress_bar=self.set_progress_bar,
                         device=self.device,
-                    )[0]
+                    ))[0]
 
             sources = (sources.float() * ref.std() + ref.mean()).cpu().numpy()
             sources[[0, 1]] = sources[[1, 0]]

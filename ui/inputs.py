@@ -11,6 +11,7 @@ so constructing the dialog stays ``torch``-free.
 
 Entry point: :func:`open_view_inputs` (wire to ``win.view_inputs``).
 """
+import typing
 
 import os
 import threading
@@ -90,12 +91,12 @@ def inspect_audio(path: str):
 
 
 class ViewInputs:
-    def __init__(self, parent, app_context, on_inputs_changed=None):
+    def __init__(self, parent: typing.Any, app_context: typing.Any, on_inputs_changed: typing.Any=None):
         self.parent = parent
         self.context = app_context
         self.settings = app_context.settings
         self._on_inputs_changed = on_inputs_changed
-        self.paths = list(self.settings.get("input_paths") or [])
+        self.paths = list(self.settings.process.input_paths or [])
         self._rows = {}
         self._status = {}  # path -> (is_valid, info) after verify
         self._verifying = False
@@ -226,7 +227,7 @@ class ViewInputs:
             self.verify_button.add_css_class("suggested-action")
 
     def _commit_paths(self) -> None:
-        self.settings.set("input_paths", list(self.paths))
+        self.settings.process.input_paths = list(self.paths)
         error = self.context.try_save_settings(trigger="verify-inputs")
         if error:
             self._toast(error)
@@ -242,7 +243,7 @@ class ViewInputs:
             self._rebuild_list()
             self._sync_actions()
 
-    def _on_clear(self, _button) -> None:
+    def _on_clear(self, _button: typing.Any) -> None:
         if not self.paths:
             return
         self.paths = []
@@ -252,7 +253,7 @@ class ViewInputs:
         self._rebuild_list()
         self._sync_actions()
 
-    def _on_remove_unreadable(self, _button) -> None:
+    def _on_remove_unreadable(self, _button: typing.Any) -> None:
         failed = set(self._failed_paths()) | set(self.context.unreadable_input_paths)
         if not failed:
             return
@@ -269,16 +270,16 @@ class ViewInputs:
             noun = "file" if removed == 1 else "files"
             self._toast(f"Removed {removed} unreadable {noun}.")
 
-    def _on_add(self, _button) -> None:
+    def _on_add(self, _button: typing.Any) -> None:
         initial = os.path.dirname(self.paths[0]) if self.paths else None
         dialog = audio_open_dialog(
             "Select Audio Files",
-            accept_any=bool(self.settings.get("is_accept_any_input")),
+            accept_any=bool(self.settings.process.accept_any_input),
             initial=initial,
         )
         dialog.open_multiple(self.window, None, self._on_add_finished)
 
-    def _on_add_finished(self, dialog, result) -> None:
+    def _on_add_finished(self, dialog: typing.Any, result: typing.Any) -> None:
         try:
             files = dialog.open_multiple_finish(result)
         except GLib.Error as exc:
@@ -305,12 +306,12 @@ class ViewInputs:
 
     # -- Verification -----------------------------------------------------------
 
-    def _on_close_request(self, *_args) -> bool:
+    def _on_close_request(self, *_args: typing.Any) -> bool:
         if self._verifying:
             self._verify_stop.set()
         return False
 
-    def _on_verify(self, _button) -> None:
+    def _on_verify(self, _button: typing.Any) -> None:
         if self._verifying:
             self._verify_stop.set()
             self.verify_button.set_label("Cancelling…")
@@ -328,7 +329,7 @@ class ViewInputs:
         snapshot = list(self.paths)
         threading.Thread(target=self._verify_worker, args=(snapshot,), daemon=True).start()
 
-    def _verify_worker(self, paths) -> None:
+    def _verify_worker(self, paths: typing.Any) -> None:
         broken = []
         cancelled = False
         for index, path in enumerate(paths, start=1):
@@ -341,7 +342,7 @@ class ViewInputs:
                 broken.append((path, info))
         idle_on_main(self._verify_done, broken, cancelled)
 
-    def _apply_result(self, path, is_valid, info, index: int) -> None:
+    def _apply_result(self, path: typing.Any, is_valid: typing.Any, info: typing.Any, index: int) -> None:
         self._status[path] = (is_valid, info)
         self.verify_button.set_label(f"Verifying… {index}/{self._verify_total}")
         row = self._rows.get(path)
@@ -351,7 +352,7 @@ class ViewInputs:
         set_row_subtitle(row, f"{path}\n{info}")
         self._files_group.set_title(self._total_text())
 
-    def _verify_done(self, broken, cancelled: bool = False) -> None:
+    def _verify_done(self, broken: typing.Any, cancelled: bool = False) -> None:
         self._verifying = False
         self._verify_stop.clear()
         failed_paths = [p for p, _info in broken]
@@ -382,7 +383,7 @@ class ViewInputs:
         self.toast_overlay.add_toast(Adw.Toast.new(message))
 
 
-def open_view_inputs(parent_window, app_context, on_inputs_changed=None):
+def open_view_inputs(parent_window: typing.Any, app_context: typing.Any, on_inputs_changed: typing.Any=None):
     """Open the Verify Inputs dialog. Wire to ``win.view_inputs``."""
     view = ViewInputs(parent_window, app_context, on_inputs_changed=on_inputs_changed)
     view.present()

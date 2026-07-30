@@ -1,4 +1,5 @@
 """Demucs method view."""
+import typing
 
 from bundled.constants import (
     ALL_STEMS,
@@ -24,7 +25,7 @@ from ..widgets.stem_only import _FOCUS_INSTRUMENTAL, _FOCUS_VOCALS
 from .base import MethodView, register_method_view
 
 
-def _demucs_focus_entries(model, model_name: str) -> list:
+def _demucs_focus_entries(model: typing.Any, model_name: str) -> list:
     if DEMUCS_6_STEM_MODEL in model_name or getattr(model, "demucs_stem_count", 4) == 6:
         options = DEMUCS_6_STEM_OPTIONS
     else:
@@ -58,10 +59,10 @@ class DemucsView(MethodView):
     def name_mapper(self):
         return self.context.repo.demucs_name_select_MAPPER
 
-    def build_options(self, group):
+    def build_options(self, group: typing.Any):
         self.add_option_scale(group, "segment", "Segment", values=DEMUCS_SEGMENTS, hint=SEGMENT_HELP)
 
-    def _configure_save_stems(self, model) -> None:
+    def _configure_save_stems(self, model: typing.Any) -> None:
         model_name = self.selected_model() or ""
         if model and (DEMUCS_UVR_MODEL in model_name or getattr(model, "demucs_stem_count", 4) == 2):
             super()._configure_save_stems(model)
@@ -81,7 +82,7 @@ class DemucsView(MethodView):
         if self.save_stems.mode == "demucs":
             self.save_stems.persist_to_settings()
 
-    def build_advanced(self, group):
+    def build_advanced(self, group: typing.Any):
         self.add_advanced_scale(
             "shifts",
             "Shifts",

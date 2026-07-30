@@ -12,6 +12,7 @@ Two reusable facilities other views/the main window can adopt:
   installs them on a :class:`Gtk.Application`. The coordinator registers the
   matching actions; this module only declares the bindings + the apply helper.
 """
+import typing
 
 from typing import Dict, List, Optional
 
@@ -31,18 +32,18 @@ from ui.help_text import (
 )
 
 
-def set_tooltip(widget, text: Optional[str]) -> None:
+def set_tooltip(widget: typing.Any, text: Optional[str]) -> None:
     """Apply a tooltip to ``widget`` (clears when ``text`` is empty)."""
     widget.set_tooltip_text(text or None)
 
 
-def set_icon_button_a11y(widget, text: Optional[str]) -> None:
+def set_icon_button_a11y(widget: typing.Any, text: Optional[str]) -> None:
     """Set tooltip and accessible label for an icon-only button."""
     set_tooltip(widget, text)
     widget.update_property([Gtk.AccessibleProperty.LABEL], [text or ""])
 
 
-def add_help_hint(widget, text: str) -> None:
+def add_help_hint(widget: typing.Any, text: str) -> None:
     """Set ``widget``'s tooltip to ``text``.
 
     A lightweight, stateless helper for views that don't need the manager.
@@ -56,7 +57,7 @@ class HelpHintManager:
     def __init__(self):
         self._registry: List = []
 
-    def register(self, widget, text: str):
+    def register(self, widget: typing.Any, text: str):
         """Register a widget + hint text and apply it immediately."""
         self._registry.append((widget, text))
         set_tooltip(widget, text)
@@ -82,7 +83,7 @@ SHARED_HINTS: Dict[str, str] = {
 
 
 def install_view_tab_tooltips(
-    switcher, hints: Optional[Dict[str, str]] = None
+    switcher: typing.Any, hints: Optional[Dict[str, str]] = None
 ) -> None:
     """Attach tooltips to tab buttons in a ViewSwitcher or ViewSwitcherBar.
 
@@ -91,7 +92,7 @@ def install_view_tab_tooltips(
     """
     hints = VIEW_TAB_HINTS if hints is None else hints
 
-    def apply(host) -> None:
+    def apply(host: typing.Any) -> None:
         stack = host.get_stack() if hasattr(host, "get_stack") else None
         if stack is None:
             return
@@ -99,7 +100,7 @@ def install_view_tab_tooltips(
 
         buttons: List[Gtk.ToggleButton] = []
 
-        def collect(widget) -> None:
+        def collect(widget: typing.Any) -> None:
             if isinstance(widget, Gtk.ToggleButton):
                 buttons.append(widget)
             child = widget.get_first_child()
@@ -112,7 +113,7 @@ def install_view_tab_tooltips(
             if tip:
                 set_tooltip(button, tip)
 
-    def on_map(host, *_args):
+    def on_map(host: typing.Any, *_args: typing.Any):
         apply(host)
 
     switcher.connect("map", on_map)
@@ -139,7 +140,7 @@ KEYBOARD_ACCELERATORS: Dict[str, List[str]] = {
 }
 
 
-def apply_accelerators(app, accelerators: Optional[Dict[str, List[str]]] = None) -> None:
+def apply_accelerators(app: typing.Any, accelerators: Optional[Dict[str, List[str]]] = None) -> None:
     """Install ``accelerators`` on a :class:`Gtk.Application`.
 
     Defaults to :data:`KEYBOARD_ACCELERATORS`. Actions with an empty list are

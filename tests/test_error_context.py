@@ -17,7 +17,7 @@ from core.error_context import (
     update_run_error_context,
 )
 from core.model_data import ModelRepository
-from core.settings import SettingsModel
+from core.settings import Settings
 from ui.errorlog import log_error
 
 
@@ -26,7 +26,7 @@ class ErrorContextTests(unittest.TestCase):
         clear_run_error_context()
 
     def test_non_default_setting_lines_only_reports_changes(self) -> None:
-        settings = SettingsModel()
+        settings = Settings.defaults()
         settings.set("mdx_segment_size", 512)
         lines = non_default_setting_lines(settings)
         self.assertTrue(any("mdx_segment_size=512" in line for line in lines))
@@ -93,7 +93,7 @@ class ErrorContextTests(unittest.TestCase):
         self.assertIn("Test Model", formatted)
 
     def test_build_separation_context_uses_display_model_name(self) -> None:
-        settings = SettingsModel()
+        settings = Settings.defaults()
         settings.set("chosen_process_method", MDX_ARCH_TYPE)
         settings.set("mdx_net_model", "model_MelBand-Roformer_Karaoke_Fusion_Standard_by-Gonza.ckpt")
         ctx = build_separation_context(settings, ModelRepository(), ["song.wav"], MDX_ARCH_TYPE)
@@ -113,6 +113,8 @@ class ErrorContextTests(unittest.TestCase):
             aggression_setting = 0.05
             model_samplerate = 44100
             is_secondary_model_activated = False
+            demucs_stems = ""
+            overlap = 0.0
 
         with unittest.mock.patch(
             "core.error_context.display_name_for_model",

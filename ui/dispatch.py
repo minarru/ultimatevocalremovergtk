@@ -5,6 +5,7 @@ callbacks from that thread. GTK widgets may only be touched from the main loop,
 so the helpers here wrap those callbacks with ``GLib.idle_add``. Later phases use
 :func:`gtk_job_callbacks` to bind progress/console/completion to widgets safely.
 """
+import typing
 
 from typing import Callable, Optional
 import time
@@ -23,7 +24,7 @@ def reset_progress_log() -> None:
     _last_progress_log = -1.0
 
 
-def idle_on_main(func: Callable, *args, **kwargs) -> None:
+def idle_on_main(func: Callable, *args: typing.Any, **kwargs: typing.Any) -> None:
     """Schedule ``func(*args, **kwargs)`` once on the GTK main loop."""
 
     def invoke():
@@ -66,7 +67,7 @@ def main_thread(func: Callable) -> Callable:
     label = getattr(func, "__name__", repr(func))
     is_progress = label.endswith("_on_progress") or label == "_on_progress"
 
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: typing.Any, **kwargs: typing.Any):
         if is_progress and args and isinstance(args[0], float):
             if not _should_log_progress(args[0]):
                 def invoke_quiet():

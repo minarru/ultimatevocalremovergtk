@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple
+from typing import Any, TYPE_CHECKING, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from bundled.constants import (
     DEMUCS_ARCH_TYPE,
@@ -126,7 +126,9 @@ def resolve_mapper_basename(label: str, name_mapper: Optional[Dict[str, str]]) -
     return None
 
 
-def build_checkpoint_display_index(catalogues: Iterable[Dict[str, object]]) -> Dict[str, str]:
+def build_checkpoint_display_index(
+    catalogues: Iterable[Mapping[str, Any]],
+) -> Dict[str, str]:
     """Map checkpoint basename (no extension) to a friendly display label."""
     index: Dict[str, str] = {}
     for catalogue in catalogues:
@@ -142,7 +144,7 @@ def build_checkpoint_display_index(catalogues: Iterable[Dict[str, object]]) -> D
     return index
 
 
-def build_vr_display_index(catalogues: Iterable[Dict[str, object]]) -> Dict[str, str]:
+def build_vr_display_index(catalogues: Iterable[Mapping[str, Any]]) -> Dict[str, str]:
     """Map VR ``.pth`` basename to a sanitized runtime label."""
     index: Dict[str, str] = {}
     for catalogue in catalogues:
@@ -159,7 +161,9 @@ def build_vr_display_index(catalogues: Iterable[Dict[str, object]]) -> Dict[str,
     return index
 
 
-def build_demucs_display_index(catalogues: Iterable[Dict[str, object]]) -> Dict[str, str]:
+def build_demucs_display_index(
+    catalogues: Iterable[Mapping[str, Any]],
+) -> Dict[str, str]:
     """Map Demucs yaml/checkpoint stem to a runtime display label."""
     index: Dict[str, str] = {}
     for catalogue in catalogues:

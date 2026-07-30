@@ -1,3 +1,4 @@
+import typing
 import unittest
 
 from bundled.constants import (
@@ -41,18 +42,18 @@ from core.model_stem_semantics import (
 
 
 class _Training:
-    def __init__(self, instruments, target=""):
+    def __init__(self, instruments: typing.Any, target: typing.Any=""):
         self.instruments = instruments
         self.target_instrument = target
 
 
 class _Config:
-    def __init__(self, instruments, target=""):
+    def __init__(self, instruments: typing.Any, target: typing.Any=""):
         self.training = _Training(instruments, target)
 
 
 class _Model:
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: typing.Any):
         self.is_roformer = kwargs.get("is_roformer", False)
         self.is_karaoke = kwargs.get("is_karaoke", False)
         self.is_bv_model = kwargs.get("is_bv_model", False)
@@ -108,6 +109,7 @@ class StemDisplayOverridesTests(unittest.TestCase):
         )
         overrides = stem_display_overrides(model)
         self.assertEqual(overrides, VOCALS_OTHER_DISPLAY_OVERRIDES)
+        assert overrides is not None
         self.assertEqual(overrides["other"], INST_STEM)
         self.assertEqual(overrides["vocals"], VOCAL_STEM)
 
@@ -124,11 +126,13 @@ class StemDisplayOverridesTests(unittest.TestCase):
 
     def test_karaoke_display_overrides(self):
         overrides = stem_display_overrides(_Model(is_karaoke=True))
+        assert overrides is not None
         self.assertEqual(overrides[VOCAL_STEM], LEAD_VOCAL_STEM_LABEL)
         self.assertEqual(overrides[INST_STEM], INST_WITH_BACKING_VOCALS_STEM)
 
     def test_bv_display_overrides(self):
         overrides = stem_display_overrides(_Model(is_bv_model=True))
+        assert overrides is not None
         self.assertEqual(overrides[VOCAL_STEM], BV_VOCAL_STEM_LABEL)
         self.assertEqual(overrides[INST_STEM], INST_WITH_LEAD_VOCALS_STEM)
 
@@ -136,11 +140,13 @@ class StemDisplayOverridesTests(unittest.TestCase):
 class KaraokeBvExportLabelTests(unittest.TestCase):
     def test_karaoke_map(self):
         labels = karaoke_bv_export_labels(_Model(is_karaoke=True))
+        assert labels is not None
         self.assertEqual(labels[VOCAL_STEM], LEAD_VOCAL_STEM_LABEL)
         self.assertEqual(labels[INST_STEM], INST_WITH_BACKING_VOCALS_STEM)
 
     def test_bv_preferred_over_karaoke(self):
         labels = karaoke_bv_export_labels(_Model(is_karaoke=True, is_bv_model=True))
+        assert labels is not None
         self.assertEqual(labels[VOCAL_STEM], BV_VOCAL_STEM_LABEL)
         self.assertEqual(labels[INST_STEM], INST_WITH_LEAD_VOCALS_STEM)
 
@@ -309,10 +315,10 @@ class QuickExportSemanticsTests(unittest.TestCase):
 
     def test_apply_karaoke_default_sets_instrumental_flags(self):
         class _Settings(dict):
-            def get(self, key, default=None):
+            def get(self, key: typing.Any, default: typing.Any=None):
                 return super().get(key, default)
 
-            def set(self, key, value):
+            def set(self, key: typing.Any, value: typing.Any):
                 self[key] = value
 
         settings = _Settings(

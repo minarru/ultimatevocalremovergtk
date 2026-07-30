@@ -28,7 +28,8 @@ from bundled.constants import (
 
 from .job_runner import JobCallbacks, JobRunner
 from .paths import SETTINGS_DATA_FILE
-from .settings import SettingsModel
+from .settings import Settings
+from .types import ProcessMethod
 
 METHOD_ALIASES = {
     "mdx": MDX_ARCH_TYPE,
@@ -43,8 +44,13 @@ _MODEL_KEY_BY_METHOD = {
     MDX_ARCH_TYPE: "mdx_net_model",
     DEMUCS_ARCH_TYPE: "demucs_model",
 }
+_MODEL_SECTION_BY_METHOD = {
+    VR_ARCH_PM: "vr",
+    MDX_ARCH_TYPE: "mdx",
+    DEMUCS_ARCH_TYPE: "demucs",
+}
 
-# Settings method → architecture key used by model_display / ModelData.
+# Settings method → architecture key used by model display / ModelConfig.
 _ARCH_FOR_METHOD = {
     VR_ARCH_PM: VR_ARCH_TYPE,
     MDX_ARCH_TYPE: MDX_ARCH_TYPE,
@@ -175,7 +181,7 @@ def _resolve_among_installed(
 
 
 def resolve_cli_model_arg(method: str, model_arg: str, repo: Optional[Any] = None) -> str:
-    """Normalize a CLI ``--model`` to the label :class:`ModelData` expects.
+    """Normalize a CLI ``--model`` to the label :class:`ModelConfig` expects.
 
     Accepts:
     - GUI display names (unchanged when already known)
@@ -256,18 +262,18 @@ def parse_cli_stems(stems_arg: str) -> set[str]:
 
 
 def _set_exclusive_stem_flags(
-    settings: SettingsModel,
+    settings: Settings,
     *,
     primary_only: bool,
     secondary_only: bool,
 ) -> None:
-    settings.set("is_primary_stem_only", primary_only)
-    settings.set("is_secondary_stem_only", secondary_only)
-    settings.set("is_primary_stem_only_Demucs", primary_only)
-    settings.set("is_secondary_stem_only_Demucs", secondary_only)
+    settings.process.primary_stem_only = primary_only
+    settings.process.secondary_stem_only = secondary_only
+    settings.demucs.is_primary_stem_only = primary_only
+    settings.demucs.is_secondary_stem_only = secondary_only
 
 
-def apply_stems_override(settings: SettingsModel, stems_arg: str) -> str:
+def apply_stems_override(settings: Settings, stems_arg: str) -> str:
     """Apply a CLI ``--stems`` override to settings (does not persist).
 
     Mirrors the GUI Save-stems quick modes for dual-stem and Demucs focus.
@@ -277,9 +283,9 @@ def apply_stems_override(settings: SettingsModel, stems_arg: str) -> str:
 
     if "both" in tokens or tokens >= {"vocals", "instrumental"}:
         _set_exclusive_stem_flags(settings, primary_only=False, secondary_only=False)
-        settings.set("demucs_stems", ALL_STEMS)
-        settings.set("mdx_stems", ALL_STEMS)
-        settings.set("mdx_stems_selected", [])
+        settings.demucs.stems = ALL_STEMS
+        settings.mdx.stems = ALL_STEMS
+        settings.mdx.stems_selected = []
         return "both"
 
     if len(tokens) != 1:
@@ -291,39 +297,39 @@ def apply_stems_override(settings: SettingsModel, stems_arg: str) -> str:
     choice = next(iter(tokens))
     if choice == "primary":
         _set_exclusive_stem_flags(settings, primary_only=True, secondary_only=False)
-        settings.set("mdx_stems", ALL_STEMS)
-        settings.set("mdx_stems_selected", [])
+        settings.mdx.stems = ALL_STEMS
+        settings.mdx.stems_selected = []
         return "primary"
 
     if choice == "secondary":
         _set_exclusive_stem_flags(settings, primary_only=False, secondary_only=True)
-        settings.set("mdx_stems", ALL_STEMS)
-        settings.set("mdx_stems_selected", [])
+        settings.mdx.stems = ALL_STEMS
+        settings.mdx.stems_selected = []
         return "secondary"
 
     if choice == "vocals":
         # Same as UI "Vocals only" / Demucs focus vocals.
         _set_exclusive_stem_flags(settings, primary_only=True, secondary_only=False)
-        settings.set("demucs_stems", VOCAL_STEM)
-        settings.set("mdx_stems", VOCAL_STEM)
-        settings.set("mdx_stems_selected", [VOCAL_STEM])
+        settings.demucs.stems = VOCAL_STEM
+        settings.mdx.stems = VOCAL_STEM
+        settings.mdx.stems_selected = [VOCAL_STEM]
         return "vocals"
 
     if choice == "instrumental":
         # Same as UI "Instrumental only" (derived / secondary).
         _set_exclusive_stem_flags(settings, primary_only=False, secondary_only=True)
-        settings.set("demucs_stems", VOCAL_STEM)
-        settings.set("mdx_stems", VOCAL_STEM)
-        settings.set("mdx_stems_selected", [VOCAL_STEM])
+        settings.demucs.stems = VOCAL_STEM
+        settings.mdx.stems = VOCAL_STEM
+        settings.mdx.stems_selected = [VOCAL_STEM]
         return "instrumental"
 
     focus = _DEMUCS_FOCUS_BY_TOKEN.get(choice)
     if focus is None:
         raise ValueError(f"unsupported --stems token {choice!r}")
     _set_exclusive_stem_flags(settings, primary_only=True, secondary_only=False)
-    settings.set("demucs_stems", focus)
-    settings.set("mdx_stems", ALL_STEMS)
-    settings.set("mdx_stems_selected", [])
+    settings.demucs.stems = focus
+    settings.mdx.stems = ALL_STEMS
+    settings.mdx.stems_selected = []
     return choice
 
 
@@ -339,19 +345,19 @@ def build_settings(
     repo: Optional[Any] = None,
     long_chunk_seconds: Optional[float] = None,
     long_chunk_overlap: Optional[float] = None,
-) -> SettingsModel:
+) -> Settings:
     """Load settings and apply CLI overrides (does not persist)."""
     path = settings_path or SETTINGS_DATA_FILE
-    settings = SettingsModel.load(path)
+    settings = Settings.load(path)
 
     if export_path is not None:
-        settings.set("export_path", export_path)
+        settings.process.export_path = export_path
 
     resolved_method = resolve_method(method) if method else None
     if resolved_method is not None:
-        settings.set("chosen_process_method", resolved_method)
+        settings.process.method = ProcessMethod(resolved_method)
 
-    chosen = settings.get("chosen_process_method")
+    chosen = settings.process.method
     if chosen == ENSEMBLE_MODE:
         raise ValueError(
             "ensemble mode is not supported by the headless CLI (v1); "
@@ -360,38 +366,37 @@ def build_settings(
 
     if model is not None:
         method_for_model = resolved_method or chosen
-        model_key = _MODEL_KEY_BY_METHOD.get(method_for_model)
-        if model_key is None:
+        model_section = _MODEL_SECTION_BY_METHOD.get(method_for_model)
+        if model_section is None:
             raise ValueError(
                 f"cannot set --model for process method {method_for_model!r}"
             )
-        settings.set(
-            model_key,
-            resolve_cli_model_arg(method_for_model, model, repo=repo),
+        getattr(settings, model_section).model = resolve_cli_model_arg(
+            method_for_model, model, repo=repo
         )
 
     if stems is not None:
         apply_stems_override(settings, stems)
 
     if use_gpu is not None:
-        settings.set("is_gpu_conversion", bool(use_gpu))
+        settings.process.use_gpu = bool(use_gpu)
 
     if stable_names:
         # Stable basenames make stem pairing for bench-ab reliable.
-        settings.set("is_create_model_folder", False)
-        settings.set("is_testing_audio", False)
-        settings.set("is_add_model_name", False)
+        settings.process.create_model_folder = False
+        settings.process.testing_audio = False
+        settings.process.add_model_name = False
 
     if long_chunk_seconds is not None:
-        settings.set("long_file_chunk_seconds", float(long_chunk_seconds))
+        settings.process.long_file_chunk_seconds = float(long_chunk_seconds)
     if long_chunk_overlap is not None:
-        settings.set("long_file_chunk_overlap_seconds", float(long_chunk_overlap))
+        settings.process.long_file_chunk_overlap_seconds = float(long_chunk_overlap)
 
     return settings
 
 
 def run_separation_sync(
-    settings: SettingsModel,
+    settings: Settings,
     input_paths: Sequence[str],
     *,
     print_console: bool = True,
@@ -401,11 +406,11 @@ def run_separation_sync(
     if not input_paths:
         raise ValueError("at least one input path is required")
 
-    chosen = settings.get("chosen_process_method")
+    chosen = settings.process.method
     if chosen == ENSEMBLE_MODE:
         raise ValueError("ensemble mode is not supported by the headless CLI (v1)")
 
-    export_path = str(settings.get("export_path") or "")
+    export_path = str(settings.process.export_path or "")
     if not export_path:
         raise ValueError("export_path is empty; pass -o/--output")
 
@@ -478,22 +483,25 @@ def run_separation_sync(
     )
 
 
-def settings_summary(settings: SettingsModel) -> dict[str, Any]:
+def settings_summary(settings: Settings) -> dict[str, Any]:
     """Small dict of the knobs most relevant to headless runs."""
-    method = settings.get("chosen_process_method")
+    method = settings.process.method
     model_key = _MODEL_KEY_BY_METHOD.get(method, "")
+    model_section = _MODEL_SECTION_BY_METHOD.get(method)
     return {
         "chosen_process_method": method,
         "model_key": model_key,
-        "model": settings.get(model_key) if model_key else None,
-        "export_path": settings.get("export_path"),
-        "is_gpu_conversion": settings.get("is_gpu_conversion"),
-        "save_format": settings.get("save_format"),
-        "is_primary_stem_only": settings.get("is_primary_stem_only"),
-        "is_secondary_stem_only": settings.get("is_secondary_stem_only"),
-        "demucs_stems": settings.get("demucs_stems"),
-        "mdx_stems": settings.get("mdx_stems"),
-        "mdx_stems_selected": settings.get("mdx_stems_selected"),
-        "long_file_chunk_seconds": settings.get("long_file_chunk_seconds"),
-        "long_file_chunk_overlap_seconds": settings.get("long_file_chunk_overlap_seconds"),
+        "model": getattr(settings, model_section).model if model_section else None,
+        "export_path": settings.process.export_path,
+        "is_gpu_conversion": settings.process.use_gpu,
+        "save_format": settings.process.save_format,
+        "is_primary_stem_only": settings.process.primary_stem_only,
+        "is_secondary_stem_only": settings.process.secondary_stem_only,
+        "demucs_stems": settings.demucs.stems,
+        "mdx_stems": settings.mdx.stems,
+        "mdx_stems_selected": settings.mdx.stems_selected,
+        "long_file_chunk_seconds": settings.process.long_file_chunk_seconds,
+        "long_file_chunk_overlap_seconds": (
+            settings.process.long_file_chunk_overlap_seconds
+        ),
     }

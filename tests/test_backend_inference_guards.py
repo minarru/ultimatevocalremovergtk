@@ -116,7 +116,7 @@ class EnsembleArrayInputTests(unittest.TestCase):
 
         a = np.ones((2, 100), dtype=np.float32)
         b = np.full((2, 80), 3.0, dtype=np.float32)
-        out = average_audio([a, b], is_array=True)
+        out = np.asarray(average_audio([a, b], is_array=True))
         self.assertEqual(out.shape, (2, 100))
         # Longer stem unchanged; shorter padded then averaged.
         self.assertTrue(np.allclose(out[:, :80], 2.0))

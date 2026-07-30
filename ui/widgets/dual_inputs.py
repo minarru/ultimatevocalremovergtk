@@ -1,6 +1,7 @@
 """Read-only summary + editor entry point for align / matchering input pairs."""
 
 from __future__ import annotations
+import typing
 
 import os
 from typing import Callable, List, Sequence, Tuple
@@ -50,7 +51,7 @@ class DualInputsRow(Adw.ExpanderRow):
         self._labels = labels
         self._refresh()
 
-    def _open_editor(self, *_args) -> None:
+    def _open_editor(self, *_args: typing.Any) -> None:
         self._on_edit()
 
     def _refresh(self) -> None:

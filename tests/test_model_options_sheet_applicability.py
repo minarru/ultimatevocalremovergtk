@@ -1,6 +1,7 @@
 """Sheet applicability: banners on inactive tabs, badges on ensemble tabs."""
 
 from __future__ import annotations
+import typing
 
 import os
 import unittest
@@ -28,7 +29,7 @@ class SheetApplicabilityTests(unittest.TestCase):
         cls._app = Adw.Application(application_id="org.uvr.test.sheet-applicability")
         cls._app.register()
 
-    def _sheet(self, on_switch_method=None):
+    def _sheet(self, on_switch_method: typing.Any=None):
         from ui.model_options.sheet import ModelOptionsSheet
         from ui.window import MainWindow
 
@@ -44,7 +45,7 @@ class SheetApplicabilityTests(unittest.TestCase):
         return sheet, window
 
     @staticmethod
-    def _show(sheet, stack_name):
+    def _show(sheet: typing.Any, stack_name: typing.Any):
         """Bring a tab on screen; the sheet has one banner describing it."""
         sheet._stack.set_visible_child_name(stack_name)
 
@@ -213,6 +214,7 @@ class SheetApplicabilityTests(unittest.TestCase):
             child = child.get_next_sibling()
 
         self.assertIsNotNone(revealer, "Adw.Banner should wrap content in a Revealer")
+        assert revealer is not None
         self.assertEqual(revealer.get_transition_duration(), 0)
 
     def test_top_bar_spacing_is_not_collapsed(self):

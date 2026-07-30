@@ -7,6 +7,7 @@ confirm the editor reports the resulting list of ``(file_a, file_b)`` pairs back
 to the caller, which persists them to ``DualBatch_inputPaths`` and the
 ``fileOneEntry`` / ``fileTwoEntry`` settings keys.
 """
+import typing
 
 import os
 from typing import Callable, List, Sequence, Tuple
@@ -168,7 +169,7 @@ class _FileColumn(Gtk.Box):
         dialog = audio_open_dialog("Select Audio Files", initial=initial)
         dialog.open_multiple(self.get_root(), None, self._on_open_finished)
 
-    def _on_open_finished(self, dialog: Gtk.FileDialog, result) -> None:
+    def _on_open_finished(self, dialog: Gtk.FileDialog, result: typing.Any) -> None:
         try:
             files = dialog.open_multiple_finish(result)
         except GLib.Error as exc:
@@ -179,7 +180,7 @@ class _FileColumn(Gtk.Box):
         paths = [files.get_item(i).get_path() for i in range(files.get_n_items())]
         self.add_paths([p for p in paths if p])
 
-    def _on_drop(self, _target: Gtk.DropTarget, value, _x: float, _y: float) -> bool:
+    def _on_drop(self, _target: Gtk.DropTarget, value: typing.Any, _x: float, _y: float) -> bool:
         try:
             files = value.get_files()
         except AttributeError:

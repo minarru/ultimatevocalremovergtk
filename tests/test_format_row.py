@@ -1,6 +1,7 @@
 """Combined output-format + quality row."""
 
 from __future__ import annotations
+import typing
 
 import os
 import unittest
@@ -56,10 +57,10 @@ class OutputFormatRowTests(unittest.TestCase):
         cls._app = Adw.Application(application_id="org.uvr.test.format-row")
         cls._app.register()
 
-    def _settings(self, **overrides):
-        from core.settings import SettingsModel
+    def _settings(self, **overrides: typing.Any):
+        from core.settings import Settings
 
-        settings = SettingsModel()
+        settings = Settings.defaults()
         for key, value in overrides.items():
             settings.set(key, value)
         return settings

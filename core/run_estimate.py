@@ -1,10 +1,11 @@
 """Pre-run workload hints and live separation ETA tracking."""
 
 from __future__ import annotations
+import typing
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple
 
 from bundled.constants import (
     ALL_STEMS,
@@ -18,6 +19,9 @@ from bundled.constants import (
     VR_ARCH_PM,
     VR_ARCH_TYPE,
 )
+
+if TYPE_CHECKING:
+    from .settings import Settings
 
 _MODEL_KEY_BY_METHOD = {
     VR_ARCH_PM: "vr_model",
@@ -97,39 +101,39 @@ class WorkloadEstimate:
         return self.export_tier.value
 
 
-def _pitch_change_active(settings) -> bool:
+def _pitch_change_active(settings: Settings) -> bool:
     try:
-        return float(settings.get("semitone_shift") or 0) != 0.0
+        return float(settings.process.semitone_shift or 0) != 0.0
     except (TypeError, ValueError):
         return False
 
 
-def _mdx_overlap_value(settings) -> int:
+def _mdx_overlap_value(settings: Settings) -> int:
     try:
-        return int(float(settings.get("overlap_mdx23") or 0))
+        return int(float(settings.mdx.overlap_mdx23 or 0))
     except (TypeError, ValueError):
         return 0
 
 
-def _demucs_shifts_value(settings) -> int:
+def _demucs_shifts_value(settings: Settings) -> int:
     try:
-        return int(settings.get("shifts") or 0)
+        return int(settings.demucs.shifts or 0)
     except (TypeError, ValueError):
         return 0
 
 
-def _denoise_active(settings) -> bool:
-    denoise = settings.get("denoise_option")
+def _denoise_active(settings: Settings) -> bool:
+    denoise = settings.mdx.denoise_option
     return denoise not in (None, "", "None", "none")
 
 
-def _vocal_splitter_active(settings) -> bool:
-    return bool(settings.get("is_set_vocal_splitter")) and settings.get(
-        "set_vocal_splitter"
-    ) not in (None, NO_MODEL, "")
+def _vocal_splitter_active(settings: Settings) -> bool:
+    return bool(settings.process.vocal_splitter_enabled) and (
+        settings.process.vocal_splitter not in (None, NO_MODEL, "")
+    )
 
 
-def cost_factor_hints(settings, method_key: str) -> Tuple[str, ...]:
+def cost_factor_hints(settings: typing.Any, method_key: str) -> Tuple[str, ...]:
     """Return readable labels for settings that add cost beyond pass/output counts.
 
     Pre-process is omitted (already counted as +2 passes). Ensemble uses the
@@ -140,13 +144,13 @@ def cost_factor_hints(settings, method_key: str) -> Tuple[str, ...]:
     include_mdx = method_key in (MDX_ARCH_TYPE, ENSEMBLE_MODE)
     include_demucs = method_key in (DEMUCS_ARCH_TYPE, ENSEMBLE_MODE)
 
-    if include_vr and settings.get("is_tta"):
+    if include_vr and settings.vr.is_tta:
         hints.append("TTA")
     if include_mdx:
         overlap = _mdx_overlap_value(settings)
         if overlap >= 8:
             hints.append(f"Overlap {overlap}")
-        if settings.get("is_match_frequency_pitch") and _pitch_change_active(settings):
+        if settings.mdx.is_match_frequency_pitch and _pitch_change_active(settings):
             hints.append("Match frequency")
         if _denoise_active(settings):
             hints.append("Denoise")
@@ -178,14 +182,14 @@ def classify_run_tier(run_units: int) -> Optional[RunCostTier]:
     return RunCostTier.SLOWER
 
 
-def compute_run_cost_units(settings, method_key: str, inference_passes: int) -> int:
+def compute_run_cost_units(settings: typing.Any, method_key: str, inference_passes: int) -> int:
     """Score relative run cost from passes plus heavy settings multipliers."""
     units = max(0, int(inference_passes))
     include_vr = method_key in (VR_ARCH_TYPE, VR_ARCH_PM, ENSEMBLE_MODE)
     include_mdx = method_key in (MDX_ARCH_TYPE, ENSEMBLE_MODE)
     include_demucs = method_key in (DEMUCS_ARCH_TYPE, ENSEMBLE_MODE)
 
-    if include_vr and settings.get("is_tta"):
+    if include_vr and settings.vr.is_tta:
         units += inference_passes
     if include_demucs:
         shifts = _demucs_shifts_value(settings)
@@ -221,31 +225,31 @@ def count_inference_passes_from_models(models: Sequence[Any]) -> int:
 
 
 def count_inference_passes(
-    settings,
+    settings: typing.Any,
     *,
     method_key: str,
-    repo=None,
+    repo: typing.Any=None,
     model_name: Optional[str] = None,
 ) -> int:
     """Return expected inference passes for the current method settings."""
     if method_key == ENSEMBLE_MODE:
         if repo is not None:
-            from .model_data import assemble_model_data
+            from .model_config import assemble_model
 
             try:
-                models = assemble_model_data(settings, repo, arch_type=ENSEMBLE_MODE)
+                models = assemble_model(settings, repo, arch_type=ENSEMBLE_MODE)
                 if models:
                     return count_inference_passes_from_models(models)
             except (ValueError, NotImplementedError):
                 pass
-        selected = settings.get("selected_models") or []
+        selected = settings.ensemble.selected_models or []
         return max(1, len(selected))
 
     if repo is not None and model_name and model_name not in (None, NO_MODEL, ""):
-        from .model_data import assemble_model_data
+        from .model_config import assemble_model
 
         try:
-            models = assemble_model_data(settings, repo, model_name, method_key)
+            models = assemble_model(settings, repo, model_name, method_key)
             valid = [m for m in models if getattr(m, "model_status", False)]
             if valid:
                 return count_inference_passes_from_models(valid)
@@ -256,26 +260,34 @@ def count_inference_passes(
     return _count_inference_passes_light(settings, method_key)
 
 
-def _count_inference_passes_light(settings, method_key: str) -> int:
+def _count_inference_passes_light(settings: typing.Any, method_key: str) -> int:
     passes = 1
-    secondary_key = _SECONDARY_ACTIVATE_KEY.get(method_key)
-    if secondary_key and settings.get(secondary_key):
+    secondary_active = {
+        VR_ARCH_PM: settings.vr.is_secondary_model_activate,
+        VR_ARCH_TYPE: settings.vr.is_secondary_model_activate,
+        MDX_ARCH_TYPE: settings.mdx.is_secondary_model_activate,
+        DEMUCS_ARCH_TYPE: settings.demucs.is_secondary_model_activate,
+    }.get(method_key, False)
+    if secondary_active:
         passes += 1
     if _vocal_splitter_active(settings):
         passes += 1
-    if method_key == DEMUCS_ARCH_TYPE and settings.get("is_demucs_pre_proc_model_activate"):
+    if (
+        method_key == DEMUCS_ARCH_TYPE
+        and settings.demucs.is_pre_proc_model_activate
+    ):
         passes += 2
     return passes
 
 
-def _multi_stem_base_outputs(settings, repo=None) -> int:
+def _multi_stem_base_outputs(settings: typing.Any, repo: typing.Any=None) -> int:
     """Stem file count for Multi-stem Ensemble (at least 4)."""
     if repo is None:
         return 4
-    from .model_data import assemble_model_data
+    from .model_config import assemble_model
 
     try:
-        models = assemble_model_data(settings, repo, arch_type=ENSEMBLE_MODE)
+        models = assemble_model(settings, repo, arch_type=ENSEMBLE_MODE)
     except (ValueError, NotImplementedError):
         return 4
     for model in models:
@@ -289,9 +301,9 @@ def _multi_stem_base_outputs(settings, repo=None) -> int:
     return 4
 
 
-def ensemble_export_summary(settings, repo=None) -> str:
+def ensemble_export_summary(settings: typing.Any, repo: typing.Any=None) -> str:
     """Short export line for ensemble modes without dual-stem Save stems toggles."""
-    main = settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+    main = settings.ensemble.main_stem
     if main == FOUR_STEM_ENSEMBLE:
         label = "4 stem outputs"
     elif main == MULTI_STEM_ENSEMBLE:
@@ -299,19 +311,19 @@ def ensemble_export_summary(settings, repo=None) -> str:
         label = f"{count} stem outputs"
     else:
         return ""
-    if settings.get("is_save_all_outputs_ensemble"):
-        members = len(settings.get("selected_models") or [])
+    if settings.ensemble.save_all_outputs:
+        members = len(settings.ensemble.selected_models or [])
         if members:
             label = f"{label} + {members} member file" + ("s" if members != 1 else "")
     return label
 
 
 def count_expected_outputs(
-    save_stems=None,
+    save_stems: typing.Any=None,
     *,
-    settings=None,
+    settings: typing.Any=None,
     method_key: Optional[str] = None,
-    repo=None,
+    repo: typing.Any=None,
     output_count: Optional[int] = None,
 ) -> int:
     """Expected on-disk files for the current Save stems / ensemble configuration."""
@@ -320,32 +332,34 @@ def count_expected_outputs(
 
     base = 0
     if method_key == ENSEMBLE_MODE and settings is not None:
-        main = settings.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
+        main = settings.ensemble.main_stem
         if main == FOUR_STEM_ENSEMBLE:
             base = 4
         elif main == MULTI_STEM_ENSEMBLE:
             base = _multi_stem_base_outputs(settings, repo)
         elif save_stems is not None and getattr(save_stems, "mode", None) != "hidden":
             base = int(save_stems.expected_output_count())
-        if settings.get("is_save_all_outputs_ensemble"):
-            base += len(settings.get("selected_models") or [])
+        if settings.ensemble.save_all_outputs:
+            base += len(settings.ensemble.selected_models or [])
         return base
 
     if save_stems is not None:
         base = int(save_stems.expected_output_count())
-    if settings is not None and _vocal_splitter_active(settings) and settings.get(
-        "is_save_inst_set_vocal_splitter"
+    if (
+        settings is not None
+        and _vocal_splitter_active(settings)
+        and settings.process.save_inst_vocal_splitter
     ):
         base += 2
     return base
 
 
 def estimate_workload(
-    settings,
+    settings: typing.Any,
     *,
     method_key: str,
-    save_stems=None,
-    repo=None,
+    save_stems: typing.Any=None,
+    repo: typing.Any=None,
     model_name: Optional[str] = None,
     has_model: bool = True,
     output_count: Optional[int] = None,
@@ -380,9 +394,9 @@ def estimate_workload(
     return WorkloadEstimate(
         inference_passes=inference_passes,
         output_count=counted,
-        uses_gpu=bool(settings.get("is_gpu_conversion")),
-        sample_mode=bool(settings.get("model_sample_mode")),
-        sample_seconds=int(settings.get("model_sample_mode_duration", 30) or 30),
+        uses_gpu=bool(settings.process.use_gpu),
+        sample_mode=bool(settings.process.sample_mode),
+        sample_seconds=int(settings.process.sample_mode_duration or 30),
         export_tier=classify_export_tier(counted),
         run_tier=classify_run_tier(run_units),
         hints=cost_factor_hints(settings, method_key),

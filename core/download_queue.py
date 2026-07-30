@@ -1,6 +1,7 @@
 """Background model download queue (runs independently of Download Center UI)."""
 
 from __future__ import annotations
+import typing
 
 import threading
 import time
@@ -41,7 +42,7 @@ class DownloadQueueItem:
 class DownloadQueue:
     """Sequential download queue shared by the app (survives window close)."""
 
-    def __init__(self, manager, on_changed: Optional[Callable[[], None]] = None, repo=None):
+    def __init__(self, manager: typing.Any, on_changed: Optional[Callable[[], None]] = None, repo: typing.Any=None):
         self.manager = manager
         self.repo = repo
         self._on_changed = on_changed

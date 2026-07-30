@@ -5,6 +5,7 @@ worker via the callbacks marshaled onto the main loop (see
 :mod:`ui.dispatch`), so :meth:`ConsoleView.append` is only ever called on
 the GTK main thread.
 """
+import typing
 
 from typing import Callable, Optional
 
@@ -49,7 +50,7 @@ class ConsoleView(Gtk.ScrolledWindow):
             vadj.connect("notify::upper", self._on_viewport_changed)
             vadj.connect("notify::page-size", self._on_viewport_changed)
 
-    def _on_viewport_changed(self, _adj: Gtk.Adjustment, _pspec) -> None:
+    def _on_viewport_changed(self, _adj: Gtk.Adjustment, _pspec: typing.Any) -> None:
         if not self.get_mapped():
             return
         if self._viewport_idle_id is not None:

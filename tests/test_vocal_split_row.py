@@ -1,6 +1,7 @@
 """Vocal splitter + deverb row (global settings, hosted on the run pages)."""
 
 from __future__ import annotations
+import typing
 
 import os
 import unittest
@@ -33,10 +34,10 @@ class VocalSplitRowTests(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls._politrees_patcher.stop()
 
-    def _settings(self, **overrides):
-        from core.settings import SettingsModel
+    def _settings(self, **overrides: typing.Any):
+        from core.settings import Settings
 
-        settings = SettingsModel()
+        settings = Settings.defaults()
         for key, value in overrides.items():
             settings.set(key, value)
         return settings
@@ -49,7 +50,7 @@ class VocalSplitRowTests(unittest.TestCase):
 
         # Patch karaoke_model_list to return a test model
         original_karaoke = repo.karaoke_model_list
-        def patched_karaoke(_settings):
+        def patched_karaoke(settings: typing.Any):
             return ["VR Arc: UVR-BVE-4B"]
         repo.karaoke_model_list = patched_karaoke
 
@@ -158,7 +159,7 @@ class VocalSplitRowTests(unittest.TestCase):
 
         repo = ModelRepository()
 
-        def raising_karaoke(_settings):
+        def raising_karaoke(settings: typing.Any):
             raise RuntimeError("catalogue unavailable")
 
         repo.karaoke_model_list = raising_karaoke

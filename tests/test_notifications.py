@@ -1,9 +1,10 @@
 """Tests for desktop notification preference gates."""
+import typing
 
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.settings import SettingsModel
+from core.settings import Settings
 from ui.notifications import (
     NOTIFY_DOWNLOAD_COMPLETE,
     NOTIFY_PROCESS_COMPLETE,
@@ -13,21 +14,20 @@ from ui.notifications import (
 
 
 class NotificationEnabledTests(unittest.TestCase):
-    def test_defaults_to_enabled_when_missing(self) -> None:
-        settings = SettingsModel()
-        settings._data.pop(NOTIFY_PROCESS_COMPLETE)
+    def test_defaults_to_enabled(self) -> None:
+        settings = Settings.defaults()
         self.assertTrue(notification_enabled(settings, NOTIFY_PROCESS_COMPLETE))
 
     def test_respects_disabled_setting(self) -> None:
-        settings = SettingsModel()
+        settings = Settings.defaults()
         settings.set(NOTIFY_DOWNLOAD_COMPLETE, False)
         self.assertFalse(notification_enabled(settings, NOTIFY_DOWNLOAD_COMPLETE))
 
 
 class SendDesktopNotificationTests(unittest.TestCase):
     @patch("ui.notifications.Gio.Notification.new")
-    def test_skips_when_setting_disabled(self, new_notification) -> None:
-        settings = SettingsModel()
+    def test_skips_when_setting_disabled(self, new_notification: typing.Any) -> None:
+        settings = Settings.defaults()
         settings.set(NOTIFY_PROCESS_COMPLETE, False)
         send_desktop_notification(
             MagicMock(),

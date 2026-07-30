@@ -61,7 +61,7 @@ _OOM_MARKERS = (
 )
 
 
-def is_oom_message(text: str) -> bool:
+def is_oom_message(text: str | None) -> bool:
     """Whether an exception message indicates a GPU memory allocation failure.
 
     ``onnxruntime`` reports CUDA OOM through its own ``Fail``/``RuntimeException``

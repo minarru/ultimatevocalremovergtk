@@ -3,9 +3,10 @@
 The Tk UI binds dozens of option menus and checkbuttons directly to
 ``tk.StringVar`` / ``tk.BooleanVar``. These helpers provide the equivalent for
 libadwaita rows: build a combo backed by a ``Gtk.StringList`` and read/write the
-selected value as the plain string the :class:`~core.settings.SettingsModel`
+selected value as the plain string the :class:`~core.settings.Settings`
 expects (mirroring how Tk stores every option as a string).
 """
+import typing
 
 from typing import Iterable, List, Optional, Sequence
 
@@ -59,12 +60,12 @@ def _apply_icon_name(image: Gtk.Image, icon_name: str, size: int = 16) -> None:
     image.set_from_icon_name(icon_name)
 
 
-def add_row_icon(row, icon_name: str) -> None:
+def add_row_icon(row: typing.Any, icon_name: str) -> None:
     """Add a leading symbolic ``icon_name`` prefix to an ``Adw`` row."""
     row.add_prefix(image_from_icon_name(icon_name))
 
 
-def set_row_icon(row, icon_name: Optional[str]) -> None:
+def set_row_icon(row: typing.Any, icon_name: Optional[str]) -> None:
     """Set or clear the leading icon on an ``Adw`` row (updates in place)."""
     image = getattr(row, "_uvr_row_icon", None)
     if not icon_name:
@@ -114,13 +115,13 @@ def use_wrapping_list(row: Adw.ComboRow) -> None:
     """
     factory = Gtk.SignalListItemFactory()
 
-    def on_setup(_factory, item):
+    def on_setup(_factory: typing.Any, item: typing.Any):
         label = Gtk.Label(xalign=0.0)
         label.set_wrap(True)
         label.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
         item.set_child(label)
 
-    def on_bind(_factory, item):
+    def on_bind(_factory: typing.Any, item: typing.Any):
         item.get_child().set_label(item.get_item().get_string())
 
     factory.connect("setup", on_setup)
@@ -174,7 +175,7 @@ def combo_values(row: Adw.ComboRow) -> List[str]:
     return [model.get_string(i) for i in range(model.get_n_items())]
 
 
-def set_combo_value(row: Adw.ComboRow, value) -> bool:
+def set_combo_value(row: Adw.ComboRow, value: typing.Any) -> bool:
     """Select the item matching ``value``; returns ``True`` when found."""
     target = str(value)
     ids = getattr(row, "_uvr_combo_ids", None)
@@ -282,7 +283,7 @@ def _make_scale_row(
     row._uvr_digits = 0
     row._uvr_store_float = False
 
-    def on_changed(*_args):
+    def on_changed(*_args: typing.Any):
         values = row._uvr_values
         if values:
             index = int(round(scale.get_value()))
@@ -365,9 +366,9 @@ def make_numeric_scale_row(
 
 def set_scale_default_mark(
     row: Adw.ActionRow,
-    default,
+    default: typing.Any,
     *,
-    position=Gtk.PositionType.BOTTOM,
+    position: typing.Any=Gtk.PositionType.BOTTOM,
     label: Optional[str] = None,
 ) -> None:
     """Place a tick mark at the scale's default value (index or numeric)."""
@@ -453,7 +454,7 @@ def get_scale_row_float(row: Adw.ActionRow) -> float:
     return row._uvr_scale.get_value()
 
 
-def set_scale_row_value(row: Adw.ActionRow, value) -> bool:
+def set_scale_row_value(row: Adw.ActionRow, value: typing.Any) -> bool:
     """Set a scale row from a stored settings value."""
     if value is None:
         return False

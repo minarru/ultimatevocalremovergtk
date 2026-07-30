@@ -1,4 +1,5 @@
 """Tests for cooperative download cancellation."""
+import typing
 
 import os
 import tempfile
@@ -19,7 +20,7 @@ class DownloadCancelTests(unittest.TestCase):
             save_path = os.path.join(tmp, "model.onnx")
             tmp_path = f"{save_path}.part"
 
-            def fake_download_url(*_args, **_kwargs) -> None:
+            def fake_download_url(*_args: typing.Any, **_kwargs: typing.Any) -> None:
                 with open(tmp_path, "wb") as handle:
                     handle.write(b"partial")
                 os.remove(tmp_path)
@@ -44,7 +45,7 @@ class DownloadCancelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             save_path = os.path.join(tmp, "model.onnx")
 
-            def fake_download_url(_url, tmp_path, *_args, **_kwargs) -> None:
+            def fake_download_url(_url: typing.Any, tmp_path: typing.Any, *_args: typing.Any, **_kwargs: typing.Any) -> None:
                 stop_event.set()
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)

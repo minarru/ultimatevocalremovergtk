@@ -5,7 +5,7 @@ from typing import Optional, Sequence
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
-from core import SettingsModel, ensure_data_dir
+from core import Settings, ensure_data_dir
 
 from . import APP_ID
 from .resources import load_application_styles, register_gresources
@@ -84,8 +84,8 @@ class UVRApplication(Adw.Application):
         from core.paths import cleanup_stale_ensemble_temps
 
         try:
-            settings = SettingsModel.load()
-            cleanup_enabled = bool(settings.get("is_cleanup_ensemble_temps", True))
+            settings = Settings.load()
+            cleanup_enabled = bool(settings.ensemble.cleanup_temps)
         except Exception:
             cleanup_enabled = True
         removed = cleanup_stale_ensemble_temps(cleanup_enabled)
@@ -95,7 +95,7 @@ class UVRApplication(Adw.Application):
     @staticmethod
     def _apply_saved_color_scheme():
         try:
-            scheme = SettingsModel.load().get("color_scheme", "auto")
+            scheme = Settings.load().ui.color_scheme or "auto"
         except Exception:
             scheme = "auto"
         apply_color_scheme(scheme)
@@ -144,3 +144,4 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     from .shutdown import finalize_process_exit
 
     finalize_process_exit(status)
+    return status

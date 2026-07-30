@@ -5,6 +5,7 @@ Derives display-label overrides and export intent from resolved model metadata
 """
 
 from __future__ import annotations
+import typing
 
 from typing import Dict, List, Mapping, Optional, Sequence, Set
 
@@ -157,7 +158,7 @@ VOCALS_OTHER_DISPLAY_OVERRIDES: Dict[str, str] = {
 }
 
 
-def model_weight_basename(model) -> str:
+def model_weight_basename(model: typing.Any) -> str:
     if model is None:
         return ""
     for attr in ("model_basename", "model_name"):
@@ -172,7 +173,7 @@ def model_weight_basename(model) -> str:
     return ""
 
 
-def training_instruments(model) -> List[str]:
+def training_instruments(model: typing.Any) -> List[str]:
     if model is None:
         return []
     configs = getattr(model, "mdx_c_configs", None)
@@ -184,7 +185,7 @@ def training_instruments(model) -> List[str]:
     return [str(name) for name in instruments]
 
 
-def target_instrument(model) -> str:
+def target_instrument(model: typing.Any) -> str:
     if model is None:
         return ""
     configs = getattr(model, "mdx_c_configs", None)
@@ -393,8 +394,8 @@ def export_intent_from_fields(
     return INTENT_UNKNOWN
 
 
-def export_intent_from_model(model) -> str:
-    """Infer export intent from a resolved :class:`ModelData` instance."""
+def export_intent_from_model(model: typing.Any) -> str:
+    """Infer export intent from a resolved :class:`ModelConfig` instance."""
     if model is None:
         return INTENT_UNKNOWN
     model_data = getattr(model, "model_data", None)
@@ -417,7 +418,7 @@ def export_intent_from_model(model) -> str:
     )
 
 
-def karaoke_bv_export_labels(model) -> Optional[Dict[str, str]]:
+def karaoke_bv_export_labels(model: typing.Any) -> Optional[Dict[str, str]]:
     """Vocals/Instrumental → human karaoke/BV export labels, or ``None``."""
     if model is None:
         return None
@@ -440,7 +441,7 @@ def karaoke_bv_export_labels(model) -> Optional[Dict[str, str]]:
     }
 
 
-def export_stem_label(model, stem: str, *, for_ensemble: bool = False) -> str:
+def export_stem_label(model: typing.Any, stem: str, *, for_ensemble: bool = False) -> str:
     """Map a logic stem to the filename/UI export label.
 
     Ensemble members use :func:`canonical_ensemble_stem_tag` so yaml lowercase
@@ -464,7 +465,7 @@ def export_stem_label(model, stem: str, *, for_ensemble: bool = False) -> str:
     return labels.get(stem, stem)
 
 
-def stem_display_overrides(model) -> Optional[Dict[str, str]]:
+def stem_display_overrides(model: typing.Any) -> Optional[Dict[str, str]]:
     """Return per-stem display-label overrides for Save stems UI."""
     if model is None:
         return None
@@ -482,7 +483,7 @@ def stem_display_overrides(model) -> Optional[Dict[str, str]]:
     return overrides or None
 
 
-def vocal_stem_key(model, stems: Optional[Sequence[str]] = None) -> str:
+def vocal_stem_key(model: typing.Any, stems: Optional[Sequence[str]] = None) -> str:
     """Yaml/hash stem name used for vocal quick-export selection, or ``Vocals``."""
     for stem in stems or training_instruments(model):
         if is_vocal_target(stem) or stem == VOCAL_STEM:
@@ -493,7 +494,7 @@ def vocal_stem_key(model, stems: Optional[Sequence[str]] = None) -> str:
     return VOCAL_STEM
 
 
-def shows_voc_inst_quick_export(model, stems: Sequence[str]) -> bool:
+def shows_voc_inst_quick_export(model: typing.Any, stems: Sequence[str]) -> bool:
     """Whether the All / Vocals / Instrumental quick-export row applies."""
     if not model or not stems:
         return False
@@ -508,7 +509,7 @@ def shows_voc_inst_quick_export(model, stems: Sequence[str]) -> bool:
     return any(is_vocal_target(stem) or stem == VOCAL_STEM for stem in stems)
 
 
-def preferred_quick_export_mode(model) -> Optional[str]:
+def preferred_quick_export_mode(model: typing.Any) -> Optional[str]:
     """Default quick-export mode for subset UI, or ``None`` to keep user settings."""
     if export_intent_from_model(model) != INTENT_KARAOKE:
         return None
@@ -520,8 +521,8 @@ def preferred_quick_export_mode(model) -> Optional[str]:
 
 
 def apply_karaoke_quick_export_default(
-    settings,
-    model,
+    settings: typing.Any,
+    model: typing.Any,
     *,
     primary_key: str,
     secondary_key: str,
@@ -548,7 +549,7 @@ def apply_karaoke_quick_export_default(
     return True
 
 
-def recommended_export_note(model) -> str:
+def recommended_export_note(model: typing.Any) -> str:
     """Short UX hint for Save stems when intent differs from a single primary stem."""
     intent = export_intent_from_model(model)
     if intent == INTENT_DUAL_VOC_INST:

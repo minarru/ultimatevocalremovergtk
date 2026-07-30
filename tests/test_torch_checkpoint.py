@@ -1,3 +1,4 @@
+import typing
 import importlib
 import sys
 import unittest
@@ -88,7 +89,7 @@ class LoadTorchCheckpointTests(unittest.TestCase):
         )
 
     def test_falls_back_without_weights_only_kwarg(self):
-        def _raise_type_error(*_args, **_kwargs):
+        def _raise_type_error(*_args: typing.Any, **_kwargs: typing.Any):
             if "weights_only" in _kwargs:
                 raise TypeError("unexpected keyword argument 'weights_only'")
             return {"legacy": True}

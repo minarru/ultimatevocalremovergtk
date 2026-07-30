@@ -1,4 +1,5 @@
 """Tests for download queue status helpers."""
+import typing
 
 import unittest
 
@@ -31,7 +32,7 @@ from ui.widgets.download_queue_icons import (
 )
 
 
-def _item(status: str, **kwargs) -> DownloadQueueItem:
+def _item(status: str, **kwargs: typing.Any) -> DownloadQueueItem:
     return DownloadQueueItem(
         item_id="a",
         selection="Model",

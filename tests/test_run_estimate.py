@@ -1,3 +1,4 @@
+import typing
 import unittest
 from types import SimpleNamespace
 
@@ -12,6 +13,7 @@ from bundled.constants import (
     VOCAL_STEM,
     VR_ARCH_TYPE,
 )
+from core.settings import Settings
 from core.run_estimate import (
     ProgressEtaTracker,
     RunCostTier,
@@ -35,12 +37,16 @@ from ui.widgets.stem_only import (
 )
 
 
-class _Settings(dict):
-    def get(self, key, default=None):
-        return super().get(key, default)
+class _Settings(Settings):
+    def __init__(self, data: typing.Any=None):
+        super().__init__()
+        self.update(data or {})
 
-    def set(self, key, value):
-        self[key] = value
+    def __getitem__(self, key: typing.Any):
+        return self.get(key)
+
+    def __setitem__(self, key: typing.Any, value: typing.Any):
+        self.set(key, value)
 
 
 class TierClassificationTests(unittest.TestCase):
@@ -152,17 +158,17 @@ class InferencePassTests(unittest.TestCase):
                 model_status=True,
             ),
         ]
-        import core.model_data as model_data
+        import core.model_config as model_config
 
-        original = model_data.assemble_model_data
-        model_data.assemble_model_data = lambda *a, **k: assembled
+        original = model_config.assemble_model
+        model_config.assemble_model = lambda *a, **k: assembled
         try:
             self.assertEqual(
                 count_inference_passes(settings, method_key=ENSEMBLE_MODE, repo=_Repo()),
                 3,
             )
         finally:
-            model_data.assemble_model_data = original
+            model_config.assemble_model = original
 
 
 class OutputCountExtraTests(unittest.TestCase):
@@ -219,6 +225,7 @@ class OutputCountExtraTests(unittest.TestCase):
             {
                 "ensemble_main_stem": FOUR_STEM_ENSEMBLE,
                 "selected_models": ["a", "b"],
+                "is_save_all_outputs_ensemble": False,
                 "is_gpu_conversion": True,
                 "model_sample_mode": False,
                 "model_sample_mode_duration": 30,
@@ -233,6 +240,7 @@ class OutputCountExtraTests(unittest.TestCase):
             has_model=True,
         )
         self.assertIsNotNone(estimate)
+        assert estimate is not None
         self.assertEqual(estimate.output_count, 4)
         self.assertEqual(estimate.inference_passes, 2)
         self.assertIn("2 passes", estimate.format_summary())
@@ -275,6 +283,7 @@ class RunCostUnitTests(unittest.TestCase):
             has_model=True,
         )
         self.assertIsNotNone(estimate)
+        assert estimate is not None
         self.assertEqual(estimate.inference_passes, 1)
         self.assertEqual(estimate.run_tier, RunCostTier.TYPICAL)
 
@@ -400,6 +409,7 @@ class ProgressEtaTrackerTests(unittest.TestCase):
         tracker.update(0.25, 40.0, local_step=0.50, pass_index=1, pass_total=2, detail="Model 1/2")
         display = tracker.inference_display_fraction(0.25)
         self.assertIsNotNone(display)
+        assert display is not None
         self.assertAlmostEqual(display, 0.25, delta=0.05)
         text = tracker.format_text(0.25, 40.0, now=40.0)
         self.assertIn("Model 1/2", text)
@@ -500,7 +510,7 @@ class JobProgressCallbackTests(unittest.TestCase):
 
         seen = {}
 
-        def on_progress(fraction, **kwargs):
+        def on_progress(fraction: typing.Any, **kwargs: typing.Any):
             seen["fraction"] = fraction
             seen.update(kwargs)
 

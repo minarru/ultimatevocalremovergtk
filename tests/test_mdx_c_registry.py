@@ -1,4 +1,5 @@
 """Tests for MDX-C catalogue auto-registration."""
+import typing
 
 import json
 import os
@@ -23,7 +24,7 @@ from core.mdx_c_registry import (
     try_register_from_catalog,
     yaml_for_checkpoint,
 )
-from core.model_data import ModelData
+from core.model_config import ModelConfig
 
 
 class SanitizeCatalogueLabelTests(unittest.TestCase):
@@ -169,6 +170,7 @@ class RegisterMdxCCheckpointTests(unittest.TestCase):
 
                 second = register_mdx_c_checkpoint(checkpoint, yaml_name)
                 self.assertIsNotNone(second)
+                assert second is not None
                 self.assertFalse(second["is_roformer"])
             finally:
                 paths.MDX_HASH_DIR = original_hash_dir
@@ -274,7 +276,7 @@ class ModelDataCatalogFallbackTests(unittest.TestCase):
             with open(os.path.join(config_dir, yaml_name), "w", encoding="utf-8") as handle:
                 handle.write(open(paths.MDX_C_CONFIG_PATH + "/" + yaml_name, encoding="utf-8").read())
 
-            model_data = ModelData.__new__(ModelData)
+            model_data = ModelConfig.__new__(ModelConfig)
             model_data.model_hash = compute_checkpoint_hash(checkpoint)
             model_data.process_method = "MDX-Net"
             model_data.is_mdx_ckpt = True
@@ -291,6 +293,7 @@ class ModelDataCatalogFallbackTests(unittest.TestCase):
                 }
                 result = model_data.get_model_data(hash_dir, {})
                 mock_try.assert_called_once()
+                assert isinstance(result, dict)
                 self.assertEqual(result["config_yaml"], yaml_name)
 
 
@@ -301,7 +304,7 @@ class LoadMdxCatalogIndexTests(unittest.TestCase):
         self.assertIsNone(yaml_for_checkpoint("missing.ckpt", index=index))
 
     @patch("core.mdx_c_registry._load_manual_download_cache")
-    def test_load_index_from_manual_cache(self, mock_cache) -> None:
+    def test_load_index_from_manual_cache(self, mock_cache: typing.Any) -> None:
         mock_cache.return_value = {
             "roformer_download_list": {
                 "Test": {

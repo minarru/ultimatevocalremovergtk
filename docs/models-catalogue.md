@@ -15,7 +15,7 @@ and [upseem/uvr5-cli-no-ui models.txt](https://github.com/upseem/uvr5-cli-no-ui/
 ## How to read this
 
 - **Name intent** — from label, metadata, or community reference.
-- **Backend focus** — what `ModelData` uses as `primary_stem` at runtime.
+- **Backend focus** — what `ModelConfig` uses as `primary_stem` at runtime.
 - **Best result** — the stem users typically want from that model name.
 - **Flags** — vocal/instrumental labelling mismatches (only when metadata resolved).
 
