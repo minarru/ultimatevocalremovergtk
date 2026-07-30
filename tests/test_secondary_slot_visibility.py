@@ -120,7 +120,8 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
 
         # Pick a real installed-metadata Demucs model so the stem-focus combo
         # is populated (``configure_demucs`` only runs once a model resolves).
-        self.assertTrue(set_combo_value(view.model_row, "v4 | hdemucs_mmi"))
+        if not set_combo_value(view.model_row, "v4 | hdemucs_mmi"):
+            self.skipTest("v4 | hdemucs_mmi not installed (downloaded weights only)")
         self.assertEqual(view.save_stems.mode, "demucs")
         self.assertEqual(window.settings.get("demucs_stems"), ALL_STEMS)
         for slot in ("other", "bass", "drums"):
