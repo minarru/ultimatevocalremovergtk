@@ -319,7 +319,9 @@ class MelBandRoformer(Module):
             normalized=stft_normalized
         )
 
-        freqs = torch.stft(torch.randn(1, 4096), **self.stft_kwargs, return_complex=True).shape[1]
+        freqs = torch.stft(
+            torch.randn(1, 4096), **self.stft_kwargs, window=self.stft_window_fn(), return_complex=True
+        ).shape[1]
 
         mel_filter_bank_numpy = filters.mel(sr=sample_rate, n_fft=stft_n_fft, n_mels=num_bands)
 

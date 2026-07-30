@@ -415,7 +415,9 @@ class BSRoformer(Module):
         _stft_window_fn = cast(Callable[..., Tensor], default(stft_window_fn, torch.hann_window))
         self.stft_window_fn: Callable[..., Tensor] = partial(_stft_window_fn, stft_win_length)
 
-        freqs = torch.stft(torch.randn(1, 4096), **self.stft_kwargs, return_complex=True).shape[1]
+        freqs = torch.stft(
+            torch.randn(1, 4096), **self.stft_kwargs, window=self.stft_window_fn(), return_complex=True
+        ).shape[1]
 
         assert len(freqs_per_bands) > 1
         assert sum(

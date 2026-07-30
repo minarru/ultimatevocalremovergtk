@@ -1,4 +1,5 @@
 import os
+import shutil
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
@@ -68,8 +69,9 @@ class DownloadManagerResolveTests(unittest.TestCase):
             yaml_name = "config_musdb18_scnet.yaml"
             with open(checkpoint, "wb") as handle:
                 handle.write(b"download registration checkpoint")
-            with open(os.path.join(config_dir, yaml_name), "w", encoding="utf-8") as handle:
-                handle.write(open(paths.MDX_C_CONFIG_PATH + "/" + yaml_name, encoding="utf-8").read())
+            shutil.copyfile(
+                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name), os.path.join(config_dir, yaml_name)
+            )
 
             jobs = [
                 ("https://example.com/download_model.ckpt", checkpoint),

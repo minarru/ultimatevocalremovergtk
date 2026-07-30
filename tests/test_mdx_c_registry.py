@@ -3,6 +3,7 @@ import typing
 
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -150,8 +151,9 @@ class RegisterMdxCCheckpointTests(unittest.TestCase):
                 handle.write(b"test checkpoint bytes for hashing")
 
             yaml_name = "config_musdb18_scnet.yaml"
-            with open(os.path.join(config_dir, yaml_name), "w", encoding="utf-8") as handle:
-                handle.write(open(paths.MDX_C_CONFIG_PATH + "/" + yaml_name, encoding="utf-8").read())
+            shutil.copyfile(
+                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name), os.path.join(config_dir, yaml_name)
+            )
 
             original_hash_dir = paths.MDX_HASH_DIR
             original_config_dir = paths.MDX_C_CONFIG_PATH
@@ -189,8 +191,9 @@ class TryRegisterFromCatalogTests(unittest.TestCase):
                 handle.write(b"catalog model checkpoint")
 
             yaml_name = "config_musdb18_scnet.yaml"
-            with open(os.path.join(config_dir, yaml_name), "w", encoding="utf-8") as handle:
-                handle.write(open(paths.MDX_C_CONFIG_PATH + "/" + yaml_name, encoding="utf-8").read())
+            shutil.copyfile(
+                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name), os.path.join(config_dir, yaml_name)
+            )
 
             original_hash_dir = paths.MDX_HASH_DIR
             original_config_dir = paths.MDX_C_CONFIG_PATH
@@ -235,8 +238,9 @@ class RegisterFromDownloadJobsTests(unittest.TestCase):
             yaml_name = "config_musdb18_scnet.yaml"
             with open(checkpoint, "wb") as handle:
                 handle.write(b"batch download checkpoint")
-            with open(os.path.join(config_dir, yaml_name), "w", encoding="utf-8") as handle:
-                handle.write(open(paths.MDX_C_CONFIG_PATH + "/" + yaml_name, encoding="utf-8").read())
+            shutil.copyfile(
+                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name), os.path.join(config_dir, yaml_name)
+            )
 
             jobs = [
                 ("https://example.com/batch_model.ckpt", checkpoint),
@@ -273,8 +277,9 @@ class ModelDataCatalogFallbackTests(unittest.TestCase):
             yaml_name = "config_musdb18_scnet.yaml"
             with open(checkpoint, "wb") as handle:
                 handle.write(b"fallback catalogue checkpoint")
-            with open(os.path.join(config_dir, yaml_name), "w", encoding="utf-8") as handle:
-                handle.write(open(paths.MDX_C_CONFIG_PATH + "/" + yaml_name, encoding="utf-8").read())
+            shutil.copyfile(
+                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name), os.path.join(config_dir, yaml_name)
+            )
 
             model_data = ModelConfig.__new__(ModelConfig)
             model_data.model_hash = compute_checkpoint_hash(checkpoint)
