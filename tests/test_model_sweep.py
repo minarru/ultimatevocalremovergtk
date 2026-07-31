@@ -739,5 +739,14 @@ class CliTests(unittest.TestCase):
         self.assertFalse(args.cpu_retry)
 
 
+@unittest.skipUnless(
+    os.getenv("UVR_MODEL_SWEEP"),
+    "local-only: set UVR_MODEL_SWEEP=1 to run every installed model (10-25 min)",
+)
+class FullSweepTests(unittest.TestCase):
+    def test_every_installed_model_starts_and_finishes(self) -> None:
+        self.assertEqual(model_sweep.main([]), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
