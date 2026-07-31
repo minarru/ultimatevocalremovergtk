@@ -358,5 +358,179 @@ class ChildHelperTests(unittest.TestCase):
         self.assertEqual(names, ["a (Vocals).wav", "b.flac"])
 
 
+class RunChildTests(unittest.TestCase):
+    """Covers fix-round-1 findings: crash-path result.json, ok/exit-code parity."""
+
+    def test_run_child_writes_result_json_on_missing_spec(self) -> None:
+        """Finding 1: a spec file that can't even be opened must still leave
+        a diagnosable result.json next to it, not a bare crash."""
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            spec_path = os.path.join(tmp, "spec.json")  # never created
+
+            rc = model_sweep.run_child(spec_path)
+
+            with open(os.path.join(tmp, "result.json")) as handle:
+                result = json.load(handle)
+
+        self.assertEqual(rc, 1)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_type"], "FileNotFoundError")
+        self.assertEqual(result["outputs"], [])
+
+    def test_run_child_writes_result_json_on_malformed_json(self) -> None:
+        """Finding 1: malformed JSON is a diagnosable failure, not a crash."""
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            spec_path = os.path.join(tmp, "spec.json")
+            with open(spec_path, "w") as handle:
+                handle.write("{not valid json")
+
+            rc = model_sweep.run_child(spec_path)
+
+            with open(os.path.join(tmp, "result.json")) as handle:
+                result = json.load(handle)
+
+        self.assertEqual(rc, 1)
+        self.assertFalse(result["ok"])
+        self.assertIsNotNone(result["error_type"])
+        self.assertIn("JSONDecodeError", result["error_type"])
+
+    def test_run_child_writes_result_json_when_export_dir_missing_from_spec(self) -> None:
+        """Finding 1: a spec that parses but lacks ``export_dir`` still gets
+        a result.json (job_dir is derived from spec_path, not export_dir)."""
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            spec_path = os.path.join(tmp, "spec.json")
+            with open(spec_path, "w") as handle:
+                json.dump({"kind": "single"}, handle)
+
+            rc = model_sweep.run_child(spec_path)
+
+            with open(os.path.join(tmp, "result.json")) as handle:
+                result = json.load(handle)
+
+        self.assertEqual(rc, 1)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_type"], "KeyError")
+
+    def test_run_child_reports_ok_false_and_exit_1_on_empty_export_dir(self) -> None:
+        """Finding 3: a clean run (no error, not stopped) that writes zero
+        audio files must have ``ok`` agree with the non-zero exit code."""
+        import json
+        import tempfile
+        from types import SimpleNamespace
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            export_dir = os.path.join(tmp, "out")
+            spec = {
+                "kind": model_sweep.KIND_SINGLE,
+                "method": "mdx",
+                "model": None,
+                "overrides": {},
+                "settings_path": os.path.join(tmp, "settings.json"),
+                "input_path": os.path.join(tmp, "in.wav"),
+                "export_dir": export_dir,
+                "cpu": True,
+                "timeout": 5,
+            }
+            spec_path = os.path.join(tmp, "spec.json")
+            with open(spec_path, "w") as handle:
+                json.dump(spec, handle)
+
+            fake_outcome = SimpleNamespace(error=None, stopped=False)
+            with mock.patch(
+                "core.headless_run.build_settings", return_value=object()
+            ), mock.patch(
+                "core.headless_run.run_separation_sync", return_value=fake_outcome
+            ):
+                rc = model_sweep.run_child(spec_path)
+
+            with open(os.path.join(tmp, "result.json")) as handle:
+                result = json.load(handle)
+
+        self.assertEqual(rc, 1)
+        self.assertFalse(result["ok"])
+        self.assertIsNone(result["error_type"])
+        self.assertFalse(result["stopped"])
+        self.assertEqual(result["outputs"], [])
+
+    def test_run_child_reports_ok_true_and_exit_0_when_output_written(self) -> None:
+        """Sanity counterpart: a clean run that does write output still passes."""
+        import json
+        import tempfile
+        from types import SimpleNamespace
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            export_dir = os.path.join(tmp, "out")
+            spec = {
+                "kind": model_sweep.KIND_SINGLE,
+                "method": "mdx",
+                "model": None,
+                "overrides": {},
+                "settings_path": os.path.join(tmp, "settings.json"),
+                "input_path": os.path.join(tmp, "in.wav"),
+                "export_dir": export_dir,
+                "cpu": True,
+                "timeout": 5,
+            }
+            spec_path = os.path.join(tmp, "spec.json")
+            with open(spec_path, "w") as handle:
+                json.dump(spec, handle)
+
+            def _fake_run_separation_sync(*_args: object, **_kwargs: object) -> SimpleNamespace:
+                os.makedirs(export_dir, exist_ok=True)
+                with open(os.path.join(export_dir, "out (Vocals).wav"), "wb") as handle:
+                    handle.write(b"RIFFdata")
+                return SimpleNamespace(error=None, stopped=False)
+
+            with mock.patch(
+                "core.headless_run.build_settings", return_value=object()
+            ), mock.patch(
+                "core.headless_run.run_separation_sync",
+                side_effect=_fake_run_separation_sync,
+            ):
+                rc = model_sweep.run_child(spec_path)
+
+            with open(os.path.join(tmp, "result.json")) as handle:
+                result = json.load(handle)
+
+        self.assertEqual(rc, 0)
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(result["outputs"]), 1)
+
+    def test_run_tool_force_stops_worker_on_timeout(self) -> None:
+        """Finding 2: a timed-out audio tool must be force-stopped so the
+        non-daemon worker thread doesn't outlive the child process."""
+        from unittest import mock
+
+        fake_model_data = mock.Mock(is_model_status=True, extracted_params={}, config={})
+        fake_repo = mock.Mock(model_hash_table={})
+        fake_runner = mock.Mock()
+
+        settings = mock.Mock()
+        settings.audio_tools.apollo_model = "apollo_universal_model.ckpt"
+
+        with mock.patch(
+            "core.apollo.ApolloModelData", return_value=fake_model_data
+        ), mock.patch(
+            "core.audio_tools.AudioToolRunner", return_value=fake_runner
+        ), mock.patch(
+            "core.ModelRepository", return_value=fake_repo
+        ):
+            with self.assertRaises(TimeoutError):
+                model_sweep._run_tool(settings, "/tmp/in.wav", 0.01)
+
+        fake_runner.stop.assert_called_once_with(force=True)
+
+
 if __name__ == "__main__":
     unittest.main()

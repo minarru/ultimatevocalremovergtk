@@ -397,18 +397,19 @@ def _model_is_recognized(settings: Any, method: Optional[str], model: Optional[s
 
 
 def run_child(spec_path: str) -> int:
-    """Execute exactly one job and write ``result.json`` next to the spec."""
+    """Execute exactly one job and write ``result.json`` next to the spec.
+
+    The spec read, ``export_dir`` lookup and directory creation all happen
+    inside the guarded region below: a missing/unreadable spec, malformed
+    JSON, or a spec missing ``export_dir`` is a clean, diagnosable failure,
+    not a crash with no ``result.json`` — the parent must be able to tell
+    the two apart.
+    """
     import json
     import time
     import traceback
 
-    with open(spec_path) as handle:
-        spec = json.load(handle)
-
     job_dir = os.path.dirname(os.path.abspath(spec_path))
-    export_dir = spec["export_dir"]
-    os.makedirs(export_dir, exist_ok=True)
-
     result: Dict[str, Any] = {
         "ok": False,
         "error_type": None,
@@ -419,7 +420,14 @@ def run_child(spec_path: str) -> int:
         "unrecognized": False,
     }
     started = time.perf_counter()
+    export_dir = ""
     try:
+        with open(spec_path) as handle:
+            spec = json.load(handle)
+
+        export_dir = spec["export_dir"]
+        os.makedirs(export_dir, exist_ok=True)
+
         from bundled.constants import ENSEMBLE_MODE
         from core.headless_run import build_settings, run_ensemble_sync, run_separation_sync
         from core.types import ProcessMethod
@@ -464,16 +472,22 @@ def run_child(spec_path: str) -> int:
         if outcome_error is not None:
             result["error_type"] = type(outcome_error).__name__
             result["message"] = str(outcome_error)
-        else:
-            result["ok"] = not stopped
     except BaseException as exc:  # noqa: BLE001 - the point is to report anything
         result["error_type"] = type(exc).__name__
         result["message"] = f"{exc}\n{traceback.format_exc()}"
 
     result["elapsed_s"] = time.perf_counter() - started
-    result["outputs"] = collect_outputs(export_dir)
+    if export_dir:
+        result["outputs"] = collect_outputs(export_dir)
+    # ``ok`` must mean exactly what the exit code means: no error, not
+    # stopped, and at least one output actually written.
+    result["ok"] = (
+        result["error_type"] is None
+        and not result["stopped"]
+        and bool(result["outputs"])
+    )
     _write_result(job_dir, result)
-    return 0 if result["ok"] and result["outputs"] else 1
+    return 0 if result["ok"] else 1
 
 
 def _write_result(job_dir: str, result: Dict[str, Any]) -> None:
@@ -534,6 +548,10 @@ def _run_tool(settings: Any, input_path: str, timeout: float) -> tuple:
         },
     )
     if not done.wait(timeout=timeout):
-        runner.stop()
+        # A bare stop() only sets a flag (core/audio_tools.py); it never
+        # calls KThread.terminate(). Without force=True the non-daemon
+        # worker thread keeps running after this raises, and the child
+        # can't exit on its own — the parent would have to SIGKILL it.
+        runner.stop(force=True)
         raise TimeoutError(f"audio tool exceeded {timeout:.0f}s")
     return (error_box[0] if error_box else None), bool(stopped_box)
