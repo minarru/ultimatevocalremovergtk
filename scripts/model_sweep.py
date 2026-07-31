@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -555,3 +555,237 @@ def _run_tool(settings: Any, input_path: str, timeout: float) -> tuple:
         runner.stop(force=True)
         raise TimeoutError(f"audio tool exceeded {timeout:.0f}s")
     return (error_box[0] if error_box else None), bool(stopped_box)
+
+
+def spawn_child(*, spec: Dict[str, Any], job_dir: str, env: Dict[str, str], timeout: float):
+    """Run one job in a fresh process. Returns ``(exit_code, result, timed_out)``."""
+    import json
+    import subprocess
+
+    os.makedirs(job_dir, exist_ok=True)
+    spec_path = os.path.join(job_dir, "spec.json")
+    with open(spec_path, "w") as handle:
+        json.dump(spec, handle)
+
+    result_path = os.path.join(job_dir, "result.json")
+    if os.path.exists(result_path):
+        os.remove(result_path)
+
+    argv = [sys.executable, os.path.abspath(__file__), "--run-job", spec_path]
+    timed_out = False
+    try:
+        completed = subprocess.run(argv, env=env, timeout=timeout + 30.0)
+        exit_code = completed.returncode
+    except subprocess.TimeoutExpired:
+        return None, None, True
+
+    result = None
+    if os.path.isfile(result_path):
+        with open(result_path) as handle:
+            result = json.load(handle)
+    return exit_code, result, timed_out
+
+
+SpawnFn = Callable[..., Tuple[Optional[int], Optional[Dict[str, Any]], bool]]
+
+
+def run_one(
+    job: SweepJob,
+    *,
+    spawn: SpawnFn,
+    job_dir: str,
+    settings_path: str,
+    input_path: str,
+    data_dir: str,
+    cpu: bool,
+    cpu_retry: bool,
+) -> Tuple[str, str, float]:
+    """Run one job, retrying once on CPU when the GPU ran out of memory."""
+    import time
+
+    if job.kind == KIND_SKIP:
+        return f"SKIP({job.detail})", "", 0.0
+
+    def attempt(on_cpu: bool) -> Tuple[str, str, float]:
+        spec = {
+            "kind": job.kind,
+            "method": job.method,
+            "model": job.model,
+            "overrides": job.overrides,
+            "settings_path": settings_path,
+            "input_path": input_path,
+            "export_dir": os.path.join(job_dir, "cpu" if on_cpu else "gpu", "out"),
+            "cpu": on_cpu,
+            "timeout": job.timeout,
+        }
+        started = time.perf_counter()
+        exit_code, result, timed_out = spawn(
+            spec=spec,
+            job_dir=os.path.join(job_dir, "cpu" if on_cpu else "gpu"),
+            env=child_env(data_dir),
+            timeout=job.timeout,
+        )
+        verdict, detail = classify(exit_code=exit_code, result=result, timed_out=timed_out)
+        return verdict, detail, time.perf_counter() - started
+
+    verdict, detail, elapsed = attempt(cpu)
+    if verdict == OOM and cpu_retry and not cpu:
+        retry_verdict, retry_detail, retry_elapsed = attempt(True)
+        elapsed += retry_elapsed
+        if retry_verdict == PASS:
+            return OOM_CPU_OK, "out of VRAM at these settings; identical run passed on CPU", elapsed
+        return retry_verdict, retry_detail, elapsed
+    return verdict, detail, elapsed
+
+
+def sweep(
+    jobs: Sequence[SweepJob],
+    *,
+    spawn: SpawnFn,
+    root: str,
+    settings_path: str,
+    input_path: str,
+    data_dir: str,
+    cpu: bool,
+    cpu_retry: bool,
+    strict: bool,
+    fail_fast: bool,
+    json_path: Optional[str],
+    keep_outputs: bool,
+) -> int:
+    """Run every job serially. One child alive at a time."""
+    import json
+    import shutil
+
+    rows: List[Dict[str, Any]] = []
+    verdicts: List[str] = []
+    for index, job in enumerate(jobs, 1):
+        print(f"[{index}/{len(jobs)}] {job.id}", flush=True)
+        job_dir = os.path.join(root, f"job{index:03d}")
+        verdict, detail, elapsed = run_one(
+            job,
+            spawn=spawn,
+            job_dir=job_dir,
+            settings_path=settings_path,
+            input_path=input_path,
+            data_dir=data_dir,
+            cpu=cpu,
+            cpu_retry=cpu_retry,
+        )
+        print(render_row(job.id, verdict, elapsed, detail), flush=True)
+        rows.append(
+            {"id": job.id, "verdict": verdict, "detail": detail, "elapsed_s": elapsed}
+        )
+        verdicts.append(verdict)
+        if not keep_outputs:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        if fail_fast and is_failure(verdict, strict=strict):
+            break
+
+    print("-" * 96)
+    print(render_summary(verdicts))
+    if json_path:
+        with open(json_path, "w") as handle:
+            json.dump({"results": rows}, handle, indent=2)
+        print(f"json={json_path}")
+    return 1 if any(is_failure(v, strict=strict) for v in verdicts) else 0
+
+
+def build_parser():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Start a real run for every model installed on this machine."
+    )
+    parser.add_argument("--run-job", default=None, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--method",
+        action="append",
+        choices=("mdx", "vr", "demucs", "apollo", "composite"),
+        help="Limit to these job groups (repeatable; default: all)",
+    )
+    parser.add_argument("--only", default="", help="Substring filter on model filename")
+    parser.add_argument("--skip", default="", help="Comma-separated model filenames to skip")
+    parser.add_argument("--cpu", action="store_true", help="Force CPU for every job")
+    parser.add_argument(
+        "--no-cpu-retry",
+        dest="cpu_retry",
+        action="store_false",
+        help="Do not retry an OOM job on CPU",
+    )
+    parser.set_defaults(cpu_retry=True)
+    parser.add_argument(
+        "--stock-settings",
+        action="store_true",
+        help="Use default settings instead of a copy of the user's settings.json",
+    )
+    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
+    parser.add_argument("--json", dest="json_path", default=None)
+    parser.add_argument("--list", action="store_true", help="Print the job list and exit")
+    parser.add_argument("--fail-fast", action="store_true")
+    parser.add_argument(
+        "--strict", action="store_true", help="Treat UNRECOGNIZED as a failure"
+    )
+    parser.add_argument("--keep-outputs", action="store_true")
+    return parser
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    import tempfile
+
+    args = build_parser().parse_args(argv)
+    if args.run_job:
+        return run_child(args.run_job)
+
+    from core import ModelRepository
+    from core.settings import Settings
+    from core import paths as core_paths
+
+    repo = ModelRepository()
+    repo.reload_mappers()
+    settings = Settings.load(core_paths.SETTINGS_DATA_FILE)
+    installed = collect_installed(repo, settings)
+
+    methods = set(args.method) if args.method else {"mdx", "vr", "demucs", "apollo", "composite"}
+    skip = frozenset(s for s in (args.skip or "").split(",") if s)
+    jobs = discover_jobs(installed, methods=methods, only=args.only, skip=skip)
+    jobs = [
+        job if job.timeout != DEFAULT_TIMEOUT else SweepJob(**{**job.__dict__, "timeout": args.timeout})
+        for job in jobs
+    ]
+
+    if args.list:
+        for job in jobs:
+            print(f"{job.id:<52} {job.kind}")
+        print(f"{len(jobs)} jobs")
+        return 0
+
+    assert "torch" not in sys.modules, "the sweep parent must stay torch-free"
+
+    root = tempfile.mkdtemp(prefix="uvr-sweep-")
+    print(f"scratch={root}")
+    data_dir, settings_path = prepare_scratch(
+        os.path.join(root, "data"),
+        models_dir=core_paths.MODELS_DIR,
+        settings_src=None if args.stock_settings else core_paths.SETTINGS_DATA_FILE,
+    )
+    input_path = make_input_clip(os.path.join(root, "sweep-input.wav"))
+
+    return sweep(
+        jobs,
+        spawn=spawn_child,
+        root=root,
+        settings_path=settings_path,
+        input_path=input_path,
+        data_dir=data_dir,
+        cpu=args.cpu,
+        cpu_retry=args.cpu_retry,
+        strict=args.strict,
+        fail_fast=args.fail_fast,
+        json_path=args.json_path,
+        keep_outputs=args.keep_outputs,
+    )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

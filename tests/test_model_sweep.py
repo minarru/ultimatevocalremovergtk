@@ -4,7 +4,7 @@ import importlib.util
 import os
 import sys
 import unittest
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 _SPEC = importlib.util.spec_from_file_location(
     "model_sweep",
@@ -530,6 +530,119 @@ class RunChildTests(unittest.TestCase):
                 model_sweep._run_tool(settings, "/tmp/in.wav", 0.01)
 
         fake_runner.stop.assert_called_once_with(force=True)
+
+
+class ParentControlFlowTests(unittest.TestCase):
+    def _job(self, **kwargs: Any):
+        base = dict(id="mdx:a.ckpt", kind=model_sweep.KIND_SINGLE, method="mdx", model="a.ckpt")
+        base.update(kwargs)
+        return model_sweep.SweepJob(**base)
+
+    def _spawner(self, results: List[Tuple[Any, Any, bool]]):
+        """Returns a fake spawn that pops (exit_code, result_dict, timed_out)."""
+        calls: List[Dict[str, Any]] = []
+
+        def spawn(*, spec: Dict[str, Any], job_dir: str, env: Dict[str, str], timeout: float):
+            calls.append(spec)
+            return results.pop(0)
+
+        return spawn, calls
+
+    def test_passing_job_never_retries(self) -> None:
+        ok = {"ok": True, "outputs": [["x.wav", 10]], "error_type": None, "message": ""}
+        spawn, calls = self._spawner([(0, ok, False)])
+        verdict, _, _ = model_sweep.run_one(
+            self._job(), spawn=spawn, job_dir="/tmp/j", settings_path="/tmp/s.json",
+            input_path="/tmp/in.wav", data_dir="/tmp/d", cpu=False, cpu_retry=True,
+        )
+        self.assertEqual(verdict, model_sweep.PASS)
+        self.assertEqual(len(calls), 1)
+
+    def test_oom_retries_on_cpu_and_reports_cpu_ok(self) -> None:
+        oom = {
+            "ok": False, "outputs": [], "error_type": "OutOfMemoryError",
+            "message": "CUDA out of memory",
+        }
+        ok = {"ok": True, "outputs": [["x.wav", 10]], "error_type": None, "message": ""}
+        spawn, calls = self._spawner([(1, oom, False), (0, ok, False)])
+        verdict, _, _ = model_sweep.run_one(
+            self._job(), spawn=spawn, job_dir="/tmp/j", settings_path="/tmp/s.json",
+            input_path="/tmp/in.wav", data_dir="/tmp/d", cpu=False, cpu_retry=True,
+        )
+        self.assertEqual(verdict, model_sweep.OOM_CPU_OK)
+        self.assertEqual(len(calls), 2)
+        self.assertFalse(calls[0]["cpu"])
+        self.assertTrue(calls[1]["cpu"])
+
+    def test_oom_that_also_fails_on_cpu_reports_the_cpu_failure(self) -> None:
+        oom = {
+            "ok": False, "outputs": [], "error_type": "OutOfMemoryError",
+            "message": "CUDA out of memory",
+        }
+        broken = {
+            "ok": False, "outputs": [], "error_type": "RuntimeError",
+            "message": "shape mismatch",
+        }
+        spawn, _ = self._spawner([(1, oom, False), (1, broken, False)])
+        verdict, detail, _ = model_sweep.run_one(
+            self._job(), spawn=spawn, job_dir="/tmp/j", settings_path="/tmp/s.json",
+            input_path="/tmp/in.wav", data_dir="/tmp/d", cpu=False, cpu_retry=True,
+        )
+        self.assertEqual(verdict, "FAIL(RuntimeError)")
+        self.assertIn("shape mismatch", detail)
+
+    def test_cpu_retry_disabled_keeps_bare_oom(self) -> None:
+        oom = {
+            "ok": False, "outputs": [], "error_type": "OutOfMemoryError",
+            "message": "CUDA out of memory",
+        }
+        spawn, calls = self._spawner([(1, oom, False)])
+        verdict, _, _ = model_sweep.run_one(
+            self._job(), spawn=spawn, job_dir="/tmp/j", settings_path="/tmp/s.json",
+            input_path="/tmp/in.wav", data_dir="/tmp/d", cpu=False, cpu_retry=False,
+        )
+        self.assertEqual(verdict, model_sweep.OOM)
+        self.assertEqual(len(calls), 1)
+
+    def test_no_retry_when_already_on_cpu(self) -> None:
+        oom = {
+            "ok": False, "outputs": [], "error_type": "OutOfMemoryError",
+            "message": "CUDA out of memory",
+        }
+        spawn, calls = self._spawner([(1, oom, False)])
+        model_sweep.run_one(
+            self._job(), spawn=spawn, job_dir="/tmp/j", settings_path="/tmp/s.json",
+            input_path="/tmp/in.wav", data_dir="/tmp/d", cpu=True, cpu_retry=True,
+        )
+        self.assertEqual(len(calls), 1)
+
+    def test_skip_jobs_are_not_spawned(self) -> None:
+        spawn, calls = self._spawner([])
+        verdict, detail, _ = model_sweep.run_one(
+            self._job(id="composite:ensemble", kind=model_sweep.KIND_SKIP,
+                      method=None, model=None, detail="needs two models"),
+            spawn=spawn, job_dir="/tmp/j", settings_path="/tmp/s.json",
+            input_path="/tmp/in.wav", data_dir="/tmp/d", cpu=False, cpu_retry=True,
+        )
+        self.assertTrue(verdict.startswith("SKIP"))
+        self.assertEqual(calls, [])
+
+
+class CliTests(unittest.TestCase):
+    def test_parser_defaults(self) -> None:
+        args = model_sweep.build_parser().parse_args([])
+        self.assertEqual(args.timeout, 300.0)
+        self.assertFalse(args.cpu)
+        self.assertFalse(args.strict)
+        self.assertTrue(args.cpu_retry)
+
+    def test_method_filter_accepts_repeats(self) -> None:
+        args = model_sweep.build_parser().parse_args(["--method", "mdx", "--method", "vr"])
+        self.assertEqual(set(args.method), {"mdx", "vr"})
+
+    def test_no_cpu_retry_flag(self) -> None:
+        args = model_sweep.build_parser().parse_args(["--no-cpu-retry"])
+        self.assertFalse(args.cpu_retry)
 
 
 if __name__ == "__main__":
