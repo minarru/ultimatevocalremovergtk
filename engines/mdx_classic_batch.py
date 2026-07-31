@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple
 
+from core.oom_markers import _OOM_MARKERS, is_oom_message  # noqa: F401  (re-export)
+
 
 def mdx_hop_starts(mix_len: int, step: int) -> List[int]:
     """Return hop start indices for a padded mixture of length ``mix_len``."""
@@ -51,23 +53,3 @@ def next_batch_after_oom(current: int) -> Optional[int]:
     if batch <= 1:
         return None
     return max(1, batch // 2)
-
-
-_OOM_MARKERS = (
-    "out of memory",
-    "cuda_error_out_of_memory",
-    "cudamalloc failed",
-    "failed to allocate memory",
-)
-
-
-def is_oom_message(text: str | None) -> bool:
-    """Whether an exception message indicates a GPU memory allocation failure.
-
-    ``onnxruntime`` reports CUDA OOM through its own ``Fail``/``RuntimeException``
-    types rather than ``torch.cuda.OutOfMemoryError``, so callers that also run
-    ORT sessions need a message-based check to trigger the batch-size backoff
-    without swallowing unrelated ORT errors.
-    """
-    lowered = (text or "").lower()
-    return any(marker in lowered for marker in _OOM_MARKERS)
