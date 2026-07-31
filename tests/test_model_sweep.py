@@ -124,5 +124,131 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)))
 
 
+class ClassifyTests(unittest.TestCase):
+    def _result(self, **kwargs: Any):
+        base = {
+            "ok": True,
+            "error_type": None,
+            "message": "",
+            "elapsed_s": 1.0,
+            "outputs": [["/tmp/out/x (Vocals).wav", 1024]],
+            "stopped": False,
+            "unrecognized": False,
+        }
+        base.update(kwargs)
+        return base
+
+    def test_clean_run_with_output_passes(self) -> None:
+        verdict, _ = model_sweep.classify(exit_code=0, result=self._result(), timed_out=False)
+        self.assertEqual(verdict, model_sweep.PASS)
+
+    def test_clean_run_without_output_is_no_output(self) -> None:
+        verdict, _ = model_sweep.classify(
+            exit_code=0, result=self._result(outputs=[]), timed_out=False
+        )
+        self.assertEqual(verdict, model_sweep.NO_OUTPUT)
+
+    def test_exception_becomes_typed_failure(self) -> None:
+        verdict, detail = model_sweep.classify(
+            exit_code=1,
+            result=self._result(
+                ok=False,
+                error_type="BeartypeCallHintParamViolation",
+                message="parameter attn_dropout=0 violates type hint <class 'float'>",
+                outputs=[],
+            ),
+            timed_out=False,
+        )
+        self.assertEqual(verdict, "FAIL(BeartypeCallHintParamViolation)")
+        self.assertIn("attn_dropout", detail)
+
+    def test_cuda_oom_is_classified_as_oom(self) -> None:
+        verdict, _ = model_sweep.classify(
+            exit_code=1,
+            result=self._result(
+                ok=False,
+                error_type="OutOfMemoryError",
+                message="CUDA out of memory. Tried to allocate 3.00 GiB",
+                outputs=[],
+            ),
+            timed_out=False,
+        )
+        self.assertEqual(verdict, model_sweep.OOM)
+
+    def test_ort_allocation_failure_is_oom(self) -> None:
+        verdict, _ = model_sweep.classify(
+            exit_code=1,
+            result=self._result(
+                ok=False,
+                error_type="Fail",
+                message="Failed to allocate memory for requested buffer of size 4",
+                outputs=[],
+            ),
+            timed_out=False,
+        )
+        self.assertEqual(verdict, model_sweep.OOM)
+
+    def test_missing_result_is_crash(self) -> None:
+        verdict, _ = model_sweep.classify(exit_code=-11, result=None, timed_out=False)
+        self.assertEqual(verdict, "CRASH(exit -11)")
+
+    def test_timeout_wins_over_everything(self) -> None:
+        verdict, _ = model_sweep.classify(exit_code=None, result=None, timed_out=True)
+        self.assertEqual(verdict, model_sweep.TIMEOUT)
+
+    def test_unrecognized_model_is_its_own_verdict(self) -> None:
+        verdict, _ = model_sweep.classify(
+            exit_code=0, result=self._result(unrecognized=True, outputs=[]), timed_out=False
+        )
+        self.assertEqual(verdict, model_sweep.UNRECOGNIZED)
+
+    def test_detail_is_first_line_only(self) -> None:
+        _, detail = model_sweep.classify(
+            exit_code=1,
+            result=self._result(
+                ok=False, error_type="RuntimeError", message="line one\nline two", outputs=[]
+            ),
+            timed_out=False,
+        )
+        self.assertEqual(detail, "line one")
+
+
+class FailurePolicyTests(unittest.TestCase):
+    def test_pass_and_skip_are_not_failures(self) -> None:
+        self.assertFalse(model_sweep.is_failure(model_sweep.PASS, strict=False))
+        self.assertFalse(model_sweep.is_failure("SKIP(no model)", strict=False))
+
+    def test_oom_cpu_ok_is_not_a_failure(self) -> None:
+        self.assertFalse(model_sweep.is_failure(model_sweep.OOM_CPU_OK, strict=False))
+
+    def test_bare_oom_is_a_failure(self) -> None:
+        self.assertTrue(model_sweep.is_failure(model_sweep.OOM, strict=False))
+
+    def test_unrecognized_only_fails_under_strict(self) -> None:
+        self.assertFalse(model_sweep.is_failure(model_sweep.UNRECOGNIZED, strict=False))
+        self.assertTrue(model_sweep.is_failure(model_sweep.UNRECOGNIZED, strict=True))
+
+    def test_typed_failures_and_crashes_fail(self) -> None:
+        self.assertTrue(model_sweep.is_failure("FAIL(RuntimeError)", strict=False))
+        self.assertTrue(model_sweep.is_failure("CRASH(exit -11)", strict=False))
+        self.assertTrue(model_sweep.is_failure(model_sweep.NO_OUTPUT, strict=False))
+        self.assertTrue(model_sweep.is_failure(model_sweep.TIMEOUT, strict=False))
+
+
+class RenderTests(unittest.TestCase):
+    def test_row_contains_id_verdict_and_elapsed(self) -> None:
+        row = model_sweep.render_row("mdx:a.ckpt", model_sweep.PASS, 12.5, "")
+        self.assertIn("mdx:a.ckpt", row)
+        self.assertIn("PASS", row)
+        self.assertIn("12.5s", row)
+
+    def test_summary_counts_each_verdict(self) -> None:
+        summary = model_sweep.render_summary(
+            [model_sweep.PASS, model_sweep.PASS, "FAIL(RuntimeError)"]
+        )
+        self.assertIn("2 passed", summary)
+        self.assertIn("1 failed", summary)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -214,3 +214,72 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
         jobs.append(_skip("composite:vocal-splitter", "needs an MDX and a karaoke model"))
 
     return jobs
+
+
+PASS = "PASS"
+NO_OUTPUT = "NO_OUTPUT"
+TIMEOUT = "TIMEOUT"
+OOM = "OOM"
+OOM_CPU_OK = "OOM(cpu-ok)"
+UNRECOGNIZED = "UNRECOGNIZED"
+
+
+def _first_line(text: str) -> str:
+    return (text or "").strip().splitlines()[0] if (text or "").strip() else ""
+
+
+def classify(
+    *, exit_code: Optional[int], result: Optional[dict], timed_out: bool
+) -> tuple:
+    """Turn a child's exit code and result payload into a verdict + detail."""
+    from core.oom_markers import is_oom_message
+
+    if timed_out:
+        return TIMEOUT, ""
+    if result is None:
+        return f"CRASH(exit {exit_code})", ""
+    if result.get("unrecognized"):
+        return UNRECOGNIZED, "model hash not in the metadata tables"
+
+    error_type = result.get("error_type")
+    message = str(result.get("message") or "")
+    if error_type:
+        detail = _first_line(message)
+        if is_oom_message(message) or error_type == "OutOfMemoryError":
+            return OOM, detail
+        return f"FAIL({error_type})", detail
+    if result.get("stopped"):
+        return "FAIL(stopped)", "run stopped before completion"
+    if not result.get("outputs"):
+        return NO_OUTPUT, "run completed but wrote no audio"
+    return PASS, ""
+
+
+def is_failure(verdict: str, *, strict: bool) -> bool:
+    """Whether a verdict should make the sweep exit non-zero."""
+    if verdict in (PASS, OOM_CPU_OK) or verdict.startswith("SKIP"):
+        return False
+    if verdict == UNRECOGNIZED:
+        return strict
+    return True
+
+
+def render_row(job_id: str, verdict: str, elapsed_s: float, detail: str) -> str:
+    row = f"{job_id:<52.52} {verdict:<34.34} {elapsed_s:>7.1f}s"
+    return f"{row}\n    {detail}" if detail else row
+
+
+def render_summary(verdicts: Sequence[str]) -> str:
+    passed = sum(1 for v in verdicts if v == PASS)
+    skipped = sum(1 for v in verdicts if v.startswith("SKIP"))
+    oom_ok = sum(1 for v in verdicts if v == OOM_CPU_OK)
+    unrecognized = sum(1 for v in verdicts if v == UNRECOGNIZED)
+    failed = len(verdicts) - passed - skipped - oom_ok - unrecognized
+    parts = [f"{passed} passed", f"{failed} failed"]
+    if oom_ok:
+        parts.append(f"{oom_ok} OOM(cpu-ok)")
+    if unrecognized:
+        parts.append(f"{unrecognized} unrecognized")
+    if skipped:
+        parts.append(f"{skipped} skipped")
+    return "  ".join(parts)
