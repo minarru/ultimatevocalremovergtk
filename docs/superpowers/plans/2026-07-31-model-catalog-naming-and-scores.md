@@ -1865,7 +1865,18 @@ print(f'scored {scored}/{total} = {100*scored/total:.1f}%  (was 2.0%)')
 "
 ```
 
-Expected: roughly `scored 98/461 = 21.3%`. A materially lower number means the `.yaml` lookup or the aggregation is dropping matches — investigate before proceeding.
+Expected: `scored 71/461 = 15.4%`, broken down `vr 21/28, mdx 46/407, demucs 4/24, apollo 0/2`.
+
+**Not 98/461.** The source audit counted entries whose filename *matches* a
+score key; 98 is correct for that. But 27 of those matches aggregate to an
+empty stem dict, because 28 entries in the score table carry no track scores
+at all — De-Echo, DeNoise, DeReverb, Wind Inst, Reverb HQ, Crowd HQ, MDX23C
+DrumSep and friends. Utility and effects models have nothing meaningful to
+benchmark on a vocals/instrumental test set. 71 is the number of rows that
+will actually show a badge.
+
+A materially lower number than 71 means the `.yaml` lookup or the aggregation
+is dropping matches — investigate before proceeding.
 
 - [ ] **Step 5: Launch and eyeball the Download Center**
 

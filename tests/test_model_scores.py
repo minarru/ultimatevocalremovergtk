@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 import unittest
+import unittest.mock
+
+from core import model_scores
 
 from core.model_scores import (
     PURPOSE_INSTRUMENTAL,
@@ -93,6 +99,142 @@ class PurposeAndSortTests(unittest.TestCase):
         ]
         matches = catalogue_matches(names, "", purpose=PURPOSE_KARAOKE)
         self.assertEqual(matches, ["Roformer Model: Karaoke by Gabox"])
+
+
+_FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "model_scores_sample.json")
+
+
+def _sample() -> dict:
+    with open(_FIXTURE, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+class _IsolatedScoreCache(unittest.TestCase):
+    """Redirect the disk cache into a temp dir.
+
+    ``load_model_scores`` writes whatever it fetched to the cache, so without
+    this a test that patches the fetch poisons the user's real
+    ``~/.cache/uvr/model_scores.json`` with the three-entry fixture — and every
+    later run reads the fixture instead of the 115-entry snapshot.
+    """
+
+    def setUp(self) -> None:
+        model_scores.clear_model_scores_cache()
+        self.addCleanup(model_scores.clear_model_scores_cache)
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        cache_path = os.path.join(self._tmp.name, "model_scores.json")
+        patcher = unittest.mock.patch.object(
+            model_scores, "_cache_path", return_value=cache_path
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+
+class ModelScoreAggregationTests(_IsolatedScoreCache):
+    def _loaded(self) -> dict:
+        with unittest.mock.patch.object(
+            model_scores, "_fetch_model_scores", return_value=_sample()
+        ):
+            return model_scores.load_model_scores(force=True)
+
+    def test_mean_sdr_per_stem(self) -> None:
+        scores = self._loaded()
+        entry = scores["model_bs_roformer_ep_317_sdr_12.9755.ckpt"]
+        self.assertAlmostEqual(entry["vocals"], 11.5)
+        self.assertAlmostEqual(entry["instrumental"], 16.25)
+
+    def test_speed_metric_is_not_a_stem(self) -> None:
+        scores = self._loaded()
+        entry = scores["model_bs_roformer_ep_317_sdr_12.9755.ckpt"]
+        self.assertNotIn("seconds_per_minute_m3", entry)
+
+    def test_zero_track_model_is_unscored_not_an_error(self) -> None:
+        scores = self._loaded()
+        self.assertEqual(scores.get("uvr-denoise-lite.pth", {}), {})
+
+    def test_lookup_matches_demucs_yaml_key(self) -> None:
+        scores = self._loaded()
+        found = model_scores.sdr_for_files(
+            ["955717e8-8726e21a.th", "htdemucs_ft.yaml"], scores=scores
+        )
+        self.assertAlmostEqual(found["drums"], 10.0)
+
+    def test_lookup_is_case_insensitive(self) -> None:
+        scores = self._loaded()
+        found = model_scores.sdr_for_files(["HTDEMUCS_FT.YAML"], scores=scores)
+        self.assertAlmostEqual(found["bass"], 12.0)
+
+    def test_lookup_miss_returns_empty(self) -> None:
+        scores = self._loaded()
+        self.assertEqual(model_scores.sdr_for_files(["nope.ckpt"], scores=scores), {})
+
+
+class PrimarySdrTests(unittest.TestCase):
+    def test_target_stem_wins(self) -> None:
+        result = model_scores.primary_sdr({"vocals": 11.5, "instrumental": 16.25}, "vocals")
+        self.assertEqual(result, ("vocals", 11.5))
+
+    def test_falls_back_to_highest_when_no_target(self) -> None:
+        result = model_scores.primary_sdr({"vocals": 11.5, "instrumental": 16.25}, None)
+        self.assertEqual(result, ("instrumental", 16.25))
+
+    def test_empty_returns_none(self) -> None:
+        self.assertIsNone(model_scores.primary_sdr({}, "vocals"))
+
+
+class SdrStemResolutionTests(unittest.TestCase):
+    """Score keys are lowercase; model targets are whatever the yaml said."""
+
+    def test_two_stem_other_target_reads_instrumental_score(self) -> None:
+        # mbr_inst2_unwa declares target 'other', meaning instrumental.
+        scores = {"vocals": 9.0, "instrumental": 16.0}
+        result = model_scores.primary_sdr(scores, "other", stem_count=2)
+        self.assertEqual(result, ("instrumental", 16.0))
+
+    def test_four_stem_other_target_reads_other_score(self) -> None:
+        scores = {"vocals": 9.0, "drums": 10.0, "bass": 12.0, "other": 8.0}
+        result = model_scores.primary_sdr(scores, "other", stem_count=4)
+        self.assertEqual(result, ("other", 8.0))
+
+    def test_case_mismatch_still_resolves(self) -> None:
+        scores = {"vocals": 11.5, "instrumental": 16.25}
+        self.assertEqual(
+            model_scores.primary_sdr(scores, "Vocals", stem_count=2), ("vocals", 11.5)
+        )
+
+    def test_unknown_target_falls_back_to_highest(self) -> None:
+        scores = {"vocals": 11.5, "instrumental": 16.25}
+        self.assertEqual(
+            model_scores.primary_sdr(scores, "Similarity", stem_count=1),
+            ("instrumental", 16.25),
+        )
+
+
+class SdrSubtitleTests(unittest.TestCase):
+    def test_stem_is_named(self) -> None:
+        self.assertEqual(
+            model_scores.format_sdr_subtitle(11.43, "1.2 GB", stem="vocals"),
+            "vocals 11.4 SDR · 1.2 GB",
+        )
+
+    def test_falls_back_to_extra_when_unscored(self) -> None:
+        self.assertEqual(
+            model_scores.format_sdr_subtitle(None, "890 MB", extra="vocals, other"),
+            "vocals, other · 890 MB",
+        )
+
+    def test_size_only(self) -> None:
+        self.assertEqual(model_scores.format_sdr_subtitle(None, "890 MB"), "890 MB")
+
+    def test_bare_sdr_without_stem_still_renders(self) -> None:
+        self.assertEqual(model_scores.format_sdr_subtitle(11.43, ""), "11.4 SDR")
+
+
+class ModelScoresDisabledTests(_IsolatedScoreCache):
+    def test_kill_switch_returns_empty(self) -> None:
+        with unittest.mock.patch.dict(os.environ, {"UVR_DISABLE_MODEL_SCORES": "1"}):
+            self.assertEqual(model_scores.load_model_scores(force=True), {})
 
 
 if __name__ == "__main__":

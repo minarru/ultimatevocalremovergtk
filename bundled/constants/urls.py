@@ -25,6 +25,12 @@ MVSEPLESS_MODELS_JSON_URL = (
     "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/models.json"
 )
 
+#: Benchmarked per-stem SDR scores, keyed by checkpoint filename.
+MODEL_SCORES_URL = (
+    "https://raw.githubusercontent.com/nomadkaraoke/python-audio-separator"
+    "/main/audio_separator/models-scores.json"
+)
+
 BULLETIN_CHECK = "https://raw.githubusercontent.com/TRvlvr/application_data/main/bulletin.txt"
 
 DEMUCS_MODEL_NAME_DATA_LINK = "https://raw.githubusercontent.com/TRvlvr/application_data/main/demucs_model_data/model_name_mapper.json"

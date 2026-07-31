@@ -1,0 +1,60 @@
+{
+ "model_bs_roformer_ep_317_sdr_12.9755.ckpt": {
+  "model_name": "Roformer Model: BS-Roformer-Viperx-1297",
+  "track_scores": [
+   {
+    "track_name": "T1",
+    "scores": {
+     "vocals": {
+      "SDR": 11.0,
+      "SIR": 1.0
+     },
+     "instrumental": {
+      "SDR": 16.0,
+      "SIR": 1.0
+     },
+     "seconds_per_minute_m3": {
+      "SDR": 999.0
+     }
+    }
+   },
+   {
+    "track_name": "T2",
+    "scores": {
+     "vocals": {
+      "SDR": 12.0
+     },
+     "instrumental": {
+      "SDR": 16.5
+     }
+    }
+   }
+  ]
+ },
+ "htdemucs_ft.yaml": {
+  "model_name": "Demucs v4: htdemucs_ft",
+  "track_scores": [
+   {
+    "track_name": "T1",
+    "scores": {
+     "vocals": {
+      "SDR": 9.0
+     },
+     "drums": {
+      "SDR": 10.0
+     },
+     "bass": {
+      "SDR": 12.0
+     },
+     "other": {
+      "SDR": 8.0
+     }
+    }
+   }
+  ]
+ },
+ "UVR-DeNoise-Lite.pth": {
+  "model_name": "VR Arch: UVR-DeNoise-Lite",
+  "track_scores": []
+ }
+}
