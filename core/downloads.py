@@ -62,10 +62,8 @@ from .mvsepless_catalog import (
 from .politrees_catalog import (
     apollo_checkpoint_filename,
     hf_fallback_url,
-    load_politrees_links,
     manual_links_for_model,
     mdx_checkpoint_filename,
-    merge_politrees_catalogues,
     resolve_apollo_jobs,
     resolve_demucs_jobs,
     resolve_mdx_jobs,
@@ -691,10 +689,22 @@ class DownloadManager:
     def manual_download_data(self) -> Dict[str, dict]:
         """Return ``{vr, mdx, demucs}`` link catalogues for the manual flow.
 
-        Prefers the live ``online_data`` (VIP-merged), falling back to the bundled
-        ``model_manual_download.json`` cache - exactly the source priority
-        ``menu_manual_downloads`` uses.
+        Reads the same merge as the Download Center and the runtime pickers.
+        This used to build its own catalogue from ``online_data`` plus Politrees
+        only — a third merge path that listed 197 models where the Download
+        Center listed 459, missing every extras and mvsepless entry and showing
+        duplicate VR rows that dedupe removes.
+
+        VIP entries are folded into the base first, because the shared merge
+        deliberately omits the ``*_vip_list`` keys: unlocking them stays gated
+        on a code here exactly as before.
+
+        Keys stay raw catalogue labels — ``manual_links`` resolves against them.
+        The dialog renders :func:`canonical_display_name` for the row title.
         """
+        from .catalog_sources import merged_catalogues
+        from .model_naming import canonical_display_name
+
         source = self.online_data if self.online_data else self._load_cache()
 
         vr = dict(source.get("vr_download_list", {}))
@@ -709,10 +719,21 @@ class DownloadManager:
             mdx.update(source.get("mdx23c_download_vip_list", {}))
             mdx.update(source.get("roformer_download_vip_list", {}))
 
-        politrees = load_politrees_links()
-        vr, mdx, demucs = merge_politrees_catalogues(vr, mdx, demucs, politrees)
+        merged = merged_catalogues(vr=vr, mdx=mdx, demucs=demucs)
 
-        return {"vr": vr, "mdx": mdx, "demucs": demucs}
+        def by_display(catalogue: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                label: catalogue[label]
+                for label in sorted(
+                    catalogue, key=lambda name: canonical_display_name(name).casefold()
+                )
+            }
+
+        return {
+            "vr": by_display(merged.vr),
+            "mdx": by_display(merged.mdx),
+            "demucs": by_display(merged.demucs),
+        }
 
     @staticmethod
     def _load_cache() -> Dict:
