@@ -11,6 +11,7 @@ from typing import Dict, List, Mapping, Optional, Sequence, Set
 
 from bundled.constants import (
     ALL_STEMS,
+    BACKING_VOCALS_TAG,
     BASS_STEM,
     BV_VOCAL_STEM,
     BV_VOCAL_STEM_LABEL,
@@ -18,9 +19,12 @@ from bundled.constants import (
     GUITAR_STEM,
     INST_STEM,
     INST_WITH_BACKING_VOCALS_STEM,
+    INST_WITH_BACKING_VOCALS_TAG,
     INST_WITH_LEAD_VOCALS_STEM,
+    INST_WITH_LEAD_VOCALS_TAG,
     LEAD_VOCAL_STEM,
     LEAD_VOCAL_STEM_LABEL,
+    LEAD_VOCALS_TAG,
     NO_BASS_STEM,
     NO_DRUM_STEM,
     NO_GUITAR_STEM,
@@ -739,6 +743,101 @@ def canonical_ensemble_stem_tag(stem: str) -> str:
         if label.casefold() == stripped.casefold():
             return label
     return stripped
+
+
+BUCKET_VOCALS = VOCAL_STEM
+BUCKET_INSTRUMENTAL = INST_STEM
+BUCKET_OTHER = OTHER_STEM
+BUCKET_DRUMS = DRUM_STEM
+BUCKET_BASS = BASS_STEM
+BUCKET_GUITAR = GUITAR_STEM
+BUCKET_PIANO = PIANO_STEM
+BUCKET_LEAD_VOCALS = LEAD_VOCALS_TAG
+BUCKET_BV_VOCALS = BACKING_VOCALS_TAG
+BUCKET_INST_WITH_BV = INST_WITH_BACKING_VOCALS_TAG
+BUCKET_INST_WITH_LEAD = INST_WITH_LEAD_VOCALS_TAG
+BUCKET_UNKNOWN = "Unknown"
+
+#: Splitter identity codes and their human labels. These already name a
+#: karaoke/BV product, so they resolve regardless of the model's own flags —
+#: the flags describe the *model*, these describe the *stem*.
+_IDENTITY_BUCKETS = {
+    "lead_only": BUCKET_LEAD_VOCALS,
+    "lead vocals": BUCKET_LEAD_VOCALS,
+    "backing_only": BUCKET_BV_VOCALS,
+    "backing vocals": BUCKET_BV_VOCALS,
+}
+
+#: Stem tokens that name the vocal target, in any casing authors have used.
+_VOCAL_TOKENS = frozenset({"vocals", "vocal", "voc"})
+
+#: Stem tokens that name the instrumental side. ``other`` is context-dependent
+#: and is resolved by stem count, not by this set alone.
+_INSTRUMENTAL_TOKENS = frozenset({"instrumental", "inst", "instrument"})
+
+#: Non-vocal MUSDB stems, safe to fold on name alone.
+_SIMPLE_STEM_TOKENS = {
+    "drums": BUCKET_DRUMS,
+    "bass": BUCKET_BASS,
+    "guitar": BUCKET_GUITAR,
+    "piano": BUCKET_PIANO,
+}
+
+
+def ensemble_stem_bucket(
+    stem: str,
+    *,
+    stem_count: int = 2,
+    is_karaoke: bool = False,
+    is_bv: bool = False,
+) -> str:
+    """Return the ensemble bucket a model's stem belongs to.
+
+    Three inputs, not one, because ``other`` is overloaded: it is the
+    instrumental complement for a 2-stem model, a real MUSDB residual for a
+    4-stem model, and instrumental-plus-backing-vocals for a karaoke model.
+
+    Unrecognised stems return :data:`BUCKET_UNKNOWN`, which never matches a
+    pair — that is what keeps specialty models (Phantom Centre's
+    ``Similarity``) out of ``Vocals/Instrumental``.
+    """
+    token = str(stem or "").strip().casefold()
+    if not token:
+        return BUCKET_UNKNOWN
+
+    # Identity codes name the product, not the model, so they win over flags.
+    identity = _IDENTITY_BUCKETS.get(token)
+    if identity is not None:
+        return identity
+
+    is_vocal = token in _VOCAL_TOKENS
+    # ``other`` counts as instrumental only for 2-stem (or target-instrument)
+    # models, where it is the complement of vocals rather than a MUSDB stem.
+    is_instrumental = token in _INSTRUMENTAL_TOKENS or (
+        token == "other" and stem_count <= 2
+    )
+
+    if is_karaoke:
+        if is_vocal:
+            return BUCKET_LEAD_VOCALS
+        if is_instrumental:
+            return BUCKET_INST_WITH_BV
+    if is_bv:
+        if is_vocal:
+            return BUCKET_BV_VOCALS
+        if is_instrumental:
+            return BUCKET_INST_WITH_LEAD
+
+    if is_vocal:
+        return BUCKET_VOCALS
+    if is_instrumental:
+        return BUCKET_INSTRUMENTAL
+    if token == "other":
+        return BUCKET_OTHER
+    simple = _SIMPLE_STEM_TOKENS.get(token)
+    if simple is not None:
+        return simple
+    return BUCKET_UNKNOWN
 
 
 def backend_focus_label(

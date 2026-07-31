@@ -52,6 +52,18 @@ INST_WITH_LEAD_VOCALS_STEM = 'Instrumental (With Lead Vocals)'
 
 INST_WITH_BACKING_VOCALS_STEM = 'Instrumental (With Backing Vocals)'
 
+# Filename-safe ensemble bucket tags. These are written into export filenames
+# as ``({tag})``, so they must contain no parentheses: the ensemble collection
+# regex in core/job_runner.py is ``\(([^()]+)\)\.(wav|flac|mp3)$`` and rejects
+# nested parens. The human-readable labels above stay for UI display only.
+INST_WITH_BACKING_VOCALS_TAG = 'Instrumental_WithBackingVocals'
+
+INST_WITH_LEAD_VOCALS_TAG = 'Instrumental_WithLeadVocals'
+
+LEAD_VOCALS_TAG = 'Lead_Vocals'
+
+BACKING_VOCALS_TAG = 'Backing_Vocals'
+
 VOCAL_STEM_ONLY = f'{VOCAL_STEM} Only'
 
 INST_STEM_ONLY = f'{INST_STEM} Only'
