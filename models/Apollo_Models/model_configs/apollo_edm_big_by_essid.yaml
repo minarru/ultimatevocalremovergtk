@@ -1,0 +1,114 @@
+exp: 
+  dir: ./exps # directory to save the experiment
+  name: bluearchive # name of the experiment
+
+datas:
+  _target_: look2hear.datas.DataModule
+  dataset_type: 1 # 1 or 2. see README for more details
+  sr: 44100 # sample rate
+  segments: 4 # cropped audio in seconds. chunksize = sr * segments
+  num_steps: 1000 # number of samples to be used for training in one epoch.
+  batch_size: 1 # batch size
+  num_workers: 0 # number of workers for data loading
+  pin_memory: true # pin memory for data loading
+
+  stems:
+    original: original # key for the original audio files, don't change it
+    codec: codec # key for the codec audio files, don't change it
+
+  train:
+    dir: # dataset where the training audio files are stored 
+    - output # list of directories
+    original_format: wav # the format of the original audio files
+    codec_format: mp3 # the format of the codec audio files
+
+  valid:
+    dir: # dataset where the validation audio files are stored
+    - output_v # list of directories
+    original_format: wav # the format of the original audio files
+    codec_format: mp3 # the format of the codec audio files
+
+model:
+  _target_: look2hear.models.apollo.Apollo
+  sr: 44100 # sample rate
+  win: 20 # window size in milliseconds
+  feature_dim: 256 # feature dimension
+  layer: 6 # number of layers
+
+discriminator:
+  _target_: look2hear.discriminators.frequencydis.MultiFrequencyDiscriminator
+  nch: 2
+  window: [32, 64, 128, 256, 512, 1024, 2048]
+
+optimizer_g:
+  _target_: torch.optim.AdamW
+  lr: 0.001
+  weight_decay: 0.01
+
+optimizer_d:
+  _target_: torch.optim.AdamW
+  lr: 0.0001
+  weight_decay: 0.01
+  betas: [0.5, 0.99]
+
+scheduler_g:
+  _target_: torch.optim.lr_scheduler.StepLR
+  step_size: 2
+  gamma: 0.98
+
+scheduler_d:
+  _target_: torch.optim.lr_scheduler.StepLR
+  step_size: 2
+  gamma: 0.98
+
+loss_g:
+  _target_: look2hear.losses.gan_losses.MultiFrequencyGenLoss
+  eps: 1e-8
+
+loss_d:
+  _target_: look2hear.losses.gan_losses.MultiFrequencyDisLoss
+  eps: 1e-8
+
+metrics:
+  _target_: look2hear.losses.MultiSrcNegSDR
+  sdr_type: sisdr # metric for validation, one of [snr, sisdr, sdsdr]
+
+system:
+  _target_: look2hear.system.audio_litmodule.AudioLightningModule
+
+# comment out the early_topping content below, if you do not wish to have early_topping
+early_stopping:
+  _target_: pytorch_lightning.callbacks.EarlyStopping
+  monitor: val_loss # metric to monitor
+  patience: 50 # number of epochs with no improvement after which training will be stopped
+  mode: min
+  verbose: true
+
+checkpoint:
+  _target_: pytorch_lightning.callbacks.ModelCheckpoint
+  dirpath: ${exp.dir}/${exp.name}/checkpoints
+  monitor: val_loss # metric to monitor
+  mode: min
+  verbose: true
+  save_top_k: 10 # number of best models to save
+  save_last: true # save the last checkpoint
+  filename: '{epoch}-{val_loss:.4f}'
+
+logger:
+  _target_: pytorch_lightning.loggers.WandbLogger
+  name: ${exp.name}
+  save_dir: ${exp.dir}/${exp.name}/logs
+  offline: false # if true, the logs will not be uploaded to wandb
+  project: Audio-Restoration
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  devices: [0] # number of GPUs to use
+  max_epochs: 1000 # max number of epochs
+  sync_batchnorm: true
+  default_root_dir: ${exp.dir}/${exp.name}/
+  accelerator: cuda
+  limit_train_batches: 1.0
+  fast_dev_run: false
+  precision: bf16 # [16, bf16, 32, 64]
+  enable_model_summary: true

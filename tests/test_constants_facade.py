@@ -8,6 +8,12 @@ class ConstantsFacadeTests(unittest.TestCase):
         self.assertEqual(VOCAL_STEM, "Vocals")
         self.assertEqual(secondary_stem("Vocals"), "Instrumental")
 
+    def test_secondary_stem_matches_yaml_lowercase(self):
+        """Roformer yamls ship ``vocals`` / ``instrumental`` in lowercase."""
+        self.assertEqual(secondary_stem("vocals"), "Instrumental")
+        self.assertEqual(secondary_stem("instrumental"), "Vocals")
+        self.assertEqual(secondary_stem("VOCALS"), "Instrumental")
+
     def test_default_data_present(self):
         self.assertIsInstance(DEFAULT_DATA, dict)
         self.assertIn("save_format", DEFAULT_DATA)

@@ -56,9 +56,15 @@ class BaseModel(nn.Module):
     def load_state_dict_in_audio(model: nn.Module, pretrained_dict: dict[str, torch.Tensor]) -> nn.Module:
         model_dict = model.state_dict()
         update_dict: dict[str, torch.Tensor] = {}
+        prefix = "audio_model."
         for k, v in pretrained_dict.items():
-            if "audio_model" in k:
-                update_dict[k[12:]] = v
+            if not k.startswith(prefix):
+                continue
+            key = k[len(prefix) :]
+            # Skip training-only extras / deeper layers so a near-match
+            # checkpoint cannot introduce unexpected keys into state_dict.
+            if key in model_dict:
+                update_dict[key] = v
         model_dict.update(update_dict)
         model.load_state_dict(model_dict)
         return model
@@ -73,11 +79,29 @@ class BaseModel(nn.Module):
             pretrained_model_conf_or_path, map_location="cpu"
         )  # Attempt to find the model and instantiate it.
 
-        model_class = get(conf["model_name"])
-        # model_class = get("Conv_TasNet")
-        model = model_class(*args, **kwargs)
-        model.load_state_dict(conf["state_dict"])
-        return model
+        if not isinstance(conf, dict):
+            raise TypeError(
+                f"Apollo checkpoint must be a dict, got {type(conf).__name__}"
+            )
+
+        state_dict = conf.get("state_dict")
+        if not isinstance(state_dict, dict):
+            raise KeyError("state_dict")
+
+        model_name = conf.get("model_name")
+        if model_name:
+            # UVR / look2hear serialized envelope: bare weights + class name.
+            model_class = get(model_name)
+            model = model_class(*args, **kwargs)
+            model.load_state_dict(state_dict)
+            return model
+
+        # PyTorch Lightning training checkpoint (epoch/global_step/…). Weights
+        # are stored under ``audio_model.*``; build Apollo from yaml params.
+        model = get("Apollo")(*args, **kwargs)
+        loaded = BaseModel.load_state_dict_in_audio(model, state_dict)
+        assert isinstance(loaded, BaseModel)
+        return loaded
 
     def serialize(self) -> dict[str, Any]:
         import pytorch_lightning as pl  # Not used in torch.hub

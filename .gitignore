@@ -19,11 +19,15 @@ models/Apollo_Models/*
 models/Apollo_Models/model_configs/*
 !models/Apollo_Models/model_configs/apollo.yaml
 !models/Apollo_Models/model_configs/config_apollo_uni.yaml
+!models/Apollo_Models/model_configs/config_apollo_uni_layer8.yaml
+!models/Apollo_Models/model_configs/apollo_edm_big_by_essid.yaml
 !models/Apollo_Models/model_data/
 models/Apollo_Models/model_data/*
 !models/Apollo_Models/model_data/5f740abe31e74c49d0a3b46613888b6d.json
 !models/Apollo_Models/model_data/6ac70f3230878a7084e084f49ab820ed.json
 !models/Apollo_Models/model_data/d687711d32baa00b50bc06391a0dc6c9.json
+!models/Apollo_Models/model_data/c51ecd92a06f35a1361c7dab5c49e29c.json
+!models/Apollo_Models/model_data/b48a5b6b1b70d835d15f552bb1d6939a.json
 !models/Demucs_Models/
 models/Demucs_Models/*
 !models/Demucs_Models/model_data/

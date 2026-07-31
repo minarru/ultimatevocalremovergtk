@@ -140,15 +140,19 @@ DEMUCS_6_STEM_OPTIONS = (ALL_STEMS, VOCAL_STEM, OTHER_STEM, BASS_STEM, DRUM_STEM
 SAVING_STEM = 'Saving ', ' stem...'
 
 def secondary_stem(stem:str):
-    """Determines secondary stem"""
-    
+    """Determines secondary stem.
+
+    Yaml configs often use lowercase ``vocals`` / ``instrumental`` while UVR's
+    pair table is Title Case. Match case-insensitively so ``secondary_stem("vocals")``
+    returns ``Instrumental`` rather than the bogus complement ``No vocals``.
+    """
     stem = stem if stem else NO_STEM
-    
-    if stem in STEM_PAIR_MAPPER.keys():
+
+    mapped = STEM_PAIR_MAPPER.get(stem)
+    if mapped is None:
+        stem_cf = stem.casefold()
         for key, value in STEM_PAIR_MAPPER.items():
-            if stem in key:
-                secondary_stem = value
-    else:
-        secondary_stem = stem.replace(NO_STEM, "") if NO_STEM in stem else f"{NO_STEM}{stem}"
-    
-    return secondary_stem
+            if key.casefold() == stem_cf:
+                return value
+        return stem.replace(NO_STEM, "") if NO_STEM in stem else f"{NO_STEM}{stem}"
+    return mapped
