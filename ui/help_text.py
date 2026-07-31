@@ -128,6 +128,15 @@ ENSEMBLE_MAIN_STEM_HELP = """Select the stem type for ensembling:
   - Primary Stem: Vocals
   - Secondary Stem: Instrumental (mixture minus vocals)
 
+• Lead Vocals/Instrumental (With Backing Vocals):
+  - For karaoke and backing-vocal models
+  - Primary Stem: Lead Vocals
+  - Secondary Stem: Instrumental with backing vocals left in
+  - These models separate lead vocals from everything else, so their
+    "instrumental" still contains the backing vocals. That is not the same
+    quantity as a clean instrumental, so they get their own pair rather than
+    being mixed with standard Vocals/Instrumental models
+
 • Other/No Other:
   - Primary Stem: Other
   - Secondary Stem: No Other (mixture minus "other")
