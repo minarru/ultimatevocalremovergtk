@@ -461,7 +461,7 @@ def export_stem_label(model: typing.Any, stem: str, *, for_ensemble: bool = Fals
     if for_ensemble:
         return ensemble_stem_bucket(
             stem,
-            stem_count=int(getattr(model, "mdx_stem_count", 2) or 2),
+            stem_count=model_stem_count(model),
             is_karaoke=bool(getattr(model, "is_karaoke", False)),
             is_bv=bool(getattr(model, "is_bv_model", False)),
         )
@@ -827,8 +827,11 @@ def ensemble_stem_bucket(
     is_vocal = token in _VOCAL_TOKENS
     # ``other`` counts as instrumental only for 2-stem (or target-instrument)
     # models, where it is the complement of vocals rather than a MUSDB stem.
+    # Reinterpreting it requires positive evidence: ``stem_count <= 0`` means
+    # the caller does not know, and ``other`` then keeps its literal meaning.
+    # Guessing the other way exports a 4-stem residual as ``Instrumental``.
     is_instrumental = token in _INSTRUMENTAL_TOKENS or (
-        token == "other" and stem_count <= 2
+        token == "other" and 1 <= stem_count <= 2
     )
 
     if is_karaoke:
@@ -852,6 +855,29 @@ def ensemble_stem_bucket(
     if simple is not None:
         return simple
     return BUCKET_UNKNOWN
+
+
+def model_stem_count(model: typing.Any) -> int:
+    """Return how many stems a model actually produces, across architectures.
+
+    A Demucs model carries its count on ``demucs_stem_count`` and leaves
+    ``mdx_stem_count`` at its default of 1; an MDX-C model is the reverse.
+    Reading only one of them saw a 4-stem Demucs model as 1-stem, which made
+    :func:`ensemble_stem_bucket` treat its MUSDB ``other`` residual as the
+    instrumental complement and label it ``Instrumental``.
+
+    Returns ``0`` when nothing is known. That is deliberately *not* a guess of
+    2: guessing would make :func:`ensemble_stem_bucket` reinterpret ``other`` as
+    the instrumental complement on no evidence, which is how an engine object
+    missing these fields exported a 4-stem model's residual as ``Instrumental``.
+    """
+    counts = (
+        int(getattr(model, "mdx_stem_count", 0) or 0),
+        int(getattr(model, "demucs_stem_count", 0) or 0),
+        len(getattr(model, "mdx_model_stems", ()) or ()),
+        len(getattr(model, "demucs_source_list", ()) or ()),
+    )
+    return max(counts)
 
 
 def ensemble_pair_buckets(main_stem: str) -> Tuple[str, str]:

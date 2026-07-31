@@ -217,6 +217,11 @@ class SeperateAttributes:
             self.mdx_batch_size = model_data.mdx_batch_size
             self.compensate = model_data.compensate
             self.mdx_segment_size = model_data.mdx_segment_size
+            # Needed by export_stem_label: without a stem count, a 4-stem
+            # model's MUSDB ``other`` residual is read as the 2-stem
+            # instrumental complement and exported as ``Instrumental``.
+            self.mdx_stem_count = model_data.mdx_stem_count
+            self.mdx_model_stems = model_data.mdx_model_stems
             
             if self.is_mdx_c:
                 if not self.is_4_stem_ensemble:

@@ -243,7 +243,11 @@ class ModelRepository:
         count, so re-deriving buckets from the two halves here would read
         ``Other/No Other`` as an Instrumental request.
         """
-        from .model_stem_semantics import BUCKET_UNKNOWN, ensemble_stem_bucket
+        from .model_stem_semantics import (
+            BUCKET_UNKNOWN,
+            ensemble_stem_bucket,
+            model_stem_count,
+        )
 
         stem_check = self.stem_check(settings)
         if wanted_buckets is None:
@@ -256,9 +260,11 @@ class ModelRepository:
         wanted.discard(BUCKET_UNKNOWN)
 
         def bucket_of(model: "ModelConfig", stem: str) -> str:
+            # model_stem_count, not mdx_stem_count: a Demucs model keeps its
+            # count on demucs_stem_count and leaves mdx_stem_count at 1.
             return ensemble_stem_bucket(
                 stem,
-                stem_count=model.mdx_stem_count or 1,
+                stem_count=model_stem_count(model),
                 is_karaoke=bool(getattr(model, "is_karaoke", False)),
                 is_bv=bool(getattr(model, "is_bv_model", False)),
             )
