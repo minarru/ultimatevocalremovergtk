@@ -1,5 +1,6 @@
 """The single merge path shared by Download Center and the runtime pickers."""
 
+import typing
 import unittest
 import unittest.mock
 
@@ -10,7 +11,7 @@ from core import catalog_sources
 _NO_SUPPLEMENTS = ({}, {}, {}, {})
 
 
-def _with_supplements(supplements):
+def _with_supplements(supplements: typing.Any) -> typing.Any:
     return unittest.mock.patch.object(
         catalog_sources, "_supplemental_sources", return_value=supplements
     )

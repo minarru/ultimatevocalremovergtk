@@ -94,7 +94,9 @@ class DownloadManagerPolitreesTests(unittest.TestCase):
     def tearDown(self) -> None:
         clear_politrees_cache()
 
-    @patch("core.downloads.load_politrees_links")
+    # The politrees load moved into core.catalog_sources when the two merge
+    # paths were unified; patch it where it is now looked up.
+    @patch("core.catalog_sources.load_politrees_links")
     def test_refresh_merges_politrees_models(self, mock_load: typing.Any) -> None:
         mock_load.return_value = {
             "roformer_download_list": {

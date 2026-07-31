@@ -133,23 +133,29 @@ def merged_catalogues(
 
     # Upstream-wins, in one place: a label already in the base is never
     # replaced by a supplement.
-    vr_out = merge_supplemental_list(vr, supp_vr)
-    mdx_out = merge_supplemental_list(mdx, supp_mdx)
-    demucs_out = merge_supplemental_list(demucs, supp_demucs)
+    vr_all = merge_supplemental_list(vr, supp_vr)
+    mdx_all = merge_supplemental_list(mdx, supp_mdx)
+    demucs_all = merge_supplemental_list(demucs, supp_demucs)
+    apollo_all = apollo_download_list()
 
-    vr_out = dedupe_download_catalogue(vr_out)
-    mdx_out = dedupe_download_catalogue(mdx_out)
-    demucs_out = dedupe_download_catalogue(demucs_out, demucs_bags=True)
-    apollo_out = dedupe_download_catalogue(apollo_download_list())
-
+    # Metadata is built **before** dedupe, on purpose. Dedupe is right for the
+    # Download Center's list — do not offer one weight twice — but wrong for a
+    # lookup index: a duplicate label dropped from the list still names a
+    # checkpoint that has to resolve in the runtime pickers. Deduping first
+    # silently un-named five legacy upstream models.
     meta: Dict[str, EntryMeta] = {}
     for catalogue, arch in (
-        (vr_out, VR_ARCH_TYPE),
-        (mdx_out, MDX_ARCH_TYPE),
-        (demucs_out, DEMUCS_ARCH_TYPE),
-        (apollo_out, APOLLO_ARCH_TYPE),
+        (vr_all, VR_ARCH_TYPE),
+        (mdx_all, MDX_ARCH_TYPE),
+        (demucs_all, DEMUCS_ARCH_TYPE),
+        (apollo_all, APOLLO_ARCH_TYPE),
     ):
         meta.update(_build_meta(catalogue, arch, extra_meta))
+
+    vr_out = dedupe_download_catalogue(vr_all)
+    mdx_out = dedupe_download_catalogue(mdx_all)
+    demucs_out = dedupe_download_catalogue(demucs_all, demucs_bags=True)
+    apollo_out = dedupe_download_catalogue(apollo_all)
 
     debug("download", f"catalog_sources merged entries={len(meta)}")
     return MergedCatalogues(
