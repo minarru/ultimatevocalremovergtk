@@ -558,8 +558,17 @@ def _run_tool(settings: Any, input_path: str, timeout: float) -> tuple:
 
 
 def spawn_child(*, spec: Dict[str, Any], job_dir: str, env: Dict[str, str], timeout: float):
-    """Run one job in a fresh process. Returns ``(exit_code, result, timed_out)``."""
+    """Run one job in a fresh process. Returns ``(exit_code, result, timed_out)``.
+
+    The child is started as its own process-group leader (``start_new_session
+    =True``) so that on a timeout we can kill its whole group, not just the
+    immediate process. The child shells out to grandchildren of its own —
+    pydub's ffmpeg for FLAC/MP3 export, rubberband via ``ml/pyrb.py`` — and a
+    bare ``proc.kill()`` only signals the direct child, leaving those
+    grandchildren to run on as orphans holding memory and file handles.
+    """
     import json
+    import signal
     import subprocess
 
     os.makedirs(job_dir, exist_ok=True)
@@ -572,18 +581,22 @@ def spawn_child(*, spec: Dict[str, Any], job_dir: str, env: Dict[str, str], time
         os.remove(result_path)
 
     argv = [sys.executable, os.path.abspath(__file__), "--run-job", spec_path]
-    timed_out = False
+    proc = subprocess.Popen(argv, env=env, start_new_session=True)
     try:
-        completed = subprocess.run(argv, env=env, timeout=timeout + 30.0)
-        exit_code = completed.returncode
+        exit_code = proc.wait(timeout=timeout + 30.0)
     except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.wait()  # reap the now-dead process so it doesn't linger as a zombie
         return None, None, True
 
     result = None
     if os.path.isfile(result_path):
         with open(result_path) as handle:
             result = json.load(handle)
-    return exit_code, result, timed_out
+    return exit_code, result, False
 
 
 SpawnFn = Callable[..., Tuple[Optional[int], Optional[Dict[str, Any]], bool]]

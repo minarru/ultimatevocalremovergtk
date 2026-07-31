@@ -532,6 +532,100 @@ class RunChildTests(unittest.TestCase):
         fake_runner.stop.assert_called_once_with(force=True)
 
 
+class SpawnChildProcessGroupTests(unittest.TestCase):
+    """Fix round 1: a timed-out child must have its whole process group
+    killed, not just the immediate process, since it can shell out to
+    grandchildren (ffmpeg via pydub, rubberband via ml/pyrb.py) that would
+    otherwise survive as orphans. A revert to ``subprocess.run`` +
+    ``proc.kill()``/timeout-only-kills-the-child would still return
+    ``(None, None, True)`` on timeout, so that alone can't discriminate the
+    fix from a revert — this asserts the group kill was actually issued."""
+
+    def test_timeout_kills_the_whole_process_group_and_reaps_it(self) -> None:
+        import signal
+        import subprocess
+        import tempfile
+        from unittest import mock
+
+        class FakeProc:
+            def __init__(self, argv: Any, env: Any = None, start_new_session: Any = None):
+                self.pid = 4242
+                self.start_new_session = start_new_session
+                self.wait_calls = 0
+
+            def wait(self, timeout: Any = None) -> int:
+                self.wait_calls += 1
+                if self.wait_calls == 1:
+                    raise subprocess.TimeoutExpired(cmd="x", timeout=timeout)
+                return -9
+
+        created: Dict[str, Any] = {}
+
+        def fake_popen(argv: Any, env: Any = None, start_new_session: Any = None) -> Any:
+            proc = FakeProc(argv, env=env, start_new_session=start_new_session)
+            created["proc"] = proc
+            return proc
+
+        killpg_calls: List[Any] = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch(
+                "subprocess.Popen", side_effect=fake_popen
+            ), mock.patch(
+                "os.getpgid", return_value=9999
+            ), mock.patch(
+                "os.killpg", side_effect=lambda pgid, sig: killpg_calls.append((pgid, sig))
+            ):
+                exit_code, result, timed_out = model_sweep.spawn_child(
+                    spec={"kind": "single"}, job_dir=tmp, env={}, timeout=1.0
+                )
+
+        # The fix: the child is started as its own process-group leader...
+        self.assertTrue(created["proc"].start_new_session)
+        # ...and on timeout the whole group is killed (not just the child)...
+        self.assertEqual(killpg_calls, [(9999, signal.SIGKILL)])
+        # ...then reaped so no zombie is left behind.
+        self.assertEqual(created["proc"].wait_calls, 2)
+        self.assertIsNone(exit_code)
+        self.assertIsNone(result)
+        self.assertTrue(timed_out)
+
+    def test_timeout_kill_tolerates_a_process_that_already_exited(self) -> None:
+        """``os.killpg`` racing an already-reaped process must not raise."""
+        import subprocess
+        import tempfile
+        from unittest import mock
+
+        class FakeProc:
+            def __init__(self) -> None:
+                self.pid = 4242
+                self.wait_calls = 0
+
+            def wait(self, timeout: Any = None) -> int:
+                self.wait_calls += 1
+                if self.wait_calls == 1:
+                    raise subprocess.TimeoutExpired(cmd="x", timeout=timeout)
+                return -9
+
+        proc = FakeProc()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch(
+                "subprocess.Popen", return_value=proc
+            ), mock.patch(
+                "os.getpgid", return_value=9999
+            ), mock.patch(
+                "os.killpg", side_effect=ProcessLookupError()
+            ):
+                exit_code, result, timed_out = model_sweep.spawn_child(
+                    spec={"kind": "single"}, job_dir=tmp, env={}, timeout=1.0
+                )
+
+        self.assertIsNone(exit_code)
+        self.assertIsNone(result)
+        self.assertTrue(timed_out)
+
+
 class ParentControlFlowTests(unittest.TestCase):
     def _job(self, **kwargs: Any):
         base = dict(id="mdx:a.ckpt", kind=model_sweep.KIND_SINGLE, method="mdx", model="a.ckpt")
