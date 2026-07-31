@@ -56,6 +56,11 @@ from .download_sizes import (
 )
 from .extra_catalog import apollo_download_list, merge_extra_catalogues
 from .mdx_config_fetch import ensure_mdx_c_config
+from .mvsepless_catalog import (
+    merge_mvsepless_catalogues,
+    unsupported_mvsepless_downloads,
+    unsupported_reason_for_label,
+)
 from .politrees_catalog import (
     apollo_checkpoint_filename,
     hf_fallback_url,
@@ -152,6 +157,8 @@ class DownloadManager:
         self.demucs_download_list: Dict[str, Any] = {}
         # Apollo restoration models are fork-curated only (no upstream list).
         self.apollo_download_list: Dict[str, Any] = {}
+        # mvsepless entries we index but cannot run yet: {arch: [(label, reason), ...]}.
+        self.unsupported_download_list: Dict[str, List[Tuple[str, str]]] = {}
         self._size_warmup_lock = threading.Lock()
 
     # -- Catalogue + size cache -------------------------------------------------
@@ -321,8 +328,8 @@ class DownloadManager:
                     politrees,
                 )
             )
-        # Fork-curated entries merge last so they fill gaps without ever
-        # shadowing an upstream label, and survive ``refresh`` replacing
+        # Fork-curated entries merge after Politrees so they fill gaps without
+        # ever shadowing an upstream label, and survive ``refresh`` replacing
         # ``online_data`` wholesale.
         self.vr_download_list, self.mdx_download_list, self.demucs_download_list = (
             merge_extra_catalogues(
@@ -330,6 +337,24 @@ class DownloadManager:
                 self.mdx_download_list,
                 self.demucs_download_list,
             )
+        )
+        # mvsepless_resources last: fills remaining gaps; unsupported rows are
+        # tracked separately for the Download Center UI.
+        self.vr_download_list, self.mdx_download_list, self.demucs_download_list = (
+            merge_mvsepless_catalogues(
+                self.vr_download_list,
+                self.mdx_download_list,
+                self.demucs_download_list,
+            )
+        )
+        existing_labels = {
+            **self.vr_download_list,
+            **self.mdx_download_list,
+            **self.demucs_download_list,
+            **apollo_download_list(),
+        }
+        self.unsupported_download_list = unsupported_mvsepless_downloads(
+            existing_labels=existing_labels
         )
         self.apollo_download_list = apollo_download_list()
 
@@ -394,6 +419,19 @@ class DownloadManager:
 
         return result
 
+    def unsupported_downloads(
+        self, model_type: str = ALL_TYPES
+    ) -> Dict[str, List[Tuple[str, str]]]:
+        """Return ``{arch_type: [(label, reason), ...]}`` for non-runnable catalogue rows."""
+        if model_type == ALL_TYPES:
+            return {
+                arch: list(rows)
+                for arch, rows in self.unsupported_download_list.items()
+                if rows
+            }
+        rows = self.unsupported_download_list.get(model_type) or []
+        return {model_type: list(rows)} if rows else {}
+
     def _ensure_mdx_c_config(self, config: str) -> None:
         ensure_mdx_c_config(config)
 
@@ -413,28 +451,26 @@ class DownloadManager:
 
         if arch_type == VR_ARCH_TYPE:
             model = self.vr_download_list.get(selection)
-            if not model:
-                return []
-            return resolve_vr_jobs(model, model_repo)
-
-        if arch_type == MDX_ARCH_TYPE:
+            if model:
+                return resolve_vr_jobs(model, model_repo)
+        elif arch_type == MDX_ARCH_TYPE:
             model = self.mdx_download_list.get(selection)
-            if model is None:
-                return []
-            return resolve_mdx_jobs(model, model_repo)
-
-        if arch_type == DEMUCS_ARCH_TYPE:
+            if model is not None:
+                return resolve_mdx_jobs(model, model_repo)
+        elif arch_type == DEMUCS_ARCH_TYPE:
             model = self.demucs_download_list.get(selection)
-            if not model:
-                return []
-            return resolve_demucs_jobs(model, selection)
-
-        if arch_type == APOLLO_ARCH_TYPE:
+            if model:
+                return resolve_demucs_jobs(model, selection)
+        elif arch_type == APOLLO_ARCH_TYPE:
             model = self.apollo_download_list.get(selection)
-            if not model:
-                return []
-            return resolve_apollo_jobs(model)
+            if model:
+                return resolve_apollo_jobs(model)
+        else:
+            return []
 
+        reason = unsupported_reason_for_label(selection)
+        if reason:
+            raise ValueError(f"model is listed but not downloadable yet: {reason}")
         return []
 
     def describe_selection_download_size(self, selection: str, arch_type: str) -> str:

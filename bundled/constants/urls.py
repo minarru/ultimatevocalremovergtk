@@ -20,6 +20,11 @@ POLITREES_CONFIG_SUBDIRS = (
 
 POLITREES_MODEL_LINKS_URL = f"{POLITREES_RAW_BASE}/UVR_resources/model_list_links.json"
 
+#: Machine-readable MVSEP-less resource catalogue (checkpoint + config URLs).
+MVSEPLESS_MODELS_JSON_URL = (
+    "https://huggingface.co/noblebarkrr/mvsepless_resources/resolve/main/models.json"
+)
+
 BULLETIN_CHECK = "https://raw.githubusercontent.com/TRvlvr/application_data/main/bulletin.txt"
 
 DEMUCS_MODEL_NAME_DATA_LINK = "https://raw.githubusercontent.com/TRvlvr/application_data/main/demucs_model_data/model_name_mapper.json"

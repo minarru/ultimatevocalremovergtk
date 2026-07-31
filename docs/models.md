@@ -1,5 +1,31 @@
 # Model architectures
 
+## Download catalogues
+
+The Download Center merges catalogues in this order (earlier labels win):
+
+1. Official TRvlvr `download_checks.json`
+2. Politrees `UVR_resources` community list
+3. Fork-curated [`bundled/extra_models.json`](../bundled/extra_models.json)
+4. [noblebarkrr/mvsepless_resources](https://huggingface.co/noblebarkrr/mvsepless_resources) `models.json` (live fetch, 24h disk cache)
+
+The mvsepless feed has **no declared Hugging Face license tag**; this app only indexes remote URLs and downloads into the local models dirs (it does not rehost weights). Disable with `UVR_DISABLE_MVSEPLESS=1`.
+
+Entries this build cannot run yet still appear in the matching network tab as **Unsupported** (grayed, not downloadable), with a short reason. Use **Hide unsupported** in the Download Center filters to conceal them. First-pass unsupported classes:
+
+| Class | Why |
+|---|---|
+| Medley-Vox | No engine port |
+| SCNet Masked / SCNet Tran | Architecture not ported |
+| MSST HTDemucs (single `.ckpt`) | Not the Facebook Demucs bag format |
+| Classic VR from mvsepless | Needs `.ckpt`+yaml → VR hash bridge (use TRvlvr/Politrees VR instead) |
+| Classic MDX-Net ONNX from mvsepless | Needs yaml→hash bridge (use TRvlvr ONNX instead) |
+| Windowed Sink Attention Mel-Band (`mbr_wsa`) | Attention features not ported |
+| BS Conformer (`bs_cr_4stem_zf_turbo`) | Conformer blocks not ported |
+| Mel-Band 4-stem with `skip_connection` | Skip path not ported |
+
+Supported Mel-Band / BS-Roformer / MDX23C / SCNet / Bandit(+v2) entries download through the existing MDX-C hash → `config_yaml` registration path.
+
 ## SCNet (4-stem music separation)
 
 SCNet models separate music into **Drums**, **Bass**, **Other**, and **Vocals**. They use `.ckpt` checkpoints with a matching yaml config under `models/MDX_Net_Models/model_data/mdx_c_configs/`.
