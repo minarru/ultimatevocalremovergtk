@@ -29,7 +29,7 @@ from .demucs_models import (
     resolve_demucs_model_file,
 )
 from .mdx_c_registry import compute_checkpoint_hash, try_register_from_catalog
-from .model_stem_semantics import resolve_is_karaoke
+from .model_stem_semantics import is_vocal_target, resolve_is_karaoke
 from .model_display import (
     display_name_for_basename,
     map_basenames_to_display,
@@ -77,6 +77,16 @@ def _mdx_c_training(config: typing.Any) -> Any:
     if training is None and isinstance(config, dict):
         training = config.get("training")
     return training
+
+
+def _mdx_c_primary_for_select(instruments: list, stem_select: Any) -> Any:
+    """Pick a primary stem that actually exists on a multi-stem MDX-C model."""
+    if stem_select and stem_select != ALL_STEMS and stem_select in instruments:
+        return stem_select
+    for stem in instruments:
+        if is_vocal_target(str(stem)):
+            return stem
+    return instruments[0] if instruments else stem_select
 
 
 def load_model_hash_data(dictionary: str) -> dict:
@@ -592,7 +602,15 @@ class _ModelConfigImplementation:
                                     if self.mdx_stem_count == 2:
                                         self.primary_stem = self.mdx_model_stems[0]
                                     else:
-                                        self.primary_stem = self.mdxnet_stem_select
+                                        # ``mdx.stems`` is a global UI choice (often
+                                        # Instrumental/Vocals). 4-stem models only
+                                        # expose drums/bass/other/vocals — keep the
+                                        # selection when it exists, otherwise fall
+                                        # back so export never KeyErrors.
+                                        self.primary_stem = _mdx_c_primary_for_select(
+                                            self.mdx_model_stems,
+                                            self.mdxnet_stem_select,
+                                        )
                                     if self.is_ensemble_mode:
                                         self.mdxnet_stem_select = self.ensemble_primary_stem
                         else:

@@ -89,12 +89,13 @@ def restore_process(
         model = materialize_module(model, device)
 
     def process_chunk(chunk: torch.Tensor) -> torch.Tensor:
-        from engines.amp_runtime import maybe_autocast
-
+        # Apollo's STFT sizes are often not powers of two. CUDA fp16 autocast
+        # then fails inside cuFFT ("only supports dimensions whose sizes are
+        # powers of two"). Demucs has the same restriction; keep float32 here
+        # regardless of the process.autocast setting.
         chunk = chunk.unsqueeze(0).to(device)
         with torch.inference_mode():
-            with maybe_autocast(device, settings):
-                out = model(chunk).squeeze(0).squeeze(0)
+            out = model(chunk).squeeze(0).squeeze(0)
             return out.float().cpu()
 
     def progress_bar_ui(length: int) -> None:

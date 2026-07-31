@@ -11,7 +11,12 @@ import torch.nn.functional as F
 from .attend import Attend
 
 from beartype.typing import Tuple as BeartypeTuple, Optional as BeartypeOptional, List, Callable as BeartypeCallable
-from beartype import beartype
+from beartype import BeartypeConf, beartype as _beartype
+
+# Model yamls write integer literals for float hyper-parameters
+# (``attn_dropout: 0``). PEP 484's implicit numeric tower accepts int where
+# float is annotated; beartype's default configuration does not.
+beartype = _beartype(conf=BeartypeConf(is_pep484_tower=True))
 
 from rotary_embedding_torch import RotaryEmbedding
 
