@@ -13,17 +13,28 @@ import tempfile
 import typing
 import unittest
 
+from bundled.constants import KARAOKE_PAIR, VOCAL_PAIR
 from core.export_naming import format_stem_basename
 from core.job_runner import Ensembler
-from core.model_stem_semantics import export_stem_label
+from core.model_stem_semantics import (
+    BUCKET_INST_WITH_BV,
+    BUCKET_LEAD_VOCALS,
+    ensemble_pair_buckets,
+    export_stem_label,
+)
 
 
 class _Model:
     def __init__(self, *, is_karaoke: bool = False, is_bv: bool = False,
-                 stem_count: int = 2) -> None:
+                 stem_count: int = 2, demucs_stem_count: int = 0,
+                 primary_stem: str = "Vocals") -> None:
         self.is_karaoke = is_karaoke
         self.is_bv_model = is_bv
         self.mdx_stem_count = stem_count
+        self.demucs_stem_count = demucs_stem_count
+        self.mdx_model_stems: list = []
+        self.demucs_source_list: list = []
+        self.primary_stem = primary_stem
 
 
 def _collector() -> typing.Any:
@@ -94,6 +105,62 @@ class MemberCollectionTests(unittest.TestCase):
                         any(os.path.basename(f) == name for f in found),
                         f"{name!r} was written but not collected under {tag!r}",
                     )
+
+
+class EnsemblerPairBucketTests(unittest.TestCase):
+    """Combine tags must be filename buckets, not UI pair display labels."""
+
+    def test_karaoke_pair_buckets_match_export_labels(self) -> None:
+        primary, secondary = ensemble_pair_buckets(KARAOKE_PAIR)
+        self.assertEqual(primary, BUCKET_LEAD_VOCALS)
+        self.assertEqual(secondary, BUCKET_INST_WITH_BV)
+        model = _Model(is_karaoke=True)
+        self.assertEqual(export_stem_label(model, "Vocals", for_ensemble=True), primary)
+        self.assertEqual(
+            export_stem_label(model, "Instrumental", for_ensemble=True), secondary
+        )
+
+    def test_ensembler_stores_karaoke_buckets_not_display_labels(self) -> None:
+        ensembler = object.__new__(Ensembler)
+        # Minimal stand-in for Ensembler.__init__'s pair-bucket assignment.
+        primary, secondary = ensemble_pair_buckets(KARAOKE_PAIR)
+        ensembler.ensemble_primary_stem = primary
+        ensembler.ensemble_secondary_stem = secondary
+        self.assertEqual(ensembler.ensemble_primary_stem, BUCKET_LEAD_VOCALS)
+        self.assertEqual(ensembler.ensemble_secondary_stem, BUCKET_INST_WITH_BV)
+        self.assertNotEqual(ensembler.ensemble_primary_stem, "Lead Vocals")
+
+    def test_flipped_karaoke_primary_still_exports_pair_buckets(self) -> None:
+        # VR karaoke: primary Instrumental / secondary Vocals.
+        model = _Model(is_karaoke=True, primary_stem="Instrumental")
+        self.assertEqual(
+            export_stem_label(model, "Instrumental", for_ensemble=True),
+            BUCKET_INST_WITH_BV,
+        )
+        self.assertEqual(
+            export_stem_label(model, "Vocals", for_ensemble=True),
+            BUCKET_LEAD_VOCALS,
+        )
+        primary, secondary = ensemble_pair_buckets(KARAOKE_PAIR)
+        with tempfile.TemporaryDirectory() as folder:
+            _write_member(folder, "Song", "VRKara", model, "Instrumental")
+            _write_member(folder, "Song", "VRKara", model, "Vocals")
+            collector = _collector()
+            self.assertEqual(
+                len(collector.get_files_to_ensemble_for_stem(
+                    folder=folder, prefix="Song", stem_tag=primary
+                )),
+                1,
+            )
+            self.assertEqual(
+                len(collector.get_files_to_ensemble_for_stem(
+                    folder=folder, prefix="Song", stem_tag=secondary
+                )),
+                1,
+            )
+
+    def test_vocal_pair_unchanged(self) -> None:
+        self.assertEqual(ensemble_pair_buckets(VOCAL_PAIR), ("Vocals", "Instrumental"))
 
 
 if __name__ == "__main__":

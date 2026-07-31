@@ -81,8 +81,15 @@ def _mdx_c_training(config: typing.Any) -> Any:
 
 def _mdx_c_primary_for_select(instruments: list, stem_select: Any) -> Any:
     """Pick a primary stem that actually exists on a multi-stem MDX-C model."""
-    if stem_select and stem_select != ALL_STEMS and stem_select in instruments:
-        return stem_select
+    if stem_select and stem_select != ALL_STEMS:
+        if stem_select in instruments:
+            return stem_select
+        from .model_stem_semantics import resolve_stem_dict_key
+
+        # Treat instruments as a key set so Title Case UI picks match yaml case.
+        matched = resolve_stem_dict_key({str(s): s for s in instruments}, str(stem_select))
+        if matched is not None:
+            return matched
     for stem in instruments:
         if is_vocal_target(str(stem)):
             return stem
@@ -647,7 +654,18 @@ class _ModelConfigImplementation:
                                     self.is_target_instrument = True
                                     target = target_instrument
                                     self.mdx_model_stems = [target]
-                                    self.primary_stem = target
+                                    # Odd yaml: target ``other`` is a clean
+                                    # instrumental extractor; complement is the
+                                    # acapella (all vocals), not ``No other``.
+                                    if str(target).casefold() == "other":
+                                        self.primary_stem_native = str(target)
+                                        self.primary_stem = INST_STEM
+                                        self.secondary_stem = VOCAL_STEM
+                                    else:
+                                        self.primary_stem = target
+                                        self.secondary_stem = secondary_stem(
+                                            str(self.primary_stem or "")
+                                        )
                                     if self.is_roformer and self.is_ensemble_mode and target in (VOCAL_STEM, INST_STEM):
                                         self.mdxnet_stem_select = self.ensemble_primary_stem
                                 elif training is not None:
@@ -668,6 +686,13 @@ class _ModelConfigImplementation:
                                         )
                                     if self.is_ensemble_mode:
                                         self.mdxnet_stem_select = self.ensemble_primary_stem
+                                    self.secondary_stem = secondary_stem(
+                                        str(self.primary_stem or "")
+                                    )
+                                else:
+                                    self.secondary_stem = secondary_stem(
+                                        str(self.primary_stem or "")
+                                    )
                         else:
                             self.model_status = False
                     else:
@@ -681,7 +706,7 @@ class _ModelConfigImplementation:
                         self.mdx_n_fft_scale_set = self.model_data["mdx_n_fft_scale_set"]
                         self.primary_stem = self.model_data["primary_stem"]
                         self.primary_stem_native = self.model_data["primary_stem"]
-                    self.secondary_stem = secondary_stem(str(self.primary_stem or ""))
+                        self.secondary_stem = secondary_stem(str(self.primary_stem or ""))
                 else:
                     self.model_status = False
 

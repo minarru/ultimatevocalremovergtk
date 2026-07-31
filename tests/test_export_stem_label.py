@@ -84,6 +84,23 @@ class DemucsStemCountTests(unittest.TestCase):
         model = object()
         self.assertEqual(export_stem_label(model, "other", for_ensemble=True), BUCKET_OTHER)
 
+    def test_specialty_stems_keep_literal_tags(self) -> None:
+        model = _FakeModel(stem_count=3)
+        self.assertEqual(export_stem_label(model, "Speech", for_ensemble=True), "Speech")
+        self.assertEqual(export_stem_label(model, "Sfx", for_ensemble=True), "Sfx")
+        self.assertEqual(
+            export_stem_label(model, "Similarity", for_ensemble=True), "Similarity"
+        )
+        self.assertNotEqual(
+            export_stem_label(model, "Speech", for_ensemble=True), "Unknown"
+        )
+
+    def test_no_other_is_not_written_as_unknown(self) -> None:
+        model = _FakeModel(stem_count=4)
+        label = export_stem_label(model, "No Other", for_ensemble=True)
+        self.assertNotEqual(label, "Unknown")
+        self.assertEqual(label, "No Other")
+
 
 class BucketRoundTripTests(unittest.TestCase):
     """The combine stage re-reads tags from filenames; they must survive."""

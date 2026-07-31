@@ -103,6 +103,29 @@ class KaraokeSeparationTests(unittest.TestCase):
         self.assertEqual(_eligible(models, VOCAL_PAIR), [])
 
 
+class SecondaryOtherWantedBucketsTests(unittest.TestCase):
+    """Secondary Other slot must use pair buckets, not stem_count=1 request."""
+
+    def test_wanted_buckets_match_ensemble_other_list(self) -> None:
+        from bundled.constants import OTHER_STEM
+        from core import Settings
+        from core.model_stem_semantics import ensemble_pair_buckets
+
+        settings = Settings()
+        repo = ModelRepository()
+        wanted = set(ensemble_pair_buckets(OTHER_PAIR))
+        via_buckets = set(
+            repo.model_list(
+                settings, OTHER_STEM, "No Other", wanted_buckets=wanted
+            )
+        )
+        via_ensemble = set(repo.ensemble_model_list(settings, OTHER_PAIR))
+        via_raw = set(repo.model_list(settings, OTHER_STEM, "No Other"))
+        self.assertEqual(via_buckets, via_ensemble)
+        # Pre-fix request path selected Instrumental models instead.
+        self.assertNotEqual(via_raw, via_ensemble)
+
+
 class UnchangedBehaviourTests(unittest.TestCase):
     def test_demucs_source_list_still_matches(self) -> None:
         models = [_FakeModel("Demucs: htdemucs", "Vocals", [],

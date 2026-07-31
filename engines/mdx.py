@@ -24,7 +24,7 @@ from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
 from core.torch_checkpoint import as_model_state_dict, load_torch_checkpoint
-from core.model_stem_semantics import is_vocal_target
+from core.model_stem_semantics import is_vocal_target, resolve_stem_dict_key
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
 
@@ -635,15 +635,28 @@ class SeperateMDXC(SeperateAttributes):
             if len(stem_list) == 1:
                 source_primary = working_sources  
             else:
+                select = str(self.mdxnet_stem_select or "")
+                primary = str(self.primary_stem or "")
                 if self.is_multi_stem_ensemble or len(stem_list) == 2:
-                    stem_key = stem_list[0]
-                elif self.mdxnet_stem_select == ALL_STEMS:
-                    stem_key = self.primary_stem
-                elif isinstance(working_sources, dict) and self.mdxnet_stem_select in working_sources:
-                    stem_key = self.mdxnet_stem_select
+                    stem_key = str(stem_list[0])
+                elif select == ALL_STEMS:
+                    stem_key = primary
+                elif isinstance(working_sources, dict) and resolve_stem_dict_key(
+                    working_sources, select
+                ) is not None:
+                    stem_key = select
                 else:
-                    stem_key = self.primary_stem
-                source_primary = working_sources[stem_key]
+                    stem_key = primary
+                if isinstance(working_sources, dict):
+                    resolved = resolve_stem_dict_key(working_sources, stem_key)
+                    if resolved is None:
+                        raise KeyError(
+                            f"stem {stem_key!r} not in sources "
+                            f"{sorted(map(str, working_sources.keys()))}"
+                        )
+                    source_primary = working_sources[resolved]
+                else:
+                    source_primary = working_sources[stem_key]
             if self.is_secondary_model_activated and self.secondary_model:
                 self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, 
                                                                                                          self.process_data, 
@@ -659,17 +672,29 @@ class SeperateMDXC(SeperateAttributes):
                     
                     if self.is_mdx_combine_stems and len(stem_list) >= 2:
                         if len(stem_list) == 2:
-                            secondary_source = working_sources[self.secondary_stem]
+                            sec_key = resolve_stem_dict_key(
+                                working_sources, self.secondary_stem
+                            ) or self.secondary_stem
+                            secondary_source = working_sources[sec_key]
                         else:
-                            working_sources.pop(self.primary_stem, None)
+                            prim_key = resolve_stem_dict_key(
+                                working_sources, self.primary_stem
+                            )
+                            if prim_key is not None:
+                                working_sources.pop(prim_key, None)
                             next_stem = next(iter(working_sources))
                             secondary_source = np.zeros_like(working_sources[next_stem])
                             for v in working_sources.values():
                                 secondary_source += v
                                 
                         self.secondary_source = secondary_source.T 
-                    elif isinstance(working_sources, dict) and self.secondary_stem in working_sources:
-                        self.secondary_source = working_sources[self.secondary_stem].T
+                    elif isinstance(working_sources, dict) and resolve_stem_dict_key(
+                        working_sources, self.secondary_stem
+                    ):
+                        sec_key = resolve_stem_dict_key(
+                            working_sources, self.secondary_stem
+                        )
+                        self.secondary_source = working_sources[sec_key].T
                     else:
                         self.secondary_source, raw_mix = source_primary, self.match_frequency_pitch(mix)
                         self.secondary_source = spec_utils.to_shape(self.secondary_source, raw_mix.shape)

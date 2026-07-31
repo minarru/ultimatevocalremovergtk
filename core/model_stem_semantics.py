@@ -459,12 +459,17 @@ def export_stem_label(model: typing.Any, stem: str, *, for_ensemble: bool = Fals
     if not stem:
         return stem
     if for_ensemble:
-        return ensemble_stem_bucket(
+        bucket = ensemble_stem_bucket(
             stem,
             stem_count=model_stem_count(model),
             is_karaoke=bool(getattr(model, "is_karaoke", False)),
             is_bv=bool(getattr(model, "is_bv_model", False)),
         )
+        # Unknown is an eligibility sentinel only — never a filename/RAM key.
+        # Specialty stems (Speech, Sfx, …) keep a distinct literal tag.
+        if bucket != BUCKET_UNKNOWN:
+            return bucket
+        return canonical_ensemble_stem_tag(stem)
     # Splitter identity codes → human labels even when the parent model is not
     # flagged karaoke/BV on this object (flags live on the split model).
     if stem == LEAD_VOCAL_STEM:
@@ -757,6 +762,30 @@ def canonical_ensemble_stem_tag(stem: str) -> str:
         if label.casefold() == stripped.casefold():
             return label
     return stripped
+
+
+def resolve_stem_dict_key(
+    sources: Optional[Mapping[str, typing.Any]], stem: str
+) -> Optional[str]:
+    """Return the key in ``sources`` that matches ``stem``, ignoring case/aliases.
+
+    Ensemble/UI often pass Title Case (``Vocals``, ``Other``) while MDX-C yaml
+    keeps lowercase (``vocals``, ``other``). Exact lookup then KeyErrors; this
+    resolves at the dict boundary without mutating yaml keys.
+    """
+    if not isinstance(sources, Mapping) or stem is None or stem == "":
+        return None
+    if stem in sources:
+        return str(stem)
+    want = str(stem).casefold()
+    for key in sources:
+        if str(key).casefold() == want:
+            return str(key)
+    want_canon = canonical_ensemble_stem_tag(str(stem))
+    for key in sources:
+        if canonical_ensemble_stem_tag(str(key)) == want_canon:
+            return str(key)
+    return None
 
 
 BUCKET_VOCALS = VOCAL_STEM
