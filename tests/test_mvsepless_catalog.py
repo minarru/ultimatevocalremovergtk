@@ -327,5 +327,67 @@ class DiskCacheTests(unittest.TestCase):
         self.assertIn("cached", loaded)
 
 
+class CategoryTranslationTests(unittest.TestCase):
+    def test_known_categories_translate_with_intent(self) -> None:
+        from core.model_stem_semantics import (
+            INTENT_KARAOKE,
+            INTENT_MULTI_STEM,
+            INTENT_VOCALS,
+        )
+        from core.mvsepless_catalog import translate_category
+
+        self.assertEqual(translate_category("\u0412\u043e\u043a\u0430\u043b"), ("Vocals", INTENT_VOCALS))
+        self.assertEqual(
+            translate_category("\u041a\u0430\u0440\u0430\u043e\u043a\u0435"), ("Karaoke", INTENT_KARAOKE)
+        )
+        self.assertEqual(
+            translate_category("4 \u0441\u0442\u0435\u043c\u0430"), ("4 stems", INTENT_MULTI_STEM)
+        )
+
+    def test_unknown_category_passes_through(self) -> None:
+        from core.mvsepless_catalog import translate_category
+
+        label, intent = translate_category("Nonexistent")
+        self.assertEqual(label, "Nonexistent")
+        self.assertTrue(intent)
+
+
+class MetadataSidecarTests(unittest.TestCase):
+    def test_supported_entry_keeps_stems_and_target(self) -> None:
+        from core.model_stem_semantics import INTENT_VOCALS
+
+        converted = convert_mvsepless_catalog({
+            "mbr_x": {
+                "model_type": "mel_band_roformer",
+                "category": "\u0412\u043e\u043a\u0430\u043b",
+                "full_name": "Mel-Band Roformer X by Someone",
+                "stems": ["Vocals", "other"],
+                "target_instrument": "Vocals",
+                "checkpoint_url": "https://example.invalid/a/mbr_x.ckpt",
+                "config_url": "https://example.invalid/a/mbr_x.yaml",
+            }
+        })
+        meta = converted["metadata"]["Mel-Band Roformer X by Someone"]
+        self.assertEqual(meta["stems"], ["Vocals", "other"])
+        self.assertEqual(meta["target_instrument"], "Vocals")
+        self.assertEqual(meta["category_en"], "Vocals")
+        self.assertEqual(meta["intent"], INTENT_VOCALS)
+        self.assertEqual(meta["entry_id"], "mbr_x")
+
+    def test_unsupported_entry_also_gets_metadata(self) -> None:
+        converted = convert_mvsepless_catalog({
+            "mbr_wsa": {
+                "model_type": "mel_band_roformer",
+                "category": "\u0412\u043e\u043a\u0430\u043b",
+                "full_name": "WSA Mel-Band Roformer",
+                "stems": ["other", "vocals"],
+                "target_instrument": "vocals",
+                "checkpoint_url": "https://example.invalid/a/mbr_wsa.ckpt",
+                "config_url": "https://example.invalid/a/mbr_wsa.yaml",
+            }
+        })
+        self.assertIn("WSA Mel-Band Roformer", converted["metadata"])
+
+
 if __name__ == "__main__":
     unittest.main()

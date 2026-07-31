@@ -101,6 +101,73 @@ _MODEL_TYPE_TO_ARCH: Dict[str, str] = {
     "htdemucs": DEMUCS_ARCH_TYPE,
 }
 
+from .model_stem_semantics import (
+    INTENT_DRUM_BASS_SEP,
+    INTENT_DUAL_VOC_INST,
+    INTENT_INSTRUMENTAL,
+    INTENT_KARAOKE,
+    INTENT_MULTI_STEM,
+    INTENT_SPECIAL_FX,
+    INTENT_SPECIALTY_STEM,
+    INTENT_UNKNOWN,
+    INTENT_VOCALS,
+)
+
+#: mvsepless ``category`` values are Russian. Map each to an English label and
+#: the stem-semantics intent, so the purpose filter uses real metadata instead
+#: of regex-guessing from the label.
+_CATEGORY_TABLE: Dict[str, Tuple[str, str]] = {
+    "Вокал": ("Vocals", INTENT_VOCALS),
+    "Инструментал": ("Instrumental", INTENT_INSTRUMENTAL),
+    "Инструментал и вокал": ("Instrumental & vocals", INTENT_DUAL_VOC_INST),
+    "Караоке": ("Karaoke", INTENT_KARAOKE),
+    "4 стема": ("4 stems", INTENT_MULTI_STEM),
+    "6 стемов": ("6 stems", INTENT_MULTI_STEM),
+    "Все стемы": ("All stems", INTENT_MULTI_STEM),
+    "Ударные": ("Drums", INTENT_DRUM_BASS_SEP),
+    "Бас": ("Bass", INTENT_DRUM_BASS_SEP),
+    "Басс": ("Bass", INTENT_DRUM_BASS_SEP),
+    "DrumSep": ("DrumSep", INTENT_DRUM_BASS_SEP),
+    "Реверб": ("Reverb", INTENT_SPECIAL_FX),
+    "Эхо": ("Echo", INTENT_SPECIAL_FX),
+    "Реверб и эхо": ("Reverb & echo", INTENT_SPECIAL_FX),
+    "Шум": ("Noise", INTENT_SPECIAL_FX),
+    "Звуковые эффекты": ("Sound effects", INTENT_SPECIAL_FX),
+    "Дыхание": ("Breath", INTENT_SPECIAL_FX),
+    "Разделение голосов": ("Voice separation", INTENT_VOCALS),
+    "Мужской/Женский вокал": ("Male/female vocals", INTENT_VOCALS),
+    "Дуэт": ("Duet", INTENT_VOCALS),
+    "Хор": ("Choir", INTENT_SPECIALTY_STEM),
+    "Гитара": ("Guitar", INTENT_SPECIALTY_STEM),
+    "Клавишные": ("Keys", INTENT_SPECIALTY_STEM),
+    "Перкуссия": ("Percussion", INTENT_SPECIALTY_STEM),
+    "Оркестр": ("Orchestra", INTENT_SPECIALTY_STEM),
+    "Синтезатор": ("Synth", INTENT_SPECIALTY_STEM),
+    "Саксофон": ("Saxophone", INTENT_SPECIALTY_STEM),
+    "Струнные": ("Strings", INTENT_SPECIALTY_STEM),
+    "Щипковые струнные": ("Plucked strings", INTENT_SPECIALTY_STEM),
+    "Смычковые струнные": ("Bowed strings", INTENT_SPECIALTY_STEM),
+    "Духовые": ("Winds", INTENT_SPECIALTY_STEM),
+    "Деревянные духовые": ("Woodwinds", INTENT_SPECIALTY_STEM),
+    "Медные духовые": ("Brass", INTENT_SPECIALTY_STEM),
+    "Гармоники": ("Harmonics", INTENT_SPECIALTY_STEM),
+    "Звуки толпы": ("Crowd", INTENT_SPECIALTY_STEM),
+    "Скретч": ("Scratch", INTENT_SPECIALTY_STEM),
+    "Кинематограф": ("Cinematic", INTENT_SPECIALTY_STEM),
+    "Объёмный звук": ("Surround", INTENT_SPECIALTY_STEM),
+    "Фантомный центр": ("Phantom centre", INTENT_SPECIALTY_STEM),
+    "Прочее": ("Other", INTENT_UNKNOWN),
+}
+
+
+def translate_category(category: str) -> Tuple[str, str]:
+    """Return ``(english_label, intent)`` for an mvsepless category value."""
+    text = str(category or "").strip()
+    if text in _CATEGORY_TABLE:
+        return _CATEGORY_TABLE[text]
+    return (text, INTENT_UNKNOWN)
+
+
 _cached_models: Optional[Dict[str, Any]] = None
 _cached_loaded_at: float = 0.0
 _cached_converted: Optional[Dict[str, Any]] = None
@@ -260,6 +327,7 @@ def convert_mvsepless_catalog(
         DEMUCS_ARCH_TYPE: [],
     }
     unsupported_labels: Dict[str, str] = {}
+    metadata: Dict[str, Dict[str, Any]] = {}
 
     for entry_id, entry in models.items():
         if not isinstance(entry, dict):
@@ -269,6 +337,25 @@ def convert_mvsepless_catalog(
         files = entry_files(entry)
         supported, reason = classify_entry(str(entry_id), entry)
         arch = _MODEL_TYPE_TO_ARCH.get(model_type, MDX_ARCH_TYPE)
+
+        # Before the supported/unsupported split so grayed-out rows carry
+        # metadata too. ``setdefault`` matches the upstream-wins rule the
+        # label merge already follows.
+        category_en, intent = translate_category(entry.get("category") or "")
+        stems = entry.get("stems")
+        metadata.setdefault(
+            label,
+            {
+                "entry_id": str(entry_id),
+                "model_type": model_type,
+                "stems": list(stems) if isinstance(stems, list) else [],
+                "target_instrument": entry.get("target_instrument") or None,
+                "category": str(entry.get("category") or ""),
+                "category_en": category_en,
+                "intent": intent,
+                "arch": arch,
+            },
+        )
 
         if not supported or files is None:
             if not reason:
@@ -300,6 +387,7 @@ def convert_mvsepless_catalog(
         "demucs_download_list": lists["demucs_download_list"],
         "unsupported": unsupported,
         "unsupported_labels": unsupported_labels,
+        "metadata": metadata,
     }
 
 
@@ -390,6 +478,17 @@ def unsupported_mvsepless_downloads(
             filtered.sort(key=lambda pair: pair[0].casefold())
             result[str(arch)] = filtered
     return result
+
+
+def mvsepless_metadata(
+    converted: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Return ``{label: metadata}`` for every mvsepless entry."""
+    data = load_converted_mvsepless() if converted is None else converted
+    if not data:
+        return {}
+    meta = data.get("metadata") or {}
+    return dict(meta) if isinstance(meta, dict) else {}
 
 
 def unsupported_reason_for_label(
