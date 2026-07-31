@@ -143,6 +143,23 @@ class CaseAndAliasTests(unittest.TestCase):
         self.assertEqual(ensemble_stem_bucket("", stem_count=1), BUCKET_UNKNOWN)
 
 
+class IdentityCodeTests(unittest.TestCase):
+    """Splitter identity codes name the product, so flags must not override."""
+
+    def test_lead_only_resolves_without_the_karaoke_flag(self) -> None:
+        # A vocal splitter writes 'lead_only' regardless of the parent model's
+        # own flags — the flags describe the model, the code describes the stem.
+        self.assertEqual(ensemble_stem_bucket("lead_only", stem_count=2), BUCKET_LEAD_VOCALS)
+        self.assertEqual(ensemble_stem_bucket("Lead Vocals", stem_count=2), BUCKET_LEAD_VOCALS)
+
+    def test_backing_only_resolves_without_the_bv_flag(self) -> None:
+        self.assertEqual(ensemble_stem_bucket("backing_only", stem_count=2), BUCKET_BV_VOCALS)
+        self.assertEqual(ensemble_stem_bucket("Backing Vocals", stem_count=2), BUCKET_BV_VOCALS)
+
+    def test_identity_code_is_not_folded_into_plain_vocals(self) -> None:
+        self.assertNotEqual(ensemble_stem_bucket("lead_only", stem_count=2), BUCKET_VOCALS)
+
+
 class FilenameSafetyTests(unittest.TestCase):
     """A bucket with parentheses silently breaks ensemble collection."""
 
@@ -207,8 +224,18 @@ BUCKET_INST_WITH_BV = INST_WITH_BACKING_VOCALS_TAG
 BUCKET_INST_WITH_LEAD = INST_WITH_LEAD_VOCALS_TAG
 BUCKET_UNKNOWN = "Unknown"
 
+#: Splitter identity codes and their human labels. These already name a
+#: karaoke/BV product, so they resolve regardless of the model's own flags —
+#: the flags describe the *model*, these describe the *stem*.
+_IDENTITY_BUCKETS = {
+    "lead_only": BUCKET_LEAD_VOCALS,
+    "lead vocals": BUCKET_LEAD_VOCALS,
+    "backing_only": BUCKET_BV_VOCALS,
+    "backing vocals": BUCKET_BV_VOCALS,
+}
+
 #: Stem tokens that name the vocal target, in any casing authors have used.
-_VOCAL_TOKENS = frozenset({"vocals", "vocal", "voc", "lead_only", "lead vocals"})
+_VOCAL_TOKENS = frozenset({"vocals", "vocal", "voc"})
 
 #: Stem tokens that name the instrumental side. ``other`` is context-dependent
 #: and is resolved by stem count, not by this set alone.
@@ -244,6 +271,11 @@ def ensemble_stem_bucket(
     if not token:
         return BUCKET_UNKNOWN
 
+    # Identity codes name the product, not the model, so they win over flags.
+    identity = _IDENTITY_BUCKETS.get(token)
+    if identity is not None:
+        return identity
+
     is_vocal = token in _VOCAL_TOKENS
     # ``other`` counts as instrumental only for 2-stem (or target-instrument)
     # models, where it is the complement of vocals rather than a MUSDB stem.
@@ -277,7 +309,7 @@ def ensemble_stem_bucket(
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `.venv/bin/python -m unittest tests.test_ensemble_stem_buckets -v`
-Expected: PASS, 12 tests
+Expected: PASS across `OtherOverloadTests`, `KaraokeAndBvTests`, `CaseAndAliasTests`, `IdentityCodeTests` and `FilenameSafetyTests`
 
 - [ ] **Step 6: Verify the filename-safety guard actually guards**
 
@@ -349,12 +381,21 @@ class PairBucketTests(unittest.TestCase):
         )
 
     def test_other_pair_keeps_other_as_a_real_stem(self) -> None:
-        primary, _secondary = ensemble_pair_buckets(OTHER_PAIR)
-        self.assertEqual(primary, BUCKET_OTHER)
+        # Regression: resolving this through ensemble_stem_bucket would give
+        # BUCKET_INSTRUMENTAL, because a 1-stem 'other' is the instrumental
+        # complement. A pair is a request, not a model description.
+        self.assertEqual(ensemble_pair_buckets(OTHER_PAIR), (BUCKET_OTHER, BUCKET_UNKNOWN))
 
     def test_bass_pair(self) -> None:
         primary, _secondary = ensemble_pair_buckets(BASS_PAIR)
         self.assertEqual(primary, BUCKET_BASS)
+
+    def test_complement_half_is_unknown_not_a_bucket(self) -> None:
+        # 'No Other' / 'No Bass' are derived by inversion, never trained, so
+        # they are not a bucket any model can match. Callers discard UNKNOWN.
+        for pair in (OTHER_PAIR, BASS_PAIR):
+            with self.subTest(pair=pair):
+                self.assertEqual(ensemble_pair_buckets(pair)[1], BUCKET_UNKNOWN)
 
     def test_non_pair_values_are_unknown(self) -> None:
         for value in (CHOOSE_STEM_PAIR, FOUR_STEM_ENSEMBLE, MULTI_STEM_ENSEMBLE, ""):
@@ -417,27 +458,55 @@ In `core/model_stem_semantics.py`, after `ensemble_stem_bucket`:
 def ensemble_pair_buckets(main_stem: str) -> Tuple[str, str]:
     """Return the ``(primary, secondary)`` buckets for an ensemble pair string.
 
-    A dedicated mapping rather than aliasing the display strings, so the
-    parenthesized ``Instrumental (With Backing Vocals)`` label never enters the
-    stem alias table. Non-pair values (Choose Stem Pair, 4 Stem, Multi-stem)
-    return ``(BUCKET_UNKNOWN, BUCKET_UNKNOWN)``; those modes do not filter by
-    a single pair.
-    """
-    from bundled.constants import KARAOKE_PAIR
+    An explicit table, **not** a call to :func:`ensemble_stem_bucket`. A pair is
+    a user's *request*, not a description of a model's output, and the two
+    disagree: ``Other/No Other`` asks for the MUSDB residual, but
+    ``ensemble_stem_bucket("Other", stem_count=1)`` reads a 1-stem ``other`` as
+    the instrumental complement. Resolving pairs through the model resolver
+    would silently turn the Other pair into an Instrumental request.
 
-    text = str(main_stem or "").strip()
-    if not text or "/" not in text:
-        return (BUCKET_UNKNOWN, BUCKET_UNKNOWN)
-    if text == KARAOKE_PAIR:
-        return (BUCKET_LEAD_VOCALS, BUCKET_INST_WITH_BV)
-    primary, _, secondary = text.partition("/")
-    return (
-        ensemble_stem_bucket(primary, stem_count=1),
-        ensemble_stem_bucket(secondary, stem_count=1),
-    )
+    A table also keeps the parenthesized ``Instrumental (With Backing Vocals)``
+    display label out of the stem alias table.
+
+    Complement pairs (``No Other``, ``No Drums``, ``No Bass``) have one
+    meaningful bucket: the complement is derived by inversion, never trained,
+    so the secondary is :data:`BUCKET_UNKNOWN` and callers discard it.
+
+    Non-pair values (Choose Stem Pair, 4 Stem, Multi-stem) return
+    ``(BUCKET_UNKNOWN, BUCKET_UNKNOWN)``; those modes do not filter by a pair.
+    """
+    from bundled.constants import BASS_PAIR, DRUM_PAIR, KARAOKE_PAIR, OTHER_PAIR, VOCAL_PAIR
+
+    table = {
+        VOCAL_PAIR: (BUCKET_VOCALS, BUCKET_INSTRUMENTAL),
+        KARAOKE_PAIR: (BUCKET_LEAD_VOCALS, BUCKET_INST_WITH_BV),
+        OTHER_PAIR: (BUCKET_OTHER, BUCKET_UNKNOWN),
+        DRUM_PAIR: (BUCKET_DRUMS, BUCKET_UNKNOWN),
+        BASS_PAIR: (BUCKET_BASS, BUCKET_UNKNOWN),
+    }
+    return table.get(str(main_stem or "").strip(), (BUCKET_UNKNOWN, BUCKET_UNKNOWN))
 ```
 
 Add `Tuple` to the module's `typing` import if absent.
+
+**Why this is a table and not a resolver call:** `ensemble_stem_bucket` is
+deliberately context-sensitive on `stem_count`, and a pair string carries no
+stem count. Any value you pick is wrong for some pair. Verify the trap is
+closed:
+
+```bash
+.venv/bin/python -c "
+from core.model_stem_semantics import ensemble_stem_bucket, ensemble_pair_buckets, BUCKET_OTHER
+from bundled.constants import OTHER_PAIR
+print('resolver on the pair half:', ensemble_stem_bucket('Other', stem_count=1))
+print('pair table:             ', ensemble_pair_buckets(OTHER_PAIR))
+assert ensemble_pair_buckets(OTHER_PAIR)[0] == BUCKET_OTHER
+print('OK')
+"
+```
+
+Expected: the resolver prints `Instrumental` (correct for a 1-stem model), the
+table prints `('Other', 'Unknown')` (correct for the pair), then `OK`.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -461,7 +530,15 @@ git commit -m "feat(core): give karaoke models their own ensemble stem pair"
 
 **Interfaces:**
 - Consumes: `ensemble_stem_bucket`, `ensemble_pair_buckets` (Tasks 1-2).
-- Produces: no signature change. `model_list` and `ensemble_model_list` keep their parameters and return `List[str]`.
+- Produces: `model_list(settings, primary_stem, secondary_stem, is_4_stem_check=False, is_no_demucs=False, *, wanted_buckets: Optional[AbstractSet[str]] = None) -> List[str]` — one added keyword-only parameter. `ensemble_model_list` keeps its signature.
+
+**Why the extra parameter.** `ensemble_model_list` must resolve the pair through
+`ensemble_pair_buckets`, not by bucketing each half: `ensemble_stem_bucket("Other",
+stem_count=1)` returns `Instrumental`, so re-deriving buckets inside `model_list`
+would turn the `Other/No Other` pair into an Instrumental request. Passing the
+resolved buckets down is the only correct wiring. `rg` confirms the only other
+production caller is `scripts/model_sweep.py:68`, which passes
+`VOCAL_STEM, INST_STEM` — unambiguous, so it keeps the string path.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -471,92 +548,129 @@ Create `tests/test_ensemble_model_eligibility.py`:
 """Ensemble eligibility resolves by bucket, not by raw stem string."""
 
 import unittest
+import unittest.mock
 
-from core.model_stem_semantics import (
-    BUCKET_INST_WITH_BV,
-    BUCKET_INSTRUMENTAL,
-    BUCKET_LEAD_VOCALS,
-    BUCKET_OTHER,
-    BUCKET_UNKNOWN,
-    BUCKET_VOCALS,
-    ensemble_stem_bucket,
-)
+from bundled.constants import BASS_PAIR, KARAOKE_PAIR, OTHER_PAIR, VOCAL_PAIR
+from core.model_data import ModelRepository
 
 
 class _FakeModel:
-    """Stands in for a dry-check ModelConfig without hashing a checkpoint."""
+    """Stands in for a dry-check ModelConfig without hashing a checkpoint.
 
-    def __init__(self, primary, stems, *, is_karaoke=False, is_bv=False):
+    Carries every attribute ``model_list`` reads, so these tests exercise the
+    real method instead of re-asserting the resolver from Task 1.
+    """
+
+    def __init__(self, tag, primary, stems, *, is_karaoke=False, is_bv=False,
+                 demucs_sources=(), demucs_stem_count=0):
+        self.model_and_process_tag = tag
         self.primary_stem = primary
         self.mdx_model_stems = list(stems)
         self.mdx_stem_count = len(stems) or 1
         self.is_karaoke = is_karaoke
         self.is_bv_model = is_bv
+        self.demucs_source_list = list(demucs_sources)
+        self.demucs_stem_count = demucs_stem_count
+
+
+def _eligible(models, main_stem):
+    """Run the real ``ensemble_model_list`` over fake ``stem_check`` output."""
+    with unittest.mock.patch.object(ModelRepository, "stem_check", return_value=models):
+        return ModelRepository().ensemble_model_list(None, main_stem)
 
 
 class PreviouslyExcludedModelTests(unittest.TestCase):
-    """The 8 models measured as wrongly excluded from Vocals/Instrumental."""
+    """The models measured as wrongly excluded from Vocals/Instrumental."""
 
-    def test_lowercase_vocals_resolves_to_vocals(self) -> None:
+    def test_lowercase_vocals_becomes_eligible(self) -> None:
         # mel_band_roformer_kim_ft2_bleedless_unwa
-        model = _FakeModel("vocals", ["vocals"])
-        self.assertEqual(
-            ensemble_stem_bucket(model.primary_stem, stem_count=model.mdx_stem_count),
-            BUCKET_VOCALS,
-        )
+        models = [_FakeModel("MDX-Net: kim_ft2", "vocals", ["vocals"])]
+        self.assertEqual(_eligible(models, VOCAL_PAIR), ["MDX-Net: kim_ft2"])
 
-    def test_two_stem_other_resolves_to_instrumental(self) -> None:
+    def test_two_stem_other_becomes_eligible(self) -> None:
         # mbr_inst2_unwa, melband_roformer_inst_v1e_plus, Resurrection
-        model = _FakeModel("other", ["other"])
-        self.assertEqual(
-            ensemble_stem_bucket(model.primary_stem, stem_count=model.mdx_stem_count),
-            BUCKET_INSTRUMENTAL,
-        )
+        models = [_FakeModel("MDX-Net: inst2_unwa", "other", ["other"])]
+        self.assertEqual(_eligible(models, VOCAL_PAIR), ["MDX-Net: inst2_unwa"])
 
-    def test_instrument_typo_resolves_to_instrumental(self) -> None:
+    def test_instrument_variant_becomes_eligible(self) -> None:
         # bs_inst_hyperace2_unwa
-        model = _FakeModel("instrument", ["instrument"])
-        self.assertEqual(
-            ensemble_stem_bucket(model.primary_stem, stem_count=model.mdx_stem_count),
-            BUCKET_INSTRUMENTAL,
-        )
+        models = [_FakeModel("MDX-Net: hyperace2", "instrument", ["instrument"])]
+        self.assertEqual(_eligible(models, VOCAL_PAIR), ["MDX-Net: hyperace2"])
 
-    def test_four_stem_lowercase_vocals_resolves(self) -> None:
+    def test_four_stem_lowercase_vocals_becomes_eligible(self) -> None:
         # huge_scnet_4stems_bleedless / _fullness
-        model = _FakeModel("vocals", ["drums", "bass", "other", "vocals"])
-        self.assertEqual(
-            ensemble_stem_bucket(model.primary_stem, stem_count=model.mdx_stem_count),
-            BUCKET_VOCALS,
-        )
+        models = [_FakeModel("MDX-Net: scnet4", "vocals",
+                             ["drums", "bass", "other", "vocals"])]
+        self.assertEqual(_eligible(models, VOCAL_PAIR), ["MDX-Net: scnet4"])
 
-    def test_four_stem_other_stays_other(self) -> None:
-        model = _FakeModel("other", ["drums", "bass", "other", "vocals"])
-        self.assertEqual(
-            ensemble_stem_bucket("other", stem_count=model.mdx_stem_count), BUCKET_OTHER
-        )
-
-    def test_phantom_centre_stays_out(self) -> None:
-        # Phantom-Mid-Wesleyr36 must NOT become eligible.
-        model = _FakeModel("Similarity", ["Similarity"])
-        self.assertEqual(
-            ensemble_stem_bucket(model.primary_stem, stem_count=model.mdx_stem_count),
-            BUCKET_UNKNOWN,
-        )
+    def test_phantom_centre_stays_excluded(self) -> None:
+        # Correct today, but by accident. Now it is by rule.
+        models = [_FakeModel("MDX-Net: phantom", "Similarity", ["Similarity"])]
+        self.assertEqual(_eligible(models, VOCAL_PAIR), [])
 
 
-class KaraokeLeavesVocalInstTests(unittest.TestCase):
-    def test_karaoke_vocals_is_not_plain_vocals(self) -> None:
-        model = _FakeModel("Vocals", ["Vocals"], is_karaoke=True)
-        bucket = ensemble_stem_bucket(
-            model.primary_stem, stem_count=model.mdx_stem_count, is_karaoke=True
-        )
-        self.assertEqual(bucket, BUCKET_LEAD_VOCALS)
-        self.assertNotEqual(bucket, BUCKET_VOCALS)
+class OtherPairTests(unittest.TestCase):
+    """'other' must stay a real stem for the Other pair."""
 
-    def test_karaoke_instrumental_is_not_plain_instrumental(self) -> None:
-        bucket = ensemble_stem_bucket("Instrumental", stem_count=2, is_karaoke=True)
-        self.assertEqual(bucket, BUCKET_INST_WITH_BV)
-        self.assertNotEqual(bucket, BUCKET_INSTRUMENTAL)
+    def test_four_stem_other_matches_the_other_pair(self) -> None:
+        models = [_FakeModel("MDX-Net: scnet4", "other",
+                             ["drums", "bass", "other", "vocals"])]
+        self.assertEqual(_eligible(models, OTHER_PAIR), ["MDX-Net: scnet4"])
+
+    def test_two_stem_other_does_not_match_the_other_pair(self) -> None:
+        # This model's 'other' is an instrumental, not a MUSDB residual.
+        models = [_FakeModel("MDX-Net: inst2_unwa", "other", ["other"])]
+        self.assertEqual(_eligible(models, OTHER_PAIR), [])
+
+
+class KaraokeSeparationTests(unittest.TestCase):
+    def test_karaoke_leaves_vocal_instrumental(self) -> None:
+        models = [_FakeModel("MDX-Net: kara", "Vocals", ["Vocals"], is_karaoke=True)]
+        self.assertEqual(_eligible(models, VOCAL_PAIR), [])
+
+    def test_karaoke_appears_under_its_own_pair(self) -> None:
+        models = [_FakeModel("MDX-Net: kara", "Vocals", ["Vocals"], is_karaoke=True)]
+        self.assertEqual(_eligible(models, KARAOKE_PAIR), ["MDX-Net: kara"])
+
+    def test_plain_model_does_not_appear_under_the_karaoke_pair(self) -> None:
+        models = [_FakeModel("MDX-Net: inst_hq4", "Instrumental", ["Instrumental"])]
+        self.assertEqual(_eligible(models, KARAOKE_PAIR), [])
+
+    def test_bv_model_also_leaves_vocal_instrumental(self) -> None:
+        models = [_FakeModel("MDX-Net: bv", "Vocals", ["Vocals"], is_bv=True)]
+        self.assertEqual(_eligible(models, VOCAL_PAIR), [])
+
+
+class UnchangedBehaviourTests(unittest.TestCase):
+    def test_demucs_source_list_still_matches(self) -> None:
+        models = [_FakeModel("Demucs: htdemucs", "Vocals", [],
+                             demucs_sources=["drums", "bass", "other", "vocals"],
+                             demucs_stem_count=4)]
+        self.assertEqual(_eligible(models, BASS_PAIR), ["Demucs: htdemucs"])
+
+    def test_four_stem_ensemble_keeps_only_four_source_models(self) -> None:
+        from bundled.constants import FOUR_STEM_ENSEMBLE
+
+        models = [
+            _FakeModel("MDX-Net: scnet4", "vocals", ["drums", "bass", "other", "vocals"]),
+            _FakeModel("MDX-Net: two_stem", "Vocals", ["Vocals", "Instrumental"]),
+        ]
+        self.assertEqual(_eligible(models, FOUR_STEM_ENSEMBLE), ["MDX-Net: scnet4"])
+
+    def test_multi_stem_ensemble_keeps_everything(self) -> None:
+        from bundled.constants import MULTI_STEM_ENSEMBLE
+
+        models = [
+            _FakeModel("MDX-Net: phantom", "Similarity", ["Similarity"]),
+            _FakeModel("MDX-Net: kara", "Vocals", ["Vocals"], is_karaoke=True),
+        ]
+        self.assertEqual(len(_eligible(models, MULTI_STEM_ENSEMBLE)), 2)
+
+    def test_choose_stem_pair_returns_nothing(self) -> None:
+        from bundled.constants import CHOOSE_STEM_PAIR
+
+        models = [_FakeModel("MDX-Net: any", "Vocals", ["Vocals"])]
+        self.assertEqual(_eligible(models, CHOOSE_STEM_PAIR), [])
 
 
 if __name__ == "__main__":
@@ -566,11 +680,13 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m unittest tests.test_ensemble_model_eligibility -v`
-Expected: PASS already for the pure-resolver assertions (Task 1 built it). This file locks the *specific models* to the rule; Step 3 is what makes `model_list` use it.
+Expected: FAIL. `test_lowercase_vocals_becomes_eligible`, `test_two_stem_other_becomes_eligible`, `test_instrument_variant_becomes_eligible`, `test_four_stem_lowercase_vocals_becomes_eligible` and both karaoke-separation tests fail; `test_phantom_centre_stays_excluded` and the `UnchangedBehaviourTests` already pass and must keep passing.
 
-- [ ] **Step 3: Route `matches_stem` through buckets**
+- [ ] **Step 3: Route `model_list` through buckets**
 
-In `core/model_data.py`, replace `model_list` (lines 223-245):
+In `core/model_data.py`, replace `model_list` (lines 223-245). This is a
+minimal substitution — the branch structure of the original is preserved
+exactly, with string equality swapped for bucket equality:
 
 ```python
     def model_list(
@@ -580,73 +696,94 @@ In `core/model_data.py`, replace `model_list` (lines 223-245):
         secondary_stem: str,
         is_4_stem_check: bool = False,
         is_no_demucs: bool = False,
+        *,
+        wanted_buckets: Optional[AbstractSet[str]] = None,
     ) -> List[str]:
         """Tk-free port of ``MainWindow.model_list`` (secondary-model filtering).
 
         Stem comparison goes through :func:`ensemble_stem_bucket` so yaml
         lowercase (``vocals``), the 2-stem ``other`` complement and the
-        ``instrument`` variant all resolve to the same bucket as the curated
-        Title Case names — and karaoke models resolve to their own bucket
-        instead of contaminating clean instrumentals.
+        ``instrument`` variant resolve to the same bucket as the curated Title
+        Case names, while karaoke models resolve to their own bucket instead of
+        contaminating clean instrumentals.
+
+        ``wanted_buckets`` lets :meth:`ensemble_model_list` supply buckets it
+        resolved from the *pair* — necessary because a pair carries no stem
+        count, so re-deriving buckets from the two halves here would read
+        ``Other/No Other`` as an Instrumental request.
         """
         from .model_stem_semantics import BUCKET_UNKNOWN, ensemble_stem_bucket
 
         stem_check = self.stem_check(settings)
-        wanted = {
-            ensemble_stem_bucket(primary_stem, stem_count=1),
-            ensemble_stem_bucket(secondary_stem, stem_count=1),
-        }
+        if wanted_buckets is None:
+            wanted = {
+                ensemble_stem_bucket(primary_stem, stem_count=1),
+                ensemble_stem_bucket(secondary_stem, stem_count=1),
+            }
+        else:
+            wanted = set(wanted_buckets)
         wanted.discard(BUCKET_UNKNOWN)
 
-        def model_buckets(model: "ModelConfig") -> set:
-            count = model.mdx_stem_count or 1
-            is_karaoke = bool(getattr(model, "is_karaoke", False))
-            is_bv = bool(getattr(model, "is_bv_model", False))
-            buckets = {
-                ensemble_stem_bucket(
-                    model.primary_stem,
-                    stem_count=count,
-                    is_karaoke=is_karaoke,
-                    is_bv=is_bv,
-                )
-            }
-            for stem in model.mdx_model_stems:
-                buckets.add(
-                    ensemble_stem_bucket(
-                        stem, stem_count=count, is_karaoke=is_karaoke, is_bv=is_bv
-                    )
-                )
-            for stem in model.demucs_source_list:
-                buckets.add(ensemble_stem_bucket(stem, stem_count=4))
-            buckets.discard(BUCKET_UNKNOWN)
-            return buckets
+        def bucket_of(model: "ModelConfig", stem: str) -> str:
+            return ensemble_stem_bucket(
+                stem,
+                stem_count=model.mdx_stem_count or 1,
+                is_karaoke=bool(getattr(model, "is_karaoke", False)),
+                is_bv=bool(getattr(model, "is_bv_model", False)),
+            )
 
         def matches_stem(model: "ModelConfig") -> bool:
             if not wanted:
                 return False
-            buckets = model_buckets(model)
-            if is_no_demucs and model.mdx_stem_count > 2:
-                # Secondary-model pickers only accept 2-stem MDX sources.
-                buckets -= {
-                    ensemble_stem_bucket(stem, stem_count=model.mdx_stem_count)
-                    for stem in model.mdx_model_stems
-                }
-            return bool(buckets & wanted)
+            primary_match = bucket_of(model, model.primary_stem) in wanted
+            mdx_match = any(bucket_of(model, stem) in wanted for stem in model.mdx_model_stems)
+            if is_no_demucs:
+                return primary_match or (mdx_match and model.mdx_stem_count <= 2)
+            return primary_match or mdx_match
+
+        def demucs_match(model: "ModelConfig") -> bool:
+            return any(
+                ensemble_stem_bucket(stem, stem_count=4) in wanted
+                for stem in model.demucs_source_list
+            )
 
         result: List[str] = []
         for model in stem_check:
             if is_4_stem_check and (model.demucs_stem_count == 4 or model.mdx_stem_count == 4):
                 result.append(model.model_and_process_tag)
-            elif matches_stem(model):
+            elif matches_stem(model) or (not is_no_demucs and demucs_match(model)):
                 result.append(model.model_and_process_tag)
         return result
 ```
 
-- [ ] **Step 4: Route `ensemble_model_list`'s karaoke pair**
+Add `AbstractSet` to the module's `typing` import.
 
-In `core/model_data.py`, `ensemble_model_list` (lines 264-271) already partitions on `/` and calls `model_list`, which now resolves buckets — so `KARAOKE_PAIR` works without a special case. Confirm by reading the function; no edit needed unless it early-returns on unknown pairs.
+- [ ] **Step 4: Resolve the pair in `ensemble_model_list`**
 
-- [ ] **Step 5: Verify against the real installed model set**
+In `core/model_data.py`, replace the final line of `ensemble_model_list`
+(line 271):
+
+```python
+        from .model_stem_semantics import ensemble_pair_buckets
+
+        stems = ensemble_main_stem.partition("/")
+        return self.model_list(
+            settings,
+            stems[0],
+            stems[2],
+            wanted_buckets=set(ensemble_pair_buckets(ensemble_main_stem)),
+        )
+```
+
+The `CHOOSE_STEM_PAIR`, `MULTI_STEM_ENSEMBLE` and `FOUR_STEM_ENSEMBLE` branches
+above it are unchanged.
+
+- [ ] **Step 5: Run the test**
+
+Run: `.venv/bin/python -m unittest tests.test_ensemble_model_eligibility -v`
+Expected: PASS, 15 tests
+
+- [ ] **Step 6: Verify against the real installed model set**
 
 ```bash
 UVR_DISABLE_POLITREES=1 .venv/bin/python -c "
@@ -659,31 +796,43 @@ kar = set(repo.ensemble_model_list(s, KARAOKE_PAIR))
 want_in = ['mel_band_roformer_kim_ft2_bleedless_unwa', 'mbr_inst2_unwa',
            'melband_roformer_inst_v1e_plus', 'bs_inst_hyperace2_unwa',
            'model_BandSplit-Roformer_Resurrection_Instrumental_by-Unwa']
-want_out = ['Phantom-Mid-Wesleyr36']
 def has(sel, frag): return any(frag in t for t in sel)
 print('Vocals/Instrumental:', len(voc), ' Karaoke pair:', len(kar))
 for f in want_in:  print(('  OK   ' if has(voc,f) else '  MISS '), f)
-for f in want_out: print(('  OK   ' if not has(voc,f) else '  LEAK '), f, '(should be excluded)')
-print('karaoke models moved:', sorted(t.split(': ',1)[1][:44] for t in kar))
+print(('  OK   ' if not has(voc,'Phantom-Mid') else '  LEAK '), 'Phantom-Mid (should be excluded)')
+print('karaoke pair members:', sorted(t.split(chr(58)+chr(32),1)[1][:44] for t in kar))
 assert not (voc & kar), 'a model is in both pairs'
 "
 ```
 
-Expected: all five `OK`, Phantom Centre `OK` (excluded), the six karaoke models listed under the karaoke pair, and no overlap.
+Expected: all five `OK`, Phantom Centre `OK`, six karaoke models under the
+karaoke pair, no overlap.
 
-- [ ] **Step 6: Run the affected suites**
+- [ ] **Step 7: Run the affected suites**
 
-Run: `.venv/bin/python -m unittest tests.test_ensemble_model_eligibility tests.test_karaoke_metadata tests.test_mdx_c_registry -v`
-Expected: PASS. If `test_karaoke_metadata` asserts karaoke models appear under `Vocals/Instrumental`, that assertion encoded the bug — update it to the karaoke pair and note the change in the commit message.
+Run: `.venv/bin/python -m unittest tests.test_ensemble_model_eligibility tests.test_karaoke_metadata tests.test_mdx_c_registry tests.test_ensemble_ui_helpers -v`
+Expected: PASS. If `test_karaoke_metadata` asserts karaoke models appear under
+`Vocals/Instrumental`, that assertion encoded the bug — move it to the karaoke
+pair and say so in the commit message.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Check the sweep script still resolves**
+
+```bash
+rg -n "model_list" scripts/model_sweep.py
+.venv/bin/python -c "import ast,sys; ast.parse(open('scripts/model_sweep.py').read()); print('parses OK')"
+```
+
+`scripts/model_sweep.py:68` passes `VOCAL_STEM, INST_STEM` positionally and does
+not use `wanted_buckets`, so it takes the string path and is unaffected. No edit
+expected.
+
+- [ ] **Step 9: Commit**
 
 ```bash
 git add core/model_data.py tests/test_ensemble_model_eligibility.py
 git commit -m "fix(core): resolve ensemble eligibility by stem bucket"
 ```
 
----
 
 ### Task 4: Combining uses the same buckets
 
@@ -1114,6 +1263,27 @@ git commit -m "test: verify ensemble stem semantics end to end"
 **Interface consistency:** `ensemble_stem_bucket(stem, *, stem_count, is_karaoke, is_bv)` is defined in Task 1 and called with those exact keywords in Tasks 2, 3, 4 and 7. Bucket constants are defined once in Task 1 and imported by name thereafter. `primary_sdr` gains exactly one keyword-only parameter in Task 7, and its only caller is updated in the same task.
 
 **Cross-plan ordering:** Task 1 must land before the naming/scores plan's Tasks 2 and 6. Task 7 is the only place the two plans touch the same lines.
+
+**Corrections made during the fine-tuning pass:**
+
+1. **`ensemble_pair_buckets` resolved pairs through `ensemble_stem_bucket`.**
+   That is wrong: `ensemble_stem_bucket("Other", stem_count=1)` returns
+   `Instrumental`, so `Other/No Other` would have become an Instrumental
+   request — a new bug of exactly the kind this plan exists to fix. Now an
+   explicit table, with a regression test and a verification snippet in Task 2
+   Step 4. This also forced the `wanted_buckets` parameter on `model_list`
+   (Task 3), since a pair must be resolved as a unit.
+2. **Task 3's test only re-asserted the Task 1 resolver**, so its "verify it
+   fails" step honestly said the test would already pass. Rewritten to drive
+   the real `ensemble_model_list` through a patched `stem_check`, which is the
+   behaviour that actually changes.
+3. **Task 3's `matches_stem` rewrite drifted from the original's
+   `is_no_demucs` and `demucs_source_list` semantics.** Restructured as a
+   minimal substitution that preserves the original branch structure, so the
+   diff is reviewable against upstream.
+4. **`lead_only` / `backing_only` were folded into plain vocals.** Identity
+   codes now resolve before the karaoke/BV flags are consulted — they describe
+   the stem, not the model. Covered by `IdentityCodeTests`.
 
 **Deliberate non-goals:** the possible `KeyError` at `engines/mdx.py:661-662` is recorded in the spec's out-of-scope section rather than fixed — no installed model triggers it and confirming it needs a 2-instrument yaml that names its second stem something other than `Instrumental`.
 

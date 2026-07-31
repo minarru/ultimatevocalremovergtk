@@ -52,7 +52,7 @@ The two affected steps are marked **CROSS-PLAN** inline below.
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `canonical_display_name(label: str) -> str`, `strip_catalogue_prefix(label: str) -> str`, `canonical_family(text: str) -> str`.
+- Produces: `canonical_display_name(label: str) -> str`, `split_catalogue_prefix(label: str) -> Tuple[str, str]`, `strip_catalogue_prefix(label: str) -> str`, `canonical_family(text: str) -> str`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -123,9 +123,44 @@ class CanonicalDisplayNameTests(unittest.TestCase):
     def test_empty_input_is_safe(self) -> None:
         self.assertEqual(canonical_display_name(""), "")
 
+    def test_prefix_supplies_the_family_when_the_remainder_does_not(self) -> None:
+        # 'SCnet: ' is the only place the family is named — the remainder
+        # starts with '4-stems'. Dropping the prefix would lose it.
+        self.assertEqual(
+            canonical_display_name("SCnet: 4-stems Huge SCNet Bleedless by Aname"),
+            "SCNet — 4-stems Huge SCNet Bleedless · Aname",
+        )
+        self.assertEqual(
+            canonical_display_name("MDX-Net Model: UVR-MDX-NET Inst HQ 4"),
+            "MDX-Net — UVR-MDX-NET Inst HQ 4",
+        )
+        self.assertEqual(
+            canonical_display_name("Apollo Model: EDM Restoration by essid"),
+            "Apollo — EDM Restoration · essid",
+        )
+
+    def test_remainder_family_beats_the_prefix(self) -> None:
+        # 'Roformer Model: ' does not say which Roformer; the remainder does.
+        self.assertEqual(
+            canonical_display_name("Roformer Model: Mel-Band Roformer | Karaoke by Gabox"),
+            "MelBand Roformer — Karaoke · Gabox",
+        )
+
     def test_is_idempotent(self) -> None:
-        once = canonical_display_name("Roformer Model: Mel-Band Roformer | Karaoke by Gabox")
-        self.assertEqual(canonical_display_name(once), once)
+        for raw in (
+            "Roformer Model: Mel-Band Roformer | Karaoke by Gabox",
+            "SCnet: 4-stems Huge SCNet Bleedless by Aname",
+            # Families canonical_family cannot re-detect are the hard cases:
+            # without the already-canonical short-circuit these lose their
+            # title separator on a second pass.
+            "MDX-Net Model: UVR-MDX-NET Inst HQ 4",
+            "Demucs v4: htdemucs_ft",
+            "MDX23C InstVoc HQ",
+            "UVR-DeNoise-Lite",
+        ):
+            with self.subTest(raw=raw):
+                once = canonical_display_name(raw)
+                self.assertEqual(canonical_display_name(once), once)
 
 
 if __name__ == "__main__":
@@ -158,6 +193,7 @@ model is ever renamed into something misleading.
 from __future__ import annotations
 
 import re
+from typing import Tuple
 
 #: Rendered between the family and the descriptive title.
 TITLE_SEPARATOR = " — "
@@ -197,22 +233,55 @@ _FAMILY_PATTERNS = (
     (re.compile(r"^apollo\b", re.IGNORECASE), "Apollo"),
 )
 
-#: ``by <author>`` at the end of a label, in any of the four dialects.
-_AUTHOR_RE = re.compile(r"\s+by[\s_-]+(?P<author>[^|]+?)\s*$", re.IGNORECASE)
+#: ``by <author>`` at the end of a label, in any of the four dialects — or the
+#: canonical ``· <author>`` this function itself emits, which is what makes
+#: ``canonical_display_name`` idempotent.
+_AUTHOR_RE = re.compile(
+    r"(?:\s+by[\s_-]+|\s*\u00b7\s*)(?P<author>[^|\u00b7]+?)\s*$", re.IGNORECASE
+)
 
 _DEMUCS_RE = re.compile(r"^Demucs (v\d+): (.+)$", re.IGNORECASE)
 
 
-def strip_catalogue_prefix(label: str) -> str:
-    """Remove a Download Center category prefix and a trailing ``.ckpt``."""
+#: Category prefixes that themselves declare a family. ``Roformer Model: `` is
+#: absent on purpose: it does not say *which* Roformer, and the remainder does.
+_PREFIX_FAMILIES = {
+    "SCnet: ": "SCNet",
+    "MDX23C Model VIP: ": "MDX23C",
+    "MDX23C Model: ": "MDX23C",
+    "MDX23C: ": "MDX23C",
+    "MDX-Net Model VIP: ": "MDX-Net",
+    "MDX-Net Model: ": "MDX-Net",
+    "MDX-Net: ": "MDX-Net",
+    "Bandit Plus: ": "Bandit",
+    "Bandit v2: ": "Bandit",
+    "Bandit: ": "Bandit",
+    "Apollo Model: ": "Apollo",
+}
+
+
+def split_catalogue_prefix(label: str) -> Tuple[str, str]:
+    """Return ``(family_from_prefix, remainder)`` for a catalogue label.
+
+    The category prefix is often the only place the family is named — the
+    remainder of ``SCnet: 4-stems Huge SCNet Bleedless by Aname`` starts with
+    ``4-stems``, so dropping the prefix would lose the family entirely.
+    """
     text = str(label or "").strip()
+    family = ""
     for prefix in _CATEGORY_PREFIXES:
         if text.lower().startswith(prefix.lower()):
+            family = _PREFIX_FAMILIES.get(prefix, "")
             text = text[len(prefix):].strip()
             break
     if text.lower().endswith(".ckpt"):
         text = text[: -len(".ckpt")].strip()
-    return text
+    return family, text
+
+
+def strip_catalogue_prefix(label: str) -> str:
+    """Remove a Download Center category prefix and a trailing ``.ckpt``."""
+    return split_catalogue_prefix(label)[1]
 
 
 def canonical_family(text: str) -> str:
@@ -230,7 +299,7 @@ def canonical_display_name(label: str) -> str:
     Idempotent: running it over its own output is a no-op, so a label that has
     already been canonicalized upstream is safe to pass through again.
     """
-    text = strip_catalogue_prefix(label)
+    prefix_family, text = split_catalogue_prefix(label)
     if not text:
         return ""
 
@@ -244,7 +313,17 @@ def canonical_display_name(label: str) -> str:
         author = author_match.group("author").strip()
         text = text[: author_match.start()].strip()
 
+    # Already canonical (contains the title separator): keep the head verbatim
+    # as the family. This is what makes the function idempotent for families
+    # that canonical_family cannot re-detect, such as MDX-Net and Demucs vN.
+    if TITLE_SEPARATOR in text:
+        head, _, tail = text.partition(TITLE_SEPARATOR)
+        return _join(head.strip(), tail, author)
+
+    # A family named by the remainder wins; the prefix is the fallback.
     family = canonical_family(text)
+    if not family and prefix_family and not text.lower().startswith(prefix_family.lower()):
+        return _join(prefix_family, text, author)
     if family:
         pattern = next(p for p, f in _FAMILY_PATTERNS if f == family)
         remainder = pattern.sub("", text.lstrip(), count=1)
@@ -266,14 +345,50 @@ def canonical_display_name(label: str) -> str:
     if author:
         title = f"{title}{AUTHOR_SEPARATOR}{author}"
     return title
+
+
+def _join(family: str, remainder: str, author: str) -> str:
+    text = re.sub(r"\s+", " ", remainder.replace("|", " ")).strip(" -\u2014")
+    title = f"{family}{TITLE_SEPARATOR}{text}" if text else family
+    return f"{title}{AUTHOR_SEPARATOR}{author}" if author else title
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m unittest tests.test_model_naming -v`
-Expected: PASS, 10 tests
+Expected: PASS across `StripCataloguePrefixTests` and `CanonicalDisplayNameTests`
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Sweep the whole catalogue**
+
+Unit tests cover the dialects; this catches anything they missed across all 461
+real entries.
+
+```bash
+.venv/bin/python -c "
+import collections
+from core.model_naming import canonical_display_name as c
+from core.downloads import DownloadManager
+dm = DownloadManager(); dm.ensure_catalogues()
+labels = []
+for cat in (dm.vr_download_list, dm.mdx_download_list, dm.demucs_download_list, dm.apollo_download_list):
+    labels += list(cat)
+bad = [l for l in labels if c(c(l)) != c(l)]
+empty = [l for l in labels if l.strip() and not c(l).strip()]
+print('entries:', len(labels))
+print('non-idempotent:', len(bad), bad[:3])
+print('emptied:', len(empty), empty[:3])
+fam = collections.Counter(c(l).split(' \u2014 ')[0] if ' \u2014 ' in c(l) else '(no family)' for l in labels)
+for k, v in fam.most_common(12): print(f'  {v:4d}  {k}')
+assert not bad and not empty
+print('OK')
+"
+```
+
+Expected: `non-idempotent: 0`, `emptied: 0`, then `OK`. The family histogram
+should be dominated by `MelBand Roformer` and `BandSplit Roformer`, with
+`(no family)` accounting for roughly the VR models, which genuinely have none.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add core/model_naming.py tests/test_model_naming.py
@@ -944,8 +1059,7 @@ git commit -m "feat(core): retain mvsepless stems, target and category metadata"
   - `MergedCatalogues` dataclass with fields `vr`, `mdx`, `demucs`, `apollo` (each `Dict[str, Any]`) and `meta` (`Dict[str, EntryMeta]`)
   - `EntryMeta` dataclass: `label`, `display`, `arch`, `source`, `files` (`Dict[str, str]`), `checkpoint` (`Optional[str]`), `stems` (`List[str]`), `target_instrument` (`Optional[str]`), `intent` (`str`)
   - `merged_catalogues(*, vr, mdx, demucs, force=False) -> MergedCatalogues`
-  - `catalogue_meta_for_label(label: str) -> Optional[EntryMeta]`
-  - `clear_catalog_sources_cache() -> None`
+  - metadata reaches consumers via `DownloadManager.catalogue_meta`, not a module global
 
 - [ ] **Step 1: Write the failing test**
 
@@ -959,40 +1073,47 @@ import unittest.mock
 
 from core import catalog_sources
 
+#: ``_supplemental_sources`` takes no arguments and returns supplements only,
+#: so patching it leaves the real base merge under test.
+_NO_SUPPLEMENTS = ({}, {}, {}, {})
+
+
+def _with_supplements(supplements):
+    return unittest.mock.patch.object(
+        catalog_sources, "_supplemental_sources", return_value=supplements
+    )
+
 
 class MergeOrderTests(unittest.TestCase):
-    def setUp(self) -> None:
-        catalog_sources.clear_catalog_sources_cache()
-        self.addCleanup(catalog_sources.clear_catalog_sources_cache)
-
     def test_upstream_label_is_never_overwritten(self) -> None:
-        with unittest.mock.patch.object(
-            catalog_sources, "_supplemental_sources",
-            return_value=({}, {"Shared": {"other.ckpt": "u2"}}, {}, {}),
-        ):
+        with _with_supplements(({}, {"Shared": {"other.ckpt": "u2"}}, {}, {})):
             merged = catalog_sources.merged_catalogues(
                 vr={}, mdx={"Shared": {"first.ckpt": "u1"}}, demucs={}
             )
         self.assertEqual(merged.mdx["Shared"], {"first.ckpt": "u1"})
 
     def test_supplemental_entries_are_added(self) -> None:
-        with unittest.mock.patch.object(
-            catalog_sources, "_supplemental_sources",
-            return_value=({}, {"New": {"new.ckpt": "u2"}}, {}, {}),
-        ):
+        with _with_supplements(({}, {"New": {"new.ckpt": "u2"}}, {}, {})):
             merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
         self.assertIn("New", merged.mdx)
 
+    def test_base_and_supplement_both_survive(self) -> None:
+        with _with_supplements(({}, {"FromSupplement": {"b.ckpt": "u"}}, {}, {})):
+            merged = catalog_sources.merged_catalogues(
+                vr={}, mdx={"FromBase": {"a.ckpt": "u"}}, demucs={}
+            )
+        self.assertEqual(set(merged.mdx), {"FromBase", "FromSupplement"})
+
+    def test_vr_and_demucs_merge_independently(self) -> None:
+        with _with_supplements(({"V": "v.pth"}, {}, {"D": {"d.yaml": "u"}}, {})):
+            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+        self.assertIn("V", merged.vr)
+        self.assertIn("D", merged.demucs)
+
 
 class EntryMetaTests(unittest.TestCase):
-    def setUp(self) -> None:
-        catalog_sources.clear_catalog_sources_cache()
-        self.addCleanup(catalog_sources.clear_catalog_sources_cache)
-
     def test_meta_carries_canonical_display_and_checkpoint(self) -> None:
-        with unittest.mock.patch.object(
-            catalog_sources, "_supplemental_sources", return_value=({}, {}, {}, {}),
-        ):
+        with _with_supplements(_NO_SUPPLEMENTS):
             merged = catalog_sources.merged_catalogues(
                 vr={},
                 mdx={"Roformer Model: Mel-Band Roformer | Inst v2 by Unwa":
@@ -1005,25 +1126,43 @@ class EntryMetaTests(unittest.TestCase):
         self.assertEqual(meta.files["mbr_inst2_unwa.yaml"], "c")
 
     def test_mvsepless_metadata_reaches_meta(self) -> None:
-        with unittest.mock.patch.object(
-            catalog_sources, "_supplemental_sources",
-            return_value=({}, {"M": {"m.ckpt": "u", "m.yaml": "c"}}, {},
-                          {"M": {"stems": ["Vocals", "other"],
-                                 "target_instrument": "Vocals",
-                                 "intent": "vocals"}}),
+        with _with_supplements(
+            ({}, {"M": {"m.ckpt": "u", "m.yaml": "c"}}, {},
+             {"M": {"stems": ["Vocals", "other"],
+                    "target_instrument": "Vocals",
+                    "intent": "vocals"}})
         ):
             merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
         meta = merged.meta["M"]
         self.assertEqual(meta.stems, ["Vocals", "other"])
         self.assertEqual(meta.target_instrument, "Vocals")
 
-    def test_lookup_by_label(self) -> None:
-        with unittest.mock.patch.object(
-            catalog_sources, "_supplemental_sources", return_value=({}, {}, {}, {}),
-        ):
-            catalog_sources.merged_catalogues(vr={}, mdx={"A": {"a.ckpt": "u"}}, demucs={})
-            self.assertIsNotNone(catalog_sources.catalogue_meta_for_label("A"))
-            self.assertIsNone(catalog_sources.catalogue_meta_for_label("missing"))
+    def test_entry_without_mvsepless_metadata_still_gets_meta(self) -> None:
+        with _with_supplements(_NO_SUPPLEMENTS):
+            merged = catalog_sources.merged_catalogues(
+                vr={}, mdx={"Plain": {"p.ckpt": "u"}}, demucs={}
+            )
+        meta = merged.meta["Plain"]
+        self.assertEqual(meta.stems, [])
+        self.assertIsNone(meta.target_instrument)
+
+    def test_vr_plain_string_value_becomes_a_files_map(self) -> None:
+        # VR catalogue entries are bare filenames, not {file: url} dicts.
+        with _with_supplements(_NO_SUPPLEMENTS):
+            merged = catalog_sources.merged_catalogues(
+                vr={"VR Arch Single Model v5: 1_HP-UVR": "1_HP-UVR.pth"}, mdx={}, demucs={}
+            )
+        meta = merged.meta["VR Arch Single Model v5: 1_HP-UVR"]
+        self.assertEqual(meta.checkpoint, "1_HP-UVR.pth")
+
+    def test_meta_covers_every_arch(self) -> None:
+        with _with_supplements(_NO_SUPPLEMENTS):
+            merged = catalog_sources.merged_catalogues(
+                vr={"V": "v.pth"}, mdx={"M": {"m.ckpt": "u"}}, demucs={"D": {"d.yaml": "u"}}
+            )
+        for label in ("V", "M", "D"):
+            with self.subTest(label=label):
+                self.assertIn(label, merged.meta)
 
 
 if __name__ == "__main__":
@@ -1071,7 +1210,11 @@ from .extra_catalog import apollo_download_list, merge_extra_catalogues
 from .model_naming import canonical_display_name
 from .model_stem_semantics import INTENT_UNKNOWN
 from .mvsepless_catalog import merge_mvsepless_catalogues, mvsepless_metadata
-from .politrees_catalog import load_politrees_links, merge_politrees_catalogues
+from .politrees_catalog import (
+    load_politrees_links,
+    merge_politrees_catalogues,
+    merge_supplemental_list,
+)
 
 
 @dataclass(frozen=True)
@@ -1097,24 +1240,24 @@ class MergedCatalogues:
     meta: Dict[str, EntryMeta]
 
 
-_cached_meta: Dict[str, EntryMeta] = {}
+def _supplemental_sources() -> Tuple[
+    Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]
+]:
+    """Collect politrees + extras + mvsepless entries, **without** any base.
 
+    Each merge helper is called with empty bases, so what comes back is the
+    supplements alone, already ordered politrees > extras > mvsepless among
+    themselves. :func:`merged_catalogues` then merges this under the caller's
+    upstream catalogues, which keeps upstream-wins in exactly one place.
 
-def clear_catalog_sources_cache() -> None:
-    global _cached_meta
-    _cached_meta = {}
-
-
-def _supplemental_sources(
-    vr: Mapping[str, Any],
-    mdx: Mapping[str, Any],
-    demucs: Mapping[str, Any],
-) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
-    """Apply politrees -> extras -> mvsepless, returning the merged trio + meta.
-
-    Isolated so tests can substitute the whole supplemental layer without
-    touching the network or the disk caches.
+    Taking no arguments is deliberate: a version that received the base and
+    returned it merged could not be substituted in a test without also
+    substituting the merge under test.
     """
+    vr: Dict[str, Any] = {}
+    mdx: Dict[str, Any] = {}
+    demucs: Dict[str, Any] = {}
+
     politrees = load_politrees_links()
     if politrees:
         vr, mdx, demucs = merge_politrees_catalogues(vr, mdx, demucs, politrees)
@@ -1167,9 +1310,13 @@ def merged_catalogues(
     force: bool = False,
 ) -> MergedCatalogues:
     """Merge every source over the supplied upstream catalogues, then dedupe."""
-    global _cached_meta
+    supp_vr, supp_mdx, supp_demucs, extra_meta = _supplemental_sources()
 
-    vr_out, mdx_out, demucs_out, extra_meta = _supplemental_sources(vr, mdx, demucs)
+    # Upstream-wins, in one place: a label already in the base is never
+    # replaced by a supplement.
+    vr_out = merge_supplemental_list(vr, supp_vr)
+    mdx_out = merge_supplemental_list(mdx, supp_mdx)
+    demucs_out = merge_supplemental_list(demucs, supp_demucs)
 
     vr_out = dedupe_download_catalogue(vr_out)
     mdx_out = dedupe_download_catalogue(mdx_out)
@@ -1185,17 +1332,21 @@ def merged_catalogues(
     ):
         meta.update(_build_meta(catalogue, arch, extra_meta))
 
-    _cached_meta = meta
     debug("download", f"catalog_sources merged entries={len(meta)}")
     return MergedCatalogues(
         vr=vr_out, mdx=mdx_out, demucs=demucs_out, apollo=apollo_out, meta=meta
     )
 
 
-def catalogue_meta_for_label(label: str) -> Optional[EntryMeta]:
-    """Return metadata for a label from the last merge, if any."""
-    return _cached_meta.get(label)
 ```
+
+`merged_catalogues` is a pure function of its inputs plus the disk caches — it
+holds no module state. Metadata reaches consumers through
+`DownloadManager.catalogue_meta`, set in Task 4 Step 5. An earlier draft used a
+module-global written as a side effect of the last merge, with a
+`catalogue_meta_for_label` lookup; that made every reader depend on someone
+having called the merge first, and returned "no metadata" instead of failing
+when they had not.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -1231,7 +1382,7 @@ In `core/downloads.py`, replace the body of `_merge_politrees_supplement` (lines
         )
 ```
 
-Add `self.catalogue_meta: Dict[str, Any] = {}` to `__init__` beside `unsupported_download_list` (line 162). Remove the now-unused `merge_politrees_catalogues`, `merge_extra_catalogues`, `merge_mvsepless_catalogues`, `apollo_download_list`, `dedupe_download_catalogue` and `load_politrees_links` imports **only if** `rg -n "<name>" core/downloads.py` shows no other use — `load_politrees_links` and `dedupe_download_catalogue` may be referenced elsewhere in the file.
+Add `self.catalogue_meta: Dict[str, Any] = {}` (holding `EntryMeta` values; keep the annotation loose to avoid importing `catalog_sources` at module import time) to `__init__` beside `unsupported_download_list` (line 162). Remove the now-unused `merge_politrees_catalogues`, `merge_extra_catalogues`, `merge_mvsepless_catalogues`, `apollo_download_list`, `dedupe_download_catalogue` and `load_politrees_links` imports **only if** `rg -n "<name>" core/downloads.py` shows no other use — `load_politrees_links` and `dedupe_download_catalogue` may be referenced elsewhere in the file.
 
 - [ ] **Step 6: Run the download suites to verify no regression**
 
@@ -1451,7 +1602,7 @@ git commit -m "fix(core): name mvsepless and extras models in runtime pickers"
 - Modify: `tests/test_download_center_search.py`
 
 **Interfaces:**
-- Consumes: `catalogue_meta_for_label` / `EntryMeta` (Task 4), `sdr_for_files` / `primary_sdr` / `format_sdr_subtitle` (Task 2).
+- Consumes: `DownloadManager.catalogue_meta` / `EntryMeta` (Task 4), `sdr_for_files` / `primary_sdr` / `format_sdr_subtitle` (Task 2).
 - Produces: no new public API. `_uvr_model_name` keeps holding the **raw catalogue label**.
 
 - [ ] **Step 1: Write the failing test**
@@ -1537,7 +1688,6 @@ def catalogue_matches(
 Add to the imports at the top of the file:
 
 ```python
-from core.catalog_sources import catalogue_meta_for_label
 from core.model_naming import canonical_display_name
 from core.model_scores import primary_sdr, sdr_for_files
 ```
@@ -1553,7 +1703,7 @@ Replace `_add_model_row` (lines 366-390):
         Falls back to the filename regex when the benchmark table has no entry,
         which covers the handful of models whose SDR lives only in their name.
         """
-        meta = catalogue_meta_for_label(name)
+        meta = self.manager.catalogue_meta.get(name)
         stems_text = ", ".join(meta.stems) if meta and meta.stems else ""
         if meta is not None:
             # CROSS-PLAN: stem_count disambiguates a 2-stem 'other' (meaning
@@ -1701,15 +1851,15 @@ Expected: `still raw: []` then `OK`
 ```bash
 .venv/bin/python -c "
 from core.downloads import DownloadManager
-from core.catalog_sources import catalogue_meta_for_label
 from core.model_scores import sdr_for_files, primary_sdr
 dm = DownloadManager(); dm.ensure_catalogues()
 total = scored = 0
 for cat in (dm.vr_download_list, dm.mdx_download_list, dm.demucs_download_list, dm.apollo_download_list):
     for label in cat:
         total += 1
-        meta = catalogue_meta_for_label(label)
-        if meta and primary_sdr(sdr_for_files(meta.files), meta.target_instrument):
+        meta = dm.catalogue_meta.get(label)
+        if meta and primary_sdr(sdr_for_files(meta.files), meta.target_instrument,
+                                stem_count=len(meta.stems) or 2):
             scored += 1
 print(f'scored {scored}/{total} = {100*scored/total:.1f}%  (was 2.0%)')
 "
@@ -1749,6 +1899,32 @@ now explicitly keeps them and says why.
 `sanitize_catalogue_label` (it also strips `VR Arch ` and `Apollo Model: `).
 Both now exist. Unifying them means changing what `ensemble_presets` matches on
 and belongs in its own change with its own test — explicitly out of scope.
+
+**Corrections made during the fine-tuning pass:**
+
+1. **Task 4's merge-order test patched away the merge it was testing.**
+   `_supplemental_sources` took the base catalogues and returned them already
+   merged, so substituting it in a test replaced the upstream-wins logic under
+   assertion — the test would have failed, or worse, passed vacuously. It now
+   takes no arguments and returns the supplements alone; `merged_catalogues`
+   performs the base merge in one place. Two tests added to cover base and
+   supplement surviving together, and the VR plain-string entry shape.
+2. **`canonical_display_name` was not idempotent, and dropped families.**
+   Prototyped against all 461 real catalogue entries, which surfaced two bugs
+   the dialect table missed: re-running it stripped the `·` author separator
+   (the author regex matched only `by X`), and for families
+   `canonical_family` cannot re-detect — MDX-Net, Demucs `vN` — a second pass
+   also ate the `—`. Separately, `SCnet: 4-stems Huge SCNet Bleedless` lost its
+   family entirely, because the prefix was the only place it was named. Fixed
+   with `split_catalogue_prefix` returning the prefix's family, an
+   already-canonical short-circuit, and an author regex accepting both
+   separators. The committed version is the prototyped one: 461/461
+   idempotent, none emptied. Task 1 Step 5 runs that sweep.
+3. **`catalogue_meta_for_label` was a module global written as a side effect of
+   the last merge.** Every reader silently depended on someone having called
+   the merge first, and returned "no metadata" rather than failing when they
+   had not. Removed; metadata now travels on `DownloadManager.catalogue_meta`,
+   which the Download Center already holds a reference to.
 
 **Deliberately unchanged:** `sort_labels_by_sdr` stays exported and tested but
 is no longer called by `_rebuild_catalogue`, which needs per-entry file lookup

@@ -116,14 +116,18 @@ def ensemble_stem_bucket(
 
 Resolution order:
 
-1. karaoke model, vocal-ish stem → `BUCKET_LEAD_VOCALS`
-2. karaoke model, instrumental-ish stem → `BUCKET_INST_WITH_BV`
-3. BV model, vocal-ish stem → `BUCKET_BV_VOCALS`
-4. BV model, instrumental-ish stem → `BUCKET_INST_WITH_LEAD`
-5. `stem_count <= 2` and stem in `{other, instrumental, inst, instrument}` → `BUCKET_INSTRUMENTAL`
-6. `stem_count >= 3` and stem is `other` → `BUCKET_OTHER`
-7. casefolded alias lookup for vocals / drums / bass / guitar / piano
-8. anything else → `BUCKET_UNKNOWN`
+1. splitter identity codes (`lead_only`, `backing_only`, and their human
+   labels) → `BUCKET_LEAD_VOCALS` / `BUCKET_BV_VOCALS`, **before** the flags.
+   These name the product, not the model: a vocal splitter emits `lead_only`
+   whether or not the parent model carries the karaoke flag.
+2. karaoke model, vocal-ish stem → `BUCKET_LEAD_VOCALS`
+3. karaoke model, instrumental-ish stem → `BUCKET_INST_WITH_BV`
+4. BV model, vocal-ish stem → `BUCKET_BV_VOCALS`
+5. BV model, instrumental-ish stem → `BUCKET_INST_WITH_LEAD`
+6. `stem_count <= 2` and stem in `{other, instrumental, inst, instrument}` → `BUCKET_INSTRUMENTAL`
+7. `stem_count >= 3` and stem is `other` → `BUCKET_OTHER`
+8. casefolded alias lookup for vocals / drums / bass / guitar / piano
+9. anything else → `BUCKET_UNKNOWN`
 
 `BUCKET_UNKNOWN` never matches a pair, which keeps `Similarity`
 (Phantom Centre) out of `Vocals/Instrumental` — the existing correct behaviour,
@@ -159,8 +163,26 @@ joins `ENSEMBLE_MAIN_STEM` in `bundled/constants/process.py`. Karaoke and BV
 models leave `Vocals/Instrumental` and ensemble with each other instead.
 
 `ensemble_pair_buckets(main_stem) -> Tuple[str, str]` maps a pair string to its
-two buckets. A separate function rather than aliasing the display strings, so
-the parenthesized label never enters the alias table.
+two buckets, from an **explicit table** — not by calling `ensemble_stem_bucket`
+on each half.
+
+The two disagree, and the disagreement is load-bearing. `ensemble_stem_bucket`
+is deliberately context-sensitive on `stem_count`, but a pair string carries no
+stem count, so any value chosen is wrong for some pair:
+`ensemble_stem_bucket("Other", stem_count=1)` returns `Instrumental`, which is
+correct for a 1-stem model and would silently turn the `Other/No Other` pair
+into an Instrumental request. A pair is a user's *request*; a bucket is a
+description of a model's *output*. Keeping them separate also keeps the
+parenthesized display label out of the stem alias table.
+
+Complement halves (`No Other`, `No Drums`, `No Bass`) map to `BUCKET_UNKNOWN`:
+they are derived by inversion, never trained, so no model can match them.
+Callers discard `BUCKET_UNKNOWN` from the wanted set.
+
+Because the pair must be resolved as a unit, `model_list` gains a keyword-only
+`wanted_buckets` parameter that `ensemble_model_list` fills in. `rg` confirms
+the only other production caller is `scripts/model_sweep.py:68`, which passes
+`VOCAL_STEM, INST_STEM` — unambiguous, so it keeps the string path.
 
 Adding to `ENSEMBLE_MAIN_STEM` is additive: `settings.ensemble.main_stem` is a
 plain string and stored values keep resolving.
