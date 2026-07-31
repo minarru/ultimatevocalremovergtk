@@ -176,7 +176,10 @@ class OutputFormatRow(Adw.ActionRow):
     def _reload_quality(self, settings: Settings) -> None:
         spec = quality_spec(self.save_format)
         self._quality_drop.set_model(Gtk.StringList.new(list(spec.values)))
-        self._select_quality_value(get_flat(settings, spec.setting_key, spec.default), spec)
+        stored = get_flat(settings, spec.setting_key, spec.default)
+        self._select_quality_value(
+            getattr(stored, "value", stored), spec
+        )
         self._apply_quality_labels(self.save_format)
 
     def _select_quality_value(self, value: typing.Any, spec: QualitySpec) -> None:
@@ -187,7 +190,8 @@ class OutputFormatRow(Adw.ActionRow):
         """The value saved for ``spec``'s key, or its default with no settings yet."""
         if self._settings is None:
             return spec.default
-        return get_flat(self._settings, spec.setting_key, spec.default)
+        stored = get_flat(self._settings, spec.setting_key, spec.default)
+        return str(getattr(stored, "value", stored))
 
     def _apply_quality_labels(self, save_format: str) -> None:
         spec = quality_spec(save_format)

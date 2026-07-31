@@ -78,18 +78,23 @@ class AudioTools:
         self.is_wav_ensemble = bool(settings.ensemble.wav_ensemble)
         self.is_testing_audio = f"{time_stamp} " if process.testing_audio else ""
         self.save_format_sel = process.save_format.value
-        self.mp3_bit_set = process.mp3_bitrate
-        self.flac_bit_set = process.flac_bit_depth
+        self.mp3_bit_set = getattr(process.mp3_bitrate, "value", process.mp3_bitrate)
+        self.flac_bit_set = getattr(
+            process.flac_bit_depth, "value", process.flac_bit_depth
+        )
 
         # Align-tool options (mapped through the same constants UVR uses).
-        self.align_window = TIME_WINDOW_MAPPER[audio_tools.time_window]
-        self.align_intro_val = INTRO_MAPPER[audio_tools.intro_analysis]
-        self.db_analysis_val = VOLUME_MAPPER[audio_tools.db_analysis]
+        def _label(value: typing.Any) -> str:
+            return str(getattr(value, "value", value))
+
+        self.align_window = TIME_WINDOW_MAPPER[_label(audio_tools.time_window)]
+        self.align_intro_val = INTRO_MAPPER[_label(audio_tools.intro_analysis)]
+        self.db_analysis_val = VOLUME_MAPPER[_label(audio_tools.db_analysis)]
         self.is_save_align = bool(mdx.is_save_align)
         self.is_match_silence = bool(mdx.is_match_silence)
         self.is_spec_match = bool(mdx.is_spec_match)
-        self.phase_option = mdx.phase_option
-        self.phase_shifts = PHASE_SHIFTS_OPT[mdx.phase_shifts]
+        self.phase_option = _label(mdx.phase_option)
+        self.phase_shifts = PHASE_SHIFTS_OPT[_label(mdx.phase_shifts)]
 
         # Apollo restore options. Device selection follows the local CUDA/CPU
         # convention used by separate.py / model_data.py.

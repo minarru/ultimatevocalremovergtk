@@ -191,7 +191,10 @@ class MDXView(MethodView):
 
     def _refresh_overlap(self):
         """Reconfigure the overlap slider for the current model type."""
-        stored = get_flat(self.settings, self._overlap_key())
+        from ..settings_bind import setting_for_combo
+
+        key = self._overlap_key()
+        stored = setting_for_combo(key, get_flat(self.settings, key))
         was_loading = self._loading
         self._loading = True
         try:
@@ -200,12 +203,12 @@ class MDXView(MethodView):
                 set_scale_default_mark(self.overlap_row, _MDX_DEFAULTS.overlap_mdx23)
             else:
                 reconfigure_discrete_scale(self.overlap_row, [str(v) for v in MDX_OVERLAP])
-                set_scale_default_mark(self.overlap_row, _MDX_DEFAULTS.overlap_mdx)
+                set_scale_default_mark(self.overlap_row, DEF_OPT)
             if stored is None or not set_scale_row_value(self.overlap_row, str(stored)):
                 if self._overlap_is_mdx_c:
                     set_scale_row_value(self.overlap_row, str(_MDX_DEFAULTS.overlap_mdx23))
                 else:
-                    set_scale_row_value(self.overlap_row, str(MDX_OVERLAP[0]))
+                    set_scale_row_value(self.overlap_row, DEF_OPT)
         finally:
             self._loading = was_loading
 

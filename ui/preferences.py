@@ -425,7 +425,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
     def _reload_widgets(self) -> None:
         self._loading = True
         try:
-            scheme = self.settings.ui.color_scheme or "auto"
+            scheme = getattr(
+                self.settings.ui.color_scheme, "value", self.settings.ui.color_scheme
+            ) or "auto"
             scheme_index = next(
                 (i for i, (_label, value) in enumerate(_COLOR_SCHEME_OPTIONS) if value == scheme),
                 0,
@@ -545,7 +547,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
         if index == Gtk.INVALID_LIST_POSITION:
             return
         value = _COLOR_SCHEME_OPTIONS[index][1]
-        self.settings.ui.color_scheme = value
+        from core.settings.coerce import coerce_field
+
+        self.settings.ui.color_scheme = coerce_field("ui", "color_scheme", value)
         self._persist()
         apply_color_scheme(value)
 

@@ -68,7 +68,7 @@ from ..option_summaries import (
     preproc_summary,
     secondary_models_summary,
 )
-from ..settings_bind import get_flat, set_flat
+from ..settings_bind import get_flat, set_flat, setting_for_combo
 
 _DEFAULT_SETTINGS = Settings.defaults()
 
@@ -504,7 +504,7 @@ class MethodView:
 
     def _load_scales(self) -> None:
         for key, row in self._scale_rows.items():
-            value = get_flat(self.settings, key)
+            value = setting_for_combo(key, get_flat(self.settings, key))
             if getattr(row, "_uvr_store_float", False):
                 try:
                     set_scale_row_float(row, float(value))
@@ -553,7 +553,9 @@ class MethodView:
     def load_options(self) -> None:
         """Set method-specific combo rows from settings."""
         for key, row in self._option_rows.items():
-            set_combo_value(row, get_flat(self.settings, key))
+            set_combo_value(
+                row, setting_for_combo(key, get_flat(self.settings, key))
+            )
 
     def save_options(self) -> None:
         """Write method-specific combo rows back to settings."""

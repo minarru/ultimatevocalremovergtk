@@ -374,7 +374,9 @@ class AudioToolsPage:
         self.hints.register(self.apollo_overlap_row, APOLLO_OVERLAP_HELP)
         self.apollo_overlap_row.connect(
             "notify::value",
-            lambda *_a: self._set("apollo_overlap", str(int(self.apollo_overlap_row.get_value()))),
+            lambda *_a: self._set(
+                "apollo_overlap", int(self.apollo_overlap_row.get_value())
+            ),
         )
         self.apollo_group.add(self.apollo_overlap_row)
 
@@ -382,7 +384,9 @@ class AudioToolsPage:
         self.hints.register(self.apollo_chunk_row, APOLLO_CHUNK_SIZE_HELP)
         self.apollo_chunk_row.connect(
             "notify::value",
-            lambda *_a: self._set("apollo_chunk_size", str(int(self.apollo_chunk_row.get_value()))),
+            lambda *_a: self._set(
+                "apollo_chunk_size", int(self.apollo_chunk_row.get_value())
+            ),
         )
         self.apollo_group.add(self.apollo_chunk_row)
 
@@ -476,13 +480,23 @@ class AudioToolsPage:
         self._loading = True
         try:
             s = self.settings
-            set_combo_value(self.tool_row, s.get("chosen_audio_tool", MANUAL_ENSEMBLE))
+            from ..settings_bind import setting_for_combo
+
+            set_combo_value(
+                self.tool_row,
+                setting_for_combo(
+                    "chosen_audio_tool", s.get("chosen_audio_tool", MANUAL_ENSEMBLE)
+                ),
+            )
 
             inputs = s.get("input_paths") or []
             self.inputs_row.set_paths(inputs, notify=False)
             self.output_row.set_path(s.get("export_path") or "", notify=False)
 
-            set_combo_value(self.algorithm_row, s.get("choose_algorithm"))
+            set_combo_value(
+                self.algorithm_row,
+                setting_for_combo("choose_algorithm", s.get("choose_algorithm")),
+            )
             self.wav_ensemble_row.set_active(bool(s.get("is_wav_ensemble")))
             self.time_rate_row.set_value(float(s.get("time_stretch_rate") or 2.0))
             self.pitch_rate_row.set_value(float(s.get("pitch_rate") or 2.0))
@@ -492,11 +506,25 @@ class AudioToolsPage:
             self.apollo_chunk_row.set_value(int(float(s.get("apollo_chunk_size") or 10)))
             self.apollo_gpu_row.set_active(bool(s.get("is_gpu_conversion")))
 
-            set_combo_value(self.time_window_row, s.get("time_window"))
-            set_combo_value(self.intro_row, s.get("intro_analysis"))
-            set_combo_value(self.db_row, s.get("db_analysis"))
-            set_combo_value(self.phase_option_row, s.get("phase_option"))
-            set_combo_value(self.phase_shifts_row, s.get("phase_shifts"))
+            set_combo_value(
+                self.time_window_row,
+                setting_for_combo("time_window", s.get("time_window")),
+            )
+            set_combo_value(
+                self.intro_row,
+                setting_for_combo("intro_analysis", s.get("intro_analysis")),
+            )
+            set_combo_value(
+                self.db_row, setting_for_combo("db_analysis", s.get("db_analysis"))
+            )
+            set_combo_value(
+                self.phase_option_row,
+                setting_for_combo("phase_option", s.get("phase_option")),
+            )
+            set_combo_value(
+                self.phase_shifts_row,
+                setting_for_combo("phase_shifts", s.get("phase_shifts")),
+            )
             self.save_align_row.set_active(bool(s.get("is_save_align")))
             self.match_silence_row.set_active(bool(s.get("is_match_silence")))
             self.spec_match_row.set_active(bool(s.get("is_spec_match")))
@@ -640,7 +668,11 @@ class AudioToolsPage:
         if self._loading:
             return
         tool = self._current_tool()
-        self.settings.audio_tools.chosen_audio_tool = tool
+        from core.settings.coerce import coerce_field
+
+        self.settings.audio_tools.chosen_audio_tool = coerce_field(
+            "audio_tools", "chosen_audio_tool", tool
+        )
         self._sync_tool_visibility()
         self._refresh_dual_rows()
 

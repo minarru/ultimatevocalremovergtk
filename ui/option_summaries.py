@@ -136,5 +136,6 @@ def vocal_split_summary(settings: typing.Any) -> str:
         name = _model_label(settings.process.vocal_splitter or NO_MODEL)
         parts.append(name if name else ON_NO_MODEL)
     if deverb_on:
-        parts.append(f"deverb: {settings.process.deverb_vocal_opt}")
+        deverb = settings.process.deverb_vocal_opt
+        parts.append(f"deverb: {getattr(deverb, 'value', deverb)}")
     return _SEP.join(parts)

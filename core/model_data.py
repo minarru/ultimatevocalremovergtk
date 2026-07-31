@@ -408,7 +408,7 @@ class _ModelConfigImplementation:
         demucs = settings.demucs
         ensemble = settings.ensemble
 
-        device_set = process.device
+        device_set = process.device or DEFAULT
         self.DENOISER_MODEL = paths.DENOISER_MODEL_PATH
         self.DEVERBER_MODEL = paths.DEVERBER_MODEL_PATH
         self.is_deverb_vocals = (
@@ -416,9 +416,13 @@ class _ModelConfigImplementation:
             if os.path.isfile(paths.DEVERBER_MODEL_PATH)
             else False
         )
-        self.deverb_vocal_opt = DEVERB_MAPPER[process.deverb_vocal_opt]
+        deverb_key = getattr(
+            process.deverb_vocal_opt, "value", process.deverb_vocal_opt
+        )
+        self.deverb_vocal_opt = DEVERB_MAPPER[deverb_key]
+        denoise_opt = getattr(mdx.denoise_option, "value", mdx.denoise_option)
         self.is_denoise_model = bool(
-            mdx.denoise_option == DENOISE_M
+            denoise_opt == DENOISE_M
             and os.path.isfile(paths.DENOISER_MODEL_PATH)
         )
         self.is_gpu_conversion = bool(process.use_gpu)
@@ -435,19 +439,18 @@ class _ModelConfigImplementation:
         self.is_use_directml = bool(process.use_directml)
         self.is_primary_stem_only = process.primary_stem_only
         self.is_secondary_stem_only = process.secondary_stem_only
-        self.is_denoise = mdx.denoise_option != DENOISE_NONE
+        self.is_denoise = denoise_opt != DENOISE_NONE
         self.is_mdx_c_seg_def = mdx.is_mdx_c_seg_def
         self.mdx_batch_size = (
-            1 if mdx.batch_size == DEF_OPT else int(mdx.batch_size)
+            1 if mdx.batch_size is None else int(mdx.batch_size)
         )
         self.mdxnet_stem_select = mdx.stems
         self.mdxnet_stems_selected = mdx.stems_selected or []
-        self.overlap = (
-            float(demucs.overlap) if demucs.overlap != DEFAULT else 0.25
+        self.overlap = float(demucs.overlap)
+        self.overlap_mdx = (
+            0.25 if mdx.overlap_mdx is None else float(mdx.overlap_mdx)
         )
-        overlap_mdx_val = mdx.overlap_mdx
-        self.overlap_mdx = float(overlap_mdx_val) if overlap_mdx_val != DEFAULT else 0.25
-        self.overlap_mdx23 = int(float(mdx.overlap_mdx23))
+        self.overlap_mdx23 = int(mdx.overlap_mdx23)
         self.semitone_shift = float(process.semitone_shift)
         self.is_pitch_change = False if self.semitone_shift == 0 else True
         self.is_match_frequency_pitch = mdx.is_match_frequency_pitch
@@ -469,9 +472,13 @@ class _ModelConfigImplementation:
         self.compensate: Any = None
         self.mdx_n_fft_scale_set: Any = None
         self.wav_type_set = resolve_wav_type_set(settings)
-        self.device_set = device_set.split(":")[-1].strip() if ":" in device_set else device_set
-        self.mp3_bit_set = process.mp3_bitrate
-        self.flac_bit_set = process.flac_bit_depth
+        self.device_set = (
+            device_set.split(":")[-1].strip() if ":" in device_set else device_set
+        )
+        self.mp3_bit_set = getattr(process.mp3_bitrate, "value", process.mp3_bitrate)
+        self.flac_bit_set = getattr(
+            process.flac_bit_depth, "value", process.flac_bit_depth
+        )
         self.save_format = process.save_format.value
         self.is_invert_spec = mdx.is_invert_spec
         self.is_mixer_mode = False
@@ -571,7 +578,7 @@ class _ModelConfigImplementation:
             self.is_post_process = vr.is_post_process
             self.window_size = int(vr.window_size)
             self.batch_size = (
-                1 if vr.batch_size == DEF_OPT else int(vr.batch_size)
+                1 if vr.batch_size is None else int(vr.batch_size)
             )
             self.crop_size = int(vr.crop_size)
             self.is_high_end_process = (
@@ -705,7 +712,7 @@ class _ModelConfigImplementation:
                     else:
                         self.compensate = (
                             self.model_data["compensate"]
-                            if mdx.compensate == AUTO_SELECT
+                            if mdx.compensate is None
                             else float(mdx.compensate)
                         )
                         self.mdx_dim_f_set = self.model_data["mdx_dim_f_set"]
@@ -731,7 +738,10 @@ class _ModelConfigImplementation:
             self.chunks_demucs = 0
             self.shifts = int(demucs.shifts)
             self.is_split_mode = demucs.is_split_mode
-            self.segment = demucs.segment
+            # Engine ``demucs_segments`` expects the legacy ``Default`` label.
+            self.segment = (
+                DEF_OPT if demucs.segment is None else str(demucs.segment)
+            )
             self.is_chunk_demucs = demucs.is_chunk_demucs
             self.is_primary_stem_only = (
                 process.primary_stem_only
