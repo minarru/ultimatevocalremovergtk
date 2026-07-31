@@ -125,5 +125,54 @@ class ResolveAndDownloadTests(unittest.TestCase):
         self.assertEqual(unresolved, ["MDX-Net: B"])
 
 
+
+class IneligibleMemberTests(unittest.TestCase):
+    """A karaoke model saved into a Vocals/Instrumental preset is now ineligible.
+
+    Karaoke models moved to their own stem pair, so presets saved before that
+    list members ``ensemble_model_list`` no longer returns. Loading such a
+    preset must skip the member, never raise.
+    """
+
+    def test_find_download_selection_returns_none_for_unknown_member(self) -> None:
+        from core.ensemble_presets import find_download_selection
+
+        class _Manager:
+            mdx_download_list = {"MDX-Net Model: Something Else": {"a.ckpt": "u"}}
+
+            def ensure_catalogues(self) -> None:
+                return None
+
+        self.assertIsNone(
+            find_download_selection("MDX-Net: A Model That No Longer Exists", _Manager())
+        )
+
+    def test_find_download_selection_resolves_a_present_member(self) -> None:
+        from core.ensemble_presets import find_download_selection
+
+        class _Manager:
+            mdx_download_list = {"MDX-Net Model: Something Else": {"a.ckpt": "u"}}
+
+            def ensure_catalogues(self) -> None:
+                return None
+
+        result = find_download_selection("MDX-Net: Something Else", _Manager())
+        self.assertEqual(result, ("MDX-Net Model: Something Else", "MDX-Net"))
+
+    def test_classify_preset_members_reports_missing_without_raising(self) -> None:
+        from core.ensemble_presets import classify_preset_members
+        from core.model_data import ModelRepository
+
+        # A real repository with nothing installed: resolve_member_tag reads
+        # mapper attributes a hand-rolled fake would not have.
+        repo = ModelRepository()
+        with mock.patch.object(ModelRepository, "list_mdx_models", return_value=[]), \
+             mock.patch.object(ModelRepository, "list_vr_models", return_value=[]), \
+             mock.patch.object(ModelRepository, "list_demucs_models", return_value=[]):
+            installed, missing = classify_preset_members(["MDX-Net: Gone"], repo)
+        self.assertEqual(installed, [])
+        self.assertEqual(missing, ["MDX-Net: Gone"])
+
+
 if __name__ == "__main__":
     unittest.main()

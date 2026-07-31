@@ -7,10 +7,11 @@ Derives display-label overrides and export intent from resolved model metadata
 from __future__ import annotations
 import typing
 
-from typing import Dict, List, Mapping, Optional, Sequence, Set
+from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from bundled.constants import (
     ALL_STEMS,
+    BACKING_VOCALS_TAG,
     BASS_STEM,
     BV_VOCAL_STEM,
     BV_VOCAL_STEM_LABEL,
@@ -18,9 +19,12 @@ from bundled.constants import (
     GUITAR_STEM,
     INST_STEM,
     INST_WITH_BACKING_VOCALS_STEM,
+    INST_WITH_BACKING_VOCALS_TAG,
     INST_WITH_LEAD_VOCALS_STEM,
+    INST_WITH_LEAD_VOCALS_TAG,
     LEAD_VOCAL_STEM,
     LEAD_VOCAL_STEM_LABEL,
+    LEAD_VOCALS_TAG,
     NO_BASS_STEM,
     NO_DRUM_STEM,
     NO_GUITAR_STEM,
@@ -444,14 +448,27 @@ def karaoke_bv_export_labels(model: typing.Any) -> Optional[Dict[str, str]]:
 def export_stem_label(model: typing.Any, stem: str, *, for_ensemble: bool = False) -> str:
     """Map a logic stem to the filename/UI export label.
 
-    Ensemble members use :func:`canonical_ensemble_stem_tag` so yaml lowercase
-    stems (``vocals``) and Demucs Title Case (``Vocals``) land in the same
-    combine bucket. Karaoke/BV identity codes stay untouched in ensemble mode.
+    Ensemble members resolve through :func:`ensemble_stem_bucket`, so yaml
+    lowercase (``vocals``), Demucs Title Case (``Vocals``) and the 2-stem
+    ``other`` complement land in the same combine bucket — and a karaoke
+    model's instrumental lands in its *own* bucket rather than being combined
+    with clean instrumentals, which is what it is not.
+
     Outside ensemble mode, vocal-splitter codes become human labels.
     """
     if not stem:
         return stem
     if for_ensemble:
+        bucket = ensemble_stem_bucket(
+            stem,
+            stem_count=model_stem_count(model),
+            is_karaoke=bool(getattr(model, "is_karaoke", False)),
+            is_bv=bool(getattr(model, "is_bv_model", False)),
+        )
+        # Unknown is an eligibility sentinel only — never a filename/RAM key.
+        # Specialty stems (Speech, Sfx, …) keep a distinct literal tag.
+        if bucket != BUCKET_UNKNOWN:
+            return bucket
         return canonical_ensemble_stem_tag(stem)
     # Splitter identity codes → human labels even when the parent model is not
     # flagged karaoke/BV on this object (flags live on the split model).
@@ -693,6 +710,12 @@ _ENSEMBLE_STEM_PRESERVE = frozenset(
         BV_VOCAL_STEM_LABEL,
         INST_WITH_LEAD_VOCALS_STEM,
         INST_WITH_BACKING_VOCALS_STEM,
+        # Bucket tags written into ensemble member filenames. The combine stage
+        # re-reads them from the filename, so they must survive unchanged.
+        INST_WITH_BACKING_VOCALS_TAG,
+        INST_WITH_LEAD_VOCALS_TAG,
+        LEAD_VOCALS_TAG,
+        BACKING_VOCALS_TAG,
     }
 )
 
@@ -739,6 +762,183 @@ def canonical_ensemble_stem_tag(stem: str) -> str:
         if label.casefold() == stripped.casefold():
             return label
     return stripped
+
+
+def resolve_stem_dict_key(
+    sources: Optional[Mapping[str, typing.Any]], stem: str
+) -> Optional[str]:
+    """Return the key in ``sources`` that matches ``stem``, ignoring case/aliases.
+
+    Ensemble/UI often pass Title Case (``Vocals``, ``Other``) while MDX-C yaml
+    keeps lowercase (``vocals``, ``other``). Exact lookup then KeyErrors; this
+    resolves at the dict boundary without mutating yaml keys.
+    """
+    if not isinstance(sources, Mapping) or stem is None or stem == "":
+        return None
+    if stem in sources:
+        return str(stem)
+    want = str(stem).casefold()
+    for key in sources:
+        if str(key).casefold() == want:
+            return str(key)
+    want_canon = canonical_ensemble_stem_tag(str(stem))
+    for key in sources:
+        if canonical_ensemble_stem_tag(str(key)) == want_canon:
+            return str(key)
+    return None
+
+
+BUCKET_VOCALS = VOCAL_STEM
+BUCKET_INSTRUMENTAL = INST_STEM
+BUCKET_OTHER = OTHER_STEM
+BUCKET_DRUMS = DRUM_STEM
+BUCKET_BASS = BASS_STEM
+BUCKET_GUITAR = GUITAR_STEM
+BUCKET_PIANO = PIANO_STEM
+BUCKET_LEAD_VOCALS = LEAD_VOCALS_TAG
+BUCKET_BV_VOCALS = BACKING_VOCALS_TAG
+BUCKET_INST_WITH_BV = INST_WITH_BACKING_VOCALS_TAG
+BUCKET_INST_WITH_LEAD = INST_WITH_LEAD_VOCALS_TAG
+BUCKET_UNKNOWN = "Unknown"
+
+#: Splitter identity codes and their human labels. These already name a
+#: karaoke/BV product, so they resolve regardless of the model's own flags —
+#: the flags describe the *model*, these describe the *stem*.
+_IDENTITY_BUCKETS = {
+    "lead_only": BUCKET_LEAD_VOCALS,
+    "lead vocals": BUCKET_LEAD_VOCALS,
+    "backing_only": BUCKET_BV_VOCALS,
+    "backing vocals": BUCKET_BV_VOCALS,
+}
+
+#: Stem tokens that name the vocal target, in any casing authors have used.
+_VOCAL_TOKENS = frozenset({"vocals", "vocal", "voc"})
+
+#: Stem tokens that name the instrumental side. ``other`` is context-dependent
+#: and is resolved by stem count, not by this set alone.
+_INSTRUMENTAL_TOKENS = frozenset({"instrumental", "inst", "instrument"})
+
+#: Non-vocal MUSDB stems, safe to fold on name alone.
+_SIMPLE_STEM_TOKENS = {
+    "drums": BUCKET_DRUMS,
+    "bass": BUCKET_BASS,
+    "guitar": BUCKET_GUITAR,
+    "piano": BUCKET_PIANO,
+}
+
+
+def ensemble_stem_bucket(
+    stem: str,
+    *,
+    stem_count: int = 2,
+    is_karaoke: bool = False,
+    is_bv: bool = False,
+) -> str:
+    """Return the ensemble bucket a model's stem belongs to.
+
+    Three inputs, not one, because ``other`` is overloaded: it is the
+    instrumental complement for a 2-stem model, a real MUSDB residual for a
+    4-stem model, and instrumental-plus-backing-vocals for a karaoke model.
+
+    Unrecognised stems return :data:`BUCKET_UNKNOWN`, which never matches a
+    pair — that is what keeps specialty models (Phantom Centre's
+    ``Similarity``) out of ``Vocals/Instrumental``.
+    """
+    token = str(stem or "").strip().casefold()
+    if not token:
+        return BUCKET_UNKNOWN
+
+    # Identity codes name the product, not the model, so they win over flags.
+    identity = _IDENTITY_BUCKETS.get(token)
+    if identity is not None:
+        return identity
+
+    is_vocal = token in _VOCAL_TOKENS
+    # ``other`` counts as instrumental only for 2-stem (or target-instrument)
+    # models, where it is the complement of vocals rather than a MUSDB stem.
+    # Reinterpreting it requires positive evidence: ``stem_count <= 0`` means
+    # the caller does not know, and ``other`` then keeps its literal meaning.
+    # Guessing the other way exports a 4-stem residual as ``Instrumental``.
+    is_instrumental = token in _INSTRUMENTAL_TOKENS or (
+        token == "other" and 1 <= stem_count <= 2
+    )
+
+    if is_karaoke:
+        if is_vocal:
+            return BUCKET_LEAD_VOCALS
+        if is_instrumental:
+            return BUCKET_INST_WITH_BV
+    if is_bv:
+        if is_vocal:
+            return BUCKET_BV_VOCALS
+        if is_instrumental:
+            return BUCKET_INST_WITH_LEAD
+
+    if is_vocal:
+        return BUCKET_VOCALS
+    if is_instrumental:
+        return BUCKET_INSTRUMENTAL
+    if token == "other":
+        return BUCKET_OTHER
+    simple = _SIMPLE_STEM_TOKENS.get(token)
+    if simple is not None:
+        return simple
+    return BUCKET_UNKNOWN
+
+
+def model_stem_count(model: typing.Any) -> int:
+    """Return how many stems a model actually produces, across architectures.
+
+    A Demucs model carries its count on ``demucs_stem_count`` and leaves
+    ``mdx_stem_count`` at its default of 1; an MDX-C model is the reverse.
+    Reading only one of them saw a 4-stem Demucs model as 1-stem, which made
+    :func:`ensemble_stem_bucket` treat its MUSDB ``other`` residual as the
+    instrumental complement and label it ``Instrumental``.
+
+    Returns ``0`` when nothing is known. That is deliberately *not* a guess of
+    2: guessing would make :func:`ensemble_stem_bucket` reinterpret ``other`` as
+    the instrumental complement on no evidence, which is how an engine object
+    missing these fields exported a 4-stem model's residual as ``Instrumental``.
+    """
+    counts = (
+        int(getattr(model, "mdx_stem_count", 0) or 0),
+        int(getattr(model, "demucs_stem_count", 0) or 0),
+        len(getattr(model, "mdx_model_stems", ()) or ()),
+        len(getattr(model, "demucs_source_list", ()) or ()),
+    )
+    return max(counts)
+
+
+def ensemble_pair_buckets(main_stem: str) -> Tuple[str, str]:
+    """Return the ``(primary, secondary)`` buckets for an ensemble pair string.
+
+    An explicit table, **not** a call to :func:`ensemble_stem_bucket`. A pair is
+    a user's *request*, not a description of a model's output, and the two
+    disagree: ``Other/No Other`` asks for the MUSDB residual, but
+    ``ensemble_stem_bucket("Other", stem_count=1)`` reads a 1-stem ``other`` as
+    the instrumental complement. Resolving pairs through the model resolver
+    would silently turn the Other pair into an Instrumental request.
+
+    A table also keeps the parenthesized ``Instrumental (With Backing Vocals)``
+    display label out of the stem alias table.
+
+    Complement pairs (``No Other``, ``No Drums``, ``No Bass``) have one
+    meaningful bucket: the complement is derived by inversion, never trained,
+    so the secondary is :data:`BUCKET_UNKNOWN` and callers discard it.
+
+    Non-pair values (Choose Stem Pair, 4 Stem, Multi-stem) return
+    ``(BUCKET_UNKNOWN, BUCKET_UNKNOWN)``; those modes do not filter by a pair.
+    """
+    from bundled.constants import BASS_PAIR, DRUM_PAIR, KARAOKE_PAIR, OTHER_PAIR, VOCAL_PAIR
+
+    table = {
+        VOCAL_PAIR: (BUCKET_VOCALS, BUCKET_INSTRUMENTAL),
+        KARAOKE_PAIR: (BUCKET_LEAD_VOCALS, BUCKET_INST_WITH_BV),
+        OTHER_PAIR: (BUCKET_OTHER, BUCKET_UNKNOWN),
+        DRUM_PAIR: (BUCKET_DRUMS, BUCKET_UNKNOWN),
+        BASS_PAIR: (BUCKET_BASS, BUCKET_UNKNOWN),
+    }
+    return table.get(str(main_stem or "").strip(), (BUCKET_UNKNOWN, BUCKET_UNKNOWN))
 
 
 def backend_focus_label(

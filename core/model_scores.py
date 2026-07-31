@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
-from typing import Iterable, List, Optional, Sequence, Tuple
+import statistics
+import time
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+
+from bundled.constants import MODEL_SCORES_URL
 
 from core.model_stem_semantics import (
     INTENT_DRUM_BASS_SEP,
@@ -48,6 +54,195 @@ SORT_OPTIONS: Tuple[Tuple[str, str], ...] = (
     (SORT_NAME, "Sort by name"),
     (SORT_SDR, "Sort by SDR"),
 )
+
+
+_SCORES_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
+
+#: Present in the score data as a speed measurement, not a separable stem.
+_NON_STEM_KEYS = frozenset({"seconds_per_minute_m3"})
+
+_BUNDLED_SCORES_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "bundled",
+    "model_scores.json",
+)
+
+_cached_scores: Optional[Dict[str, Dict[str, float]]] = None
+_cached_loaded_at: float = 0.0
+
+
+def model_scores_enabled() -> bool:
+    return os.environ.get("UVR_DISABLE_MODEL_SCORES", "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def clear_model_scores_cache() -> None:
+    global _cached_scores, _cached_loaded_at
+    _cached_scores = None
+    _cached_loaded_at = 0.0
+
+
+def _cache_path() -> str:
+    from core import paths
+
+    return paths.migrate_cache_file("model_scores.json", paths.MODEL_SCORES_CACHE_FILE)
+
+
+def _read_disk_cache() -> Optional[Dict[str, Any]]:
+    try:
+        with open(_cache_path(), "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
+            if (time.time() - float(payload.get("fetched_at") or 0)) < _SCORES_CACHE_TTL_SECONDS:
+                return payload["data"]
+    except (OSError, ValueError, TypeError):
+        pass
+    return None
+
+
+def _write_disk_cache(data: Mapping[str, Any]) -> None:
+    from core.debug_log import debug
+
+    try:
+        cache_path = _cache_path()
+        os.makedirs(os.path.dirname(cache_path) or ".", exist_ok=True)
+        with open(cache_path, "w", encoding="utf-8") as handle:
+            json.dump({"fetched_at": time.time(), "data": data}, handle)
+    except OSError as exc:
+        debug("download", f"model scores cache write failed err={exc}")
+
+
+def _read_bundled_scores() -> Dict[str, Any]:
+    try:
+        with open(_BUNDLED_SCORES_FILE, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def _fetch_model_scores() -> Optional[Dict[str, Any]]:
+    """Network fetch, isolated so tests can patch exactly this call."""
+    from core.debug_log import debug
+    from core.mdx_config_fetch import _urlopen
+
+    try:
+        with _urlopen(MODEL_SCORES_URL) as response:
+            payload = json.load(response)
+        return payload if isinstance(payload, dict) else None
+    except Exception as exc:
+        debug("download", f"model scores fetch failed err={type(exc).__name__}: {exc}")
+        return None
+
+
+def _aggregate_entry(entry: Mapping[str, Any]) -> Dict[str, float]:
+    """Mean SDR per stem across an entry's tracks."""
+    per_stem: Dict[str, List[float]] = {}
+    for track in entry.get("track_scores") or []:
+        if not isinstance(track, dict):
+            continue
+        for stem, metrics in (track.get("scores") or {}).items():
+            if stem in _NON_STEM_KEYS or not isinstance(metrics, dict):
+                continue
+            value = metrics.get("SDR")
+            if isinstance(value, (int, float)):
+                per_stem.setdefault(str(stem), []).append(float(value))
+    return {stem: round(statistics.mean(vals), 2) for stem, vals in per_stem.items() if vals}
+
+
+def load_model_scores(*, force: bool = False) -> Dict[str, Dict[str, float]]:
+    """Return ``{checkpoint_filename: {stem: mean_sdr}}``, lowercased keys.
+
+    Live fetch, then the seven-day disk cache, then the bundled snapshot, so
+    the badge works offline and in CI.
+    """
+    global _cached_scores, _cached_loaded_at
+
+    from core.debug_log import debug
+
+    if not model_scores_enabled():
+        return {}
+
+    now = time.time()
+    if (
+        not force
+        and _cached_scores is not None
+        and (now - _cached_loaded_at) < _SCORES_CACHE_TTL_SECONDS
+    ):
+        return _cached_scores
+
+    raw = _read_disk_cache() if not force else None
+    if raw is None:
+        raw = _fetch_model_scores()
+        if raw is not None:
+            _write_disk_cache(raw)
+    if raw is None:
+        raw = _read_disk_cache() or _read_bundled_scores()
+
+    aggregated = {
+        str(name).casefold(): _aggregate_entry(entry)
+        for name, entry in (raw or {}).items()
+        if isinstance(entry, dict)
+    }
+    _cached_scores = aggregated
+    _cached_loaded_at = now
+    debug("download", f"model scores loaded entries={len(aggregated)}")
+    return aggregated
+
+
+def sdr_for_files(
+    filenames: Iterable[str],
+    scores: Optional[Mapping[str, Mapping[str, float]]] = None,
+) -> Dict[str, float]:
+    """Return per-stem SDR for the first filename with a score.
+
+    Matches on *any* filename in a catalogue entry, not just the primary
+    checkpoint: Demucs v4 is keyed in the score data by its ``.yaml``.
+    """
+    table = load_model_scores() if scores is None else scores
+    if not table:
+        return {}
+    for name in filenames:
+        entry = table.get(os.path.basename(str(name)).casefold())
+        if entry:
+            return dict(entry)
+    return {}
+
+
+def primary_sdr(
+    stem_scores: Mapping[str, float],
+    target_stem: Optional[str] = None,
+    *,
+    stem_count: int = 2,
+) -> Optional[Tuple[str, float]]:
+    """Return ``(stem, sdr)`` for the model's headline score.
+
+    Both the model's target stem and the score-data keys go through
+    :func:`ensemble_stem_bucket` before comparison. The score data keys stems
+    lowercase (``vocals``, ``instrumental``, ``other``) while a model's target
+    is whatever its yaml said, so a raw casefold comparison still misses: a
+    2-stem model targeting ``other`` means *instrumental* and would find no
+    score at all. ``stem_count`` is what disambiguates that from a 4-stem
+    model's genuine ``other`` residual.
+
+    The returned stem is the **score-data key**, not the bucket, so callers
+    render the name the benchmark actually used.
+    """
+    from core.model_stem_semantics import BUCKET_UNKNOWN, ensemble_stem_bucket
+
+    if not stem_scores:
+        return None
+    if target_stem:
+        wanted = ensemble_stem_bucket(target_stem, stem_count=stem_count)
+        if wanted != BUCKET_UNKNOWN:
+            for stem, value in stem_scores.items():
+                if ensemble_stem_bucket(stem, stem_count=stem_count) == wanted:
+                    return (stem, value)
+    stem, value = max(stem_scores.items(), key=lambda item: item[1])
+    return (stem, value)
 
 
 def parse_sdr_score(*texts: Optional[str]) -> Optional[float]:
@@ -117,11 +312,28 @@ def purpose_for_label(label: str) -> str:
     return purpose_bucket(infer_name_intent_from_label(label or ""))
 
 
-def format_sdr_subtitle(sdr: Optional[float], size_text: str = "") -> str:
-    """Build a catalogue row subtitle with optional SDR and size."""
+def format_sdr_subtitle(
+    sdr: Optional[float],
+    size_text: str = "",
+    *,
+    stem: Optional[str] = None,
+    extra: str = "",
+) -> str:
+    """Build a catalogue row subtitle: SDR (if known) -> extra -> size.
+
+    ``stem`` names the stem the score belongs to. A bare number invites a
+    comparison between different quantities: the same checkpoint can be 11.4
+    on vocals and 16.0 on instrumental.
+
+    ``extra`` is the fallback for the ~79% of models with no published
+    benchmark — usually their stem list — so an unscored row still says
+    something instead of rendering blank.
+    """
     parts: List[str] = []
     if sdr is not None:
-        parts.append(f"{sdr:.1f} SDR")
+        parts.append(f"{stem} {sdr:.1f} SDR" if stem else f"{sdr:.1f} SDR")
+    elif extra.strip():
+        parts.append(extra.strip())
     size = (size_text or "").strip()
     if size:
         parts.append(size)

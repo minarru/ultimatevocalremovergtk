@@ -46,6 +46,8 @@ class DownloadCenterStateTests(unittest.TestCase):
         win = object.__new__(DownloadCenterWindow)
         win.manager = MagicMock()
         win._available = {}
+        win._unsupported = {}
+        win._hide_unsupported = False
         win._catalogue_online = True
         win._refreshing = False
         win._sort_mode = SORT_NAME

@@ -99,6 +99,8 @@ SETTINGS_PICKLE_BAK = os.path.join(DATA_DIR, "data.pkl.bak")
 # Download / catalogue JSON caches (under CACHE_DIR so portable checkouts stay clean).
 DOWNLOAD_SIZE_CACHE_FILE = os.path.join(CACHE_DIR, "download_size_cache.json")
 POLITREES_CACHE_FILE = os.path.join(CACHE_DIR, "politrees_model_links.json")
+MVSEPLESS_CACHE_FILE = os.path.join(CACHE_DIR, "mvsepless_models.json")
+MODEL_SCORES_CACHE_FILE = os.path.join(CACHE_DIR, "model_scores.json")
 
 # Saved ensembles / settings profiles (JSON). Writable under DATA_DIR.
 SETTINGS_CACHE_DIR = os.path.join(DATA_DIR, "profiles")

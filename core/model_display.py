@@ -17,6 +17,7 @@ from bundled.constants import (
 from . import paths
 
 if TYPE_CHECKING:
+    from .catalog_sources import MergedCatalogues
     from .model_data import ModelRepository
 
 _CHECKPOINT_EXTENSIONS = (".ckpt", ".pth", ".onnx")
@@ -201,44 +202,82 @@ def _catalogues_from_source(source: Dict, keys: Tuple[str, ...]) -> List[Dict[st
     return catalogues
 
 
-def load_mdx_catalog_display_index() -> Dict[str, str]:
-    """Build MDX checkpoint-basename→display-name index from download catalogues."""
-    mdx_catalogues: List[Dict[str, object]] = []
-    mdx_catalogues.extend(_catalogues_from_source(_load_manual_download_cache(), _MDX_CATALOG_SOURCE_KEYS))
+def _flatten_source(source: Dict, keys: Tuple[str, ...]) -> Dict[str, Any]:
+    """Flatten several catalogue keys of one source into a single dict."""
+    flat: Dict[str, Any] = {}
+    for catalogue in _catalogues_from_source(source, keys):
+        flat.update(catalogue)
+    return flat
+
+
+def _display_base(keys: Tuple[str, ...]) -> Dict[str, Any]:
+    """Flatten one architecture's catalogues from the cache **and** Politrees.
+
+    Politrees is read here as well as inside the merge because the merge omits
+    the ``*_vip_list`` keys — the Download Center must not offer code-gated
+    models. Naming a checkpoint that is already on disk is not gated, though,
+    so the display index keeps reading them, as it always has.
+    """
     from .politrees_catalog import load_politrees_links
 
+    flat = _flatten_source(_load_manual_download_cache(), keys)
     politrees = load_politrees_links()
     if isinstance(politrees, dict):
-        mdx_catalogues.extend(_catalogues_from_source(politrees, _MDX_CATALOG_SOURCE_KEYS))
-    return build_checkpoint_display_index(mdx_catalogues)
+        for label, model in _flatten_source(politrees, keys).items():
+            flat.setdefault(label, model)
+    return flat
+
+
+def _merged_for_display():
+    """Merged catalogues built from the upstream cache plus every supplement.
+
+    Reads the same merge the Download Center does, which is the whole point:
+    two separate merge paths are what left mvsepless and extras models showing
+    as raw basenames here while the Download Center named them correctly.
+    """
+    from .catalog_sources import merged_catalogues
+
+    return merged_catalogues(
+        vr=_display_base(_VR_CATALOG_SOURCE_KEYS),
+        mdx=_display_base(_MDX_CATALOG_SOURCE_KEYS),
+        demucs=_display_base(_DEMUCS_CATALOG_SOURCE_KEYS),
+    )
+
+
+def _index_from_meta(merged: "MergedCatalogues", arch: str) -> Dict[str, str]:
+    """Map every file basename of one architecture to its display name.
+
+    Iterates ``merged.meta``, which is built before dedupe, rather than the
+    deduped catalogue: a duplicate label dropped from the Download Center list
+    still names a checkpoint that has to resolve here.
+
+    Every file is indexed, not just the primary checkpoint, so Demucs resolves
+    on its ``.yaml`` stem the way ``build_demucs_display_index`` did.
+    ``setdefault`` preserves upstream-wins.
+    """
+    index: Dict[str, str] = {}
+    for meta in merged.meta.values():
+        if meta.arch != arch:
+            continue
+        for filename in meta.files:
+            stem = os.path.splitext(os.path.basename(filename))[0]
+            index.setdefault(stem, meta.display)
+    return index
+
+
+def load_mdx_catalog_display_index() -> Dict[str, str]:
+    """Build MDX checkpoint-basename→display-name index from every source."""
+    return _index_from_meta(_merged_for_display(), MDX_ARCH_TYPE)
 
 
 def load_vr_catalog_display_index() -> Dict[str, str]:
-    """Build VR basename→runtime-display index from download catalogues."""
-    vr_catalogues: List[Dict[str, object]] = []
-    vr_catalogues.extend(_catalogues_from_source(_load_manual_download_cache(), _VR_CATALOG_SOURCE_KEYS))
-    from .politrees_catalog import load_politrees_links
-
-    politrees = load_politrees_links()
-    if isinstance(politrees, dict):
-        vr_catalogues.extend(_catalogues_from_source(politrees, _VR_CATALOG_SOURCE_KEYS))
-    return build_vr_display_index(vr_catalogues)
+    """Build VR basename→runtime-display index from every source."""
+    return _index_from_meta(_merged_for_display(), VR_ARCH_TYPE)
 
 
 def load_demucs_catalog_display_index() -> Dict[str, str]:
-    """Build Demucs stem→runtime-display index from download catalogues."""
-    demucs_catalogues: List[Dict[str, object]] = []
-    demucs_catalogues.extend(
-        _catalogues_from_source(_load_manual_download_cache(), _DEMUCS_CATALOG_SOURCE_KEYS)
-    )
-    from .politrees_catalog import load_politrees_links
-
-    politrees = load_politrees_links()
-    if isinstance(politrees, dict):
-        demucs_catalogues.extend(
-            _catalogues_from_source(politrees, _DEMUCS_CATALOG_SOURCE_KEYS)
-        )
-    return build_demucs_display_index(demucs_catalogues)
+    """Build Demucs stem→runtime-display index from every source."""
+    return _index_from_meta(_merged_for_display(), DEMUCS_ARCH_TYPE)
 
 
 def display_name_for_basename(

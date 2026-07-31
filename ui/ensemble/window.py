@@ -1029,6 +1029,21 @@ class EnsemblePage:
             self._model_checks[tag] = check
             self._model_row_text[tag] = (title, subtitle)
 
+        # A preset saved before a model became ineligible for this stem pair
+        # still lists it. Those tags are simply never rendered, and
+        # _persist_selected_models then drops them — correct, but invisible,
+        # so leave a trail. Karaoke models moving to their own pair is the
+        # common cause.
+        dropped = preselected_set - set(tags)
+        if dropped:
+            from core.debug_log import debug
+
+            debug(
+                "settings",
+                f"ensemble preset members not eligible for {main_stem!r}, "
+                f"skipping {sorted(dropped)}",
+            )
+
         self.models_listbox.invalidate_filter()
         self._persist_selected_models()
         self._update_models_dialog_status()

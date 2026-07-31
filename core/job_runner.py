@@ -39,11 +39,19 @@ from bundled.constants import (
 
 from . import paths
 from .audio_io import resolve_wav_type_set
-from .model_stem_semantics import canonical_ensemble_stem_tag
+from .model_stem_semantics import (
+    BUCKET_UNKNOWN,
+    canonical_ensemble_stem_tag,
+    ensemble_pair_buckets,
+)
 
 
 def _ensemble_stem_bucket(stem_tag: str) -> str:
-    """Canonical key for multi-stem ensemble combine buckets."""
+    """Canonical key for multi-stem ensemble combine buckets.
+
+    Member maps are already keyed by :func:`export_stem_label` in ensemble
+    mode; this is a no-op for those tags and only folds leftover casing.
+    """
     return canonical_ensemble_stem_tag(stem_tag)
 from .export_naming import (
     format_stem_basename,
@@ -1173,7 +1181,21 @@ class Ensembler:
 
         ensemble_type_value = settings.ensemble.type
         primary_algorithm, secondary_algorithm = parse_ensemble_type(ensemble_type_value)
-        ensemble_main_stem_pair = settings.ensemble.main_stem.partition("/")
+        main_stem = settings.ensemble.main_stem
+        raw_primary, _, raw_secondary = main_stem.partition("/")
+        primary_bucket, secondary_bucket = ensemble_pair_buckets(main_stem)
+        # Combine/search tags must match export_stem_label buckets (e.g.
+        # Lead_Vocals), not UI pair halves (Lead Vocals).
+        self.ensemble_primary_stem = (
+            primary_bucket
+            if primary_bucket != BUCKET_UNKNOWN
+            else canonical_ensemble_stem_tag(raw_primary)
+        )
+        self.ensemble_secondary_stem = (
+            secondary_bucket
+            if secondary_bucket != BUCKET_UNKNOWN
+            else canonical_ensemble_stem_tag(raw_secondary)
+        )
         time_stamp = round(time.time())
 
         self.main_export_path = settings.process.export_path
@@ -1186,8 +1208,6 @@ class Ensembler:
         # Dual-stem: Primary/Secondary pair. 4-stem uses the full token in ensemble_outputs.
         self.primary_algorithm = primary_algorithm
         self.secondary_algorithm = secondary_algorithm
-        self.ensemble_primary_stem = ensemble_main_stem_pair[0]
-        self.ensemble_secondary_stem = ensemble_main_stem_pair[2]
         self.is_normalization = settings.process.normalization
         try:
             self.amplification_threshold = float(

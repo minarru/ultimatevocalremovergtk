@@ -183,5 +183,45 @@ class MapBasenamesToDisplayTests(unittest.TestCase):
         )
 
 
+class MvseplessAndExtrasDisplayTests(unittest.TestCase):
+    """Regression: models from extras/mvsepless rendered as raw basenames.
+
+    ``load_mdx_catalog_display_index`` read only the upstream cache and
+    Politrees, so anything added by the two newest catalogue sources fell back
+    to its on-disk basename in the method pickers.
+    """
+
+    #: Basenames observed rendering raw before the catalog_sources unification.
+    RAW_BEFORE = (
+        "bs_inst_hyperace2_unwa",
+        "huge_scnet_4stems_bleedless",
+        "huge_scnet_4stems_fullness",
+        "mbr_inst2_unwa",
+        "mbr_instfvx_gabox",
+    )
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from core.mvsepless_catalog import load_converted_mvsepless
+
+        if not load_converted_mvsepless():
+            raise unittest.SkipTest("mvsepless catalogue unavailable (no cache, no network)")
+
+    def test_previously_raw_basenames_now_resolve(self) -> None:
+        from core.model_display import load_mdx_catalog_display_index
+
+        index = load_mdx_catalog_display_index()
+        missing = [name for name in self.RAW_BEFORE if name not in index]
+        self.assertEqual(missing, [], f"still unnamed: {missing}")
+
+    def test_resolved_names_are_canonical(self) -> None:
+        from core.model_display import load_mdx_catalog_display_index
+
+        index = load_mdx_catalog_display_index()
+        display = index["mbr_inst2_unwa"]
+        self.assertNotEqual(display, "mbr_inst2_unwa")
+        self.assertNotIn("Roformer Model:", display)
+
+
 if __name__ == "__main__":
     unittest.main()

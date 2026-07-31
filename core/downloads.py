@@ -54,15 +54,16 @@ from .download_sizes import (
     format_download_size,
     prefetch_remote_sizes,
 )
-from .extra_catalog import apollo_download_list, merge_extra_catalogues
 from .mdx_config_fetch import ensure_mdx_c_config
+from .mvsepless_catalog import (
+    unsupported_mvsepless_downloads,
+    unsupported_reason_for_label,
+)
 from .politrees_catalog import (
     apollo_checkpoint_filename,
     hf_fallback_url,
-    load_politrees_links,
     manual_links_for_model,
     mdx_checkpoint_filename,
-    merge_politrees_catalogues,
     resolve_apollo_jobs,
     resolve_demucs_jobs,
     resolve_mdx_jobs,
@@ -152,6 +153,11 @@ class DownloadManager:
         self.demucs_download_list: Dict[str, Any] = {}
         # Apollo restoration models are fork-curated only (no upstream list).
         self.apollo_download_list: Dict[str, Any] = {}
+        # mvsepless entries we index but cannot run yet: {arch: [(label, reason), ...]}.
+        self.unsupported_download_list: Dict[str, List[Tuple[str, str]]] = {}
+        # {label: EntryMeta} from the last merge. Annotated loosely so
+        # ``catalog_sources`` stays out of this module's import time.
+        self.catalogue_meta: Dict[str, Any] = {}
         self._size_warmup_lock = threading.Lock()
 
     # -- Catalogue + size cache -------------------------------------------------
@@ -311,27 +317,34 @@ class DownloadManager:
         return unlocked
 
     def _merge_politrees_supplement(self) -> None:
-        politrees = load_politrees_links()
-        if politrees:
-            self.vr_download_list, self.mdx_download_list, self.demucs_download_list = (
-                merge_politrees_catalogues(
-                    self.vr_download_list,
-                    self.mdx_download_list,
-                    self.demucs_download_list,
-                    politrees,
-                )
-            )
-        # Fork-curated entries merge last so they fill gaps without ever
-        # shadowing an upstream label, and survive ``refresh`` replacing
-        # ``online_data`` wholesale.
-        self.vr_download_list, self.mdx_download_list, self.demucs_download_list = (
-            merge_extra_catalogues(
-                self.vr_download_list,
-                self.mdx_download_list,
-                self.demucs_download_list,
-            )
+        """Merge every supplemental catalogue source over the upstream lists.
+
+        The merge itself lives in :mod:`core.catalog_sources` so the runtime
+        display index reads exactly the same result. Keeping a second copy here
+        is what let the two drift, leaving mvsepless/extras models rendering as
+        raw basenames in the method pickers.
+        """
+        from .catalog_sources import merged_catalogues
+
+        merged = merged_catalogues(
+            vr=self.vr_download_list,
+            mdx=self.mdx_download_list,
+            demucs=self.demucs_download_list,
         )
-        self.apollo_download_list = apollo_download_list()
+        self.vr_download_list = merged.vr
+        self.mdx_download_list = merged.mdx
+        self.demucs_download_list = merged.demucs
+        self.apollo_download_list = merged.apollo
+        self.catalogue_meta = merged.meta
+        existing_labels = {
+            **self.vr_download_list,
+            **self.mdx_download_list,
+            **self.demucs_download_list,
+            **self.apollo_download_list,
+        }
+        self.unsupported_download_list = unsupported_mvsepless_downloads(
+            existing_labels=existing_labels
+        )
 
     # -- Download lists ---------------------------------------------------------
 
@@ -394,6 +407,19 @@ class DownloadManager:
 
         return result
 
+    def unsupported_downloads(
+        self, model_type: str = ALL_TYPES
+    ) -> Dict[str, List[Tuple[str, str]]]:
+        """Return ``{arch_type: [(label, reason), ...]}`` for non-runnable catalogue rows."""
+        if model_type == ALL_TYPES:
+            return {
+                arch: list(rows)
+                for arch, rows in self.unsupported_download_list.items()
+                if rows
+            }
+        rows = self.unsupported_download_list.get(model_type) or []
+        return {model_type: list(rows)} if rows else {}
+
     def _ensure_mdx_c_config(self, config: str) -> None:
         ensure_mdx_c_config(config)
 
@@ -413,28 +439,26 @@ class DownloadManager:
 
         if arch_type == VR_ARCH_TYPE:
             model = self.vr_download_list.get(selection)
-            if not model:
-                return []
-            return resolve_vr_jobs(model, model_repo)
-
-        if arch_type == MDX_ARCH_TYPE:
+            if model:
+                return resolve_vr_jobs(model, model_repo)
+        elif arch_type == MDX_ARCH_TYPE:
             model = self.mdx_download_list.get(selection)
-            if model is None:
-                return []
-            return resolve_mdx_jobs(model, model_repo)
-
-        if arch_type == DEMUCS_ARCH_TYPE:
+            if model is not None:
+                return resolve_mdx_jobs(model, model_repo)
+        elif arch_type == DEMUCS_ARCH_TYPE:
             model = self.demucs_download_list.get(selection)
-            if not model:
-                return []
-            return resolve_demucs_jobs(model, selection)
-
-        if arch_type == APOLLO_ARCH_TYPE:
+            if model:
+                return resolve_demucs_jobs(model, selection)
+        elif arch_type == APOLLO_ARCH_TYPE:
             model = self.apollo_download_list.get(selection)
-            if not model:
-                return []
-            return resolve_apollo_jobs(model)
+            if model:
+                return resolve_apollo_jobs(model)
+        else:
+            return []
 
+        reason = unsupported_reason_for_label(selection)
+        if reason:
+            raise ValueError(f"model is listed but not downloadable yet: {reason}")
         return []
 
     def describe_selection_download_size(self, selection: str, arch_type: str) -> str:
@@ -665,10 +689,22 @@ class DownloadManager:
     def manual_download_data(self) -> Dict[str, dict]:
         """Return ``{vr, mdx, demucs}`` link catalogues for the manual flow.
 
-        Prefers the live ``online_data`` (VIP-merged), falling back to the bundled
-        ``model_manual_download.json`` cache - exactly the source priority
-        ``menu_manual_downloads`` uses.
+        Reads the same merge as the Download Center and the runtime pickers.
+        This used to build its own catalogue from ``online_data`` plus Politrees
+        only — a third merge path that listed 197 models where the Download
+        Center listed 459, missing every extras and mvsepless entry and showing
+        duplicate VR rows that dedupe removes.
+
+        VIP entries are folded into the base first, because the shared merge
+        deliberately omits the ``*_vip_list`` keys: unlocking them stays gated
+        on a code here exactly as before.
+
+        Keys stay raw catalogue labels — ``manual_links`` resolves against them.
+        The dialog renders :func:`canonical_display_name` for the row title.
         """
+        from .catalog_sources import merged_catalogues
+        from .model_naming import canonical_display_name
+
         source = self.online_data if self.online_data else self._load_cache()
 
         vr = dict(source.get("vr_download_list", {}))
@@ -683,10 +719,21 @@ class DownloadManager:
             mdx.update(source.get("mdx23c_download_vip_list", {}))
             mdx.update(source.get("roformer_download_vip_list", {}))
 
-        politrees = load_politrees_links()
-        vr, mdx, demucs = merge_politrees_catalogues(vr, mdx, demucs, politrees)
+        merged = merged_catalogues(vr=vr, mdx=mdx, demucs=demucs)
 
-        return {"vr": vr, "mdx": mdx, "demucs": demucs}
+        def by_display(catalogue: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                label: catalogue[label]
+                for label in sorted(
+                    catalogue, key=lambda name: canonical_display_name(name).casefold()
+                )
+            }
+
+        return {
+            "vr": by_display(merged.vr),
+            "mdx": by_display(merged.mdx),
+            "demucs": by_display(merged.demucs),
+        }
 
     @staticmethod
     def _load_cache() -> Dict:

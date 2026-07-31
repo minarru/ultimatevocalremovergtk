@@ -1,5 +1,5 @@
 from .platform_info import OPERATING_SYSTEM
-from .stems import BASS_STEM, CHOOSE_STEM_PAIR, DRUM_STEM, INST_STEM, NO_BASS_STEM, NO_DRUM_STEM, NO_OTHER_STEM, NO_WIND_INST_STEM, OTHER_STEM, VOCAL_STEM
+from .stems import BASS_STEM, CHOOSE_STEM_PAIR, DRUM_STEM, INST_STEM, INST_WITH_BACKING_VOCALS_STEM, LEAD_VOCAL_STEM_LABEL, NO_BASS_STEM, NO_DRUM_STEM, NO_OTHER_STEM, NO_WIND_INST_STEM, OTHER_STEM, VOCAL_STEM
 
 #Model Types
 VR_ARCH_TYPE = 'VR Arc'
@@ -75,7 +75,14 @@ FOUR_STEM_ENSEMBLE = '4 Stem Ensemble'
 
 MULTI_STEM_ENSEMBLE = 'Multi-stem Ensemble'
 
-ENSEMBLE_MAIN_STEM = (CHOOSE_STEM_PAIR, VOCAL_PAIR, OTHER_PAIR, DRUM_PAIR, BASS_PAIR, FOUR_STEM_ENSEMBLE, MULTI_STEM_ENSEMBLE)
+#: Karaoke / BV models separate lead vocals from instrumental-plus-backing
+#: vocals, which is not the same quantity as a clean instrumental. They get
+#: their own pair so they ensemble with each other instead of contaminating
+#: Vocals/Instrumental. Display labels here; buckets come from
+#: ``ensemble_pair_buckets``.
+KARAOKE_PAIR = f'{LEAD_VOCAL_STEM_LABEL}/{INST_WITH_BACKING_VOCALS_STEM}'
+
+ENSEMBLE_MAIN_STEM = (CHOOSE_STEM_PAIR, VOCAL_PAIR, KARAOKE_PAIR, OTHER_PAIR, DRUM_PAIR, BASS_PAIR, FOUR_STEM_ENSEMBLE, MULTI_STEM_ENSEMBLE)
 
 MIN_SPEC = 'Min Spec'
 

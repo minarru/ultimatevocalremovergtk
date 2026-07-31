@@ -41,6 +41,7 @@ from bundled.constants import (
     VOCAL_STEM,
     VR_ARCH_TYPE,
 )
+from core.model_stem_semantics import ensemble_pair_buckets
 from core.settings import Settings
 
 from ..hints import HelpHintManager
@@ -761,7 +762,16 @@ class MethodView:
             for slot, pair, primary, secondary in _SECONDARY_SLOTS:
                 model_key = f"{prefix}_{slot}_secondary_model"
                 scale_key = f"{prefix}_{slot}_secondary_model_scale"
-                provider = (lambda p=primary, s=secondary: repo.model_list(settings, p, s))
+                # Pair request buckets — not stem_count=1 on the UI half names,
+                # which turns Other/No Other into an Instrumental request.
+                provider = (
+                    lambda pair=pair, p=primary, s=secondary: repo.model_list(
+                        settings,
+                        p,
+                        s,
+                        wanted_buckets=set(ensemble_pair_buckets(pair)),
+                    )
+                )
                 combo = self._add_model_combo(
                     self.secondary_expander, model_key, provider, pair, hint=SECONDARY_MODEL_HELP
                 )

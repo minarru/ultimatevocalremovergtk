@@ -60,6 +60,7 @@ class _Model:
         self.primary_stem = kwargs.get("primary_stem", "")
         self.mdx_c_configs = kwargs.get("mdx_c_configs")
         self.mdx_model_stems = kwargs.get("mdx_model_stems", [])
+        self.mdx_stem_count = kwargs.get("mdx_stem_count", 2)
         self.model_basename = kwargs.get("model_basename", "")
         self.model_name = kwargs.get("model_name", "")
 
@@ -158,23 +159,45 @@ class KaraokeBvExportLabelTests(unittest.TestCase):
             INST_WITH_BACKING_VOCALS_STEM,
         )
 
-    def test_export_stem_label_ensemble_passthrough(self):
+    def test_export_stem_label_ensemble_karaoke_gets_its_own_bucket(self):
+        """A karaoke model's vocals are lead vocals, not plain vocals.
+
+        This assertion previously expected VOCAL_STEM, which is what let a
+        karaoke model's output be combined with clean vocal/instrumental
+        members. Its instrumental is instrumental-plus-backing-vocals.
+        """
+        from core.model_stem_semantics import BUCKET_INST_WITH_BV, BUCKET_LEAD_VOCALS
+
         model = _Model(is_karaoke=True)
         self.assertEqual(
             export_stem_label(model, VOCAL_STEM, for_ensemble=True),
-            VOCAL_STEM,
+            BUCKET_LEAD_VOCALS,
         )
         self.assertEqual(
             export_stem_label(model, LEAD_VOCAL_STEM, for_ensemble=True),
-            LEAD_VOCAL_STEM,
+            BUCKET_LEAD_VOCALS,
+        )
+        self.assertEqual(
+            export_stem_label(model, INST_STEM, for_ensemble=True),
+            BUCKET_INST_WITH_BV,
         )
 
     def test_export_stem_label_ensemble_canonicalizes_yaml_casing(self):
-        model = _Model()
+        model = _Model(mdx_stem_count=4)
         self.assertEqual(export_stem_label(model, "vocals", for_ensemble=True), VOCAL_STEM)
         self.assertEqual(export_stem_label(model, "drums", for_ensemble=True), "Drums")
         self.assertEqual(export_stem_label(model, "bass", for_ensemble=True), "Bass")
+        # A 4-stem model's 'other' is the MUSDB residual, a real stem.
         self.assertEqual(export_stem_label(model, "other", for_ensemble=True), "Other")
+
+    def test_export_stem_label_two_stem_other_is_instrumental(self):
+        """A 2-stem model's 'other' is the instrumental complement.
+
+        mbr_inst2_unwa and friends declare their only stem as 'other'; combining
+        those under an 'Other' bucket kept them out of instrumental ensembles.
+        """
+        model = _Model(mdx_stem_count=2)
+        self.assertEqual(export_stem_label(model, "other", for_ensemble=True), INST_STEM)
 
     def test_export_stem_label_splitter_codes(self):
         model = _Model()

@@ -37,6 +37,9 @@ from .dialogs.utils import close_on_escape
 from .dispatch import idle_on_main
 from .help_text import VIP_DOWNLOAD_CODE_HINT
 from .hints import set_icon_button_a11y
+from core.model_naming import canonical_display_name
+from core.model_scores import primary_sdr, sdr_for_files
+
 from .markup import set_row_subtitle, set_row_title
 from .spacing import set_inset
 from .widgets.rows import get_combo_value, make_combo_row, set_combo_value
@@ -59,7 +62,11 @@ def catalogue_matches(
     *,
     purpose: str = PURPOSE_ALL,
 ) -> list[str]:
-    """Return selectable catalogue names matching query and purpose filter."""
+    """Return selectable catalogue names matching query and purpose filter.
+
+    Matching covers both the raw catalogue label and its canonical rendering,
+    so a user typing what the row *shows* finds it.
+    """
     selectable = [
         name for name in names if name not in (NO_NEW_MODELS, NO_CONNECTION)
     ]
@@ -67,7 +74,12 @@ def catalogue_matches(
     folded = query.strip().casefold()
     if not folded:
         return selectable
-    return [name for name in selectable if folded in name.casefold()]
+    return [
+        name
+        for name in selectable
+        if folded in name.casefold()
+        or folded in canonical_display_name(name).casefold()
+    ]
 
 
 def resolve_catalogue_action_row(row: Gtk.ListBoxRow) -> Adw.ActionRow | None:
@@ -101,6 +113,7 @@ class DownloadCenterWindow:
         self._on_models_changed = on_models_changed
 
         self._available: dict[str, list[str]] = {}
+        self._unsupported: dict[str, list[tuple[str, str]]] = {}
         self._catalogue_online: bool | None = None
         self._refreshing = False
         self._size_lookup_ids: dict[tuple[str, str], int] = {}
@@ -112,6 +125,7 @@ class DownloadCenterWindow:
         self._stack_pages: dict[str, Adw.ViewStackPage] = {}
         self._purpose = PURPOSE_ALL
         self._sort_mode = SORT_NAME
+        self._hide_unsupported = False
 
         saved_code = self.settings.process.user_code
         if saved_code:
@@ -209,6 +223,16 @@ class DownloadCenterWindow:
         set_combo_value(self.sort_row, SORT_OPTIONS[0][1])
         filter_group.add(self.sort_row)
 
+        self.hide_unsupported_row = Adw.SwitchRow(
+            title="Hide unsupported",
+            subtitle="Hide catalogue models this build cannot run yet",
+        )
+        self.hide_unsupported_row.set_active(False)
+        self.hide_unsupported_row.connect(
+            "notify::active", self._on_hide_unsupported_changed
+        )
+        filter_group.add(self.hide_unsupported_row)
+
         self.refresh_button = Gtk.Button(icon_name="view-refresh-symbolic")
         self.refresh_button.add_css_class("flat")
         self.refresh_button.connect("clicked", lambda *_: self.start_refresh())
@@ -301,6 +325,8 @@ class DownloadCenterWindow:
         label = getattr(action, "_uvr_model_name", "") if action is not None else ""
         if not label:
             return False
+        if self._hide_unsupported and getattr(action, "_uvr_unsupported", False):
+            return False
         if self._purpose != PURPOSE_ALL and purpose_for_label(label) != self._purpose:
             return False
         search = self._search_entries.get(arch)
@@ -310,6 +336,12 @@ class DownloadCenterWindow:
         if not query:
             return True
         return query in str(label).casefold()
+
+    def _on_hide_unsupported_changed(self, *_args: typing.Any) -> None:
+        self._hide_unsupported = bool(self.hide_unsupported_row.get_active())
+        self._invalidate_all_filters()
+        self._update_tab_counts()
+        self._update_status_from_catalogue()
 
     def _on_search_changed(self, entry: Gtk.SearchEntry, arch: str) -> None:
         list_box = self._list_boxes.get(arch)
@@ -343,28 +375,71 @@ class DownloadCenterWindow:
     def _on_catalogue_tab_changed(self, *_args: typing.Any) -> None:
         self._update_download_button()
 
+    def _row_score(self, name: str) -> tuple[str | None, float | None, str]:
+        """Return ``(stem, sdr, stems_text)`` for a catalogue label.
+
+        Falls back to the filename regex when the benchmark table has no entry,
+        which covers the handful of models whose SDR lives only in their name.
+        """
+        meta = self.manager.catalogue_meta.get(name)
+        stems_text = ", ".join(meta.stems) if meta is not None and meta.stems else ""
+        if meta is not None:
+            # stem_count disambiguates a 2-stem 'other' (meaning instrumental)
+            # from a 4-stem model's real 'other' residual.
+            scored = primary_sdr(
+                sdr_for_files(meta.files),
+                meta.target_instrument,
+                stem_count=len(meta.stems) or 2,
+            )
+            if scored is not None:
+                return (scored[0], scored[1], stems_text)
+        return (None, parse_sdr_score(name), stems_text)
+
     def _add_model_row(self, arch: str, name: str) -> None:
         if name in (NO_NEW_MODELS, NO_CONNECTION):
             return
         key = (arch, name)
-        if key in self._row_checks:
+        if key in self._row_checks or key in self._row_actions:
             return
 
         check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
         check.connect("toggled", lambda *_: self._on_row_check_toggled(key))
 
+        stem, sdr, stems_text = self._row_score(name)
+
         action = Adw.ActionRow()
-        set_row_title(action, name)
+        set_row_title(action, canonical_display_name(name))
         action.add_prefix(check)
         action.set_activatable_widget(check)
+        # Identity stays the raw catalogue label: resolve()/download() key on it.
         action._uvr_model_name = name  # type: ignore[attr-defined]
         action._uvr_check = check  # type: ignore[attr-defined]
-        action._uvr_sdr = parse_sdr_score(name)  # type: ignore[attr-defined]
-        sdr = getattr(action, "_uvr_sdr", None)
-        if sdr is not None:
-            set_row_subtitle(action, format_sdr_subtitle(sdr))
+        action._uvr_unsupported = False  # type: ignore[attr-defined]
+        action._uvr_sdr = sdr  # type: ignore[attr-defined]
+        action._uvr_sdr_stem = stem  # type: ignore[attr-defined]
+        action._uvr_stems_text = stems_text  # type: ignore[attr-defined]
+        set_row_subtitle(action, format_sdr_subtitle(sdr, stem=stem, extra=stems_text))
 
         self._row_checks[key] = check
+        self._row_actions[key] = action
+        self._list_boxes[arch].append(action)
+
+    def _add_unsupported_row(self, arch: str, name: str, reason: str) -> None:
+        key = (arch, name)
+        if key in self._row_actions:
+            return
+
+        action = Adw.ActionRow()
+        set_row_title(action, canonical_display_name(name))
+        set_row_subtitle(action, f"Unsupported — {reason}")
+        action.add_css_class("dim-label")
+        action.set_sensitive(False)
+        action._uvr_model_name = name  # type: ignore[attr-defined]
+        action._uvr_unsupported = True  # type: ignore[attr-defined]
+        action._uvr_sdr = parse_sdr_score(name)  # type: ignore[attr-defined]
+        action._uvr_sdr_stem = None  # type: ignore[attr-defined]
+        action._uvr_stems_text = ""  # type: ignore[attr-defined]
+
         self._row_actions[key] = action
         self._list_boxes[arch].append(action)
 
@@ -378,8 +453,15 @@ class DownloadCenterWindow:
             return
         action = self._row_actions.get(key)
         if action is not None:
-            sdr = getattr(action, "_uvr_sdr", None)
-            set_row_subtitle(action, format_sdr_subtitle(sdr))
+            set_row_subtitle(
+                action,
+                format_sdr_subtitle(
+                    getattr(action, "_uvr_sdr", None),
+                    "",
+                    stem=getattr(action, "_uvr_sdr_stem", None),
+                    extra=getattr(action, "_uvr_stems_text", ""),
+                ),
+            )
 
     def _lookup_row_size(self, key: tuple[str, str]) -> None:
         arch, name = key
@@ -403,8 +485,15 @@ class DownloadCenterWindow:
             return
         action = self._row_actions.get(key)
         if action is not None:
-            sdr = getattr(action, "_uvr_sdr", None)
-            set_row_subtitle(action, format_sdr_subtitle(sdr, text or ""))
+            set_row_subtitle(
+                action,
+                format_sdr_subtitle(
+                    getattr(action, "_uvr_sdr", None),
+                    text or "",
+                    stem=getattr(action, "_uvr_sdr_stem", None),
+                    extra=getattr(action, "_uvr_stems_text", ""),
+                ),
+            )
 
     def _selected_entries(self) -> list[tuple[str, str]]:
         selected: list[tuple[str, str]] = []
@@ -494,9 +583,15 @@ class DownloadCenterWindow:
         if is_online and self.settings.process.auto_update_model_params:
             self.manager.update_model_settings(self.context.repo)
         available = self.manager.available_downloads() if is_online else {}
-        idle_on_main(self._refresh_done, is_online, available)
+        unsupported = self.manager.unsupported_downloads() if is_online else {}
+        idle_on_main(self._refresh_done, is_online, available, unsupported)
 
-    def _refresh_done(self, is_online: bool, available: dict) -> None:
+    def _refresh_done(
+        self,
+        is_online: bool,
+        available: dict,
+        unsupported: dict | None = None,
+    ) -> None:
         self._refreshing = False
         self._catalogue_online = is_online
         self.refresh_button.set_sensitive(True)
@@ -504,6 +599,7 @@ class DownloadCenterWindow:
         self._refresh_spinner.set_visible(False)
         if not is_online:
             self._available = {}
+            self._unsupported = {}
             self.status_label.set_label(NO_CONNECTION)
             self._clear_catalogue()
             for _label, arch in _NETWORKS:
@@ -516,38 +612,70 @@ class DownloadCenterWindow:
             return
 
         self._available = available
+        self._unsupported = unsupported or {}
         self._rebuild_catalogue()
         counts = {arch: len(models) for arch, models in available.items()}
-        debug("download", f"ui refresh done available={counts}")
-        total = sum(
+        debug(
+            "download",
+            f"ui refresh done available={counts} "
+            f"unsupported={ {a: len(r) for a, r in self._unsupported.items()} }",
+        )
+        self._update_tab_counts()
+        self._update_status_from_catalogue()
+        self._update_download_button()
+
+    def _available_count(self) -> int:
+        return sum(
             1
-            for arch, models in available.items()
+            for models in self._available.values()
             for name in models
             if name not in (NO_NEW_MODELS, NO_CONNECTION)
         )
-        self._update_tab_counts()
+
+    def _unsupported_count(self, *, visible_only: bool = False) -> int:
+        if visible_only and self._hide_unsupported:
+            return 0
+        return sum(len(rows) for rows in self._unsupported.values())
+
+    def _update_status_from_catalogue(self) -> None:
+        total = self._available_count()
+        unsupported = self._unsupported_count(visible_only=True)
         selected = len(self._selected_entries())
         if selected:
             self.status_label.set_label(
                 f"{selected} selected · {total} available across all networks"
             )
-        else:
+            return
+        if total and unsupported:
+            self.status_label.set_label(
+                f"{total} downloadable · {unsupported} unsupported shown"
+            )
+        elif total:
             self.status_label.set_label(
                 f"{total} models available — check one or more, then Download"
-                if total
-                else "All available models are already installed"
             )
-        self._update_download_button()
+        elif unsupported:
+            self.status_label.set_label(
+                f"{unsupported} unsupported models listed (not downloadable)"
+            )
+        else:
+            self.status_label.set_label("All available models are already installed")
 
     def _update_tab_counts(self) -> None:
         for network_label, arch in _NETWORKS:
             models = self._available.get(arch) or []
             count = sum(1 for name in models if name not in (NO_NEW_MODELS, NO_CONNECTION))
+            unsupported = 0 if self._hide_unsupported else len(self._unsupported.get(arch) or [])
             search = self._search_entries.get(arch)
             if search is not None:
-                search.set_placeholder_text(
-                    f"Search {network_label} models — {count} available"
-                )
+                if unsupported:
+                    search.set_placeholder_text(
+                        f"Search {network_label} — {count} available, {unsupported} unsupported"
+                    )
+                else:
+                    search.set_placeholder_text(
+                        f"Search {network_label} models — {count} available"
+                    )
 
     def _clear_catalogue(self) -> None:
         self._row_checks.clear()
@@ -607,7 +735,8 @@ class DownloadCenterWindow:
         search = self._search_entries.get(arch)
         query = search.get_text().strip() if search is not None else ""
         matches = catalogue_matches(names, query, purpose=self._purpose)
-        if (query or self._purpose != PURPOSE_ALL) and not matches:
+        unsupported_matches = self._unsupported_matches(arch, query)
+        if (query or self._purpose != PURPOSE_ALL) and not matches and not unsupported_matches:
             if query:
                 self._set_catalogue_page_message(
                     arch,
@@ -620,7 +749,10 @@ class DownloadCenterWindow:
                     "No matching models",
                     description="No models match this purpose filter.",
                 )
-        elif not catalogue_matches(names, "", purpose=PURPOSE_ALL):
+        elif (
+            not catalogue_matches(names, "", purpose=PURPOSE_ALL)
+            and not (self._unsupported.get(arch) or [])
+        ):
             self._set_catalogue_page_message(
                 arch,
                 "All installed",
@@ -628,6 +760,25 @@ class DownloadCenterWindow:
             )
         else:
             self._set_catalogue_page_message(arch, "")
+
+    def _unsupported_matches(self, arch: str, query: str) -> list[tuple[str, str]]:
+        if self._hide_unsupported:
+            return []
+        rows = list(self._unsupported.get(arch) or [])
+        if self._purpose != PURPOSE_ALL:
+            rows = [
+                (label, reason)
+                for label, reason in rows
+                if purpose_for_label(label) == self._purpose
+            ]
+        folded = query.strip().casefold()
+        if not folded:
+            return rows
+        return [
+            (label, reason)
+            for label, reason in rows
+            if folded in label.casefold() or folded in reason.casefold()
+        ]
 
     def _rebuild_catalogue(self) -> None:
         previously_selected = {(arch, name) for name, arch in self._selected_entries()}
@@ -639,13 +790,28 @@ class DownloadCenterWindow:
                 if name not in (NO_NEW_MODELS, NO_CONNECTION)
             ]
             if self._sort_mode == SORT_SDR:
-                models = sort_labels_by_sdr(models)
+                def _sort_key(label: str) -> tuple[int, float, str]:
+                    _stem, sdr, _stems = self._row_score(label)
+                    if sdr is None:
+                        return (1, 0.0, canonical_display_name(label).casefold())
+                    return (0, -sdr, canonical_display_name(label).casefold())
+
+                models = sorted(models, key=_sort_key)
             else:
-                models = sorted(models, key=lambda value: value.casefold())
-            if not models:
-                models = [NO_NEW_MODELS]
+                models = sorted(
+                    models, key=lambda value: canonical_display_name(value).casefold()
+                )
             for name in models:
                 self._add_model_row(arch, name)
+            unsupported = sorted(
+                self._unsupported.get(arch) or [],
+                key=lambda pair: pair[0].casefold(),
+            )
+            for name, reason in unsupported:
+                self._add_unsupported_row(arch, name, reason)
+            if not models and not unsupported:
+                # Keep a placeholder-free empty page via status message.
+                pass
             list_box = self._list_boxes[arch]
             list_box.invalidate_filter()
             self._update_catalogue_page_state(arch)
@@ -676,8 +842,10 @@ class DownloadCenterWindow:
         """Rebuild catalogue after a download batch completes."""
         self._catalogue_online = True
         self._available = self.manager.available_downloads()
+        self._unsupported = self.manager.unsupported_downloads()
         self._rebuild_catalogue()
         self._update_tab_counts()
+        self._update_status_from_catalogue()
         self._update_download_button()
 
     def _open_vip(self) -> None:

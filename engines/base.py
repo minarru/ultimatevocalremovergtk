@@ -217,6 +217,11 @@ class SeperateAttributes:
             self.mdx_batch_size = model_data.mdx_batch_size
             self.compensate = model_data.compensate
             self.mdx_segment_size = model_data.mdx_segment_size
+            # Needed by export_stem_label: without a stem count, a 4-stem
+            # model's MUSDB ``other`` residual is read as the 2-stem
+            # instrumental complement and exported as ``Instrumental``.
+            self.mdx_stem_count = model_data.mdx_stem_count
+            self.mdx_model_stems = model_data.mdx_model_stems
             
             if self.is_mdx_c:
                 if not self.is_4_stem_ensemble:
@@ -509,6 +514,13 @@ class SeperateAttributes:
             )
             if capture_only or ensemble_buffer:
                 if stem_name:
+                    # Ensemble combine keys must match disk export tags
+                    # (export_stem_label), not raw yaml/Demucs stem ids.
+                    buffer_key = (
+                        export_stem_label(self, stem_name, for_ensemble=True)
+                        if ensemble_buffer
+                        else stem_name
+                    )
                     buffers = getattr(self, "_ensemble_stem_buffers", None)
                     if buffers is None:
                         buffers = {}
@@ -517,9 +529,9 @@ class SeperateAttributes:
                     # concat / ensemble). Classic ensemble members keep the
                     # historical pre-combine normalize.
                     if capture_only:
-                        buffers[stem_name] = np.asarray(source)
+                        buffers[buffer_key] = np.asarray(source)
                     else:
-                        buffers[stem_name] = np.asarray(
+                        buffers[buffer_key] = np.asarray(
                             spec_utils.normalize(
                                 source,
                                 self.is_normalization,
@@ -530,7 +542,7 @@ class SeperateAttributes:
                     if paths is None:
                         paths = {}
                         self._ensemble_stem_paths = paths
-                    paths[stem_name] = path
+                    paths[buffer_key] = path
                 return
 
             from core.stem_levels import export_format_can_clip, scale_to_peak_limit
