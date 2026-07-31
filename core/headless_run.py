@@ -343,6 +343,7 @@ def build_settings(
     use_gpu: Optional[bool] = None,
     stable_names: bool = True,
     repo: Optional[Any] = None,
+    allow_ensemble: bool = False,
     long_chunk_seconds: Optional[float] = None,
     long_chunk_overlap: Optional[float] = None,
 ) -> Settings:
@@ -358,7 +359,7 @@ def build_settings(
         settings.process.method = ProcessMethod(resolved_method)
 
     chosen = settings.process.method
-    if chosen == ENSEMBLE_MODE:
+    if chosen == ENSEMBLE_MODE and not allow_ensemble:
         raise ValueError(
             "ensemble mode is not supported by the headless CLI (v1); "
             "pass --method mdx|demucs|vr"
@@ -395,20 +396,17 @@ def build_settings(
     return settings
 
 
-def run_separation_sync(
+def _run_job(
     settings: Settings,
     input_paths: Sequence[str],
     *,
-    print_console: bool = True,
-    join_timeout: Optional[float] = None,
+    start_attr: str,
+    print_console: bool,
+    join_timeout: Optional[float],
 ) -> HeadlessResult:
-    """Start :class:`JobRunner` and block until complete / error / stop."""
+    """Start ``JobRunner.<start_attr>`` and block until complete / error / stop."""
     if not input_paths:
         raise ValueError("at least one input path is required")
-
-    chosen = settings.process.method
-    if chosen == ENSEMBLE_MODE:
-        raise ValueError("ensemble mode is not supported by the headless CLI (v1)")
 
     export_path = str(settings.process.export_path or "")
     if not export_path:
@@ -446,7 +444,7 @@ def run_separation_sync(
     runner = JobRunner(settings)
     started = time.perf_counter()
     try:
-        runner.start(list(input_paths), callbacks)
+        getattr(runner, start_attr)(list(input_paths), callbacks)
         while not done.wait(timeout=0.25):
             if not runner.is_running() and not done.is_set():
                 # Worker exited without signaling (unexpected).
@@ -480,6 +478,42 @@ def run_separation_sync(
         error=err,
         stopped=bool(outcome["stopped"]),
         console=console_lines,
+    )
+
+
+def run_separation_sync(
+    settings: Settings,
+    input_paths: Sequence[str],
+    *,
+    print_console: bool = True,
+    join_timeout: Optional[float] = None,
+) -> HeadlessResult:
+    """Start :class:`JobRunner` and block until complete / error / stop."""
+    if settings.process.method == ENSEMBLE_MODE:
+        raise ValueError("ensemble mode requires run_ensemble_sync")
+    return _run_job(
+        settings,
+        input_paths,
+        start_attr="start",
+        print_console=print_console,
+        join_timeout=join_timeout,
+    )
+
+
+def run_ensemble_sync(
+    settings: Settings,
+    input_paths: Sequence[str],
+    *,
+    print_console: bool = True,
+    join_timeout: Optional[float] = None,
+) -> HeadlessResult:
+    """Run an ensemble through :meth:`JobRunner.start_ensemble` and block."""
+    return _run_job(
+        settings,
+        input_paths,
+        start_attr="start_ensemble",
+        print_console=print_console,
+        join_timeout=join_timeout,
     )
 
 
