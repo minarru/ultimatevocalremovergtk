@@ -7,7 +7,7 @@ Derives display-label overrides and export intent from resolved model metadata
 from __future__ import annotations
 import typing
 
-from typing import Dict, List, Mapping, Optional, Sequence, Set
+from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from bundled.constants import (
     ALL_STEMS,
@@ -838,6 +838,38 @@ def ensemble_stem_bucket(
     if simple is not None:
         return simple
     return BUCKET_UNKNOWN
+
+
+def ensemble_pair_buckets(main_stem: str) -> Tuple[str, str]:
+    """Return the ``(primary, secondary)`` buckets for an ensemble pair string.
+
+    An explicit table, **not** a call to :func:`ensemble_stem_bucket`. A pair is
+    a user's *request*, not a description of a model's output, and the two
+    disagree: ``Other/No Other`` asks for the MUSDB residual, but
+    ``ensemble_stem_bucket("Other", stem_count=1)`` reads a 1-stem ``other`` as
+    the instrumental complement. Resolving pairs through the model resolver
+    would silently turn the Other pair into an Instrumental request.
+
+    A table also keeps the parenthesized ``Instrumental (With Backing Vocals)``
+    display label out of the stem alias table.
+
+    Complement pairs (``No Other``, ``No Drums``, ``No Bass``) have one
+    meaningful bucket: the complement is derived by inversion, never trained,
+    so the secondary is :data:`BUCKET_UNKNOWN` and callers discard it.
+
+    Non-pair values (Choose Stem Pair, 4 Stem, Multi-stem) return
+    ``(BUCKET_UNKNOWN, BUCKET_UNKNOWN)``; those modes do not filter by a pair.
+    """
+    from bundled.constants import BASS_PAIR, DRUM_PAIR, KARAOKE_PAIR, OTHER_PAIR, VOCAL_PAIR
+
+    table = {
+        VOCAL_PAIR: (BUCKET_VOCALS, BUCKET_INSTRUMENTAL),
+        KARAOKE_PAIR: (BUCKET_LEAD_VOCALS, BUCKET_INST_WITH_BV),
+        OTHER_PAIR: (BUCKET_OTHER, BUCKET_UNKNOWN),
+        DRUM_PAIR: (BUCKET_DRUMS, BUCKET_UNKNOWN),
+        BASS_PAIR: (BUCKET_BASS, BUCKET_UNKNOWN),
+    }
+    return table.get(str(main_stem or "").strip(), (BUCKET_UNKNOWN, BUCKET_UNKNOWN))
 
 
 def backend_focus_label(
