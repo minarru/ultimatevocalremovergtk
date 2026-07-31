@@ -37,6 +37,9 @@ from .dialogs.utils import close_on_escape
 from .dispatch import idle_on_main
 from .help_text import VIP_DOWNLOAD_CODE_HINT
 from .hints import set_icon_button_a11y
+from core.model_naming import canonical_display_name
+from core.model_scores import primary_sdr, sdr_for_files
+
 from .markup import set_row_subtitle, set_row_title
 from .spacing import set_inset
 from .widgets.rows import get_combo_value, make_combo_row, set_combo_value
@@ -59,7 +62,11 @@ def catalogue_matches(
     *,
     purpose: str = PURPOSE_ALL,
 ) -> list[str]:
-    """Return selectable catalogue names matching query and purpose filter."""
+    """Return selectable catalogue names matching query and purpose filter.
+
+    Matching covers both the raw catalogue label and its canonical rendering,
+    so a user typing what the row *shows* finds it.
+    """
     selectable = [
         name for name in names if name not in (NO_NEW_MODELS, NO_CONNECTION)
     ]
@@ -67,7 +74,12 @@ def catalogue_matches(
     folded = query.strip().casefold()
     if not folded:
         return selectable
-    return [name for name in selectable if folded in name.casefold()]
+    return [
+        name
+        for name in selectable
+        if folded in name.casefold()
+        or folded in canonical_display_name(name).casefold()
+    ]
 
 
 def resolve_catalogue_action_row(row: Gtk.ListBoxRow) -> Adw.ActionRow | None:
@@ -363,6 +375,26 @@ class DownloadCenterWindow:
     def _on_catalogue_tab_changed(self, *_args: typing.Any) -> None:
         self._update_download_button()
 
+    def _row_score(self, name: str) -> tuple[str | None, float | None, str]:
+        """Return ``(stem, sdr, stems_text)`` for a catalogue label.
+
+        Falls back to the filename regex when the benchmark table has no entry,
+        which covers the handful of models whose SDR lives only in their name.
+        """
+        meta = self.manager.catalogue_meta.get(name)
+        stems_text = ", ".join(meta.stems) if meta is not None and meta.stems else ""
+        if meta is not None:
+            # stem_count disambiguates a 2-stem 'other' (meaning instrumental)
+            # from a 4-stem model's real 'other' residual.
+            scored = primary_sdr(
+                sdr_for_files(meta.files),
+                meta.target_instrument,
+                stem_count=len(meta.stems) or 2,
+            )
+            if scored is not None:
+                return (scored[0], scored[1], stems_text)
+        return (None, parse_sdr_score(name), stems_text)
+
     def _add_model_row(self, arch: str, name: str) -> None:
         if name in (NO_NEW_MODELS, NO_CONNECTION):
             return
@@ -373,17 +405,20 @@ class DownloadCenterWindow:
         check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
         check.connect("toggled", lambda *_: self._on_row_check_toggled(key))
 
+        stem, sdr, stems_text = self._row_score(name)
+
         action = Adw.ActionRow()
-        set_row_title(action, name)
+        set_row_title(action, canonical_display_name(name))
         action.add_prefix(check)
         action.set_activatable_widget(check)
+        # Identity stays the raw catalogue label: resolve()/download() key on it.
         action._uvr_model_name = name  # type: ignore[attr-defined]
         action._uvr_check = check  # type: ignore[attr-defined]
         action._uvr_unsupported = False  # type: ignore[attr-defined]
-        action._uvr_sdr = parse_sdr_score(name)  # type: ignore[attr-defined]
-        sdr = getattr(action, "_uvr_sdr", None)
-        if sdr is not None:
-            set_row_subtitle(action, format_sdr_subtitle(sdr))
+        action._uvr_sdr = sdr  # type: ignore[attr-defined]
+        action._uvr_sdr_stem = stem  # type: ignore[attr-defined]
+        action._uvr_stems_text = stems_text  # type: ignore[attr-defined]
+        set_row_subtitle(action, format_sdr_subtitle(sdr, stem=stem, extra=stems_text))
 
         self._row_checks[key] = check
         self._row_actions[key] = action
@@ -395,13 +430,15 @@ class DownloadCenterWindow:
             return
 
         action = Adw.ActionRow()
-        set_row_title(action, name)
+        set_row_title(action, canonical_display_name(name))
         set_row_subtitle(action, f"Unsupported — {reason}")
         action.add_css_class("dim-label")
         action.set_sensitive(False)
         action._uvr_model_name = name  # type: ignore[attr-defined]
         action._uvr_unsupported = True  # type: ignore[attr-defined]
         action._uvr_sdr = parse_sdr_score(name)  # type: ignore[attr-defined]
+        action._uvr_sdr_stem = None  # type: ignore[attr-defined]
+        action._uvr_stems_text = ""  # type: ignore[attr-defined]
 
         self._row_actions[key] = action
         self._list_boxes[arch].append(action)
@@ -416,8 +453,15 @@ class DownloadCenterWindow:
             return
         action = self._row_actions.get(key)
         if action is not None:
-            sdr = getattr(action, "_uvr_sdr", None)
-            set_row_subtitle(action, format_sdr_subtitle(sdr))
+            set_row_subtitle(
+                action,
+                format_sdr_subtitle(
+                    getattr(action, "_uvr_sdr", None),
+                    "",
+                    stem=getattr(action, "_uvr_sdr_stem", None),
+                    extra=getattr(action, "_uvr_stems_text", ""),
+                ),
+            )
 
     def _lookup_row_size(self, key: tuple[str, str]) -> None:
         arch, name = key
@@ -441,8 +485,15 @@ class DownloadCenterWindow:
             return
         action = self._row_actions.get(key)
         if action is not None:
-            sdr = getattr(action, "_uvr_sdr", None)
-            set_row_subtitle(action, format_sdr_subtitle(sdr, text or ""))
+            set_row_subtitle(
+                action,
+                format_sdr_subtitle(
+                    getattr(action, "_uvr_sdr", None),
+                    text or "",
+                    stem=getattr(action, "_uvr_sdr_stem", None),
+                    extra=getattr(action, "_uvr_stems_text", ""),
+                ),
+            )
 
     def _selected_entries(self) -> list[tuple[str, str]]:
         selected: list[tuple[str, str]] = []
@@ -739,9 +790,17 @@ class DownloadCenterWindow:
                 if name not in (NO_NEW_MODELS, NO_CONNECTION)
             ]
             if self._sort_mode == SORT_SDR:
-                models = sort_labels_by_sdr(models)
+                def _sort_key(label: str) -> tuple[int, float, str]:
+                    _stem, sdr, _stems = self._row_score(label)
+                    if sdr is None:
+                        return (1, 0.0, canonical_display_name(label).casefold())
+                    return (0, -sdr, canonical_display_name(label).casefold())
+
+                models = sorted(models, key=_sort_key)
             else:
-                models = sorted(models, key=lambda value: value.casefold())
+                models = sorted(
+                    models, key=lambda value: canonical_display_name(value).casefold()
+                )
             for name in models:
                 self._add_model_row(arch, name)
             unsupported = sorted(

@@ -44,5 +44,44 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
         self.assertFalse(isinstance(child, Adw.ActionRow))
 
 
+class CanonicalSearchTests(unittest.TestCase):
+    def test_query_matches_canonical_name(self) -> None:
+        from ui.download_center import catalogue_matches
+
+        names = ["Roformer Model: Mel-Band Roformer | Inst v2 by Unwa"]
+        # "MelBand" appears only in the canonical rendering, not the raw label.
+        self.assertEqual(catalogue_matches(names, "MelBand"), names)
+
+    def test_query_still_matches_raw_label(self) -> None:
+        from ui.download_center import catalogue_matches
+
+        names = ["Roformer Model: Mel-Band Roformer | Inst v2 by Unwa"]
+        self.assertEqual(catalogue_matches(names, "Mel-Band"), names)
+
+    def test_non_matching_query_filtered_out(self) -> None:
+        from ui.download_center import catalogue_matches
+
+        names = ["Roformer Model: Mel-Band Roformer | Inst v2 by Unwa"]
+        self.assertEqual(catalogue_matches(names, "demucs"), [])
+
+
+class RowSubtitleTests(unittest.TestCase):
+    def test_scored_model_names_its_stem(self) -> None:
+        from core.model_scores import format_sdr_subtitle
+
+        self.assertEqual(
+            format_sdr_subtitle(10.94, "1.2 GB", stem="vocals"),
+            "vocals 10.9 SDR · 1.2 GB",
+        )
+
+    def test_unscored_model_falls_back_to_stems(self) -> None:
+        from core.model_scores import format_sdr_subtitle
+
+        self.assertEqual(
+            format_sdr_subtitle(None, "890 MB", extra="vocals, other"),
+            "vocals, other · 890 MB",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
