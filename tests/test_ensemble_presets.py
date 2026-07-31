@@ -166,9 +166,9 @@ class IneligibleMemberTests(unittest.TestCase):
         # A real repository with nothing installed: resolve_member_tag reads
         # mapper attributes a hand-rolled fake would not have.
         repo = ModelRepository()
-        with unittest.mock.patch.object(ModelRepository, "list_mdx_models", return_value=[]), \
-             unittest.mock.patch.object(ModelRepository, "list_vr_models", return_value=[]), \
-             unittest.mock.patch.object(ModelRepository, "list_demucs_models", return_value=[]):
+        with mock.patch.object(ModelRepository, "list_mdx_models", return_value=[]), \
+             mock.patch.object(ModelRepository, "list_vr_models", return_value=[]), \
+             mock.patch.object(ModelRepository, "list_demucs_models", return_value=[]):
             installed, missing = classify_preset_members(["MDX-Net: Gone"], repo)
         self.assertEqual(installed, [])
         self.assertEqual(missing, ["MDX-Net: Gone"])
