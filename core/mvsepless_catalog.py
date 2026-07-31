@@ -22,6 +22,7 @@ from bundled.constants import (
 )
 
 from . import paths
+from .catalog_dedupe import normalize_catalogue_label
 from .debug_log import debug
 from .mdx_config_fetch import _urlopen
 from .politrees_catalog import merge_supplemental_list
@@ -353,13 +354,19 @@ def unsupported_mvsepless_downloads(
     """Return ``{arch: [(label, reason), ...]}`` for unsupported entries.
 
     Labels already present in ``existing_labels`` (any arch catalogue) are
-    omitted so upstream-supported duplicates are not shown as broken.
+    omitted so upstream-supported duplicates are not shown as broken. Matching
+    is exact or via :func:`normalize_catalogue_label`.
     """
     data = load_converted_mvsepless() if converted is None else converted
     if not data:
         return {}
 
     taken = set(existing_labels or {})
+    taken_norm = {
+        normalize_catalogue_label(label)
+        for label in taken
+        if normalize_catalogue_label(label)
+    }
     result: Dict[str, List[Tuple[str, str]]] = {}
     raw = data.get("unsupported") or {}
     if not isinstance(raw, dict):
@@ -373,6 +380,9 @@ def unsupported_mvsepless_downloads(
                 continue
             label, reason = str(item[0]), str(item[1])
             if label in taken:
+                continue
+            norm = normalize_catalogue_label(label)
+            if norm and norm in taken_norm:
                 continue
             filtered.append((label, reason))
         if filtered:

@@ -54,6 +54,7 @@ from .download_sizes import (
     format_download_size,
     prefetch_remote_sizes,
 )
+from .catalog_dedupe import dedupe_download_catalogue
 from .extra_catalog import apollo_download_list, merge_extra_catalogues
 from .mdx_config_fetch import ensure_mdx_c_config
 from .mvsepless_catalog import (
@@ -347,16 +348,23 @@ class DownloadManager:
                 self.demucs_download_list,
             )
         )
+        # Drop later duplicates (same checkpoint basename and/or normalized
+        # label) so Politrees/mvsepless renames do not double-list one weight.
+        self.vr_download_list = dedupe_download_catalogue(self.vr_download_list)
+        self.mdx_download_list = dedupe_download_catalogue(self.mdx_download_list)
+        self.demucs_download_list = dedupe_download_catalogue(
+            self.demucs_download_list, demucs_bags=True
+        )
+        self.apollo_download_list = dedupe_download_catalogue(apollo_download_list())
         existing_labels = {
             **self.vr_download_list,
             **self.mdx_download_list,
             **self.demucs_download_list,
-            **apollo_download_list(),
+            **self.apollo_download_list,
         }
         self.unsupported_download_list = unsupported_mvsepless_downloads(
             existing_labels=existing_labels
         )
-        self.apollo_download_list = apollo_download_list()
 
     # -- Download lists ---------------------------------------------------------
 
