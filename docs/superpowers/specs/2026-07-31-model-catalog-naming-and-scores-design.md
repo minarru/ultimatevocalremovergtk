@@ -126,12 +126,21 @@ class of bug is then closed structurally: a fifth source cannot reintroduce it.
 
 One pure function, `canonical_display_name(label)`:
 
-1. Strip category prefixes (absorbs `sanitize_catalogue_label`,
-   `sanitize_vr_catalogue_label`, `sanitize_demucs_catalogue_label` from
-   `model_display.py`).
+1. Strip category prefixes, via a new `strip_catalogue_prefix`.
 2. Canonicalize the architecture family: `Mel-Band` / `MelBand` / `mel_band` →
    `MelBand Roformer`; `BS-Roformer` / `BandSplit` → `BandSplit Roformer`.
 3. Normalize the author separator to `·`.
+
+The existing `sanitize_catalogue_label`, `sanitize_vr_catalogue_label` and
+`sanitize_demucs_catalogue_label` **stay in `model_display.py`**. They look
+redundant but are not: `core/ensemble_presets.py:155-163` uses
+`sanitize_catalogue_label` for casefolded *matching* when resolving a preset
+member to a model, and `core/mdx_c_registry.py` re-exports it to
+`scripts/generate_models_catalogue.py`. `canonical_display_name` reformats —
+substituting it there would silently break preset resolution. Stripping for
+matching and rendering for display are different jobs. `strip_catalogue_prefix`
+is a superset (it also strips `VR Arch ` and `Apollo Model: `); unifying the two
+means changing preset matching and is out of scope.
 
 Descriptive middles pass through verbatim — no model is renamed into something
 wrong. Both views call it, so the two-names-for-one-model split closes.
