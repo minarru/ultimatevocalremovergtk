@@ -8,6 +8,12 @@
 
 **Tech Stack:** Python 3, stdlib `unittest`, GTK4/libadwaita (UI layer only), `urllib` for catalogue fetches.
 
+## Cross-plan dependency
+
+Task 1 of [2026-07-31-ensemble-stem-semantics.md](2026-07-31-ensemble-stem-semantics.md) — the pure `ensemble_stem_bucket` resolver — **must land before Task 2 and Task 6 here.** Both plans answer "what stem does this model produce", and without the shared resolver this plan ships a second, subtly different answer: a 2-stem model whose yaml target is `other` (`mbr_inst2_unwa`, `melband_roformer_inst_v1e_plus`) would show no SDR badge despite the benchmark having an `instrumental` score for it.
+
+The two affected steps are marked **CROSS-PLAN** inline below.
+
 ## Global Constraints
 
 - **Catalogue labels remain the identity key.** `available_downloads`, `resolve`, `download` and the Download Center row keys all key on the raw catalogue label. Canonical names are presentation only — never write a canonical name back into `_uvr_model_name`, a row key, or anything `resolve()` sees.
@@ -291,7 +297,7 @@ git commit -m "feat(core): add canonical model display naming"
 - Produces:
   - `load_model_scores(*, force: bool = False) -> Dict[str, Dict[str, float]]` — `{checkpoint_filename: {stem: mean_sdr}}`
   - `sdr_for_files(filenames: Iterable[str], scores: Optional[Mapping] = None) -> Dict[str, float]`
-  - `primary_sdr(stem_scores: Mapping[str, float], target_stem: Optional[str] = None) -> Optional[Tuple[str, float]]`
+  - `primary_sdr(stem_scores: Mapping[str, float], target_stem: Optional[str] = None, *, stem_count: int = 2) -> Optional[Tuple[str, float]]` — **CROSS-PLAN:** the `stem_count` parameter and the bucket-based comparison come from the ensemble-semantics plan's Task 7. Implement `primary_sdr` in that form here rather than the simpler casefold version, or the two plans disagree.
   - `format_sdr_subtitle(sdr, size_text="", *, stem=None, extra="") -> str`
   - `model_scores_enabled() -> bool`
 
@@ -642,22 +648,37 @@ def sdr_for_files(
 def primary_sdr(
     stem_scores: Mapping[str, float],
     target_stem: Optional[str] = None,
+    *,
+    stem_count: int = 2,
 ) -> Optional[Tuple[str, float]]:
     """Return ``(stem, sdr)`` for the model's headline score.
 
-    The target stem wins so a purpose-filtered list compares like with like;
-    without one (or when the target is unscored) the highest score is used.
+    CROSS-PLAN: both the model's target stem and the score-data keys go through
+    :func:`ensemble_stem_bucket` before comparison. The score data keys stems
+    lowercase (``vocals``, ``instrumental``, ``other``) while a model's target
+    is whatever its yaml said, so a raw casefold comparison still misses: a
+    2-stem model targeting ``other`` means *instrumental* and would find no
+    score at all. ``stem_count`` is what disambiguates that from a 4-stem
+    model's genuine ``other`` residual.
+
+    The returned stem is the **score-data key**, not the bucket, so callers
+    render the name the benchmark actually used.
     """
+    from .model_stem_semantics import BUCKET_UNKNOWN, ensemble_stem_bucket
+
     if not stem_scores:
         return None
     if target_stem:
-        key = str(target_stem).casefold()
-        for stem, value in stem_scores.items():
-            if stem.casefold() == key:
-                return (stem, value)
+        wanted = ensemble_stem_bucket(target_stem, stem_count=stem_count)
+        if wanted != BUCKET_UNKNOWN:
+            for stem, value in stem_scores.items():
+                if ensemble_stem_bucket(stem, stem_count=stem_count) == wanted:
+                    return (stem, value)
     stem, value = max(stem_scores.items(), key=lambda item: item[1])
     return (stem, value)
 ```
+
+**CROSS-PLAN:** this requires `ensemble_stem_bucket` from the ensemble-semantics plan's Task 1. If that has not landed, stop and do it first — the simpler casefold version will need rewriting and its tests will encode the wrong behaviour.
 
 Then replace the existing `format_sdr_subtitle` (currently at line 120) with:
 
@@ -1535,7 +1556,13 @@ Replace `_add_model_row` (lines 366-390):
         meta = catalogue_meta_for_label(name)
         stems_text = ", ".join(meta.stems) if meta and meta.stems else ""
         if meta is not None:
-            scored = primary_sdr(sdr_for_files(meta.files), meta.target_instrument)
+            # CROSS-PLAN: stem_count disambiguates a 2-stem 'other' (meaning
+            # instrumental) from a 4-stem model's real 'other' residual.
+            scored = primary_sdr(
+                sdr_for_files(meta.files),
+                meta.target_instrument,
+                stem_count=len(meta.stems) or 2,
+            )
             if scored is not None:
                 return (scored[0], scored[1], stems_text)
         return (None, parse_sdr_score(name), stems_text)
