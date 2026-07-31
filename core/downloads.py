@@ -54,11 +54,8 @@ from .download_sizes import (
     format_download_size,
     prefetch_remote_sizes,
 )
-from .catalog_dedupe import dedupe_download_catalogue
-from .extra_catalog import apollo_download_list, merge_extra_catalogues
 from .mdx_config_fetch import ensure_mdx_c_config
 from .mvsepless_catalog import (
-    merge_mvsepless_catalogues,
     unsupported_mvsepless_downloads,
     unsupported_reason_for_label,
 )
@@ -160,6 +157,9 @@ class DownloadManager:
         self.apollo_download_list: Dict[str, Any] = {}
         # mvsepless entries we index but cannot run yet: {arch: [(label, reason), ...]}.
         self.unsupported_download_list: Dict[str, List[Tuple[str, str]]] = {}
+        # {label: EntryMeta} from the last merge. Annotated loosely so
+        # ``catalog_sources`` stays out of this module's import time.
+        self.catalogue_meta: Dict[str, Any] = {}
         self._size_warmup_lock = threading.Lock()
 
     # -- Catalogue + size cache -------------------------------------------------
@@ -319,43 +319,25 @@ class DownloadManager:
         return unlocked
 
     def _merge_politrees_supplement(self) -> None:
-        politrees = load_politrees_links()
-        if politrees:
-            self.vr_download_list, self.mdx_download_list, self.demucs_download_list = (
-                merge_politrees_catalogues(
-                    self.vr_download_list,
-                    self.mdx_download_list,
-                    self.demucs_download_list,
-                    politrees,
-                )
-            )
-        # Fork-curated entries merge after Politrees so they fill gaps without
-        # ever shadowing an upstream label, and survive ``refresh`` replacing
-        # ``online_data`` wholesale.
-        self.vr_download_list, self.mdx_download_list, self.demucs_download_list = (
-            merge_extra_catalogues(
-                self.vr_download_list,
-                self.mdx_download_list,
-                self.demucs_download_list,
-            )
+        """Merge every supplemental catalogue source over the upstream lists.
+
+        The merge itself lives in :mod:`core.catalog_sources` so the runtime
+        display index reads exactly the same result. Keeping a second copy here
+        is what let the two drift, leaving mvsepless/extras models rendering as
+        raw basenames in the method pickers.
+        """
+        from .catalog_sources import merged_catalogues
+
+        merged = merged_catalogues(
+            vr=self.vr_download_list,
+            mdx=self.mdx_download_list,
+            demucs=self.demucs_download_list,
         )
-        # mvsepless_resources last: fills remaining gaps; unsupported rows are
-        # tracked separately for the Download Center UI.
-        self.vr_download_list, self.mdx_download_list, self.demucs_download_list = (
-            merge_mvsepless_catalogues(
-                self.vr_download_list,
-                self.mdx_download_list,
-                self.demucs_download_list,
-            )
-        )
-        # Drop later duplicates (same checkpoint basename and/or normalized
-        # label) so Politrees/mvsepless renames do not double-list one weight.
-        self.vr_download_list = dedupe_download_catalogue(self.vr_download_list)
-        self.mdx_download_list = dedupe_download_catalogue(self.mdx_download_list)
-        self.demucs_download_list = dedupe_download_catalogue(
-            self.demucs_download_list, demucs_bags=True
-        )
-        self.apollo_download_list = dedupe_download_catalogue(apollo_download_list())
+        self.vr_download_list = merged.vr
+        self.mdx_download_list = merged.mdx
+        self.demucs_download_list = merged.demucs
+        self.apollo_download_list = merged.apollo
+        self.catalogue_meta = merged.meta
         existing_labels = {
             **self.vr_download_list,
             **self.mdx_download_list,

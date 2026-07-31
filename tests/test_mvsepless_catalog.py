@@ -240,10 +240,10 @@ class DownloadManagerMergeTests(unittest.TestCase):
     def tearDown(self) -> None:
         clear_mvsepless_cache()
 
-    @mock.patch("core.downloads.merge_mvsepless_catalogues")
+    @mock.patch("core.catalog_sources.merge_mvsepless_catalogues")
     @mock.patch("core.downloads.unsupported_mvsepless_downloads")
-    @mock.patch("core.downloads.merge_extra_catalogues")
-    @mock.patch("core.downloads.load_politrees_links", return_value=None)
+    @mock.patch("core.catalog_sources.merge_extra_catalogues")
+    @mock.patch("core.catalog_sources.load_politrees_links", return_value=None)
     def test_merge_calls_mvsepless(
         self,
         _politrees: typing.Any,

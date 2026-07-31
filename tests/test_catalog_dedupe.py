@@ -120,9 +120,9 @@ class UnsupportedNormFilterTests(unittest.TestCase):
 
 class DownloadManagerDedupeTests(unittest.TestCase):
     @mock.patch("core.downloads.unsupported_mvsepless_downloads", return_value={})
-    @mock.patch("core.downloads.merge_mvsepless_catalogues")
-    @mock.patch("core.downloads.merge_extra_catalogues")
-    @mock.patch("core.downloads.load_politrees_links", return_value=None)
+    @mock.patch("core.catalog_sources.merge_mvsepless_catalogues")
+    @mock.patch("core.catalog_sources.merge_extra_catalogues")
+    @mock.patch("core.catalog_sources.load_politrees_links", return_value=None)
     def test_merge_dedupes_checkpoint_collisions(
         self,
         _politrees: typing.Any,
