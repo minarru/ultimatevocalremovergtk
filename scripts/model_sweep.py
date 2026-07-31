@@ -346,3 +346,194 @@ def child_env(data_dir: str) -> Dict[str, str]:
     env["UVR_SKIP_SEPARATE_WARMUP"] = "1"
     env["UVR_DISABLE_POLITREES"] = "1"
     return env
+
+
+AUDIO_SUFFIXES = (".wav", ".flac", ".mp3", ".aiff", ".ogg", ".opus")
+
+
+def apply_overrides(settings: Any, overrides: Dict[str, Any]) -> None:
+    """Apply job overrides. Dotted keys are nested paths; bare keys are flat keys.
+
+    ``set_flat`` silently no-ops on an unmapped key, which would make a job
+    quietly test the wrong configuration — so unmapped keys raise here instead.
+    """
+    from core.settings.access import set_flat, set_path
+    from core.settings.flat_map import FLAT_TO_PATH
+
+    for key, value in overrides.items():
+        if "." in key:
+            set_path(settings, key, value)
+            continue
+        if key not in FLAT_TO_PATH:
+            raise KeyError(f"flat key {key!r} is not in FLAT_TO_PATH; add the mapping first")
+        set_flat(settings, key, value)
+
+
+def collect_outputs(export_dir: str) -> List[List[Any]]:
+    """Non-empty audio files written into ``export_dir``."""
+    found: List[List[Any]] = []
+    for root, _dirs, files in os.walk(export_dir):
+        for name in sorted(files):
+            if not name.lower().endswith(AUDIO_SUFFIXES):
+                continue
+            path = os.path.join(root, name)
+            size = os.path.getsize(path)
+            if size > 0:
+                found.append([path, size])
+    return found
+
+
+def _model_is_recognized(settings: Any, method: Optional[str], model: Optional[str]) -> bool:
+    """Whether the weight resolves to known metadata (MD5 → model_data)."""
+    if not model or method is None:
+        return True
+    from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
+    from core import ModelConfig, ModelRepository
+
+    arch = {"mdx": MDX_ARCH_TYPE, "vr": VR_ARCH_TYPE, "demucs": DEMUCS_ARCH_TYPE}[method]
+    repo = ModelRepository()
+    config = ModelConfig(settings, repo, model, arch, is_dry_check=True)
+    return bool(config.model_status)
+
+
+def run_child(spec_path: str) -> int:
+    """Execute exactly one job and write ``result.json`` next to the spec."""
+    import json
+    import time
+    import traceback
+
+    with open(spec_path) as handle:
+        spec = json.load(handle)
+
+    job_dir = os.path.dirname(os.path.abspath(spec_path))
+    export_dir = spec["export_dir"]
+    os.makedirs(export_dir, exist_ok=True)
+
+    result: Dict[str, Any] = {
+        "ok": False,
+        "error_type": None,
+        "message": "",
+        "elapsed_s": 0.0,
+        "outputs": [],
+        "stopped": False,
+        "unrecognized": False,
+    }
+    started = time.perf_counter()
+    try:
+        from bundled.constants import ENSEMBLE_MODE
+        from core.headless_run import build_settings, run_ensemble_sync, run_separation_sync
+        from core.types import ProcessMethod
+
+        kind = spec["kind"]
+        settings = build_settings(
+            settings_path=spec["settings_path"],
+            export_path=export_dir,
+            method=spec.get("method"),
+            model=spec.get("model"),
+            use_gpu=False if spec.get("cpu") else None,
+            stable_names=True,
+            allow_ensemble=(kind == KIND_ENSEMBLE),
+        )
+        if kind == KIND_ENSEMBLE:
+            settings.process.method = ProcessMethod(ENSEMBLE_MODE)
+        apply_overrides(settings, spec.get("overrides") or {})
+
+        if kind == KIND_SINGLE and not _model_is_recognized(
+            settings, spec.get("method"), spec.get("model")
+        ):
+            result["unrecognized"] = True
+            result["elapsed_s"] = time.perf_counter() - started
+            _write_result(job_dir, result)
+            return 0
+
+        timeout = float(spec.get("timeout") or DEFAULT_TIMEOUT)
+        if kind == KIND_TOOL:
+            outcome_error, stopped = _run_tool(settings, spec["input_path"], timeout)
+        elif kind == KIND_ENSEMBLE:
+            outcome = run_ensemble_sync(
+                settings, [spec["input_path"]], print_console=True, join_timeout=timeout
+            )
+            outcome_error, stopped = outcome.error, outcome.stopped
+        else:
+            outcome = run_separation_sync(
+                settings, [spec["input_path"]], print_console=True, join_timeout=timeout
+            )
+            outcome_error, stopped = outcome.error, outcome.stopped
+
+        result["stopped"] = bool(stopped)
+        if outcome_error is not None:
+            result["error_type"] = type(outcome_error).__name__
+            result["message"] = str(outcome_error)
+        else:
+            result["ok"] = not stopped
+    except BaseException as exc:  # noqa: BLE001 - the point is to report anything
+        result["error_type"] = type(exc).__name__
+        result["message"] = f"{exc}\n{traceback.format_exc()}"
+
+    result["elapsed_s"] = time.perf_counter() - started
+    result["outputs"] = collect_outputs(export_dir)
+    _write_result(job_dir, result)
+    return 0 if result["ok"] and result["outputs"] else 1
+
+
+def _write_result(job_dir: str, result: Dict[str, Any]) -> None:
+    import json
+
+    with open(os.path.join(job_dir, "result.json"), "w") as handle:
+        json.dump(result, handle)
+
+
+def _run_tool(settings: Any, input_path: str, timeout: float) -> tuple:
+    """Run the Apollo restore tool, mirroring the UI's model resolution."""
+    import threading
+
+    from core import ModelRepository
+    from core.apollo import ApolloModelData
+    from core.audio_tools import AudioToolRunner
+    from core.job_runner import JobCallbacks
+
+    repo = ModelRepository()
+    model_data = ApolloModelData(
+        settings.audio_tools.apollo_model,
+        model_hash_table=repo.model_hash_table,
+        on_unrecognized=None,
+    )
+    if not model_data.is_model_status:
+        raise RuntimeError(f"Apollo model not valid: {settings.audio_tools.apollo_model}")
+
+    done = threading.Event()
+    error_box: List[BaseException] = []
+    stopped_box: List[bool] = []
+
+    def _on_console(text: str) -> None:
+        sys.stdout.write(text)
+
+    def _on_stopped() -> None:
+        stopped_box.append(True)
+        done.set()
+
+    def _on_error(exc: BaseException) -> None:
+        error_box.append(exc)
+        done.set()
+
+    callbacks = JobCallbacks(
+        on_console=_on_console,
+        on_complete=done.set,
+        on_stopped=_on_stopped,
+        on_error=_on_error,
+    )
+    runner = AudioToolRunner(settings)
+    runner.start(
+        APOLLO_RESTORE,
+        [input_path],
+        [],
+        callbacks,
+        apollo_params={
+            "extracted_params": model_data.extracted_params,
+            "config": model_data.config,
+        },
+    )
+    if not done.wait(timeout=timeout):
+        runner.stop()
+        raise TimeoutError(f"audio tool exceeded {timeout:.0f}s")
+    return (error_box[0] if error_box else None), bool(stopped_box)

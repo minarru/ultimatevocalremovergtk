@@ -323,5 +323,40 @@ class ScratchEnvTests(unittest.TestCase):
         self.assertEqual(env["UVR_DISABLE_POLITREES"], "1")
 
 
+class ChildHelperTests(unittest.TestCase):
+    def test_apply_overrides_handles_flat_and_dotted_keys(self) -> None:
+        from core.settings import Settings
+
+        settings = Settings()
+        model_sweep.apply_overrides(
+            settings,
+            {
+                "is_gpu_conversion": False,
+                "mdx_segment_size": 256,
+                "audio_tools.apollo_model": "apollo_universal_model.ckpt",
+            },
+        )
+        self.assertFalse(settings.process.use_gpu)
+        self.assertEqual(settings.mdx.segment_size, 256)
+        self.assertEqual(settings.audio_tools.apollo_model, "apollo_universal_model.ckpt")
+
+    def test_apply_overrides_raises_on_unmapped_flat_key(self) -> None:
+        from core.settings import Settings
+
+        with self.assertRaises(KeyError):
+            model_sweep.apply_overrides(Settings(), {"totally_made_up_key": 1})
+
+    def test_collect_outputs_lists_audio_only(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("a (Vocals).wav", "b.flac", "notes.txt", "empty.wav"):
+                with open(os.path.join(tmp, name), "wb") as handle:
+                    handle.write(b"" if name == "empty.wav" else b"RIFFdata")
+            outputs = model_sweep.collect_outputs(tmp)
+        names = sorted(os.path.basename(p) for p, _ in outputs)
+        self.assertEqual(names, ["a (Vocals).wav", "b.flac"])
+
+
 if __name__ == "__main__":
     unittest.main()
