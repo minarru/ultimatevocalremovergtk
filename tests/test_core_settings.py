@@ -107,7 +107,11 @@ class SettingsJsonTests(unittest.TestCase):
             ):
                 loaded = Settings.load()
             self.assertEqual(loaded.get("export_path"), "/imported")
-            self.assertEqual(loaded.get("ensemble_main_stem"), "Vocals/Instrumental")
+            # Hard cutover: legacy display strings are not migrated.
+            from core.stems import EnsemblePair
+
+            self.assertEqual(loaded.get("ensemble_main_stem"), EnsemblePair.CHOOSE)
+            self.assertEqual(loaded.ensemble.main_stem, EnsemblePair.CHOOSE)
             self.assertTrue(os.path.isfile(os.path.join(tmp, "settings.json")))
             self.assertTrue(os.path.isfile(pkl_path + ".bak"))
             self.assertFalse(os.path.isfile(pkl_path))

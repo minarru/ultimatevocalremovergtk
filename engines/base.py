@@ -13,7 +13,7 @@ from core.debug_log import debug, trace_phase
 from core.export_naming import stem_wav_path
 from core.gpu_backend import resolve_inference_backend
 from core.model_display import display_name_for_model
-from core.model_stem_semantics import export_stem_label
+from core.stems import StemBucket, StemLiteral, export_stem_key, filename_tag
 from core.run_estimate import save_progress_local_step
 from ml import spec_utils
 
@@ -217,7 +217,7 @@ class SeperateAttributes:
             self.mdx_batch_size = model_data.mdx_batch_size
             self.compensate = model_data.compensate
             self.mdx_segment_size = model_data.mdx_segment_size
-            # Needed by export_stem_label: without a stem count, a 4-stem
+            # Needed by export_stem_key: without a stem count, a 4-stem
             # model's MUSDB ``other`` residual is read as the 2-stem
             # instrumental complement and exported as ``Instrumental``.
             self.mdx_stem_count = model_data.mdx_stem_count
@@ -442,7 +442,12 @@ class SeperateAttributes:
     def stem_export_wav_path(self, stem: str) -> str:
         """``.wav`` path using karaoke/BV export labels (native stems in ensemble)."""
         for_ensemble = self.is_ensemble_mode and not self.is_vocal_split_model
-        label = export_stem_label(self, stem, for_ensemble=for_ensemble)
+        key = export_stem_key(self, stem, for_ensemble=for_ensemble)
+        label = (
+            filename_tag(key)
+            if isinstance(key, (StemBucket, StemLiteral))
+            else str(key)
+        )
         return stem_wav_path(self.export_path, self.audio_file_base, label)
 
     def apply_export_stem_levels(
@@ -515,12 +520,16 @@ class SeperateAttributes:
             if capture_only or ensemble_buffer:
                 if stem_name:
                     # Ensemble combine keys must match disk export tags
-                    # (export_stem_label), not raw yaml/Demucs stem ids.
-                    buffer_key = (
-                        export_stem_label(self, stem_name, for_ensemble=True)
-                        if ensemble_buffer
-                        else stem_name
-                    )
+                    # (export_stem_key / filename_tag), not raw yaml ids.
+                    if ensemble_buffer:
+                        key = export_stem_key(self, stem_name, for_ensemble=True)
+                        buffer_key = (
+                            filename_tag(key)
+                            if isinstance(key, (StemBucket, StemLiteral))
+                            else str(key)
+                        )
+                    else:
+                        buffer_key = stem_name
                     buffers = getattr(self, "_ensemble_stem_buffers", None)
                     if buffers is None:
                         buffers = {}

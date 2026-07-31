@@ -18,18 +18,13 @@ from typing import List, Tuple
 
 from bundled.constants import (
     ALL_STEMS,
-    BASS_PAIR,
-    CHOOSE_STEM_PAIR,
     DEMUCS_ARCH_TYPE,
-    DRUM_PAIR,
     ENSEMBLE_MODE,
     ENSEMBLE_PARTITION,
-    FOUR_STEM_ENSEMBLE,
-    MULTI_STEM_ENSEMBLE,
     NO_MODEL,
-    OTHER_PAIR,
-    VOCAL_PAIR,
 )
+from core.stems import EnsemblePair, coerce_ensemble_pair, ui_label
+
 from .settings_bind import get_flat
 
 #: Subtitle for a section whose every activate switch is off.
@@ -44,10 +39,10 @@ _SEP = " · "
 #: ``ui.views.base._SECONDARY_SLOTS``. Only the first entry applies unless the
 #: run uses four sources -- see :func:`four_stem_secondaries_apply`.
 _SECONDARY_PAIRS: Tuple[Tuple[str, str], ...] = (
-    ("voc_inst", VOCAL_PAIR),
-    ("other", OTHER_PAIR),
-    ("bass", BASS_PAIR),
-    ("drums", DRUM_PAIR),
+    ("voc_inst", ui_label(EnsemblePair.VOCALS_INSTRUMENTAL)),
+    ("other", ui_label(EnsemblePair.OTHER)),
+    ("bass", ui_label(EnsemblePair.BASS)),
+    ("drums", ui_label(EnsemblePair.DRUMS)),
 )
 
 
@@ -78,9 +73,9 @@ def four_stem_secondaries_apply(settings: typing.Any, process_method: str) -> bo
     """
     is_demucs = process_method == DEMUCS_ARCH_TYPE
     if settings.process.method == ENSEMBLE_MODE:
-        main_stem = settings.ensemble.main_stem or CHOOSE_STEM_PAIR
-        return main_stem == FOUR_STEM_ENSEMBLE or (
-            main_stem == MULTI_STEM_ENSEMBLE and is_demucs
+        pair = coerce_ensemble_pair(settings.ensemble.main_stem)
+        return pair is EnsemblePair.FOUR_STEM or (
+            pair is EnsemblePair.MULTI_STEM and is_demucs
         )
     return is_demucs and settings.demucs.stems == ALL_STEMS
 

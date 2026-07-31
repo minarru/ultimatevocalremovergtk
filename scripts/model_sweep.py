@@ -23,9 +23,9 @@ KIND_SKIP = "skip"
 DEFAULT_TIMEOUT = 300.0
 ENSEMBLE_TIMEOUT = 900.0
 
-# Literal values verified against bundled/constants/process.py.
+# Literal values verified against bundled/constants/process.py / core.stems.
 MAX_MIN = "Max Spec/Min Spec"
-VOCAL_PAIR = "Vocals/Instrumental"
+VOCALS_INSTRUMENTAL = "vocals_instrumental"
 APOLLO_RESTORE = "Apollo Restore"
 ALL_STEMS = "All Stems"
 
@@ -165,7 +165,7 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
                 overrides={
                     "selected_models": installed.ensemble_tags[:2],
                     "ensemble_type": MAX_MIN,
-                    "ensemble_main_stem": VOCAL_PAIR,
+                    "ensemble_main_stem": VOCALS_INSTRUMENTAL,
                     "is_save_all_outputs_ensemble": False,
                 },
                 timeout=ENSEMBLE_TIMEOUT,

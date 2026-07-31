@@ -9,7 +9,6 @@ from bundled.constants import (
     AUTO_SELECT,
     CHOOSE_ENSEMBLE_OPTION,
     CHOOSE_MODEL,
-    CHOOSE_STEM_PAIR,
     CHUNKS,
     DEFAULT,
     DEF_OPT,
@@ -23,7 +22,9 @@ from bundled.constants import (
     WAV,
 )
 
-SETTINGS_SCHEMA_VERSION = 1
+# v2: ensemble.main_stem persists EnsemblePair ids only (no display-string
+# migration). Unknown / legacy pair labels become ``choose``; re-select once.
+SETTINGS_SCHEMA_VERSION = 2
 
 
 def default_process() -> dict:
@@ -159,8 +160,10 @@ def default_demucs() -> dict:
 
 
 def default_ensemble() -> dict:
+    from core.stems import EnsemblePair
+
     return {
-        "main_stem": CHOOSE_STEM_PAIR,
+        "main_stem": EnsemblePair.CHOOSE.value,
         "type": MAX_MIN,
         "selected_models": [],
         "chosen_ensemble": CHOOSE_ENSEMBLE_OPTION,

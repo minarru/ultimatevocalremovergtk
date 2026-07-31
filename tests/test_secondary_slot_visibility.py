@@ -10,9 +10,9 @@ from bundled.constants import (
     ALL_STEMS,
     DEMUCS_ARCH_TYPE,
     ENSEMBLE_MODE,
-    FOUR_STEM_ENSEMBLE,
     MDX_ARCH_TYPE,
 )
+from core.stems import EnsemblePair
 
 
 @unittest.skipUnless(
@@ -74,7 +74,7 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
     def test_a_four_stem_ensemble_shows_every_slot_on_every_architecture(self):
         window = self._window()
         window.settings.set("chosen_process_method", ENSEMBLE_MODE)
-        window.settings.set("ensemble_main_stem", FOUR_STEM_ENSEMBLE)
+        window.settings.set("ensemble_main_stem", EnsemblePair.FOUR_STEM.value)
         for stack_name in ("vr", "mdx", "demucs"):
             view = self._view(window, stack_name)
             view._sync_secondary_slot_visibility()
@@ -165,7 +165,7 @@ class SecondarySlotVisibilityTests(unittest.TestCase):
         # Same two settings.set calls ui/ensemble/window.py makes: on_activated()
         # sets chosen_process_method, _on_main_stem_changed sets the stem pair.
         window.settings.set("chosen_process_method", ENSEMBLE_MODE)
-        window.settings.set("ensemble_main_stem", FOUR_STEM_ENSEMBLE)
+        window.settings.set("ensemble_main_stem", EnsemblePair.FOUR_STEM.value)
 
         sheet.update_context(
             context=OPEN_CONTEXT_ENSEMBLE,

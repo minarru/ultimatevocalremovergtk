@@ -1,6 +1,6 @@
 {
-    "description": "Noise/fullness balance — Inst Fullness v8 Gabox + Resurrection Instrumental",
-    "ensemble_main_stem": "Vocals/Instrumental",
+    "description": "Noise/fullness balance \u2014 Inst Fullness v8 Gabox + Resurrection Instrumental",
+    "ensemble_main_stem": "vocals_instrumental",
     "ensemble_type": "Max Spec/Max Spec",
     "selected_models": [
         "MDX-Net: MelBand Roformer | Instrumental Fullness v8 by Gabox",

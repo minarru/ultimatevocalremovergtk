@@ -1,6 +1,6 @@
 {
-    "description": "Best overall vocal quality — Resurrection Vocals + Big Beta v6x",
-    "ensemble_main_stem": "Vocals/Instrumental",
+    "description": "Best overall vocal quality \u2014 Resurrection Vocals + Big Beta v6x",
+    "ensemble_main_stem": "vocals_instrumental",
     "ensemble_type": "Average/Average",
     "selected_models": [
         "MDX-Net: BandSplit Roformer | Resurrection Vocals by Unwa",

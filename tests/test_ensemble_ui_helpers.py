@@ -26,6 +26,7 @@ from core.ensemble_algorithms import (
     preset_for_pair,
     wav_ensemble_subtitle,
 )
+from core.stems import EnsemblePair, ui_label
 
 
 class PresetMappingTests(unittest.TestCase):
@@ -79,7 +80,7 @@ class SummaryAndBlurbTests(unittest.TestCase):
     def test_incomplete_summary(self) -> None:
         text = ensemble_options_summary(
             stem_chosen=False,
-            main_stem="Choose Stem Pair",
+            main_stem=ui_label(EnsemblePair.CHOOSE),
             primary_stem=None,
             secondary_stem=None,
             primary_algo=MAX_SPEC,
@@ -88,11 +89,12 @@ class SummaryAndBlurbTests(unittest.TestCase):
             multi_stem=False,
         )
         self.assertIn("stem pair", text.casefold())
+        self.assertEqual(ui_label(EnsemblePair.CHOOSE), "Choose Stem Pair")
 
     def test_dual_ready_summary(self) -> None:
         text = ensemble_options_summary(
             stem_chosen=True,
-            main_stem="Vocals/Instrumental",
+            main_stem=ui_label(EnsemblePair.VOCALS_INSTRUMENTAL),
             primary_stem="Vocals",
             secondary_stem="Instrumental",
             primary_algo=MAX_SPEC,
@@ -103,6 +105,9 @@ class SummaryAndBlurbTests(unittest.TestCase):
         self.assertEqual(
             text,
             "Vocals ← Max Spec · Instrumental ← Min Spec · 3 models",
+        )
+        self.assertEqual(
+            ui_label(EnsemblePair.VOCALS_INSTRUMENTAL), "Vocals/Instrumental"
         )
 
     def test_algorithm_blurb_and_wav_subtitle(self) -> None:
@@ -145,7 +150,9 @@ class MainStemChangedOrderTests(unittest.TestCase):
         page._selected_model_tags = mock.Mock(return_value=["tag-a"])
 
         with mock.patch.object(
-            ensemble_window, "get_combo_value", return_value="Vocals/Instrumental"
+            ensemble_window,
+            "get_combo_value",
+            return_value=EnsemblePair.VOCALS_INSTRUMENTAL.value,
         ), mock.patch.object(ensemble_window, "set_combo_value"):
             page._on_main_stem_changed()
 

@@ -28,13 +28,13 @@ The typed API cutover landed in Phase 6. New code imports `Settings`,
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "process": {},
   "vr": {},
   "mdx": {},
   "demucs": {},
   "ensemble": {
-    "main_stem": "Choose Stem Pair",
+    "main_stem": "choose",
     "type": "Max Spec/Min Spec",
     "selected_models": [],
     "chosen_ensemble": "Choose Ensemble"
@@ -45,6 +45,8 @@ The typed API cutover landed in Phase 6. New code imports `Settings`,
 ```
 
 Nested on disk. Flat key access is not the persistence API.
+
+**v2 breaking change:** `ensemble.main_stem` persists stable :class:`~core.stems.EnsemblePair` ids only (`choose`, `vocals_instrumental`, `karaoke`, `other`, `drums`, `bass`, `four_stem`, `multi_stem`). Legacy display strings (e.g. `Vocals/Instrumental`) are not migrated — they coerce to `choose` and the pair must be re-selected once.
 
 ## Persistence rules
 
@@ -57,5 +59,5 @@ Nested on disk. Flat key access is not the persistence API.
 - Enum `.value` strings stay current UI labels (`Stem.VOCALS == "Vocals"`).
 - Sentinels `DEF_OPT` / `AUTO_SELECT` / `"Default"` become `None` or `"auto"` in typed fields.
 - `use_gpu: bool` end-to-end (no `0`/`-1`).
-- Ensemble keys (`selected_models`, `main_stem`, `type`, `chosen_ensemble`) are first-class in the schema.
+- Ensemble keys (`selected_models`, `main_stem`, `type`, `chosen_ensemble`) are first-class in the schema; `main_stem` is an `EnsemblePair` id (not a UI label).
 - Export toggles (`normalization`, `match_mix_level`, `prevent_export_clipping`, `amplification_threshold`) live under `process`.

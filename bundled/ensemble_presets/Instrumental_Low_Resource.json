@@ -1,6 +1,6 @@
 {
-    "description": "Fast / low VRAM — Resurrection Instrumental + UVR-MDX-NET Inst HQ 5",
-    "ensemble_main_stem": "Vocals/Instrumental",
+    "description": "Fast / low VRAM \u2014 Resurrection Instrumental + UVR-MDX-NET Inst HQ 5",
+    "ensemble_main_stem": "vocals_instrumental",
     "ensemble_type": "Median Spec/Median Spec",
     "selected_models": [
         "MDX-Net: BandSplit Roformer | Resurrection Instrumental by Unwa",

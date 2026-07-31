@@ -1,6 +1,6 @@
 {
-    "description": "Maximum instrument preservation — Inst v1e Plus + Instrumental by becruily",
-    "ensemble_main_stem": "Vocals/Instrumental",
+    "description": "Maximum instrument preservation \u2014 Inst v1e Plus + Instrumental by becruily",
+    "ensemble_main_stem": "vocals_instrumental",
     "ensemble_type": "Max Spec/Max Spec",
     "selected_models": [
         "MDX-Net: MelBand Roformer Kim | Inst v1e Plus by Unwa",

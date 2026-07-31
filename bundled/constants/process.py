@@ -82,6 +82,8 @@ MULTI_STEM_ENSEMBLE = 'Multi-stem Ensemble'
 #: ``ensemble_pair_buckets``.
 KARAOKE_PAIR = f'{LEAD_VOCAL_STEM_LABEL}/{INST_WITH_BACKING_VOCALS_STEM}'
 
+# Display-label tuple only (legacy / docs). Persist EnsemblePair ids via
+# :func:`core.stems.ensemble_pair_choices` — do not store these strings.
 ENSEMBLE_MAIN_STEM = (CHOOSE_STEM_PAIR, VOCAL_PAIR, KARAOKE_PAIR, OTHER_PAIR, DRUM_PAIR, BASS_PAIR, FOUR_STEM_ENSEMBLE, MULTI_STEM_ENSEMBLE)
 
 MIN_SPEC = 'Min Spec'

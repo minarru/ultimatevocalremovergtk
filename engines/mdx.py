@@ -24,7 +24,8 @@ from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
 from core.torch_checkpoint import as_model_state_dict, load_torch_checkpoint
-from core.model_stem_semantics import is_vocal_target, resolve_stem_dict_key
+from core.model_stem_semantics import is_vocal_target
+from core.stems import StemId, resolve_in_sources
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
 
@@ -641,14 +642,14 @@ class SeperateMDXC(SeperateAttributes):
                     stem_key = str(stem_list[0])
                 elif select == ALL_STEMS:
                     stem_key = primary
-                elif isinstance(working_sources, dict) and resolve_stem_dict_key(
-                    working_sources, select
+                elif isinstance(working_sources, dict) and resolve_in_sources(
+                    working_sources, StemId(select)
                 ) is not None:
                     stem_key = select
                 else:
                     stem_key = primary
                 if isinstance(working_sources, dict):
-                    resolved = resolve_stem_dict_key(working_sources, stem_key)
+                    resolved = resolve_in_sources(working_sources, StemId(stem_key))
                     if resolved is None:
                         raise KeyError(
                             f"stem {stem_key!r} not in sources "
@@ -672,13 +673,13 @@ class SeperateMDXC(SeperateAttributes):
                     
                     if self.is_mdx_combine_stems and len(stem_list) >= 2:
                         if len(stem_list) == 2:
-                            sec_key = resolve_stem_dict_key(
-                                working_sources, self.secondary_stem
+                            sec_key = resolve_in_sources(
+                                working_sources, StemId(self.secondary_stem)
                             ) or self.secondary_stem
                             secondary_source = working_sources[sec_key]
                         else:
-                            prim_key = resolve_stem_dict_key(
-                                working_sources, self.primary_stem
+                            prim_key = resolve_in_sources(
+                                working_sources, StemId(self.primary_stem)
                             )
                             if prim_key is not None:
                                 working_sources.pop(prim_key, None)
@@ -688,11 +689,11 @@ class SeperateMDXC(SeperateAttributes):
                                 secondary_source += v
                                 
                         self.secondary_source = secondary_source.T 
-                    elif isinstance(working_sources, dict) and resolve_stem_dict_key(
-                        working_sources, self.secondary_stem
+                    elif isinstance(working_sources, dict) and resolve_in_sources(
+                        working_sources, StemId(self.secondary_stem)
                     ):
-                        sec_key = resolve_stem_dict_key(
-                            working_sources, self.secondary_stem
+                        sec_key = resolve_in_sources(
+                            working_sources, StemId(self.secondary_stem)
                         )
                         self.secondary_source = working_sources[sec_key].T
                     else:

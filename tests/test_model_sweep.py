@@ -80,7 +80,7 @@ class DiscoveryTests(unittest.TestCase):
         )
         self.assertEqual(ensemble[0].overrides["ensemble_type"], "Max Spec/Min Spec")
         self.assertEqual(
-            ensemble[0].overrides["ensemble_main_stem"], "Vocals/Instrumental"
+            ensemble[0].overrides["ensemble_main_stem"], "vocals_instrumental"
         )
         self.assertFalse(ensemble[0].overrides["is_save_all_outputs_ensemble"])
 

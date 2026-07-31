@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.stems import EnsemblePair, coerce_ensemble_pair
 from core.types import ProcessMethod, SaveFormat
 
 
@@ -156,6 +157,9 @@ _ENUM_FIELDS = {
     ("process", "save_format"): SaveFormat,
 }
 
+# Fail-soft to CHOOSE (unlike ProcessMethod/SaveFormat, which keep raw values).
+_ENSEMBLE_PAIR_FIELDS = frozenset({("ensemble", "main_stem")})
+
 
 def coerce_field(section_name: str, field: str, value: Any) -> Any:
     """Coerce one nested setting value through the canonical field rules."""
@@ -166,6 +170,8 @@ def coerce_field(section_name: str, field: str, value: Any) -> Any:
         return as_int(value)
     if path in _FLOAT_FIELDS:
         return as_float(value)
+    if path in _ENSEMBLE_PAIR_FIELDS:
+        return coerce_ensemble_pair(value)
     if enum_type := _ENUM_FIELDS.get(path):
         try:
             return enum_type(value)

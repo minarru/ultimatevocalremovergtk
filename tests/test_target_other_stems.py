@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import unittest
 
-from bundled.constants import INST_STEM, OTHER_PAIR, VOCAL_PAIR, VOCAL_STEM
+from bundled.constants import INST_STEM, VOCAL_STEM
 from core import Settings
 from core.model_data import ModelConfig, ModelRepository
 from core.model_stem_semantics import export_stem_label
+from core.stems import EnsemblePair
 
 
 _TARGET_OTHER_TAGS = (
@@ -54,8 +55,14 @@ class TargetOtherStemTests(unittest.TestCase):
             self.skipTest("no target-other Unwa models installed")
 
     def test_target_other_eligible_for_vocal_pair_not_other_pair(self) -> None:
-        eligible_vocal = set(self.repo.ensemble_model_list(self.settings, VOCAL_PAIR))
-        eligible_other = set(self.repo.ensemble_model_list(self.settings, OTHER_PAIR))
+        eligible_vocal = set(
+            self.repo.ensemble_model_list(
+                self.settings, EnsemblePair.VOCALS_INSTRUMENTAL
+            )
+        )
+        eligible_other = set(
+            self.repo.ensemble_model_list(self.settings, EnsemblePair.OTHER)
+        )
         found = 0
         for tag in _TARGET_OTHER_TAGS:
             model = self._dry(tag)

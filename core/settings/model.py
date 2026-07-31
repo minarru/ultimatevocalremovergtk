@@ -14,7 +14,6 @@ from bundled.constants import (
     AUTO_SELECT,
     CHOOSE_ENSEMBLE_OPTION,
     CHOOSE_MODEL,
-    CHOOSE_STEM_PAIR,
     CHUNKS,
     DEFAULT,
     DEF_OPT,
@@ -25,6 +24,7 @@ from bundled.constants import (
     MDX_OVERLAP,
     NO_MODEL,
 )
+from core.stems import EnsemblePair
 from core.types import ProcessMethod, SaveFormat
 
 from .coerce import coerce_field, coerce_json_dict
@@ -186,7 +186,7 @@ class DemucsSettings:
 
 @dataclass
 class EnsembleSettings:
-    main_stem: str = CHOOSE_STEM_PAIR
+    main_stem: EnsemblePair = EnsemblePair.CHOOSE
     type: str = MAX_MIN
     selected_models: list = field(default_factory=list)
     chosen_ensemble: str = CHOOSE_ENSEMBLE_OPTION
