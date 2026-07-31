@@ -17,7 +17,7 @@ import typing
 
 import json
 import os
-from typing import Any, Callable, Dict, List, Optional, cast
+from typing import AbstractSet, Any, Callable, Dict, List, Optional, cast
 
 from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
 
@@ -227,20 +227,62 @@ class ModelRepository:
         secondary_stem: str,
         is_4_stem_check: bool = False,
         is_no_demucs: bool = False,
+        *,
+        wanted_buckets: Optional[AbstractSet[str]] = None,
     ) -> List[str]:
-        """Tk-free port of ``MainWindow.model_list`` (secondary-model filtering)."""
+        """Tk-free port of ``MainWindow.model_list`` (secondary-model filtering).
+
+        Stem comparison goes through :func:`ensemble_stem_bucket` so yaml
+        lowercase (``vocals``), the 2-stem ``other`` complement and the
+        ``instrument`` variant resolve to the same bucket as the curated Title
+        Case names, while karaoke models resolve to their own bucket instead of
+        contaminating clean instrumentals.
+
+        ``wanted_buckets`` lets :meth:`ensemble_model_list` supply buckets it
+        resolved from the *pair* — necessary because a pair carries no stem
+        count, so re-deriving buckets from the two halves here would read
+        ``Other/No Other`` as an Instrumental request.
+        """
+        from .model_stem_semantics import BUCKET_UNKNOWN, ensemble_stem_bucket
+
         stem_check = self.stem_check(settings)
+        if wanted_buckets is None:
+            wanted = {
+                ensemble_stem_bucket(primary_stem, stem_count=1),
+                ensemble_stem_bucket(secondary_stem, stem_count=1),
+            }
+        else:
+            wanted = set(wanted_buckets)
+        wanted.discard(BUCKET_UNKNOWN)
+
+        def bucket_of(model: "ModelConfig", stem: str) -> str:
+            return ensemble_stem_bucket(
+                stem,
+                stem_count=model.mdx_stem_count or 1,
+                is_karaoke=bool(getattr(model, "is_karaoke", False)),
+                is_bv=bool(getattr(model, "is_bv_model", False)),
+            )
 
         def matches_stem(model: "ModelConfig") -> bool:
-            primary_match = model.primary_stem in {primary_stem, secondary_stem}
-            mdx_stem_match = primary_stem in model.mdx_model_stems and model.mdx_stem_count <= 2
-            return (primary_match or mdx_stem_match) if is_no_demucs else (primary_match or primary_stem in model.mdx_model_stems)
+            if not wanted:
+                return False
+            primary_match = bucket_of(model, model.primary_stem) in wanted
+            mdx_match = any(bucket_of(model, stem) in wanted for stem in model.mdx_model_stems)
+            if is_no_demucs:
+                return primary_match or (mdx_match and model.mdx_stem_count <= 2)
+            return primary_match or mdx_match
+
+        def demucs_match(model: "ModelConfig") -> bool:
+            return any(
+                ensemble_stem_bucket(stem, stem_count=4) in wanted
+                for stem in model.demucs_source_list
+            )
 
         result: List[str] = []
         for model in stem_check:
             if is_4_stem_check and (model.demucs_stem_count == 4 or model.mdx_stem_count == 4):
                 result.append(model.model_and_process_tag)
-            elif matches_stem(model) or (not is_no_demucs and primary_stem.lower() in model.demucs_source_list):
+            elif matches_stem(model) or (not is_no_demucs and demucs_match(model)):
                 result.append(model.model_and_process_tag)
         return result
 
@@ -267,8 +309,15 @@ class ModelRepository:
             return [model.model_and_process_tag for model in self.stem_check(settings)]
         if ensemble_main_stem == FOUR_STEM_ENSEMBLE:
             return self.model_list(settings, PRIMARY_STEM, SECONDARY_STEM, is_4_stem_check=True)
+        from .model_stem_semantics import ensemble_pair_buckets
+
         stems = ensemble_main_stem.partition("/")
-        return self.model_list(settings, stems[0], stems[2])
+        return self.model_list(
+            settings,
+            stems[0],
+            stems[2],
+            wanted_buckets=set(ensemble_pair_buckets(ensemble_main_stem)),
+        )
 
     def resolve_model_dry(self, settings: Settings, process_method: str, model_name: str):
         """Resolve ``model_name`` to a dry-check :class:`ModelConfig` (or ``None``).
