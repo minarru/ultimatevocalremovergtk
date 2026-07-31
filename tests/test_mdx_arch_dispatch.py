@@ -134,6 +134,52 @@ class MdxArchDispatchTests(unittest.TestCase):
             output = model(audio)
         self.assertEqual(output.shape[-1], length)
 
+    def test_melband_accepts_integer_dropout_from_yaml(self) -> None:
+        # Shipped Roformer yamls write ``attn_dropout: 0`` / ``ff_dropout: 0``,
+        # which yaml parses as int, not float.
+        config = ConfigDict(
+            {
+                "model": {
+                    "dim": 64,
+                    "depth": 1,
+                    "num_bands": 60,
+                    "dim_head": 32,
+                    "heads": 4,
+                    "attn_dropout": 0,
+                    "ff_dropout": 0,
+                    "multi_stft_resolution_loss_weight": 1,
+                },
+                "audio": {"hop_length": 441},
+                "training": {"instruments": ["Vocals"], "target_instrument": "Vocals"},
+                "inference": {"batch_size": 1, "dim_t": 256},
+            }
+        )
+        model = _build_mdx_c_model(config)
+        self.assertEqual(model.__class__.__name__, "MelBandRoformer")
+
+    def test_bs_roformer_accepts_integer_dropout_from_yaml(self) -> None:
+        from ml.bs_roformer import DEFAULT_FREQS_PER_BANDS
+
+        config = ConfigDict(
+            {
+                "model": {
+                    "dim": 64,
+                    "depth": 1,
+                    "freqs_per_bands": DEFAULT_FREQS_PER_BANDS,
+                    "dim_head": 32,
+                    "heads": 4,
+                    "attn_dropout": 0,
+                    "ff_dropout": 0,
+                    "multi_stft_resolution_loss_weight": 1,
+                },
+                "audio": {"sample_rate": 44100, "hop_length": 512},
+                "training": {"instruments": ["Vocals"]},
+                "inference": {"batch_size": 1, "dim_t": 256},
+            }
+        )
+        model = _build_mdx_c_model(config)
+        self.assertEqual(model.__class__.__name__, "BSRoformer")
+
     def test_melband_hop_length_prefers_stft_hop_length(self) -> None:
         config = ConfigDict(
             {
