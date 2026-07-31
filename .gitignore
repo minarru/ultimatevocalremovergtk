@@ -83,6 +83,7 @@ ui/data/icons/
 scripts/*
 !scripts/sync-github-mirror.sh
 !scripts/generate_models_catalogue.py
+!scripts/model_sweep.py
 
 # Fetched Politrees yaml cache for catalogue regeneration
 docs/.yaml_cache/
