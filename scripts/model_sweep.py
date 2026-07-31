@@ -283,3 +283,66 @@ def render_summary(verdicts: Sequence[str]) -> str:
     if skipped:
         parts.append(f"{skipped} skipped")
     return "  ".join(parts)
+
+
+def make_input_clip(path: str, *, seconds: float = 3.0, rate: int = 44100) -> str:
+    """Write a short deterministic stereo clip.
+
+    Not silence: an all-zero input can produce all-zero stems and trip the
+    level-matching and clipping paths in ways that say nothing about the model.
+    """
+    import numpy as np
+    import soundfile as sf
+
+    frames = int(rate * seconds)
+    t = np.arange(frames, dtype=np.float64) / rate
+    rng = np.random.default_rng(0)
+    left = (
+        0.5 * np.sin(2 * np.pi * 220.0 * t)
+        + 0.25 * np.sin(2 * np.pi * 880.0 * t)
+        + 0.05 * rng.standard_normal(frames)
+    )
+    right = (
+        0.4 * np.sin(2 * np.pi * 330.0 * t)
+        + 0.2 * np.sin(2 * np.pi * 1320.0 * t)
+        + 0.05 * rng.standard_normal(frames)
+    )
+    stereo = np.stack([left, right], axis=1)
+    stereo = stereo / max(1e-9, float(np.abs(stereo).max())) * 0.7  # ~-3 dBFS
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    sf.write(path, stereo, rate, subtype="PCM_16")
+    return path
+
+
+def prepare_scratch(
+    root: str, *, models_dir: str, settings_src: Optional[str]
+) -> tuple:
+    """Build an isolated UVR data dir: symlinked models, copied settings.
+
+    Model resolution comes back empty without the ``models`` symlink, and the
+    user's own ``settings.json`` must never be written to.
+    """
+    import json
+    import shutil
+
+    os.makedirs(root, exist_ok=True)
+    link = os.path.join(root, "models")
+    if not os.path.exists(link):
+        os.symlink(os.path.abspath(models_dir), link)
+
+    settings_path = os.path.join(root, "settings.json")
+    if settings_src and os.path.isfile(settings_src):
+        shutil.copyfile(settings_src, settings_path)
+    else:
+        with open(settings_path, "w") as handle:
+            json.dump({}, handle)
+    return root, settings_path
+
+
+def child_env(data_dir: str) -> Dict[str, str]:
+    """Environment for a child run: isolated data dir, no warmup, no network."""
+    env = dict(os.environ)
+    env["UVR_DATA_DIR"] = data_dir
+    env["UVR_SKIP_SEPARATE_WARMUP"] = "1"
+    env["UVR_DISABLE_POLITREES"] = "1"
+    return env

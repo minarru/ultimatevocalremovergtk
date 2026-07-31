@@ -250,5 +250,78 @@ class RenderTests(unittest.TestCase):
         self.assertIn("1 failed", summary)
 
 
+class ScratchEnvTests(unittest.TestCase):
+    def test_clip_is_three_seconds_stereo(self) -> None:
+        import tempfile
+
+        import soundfile as sf
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = model_sweep.make_input_clip(os.path.join(tmp, "in.wav"))
+            data, rate = sf.read(path)
+        self.assertEqual(rate, 44100)
+        self.assertEqual(data.shape[1], 2)
+        self.assertEqual(data.shape[0], 44100 * 3)
+
+    def test_clip_is_not_silent(self) -> None:
+        import tempfile
+
+        import soundfile as sf
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = model_sweep.make_input_clip(os.path.join(tmp, "in.wav"))
+            data, _ = sf.read(path)
+        self.assertGreater(abs(data).max(), 0.1)
+
+    def test_clip_is_deterministic(self) -> None:
+        import tempfile
+
+        import soundfile as sf
+
+        with tempfile.TemporaryDirectory() as tmp:
+            a, _ = sf.read(model_sweep.make_input_clip(os.path.join(tmp, "a.wav")))
+            b, _ = sf.read(model_sweep.make_input_clip(os.path.join(tmp, "b.wav")))
+        self.assertTrue((a == b).all())
+
+    def test_scratch_symlinks_models_and_copies_settings(self) -> None:
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            models = os.path.join(tmp, "models")
+            os.makedirs(os.path.join(models, "VR_Models"))
+            src = os.path.join(tmp, "settings.json")
+            with open(src, "w") as handle:
+                json.dump({"schema_version": 1}, handle)
+
+            data_dir, settings_path = model_sweep.prepare_scratch(
+                os.path.join(tmp, "scratch"), models_dir=models, settings_src=src
+            )
+
+            self.assertTrue(os.path.islink(os.path.join(data_dir, "models")))
+            self.assertTrue(
+                os.path.isdir(os.path.join(data_dir, "models", "VR_Models"))
+            )
+            self.assertTrue(os.path.isfile(settings_path))
+            self.assertNotEqual(os.path.abspath(settings_path), os.path.abspath(src))
+
+    def test_scratch_without_source_settings_writes_defaults(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            models = os.path.join(tmp, "models")
+            os.makedirs(models)
+            _, settings_path = model_sweep.prepare_scratch(
+                os.path.join(tmp, "scratch"), models_dir=models, settings_src=None
+            )
+            self.assertTrue(os.path.isfile(settings_path))
+
+    def test_child_env_pins_data_dir_and_disables_warmup(self) -> None:
+        env = model_sweep.child_env("/scratch/data")
+        self.assertEqual(env["UVR_DATA_DIR"], "/scratch/data")
+        self.assertEqual(env["UVR_SKIP_SEPARATE_WARMUP"], "1")
+        self.assertEqual(env["UVR_DISABLE_POLITREES"], "1")
+
+
 if __name__ == "__main__":
     unittest.main()
