@@ -448,15 +448,23 @@ def karaoke_bv_export_labels(model: typing.Any) -> Optional[Dict[str, str]]:
 def export_stem_label(model: typing.Any, stem: str, *, for_ensemble: bool = False) -> str:
     """Map a logic stem to the filename/UI export label.
 
-    Ensemble members use :func:`canonical_ensemble_stem_tag` so yaml lowercase
-    stems (``vocals``) and Demucs Title Case (``Vocals``) land in the same
-    combine bucket. Karaoke/BV identity codes stay untouched in ensemble mode.
+    Ensemble members resolve through :func:`ensemble_stem_bucket`, so yaml
+    lowercase (``vocals``), Demucs Title Case (``Vocals``) and the 2-stem
+    ``other`` complement land in the same combine bucket — and a karaoke
+    model's instrumental lands in its *own* bucket rather than being combined
+    with clean instrumentals, which is what it is not.
+
     Outside ensemble mode, vocal-splitter codes become human labels.
     """
     if not stem:
         return stem
     if for_ensemble:
-        return canonical_ensemble_stem_tag(stem)
+        return ensemble_stem_bucket(
+            stem,
+            stem_count=int(getattr(model, "mdx_stem_count", 2) or 2),
+            is_karaoke=bool(getattr(model, "is_karaoke", False)),
+            is_bv=bool(getattr(model, "is_bv_model", False)),
+        )
     # Splitter identity codes → human labels even when the parent model is not
     # flagged karaoke/BV on this object (flags live on the split model).
     if stem == LEAD_VOCAL_STEM:
@@ -697,6 +705,12 @@ _ENSEMBLE_STEM_PRESERVE = frozenset(
         BV_VOCAL_STEM_LABEL,
         INST_WITH_LEAD_VOCALS_STEM,
         INST_WITH_BACKING_VOCALS_STEM,
+        # Bucket tags written into ensemble member filenames. The combine stage
+        # re-reads them from the filename, so they must survive unchanged.
+        INST_WITH_BACKING_VOCALS_TAG,
+        INST_WITH_LEAD_VOCALS_TAG,
+        LEAD_VOCALS_TAG,
+        BACKING_VOCALS_TAG,
     }
 )
 

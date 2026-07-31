@@ -30,9 +30,15 @@ class _FakeModel:
 
 
 def _eligible(models: typing.Sequence[typing.Any], main_stem: str) -> typing.List[str]:
-    """Run the real ``ensemble_model_list`` over fake ``stem_check`` output."""
+    """Run the real ``ensemble_model_list`` over fake ``stem_check`` output.
+
+    ``settings`` is only forwarded to ``stem_check``, which is patched out here,
+    so ``None`` never reaches anything that reads it.
+    """
     with unittest.mock.patch.object(ModelRepository, "stem_check", return_value=models):
-        return ModelRepository().ensemble_model_list(None, main_stem)
+        return ModelRepository().ensemble_model_list(
+            typing.cast(typing.Any, None), main_stem
+        )
 
 
 class PreviouslyExcludedModelTests(unittest.TestCase):
