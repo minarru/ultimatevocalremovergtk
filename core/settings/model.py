@@ -267,8 +267,11 @@ class Settings:
     @classmethod
     def from_json_dict(cls, data: dict[str, Any]) -> Settings:
         coerced = coerce_json_dict(data or {})
+        # Stamp the current version, never the file's: ``coerce_json_dict`` has
+        # already migrated the payload, so keeping the old number would leave a
+        # v3 file claiming v1 and mis-gate the next migration.
         return cls(
-            schema_version=coerced.get("schema_version", SETTINGS_SCHEMA_VERSION),
+            schema_version=SETTINGS_SCHEMA_VERSION,
             process=_merge_dataclass(ProcessSettings, ProcessSettings(), coerced.get("process")),
             vr=_merge_dataclass(VrSettings, VrSettings(), coerced.get("vr")),
             mdx=_merge_dataclass(MdxSettings, MdxSettings(), coerced.get("mdx")),

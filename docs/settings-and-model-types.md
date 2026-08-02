@@ -60,6 +60,8 @@ Nested on disk. Flat key access is not the persistence API.
 
 **v3 soft migrate:** `Default` / `Auto` sentinels become JSON `null` (`None` in Python) for batch size, overlap, compensate, chunks, Demucs segment, and GPU device. Chunks `"Full"` persists as `"full"`. Closed combo fields are label-equal `str, Enum`s; unknown enum values fail-soft to the field default. Numeric-as-string fields (`semitone_shift`, `overlap_mdx23`, Apollo spins) load as `float`/`int`.
 
+Migration is unconditional — `coerce_json_dict` runs over every payload regardless of its `schema_version` — so `Settings.from_json_dict` stamps `SETTINGS_SCHEMA_VERSION`, never the number it read. A loaded file always reports the current version because its contents have already been migrated to it.
+
 ## Persistence rules
 
 1. Writes go only to `settings.json` (atomic `.tmp` + replace).

@@ -1189,7 +1189,7 @@ class EnsemblePage:
         self._rebuild_stem_only_toggles()
         from core.debug_log import debug
 
-        stem = self.settings.ensemble.main_stem
+        stem = self._ensemble_pair().value
         models = len(self._selected_model_tags())
         debug("ui", f"ensemble models selected count={models} stem={stem}")
 
@@ -1275,7 +1275,7 @@ class EnsemblePage:
                 self._toast(error)
             from core.debug_log import debug
 
-            stem = self.settings.ensemble.main_stem
+            stem = self._ensemble_pair().value
             models = len(self._selected_model_tags())
             debug("ui", f"ensemble start files={len(input_paths)} models={models} stem={stem}")
             self.context.runner.start_ensemble(input_paths, callbacks)

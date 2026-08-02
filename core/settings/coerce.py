@@ -29,6 +29,17 @@ E = TypeVar("E", bound=Enum)
 _SENTINEL_LABELS = frozenset({DEF_OPT, DEFAULT, AUTO_SELECT, "Default", "Auto"})
 
 
+def enum_value(value: Any) -> Any:
+    """Underlying value of a settings enum; anything else passes through.
+
+    Settings enums are ``str, Enum``, so ``==``, dict lookup and ``json.dumps``
+    already behave as the value string — but ``str(member)`` and f-strings
+    yield ``ClassName.MEMBER``. Route every filename, path and log line through
+    this rather than ``str()``.
+    """
+    return value.value if isinstance(value, Enum) else value
+
+
 def as_bool(value: Any, default: bool = False) -> bool:
     if value is None:
         return default
@@ -379,8 +390,12 @@ def _coerce_section(section_name: str, section_data: Any) -> dict[str, Any]:
     return coerced
 
 
-def coerce_json_dict(data: dict[str, Any]) -> dict[str, Any]:
-    """Coerce typed fields in a nested settings JSON document."""
+def coerce_json_dict(data: Any) -> dict[str, Any]:
+    """Coerce typed fields in a nested settings JSON document.
+
+    ``Any`` in, validated ``dict`` out: this is the untrusted-JSON boundary, so
+    a non-object payload degrades to ``{}`` rather than raising.
+    """
     if not isinstance(data, dict):
         return {}
     result = dict(data)
@@ -417,8 +432,6 @@ def setting_for_combo(flat_key: str, value: Any) -> Any:
     """Map a stored setting to a combo/scale display value."""
     if value is None:
         return FLAT_SENTINEL_LABELS.get(flat_key)
-    if isinstance(value, Enum):
-        return value.value
     if value == "full" and flat_key in ("chunks", "chunks_demucs"):
         return "Full"
-    return value
+    return enum_value(value)

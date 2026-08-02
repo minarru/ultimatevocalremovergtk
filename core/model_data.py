@@ -38,6 +38,7 @@ from .model_display import (
 )
 from .audio_io import resolve_wav_type_set
 from .settings import Settings
+from .settings.coerce import enum_value
 
 _MDX_C_YAML_LOADER = None
 
@@ -416,11 +417,8 @@ class _ModelConfigImplementation:
             if os.path.isfile(paths.DEVERBER_MODEL_PATH)
             else False
         )
-        deverb_key = getattr(
-            process.deverb_vocal_opt, "value", process.deverb_vocal_opt
-        )
-        self.deverb_vocal_opt = DEVERB_MAPPER[deverb_key]
-        denoise_opt = getattr(mdx.denoise_option, "value", mdx.denoise_option)
+        self.deverb_vocal_opt = DEVERB_MAPPER[enum_value(process.deverb_vocal_opt)]
+        denoise_opt = enum_value(mdx.denoise_option)
         self.is_denoise_model = bool(
             denoise_opt == DENOISE_M
             and os.path.isfile(paths.DENOISER_MODEL_PATH)
@@ -475,10 +473,8 @@ class _ModelConfigImplementation:
         self.device_set = (
             device_set.split(":")[-1].strip() if ":" in device_set else device_set
         )
-        self.mp3_bit_set = getattr(process.mp3_bitrate, "value", process.mp3_bitrate)
-        self.flac_bit_set = getattr(
-            process.flac_bit_depth, "value", process.flac_bit_depth
-        )
+        self.mp3_bit_set = enum_value(process.mp3_bitrate)
+        self.flac_bit_set = enum_value(process.flac_bit_depth)
         self.save_format = process.save_format.value
         self.is_invert_spec = mdx.is_invert_spec
         self.is_mixer_mode = False

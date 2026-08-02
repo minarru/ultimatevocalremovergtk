@@ -25,7 +25,7 @@ from bundled.constants import (
 )
 from core.stems import EnsemblePair, coerce_ensemble_pair, ui_label
 
-from .settings_bind import get_flat
+from .settings_bind import enum_value, get_flat
 
 #: Subtitle for a section whose every activate switch is off.
 OFF = "Off"
@@ -136,6 +136,5 @@ def vocal_split_summary(settings: typing.Any) -> str:
         name = _model_label(settings.process.vocal_splitter or NO_MODEL)
         parts.append(name if name else ON_NO_MODEL)
     if deverb_on:
-        deverb = settings.process.deverb_vocal_opt
-        parts.append(f"deverb: {getattr(deverb, 'value', deverb)}")
+        parts.append(f"deverb: {enum_value(settings.process.deverb_vocal_opt)}")
     return _SEP.join(parts)

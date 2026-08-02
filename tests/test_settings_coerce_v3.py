@@ -8,8 +8,10 @@ from core.settings.coerce import (
     as_chunks,
     coerce_ensemble_type,
     coerce_field,
+    enum_value,
     setting_for_combo,
 )
+from core.stems import EnsemblePair
 from core.types import ProcessMethod, SaveFormat
 from core.types.settings_enums import (
     ColorScheme,
@@ -22,6 +24,19 @@ class SchemaVersionTests(unittest.TestCase):
     def test_defaults_are_v3(self) -> None:
         self.assertEqual(SETTINGS_SCHEMA_VERSION, 3)
         self.assertEqual(Settings.defaults().schema_version, 3)
+
+    def test_older_payload_is_stamped_current(self) -> None:
+        """Loading coerces to v3, so the stamp must say v3 — not the file's."""
+        settings = Settings.from_json_dict({"schema_version": 1, "vr": {}})
+        self.assertEqual(settings.schema_version, SETTINGS_SCHEMA_VERSION)
+        self.assertEqual(
+            settings.to_json_dict()["schema_version"], SETTINGS_SCHEMA_VERSION
+        )
+
+    def test_missing_version_is_stamped_current(self) -> None:
+        self.assertEqual(
+            Settings.from_json_dict({}).schema_version, SETTINGS_SCHEMA_VERSION
+        )
 
 
 class SentinelCoerceTests(unittest.TestCase):
@@ -72,6 +87,20 @@ class EnumCoerceTests(unittest.TestCase):
         self.assertEqual(
             coerce_field("process", "wav_type", "bogus"), WavType.PCM_16
         )
+
+
+class EnumValueTests(unittest.TestCase):
+    """``str(member)`` yields ``ClassName.MEMBER``; ``enum_value`` must not."""
+
+    def test_unwraps_settings_enums(self) -> None:
+        self.assertEqual(enum_value(WavType.PCM_24), "PCM_24")
+        self.assertEqual(enum_value(ColorScheme.DARK), "dark")
+        self.assertEqual(enum_value(EnsemblePair.KARAOKE), "karaoke")
+
+    def test_passes_through_non_enums(self) -> None:
+        self.assertEqual(enum_value("Median Spec"), "Median Spec")
+        self.assertEqual(enum_value(8), 8)
+        self.assertIsNone(enum_value(None))
 
 
 class EnsembleTypeCoerceTests(unittest.TestCase):
