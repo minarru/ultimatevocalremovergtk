@@ -465,7 +465,7 @@ class SeperateAttributes:
             update_stem_mapping,
         )
 
-        if not isinstance(sources, dict) or not sources:
+        if not sources:
             return sources
         keys = [key for key in (stem_keys or list(sources.keys())) if key in sources]
         subset = {key: sources[key] for key in keys}
@@ -641,6 +641,9 @@ class SeperateAttributes:
         is_not_ensemble = (not self.is_ensemble_mode or self.is_vocal_split_model)
         is_do_not_save_inst = (self.is_save_vocal_only and self.is_sec_bv_rebalance and stem_name == INST_STEM)
 
+        # Bound unconditionally: every read below sits behind the same
+        # ``is_bv_rebalance_lead`` guard that assigns it.
+        bv_rebalance_lead_source = None
         if is_bv_rebalance_lead:
             master_voc_source = spec_utils.match_array_shapes(self.master_vocal_source, stem_source, is_swap=True)
             bv_rebalance_lead_source = stem_source-master_voc_source

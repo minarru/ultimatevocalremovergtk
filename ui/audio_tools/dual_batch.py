@@ -142,7 +142,7 @@ class _FileColumn(Gtk.Box):
         has_selection = index is not None
         self.remove_button.set_sensitive(has_selection)
         self.up_button.set_sensitive(has_selection and index > 0)
-        self.down_button.set_sensitive(has_selection and index is not None and index < len(self.paths) - 1)
+        self.down_button.set_sensitive(has_selection and index < len(self.paths) - 1)
 
     def _move_selected(self, delta: int) -> None:
         index = self._selected_index()

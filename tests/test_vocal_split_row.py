@@ -49,7 +49,6 @@ class VocalSplitRowTests(unittest.TestCase):
         repo = ModelRepository()
 
         # Patch karaoke_model_list to return a test model
-        original_karaoke = repo.karaoke_model_list
         def patched_karaoke(settings: typing.Any):
             return ["VR Arc: UVR-BVE-4B"]
         repo.karaoke_model_list = patched_karaoke

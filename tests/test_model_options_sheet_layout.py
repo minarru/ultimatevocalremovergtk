@@ -82,7 +82,7 @@ class SheetLayoutTests(unittest.TestCase):
             self.assertFalse(columns_box.get_homogeneous())
 
     def test_every_tab_carries_all_three_groups(self):
-        sheet, window = self._sheet()
+        _sheet, window = self._sheet()
         for stack_name, view in window._views_by_stack.items():
             for group in (
                 view.advanced_group,
@@ -94,7 +94,7 @@ class SheetLayoutTests(unittest.TestCase):
                 )
 
     def test_maintenance_sits_below_secondary_in_the_end_column(self):
-        sheet, window = self._sheet()
+        _sheet, window = self._sheet()
         for stack_name, view in window._views_by_stack.items():
             self.assertIs(
                 view.maintenance_group.get_parent(),
@@ -103,7 +103,7 @@ class SheetLayoutTests(unittest.TestCase):
             )
 
     def test_inference_is_alone_in_the_start_column(self):
-        sheet, window = self._sheet()
+        _sheet, window = self._sheet()
         for stack_name, view in window._views_by_stack.items():
             self.assertIsNot(
                 view.advanced_group.get_parent(),

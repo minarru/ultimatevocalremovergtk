@@ -444,7 +444,7 @@ def ensure_weight_cache_vram_headroom(
         return ""
 
     cache = get_weight_cache()
-    protect = {ident for ident in (protect_identities or ()) if ident is not None}
+    protect = set(protect_identities or ())
 
     if not protect:
         cache.park_all()

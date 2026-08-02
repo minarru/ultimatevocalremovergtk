@@ -155,7 +155,7 @@ def build_ort_runner(session: Any, torch_device: Any) -> Callable[[torch.Tensor]
     """
     input_name = session.get_inputs()[0].name
     output_name = session.get_outputs()[0].name
-    providers = list(session.get_providers() or ())
+    providers: list[str] = list(session.get_providers() or ())
     primary = providers[0] if providers else "CPUExecutionProvider"
     device_obj = torch.device(torch_device) if not isinstance(torch_device, torch.device) else torch_device
     use_cuda_iobind = primary == "CUDAExecutionProvider" and device_obj.type == "cuda"

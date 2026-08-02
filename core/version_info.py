@@ -6,7 +6,7 @@ import json
 import os
 import ssl
 import urllib.request
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
 from bundled.constants import FORK_RELEASE_JSON_URL, FORK_RELEASE_PAGE
 
@@ -70,7 +70,9 @@ def load_release_metadata(*, force_refresh: bool = False) -> Tuple[Dict, bool]:
     if _RELEASE_CACHE is not None and not force_refresh:
         return _RELEASE_CACHE, _RELEASE_ONLINE
 
-    remote: Dict = {}
+    # ``Any``: ``json.load`` can return any JSON type, and the isinstance
+    # checks below are what narrow it back to a dict.
+    remote: Any = {}
     fetched_remote = False
     try:
         with _urlopen(FORK_RELEASE_JSON_URL) as response:

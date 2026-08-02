@@ -15,7 +15,7 @@ def finalize_process_exit(status: int) -> None:
     """Terminate the process, bypassing lingering non-daemon worker threads."""
     from core.debug_log import debug, enabled
 
-    code = status if isinstance(status, int) and status >= 0 else 0
+    code = status if status >= 0 else 0
     if enabled("ui"):
         debug(
             "ui",

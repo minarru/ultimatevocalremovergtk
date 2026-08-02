@@ -22,18 +22,40 @@
   "extraPaths": ["scripts"],
   "pythonVersion": "3.14",
   "pythonPlatform": "Linux",
-  "typeCheckingMode": "basic",
+  "typeCheckingMode": "standard",
   "reportMissingTypeStubs": false,
   "reportMissingModuleSource": false,
   "reportUninitializedInstanceVariable": false,
   "reportUnknownMemberType": "none",
   "reportUnknownArgumentType": "none",
   "reportUnknownVariableType": "none",
-  // Unknown parameter types remain disabled; third-party GI/ML APIs make this too noisy.
+  // Unknown parameter/lambda types remain disabled; third-party GI/ML APIs make
+  // these too noisy to be worth the annotations.
   "reportUnknownParameterType": "none",
+  "reportUnknownLambdaType": "none",
   "reportMissingParameterType": "error",
+  // Off deliberately: `from bundled.constants import *` mirrors upstream's flat
+  // namespace (see CLAUDE.md), which these two rules cannot distinguish from
+  // real dead imports or accidental shadowing.
+  "reportUnusedImport": "none",
+  "reportConstantRedefinition": "none",
+  // Bare `list` / `dict` annotations are pervasive in the ported ml/ layer.
+  "reportMissingTypeArgument": "none",
   "reportUnusedCallResult": "none",
   "reportImplicitOverride": "none",
   "reportPrivateUsage": "none",
-  "reportInvalidTypeForm": "none"
+  "reportInvalidTypeForm": "none",
+  // Strict-mode rules kept on: these catch dead branches and leftover debris
+  // from refactors, which is where real bugs hide.
+  "reportUnnecessaryComparison": "error",
+  "reportUnnecessaryIsInstance": "error",
+  "reportUnnecessaryCast": "error",
+  "reportUnnecessaryContains": "error",
+  "reportUnusedVariable": "error",
+  // Off: these only look within the declaring file, so the `_`-prefixed helpers
+  // that tests import (ui.errorlog._summary_viewport_height,
+  // ui.run_control._format_mmss) and `_ModelConfigImplementation` — the base of
+  // `ModelConfig` — all read as dead. 3 of 4 hits were false positives.
+  "reportUnusedFunction": "none",
+  "reportUnusedClass": "none"
 }

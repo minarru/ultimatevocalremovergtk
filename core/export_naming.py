@@ -23,8 +23,12 @@ _UNSAFE = re.compile(r'[/\\:\0<>"|?*]')
 _MULTI_SPACE = re.compile(r"\s+")
 
 
-def sanitize_filename_component(text: str) -> str:
-    """Sanitize one filename segment while keeping spaces and stem punctuation."""
+def sanitize_filename_component(text: str | None) -> str:
+    """Sanitize one filename segment while keeping spaces and stem punctuation.
+
+    ``None`` is accepted and returns ``""`` — call sites feed it untyped stem
+    and model labels, and rely on the ``... or "audio"`` fallback downstream.
+    """
     if text is None:
         return ""
     cleaned = _UNSAFE.sub(" ", str(text))

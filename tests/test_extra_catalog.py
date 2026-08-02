@@ -68,7 +68,7 @@ class ExtraCatalogFileTests(unittest.TestCase):
         """HyperACE v2 inst/voc differ (target_instrument), so must not share a name."""
         roformer = extra_catalog.load_extra_models().get("roformer_download_list", {})
         configs = {}
-        for label, files in roformer.items():
+        for _label, files in roformer.items():
             for name, url in files.items():
                 if name.endswith(".yaml"):
                     configs.setdefault(name, set()).add(url)

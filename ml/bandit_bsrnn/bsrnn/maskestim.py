@@ -136,7 +136,10 @@ class MultAddNormMLP(NormMLP):
             )
         )
 
-    def forward(self, qb: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    # Upstream design: this estimator emits a (mult, add) pair where NormMLP
+    # emits a single mask. Inherited for the __init__ machinery only, and the
+    # two are never used interchangeably.
+    def forward(self, qb: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:  # pyright: ignore[reportIncompatibleMethodOverride]
         qb = self.norm(qb)
         qb = self.hidden(qb)
         mmb = self.output(qb)

@@ -338,7 +338,7 @@ def resolve_in_sources(
     if not isinstance(sources, Mapping):
         return None
     raw = stem.raw if isinstance(stem, StemId) else stem
-    if raw is None or raw == "":
+    if not raw:
         return None
     if raw in sources:
         return str(raw)

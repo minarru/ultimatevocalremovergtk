@@ -55,7 +55,7 @@ class MultiMaskBandSplitCoreBase(BandsplitCoreBase):
         out = {}
 
         for stem, mem in self.mask_estim.items():
-            m = cast(nn.Module, mem)(q, cond=cond)
+            m = mem(q, cond=cond)
 
             # if torch.any(torch.isnan(m)):
             #     raise ValueError("m nan", stem)
@@ -178,7 +178,7 @@ class SingleMaskBandsplitCoreBase(BandsplitCoreBase):
         # x = complex spectrogram (batch, in_chan, n_freq, n_time)
         z = self.band_split(x)  # (batch, emb_dim, n_band, n_time)
         q = self.tf_model(z)  # (batch, emb_dim, n_band, n_time)
-        m = cast(nn.Module, self.mask_estim)(q)  # (batch, in_chan, n_freq, n_time)
+        m = self.mask_estim(q)  # (batch, in_chan, n_freq, n_time)
 
         s = self.mask(x, m)
 
@@ -559,7 +559,7 @@ class PatchingMaskBandsplitCoreBase(MultiMaskBandSplitCoreBase):
 
         s = torch.zeros_like(x)
 
-        _, n_channel, n_freq, n_time = x.shape
+        _, _n_channel, n_freq, n_time = x.shape
         kernel_freq, kernel_time, _, _, _, _ = m.shape
 
         # print(x.shape, m.shape)

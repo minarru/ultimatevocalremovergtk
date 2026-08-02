@@ -53,7 +53,7 @@ class Attend(nn.Module):
         d - feature dimension
         """
 
-        q_len, k_len, device = q.shape[-2], k.shape[-2], q.device
+        _q_len, _k_len, _device = q.shape[-2], k.shape[-2], q.device
 
         scale = q.shape[-1] ** -0.5
 

@@ -161,7 +161,6 @@ def vr_denoiser(
     #Post Proc
     if is_deverber:
         v_spec = mask * X_mag * np.exp(1.j * X_phase)
-        y_spec = (1 - mask) * X_mag * np.exp(1.j * X_phase)
     else:
         v_spec = (1 - mask) * X_mag * np.exp(1.j * X_phase)
 
@@ -173,6 +172,9 @@ def vr_denoiser(
     wave = spec_utils.match_array_shapes(wave, X)
 
     if is_deverber:
+        # ``mask`` / ``X_mag`` / ``X_phase`` are untouched above, so deriving the
+        # reverb-only spectrogram here is equivalent to hoisting it.
+        y_spec = (1 - mask) * X_mag * np.exp(1.j * X_phase)
         wave_2 = spec_utils.cmb_spectrogram_to_wave(y_spec, mp, is_v51_model=True).T
         wave_2 = spec_utils.match_array_shapes(wave_2, X)
         return wave, wave_2

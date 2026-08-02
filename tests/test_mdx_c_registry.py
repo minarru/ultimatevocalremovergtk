@@ -289,7 +289,6 @@ class ModelDataCatalogFallbackTests(unittest.TestCase):
             model_data.is_dry_check = True
             model_data.repo = None
 
-            index = {"fallback_model.ckpt": yaml_name}
             with patch("core.model_data.try_register_from_catalog") as mock_try:
                 mock_try.return_value = {
                     "config_yaml": yaml_name,

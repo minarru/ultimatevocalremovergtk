@@ -58,7 +58,7 @@ class StemTitleTests(unittest.TestCase):
         self.assertEqual(secondary, "Secondary algorithm")
 
     def test_multi_stem_title(self) -> None:
-        primary, secondary = algorithm_row_titles("Vocals", "Instrumental", multi_stem=True)
+        primary, _secondary = algorithm_row_titles("Vocals", "Instrumental", multi_stem=True)
         self.assertEqual(primary, "Ensemble algorithm")
 
 

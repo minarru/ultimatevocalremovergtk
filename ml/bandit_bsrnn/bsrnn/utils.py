@@ -49,7 +49,7 @@ def check_nonzero_bandwidth(band_specs: BandSpec) -> None:
 
 def check_no_overlap(band_specs: BandSpec) -> None:
     fend_prev = -1
-    for fstart_curr, fend_curr in band_specs:
+    for fstart_curr, _fend_curr in band_specs:
         if fstart_curr <= fend_prev:
             raise ValueError("Bands cannot overlap")
 

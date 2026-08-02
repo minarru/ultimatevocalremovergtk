@@ -309,6 +309,9 @@ class SeperateDemucs(SeperateAttributes):
         with trace_phase("separate", "demix_demucs", engine="SeperateDemucs", model=self.model_basename):
             org_mix = mix
             sources: Any = None
+            # See SeperateMDX.demix: bound unconditionally, reassigned and read
+            # back only under ``is_pitch_change``.
+            sr_pitched = 44100
 
             if self.is_pitch_change:
                 mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)

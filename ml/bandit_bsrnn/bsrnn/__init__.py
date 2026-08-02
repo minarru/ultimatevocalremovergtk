@@ -13,11 +13,13 @@ from .tfmodel import (
 class BandsplitCoreBase(nn.Module, ABC):
     band_split: nn.Module
     tf_model: nn.Module
-    mask_estim: nn.Module
+    # ``mask_estim`` is declared by each subclass: MultiMask holds a ModuleDict,
+    # SingleMask a plain Module. Declaring it here made that an override clash.
 
     def __init__(self) -> None:
         super().__init__()
 
-    @staticmethod
-    def mask(x: torch.Tensor, m: torch.Tensor) -> torch.Tensor:
+    # Instance method, not a staticmethod: subclasses override it as one, and
+    # every call site is ``self.mask(...)`` / ``super().mask(...)``.
+    def mask(self, x: torch.Tensor, m: torch.Tensor) -> torch.Tensor:
         return x * m

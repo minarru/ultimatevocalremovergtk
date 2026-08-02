@@ -532,7 +532,7 @@ class DownloadCenterWindow:
         if self._available:
             total = sum(
                 1
-                for arch, models in self._available.items()
+                for _arch, models in self._available.items()
                 for name in models
                 if name not in (NO_NEW_MODELS, NO_CONNECTION)
             )

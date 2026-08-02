@@ -365,6 +365,9 @@ class SeperateMDX(SeperateAttributes):
             
             org_mix = mix
             tar_waves_ = []
+            # Only read back under ``is_pitch_change``, which is also the only
+            # branch that reassigns it; seeded so the name is always bound.
+            sr_pitched = 44100
 
             if is_match_mix:
                 chunk_size = self.hop * (256-1)
@@ -382,7 +385,10 @@ class SeperateMDX(SeperateAttributes):
             mixture = np.concatenate((np.zeros((2, self.trim), dtype='float32'), mix, np.zeros((2, pad), dtype='float32')), 1)
             mixture_t = torch.as_tensor(mixture, dtype=torch.float32, device=self.device)
 
-            step = self.chunk_size - self.n_fft if overlap == DEFAULT else int((1 - overlap) * chunk_size)
+            # ``overlap`` is always a float here: model_data resolves the
+            # ``Default`` sentinel to 0.25 before it reaches the engine, so
+            # upstream's ``chunk_size - n_fft`` branch is unreachable.
+            step = int((1 - overlap) * chunk_size)
             mix_len = mixture_t.shape[-1]
             result = torch.zeros((1, 2, mix_len), dtype=torch.float32, device=self.device)
             divider = torch.zeros((1, 2, mix_len), dtype=torch.float32, device=self.device)
@@ -775,7 +781,7 @@ class SeperateMDXC(SeperateAttributes):
             try:
                 try:
                     S = model.num_target_instruments
-                except Exception as e:
+                except Exception:
                     S = model.module.num_target_instruments
 
                 mdx_segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size

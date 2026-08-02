@@ -219,7 +219,7 @@ class BSNet(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         # input shape: B, nband, N, T
 
-        B, nband, N, T = input.shape
+        B, nband, _N, T = input.shape
 
         # band comm
         band_input = input.permute(0,3,2,1).reshape(B*T, -1, nband)

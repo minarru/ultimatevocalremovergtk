@@ -185,7 +185,7 @@ class TFC_TDF(nn.Module):
         super().__init__()
 
         self.blocks = nn.ModuleList()
-        for i in range(l):
+        for _i in range(l):
             block = _ResidualBlock(in_c, c, f, bn, norm, act)
             self.blocks.append(block)
             in_c = c
@@ -235,7 +235,7 @@ class TFC_TDF_net(nn.Module):
         self.first_conv = nn.Conv2d(dim_c, c, 1, 1, 0, bias=False)
 
         self.encoder_blocks = nn.ModuleList()
-        for i in range(n):
+        for _i in range(n):
             block = _EncoderBlock()
             block.tfc_tdf = TFC_TDF(c, c, l, f, bn, norm, act)
             block.downscale = Downscale(c, c + g, scale, norm, act)
@@ -246,7 +246,7 @@ class TFC_TDF_net(nn.Module):
         self.bottleneck_block = TFC_TDF(c, c, l, f, bn, norm, act)
 
         self.decoder_blocks = nn.ModuleList()
-        for i in range(n):
+        for _i in range(n):
             block = _DecoderBlock()
             block.upscale = Upscale(c, c - g, scale, norm, act)
             f = f * scale[1]
@@ -310,7 +310,7 @@ class TFC_TDF_net(nn.Module):
         x = self.cws2cac(x)
 
         if self.num_target_instruments > 1:
-            b, c, f, t = x.shape
+            b, _c, f, t = x.shape
             x = x.reshape(b, self.num_target_instruments, -1, f, t)
 
         x = self.stft.inverse(x)
