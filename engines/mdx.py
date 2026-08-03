@@ -103,7 +103,9 @@ def _filter_init_kwargs(model_cls: typing.Any, cfg: typing.Any) -> dict:
     return {key: cfg[key] for key in cfg if key in allowed}
 
 
-def _build_mdx_c_model(config: typing.Any):
+def _build_mdx_c_model(
+    config: typing.Any, state_dict_keys: typing.Optional[typing.Sequence[str]] = None
+):
     if getattr(config, 'cls', None) == 'Bandit':
         from ml.bandit import Bandit
 
@@ -122,11 +124,17 @@ def _build_mdx_c_model(config: typing.Any):
         return MelBandRoformer(**kwargs)
     if 'freqs_per_bands' in model_cfg:
         kwargs = _filter_init_kwargs(BSRoformer, model_cfg)
-        # ``hyperace2`` is a *top-level* config key, not part of ``model:``, so
-        # it never reaches the kwarg filter. Without it the segm branch is
-        # absent and the checkpoint fails to load with ~471 unexpected keys.
-        if getattr(config, 'hyperace2', False):
-            kwargs['hyperace'] = True
+        # HyperACE attaches a segm branch to every mask estimator. Prefer the
+        # checkpoint's own keys: only the packaged v2-instrumental yaml carries
+        # a ``hyperace2`` flag, and that flag is top-level so it never reaches
+        # the kwarg filter anyway. Upstream's own configs declare nothing.
+        from ml.hyperace import hyperace_variant_from_state_dict
+
+        variant = hyperace_variant_from_state_dict(state_dict_keys or ())
+        if variant is None and getattr(config, 'hyperace2', False):
+            variant = 'v2'
+        if variant is not None:
+            kwargs['hyperace'] = variant
         return BSRoformer(**kwargs)
     if 'band_SR' in model_cfg or 'sources' in model_cfg:
         from ml.scnet import SCNet
@@ -913,8 +921,12 @@ class SeperateMDXC(SeperateAttributes):
             if cached and cached.module is not None:
                 model: Any = materialize_module(cached.module, device)
             else:
-                model = _build_mdx_c_model(self.roformer_config)
+                # Load first: the checkpoint's keys decide whether this is a
+                # HyperACE variant, which upstream configs do not declare.
                 checkpoint = _load_torch_checkpoint(self.model_path)
+                model = _build_mdx_c_model(
+                    self.roformer_config, state_dict_keys=list(checkpoint.keys())
+                )
                 model = model if not isinstance(model, torch.nn.DataParallel) else model.module
                 model.load_state_dict(checkpoint)
                 del checkpoint

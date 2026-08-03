@@ -256,7 +256,9 @@ def _load_config(config_path: str) -> Any:
     return ConfigDict(load_mdx_c_config(config_path))
 
 
-def _instantiate(config: Any) -> Tuple[Any, str, bool]:
+def _instantiate(
+    config: Any, state_dict_keys: Optional[List[str]] = None
+) -> Tuple[Any, str, bool]:
     """Build a module via the same two paths ``SeperateMDXC`` uses.
 
     The third element says whether the class received *filtered* kwargs — only
@@ -268,7 +270,7 @@ def _instantiate(config: Any) -> Tuple[Any, str, bool]:
     from ml.tfc_tdf_v3 import TFC_TDF_net
 
     try:
-        module = _build_mdx_c_model(config)
+        module = _build_mdx_c_model(config, state_dict_keys=state_dict_keys)
         return module, type(module).__name__, True
     except ValueError:
         # Not a Roformer/SCNet/Bandit config. SeperateMDXC routes MDX23C to
@@ -281,8 +283,14 @@ def _instantiate(config: Any) -> Tuple[Any, str, bool]:
     return module, type(module).__name__, False
 
 
-def build_from_config(config_path: str) -> BuiltModel:
-    """Instantiate a model from its yaml alone. Never raises; reports instead."""
+def build_from_config(
+    config_path: str, state_dict_keys: Optional[List[str]] = None
+) -> BuiltModel:
+    """Instantiate a model from its yaml. Never raises; reports instead.
+
+    ``state_dict_keys`` lets a checkpoint steer variants a config does not
+    declare — HyperACE BS-Roformer being the case in point.
+    """
     try:
         config = _load_config(config_path)
     except Exception as exc:  # noqa: BLE001 - a bad config is a probe result
@@ -294,7 +302,7 @@ def build_from_config(config_path: str) -> BuiltModel:
     sample_rate = int(getattr(audio, "sample_rate", 44100) or 44100) if audio else 44100
 
     try:
-        module, arch, filtered = _instantiate(config)
+        module, arch, filtered = _instantiate(config, state_dict_keys)
     except Exception as exc:  # noqa: BLE001 - unported architecture is the answer
         return BuiltModel(
             config_path,
@@ -651,21 +659,26 @@ def probe(
     seconds: Optional[float] = None,
 ) -> ProbeResult:
     """Build, forward-probe and (optionally) key-diff one model."""
-    build = build_from_config(config_path)
-    forward = forward_probe(build, seconds=seconds)
-    keys: Optional[KeyDiff] = None
-    if (checkpoint_url or checkpoint_path) and build.ok:
+    # Read the checkpoint's keys first: they decide variants the config does
+    # not declare, so the build itself depends on them.
+    checkpoint_keys: Optional[List[str]] = None
+    if checkpoint_url or checkpoint_path:
         try:
             checkpoint_keys = (
                 local_checkpoint_keys(checkpoint_path)
                 if checkpoint_path
                 else remote_checkpoint_keys(checkpoint_url)
             )
-            keys = diff_state_dict_keys(
-                list(build.module.state_dict().keys()), checkpoint_keys
-            )
         except Exception as exc:  # noqa: BLE001 - header probe is best-effort
             print(f"  (state_dict probe unavailable: {exc})")
+
+    build = build_from_config(config_path, state_dict_keys=checkpoint_keys)
+    forward = forward_probe(build, seconds=seconds)
+    keys: Optional[KeyDiff] = None
+    if checkpoint_keys is not None and build.ok:
+        keys = diff_state_dict_keys(
+            list(build.module.state_dict().keys()), checkpoint_keys
+        )
     return ProbeResult(
         entry_id=entry_id or os.path.basename(config_path),
         label=label or os.path.basename(config_path),

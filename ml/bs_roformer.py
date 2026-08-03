@@ -300,7 +300,7 @@ class MaskEstimator(Module):
             dim_inputs: BeartypeTuple[int, ...],
             depth: int,
             mlp_expansion_factor: int = 4,
-            hyperace: bool = False,
+            hyperace: bool | str = False,
     ) -> None:
         super().__init__()
         self.dim_inputs = dim_inputs
@@ -320,10 +320,13 @@ class MaskEstimator(Module):
         # the parameter names are ``segm.*`` and must not appear otherwise.
         self.segm = None
         if hyperace:
-            from ml.hyperace import SegmModel
+            from ml.hyperace import VARIANT_V2, SegmModel
 
             self.segm = SegmModel(
-                in_bands=len(dim_inputs), in_dim=dim, out_bins=sum(dim_inputs) // 4
+                in_bands=len(dim_inputs),
+                in_dim=dim,
+                out_bins=sum(dim_inputs) // 4,
+                variant=hyperace if isinstance(hyperace, str) else VARIANT_V2,
             )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -396,7 +399,8 @@ class BSRoformer(Module):
             # HyperACE checkpoints attach a segmentation branch to every mask
             # estimator. Enabled from the config's top-level ``hyperace2`` flag,
             # not from the ``model:`` section — see engines.mdx._build_mdx_c_model.
-            hyperace: bool = False,
+            # Accepts a variant name (``"v1"``/``"v2"``) or a bool meaning v2.
+            hyperace: bool | str = False,
     ) -> None:
         super().__init__()
 

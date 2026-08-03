@@ -28,6 +28,27 @@ from torch.nn import Module
 
 _Size = Union[int, Tuple[int, int]]
 
+#: Published HyperACE releases. ``v1`` and ``v2`` are separate upstream
+#: sources; ``v2_inst`` and ``v2_voc`` ship byte-identical code.
+VARIANT_V1 = "v1"
+VARIANT_V2 = "v2"
+
+
+def hyperace_variant_from_state_dict(keys: Sequence[str]) -> str | None:
+    """Which HyperACE variant a checkpoint holds, or ``None`` for plain BSRoformer.
+
+    Only the *packaged* v2-instrumental yaml carries a ``hyperace2`` flag —
+    upstream's own configs declare nothing — so the weights are the reliable
+    signal. v2 threads a ``TFC_TDF`` (``out_conv``) through each upsample
+    stage; v1 does not.
+    """
+    segm = [key for key in keys if ".segm." in key]
+    if not segm:
+        return None
+    if any("upsample_head" in key and "out_conv" in key for key in segm):
+        return VARIANT_V2
+    return VARIANT_V1
+
 
 def autopad(k: _Size, p: _Size | None = None) -> _Size:
     """Padding that keeps the spatial size for an odd kernel."""
@@ -276,11 +297,16 @@ class Backbone(Module):
     """
 
     def __init__(
-        self, in_channels: int = 256, base_channels: int = 64, base_depth: int = 3
+        self, in_channels: int = 256, base_channels: int = 64, base_depth: int = 3,
+        variant: str = VARIANT_V2,
     ) -> None:
         super().__init__()
         c2 = base_channels
         c3, c4, c5, c6 = 256, 384, 512, 768
+
+        # v1 strides time only at every stage; v2 also halves the band axis in
+        # the last two, which is what lets its upsample head be four stages deep.
+        deep_stride: _Size = 2 if variant == VARIANT_V2 else (2, 1)
 
         self.stem = DSConv(in_channels, c2, k=3, s=(2, 1), p=1)
         self.p2 = nn.Sequential(
@@ -290,10 +316,10 @@ class Backbone(Module):
             DSConv(c3, c4, k=3, s=(2, 1), p=1), DS_C3k2(c4, c4, n=base_depth * 2)
         )
         self.p4 = nn.Sequential(
-            DSConv(c4, c5, k=3, s=2, p=1), DS_C3k2(c5, c5, n=base_depth * 2)
+            DSConv(c4, c5, k=3, s=deep_stride, p=1), DS_C3k2(c5, c5, n=base_depth * 2)
         )
         self.p5 = nn.Sequential(
-            DSConv(c5, c6, k=3, s=2, p=1), DS_C3k2(c6, c6, n=base_depth)
+            DSConv(c5, c6, k=3, s=deep_stride, p=1), DS_C3k2(c6, c6, n=base_depth)
         )
         self.out_channels = [c3, c4, c5, c6]
 
@@ -415,11 +441,15 @@ class TFC_TDF(Module):
 class FreqPixelShuffle(Module):
     """Double the frequency axis by folding channels into it."""
 
-    def __init__(self, in_channels: int, out_channels: int, scale: int, f: int) -> None:
+    def __init__(
+        self, in_channels: int, out_channels: int, scale: int, f: int | None = None
+    ) -> None:
         super().__init__()
         self.scale = scale
         self.conv = DSConv(in_channels, out_channels * scale)
-        self.out_conv = TFC_TDF(out_channels, out_channels, 2, f)
+        # v1 shuffles and stops; v2 refines each stage with a TFC-TDF block.
+        # (v1 also holds an unused SiLU here — parameterless, so it is omitted.)
+        self.out_conv = TFC_TDF(out_channels, out_channels, 2, f) if f else None
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.conv(x)
@@ -429,7 +459,7 @@ class FreqPixelShuffle(Module):
         x = x.view(B, out_c, self.scale, H, W)
         x = x.permute(0, 1, 3, 4, 2).contiguous()
         x = x.view(B, out_c, H, W * self.scale)
-        return self.out_conv(x)
+        return x if self.out_conv is None else self.out_conv(x)
 
 
 class ProgressiveUpsampleHead(Module):
@@ -438,17 +468,28 @@ class ProgressiveUpsampleHead(Module):
     def __init__(
         self, in_channels: int, out_channels: int,
         target_bins: int = 1025, in_bands: int = 62,
+        variant: str = VARIANT_V2,
     ) -> None:
         super().__init__()
         self.target_bins = target_bins
         c = in_channels
 
-        self.block1 = FreqPixelShuffle(c, c // 2, scale=2, f=in_bands * 2)
-        self.block2 = FreqPixelShuffle(c // 2, c // 4, scale=2, f=in_bands * 4)
-        self.block3 = FreqPixelShuffle(c // 4, c // 8, scale=2, f=in_bands * 8)
-        self.block4 = FreqPixelShuffle(c // 8, c // 16, scale=2, f=in_bands * 16)
+        if variant == VARIANT_V2:
+            widths = (c // 2, c // 4, c // 8, c // 16)
+            refine = (in_bands * 2, in_bands * 4, in_bands * 8, in_bands * 16)
+            final_kernel: dict = dict(kernel_size=3, stride=1, padding="same")
+        else:
+            # v1 narrows more slowly and finishes with a 1x1.
+            widths = (c, c // 2, c // 2, c // 4)
+            refine = (None, None, None, None)
+            final_kernel = dict(kernel_size=1)
+
+        self.block1 = FreqPixelShuffle(c, widths[0], scale=2, f=refine[0])
+        self.block2 = FreqPixelShuffle(widths[0], widths[1], scale=2, f=refine[1])
+        self.block3 = FreqPixelShuffle(widths[1], widths[2], scale=2, f=refine[2])
+        self.block4 = FreqPixelShuffle(widths[2], widths[3], scale=2, f=refine[3])
         self.final_conv = nn.Conv2d(
-            c // 16, out_channels, kernel_size=3, stride=1, padding="same", bias=False
+            widths[3], out_channels, bias=False, **final_kernel
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -471,17 +512,25 @@ class SegmModel(Module):
     def __init__(
         self, in_bands: int = 62, in_dim: int = 256, out_bins: int = 1025,
         out_channels: int = 4, base_channels: int = 64, base_depth: int = 2,
-        num_hyperedges: int = 32, num_heads: int = 8,
+        num_hyperedges: int | None = None, num_heads: int = 8,
+        variant: str = VARIANT_V2,
     ) -> None:
         super().__init__()
+        is_v2 = variant == VARIANT_V2
+        if num_hyperedges is None:
+            num_hyperedges = 32 if is_v2 else 16
+        # v1 runs a wider high-order branch and a deeper low-order one.
+        k, l = (2, 1) if is_v2 else (3, 2)
+
         self.backbone = Backbone(
-            in_channels=in_dim, base_channels=base_channels, base_depth=base_depth
+            in_channels=in_dim, base_channels=base_channels,
+            base_depth=base_depth, variant=variant,
         )
         enc_channels = self.backbone.out_channels
         _c2, _c3, c4, _c5 = enc_channels
 
         self.hyperace = HyperACE(
-            enc_channels, c4, num_hyperedges, num_heads, k=2, l=1
+            enc_channels, c4, num_hyperedges, num_heads, k=k, l=l
         )
         self.decoder = Decoder(enc_channels, c4, enc_channels)
         self.upsample_head = ProgressiveUpsampleHead(
@@ -489,6 +538,7 @@ class SegmModel(Module):
             out_channels=out_channels,
             target_bins=out_bins,
             in_bands=in_bands,
+            variant=variant,
         )
 
     def forward(self, x: Tensor) -> Tensor:

@@ -53,16 +53,25 @@ Verdicts, worst to best. Exit status is 0 only for `buildable`:
 
 ## HyperACE BS-Roformer
 
-The four `BS-Roformer-HyperACE` entries in [`bundled/extra_models.json`](../bundled/extra_models.json) attach a segmentation branch to every mask estimator — a depthwise-separable CSP backbone, hypergraph attention, a gated FPN decoder and a frequency pixel-shuffle head — summed onto the per-band mask MLPs. It lives in [`ml/hyperace.py`](../ml/hyperace.py) and adds ~21M parameters (51M → 72M for the v2 instrumental model).
+The `BS-Roformer-HyperACE` entries in [`bundled/extra_models.json`](../bundled/extra_models.json) attach a segmentation branch to every mask estimator — a depthwise-separable CSP backbone, hypergraph attention, a gated FPN decoder and a frequency pixel-shuffle head — summed onto the per-band mask MLPs. It lives in [`ml/hyperace.py`](../ml/hyperace.py).
 
-It is switched on by a **top-level** `hyperace2: true` in the yaml, *not* a key inside `model:`. `_filter_init_kwargs` only ever sees the `model:` section, so `_build_mdx_c_model` reads the flag off the config root and injects `hyperace=True`. Without that, a plain BSRoformer is built and `load_state_dict` rejects ~471 `mask_estimators.N.segm.*` keys.
+Upstream ships **two** distinct sources; `v2_inst` and `v2_voc` are byte-identical to each other.
 
-Verify a HyperACE checkpoint loads without running it:
+| Variant | segm keys | Total keys | Params | Differences |
+|---|---|---|---|---|
+| v1 | 398 | 1097 | 68.6M | Backbone strides time only; upsample head has no `out_conv`, narrows more slowly, 1×1 final conv; 16 hyperedges; HyperACE `k=3, l=2` |
+| v2 (inst + voc) | 471 | 1170 | 72.0M | Backbone also halves the band axis in `p4`/`p5`; each upsample stage refined by a TFC-TDF `out_conv`; 32 hyperedges; HyperACE `k=2, l=1` |
+
+**The variant is detected from the checkpoint, not the config.** Only the *packaged* v2-instrumental yaml carries a top-level `hyperace2: true`; upstream's own configs declare nothing at all, and that key is outside `model:` so it never reaches `_filter_init_kwargs` anyway. `hyperace_variant_from_state_dict` keys off the presence of `segm.*` and, within it, `upsample_head.*.out_conv` (v2 only). `SeperateMDXC` therefore loads the checkpoint *before* building the model. The `hyperace2` flag is still honoured as a fallback when no keys are available.
+
+Verify a HyperACE checkpoint loads without running it — or without even downloading it:
 
 ```bash
 python scripts/model_probe.py --config <hyperace.yaml> --checkpoint <hyperace.ckpt>
 # state_dict   1170 matched, 0 missing, 0 unexpected
 ```
+
+All three published checkpoints were verified this way against ~300 KB of range-fetched headers rather than 853 MB of weights.
 
 The probe still reports `config-ignored` for these configs because `skip_connection` and `use_torch_checkpoint` are dropped. Both are inert here — upstream's `v2_inst/bs_roformer.py` stores them and never reads them in `forward`, and this config sets `skip_connection: false`. They are deliberately **not** accepted as parameters: taking a kwarg we do not implement would silence the probe for a future config where the flag does matter.
 

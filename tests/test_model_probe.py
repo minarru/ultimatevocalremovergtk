@@ -216,6 +216,29 @@ class BuildFromConfigTests(unittest.TestCase):
         built = model_probe.build_from_config(_SCNET_CONFIG)
         self.assertEqual(built.dropped, [])
 
+    @unittest.skipUnless(
+        os.path.isfile(os.path.join(
+            _REPO, "models", "MDX_Net_Models", "model_data", "mdx_c_configs",
+            "bs_inst_hyperace2_unwa_config.yaml")),
+        "HyperACE config not installed",
+    )
+    def test_checkpoint_keys_steer_the_build(self) -> None:
+        """Upstream HyperACE configs declare no flag, so the probe must build
+        what the checkpoint implies — here v1 keys against a v2-flagged yaml."""
+        config = os.path.join(
+            _REPO, "models", "MDX_Net_Models", "model_data", "mdx_c_configs",
+            "bs_inst_hyperace2_unwa_config.yaml",
+        )
+        built = model_probe.build_from_config(
+            config,
+            state_dict_keys=[
+                "mask_estimators.0.segm.backbone.stem.dwconv.weight",
+                "mask_estimators.0.segm.upsample_head.block1.conv.dwconv.weight",
+            ],
+        )
+        segm = [k for k in built.module.state_dict() if ".segm." in k]
+        self.assertEqual(len(segm), 398, "expected the v1 head, not the flag's v2")
+
     def test_reports_an_unbuildable_config_instead_of_raising(self) -> None:
         import tempfile
 

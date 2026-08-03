@@ -7,6 +7,7 @@ the definitive test; the shape tests below need no weights at all.
 
 import os
 import unittest
+from typing import Any
 
 _REPO = os.path.dirname(os.path.dirname(__file__))
 _CKPT = os.path.join(_REPO, "models", "MDX_Net_Models", "bs_inst_hyperace2_unwa.ckpt")
@@ -40,6 +41,113 @@ class SegmModelShapeTests(unittest.TestCase):
         with torch.no_grad():
             out = model(torch.randn(1, 32, 64, 16))
         self.assertTrue(bool(torch.isfinite(out).all()))
+
+
+class VariantDetectionTests(unittest.TestCase):
+    """Upstream ships three sources; only the packaged v2-inst yaml carries a
+    ``hyperace2`` flag, so the checkpoint's own keys are the reliable signal."""
+
+    def test_v2_is_recognised_by_its_upsample_out_conv(self) -> None:
+        from ml.hyperace import hyperace_variant_from_state_dict
+
+        keys = [
+            "mask_estimators.0.segm.backbone.stem.dwconv.weight",
+            "mask_estimators.0.segm.upsample_head.block1.conv.dwconv.weight",
+            "mask_estimators.0.segm.upsample_head.block1.out_conv.blocks.0.tfc1.0.weight",
+        ]
+        self.assertEqual(hyperace_variant_from_state_dict(keys), "v2")
+
+    def test_v1_has_segm_but_no_out_conv(self) -> None:
+        from ml.hyperace import hyperace_variant_from_state_dict
+
+        keys = [
+            "mask_estimators.0.segm.backbone.stem.dwconv.weight",
+            "mask_estimators.0.segm.upsample_head.block1.conv.dwconv.weight",
+        ]
+        self.assertEqual(hyperace_variant_from_state_dict(keys), "v1")
+
+    def test_a_plain_bs_roformer_checkpoint_has_no_variant(self) -> None:
+        from ml.hyperace import hyperace_variant_from_state_dict
+
+        self.assertIsNone(
+            hyperace_variant_from_state_dict(["mask_estimators.0.to_freqs.0.0.0.weight"])
+        )
+
+
+class V1VariantTests(unittest.TestCase):
+    """Published v1 weights: 1097 keys total, 398 under segm, no ``out_conv``."""
+
+    def _segm(self):
+        from ml.hyperace import SegmModel
+
+        return SegmModel(in_bands=62, in_dim=256, out_bins=1025, variant="v1")
+
+    def test_v1_parameter_count_matches_the_published_checkpoint(self) -> None:
+        self.assertEqual(len(self._segm().state_dict()), 398)
+
+    def test_v1_upsample_head_has_no_out_conv(self) -> None:
+        self.assertFalse(any("out_conv" in k for k in self._segm().state_dict()))
+
+    def test_v2_parameter_count_matches_the_published_checkpoint(self) -> None:
+        from ml.hyperace import SegmModel
+
+        model = SegmModel(in_bands=62, in_dim=256, out_bins=1025, variant="v2")
+        self.assertEqual(len(model.state_dict()), 471)
+
+
+@unittest.skipUnless(os.path.isfile(_CONFIG), "HyperACE config not installed")
+class BuildDetectionTests(unittest.TestCase):
+    """Upstream's own yamls declare no flag, so the build must follow the weights."""
+
+    def _config(self, *, flag: bool):
+        from ml_collections import ConfigDict
+
+        from core.model_data import load_mdx_c_config
+
+        raw = load_mdx_c_config(_CONFIG)
+        raw.pop("hyperace2", None)
+        if flag:
+            raw["hyperace2"] = True
+        return ConfigDict(raw)
+
+    def _segm_keys(self, model: Any) -> list:
+        return [k for k in model.state_dict() if ".segm." in k]
+
+    def test_flagless_config_builds_plain_without_checkpoint_keys(self) -> None:
+        from engines.mdx import _build_mdx_c_model
+
+        model = _build_mdx_c_model(self._config(flag=False))
+        self.assertEqual(self._segm_keys(model), [])
+
+    def test_checkpoint_keys_enable_the_branch_without_any_flag(self) -> None:
+        from engines.mdx import _build_mdx_c_model
+
+        model = _build_mdx_c_model(
+            self._config(flag=False),
+            state_dict_keys=[
+                "mask_estimators.0.segm.backbone.stem.dwconv.weight",
+                "mask_estimators.0.segm.upsample_head.block1.out_conv.blocks.0.tfc1.0.weight",
+            ],
+        )
+        self.assertEqual(len(self._segm_keys(model)), 471)
+
+    def test_v1_checkpoint_keys_select_the_v1_head(self) -> None:
+        from engines.mdx import _build_mdx_c_model
+
+        model = _build_mdx_c_model(
+            self._config(flag=False),
+            state_dict_keys=[
+                "mask_estimators.0.segm.backbone.stem.dwconv.weight",
+                "mask_estimators.0.segm.upsample_head.block1.conv.dwconv.weight",
+            ],
+        )
+        self.assertEqual(len(self._segm_keys(model)), 398)
+
+    def test_the_packaged_flag_still_works_on_its_own(self) -> None:
+        from engines.mdx import _build_mdx_c_model
+
+        model = _build_mdx_c_model(self._config(flag=True))
+        self.assertEqual(len(self._segm_keys(model)), 471)
 
 
 class MaskEstimatorWiringTests(unittest.TestCase):
