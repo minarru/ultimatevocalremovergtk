@@ -51,6 +51,7 @@ from ..widgets.rows import (
     set_scale_default_mark,
     set_scale_row_value,
 )
+from ..widget_state import fetch
 
 # Full stem universe presented in the UI. The backend intersects this with the
 # selected model's actual stems, so checking a stem a model does not produce is
@@ -119,12 +120,12 @@ class MDXView(MethodView):
         self._overlap_is_mdx_c = False
 
         self.segment_row = make_numeric_scale_row("Segment size", 32, 4000, step=32, digits=0)
-        self.segment_row._uvr_scale.connect("value-changed", self._on_segment_changed)
+        fetch(self.segment_row, "_uvr_scale").connect("value-changed", self._on_segment_changed)
         group.add(self.segment_row)
         self.hints.register(self.segment_row, MDX_SEGMENT_SIZE_HINT)
 
         self.overlap_row = make_discrete_scale_row("Overlap", [str(v) for v in MDX_OVERLAP])
-        self.overlap_row._uvr_scale.connect("value-changed", self._on_overlap_changed)
+        fetch(self.overlap_row, "_uvr_scale").connect("value-changed", self._on_overlap_changed)
         group.add(self.overlap_row)
         self.hints.register(self.overlap_row, MDX_OVERLAP_HINT)
 

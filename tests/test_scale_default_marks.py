@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from ui.widget_state import fetch
 
 
 @unittest.skipUnless(
@@ -27,7 +28,7 @@ class ScaleDefaultMarkTests(unittest.TestCase):
 
         row = make_numeric_scale_row("Segment size", 32, 4000, step=32)
         set_scale_default_mark(row, 256)
-        self.assertEqual(row._uvr_default, 256)
+        self.assertEqual(fetch(row, "_uvr_default"), 256)
 
     def test_discrete_mark_matches_choice_index(self) -> None:
         from ui.widgets.rows import (
@@ -38,9 +39,9 @@ class ScaleDefaultMarkTests(unittest.TestCase):
 
         row = make_discrete_scale_row("Overlap", ["Default", "0.25", "0.50"])
         set_scale_default_mark(row, "Default")
-        self.assertEqual(row._uvr_default, "Default")
+        self.assertEqual(fetch(row, "_uvr_default"), "Default")
         reconfigure_discrete_scale(row, ["Default", "0.25", "0.50", "0.75"])
-        self.assertEqual(row._uvr_default, "Default")
+        self.assertEqual(fetch(row, "_uvr_default"), "Default")
 
     def test_reconfigure_numeric_keeps_default_mark(self) -> None:
         from ui.widgets.rows import (
@@ -52,7 +53,7 @@ class ScaleDefaultMarkTests(unittest.TestCase):
         row = make_numeric_scale_row("Overlap", 2, 50, step=1)
         set_scale_default_mark(row, "8")
         reconfigure_numeric_scale(row, 2, 50, step=1, digits=0)
-        self.assertEqual(row._uvr_default, "8")
+        self.assertEqual(fetch(row, "_uvr_default"), "8")
 
 class MdxSegmentDefaultWiringTests(unittest.TestCase):
     def test_mdx_c_segment_choices_start_with_default(self) -> None:

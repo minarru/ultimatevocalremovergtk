@@ -103,7 +103,8 @@ class RunController:
         self._close_deferred = False
         self._exit_cleanup_pending = False
         self._exit_cleanup_timeout_id: Optional[int] = None
-        self._exit_app: Optional[Adw.Application] = None
+        # get_application() is typed Gtk.Application; Adw.Application is a subclass.
+        self._exit_app: Optional[Gtk.Application] = None
         self._run_ui_suspended = False
 
     @property
@@ -716,7 +717,8 @@ class RunController:
     def _set_edit_actions_sensitive(self, sensitive: bool) -> None:
         for name in ("settings", "view_inputs", "model_options", "download"):
             action = self._window.lookup_action(name)
-            if action is not None:
+            # lookup_action is typed Gio.Action, which has no set_enabled.
+            if isinstance(action, Gio.SimpleAction):
                 action.set_enabled(sensitive)
         if sensitive:
             self._window._sync_model_options_action()

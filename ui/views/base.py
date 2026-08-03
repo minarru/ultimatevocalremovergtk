@@ -69,6 +69,7 @@ from ..option_summaries import (
     secondary_models_summary,
 )
 from ..settings_bind import get_flat, set_flat, setting_for_combo
+from ..widget_state import fetch, stash
 
 _DEFAULT_SETTINGS = Settings.defaults()
 
@@ -444,11 +445,11 @@ class MethodView:
             if lower is None or upper is None:
                 raise ValueError("lower and upper are required when values is None")
             row = make_numeric_scale_row(title, lower, upper, step=step, digits=digits, subtitle=subtitle)
-        row._uvr_store_float = store_float
+        stash(row, "_uvr_store_float", store_float)
         default_value = _DEFAULT_SETTINGS.get(key)
         if default_value is not None:
             set_scale_default_mark(row, default_value)
-        row._uvr_scale.connect(
+        fetch(row, "_uvr_scale").connect(
             "value-changed",
             lambda *_a, k=key, r=row: self._on_option_scale(k, r),
         )
@@ -484,7 +485,7 @@ class MethodView:
     def _on_option_scale(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading:
             return
-        if getattr(row, "_uvr_store_float", False):
+        if fetch(row, "_uvr_store_float", False):
             set_flat(self.settings, key, round(get_scale_row_float(row), 2))
         else:
             set_flat(self.settings, key, get_scale_row_value(row))
@@ -505,7 +506,7 @@ class MethodView:
     def _load_scales(self) -> None:
         for key, row in self._scale_rows.items():
             value = setting_for_combo(key, get_flat(self.settings, key))
-            if getattr(row, "_uvr_store_float", False):
+            if fetch(row, "_uvr_store_float", False):
                 try:
                     set_scale_row_float(row, float(value))
                 except (TypeError, ValueError):
@@ -515,7 +516,7 @@ class MethodView:
 
     def _save_scales(self) -> None:
         for key, row in self._scale_rows.items():
-            if getattr(row, "_uvr_store_float", False):
+            if fetch(row, "_uvr_store_float", False):
                 set_flat(self.settings, key, round(get_scale_row_float(row), 2))
             else:
                 set_flat(self.settings, key, get_scale_row_value(row))
@@ -844,7 +845,7 @@ class MethodView:
             if root is not None:
                 return root
         app = Gio.Application.get_default()
-        return app.get_active_window() if app is not None else None
+        return app.get_active_window() if isinstance(app, Gtk.Application) else None
 
     def _on_change_defaults(self, _button: typing.Any) -> None:
         from ..dialogs.model_params import show_change_defaults_dialog

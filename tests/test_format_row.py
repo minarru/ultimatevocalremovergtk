@@ -147,6 +147,8 @@ class OutputFormatRowTests(unittest.TestCase):
         format does; otherwise a page's ``persist_to_settings`` call never runs
         and a new MP3 bitrate silently fails to save.
         """
+        from gi.repository import Gtk
+
         from ui.widgets.format_row import OutputFormatRow
 
         calls = []
@@ -156,6 +158,7 @@ class OutputFormatRowTests(unittest.TestCase):
         self.assertEqual(calls, [])
 
         model = row._quality_drop.get_model()
+        assert isinstance(model, Gtk.StringList)
         current_index = row._quality_drop.get_selected()
         new_index = next(
             i

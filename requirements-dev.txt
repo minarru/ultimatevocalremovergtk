@@ -1,2 +1,7 @@
 # Dev / CI tooling (not required at runtime).
-pyright==1.1.403
+# basedpyright is a pyright fork: same CLI, same pyrightconfig.json, plus a
+# baseline mechanism for ratcheting strictness. 1.39.9 tracks pyright 1.1.411.
+basedpyright==1.39.9
+
+# GTK/Adw types live in requirements-stubs.txt — they must be installed with
+# --no-deps, so they cannot be listed here.

@@ -79,7 +79,7 @@ class SheetApplicabilityTests(unittest.TestCase):
             selected_models=[],
         )
         self._show(sheet, "vr")
-        self.assertIn("VR Architecture", sheet._banner.get_button_label())
+        self.assertIn("VR Architecture", sheet._banner.get_button_label() or "")
 
     def test_no_button_without_a_switch_callback(self):
         sheet, _window = self._sheet(on_switch_method=None)
@@ -227,9 +227,11 @@ class SheetApplicabilityTests(unittest.TestCase):
         toolbar = sheet.dialog.get_child()
 
         found = []
-        stack = [toolbar]
+        stack: list[Gtk.Widget | None] = [toolbar]
         while stack:
             widget = stack.pop()
+            if widget is None:
+                continue
             if isinstance(widget, Gtk.Box) and widget.has_css_class("collapse-spacing"):
                 found.append(widget)
             child = widget.get_first_child()

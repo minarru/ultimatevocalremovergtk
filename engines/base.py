@@ -71,7 +71,7 @@ class SeperateAttributes:
             self.audio_file_base = process_data.audio_file_base
         self.export_path = process_data.export_path
         self.cached_source_callback = process_data.cached_source_callback
-        self.cached_model_source_holder: Any = process_data.cached_model_source_holder
+        self.cached_model_source_holder = process_data.cached_model_source_holder
         self.is_4_stem_ensemble = process_data.is_4_stem_ensemble
         self.list_all_models = process_data.list_all_models
         self.process_iteration = process_data.process_iteration
@@ -97,7 +97,7 @@ class SeperateAttributes:
         self.is_secondary_model_activated = model_data.is_secondary_model_activated if not self.is_pre_proc_model else False
         self.is_secondary_model = model_data.is_secondary_model if not self.is_pre_proc_model else True
         self.process_method = model_data.process_method
-        self.model_path: Any = model_data.model_path
+        self.model_path = model_data.model_path
         self.model_name = model_data.model_name
         self.model_basename = model_data.model_basename
         self.model_display_label = (
@@ -130,11 +130,11 @@ class SeperateAttributes:
         self.capture_stems_only = bool(process_data.capture_stems_only)
         self._ensemble_stem_buffers = {}
         self._ensemble_stem_paths = {}
-        self.secondary_model: Any = model_data.secondary_model #
+        self.secondary_model = model_data.secondary_model #
         self.primary_model_primary_stem = model_data.primary_model_primary_stem
         self.primary_stem_native = model_data.primary_stem_native
-        self.primary_stem: Any = model_data.primary_stem #
-        self.secondary_stem: Any = model_data.secondary_stem #
+        self.primary_stem: str = str(model_data.primary_stem or "") #
+        self.secondary_stem: str = str(model_data.secondary_stem or "") #
         self.is_invert_spec = model_data.is_invert_spec #
         self.is_deverb_vocals = model_data.is_deverb_vocals
         self.is_mixer_mode = model_data.is_mixer_mode #
@@ -155,7 +155,7 @@ class SeperateAttributes:
         self.DENOISER_MODEL = model_data.DENOISER_MODEL
         self.DEVERBER_MODEL = model_data.DEVERBER_MODEL
         self.is_source_swap = False
-        self.vocal_split_model: Any = model_data.vocal_split_model
+        self.vocal_split_model = model_data.vocal_split_model
         self.is_vocal_split_model = model_data.is_vocal_split_model
         self.master_vocal_path: Any = None
         self.set_master_inst_source: Any = None
@@ -226,8 +226,8 @@ class SeperateAttributes:
             if self.is_mdx_c:
                 if not self.is_4_stem_ensemble:
                     if not self.is_target_instrument:
-                        self.primary_stem = model_data.ensemble_primary_stem if process_data.is_ensemble_master else model_data.primary_stem
-                        self.secondary_stem = model_data.ensemble_secondary_stem if process_data.is_ensemble_master else model_data.secondary_stem
+                        self.primary_stem = str((model_data.ensemble_primary_stem if process_data.is_ensemble_master else model_data.primary_stem) or "")
+                        self.secondary_stem = str((model_data.ensemble_secondary_stem if process_data.is_ensemble_master else model_data.secondary_stem) or "")
             else:
                 dim_f_set = model_data.mdx_dim_f_set
                 dim_t_set = model_data.mdx_dim_t_set
@@ -238,7 +238,7 @@ class SeperateAttributes:
                 self.dim_f, self.dim_t = int(dim_f_set), 2 ** int(dim_t_set)
                 
             self.check_label_secondary_stem_runs()
-            self.n_fft: Any = model_data.mdx_n_fft_scale_set
+            self.n_fft: int = int(model_data.mdx_n_fft_scale_set or 0)
             self.chunks = model_data.chunks
             self.margin = model_data.margin
             self.adjust = 1
@@ -252,15 +252,15 @@ class SeperateAttributes:
             self.is_chunk_demucs = model_data.is_chunk_demucs
             self.segment = model_data.segment
             self.demucs_version = model_data.demucs_version
-            self.demucs_source_list: Any = model_data.demucs_source_list
-            self.demucs_source_map: Any = model_data.demucs_source_map
+            self.demucs_source_list = model_data.demucs_source_list
+            self.demucs_source_map = model_data.demucs_source_map
             self.is_demucs_combine_stems = model_data.is_demucs_combine_stems
             self.demucs_stem_count = model_data.demucs_stem_count
-            self.pre_proc_model: Any = model_data.pre_proc_model
+            self.pre_proc_model = model_data.pre_proc_model
             self.device = cpu if self.is_other_gpu and not self.demucs_version in [DEMUCS_V3, DEMUCS_V4] else self.device
 
-            self.primary_stem = model_data.ensemble_primary_stem if process_data.is_ensemble_master else model_data.primary_stem
-            self.secondary_stem = model_data.ensemble_secondary_stem if process_data.is_ensemble_master else model_data.secondary_stem
+            self.primary_stem = str((model_data.ensemble_primary_stem if process_data.is_ensemble_master else model_data.primary_stem) or "")
+            self.secondary_stem = str((model_data.ensemble_secondary_stem if process_data.is_ensemble_master else model_data.secondary_stem) or "")
 
             if (self.is_multi_stem_ensemble or self.is_4_stem_ensemble) and not self.is_secondary_model:
                 self.is_return_dual = False
@@ -279,7 +279,7 @@ class SeperateAttributes:
                     self.primary_stem = VOCAL_STEM
                     self.secondary_stem = INST_STEM
                 else:
-                    self.primary_stem = model_data.primary_model_primary_stem
+                    self.primary_stem = str(model_data.primary_model_primary_stem or "")
                     self.secondary_stem = secondary_stem(self.primary_stem)
 
             self.shifts = model_data.shifts
@@ -406,8 +406,11 @@ class SeperateAttributes:
         master_inst_source = sources.get(INST_STEM, None)
         master_vocal_source = sources.get(VOCAL_STEM, None)
 
-        # Process the vocal split chain if conditions are met
-        if is_valid_vocal_split_condition(master_vocal_source):
+        # Process the vocal split chain if conditions are met. The splitter model
+        # is optional: a run with the chain disabled leaves it unset.
+        if self.vocal_split_model is not None and is_valid_vocal_split_condition(
+            master_vocal_source
+        ):
             process_chain_model(
                 self.vocal_split_model,
                 self.process_data,

@@ -1,4 +1,5 @@
 import unittest
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 from ui.widgets.log_panel import (
@@ -31,7 +32,7 @@ class LogPanelClearanceTests(unittest.TestCase):
     def test_progress_reveal_adds_progress_reserve(self):
         panel = _panel_with_revealers()
         idle = panel.options_overlay_clearance()
-        panel._progress_revealer.get_reveal_child.return_value = True
+        cast(Any, panel._progress_revealer).get_reveal_child.return_value = True
         self.assertEqual(
             panel.options_overlay_clearance(),
             idle + _PROGRESS_SECTION_RESERVE,
@@ -40,7 +41,7 @@ class LogPanelClearanceTests(unittest.TestCase):
     def test_log_reveal_adds_meta_body_and_wrap_reserve(self):
         panel = _panel_with_revealers()
         idle = panel.options_overlay_clearance()
-        panel._log_revealer.get_reveal_child.return_value = True
+        cast(Any, panel._log_revealer).get_reveal_child.return_value = True
         self.assertEqual(
             panel.options_overlay_clearance(),
             idle + _LOG_META_ROW_RESERVE + _LOG_BODY_HEIGHT + _LOG_BODY_WRAP_RESERVE,

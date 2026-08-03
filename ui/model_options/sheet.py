@@ -69,7 +69,7 @@ def _uncollapse_top_bar_spacing(toolbar: Adw.ToolbarView) -> bool:
     The box is an implementation detail, so this walks for it defensively and
     degrades to leaving the spacing alone. Returns whether it applied.
     """
-    stack = [toolbar]
+    stack: list[Gtk.Widget] = [toolbar]
     while stack:
         widget = stack.pop()
         if isinstance(widget, Gtk.Box) and widget.has_css_class("collapse-spacing"):
@@ -244,7 +244,7 @@ class ModelOptionsSheet:
         allocated height is the real ceiling. Before the parent is realized
         ``get_height()`` returns 0 and the fallback applies.
         """
-        parent_height = self._parent.get_height() if self._parent is not None else 0
+        parent_height = self._parent.get_height()
         if parent_height <= 1:
             return _SHEET_FALLBACK_HEIGHT
         return int(parent_height * _SHEET_MAX_HEIGHT_FRACTION)

@@ -23,7 +23,7 @@ DEFAULT_MAX_WIDTH = 1180
 _OPTIONS_CLEARANCE_GAP = 8
 
 
-def set_options_bottom_clearance(columns_box: Gtk.Box, clearance_px: int) -> None:
+def set_options_bottom_clearance(columns_box: Gtk.Widget, clearance_px: int) -> None:
     """Reserve scroll space below option columns for the floating log panel."""
     columns_box.set_margin_bottom(clearance_px + _OPTIONS_CLEARANCE_GAP)
 

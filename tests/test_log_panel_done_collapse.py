@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 from ui.widgets.log_panel import LogPanel
@@ -66,8 +67,8 @@ class DoneCollapseTests(unittest.TestCase):
         panel._done_collapse_id = 77
         panel._on_done_collapse()
         self.assertIsNone(panel._done_collapse_id)
-        panel._progressbar.set_fraction.assert_called_with(0.0)
-        panel._progress_revealer.set_reveal_child.assert_called_with(False)
+        cast(Any, panel._progressbar).set_fraction.assert_called_with(0.0)
+        cast(Any, panel._progress_revealer).set_reveal_child.assert_called_with(False)
 
     def test_starting_a_new_run_cancels_the_pending_collapse(self):
         panel = _panel()

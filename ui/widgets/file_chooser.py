@@ -12,6 +12,8 @@ from typing import AbstractSet, Callable, List, Optional, Sequence
 
 from gi.repository import Adw, Gdk, GLib, Gtk
 
+from ..gtk_narrow import file_paths, root_window
+
 from core.audio_formats import expand_audio_paths
 
 from ..help_text import (
@@ -249,7 +251,7 @@ class InputFilesRow(Adw.ExpanderRow):
             accept_any=self._accept_any(),
             initial=self._initial_folder(),
         )
-        dialog.open_multiple(self.get_root(), None, self._on_open_finished)
+        dialog.open_multiple(root_window(self), None, self._on_open_finished)
 
     def _on_open_finished(self, dialog: Gtk.FileDialog, result: typing.Any) -> None:
         try:
@@ -258,7 +260,7 @@ class InputFilesRow(Adw.ExpanderRow):
             if not is_dialog_dismissed(exc):
                 self._emit_toast(f"Couldn't open files: {exc.message}")
             return
-        paths = [files.get_item(i).get_path() for i in range(files.get_n_items())]
+        paths = file_paths(files)
         if paths:
             self.set_paths(merge_input_paths(self.paths, paths))
 
@@ -340,7 +342,7 @@ class OutputFolderRow(Adw.ActionRow):
 
     def _on_clicked(self, _button: Gtk.Button) -> None:
         dialog = folder_dialog("Select Output Folder", initial=self.path or None)
-        dialog.select_folder(self.get_root(), None, self._on_select_finished)
+        dialog.select_folder(root_window(self), None, self._on_select_finished)
 
     def _on_select_finished(self, dialog: Gtk.FileDialog, result: typing.Any) -> None:
         try:
@@ -349,8 +351,9 @@ class OutputFolderRow(Adw.ActionRow):
             if not is_dialog_dismissed(exc):
                 self._emit_toast(f"Couldn't select folder: {exc.message}")
             return
-        if folder and folder.get_path():
-            self.set_path(folder.get_path())
+        folder_path = folder.get_path() if folder else None
+        if folder_path:
+            self.set_path(folder_path)
 
     def _on_drop(self, _target: Gtk.DropTarget, value: typing.Any, _x: float, _y: float) -> bool:
         self.remove_css_class("drop-highlight")
