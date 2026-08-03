@@ -196,14 +196,16 @@ def diff_state_dict_keys(
 ) -> KeyDiff:
     """Compare a module's parameter names against a checkpoint's.
 
-    ``missing`` are keys the checkpoint carries that the module has no home for
-    — the signature of an unported submodule. ``unexpected`` are the reverse.
+    Uses ``load_state_dict``'s own wording so probe output can be read straight
+    against a torch error: ``unexpected`` are keys the checkpoint carries that
+    the module has no home for — the signature of an unported submodule —
+    and ``missing`` are keys the module needs that the checkpoint lacks.
     """
     mod = set(module_keys)
     ckpt = set(checkpoint_keys)
     return KeyDiff(
-        missing=sorted(ckpt - mod),
-        unexpected=sorted(mod - ckpt),
+        missing=sorted(mod - ckpt),
+        unexpected=sorted(ckpt - mod),
         matched=len(mod & ckpt),
     )
 

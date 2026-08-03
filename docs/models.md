@@ -51,6 +51,21 @@ Verdicts, worst to best. Exit status is 0 only for `buildable`:
 
 `config-ignored` is the one to watch: [`engines.mdx._filter_init_kwargs`](../engines/mdx.py) drops yaml keys a class does not accept, so a model can build cleanly while missing the exact feature that made it unsupported. Probing `mbr_syhft_4stem` reports `skip_connection` among the dropped keys, which is precisely why that entry is listed.
 
+## HyperACE BS-Roformer
+
+The four `BS-Roformer-HyperACE` entries in [`bundled/extra_models.json`](../bundled/extra_models.json) attach a segmentation branch to every mask estimator — a depthwise-separable CSP backbone, hypergraph attention, a gated FPN decoder and a frequency pixel-shuffle head — summed onto the per-band mask MLPs. It lives in [`ml/hyperace.py`](../ml/hyperace.py) and adds ~21M parameters (51M → 72M for the v2 instrumental model).
+
+It is switched on by a **top-level** `hyperace2: true` in the yaml, *not* a key inside `model:`. `_filter_init_kwargs` only ever sees the `model:` section, so `_build_mdx_c_model` reads the flag off the config root and injects `hyperace=True`. Without that, a plain BSRoformer is built and `load_state_dict` rejects ~471 `mask_estimators.N.segm.*` keys.
+
+Verify a HyperACE checkpoint loads without running it:
+
+```bash
+python scripts/model_probe.py --config <hyperace.yaml> --checkpoint <hyperace.ckpt>
+# state_dict   1170 matched, 0 missing, 0 unexpected
+```
+
+The probe still reports `config-ignored` for these configs because `skip_connection` and `use_torch_checkpoint` are dropped. Both are inert here — upstream's `v2_inst/bs_roformer.py` stores them and never reads them in `forward`, and this config sets `skip_connection: false`. They are deliberately **not** accepted as parameters: taking a kwarg we do not implement would silence the probe for a future config where the flag does matter.
+
 ## SCNet (4-stem music separation)
 
 SCNet models separate music into **Drums**, **Bass**, **Other**, and **Vocals**. They use `.ckpt` checkpoints with a matching yaml config under `models/MDX_Net_Models/model_data/mdx_c_configs/`.

@@ -154,20 +154,26 @@ class KeyDiffTests(unittest.TestCase):
         self.assertEqual(diff.missing, [])
         self.assertEqual(diff.unexpected, [])
 
-    def test_missing_are_keys_the_checkpoint_has_and_the_module_lacks(self) -> None:
+    def test_unexpected_matches_torch_keys_the_checkpoint_has_and_the_module_lacks(
+        self,
+    ) -> None:
+        """Same wording as ``load_state_dict``: an unported submodule in the
+        checkpoint is 'Unexpected key(s) in state_dict'."""
         diff = model_probe.diff_state_dict_keys(
-            module_keys=["a"], checkpoint_keys=["a", "skip.weight"]
+            module_keys=["a"], checkpoint_keys=["a", "segm.weight"]
         )
         self.assertFalse(diff.matches)
-        self.assertEqual(diff.missing, ["skip.weight"])
-        self.assertEqual(diff.unexpected, [])
+        self.assertEqual(diff.unexpected, ["segm.weight"])
+        self.assertEqual(diff.missing, [])
 
-    def test_unexpected_are_keys_the_module_has_and_the_checkpoint_lacks(self) -> None:
+    def test_missing_matches_torch_keys_the_module_needs_and_the_checkpoint_lacks(
+        self,
+    ) -> None:
         diff = model_probe.diff_state_dict_keys(
             module_keys=["a", "extra.bias"], checkpoint_keys=["a"]
         )
-        self.assertEqual(diff.unexpected, ["extra.bias"])
-        self.assertEqual(diff.missing, [])
+        self.assertEqual(diff.missing, ["extra.bias"])
+        self.assertEqual(diff.unexpected, [])
 
 
 _REPO = os.path.dirname(os.path.dirname(__file__))

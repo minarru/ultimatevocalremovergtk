@@ -121,7 +121,13 @@ def _build_mdx_c_model(config: typing.Any):
         kwargs['match_input_audio_length'] = True
         return MelBandRoformer(**kwargs)
     if 'freqs_per_bands' in model_cfg:
-        return BSRoformer(**_filter_init_kwargs(BSRoformer, model_cfg))
+        kwargs = _filter_init_kwargs(BSRoformer, model_cfg)
+        # ``hyperace2`` is a *top-level* config key, not part of ``model:``, so
+        # it never reaches the kwarg filter. Without it the segm branch is
+        # absent and the checkpoint fails to load with ~471 unexpected keys.
+        if getattr(config, 'hyperace2', False):
+            kwargs['hyperace'] = True
+        return BSRoformer(**kwargs)
     if 'band_SR' in model_cfg or 'sources' in model_cfg:
         from ml.scnet import SCNet
 
