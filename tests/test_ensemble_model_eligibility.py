@@ -114,26 +114,50 @@ class KaraokeSeparationTests(unittest.TestCase):
 
 
 class SecondaryOtherWantedBucketsTests(unittest.TestCase):
-    """Secondary Other slot must use pair buckets, not stem_count=1 request."""
+    """Secondary Other slot must use pair buckets, not a stem_count=1 request.
 
-    def test_wanted_buckets_match_ensemble_other_list(self) -> None:
+    Uses fake models rather than whatever happens to be installed: with no
+    models on disk every path returns the empty set and the distinction this
+    guards would pass vacuously.
+    """
+
+    #: A 4-stem model's ``other`` is a real MUSDB residual — the Other pair
+    #: wants it. A 2-stem model's ``other`` is the instrumental complement,
+    #: which is what re-deriving buckets from the display halves wrongly picks.
+    RESIDUAL = _FakeModel("MDX-Net: 4stem", "other", ["vocals", "drums", "bass", "other"])
+    COMPLEMENT = _FakeModel("MDX-Net: inst2", "other", ["other"])
+
+    def _model_list(self, **kwargs: typing.Any) -> typing.Set[str]:
         from bundled.constants import OTHER_STEM
-        from core import Settings
+
+        models = [self.RESIDUAL, self.COMPLEMENT]
+        with unittest.mock.patch.object(
+            ModelRepository, "stem_check", return_value=models
+        ):
+            return set(ModelRepository().model_list(
+                typing.cast(typing.Any, None), OTHER_STEM, "No Other", **kwargs
+            ))
+
+    def _ensemble_list(self) -> typing.Set[str]:
+        return set(_eligible([self.RESIDUAL, self.COMPLEMENT], EnsemblePair.OTHER))
+
+    def test_pair_buckets_select_the_musdb_residual_only(self) -> None:
         from core.model_stem_semantics import ensemble_pair_buckets
 
-        settings = Settings()
-        repo = ModelRepository()
         wanted = set(ensemble_pair_buckets(EnsemblePair.OTHER))
-        via_buckets = set(
-            repo.model_list(
-                settings, OTHER_STEM, "No Other", wanted_buckets=wanted
-            )
-        )
-        via_ensemble = set(repo.ensemble_model_list(settings, EnsemblePair.OTHER))
-        via_raw = set(repo.model_list(settings, OTHER_STEM, "No Other"))
-        self.assertEqual(via_buckets, via_ensemble)
-        # Pre-fix request path selected Instrumental models instead.
-        self.assertNotEqual(via_raw, via_ensemble)
+        self.assertEqual(self._model_list(wanted_buckets=wanted), {"MDX-Net: 4stem"})
+
+    def test_ensemble_list_agrees_with_an_explicit_bucket_request(self) -> None:
+        from core.model_stem_semantics import ensemble_pair_buckets
+
+        wanted = set(ensemble_pair_buckets(EnsemblePair.OTHER))
+        self.assertEqual(self._model_list(wanted_buckets=wanted), self._ensemble_list())
+
+    def test_raw_request_wrongly_admits_the_instrumental_complement(self) -> None:
+        """Pre-fix path: stem_count=1 reads a 2-stem ``other`` as Instrumental."""
+        raw = self._model_list()
+        self.assertIn("MDX-Net: inst2", raw)
+        self.assertNotEqual(raw, self._ensemble_list())
 
 
 class UnchangedBehaviourTests(unittest.TestCase):
