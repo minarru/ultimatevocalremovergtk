@@ -44,5 +44,5 @@ jobs:
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Run pyright
-        run: .venv/bin/python -m pyright
+      - name: Run basedpyright
+        run: .venv/bin/python -m basedpyright
