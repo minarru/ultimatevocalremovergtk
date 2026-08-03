@@ -35,8 +35,11 @@ basedpyright's own extra rules are left **off**: measured against this tree they
 
 ```bash
 .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pip install --no-deps -r requirements-stubs.txt   # --no-deps is required
 .venv/bin/python -m basedpyright
 ```
+
+The stubs are a **separate `--no-deps` install on purpose**: `PyGObject-stubs` declares a runtime dependency on `PyGObject`, and resolving it builds PyGObject from PyPI source (meson + pycairo, cairo dev headers) — which fails on a bare runner and contradicts the `--system-site-packages` design, where GTK comes from the distro. Don't fold that line back into [requirements-dev.txt](requirements-dev.txt).
 
 Other:
 

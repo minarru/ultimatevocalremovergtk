@@ -2,6 +2,6 @@
 # basedpyright is a pyright fork: same CLI, same pyrightconfig.json, plus a
 # baseline mechanism for ratcheting strictness. 1.39.9 tracks pyright 1.1.411.
 basedpyright==1.39.9
-# Real GTK4/Adw types. Its DEFAULT_STUB_CONFIG already covers Gtk4 + Gdk4, so no
-# PYGOBJECT_STUB_CONFIG is needed; the distro `gi` ships no py.typed of its own.
-PyGObject-stubs==2.17.0
+
+# GTK/Adw types live in requirements-stubs.txt — they must be installed with
+# --no-deps, so they cannot be listed here.

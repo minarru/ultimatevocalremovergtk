@@ -1,0 +1,11 @@
+# Type-only stubs. Install with --no-deps:
+#
+#     pip install --no-deps -r requirements-stubs.txt
+#
+# PyGObject-stubs 2.17.0 declares a runtime dependency on PyGObject>=3.55.0.
+# Resolving it pulls PyGObject from PyPI and builds it from source (meson +
+# pycairo, needs cairo dev headers), which fails on a bare CI runner and is
+# wrong for this project regardless: the venv is built with
+# --system-site-packages so GTK/PyGObject come from the distro, never PyPI.
+# Nothing here is imported at runtime; basedpyright only reads the .pyi files.
+PyGObject-stubs==2.17.0
