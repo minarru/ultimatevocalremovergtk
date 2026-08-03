@@ -26,7 +26,12 @@ python -m unittest tests.test_dispatch.DispatchTests.test_main_thread_wrapper  #
 
 Type checking is **basedpyright** (a pyright fork — same CLI, same config file), configured in [pyrightconfig.json](pyrightconfig.json): `standard` mode plus a few strict-mode rules, over `ui/ core/ engines/ tests/ bundled/ ml/ scripts/` (plus `__version__.py`). Keep `models/` and `vendor/demucs` excluded — do not chase type errors there. Stubs live in [typings/](typings/). Install the checker with `pip install -r requirements-dev.txt`; CI runs it on every PR.
 
-basedpyright's own extra rules are left **off**: measured against this tree they are almost all false positives (`reportUnreachable` fires on the `sys.platform` branches that `"pythonPlatform": "Linux"` statically prunes; `reportPrivateLocalImportUsage` fires on tests importing `_`-prefixed helpers). Its `recommended` mode reports ~20k diagnostics — don't enable it wholesale. If you want to tighten a rule despite existing violations, use `basedpyright --writebaseline` rather than turning the rule off.
+basedpyright's own extra rules are left **off**: measured against this tree they are almost all false positives (`reportUnreachable` fires on the `sys.platform` branches that `"pythonPlatform": "Linux"` statically prunes; `reportPrivateLocalImportUsage` fires on tests importing `_`-prefixed helpers). Its `recommended` mode reports ~15k diagnostics — don't enable it wholesale. If you want to tighten a rule despite existing violations, use `basedpyright --writebaseline` rather than turning the rule off.
+
+**GTK is really type-checked.** `PyGObject-stubs` supplies Gtk4/Adw types (its default config already covers Gtk4+Gdk4 — no `PYGOBJECT_STUB_CONFIG` needed). The old `typings/gi` `__getattr__ -> Any` shims are gone; do not reintroduce them, and don't "fix" a GTK type error by widening to `Any`. Two consequences worth knowing:
+
+- **Widget state goes through [ui/widget_state.py](ui/widget_state.py)** (`stash`/`fetch`/`has`/`drop`), not `row._uvr_foo = x` — real stubs reject unknown attributes on `Adw.ActionRow`. Keys keep the `_uvr_` prefix.
+- **Nullable/interface returns narrow through [ui/gtk_narrow.py](ui/gtk_narrow.py)** (`root_window`, `file_paths`) or a local helper. `get_model()`, `get_root()`, `get_item()` and `get_selected_item()` are all typed against a base class or `| None`; unguarded dereferences of these were real latent `AttributeError`s.
 
 ```bash
 .venv/bin/pip install -r requirements-dev.txt
