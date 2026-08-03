@@ -28,6 +28,29 @@ Entries this build cannot run yet still appear in the matching network tab as **
 
 Supported Mel-Band / BS-Roformer / MDX23C / SCNet / Bandit(+v2) entries download through the existing MDX-C hash → `config_yaml` registration path.
 
+### Triaging an unsupported entry
+
+[`scripts/model_probe.py`](../scripts/model_probe.py) answers "could this build run it?" **without downloading the weights**. The architecture comes from the yaml (a couple of KB), so it instantiates with random parameters and runs a real forward pass; `--check-keys` then range-fetches only the checkpoint *header* — ~90 KB of a 448 MB file — to diff `state_dict` names.
+
+```bash
+python scripts/model_probe.py --entry mbr_syhft_4stem              # fetch yaml, build, forward
+python scripts/model_probe.py --entry mbr_wsa --check-keys         # + remote state_dict diff
+python scripts/model_probe.py --config <local.yaml> --checkpoint <local.ckpt>   # fully offline
+python scripts/model_probe.py --config <local.yaml> --json out.json
+```
+
+Verdicts, worst to best. Exit status is 0 only for `buildable`:
+
+| Verdict | Meaning |
+|---|---|
+| `build-failed` | The architecture does not instantiate — a genuinely unported feature. |
+| `forward-failed` | Instantiates but the forward pass breaks. |
+| `config-ignored` | Builds *only* because `_filter_init_kwargs` discarded keys the yaml asked for. |
+| `key-mismatch` | Runs, but parameter names disagree with the checkpoint. |
+| `buildable` | Builds, runs, and (if checked) matches the checkpoint's keys. |
+
+`config-ignored` is the one to watch: [`engines.mdx._filter_init_kwargs`](../engines/mdx.py) drops yaml keys a class does not accept, so a model can build cleanly while missing the exact feature that made it unsupported. Probing `mbr_syhft_4stem` reports `skip_connection` among the dropped keys, which is precisely why that entry is listed.
+
 ## SCNet (4-stem music separation)
 
 SCNet models separate music into **Drums**, **Bass**, **Other**, and **Vocals**. They use `.ckpt` checkpoints with a matching yaml config under `models/MDX_Net_Models/model_data/mdx_c_configs/`.
