@@ -5,6 +5,8 @@ from collections.abc import Callable
 from typing import Any
 
 from gi.repository import Adw, GLib, Gtk
+from ..widget_state import fetch, stash
+from ..protocols import WindowSizing
 
 
 class CollectInvalid(Exception):
@@ -22,7 +24,7 @@ class CollectInvalid(Exception):
 
 def close_on_escape(window: Gtk.Window) -> None:
     """Bind Escape so secondary ``Adw.Window``s close like ``Adw.Dialog``s."""
-    if getattr(window, "_uvr_close_on_escape", False):
+    if fetch(window, "_uvr_close_on_escape", False):
         return
     controller = Gtk.ShortcutController()
     controller.set_scope(Gtk.ShortcutScope.LOCAL)
@@ -33,7 +35,7 @@ def close_on_escape(window: Gtk.Window) -> None:
         )
     )
     window.add_controller(controller)
-    window._uvr_close_on_escape = True
+    stash(window, "_uvr_close_on_escape", True)
 
 
 def _iter_widgets(root: Gtk.Widget):
@@ -46,22 +48,22 @@ def _iter_widgets(root: Gtk.Widget):
 
 def _find_dimming_widget(root: Gtk.Widget) -> Gtk.Widget | None:
     for widget in _iter_widgets(root):
-        if Gtk.Widget.get_css_name(widget) == "dimming":
+        if widget.get_css_name() == "dimming":
             return widget
     return None
 
 
 def _install_backdrop_dismiss(dimming: Gtk.Widget, on_dismiss: typing.Any) -> None:
-    if getattr(dimming, "_uvr_backdrop_dismiss", False):
+    if fetch(dimming, "_uvr_backdrop_dismiss", False):
         return
     gesture = Gtk.GestureClick()
     gesture.connect("released", lambda *_: on_dismiss())
     dimming.add_controller(gesture)
-    dimming._uvr_backdrop_dismiss = True
+    stash(dimming, "_uvr_backdrop_dismiss", True)
 
 
 def _try_install_backdrop_dismiss(dialog: Adw.Dialog, parent: Gtk.Window | None) -> None:
-    roots = [dialog]
+    roots: list[Gtk.Widget] = [dialog]
     if parent is not None:
         roots.insert(0, parent)
     for root in roots:
@@ -71,14 +73,15 @@ def _try_install_backdrop_dismiss(dialog: Adw.Dialog, parent: Gtk.Window | None)
             return
 
 
-def parent_window_width(parent: Gtk.Window | None, *, fallback: int = 440) -> int:
+def parent_window_width(parent: WindowSizing | None, *, fallback: int = 440) -> int:
     """Best-effort width of ``parent`` for sizing a child dialog."""
     if parent is None:
         return fallback
     width = parent.get_width()
     if width > 1:
         return width
-    default = parent.get_default_width()
+    # GTK4 has no get_default_width(); it is get_default_size() -> (w, h).
+    default, _height = parent.get_default_size()
     if default > 0:
         return default
     return fallback
@@ -170,7 +173,7 @@ def run_blocking_dialog(
                     exc.widget.add_css_class("error")
                 toast = Adw.Toast.new(exc.message)
                 # Prefer a toast overlay on the dialog content when present.
-                overlay = getattr(dialog, "_uvr_toast_overlay", None)
+                overlay = fetch(dialog, "_uvr_toast_overlay", None)
                 if overlay is not None:
                     overlay.add_toast(toast)
                 else:
@@ -178,8 +181,10 @@ def run_blocking_dialog(
                     parent_toast = getattr(parent, "add_toast", None) if parent else None
                     if callable(parent_toast):
                         parent_toast(toast)
-                    elif parent is not None and callable(getattr(parent, "toast", None)):
-                        parent.toast(exc.message)
+                    else:
+                        window_toast = getattr(parent, "toast", None) if parent is not None else None
+                        if callable(window_toast):
+                            window_toast(exc.message)
                 return
             if result is None:
                 # Distinct from CollectInvalid: cancelled / no selection.

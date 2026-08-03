@@ -14,6 +14,8 @@ from typing import Callable, List, Sequence, Tuple
 
 from gi.repository import Adw, Gdk, GLib, Gtk
 
+from ..gtk_narrow import file_paths, root_window
+
 from ..dialogs.utils import present_modal_dialog, set_form_dialog_content
 from ..spacing import inset_md, set_inset
 from ..help_text import (
@@ -167,7 +169,7 @@ class _FileColumn(Gtk.Box):
     def _on_add_clicked(self, _button: Gtk.Button) -> None:
         initial = os.path.dirname(self.paths[0]) if self.paths else None
         dialog = audio_open_dialog("Select Audio Files", initial=initial)
-        dialog.open_multiple(self.get_root(), None, self._on_open_finished)
+        dialog.open_multiple(root_window(self), None, self._on_open_finished)
 
     def _on_open_finished(self, dialog: Gtk.FileDialog, result: typing.Any) -> None:
         try:
@@ -177,8 +179,7 @@ class _FileColumn(Gtk.Box):
                 # DualBatchDialog may toast via parent if available later.
                 pass
             return
-        paths = [files.get_item(i).get_path() for i in range(files.get_n_items())]
-        self.add_paths([p for p in paths if p])
+        self.add_paths(file_paths(files))
 
     def _on_drop(self, _target: Gtk.DropTarget, value: typing.Any, _x: float, _y: float) -> bool:
         try:

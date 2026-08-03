@@ -372,7 +372,7 @@ class SaveStemsSection:
             parent = row.get_parent()
             if parent is self._holder:
                 self._holder.remove(row)
-            elif parent is not None and parent is not group:
+            elif isinstance(parent, (Gtk.Box, Adw.PreferencesGroup)) and parent is not group:
                 parent.remove(row)
             if row.get_parent() is None:
                 group.add(row)

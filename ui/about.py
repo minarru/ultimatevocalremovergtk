@@ -103,7 +103,10 @@ def open_about(parent_window: typing.Any):
 
     register_gresources()
 
-    kwargs = dict(
+    # Heterogeneous by nature: this bag is splatted into two different
+    # constructors below, and dict() would otherwise unify str and list[str]
+    # into a union that matches neither signature.
+    kwargs: dict[str, typing.Any] = dict(
         application_name="Ultimate Vocal Remover",
         application_icon=APP_ID,
         version=VERSION or "v1.0.0",

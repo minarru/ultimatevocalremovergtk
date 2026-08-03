@@ -807,9 +807,9 @@ class MainWindow(Adw.ApplicationWindow):
         child = self.content_stack.get_visible_child()
         title = APP_TITLE
         if child is not None:
-            page = self.content_stack.get_page(child)
-            if page is not None and page.get_title():
-                title = page.get_title()
+            page_title = self.content_stack.get_page(child).get_title()
+            if page_title:
+                title = page_title
         elif name == "separation":
             title = "Separation"
         elif name == "ensemble":
@@ -837,7 +837,8 @@ class MainWindow(Adw.ApplicationWindow):
         running = controller is not None and controller.is_running()
         enabled = name != "audio_tools" and not running
         action = self.lookup_action("model_options")
-        if action is not None:
+        # lookup_action is typed Gio.Action, which has no set_enabled.
+        if isinstance(action, Gio.SimpleAction):
             action.set_enabled(enabled)
         if getattr(self, "model_options_row", None) is not None:
             self.model_options_row.set_sensitive(enabled)
@@ -1018,7 +1019,8 @@ class MainWindow(Adw.ApplicationWindow):
         re-lists every model and reparents every option group — is far too
         heavy for a single switch flip.
         """
-        target = self._targets.get(self.content_stack.get_visible_child_name())
+        visible = self.content_stack.get_visible_child_name()
+        target = self._targets.get(visible) if visible is not None else None
         if target is not None:
             target.on_activated()
         self._refresh_start_readiness()
@@ -1042,7 +1044,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _on_audio_tools(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
         self.content_stack.set_visible_child_name("audio_tools")
 
-    def _on_download(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
+    def _on_download(self, _action: Optional[Gio.SimpleAction], _param: typing.Any) -> None:
         from core.debug_log import debug
 
         debug("ui", "open download_center")

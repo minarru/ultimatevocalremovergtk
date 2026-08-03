@@ -71,8 +71,8 @@ class ErrorLogTests(unittest.TestCase):
             def get_width(self) -> int:
                 return 1400
 
-            def get_default_width(self) -> int:
-                return 1400
+            def get_default_size(self) -> tuple[int, int]:
+                return (1400, 900)
 
         self.assertEqual(_error_dialog_width(_WideWindow()), _ERROR_DIALOG_WIDTH)
         self.assertGreaterEqual(_ERROR_DIALOG_WIDTH, 560)
@@ -82,8 +82,8 @@ class ErrorLogTests(unittest.TestCase):
             def get_width(self) -> int:
                 return 480
 
-            def get_default_width(self) -> int:
-                return 480
+            def get_default_size(self) -> tuple[int, int]:
+                return (480, 640)
 
         self.assertEqual(_error_dialog_width(_NarrowWindow()), 416)
 

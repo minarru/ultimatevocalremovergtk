@@ -126,6 +126,7 @@ from ..widgets.rows import (
     set_combo_values,
 )
 from ..widgets.stem_only import SaveStemsSection
+from ..widget_state import fetch, stash
 
 _PRIMARY_STEM_ONLY_KEY = "is_primary_stem_only"
 _SECONDARY_STEM_ONLY_KEY = "is_secondary_stem_only"
@@ -1001,7 +1002,7 @@ class EnsemblePage:
 
         try:
             tags = self.context.repo.ensemble_model_list(self.settings, pair)
-        except Exception as exc:  # noqa: BLE001 - surfaced to the user
+        except Exception as exc: # noqa: BLE001 - surfaced to the user
             from ..errorlog import log_error
 
             log_error("Ensemble", exc, context="listing models")
@@ -1030,7 +1031,7 @@ class EnsemblePage:
             check.connect("toggled", self._on_model_toggled)
             row.add_prefix(check)
             row.set_activatable_widget(check)
-            row._uvr_model_tag = tag  # type: ignore[attr-defined]
+            stash(row, "_uvr_model_tag", tag)
             self.models_listbox.append(row)
             self._model_checks[tag] = check
             self._model_row_text[tag] = (title, subtitle)
@@ -1103,7 +1104,7 @@ class EnsemblePage:
         self._update_ensemble_banner()
 
     def _models_row_visible(self, row: Gtk.ListBoxRow) -> bool:
-        tag = getattr(row, "_uvr_model_tag", None)
+        tag = fetch(row, "_uvr_model_tag", None)
         if tag is None:
             # Placeholder / error rows stay visible.
             return True
@@ -1279,7 +1280,7 @@ class EnsemblePage:
             models = len(self._selected_model_tags())
             debug("ui", f"ensemble start files={len(input_paths)} models={models} stem={stem}")
             self.context.runner.start_ensemble(input_paths, callbacks)
-        except Exception as exc:  # noqa: BLE001 - surfaced to the user
+        except Exception as exc: # noqa: BLE001 - surfaced to the user
             self.window.fail_to_start(f"Unable to start ensemble: {exc}", exc)
 
     def stop(self) -> None:

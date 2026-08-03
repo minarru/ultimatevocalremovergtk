@@ -70,7 +70,7 @@ def _register_application_icon() -> bool:
         os.makedirs(os.path.dirname(icon_dest), exist_ok=True)
         shutil.copy2(png, icon_dest)
 
-    search_paths = list(theme.get_search_path())
+    search_paths = list(theme.get_search_path() or [])
     if icons_root not in search_paths:
         theme.add_search_path(icons_root)
 
@@ -102,8 +102,9 @@ def _register_icon_theme() -> bool:
     if display is None:
         return False
     theme = Gtk.IconTheme.get_for_display(display)
-    if hasattr(theme, "prepend_resource_path"):
-        theme.prepend_resource_path(ICON_RESOURCE_PREFIX)
+    prepend = getattr(theme, "prepend_resource_path", None)
+    if callable(prepend):
+        prepend(ICON_RESOURCE_PREFIX)
     else:
         theme.add_resource_path(ICON_RESOURCE_PREFIX)
     _icon_theme_registered = True

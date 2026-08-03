@@ -30,6 +30,7 @@ from .dialogs.utils import (
     set_dialog_content,
 )
 from .spacing import inset_lg_sides_bottom, set_inset
+from .protocols import WindowSizing
 
 # Floating sheet width: wide enough to read, capped so it cannot grow with a
 # long RuntimeError line. TextView (not Label) wraps to the allocated width.
@@ -132,14 +133,16 @@ _ERROR_LOG_WINDOW: Optional[Adw.Window] = None
 _ERROR_LOG_BUFFER: Optional[Gtk.TextBuffer] = None
 
 
-def _error_dialog_width(parent_window: Gtk.Window) -> int:
+def _error_dialog_width(parent_window: WindowSizing) -> int:
     parent_width = parent_window_width(parent_window, fallback=_ERROR_DIALOG_WIDTH)
     return max(360, min(_ERROR_DIALOG_WIDTH, parent_width - _ERROR_DIALOG_MARGIN))
 
 
 def _configure_wrapping_label(label: Gtk.Label, *, max_chars: int) -> None:
     label.set_wrap(True)
-    label.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+    # Gtk.Label wraps by Pango.WrapMode; Gtk.WrapMode.WORD_CHAR is 3, which is
+    # not even a valid Pango.WrapMode (WORD_CHAR is 2).
+    label.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
     label.set_xalign(0.0)
     label.set_halign(Gtk.Align.FILL)
     label.set_hexpand(True)

@@ -43,6 +43,7 @@ from core.model_scores import primary_sdr, sdr_for_files
 from .markup import set_row_subtitle, set_row_title
 from .spacing import set_inset
 from .widgets.rows import get_combo_value, make_combo_row, set_combo_value
+from .widget_state import fetch, stash
 
 _NETWORKS = [
     ("VR Arch", VR_ARCH_TYPE),
@@ -322,10 +323,10 @@ class DownloadCenterWindow:
 
     def _row_matches_filter(self, row: Gtk.ListBoxRow, arch: str) -> bool:
         action = self._catalogue_row_action(row)
-        label = getattr(action, "_uvr_model_name", "") if action is not None else ""
+        label = fetch(action, "_uvr_model_name", "") if action is not None else ""
         if not label:
             return False
-        if self._hide_unsupported and getattr(action, "_uvr_unsupported", False):
+        if self._hide_unsupported and fetch(action, "_uvr_unsupported", False):
             return False
         if self._purpose != PURPOSE_ALL and purpose_for_label(label) != self._purpose:
             return False
@@ -412,12 +413,12 @@ class DownloadCenterWindow:
         action.add_prefix(check)
         action.set_activatable_widget(check)
         # Identity stays the raw catalogue label: resolve()/download() key on it.
-        action._uvr_model_name = name  # type: ignore[attr-defined]
-        action._uvr_check = check  # type: ignore[attr-defined]
-        action._uvr_unsupported = False  # type: ignore[attr-defined]
-        action._uvr_sdr = sdr  # type: ignore[attr-defined]
-        action._uvr_sdr_stem = stem  # type: ignore[attr-defined]
-        action._uvr_stems_text = stems_text  # type: ignore[attr-defined]
+        stash(action, "_uvr_model_name", name)
+        stash(action, "_uvr_check", check)
+        stash(action, "_uvr_unsupported", False)
+        stash(action, "_uvr_sdr", sdr)
+        stash(action, "_uvr_sdr_stem", stem)
+        stash(action, "_uvr_stems_text", stems_text)
         set_row_subtitle(action, format_sdr_subtitle(sdr, stem=stem, extra=stems_text))
 
         self._row_checks[key] = check
@@ -434,11 +435,11 @@ class DownloadCenterWindow:
         set_row_subtitle(action, f"Unsupported — {reason}")
         action.add_css_class("dim-label")
         action.set_sensitive(False)
-        action._uvr_model_name = name  # type: ignore[attr-defined]
-        action._uvr_unsupported = True  # type: ignore[attr-defined]
-        action._uvr_sdr = parse_sdr_score(name)  # type: ignore[attr-defined]
-        action._uvr_sdr_stem = None  # type: ignore[attr-defined]
-        action._uvr_stems_text = ""  # type: ignore[attr-defined]
+        stash(action, "_uvr_model_name", name)
+        stash(action, "_uvr_unsupported", True)
+        stash(action, "_uvr_sdr", parse_sdr_score(name))
+        stash(action, "_uvr_sdr_stem", None)
+        stash(action, "_uvr_stems_text", "")
 
         self._row_actions[key] = action
         self._list_boxes[arch].append(action)
@@ -456,10 +457,10 @@ class DownloadCenterWindow:
             set_row_subtitle(
                 action,
                 format_sdr_subtitle(
-                    getattr(action, "_uvr_sdr", None),
+                    fetch(action, "_uvr_sdr", None),
                     "",
-                    stem=getattr(action, "_uvr_sdr_stem", None),
-                    extra=getattr(action, "_uvr_stems_text", ""),
+                    stem=fetch(action, "_uvr_sdr_stem", None),
+                    extra=fetch(action, "_uvr_stems_text", ""),
                 ),
             )
 
@@ -488,10 +489,10 @@ class DownloadCenterWindow:
             set_row_subtitle(
                 action,
                 format_sdr_subtitle(
-                    getattr(action, "_uvr_sdr", None),
+                    fetch(action, "_uvr_sdr", None),
                     text or "",
-                    stem=getattr(action, "_uvr_sdr_stem", None),
-                    extra=getattr(action, "_uvr_stems_text", ""),
+                    stem=fetch(action, "_uvr_sdr_stem", None),
+                    extra=fetch(action, "_uvr_stems_text", ""),
                 ),
             )
 

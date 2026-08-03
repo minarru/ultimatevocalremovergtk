@@ -88,12 +88,16 @@ def _dropdown(values: typing.Any, min_width: int) -> Gtk.DropDown:
 
 
 def _selected_string(drop: Gtk.DropDown) -> Optional[str]:
+    # get_selected_item() is typed GObject.Object | None; only Gtk.StringObject
+    # carries get_string.
     item = drop.get_selected_item()
-    return item.get_string() if item is not None else None
+    return item.get_string() if isinstance(item, Gtk.StringObject) else None
 
 
 def _select_string(drop: Gtk.DropDown, value: str) -> bool:
     model = drop.get_model()
+    if not isinstance(model, Gtk.StringList):
+        return False
     for index in range(model.get_n_items()):
         if model.get_string(index) == value:
             drop.set_selected(index)

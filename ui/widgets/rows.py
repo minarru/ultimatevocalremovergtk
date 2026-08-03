@@ -11,6 +11,7 @@ import typing
 from typing import Iterable, List, Optional, Sequence
 
 from gi.repository import Adw, Gdk, Gtk, Pango
+from ..widget_state import drop, fetch, has, stash
 
 _ICON_LOOKUP_FLAGS = Gtk.IconLookupFlags.FORCE_SYMBOLIC
 
@@ -34,9 +35,8 @@ def image_from_icon_name(icon_name: str, size: int = 16) -> Gtk.Image:
                 Gtk.TextDirection.LTR,
                 _ICON_LOOKUP_FLAGS,
             )
-            if paintable is not None:
-                image.set_from_paintable(paintable)
-                return image
+            image.set_from_paintable(paintable)
+            return image
     image.set_from_icon_name(icon_name)
     return image
 
@@ -54,9 +54,8 @@ def _apply_icon_name(image: Gtk.Image, icon_name: str, size: int = 16) -> None:
                 Gtk.TextDirection.LTR,
                 _ICON_LOOKUP_FLAGS,
             )
-            if paintable is not None:
-                image.set_from_paintable(paintable)
-                return
+            image.set_from_paintable(paintable)
+            return
     image.set_from_icon_name(icon_name)
 
 
@@ -67,16 +66,16 @@ def add_row_icon(row: typing.Any, icon_name: str) -> None:
 
 def set_row_icon(row: typing.Any, icon_name: Optional[str]) -> None:
     """Set or clear the leading icon on an ``Adw`` row (updates in place)."""
-    image = getattr(row, "_uvr_row_icon", None)
+    image = fetch(row, "_uvr_row_icon", None)
     if not icon_name:
         if image is not None:
             image.unparent()
-            row._uvr_row_icon = None
+            stash(row, "_uvr_row_icon", None)
         return
     if image is None:
         image = image_from_icon_name(icon_name)
         row.add_prefix(image)
-        row._uvr_row_icon = image
+        stash(row, "_uvr_row_icon", image)
     else:
         _apply_icon_name(image, icon_name)
 
@@ -142,8 +141,8 @@ def use_wrapping_list(row: Adw.ComboRow) -> None:
 
 def set_combo_values(row: Adw.ComboRow, values: Iterable) -> None:
     """Replace the row's model with ``values`` (coerced to strings)."""
-    if hasattr(row, "_uvr_combo_ids"):
-        del row._uvr_combo_ids
+    if has(row, "_uvr_combo_ids"):
+        drop(row, "_uvr_combo_ids")
     model = Gtk.StringList()
     for value in values:
         model.append(str(value))
@@ -163,28 +162,43 @@ def set_combo_tag_values(row: Adw.ComboRow, items: Iterable) -> None:
             text = str(item)
             ids.append(text)
             labels.append(text)
-    row._uvr_combo_ids = ids
+    stash(row, "_uvr_combo_ids", ids)
     model = Gtk.StringList()
     for label in labels:
         model.append(label)
     row.set_model(model)
 
 
-def combo_values(row: Adw.ComboRow) -> List[str]:
+def _string_model(row: Adw.ComboRow) -> Optional[Gtk.StringList]:
+    """The row's model, when it is the ``Gtk.StringList`` these helpers install.
+
+    ``get_model()`` returns ``Gio.ListModel | None``: a row whose model was
+    never set yields None, and only ``Gtk.StringList`` carries ``get_string``.
+    Reading through it unguarded raised ``AttributeError`` on such a row.
+    """
     model = row.get_model()
-    return [model.get_string(i) for i in range(model.get_n_items())]
+    return model if isinstance(model, Gtk.StringList) else None
+
+
+def combo_values(row: Adw.ComboRow) -> List[str]:
+    model = _string_model(row)
+    if model is None:
+        return []
+    return [model.get_string(i) or "" for i in range(model.get_n_items())]
 
 
 def set_combo_value(row: Adw.ComboRow, value: typing.Any) -> bool:
     """Select the item matching ``value``; returns ``True`` when found."""
     target = str(value)
-    ids = getattr(row, "_uvr_combo_ids", None)
-    model = row.get_model()
+    ids = fetch(row, "_uvr_combo_ids", None)
+    model = _string_model(row)
     if ids:
         for index, stored in enumerate(ids):
             if stored == target:
                 row.set_selected(index)
                 return True
+    if model is None:
+        return False
     for index in range(model.get_n_items()):
         if model.get_string(index) == target:
             row.set_selected(index)
@@ -192,14 +206,17 @@ def set_combo_value(row: Adw.ComboRow, value: typing.Any) -> bool:
     return False
 
 
-def get_combo_value(row: Adw.ComboRow) -> Optional[str]:
+def get_combo_value(row: Optional[Adw.ComboRow]) -> Optional[str]:
+    if row is None:
+        return None
     index = row.get_selected()
     if index == Gtk.INVALID_LIST_POSITION:
         return None
-    ids = getattr(row, "_uvr_combo_ids", None)
+    ids = fetch(row, "_uvr_combo_ids", None)
     if ids:
         return ids[index]
-    return row.get_model().get_string(index)
+    model = _string_model(row)
+    return None if model is None else model.get_string(index)
 
 
 def make_switch_row(
@@ -228,15 +245,15 @@ def _snap_to_step(value: float, lower: float, step: float) -> float:
 
 def _update_scale_value(row: Adw.ActionRow) -> None:
     """Refresh the value label beside the slider."""
-    values = getattr(row, "_uvr_values", None)
-    scale = row._uvr_scale
-    label = row._uvr_value_label
+    values = fetch(row, "_uvr_values", None)
+    scale = fetch(row, "_uvr_scale")
+    label = fetch(row, "_uvr_value_label")
     if values:
         index = int(round(scale.get_value()))
         index = max(0, min(len(values) - 1, index))
         label.set_label(values[index])
         return
-    digits = getattr(row, "_uvr_digits", 0)
+    digits = fetch(row, "_uvr_digits", 0)
     if digits:
         label.set_label(f"{scale.get_value():.{digits}f}")
     else:
@@ -277,14 +294,14 @@ def _make_scale_row(
     scale.set_size_request(_SCALE_WIDTH, -1)
     suffix.append(scale)
     row.add_suffix(suffix)
-    row._uvr_scale = scale
-    row._uvr_value_label = value_label
-    row._uvr_values = None
-    row._uvr_digits = 0
-    row._uvr_store_float = False
+    stash(row, "_uvr_scale", scale)
+    stash(row, "_uvr_value_label", value_label)
+    stash(row, "_uvr_values", None)
+    stash(row, "_uvr_digits", 0)
+    stash(row, "_uvr_store_float", False)
 
     def on_changed(*_args: typing.Any):
-        values = row._uvr_values
+        values = fetch(row, "_uvr_values")
         if values:
             index = int(round(scale.get_value()))
             index = max(0, min(len(values) - 1, index))
@@ -326,15 +343,15 @@ def make_discrete_scale_row(
     """Build a slider that snaps to one of the stringified ``values``."""
     choices = [str(value) for value in values]
     row = _make_scale_row(title, subtitle=subtitle, icon_name=icon_name)
-    row._uvr_values = choices
+    stash(row, "_uvr_values", choices)
     adjustment = Gtk.Adjustment(
         lower=0,
         upper=max(0, len(choices) - 1),
         step_increment=1,
         page_increment=1,
     )
-    row._uvr_scale.set_adjustment(adjustment)
-    row._uvr_scale.set_digits(0)
+    fetch(row, "_uvr_scale").set_adjustment(adjustment)
+    fetch(row, "_uvr_scale").set_digits(0)
     _update_scale_value(row)
     return row
 
@@ -351,15 +368,15 @@ def make_numeric_scale_row(
 ) -> Adw.ActionRow:
     """Build a constrained slider for a numeric range."""
     row = _make_scale_row(title, subtitle=subtitle, icon_name=icon_name)
-    row._uvr_digits = digits
+    stash(row, "_uvr_digits", digits)
     adjustment = Gtk.Adjustment(
         lower=lower,
         upper=upper,
         step_increment=step,
         page_increment=max(step, (upper - lower) / 10 if upper > lower else step),
     )
-    row._uvr_scale.set_adjustment(adjustment)
-    row._uvr_scale.set_digits(digits)
+    fetch(row, "_uvr_scale").set_adjustment(adjustment)
+    fetch(row, "_uvr_scale").set_digits(digits)
     _update_scale_value(row)
     return row
 
@@ -372,15 +389,15 @@ def set_scale_default_mark(
     label: Optional[str] = None,
 ) -> None:
     """Place a tick mark at the scale's default value (index or numeric)."""
-    scale = getattr(row, "_uvr_scale", None)
+    scale = fetch(row, "_uvr_scale", None)
     if scale is None:
         return
-    row._uvr_default = default
-    row._uvr_default_label = label
+    stash(row, "_uvr_default", default)
+    stash(row, "_uvr_default_label", label)
     scale.clear_marks()
     if default is None:
         return
-    values = getattr(row, "_uvr_values", None)
+    values = fetch(row, "_uvr_values", None)
     if values:
         target = str(default)
         for index, choice in enumerate(values):
@@ -395,22 +412,22 @@ def set_scale_default_mark(
 
 
 def refresh_scale_default_mark(row: Adw.ActionRow) -> None:
-    """Re-apply ``row._uvr_default`` after a scale is reconfigured."""
-    default = getattr(row, "_uvr_default", None)
+    """Re-apply ``fetch(row, "_uvr_default")`` after a scale is reconfigured."""
+    default = fetch(row, "_uvr_default", None)
     if default is not None:
         set_scale_default_mark(
             row,
             default,
-            label=getattr(row, "_uvr_default_label", None),
+            label=fetch(row, "_uvr_default_label", None),
         )
 
 
 def reconfigure_discrete_scale(row: Adw.ActionRow, values: Sequence) -> None:
     """Replace the allowed values on a discrete scale row."""
     choices = [str(value) for value in values]
-    row._uvr_values = choices
+    stash(row, "_uvr_values", choices)
     upper = max(0, len(choices) - 1)
-    _configure_adjustment(row._uvr_scale.get_adjustment(), lower=0, upper=upper, step=1)
+    _configure_adjustment(fetch(row, "_uvr_scale").get_adjustment(), lower=0, upper=upper, step=1)
     current = get_scale_row_value(row) or choices[0]
     set_scale_row_value(row, current)
     _update_scale_value(row)
@@ -426,23 +443,23 @@ def reconfigure_numeric_scale(
     digits: int = 0,
 ) -> None:
     """Replace the numeric range on a scale row."""
-    row._uvr_values = None
-    row._uvr_digits = digits
-    _configure_adjustment(row._uvr_scale.get_adjustment(), lower=lower, upper=upper, step=step)
-    row._uvr_scale.set_digits(digits)
+    stash(row, "_uvr_values", None)
+    stash(row, "_uvr_digits", digits)
+    _configure_adjustment(fetch(row, "_uvr_scale").get_adjustment(), lower=lower, upper=upper, step=step)
+    fetch(row, "_uvr_scale").set_digits(digits)
     _update_scale_value(row)
     refresh_scale_default_mark(row)
 
 
 def get_scale_row_value(row: Adw.ActionRow) -> Optional[str]:
     """Read the settings string for a scale row."""
-    values = getattr(row, "_uvr_values", None)
-    scale = row._uvr_scale
+    values = fetch(row, "_uvr_values", None)
+    scale = fetch(row, "_uvr_scale")
     if values:
         index = int(round(scale.get_value()))
         index = max(0, min(len(values) - 1, index))
         return values[index]
-    digits = getattr(row, "_uvr_digits", 0)
+    digits = fetch(row, "_uvr_digits", 0)
     value = scale.get_value()
     if digits:
         return f"{value:.{digits}f}"
@@ -451,15 +468,15 @@ def get_scale_row_value(row: Adw.ActionRow) -> Optional[str]:
 
 def get_scale_row_float(row: Adw.ActionRow) -> float:
     """Read the slider's current numeric value."""
-    return row._uvr_scale.get_value()
+    return fetch(row, "_uvr_scale").get_value()
 
 
 def set_scale_row_value(row: Adw.ActionRow, value: typing.Any) -> bool:
     """Set a scale row from a stored settings value."""
     if value is None:
         return False
-    values = getattr(row, "_uvr_values", None)
-    scale = row._uvr_scale
+    values = fetch(row, "_uvr_values", None)
+    scale = fetch(row, "_uvr_scale")
     if values:
         target = str(value)
         for index, choice in enumerate(values):
@@ -479,5 +496,5 @@ def set_scale_row_value(row: Adw.ActionRow, value: typing.Any) -> bool:
 
 
 def set_scale_row_float(row: Adw.ActionRow, value: float) -> None:
-    row._uvr_scale.set_value(value)
+    fetch(row, "_uvr_scale").set_value(value)
     _update_scale_value(row)

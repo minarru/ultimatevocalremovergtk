@@ -70,7 +70,8 @@ class UVRApplication(Adw.Application):
         open_output.connect("activate", self._on_open_output_folder)
         self.add_action(open_output)
 
-    def _on_open_output_folder(self, _action: Gio.SimpleAction, param: GLib.Variant) -> None:
+    # GAction callbacks pass None when the action carries no parameter type.
+    def _on_open_output_folder(self, _action: Gio.SimpleAction, param: Optional[GLib.Variant]) -> None:
         from .files import open_folder_in_file_manager
 
         window = self.props.active_window

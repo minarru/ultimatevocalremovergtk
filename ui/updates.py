@@ -47,7 +47,7 @@ class UpdateView:
         status = self.manager.update_status()
         version_group = Adw.PreferencesGroup(title="Application Version")
         version_group.add(
-            Adw.ActionRow(title="Version", subtitle=status["version"] or "unknown")
+            Adw.ActionRow(title="Version", subtitle=str(status["version"] or "unknown"))
         )
         if status.get("upstream_base"):
             version_group.add(

@@ -46,9 +46,8 @@ class ConsoleView(Gtk.ScrolledWindow):
         self.set_child(self._view)
 
         vadj = self.get_vadjustment()
-        if vadj is not None:
-            vadj.connect("notify::upper", self._on_viewport_changed)
-            vadj.connect("notify::page-size", self._on_viewport_changed)
+        vadj.connect("notify::upper", self._on_viewport_changed)
+        vadj.connect("notify::page-size", self._on_viewport_changed)
 
     def _on_viewport_changed(self, _adj: Gtk.Adjustment, _pspec: typing.Any) -> None:
         if not self.get_mapped():
@@ -62,8 +61,6 @@ class ConsoleView(Gtk.ScrolledWindow):
         if not self.get_mapped():
             return GLib.SOURCE_REMOVE
         vadj = self.get_vadjustment()
-        if vadj is None:
-            return GLib.SOURCE_REMOVE
         upper = vadj.get_upper()
         page = vadj.get_page_size()
         if upper <= page + 0.5 or self._defer_scroll:
@@ -101,7 +98,9 @@ class ConsoleView(Gtk.ScrolledWindow):
         # Drop whole lines from the head; leave the newest cap lines.
         drop = line_count - _CONSOLE_LINE_CAP
         start = self._buffer.get_start_iter()
-        end = self._buffer.get_iter_at_line(drop)
+        # GTK4's get_iter_at_line returns (found, iter); passing the tuple
+        # straight to delete() raised TypeError every time the cap was hit.
+        _found, end = self._buffer.get_iter_at_line(drop)
         self._buffer.delete(start, end)
 
     def clear(self) -> None:
@@ -124,15 +123,12 @@ class ConsoleView(Gtk.ScrolledWindow):
     def _reset_scroll(self) -> None:
         hadj = self.get_hadjustment()
         vadj = self.get_vadjustment()
-        if hadj is not None:
-            hadj.set_value(hadj.get_lower())
-        if vadj is not None:
-            vadj.set_value(vadj.get_lower())
+        hadj.set_value(hadj.get_lower())
+        vadj.set_value(vadj.get_lower())
 
     def _reset_horizontal_scroll(self) -> None:
         hadj = self.get_hadjustment()
-        if hadj is not None:
-            hadj.set_value(hadj.get_lower())
+        hadj.set_value(hadj.get_lower())
 
     def scroll_to_end_stable(self) -> None:
         """Scroll to the latest line, then again after layout settles."""
@@ -167,8 +163,6 @@ class ConsoleView(Gtk.ScrolledWindow):
 
     def _scroll_view_to_end(self) -> None:
         vadj = self.get_vadjustment()
-        if vadj is None:
-            return
 
         upper = vadj.get_upper()
         page = vadj.get_page_size()

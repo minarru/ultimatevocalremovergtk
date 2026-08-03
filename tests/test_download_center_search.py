@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from ui.widget_state import fetch, stash
 
 
 @unittest.skipUnless(
@@ -29,11 +30,11 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
         from ui.download_center import resolve_catalogue_action_row
 
         action = Adw.ActionRow()
-        action._uvr_model_name = "MDX-Net Model: Kim Vocal 2"
+        stash(action, "_uvr_model_name", "MDX-Net Model: Kim Vocal 2")
         resolved = resolve_catalogue_action_row(action)
         self.assertIs(resolved, action)
         assert resolved is not None
-        self.assertEqual(resolved._uvr_model_name, "MDX-Net Model: Kim Vocal 2")
+        self.assertEqual(fetch(resolved, "_uvr_model_name"), "MDX-Net Model: Kim Vocal 2")
 
     def test_internal_child_is_not_the_action_row(self) -> None:
         from gi.repository import Adw

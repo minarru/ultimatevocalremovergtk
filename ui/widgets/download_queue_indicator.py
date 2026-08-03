@@ -37,6 +37,7 @@ from core.download_status import (
     row_action_tooltip_for,
     row_progress_for,
 )
+from ..widget_state import fetch, stash
 
 REMOVE_FINISHED_TIMEOUT_S = 3
 ATTENTION_TIMEOUT_MS = 2000
@@ -56,7 +57,7 @@ class QueueSummary:
 @dataclass(frozen=True)
 class ChipRingState:
     progress: float
-    outcome: str  # "active", "success", "partial", "failed", "cancelled"
+    outcome: str # "active", "success", "partial", "failed", "cancelled"
 
 
 def chip_ring_state(items: List[DownloadQueueItem], summary: QueueSummary) -> ChipRingState:
@@ -400,7 +401,7 @@ class DownloadQueueIndicator:
 
         detail = Gtk.Label(xalign=0.0)
         detail.set_wrap(True)
-        detail.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        detail.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
         detail.set_ellipsize(Pango.EllipsizeMode.END)
         detail.add_css_class("dim-label")
         detail.add_css_class("numeric")
@@ -418,11 +419,11 @@ class DownloadQueueIndicator:
         grid.attach(detail, 0, 2, 1, 1)
         grid.attach(action_button, 1, 0, 1, 3)
 
-        grid._uvr_status = status  # type: ignore[attr-defined]
-        grid._uvr_detail = detail  # type: ignore[attr-defined]
-        grid._uvr_progress = progress  # type: ignore[attr-defined]
-        grid._uvr_action = action_button  # type: ignore[attr-defined]
-        grid._uvr_item_id = item.item_id  # type: ignore[attr-defined]
+        stash(grid, "_uvr_status", status)
+        stash(grid, "_uvr_detail", detail)
+        stash(grid, "_uvr_progress", progress)
+        stash(grid, "_uvr_action", action_button)
+        stash(grid, "_uvr_item_id", item.item_id)
 
         list_row = Gtk.ListBoxRow()
         list_row.set_child(grid)
@@ -432,17 +433,17 @@ class DownloadQueueIndicator:
         grid = list_row.get_child()
         if not isinstance(grid, Gtk.Grid):
             return
-        status: Gtk.Label = grid._uvr_status  # type: ignore[attr-defined]
-        detail: Gtk.Label = grid._uvr_detail  # type: ignore[attr-defined]
-        progress: Gtk.ProgressBar = grid._uvr_progress  # type: ignore[attr-defined]
-        action: Gtk.Button = grid._uvr_action  # type: ignore[attr-defined]
+        status: Gtk.Label = fetch(grid, "_uvr_status")
+        detail: Gtk.Label = fetch(grid, "_uvr_detail")
+        progress: Gtk.ProgressBar = fetch(grid, "_uvr_progress")
+        action: Gtk.Button = fetch(grid, "_uvr_action")
 
         if status.get_label() != item.label:
             status.set_label(item.label)
         subtitle = _status_subtitle(item)
         markup = _details_markup(subtitle)
-        if getattr(grid, "_uvr_detail_markup", None) != markup:
-            grid._uvr_detail_markup = markup  # type: ignore[attr-defined]
+        if fetch(grid, "_uvr_detail_markup", None) != markup:
+            stash(grid, "_uvr_detail_markup", markup)
             detail.set_markup(markup)
         detail.set_visible(bool(subtitle))
 
