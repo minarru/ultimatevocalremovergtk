@@ -9,3 +9,5 @@
 # --system-site-packages so GTK/PyGObject come from the distro, never PyPI.
 # Nothing here is imported at runtime; basedpyright only reads the .pyi files.
 PyGObject-stubs==2.17.0
+
+# CI trigger probe — this branch is throwaway and will not be merged.
