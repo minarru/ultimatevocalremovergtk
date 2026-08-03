@@ -17,7 +17,7 @@ import typing
 
 import json
 import os
-from typing import AbstractSet, Any, Callable, Dict, List, Optional, cast
+from typing import AbstractSet, Any, Callable, Dict, List, Optional, Sequence, cast
 
 from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
 
@@ -274,7 +274,7 @@ class ModelRepository:
         def matches_stem(model: "ModelConfig") -> bool:
             if not wanted:
                 return False
-            primary_match = bucket_of(model, model.primary_stem) in wanted
+            primary_match = bucket_of(model, str(model.primary_stem or "")) in wanted
             mdx_match = any(bucket_of(model, stem) in wanted for stem in model.mdx_model_stems)
             if is_no_demucs:
                 return primary_match or (mdx_match and model.mdx_stem_count <= 2)
@@ -459,16 +459,16 @@ class _ModelConfigImplementation:
         # a config that defines a single ``training.target_instrument``.
         self.is_roformer = False
         self.is_target_instrument = False
-        self.model_type: Any = ""
+        self.model_type: str = ""
         self.is_mdx_combine_stems = mdx.is_mdx23_combine_stems
         self.is_mdx_include_stem_complement = mdx.is_mdx_include_stem_complement
         self.mdx_c_configs: Any = None
-        self.mdx_model_stems: Any = []
-        self.mdx_dim_f_set: Any = None
-        self.mdx_dim_t_set: Any = None
+        self.mdx_model_stems: list[str] = []
+        self.mdx_dim_f_set: int | None = None
+        self.mdx_dim_t_set: int | None = None
         self.mdx_stem_count = 1
-        self.compensate: Any = None
-        self.mdx_n_fft_scale_set: Any = None
+        self.compensate: float | None = None
+        self.mdx_n_fft_scale_set: int | None = None
         self.wav_type_set = resolve_wav_type_set(settings)
         self.device_set = (
             device_set.split(":")[-1].strip() if ":" in device_set else device_set
@@ -480,8 +480,8 @@ class _ModelConfigImplementation:
         self.is_mixer_mode = False
         self.demucs_stems = demucs.stems
         self.is_demucs_combine_stems = demucs.is_demucs_combine_stems
-        self.demucs_source_list: Any = []
-        self.demucs_source_map: Any = {}
+        self.demucs_source_list: Sequence[str] = []
+        self.demucs_source_map: dict[str, int] = {}
         self.demucs_stem_count = 0
         self.mixer_path = paths.MDX_MIXER_PATH
         self.model_name = model_name
@@ -489,9 +489,9 @@ class _ModelConfigImplementation:
         self.model_status = False if self.model_name == CHOOSE_MODEL or self.model_name == NO_MODEL else True
         # Always defined: hash / path lookup may leave this unset for missing files.
         self.model_data: Any = None
-        self.primary_stem: Any = None
-        self.secondary_stem: Any = None
-        self.primary_stem_native: Any = None
+        self.primary_stem: str | None = None
+        self.secondary_stem: str | None = None
+        self.primary_stem_native: str | None = None
         self.is_ensemble_mode = False
         self.ensemble_primary_stem = None
         self.ensemble_secondary_stem = None

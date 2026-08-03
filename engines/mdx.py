@@ -497,7 +497,10 @@ class SeperateMDX(SeperateAttributes):
             source = source if is_match_mix else source*self.compensate
 
             if self.is_denoise_model and not is_match_mix:
-                if NO_STEM in self.primary_stem_native or self.primary_stem_native == INST_STEM:
+                # ``primary_stem_native`` stays None when model resolution never
+                # reached a branch that sets it; ``in`` would raise on None.
+                native = str(self.primary_stem_native or "")
+                if NO_STEM in native or native == INST_STEM:
                     if org_mix.shape[1] != source.shape[1]:
                         source = spec_utils.match_array_shapes(source, org_mix)
                     source = org_mix - vr_denoiser(
@@ -588,7 +591,7 @@ class SeperateMDXC(SeperateAttributes):
                 self.mdxnet_stem_select = stem_list[0]
             else:
                 self.mdxnet_stem_select = self.main_model_primary_stem_4_stem if self.main_model_primary_stem_4_stem else self.primary_model_primary_stem
-            self.primary_stem = self.mdxnet_stem_select
+            self.primary_stem = str(self.mdxnet_stem_select or "")
             self.secondary_stem = secondary_stem(str(self.mdxnet_stem_select or ""))
             self.is_primary_stem_only, self.is_secondary_stem_only = False, False
 

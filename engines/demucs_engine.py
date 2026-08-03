@@ -124,9 +124,13 @@ class SeperateDemucs(SeperateAttributes):
                 if cached and cached.module is not None:
                     self.demucs = materialize_module(cached.module, self.device)
                 elif self.demucs_version == DEMUCS_V1:
-                    if str(self.model_path).endswith(".gz"):
-                        self.model_path = gzip.open(self.model_path, "rb")
-                    klass, args, kwargs, state = load_torch_checkpoint(self.model_path)
+                    # Keep the handle local: assigning it back over
+                    # ``self.model_path`` left a str-typed path attribute holding
+                    # an open GzipFile for the rest of the instance's life.
+                    checkpoint_source: Any = self.model_path
+                    if str(checkpoint_source).endswith(".gz"):
+                        checkpoint_source = gzip.open(self.model_path, "rb")
+                    klass, args, kwargs, state = load_torch_checkpoint(checkpoint_source)
                     self.demucs = klass(*args, **kwargs)
                     self.demucs.to(self.device)
                     self.demucs.load_state_dict(state)
