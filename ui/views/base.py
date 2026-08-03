@@ -17,18 +17,15 @@ from typing import Callable, List, Optional, Type
 from gi.repository import Adw, Gio, Gtk
 
 from bundled.constants import (
-    BASS_PAIR,
     BASS_STEM,
     CHOOSE_MODEL,
     CHOOSE_MODEL_HELP,
     CLEAR_CACHE_HELP,
     DEMUCS_ARCH_TYPE,
-    DRUM_PAIR,
     DRUM_STEM,
     INST_STEM,
     MDX_ARCH_TYPE,
     NO_MODEL,
-    OTHER_PAIR,
     OTHER_STEM,
     PRE_PROC_MODEL_ACTIVATE_HELP,
     PRE_PROC_MODEL_INST_MIX_HELP,
@@ -37,12 +34,11 @@ from bundled.constants import (
     SECONDARY_MODEL_HELP,
     SECONDARY_MODEL_SCALE_HELP,
     SECONDARY_STEM,
-    VOCAL_PAIR,
     VOCAL_STEM,
     VR_ARCH_TYPE,
 )
-from core.model_stem_semantics import ensemble_pair_buckets
 from core.settings import Settings
+from core.stems import EnsemblePair, StemBucket, ui_label
 
 from ..hints import HelpHintManager
 from ..widgets.rows import (
@@ -72,17 +68,17 @@ from ..option_summaries import (
     preproc_summary,
     secondary_models_summary,
 )
-from ..settings_bind import get_flat, set_flat
+from ..settings_bind import get_flat, set_flat, setting_for_combo
 
 _DEFAULT_SETTINGS = Settings.defaults()
 
-# Per-stem secondary-model slots: (settings-key slot, display pair, primary stem,
+# Per-stem secondary-model slots: (settings-key slot, EnsemblePair, primary stem,
 # secondary stem) used to build the four secondary-model selectors UVR exposes.
 _SECONDARY_SLOTS = (
-    ("voc_inst", VOCAL_PAIR, VOCAL_STEM, INST_STEM),
-    ("other", OTHER_PAIR, OTHER_STEM, "No Other"),
-    ("bass", BASS_PAIR, BASS_STEM, "No Bass"),
-    ("drums", DRUM_PAIR, DRUM_STEM, "No Drums"),
+    ("voc_inst", EnsemblePair.VOCALS_INSTRUMENTAL, VOCAL_STEM, INST_STEM),
+    ("other", EnsemblePair.OTHER, OTHER_STEM, "No Other"),
+    ("bass", EnsemblePair.BASS, BASS_STEM, "No Bass"),
+    ("drums", EnsemblePair.DRUMS, DRUM_STEM, "No Drums"),
 )
 
 
@@ -508,7 +504,7 @@ class MethodView:
 
     def _load_scales(self) -> None:
         for key, row in self._scale_rows.items():
-            value = get_flat(self.settings, key)
+            value = setting_for_combo(key, get_flat(self.settings, key))
             if getattr(row, "_uvr_store_float", False):
                 try:
                     set_scale_row_float(row, float(value))
@@ -557,7 +553,9 @@ class MethodView:
     def load_options(self) -> None:
         """Set method-specific combo rows from settings."""
         for key, row in self._option_rows.items():
-            set_combo_value(row, get_flat(self.settings, key))
+            set_combo_value(
+                row, setting_for_combo(key, get_flat(self.settings, key))
+            )
 
     def save_options(self) -> None:
         """Write method-specific combo rows back to settings."""
@@ -762,23 +760,29 @@ class MethodView:
             for slot, pair, primary, secondary in _SECONDARY_SLOTS:
                 model_key = f"{prefix}_{slot}_secondary_model"
                 scale_key = f"{prefix}_{slot}_secondary_model_scale"
+                pair_label = ui_label(pair)
+                wanted = {b for b in pair.buckets() if b is not StemBucket.UNKNOWN}
                 # Pair request buckets — not stem_count=1 on the UI half names,
                 # which turns Other/No Other into an Instrumental request.
                 provider = (
-                    lambda pair=pair, p=primary, s=secondary: repo.model_list(
+                    lambda p=primary, s=secondary, w=wanted: repo.model_list(
                         settings,
                         p,
                         s,
-                        wanted_buckets=set(ensemble_pair_buckets(pair)),
+                        wanted_buckets=w,
                     )
                 )
                 combo = self._add_model_combo(
-                    self.secondary_expander, model_key, provider, pair, hint=SECONDARY_MODEL_HELP
+                    self.secondary_expander,
+                    model_key,
+                    provider,
+                    pair_label,
+                    hint=SECONDARY_MODEL_HELP,
                 )
                 scale = self.add_option_scale(
                     self.secondary_expander,
                     scale_key,
-                    f"{pair} influence",
+                    f"{pair_label} influence",
                     lower=0.01,
                     upper=0.99,
                     step=0.01,

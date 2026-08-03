@@ -80,7 +80,7 @@ class DiscoveryTests(unittest.TestCase):
         )
         self.assertEqual(ensemble[0].overrides["ensemble_type"], "Max Spec/Min Spec")
         self.assertEqual(
-            ensemble[0].overrides["ensemble_main_stem"], "Vocals/Instrumental"
+            ensemble[0].overrides["ensemble_main_stem"], "vocals_instrumental"
         )
         self.assertFalse(ensemble[0].overrides["is_save_all_outputs_ensemble"])
 
@@ -712,7 +712,7 @@ class ParentControlFlowTests(unittest.TestCase):
 
     def test_skip_jobs_are_not_spawned(self) -> None:
         spawn, calls = self._spawner([])
-        verdict, detail, _ = model_sweep.run_one(
+        verdict, _detail, _ = model_sweep.run_one(
             self._job(id="composite:ensemble", kind=model_sweep.KIND_SKIP,
                       method=None, model=None, detail="needs two models"),
             spawn=spawn, job_dir="/tmp/j", settings_path="/tmp/s.json",

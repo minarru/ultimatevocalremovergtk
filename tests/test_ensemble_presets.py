@@ -30,10 +30,16 @@ class CuratedPresetLoadTests(unittest.TestCase):
         self.assertIsNotNone(data)
         assert data is not None
         self.assertIn("description", data)
-        self.assertEqual(data["ensemble_main_stem"], "Vocals/Instrumental")
+        self.assertEqual(data["ensemble_main_stem"], "vocals_instrumental")
         self.assertEqual(data["ensemble_type"], "Average/Average")
         self.assertGreaterEqual(len(data["selected_models"]), 2)
         self.assertTrue(data["selected_models"][0].startswith("MDX-Net: "))
+
+    def test_karaoke_preset_uses_karaoke_id(self) -> None:
+        data = load_curated_ensemble("Karaoke")
+        self.assertIsNotNone(data)
+        assert data is not None
+        self.assertEqual(data["ensemble_main_stem"], "karaoke")
 
     def test_combo_label_roundtrip(self) -> None:
         label = curated_combo_label("Vocal_Balanced")

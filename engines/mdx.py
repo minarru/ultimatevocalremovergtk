@@ -24,7 +24,8 @@ from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
 from core.torch_checkpoint import as_model_state_dict, load_torch_checkpoint
-from core.model_stem_semantics import is_vocal_target, resolve_stem_dict_key
+from core.model_stem_semantics import is_vocal_target
+from core.stems import StemId, resolve_in_sources
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
 
@@ -102,7 +103,9 @@ def _filter_init_kwargs(model_cls: typing.Any, cfg: typing.Any) -> dict:
     return {key: cfg[key] for key in cfg if key in allowed}
 
 
-def _build_mdx_c_model(config: typing.Any):
+def _build_mdx_c_model(
+    config: typing.Any, state_dict_keys: typing.Optional[typing.Sequence[str]] = None
+):
     if getattr(config, 'cls', None) == 'Bandit':
         from ml.bandit import Bandit
 
@@ -120,7 +123,19 @@ def _build_mdx_c_model(config: typing.Any):
         kwargs['match_input_audio_length'] = True
         return MelBandRoformer(**kwargs)
     if 'freqs_per_bands' in model_cfg:
-        return BSRoformer(**_filter_init_kwargs(BSRoformer, model_cfg))
+        kwargs = _filter_init_kwargs(BSRoformer, model_cfg)
+        # HyperACE attaches a segm branch to every mask estimator. Prefer the
+        # checkpoint's own keys: only the packaged v2-instrumental yaml carries
+        # a ``hyperace2`` flag, and that flag is top-level so it never reaches
+        # the kwarg filter anyway. Upstream's own configs declare nothing.
+        from ml.hyperace import hyperace_variant_from_state_dict
+
+        variant = hyperace_variant_from_state_dict(state_dict_keys or ())
+        if variant is None and getattr(config, 'hyperace2', False):
+            variant = 'v2'
+        if variant is not None:
+            kwargs['hyperace'] = variant
+        return BSRoformer(**kwargs)
     if 'band_SR' in model_cfg or 'sources' in model_cfg:
         from ml.scnet import SCNet
 
@@ -364,6 +379,9 @@ class SeperateMDX(SeperateAttributes):
             
             org_mix = mix
             tar_waves_ = []
+            # Only read back under ``is_pitch_change``, which is also the only
+            # branch that reassigns it; seeded so the name is always bound.
+            sr_pitched = 44100
 
             if is_match_mix:
                 chunk_size = self.hop * (256-1)
@@ -381,7 +399,10 @@ class SeperateMDX(SeperateAttributes):
             mixture = np.concatenate((np.zeros((2, self.trim), dtype='float32'), mix, np.zeros((2, pad), dtype='float32')), 1)
             mixture_t = torch.as_tensor(mixture, dtype=torch.float32, device=self.device)
 
-            step = self.chunk_size - self.n_fft if overlap == DEFAULT else int((1 - overlap) * chunk_size)
+            # ``overlap`` is always a float here: model_data resolves the
+            # ``Default`` sentinel to 0.25 before it reaches the engine, so
+            # upstream's ``chunk_size - n_fft`` branch is unreachable.
+            step = int((1 - overlap) * chunk_size)
             mix_len = mixture_t.shape[-1]
             result = torch.zeros((1, 2, mix_len), dtype=torch.float32, device=self.device)
             divider = torch.zeros((1, 2, mix_len), dtype=torch.float32, device=self.device)
@@ -641,14 +662,14 @@ class SeperateMDXC(SeperateAttributes):
                     stem_key = str(stem_list[0])
                 elif select == ALL_STEMS:
                     stem_key = primary
-                elif isinstance(working_sources, dict) and resolve_stem_dict_key(
-                    working_sources, select
+                elif isinstance(working_sources, dict) and resolve_in_sources(
+                    working_sources, StemId(select)
                 ) is not None:
                     stem_key = select
                 else:
                     stem_key = primary
                 if isinstance(working_sources, dict):
-                    resolved = resolve_stem_dict_key(working_sources, stem_key)
+                    resolved = resolve_in_sources(working_sources, StemId(stem_key))
                     if resolved is None:
                         raise KeyError(
                             f"stem {stem_key!r} not in sources "
@@ -672,13 +693,13 @@ class SeperateMDXC(SeperateAttributes):
                     
                     if self.is_mdx_combine_stems and len(stem_list) >= 2:
                         if len(stem_list) == 2:
-                            sec_key = resolve_stem_dict_key(
-                                working_sources, self.secondary_stem
+                            sec_key = resolve_in_sources(
+                                working_sources, StemId(self.secondary_stem)
                             ) or self.secondary_stem
                             secondary_source = working_sources[sec_key]
                         else:
-                            prim_key = resolve_stem_dict_key(
-                                working_sources, self.primary_stem
+                            prim_key = resolve_in_sources(
+                                working_sources, StemId(self.primary_stem)
                             )
                             if prim_key is not None:
                                 working_sources.pop(prim_key, None)
@@ -688,11 +709,11 @@ class SeperateMDXC(SeperateAttributes):
                                 secondary_source += v
                                 
                         self.secondary_source = secondary_source.T 
-                    elif isinstance(working_sources, dict) and resolve_stem_dict_key(
-                        working_sources, self.secondary_stem
+                    elif isinstance(working_sources, dict) and resolve_in_sources(
+                        working_sources, StemId(self.secondary_stem)
                     ):
-                        sec_key = resolve_stem_dict_key(
-                            working_sources, self.secondary_stem
+                        sec_key = resolve_in_sources(
+                            working_sources, StemId(self.secondary_stem)
                         )
                         self.secondary_source = working_sources[sec_key].T
                     else:
@@ -774,7 +795,7 @@ class SeperateMDXC(SeperateAttributes):
             try:
                 try:
                     S = model.num_target_instruments
-                except Exception as e:
+                except Exception:
                     S = model.module.num_target_instruments
 
                 mdx_segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size
@@ -900,8 +921,12 @@ class SeperateMDXC(SeperateAttributes):
             if cached and cached.module is not None:
                 model: Any = materialize_module(cached.module, device)
             else:
-                model = _build_mdx_c_model(self.roformer_config)
+                # Load first: the checkpoint's keys decide whether this is a
+                # HyperACE variant, which upstream configs do not declare.
                 checkpoint = _load_torch_checkpoint(self.model_path)
+                model = _build_mdx_c_model(
+                    self.roformer_config, state_dict_keys=list(checkpoint.keys())
+                )
                 model = model if not isinstance(model, torch.nn.DataParallel) else model.module
                 model.load_state_dict(checkpoint)
                 del checkpoint

@@ -512,7 +512,7 @@ def _load_yaml_meta(yaml_name: str, yaml_url: str = "") -> Tuple[List[str], str,
         training = _mdx_c_training(config)
         instruments, target = _training_fields(training)
         arch, _ = infer_mdx_c_architecture(yaml_name)
-        if not arch and isinstance(config, dict):
+        if not arch:
             model = config.get("model") or {}
             if "num_bands" in model:
                 arch = "Mel-Band Roformer"

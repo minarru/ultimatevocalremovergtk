@@ -38,15 +38,12 @@ from core.types import ProcessMethod
 from bundled.constants import (
     CHUNK_MIN,
     CHOOSE_ENSEMBLE_OPTION,
-    CHOOSE_STEM_PAIR,
     ENSEMBLE_ALGORITHMS,
     ENSEMBLE_LISTBOX_HELP,
-    ENSEMBLE_MAIN_STEM,
     ENSEMBLE_MAIN_STEM_HELP,
     ENSEMBLE_MODE,
     ENSEMBLE_PARTITION,
     ENSEMBLE_TYPE_HELP,
-    FOUR_STEM_ENSEMBLE,
     IS_APPEND_ENSEMBLE_NAME_HELP,
     IS_AUTOCAST_HELP,
     IS_GPU_CONVERSION_HELP,
@@ -56,8 +53,13 @@ from bundled.constants import (
     MAX_MIN,
     MODEL_SAMPLE_MODE_HELP,
     OUTPUT_FOLDER_ENTRY_HELP,
-    MULTI_STEM_ENSEMBLE,
     SAVE_STEM_ONLY_HELP,
+)
+from core.stems import (
+    EnsemblePair,
+    coerce_ensemble_pair,
+    ensemble_pair_choices,
+    ui_label,
 )
 from core.ensemble_algorithms import (
     ENSEMBLE_PRESET_OPTIONS,
@@ -119,6 +121,7 @@ from ..widgets.rows import (
     get_combo_value,
     make_combo_row,
     make_switch_row,
+    set_combo_tag_values,
     set_combo_value,
     set_combo_values,
 )
@@ -239,7 +242,10 @@ class EnsemblePage:
         self.saved_row.add_suffix(delete_button)
         group.add(self.saved_row)
 
-        self.main_stem_row = make_combo_row("Main stem pair", list(ENSEMBLE_MAIN_STEM), icon_name="view-list-symbolic")
+        self.main_stem_row = make_combo_row(
+            "Main stem pair", [], icon_name="view-list-symbolic"
+        )
+        set_combo_tag_values(self.main_stem_row, ensemble_pair_choices())
         set_tooltip(self.main_stem_row, ENSEMBLE_MAIN_STEM_HELP)
         self.main_stem_row.connect("notify::selected", self._on_main_stem_changed)
         group.add(self.main_stem_row)
@@ -483,7 +489,7 @@ class EnsemblePage:
             self._refresh_saved_list()
             set_combo_value(
                 self.main_stem_row,
-                self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR,
+                self._ensemble_pair().value,
             )
             self._refresh_ensemble_type_values()
 
@@ -557,12 +563,22 @@ class EnsemblePage:
             self.settings.process.sample_mode = self.sample_row.get_active()
             self._update_stems_group_metadata()
 
+    def _ensemble_pair(self) -> EnsemblePair:
+        return coerce_ensemble_pair(self.settings.ensemble.main_stem)
+
+    def _set_ensemble_pair(self, value: typing.Any) -> EnsemblePair:
+        pair = coerce_ensemble_pair(value)
+        self.settings.ensemble.main_stem = pair
+        return pair
+
     def _ensemble_stem_pair(self) -> tuple[str | None, str | None]:
-        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
-        if main_stem and main_stem != CHOOSE_STEM_PAIR and "/" in main_stem:
-            primary_stem, secondary_stem = main_stem.split("/", 1)
-            return primary_stem, secondary_stem
-        return None, None
+        pair = self._ensemble_pair()
+        if pair is EnsemblePair.CHOOSE or pair.is_multi_or_four():
+            return None, None
+        primary, secondary = pair.stem_halves()
+        if not primary:
+            return None, None
+        return primary, secondary
 
     def _resolve_ensemble_semantics_model(self):
         """Best-effort model resolve for export-semantics hints (first member)."""
@@ -580,8 +596,7 @@ class EnsemblePage:
     def _rebuild_stem_only_toggles(self) -> None:
         primary_stem, secondary_stem = self._ensemble_stem_pair()
         has_pair = bool(primary_stem and secondary_stem)
-        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
-        is_multi = self._is_multi_or_four_stem(main_stem)
+        is_multi = self._ensemble_pair().is_multi_or_four()
         # Dual-stem: full Save stems toggles. 4-stem / multi-stem: summary-only.
         # Choose stem pair: hide the group.
         self.stems_group.set_visible(has_pair or is_multi)
@@ -606,8 +621,7 @@ class EnsemblePage:
             self.stems_group.set_description("")
             return
         primary_stem, _secondary = self._ensemble_stem_pair()
-        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
-        is_multi = self._is_multi_or_four_stem(main_stem)
+        is_multi = self._ensemble_pair().is_multi_or_four()
         has_run = bool(primary_stem) or is_multi
         repo = self.window.context.repo
         if primary_stem:
@@ -680,9 +694,8 @@ class EnsemblePage:
     def _apply_saved_ensemble(self, data: dict, *, curated_id: Optional[str] = None) -> None:
         self._loading = True
         try:
-            main_stem = data.get("ensemble_main_stem", CHOOSE_STEM_PAIR)
-            self.settings.ensemble.main_stem = main_stem
-            set_combo_value(self.main_stem_row, main_stem)
+            pair = self._set_ensemble_pair(data.get("ensemble_main_stem"))
+            set_combo_value(self.main_stem_row, pair.value)
             ensemble_type = data.get("ensemble_type", MAX_MIN)
             self.settings.ensemble.type = ensemble_type
             self._refresh_ensemble_type_values()
@@ -778,7 +791,7 @@ class EnsemblePage:
         try:
             save_ensemble(
                 name,
-                self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR,
+                self._ensemble_pair(),
                 self.settings.ensemble.type or MAX_MIN,
                 selected,
             )
@@ -821,12 +834,8 @@ class EnsemblePage:
 
     # -- Stem pair / algorithm --------------------------------------------------
 
-    def _is_multi_or_four_stem(self, main_stem: str) -> bool:
-        return main_stem in (FOUR_STEM_ENSEMBLE, MULTI_STEM_ENSEMBLE)
-
     def _refresh_ensemble_type_values(self) -> None:
-        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
-        multi = self._is_multi_or_four_stem(main_stem)
+        multi = self._ensemble_pair().is_multi_or_four()
         current = self.settings.ensemble.type or MAX_MIN
         primary, secondary = parse_ensemble_type(current)
         primary_stem, secondary_stem = self._ensemble_stem_pair()
@@ -870,8 +879,7 @@ class EnsemblePage:
     def _on_main_stem_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
-        main_stem = get_combo_value(self.main_stem_row)
-        self.settings.ensemble.main_stem = main_stem
+        self._set_ensemble_pair(get_combo_value(self.main_stem_row))
         self.settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         set_combo_value(self.saved_row, CHOOSE_ENSEMBLE_OPTION)
         self._refresh_ensemble_type_values()
@@ -905,10 +913,9 @@ class EnsemblePage:
     def _on_ensemble_type_changed(self, *_args: typing.Any) -> None:
         if self._loading or self._syncing_preset:
             return
-        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
         primary = get_combo_value(self.primary_algo_row) or ""
         set_row_subtitle(self.primary_algo_row, algorithm_blurb(primary))
-        if self._is_multi_or_four_stem(main_stem):
+        if self._ensemble_pair().is_multi_or_four():
             self.settings.ensemble.type = primary
         else:
             secondary = get_combo_value(self.secondary_algo_row) or ""
@@ -943,9 +950,8 @@ class EnsemblePage:
         row = getattr(self, "wav_ensemble_row", None)
         if row is None:
             return
-        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
         primary, secondary = parse_ensemble_type(self.settings.ensemble.type or MAX_MIN)
-        if self._is_multi_or_four_stem(main_stem):
+        if self._ensemble_pair().is_multi_or_four():
             uses_chunk = primary == CHUNK_MIN
         else:
             uses_chunk = CHUNK_MIN in (primary, secondary)
@@ -955,14 +961,14 @@ class EnsemblePage:
         group = getattr(self, "ensemble_group", None)
         if group is None:
             return
-        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
-        multi = self._is_multi_or_four_stem(main_stem)
+        pair = self._ensemble_pair()
+        multi = pair.is_multi_or_four()
         primary_stem, secondary_stem = self._ensemble_stem_pair()
         primary, secondary = parse_ensemble_type(self.settings.ensemble.type or MAX_MIN)
         group.set_description(
             ensemble_options_summary(
                 stem_chosen=self._stem_pair_chosen(),
-                main_stem=main_stem,
+                main_stem=ui_label(pair),
                 primary_stem=primary_stem,
                 secondary_stem=secondary_stem,
                 primary_algo=primary,
@@ -984,8 +990,8 @@ class EnsemblePage:
         self._model_checks = {}
         self._model_row_text = {}
 
-        main_stem = self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR
-        if main_stem == CHOOSE_STEM_PAIR:
+        pair = self._ensemble_pair()
+        if pair is EnsemblePair.CHOOSE:
             self.models_listbox.append(
                 Adw.ActionRow(title="Choose a stem pair to list models")
             )
@@ -994,7 +1000,7 @@ class EnsemblePage:
             return
 
         try:
-            tags = self.context.repo.ensemble_model_list(self.settings, main_stem)
+            tags = self.context.repo.ensemble_model_list(self.settings, pair)
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
             from ..errorlog import log_error
 
@@ -1040,7 +1046,7 @@ class EnsemblePage:
 
             debug(
                 "settings",
-                f"ensemble preset members not eligible for {main_stem!r}, "
+                f"ensemble preset members not eligible for {pair.value!r}, "
                 f"skipping {sorted(dropped)}",
             )
 
@@ -1063,7 +1069,7 @@ class EnsemblePage:
 
     def _models_summary(self) -> str:
         """Single-line description of the current member-model selection."""
-        if (self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR) == CHOOSE_STEM_PAIR:
+        if self._ensemble_pair() is EnsemblePair.CHOOSE:
             return "Choose a stem pair first"
         count = len(self._effective_selected_models())
         if count == 0:
@@ -1073,7 +1079,7 @@ class EnsemblePage:
         return f"{count} models selected"
 
     def _stem_pair_chosen(self) -> bool:
-        return (self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR) != CHOOSE_STEM_PAIR
+        return self._ensemble_pair() is not EnsemblePair.CHOOSE
 
     def _update_member_models_sensitivity(self) -> None:
         """Dim Member models rows until a stem pair is chosen."""
@@ -1183,7 +1189,7 @@ class EnsemblePage:
         self._rebuild_stem_only_toggles()
         from core.debug_log import debug
 
-        stem = self.settings.ensemble.main_stem
+        stem = self._ensemble_pair().value
         models = len(self._selected_model_tags())
         debug("ui", f"ensemble models selected count={models} stem={stem}")
 
@@ -1226,7 +1232,7 @@ class EnsemblePage:
         Excludes input/output readiness (those rows carry their own affordances);
         this is what the empty-state banner surfaces.
         """
-        if (self.settings.ensemble.main_stem or CHOOSE_STEM_PAIR) == CHOOSE_STEM_PAIR:
+        if self._ensemble_pair() is EnsemblePair.CHOOSE:
             return _REASON_STEM_PAIR
         if len(self._effective_selected_models()) <= 1:
             return _REASON_TWO_MODELS
@@ -1269,7 +1275,7 @@ class EnsemblePage:
                 self._toast(error)
             from core.debug_log import debug
 
-            stem = self.settings.ensemble.main_stem
+            stem = self._ensemble_pair().value
             models = len(self._selected_model_tags())
             debug("ui", f"ensemble start files={len(input_paths)} models={models} stem={stem}")
             self.context.runner.start_ensemble(input_paths, callbacks)

@@ -15,6 +15,7 @@ The typed API cutover landed in Phase 6. New code imports `Settings`,
 | Path | Role |
 |------|------|
 | `core/types/enums.py` | `Stem`, `EnsembleAlgorithm`, `ProcessMethod`, `SaveFormat` (`str, Enum`; values = current English labels) |
+| `core/types/settings_enums.py` | Closed combo vocabularies (wav/mp3/flac, denoise, color, audio tools, …) |
 | `core/settings/model.py` | Nested `Settings` dataclasses |
 | `core/settings/defaults.py` | Nested defaults + `SETTINGS_SCHEMA_VERSION` |
 | `core/settings/coerce.py` | JSON / flat-dict coerce helpers |
@@ -28,23 +29,38 @@ The typed API cutover landed in Phase 6. New code imports `Settings`,
 
 ```json
 {
-  "schema_version": 1,
-  "process": {},
-  "vr": {},
-  "mdx": {},
-  "demucs": {},
+  "schema_version": 3,
+  "process": {
+    "device": null,
+    "semitone_shift": 0.0,
+    "wav_type": "PCM_16"
+  },
+  "vr": { "batch_size": null },
+  "mdx": {
+    "overlap_mdx": null,
+    "chunks": null,
+    "compensate": null,
+    "overlap_mdx23": 8
+  },
+  "demucs": { "segment": null },
   "ensemble": {
-    "main_stem": "Choose Stem Pair",
+    "main_stem": "choose",
     "type": "Max Spec/Min Spec",
     "selected_models": [],
     "chosen_ensemble": "Choose Ensemble"
   },
   "audio_tools": {},
-  "ui": {}
+  "ui": { "color_scheme": "auto" }
 }
 ```
 
 Nested on disk. Flat key access is not the persistence API.
+
+**v2 breaking change:** `ensemble.main_stem` persists stable :class:`~core.stems.EnsemblePair` ids only (`choose`, `vocals_instrumental`, `karaoke`, `other`, `drums`, `bass`, `four_stem`, `multi_stem`). Legacy display strings (e.g. `Vocals/Instrumental`) are not migrated — they coerce to `choose` and the pair must be re-selected once.
+
+**v3 soft migrate:** `Default` / `Auto` sentinels become JSON `null` (`None` in Python) for batch size, overlap, compensate, chunks, Demucs segment, and GPU device. Chunks `"Full"` persists as `"full"`. Closed combo fields are label-equal `str, Enum`s; unknown enum values fail-soft to the field default. Numeric-as-string fields (`semitone_shift`, `overlap_mdx23`, Apollo spins) load as `float`/`int`.
+
+Migration is unconditional — `coerce_json_dict` runs over every payload regardless of its `schema_version` — so `Settings.from_json_dict` stamps `SETTINGS_SCHEMA_VERSION`, never the number it read. A loaded file always reports the current version because its contents have already been migrated to it.
 
 ## Persistence rules
 
@@ -55,7 +71,8 @@ Nested on disk. Flat key access is not the persistence API.
 ## Locked decisions
 
 - Enum `.value` strings stay current UI labels (`Stem.VOCALS == "Vocals"`).
-- Sentinels `DEF_OPT` / `AUTO_SELECT` / `"Default"` become `None` or `"auto"` in typed fields.
+- Sentinels `DEF_OPT` / `AUTO_SELECT` / `"Default"` / `"Auto"` become `null` in typed optional fields (UI still shows Default/Auto labels).
 - `use_gpu: bool` end-to-end (no `0`/`-1`).
-- Ensemble keys (`selected_models`, `main_stem`, `type`, `chosen_ensemble`) are first-class in the schema.
+- Ensemble keys (`selected_models`, `main_stem`, `type`, `chosen_ensemble`) are first-class in the schema; `main_stem` is an `EnsemblePair` id (not a UI label).
+- Paths, model tags, and open stem lists stay `str`.
 - Export toggles (`normalization`, `match_mix_level`, `prevent_export_clipping`, `amplification_threshold`) live under `process`.

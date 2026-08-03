@@ -1,6 +1,6 @@
 {
-    "description": "Cleanest instrumentals — Inst Bleedless v2 Gabox + Resurrection Instrumental",
-    "ensemble_main_stem": "Vocals/Instrumental",
+    "description": "Cleanest instrumentals \u2014 Inst Bleedless v2 Gabox + Resurrection Instrumental",
+    "ensemble_main_stem": "vocals_instrumental",
     "ensemble_type": "Max Spec/Max Spec",
     "selected_models": [
         "MDX-Net: MelBand Roformer | Instrumental Bleedless v2 by Gabox",

@@ -110,7 +110,7 @@ class BandSplitModule(nn.Module):
 
         xr = torch.view_as_real(x)
         xr = torch.permute(xr, (0, 3, 1, 4, 2))
-        batch, n_time, in_chan, reim, band_width = xr.shape
+        batch, n_time, in_chan, _reim, _band_width = xr.shape
         for i, nfm in enumerate(self.norm_fc_modules):
             fstart, fend = self.band_specs[i]
             xb = xr[..., int(fstart) : int(fend)]

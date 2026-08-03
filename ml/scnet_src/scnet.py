@@ -116,7 +116,7 @@ class SDlayer(nn.Module):
         self.SR_mid = float(band_configs['mid']['SR'])
 
     def forward(self, x: torch.Tensor) -> tuple[list[torch.Tensor], list[int]]:
-        B, C, Fr, T = x.shape
+        _B, _C, Fr, _T = x.shape
         # Define splitting points based on sampling rates
         splits = [
             (0, math.ceil(Fr * self.SR_low)),
@@ -178,7 +178,7 @@ class SUlayer(nn.Module):
         lengths: Sequence[int],
         origin_lengths: Sequence[int],
     ) -> torch.Tensor:
-        B, C, Fr, T = x.shape
+        _B, _C, _Fr, _T = x.shape
         # Define splitting points based on input lengths
         splits = [
             (0, lengths[0]),
@@ -375,7 +375,7 @@ class SCNet(nn.Module):
         x = x.permute(0, 3, 1, 2).reshape(x.shape[0] // self.audio_channels, x.shape[3] * self.audio_channels,
                                           x.shape[1], x.shape[2])
 
-        B, C, Fr, T = x.shape
+        B, _C, Fr, T = x.shape
 
         save_skip: deque[torch.Tensor] = deque()
         save_lengths: deque[list[int]] = deque()

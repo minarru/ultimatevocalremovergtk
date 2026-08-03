@@ -314,7 +314,7 @@ class MelBandRoformer(Module):
                 Transformer(depth=freq_transformer_depth, rotary_embed=freq_rotary_embed, **transformer_kwargs)
             ]))
 
-        _stft_window_fn = cast(Callable[..., Tensor], default(stft_window_fn, torch.hann_window))
+        _stft_window_fn = default(stft_window_fn, torch.hann_window)
         self.stft_window_fn: Callable[..., Tensor] = partial(_stft_window_fn, stft_win_length)
 
         self.stft_kwargs: dict[str, Any] = dict(

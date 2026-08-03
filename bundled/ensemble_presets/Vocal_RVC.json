@@ -1,6 +1,6 @@
 {
-    "description": "Optimized for RVC / AI voice training — Big Beta v6x + Vocals Fullness v4 Gabox",
-    "ensemble_main_stem": "Vocals/Instrumental",
+    "description": "Optimized for RVC / AI voice training \u2014 Big Beta v6x + Vocals Fullness v4 Gabox",
+    "ensemble_main_stem": "vocals_instrumental",
     "ensemble_type": "Average/Average",
     "selected_models": [
         "MDX-Net: MelBand Roformer Kim | Big Beta v6x FT by Unwa",

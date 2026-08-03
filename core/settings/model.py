@@ -9,23 +9,29 @@ from typing import Any, TypeVar, cast
 
 from bundled.constants import (
     ALL_STEMS,
-    AUDIO_TOOL_OPTIONS,
-    AUTO_PHASE,
-    AUTO_SELECT,
     CHOOSE_ENSEMBLE_OPTION,
     CHOOSE_MODEL,
-    CHOOSE_STEM_PAIR,
-    CHUNKS,
-    DEFAULT,
-    DEF_OPT,
     DEMUCS_OVERLAP,
-    DEMUCS_SEGMENTS,
-    MANUAL_ENSEMBLE_OPTIONS,
     MAX_MIN,
-    MDX_OVERLAP,
     NO_MODEL,
 )
+from core.stems import EnsemblePair
 from core.types import ProcessMethod, SaveFormat
+from core.types.settings_enums import (
+    AlignPhaseOption,
+    AudioTool,
+    ColorScheme,
+    DbAnalysis,
+    DeverbVocalOpt,
+    FlacBitDepth,
+    IntroAnalysis,
+    ManualEnsembleOption,
+    MdxDenoiseOption,
+    Mp3Bitrate,
+    PhaseShiftsOpt,
+    TimeWindow,
+    WavType,
+)
 
 from .coerce import coerce_field, coerce_json_dict
 from .defaults import SETTINGS_SCHEMA_VERSION, default_settings_dict
@@ -38,6 +44,8 @@ def _json_value(value: Any) -> Any:
     """Convert enums in dataclass payloads to stable JSON scalar values."""
     if isinstance(value, Enum):
         return value.value
+    if value is None:
+        return None
     if isinstance(value, dict):
         return {key: _json_value(item) for key, item in value.items()}
     if isinstance(value, list):
@@ -62,7 +70,7 @@ class ProcessSettings:
     use_gpu: bool = False
     autocast: bool = False
     use_directml: bool = False
-    device: str = DEFAULT
+    device: str | None = None
     primary_stem_only: bool = False
     secondary_stem_only: bool = False
     testing_audio: bool = False
@@ -75,24 +83,24 @@ class ProcessSettings:
     create_model_folder: bool = False
     auto_update_model_params: bool = True
     save_format: SaveFormat = SaveFormat.WAV
-    wav_type: str = "PCM_16"
-    mp3_bitrate: str = "320k"
-    flac_bit_depth: str = "16-bit"
+    wav_type: WavType = WavType.PCM_16
+    mp3_bitrate: Mp3Bitrate = Mp3Bitrate.K320
+    flac_bit_depth: FlacBitDepth = FlacBitDepth.BIT_16
     export_path: str = ""
-    input_paths: list = field(default_factory=list)
+    input_paths: list[str] = field(default_factory=list)
     last_dir: str | None = None
     sample_mode: bool = False
     sample_mode_duration: int = 30
     long_file_chunk_seconds: float = 0.0
     long_file_chunk_overlap_seconds: float = 2.0
-    semitone_shift: str = "0"
+    semitone_shift: float = 0.0
     user_code: str = ""
     model_hash_table: dict = field(default_factory=dict)
     vocal_splitter: str = NO_MODEL
     vocal_splitter_enabled: bool = False
     save_inst_vocal_splitter: bool = False
     deverb_vocals: bool = False
-    deverb_vocal_opt: str = "Main Vocals Only"
+    deverb_vocal_opt: DeverbVocalOpt = DeverbVocalOpt.MAIN_VOCALS_ONLY
     voc_split_save_opt: str = "Lead Only"
 
 
@@ -101,7 +109,7 @@ class VrSettings:
     model: str = CHOOSE_MODEL
     aggression_setting: int = 5
     window_size: int = 512
-    batch_size: str = DEF_OPT
+    batch_size: int | None = None
     crop_size: int = 256
     is_tta: bool = False
     is_output_image: bool = False
@@ -123,18 +131,18 @@ class VrSettings:
 class MdxSettings:
     model: str = CHOOSE_MODEL
     segment_size: int = 256
-    overlap_mdx: str | float = MDX_OVERLAP[0]
-    overlap_mdx23: str = "8"
+    overlap_mdx: float | None = None
+    overlap_mdx23: int = 8
     is_chunk_mdxnet: bool = False
     is_mdx23_combine_stems: bool = True
     is_mdx_include_stem_complement: bool = False
-    chunks: str = CHUNKS[0]
+    chunks: int | str | None = None
     margin: int = 44100
-    compensate: str = AUTO_SELECT
+    compensate: float | None = None
     is_denoise: bool = False
-    denoise_option: str = "None"
-    phase_option: str = AUTO_PHASE
-    phase_shifts: str = "None"
+    denoise_option: MdxDenoiseOption = MdxDenoiseOption.NONE
+    phase_option: AlignPhaseOption = AlignPhaseOption.AUTOMATIC
+    phase_shifts: PhaseShiftsOpt = PhaseShiftsOpt.NONE
     is_save_align: bool = False
     is_match_frequency_pitch: bool = True
     is_match_silence: bool = True
@@ -142,7 +150,7 @@ class MdxSettings:
     is_mdx_c_seg_def: bool = False
     is_invert_spec: bool = False
     is_mixer_mode: bool = False
-    batch_size: str = DEF_OPT
+    batch_size: int | None = None
     voc_inst_secondary_model: str = NO_MODEL
     other_secondary_model: str = NO_MODEL
     bass_secondary_model: str = NO_MODEL
@@ -153,16 +161,16 @@ class MdxSettings:
     bass_secondary_model_scale: float = 0.5
     drums_secondary_model_scale: float = 0.5
     stems: str = ALL_STEMS
-    stems_selected: list = field(default_factory=list)
+    stems_selected: list[str] = field(default_factory=list)
 
 
 @dataclass
 class DemucsSettings:
     model: str = CHOOSE_MODEL
-    segment: str = DEMUCS_SEGMENTS[0]
+    segment: int | None = None
     overlap: float = DEMUCS_OVERLAP[0]
     shifts: int = 2
-    chunks_demucs: str = CHUNKS[0]
+    chunks_demucs: int | str | None = None
     margin_demucs: int = 44100
     is_chunk_demucs: bool = False
     is_primary_stem_only: bool = False
@@ -186,9 +194,9 @@ class DemucsSettings:
 
 @dataclass
 class EnsembleSettings:
-    main_stem: str = CHOOSE_STEM_PAIR
+    main_stem: EnsemblePair = EnsemblePair.CHOOSE
     type: str = MAX_MIN
-    selected_models: list = field(default_factory=list)
+    selected_models: list[str] = field(default_factory=list)
     chosen_ensemble: str = CHOOSE_ENSEMBLE_OPTION
     save_all_outputs: bool = True
     append_ensemble_name: bool = False
@@ -198,27 +206,27 @@ class EnsembleSettings:
 
 @dataclass
 class AudioToolsSettings:
-    chosen_audio_tool: str = field(default_factory=lambda: AUDIO_TOOL_OPTIONS[0])
-    choose_algorithm: str = field(default_factory=lambda: MANUAL_ENSEMBLE_OPTIONS[0])
+    chosen_audio_tool: AudioTool = AudioTool.MANUAL_ENSEMBLE
+    choose_algorithm: ManualEnsembleOption = ManualEnsembleOption.MAX_SPEC
     time_stretch_rate: float = 2.0
     pitch_rate: float = 2.0
-    apollo_overlap: str = "5"
-    apollo_chunk_size: str = "10"
+    apollo_overlap: int = 5
+    apollo_chunk_size: int = 10
     apollo_model: str = CHOOSE_MODEL
     is_time_correction: bool = True
-    time_window: str = "3"
-    intro_analysis: str = DEFAULT
-    db_analysis: str = "Medium"
+    time_window: TimeWindow = TimeWindow.V3
+    intro_analysis: IntroAnalysis = IntroAnalysis.DEFAULT
+    db_analysis: DbAnalysis = DbAnalysis.MEDIUM
     file_one_entry: str = ""
     file_one_entry_full: str = ""
     file_two_entry: str = ""
     file_two_entry_full: str = ""
-    dual_batch_input_paths: list = field(default_factory=list)
+    dual_batch_input_paths: list[str] = field(default_factory=list)
 
 
 @dataclass
 class UiSettings:
-    color_scheme: str = "auto"
+    color_scheme: ColorScheme = ColorScheme.AUTO
     window_width: int = 1040
     window_height: int = 720
     window_maximized: bool = False
@@ -259,8 +267,11 @@ class Settings:
     @classmethod
     def from_json_dict(cls, data: dict[str, Any]) -> Settings:
         coerced = coerce_json_dict(data or {})
+        # Stamp the current version, never the file's: ``coerce_json_dict`` has
+        # already migrated the payload, so keeping the old number would leave a
+        # v3 file claiming v1 and mis-gate the next migration.
         return cls(
-            schema_version=coerced.get("schema_version", SETTINGS_SCHEMA_VERSION),
+            schema_version=SETTINGS_SCHEMA_VERSION,
             process=_merge_dataclass(ProcessSettings, ProcessSettings(), coerced.get("process")),
             vr=_merge_dataclass(VrSettings, VrSettings(), coerced.get("vr")),
             mdx=_merge_dataclass(MdxSettings, MdxSettings(), coerced.get("mdx")),

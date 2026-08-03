@@ -299,7 +299,8 @@ class MaskEstimator(Module):
             dim: int,
             dim_inputs: BeartypeTuple[int, ...],
             depth: int,
-            mlp_expansion_factor: int = 4
+            mlp_expansion_factor: int = 4,
+            hyperace: bool | str = False,
     ) -> None:
         super().__init__()
         self.dim_inputs = dim_inputs
@@ -314,7 +315,27 @@ class MaskEstimator(Module):
 
             self.to_freqs.append(mlp)
 
+        # HyperACE checkpoints add a segmentation branch whose output is summed
+        # onto the per-band MLP masks. Absent unless the config asks for it —
+        # the parameter names are ``segm.*`` and must not appear otherwise.
+        self.segm = None
+        if hyperace:
+            from ml.hyperace import VARIANT_V2, SegmModel
+
+            self.segm = SegmModel(
+                in_bands=len(dim_inputs),
+                in_dim=dim,
+                out_bins=sum(dim_inputs) // 4,
+                variant=hyperace if isinstance(hyperace, str) else VARIANT_V2,
+            )
+
     def forward(self, x: Tensor) -> Tensor:
+        segm_out = None
+        if self.segm is not None:
+            y = rearrange(x, 'b t f c -> b c t f')
+            y = self.segm(y)
+            segm_out = rearrange(y, 'b c t f -> b t (f c)')
+
         bands = x.unbind(dim=-2)
 
         outs = []
@@ -323,7 +344,8 @@ class MaskEstimator(Module):
             freq_out = mlp(band_features)
             outs.append(freq_out)
 
-        return torch.cat(outs, dim=-1)
+        masks = torch.cat(outs, dim=-1)
+        return masks if segm_out is None else masks + segm_out
 
 
 # main class
@@ -374,6 +396,11 @@ class BSRoformer(Module):
             multi_stft_normalized: bool = False,
             multi_stft_window_fn: BeartypeCallable[..., Tensor] = torch.hann_window,
             mlp_expansion_factor: int = 4,
+            # HyperACE checkpoints attach a segmentation branch to every mask
+            # estimator. Enabled from the config's top-level ``hyperace2`` flag,
+            # not from the ``model:`` section — see engines.mdx._build_mdx_c_model.
+            # Accepts a variant name (``"v1"``/``"v2"``) or a bool meaning v2.
+            hyperace: bool | str = False,
     ) -> None:
         super().__init__()
 
@@ -417,7 +444,7 @@ class BSRoformer(Module):
             normalized=stft_normalized
         )
 
-        _stft_window_fn = cast(Callable[..., Tensor], default(stft_window_fn, torch.hann_window))
+        _stft_window_fn = default(stft_window_fn, torch.hann_window)
         self.stft_window_fn: Callable[..., Tensor] = partial(_stft_window_fn, stft_win_length)
 
         freqs = torch.stft(
@@ -443,6 +470,7 @@ class BSRoformer(Module):
                 dim_inputs=freqs_per_bands_with_complex,
                 depth=mask_estimator_depth,
                 mlp_expansion_factor=mlp_expansion_factor,
+                hyperace=hyperace,
             )
 
             self.mask_estimators.append(mask_estimator)

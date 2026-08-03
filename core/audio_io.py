@@ -6,17 +6,18 @@ from pathlib import Path
 from bundled.constants import WAV
 
 from .settings import Settings
+from .settings.coerce import enum_value
 
 
 def resolve_wav_type_set(settings: Settings) -> str:
     """Reproduce ``MainWindow.process_check_wav_type``."""
-    wav_type = settings.process.wav_type
+    wav_type = enum_value(settings.process.wav_type)
     save_format_sel = settings.process.save_format
     if wav_type == "32-bit Float":
         return "FLOAT"
     if wav_type == "64-bit Float":
         return "FLOAT" if save_format_sel != WAV else "DOUBLE"
-    return wav_type
+    return str(wav_type)
 
 
 def flac_export_parameters(flac_bit_set: str) -> list[str]:

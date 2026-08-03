@@ -8,11 +8,11 @@ from bundled.constants import (
     DRUM_STEM,
     DEMUCS_ARCH_TYPE,
     ENSEMBLE_MODE,
-    FOUR_STEM_ENSEMBLE,
     MDX_ARCH_TYPE,
     VOCAL_STEM,
     VR_ARCH_TYPE,
 )
+from core.stems import EnsemblePair
 from core.settings import Settings
 from core.run_estimate import (
     ProgressEtaTracker,
@@ -175,7 +175,7 @@ class OutputCountExtraTests(unittest.TestCase):
     def test_four_stem_ensemble_outputs(self):
         settings = _Settings(
             {
-                "ensemble_main_stem": FOUR_STEM_ENSEMBLE,
+                "ensemble_main_stem": EnsemblePair.FOUR_STEM.value,
                 "selected_models": ["a", "b"],
                 "is_save_all_outputs_ensemble": False,
             }
@@ -189,7 +189,7 @@ class OutputCountExtraTests(unittest.TestCase):
     def test_save_all_adds_member_files(self):
         settings = _Settings(
             {
-                "ensemble_main_stem": FOUR_STEM_ENSEMBLE,
+                "ensemble_main_stem": EnsemblePair.FOUR_STEM.value,
                 "selected_models": ["a", "b", "c"],
                 "is_save_all_outputs_ensemble": True,
             }
@@ -223,7 +223,7 @@ class OutputCountExtraTests(unittest.TestCase):
     def test_estimate_hidden_ensemble_four_stem(self):
         settings = _Settings(
             {
-                "ensemble_main_stem": FOUR_STEM_ENSEMBLE,
+                "ensemble_main_stem": EnsemblePair.FOUR_STEM.value,
                 "selected_models": ["a", "b"],
                 "is_save_all_outputs_ensemble": False,
                 "is_gpu_conversion": True,

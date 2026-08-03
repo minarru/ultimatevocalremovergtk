@@ -21,15 +21,12 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional, Sequence
 
 from bundled.constants import (
     CHOOSE_ENSEMBLE_OPTION,
-    CHOOSE_STEM_PAIR,
     DEMUCS_ARCH_TYPE,
     ENSEMBLE_MODE,
-    FOUR_STEM_ENSEMBLE,
     INST_STEM,
     MAX_MIN,
     MAX_SPEC,
     MDX_ARCH_TYPE,
-    MULTI_STEM_ENSEMBLE,
     PRIMARY_STEM,
     PROCESS_STOPPED_BY_USER,
     SECONDARY_STEM,
@@ -39,11 +36,8 @@ from bundled.constants import (
 
 from . import paths
 from .audio_io import resolve_wav_type_set
-from .model_stem_semantics import (
-    BUCKET_UNKNOWN,
-    canonical_ensemble_stem_tag,
-    ensemble_pair_buckets,
-)
+from .model_stem_semantics import canonical_ensemble_stem_tag
+from .stems import StemBucket, coerce_ensemble_pair, filename_tag
 
 
 def _ensemble_stem_bucket(stem_tag: str) -> str:
@@ -825,8 +819,9 @@ class JobRunner:
 
             ensemble = Ensembler(self.settings)
             export_path = ensemble.ensemble_folder_name
-            ensemble_main_stem = self.settings.ensemble.main_stem
-            is_4_stem = ensemble_main_stem in (FOUR_STEM_ENSEMBLE, MULTI_STEM_ENSEMBLE)
+            is_4_stem = coerce_ensemble_pair(
+                self.settings.ensemble.main_stem
+            ).is_multi_or_four()
 
             self.iteration = 0
             self._build_all_models(models)
@@ -1181,20 +1176,20 @@ class Ensembler:
 
         ensemble_type_value = settings.ensemble.type
         primary_algorithm, secondary_algorithm = parse_ensemble_type(ensemble_type_value)
-        main_stem = settings.ensemble.main_stem
-        raw_primary, _, raw_secondary = main_stem.partition("/")
-        primary_bucket, secondary_bucket = ensemble_pair_buckets(main_stem)
+        pair = coerce_ensemble_pair(settings.ensemble.main_stem)
+        primary_bucket, secondary_bucket = pair.buckets()
+        primary_ui, secondary_ui = pair.stem_halves()
         # Combine/search tags must match export_stem_label buckets (e.g.
         # Lead_Vocals), not UI pair halves (Lead Vocals).
         self.ensemble_primary_stem = (
-            primary_bucket
-            if primary_bucket != BUCKET_UNKNOWN
-            else canonical_ensemble_stem_tag(raw_primary)
+            filename_tag(primary_bucket)
+            if primary_bucket is not StemBucket.UNKNOWN
+            else canonical_ensemble_stem_tag(primary_ui)
         )
         self.ensemble_secondary_stem = (
-            secondary_bucket
-            if secondary_bucket != BUCKET_UNKNOWN
-            else canonical_ensemble_stem_tag(raw_secondary)
+            filename_tag(secondary_bucket)
+            if secondary_bucket is not StemBucket.UNKNOWN
+            else canonical_ensemble_stem_tag(secondary_ui)
         )
         time_stamp = round(time.time())
 

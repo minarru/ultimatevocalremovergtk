@@ -31,7 +31,7 @@ from core.types import SaveFormat
 
 from ui.help_text import FLAC_BIT_DEPTH_HINT, OUTPUT_FORMAT_HINT, WAV_TYPE_HINT
 
-from ..settings_bind import get_flat, set_flat
+from ..settings_bind import enum_value, get_flat, set_flat
 from .rows import set_row_icon
 
 #: Minimum width for the quality dropdown so it doesn't resize when the model
@@ -176,7 +176,8 @@ class OutputFormatRow(Adw.ActionRow):
     def _reload_quality(self, settings: Settings) -> None:
         spec = quality_spec(self.save_format)
         self._quality_drop.set_model(Gtk.StringList.new(list(spec.values)))
-        self._select_quality_value(get_flat(settings, spec.setting_key, spec.default), spec)
+        stored = get_flat(settings, spec.setting_key, spec.default)
+        self._select_quality_value(enum_value(stored), spec)
         self._apply_quality_labels(self.save_format)
 
     def _select_quality_value(self, value: typing.Any, spec: QualitySpec) -> None:
@@ -187,7 +188,8 @@ class OutputFormatRow(Adw.ActionRow):
         """The value saved for ``spec``'s key, or its default with no settings yet."""
         if self._settings is None:
             return spec.default
-        return get_flat(self._settings, spec.setting_key, spec.default)
+        stored = get_flat(self._settings, spec.setting_key, spec.default)
+        return str(enum_value(stored))
 
     def _apply_quality_labels(self, save_format: str) -> None:
         spec = quality_spec(save_format)

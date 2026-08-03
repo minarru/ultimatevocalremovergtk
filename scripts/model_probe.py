@@ -1,0 +1,749 @@
+#!/usr/bin/env python3
+"""Probe a model's portability without downloading its weights.
+
+Answers "can this build run this model?" from the yaml config alone:
+
+1. Build the architecture from the config (random init, no checkpoint).
+2. Run a real forward pass on noise and report the output shape.
+3. Optionally range-fetch only the checkpoint's *header* (a few tens of KB of
+   a multi-hundred-MB file) and diff its ``state_dict`` keys against the
+   built module's, which is what catches a port whose submodules are named
+   differently from the weights.
+
+See docs/models.md for the unsupported-model classes this exists to triage.
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import os
+import pickle
+import struct
+import sys
+import zipfile
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+#: ``read(start, end) -> bytes`` over a local file or an HTTP range request.
+RangeReader = Callable[[int, int], bytes]
+
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _add_repo_to_path() -> None:
+    """Make ``core`` / ``engines`` / ``ml`` importable when run as a script."""
+    if _REPO_ROOT not in sys.path:
+        sys.path.insert(0, _REPO_ROOT)
+
+_SAFETENSORS_LEN_BYTES = 8
+
+#: Enough to cover a zip end-of-central-directory record plus the directory of
+#: a checkpoint with a few thousand tensors.
+_ZIP_TAIL_BYTES = 256 * 1024
+
+#: Keys a training checkpoint wraps its weights in.
+_STATE_DICT_WRAPPERS = ("state_dict", "model_state_dict", "model", "weights")
+
+
+def safetensors_header_span(head: bytes) -> Tuple[int, int]:
+    """Return ``(start, end)`` byte offsets of a ``.safetensors`` JSON header.
+
+    The first 8 bytes are a little-endian u64 header length, so this needs only
+    that prefix to say which range to fetch next.
+    """
+    if len(head) < _SAFETENSORS_LEN_BYTES:
+        raise ValueError("need at least 8 bytes to read a safetensors header length")
+    (length,) = struct.unpack("<Q", head[:_SAFETENSORS_LEN_BYTES])
+    return _SAFETENSORS_LEN_BYTES, _SAFETENSORS_LEN_BYTES + int(length)
+
+
+def parse_safetensors_header(blob: bytes) -> List[str]:
+    """Return the tensor names declared in a ``.safetensors`` header."""
+    start, end = safetensors_header_span(blob)
+    raw = blob[start:end]
+    if len(raw) < end - start:
+        raise ValueError("safetensors header truncated")
+    try:
+        header = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"safetensors header is not JSON: {exc}") from exc
+    if not isinstance(header, dict):
+        raise ValueError("safetensors header is not a JSON object")
+    return [key for key in header if key != "__metadata__"]
+
+
+class _AttrDict(dict):
+    """A dict that tolerates attribute assignment.
+
+    ``Module.state_dict()`` hangs ``_metadata`` off the OrderedDict instance, so
+    the pickle carries a BUILD opcode that sets ``__dict__`` — which a plain
+    ``dict`` rejects. Every real checkpoint hits this.
+    """
+
+
+class _StubUnpickler(pickle.Unpickler):
+    """Rebuild a checkpoint's key structure without importing or executing anything.
+
+    ``find_class`` never resolves a real symbol and ``persistent_load`` never
+    touches storage, so the pickle's dict keys survive while every value
+    collapses to an inert placeholder. That is all a key diff needs.
+    """
+
+    def find_class(self, module: str, name: str) -> Any:  # noqa: D102
+        if (module, name) == ("collections", "OrderedDict"):
+            return _AttrDict
+        return lambda *args, **kwargs: None
+
+    def persistent_load(self, pid: Any) -> Any:  # noqa: D102
+        return None
+
+
+def parse_torch_pickle_keys(data: bytes) -> List[str]:
+    """Return the ``state_dict`` keys held in a torch ``data.pkl`` payload."""
+    try:
+        obj = _StubUnpickler(io.BytesIO(data)).load()
+    except Exception as exc:  # noqa: BLE001 - any malformed pickle is a probe failure
+        raise ValueError(f"could not read checkpoint pickle: {exc}") from exc
+    return _keys_of_state_dict(obj)
+
+
+def _keys_of_state_dict(obj: Any) -> List[str]:
+    """Pull the weight keys out of a checkpoint object, unwrapping if needed."""
+    if not isinstance(obj, dict):
+        raise ValueError(f"checkpoint root is {type(obj).__name__}, not a dict")
+    for wrapper in _STATE_DICT_WRAPPERS:
+        inner = obj.get(wrapper)
+        if isinstance(inner, dict) and inner:
+            return [str(key) for key in inner]
+    return [str(key) for key in obj]
+
+
+def _data_pkl_name(archive: zipfile.ZipFile) -> str:
+    """Name of the ``data.pkl`` member holding the checkpoint's key structure."""
+    names = [name for name in archive.namelist() if name.endswith("data.pkl")]
+    if not names:
+        raise ValueError("zip has no data.pkl entry")
+    return names[0]
+
+
+class _TailFile(io.RawIOBase):
+    """Seekable file-like view that pulls byte ranges on demand."""
+
+    def __init__(self, read: RangeReader, size: int) -> None:
+        self._read = read
+        self._size = size
+        self._pos = 0
+
+    def readable(self) -> bool:
+        return True
+
+    def seekable(self) -> bool:
+        return True
+
+    def seek(self, offset: int, whence: int = io.SEEK_SET) -> int:
+        if whence == io.SEEK_SET:
+            self._pos = offset
+        elif whence == io.SEEK_CUR:
+            self._pos += offset
+        else:
+            self._pos = self._size + offset
+        return self._pos
+
+    def tell(self) -> int:
+        return self._pos
+
+    def read(self, n: Optional[int] = -1) -> bytes:
+        # ``None`` and a negative size both mean "to EOF" per RawIOBase.
+        end = self._size if n is None or n < 0 else min(self._size, self._pos + n)
+        if end <= self._pos:
+            return b""
+        chunk = self._read(self._pos, end)
+        self._pos += len(chunk)
+        return chunk
+
+
+def torch_checkpoint_keys(read: RangeReader, size: int) -> List[str]:
+    """Return a torch checkpoint's ``state_dict`` keys, reading only its header.
+
+    ``read`` is a range reader over the checkpoint; zipfile seeks to the central
+    directory and the ``data.pkl`` entry, so the tensor payload is never fetched.
+    """
+    try:
+        with zipfile.ZipFile(_TailFile(read, size)) as archive:
+            return parse_torch_pickle_keys(archive.read(_data_pkl_name(archive)))
+    except zipfile.BadZipFile as exc:
+        raise ValueError(
+            f"not a zip archive (legacy torch pickle format?): {exc}"
+        ) from exc
+
+
+@dataclass(frozen=True)
+class KeyDiff:
+    """How a built module's parameter names line up with a checkpoint's."""
+
+    missing: List[str] = field(default_factory=list)
+    unexpected: List[str] = field(default_factory=list)
+    matched: int = 0
+
+    @property
+    def matches(self) -> bool:
+        return not self.missing and not self.unexpected
+
+
+def diff_state_dict_keys(
+    module_keys: List[str], checkpoint_keys: List[str]
+) -> KeyDiff:
+    """Compare a module's parameter names against a checkpoint's.
+
+    Uses ``load_state_dict``'s own wording so probe output can be read straight
+    against a torch error: ``unexpected`` are keys the checkpoint carries that
+    the module has no home for — the signature of an unported submodule —
+    and ``missing`` are keys the module needs that the checkpoint lacks.
+    """
+    mod = set(module_keys)
+    ckpt = set(checkpoint_keys)
+    return KeyDiff(
+        missing=sorted(mod - ckpt),
+        unexpected=sorted(ckpt - mod),
+        matched=len(mod & ckpt),
+    )
+
+
+@dataclass
+class BuiltModel:
+    """A network instantiated from a config, with random weights."""
+
+    config_path: str
+    architecture: str
+    module: Any = None
+    error: str = ""
+    parameters: int = 0
+    stems: List[str] = field(default_factory=list)
+    sample_rate: int = 44100
+    config: Any = None
+    #: Config keys the chosen class silently ignores.
+    dropped: List[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return self.module is not None
+
+
+def dropped_config_keys(model_cls: Any, model_cfg: Any) -> List[str]:
+    """Config keys ``model_cls.__init__`` will not accept.
+
+    Mirrors ``engines.mdx._filter_init_kwargs``, which drops unknown keys so a
+    model still builds. That silence is the trap: a checkpoint trained *with*
+    a feature loads into a network built *without* it.
+    """
+    import inspect
+
+    params = inspect.signature(model_cls.__init__).parameters
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return []
+    allowed = {name for name in params if name != "self"}
+    return sorted(key for key in model_cfg if key not in allowed)
+
+
+def _load_config(config_path: str) -> Any:
+    """Parse a yaml config into the ``ConfigDict`` the engines expect."""
+    _add_repo_to_path()
+    from ml_collections import ConfigDict
+
+    from core.model_data import load_mdx_c_config
+
+    return ConfigDict(load_mdx_c_config(config_path))
+
+
+def _instantiate(
+    config: Any, state_dict_keys: Optional[List[str]] = None
+) -> Tuple[Any, str, bool]:
+    """Build a module via the same two paths ``SeperateMDXC`` uses.
+
+    The third element says whether the class received *filtered* kwargs — only
+    then can a config key have been silently discarded.
+    """
+    import torch
+
+    from engines.mdx import _build_mdx_c_model
+    from ml.tfc_tdf_v3 import TFC_TDF_net
+
+    try:
+        module = _build_mdx_c_model(config, state_dict_keys=state_dict_keys)
+        return module, type(module).__name__, True
+    except ValueError:
+        # Not a Roformer/SCNet/Bandit config. SeperateMDXC routes MDX23C to
+        # TFC_TDF_net, but only try that when there is a model section to read —
+        # otherwise the original "unknown architecture" is the honest answer.
+        if getattr(config, "model", None) is None:
+            raise
+    # TFC_TDF_net consumes the whole config object, so nothing is filtered out.
+    module = TFC_TDF_net(config, device=torch.device("cpu"))
+    return module, type(module).__name__, False
+
+
+def build_from_config(
+    config_path: str, state_dict_keys: Optional[List[str]] = None
+) -> BuiltModel:
+    """Instantiate a model from its yaml. Never raises; reports instead.
+
+    ``state_dict_keys`` lets a checkpoint steer variants a config does not
+    declare — HyperACE BS-Roformer being the case in point.
+    """
+    try:
+        config = _load_config(config_path)
+    except Exception as exc:  # noqa: BLE001 - a bad config is a probe result
+        return BuiltModel(config_path, "", error=f"config unreadable: {exc}")
+
+    training = getattr(config, "training", None)
+    stems = list(getattr(training, "instruments", []) or []) if training else []
+    audio = getattr(config, "audio", None)
+    sample_rate = int(getattr(audio, "sample_rate", 44100) or 44100) if audio else 44100
+
+    try:
+        module, arch, filtered = _instantiate(config, state_dict_keys)
+    except Exception as exc:  # noqa: BLE001 - unported architecture is the answer
+        return BuiltModel(
+            config_path,
+            "",
+            error=f"{type(exc).__name__}: {exc}",
+            stems=stems,
+            sample_rate=sample_rate,
+            config=config,
+        )
+
+    module.eval()
+    section = getattr(config, "model", None)
+    if section is None:
+        section = getattr(config, "kwargs", None)  # Bandit configs
+    dropped = (
+        dropped_config_keys(type(module), section)
+        if filtered and section is not None
+        else []
+    )
+    return BuiltModel(
+        config_path,
+        arch,
+        module=module,
+        parameters=sum(p.numel() for p in module.parameters()),
+        stems=stems,
+        sample_rate=sample_rate,
+        config=config,
+        dropped=dropped,
+    )
+
+
+@dataclass
+class ForwardResult:
+    """Outcome of pushing noise through a randomly-initialised module."""
+
+    ok: bool = False
+    error: str = ""
+    input_shape: Tuple[int, ...] = ()
+    output_shape: Tuple[int, ...] = ()
+    finite: bool = False
+
+
+def natural_chunk_samples(built: BuiltModel) -> Optional[int]:
+    """The input length a config declares, if any.
+
+    STFT-framed architectures (MDX23C) reject anything else, so an arbitrary
+    duration would report a forward failure that says nothing about the port.
+    """
+    audio = getattr(built.config, "audio", None)
+    chunk = getattr(audio, "chunk_size", None) if audio is not None else None
+    if chunk:
+        return int(chunk)
+    inference = getattr(built.config, "inference", None)
+    hop = getattr(audio, "hop_length", None) if audio is not None else None
+    dim_t = getattr(inference, "dim_t", None) if inference is not None else None
+    if hop and dim_t:
+        return int(hop) * (int(dim_t) - 1)
+    return None
+
+
+def forward_probe(
+    built: BuiltModel, *, seconds: Optional[float] = None
+) -> ForwardResult:
+    """Run audio-shaped noise through ``built``. Proves the graph is wired up.
+
+    Defaults to the config's own chunk size; ``seconds`` overrides it.
+    """
+    if built.module is None:
+        return ForwardResult(ok=False, error=built.error or "model not built")
+
+    import torch
+
+    if seconds is not None:
+        samples = max(1, int(built.sample_rate * seconds))
+    else:
+        samples = natural_chunk_samples(built) or int(built.sample_rate * 2)
+    noise = torch.randn(1, 2, samples)
+    try:
+        with torch.no_grad():
+            out = built.module(noise)
+    except Exception as exc:  # noqa: BLE001 - a broken forward is a probe result
+        return ForwardResult(
+            ok=False, error=f"{type(exc).__name__}: {exc}", input_shape=tuple(noise.shape)
+        )
+    tensor = out[0] if isinstance(out, (tuple, list)) else out
+    return ForwardResult(
+        ok=True,
+        input_shape=tuple(noise.shape),
+        output_shape=tuple(tensor.shape),
+        finite=bool(torch.isfinite(tensor).all()),
+    )
+
+
+@dataclass
+class ProbeTarget:
+    """A catalogue entry resolved to the URLs and metadata the probe needs."""
+
+    entry_id: str
+    label: str
+    model_type: str = ""
+    config_url: str = ""
+    checkpoint_url: str = ""
+    reason: str = ""
+
+    @property
+    def config_name(self) -> str:
+        from urllib.parse import unquote, urlparse
+
+        return os.path.basename(unquote(urlparse(self.config_url).path))
+
+
+def resolve_target(entry_id: str, catalogue: Optional[Dict[str, Any]] = None) -> ProbeTarget:
+    """Look up ``entry_id`` in the mvsepless catalogue.
+
+    ``catalogue`` is injectable so callers (and tests) can work offline.
+    """
+    _add_repo_to_path()
+    from core.mvsepless_catalog import classify_entry, entry_label
+
+    if catalogue is None:
+        from core.mvsepless_catalog import load_mvsepless_models
+
+        catalogue = load_mvsepless_models() or {}
+
+    entry = catalogue.get(entry_id)
+    if not isinstance(entry, dict):
+        raise KeyError(f"no catalogue entry {entry_id!r}")
+
+    _supported, reason = classify_entry(entry_id, entry)
+    return ProbeTarget(
+        entry_id=entry_id,
+        label=entry_label(entry_id, entry),
+        model_type=str(entry.get("model_type") or ""),
+        config_url=str(entry.get("config_url") or ""),
+        checkpoint_url=str(entry.get("checkpoint_url") or ""),
+        reason=reason,
+    )
+
+
+VERDICT_BUILDABLE = "buildable"
+VERDICT_BUILD_FAILED = "build-failed"
+VERDICT_FORWARD_FAILED = "forward-failed"
+VERDICT_KEY_MISMATCH = "key-mismatch"
+VERDICT_CONFIG_IGNORED = "config-ignored"
+
+
+@dataclass
+class ProbeResult:
+    """Everything the probe learned about one model."""
+
+    entry_id: str
+    label: str
+    build: BuiltModel
+    forward: ForwardResult
+    reason: str = ""
+    keys: Optional[KeyDiff] = None
+
+    @property
+    def verdict(self) -> str:
+        """One word for "how far does this get without weights?"."""
+        if not self.build.ok:
+            return VERDICT_BUILD_FAILED
+        if not self.forward.ok:
+            return VERDICT_FORWARD_FAILED
+        if self.build.dropped:
+            # Root cause: it built only because unknown keys were discarded.
+            return VERDICT_CONFIG_IGNORED
+        if self.keys is not None and not self.keys.matches:
+            return VERDICT_KEY_MISMATCH
+        return VERDICT_BUILDABLE
+
+    def to_json(self) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "entry_id": self.entry_id,
+            "label": self.label,
+            "catalogue_reason": self.reason,
+            "verdict": self.verdict,
+            "architecture": self.build.architecture,
+            "parameters": self.build.parameters,
+            "stems": list(self.build.stems),
+            "build_error": self.build.error,
+            "dropped_config_keys": list(self.build.dropped),
+            "forward": {
+                "ok": self.forward.ok,
+                "error": self.forward.error,
+                "input_shape": list(self.forward.input_shape),
+                "output_shape": list(self.forward.output_shape),
+                "finite": self.forward.finite,
+            },
+        }
+        if self.keys is not None:
+            payload["state_dict"] = {
+                "matches": self.keys.matches,
+                "matched": self.keys.matched,
+                "missing": list(self.keys.missing),
+                "unexpected": list(self.keys.unexpected),
+            }
+        return payload
+
+
+_VERDICT_BLURB = {
+    VERDICT_BUILDABLE: "architecture builds and runs — port looks viable",
+    VERDICT_BUILD_FAILED: "architecture does not instantiate — unported feature",
+    VERDICT_FORWARD_FAILED: "instantiates but the forward pass breaks",
+    VERDICT_KEY_MISMATCH: "runs, but parameter names disagree with the checkpoint",
+    VERDICT_CONFIG_IGNORED: "builds only because config keys were silently dropped",
+}
+
+_KEYS_SHOWN = 12
+
+
+def render_report(result: ProbeResult) -> str:
+    """Human-readable probe report."""
+    build, forward = result.build, result.forward
+    lines = [
+        f"{result.label}  [{result.entry_id}]",
+        f"  verdict      {result.verdict} — {_VERDICT_BLURB[result.verdict]}",
+    ]
+    if result.reason:
+        lines.append(f"  catalogue    listed unsupported: {result.reason}")
+    if build.ok:
+        lines.append(
+            f"  architecture {build.architecture}  "
+            f"{build.parameters / 1e6:.1f}M params"
+        )
+        if build.stems:
+            lines.append(f"  stems        {', '.join(build.stems)}")
+        if build.dropped:
+            lines.append(f"  dropped      {', '.join(build.dropped)}  (config asks for these; the class ignores them)")
+    else:
+        lines.append(f"  build error  {build.error}")
+    if forward.ok:
+        lines.append(
+            f"  forward      {tuple(forward.input_shape)} -> "
+            f"{tuple(forward.output_shape)}  finite={forward.finite}"
+        )
+    elif build.ok:
+        lines.append(f"  forward err  {forward.error}")
+
+    if result.keys is not None:
+        diff = result.keys
+        lines.append(
+            f"  state_dict   {diff.matched} matched, "
+            f"{len(diff.missing)} missing, {len(diff.unexpected)} unexpected"
+        )
+        for label, names in (("missing", diff.missing), ("unexpected", diff.unexpected)):
+            for name in names[:_KEYS_SHOWN]:
+                lines.append(f"    {label:10s} {name}")
+            if len(names) > _KEYS_SHOWN:
+                lines.append(f"    {'':10s} ... and {len(names) - _KEYS_SHOWN} more")
+    return "\n".join(lines)
+
+
+_HTTP_TIMEOUT_SECONDS = 30
+
+
+def _default_opener(request: Any) -> Any:
+    import urllib.request
+
+    return urllib.request.urlopen(request, timeout=_HTTP_TIMEOUT_SECONDS)
+
+
+def _request(url: str, headers: Dict[str, str]) -> Any:
+    import urllib.request
+
+    return urllib.request.Request(url, headers=headers)
+
+
+def http_range_reader(url: str, *, opener: Optional[Callable[[Any], Any]] = None) -> RangeReader:
+    """A :data:`RangeReader` backed by HTTP range requests.
+
+    ``start``/``end`` are half-open like every other reader here; HTTP ranges
+    are inclusive, hence the ``end - 1``.
+    """
+    fetch = opener or _default_opener
+
+    def read(start: int, end: int) -> bytes:
+        request = _request(url, {"Range": f"bytes={start}-{end - 1}"})
+        with fetch(request) as response:
+            return response.read()
+
+    return read
+
+
+def remote_size(url: str, *, opener: Optional[Callable[[Any], Any]] = None) -> int:
+    """Total size of a remote file, learned from a one-byte range request.
+
+    A range request rather than HEAD: redirect-heavy hosts answer it more
+    reliably, and ``Content-Range`` carries the total either way.
+    """
+    fetch = opener or _default_opener
+    request = _request(url, {"Range": "bytes=0-0"})
+    with fetch(request) as response:
+        content_range = response.headers.get("Content-Range") or ""
+    total = content_range.rpartition("/")[2].strip()
+    if not total.isdigit():
+        raise ValueError(f"server did not report a size for {url}")
+    return int(total)
+
+
+def remote_checkpoint_keys(url: str) -> List[str]:
+    """Fetch only a remote checkpoint's header and return its ``state_dict`` keys."""
+    read = http_range_reader(url)
+    if url.endswith(".safetensors"):
+        span = safetensors_header_span(read(0, _SAFETENSORS_LEN_BYTES))
+        return parse_safetensors_header(read(0, span[1]))
+    return torch_checkpoint_keys(read, remote_size(url))
+
+
+def local_checkpoint_keys(path: str) -> List[str]:
+    """``state_dict`` keys of a checkpoint on disk, reading only its header."""
+
+    def read(start: int, end: int) -> bytes:
+        with open(path, "rb") as handle:
+            handle.seek(start)
+            return handle.read(end - start)
+
+    if path.endswith(".safetensors"):
+        span = safetensors_header_span(read(0, _SAFETENSORS_LEN_BYTES))
+        return parse_safetensors_header(read(0, span[1]))
+    return torch_checkpoint_keys(read, os.path.getsize(path))
+
+
+def _fetch_config(url: str, dest_dir: str) -> str:
+    """Download a yaml config (a few KB) into ``dest_dir`` and return the path."""
+    from urllib.parse import unquote, urlparse
+
+    name = os.path.basename(unquote(urlparse(url).path)) or "config.yaml"
+    os.makedirs(dest_dir, exist_ok=True)
+    dest = os.path.join(dest_dir, name)
+    if os.path.isfile(dest):
+        return dest
+    read = http_range_reader(url)
+    with open(dest, "wb") as handle:
+        handle.write(read(0, remote_size(url)))
+    return dest
+
+
+def _cache_dir() -> str:
+    _add_repo_to_path()
+    from core import paths
+
+    return os.path.join(paths.CACHE_DIR, "model_probe")
+
+
+def probe(
+    config_path: str,
+    *,
+    entry_id: str = "",
+    label: str = "",
+    reason: str = "",
+    checkpoint_url: str = "",
+    checkpoint_path: str = "",
+    seconds: Optional[float] = None,
+) -> ProbeResult:
+    """Build, forward-probe and (optionally) key-diff one model."""
+    # Read the checkpoint's keys first: they decide variants the config does
+    # not declare, so the build itself depends on them.
+    checkpoint_keys: Optional[List[str]] = None
+    if checkpoint_url or checkpoint_path:
+        try:
+            checkpoint_keys = (
+                local_checkpoint_keys(checkpoint_path)
+                if checkpoint_path
+                else remote_checkpoint_keys(checkpoint_url)
+            )
+        except Exception as exc:  # noqa: BLE001 - header probe is best-effort
+            print(f"  (state_dict probe unavailable: {exc})")
+
+    build = build_from_config(config_path, state_dict_keys=checkpoint_keys)
+    forward = forward_probe(build, seconds=seconds)
+    keys: Optional[KeyDiff] = None
+    if checkpoint_keys is not None and build.ok:
+        keys = diff_state_dict_keys(
+            list(build.module.state_dict().keys()), checkpoint_keys
+        )
+    return ProbeResult(
+        entry_id=entry_id or os.path.basename(config_path),
+        label=label or os.path.basename(config_path),
+        reason=reason,
+        build=build,
+        forward=forward,
+        keys=keys,
+    )
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Probe whether this build can run a model, without its weights.",
+    )
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--config", help="Path to a local yaml config")
+    source.add_argument("--entry", help="mvsepless catalogue entry id (fetches the yaml)")
+    parser.add_argument(
+        "--check-keys",
+        action="store_true",
+        help="With --entry: range-fetch the checkpoint header and diff state_dict keys",
+    )
+    parser.add_argument(
+        "--checkpoint",
+        default="",
+        help="Diff state_dict keys against a checkpoint already on disk",
+    )
+    parser.add_argument(
+        "--seconds",
+        type=float,
+        default=None,
+        help="Forward-pass noise length; defaults to the config's own chunk size",
+    )
+    parser.add_argument("--json", dest="json_path", default=None)
+    args = parser.parse_args(argv)
+
+    if args.config:
+        result = probe(
+            args.config, checkpoint_path=args.checkpoint, seconds=args.seconds
+        )
+    else:
+        target = resolve_target(args.entry)
+        if not target.config_url:
+            print(f"{target.label}: catalogue entry has no config_url")
+            return 2
+        config_path = _fetch_config(target.config_url, _cache_dir())
+        result = probe(
+            config_path,
+            entry_id=target.entry_id,
+            label=target.label,
+            reason=target.reason,
+            checkpoint_url=target.checkpoint_url if args.check_keys else "",
+            checkpoint_path=args.checkpoint,
+            seconds=args.seconds,
+        )
+
+    print(render_report(result))
+    if args.json_path:
+        with open(args.json_path, "w", encoding="utf-8") as handle:
+            json.dump(result.to_json(), handle, indent=2)
+            handle.write("\n")
+    return 0 if result.verdict == VERDICT_BUILDABLE else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

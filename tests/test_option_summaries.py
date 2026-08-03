@@ -9,12 +9,10 @@ from bundled.constants import (
     ALL_STEMS,
     DEMUCS_ARCH_TYPE,
     ENSEMBLE_MODE,
-    FOUR_STEM_ENSEMBLE,
     MDX_ARCH_TYPE,
-    MULTI_STEM_ENSEMBLE,
     NO_MODEL,
-    VOCAL_PAIR,
 )
+from core.stems import EnsemblePair
 from core.settings import Settings
 from ui.option_summaries import (
     OFF,
@@ -49,7 +47,7 @@ class FourStemApplicabilityTests(unittest.TestCase):
     def test_four_stem_ensemble_applies_to_every_architecture(self):
         settings = _Settings(
             chosen_process_method=ENSEMBLE_MODE,
-            ensemble_main_stem=FOUR_STEM_ENSEMBLE,
+            ensemble_main_stem=EnsemblePair.FOUR_STEM.value,
         )
         self.assertTrue(four_stem_secondaries_apply(settings, MDX_ARCH_TYPE))
         self.assertTrue(four_stem_secondaries_apply(settings, DEMUCS_ARCH_TYPE))
@@ -57,7 +55,7 @@ class FourStemApplicabilityTests(unittest.TestCase):
     def test_multi_stem_ensemble_applies_to_demucs_only(self):
         settings = _Settings(
             chosen_process_method=ENSEMBLE_MODE,
-            ensemble_main_stem=MULTI_STEM_ENSEMBLE,
+            ensemble_main_stem=EnsemblePair.MULTI_STEM.value,
         )
         self.assertTrue(four_stem_secondaries_apply(settings, DEMUCS_ARCH_TYPE))
         self.assertFalse(four_stem_secondaries_apply(settings, MDX_ARCH_TYPE))
@@ -68,7 +66,7 @@ class FourStemApplicabilityTests(unittest.TestCase):
         reach the four-slot path even with demucs_stems set to ALL_STEMS."""
         settings = _Settings(
             chosen_process_method=ENSEMBLE_MODE,
-            ensemble_main_stem=VOCAL_PAIR,
+            ensemble_main_stem=EnsemblePair.VOCALS_INSTRUMENTAL.value,
             demucs_stems=ALL_STEMS,
         )
         self.assertFalse(four_stem_secondaries_apply(settings, DEMUCS_ARCH_TYPE))

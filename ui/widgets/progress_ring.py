@@ -99,7 +99,8 @@ class ProgressRing(Gtk.Overlay):
             except (AttributeError, TypeError):
                 pass
 
-    def _on_anim_value(self, value: float, _user_data: typing.Any=None) -> None:
+    def _on_anim_value(self, value: float | None, _user_data: typing.Any=None) -> None:
+        # Adw invokes this as a target callback; guard the value it hands back.
         if value is None:
             return
         self._set_check_progress(float(value))

@@ -16,10 +16,10 @@ class SettingsBindTests(unittest.TestCase):
     def test_flat_helpers_resolve_through_flat_map(self) -> None:
         settings = Settings.defaults()
 
-        set_flat(settings, "ensemble_type", "Median/Mean")
+        set_flat(settings, "ensemble_type", "Average/Min Spec")
 
-        self.assertEqual(get_flat(settings, "ensemble_type"), "Median/Mean")
-        self.assertEqual(settings.ensemble.type, "Median/Mean")
+        self.assertEqual(get_flat(settings, "ensemble_type"), "Average/Min Spec")
+        self.assertEqual(settings.ensemble.type, "Average/Min Spec")
 
     def test_unknown_flat_key_matches_bridge_defaults(self) -> None:
         settings = Settings.defaults()

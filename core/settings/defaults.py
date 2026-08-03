@@ -4,26 +4,18 @@ from __future__ import annotations
 
 from bundled.constants import (
     ALL_STEMS,
-    AUDIO_TOOL_OPTIONS,
-    AUTO_PHASE,
-    AUTO_SELECT,
     CHOOSE_ENSEMBLE_OPTION,
     CHOOSE_MODEL,
-    CHOOSE_STEM_PAIR,
-    CHUNKS,
-    DEFAULT,
-    DEF_OPT,
     DEMUCS_OVERLAP,
-    DEMUCS_SEGMENTS,
-    MANUAL_ENSEMBLE_OPTIONS,
     MAX_MIN,
     MDX_ARCH_TYPE,
-    MDX_OVERLAP,
     NO_MODEL,
     WAV,
 )
 
-SETTINGS_SCHEMA_VERSION = 1
+# v3: closed enums + Default/Auto sentinels → null; numeric strings → int/float.
+# v2: ensemble.main_stem EnsemblePair ids only.
+SETTINGS_SCHEMA_VERSION = 3
 
 
 def default_process() -> dict:
@@ -32,7 +24,7 @@ def default_process() -> dict:
         "use_gpu": False,
         "autocast": False,
         "use_directml": False,
-        "device": DEFAULT,
+        "device": None,
         "primary_stem_only": False,
         "secondary_stem_only": False,
         "testing_audio": False,
@@ -55,7 +47,7 @@ def default_process() -> dict:
         "sample_mode_duration": 30,
         "long_file_chunk_seconds": 0.0,
         "long_file_chunk_overlap_seconds": 2.0,
-        "semitone_shift": "0",
+        "semitone_shift": 0.0,
         "user_code": "",
         "model_hash_table": {},
         "vocal_splitter": NO_MODEL,
@@ -72,7 +64,7 @@ def default_vr() -> dict:
         "model": CHOOSE_MODEL,
         "aggression_setting": 5,
         "window_size": 512,
-        "batch_size": DEF_OPT,
+        "batch_size": None,
         "crop_size": 256,
         "is_tta": False,
         "is_output_image": False,
@@ -95,17 +87,17 @@ def default_mdx() -> dict:
     return {
         "model": CHOOSE_MODEL,
         "segment_size": 256,
-        "overlap_mdx": MDX_OVERLAP[0],
-        "overlap_mdx23": "8",
+        "overlap_mdx": None,
+        "overlap_mdx23": 8,
         "is_chunk_mdxnet": False,
         "is_mdx23_combine_stems": True,
         "is_mdx_include_stem_complement": False,
-        "chunks": CHUNKS[0],
+        "chunks": None,
         "margin": 44100,
-        "compensate": AUTO_SELECT,
+        "compensate": None,
         "is_denoise": False,
         "denoise_option": "None",
-        "phase_option": AUTO_PHASE,
+        "phase_option": "Automatic",
         "phase_shifts": "None",
         "is_save_align": False,
         "is_match_frequency_pitch": True,
@@ -114,7 +106,7 @@ def default_mdx() -> dict:
         "is_mdx_c_seg_def": False,
         "is_invert_spec": False,
         "is_mixer_mode": False,
-        "batch_size": DEF_OPT,
+        "batch_size": None,
         "voc_inst_secondary_model": NO_MODEL,
         "other_secondary_model": NO_MODEL,
         "bass_secondary_model": NO_MODEL,
@@ -132,10 +124,10 @@ def default_mdx() -> dict:
 def default_demucs() -> dict:
     return {
         "model": CHOOSE_MODEL,
-        "segment": DEMUCS_SEGMENTS[0],
+        "segment": None,
         "overlap": DEMUCS_OVERLAP[0],
         "shifts": 2,
-        "chunks_demucs": CHUNKS[0],
+        "chunks_demucs": None,
         "margin_demucs": 44100,
         "is_chunk_demucs": False,
         "is_primary_stem_only": False,
@@ -159,8 +151,10 @@ def default_demucs() -> dict:
 
 
 def default_ensemble() -> dict:
+    from core.stems import EnsemblePair
+
     return {
-        "main_stem": CHOOSE_STEM_PAIR,
+        "main_stem": EnsemblePair.CHOOSE.value,
         "type": MAX_MIN,
         "selected_models": [],
         "chosen_ensemble": CHOOSE_ENSEMBLE_OPTION,
@@ -173,16 +167,16 @@ def default_ensemble() -> dict:
 
 def default_audio_tools() -> dict:
     return {
-        "chosen_audio_tool": AUDIO_TOOL_OPTIONS[0],
-        "choose_algorithm": MANUAL_ENSEMBLE_OPTIONS[0],
+        "chosen_audio_tool": "Manual Ensemble",
+        "choose_algorithm": "Max Spec",
         "time_stretch_rate": 2.0,
         "pitch_rate": 2.0,
-        "apollo_overlap": "5",
-        "apollo_chunk_size": "10",
+        "apollo_overlap": 5,
+        "apollo_chunk_size": 10,
         "apollo_model": CHOOSE_MODEL,
         "is_time_correction": True,
         "time_window": "3",
-        "intro_analysis": DEFAULT,
+        "intro_analysis": "Default",
         "db_analysis": "Medium",
         "file_one_entry": "",
         "file_one_entry_full": "",

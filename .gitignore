@@ -88,6 +88,7 @@ scripts/*
 !scripts/sync-github-mirror.sh
 !scripts/generate_models_catalogue.py
 !scripts/model_sweep.py
+!scripts/model_probe.py
 
 # Fetched Politrees yaml cache for catalogue regeneration
 docs/.yaml_cache/
@@ -97,7 +98,6 @@ docs/.community_cache/
 # Generated GResource manifest (rebuilt by resources/compile_resources.sh)
 resources/uvr.gresource.xml
 .cursor/
-CLAUDE.md
 resources/icons/scalable/actions/bug-symbolic.svg
 resources/icons/scalable/actions/cross-small-symbolic.svg
 

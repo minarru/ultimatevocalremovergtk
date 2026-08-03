@@ -131,7 +131,7 @@ class CascadedNet(nn.Module):
 
         if self.offset > 0:
             end = -self.offset
-            mask = cast(Tensor, mask)[:, :, :, self.offset:end]
+            mask = mask[:, :, :, self.offset:end]
             assert mask.size()[3] > 0
 
         return mask
@@ -142,7 +142,7 @@ class CascadedNet(nn.Module):
 
         if self.offset > 0:
             end = -self.offset
-            pred_mag = cast(Tensor, pred_mag)[:, :, :, self.offset:end]
+            pred_mag = pred_mag[:, :, :, self.offset:end]
             assert pred_mag.size()[3] > 0
 
         return pred_mag

@@ -163,6 +163,9 @@ def spectrogram_to_image(spec: np.ndarray, mode: str = 'magnitude') -> np.ndarra
             y = np.angle(spec)
         else:
             y = spec
+    else:
+        # Previously fell through to a NameError on ``y``.
+        raise ValueError(f"Unsupported mode: {mode!r}. Expected 'magnitude' or 'phase'.")
 
     y -= y.min()
     y *= 255 / y.max()
@@ -443,6 +446,9 @@ def spectrogram_to_wave_old(spec: np.ndarray, hop_length: int = 1024) -> np.ndar
         wave_left = librosa.istft(spec_left, hop_length=hop_length)
         wave_right = librosa.istft(spec_right, hop_length=hop_length)
         wave = np.asfortranarray([wave_left, wave_right])
+    else:
+        # Previously fell through to a NameError on ``wave``.
+        raise ValueError(f"Expected a 2-D or 3-D spectrogram, got {spec.ndim}-D.")
 
     return wave
     
@@ -806,7 +812,7 @@ def adjust_leading_silence(target_audio: np.ndarray, reference_audio: np.ndarray
         target_silence_end_p = (target_silence_end / 44100) * 1000
         silence_difference_p = ref_silence_end_p - target_silence_end_p
         print("silence_difference: ", silence_difference_p)
-    except Exception as e:
+    except Exception:
         pass
 
     if silence_difference > 0:  # Add silence to target_audio
@@ -1076,9 +1082,9 @@ def align_audio(file1: str,
 
     if file2.endswith(".mp3") and is_macos:
         length2 = rerun_mp3(file2)
-        wav2, sr2 = librosa.load(file2, duration=length2, sr=44100, mono=False)
+        wav2, _sr2 = librosa.load(file2, duration=length2, sr=44100, mono=False)
     else:
-        wav2, sr2 = librosa.load(file2, sr=44100, mono=False)
+        wav2, _sr2 = librosa.load(file2, sr=44100, mono=False)
 
     if wav1.ndim == 1 and wav2.ndim == 1:
          is_mono = True
@@ -1126,7 +1132,7 @@ def align_audio(file1: str,
             index = sr1*sec_seg  # 1 second in, assuming sr1 = sr2 = 44100
             samp1, samp2 = wav1[index : index + sr1, 0], wav2[index : index + sr1, 0]
             samp1_r, samp2_r = wav1[index : index + sr1, 1], wav2[index : index + sr1, 1]
-            diff, diff_r = get_diff(samp1, samp2), get_diff(samp1_r, samp2_r)
+            diff, _diff_r = get_diff(samp1, samp2), get_diff(samp1_r, samp2_r)
             #print(f"Estimated difference Left Channel: {diff}\nEstimated difference Right Channel: {diff_r}\n")
         
         # make aligned track 2
@@ -1365,10 +1371,11 @@ def ensemble_wav(waveforms: Sequence[np.ndarray], split_size: int = 240) -> np.n
     return final_waveform
 
 def ensemble_wav_min(waveforms: list[np.ndarray]) -> np.ndarray:
+    if not waveforms:
+        # Previously fell through to a NameError on ``wave``.
+        raise ValueError("ensemble_wav_min requires at least one waveform.")
+    wave = waveforms[0]
     for i in range(1, len(waveforms)):
-        if i == 1:
-            wave = waveforms[0]
-
         ln = min(len(wave), len(waveforms[i]))
         wave = wave[:ln]
         waveforms[i] = waveforms[i][:ln]
@@ -1408,7 +1415,7 @@ def align_audio_test(wav1: np.ndarray, wav2: np.ndarray, sr1: int = 44100) -> np
     return wav2_aligned
 
 def load_audio(audio_file: str) -> np.ndarray:
-    wav, sr = librosa.load(audio_file, sr=44100, mono=False)
+    wav, _sr = librosa.load(audio_file, sr=44100, mono=False)
 
     if wav.ndim == 1:
         wav = np.asfortranarray([wav,wav])

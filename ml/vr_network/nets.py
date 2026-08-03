@@ -80,7 +80,7 @@ def determine_model_capacity(n_fft_bins: int, nn_architecture: int) -> CascadedA
             (16, 2, 1),
         ]
     
-    if nn_architecture in hp_model_arch:
+    elif nn_architecture in hp_model_arch:
         model_capacity_data = [
             (2, 32),
             (2, 32),
@@ -93,7 +93,7 @@ def determine_model_capacity(n_fft_bins: int, nn_architecture: int) -> CascadedA
             (32, 2, 1),
         ]
        
-    if nn_architecture in hp2_model_arch: 
+    elif nn_architecture in hp2_model_arch:
         model_capacity_data = [
             (2, 64),
             (2, 64),
@@ -105,6 +105,12 @@ def determine_model_capacity(n_fft_bins: int, nn_architecture: int) -> CascadedA
             (64, 2, 1),
             (64, 2, 1),
         ]
+    else:
+        # Previously fell through to a NameError on model_capacity_data.
+        raise ValueError(
+            f"Unsupported VR network architecture: {nn_architecture}. "
+            f"Expected one of {sorted(sp_model_arch + hp_model_arch + hp2_model_arch)}."
+        )
 
     cascaded = CascadedASPPNet
     model = cascaded(n_fft_bins, model_capacity_data, nn_architecture)
@@ -196,6 +202,6 @@ class CascadedASPPNet(nn.Module):
 
         if self.offset > 0:
             end = -self.offset
-            mask = cast(Tensor, mask)[:, :, :, self.offset:end]
+            mask = mask[:, :, :, self.offset:end]
 
         return mask

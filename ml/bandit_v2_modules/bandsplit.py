@@ -111,7 +111,7 @@ class BandSplitModule(nn.Module):
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        batch, in_chan, band_width, n_time = x.shape
+        batch, _in_chan, _band_width, n_time = x.shape
 
         z = torch.zeros(
             size=(batch, self.n_bands, n_time, self.emb_dim), device=x.device

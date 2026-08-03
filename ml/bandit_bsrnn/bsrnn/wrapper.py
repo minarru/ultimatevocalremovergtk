@@ -129,8 +129,12 @@ def get_band_specs_map(band_specs_map: Any, n_fft: Any, fs: Any, n_bands: Any=No
 
 
 class BandSplitWrapperBase(nn.Module):
+    # SingleMask* subclasses assign a ModuleDict here, MultiMask* a callable
+    # core module. Narrow at the use site rather than re-declaring per subclass,
+    # which would be an invariant-attribute override.
     bsrnn: nn.Module
-    
+
+
     def __init__(self, **kwargs: Any) -> None:
         super().__init__()
 
@@ -139,7 +143,6 @@ class SingleMaskMultiSourceBandSplitBase(
         BandSplitWrapperBase,
         _SpectralComponent,
 ):
-    bsrnn: nn.ModuleDict
     def __init__(
             self,
             band_specs_map: Union[str, Dict[str, List[Tuple[float, float]]]],
@@ -198,7 +201,7 @@ class SingleMaskMultiSourceBandSplitBase(
             output = {"spectrogram": {}, "audio": {}}
 
             for stem, bsrnn_mod in cast(nn.ModuleDict, self.bsrnn).items():
-                S = cast(nn.Module, bsrnn_mod)(X)
+                S = bsrnn_mod(X)
                 s = self.istft(S, length)
                 if needs_cpu_stft(orig_device):
                     s = s.to(orig_device)
@@ -338,7 +341,7 @@ class MultiMaskMultiSourceBandSplitBaseSimple(
             length = wav.shape[-1]
             output = self.bsrnn(X, cond=None)
             res = []
-            for stem, S in output["spectrogram"].items():
+            for _stem, S in output["spectrogram"].items():
                 s = self.istft(S, length)
                 res.append(s)
             res = torch.stack(res, dim=1)

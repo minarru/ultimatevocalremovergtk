@@ -39,10 +39,8 @@ def get(identifier: str) -> type:
     Returns:
         :class:`torch.nn.Module`
     """
-    if isinstance(identifier, str):
-        to_get = {k.lower(): v for k, v in globals().items()}
-        cls = to_get.get(identifier.lower())
-        if cls is None:
-            raise ValueError(f"Could not interpret model name : {str(identifier)}")
-        return cls
-    raise ValueError(f"Could not interpret model name : {str(identifier)}")
+    to_get = {k.lower(): v for k, v in globals().items()}
+    cls = to_get.get(identifier.lower())
+    if cls is None:
+        raise ValueError(f"Could not interpret model name : {str(identifier)}")
+    return cls

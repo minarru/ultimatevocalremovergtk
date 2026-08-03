@@ -2,9 +2,42 @@
 
 from __future__ import annotations
 
-from typing import Any
+from enum import Enum
+from typing import Any, Optional, TypeVar, Union
 
+from bundled.constants import AUTO_SELECT, DEFAULT, DEF_OPT, MAX_MIN
+from core.stems import EnsemblePair, coerce_ensemble_pair
 from core.types import ProcessMethod, SaveFormat
+from core.types.settings_enums import (
+    AlignPhaseOption,
+    AudioTool,
+    ColorScheme,
+    DbAnalysis,
+    DeverbVocalOpt,
+    FlacBitDepth,
+    IntroAnalysis,
+    ManualEnsembleOption,
+    MdxDenoiseOption,
+    Mp3Bitrate,
+    PhaseShiftsOpt,
+    TimeWindow,
+    WavType,
+)
+
+E = TypeVar("E", bound=Enum)
+
+_SENTINEL_LABELS = frozenset({DEF_OPT, DEFAULT, AUTO_SELECT, "Default", "Auto"})
+
+
+def enum_value(value: Any) -> Any:
+    """Underlying value of a settings enum; anything else passes through.
+
+    Settings enums are ``str, Enum``, so ``==``, dict lookup and ``json.dumps``
+    already behave as the value string — but ``str(member)`` and f-strings
+    yield ``ClassName.MEMBER``. Route every filename, path and log line through
+    this rather than ``str()``.
+    """
+    return value.value if isinstance(value, Enum) else value
 
 
 def as_bool(value: Any, default: bool = False) -> bool:
@@ -53,6 +86,115 @@ def as_int(value: Any, default: int = 0) -> int:
         except ValueError:
             return default
     return default
+
+
+def _is_sentinel(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str) and value.strip() in _SENTINEL_LABELS:
+        return True
+    return False
+
+
+def as_optional_int(value: Any) -> Optional[int]:
+    """``Default`` / ``Auto`` / ``None`` → ``None``; else int."""
+    if _is_sentinel(value):
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def as_optional_float(value: Any) -> Optional[float]:
+    if _is_sentinel(value):
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def as_optional_device(value: Any) -> Optional[str]:
+    """GPU device index string, or ``None`` for Default."""
+    if _is_sentinel(value) or value == "":
+        return None
+    text = str(value).strip()
+    if ":" in text:
+        text = text.split(":", 1)[-1].strip()
+    if text in _SENTINEL_LABELS or text == "":
+        return None
+    return text
+
+
+def as_chunks(value: Any) -> Union[int, str, None]:
+    """Chunks setting: ``None`` (Auto), positive int, or ``\"full\"``."""
+    if _is_sentinel(value):
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if text.casefold() == "full":
+            return "full"
+        if text in _SENTINEL_LABELS:
+            return None
+        try:
+            return int(text)
+        except ValueError:
+            return None
+    return None
+
+
+def coerce_enum(enum_type: type[E], value: Any, default: E) -> E:
+    if isinstance(value, enum_type):
+        return value
+    try:
+        return enum_type(value)
+    except (TypeError, ValueError):
+        pass
+    if value not in (None, ""):
+        try:
+            from core.debug_log import debug
+
+            debug(
+                "settings",
+                f"{enum_type.__name__} unknown value={value!r}; using {default.value!r}",
+            )
+        except Exception:
+            pass
+    return default
+
+
+def coerce_ensemble_type(value: Any) -> str:
+    """Normalize ``ensemble.type``; atoms must be ensemble algorithms."""
+    from core.ensemble_algorithms import format_ensemble_type, parse_ensemble_type
+
+    text = "" if value is None else str(value).strip()
+    if not text:
+        text = MAX_MIN
+    primary, secondary = parse_ensemble_type(text)
+    if "/" not in text:
+        return primary
+    return format_ensemble_type(primary, secondary)
 
 
 _BOOL_FIELDS: frozenset[tuple[str, str]] = frozenset(
@@ -120,8 +262,11 @@ _INT_FIELDS: frozenset[tuple[str, str]] = frozenset(
         ("vr", "crop_size"),
         ("mdx", "segment_size"),
         ("mdx", "margin"),
+        ("mdx", "overlap_mdx23"),
         ("demucs", "margin_demucs"),
         ("demucs", "shifts"),
+        ("audio_tools", "apollo_overlap"),
+        ("audio_tools", "apollo_chunk_size"),
         ("ui", "window_width"),
         ("ui", "window_height"),
     }
@@ -132,6 +277,7 @@ _FLOAT_FIELDS: frozenset[tuple[str, str]] = frozenset(
         ("process", "amplification_threshold"),
         ("process", "long_file_chunk_seconds"),
         ("process", "long_file_chunk_overlap_seconds"),
+        ("process", "semitone_shift"),
         ("vr", "post_process_threshold"),
         ("vr", "voc_inst_secondary_model_scale"),
         ("vr", "other_secondary_model_scale"),
@@ -151,9 +297,60 @@ _FLOAT_FIELDS: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
-_ENUM_FIELDS = {
-    ("process", "method"): ProcessMethod,
-    ("process", "save_format"): SaveFormat,
+_OPTIONAL_INT_FIELDS = frozenset(
+    {
+        ("vr", "batch_size"),
+        ("mdx", "batch_size"),
+        ("demucs", "segment"),
+    }
+)
+
+_OPTIONAL_FLOAT_FIELDS = frozenset(
+    {
+        ("mdx", "overlap_mdx"),
+        ("mdx", "compensate"),
+    }
+)
+
+_CHUNKS_FIELDS = frozenset(
+    {
+        ("mdx", "chunks"),
+        ("demucs", "chunks_demucs"),
+    }
+)
+
+_DEVICE_FIELDS = frozenset({("process", "device")})
+
+_ENSEMBLE_PAIR_FIELDS = frozenset({("ensemble", "main_stem")})
+
+_ENSEMBLE_TYPE_FIELDS = frozenset({("ensemble", "type")})
+
+# (section, field) → (enum type, default member)
+_ENUM_FIELDS: dict[tuple[str, str], tuple[type[Enum], Enum]] = {
+    ("process", "method"): (ProcessMethod, ProcessMethod.MDX),
+    ("process", "save_format"): (SaveFormat, SaveFormat.WAV),
+    ("process", "wav_type"): (WavType, WavType.PCM_16),
+    ("process", "mp3_bitrate"): (Mp3Bitrate, Mp3Bitrate.K320),
+    ("process", "flac_bit_depth"): (FlacBitDepth, FlacBitDepth.BIT_16),
+    ("process", "deverb_vocal_opt"): (
+        DeverbVocalOpt,
+        DeverbVocalOpt.MAIN_VOCALS_ONLY,
+    ),
+    ("mdx", "denoise_option"): (MdxDenoiseOption, MdxDenoiseOption.NONE),
+    ("mdx", "phase_option"): (AlignPhaseOption, AlignPhaseOption.AUTOMATIC),
+    ("mdx", "phase_shifts"): (PhaseShiftsOpt, PhaseShiftsOpt.NONE),
+    ("ui", "color_scheme"): (ColorScheme, ColorScheme.AUTO),
+    ("audio_tools", "chosen_audio_tool"): (
+        AudioTool,
+        AudioTool.MANUAL_ENSEMBLE,
+    ),
+    ("audio_tools", "choose_algorithm"): (
+        ManualEnsembleOption,
+        ManualEnsembleOption.MAX_SPEC,
+    ),
+    ("audio_tools", "time_window"): (TimeWindow, TimeWindow.V3),
+    ("audio_tools", "intro_analysis"): (IntroAnalysis, IntroAnalysis.DEFAULT),
+    ("audio_tools", "db_analysis"): (DbAnalysis, DbAnalysis.MEDIUM),
 }
 
 
@@ -166,11 +363,21 @@ def coerce_field(section_name: str, field: str, value: Any) -> Any:
         return as_int(value)
     if path in _FLOAT_FIELDS:
         return as_float(value)
-    if enum_type := _ENUM_FIELDS.get(path):
-        try:
-            return enum_type(value)
-        except (TypeError, ValueError):
-            return value
+    if path in _OPTIONAL_INT_FIELDS:
+        return as_optional_int(value)
+    if path in _OPTIONAL_FLOAT_FIELDS:
+        return as_optional_float(value)
+    if path in _CHUNKS_FIELDS:
+        return as_chunks(value)
+    if path in _DEVICE_FIELDS:
+        return as_optional_device(value)
+    if path in _ENSEMBLE_PAIR_FIELDS:
+        return coerce_ensemble_pair(value)
+    if path in _ENSEMBLE_TYPE_FIELDS:
+        return coerce_ensemble_type(value)
+    if enum_entry := _ENUM_FIELDS.get(path):
+        enum_type, default = enum_entry
+        return coerce_enum(enum_type, value, default)
     return value
 
 
@@ -183,8 +390,12 @@ def _coerce_section(section_name: str, section_data: Any) -> dict[str, Any]:
     return coerced
 
 
-def coerce_json_dict(data: dict[str, Any]) -> dict[str, Any]:
-    """Coerce typed fields in a nested settings JSON document."""
+def coerce_json_dict(data: Any) -> dict[str, Any]:
+    """Coerce typed fields in a nested settings JSON document.
+
+    ``Any`` in, validated ``dict`` out: this is the untrusted-JSON boundary, so
+    a non-object payload degrades to ``{}`` rather than raising.
+    """
     if not isinstance(data, dict):
         return {}
     result = dict(data)
@@ -202,3 +413,25 @@ def coerce_json_dict(data: dict[str, Any]) -> dict[str, Any]:
     if "schema_version" in result:
         result["schema_version"] = as_int(result["schema_version"], 1)
     return result
+
+
+#: Flat-key → display label when the stored value is ``None`` (Default/Auto).
+FLAT_SENTINEL_LABELS: dict[str, str] = {
+    "device_set": DEFAULT,
+    "batch_size": DEF_OPT,
+    "mdx_batch_size": DEF_OPT,
+    "overlap_mdx": DEF_OPT,
+    "compensate": AUTO_SELECT,
+    "chunks": AUTO_SELECT,
+    "chunks_demucs": AUTO_SELECT,
+    "segment": DEF_OPT,
+}
+
+
+def setting_for_combo(flat_key: str, value: Any) -> Any:
+    """Map a stored setting to a combo/scale display value."""
+    if value is None:
+        return FLAT_SENTINEL_LABELS.get(flat_key)
+    if value == "full" and flat_key in ("chunks", "chunks_demucs"):
+        return "Full"
+    return enum_value(value)

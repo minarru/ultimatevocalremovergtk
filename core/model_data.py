@@ -38,6 +38,7 @@ from .model_display import (
 )
 from .audio_io import resolve_wav_type_set
 from .settings import Settings
+from .settings.coerce import enum_value
 
 _MDX_C_YAML_LOADER = None
 
@@ -235,46 +236,40 @@ class ModelRepository:
         is_4_stem_check: bool = False,
         is_no_demucs: bool = False,
         *,
-        wanted_buckets: Optional[AbstractSet[str]] = None,
+        wanted_buckets: Optional[AbstractSet[Any]] = None,
     ) -> List[str]:
         """Tk-free port of ``MainWindow.model_list`` (secondary-model filtering).
 
-        Stem comparison goes through :func:`ensemble_stem_bucket` so yaml
-        lowercase (``vocals``), the 2-stem ``other`` complement and the
-        ``instrument`` variant resolve to the same bucket as the curated Title
-        Case names, while karaoke models resolve to their own bucket instead of
-        contaminating clean instrumentals.
-
-        ``wanted_buckets`` lets :meth:`ensemble_model_list` supply buckets it
-        resolved from the *pair* — necessary because a pair carries no stem
-        count, so re-deriving buckets from the two halves here would read
-        ``Other/No Other`` as an Instrumental request.
+        Stem comparison goes through :func:`core.stems.bucket_for_model_stem`.
+        ``wanted_buckets`` accepts :class:`~core.stems.StemBucket` members or
+        their ``.value`` strings (pair requests must not be re-derived from
+        slash-split display halves).
         """
-        from .model_stem_semantics import (
-            BUCKET_UNKNOWN,
-            ensemble_stem_bucket,
-            model_stem_count,
-        )
+        from core.stems import StemBucket, bucket_for_model_stem, model_stem_count
 
         stem_check = self.stem_check(settings)
+
+        def _as_bucket_value(item: Any) -> str:
+            if isinstance(item, StemBucket):
+                return item.value
+            return str(item)
+
         if wanted_buckets is None:
             wanted = {
-                ensemble_stem_bucket(primary_stem, stem_count=1),
-                ensemble_stem_bucket(secondary_stem, stem_count=1),
+                bucket_for_model_stem(primary_stem, stem_count=1).value,
+                bucket_for_model_stem(secondary_stem, stem_count=1).value,
             }
         else:
-            wanted = set(wanted_buckets)
-        wanted.discard(BUCKET_UNKNOWN)
+            wanted = {_as_bucket_value(item) for item in wanted_buckets}
+        wanted.discard(StemBucket.UNKNOWN.value)
 
         def bucket_of(model: "ModelConfig", stem: str) -> str:
-            # model_stem_count, not mdx_stem_count: a Demucs model keeps its
-            # count on demucs_stem_count and leaves mdx_stem_count at 1.
-            return ensemble_stem_bucket(
+            return bucket_for_model_stem(
                 stem,
                 stem_count=model_stem_count(model),
                 is_karaoke=bool(getattr(model, "is_karaoke", False)),
                 is_bv=bool(getattr(model, "is_bv_model", False)),
-            )
+            ).value
 
         def matches_stem(model: "ModelConfig") -> bool:
             if not wanted:
@@ -287,7 +282,7 @@ class ModelRepository:
 
         def demucs_match(model: "ModelConfig") -> bool:
             return any(
-                ensemble_stem_bucket(stem, stem_count=4) in wanted
+                bucket_for_model_stem(stem, stem_count=4).value in wanted
                 for stem in model.demucs_source_list
             )
 
@@ -308,28 +303,39 @@ class ModelRepository:
                 model_list.append(model.model_and_process_tag)
         return model_list
 
-    def ensemble_model_list(self, settings: Settings, ensemble_main_stem: str) -> List[str]:
+    def ensemble_model_list(
+        self, settings: Settings, ensemble_main_stem: Any
+    ) -> List[str]:
         """Models compatible with the chosen ensemble main-stem pair.
 
-        Port of ``selection_action_ensemble_stems``'s call to ``model_list``:
-        a specific pair filters to models that produce that stem; the 4-stem
-        ensemble keeps only 4-source models; the multi-stem ensemble keeps every
-        model. Returns the ``"<arch>: <model>"`` tags used as ensemble members.
+        Accepts :class:`~core.stems.EnsemblePair` or its stable id. Legacy
+        display pair strings coerce to :attr:`~core.stems.EnsemblePair.CHOOSE`
+        and yield an empty list.
         """
-        if ensemble_main_stem in (CHOOSE_STEM_PAIR, "", None):
-            return []
-        if ensemble_main_stem == MULTI_STEM_ENSEMBLE:
-            return [model.model_and_process_tag for model in self.stem_check(settings)]
-        if ensemble_main_stem == FOUR_STEM_ENSEMBLE:
-            return self.model_list(settings, PRIMARY_STEM, SECONDARY_STEM, is_4_stem_check=True)
-        from .model_stem_semantics import ensemble_pair_buckets
+        from core.stems import EnsemblePair, StemBucket, coerce_ensemble_pair
 
-        stems = ensemble_main_stem.partition("/")
+        pair = (
+            ensemble_main_stem
+            if isinstance(ensemble_main_stem, EnsemblePair)
+            else coerce_ensemble_pair(ensemble_main_stem)
+        )
+        if pair is EnsemblePair.CHOOSE:
+            return []
+        if pair is EnsemblePair.MULTI_STEM:
+            return [model.model_and_process_tag for model in self.stem_check(settings)]
+        if pair is EnsemblePair.FOUR_STEM:
+            return self.model_list(
+                settings, PRIMARY_STEM, SECONDARY_STEM, is_4_stem_check=True
+            )
+        primary, secondary = pair.buckets()
+        primary_ui, secondary_ui = pair.stem_halves()
+        wanted = {primary, secondary}
+        wanted.discard(StemBucket.UNKNOWN)
         return self.model_list(
             settings,
-            stems[0],
-            stems[2],
-            wanted_buckets=set(ensemble_pair_buckets(ensemble_main_stem)),
+            primary_ui,
+            secondary_ui,
+            wanted_buckets=wanted,
         )
 
     def resolve_model_dry(self, settings: Settings, process_method: str, model_name: str):
@@ -403,7 +409,7 @@ class _ModelConfigImplementation:
         demucs = settings.demucs
         ensemble = settings.ensemble
 
-        device_set = process.device
+        device_set = process.device or DEFAULT
         self.DENOISER_MODEL = paths.DENOISER_MODEL_PATH
         self.DEVERBER_MODEL = paths.DEVERBER_MODEL_PATH
         self.is_deverb_vocals = (
@@ -411,9 +417,10 @@ class _ModelConfigImplementation:
             if os.path.isfile(paths.DEVERBER_MODEL_PATH)
             else False
         )
-        self.deverb_vocal_opt = DEVERB_MAPPER[process.deverb_vocal_opt]
+        self.deverb_vocal_opt = DEVERB_MAPPER[enum_value(process.deverb_vocal_opt)]
+        denoise_opt = enum_value(mdx.denoise_option)
         self.is_denoise_model = bool(
-            mdx.denoise_option == DENOISE_M
+            denoise_opt == DENOISE_M
             and os.path.isfile(paths.DENOISER_MODEL_PATH)
         )
         self.is_gpu_conversion = bool(process.use_gpu)
@@ -430,19 +437,18 @@ class _ModelConfigImplementation:
         self.is_use_directml = bool(process.use_directml)
         self.is_primary_stem_only = process.primary_stem_only
         self.is_secondary_stem_only = process.secondary_stem_only
-        self.is_denoise = mdx.denoise_option != DENOISE_NONE
+        self.is_denoise = denoise_opt != DENOISE_NONE
         self.is_mdx_c_seg_def = mdx.is_mdx_c_seg_def
         self.mdx_batch_size = (
-            1 if mdx.batch_size == DEF_OPT else int(mdx.batch_size)
+            1 if mdx.batch_size is None else int(mdx.batch_size)
         )
         self.mdxnet_stem_select = mdx.stems
         self.mdxnet_stems_selected = mdx.stems_selected or []
-        self.overlap = (
-            float(demucs.overlap) if demucs.overlap != DEFAULT else 0.25
+        self.overlap = float(demucs.overlap)
+        self.overlap_mdx = (
+            0.25 if mdx.overlap_mdx is None else float(mdx.overlap_mdx)
         )
-        overlap_mdx_val = mdx.overlap_mdx
-        self.overlap_mdx = float(overlap_mdx_val) if overlap_mdx_val != DEFAULT else 0.25
-        self.overlap_mdx23 = int(float(mdx.overlap_mdx23))
+        self.overlap_mdx23 = int(mdx.overlap_mdx23)
         self.semitone_shift = float(process.semitone_shift)
         self.is_pitch_change = False if self.semitone_shift == 0 else True
         self.is_match_frequency_pitch = mdx.is_match_frequency_pitch
@@ -464,9 +470,11 @@ class _ModelConfigImplementation:
         self.compensate: Any = None
         self.mdx_n_fft_scale_set: Any = None
         self.wav_type_set = resolve_wav_type_set(settings)
-        self.device_set = device_set.split(":")[-1].strip() if ":" in device_set else device_set
-        self.mp3_bit_set = process.mp3_bitrate
-        self.flac_bit_set = process.flac_bit_depth
+        self.device_set = (
+            device_set.split(":")[-1].strip() if ":" in device_set else device_set
+        )
+        self.mp3_bit_set = enum_value(process.mp3_bitrate)
+        self.flac_bit_set = enum_value(process.flac_bit_depth)
         self.save_format = process.save_format.value
         self.is_invert_spec = mdx.is_invert_spec
         self.is_mixer_mode = False
@@ -541,11 +549,13 @@ class _ModelConfigImplementation:
             is_not_secondary_or_pre_proc = not is_secondary_model and not is_pre_proc_model
             self.is_ensemble_mode = is_not_secondary_or_pre_proc
 
-            ensemble_main_stem = ensemble.main_stem
-            if ensemble_main_stem == FOUR_STEM_ENSEMBLE:
+            from core.stems import EnsemblePair, coerce_ensemble_pair
+
+            ensemble_pair = coerce_ensemble_pair(ensemble.main_stem)
+            if ensemble_pair is EnsemblePair.FOUR_STEM:
                 self.is_4_stem_ensemble = self.is_ensemble_mode
             elif (
-                ensemble_main_stem == MULTI_STEM_ENSEMBLE
+                ensemble_pair is EnsemblePair.MULTI_STEM
                 and process.method == ENSEMBLE_MODE
             ):
                 self.is_multi_stem_ensemble = True
@@ -564,7 +574,7 @@ class _ModelConfigImplementation:
             self.is_post_process = vr.is_post_process
             self.window_size = int(vr.window_size)
             self.batch_size = (
-                1 if vr.batch_size == DEF_OPT else int(vr.batch_size)
+                1 if vr.batch_size is None else int(vr.batch_size)
             )
             self.crop_size = int(vr.crop_size)
             self.is_high_end_process = (
@@ -698,7 +708,7 @@ class _ModelConfigImplementation:
                     else:
                         self.compensate = (
                             self.model_data["compensate"]
-                            if mdx.compensate == AUTO_SELECT
+                            if mdx.compensate is None
                             else float(mdx.compensate)
                         )
                         self.mdx_dim_f_set = self.model_data["mdx_dim_f_set"]
@@ -724,7 +734,10 @@ class _ModelConfigImplementation:
             self.chunks_demucs = 0
             self.shifts = int(demucs.shifts)
             self.is_split_mode = demucs.is_split_mode
-            self.segment = demucs.segment
+            # Engine ``demucs_segments`` expects the legacy ``Default`` label.
+            self.segment = (
+                DEF_OPT if demucs.segment is None else str(demucs.segment)
+            )
             self.is_chunk_demucs = demucs.is_chunk_demucs
             self.is_primary_stem_only = (
                 process.primary_stem_only
@@ -830,17 +843,20 @@ class _ModelConfigImplementation:
         if self.secondary_model:
             self.is_secondary_model_activated = False if self.secondary_model.model_basename == self.model_basename else True
 
-    def return_ensemble_stems(self, is_primary: typing.Any=False):
-        """Port of ``MainWindow.return_ensemble_stems``.
+    def return_ensemble_stems(self, is_primary: typing.Any = False):
+        """Return UI stem-half labels for the chosen :class:`~core.stems.EnsemblePair`.
 
-        Splits the chosen ensemble main-stem pair (e.g. ``"Vocals/Instrumental"``)
-        into its primary/secondary halves, reading the value from the settings
-        model instead of ``ensemble_main_stem_var``.
+        These are Save-stems / stem-only labels, not filename combine tags
+        (:meth:`~core.stems.EnsemblePair.buckets` / ``filename_tag``).
         """
-        ensemble_stem = self.settings.ensemble.main_stem.partition("/")
+        from core.stems import coerce_ensemble_pair
+
+        primary, secondary = coerce_ensemble_pair(
+            self.settings.ensemble.main_stem
+        ).stem_halves()
         if is_primary:
-            return ensemble_stem[0]
-        return ensemble_stem[0], ensemble_stem[2]
+            return primary
+        return primary, secondary
 
     def check_only_selection_stem(self, checktype: typing.Any):
         """Port of ``MainWindow.check_only_selection_stem``.
@@ -1297,16 +1313,20 @@ def list_saved_ensembles() -> List[str]:
     return sorted(names)
 
 
-def save_ensemble(name: str, ensemble_main_stem: str, ensemble_type: str, selected_models: typing.Any) -> str:
-    """Persist an ensemble exactly like ``pop_up_save_ensemble_sub_json_dump``.
+def save_ensemble(
+    name: str, ensemble_main_stem: Any, ensemble_type: str, selected_models: typing.Any
+) -> str:
+    """Persist an ensemble (``ensemble_main_stem`` is an :class:`~core.stems.EnsemblePair` id)."""
+    from core.stems import EnsemblePair, coerce_ensemble_pair
 
-    The JSON schema matches UVR's (``ensemble_main_stem`` / ``ensemble_type`` /
-    ``selected_models``) so saved ensembles are interchangeable between the Tk
-    app and the GTK rewrite. Returns the path written.
-    """
+    pair = (
+        ensemble_main_stem
+        if isinstance(ensemble_main_stem, EnsemblePair)
+        else coerce_ensemble_pair(ensemble_main_stem)
+    )
     os.makedirs(ENSEMBLE_CACHE_DIR, exist_ok=True)
     saved_data = {
-        "ensemble_main_stem": ensemble_main_stem,
+        "ensemble_main_stem": pair.value,
         "ensemble_type": ensemble_type,
         "selected_models": list(selected_models),
     }

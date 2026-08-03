@@ -36,8 +36,6 @@ def peak_limit_gain(audio_arrays: Mapping[str, np.ndarray], *, peak_limit: float
         return 1.0
     peak = 0.0
     for audio in audio_arrays.values():
-        if audio is None:
-            continue
         arr = _as_float_array(audio)
         if arr.size:
             peak = max(peak, float(np.max(np.abs(arr))))
