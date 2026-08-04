@@ -106,6 +106,14 @@ def load_politrees_links(*, force: bool = False) -> Optional[Dict]:
     _cached_weight_index = None
     _cached_loaded_at = now
     _write_disk_cache(data)
+    # Local import: core.model_display imports this module for _display_base.
+    # New data means the memoized merge is stale, regardless of who triggered
+    # this fetch (a fresh session, a TTL rollover, or an explicit refresh) —
+    # invalidate at the point the data actually changes, not just at
+    # clear_politrees_cache(), which callers may never invoke.
+    from .model_display import clear_display_cache
+
+    clear_display_cache()
     return data
 
 

@@ -243,6 +243,15 @@ def load_mvsepless_models(*, force: bool = False) -> Optional[Dict[str, Any]]:
     _cached_loaded_at = now
     _cached_converted = None
     _write_disk_cache(data)
+    # Local import: avoids a hard dependency edge from this module to
+    # core.model_display for a call that only fires on data refresh. New
+    # data means the memoized merge is stale, regardless of who triggered
+    # this fetch (a fresh session, a TTL rollover, or an explicit refresh) —
+    # invalidate at the point the data actually changes, not just at
+    # clear_mvsepless_cache(), which callers may never invoke.
+    from .model_display import clear_display_cache
+
+    clear_display_cache()
     return data
 
 
