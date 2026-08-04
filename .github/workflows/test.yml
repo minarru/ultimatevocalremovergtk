@@ -3,8 +3,16 @@ name: Test
 on:
   push:
     branches: [main]
+  # Deliberately unfiltered. `branches:` here matches the PR's *base*, so
+  # `[main]` silently skipped every stacked PR (a feature branch targeting
+  # another feature branch): no checks appeared at all, and retargeting to main
+  # did not help either, because that fires `edited`, which is not one of the
+  # default activity types (opened/synchronize/reopened). Running on every base
+  # does not double up — `push` is limited to main, so a PR branch only ever
+  # fires this event.
   pull_request:
-    branches: [main]
+  # Lets a run be re-triggered from the Actions tab without an empty commit.
+  workflow_dispatch:
 
 jobs:
   unittest:
