@@ -311,6 +311,7 @@ class DownloadCenterWindow:
         list_box.set_selection_mode(Gtk.SelectionMode.NONE)
         list_box.add_css_class("boxed-list")
         list_box.set_filter_func(lambda row, a=arch: self._row_matches_filter(row, a))
+        list_box.set_sort_func(lambda r1, r2: self._compare_rows(r1, r2))
         scroller = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
         scroller.set_child(list_box)
         page.append(scroller)
@@ -337,6 +338,30 @@ class DownloadCenterWindow:
         if not query:
             return True
         return query in str(label).casefold()
+
+    def _row_sort_key(self, row: typing.Any) -> tuple[int, int, float, str]:
+        """Order key: supported first, then the active sort mode, then name."""
+        unsupported = 1 if fetch(row, "_uvr_unsupported", False) else 0
+        name = fetch(row, "_uvr_sort_name", "")
+        if self._sort_mode == SORT_SDR and not unsupported:
+            sdr = fetch(row, "_uvr_sdr", None)
+            if sdr is None:
+                # Unscored models sink below scored ones, as in the old sort.
+                return (unsupported, 1, 0.0, name)
+            return (unsupported, 0, -float(sdr), name)
+        return (unsupported, 0, 0.0, name)
+
+    def _compare_rows(self, row1: typing.Any, row2: typing.Any) -> int:
+        left = self._row_sort_key(row1)
+        right = self._row_sort_key(row2)
+        if left < right:
+            return -1
+        return 1 if left > right else 0
+
+    def _invalidate_all_sorts(self) -> None:
+        for arch, list_box in self._list_boxes.items():
+            list_box.invalidate_sort()
+            self._update_catalogue_page_state(arch)
 
     def _on_hide_unsupported_changed(self, *_args: typing.Any) -> None:
         self._hide_unsupported = bool(self.hide_unsupported_row.get_active())
@@ -365,7 +390,9 @@ class DownloadCenterWindow:
             (value for value, text in SORT_OPTIONS if text == label),
             SORT_NAME,
         )
-        self._rebuild_catalogue()
+        # Re-sorting in place keeps every checked row, the way Purpose
+        # filtering always has. Rebuilding dropped the selection.
+        self._invalidate_all_sorts()
 
     def _invalidate_all_filters(self) -> None:
         for arch, list_box in self._list_boxes.items():
@@ -419,6 +446,7 @@ class DownloadCenterWindow:
         stash(action, "_uvr_sdr", sdr)
         stash(action, "_uvr_sdr_stem", stem)
         stash(action, "_uvr_stems_text", stems_text)
+        stash(action, "_uvr_sort_name", canonical_display_name(name).casefold())
         set_row_subtitle(action, format_sdr_subtitle(sdr, stem=stem, extra=stems_text))
 
         self._row_checks[key] = check
@@ -440,6 +468,7 @@ class DownloadCenterWindow:
         stash(action, "_uvr_sdr", parse_sdr_score(name))
         stash(action, "_uvr_sdr_stem", None)
         stash(action, "_uvr_stems_text", "")
+        stash(action, "_uvr_sort_name", canonical_display_name(name).casefold())
 
         self._row_actions[key] = action
         self._list_boxes[arch].append(action)
@@ -790,18 +819,6 @@ class DownloadCenterWindow:
                 for name in (self._available.get(arch) or [])
                 if name not in (NO_NEW_MODELS, NO_CONNECTION)
             ]
-            if self._sort_mode == SORT_SDR:
-                def _sort_key(label: str) -> tuple[int, float, str]:
-                    _stem, sdr, _stems = self._row_score(label)
-                    if sdr is None:
-                        return (1, 0.0, canonical_display_name(label).casefold())
-                    return (0, -sdr, canonical_display_name(label).casefold())
-
-                models = sorted(models, key=_sort_key)
-            else:
-                models = sorted(
-                    models, key=lambda value: canonical_display_name(value).casefold()
-                )
             for name in models:
                 self._add_model_row(arch, name)
             unsupported = sorted(
