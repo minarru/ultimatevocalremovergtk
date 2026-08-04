@@ -49,6 +49,10 @@ def clear_politrees_cache() -> None:
     _cached_links = None
     _cached_weight_index = None
     _cached_loaded_at = 0.0
+    # Local import: core.model_display imports this module for _display_base.
+    from .model_display import clear_display_cache
+
+    clear_display_cache()
 
 
 def _read_disk_cache() -> Optional[Dict]:

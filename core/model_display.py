@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -228,12 +229,18 @@ def _display_base(keys: Tuple[str, ...]) -> Dict[str, Any]:
     return flat
 
 
+@functools.lru_cache(maxsize=1)
 def _merged_for_display():
     """Merged catalogues built from the upstream cache plus every supplement.
 
     Reads the same merge the Download Center does, which is the whole point:
     two separate merge paths are what left mvsepless and extras models showing
     as raw basenames here while the Download Center named them correctly.
+
+    Memoized: this walks every catalogue source and re-reads
+    ``model_manual_download.json``, and ``format_tag_title`` calls it once per
+    dropdown entry. Invalidate through :func:`clear_display_cache` whenever a
+    source changes (politrees refresh, hash-mapper reload).
     """
     from .catalog_sources import merged_catalogues
 
@@ -242,6 +249,11 @@ def _merged_for_display():
         mdx=_display_base(_MDX_CATALOG_SOURCE_KEYS),
         demucs=_display_base(_DEMUCS_CATALOG_SOURCE_KEYS),
     )
+
+
+def clear_display_cache() -> None:
+    """Drop the memoized catalogue merge (call when any source changes)."""
+    _merged_for_display.cache_clear()
 
 
 def _index_from_meta(merged: "MergedCatalogues", arch: str) -> Dict[str, str]:
