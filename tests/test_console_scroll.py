@@ -90,17 +90,35 @@ class ConsoleScrollTests(unittest.TestCase):
 
     def test_done_check_does_not_copy_the_buffer(self) -> None:
         from bundled.constants import DONE
+        from gi.repository import Gtk
         from ui.widgets.console import ConsoleView
 
         console = ConsoleView()
         for i in range(500):
             console.append(f"line {i}\n")
 
-        def fail(*_args: object, **_kwargs: object) -> str:
-            raise AssertionError("append() copied the whole buffer for the DONE check")
+        # Spy on Gtk.TextBuffer.get_text to measure copy sizes, not just method name.
+        # This catches if _ends_with_newline() later regresses to copying the
+        # whole buffer via any API path.
+        orig_get_text = Gtk.TextBuffer.get_text
+        spans: list[int] = []
 
-        console.get_text = fail  # type: ignore[method-assign]
-        console.append(DONE)
+        def spy_get_text(buf: Gtk.TextBuffer, start: Gtk.TextIter, end: Gtk.TextIter, include_hidden: bool) -> str:
+            spans.append(end.get_offset() - start.get_offset())
+            return orig_get_text(buf, start, end, include_hidden)
+
+        try:
+            Gtk.TextBuffer.get_text = spy_get_text  # type: ignore[method-assign]
+            # Clear spans accumulated during setup; measure only the DONE call.
+            spans.clear()
+            console.append(DONE)
+            max_span = max(spans) if spans else 0
+            self.assertLessEqual(
+                max_span, 1,
+                f"append() copied {max_span} chars for the DONE check; expected <= 1"
+            )
+        finally:
+            Gtk.TextBuffer.get_text = orig_get_text  # type: ignore[method-assign]
 
 
 if __name__ == "__main__":
