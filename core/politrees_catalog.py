@@ -150,12 +150,14 @@ def load_politrees_links(*, force: bool = False) -> Optional[Dict]:
             return _cached_links
 
     data: Optional[Dict] = None
+    from_disk = False
     try:
         with _urlopen(POLITREES_MODEL_LINKS_URL) as response:
             data = json.load(response)
     except Exception as exc:
         debug("download", f"politrees fetch failed err={type(exc).__name__}: {exc}")
         data = _read_disk_cache()
+        from_disk = True
 
     if not isinstance(data, dict):
         return None
@@ -163,7 +165,11 @@ def load_politrees_links(*, force: bool = False) -> Optional[Dict]:
     _cached_links = data
     _cached_weight_index = None
     _cached_loaded_at = now
-    _write_disk_cache(data)
+    if not from_disk:
+        # Rewriting here would stamp fetched_at=now onto the copy we just read
+        # back from disk, so an offline session makes month-old data look
+        # freshly fetched and the TTL never expires.
+        _write_disk_cache(data)
     # Local import: core.model_display imports this module for _display_base.
     # New data means the memoized merge is stale, regardless of who triggered
     # this fetch (a fresh session, a TTL rollover, or an explicit refresh) —
