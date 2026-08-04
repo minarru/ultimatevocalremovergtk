@@ -89,6 +89,24 @@ no upstream Tkinter equivalent -- so no GitHub issue to link.
 
 ---
 
+## UI performance follow-ups (from the 2026-08-04 startup/console pass)
+
+Deferred deliberately during [docs/superpowers/plans/2026-08-04-ui-performance.md](superpowers/plans/2026-08-04-ui-performance.md); triaged as follow-up by the whole-branch review, none blocking. Status `open` unless noted.
+
+| Item | Where | Why it was deferred |
+|------|-------|---------------------|
+| Cross-thread `clear_display_cache()` can be swallowed by an in-flight `lru_cache` miss | [core/model_display.py](../core/model_display.py) `_merged_for_display` | Bounded: the disk fast path only serves entries under TTL, so a pinned merge is at most 24 h stale, affects display labels only, and self-heals next launch. Fix is a generation counter — key the cache on an int that `clear_display_cache()` bumps, so a mid-flight clear cannot be lost. |
+| Only one of three `clear_<source>_cache()` functions invalidates the merge | `clear_politrees_cache` does; `clear_mvsepless_cache` ([core/mvsepless_catalog.py](../core/mvsepless_catalog.py)) and `clear_extra_catalog_cache` ([core/extra_catalog.py](../core/extra_catalog.py)) do not | No production callers today (tests only), but it is a trap for the next editor: clearing a source leaves the merge that consumes it stale. |
+| Both refresh threads invalidate the merge even when the refetched payload is unchanged | [core/politrees_catalog.py](../core/politrees_catalog.py), [core/mvsepless_catalog.py](../core/mvsepless_catalog.py) | Two full merges discarded per launch for a catalogue that changes far less than daily. Guard with `if data != _cached_*:` before clearing. |
+| Startup win is conditional on a warm, in-TTL disk cache | both catalogue modules | First-ever launch, or a >24 h-old cache, still pays a blocking main-thread `_urlopen` (30 s timeout) exactly as before this work. Not a regression. Making it unconditional means stale-while-revalidate: serve the stale entry immediately, let the background refresh fetch. |
+| No test exercises the `Gtk.ListBox.set_sort_func` wiring | [ui/download_center.py](../ui/download_center.py) | `_compare_rows` is tested directly, but nothing installs it on a real list box, so a callback-signature mismatch would only surface at runtime. Verified correct by hand. |
+| No test for two unmapped appends → a single `map` handler | [ui/widgets/console.py](../ui/widgets/console.py) `_scroll_when_mapped` | Guard is correct by inspection; the accumulation case is untested. |
+| No test for the `reload_mappers` display-cache invalidation hook | [core/model_data.py](../core/model_data.py) | The hook is defensive — `_merged_for_display` reads no hash mapper — so it is the low-risk one of the two. |
+| Unsupported Download Center rows now order by `canonical_display_name` casefold rather than raw label | [ui/download_center.py](../ui/download_center.py) | User-visible for the unsupported subset. Net-corrects a prior mismatch (titles already rendered through `canonical_display_name` while the sort used the raw label). |
+| While unmapped, each console `append` still schedules one idle that immediately returns | [ui/widgets/console.py](../ui/widgets/console.py) `_scroll_to_end` | 1 idle per append, down from ~265k/s. An early-out on `_map_handler_id` would make it zero. |
+
+---
+
 ## FAQ / support threads (link only, not tracked)
 
 - **#344, #206, #469** — model/settings recommendations  
