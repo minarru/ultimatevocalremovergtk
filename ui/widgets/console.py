@@ -80,7 +80,7 @@ class ConsoleView(Gtk.ScrolledWindow):
         # ``DONE`` completes the current in-progress line (no trailing newline).
         # Skip it when there is no open line, which avoids a lone " Done!" at run
         # start before the first "Running inference..." message is written.
-        if text == DONE and (self.is_empty() or self.get_text().endswith("\n")):
+        if text == DONE and (self.is_empty() or self._ends_with_newline()):
             return
 
         end = self._buffer.get_end_iter()
@@ -91,6 +91,19 @@ class ConsoleView(Gtk.ScrolledWindow):
         else:
             self._scroll_to_end()
         self._notify_changed()
+
+    def _ends_with_newline(self) -> bool:
+        """Whether the buffer's last character is a newline.
+
+        ``get_text()`` would copy the whole buffer (up to the line cap) to
+        inspect one character; ``append`` runs this on every ``DONE`` marker.
+        """
+        end = self._buffer.get_end_iter()
+        if end.get_offset() == 0:
+            return False
+        start = end.copy()
+        start.backward_char()
+        return self._buffer.get_text(start, end, False) == "\n"
 
     def _trim_to_line_cap(self) -> None:
         line_count = self._buffer.get_line_count()

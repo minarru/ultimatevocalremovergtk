@@ -70,6 +70,38 @@ class ConsoleScrollTests(unittest.TestCase):
             console._map_handler_id, "expected a pending map handler while unmapped"
         )
 
+    def test_done_marker_skipped_without_an_open_line(self) -> None:
+        from bundled.constants import DONE
+        from ui.widgets.console import ConsoleView
+
+        console = ConsoleView()
+        console.append("Running inference...\n")
+        console.append(DONE)
+        self.assertNotIn(DONE.strip(), console.get_text())
+
+    def test_done_marker_appended_to_an_open_line(self) -> None:
+        from bundled.constants import DONE
+        from ui.widgets.console import ConsoleView
+
+        console = ConsoleView()
+        console.append("Running inference...")
+        console.append(DONE)
+        self.assertIn(DONE.strip(), console.get_text())
+
+    def test_done_check_does_not_copy_the_buffer(self) -> None:
+        from bundled.constants import DONE
+        from ui.widgets.console import ConsoleView
+
+        console = ConsoleView()
+        for i in range(500):
+            console.append(f"line {i}\n")
+
+        def fail(*_args: object, **_kwargs: object) -> str:
+            raise AssertionError("append() copied the whole buffer for the DONE check")
+
+        console.get_text = fail  # type: ignore[method-assign]
+        console.append(DONE)
+
 
 if __name__ == "__main__":
     unittest.main()
