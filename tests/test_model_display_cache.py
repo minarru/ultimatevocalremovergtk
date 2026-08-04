@@ -17,7 +17,16 @@ from core.mvsepless_catalog import clear_mvsepless_cache
 from core.politrees_catalog import clear_politrees_cache
 
 
+@mock.patch.dict(
+    os.environ, {"UVR_DISABLE_POLITREES": "1", "UVR_DISABLE_MVSEPLESS": "1"}
+)
 class MergedForDisplayCacheTests(unittest.TestCase):
+    """All three assertions here are about ``lru_cache`` identity/invalidation,
+    not catalogue content, so both live sources are disabled for the whole
+    class -- otherwise every call to ``_merged_for_display()`` fetches
+    politrees and mvsepless over the network.
+    """
+
     def setUp(self) -> None:
         md.clear_display_cache()
 
@@ -82,7 +91,10 @@ class CatalogueRefreshInvalidatesDisplayCacheTests(unittest.TestCase):
         def _fetch(payload: dict):
             return lambda url: io.BytesIO(json.dumps(payload).encode("utf-8"))
 
-        with mock.patch.dict(os.environ, {"UVR_DISABLE_POLITREES": "0"}):
+        with mock.patch.dict(
+            os.environ,
+            {"UVR_DISABLE_POLITREES": "0", "UVR_DISABLE_MVSEPLESS": "1"},
+        ):
             with mock.patch.object(pc, "_write_disk_cache"):
                 with mock.patch.object(
                     pc,
@@ -134,7 +146,10 @@ class CatalogueRefreshInvalidatesDisplayCacheTests(unittest.TestCase):
         def _fetch(payload: dict):
             return lambda url: io.BytesIO(json.dumps(payload).encode("utf-8"))
 
-        with mock.patch.dict(os.environ, {"UVR_DISABLE_MVSEPLESS": "0"}):
+        with mock.patch.dict(
+            os.environ,
+            {"UVR_DISABLE_MVSEPLESS": "0", "UVR_DISABLE_POLITREES": "1"},
+        ):
             with mock.patch.object(mc, "_write_disk_cache"):
                 with mock.patch.object(
                     mc,

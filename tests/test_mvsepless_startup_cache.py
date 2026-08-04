@@ -27,7 +27,13 @@ class MvseplessStartupCacheTests(unittest.TestCase):
         # The suite may be run with UVR_DISABLE_MVSEPLESS=1 ambient; these
         # tests exercise load_mvsepless_models's disk-cache path specifically
         # and need mvsepless_enabled() to read True regardless of that.
-        self._env_patch = mock.patch.dict(os.environ, {"UVR_DISABLE_MVSEPLESS": "0"})
+        # Politrees is unrelated to what this class tests, so it stays
+        # disabled here -- otherwise _merged_for_display() (exercised below)
+        # fetches it live.
+        self._env_patch = mock.patch.dict(
+            os.environ,
+            {"UVR_DISABLE_MVSEPLESS": "0", "UVR_DISABLE_POLITREES": "1"},
+        )
         self._env_patch.start()
         mc.clear_mvsepless_cache()
 
