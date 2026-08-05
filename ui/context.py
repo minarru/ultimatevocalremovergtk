@@ -66,7 +66,12 @@ class AppContext:
     @property
     def repo(self) -> ModelRepository:
         if self._repo is None:
+            from core.model_hash_cache import flatten_trusted
+
             self._repo = ModelRepository()
+            self._repo.model_hash_table = flatten_trusted(
+                self.settings.process.model_hash_table
+            )
             self._install_unrecognized_model_hook()
         return self._repo
 

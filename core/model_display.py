@@ -232,6 +232,7 @@ def _display_base(keys: Tuple[str, ...]) -> Dict[str, Any]:
 #: Bumped by :func:`clear_display_cache` so an in-flight ``lru_cache`` miss
 #: that finishes *after* a clear cannot re-pin a stale merge under the live key.
 _display_generation: int = 0
+_format_tag_title_cache: dict[tuple[str, int], str] = {}
 
 
 @functools.lru_cache(maxsize=4)
@@ -276,6 +277,7 @@ def clear_display_cache() -> None:
     global _display_generation
     _display_generation += 1
     _merged_for_display_at.cache_clear()
+    _format_tag_title_cache.clear()
 
 
 def _index_from_meta(merged: "MergedCatalogues", arch: str) -> Dict[str, str]:
@@ -483,11 +485,25 @@ def format_tag_subtitle(tag: str) -> str:
 
 
 def format_tag_title(tag: str, repo: "ModelRepository") -> str:
-    """Return the friendly model label for a full arch tag."""
+    """Return the friendly model label for a full arch tag.
+
+    Memoized process-globally (keyed on ``tag`` plus :data:`_display_generation`,
+    not on ``repo``), so a different/refreshed ``repo`` won't recompute a label
+    already cached under the current generation. Call :func:`clear_display_cache`
+    (also invoked by :class:`ModelRepository` construction) after anything that
+    could change how a tag resolves.
+    """
+    key = (tag, _display_generation)
+    cached = _format_tag_title_cache.get(key)
+    if cached is not None:
+        return cached
     arch, model_name = parse_model_tag(tag)
     if not arch:
-        return model_name
-    return display_name_for_model(arch, model_name, repo)
+        result = model_name
+    else:
+        result = display_name_for_model(arch, model_name, repo)
+    _format_tag_title_cache[key] = result
+    return result
 
 
 def map_basenames_to_display(

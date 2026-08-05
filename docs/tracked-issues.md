@@ -53,6 +53,7 @@ no upstream Tkinter equivalent -- so no GitHub issue to link.
 |----|--------|--------|----------|----------|------|-------|
 | **F1** | Model-options sheet auto-expand hashes checkpoints synchronously | done | medium | n/a — fork-only (feature not in upstream) | — | Fixed: `_sync_expander_summaries` / vocal-split restore set a defer flag so `notify::expanded` schedules populate via `idle_on_main` ([ui/views/base.py](../ui/views/base.py), [ui/widgets/vocal_split_row.py](../ui/widgets/vocal_split_row.py)). Visual expand stays synchronous; hashing runs after first paint. Covered by [tests/test_defer_combo_populate.py](../tests/test_defer_combo_populate.py). |
 | **F2** | `parent_window_width` calls a GTK3 method that does not exist in GTK4 | done | medium | n/a — fork-only (helper has no upstream equivalent) | — | Fixed in [ui/dialogs/utils.py](../ui/dialogs/utils.py): unrealized parents use `get_default_size()[0]`, falling back to the caller default when that returns 0. (`hasattr(Gtk.Window, "get_default_width")` is still `False` on GTK4.) Unrealized-parent path covered by [tests/test_errorlog.py](../tests/test_errorlog.py). |
+| **F3** | Repeated model-list metadata work | done | medium | n/a — fork-only (feature not in upstream) | — | Closed by the [UI metadata cache plan](superpowers/plans/2026-08-05-ui-metadata-cache.md): karaoke/BV eligibility is cached per tag set, checkpoint hashes persist as mtime/size-guarded settings entries, and `format_tag_title` is memoized per display generation. |
 
 ---
 

@@ -17,7 +17,7 @@ import typing
 
 import json
 import os
-from typing import AbstractSet, Any, Callable, Dict, List, Optional, Sequence, cast
+from typing import AbstractSet, Any, Callable, Dict, List, Optional, Sequence, Tuple, cast
 
 from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
 
@@ -116,12 +116,14 @@ class ModelRepository:
         self.mdx_hash_MAPPER: dict = {}
         self.mdx_name_select_MAPPER: dict = {}
         self.demucs_name_select_MAPPER: dict = {}
+        # AppContext seeds this ephemeral cache from trusted persisted entries.
         self.model_hash_table: Dict[str, str] = {}
         # Phase 3 hook: later phases set this to a callable that prompts the user
         # for parameters of an unrecognized model. Returning ``None`` (the
         # default) simply marks such models as unavailable.
         self.on_unrecognized_model: Optional[Callable[["ModelConfig"], Any]] = None
         self._stem_check_cache = None
+        self._karaoke_cache: Optional[Tuple[Tuple[str, ...], List[str]]] = None
         self.reload_mappers()
 
     def reload_mappers(self) -> None:
@@ -229,6 +231,7 @@ class ModelRepository:
 
         debug("model", "invalidate_stem_check")
         self._stem_check_cache = None
+        self._karaoke_cache = None
 
     def model_list(
         self,
@@ -298,12 +301,16 @@ class ModelRepository:
 
     def karaoke_model_list(self, settings: Settings) -> List[str]:
         """Build the dry-check vocal-split model pool."""
+        tags = tuple(self.default_change_model_tags())
+        if self._karaoke_cache is not None and self._karaoke_cache[0] == tags:
+            return list(self._karaoke_cache[1])
         model_list: List[str] = []
-        for tag in self.default_change_model_tags():
+        for tag in tags:
             model = ModelConfig(settings, self, tag, is_dry_check=True)
             if model.model_status and (model.is_karaoke or model.is_bv_model):
                 model_list.append(model.model_and_process_tag)
-        return model_list
+        self._karaoke_cache = (tags, model_list)
+        return list(model_list)
 
     def ensemble_model_list(
         self, settings: Settings, ensemble_main_stem: Any
@@ -1057,21 +1064,28 @@ class _ModelConfigImplementation:
             return self.repo.on_unrecognized_model(cast(Any, self))
         return None
 
-    def get_model_hash(self):
+    def get_model_hash(self) -> None:
+        from .model_hash_cache import lookup_trusted, remember
+
         self.model_hash = None
         if not os.path.isfile(self.model_path):
             self.model_status = False
             return
+        path = self.model_path
         cache = self.repo.model_hash_table
-        if cache:
-            for key, value in cache.items():
-                if self.model_path == key:
-                    self.model_hash = value
-                    break
-        if not self.model_hash:
-            self.model_hash = compute_checkpoint_hash(self.model_path)
-            if self.model_hash:
-                cache.update({self.model_path: self.model_hash})
+        trusted = lookup_trusted(self.settings.process.model_hash_table, path)
+        if trusted:
+            self.model_hash = trusted
+            cache[path] = trusted
+            return
+        cached = cache.get(path)
+        if cached:
+            self.model_hash = cached
+            return
+        self.model_hash = compute_checkpoint_hash(path)
+        if self.model_hash:
+            cache[path] = self.model_hash
+            remember(self.settings.process.model_hash_table, path, self.model_hash)
 
     def _sync_option_groups(self) -> None:
         """Snapshot flat compatibility attributes into typed option groups."""
