@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields, replace
 from enum import Enum
 from typing import Any, TypeVar, cast
 
@@ -253,9 +253,20 @@ class Settings:
         return cls.from_json_dict(default_settings_dict())
 
     def to_json_dict(self) -> dict[str, Any]:
+        # model_hash_table can gain entries from the JobRunner worker thread
+        # (core.model_hash_cache.remember) while this runs on the main
+        # thread; asdict() below iterates the live dict, so snapshot it
+        # through the same lock first or a concurrent insert raises
+        # "dictionary changed size during iteration".
+        from core.model_hash_cache import snapshot_table
+
+        process = replace(
+            self.process,
+            model_hash_table=snapshot_table(self.process.model_hash_table),
+        )
         return _json_value({
             "schema_version": self.schema_version,
-            "process": asdict(self.process),
+            "process": asdict(process),
             "vr": asdict(self.vr),
             "mdx": asdict(self.mdx),
             "demucs": asdict(self.demucs),

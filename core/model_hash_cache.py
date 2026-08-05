@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 import os
+import threading
 from typing import Any, Callable, Dict, Mapping, MutableMapping, Optional, TypedDict
 
 StatFn = Callable[[str], os.stat_result]
+
+#: Guards mutation of ``settings.process.model_hash_table`` so a worker-thread
+#: :func:`remember` call can't race with :func:`snapshot_table` copying the
+#: same dict for JSON serialization on the main thread (dataclasses.asdict
+#: iterates the live dict; a size change mid-iteration raises RuntimeError).
+_TABLE_LOCK = threading.Lock()
 
 
 class HashEntry(TypedDict):
@@ -76,9 +83,26 @@ def remember(
     *,
     stat: StatFn = os.stat,
 ) -> None:
-    st = stat(path)
-    table[path] = HashEntry(
+    try:
+        st = stat(path)
+    except OSError:
+        return
+    entry = HashEntry(
         hash=digest,
         mtime_ns=st.st_mtime_ns,
         size=st.st_size,
     )
+    with _TABLE_LOCK:
+        table[path] = entry
+
+
+def snapshot_table(table: Mapping[str, Any]) -> Dict[str, Any]:
+    """Copy ``table`` under the same lock :func:`remember` writes through.
+
+    Use this instead of ``dict(table)`` before handing the table to code that
+    iterates it off-thread (e.g. ``dataclasses.asdict`` during settings
+    serialization), since a worker thread may be inserting new entries via
+    :func:`remember` concurrently.
+    """
+    with _TABLE_LOCK:
+        return dict(table)

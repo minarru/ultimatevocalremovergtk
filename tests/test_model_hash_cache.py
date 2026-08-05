@@ -92,6 +92,50 @@ class ModelHashCacheTests(unittest.TestCase):
 
         self.assertIsNone(mhc.lookup_trusted(table, self.path, stat=raising_stat))
 
+    def test_remember_is_a_noop_on_oserror(self) -> None:
+        table: dict[str, mhc.HashEntry] = {}
+
+        def raising_stat(path: str) -> os.stat_result:
+            raise OSError("vanished mid-hash")
+
+        mhc.remember(table, self.path, "cafebabe", stat=raising_stat)
+        self.assertEqual(table, {})
+
+    def test_snapshot_table_returns_independent_copy(self) -> None:
+        table = {self.path: dict(self.entry)}
+        snapshot = mhc.snapshot_table(table)
+        self.assertEqual(snapshot, table)
+        snapshot["extra"] = "value"
+        self.assertNotIn("extra", table)
+
+    def test_concurrent_remember_during_snapshot_does_not_raise(self) -> None:
+        import threading
+
+        table: dict[str, mhc.HashEntry] = {}
+        stop = threading.Event()
+        errors: list[BaseException] = []
+
+        def writer() -> None:
+            i = 0
+            while not stop.is_set():
+                try:
+                    mhc.remember(table, f"{self.path}.{i}", "hash")
+                except BaseException as exc:  # pragma: no cover - failure path
+                    errors.append(exc)
+                    return
+                i += 1
+
+        thread = threading.Thread(target=writer)
+        thread.start()
+        try:
+            for _ in range(200):
+                mhc.snapshot_table(table)
+        finally:
+            stop.set()
+            thread.join(timeout=5)
+
+        self.assertEqual(errors, [])
+
 
 class ModelHashWireTests(unittest.TestCase):
     def test_get_model_hash_remembers_into_settings(self) -> None:
@@ -170,6 +214,48 @@ class ModelHashPersistTests(unittest.TestCase):
 
         loaded = Settings.load(path)
         self.assertEqual(loaded.process.model_hash_table[checkpoint]["hash"], "zz")
+
+    def test_to_json_dict_survives_concurrent_remember(self) -> None:
+        """Regression for RuntimeError: dictionary changed size during
+        iteration, when a worker thread calls get_model_hash -> remember
+        while the main thread serializes settings for save()."""
+        import threading
+
+        from core import model_hash_cache as mhc
+        from core.settings import Settings
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        checkpoint = os.path.join(tmp.name, "model.ckpt")
+        with open(checkpoint, "wb") as handle:
+            handle.write(b"x")
+
+        settings = Settings()
+        stop = threading.Event()
+        errors: list[BaseException] = []
+
+        def writer() -> None:
+            i = 0
+            while not stop.is_set():
+                try:
+                    mhc.remember(
+                        settings.process.model_hash_table, f"{checkpoint}.{i}", "h"
+                    )
+                except BaseException as exc:  # pragma: no cover - failure path
+                    errors.append(exc)
+                    return
+                i += 1
+
+        thread = threading.Thread(target=writer)
+        thread.start()
+        try:
+            for _ in range(200):
+                settings.to_json_dict()
+        finally:
+            stop.set()
+            thread.join(timeout=5)
+
+        self.assertEqual(errors, [])
 
 
 if __name__ == "__main__":
