@@ -103,8 +103,25 @@ def _filter_init_kwargs(model_cls: typing.Any, cfg: typing.Any) -> dict:
     return {key: cfg[key] for key in cfg if key in allowed}
 
 
+def scnet_variant_from_state_dict(keys: typing.Sequence[str]) -> typing.Optional[str]:
+    """Return ``'masked'`` if ``keys`` look like SCNet Masked, else ``None``.
+
+    ``mask_layer`` and ``pos_embed_f`` are SCNet Masked-only parameters that a
+    plain ``SCNet``/``SCNetTran`` checkpoint never carries.
+    """
+    joined = "\n".join(keys)
+    if "mask_layer" in joined or "pos_embed_f" in joined:
+        return "masked"
+    return None
+
+
+_SCNET_MASKED_HINTS = {"scnet_masked", "SCNet Masked"}
+
+
 def _build_mdx_c_model(
-    config: typing.Any, state_dict_keys: typing.Optional[typing.Sequence[str]] = None
+    config: typing.Any,
+    state_dict_keys: typing.Optional[typing.Sequence[str]] = None,
+    model_type_hint: typing.Optional[str] = None,
 ):
     if getattr(config, 'cls', None) == 'Bandit':
         from ml.bandit import Bandit
@@ -137,6 +154,18 @@ def _build_mdx_c_model(
             kwargs['hyperace'] = variant
         return BSRoformer(**kwargs)
     if 'band_SR' in model_cfg or 'sources' in model_cfg:
+        has_tran_kwargs = any(str(key).startswith('tran_') for key in model_cfg)
+        if has_tran_kwargs:
+            from ml.scnet import SCNetTran
+
+            return SCNetTran(**_filter_init_kwargs(SCNetTran, model_cfg))
+
+        variant = scnet_variant_from_state_dict(state_dict_keys or ())
+        if variant == 'masked' or model_type_hint in _SCNET_MASKED_HINTS:
+            from ml.scnet import SCNetMasked
+
+            return SCNetMasked(**_filter_init_kwargs(SCNetMasked, model_cfg))
+
         from ml.scnet import SCNet
 
         return SCNet(**_filter_init_kwargs(SCNet, model_cfg))

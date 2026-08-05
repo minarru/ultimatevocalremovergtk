@@ -43,6 +43,66 @@ class MdxArchDispatchTests(unittest.TestCase):
         self.assertEqual(model.__class__.__name__, "SCNet")
         self.assertEqual(_mdx_c_hop_length(config), 1024)
 
+    def _scnet_model_dict(self) -> dict:
+        return {
+            "sources": ["drums", "bass", "other", "vocals"],
+            "hop_size": 1024,
+            "nfft": 4096,
+            "win_size": 4096,
+            "normalized": True,
+            "dims": [4, 32, 64, 128],
+            "band_SR": [0.175, 0.392, 0.433],
+            "band_stride": [1, 4, 16],
+            "band_kernel": [3, 4, 16],
+            "conv_depths": [3, 2, 1],
+            "compress": 4,
+            "conv_kernel": 3,
+            "num_dplayer": 2,
+            "expand": 1,
+            "audio_channels": 2,
+        }
+
+    def _scnet_config(self, **model_overrides: object) -> Any:
+        model = self._scnet_model_dict()
+        model.update(model_overrides)
+        return ConfigDict(
+            {
+                "model": model,
+                "audio": {"sample_rate": 44100},
+                "training": {"instruments": ["Drums", "Bass", "Other", "Vocals"]},
+                "inference": {"batch_size": 1, "dim_t": 256},
+            }
+        )
+
+    def test_scnet_tran_factory(self) -> None:
+        # Rotary dim kept equal to dim_head (both 8): SCNetTran's rotary
+        # embedding is applied per-head, so a larger rotary dim than the head
+        # dim it rotates is inconsistent.
+        config = self._scnet_config(
+            tran_rotary_embedding_dim=8,
+            tran_depth=1,
+            tran_heads=2,
+            tran_dim_head=8,
+            tran_attn_dropout=0.0,
+            tran_ff_dropout=0.0,
+            tran_flash_attn=False,
+        )
+        model = _build_mdx_c_model(config)
+        self.assertEqual(model.__class__.__name__, "SCNetTran")
+
+    def test_scnet_masked_from_hint(self) -> None:
+        config = self._scnet_config()
+        model = _build_mdx_c_model(config, model_type_hint="scnet_masked")
+        self.assertEqual(model.__class__.__name__, "SCNetMasked")
+
+    def test_scnet_masked_from_keys(self) -> None:
+        config = self._scnet_config()
+        model = _build_mdx_c_model(
+            config,
+            state_dict_keys=["pos_embed_f", "mask_layer.0.weight", "encoder.0.SDlayer.convs.0.weight"],
+        )
+        self.assertEqual(model.__class__.__name__, "SCNetMasked")
+
     def test_bandit_v2_factory(self) -> None:
         config = ConfigDict(
             {

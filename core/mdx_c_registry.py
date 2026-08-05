@@ -70,6 +70,10 @@ def infer_mdx_c_architecture(yaml_name: str) -> Tuple[str, bool]:
     if "band_specs" in model:
         return "Bandit", True
     if "band_SR" in model or "sources" in model:
+        if any(str(key).startswith("tran_") for key in model):
+            return "SCNet Tran", True
+        if "masked" in yaml_name.lower():
+            return "SCNet Masked", True
         return "SCNet", True
     if "num_bands" in model:
         return "Mel-Band Roformer", True
