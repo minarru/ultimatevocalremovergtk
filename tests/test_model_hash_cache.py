@@ -64,6 +64,13 @@ class ModelHashCacheTests(unittest.TestCase):
         self.assertIsNone(mhc.lookup_trusted(table, self.path))
         self.assertEqual(mhc.flatten_trusted(table), {})
 
+    def test_overflow_mtime_ns_is_untrusted(self) -> None:
+        bad = dict(self.entry)
+        bad["mtime_ns"] = float("inf")
+        table = {self.path: bad}
+        self.assertIsNone(mhc.lookup_trusted(table, self.path))
+        self.assertEqual(mhc.flatten_trusted(table), {})
+
     def test_lookup_trusted_uses_injected_stat(self) -> None:
         table = {self.path: dict(self.entry)}
         st = os.stat(self.path)

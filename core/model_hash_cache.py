@@ -19,7 +19,7 @@ def _coerce_stat_field(value: Any, *, default: int) -> Optional[int]:
         return default
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
