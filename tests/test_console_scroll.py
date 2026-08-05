@@ -82,13 +82,14 @@ class ConsoleScrollTests(unittest.TestCase):
         self.assertIsNotNone(first_handler)
 
         idles_before = {"n": 0}
-        orig_idle = __import__("gi.repository", fromlist=["GLib"]).GLib.idle_add
+        from gi.repository import GLib
+        from typing import Any, Callable
 
-        def counting_idle(func, *args, **kwargs):
+        orig_idle = GLib.idle_add
+
+        def counting_idle(func: Callable[..., Any], *args: Any, **kwargs: Any) -> int:
             idles_before["n"] += 1
             return orig_idle(func, *args, **kwargs)
-
-        from gi.repository import GLib
 
         with mock.patch.object(GLib, "idle_add", side_effect=counting_idle):
             console.append("line two\n")

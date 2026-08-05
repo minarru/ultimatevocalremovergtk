@@ -137,7 +137,15 @@ class ExpanderSummaryTests(unittest.TestCase):
         view = window._views_by_stack["mdx"]
         window.settings.set("mdx_net_model", CHOOSE_MODEL)
         window.settings.set("mdx_is_secondary_model_activate", True)
-        view.load()  # auto-expands the row, which populates (and readies) the combo
+        view.load()  # auto-expands; combo populate is deferred to idle (F1)
+
+        # Drain the deferred populate so the combo is ready for interaction.
+        from gi.repository import GLib
+
+        ctx = GLib.MainContext.default()
+        for _ in range(50):
+            if not ctx.iteration(False):
+                break
 
         entry = next(
             e for e in view._model_combos if e["key"] == "mdx_voc_inst_secondary_model"

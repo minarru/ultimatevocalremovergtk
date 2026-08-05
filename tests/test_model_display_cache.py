@@ -90,7 +90,7 @@ class MergedForDisplayCacheTests(unittest.TestCase):
         real = cs.merged_catalogues
         calls = {"n": 0}
 
-        def clearing_merge(*args, **kwargs):
+        def clearing_merge(*args: object, **kwargs: object):
             calls["n"] += 1
             if calls["n"] == 1:
                 # Simulate a cross-thread clear while this miss is computing.

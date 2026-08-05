@@ -16,7 +16,7 @@ class DeferComboPopulateTests(unittest.TestCase):
         view._combo_populate_idle_scheduled = False
         calls: list = []
 
-        def fake_idle(func, *args, **kwargs):
+        def fake_idle(func: object, *args: object, **kwargs: object) -> None:
             calls.append(("idle", func))
 
         with mock.patch("ui.dispatch.idle_on_main", side_effect=fake_idle):
