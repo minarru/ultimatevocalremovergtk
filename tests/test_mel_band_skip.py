@@ -93,12 +93,8 @@ class MelBandSkipTests(unittest.TestCase):
             skip_connection=True,
             linear_transformer_depth=1,
         )
-        self.assertEqual(len(cast_module_list(model.layers[0])), 3)
+        self.assertEqual(len(cast(ModuleList, model.layers[0])), 3)
         model.eval()
         with torch.no_grad():
             out = model(torch.randn(1, 2, 512))
         self.assertEqual(tuple(out.shape)[:2], (1, 2))
-
-
-def cast_module_list(layer: object) -> list[object]:
-    return list(layer)  # type: ignore[arg-type]
