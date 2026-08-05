@@ -126,8 +126,10 @@ class ModelRepository:
 
     def reload_mappers(self) -> None:
         from .debug_log import debug
+        from .model_display import clear_display_cache
 
         debug("model", "reload_mappers")
+        clear_display_cache()
         for attr, path in (
             ("vr_hash_MAPPER", paths.VR_HASH_JSON),
             ("mdx_hash_MAPPER", paths.MDX_HASH_JSON),

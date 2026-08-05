@@ -32,6 +32,7 @@ class ConsoleView(Gtk.ScrolledWindow):
         self._scroll_idle_id: Optional[int] = None
         self._reconcile_scroll_id: Optional[int] = None
         self._viewport_idle_id: Optional[int] = None
+        self._map_handler_id: Optional[int] = None
         self._defer_scroll = False
         self._buffer = Gtk.TextBuffer()
         self._view = Gtk.TextView(buffer=self._buffer)
@@ -79,7 +80,7 @@ class ConsoleView(Gtk.ScrolledWindow):
         # ``DONE`` completes the current in-progress line (no trailing newline).
         # Skip it when there is no open line, which avoids a lone " Done!" at run
         # start before the first "Running inference..." message is written.
-        if text == DONE and (self.is_empty() or self.get_text().endswith("\n")):
+        if text == DONE and (self.is_empty() or self._ends_with_newline()):
             return
 
         end = self._buffer.get_end_iter()
@@ -90,6 +91,19 @@ class ConsoleView(Gtk.ScrolledWindow):
         else:
             self._scroll_to_end()
         self._notify_changed()
+
+    def _ends_with_newline(self) -> bool:
+        """Whether the buffer's last character is a newline.
+
+        ``get_text()`` would copy the whole buffer (up to the line cap) to
+        inspect one character; ``append`` runs this on every ``DONE`` marker.
+        """
+        end = self._buffer.get_end_iter()
+        if end.get_offset() == 0:
+            return False
+        start = end.copy()
+        start.backward_char()
+        return self._buffer.get_text(start, end, False) == "\n"
 
     def _trim_to_line_cap(self) -> None:
         line_count = self._buffer.get_line_count()
@@ -149,11 +163,27 @@ class ConsoleView(Gtk.ScrolledWindow):
     def _do_scroll(self) -> bool:
         self._scroll_idle_id = None
         if not self.get_mapped():
-            self._scroll_idle_id = GLib.idle_add(self._do_scroll)
+            # Re-arming another idle here spins the main loop: an idle source
+            # that is always ready means the loop never blocks. Park on the
+            # next map instead.
+            self._scroll_when_mapped()
             return GLib.SOURCE_REMOVE
 
         self._scroll_view_to_end()
         return GLib.SOURCE_REMOVE
+
+    def _scroll_when_mapped(self) -> None:
+        """Defer the pending scroll until this view is mapped again."""
+        if self._map_handler_id is not None:
+            return
+
+        def on_map(_widget: Gtk.Widget) -> None:
+            if self._map_handler_id is not None:
+                self.disconnect(self._map_handler_id)
+                self._map_handler_id = None
+            self._scroll_to_end()
+
+        self._map_handler_id = self.connect("map", on_map)
 
     def _reconcile_scroll(self) -> bool:
         self._reconcile_scroll_id = None

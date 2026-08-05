@@ -117,11 +117,23 @@ def register_gresources() -> bool:
     Safe to call more than once (e.g. from ``do_startup`` and again from
     ``do_activate`` if the display was not ready yet). Returns ``True`` when the
     bundle is loaded; the icon theme path is added whenever a display exists.
+
+    Deliberately does **not** register the application icon: that costs two full
+    ``Gtk.IconTheme`` scans (~312 ms) and only ``Adw.AboutDialog`` consumes the
+    name. Call :func:`ensure_application_icon` at the point of use instead.
     """
     loaded = _register_bundle()
     _register_icon_theme()
-    _register_application_icon()
     return loaded
+
+
+def ensure_application_icon() -> bool:
+    """Register ``packaging/<app-id>.png`` with the icon theme (idempotent).
+
+    Deferred out of startup; call immediately before showing anything that
+    names ``APP_ID`` as an icon.
+    """
+    return _register_application_icon()
 
 
 def load_application_styles() -> bool:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
@@ -30,6 +31,8 @@ _POLITREES_MDX_SOURCE_KEYS = (
 _cached_links: Optional[Dict] = None
 _cached_weight_index: Optional[Dict[str, str]] = None
 _cached_loaded_at: float = 0.0
+_refresh_lock = threading.Lock()
+_refresh_in_flight = False
 
 
 def politrees_enabled() -> bool:
@@ -49,6 +52,10 @@ def clear_politrees_cache() -> None:
     _cached_links = None
     _cached_weight_index = None
     _cached_loaded_at = 0.0
+    # Local import: core.model_display imports this module for _display_base.
+    from .model_display import clear_display_cache
+
+    clear_display_cache()
 
 
 def _read_disk_cache() -> Optional[Dict]:
@@ -60,6 +67,42 @@ def _read_disk_cache() -> Optional[Dict]:
     except (OSError, ValueError, TypeError):
         pass
     return None
+
+
+def _read_disk_cache_entry() -> Optional[Tuple[Dict, float]]:
+    """Return ``(data, fetched_at)`` from the on-disk cache, or ``None``."""
+    try:
+        with open(_politrees_cache_path(), "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), dict):
+            return None
+        fetched_at = payload.get("fetched_at")
+        if not isinstance(fetched_at, (int, float)):
+            return None
+        return payload["data"], float(fetched_at)
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _start_background_refresh() -> None:
+    """Refresh the catalogue off the main loop; at most one in flight."""
+    global _refresh_in_flight
+    with _refresh_lock:
+        if _refresh_in_flight:
+            return
+        _refresh_in_flight = True
+
+    def run() -> None:
+        global _refresh_in_flight
+        try:
+            load_politrees_links(force=True)
+        except Exception as exc:  # noqa: BLE001 - background best-effort
+            debug("download", f"politrees background refresh failed err={exc}")
+        finally:
+            with _refresh_lock:
+                _refresh_in_flight = False
+
+    threading.Thread(target=run, name="uvr-politrees-refresh", daemon=True).start()
 
 
 def _write_disk_cache(data: Dict) -> None:
@@ -87,13 +130,34 @@ def load_politrees_links(*, force: bool = False) -> Optional[Dict]:
     ):
         return _cached_links
 
+    if not force:
+        entry = _read_disk_cache_entry()
+        if entry is not None and (now - entry[1]) < _POLITREES_CACHE_TTL_SECONDS:
+            # A fresh cache on disk is authoritative: fetching here blocked
+            # window construction on HTTP for no benefit.
+            _cached_links = entry[0]
+            _cached_weight_index = None
+            _cached_loaded_at = now
+            # Local import: core.model_display imports this module for
+            # _display_base. This fast path replaces _cached_links the same
+            # way the network path does, so the memoized merge must be
+            # invalidated here too, or a politrees-less merge computed
+            # earlier in the process would stay pinned for its lifetime.
+            from .model_display import clear_display_cache
+
+            clear_display_cache()
+            _start_background_refresh()
+            return _cached_links
+
     data: Optional[Dict] = None
+    from_disk = False
     try:
         with _urlopen(POLITREES_MODEL_LINKS_URL) as response:
             data = json.load(response)
     except Exception as exc:
         debug("download", f"politrees fetch failed err={type(exc).__name__}: {exc}")
         data = _read_disk_cache()
+        from_disk = True
 
     if not isinstance(data, dict):
         return None
@@ -101,7 +165,19 @@ def load_politrees_links(*, force: bool = False) -> Optional[Dict]:
     _cached_links = data
     _cached_weight_index = None
     _cached_loaded_at = now
-    _write_disk_cache(data)
+    if not from_disk:
+        # Rewriting here would stamp fetched_at=now onto the copy we just read
+        # back from disk, so an offline session makes month-old data look
+        # freshly fetched and the TTL never expires.
+        _write_disk_cache(data)
+    # Local import: core.model_display imports this module for _display_base.
+    # New data means the memoized merge is stale, regardless of who triggered
+    # this fetch (a fresh session, a TTL rollover, or an explicit refresh) —
+    # invalidate at the point the data actually changes, not just at
+    # clear_politrees_cache(), which callers may never invoke.
+    from .model_display import clear_display_cache
+
+    clear_display_cache()
     return data
 
 

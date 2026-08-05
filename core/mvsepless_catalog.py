@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 from urllib.parse import unquote, urlparse
@@ -171,6 +172,8 @@ def translate_category(category: str) -> Tuple[str, str]:
 _cached_models: Optional[Dict[str, Any]] = None
 _cached_loaded_at: float = 0.0
 _cached_converted: Optional[Dict[str, Any]] = None
+_refresh_lock = threading.Lock()
+_refresh_in_flight = False
 
 
 def mvsepless_enabled() -> bool:
@@ -203,6 +206,42 @@ def _read_disk_cache() -> Optional[Dict[str, Any]]:
     return None
 
 
+def _read_disk_cache_entry() -> Optional[Tuple[Dict[str, Any], float]]:
+    """Return ``(data, fetched_at)`` from the on-disk cache, or ``None``."""
+    try:
+        with open(_cache_path(), "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), dict):
+            return None
+        fetched_at = payload.get("fetched_at")
+        if not isinstance(fetched_at, (int, float)):
+            return None
+        return payload["data"], float(fetched_at)
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _start_background_refresh() -> None:
+    """Refresh the catalogue off the main loop; at most one in flight."""
+    global _refresh_in_flight
+    with _refresh_lock:
+        if _refresh_in_flight:
+            return
+        _refresh_in_flight = True
+
+    def run() -> None:
+        global _refresh_in_flight
+        try:
+            load_mvsepless_models(force=True)
+        except Exception as exc:  # noqa: BLE001 - background best-effort
+            debug("download", f"mvsepless background refresh failed err={exc}")
+        finally:
+            with _refresh_lock:
+                _refresh_in_flight = False
+
+    threading.Thread(target=run, name="uvr-mvsepless-refresh", daemon=True).start()
+
+
 def _write_disk_cache(data: Dict[str, Any]) -> None:
     try:
         cache_path = _cache_path()
@@ -228,13 +267,29 @@ def load_mvsepless_models(*, force: bool = False) -> Optional[Dict[str, Any]]:
     ):
         return _cached_models
 
+    if not force:
+        entry = _read_disk_cache_entry()
+        if entry is not None and (now - entry[1]) < _MVSEPLESS_CACHE_TTL_SECONDS:
+            # A fresh cache on disk is authoritative: fetching here blocked
+            # window construction on HTTP for no benefit.
+            _cached_models = entry[0]
+            _cached_loaded_at = now
+            _cached_converted = None
+            from .model_display import clear_display_cache
+
+            clear_display_cache()
+            _start_background_refresh()
+            return _cached_models
+
     data: Optional[Dict[str, Any]] = None
+    from_disk = False
     try:
         with _urlopen(MVSEPLESS_MODELS_JSON_URL) as response:
             data = json.load(response)
     except Exception as exc:
         debug("download", f"mvsepless fetch failed err={type(exc).__name__}: {exc}")
         data = _read_disk_cache()
+        from_disk = True
 
     if not isinstance(data, dict):
         return None
@@ -242,7 +297,20 @@ def load_mvsepless_models(*, force: bool = False) -> Optional[Dict[str, Any]]:
     _cached_models = data
     _cached_loaded_at = now
     _cached_converted = None
-    _write_disk_cache(data)
+    if not from_disk:
+        # Rewriting here would stamp fetched_at=now onto the copy we just read
+        # back from disk, so an offline session makes month-old data look
+        # freshly fetched and the TTL never expires.
+        _write_disk_cache(data)
+    # Local import: avoids a hard dependency edge from this module to
+    # core.model_display for a call that only fires on data refresh. New
+    # data means the memoized merge is stale, regardless of who triggered
+    # this fetch (a fresh session, a TTL rollover, or an explicit refresh) —
+    # invalidate at the point the data actually changes, not just at
+    # clear_mvsepless_cache(), which callers may never invoke.
+    from .model_display import clear_display_cache
+
+    clear_display_cache()
     return data
 
 

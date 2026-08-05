@@ -99,9 +99,11 @@ def _enrich_about(about: typing.Any) -> None:
 
 def open_about(parent_window: typing.Any):
     """Open an About dialog summarising UVR. Wire this to a ``win.about`` action."""
-    from .resources import register_gresources
+    from .resources import ensure_application_icon, register_gresources
 
     register_gresources()
+    # application_icon=APP_ID below only resolves once this has run.
+    ensure_application_icon()
 
     # Heterogeneous by nature: this bag is splatted into two different
     # constructors below, and dict() would otherwise unify str and list[str]
