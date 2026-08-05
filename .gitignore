@@ -103,3 +103,6 @@ resources/icons/scalable/actions/cross-small-symbolic.svg
 
 # Subagent-driven-development scratch workspace
 .superpowers/
+
+# Git worktrees (local isolation)
+.worktrees/
