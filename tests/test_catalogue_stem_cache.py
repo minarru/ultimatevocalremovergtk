@@ -75,26 +75,39 @@ training:
             self.assertIsNone(csc.lookup_stems(url))
 
     def test_expired_success_entry_returns_none(self) -> None:
-        url = "https://example.test/old.yaml"
-        key = csc.normalize_config_url(url)
+        stale_url = "https://example.test/old.yaml"
+        fresh_url = "https://example.test/fresh.yaml"
+        stale_key = csc.normalize_config_url(stale_url)
+        fresh_key = csc.normalize_config_url(fresh_url)
         stale_at = 1_000_000.0
+        now = stale_at + csc._SUCCESS_TTL_SECONDS + 1
         payload = {
-            "fetched_at": stale_at,
+            "fetched_at": now,
             "entries": {
-                key: {
+                stale_key: {
                     "stems": ["Vocals"],
                     "target_instrument": None,
                     "fetched_at": stale_at,
                     "ok": True,
-                }
+                },
+                fresh_key: {
+                    "stems": ["other"],
+                    "target_instrument": None,
+                    "fetched_at": now - 3600,
+                    "ok": True,
+                },
             },
         }
         with open(self.cache_path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
-        csc.clear_catalogue_stem_cache()  # drop in-memory; file remains
-        now = stale_at + csc._SUCCESS_TTL_SECONDS + 1
+        csc._memory_entries = None
         with mock.patch.object(csc.time, "time", return_value=now):
-            self.assertIsNone(csc.lookup_stems(url))
+            self.assertIsNone(csc.lookup_stems(stale_url))
+            hit = csc.lookup_stems(fresh_url)
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertEqual(hit.stems, ("other",))
+        self.assertTrue(hit.ok)
 
 
 if __name__ == "__main__":
