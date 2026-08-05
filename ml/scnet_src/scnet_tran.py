@@ -343,6 +343,10 @@ class SCNetTran(nn.Module):
             "normalized": normalized,
         }
 
+        # Present in every MSST SCNet_Tran checkpoint but never called in upstream's
+        # forward; kept so strict state_dict loads against those checkpoints succeed.
+        self.first_conv = nn.Conv2d(dims[0], dims[0], 1, 1, 0, bias=False)
+
         self.encoder = nn.ModuleList()
         self.decoder = nn.ModuleList()
 

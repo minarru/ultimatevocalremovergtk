@@ -83,6 +83,8 @@ class SCNetTranModuleTests(unittest.TestCase):
         )
         output = model(torch.randn(1, 2, 8192))
         self.assertEqual(output.shape, (1, 4, 2, 8192))
+        self.assertTrue(hasattr(model, "first_conv"))
+        self.assertIn("first_conv.weight", model.state_dict())
 
 
 if __name__ == "__main__":
