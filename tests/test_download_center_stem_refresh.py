@@ -143,6 +143,36 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         args = set_subtitle.call_args[0]
         self.assertIn("Vocals, other", args[1])
 
+    def test_flush_preserves_stashed_download_size(self) -> None:
+        from ui.widget_state import fetch, stash
+
+        win = self._bare_window()
+        win._stem_refresh_armed = True
+        action = mock.MagicMock()
+        stash(action, "_uvr_size", "12 MB")
+        stash(action, "_uvr_sdr", None)
+        stash(action, "_uvr_sdr_stem", None)
+        stash(action, "_uvr_unsupported", False)
+        win._row_actions[(MDX_ARCH_TYPE, "M")] = action
+        win.manager.apply_catalogue_stem_cache.return_value = {"M"}
+        win.manager.catalogue_meta = {
+            "M": EntryMeta(
+                label="M",
+                display="M",
+                arch=MDX_ARCH_TYPE,
+                files={},
+                stems=["Vocals", "other"],
+            )
+        }
+
+        with mock.patch("ui.download_center.set_row_subtitle") as set_subtitle:
+            win._flush_stem_subtitles()
+
+        subtitle = set_subtitle.call_args[0][1]
+        self.assertIn("Vocals, other", subtitle)
+        self.assertIn("12 MB", subtitle)
+        self.assertEqual(fetch(action, "_uvr_stems_text"), "Vocals, other")
+
     def test_schedule_hops_to_main_via_idle_on_main(self) -> None:
         win = self._bare_window()
         idle_calls: list[Any] = []

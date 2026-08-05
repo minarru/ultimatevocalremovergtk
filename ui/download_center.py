@@ -43,7 +43,7 @@ from core.model_scores import primary_sdr, sdr_for_files
 from .markup import set_row_subtitle, set_row_title
 from .spacing import set_inset
 from .widgets.rows import get_combo_value, make_combo_row, set_combo_value
-from .widget_state import fetch, stash
+from .widget_state import drop, fetch, stash
 
 _NETWORKS = [
     ("VR Arch", VR_ARCH_TYPE),
@@ -484,6 +484,7 @@ class DownloadCenterWindow:
             return
         action = self._row_actions.get(key)
         if action is not None:
+            drop(action, "_uvr_size")
             set_row_subtitle(
                 action,
                 format_sdr_subtitle(
@@ -516,11 +517,13 @@ class DownloadCenterWindow:
             return
         action = self._row_actions.get(key)
         if action is not None:
+            size_text = text or ""
+            stash(action, "_uvr_size", size_text)
             set_row_subtitle(
                 action,
                 format_sdr_subtitle(
                     fetch(action, "_uvr_sdr", None),
-                    text or "",
+                    size_text,
                     stem=fetch(action, "_uvr_sdr_stem", None),
                     extra=fetch(action, "_uvr_stems_text", ""),
                 ),
@@ -691,7 +694,7 @@ class DownloadCenterWindow:
                 action,
                 format_sdr_subtitle(
                     fetch(action, "_uvr_sdr", None),
-                    "",
+                    fetch(action, "_uvr_size", ""),
                     stem=fetch(action, "_uvr_sdr_stem", None),
                     extra=stems_text,
                 ),
