@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
 from typing import Any
 from unittest import mock
 
 from core import catalog_sources
+from core import catalogue_stem_cache as csc
 from core.catalogue_stem_cache import StemCacheHit
 from core.model_display import clear_display_cache
 
@@ -165,6 +167,35 @@ class CatalogStemMergeTests(unittest.TestCase):
                             catalog_sources.merged_catalogues(
                                 vr={}, mdx={}, demucs={}
                             )
+        enqueue.assert_not_called()
+        ensure.assert_not_called()
+
+    def test_failed_cache_hit_does_not_re_enqueue(self) -> None:
+        supplements = (
+            {},
+            {"M": {"m.ckpt": "https://example.test/m.ckpt", "m.yaml": _YAML_URL}},
+            {},
+            {},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "catalogue_stem_cache.json")
+            with mock.patch.object(csc, "_cache_path", return_value=cache_path):
+                csc.clear_catalogue_stem_cache()
+                csc.remember_stems(_YAML_URL, [], None, ok=False)
+                with _with_supplements(supplements):
+                    with mock.patch(
+                        "core.catalogue_stem_cache.enqueue_missing"
+                    ) as enqueue:
+                        with mock.patch(
+                            "core.catalogue_stem_cache.ensure_worker_started"
+                        ) as ensure:
+                            merged = catalog_sources.merged_catalogues(
+                                vr={}, mdx={}, demucs={}
+                            )
+                csc.clear_catalogue_stem_cache()
+        meta = merged.meta["M"]
+        self.assertEqual(meta.stems, [])
+        self.assertIsNone(meta.target_instrument)
         enqueue.assert_not_called()
         ensure.assert_not_called()
 

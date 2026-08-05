@@ -130,7 +130,7 @@ def _build_meta(
                     stems = list(hit.stems)
                     if not target:
                         target = hit.target_instrument
-                elif catalogue_stems_enabled():
+                elif hit is None and catalogue_stems_enabled():
                     pending_yaml.append(yaml_url)
         out[label] = EntryMeta(
             label=label,
