@@ -1,15 +1,44 @@
-"""Unit tests for the catalogue YAML stem cache (Task 2: disk + lookup)."""
+"""Unit tests for the catalogue YAML stem cache (disk + background worker)."""
 
 from __future__ import annotations
 
 import json
 import os
 import tempfile
+import threading
 import time
 import unittest
+from typing import Callable
 from unittest import mock
 
 import core.catalogue_stem_cache as csc
+
+
+class _FakeResponse:
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+
+    def read(self, n: int = -1) -> bytes:
+        if n < 0:
+            out, self._data = self._data, b""
+            return out
+        out, self._data = self._data[:n], self._data[n:]
+        return out
+
+    def __enter__(self) -> "_FakeResponse":
+        return self
+
+    def __exit__(self, *args: object) -> bool:
+        return False
+
+
+def _wait_until(predicate: Callable[[], bool], *, timeout: float = 2.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return False
 
 
 class CatalogueStemCacheTests(unittest.TestCase):
@@ -18,10 +47,19 @@ class CatalogueStemCacheTests(unittest.TestCase):
         self.cache_path = os.path.join(self._tmp.name, "catalogue_stem_cache.json")
         self._path_patch = mock.patch.object(csc, "_cache_path", return_value=self.cache_path)
         self._path_patch.start()
+        self._display_patch = mock.patch("core.model_display.clear_display_cache")
+        self._display_patch.start()
         csc.clear_catalogue_stem_cache()
+        reset = getattr(csc, "_reset_worker_state_for_tests", None)
+        if reset is not None:
+            reset()
 
     def tearDown(self) -> None:
+        reset = getattr(csc, "_reset_worker_state_for_tests", None)
+        if reset is not None:
+            reset()
         csc.clear_catalogue_stem_cache()
+        self._display_patch.stop()
         self._path_patch.stop()
         self._tmp.cleanup()
 
@@ -108,6 +146,81 @@ training:
         assert hit is not None
         self.assertEqual(hit.stems, ("other",))
         self.assertTrue(hit.ok)
+
+    def test_enqueue_dedupes_and_worker_remembers(self) -> None:
+        url = "https://example.test/dedupe.yaml?v=9"
+        yaml_bytes = b"""
+training:
+  instruments:
+    - Vocals
+    - other
+  target_instrument: Vocals
+"""
+        opens: list[str] = []
+        done = threading.Event()
+
+        def fake_urlopen(u: str) -> _FakeResponse:
+            opens.append(u)
+            return _FakeResponse(yaml_bytes)
+
+        def on_notify() -> None:
+            done.set()
+
+        csc.subscribe(on_notify)
+        with mock.patch.object(csc, "_urlopen", side_effect=fake_urlopen):
+            csc.enqueue_missing([url, url])
+            csc.ensure_worker_started()
+            self.assertTrue(done.wait(timeout=2.0), "worker did not notify")
+            self.assertTrue(
+                _wait_until(lambda: csc.lookup_stems(url) is not None),
+                "worker did not remember stems in time",
+            )
+        hit = csc.lookup_stems(url)
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertEqual(hit.stems, ("Vocals", "other"))
+        self.assertEqual(hit.target_instrument, "Vocals")
+        self.assertTrue(hit.ok)
+        self.assertEqual(len(opens), 1)
+        self.assertEqual(opens[0], csc.normalize_config_url(url))
+
+    def test_notify_fires_once_per_batch(self) -> None:
+        url_a = "https://example.test/batch-a.yaml"
+        url_b = "https://example.test/batch-b.yaml"
+        bodies = {
+            url_a: b"training:\n  instruments: [Vocals]\n",
+            url_b: b"training:\n  instruments: [drums]\n",
+        }
+        calls: list[int] = []
+        notified = threading.Event()
+
+        def on_notify() -> None:
+            calls.append(1)
+            notified.set()
+
+        def fake_urlopen(u: str) -> _FakeResponse:
+            return _FakeResponse(bodies[u])
+
+        csc.subscribe(on_notify)
+        with mock.patch.object(csc, "_urlopen", side_effect=fake_urlopen):
+            csc.enqueue_missing([url_a, url_b])
+            csc.ensure_worker_started()
+            self.assertTrue(
+                notified.wait(timeout=2.0),
+                "subscriber was not notified",
+            )
+            self.assertTrue(
+                _wait_until(
+                    lambda: (
+                        csc.lookup_stems(url_a) is not None
+                        and csc.lookup_stems(url_b) is not None
+                    )
+                ),
+                "worker did not finish both URLs",
+            )
+            # Brief settle window: must stay a single batch notify, not per-URL.
+            time.sleep(0.05)
+        self.assertEqual(len(calls), 1)
 
 
 if __name__ == "__main__":

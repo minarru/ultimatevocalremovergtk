@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import queue
+import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set
 
 import yaml
 
@@ -17,6 +19,16 @@ _FAILURE_TTL_SECONDS = 6 * 3600
 _MAX_BODY_BYTES = 2 * 1024 * 1024
 
 _memory_entries: Optional[Dict[str, Dict[str, Any]]] = None
+
+_url_queue: queue.Queue[str] = queue.Queue()
+_queued_urls: Set[str] = set()
+_queue_lock = threading.Lock()
+_subscribers: List[Callable[[], None]] = []
+_subscribers_lock = threading.Lock()
+_worker_thread: Optional[threading.Thread] = None
+_worker_lock = threading.Lock()
+_worker_idle = threading.Event()
+_worker_idle.set()
 
 
 @dataclass(frozen=True)
@@ -159,3 +171,134 @@ def parse_stems_from_yaml_bytes(data: bytes) -> tuple[list[str], Optional[str]]:
     if target is not None and target != "":
         target_instrument = str(target)
     return stems, target_instrument
+
+
+def subscribe(callback: Callable[[], None]) -> None:
+    with _subscribers_lock:
+        if callback not in _subscribers:
+            _subscribers.append(callback)
+
+
+def unsubscribe(callback: Callable[[], None]) -> None:
+    with _subscribers_lock:
+        try:
+            _subscribers.remove(callback)
+        except ValueError:
+            pass
+
+
+def _notify_subscribers() -> None:
+    from .model_display import clear_display_cache
+
+    clear_display_cache()
+    with _subscribers_lock:
+        callbacks = list(_subscribers)
+    for callback in callbacks:
+        try:
+            callback()
+        except Exception:
+            pass
+
+
+def enqueue_missing(urls: Iterable[str]) -> None:
+    if not catalogue_stems_enabled():
+        return
+    with _queue_lock:
+        to_put: list[str] = []
+        for url in urls:
+            key = normalize_config_url(str(url))
+            if not key or key in _queued_urls:
+                continue
+            _queued_urls.add(key)
+            to_put.append(key)
+        for key in to_put:
+            _url_queue.put(key)
+
+
+def ensure_worker_started() -> None:
+    global _worker_thread
+    with _worker_lock:
+        if _worker_thread is not None and _worker_thread.is_alive():
+            return
+        thread = threading.Thread(
+            target=_worker_loop,
+            name="uvr-catalogue-stems",
+            daemon=True,
+        )
+        _worker_thread = thread
+        thread.start()
+
+
+def _fetch_and_remember(url: str) -> None:
+    try:
+        with _urlopen(url) as response:
+            data = response.read(_MAX_BODY_BYTES + 1)
+        if not isinstance(data, (bytes, bytearray)):
+            remember_stems(url, [], None, ok=False)
+            return
+        body = bytes(data)
+        if len(body) > _MAX_BODY_BYTES:
+            remember_stems(url, [], None, ok=False)
+            return
+        stems, target = parse_stems_from_yaml_bytes(body)
+        if not stems:
+            remember_stems(url, [], None, ok=False)
+            return
+        remember_stems(url, stems, target, ok=True)
+    except Exception:
+        remember_stems(url, [], None, ok=False)
+
+
+def _drain_queued_urls(first: str) -> list[str]:
+    """Collect ``first`` plus any URLs currently queued (holds ``_queue_lock``)."""
+    pending = [first]
+    with _queue_lock:
+        while True:
+            try:
+                pending.append(_url_queue.get_nowait())
+            except queue.Empty:
+                break
+    return pending
+
+
+def _worker_loop() -> None:
+    while True:
+        first = _url_queue.get()
+        _worker_idle.clear()
+        pending = _drain_queued_urls(first)
+        try:
+            while pending:
+                for url in pending:
+                    _fetch_and_remember(url)
+                    with _queue_lock:
+                        _queued_urls.discard(url)
+                pending = []
+                with _queue_lock:
+                    while True:
+                        try:
+                            pending.append(_url_queue.get_nowait())
+                        except queue.Empty:
+                            break
+            _notify_subscribers()
+        finally:
+            with _queue_lock:
+                idle = _url_queue.empty() and not _queued_urls
+            if idle:
+                _worker_idle.set()
+
+
+def _reset_worker_state_for_tests() -> None:
+    """Drain queue / subscribers between unit tests (daemon thread stays)."""
+    global _subscribers
+    if _worker_thread is not None and _worker_thread.is_alive():
+        _worker_idle.wait(timeout=2.0)
+    with _subscribers_lock:
+        _subscribers = []
+    with _queue_lock:
+        while True:
+            try:
+                _url_queue.get_nowait()
+            except queue.Empty:
+                break
+        _queued_urls.clear()
+    _worker_idle.set()
