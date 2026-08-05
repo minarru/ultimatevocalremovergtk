@@ -51,7 +51,7 @@ no upstream Tkinter equivalent -- so no GitHub issue to link.
 
 | ID | Topic | Status | Priority | Upstream | Fork | Notes |
 |----|--------|--------|----------|----------|------|-------|
-| **F1** | Model-options sheet auto-expand hashes checkpoints synchronously | open | medium | n/a — fork-only (feature not in upstream) | — | `ui/views/base.py`'s `load()` (via `_sync_expander_summaries`) calls `Adw.ExpanderRow.set_expanded(True)` for every section whose activate switch was already on, to restore the user's last session. `set_expanded(True)` synchronously emits `notify::expanded`, which is bound to `_ensure_model_combos_populated` in `ui/views/base.py` and `_populate_models` in `ui/widgets/vocal_split_row.py` — both deliberately lazy (they hash every installed checkpoint) per the CLAUDE.md "heavy work stays lazy" invariant. Measured: `MainWindow()` construction goes from 94ms (no sections enabled) to 635ms (6.8x) with every auto-expanding section enabled, all synchronous on the main loop during window build. Found during the `model-options-sheet` branch's final review; deliberately not fixed there to avoid late churn. Suggested fix: when the expand happens during `load()`, defer the populate call via `idle_on_main` (`ui/dispatch.py`) instead of running it inline — the row still opens immediately (visual auto-expand preserved), but the hashing moves off the synchronous construction path. |
+| **F1** | Model-options sheet auto-expand hashes checkpoints synchronously | done | medium | n/a — fork-only (feature not in upstream) | — | Fixed: `_sync_expander_summaries` / vocal-split restore set a defer flag so `notify::expanded` schedules populate via `idle_on_main` ([ui/views/base.py](../ui/views/base.py), [ui/widgets/vocal_split_row.py](../ui/widgets/vocal_split_row.py)). Visual expand stays synchronous; hashing runs after first paint. Covered by [tests/test_defer_combo_populate.py](../tests/test_defer_combo_populate.py). |
 | **F2** | `parent_window_width` calls a GTK3 method that does not exist in GTK4 | done | medium | n/a — fork-only (helper has no upstream equivalent) | — | Fixed in [ui/dialogs/utils.py](../ui/dialogs/utils.py): unrealized parents use `get_default_size()[0]`, falling back to the caller default when that returns 0. (`hasattr(Gtk.Window, "get_default_width")` is still `False` on GTK4.) Unrealized-parent path covered by [tests/test_errorlog.py](../tests/test_errorlog.py). |
 
 ---
@@ -91,20 +91,20 @@ no upstream Tkinter equivalent -- so no GitHub issue to link.
 
 ## UI performance follow-ups (from the 2026-08-04 startup/console pass)
 
-Deferred deliberately during [docs/superpowers/plans/2026-08-04-ui-performance.md](superpowers/plans/2026-08-04-ui-performance.md); triaged as follow-up by the whole-branch review, none blocking. Status `open` unless noted.
+Originally deferred during [docs/superpowers/plans/2026-08-04-ui-performance.md](superpowers/plans/2026-08-04-ui-performance.md); closed in the 2026-08-05 follow-up pass unless noted.
 
-| Item | Where | Why it was deferred |
-|------|-------|---------------------|
-| Cross-thread `clear_display_cache()` can be swallowed by an in-flight `lru_cache` miss | [core/model_display.py](../core/model_display.py) `_merged_for_display` | Bounded: the disk fast path only serves entries under TTL, so a pinned merge is at most 24 h stale, affects display labels only, and self-heals next launch. Fix is a generation counter — key the cache on an int that `clear_display_cache()` bumps, so a mid-flight clear cannot be lost. |
-| Only one of three `clear_<source>_cache()` functions invalidates the merge | `clear_politrees_cache` does; `clear_mvsepless_cache` ([core/mvsepless_catalog.py](../core/mvsepless_catalog.py)) and `clear_extra_catalog_cache` ([core/extra_catalog.py](../core/extra_catalog.py)) do not | No production callers today (tests only), but it is a trap for the next editor: clearing a source leaves the merge that consumes it stale. |
-| Both refresh threads invalidate the merge even when the refetched payload is unchanged | [core/politrees_catalog.py](../core/politrees_catalog.py), [core/mvsepless_catalog.py](../core/mvsepless_catalog.py) | Two full merges discarded per launch for a catalogue that changes far less than daily. Guard with `if data != _cached_*:` before clearing. |
-| Startup win is conditional on a warm, in-TTL disk cache | both catalogue modules | First-ever launch, or a >24 h-old cache, still pays a blocking main-thread `_urlopen` (30 s timeout) exactly as before this work. Not a regression. Making it unconditional means stale-while-revalidate: serve the stale entry immediately, let the background refresh fetch. |
-| No test exercises the `Gtk.ListBox.set_sort_func` wiring | [ui/download_center.py](../ui/download_center.py) | `_compare_rows` is tested directly, but nothing installs it on a real list box, so a callback-signature mismatch would only surface at runtime. Verified correct by hand. |
-| No test for two unmapped appends → a single `map` handler | [ui/widgets/console.py](../ui/widgets/console.py) `_scroll_when_mapped` | Guard is correct by inspection; the accumulation case is untested. |
-| No test for the `reload_mappers` display-cache invalidation hook | [core/model_data.py](../core/model_data.py) | The hook is defensive — `_merged_for_display` reads no hash mapper — so it is the low-risk one of the two. |
-| Unsupported Download Center rows now order by `canonical_display_name` casefold rather than raw label | [ui/download_center.py](../ui/download_center.py) | User-visible for the unsupported subset. Net-corrects a prior mismatch (titles already rendered through `canonical_display_name` while the sort used the raw label). |
-| While unmapped, each console `append` still schedules one idle that immediately returns | [ui/widgets/console.py](../ui/widgets/console.py) `_scroll_to_end` | 1 idle per append, down from ~265k/s. An early-out on `_map_handler_id` would make it zero. |
-| `.desktop` launches still pay a full GTK import in `run_uvr.sh` before the app starts | [run_uvr.sh](../run_uvr.sh) `venv_health` | Every healthy launch starts a separate Python that imports `gi` / Gtk4 / Adw (~85–90 ms warm), then `exec`s `python -m ui` which imports GTK again. Measured 2026-08-05: wrapper → window ~1.23–1.30 s vs python-only ~1.13 s. Plan “time to window” never included this path. Fix: cheap `-x` check by default; full probe after rebuild / cached stamp / explicit `UVR_FORCE_VENV_CHECK`; move desktop-entry install to `install_packages.sh`. |
+| Item | Where | Status |
+|------|-------|--------|
+| Cross-thread `clear_display_cache()` / in-flight `lru_cache` miss | [core/model_display.py](../core/model_display.py) | **done** — generation-keyed `_merged_for_display_at` |
+| `clear_mvsepless_cache` / `clear_extra_catalog_cache` skip merge invalidation | mvsepless / extra catalog | **done** — both call `clear_display_cache()` |
+| Refresh clears merge even when payload unchanged | politrees / mvsepless | **done** — clear only when `data != previous` |
+| Startup win conditional on in-TTL disk cache | both catalogue modules | **done** — stale-while-revalidate: any readable disk entry served immediately; BG refresh when expired |
+| No `Gtk.ListBox.set_sort_func` wiring test | [ui/download_center.py](../ui/download_center.py) | **done** — [tests/test_download_center_sort.py](../tests/test_download_center_sort.py) |
+| No test for two unmapped appends → one map handler | [ui/widgets/console.py](../ui/widgets/console.py) | **done** — [tests/test_console_scroll.py](../tests/test_console_scroll.py) |
+| No test for `reload_mappers` display-cache hook | [core/model_data.py](../core/model_data.py) | **done** — [tests/test_model_display_cache.py](../tests/test_model_display_cache.py) |
+| Unsupported rows sort via `canonical_display_name` | [ui/download_center.py](../ui/download_center.py) | **done** (shipped in PR #13; behavioural note only) |
+| One idle per unmapped `append` while parked on map | [ui/widgets/console.py](../ui/widgets/console.py) | **done** — early-out on `_map_handler_id` |
+| `.desktop` / `run_uvr.sh` GTK health-probe tax | [run_uvr.sh](../run_uvr.sh) | **done** — cheap `-x` by default; full probe on stamp miss/stale, rebuild, or `UVR_FORCE_VENV_CHECK`; desktop entry `--update` from installer |
 
 ---
 
@@ -117,4 +117,4 @@ Deferred deliberately during [docs/superpowers/plans/2026-08-04-ui-performance.m
 
 ---
 
-*Last reviewed: 2026-08-05 — upstream sample ~v5.6 base; verified against `main` after PR #13 (startup/console). Items **1**, **F2**, **P1** marked done; `run_uvr.sh` wrapper follow-up added.*
+*Last reviewed: 2026-08-05 — UI performance follow-ups + F1 closed (generation cache, SWR, run_uvr stamp, deferred combo populate).*
