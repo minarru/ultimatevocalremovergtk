@@ -728,7 +728,7 @@ Confirm `Settings.load` accepts an explicit path (if not, write via the same mec
 
 - [ ] **Step 2: Run test**
 
-Run: `.venv/bin/python -m unittest tests.FAKESECRET_i2j3k4l5m6n7o8p9q0r1 -v`
+Run: `.venv/bin/python -m unittest tests.test_model_hash_cache -v`
 
 Expected: PASS (or FAIL only if load path API differs — fix test to match existing Settings API, do not invent a new save format).
 
