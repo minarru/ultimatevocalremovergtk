@@ -46,6 +46,8 @@ _SUPPORTED_MODEL_TYPES = frozenset(
         "bs_roformer",
         "mdx23c",
         "scnet",
+        "scnet_masked",
+        "scnet_tran",
         "bandit",
         "bandit_v2",
     }
@@ -54,8 +56,6 @@ _SUPPORTED_MODEL_TYPES = frozenset(
 #: model_type → short UI reason (always unsupported in first pass).
 _UNSUPPORTED_MODEL_TYPES: Dict[str, str] = {
     "medley_vox": "Medley-Vox engine not ported",
-    "scnet_masked": "SCNet Masked not ported",
-    "scnet_tran": "SCNet Tran not ported",
     "htdemucs": "MSST Demucs single-ckpt format not supported",
     "vr": "needs VR .ckpt+yaml hash bridge",
     "mdxnet": "needs MDX-Net ONNX yaml→hash bridge",
@@ -65,11 +65,6 @@ _UNSUPPORTED_MODEL_TYPES: Dict[str, str] = {
 _UNSUPPORTED_ENTRY_IDS: Dict[str, str] = {
     "mbr_wsa": "Windowed Sink Attention Mel-Band not ported",
     "bs_cr_4stem_zf_turbo": "BS Conformer not ported",
-    "mbr_syhft_4stem": "Mel-Band skip_connection not ported",
-    "mbr_syhft_4stem2": "Mel-Band skip_connection not ported",
-    "mbr_4stemlarge1_aname": "Mel-Band skip_connection not ported",
-    "mbr_4stemlarge2_aname": "Mel-Band skip_connection not ported",
-    "mbr_4stemxl1_aname": "Mel-Band skip_connection not ported",
 }
 
 _MODEL_TYPE_TO_LIST_KEY: Dict[str, str] = {

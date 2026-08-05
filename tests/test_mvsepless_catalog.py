@@ -79,13 +79,21 @@ class ClassifyTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("Sink", reason)
 
-    def test_skip_connection_ids_denied(self) -> None:
+    def test_skip_connection_ids_supported(self) -> None:
         ok, reason = classify_entry(
             "mbr_4stemxl1_aname",
             {"model_type": "mel_band_roformer", "full_name": "XL"},
         )
-        self.assertFalse(ok)
-        self.assertIn("skip_connection", reason)
+        self.assertTrue(ok)
+        self.assertEqual(reason, "")
+
+    def test_scnet_masked_and_tran_supported(self) -> None:
+        for model_type in ("scnet_masked", "scnet_tran"):
+            ok, reason = classify_entry(
+                f"id_{model_type}",
+                {"model_type": model_type, "full_name": model_type},
+            )
+            self.assertTrue(ok, msg=reason)
 
     def test_vr_and_mdxnet_denied(self) -> None:
         ok, reason = classify_entry("1_hp-uvr", {"model_type": "vr"})
@@ -105,6 +113,8 @@ class ConvertTests(unittest.TestCase):
             ("scnet", "d.ckpt", "d_config.yaml"),
             ("bandit", "e.ckpt", "e_config.yaml"),
             ("bandit_v2", "f.ckpt", "f_config.yaml"),
+            ("scnet_masked", "g.ckpt", "g_config.yaml"),
+            ("scnet_tran", "h.ckpt", "h_config.yaml"),
         ):
             with self.subTest(model_type=model_type):
                 raw = _entry(
