@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from unittest import mock
 
 
 @unittest.skipUnless(
@@ -68,6 +69,40 @@ class ConsoleScrollTests(unittest.TestCase):
         self._drain()
         self.assertIsNotNone(
             console._map_handler_id, "expected a pending map handler while unmapped"
+        )
+
+    def test_two_unmapped_appends_share_one_map_handler(self) -> None:
+        from ui.widgets.console import ConsoleView
+
+        console = ConsoleView()
+        self.assertFalse(console.get_mapped())
+        console.append("line one\n")
+        self._drain()
+        first_handler = console._map_handler_id
+        self.assertIsNotNone(first_handler)
+
+        idles_before = {"n": 0}
+        orig_idle = __import__("gi.repository", fromlist=["GLib"]).GLib.idle_add
+
+        def counting_idle(func, *args, **kwargs):
+            idles_before["n"] += 1
+            return orig_idle(func, *args, **kwargs)
+
+        from gi.repository import GLib
+
+        with mock.patch.object(GLib, "idle_add", side_effect=counting_idle):
+            console.append("line two\n")
+            self._drain()
+
+        self.assertEqual(
+            console._map_handler_id,
+            first_handler,
+            "second append while unmapped must reuse the pending map handler",
+        )
+        self.assertEqual(
+            idles_before["n"],
+            0,
+            "second append must not schedule another idle once parked on map",
         )
 
     def test_done_marker_skipped_without_an_open_line(self) -> None:
