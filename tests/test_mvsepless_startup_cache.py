@@ -57,14 +57,21 @@ class MvseplessStartupCacheTests(unittest.TestCase):
         self.assertIsNotNone(data)
         assert data is not None
         self.assertIn("mdx_download_list", data)
-        refresh.assert_called_once()
+        refresh.assert_not_called()
 
-    def test_stale_disk_cache_still_fetches(self) -> None:
+    def test_expired_disk_cache_serves_immediately_and_refreshes(self) -> None:
+        """Expired-but-present cache must not block the caller on HTTP."""
         self._write_cache(time.time() - (mc._MVSEPLESS_CACHE_TTL_SECONDS + 60))
-        with mock.patch.object(mc, "_urlopen", side_effect=OSError("offline")):
+        with mock.patch.object(
+            mc,
+            "_urlopen",
+            side_effect=AssertionError("network hit on caller despite disk cache"),
+        ), mock.patch.object(mc, "_start_background_refresh") as refresh:
             data = mc.load_mvsepless_models()
-        # Falls back to the stale disk copy rather than returning nothing.
         self.assertIsNotNone(data)
+        assert data is not None
+        self.assertIn("mdx_download_list", data)
+        refresh.assert_called_once()
 
     def test_force_bypasses_the_disk_cache(self) -> None:
         self._write_cache(time.time())

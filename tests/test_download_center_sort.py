@@ -93,6 +93,33 @@ class DownloadCenterSortTests(unittest.TestCase):
 
         self.assertLess(window._compare_rows(supported, unsupported), 0)
 
+    def test_set_sort_func_accepts_compare_rows_signature(self) -> None:
+        """Installing ``_compare_rows`` on a real Gtk.ListBox must not TypeError.
+
+        The unit tests above call ``_compare_rows`` directly; this is the only
+        check that the callback signature matches what ``set_sort_func`` invokes.
+        """
+        from gi.repository import Gtk, Adw
+        from ui.widget_state import stash
+
+        window = self._window()
+        window._sort_mode = "name"
+
+        list_box = Gtk.ListBox()
+        list_box.set_sort_func(lambda r1, r2: window._compare_rows(r1, r2))
+
+        a = Adw.ActionRow()
+        stash(a, "_uvr_sort_name", "alpha")
+        stash(a, "_uvr_sdr", None)
+        stash(a, "_uvr_unsupported", False)
+        b = Adw.ActionRow()
+        stash(b, "_uvr_sort_name", "beta")
+        stash(b, "_uvr_sdr", None)
+        stash(b, "_uvr_unsupported", False)
+        list_box.append(a)
+        list_box.append(b)
+        list_box.invalidate_sort()
+
 
 if __name__ == "__main__":
     unittest.main()

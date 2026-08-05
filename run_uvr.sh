@@ -5,6 +5,9 @@ HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${HERE}/.venv"
 VENV_PYTHON="${VENV_DIR}/bin/python"
 INSTALLER="${HERE}/install_packages.sh"
+# Stamp written after a successful full GTK/Adw import probe. Invalidated when
+# pyvenv.cfg is newer (venv rebuilt / Python bumped).
+VENV_HEALTH_STAMP="${XDG_CACHE_HOME:-${HOME}/.cache}/uvr/venv_gtk_ok"
 
 # How to react when the venv is missing/stale (typically after a system Python
 # or GTK upgrade orphaned it):
@@ -15,48 +18,50 @@ INSTALLER="${HERE}/install_packages.sh"
 #   never  - only print the diagnostic and exit.
 UVR_AUTO_REBUILD="${UVR_AUTO_REBUILD:-auto}"
 
-# Ensure a desktop entry is installed so the Wayland/GNOME shell resolves the
-# window's app id (org.uvr.UltimateVocalRemover) to the friendly application
-# name and icon, instead of showing the raw app id in the dock/taskbar.
-# Idempotent and best-effort: never block launching the app.
-install_desktop_entry() {
-    local app_id="org.uvr.UltimateVocalRemover"
-    local data_home="${XDG_DATA_HOME:-${HOME}/.local/share}"
-    local apps_dir="${data_home}/applications"
-    local target="${apps_dir}/${app_id}.desktop"
-    local desktop_contents
-    desktop_contents="[Desktop Entry]
-Type=Application
-Version=1.0
-Name=Ultimate Vocal Remover
-GenericName=Vocal Remover
-Comment=Separate vocals and instruments from audio using AI models
-Exec=${HERE}/run_uvr.sh
-Icon=${HERE}/packaging/${app_id}.png
-Terminal=false
-Categories=AudioVideo;Audio;
-Keywords=audio;vocal;stem;separation;karaoke;instrumental;
-StartupNotify=true
-StartupWMClass=${app_id}
-"
-    mkdir -p "${apps_dir}" || return 0
-    # Only rewrite when missing or changed, to avoid needless disk churn.
-    if [[ ! -f "${target}" ]] || [[ "$(cat "${target}" 2>/dev/null)" != "${desktop_contents}" ]]; then
-        printf '%s' "${desktop_contents}" > "${target}" || return 0
-        command -v update-desktop-database >/dev/null 2>&1 \
-            && update-desktop-database "${apps_dir}" >/dev/null 2>&1 || true
-    fi
+# shellcheck source=packaging/desktop_entry.sh
+source "${HERE}/packaging/desktop_entry.sh"
+
+write_venv_health_stamp() {
+    mkdir -p "$(dirname -- "${VENV_HEALTH_STAMP}")" || return 0
+    : > "${VENV_HEALTH_STAMP}" || true
 }
 
-# Probe the venv. Echoes a status and returns:
+clear_venv_health_stamp() {
+    rm -f "${VENV_HEALTH_STAMP}" || true
+}
+
+# Return 0 when a full GTK/Adw import probe should run.
+gtk_probe_needed() {
+    if [[ "${UVR_FORCE_VENV_CHECK:-0}" == "1" ]]; then
+        return 0
+    fi
+    local cfg="${VENV_DIR}/pyvenv.cfg"
+    [[ -f "${VENV_HEALTH_STAMP}" ]] || return 0
+    [[ -f "${cfg}" ]] || return 0
+    # -ot: stamp older than pyvenv.cfg → venv was (re)created since last probe.
+    if [[ "${VENV_HEALTH_STAMP}" -ot "${cfg}" ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# Probe the venv. Returns:
 #   0 healthy
 #   1 interpreter missing/dangling (e.g. base Python was removed by an upgrade)
 #   2 stale: interpreter runs but GTK4/PyGObject can no longer be imported
+#
+# Default hot path: executable check only (~1 ms). A full GTK import probe
+# (~80 ms, separate process) runs when the stamp is missing/stale, after a
+# rebuild, or when UVR_FORCE_VENV_CHECK=1. UVR_SKIP_CHECK=1 skips the probe
+# entirely (stamp untouched).
 venv_health() {
     # A dangling symlink (base interpreter deleted by a minor-version upgrade)
     # is not executable, so this also catches the most common breakage.
     [[ -x "${VENV_PYTHON}" ]] || return 1
     if [[ "${UVR_SKIP_CHECK:-0}" == "1" ]]; then
+        return 0
+    fi
+    if ! gtk_probe_needed; then
         return 0
     fi
     # With --system-site-packages the venv borrows the system PyGObject, which
@@ -67,6 +72,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw  # noqa: F401
 PY
+    write_venv_health_stamp
     return 0
 }
 
@@ -81,6 +87,7 @@ rebuild_venv() {
         return 1
     fi
     echo "Rebuilding the virtual environment via install_packages.sh (this can take a while) ..." >&2
+    clear_venv_health_stamp
     bash "${INSTALLER}"
 }
 
@@ -136,12 +143,16 @@ ensure_venv() {
     esac
 
     # Re-verify after a rebuild attempt before continuing to launch.
+    # Stamp was cleared; force a full probe regardless of other env.
+    UVR_FORCE_VENV_CHECK=1
     if ! venv_health; then
         echo "The environment is still not healthy after rebuilding. See output above." >&2
         exit 1
     fi
 }
 
+# Hot path: create the .desktop only when missing. Full rewrite happens from
+# install_packages.sh (--update).
 install_desktop_entry || true
 ensure_venv
 

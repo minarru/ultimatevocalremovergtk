@@ -68,6 +68,8 @@ class VocalSplitRow(Adw.ExpanderRow):
         #: unopened row would clobber the stored tag with ``NO_MODEL``.
         self._models_ready = False
         self._stored_splitter = NO_MODEL
+        self._defer_populate = False
+        self._populate_idle_scheduled = False
 
         self.split_switch = make_switch_row("Enable vocal split mode")
         self.splitter_row = make_combo_row("Vocal splitter model", [NO_MODEL])
@@ -134,9 +136,15 @@ class VocalSplitRow(Adw.ExpanderRow):
         self._sync_dependents()
         self.refresh_summary()
         # Expand only -- never auto-collapse, or a section the user opened by
-        # hand would be shut on them by an unrelated settings reload.
-        if self.split_switch.get_active() or self.deverb_switch.get_active():
-            self.set_expanded(True)
+        # hand would be shut on them by an unrelated settings reload. Defer
+        # the karaoke-model hash off the restore path (same F1 pattern as
+        # MethodView._sync_expander_summaries).
+        self._defer_populate = True
+        try:
+            if self.split_switch.get_active() or self.deverb_switch.get_active():
+                self.set_expanded(True)
+        finally:
+            self._defer_populate = False
 
     def persist_to_settings(self, settings: typing.Any) -> None:
         """Write every global vocal-split key back to ``settings``."""
@@ -175,6 +183,24 @@ class VocalSplitRow(Adw.ExpanderRow):
 
     def _populate_models(self, *_args: typing.Any) -> None:
         if self._models_ready or not self.get_expanded():
+            return
+        if self._defer_populate:
+            if not self._populate_idle_scheduled:
+                self._populate_idle_scheduled = True
+                from ..dispatch import idle_on_main
+
+                idle_on_main(self._run_deferred_populate)
+            return
+        self._populate_models_now()
+
+    def _run_deferred_populate(self) -> None:
+        self._populate_idle_scheduled = False
+        if self._models_ready or not self.get_expanded():
+            return
+        self._populate_models_now()
+
+    def _populate_models_now(self) -> None:
+        if self._models_ready:
             return
         self._models_ready = True
         try:

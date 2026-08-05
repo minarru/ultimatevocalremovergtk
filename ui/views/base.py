@@ -145,6 +145,8 @@ class MethodView:
         self.settings = context.settings
         self._on_settings_changed = on_settings_changed
         self._loading = False
+        self._defer_combo_populate = False
+        self._combo_populate_idle_scheduled = False
         self._option_rows = {}
         self._scale_rows = {}
         self._switch_rows = {}
@@ -613,6 +615,23 @@ class MethodView:
         self._touch_settings()
 
     def _ensure_model_combos_populated(self, *_args: typing.Any) -> None:
+        if getattr(self, "_defer_combo_populate", False):
+            # Load-time auto-expand must open the row immediately without
+            # hashing every checkpoint on the construction path. Schedule
+            # once; further notify::expanded while deferred is a no-op.
+            if not getattr(self, "_combo_populate_idle_scheduled", False):
+                self._combo_populate_idle_scheduled = True
+                from ..dispatch import idle_on_main
+
+                idle_on_main(self._run_deferred_combo_populate)
+            return
+        self._populate_model_combos_now()
+
+    def _run_deferred_combo_populate(self) -> None:
+        self._combo_populate_idle_scheduled = False
+        self._populate_model_combos_now()
+
+    def _populate_model_combos_now(self) -> None:
         if self._model_combos_populated:
             return
         self._model_combos_populated = True
@@ -716,22 +735,30 @@ class MethodView:
 
         Expand only -- never auto-collapse. A section the user opened by hand
         must not be shut on them by an unrelated settings reload.
+
+        Population of model combos is deferred to an idle while restoring: the
+        expand itself stays synchronous (visual), but hashing checkpoints must
+        not block ``MainWindow`` construction (tracked issue F1).
         """
         self._refresh_expander_subtitles()
-        if (
-            getattr(self, "secondary_expander", None) is not None
-            and self.secondary_prefix
-            and get_flat(
-                self.settings,
-                f"{self.secondary_prefix}_is_secondary_model_activate"
-            )
-        ):
-            self.secondary_expander.set_expanded(True)
-        if (
-            getattr(self, "preproc_expander", None) is not None
-            and self.settings.demucs.is_pre_proc_model_activate
-        ):
-            self.preproc_expander.set_expanded(True)
+        self._defer_combo_populate = True
+        try:
+            if (
+                getattr(self, "secondary_expander", None) is not None
+                and self.secondary_prefix
+                and get_flat(
+                    self.settings,
+                    f"{self.secondary_prefix}_is_secondary_model_activate"
+                )
+            ):
+                self.secondary_expander.set_expanded(True)
+            if (
+                getattr(self, "preproc_expander", None) is not None
+                and self.settings.demucs.is_pre_proc_model_activate
+            ):
+                self.preproc_expander.set_expanded(True)
+        finally:
+            self._defer_combo_populate = False
 
     def _build_secondary_section(self) -> None:
         repo = self.context.repo

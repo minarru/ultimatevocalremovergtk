@@ -229,7 +229,29 @@ def _display_base(keys: Tuple[str, ...]) -> Dict[str, Any]:
     return flat
 
 
-@functools.lru_cache(maxsize=1)
+#: Bumped by :func:`clear_display_cache` so an in-flight ``lru_cache`` miss
+#: that finishes *after* a clear cannot re-pin a stale merge under the live key.
+_display_generation: int = 0
+
+
+@functools.lru_cache(maxsize=4)
+def _merged_for_display_at(generation: int):
+    """Cached merge keyed by :data:`_display_generation`.
+
+    Callers should use :func:`_merged_for_display` so they always read the
+    current generation. Keying on the generation means a mid-flight clear
+    (bump) leaves the finishing miss stored under the old key, which the next
+    lookup will not see.
+    """
+    from .catalog_sources import merged_catalogues
+
+    return merged_catalogues(
+        vr=_display_base(_VR_CATALOG_SOURCE_KEYS),
+        mdx=_display_base(_MDX_CATALOG_SOURCE_KEYS),
+        demucs=_display_base(_DEMUCS_CATALOG_SOURCE_KEYS),
+    )
+
+
 def _merged_for_display():
     """Merged catalogues built from the upstream cache plus every supplement.
 
@@ -242,18 +264,18 @@ def _merged_for_display():
     dropdown entry. Invalidate through :func:`clear_display_cache` whenever a
     source changes (politrees refresh, hash-mapper reload).
     """
-    from .catalog_sources import merged_catalogues
-
-    return merged_catalogues(
-        vr=_display_base(_VR_CATALOG_SOURCE_KEYS),
-        mdx=_display_base(_MDX_CATALOG_SOURCE_KEYS),
-        demucs=_display_base(_DEMUCS_CATALOG_SOURCE_KEYS),
-    )
+    return _merged_for_display_at(_display_generation)
 
 
 def clear_display_cache() -> None:
-    """Drop the memoized catalogue merge (call when any source changes)."""
-    _merged_for_display.cache_clear()
+    """Drop the memoized catalogue merge (call when any source changes).
+
+    Bumps :data:`_display_generation` so a concurrent miss that started under
+    the previous generation cannot re-publish its result as the live entry.
+    """
+    global _display_generation
+    _display_generation += 1
+    _merged_for_display_at.cache_clear()
 
 
 def _index_from_meta(merged: "MergedCatalogues", arch: str) -> Dict[str, str]:

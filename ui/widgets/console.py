@@ -156,6 +156,10 @@ class ConsoleView(Gtk.ScrolledWindow):
     def _scroll_to_end(self) -> None:
         if self._defer_scroll:
             return
+        # Already parked on the next map — do not schedule another idle that
+        # would only discover we are still unmapped and return.
+        if self._map_handler_id is not None:
+            return
         if self._scroll_idle_id is not None:
             return
         self._scroll_idle_id = GLib.idle_add(self._do_scroll)

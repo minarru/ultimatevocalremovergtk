@@ -189,6 +189,9 @@ def clear_mvsepless_cache() -> None:
     _cached_models = None
     _cached_loaded_at = 0.0
     _cached_converted = None
+    from .model_display import clear_display_cache
+
+    clear_display_cache()
 
 
 def _cache_path() -> str:
@@ -269,16 +272,21 @@ def load_mvsepless_models(*, force: bool = False) -> Optional[Dict[str, Any]]:
 
     if not force:
         entry = _read_disk_cache_entry()
-        if entry is not None and (now - entry[1]) < _MVSEPLESS_CACHE_TTL_SECONDS:
-            # A fresh cache on disk is authoritative: fetching here blocked
-            # window construction on HTTP for no benefit.
-            _cached_models = entry[0]
+        if entry is not None:
+            # Any readable disk entry is served immediately (stale-while-
+            # revalidate). TTL only decides whether to refresh in the
+            # background — it never blocks the caller on HTTP.
+            data, fetched_at = entry
+            previous = _cached_models
+            _cached_models = data
             _cached_loaded_at = now
             _cached_converted = None
-            from .model_display import clear_display_cache
+            if data != previous:
+                from .model_display import clear_display_cache
 
-            clear_display_cache()
-            _start_background_refresh()
+                clear_display_cache()
+            if (now - fetched_at) >= _MVSEPLESS_CACHE_TTL_SECONDS:
+                _start_background_refresh()
             return _cached_models
 
     data: Optional[Dict[str, Any]] = None
@@ -294,6 +302,7 @@ def load_mvsepless_models(*, force: bool = False) -> Optional[Dict[str, Any]]:
     if not isinstance(data, dict):
         return None
 
+    previous = _cached_models
     _cached_models = data
     _cached_loaded_at = now
     _cached_converted = None
@@ -302,15 +311,12 @@ def load_mvsepless_models(*, force: bool = False) -> Optional[Dict[str, Any]]:
         # back from disk, so an offline session makes month-old data look
         # freshly fetched and the TTL never expires.
         _write_disk_cache(data)
-    # Local import: avoids a hard dependency edge from this module to
-    # core.model_display for a call that only fires on data refresh. New
-    # data means the memoized merge is stale, regardless of who triggered
-    # this fetch (a fresh session, a TTL rollover, or an explicit refresh) —
-    # invalidate at the point the data actually changes, not just at
-    # clear_mvsepless_cache(), which callers may never invoke.
-    from .model_display import clear_display_cache
+    # Invalidate only when the payload actually changed — identical refetches
+    # (typical background refresh) must not discard a still-valid merge.
+    if data != previous:
+        from .model_display import clear_display_cache
 
-    clear_display_cache()
+        clear_display_cache()
     return data
 
 
