@@ -127,6 +127,7 @@ class DownloadCenterWindow:
         self._purpose = PURPOSE_ALL
         self._sort_mode = SORT_NAME
         self._hide_unsupported = False
+        self._stem_refresh_armed = False
 
         saved_code = self.settings.process.user_code
         if saved_code:
@@ -653,6 +654,49 @@ class DownloadCenterWindow:
         self._update_tab_counts()
         self._update_status_from_catalogue()
         self._update_download_button()
+        self._ensure_stem_cache_listener()
+
+    def _ensure_stem_cache_listener(self) -> None:
+        from core.catalogue_stem_cache import ensure_worker_started, subscribe
+
+        subscribe(self._schedule_stem_subtitle_refresh)
+        ensure_worker_started()
+
+    def _schedule_stem_subtitle_refresh(self) -> None:
+        idle_on_main(self._arm_stem_subtitle_refresh)
+
+    def _arm_stem_subtitle_refresh(self) -> None:
+        if self._stem_refresh_armed:
+            return
+        self._stem_refresh_armed = True
+        from gi.repository import GLib
+
+        GLib.timeout_add(200, self._flush_stem_subtitles)
+
+    def _flush_stem_subtitles(self) -> bool:
+        self._stem_refresh_armed = False
+        updated = self.manager.apply_catalogue_stem_cache()
+        if not updated:
+            return False
+        for key, action in self._row_actions.items():
+            _arch, name = key
+            if name not in updated:
+                continue
+            if fetch(action, "_uvr_unsupported", False):
+                continue
+            meta = self.manager.catalogue_meta.get(name)
+            stems_text = ", ".join(meta.stems) if meta is not None and meta.stems else ""
+            stash(action, "_uvr_stems_text", stems_text)
+            set_row_subtitle(
+                action,
+                format_sdr_subtitle(
+                    fetch(action, "_uvr_sdr", None),
+                    "",
+                    stem=fetch(action, "_uvr_sdr_stem", None),
+                    extra=stems_text,
+                ),
+            )
+        return False
 
     def _available_count(self) -> int:
         return sum(
@@ -865,6 +909,7 @@ class DownloadCenterWindow:
         self._update_tab_counts()
         self._update_status_from_catalogue()
         self._update_download_button()
+        self._ensure_stem_cache_listener()
 
     def _open_vip(self) -> None:
         from .download import open_vip_code_dialog
