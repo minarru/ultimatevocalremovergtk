@@ -257,7 +257,9 @@ def _load_config(config_path: str) -> Any:
 
 
 def _instantiate(
-    config: Any, state_dict_keys: Optional[List[str]] = None
+    config: Any,
+    state_dict_keys: Optional[List[str]] = None,
+    model_type_hint: Optional[str] = None,
 ) -> Tuple[Any, str, bool]:
     """Build a module via the same two paths ``SeperateMDXC`` uses.
 
@@ -270,7 +272,9 @@ def _instantiate(
     from ml.tfc_tdf_v3 import TFC_TDF_net
 
     try:
-        module = _build_mdx_c_model(config, state_dict_keys=state_dict_keys)
+        module = _build_mdx_c_model(
+            config, state_dict_keys=state_dict_keys, model_type_hint=model_type_hint
+        )
         return module, type(module).__name__, True
     except ValueError:
         # Not a Roformer/SCNet/Bandit config. SeperateMDXC routes MDX23C to
@@ -284,12 +288,16 @@ def _instantiate(
 
 
 def build_from_config(
-    config_path: str, state_dict_keys: Optional[List[str]] = None
+    config_path: str,
+    state_dict_keys: Optional[List[str]] = None,
+    model_type_hint: Optional[str] = None,
 ) -> BuiltModel:
     """Instantiate a model from its yaml. Never raises; reports instead.
 
     ``state_dict_keys`` lets a checkpoint steer variants a config does not
-    declare — HyperACE BS-Roformer being the case in point.
+    declare — HyperACE BS-Roformer being the case in point. ``model_type_hint``
+    does the same from the catalogue entry, for variants (SCNet Masked) that a
+    ``--check-keys``-free build never gets ``state_dict_keys`` for.
     """
     try:
         config = _load_config(config_path)
@@ -302,7 +310,7 @@ def build_from_config(
     sample_rate = int(getattr(audio, "sample_rate", 44100) or 44100) if audio else 44100
 
     try:
-        module, arch, filtered = _instantiate(config, state_dict_keys)
+        module, arch, filtered = _instantiate(config, state_dict_keys, model_type_hint)
     except Exception as exc:  # noqa: BLE001 - unported architecture is the answer
         return BuiltModel(
             config_path,
@@ -657,6 +665,7 @@ def probe(
     checkpoint_url: str = "",
     checkpoint_path: str = "",
     seconds: Optional[float] = None,
+    model_type_hint: Optional[str] = None,
 ) -> ProbeResult:
     """Build, forward-probe and (optionally) key-diff one model."""
     # Read the checkpoint's keys first: they decide variants the config does
@@ -672,7 +681,9 @@ def probe(
         except Exception as exc:  # noqa: BLE001 - header probe is best-effort
             print(f"  (state_dict probe unavailable: {exc})")
 
-    build = build_from_config(config_path, state_dict_keys=checkpoint_keys)
+    build = build_from_config(
+        config_path, state_dict_keys=checkpoint_keys, model_type_hint=model_type_hint
+    )
     forward = forward_probe(build, seconds=seconds)
     keys: Optional[KeyDiff] = None
     if checkpoint_keys is not None and build.ok:
@@ -735,6 +746,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             checkpoint_url=target.checkpoint_url if args.check_keys else "",
             checkpoint_path=args.checkpoint,
             seconds=args.seconds,
+            model_type_hint=target.model_type,
         )
 
     print(render_report(result))

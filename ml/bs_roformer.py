@@ -7,6 +7,7 @@ import torch
 from torch import nn, einsum, Tensor
 from torch.nn import Module, ModuleList, Sequential
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 from .attend import Attend
 
@@ -396,6 +397,8 @@ class BSRoformer(Module):
             multi_stft_normalized: bool = False,
             multi_stft_window_fn: BeartypeCallable[..., Tensor] = torch.hann_window,
             mlp_expansion_factor: int = 4,
+            use_torch_checkpoint: bool = False,
+            skip_connection: bool = False,
             # HyperACE checkpoints attach a segmentation branch to every mask
             # estimator. Enabled from the config's top-level ``hyperace2`` flag,
             # not from the ``model:`` section — see engines.mdx._build_mdx_c_model.
@@ -407,6 +410,8 @@ class BSRoformer(Module):
         self.stereo = stereo
         self.audio_channels = 2 if stereo else 1
         self.num_stems = num_stems
+        self.use_torch_checkpoint = use_torch_checkpoint
+        self.skip_connection = skip_connection
 
         self.layers = ModuleList([])
 
@@ -534,35 +539,57 @@ class BSRoformer(Module):
 
         x = rearrange(stft_repr, 'b f t c -> b t (f c)')
 
-        x = self.band_split(x)
+        if self.use_torch_checkpoint:
+            x = cast(Tensor, checkpoint(self.band_split, x, use_reentrant=False))
+        else:
+            x = self.band_split(x)
 
         # axial / hierarchical attention (stays on accelerator)
 
-        for transformer_block in self.layers:
+        store: list[Tensor | None] = [None] * len(self.layers)
+        for i, transformer_block in enumerate(self.layers):
             block_list = cast(ModuleList, transformer_block)
-            block = cast(list[Transformer], [block_list[i] for i in range(len(block_list))])
+            block = cast(list[Transformer], [block_list[j] for j in range(len(block_list))])
 
             if len(block) == 3:
                 linear_transformer, time_transformer, freq_transformer = block
 
                 x, ft_ps = pack([x], 'b * d')
-                x = linear_transformer(x)
+                if self.use_torch_checkpoint:
+                    x = cast(Tensor, checkpoint(linear_transformer, x, use_reentrant=False))
+                else:
+                    x = linear_transformer(x)
                 x, = unpack(x, ft_ps, 'b * d')
             else:
                 time_transformer, freq_transformer = block
 
+            # MSST: skip-sum after optional linear block, before time/freq.
+            if self.skip_connection:
+                for j in range(i):
+                    previous = store[j]
+                    if previous is not None:
+                        x = x + previous
+
             x = rearrange(x, 'b t f d -> b f t d')
             x, ps = pack([x], '* t d')
 
-            x = time_transformer(x)
+            if self.use_torch_checkpoint:
+                x = cast(Tensor, checkpoint(time_transformer, x, use_reentrant=False))
+            else:
+                x = time_transformer(x)
 
             x, = unpack(x, ps, '* t d')
             x = rearrange(x, 'b f t d -> b t f d')
             x, ps = pack([x], '* f d')
 
-            x = freq_transformer(x)
+            if self.use_torch_checkpoint:
+                x = cast(Tensor, checkpoint(freq_transformer, x, use_reentrant=False))
+            else:
+                x = freq_transformer(x)
 
             x, = unpack(x, ps, '* f d')
+            if self.skip_connection:
+                store[i] = x
 
         x = self.final_norm(x)
 

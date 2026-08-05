@@ -339,7 +339,7 @@ class ResolveTargetTests(unittest.TestCase):
     def test_carries_the_catalogue_unsupported_reason(self) -> None:
         """Why the entry is listed unsupported is the context for the verdict."""
         target = model_probe.resolve_target("mbr_syhft_4stem", catalogue=_CATALOGUE)
-        self.assertEqual(target.reason, "Mel-Band skip_connection not ported")
+        self.assertEqual(target.reason, "")
         other = model_probe.resolve_target("medley_thing", catalogue=_CATALOGUE)
         self.assertEqual(other.reason, "Medley-Vox engine not ported")
 

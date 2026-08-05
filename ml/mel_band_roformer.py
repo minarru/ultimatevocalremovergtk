@@ -21,10 +21,12 @@ beartype = _beartype(conf=BeartypeConf(is_pep484_tower=True))
 from rotary_embedding_torch import RotaryEmbedding
 
 from einops import rearrange, pack, unpack, reduce, repeat
+from einops.layers.torch import Rearrange
 
 from librosa import filters
 
 from ml.stft_device import needs_cpu_stft, torch_istft, torch_stft
+from torch.utils.checkpoint import checkpoint
 
 T = TypeVar('T')
 
@@ -130,6 +132,50 @@ class Attention(Module):
         return self.to_out(out)
 
 
+def l2norm(t: Tensor) -> Tensor:
+    return F.normalize(t, dim=-1, p=2)
+
+
+class LinearAttention(Module):
+    """Linear attention from El-Nouby et al. (https://arxiv.org/abs/2106.09681)."""
+
+    @beartype
+    def __init__(
+            self,
+            *,
+            dim: int,
+            dim_head: int = 32,
+            heads: int = 8,
+            flash: bool = False,
+            dropout: float = 0.
+    ) -> None:
+        super().__init__()
+        dim_inner = dim_head * heads
+        self.norm = RMSNorm(dim)
+
+        self.to_qkv = nn.Sequential(
+            nn.Linear(dim, dim_inner * 3, bias=False),
+            Rearrange('b n (qkv h d) -> qkv b h d n', qkv=3, h=heads)
+        )
+
+        self.temperature = nn.Parameter(torch.ones(heads, 1, 1))
+        self.attend = Attend(dropout=dropout, flash=flash)
+        self.to_out = nn.Sequential(
+            Rearrange('b h d n -> b n (h d)'),
+            nn.Linear(dim_inner, dim, bias=False)
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.norm(x)
+        q, k, v = self.to_qkv(x)
+        q, k = map(l2norm, (q, k))
+        q = q * self.temperature.exp()
+        return self.to_out(self.attend(q, k, v))
+
+
+AttnModule = Attention | LinearAttention
+
+
 class Transformer(Module):
     def __init__(
             self,
@@ -143,15 +189,33 @@ class Transformer(Module):
             ff_mult: int = 4,
             norm_output: bool = True,
             rotary_embed: RotaryEmbedding | None = None,
-            flash_attn: bool = True
+            flash_attn: bool = True,
+            linear_attn: bool = False
     ) -> None:
         super().__init__()
         self.layers = ModuleList([])
 
         for _ in range(depth):
+            attn: AttnModule
+            if linear_attn:
+                attn = LinearAttention(
+                    dim=dim,
+                    dim_head=dim_head,
+                    heads=heads,
+                    dropout=attn_dropout,
+                    flash=flash_attn,
+                )
+            else:
+                attn = Attention(
+                    dim=dim,
+                    dim_head=dim_head,
+                    heads=heads,
+                    dropout=attn_dropout,
+                    rotary_embed=rotary_embed,
+                    flash=flash_attn,
+                )
             self.layers.append(ModuleList([
-                Attention(dim=dim, dim_head=dim_head, heads=heads, dropout=attn_dropout, rotary_embed=rotary_embed,
-                          flash=flash_attn),
+                attn,
                 FeedForward(dim=dim, mult=ff_mult, dropout=ff_dropout)
             ]))
 
@@ -161,7 +225,7 @@ class Transformer(Module):
 
         for layer in self.layers:
             layer_pair = cast(ModuleList, layer)
-            attn, ff = cast(tuple[Attention, FeedForward], (layer_pair[0], layer_pair[1]))
+            attn, ff = cast(tuple[AttnModule, FeedForward], (layer_pair[0], layer_pair[1]))
             x = attn(x) + x
             x = ff(x) + x
 
@@ -286,6 +350,10 @@ class MelBandRoformer(Module):
             multi_stft_hop_size: int = 147,
             multi_stft_normalized: bool = False,
             multi_stft_window_fn: BeartypeCallable[..., Tensor] = torch.hann_window,
+            mlp_expansion_factor: int = 4,
+            use_torch_checkpoint: bool = False,
+            skip_connection: bool = False,
+            linear_transformer_depth: int = 0,
             match_input_audio_length: bool = False,
     ) -> None:
         super().__init__()
@@ -293,6 +361,8 @@ class MelBandRoformer(Module):
         self.stereo = stereo
         self.audio_channels = 2 if stereo else 1
         self.num_stems = num_stems
+        self.use_torch_checkpoint = use_torch_checkpoint
+        self.skip_connection = skip_connection
 
         self.layers = ModuleList([])
 
@@ -309,10 +379,18 @@ class MelBandRoformer(Module):
         freq_rotary_embed = RotaryEmbedding(dim=dim_head)
 
         for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                Transformer(depth=time_transformer_depth, rotary_embed=time_rotary_embed, **transformer_kwargs),
+            transformer_modules: list[Transformer] = []
+            if linear_transformer_depth > 0:
+                transformer_modules.append(
+                    Transformer(depth=linear_transformer_depth, linear_attn=True, **transformer_kwargs)
+                )
+            transformer_modules.append(
+                Transformer(depth=time_transformer_depth, rotary_embed=time_rotary_embed, **transformer_kwargs)
+            )
+            transformer_modules.append(
                 Transformer(depth=freq_transformer_depth, rotary_embed=freq_rotary_embed, **transformer_kwargs)
-            ]))
+            )
+            self.layers.append(nn.ModuleList(transformer_modules))
 
         _stft_window_fn = default(stft_window_fn, torch.hann_window)
         self.stft_window_fn: Callable[..., Tensor] = partial(_stft_window_fn, stft_win_length)
@@ -369,7 +447,8 @@ class MelBandRoformer(Module):
             mask_estimator = MaskEstimator(
                 dim=dim,
                 dim_inputs=freqs_per_bands_with_complex,
-                depth=mask_estimator_depth
+                depth=mask_estimator_depth,
+                mlp_expansion_factor=mlp_expansion_factor,
             )
 
             self.mask_estimators.append(mask_estimator)
@@ -438,25 +517,55 @@ class MelBandRoformer(Module):
 
         x = rearrange(x, 'b f t c -> b t (f c)')
 
-        x = self.band_split(x)
+        if self.use_torch_checkpoint:
+            x = cast(Tensor, checkpoint(self.band_split, x, use_reentrant=False))
+        else:
+            x = self.band_split(x)
 
-        for layer in self.layers:
+        store: list[Tensor | None] = [None] * len(self.layers)
+        for i, layer in enumerate(self.layers):
             layer_pair = cast(ModuleList, layer)
-            time_transformer, freq_transformer = cast(
-                tuple[Transformer, Transformer], (layer_pair[0], layer_pair[1])
+            transformer_block = cast(
+                list[Transformer], [layer_pair[index] for index in range(len(layer_pair))]
             )
+            if len(transformer_block) == 3:
+                linear_transformer, time_transformer, freq_transformer = transformer_block
+                x, linear_ps = pack([x], 'b * d')
+                if self.use_torch_checkpoint:
+                    x = cast(Tensor, checkpoint(linear_transformer, x, use_reentrant=False))
+                else:
+                    x = linear_transformer(x)
+                x, = unpack(x, linear_ps, 'b * d')
+            else:
+                time_transformer, freq_transformer = transformer_block
+
+            # MSST: skip-sum after optional linear block, before time/freq.
+            if self.skip_connection:
+                for j in range(i):
+                    previous = store[j]
+                    if previous is not None:
+                        x = x + previous
+
             x = rearrange(x, 'b t f d -> b f t d')
             x, ps = pack([x], '* t d')
 
-            x = time_transformer(x)
+            if self.use_torch_checkpoint:
+                x = cast(Tensor, checkpoint(time_transformer, x, use_reentrant=False))
+            else:
+                x = time_transformer(x)
 
             x, = unpack(x, ps, '* t d')
             x = rearrange(x, 'b f t d -> b t f d')
             x, ps = pack([x], '* f d')
 
-            x = freq_transformer(x)
+            if self.use_torch_checkpoint:
+                x = cast(Tensor, checkpoint(freq_transformer, x, use_reentrant=False))
+            else:
+                x = freq_transformer(x)
 
             x, = unpack(x, ps, '* f d')
+            if self.skip_connection:
+                store[i] = x
 
         num_stems = len(self.mask_estimators)
 

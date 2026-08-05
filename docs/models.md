@@ -18,15 +18,13 @@ Entries this build cannot run yet still appear in the matching network tab as **
 | Class | Why |
 |---|---|
 | Medley-Vox | No engine port |
-| SCNet Masked / SCNet Tran | Architecture not ported |
 | MSST HTDemucs (single `.ckpt`) | Not the Facebook Demucs bag format |
 | Classic VR from mvsepless | Needs `.ckpt`+yaml → VR hash bridge (use TRvlvr/Politrees VR instead) |
 | Classic MDX-Net ONNX from mvsepless | Needs yaml→hash bridge (use TRvlvr ONNX instead) |
 | Windowed Sink Attention Mel-Band (`mbr_wsa`) | Attention features not ported |
 | BS Conformer (`bs_cr_4stem_zf_turbo`) | Conformer blocks not ported |
-| Mel-Band 4-stem with `skip_connection` | Skip path not ported |
 
-Supported Mel-Band / BS-Roformer / MDX23C / SCNet / Bandit(+v2) entries download through the existing MDX-C hash → `config_yaml` registration path.
+Supported Mel-Band / BS-Roformer / MDX23C / SCNet (including Masked and Tran) / Bandit(+v2) entries download through the existing MDX-C hash → `config_yaml` registration path. Mel-Band 4-stem models with `skip_connection: true` are supported via the same path.
 
 ### Triaging an unsupported entry
 
@@ -49,7 +47,7 @@ Verdicts, worst to best. Exit status is 0 only for `buildable`:
 | `key-mismatch` | Runs, but parameter names disagree with the checkpoint. |
 | `buildable` | Builds, runs, and (if checked) matches the checkpoint's keys. |
 
-`config-ignored` is the one to watch: [`engines.mdx._filter_init_kwargs`](../engines/mdx.py) drops yaml keys a class does not accept, so a model can build cleanly while missing the exact feature that made it unsupported. Probing `mbr_syhft_4stem` reports `skip_connection` among the dropped keys, which is precisely why that entry is listed.
+`config-ignored` is the one to watch: [`engines.mdx._filter_init_kwargs`](../engines/mdx.py) drops yaml keys a class does not accept, so a model can build cleanly while missing the exact feature that made it unsupported. Use this verdict to catch gaps between yaml and the port before flipping catalogue support flags.
 
 ## HyperACE BS-Roformer
 
@@ -73,7 +71,7 @@ python scripts/model_probe.py --config <hyperace.yaml> --checkpoint <hyperace.ck
 
 All three published checkpoints were verified this way against ~300 KB of range-fetched headers rather than 853 MB of weights.
 
-The probe still reports `config-ignored` for these configs because `skip_connection` and `use_torch_checkpoint` are dropped. Both are inert here — upstream's `v2_inst/bs_roformer.py` stores them and never reads them in `forward`, and this config sets `skip_connection: false`. They are deliberately **not** accepted as parameters: taking a kwarg we do not implement would silence the probe for a future config where the flag does matter.
+HyperACE configs may still carry `use_torch_checkpoint` in yaml; it is accepted but optional on BS-Roformer builds that implement checkpointing.
 
 ## SCNet (4-stem music separation)
 
