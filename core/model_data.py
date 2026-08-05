@@ -116,6 +116,7 @@ class ModelRepository:
         self.mdx_hash_MAPPER: dict = {}
         self.mdx_name_select_MAPPER: dict = {}
         self.demucs_name_select_MAPPER: dict = {}
+        # AppContext seeds this ephemeral cache from trusted persisted entries.
         self.model_hash_table: Dict[str, str] = {}
         # Phase 3 hook: later phases set this to a callable that prompts the user
         # for parameters of an unrecognized model. Returning ``None`` (the
@@ -1063,21 +1064,28 @@ class _ModelConfigImplementation:
             return self.repo.on_unrecognized_model(cast(Any, self))
         return None
 
-    def get_model_hash(self):
+    def get_model_hash(self) -> None:
+        from .model_hash_cache import lookup_trusted, remember
+
         self.model_hash = None
         if not os.path.isfile(self.model_path):
             self.model_status = False
             return
+        path = self.model_path
         cache = self.repo.model_hash_table
-        if cache:
-            for key, value in cache.items():
-                if self.model_path == key:
-                    self.model_hash = value
-                    break
-        if not self.model_hash:
-            self.model_hash = compute_checkpoint_hash(self.model_path)
-            if self.model_hash:
-                cache.update({self.model_path: self.model_hash})
+        trusted = lookup_trusted(self.settings.process.model_hash_table, path)
+        if trusted:
+            self.model_hash = trusted
+            cache[path] = trusted
+            return
+        cached = cache.get(path)
+        if cached:
+            self.model_hash = cached
+            return
+        self.model_hash = compute_checkpoint_hash(path)
+        if self.model_hash:
+            cache[path] = self.model_hash
+            remember(self.settings.process.model_hash_table, path, self.model_hash)
 
     def _sync_option_groups(self) -> None:
         """Snapshot flat compatibility attributes into typed option groups."""

@@ -93,5 +93,57 @@ class ModelHashCacheTests(unittest.TestCase):
         self.assertIsNone(mhc.lookup_trusted(table, self.path, stat=raising_stat))
 
 
+class ModelHashWireTests(unittest.TestCase):
+    def test_get_model_hash_remembers_into_settings(self) -> None:
+        from unittest import mock
+
+        from core.model_data import ModelConfig, ModelRepository
+        from core.settings import Settings
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "w.ckpt")
+        with open(path, "wb") as handle:
+            handle.write(b"payload")
+
+        settings = Settings()
+        repo = ModelRepository()
+        repo.model_hash_table = {}
+
+        cfg = ModelConfig.__new__(ModelConfig)
+        cfg.settings = settings
+        cfg.repo = repo
+        cfg.model_path = path
+        cfg.model_status = True
+        cfg.model_hash = None
+        cfg.is_dry_check = True
+
+        with mock.patch(
+            "core.model_data.compute_checkpoint_hash", return_value="abc123"
+        ):
+            cfg.get_model_hash()
+
+        self.assertEqual(repo.model_hash_table[path], "abc123")
+        self.assertEqual(settings.process.model_hash_table[path]["hash"], "abc123")
+
+    def test_appcontext_seeds_trusted_hashes(self) -> None:
+        from ui.context import AppContext
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "w.ckpt")
+        with open(path, "wb") as handle:
+            handle.write(b"payload")
+        st = os.stat(path)
+
+        ctx = AppContext()
+        ctx.settings.process.model_hash_table = {
+            path: {"hash": "seeded", "mtime_ns": st.st_mtime_ns, "size": st.st_size}
+        }
+        ctx._repo = None
+
+        self.assertEqual(ctx.repo.model_hash_table.get(path), "seeded")
+
+
 if __name__ == "__main__":
     unittest.main()
