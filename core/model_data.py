@@ -122,6 +122,7 @@ class ModelRepository:
         # default) simply marks such models as unavailable.
         self.on_unrecognized_model: Optional[Callable[["ModelConfig"], Any]] = None
         self._stem_check_cache = None
+        self._karaoke_cache = None
         self.reload_mappers()
 
     def reload_mappers(self) -> None:
@@ -229,6 +230,7 @@ class ModelRepository:
 
         debug("model", "invalidate_stem_check")
         self._stem_check_cache = None
+        self._karaoke_cache = None
 
     def model_list(
         self,
@@ -298,12 +300,16 @@ class ModelRepository:
 
     def karaoke_model_list(self, settings: Settings) -> List[str]:
         """Build the dry-check vocal-split model pool."""
+        tags = tuple(self.default_change_model_tags())
+        if self._karaoke_cache is not None and self._karaoke_cache[0] == tags:
+            return list(self._karaoke_cache[1])
         model_list: List[str] = []
-        for tag in self.default_change_model_tags():
+        for tag in tags:
             model = ModelConfig(settings, self, tag, is_dry_check=True)
             if model.model_status and (model.is_karaoke or model.is_bv_model):
                 model_list.append(model.model_and_process_tag)
-        return model_list
+        self._karaoke_cache = (tags, model_list)
+        return list(model_list)
 
     def ensemble_model_list(
         self, settings: Settings, ensemble_main_stem: Any
