@@ -145,5 +145,32 @@ class ModelHashWireTests(unittest.TestCase):
         self.assertEqual(ctx.repo.model_hash_table.get(path), "seeded")
 
 
+class ModelHashPersistTests(unittest.TestCase):
+    def test_settings_round_trip_keeps_entry_shape(self) -> None:
+        from core.settings import Settings
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "settings.json")
+        checkpoint = os.path.join(tmp.name, "model.ckpt")
+        with open(checkpoint, "wb") as handle:
+            handle.write(b"x")
+        st = os.stat(checkpoint)
+
+        settings = Settings()
+        settings.path = path
+        settings.process.model_hash_table = {
+            checkpoint: {
+                "hash": "zz",
+                "mtime_ns": st.st_mtime_ns,
+                "size": st.st_size,
+            }
+        }
+        settings.save(path)
+
+        loaded = Settings.load(path)
+        self.assertEqual(loaded.process.model_hash_table[checkpoint]["hash"], "zz")
+
+
 if __name__ == "__main__":
     unittest.main()
