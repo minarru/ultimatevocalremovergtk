@@ -50,6 +50,9 @@ def extra_catalog_enabled() -> bool:
 def clear_extra_catalog_cache() -> None:
     global _cached
     _cached = None
+    from .model_display import clear_display_cache
+
+    clear_display_cache()
 
 
 def load_extra_models() -> Dict:

@@ -132,21 +132,21 @@ def load_politrees_links(*, force: bool = False) -> Optional[Dict]:
 
     if not force:
         entry = _read_disk_cache_entry()
-        if entry is not None and (now - entry[1]) < _POLITREES_CACHE_TTL_SECONDS:
-            # A fresh cache on disk is authoritative: fetching here blocked
-            # window construction on HTTP for no benefit.
-            _cached_links = entry[0]
+        if entry is not None:
+            # Any readable disk entry is served immediately (stale-while-
+            # revalidate). TTL only decides whether to refresh in the
+            # background — it never blocks the caller on HTTP.
+            data, fetched_at = entry
+            previous = _cached_links
+            _cached_links = data
             _cached_weight_index = None
             _cached_loaded_at = now
-            # Local import: core.model_display imports this module for
-            # _display_base. This fast path replaces _cached_links the same
-            # way the network path does, so the memoized merge must be
-            # invalidated here too, or a politrees-less merge computed
-            # earlier in the process would stay pinned for its lifetime.
-            from .model_display import clear_display_cache
+            if data != previous:
+                from .model_display import clear_display_cache
 
-            clear_display_cache()
-            _start_background_refresh()
+                clear_display_cache()
+            if (now - fetched_at) >= _POLITREES_CACHE_TTL_SECONDS:
+                _start_background_refresh()
             return _cached_links
 
     data: Optional[Dict] = None
@@ -162,6 +162,7 @@ def load_politrees_links(*, force: bool = False) -> Optional[Dict]:
     if not isinstance(data, dict):
         return None
 
+    previous = _cached_links
     _cached_links = data
     _cached_weight_index = None
     _cached_loaded_at = now
@@ -170,14 +171,12 @@ def load_politrees_links(*, force: bool = False) -> Optional[Dict]:
         # back from disk, so an offline session makes month-old data look
         # freshly fetched and the TTL never expires.
         _write_disk_cache(data)
-    # Local import: core.model_display imports this module for _display_base.
-    # New data means the memoized merge is stale, regardless of who triggered
-    # this fetch (a fresh session, a TTL rollover, or an explicit refresh) —
-    # invalidate at the point the data actually changes, not just at
-    # clear_politrees_cache(), which callers may never invoke.
-    from .model_display import clear_display_cache
+    # Invalidate only when the payload actually changed — identical refetches
+    # (typical background refresh) must not discard a still-valid merge.
+    if data != previous:
+        from .model_display import clear_display_cache
 
-    clear_display_cache()
+        clear_display_cache()
     return data
 
 
