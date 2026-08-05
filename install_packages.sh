@@ -414,3 +414,16 @@ Run the GTK4 app:
   python -m ui
 EOF
 fi
+
+# Keep the .desktop entry in sync after a successful install (full rewrite).
+# run_uvr.sh only creates it when missing, to keep the launch hot path cheap.
+HERE="${PROJECT_ROOT}"
+# shellcheck source=packaging/desktop_entry.sh
+source "${PROJECT_ROOT}/packaging/desktop_entry.sh"
+install_desktop_entry --update || true
+
+# Seed the launcher health stamp so the first post-install run_uvr.sh launch
+# does not repeat the GTK import probe install already performed.
+_stamp_dir="${XDG_CACHE_HOME:-${HOME}/.cache}/uvr"
+mkdir -p "${_stamp_dir}" 2>/dev/null || true
+: > "${_stamp_dir}/venv_gtk_ok" 2>/dev/null || true

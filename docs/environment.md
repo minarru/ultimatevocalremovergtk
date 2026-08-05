@@ -149,7 +149,8 @@ Scenarios cycled by `UVR_DEBUG_QUEUE_CHIP=1`: `active`, `success`, `partial`, `f
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `UVR_AUTO_REBUILD` | `auto` | Venv rebuild when stale: `auto` · `always` · `never` |
-| `UVR_SKIP_CHECK` | `0` | Skip GTK import health check on the venv |
+| `UVR_SKIP_CHECK` | `0` | Skip the GTK import health check entirely (stamp untouched) |
+| `UVR_FORCE_VENV_CHECK` | `0` | Force a full GTK/Adw import probe even when the health stamp is fresh |
 
 ---
 
