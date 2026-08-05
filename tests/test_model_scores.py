@@ -230,6 +230,14 @@ class SdrSubtitleTests(unittest.TestCase):
     def test_bare_sdr_without_stem_still_renders(self) -> None:
         self.assertEqual(model_scores.format_sdr_subtitle(11.43, ""), "11.4 SDR")
 
+    def test_format_sdr_subtitle_includes_extra_alongside_sdr(self) -> None:
+        from core.model_scores import format_sdr_subtitle
+
+        self.assertEqual(
+            format_sdr_subtitle(11.43, "1.2 GB", stem="vocals", extra="Vocals, Instrumental"),
+            "vocals 11.4 SDR · Vocals, Instrumental · 1.2 GB",
+        )
+
 
 class ModelScoresDisabledTests(_IsolatedScoreCache):
     def test_kill_switch_returns_empty(self) -> None:
