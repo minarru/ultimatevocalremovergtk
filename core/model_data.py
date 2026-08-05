@@ -17,7 +17,7 @@ import typing
 
 import json
 import os
-from typing import AbstractSet, Any, Callable, Dict, List, Optional, Sequence, cast
+from typing import AbstractSet, Any, Callable, Dict, List, Optional, Sequence, Tuple, cast
 
 from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
 
@@ -122,7 +122,7 @@ class ModelRepository:
         # default) simply marks such models as unavailable.
         self.on_unrecognized_model: Optional[Callable[["ModelConfig"], Any]] = None
         self._stem_check_cache = None
-        self._karaoke_cache = None
+        self._karaoke_cache: Optional[Tuple[Tuple[str, ...], List[str]]] = None
         self.reload_mappers()
 
     def reload_mappers(self) -> None:

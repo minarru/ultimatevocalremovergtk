@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from typing import Any
 from unittest import mock
 
 from bundled.constants import ENSEMBLE_PARTITION, MDX_ARCH_TYPE, VR_ARCH_TYPE
@@ -29,12 +30,18 @@ class KaraokeModelCacheTests(unittest.TestCase):
         )
         builds: list[str] = []
 
-        def fake_tags(self) -> list[str]:
+        def fake_tags(self: ModelRepository) -> list[str]:
             return list(tags)
 
         real_init = ModelConfig.__init__
 
-        def counting_init(self, settings, repo, model_name, **kwargs):
+        def counting_init(
+            self: ModelConfig,
+            settings: Settings,
+            repo: ModelRepository,
+            model_name: str,
+            **kwargs: Any,
+        ) -> None:
             builds.append(str(model_name))
             real_init(self, settings, repo, model_name, **kwargs)
             self.model_status = True
@@ -55,12 +62,18 @@ class KaraokeModelCacheTests(unittest.TestCase):
         tags = (f"{VR_ARCH_TYPE}{ENSEMBLE_PARTITION}Fake VR",)
         builds: list[str] = []
 
-        def fake_tags(self) -> list[str]:
+        def fake_tags(self: ModelRepository) -> list[str]:
             return list(tags)
 
         real_init = ModelConfig.__init__
 
-        def counting_init(self, settings, repo, model_name, **kwargs):
+        def counting_init(
+            self: ModelConfig,
+            settings: Settings,
+            repo: ModelRepository,
+            model_name: str,
+            **kwargs: Any,
+        ) -> None:
             builds.append(str(model_name))
             real_init(self, settings, repo, model_name, **kwargs)
             self.model_status = True
