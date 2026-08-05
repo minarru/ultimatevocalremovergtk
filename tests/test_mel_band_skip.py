@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import inspect
 import unittest
-from typing import TypedDict
+from typing import TypedDict, cast
 
 import torch
+from torch.nn import ModuleList
 
 from engines.mdx import _filter_init_kwargs
 from ml.mel_band_roformer import MelBandRoformer
@@ -84,3 +85,20 @@ class MelBandSkipTests(unittest.TestCase):
         with torch.no_grad():
             out = model(torch.randn(1, 2, 512))
         self.assertEqual(tuple(out.shape)[:2], (1, 2))
+
+    def test_skip_with_linear_transformer_depth_forward(self) -> None:
+        """linear runs before skip-sum (MSST order); both flags must coexist."""
+        model = MelBandRoformer(
+            **self._tiny_kwargs(),
+            skip_connection=True,
+            linear_transformer_depth=1,
+        )
+        self.assertEqual(len(cast_module_list(model.layers[0])), 3)
+        model.eval()
+        with torch.no_grad():
+            out = model(torch.randn(1, 2, 512))
+        self.assertEqual(tuple(out.shape)[:2], (1, 2))
+
+
+def cast_module_list(layer: object) -> list[object]:
+    return list(layer)  # type: ignore[arg-type]

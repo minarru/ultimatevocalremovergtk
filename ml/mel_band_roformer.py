@@ -528,12 +528,6 @@ class MelBandRoformer(Module):
             transformer_block = cast(
                 list[Transformer], [layer_pair[index] for index in range(len(layer_pair))]
             )
-            if self.skip_connection:
-                for j in range(i):
-                    previous = store[j]
-                    if previous is not None:
-                        x = x + previous
-
             if len(transformer_block) == 3:
                 linear_transformer, time_transformer, freq_transformer = transformer_block
                 x, linear_ps = pack([x], 'b * d')
@@ -544,6 +538,13 @@ class MelBandRoformer(Module):
                 x, = unpack(x, linear_ps, 'b * d')
             else:
                 time_transformer, freq_transformer = transformer_block
+
+            # MSST: skip-sum after optional linear block, before time/freq.
+            if self.skip_connection:
+                for j in range(i):
+                    previous = store[j]
+                    if previous is not None:
+                        x = x + previous
 
             x = rearrange(x, 'b t f d -> b f t d')
             x, ps = pack([x], '* t d')
