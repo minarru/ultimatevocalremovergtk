@@ -15,8 +15,10 @@ class FormatTagTitleCacheTests(unittest.TestCase):
     def setUp(self) -> None:
         os.environ["UVR_DISABLE_POLITREES"] = "1"
         os.environ["UVR_DISABLE_MVSEPLESS"] = "1"
+        os.environ["UVR_DISABLE_CATALOGUE_STEMS"] = "1"
         self.addCleanup(lambda: os.environ.pop("UVR_DISABLE_POLITREES", None))
         self.addCleanup(lambda: os.environ.pop("UVR_DISABLE_MVSEPLESS", None))
+        self.addCleanup(lambda: os.environ.pop("UVR_DISABLE_CATALOGUE_STEMS", None))
         md.clear_display_cache()
 
     def test_second_call_does_not_reenter_display_name(self) -> None:

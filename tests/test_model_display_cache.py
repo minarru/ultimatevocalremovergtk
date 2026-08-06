@@ -18,7 +18,12 @@ from core.politrees_catalog import clear_politrees_cache
 
 
 @mock.patch.dict(
-    os.environ, {"UVR_DISABLE_POLITREES": "1", "UVR_DISABLE_MVSEPLESS": "1"}
+    os.environ,
+    {
+        "UVR_DISABLE_POLITREES": "1",
+        "UVR_DISABLE_MVSEPLESS": "1",
+        "UVR_DISABLE_CATALOGUE_STEMS": "1",
+    },
 )
 class MergedForDisplayCacheTests(unittest.TestCase):
     """All three assertions here are about ``lru_cache`` identity/invalidation,
@@ -121,6 +126,7 @@ class MergedForDisplayCacheTests(unittest.TestCase):
         self.assertIsNot(first, second)
 
 
+@mock.patch.dict(os.environ, {"UVR_DISABLE_CATALOGUE_STEMS": "1"}, clear=False)
 class CatalogueRefreshInvalidatesDisplayCacheTests(unittest.TestCase):
     """A politrees/mvsepless data refresh must be reflected, not just an
     explicit clear_politrees_cache()/clear_mvsepless_cache() call.

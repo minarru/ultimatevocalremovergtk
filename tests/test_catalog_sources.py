@@ -1,5 +1,6 @@
 """The single merge path shared by Download Center and the runtime pickers."""
 
+import os
 import typing
 import unittest
 import unittest.mock
@@ -10,6 +11,12 @@ from core import catalog_sources
 #: so patching it leaves the real base merge under test.
 _NO_SUPPLEMENTS = ({}, {}, {}, {})
 
+# Merges still see curated Apollo YAML URLs; keep the stem-cache worker off
+# unless a test is specifically about it (see test_catalog_stem_merge).
+_STEM_CACHE_OFF = unittest.mock.patch.dict(
+    os.environ, {"UVR_DISABLE_CATALOGUE_STEMS": "1"}, clear=False
+)
+
 
 def _with_supplements(supplements: typing.Any) -> typing.Any:
     return unittest.mock.patch.object(
@@ -17,6 +24,7 @@ def _with_supplements(supplements: typing.Any) -> typing.Any:
     )
 
 
+@_STEM_CACHE_OFF
 class MergeOrderTests(unittest.TestCase):
     def test_upstream_label_is_never_overwritten(self) -> None:
         with _with_supplements(({}, {"Shared": {"other.ckpt": "u2"}}, {}, {})):
@@ -44,6 +52,7 @@ class MergeOrderTests(unittest.TestCase):
         self.assertIn("D", merged.demucs)
 
 
+@_STEM_CACHE_OFF
 class EntryMetaTests(unittest.TestCase):
     def test_meta_carries_canonical_display_and_checkpoint(self) -> None:
         with _with_supplements(_NO_SUPPLEMENTS):

@@ -325,14 +325,13 @@ def format_sdr_subtitle(
     comparison between different quantities: the same checkpoint can be 11.4
     on vocals and 16.0 on instrumental.
 
-    ``extra`` is the fallback for the ~79% of models with no published
-    benchmark — usually their stem list — so an unscored row still says
-    something instead of rendering blank.
+    ``extra`` is usually the stem list from catalogue metadata — appended
+    whenever present so scored rows still show export stems.
     """
     parts: List[str] = []
     if sdr is not None:
         parts.append(f"{stem} {sdr:.1f} SDR" if stem else f"{sdr:.1f} SDR")
-    elif extra.strip():
+    if extra.strip():
         parts.append(extra.strip())
     size = (size_text or "").strip()
     if size:

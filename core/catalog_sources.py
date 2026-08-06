@@ -94,11 +94,23 @@ def _primary_checkpoint(files: Mapping[str, str]) -> Optional[str]:
     return None
 
 
+def _yaml_config_url(files: Mapping[str, str]) -> Optional[str]:
+    for name, ref in files.items():
+        if str(name).endswith((".yaml", ".yml")) and str(ref).startswith(
+            ("http://", "https://")
+        ):
+            return str(ref).split("?", 1)[0]
+    return None
+
+
 def _build_meta(
     catalogue: Mapping[str, Any],
     arch: str,
     extra_meta: Mapping[str, Mapping[str, Any]],
+    pending_yaml: List[str],
 ) -> Dict[str, EntryMeta]:
+    from .catalogue_stem_cache import catalogue_stems_enabled, lookup_stems
+
     out: Dict[str, EntryMeta] = {}
     for label, model in catalogue.items():
         files: Dict[str, str] = (
@@ -107,15 +119,27 @@ def _build_meta(
             else {str(model): ""}
         )
         source_meta = extra_meta.get(label) or {}
-        stems = source_meta.get("stems")
+        stems_raw = source_meta.get("stems")
+        stems = list(stems_raw) if isinstance(stems_raw, list) else []
+        target = source_meta.get("target_instrument") or None
+        if not stems:
+            yaml_url = _yaml_config_url(files)
+            if yaml_url:
+                hit = lookup_stems(yaml_url)
+                if hit is not None and hit.ok and hit.stems:
+                    stems = list(hit.stems)
+                    if not target:
+                        target = hit.target_instrument
+                elif hit is None and catalogue_stems_enabled():
+                    pending_yaml.append(yaml_url)
         out[label] = EntryMeta(
             label=label,
             display=canonical_display_name(label),
             arch=arch,
             files=files,
             checkpoint=_primary_checkpoint(files),
-            stems=list(stems) if isinstance(stems, list) else [],
-            target_instrument=source_meta.get("target_instrument") or None,
+            stems=stems,
+            target_instrument=target,
             intent=str(source_meta.get("intent") or INTENT_UNKNOWN),
         )
     return out
@@ -144,13 +168,20 @@ def merged_catalogues(
     # checkpoint that has to resolve in the runtime pickers. Deduping first
     # silently un-named five legacy upstream models.
     meta: Dict[str, EntryMeta] = {}
+    pending_yaml: List[str] = []
     for catalogue, arch in (
         (vr_all, VR_ARCH_TYPE),
         (mdx_all, MDX_ARCH_TYPE),
         (demucs_all, DEMUCS_ARCH_TYPE),
         (apollo_all, APOLLO_ARCH_TYPE),
     ):
-        meta.update(_build_meta(catalogue, arch, extra_meta))
+        meta.update(_build_meta(catalogue, arch, extra_meta, pending_yaml))
+
+    if pending_yaml:
+        from .catalogue_stem_cache import enqueue_missing, ensure_worker_started
+
+        enqueue_missing(pending_yaml)
+        ensure_worker_started()
 
     vr_out = dedupe_download_catalogue(vr_all)
     mdx_out = dedupe_download_catalogue(mdx_all)

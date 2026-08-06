@@ -101,6 +101,7 @@ DOWNLOAD_SIZE_CACHE_FILE = os.path.join(CACHE_DIR, "download_size_cache.json")
 POLITREES_CACHE_FILE = os.path.join(CACHE_DIR, "politrees_model_links.json")
 MVSEPLESS_CACHE_FILE = os.path.join(CACHE_DIR, "mvsepless_models.json")
 MODEL_SCORES_CACHE_FILE = os.path.join(CACHE_DIR, "model_scores.json")
+CATALOGUE_STEM_CACHE_FILE = os.path.join(CACHE_DIR, "catalogue_stem_cache.json")
 
 # Saved ensembles / settings profiles (JSON). Writable under DATA_DIR.
 SETTINGS_CACHE_DIR = os.path.join(DATA_DIR, "profiles")

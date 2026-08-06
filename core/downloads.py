@@ -14,6 +14,7 @@ never touches any UI toolkit and reports progress through plain callbacks.
 """
 import typing
 
+import dataclasses
 import errno
 import json
 import os
@@ -345,6 +346,29 @@ class DownloadManager:
         self.unsupported_download_list = unsupported_mvsepless_downloads(
             existing_labels=existing_labels
         )
+
+    def apply_catalogue_stem_cache(self) -> set[str]:
+        """Patch catalogue_meta stems from the YAML stem cache. Return updated labels."""
+        from .catalog_sources import _yaml_config_url
+        from .catalogue_stem_cache import lookup_stems
+
+        updated: set[str] = set()
+        for label, meta in list(self.catalogue_meta.items()):
+            if meta.stems:
+                continue
+            url = _yaml_config_url(meta.files)
+            if not url:
+                continue
+            hit = lookup_stems(url)
+            if hit is None or not hit.ok or not hit.stems:
+                continue
+            self.catalogue_meta[label] = dataclasses.replace(
+                meta,
+                stems=list(hit.stems),
+                target_instrument=meta.target_instrument or hit.target_instrument,
+            )
+            updated.add(label)
+        return updated
 
     # -- Download lists ---------------------------------------------------------
 

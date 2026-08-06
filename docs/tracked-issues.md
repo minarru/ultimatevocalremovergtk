@@ -87,6 +87,7 @@ no upstream Tkinter equivalent -- so no GitHub issue to link.
 | #383, #855, #1674 — Linux how-to | README + upgrade docs |
 | #1702 — Linux roformer | Supported |
 | #1242 — license clarity | Root `LICENSE` added |
+| Download Center stem subtitles (YAML catalogue) | Background stem cache from config URLs; coalesced subtitle refresh; disable with `UVR_DISABLE_CATALOGUE_STEMS` (see [environment.md](environment.md)) |
 
 ---
 
