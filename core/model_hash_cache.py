@@ -63,6 +63,30 @@ def lookup_trusted(
     return entry["hash"]
 
 
+def is_stale(
+    table: Mapping[str, Any],
+    path: str,
+    *,
+    stat: StatFn = os.stat,
+) -> bool:
+    """True only when a well-formed entry exists but no longer matches the file.
+
+    :func:`lookup_trusted` returns ``None`` for absent, malformed *and* stale
+    entries alike, which is fine for "can I trust this?" but useless for "should
+    I drop what I cached elsewhere?". Callers holding a second, unguarded cache
+    need to tell those apart: absent means "nothing was ever verified here", and
+    only a genuine mismatch means the file changed underneath them.
+    """
+    entry = _as_entry(table.get(path))
+    if entry is None:
+        return False
+    try:
+        st = stat(path)
+    except OSError:
+        return False
+    return st.st_mtime_ns != entry["mtime_ns"] or st.st_size != entry["size"]
+
+
 def flatten_trusted(
     table: Mapping[str, Any],
     *,

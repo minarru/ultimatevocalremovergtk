@@ -286,6 +286,12 @@ class MainWindow(Adw.ApplicationWindow):
         self._apply_accelerators()
 
         self._load_from_settings()
+        # Core mutates model state from places with no path to the UI --
+        # update_model_settings and downloads' MDX-C registration both run on
+        # the download worker thread. Subscribing here closes that gap; the
+        # handler marshals to the main loop itself.
+        self._model_refresh_armed = False
+        self.context.repo.subscribe_models_changed(self._on_models_changed)
         self.connect("map", self._on_window_mapped)
         self.connect("close-request", self._on_close_request)
 
@@ -915,6 +921,9 @@ class MainWindow(Adw.ApplicationWindow):
         return self._run_controller.handle_close_request(self._finalize_close)
 
     def _finalize_close(self, deferred: bool) -> None:
+        # The repository outlives this window (it hangs off AppContext), so a
+        # live subscription would keep calling into a dead widget tree.
+        self.context.repo.unsubscribe_models_changed(self._on_models_changed)
         self._flush_settings()
         self._save_geometry()
         self._handle_settings_error(self.context.try_save_settings(trigger="close"))
@@ -1063,25 +1072,56 @@ class MainWindow(Adw.ApplicationWindow):
             return
         self._apply_model_refresh(source=source)
 
+    def _model_list_consumers(self) -> typing.List[typing.Any]:
+        """Everything holding a list of models, in refresh order.
+
+        ``self._views`` is only the three MethodViews; the ensemble page, the
+        Audio Tools page and the shared vocal-splitter row hold model lists too
+        and were previously unreachable from a refresh. Anything added here
+        must expose ``refresh_models()``.
+        """
+        consumers: typing.List[typing.Any] = list(self._views)
+        for attr in ("_ensemble_page", "_audio_tools_page", "vocal_split_row"):
+            # getattr: a refresh can arrive before the window finishes building.
+            consumer = getattr(self, attr, None)
+            if consumer is not None:
+                consumers.append(consumer)
+        return consumers
+
     def _apply_model_refresh(self, *, source: str = "download_center") -> None:
         from core.debug_log import debug
 
         debug("ui", f"refresh_models source={source}")
         # New model files may add hash/name mappings and change stem filtering.
-        self.context.repo.reload_mappers()
-        self.context.repo.invalidate_stem_check()
+        # First: every consumer below re-reads through the repository.
+        self.context.repo.invalidate_models()
+        for consumer in self._model_list_consumers():
+            consumer.refresh_models()
         for view in self._views:
-            view.refresh_models()
             method = getattr(view, "method_key", type(view).__name__)
             model_count = len(getattr(view, "list_models", lambda: [])())
             debug("model", f"refresh_models view={method} models={model_count}")
-        # Apollo restoration models are downloadable too, but live on the Audio
-        # Tools page rather than in ``self._views``.
-        audio_tools = getattr(self, "_audio_tools_page", None)
-        if audio_tools is not None:
-            audio_tools.refresh_apollo_models()
         self._update_sep_banner()
         self._deferred_model_refresh = None
+
+    # -- Repository-driven refresh ----------------------------------------------
+
+    def _on_models_changed(self) -> None:
+        """``ModelRepository`` invalidated: fired from a worker thread.
+
+        Coalesced, because a download batch invalidates once per registered
+        model and a full refresh per file would be wasteful.
+        """
+        if self._model_refresh_armed:
+            return
+        self._model_refresh_armed = True
+        idle_on_main(self._flush_models_changed)
+
+    def _flush_models_changed(self) -> None:
+        self._model_refresh_armed = False
+        # Through _refresh_models, not _apply_model_refresh: a repository
+        # invalidation during a separation run must still be deferred.
+        self._refresh_models(source="repository")
 
     def _on_about(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
         from core.debug_log import debug

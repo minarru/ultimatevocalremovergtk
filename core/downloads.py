@@ -325,6 +325,16 @@ class DownloadManager:
         dropped = before - after
         if dropped:
             debug("download", f"content dedupe dropped {dropped} download row(s)")
+            # The merged catalogue is memoized on the display generation, and
+            # its key covers the caller's label set but not the content-id map
+            # dedupe runs on. On a fresh install the merge is built before any
+            # etag exists, so when the identity pass fills them the inputs are
+            # unchanged and the pre-dedupe row set would be served all session.
+            # Bump the generation rather than widening the key -- one
+            # invalidation story, not two.
+            from .model_display import clear_display_cache
+
+            clear_display_cache()
             self._notify_catalogue_changed()
 
     def warm_size_cache(self) -> Dict[str, int]:
@@ -712,8 +722,7 @@ class DownloadManager:
             from .mdx_c_registry import register_mdx_c_from_download_jobs
 
             if register_mdx_c_from_download_jobs(jobs) and repo is not None:
-                repo.invalidate_stem_check()
-                repo.reload_mappers()
+                repo.invalidate_models()
             # Apollo models are recognised by an md5 -> config_yaml mapping;
             # write it now so the Audio Tools picker does not prompt for a
             # config the catalogue already specified.
@@ -869,11 +878,13 @@ class DownloadManager:
             except OSError:
                 continue
         if changed and repo is not None:
-            repo.invalidate_stem_check()
+            # Not invalidate_stem_check: the hash maps and name mappers were
+            # just rewritten on disk, and only reload_mappers picks those up.
+            repo.invalidate_models()
         debug(
             "download",
             f"update_model_settings ok changed={changed} "
-            f"invalidate_stem={changed and repo is not None}",
+            f"invalidated={changed and repo is not None}",
         )
         return True
 

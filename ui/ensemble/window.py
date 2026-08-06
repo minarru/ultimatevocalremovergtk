@@ -175,6 +175,7 @@ class EnsemblePage:
         self._syncing_preset = False
         self._model_checks: Dict[str, Gtk.CheckButton] = {}
         self._model_row_text: Dict[str, tuple[str, str]] = {}
+        self._models_dirty = False
 
         # Distribute the groups across the shared two-column layout. The member
         # model checklist now lives in a modal dialog opened from a compact
@@ -1206,6 +1207,20 @@ class EnsemblePage:
 
     # -- Run target interface ---------------------------------------------------
 
+    def refresh_models(self) -> None:
+        """The installed model set changed.
+
+        The splitter row is refreshed now -- it is cheap and it has no
+        activation hook of its own. The member checklist is only marked dirty:
+        rebuilding it resolves ``ensemble_model_list`` (which hashes
+        checkpoints) for a page that may not be on screen, and
+        ``_rebuild_model_list`` calls ``_persist_selected_models``, which drops
+        members no longer eligible -- doing that off-screen could silently prune
+        a saved preset. ``on_activated`` consumes the flag.
+        """
+        self.vocal_split_row.refresh_models()
+        self._models_dirty = True
+
     def on_activated(self) -> None:
         """Make the ensemble method active and refresh from shared settings.
 
@@ -1221,6 +1236,7 @@ class EnsemblePage:
             if self._model_checks
             else (self.settings.ensemble.selected_models or [])
         )
+        self._models_dirty = False
         self._rebuild_model_list(preselected)
 
     def on_deactivated(self) -> None:

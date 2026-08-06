@@ -111,7 +111,7 @@ class DownloadManagerResolveTests(unittest.TestCase):
                 paths.MDX_MODELS_DIR = original_models_dir
 
             self.assertEqual(result, "exists")
-            repo.invalidate_stem_check.assert_called_once()
+            repo.invalidate_models.assert_called_once()
 
 
 class VipDownloadsTests(unittest.TestCase):
@@ -292,7 +292,59 @@ class UpdateModelSettingsTests(unittest.TestCase):
             ), mock.patch.object(downloads_mod, "_urlopen", side_effect=side):
                 ok = DownloadManager().update_model_settings(repo)
             self.assertTrue(ok)
-            repo.invalidate_stem_check.assert_not_called()
+            repo.invalidate_models.assert_not_called()
+
+    def test_update_model_settings_reloads_the_hash_mappers(self):
+        """Rewriting the hash map on disk must reach `repo.mdx_hash_MAPPER`.
+
+        `update_model_settings` called `invalidate_stem_check()` only, so the
+        freshly downloaded mapper data sat on disk while the in-memory mappers
+        stayed stale for the rest of the session.
+        """
+        import io
+        import json
+        import tempfile
+        from unittest import mock
+
+        from core import downloads as downloads_mod
+        from core import paths
+        from core.downloads import DownloadManager
+        from core.model_data import ModelRepository
+
+        payload = {"fresh-md5": {"primary_stem": "Vocals"}}
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["UVR_DATA_DIR"] = tmp
+            self.addCleanup(lambda: os.environ.pop("UVR_DATA_DIR", None))
+            mdx_hash_json = os.path.join(tmp, "mdx_model_data.json")
+            with open(mdx_hash_json, "w", encoding="utf-8") as handle:
+                json.dump({}, handle)
+
+            class _FileResp:
+                def __init__(self, data: dict) -> None:
+                    self._buf = io.StringIO(json.dumps(data))
+
+                def __enter__(self) -> io.StringIO:
+                    return self._buf
+
+                def __exit__(self, *args: object) -> None:
+                    return None
+
+            with mock.patch.object(paths, "MDX_HASH_JSON", mdx_hash_json):
+                repo = ModelRepository()
+                self.assertNotIn("fresh-md5", repo.mdx_hash_MAPPER)
+                with mock.patch.object(
+                    downloads_mod,
+                    "_MODEL_DATA_URLS",
+                    [("https://x/mdx", mdx_hash_json)],
+                ), mock.patch.object(
+                    downloads_mod, "_NAME_MAPPER_DESTS", frozenset()
+                ), mock.patch.object(
+                    downloads_mod, "_urlopen", side_effect=[_FileResp(payload)]
+                ):
+                    ok = DownloadManager().update_model_settings(repo)
+
+            self.assertTrue(ok)
+            self.assertIn("fresh-md5", repo.mdx_hash_MAPPER)
 
 
 class CatalogueChangedSubscriberTests(unittest.TestCase):
@@ -370,6 +422,49 @@ class CatalogueChangedSubscriberTests(unittest.TestCase):
             manager._reapply_content_dedupe()
 
         self.assertEqual(calls, [])
+
+    def test_dropping_rows_invalidates_the_display_merge(self):
+        """The merged catalogue is memoized; dedupe has to bump its generation.
+
+        `merged_catalogues` keys on the caller's label set and the display
+        generation -- not on the content-id map it dedupes with. On a fresh
+        install the display index is built before the identity HEADs have filled
+        any etags, so when they arrive the inputs are unchanged and the cached
+        pre-dedupe row set is reused for the rest of the session.
+        """
+        from core import model_display
+
+        manager = self._manager()
+        generation_before = model_display._display_generation
+
+        with patch(
+            "core.downloads.content_ids_from_cache",
+            return_value={
+                "https://example.test/kept.ckpt": "etag-abc",
+                "https://mirror.test/rehosted.ckpt": "etag-abc",
+            },
+        ):
+            manager._reapply_content_dedupe()
+
+        self.assertGreater(model_display._display_generation, generation_before)
+
+    def test_no_drop_leaves_the_display_merge_alone(self):
+        """Re-merging costs ~125ms; don't pay it when nothing changed."""
+        from core import model_display
+
+        manager = self._manager()
+        generation_before = model_display._display_generation
+
+        with patch(
+            "core.downloads.content_ids_from_cache",
+            return_value={
+                "https://example.test/kept.ckpt": "etag-abc",
+                "https://mirror.test/rehosted.ckpt": "etag-xyz",
+            },
+        ):
+            manager._reapply_content_dedupe()
+
+        self.assertEqual(model_display._display_generation, generation_before)
 
     def test_failing_subscriber_does_not_break_the_warmup_thread(self):
         manager = self._manager()

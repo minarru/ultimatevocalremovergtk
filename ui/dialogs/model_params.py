@@ -389,7 +389,11 @@ def _run_param_dialog(context: typing.Any, parent: typing.Any, model_data: typin
     dialog = _ParamDialog(context, parent, model_data, existing=existing)
     result = dialog.run()
     if result is not None:
-        context.repo.invalidate_stem_check()
+        # Saving params writes a <md5>.json the display names resolve through,
+        # so the display caches have to go too. Measured: the clear itself is
+        # ~0.1ms; the ~125ms re-merge is lazy and lands inside the model
+        # refresh this already triggers.
+        context.repo.invalidate_models()
         debug("model", f"unrecognized model dialog saved model={preview_text(str(model_name))}")
     else:
         debug("model", f"unrecognized model dialog cancelled model={preview_text(str(model_name))}")
@@ -585,7 +589,7 @@ def show_change_defaults_dialog(context: typing.Any, parent: typing.Any):
             except OSError as exc:
                 toast(f"Couldn't delete parameters: {exc}")
                 return
-            repo.invalidate_stem_check()
+            repo.invalidate_models()
             toast(DEFINED_PARAMETERS_DELETED_TEXT)
         else:
             toast("No defined parameters found.")

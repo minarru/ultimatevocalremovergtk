@@ -59,6 +59,7 @@ from core.model_display import (
     map_basenames_to_display,
     resolve_model_basename,
 )
+from ..widgets.lazy_populate import LazyPopulator
 from ..widgets.stem_only import SaveStemsSection
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
 from core.run_estimate import compose_stem_group_tooltip, estimate_workload, format_workload_line
@@ -145,14 +146,15 @@ class MethodView:
         self.settings = context.settings
         self._on_settings_changed = on_settings_changed
         self._loading = False
-        self._defer_combo_populate = False
-        self._combo_populate_idle_scheduled = False
+        self._populator = LazyPopulator(
+            is_expanded=self._model_combo_section_open,
+            populate=self._populate_model_combos_now,
+        )
         self._option_rows = {}
         self._scale_rows = {}
         self._switch_rows = {}
         self._spin_rows = {}
         self._model_combos = []
-        self._model_combos_populated = False
         self._secondary_slot_rows = {}
         self._switch_dependent_appliers = []
         self.hints = HelpHintManager()
@@ -240,12 +242,33 @@ class MethodView:
             self.populate_models()
         finally:
             self._loading = False
-        # Secondary / pre-process / vocal-split combos repopulate lazily the next
-        # time their expander is opened.
-        self._model_combos_populated = False
+        self._invalidate_model_combos()
+        self.update_stem_labels()
+
+    def _invalidate_model_combos(self) -> None:
+        """Drop the combo lists, repopulating any section already on screen.
+
+        Collapsed sections stay lazy: they repopulate on the next
+        ``notify::expanded``. Open ones cannot rely on that -- GObject emits
+        ``notify`` only when the property changes, so an expander the user
+        already opened would keep its stale list until collapsed and reopened.
+        """
         for entry in self._model_combos:
             entry["ready"] = False
-        self.update_stem_labels()
+        # defer=True: this runs from the model refresh that follows a download,
+        # right as the toast paints, and populating resolves every combo's
+        # model list. A collapsed section repopulates on its next expand.
+        self._populator.invalidate(defer=True)
+
+    def _model_combo_section_open(self) -> bool:
+        """One latch covers both expanders, so either being open counts."""
+        return any(
+            expander is not None and expander.get_expanded()
+            for expander in (
+                getattr(self, "secondary_expander", None),
+                getattr(self, "preproc_expander", None),
+            )
+        )
 
     def selected_model(self) -> str:
         return get_combo_value(self.model_row) or CHOOSE_MODEL
@@ -615,26 +638,9 @@ class MethodView:
         self._touch_settings()
 
     def _ensure_model_combos_populated(self, *_args: typing.Any) -> None:
-        if getattr(self, "_defer_combo_populate", False):
-            # Load-time auto-expand must open the row immediately without
-            # hashing every checkpoint on the construction path. Schedule
-            # once; further notify::expanded while deferred is a no-op.
-            if not getattr(self, "_combo_populate_idle_scheduled", False):
-                self._combo_populate_idle_scheduled = True
-                from ..dispatch import idle_on_main
-
-                idle_on_main(self._run_deferred_combo_populate)
-            return
-        self._populate_model_combos_now()
-
-    def _run_deferred_combo_populate(self) -> None:
-        self._combo_populate_idle_scheduled = False
-        self._populate_model_combos_now()
+        self._populator.ensure()
 
     def _populate_model_combos_now(self) -> None:
-        if self._model_combos_populated:
-            return
-        self._model_combos_populated = True
         self._populating_models = True
         try:
             for entry in self._model_combos:
@@ -741,8 +747,9 @@ class MethodView:
         not block ``MainWindow`` construction (tracked issue F1).
         """
         self._refresh_expander_subtitles()
-        self._defer_combo_populate = True
-        try:
+        # Load-time auto-expand must open the rows immediately without hashing
+        # every checkpoint on the construction path (tracked issue F1).
+        with self._populator.defer():
             if (
                 getattr(self, "secondary_expander", None) is not None
                 and self.secondary_prefix
@@ -757,8 +764,6 @@ class MethodView:
                 and self.settings.demucs.is_pre_proc_model_activate
             ):
                 self.preproc_expander.set_expanded(True)
-        finally:
-            self._defer_combo_populate = False
 
     def _build_secondary_section(self) -> None:
         repo = self.context.repo
@@ -879,9 +884,7 @@ class MethodView:
 
         show_change_defaults_dialog(self.context, self._window_root())
         # Stored params may have changed; refresh stem labels and model lists.
-        self._model_combos_populated = False
-        for entry in self._model_combos:
-            entry["ready"] = False
+        self._invalidate_model_combos()
         self.update_stem_labels()
 
 
