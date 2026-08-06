@@ -650,10 +650,32 @@ class DownloadManager:
         started = time.perf_counter()
         debug("download", f"download start jobs={len(jobs)}")
         pending_jobs = [(url, path) for url, path in jobs if not os.path.isfile(path)]
-        total_bytes, _file_count, _known = estimate_jobs_size(pending_jobs)
-        total = len(jobs)
+        total_bytes, file_count, known = estimate_jobs_size(pending_jobs)
+
+        # Weight the bar by bytes, not by file count. A model is typically a
+        # ~400 MB checkpoint plus a ~4 KB config; splitting the bar evenly
+        # between them pins it at 50% for the whole transfer. Sizes have to be
+        # known for *every* pending file or the denominator is short and the
+        # fraction runs past 1.0, so fall back to counting pending files —
+        # already-present ones never report and must stay out of both halves.
+        byte_weighted = bool(total_bytes) and known == file_count and file_count > 0
+        pending_total = max(1, file_count)
+        bytes_done = 0
+        pending_index = 0
+
+        def report(downloaded: int, file_total: int) -> None:
+            if on_progress is None:
+                return
+            if byte_weighted and total_bytes:
+                overall = (bytes_done + downloaded) / total_bytes
+            elif file_total:
+                overall = (pending_index + downloaded / file_total) / pending_total
+            else:
+                return
+            on_progress(max(0.0, min(1.0, overall)))
+
         any_downloaded = False
-        for index, (url, save_path) in enumerate(jobs):
+        for _index, (url, save_path) in enumerate(jobs):
             if stop_event is not None and stop_event.is_set():
                 debug("download", "download stopped by user")
                 return "stopped"
@@ -665,7 +687,7 @@ class DownloadManager:
                     on_info(f"Downloading ({format_download_size(total_bytes)})")
                 else:
                     on_info("Downloading…")
-            self._download_file(url, save_path, index, total, on_progress, stop_event, on_info)
+            self._download_file(url, save_path, report, stop_event, on_info)
             if stop_event is not None and stop_event.is_set():
                 # Remove the partial file so a retry restarts cleanly.
                 if os.path.isfile(save_path):
@@ -674,6 +696,13 @@ class DownloadManager:
                     except OSError:
                         pass
                 return "stopped"
+            # Advance the baseline by what actually landed on disk, so a
+            # short read or an HF-fallback retry cannot double-count.
+            try:
+                bytes_done += os.path.getsize(save_path)
+            except OSError:
+                pass
+            pending_index += 1
 
         if on_progress:
             on_progress(1.0)
@@ -708,11 +737,11 @@ class DownloadManager:
             )
         os.replace(tmp_path, save_path)
 
-    def _download_file(self, url: typing.Any, save_path: typing.Any, index: typing.Any, total: typing.Any, on_progress: typing.Any, stop_event: typing.Any, on_info: typing.Any=None) -> None:
+    def _download_file(self, url: typing.Any, save_path: typing.Any, report: typing.Any, stop_event: typing.Any, on_info: typing.Any=None) -> None:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         tmp_path = f"{save_path}.part"
         try:
-            self._download_file_url(url, tmp_path, index, total, on_progress, stop_event, on_info)
+            self._download_file_url(url, tmp_path, report, stop_event, on_info)
             if self._download_stopped(stop_event):
                 return
             self._finalize_part_file(tmp_path, save_path, stop_event)
@@ -728,7 +757,7 @@ class DownloadManager:
                 except OSError:
                     pass
                 self._download_file_url(
-                    fallback, tmp_path, index, total, on_progress, stop_event, on_info
+                    fallback, tmp_path, report, stop_event, on_info
                 )
                 if self._download_stopped(stop_event):
                     return
@@ -741,7 +770,7 @@ class DownloadManager:
                     pass
             raise
 
-    def _download_file_url(self, url: typing.Any, tmp_path: typing.Any, index: typing.Any, total: typing.Any, on_progress: typing.Any, stop_event: typing.Any, on_info: typing.Any=None) -> None:
+    def _download_file_url(self, url: typing.Any, tmp_path: typing.Any, report: typing.Any, stop_event: typing.Any, on_info: typing.Any=None) -> None:
         try:
             with _urlopen(url) as response:
                 length_header = response.getheader("Content-Length")
@@ -764,10 +793,8 @@ class DownloadManager:
                             break
                         out_file.write(chunk)
                         downloaded += len(chunk)
-                        if on_progress and file_total:
-                            file_fraction = downloaded / file_total
-                            overall = (index + file_fraction) / total
-                            on_progress(max(0.0, min(1.0, overall)))
+                        if report is not None:
+                            report(downloaded, file_total)
                         if on_info and file_total:
                             info_text = (
                                 f"{format_download_size(downloaded)} / "

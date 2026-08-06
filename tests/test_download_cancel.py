@@ -29,8 +29,6 @@ class DownloadCancelTests(unittest.TestCase):
                 manager._download_file(
                     "https://example.com/model.onnx",
                     save_path,
-                    0,
-                    1,
                     None,
                     stop_event,
                 )
@@ -55,8 +53,6 @@ class DownloadCancelTests(unittest.TestCase):
                     manager._download_file(
                         "https://example.com/model.onnx",
                         save_path,
-                        0,
-                        1,
                         None,
                         stop_event,
                     )
