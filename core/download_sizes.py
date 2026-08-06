@@ -8,9 +8,11 @@ import ssl
 import time
 import urllib.error
 import urllib.request
+from collections import defaultdict
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from . import paths
+from .catalog_dedupe import normalize_checkpoint_url
 from .debug_log import debug
 
 _CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
@@ -76,7 +78,14 @@ def _cache_entry_fresh(entry: object, *, now: Optional[float] = None) -> bool:
 def _cache_get(url: str) -> Optional[int]:
     entry = _read_cache().get(url)
     if not _cache_entry_fresh(entry):
-        return None
+        # Also try the normalized key — catalogue URLs often carry ?download=true.
+        norm = normalize_checkpoint_url(url)
+        if norm != url:
+            entry = _read_cache().get(norm)
+            if not _cache_entry_fresh(entry):
+                return None
+        else:
+            return None
     if not isinstance(entry, dict):
         return None
     size = entry.get("size")
@@ -88,9 +97,16 @@ def _cache_get(url: str) -> Optional[int]:
         return None
 
 
-def _cache_put(url: str, size: Optional[int]) -> None:
+def _cache_put(url: str, size: Optional[int], etag: Optional[str] = None) -> None:
     payload = _read_cache()
-    payload[url] = {"size": size, "fetched_at": time.time()}
+    key = normalize_checkpoint_url(url) or url
+    entry: Dict[str, object] = {"size": size, "fetched_at": time.time()}
+    if etag:
+        entry["etag"] = etag
+    payload[key] = entry
+    # Keep the raw URL key in sync when it differs, so older callers still hit.
+    if key != url:
+        payload[url] = dict(entry)
     _write_cache(payload)
 
 
@@ -100,17 +116,18 @@ def fetch_remote_size(url: str) -> Optional[int]:
     if cached is not None:
         return cached
 
-    size = _head_content_length(url)
+    size, etag = _head_remote_meta(url)
     if size is None:
         size = _get_content_length(url)
-    _cache_put(url, size)
+    _cache_put(url, size, etag)
     return size
 
 
 def prefetch_remote_sizes(urls: Iterable[str]) -> Dict[str, int]:
     """Refresh stale or missing cache entries for ``urls``.
 
-    Entries younger than :data:`_CACHE_TTL_SECONDS` are left untouched.
+    Entries younger than :data:`_CACHE_TTL_SECONDS` are left untouched, even
+    when they lack an etag (avoids a wholesale HEAD storm after upgrades).
     Returns counts ``{total, fresh, fetched, failed}``.
     """
     unique: List[str] = []
@@ -132,14 +149,22 @@ def prefetch_remote_sizes(urls: Iterable[str]) -> Dict[str, int]:
     dirty = False
 
     for url in unique:
-        entry = payload.get(url)
+        key = normalize_checkpoint_url(url) or url
+        entry = payload.get(key)
+        if entry is None and key != url:
+            entry = payload.get(url)
         if _cache_entry_fresh(entry, now=now):
             fresh += 1
             continue
-        size = _head_content_length(url)
+        size, etag = _head_remote_meta(url)
         if size is None:
             size = _get_content_length(url)
-        payload[url] = {"size": size, "fetched_at": now}
+        stored: Dict[str, object] = {"size": size, "fetched_at": now}
+        if etag:
+            stored["etag"] = etag
+        payload[key] = stored
+        if key != url:
+            payload[url] = dict(stored)
         dirty = True
         if size is not None:
             fetched += 1
@@ -157,15 +182,122 @@ def prefetch_remote_sizes(urls: Iterable[str]) -> Dict[str, int]:
     }
 
 
-def _head_content_length(url: str) -> Optional[int]:
+def content_ids_from_cache(urls: Iterable[str]) -> Dict[str, str]:
+    """Map normalized checkpoint URLs to cached content ids (etags)."""
+    payload = _read_cache()
+    out: Dict[str, str] = {}
+    for url in urls:
+        if not url:
+            continue
+        key = normalize_checkpoint_url(url) or url
+        entry = payload.get(key)
+        if not isinstance(entry, dict):
+            entry = payload.get(url)
+        if not isinstance(entry, dict):
+            continue
+        etag = entry.get("etag")
+        if isinstance(etag, str) and etag:
+            out[key] = etag
+    return out
+
+
+def prefetch_same_size_identity(urls: Iterable[str]) -> Dict[str, int]:
+    """HEAD only checkpoint URLs that share a cached size and lack an etag.
+
+    Catches rehosts (same bytes, different URL/basename) without refetching the
+    whole catalogue. Returns ``{total, fetched, failed, skipped}``.
+    """
+    unique: List[str] = []
+    seen: set[str] = set()
+    for url in urls:
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        unique.append(url)
+
+    payload = _read_cache()
+    now = time.time()
+    by_size: Dict[int, List[str]] = defaultdict(list)
+    for url in unique:
+        key = normalize_checkpoint_url(url) or url
+        entry = payload.get(key)
+        if not isinstance(entry, dict):
+            entry = payload.get(url)
+        if not _cache_entry_fresh(entry, now=now) or not isinstance(entry, dict):
+            continue
+        size = entry.get("size")
+        etag = entry.get("etag")
+        if not isinstance(size, int) or size <= 0:
+            continue
+        if isinstance(etag, str) and etag:
+            continue
+        by_size[size].append(url)
+
+    targets = [url for cohort in by_size.values() if len(cohort) > 1 for url in cohort]
+    if not targets:
+        return {"total": 0, "fetched": 0, "failed": 0, "skipped": len(unique)}
+
+    fetched = 0
+    failed = 0
+    dirty = False
+    for url in targets:
+        size, etag = _head_remote_meta(url)
+        if size is None:
+            size = _get_content_length(url)
+        key = normalize_checkpoint_url(url) or url
+        stored: Dict[str, object] = {
+            "size": size,
+            "fetched_at": now,
+        }
+        if etag:
+            stored["etag"] = etag
+        payload[key] = stored
+        if key != url:
+            payload[url] = dict(stored)
+        dirty = True
+        if etag:
+            fetched += 1
+        else:
+            failed += 1
+
+    if dirty:
+        _write_cache(payload)
+
+    debug(
+        "download",
+        f"size_cache identity pass targets={len(targets)} "
+        f"fetched={fetched} failed={failed}",
+    )
+    return {
+        "total": len(targets),
+        "fetched": fetched,
+        "failed": failed,
+        "skipped": len(unique) - len(targets),
+    }
+
+
+def _head_remote_meta(url: str) -> Tuple[Optional[int], Optional[str]]:
+    """Return ``(content_length, etag)`` from a HEAD request."""
     request = urllib.request.Request(url, method="HEAD")
     try:
         with urllib.request.urlopen(
             request, context=_ssl_context(), timeout=_TIMEOUT_SECONDS
         ) as response:
-            return _parse_content_length(response.getheader("Content-Length"))
+            size = _parse_content_length(
+                response.getheader("X-Linked-Size")
+                or response.getheader("Content-Length")
+            )
+            etag = _parse_etag(
+                response.getheader("X-Linked-Etag") or response.getheader("ETag")
+            )
+            return size, etag
     except Exception:
-        return None
+        return None, None
+
+
+def _head_content_length(url: str) -> Optional[int]:
+    size, _etag = _head_remote_meta(url)
+    return size
 
 
 def _get_content_length(url: str) -> Optional[int]:
@@ -182,6 +314,17 @@ def _parse_content_length(header: Optional[str]) -> Optional[int]:
     if not header or not str(header).isdigit():
         return None
     return int(header)
+
+
+def _parse_etag(header: Optional[str]) -> Optional[str]:
+    if not header:
+        return None
+    text = str(header).strip()
+    if text.startswith("W/"):
+        text = text[2:].strip()
+    if len(text) >= 2 and text[0] == text[-1] == '"':
+        text = text[1:-1]
+    return text or None
 
 
 def estimate_jobs_size(

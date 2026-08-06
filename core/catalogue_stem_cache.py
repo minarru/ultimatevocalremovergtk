@@ -188,9 +188,9 @@ def unsubscribe(callback: Callable[[], None]) -> None:
 
 
 def _notify_subscribers() -> None:
-    from .model_display import clear_display_cache
-
-    clear_display_cache()
+    # Do not clear_display_cache here: stem apply patches catalogue_meta in
+    # place via DownloadManager.apply_catalogue_stem_cache. A full remesh on
+    # every YAML batch was rebuilding politrees/extras/mvsepless repeatedly.
     with _subscribers_lock:
         callbacks = list(_subscribers)
     for callback in callbacks:

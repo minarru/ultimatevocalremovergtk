@@ -87,13 +87,9 @@ def _merge_missing(
 ) -> Dict[str, Any]:
     """Add entries from ``extra`` that ``base`` does not already define."""
     merged = dict(base)
-    added = 0
     for key, value in extra.items():
         if key not in merged:
             merged[key] = value
-            added += 1
-    if added:
-        debug("download", f"extra catalogue merged {added} entries")
     return merged
 
 

@@ -278,6 +278,9 @@ def clear_display_cache() -> None:
     _display_generation += 1
     _merged_for_display_at.cache_clear()
     _format_tag_title_cache.clear()
+    from .catalog_sources import invalidate_catalogue_merge
+
+    invalidate_catalogue_merge()
 
 
 def _index_from_meta(merged: "MergedCatalogues", arch: str) -> Dict[str, str]:

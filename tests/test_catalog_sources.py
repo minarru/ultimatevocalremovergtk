@@ -26,6 +26,9 @@ def _with_supplements(supplements: typing.Any) -> typing.Any:
 
 @_STEM_CACHE_OFF
 class MergeOrderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        catalog_sources.invalidate_catalogue_merge()
+
     def test_upstream_label_is_never_overwritten(self) -> None:
         with _with_supplements(({}, {"Shared": {"other.ckpt": "u2"}}, {}, {})):
             merged = catalog_sources.merged_catalogues(
@@ -54,6 +57,9 @@ class MergeOrderTests(unittest.TestCase):
 
 @_STEM_CACHE_OFF
 class EntryMetaTests(unittest.TestCase):
+    def setUp(self) -> None:
+        catalog_sources.invalidate_catalogue_merge()
+
     def test_meta_carries_canonical_display_and_checkpoint(self) -> None:
         with _with_supplements(_NO_SUPPLEMENTS):
             merged = catalog_sources.merged_catalogues(
@@ -105,6 +111,79 @@ class EntryMetaTests(unittest.TestCase):
         for label in ("V", "M", "D"):
             with self.subTest(label=label):
                 self.assertIn(label, merged.meta)
+
+
+@_STEM_CACHE_OFF
+class MergeCacheTests(unittest.TestCase):
+    def setUp(self) -> None:
+        catalog_sources.invalidate_catalogue_merge()
+
+    def test_second_identical_merge_is_cached(self) -> None:
+        supplements = ({}, {"New": {"new.ckpt": "https://x/new.ckpt"}}, {}, {})
+        with _with_supplements(supplements):
+            with unittest.mock.patch.object(
+                catalog_sources, "dedupe_download_catalogue",
+                wraps=catalog_sources.dedupe_download_catalogue,
+            ) as dedupe:
+                first = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+                calls_after_first = dedupe.call_count
+                second = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+        self.assertIs(first, second)
+        self.assertGreater(calls_after_first, 0)
+        self.assertEqual(dedupe.call_count, calls_after_first)
+
+    def test_invalidate_forces_rebuild(self) -> None:
+        supplements = ({}, {"New": {"new.ckpt": "https://x/new.ckpt"}}, {}, {})
+        with _with_supplements(supplements):
+            with unittest.mock.patch.object(
+                catalog_sources, "dedupe_download_catalogue",
+                wraps=catalog_sources.dedupe_download_catalogue,
+            ) as dedupe:
+                catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+                calls_after_first = dedupe.call_count
+                catalog_sources.invalidate_catalogue_merge()
+                catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+        self.assertGreater(dedupe.call_count, calls_after_first)
+
+
+@_STEM_CACHE_OFF
+class MergePriorityDedupeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        catalog_sources.invalidate_catalogue_merge()
+
+    def test_extras_hyperace_wins_over_mvsepless_same_etag(self) -> None:
+        # Simulate post-supplement catalogue order: extras label first, then
+        # mvsepless alias — content_ids make them collide.
+        extras_label = (
+            "Roformer Model: BandSplit Roformer | HyperACE v2 Instrumental by Unwa"
+        )
+        mv_label = (
+            "BS Roformer Instrumental HyperACE v2 "
+            "(finetuned anvuew vocal model) by Unwa"
+        )
+        mdx = {
+            extras_label: {
+                "bs_roformer_inst_hyperacev2.ckpt": "https://pcunwa/v2_inst.ckpt",
+            },
+            mv_label: {
+                "bs_inst_hyperace2_unwa.ckpt": "https://mvsepless/hyperace2.ckpt",
+            },
+        }
+        content_ids = {
+            "https://pcunwa/v2_inst.ckpt": "same-etag",
+            "https://mvsepless/hyperace2.ckpt": "same-etag",
+        }
+        with _with_supplements(_NO_SUPPLEMENTS):
+            with unittest.mock.patch(
+                "core.download_sizes.content_ids_from_cache",
+                return_value=content_ids,
+            ):
+                merged = catalog_sources.merged_catalogues(vr={}, mdx=mdx, demucs={})
+        self.assertIn(extras_label, merged.mdx)
+        self.assertNotIn(mv_label, merged.mdx)
+        # meta still names both for picker resolution
+        self.assertIn(extras_label, merged.meta)
+        self.assertIn(mv_label, merged.meta)
 
 
 if __name__ == "__main__":

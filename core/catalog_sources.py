@@ -8,6 +8,13 @@ the two newest sources rendered as raw basenames in the method pickers.
 Both consumers now read this module, so a fifth source cannot reintroduce that
 class of bug. Only disk caches are read here: no network, so populating a model
 dropdown stays fast and works offline.
+
+Merge priority (earlier wins on label and every dedupe key):
+
+1. upstream / TRvlvr
+2. Politrees
+3. fork extras
+4. mvsepless
 """
 
 from __future__ import annotations
@@ -23,7 +30,7 @@ from bundled.constants import (
     VR_ARCH_TYPE,
 )
 
-from .catalog_dedupe import dedupe_download_catalogue
+from .catalog_dedupe import dedupe_download_catalogue, primary_checkpoint_url
 from .debug_log import debug
 from .extra_catalog import apollo_download_list, merge_extra_catalogues
 from .model_naming import canonical_display_name
@@ -34,6 +41,13 @@ from .politrees_catalog import (
     merge_politrees_catalogues,
     merge_supplemental_list,
 )
+
+#: Bumped by :func:`invalidate_catalogue_merge` when any catalogue source changes.
+_merge_generation: int = 0
+_supp_cache: Optional[
+    Tuple[int, Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]]]
+] = None
+_merge_cache: Dict[Tuple[Any, ...], "MergedCatalogues"] = {}
 
 
 @dataclass(frozen=True)
@@ -59,7 +73,23 @@ class MergedCatalogues:
     meta: Dict[str, EntryMeta]
 
 
-def _supplemental_sources() -> Tuple[
+def invalidate_catalogue_merge() -> None:
+    """Drop cached supplement/full merges (call when any source changes)."""
+    global _merge_generation, _supp_cache
+    _merge_generation += 1
+    _supp_cache = None
+    _merge_cache.clear()
+
+
+def _upstream_fingerprint(
+    vr: Mapping[str, Any],
+    mdx: Mapping[str, Any],
+    demucs: Mapping[str, Any],
+) -> Tuple[frozenset[str], frozenset[str], frozenset[str]]:
+    return (frozenset(vr), frozenset(mdx), frozenset(demucs))
+
+
+def _collect_supplemental_sources() -> Tuple[
     Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]
 ]:
     """Collect politrees + extras + mvsepless entries, **without** any base.
@@ -68,10 +98,6 @@ def _supplemental_sources() -> Tuple[
     supplements alone, already ordered politrees > extras > mvsepless among
     themselves. :func:`merged_catalogues` then merges this under the caller's
     upstream catalogues, which keeps upstream-wins in exactly one place.
-
-    Taking no arguments is deliberate: a version that received the base and
-    returned it merged could not be substituted in a test without also
-    substituting the merge under test.
     """
     vr: Dict[str, Any] = {}
     mdx: Dict[str, Any] = {}
@@ -83,6 +109,18 @@ def _supplemental_sources() -> Tuple[
     vr, mdx, demucs = merge_extra_catalogues(vr, mdx, demucs)
     vr, mdx, demucs = merge_mvsepless_catalogues(vr, mdx, demucs)
     return dict(vr), dict(mdx), dict(demucs), mvsepless_metadata()
+
+
+def _supplemental_sources() -> Tuple[
+    Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]
+]:
+    """Cached wrapper around :func:`_collect_supplemental_sources`."""
+    global _supp_cache
+    if _supp_cache is not None and _supp_cache[0] == _merge_generation:
+        return _supp_cache[1]
+    result = _collect_supplemental_sources()
+    _supp_cache = (_merge_generation, result)
+    return result
 
 
 def _primary_checkpoint(files: Mapping[str, str]) -> Optional[str]:
@@ -145,6 +183,16 @@ def _build_meta(
     return out
 
 
+def _checkpoint_urls(*catalogues: Mapping[str, Any]) -> List[str]:
+    urls: List[str] = []
+    for catalogue in catalogues:
+        for model in catalogue.values():
+            url = primary_checkpoint_url(model)
+            if url:
+                urls.append(url)
+    return urls
+
+
 def merged_catalogues(
     *,
     vr: Mapping[str, Any],
@@ -153,7 +201,18 @@ def merged_catalogues(
     force: bool = False,
 ) -> MergedCatalogues:
     """Merge every source over the supplied upstream catalogues, then dedupe."""
+    gen_at_start = _merge_generation
     supp_vr, supp_mdx, supp_demucs, extra_meta = _supplemental_sources()
+    cache_key = (
+        gen_at_start,
+        _upstream_fingerprint(vr, mdx, demucs),
+        _upstream_fingerprint(supp_vr, supp_mdx, supp_demucs),
+        frozenset(extra_meta),
+    )
+    if not force:
+        cached = _merge_cache.get(cache_key)
+        if cached is not None:
+            return cached
 
     # Upstream-wins, in one place: a label already in the base is never
     # replaced by a supplement.
@@ -183,12 +242,31 @@ def merged_catalogues(
         enqueue_missing(pending_yaml)
         ensure_worker_started()
 
-    vr_out = dedupe_download_catalogue(vr_all)
-    mdx_out = dedupe_download_catalogue(mdx_all)
-    demucs_out = dedupe_download_catalogue(demucs_all, demucs_bags=True)
-    apollo_out = dedupe_download_catalogue(apollo_all)
+    from .download_sizes import content_ids_from_cache
 
-    debug("download", f"catalog_sources merged entries={len(meta)}")
-    return MergedCatalogues(
+    content_ids = content_ids_from_cache(
+        _checkpoint_urls(vr_all, mdx_all, apollo_all)
+    )
+
+    before = len(vr_all) + len(mdx_all) + len(demucs_all) + len(apollo_all)
+    vr_out = dedupe_download_catalogue(vr_all, content_ids=content_ids)
+    mdx_out = dedupe_download_catalogue(mdx_all, content_ids=content_ids)
+    demucs_out = dedupe_download_catalogue(demucs_all, demucs_bags=True)
+    apollo_out = dedupe_download_catalogue(apollo_all, content_ids=content_ids)
+    after = len(vr_out) + len(mdx_out) + len(demucs_out) + len(apollo_out)
+    dropped = before - after
+
+    with_stems = sum(1 for entry in meta.values() if entry.stems)
+    debug(
+        "download",
+        f"catalog_sources merged entries={len(meta)} "
+        f"dedupe_dropped={dropped} with_stems={with_stems}",
+    )
+    result = MergedCatalogues(
         vr=vr_out, mdx=mdx_out, demucs=demucs_out, apollo=apollo_out, meta=meta
     )
+    # A clear_display_cache / invalidate mid-flight bumps the generation; do
+    # not publish that stale result under the new live key.
+    if not force and _merge_generation == gen_at_start:
+        _merge_cache[cache_key] = result
+    return result
