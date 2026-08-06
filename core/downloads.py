@@ -325,6 +325,16 @@ class DownloadManager:
         dropped = before - after
         if dropped:
             debug("download", f"content dedupe dropped {dropped} download row(s)")
+            # The merged catalogue is memoized on the display generation, and
+            # its key covers the caller's label set but not the content-id map
+            # dedupe runs on. On a fresh install the merge is built before any
+            # etag exists, so when the identity pass fills them the inputs are
+            # unchanged and the pre-dedupe row set would be served all session.
+            # Bump the generation rather than widening the key -- one
+            # invalidation story, not two.
+            from .model_display import clear_display_cache
+
+            clear_display_cache()
             self._notify_catalogue_changed()
 
     def warm_size_cache(self) -> Dict[str, int]:

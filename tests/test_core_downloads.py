@@ -423,6 +423,49 @@ class CatalogueChangedSubscriberTests(unittest.TestCase):
 
         self.assertEqual(calls, [])
 
+    def test_dropping_rows_invalidates_the_display_merge(self):
+        """The merged catalogue is memoized; dedupe has to bump its generation.
+
+        `merged_catalogues` keys on the caller's label set and the display
+        generation -- not on the content-id map it dedupes with. On a fresh
+        install the display index is built before the identity HEADs have filled
+        any etags, so when they arrive the inputs are unchanged and the cached
+        pre-dedupe row set is reused for the rest of the session.
+        """
+        from core import model_display
+
+        manager = self._manager()
+        generation_before = model_display._display_generation
+
+        with patch(
+            "core.downloads.content_ids_from_cache",
+            return_value={
+                "https://example.test/kept.ckpt": "etag-abc",
+                "https://mirror.test/rehosted.ckpt": "etag-abc",
+            },
+        ):
+            manager._reapply_content_dedupe()
+
+        self.assertGreater(model_display._display_generation, generation_before)
+
+    def test_no_drop_leaves_the_display_merge_alone(self):
+        """Re-merging costs ~125ms; don't pay it when nothing changed."""
+        from core import model_display
+
+        manager = self._manager()
+        generation_before = model_display._display_generation
+
+        with patch(
+            "core.downloads.content_ids_from_cache",
+            return_value={
+                "https://example.test/kept.ckpt": "etag-abc",
+                "https://mirror.test/rehosted.ckpt": "etag-xyz",
+            },
+        ):
+            manager._reapply_content_dedupe()
+
+        self.assertEqual(model_display._display_generation, generation_before)
+
     def test_failing_subscriber_does_not_break_the_warmup_thread(self):
         manager = self._manager()
         calls = []
