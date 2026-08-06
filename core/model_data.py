@@ -17,6 +17,7 @@ import typing
 
 import json
 import os
+import threading
 from typing import AbstractSet, Any, Callable, Dict, List, Optional, Sequence, Tuple, cast
 
 from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
@@ -124,7 +125,50 @@ class ModelRepository:
         self.on_unrecognized_model: Optional[Callable[["ModelConfig"], Any]] = None
         self._stem_check_cache = None
         self._karaoke_cache: Optional[Tuple[Tuple[str, ...], List[str]]] = None
+        self._models_changed_subscribers: List[Callable[[], None]] = []
+        self._models_changed_lock = threading.Lock()
+        self._notifying_models_changed = False
         self.reload_mappers()
+
+    # -- Change notification ----------------------------------------------------
+
+    def subscribe_models_changed(self, callback: Callable[[], None]) -> None:
+        """Call ``callback`` after :meth:`invalidate_models`.
+
+        Fired from whichever thread invalidated — usually the download worker —
+        so listeners must marshal to their own loop before touching widgets.
+        Mirrors ``catalogue_stem_cache.subscribe`` and
+        ``DownloadManager.subscribe_catalogue_changed``.
+        """
+        with self._models_changed_lock:
+            if callback not in self._models_changed_subscribers:
+                self._models_changed_subscribers.append(callback)
+
+    def unsubscribe_models_changed(self, callback: Callable[[], None]) -> None:
+        with self._models_changed_lock:
+            try:
+                self._models_changed_subscribers.remove(callback)
+            except ValueError:
+                pass
+
+    def _notify_models_changed(self) -> None:
+        # A subscriber that invalidates again (e.g. a refresh that registers a
+        # newly recognized model) would otherwise renotify itself forever.
+        if self._notifying_models_changed:
+            return
+        with self._models_changed_lock:
+            callbacks = list(self._models_changed_subscribers)
+        self._notifying_models_changed = True
+        try:
+            for callback in callbacks:
+                try:
+                    callback()
+                except Exception:
+                    from .debug_log import debug
+
+                    debug("model", "models_changed subscriber raised")
+        finally:
+            self._notifying_models_changed = False
 
     def reload_mappers(self) -> None:
         from .debug_log import debug
@@ -273,6 +317,7 @@ class ModelRepository:
         self._karaoke_cache = None
         self.model_hash_table.clear()
         self.reload_mappers()
+        self._notify_models_changed()
 
     def model_list(
         self,

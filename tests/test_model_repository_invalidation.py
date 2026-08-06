@@ -29,7 +29,7 @@ class InvalidateModelsTests(unittest.TestCase):
         self.repo = ModelRepository()
 
     def test_clears_every_derived_cache(self) -> None:
-        self.repo._stem_check_cache = (("tag",), [])
+        self.repo._stem_check_cache = ((("tag",), str(self.settings.mdx.stems)), [])
         self.repo._karaoke_cache = (("tag",), ["tag"])
         self.repo.model_hash_table["/some/model.ckpt"] = "abc123"
         generation_before = model_display._display_generation
