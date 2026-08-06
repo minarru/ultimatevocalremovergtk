@@ -490,16 +490,6 @@ def merge_mvsepless_catalogues(
     vr_out = merge_supplemental_list(vr, data.get("vr_download_list", {}))
     mdx_out = merge_supplemental_list(mdx, data.get("mdx_download_list", {}))
     demucs_out = merge_supplemental_list(demucs, data.get("demucs_download_list", {}))
-    added = (
-        len(vr_out)
-        - len(vr)
-        + len(mdx_out)
-        - len(mdx)
-        + len(demucs_out)
-        - len(demucs)
-    )
-    if added:
-        debug("download", f"mvsepless merged {added} new catalogue entries")
     return dict(vr_out), dict(mdx_out), dict(demucs_out)
 
 

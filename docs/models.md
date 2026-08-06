@@ -11,7 +11,14 @@ The Download Center merges catalogues in this order (earlier labels win):
 
 The mvsepless feed has **no declared Hugging Face license tag**; this app only indexes remote URLs and downloads into the local models dirs (it does not rehost weights). Disable with `UVR_DISABLE_MVSEPLESS=1`.
 
-After merging, a **dedupe pass** keeps the first selectable for each checkpoint basename and for each normalized label (cosmetic renames like `Roformer Model: MelBand …` vs `Mel-Band Roformer …`, or `Inst V1` vs `Inst v1`). Earlier catalogues always win.
+After merging, a **dedupe pass** keeps the first selectable for each of:
+
+- checkpoint basename
+- normalized label (cosmetic renames like `Roformer Model: MelBand …` vs `Mel-Band Roformer …`, or `Inst V1` vs `Inst v1`)
+- normalized checkpoint URL (strips `?download=true`)
+- content identity (`x-linked-etag` / `ETag`) when the download size cache knows it
+
+Earlier catalogues always win (upstream → Politrees → extras → mvsepless). Demucs bags only collide on identical file→URL maps or normalized labels — shared bag members are not treated as duplicates.
 
 Entries this build cannot run yet still appear in the matching network tab as **Unsupported** (grayed, not downloadable), with a short reason. Use **Hide unsupported** in the Download Center filters to conceal them. First-pass unsupported classes:
 

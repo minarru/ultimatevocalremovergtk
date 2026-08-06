@@ -50,10 +50,12 @@ from bundled.constants import (
 from . import paths
 from .debug_log import debug
 from .download_sizes import (
+    content_ids_from_cache,
     describe_download_size,
     estimate_jobs_size,
     format_download_size,
     prefetch_remote_sizes,
+    prefetch_same_size_identity,
 )
 from .mdx_config_fetch import ensure_mdx_c_config
 from .mvsepless_catalog import (
@@ -160,6 +162,7 @@ class DownloadManager:
         # ``catalog_sources`` stays out of this module's import time.
         self.catalogue_meta: Dict[str, Any] = {}
         self._size_warmup_lock = threading.Lock()
+        self._size_warmup_done_for: Optional[frozenset[str]] = None
 
     # -- Catalogue + size cache -------------------------------------------------
 
@@ -213,11 +216,74 @@ class DownloadManager:
                     urls.add(url)
         return sorted(urls)
 
+    def catalogue_checkpoint_urls(self) -> List[str]:
+        """Checkpoint URLs only (skip config YAML) for size/identity warmup."""
+        urls: set[str] = set()
+        for arch_type, catalogue in (
+            (VR_ARCH_TYPE, self.vr_download_list),
+            (MDX_ARCH_TYPE, self.mdx_download_list),
+            (DEMUCS_ARCH_TYPE, self.demucs_download_list),
+            (APOLLO_ARCH_TYPE, self.apollo_download_list),
+        ):
+            for name in catalogue:
+                for url, path in self.resolve(name, arch_type):
+                    lower = path.casefold()
+                    if lower.endswith((".yaml", ".yml")):
+                        continue
+                    urls.add(url)
+        return sorted(urls)
+
+    def _reapply_content_dedupe(self) -> None:
+        """Re-run etag dedupe on in-memory lists after identity HEADs fill."""
+        from .catalog_dedupe import dedupe_download_catalogue, primary_checkpoint_url
+
+        urls: List[str] = []
+        for catalogue in (
+            self.vr_download_list,
+            self.mdx_download_list,
+            self.apollo_download_list,
+        ):
+            for model in catalogue.values():
+                url = primary_checkpoint_url(model)
+                if url:
+                    urls.append(url)
+        content_ids = content_ids_from_cache(urls)
+        if not content_ids:
+            return
+        before = (
+            len(self.vr_download_list)
+            + len(self.mdx_download_list)
+            + len(self.apollo_download_list)
+        )
+        self.vr_download_list = dedupe_download_catalogue(
+            self.vr_download_list, content_ids=content_ids
+        )
+        self.mdx_download_list = dedupe_download_catalogue(
+            self.mdx_download_list, content_ids=content_ids
+        )
+        self.apollo_download_list = dedupe_download_catalogue(
+            self.apollo_download_list, content_ids=content_ids
+        )
+        after = (
+            len(self.vr_download_list)
+            + len(self.mdx_download_list)
+            + len(self.apollo_download_list)
+        )
+        dropped = before - after
+        if dropped:
+            debug("download", f"content dedupe dropped {dropped} download row(s)")
+
     def warm_size_cache(self) -> Dict[str, int]:
-        """Prefetch remote sizes for catalogue URLs (7-day TTL)."""
+        """Prefetch remote sizes for catalogue checkpoint URLs (7-day TTL)."""
         if not self.ensure_catalogues():
             debug("download", "size_cache_warmup skip no catalogues")
             return {"total": 0, "fresh": 0, "fetched": 0, "failed": 0}
+
+        urls = self.catalogue_checkpoint_urls()
+        signature = frozenset(urls)
+        if self._size_warmup_done_for == signature:
+            debug("download", "size_cache_warmup skip already warm")
+            return {"total": len(urls), "fresh": len(urls), "fetched": 0, "failed": 0}
 
         if not self._size_warmup_lock.acquire(blocking=False):
             debug("download", "size_cache_warmup skip already running")
@@ -226,15 +292,18 @@ class DownloadManager:
         from .debug_log import debug_elapsed
 
         try:
-            urls = self.catalogue_urls()
             debug("download", f"size_cache_warmup start urls={len(urls)}")
             started = time.perf_counter()
             stats = prefetch_remote_sizes(urls)
+            identity = prefetch_same_size_identity(urls)
+            self._reapply_content_dedupe()
+            self._size_warmup_done_for = signature
             debug_elapsed(
                 "download",
                 "size_cache_warmup done "
                 f"total={stats['total']} fresh={stats['fresh']} "
-                f"fetched={stats['fetched']} failed={stats['failed']}",
+                f"fetched={stats['fetched']} failed={stats['failed']} "
+                f"identity_fetched={identity.get('fetched', 0)}",
                 started,
             )
             return stats
@@ -242,7 +311,7 @@ class DownloadManager:
             self._size_warmup_lock.release()
 
     def schedule_size_cache_warmup(self) -> None:
-        """Kick off a background size-cache refresh (idempotent per process)."""
+        """Kick off a background size-cache refresh (idempotent per URL set)."""
         threading.Thread(target=self.warm_size_cache, daemon=True).start()
 
     # -- Online refresh ---------------------------------------------------------

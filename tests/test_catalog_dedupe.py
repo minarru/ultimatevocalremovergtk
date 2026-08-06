@@ -10,7 +10,9 @@ from bundled.constants import MDX_ARCH_TYPE
 from core.catalog_dedupe import (
     dedupe_download_catalogue,
     normalize_catalogue_label,
+    normalize_checkpoint_url,
     primary_checkpoint_name,
+    primary_checkpoint_url,
 )
 from core.downloads import DownloadManager
 from core.mvsepless_catalog import unsupported_mvsepless_downloads
@@ -47,6 +49,33 @@ class PrimaryCheckpointTests(unittest.TestCase):
 
     def test_plain_filename(self) -> None:
         self.assertEqual(primary_checkpoint_name("1_HP-UVR.pth"), "1_HP-UVR.pth")
+
+
+class NormalizeCheckpointUrlTests(unittest.TestCase):
+    def test_strips_download_query(self) -> None:
+        a = "https://hf.co/x/a.ckpt?download=true"
+        b = "https://hf.co/x/a.ckpt"
+        self.assertEqual(normalize_checkpoint_url(a), normalize_checkpoint_url(b))
+
+    def test_keeps_other_query_params(self) -> None:
+        url = "https://hf.co/x/a.ckpt?revision=main&download=true"
+        self.assertEqual(
+            normalize_checkpoint_url(url),
+            "https://hf.co/x/a.ckpt?revision=main",
+        )
+
+
+class PrimaryCheckpointUrlTests(unittest.TestCase):
+    def test_skips_yaml(self) -> None:
+        self.assertEqual(
+            primary_checkpoint_url(
+                {
+                    "a.yaml": "https://x/a.yaml",
+                    "a.ckpt": "https://x/a.ckpt?download=true",
+                }
+            ),
+            "https://x/a.ckpt",
+        )
 
 
 class DedupeCatalogueTests(unittest.TestCase):
@@ -96,6 +125,46 @@ class DedupeCatalogueTests(unittest.TestCase):
         }
         out = dedupe_download_catalogue(catalogue, demucs_bags=True)
         self.assertEqual(list(out), ["Bag A", "Bag B shares file"])
+
+    def test_keeps_first_normalized_url_collision(self) -> None:
+        catalogue = {
+            "Bleedless": {
+                "a.ckpt": "https://hf.co/x/fullness.ckpt?download=true",
+                "a.yaml": "https://hf.co/x/a.yaml",
+            },
+            "Fullness": {
+                "b.ckpt": "https://hf.co/x/fullness.ckpt",
+                "b.yaml": "https://hf.co/x/b.yaml",
+            },
+        }
+        out = dedupe_download_catalogue(catalogue)
+        self.assertEqual(list(out), ["Bleedless"])
+
+    def test_keeps_first_content_id_collision(self) -> None:
+        catalogue = {
+            "HyperACE official": {
+                "bs_roformer_inst_hyperacev2.ckpt": "https://pcunwa/v2_inst.ckpt",
+            },
+            "HyperACE finetuned alias": {
+                "bs_inst_hyperace2_unwa.ckpt": "https://mvsepless/hyperace2.ckpt",
+            },
+        }
+        content_ids = {
+            "https://pcunwa/v2_inst.ckpt": "etag-same",
+            "https://mvsepless/hyperace2.ckpt": "etag-same",
+        }
+        out = dedupe_download_catalogue(catalogue, content_ids=content_ids)
+        self.assertEqual(list(out), ["HyperACE official"])
+
+    def test_demucs_ignores_url_and_content_ids(self) -> None:
+        bag_a = {"a.th": "https://x/a.th", "a.yaml": "https://x/a.yaml"}
+        bag_b = {"a.th": "https://x/a.th", "b.yaml": "https://x/b.yaml"}
+        out = dedupe_download_catalogue(
+            {"Bag A": bag_a, "Bag B": bag_b},
+            demucs_bags=True,
+            content_ids={"https://x/a.th": "shared"},
+        )
+        self.assertEqual(list(out), ["Bag A", "Bag B"])
 
 
 class UnsupportedNormFilterTests(unittest.TestCase):
