@@ -474,10 +474,6 @@ class MainWindow(Adw.ApplicationWindow):
             clamp.queue_resize()
 
     def _on_window_mapped(self, *_args: typing.Any) -> None:
-        from .download import start_download_size_cache_warmup
-
-        start_download_size_cache_warmup(self.context)
-
         def refresh() -> None:
             if self._current_view is not None:
                 self._populate_columns()

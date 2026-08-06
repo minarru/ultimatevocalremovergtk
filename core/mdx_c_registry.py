@@ -118,31 +118,27 @@ def register_mdx_display_name(
     *,
     write: bool = True,
 ) -> bool:
-    """Persist a friendly display label in ``model_name_mapper.json`` if missing."""
+    """Persist a friendly display label for a locally-registered checkpoint.
+
+    Reads the merged mapper (upstream mirror + local overlay) to decide whether
+    the name is already known, but writes only to the overlay — the mirror has
+    to stay a verbatim copy of upstream so deletions there propagate.
+    """
     if not display_name:
         return False
+    from .name_mapper import add_local_name, load_name_mapper
+
     mapper_key = _mapper_key_for_checkpoint(checkpoint_path)
     mapper_path = paths.MDX_MODEL_NAME_SELECT
-    existing: Dict[str, str] = {}
-    if os.path.isfile(mapper_path):
-        try:
-            with open(mapper_path, "r", encoding="utf-8") as handle:
-                payload = json.load(handle)
-            if isinstance(payload, dict):
-                existing = {str(key): str(value) for key, value in payload.items()}
-        except (OSError, ValueError, TypeError):
-            existing = {}
+    existing: Dict[str, str] = load_name_mapper(mapper_path)
 
     if mapper_key in existing or display_name in existing.values():
         return False
 
-    existing[mapper_key] = display_name
     if not write:
         return True
 
-    os.makedirs(os.path.dirname(mapper_path), exist_ok=True)
-    with open(mapper_path, "w", encoding="utf-8") as handle:
-        handle.write(json.dumps(existing, indent=4))
+    add_local_name(mapper_path, mapper_key, display_name)
     return True
 
 

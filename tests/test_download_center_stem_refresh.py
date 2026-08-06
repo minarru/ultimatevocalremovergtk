@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import typing
 import unittest
 from typing import Any
 from unittest import mock
@@ -218,10 +219,150 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win._update_status_from_catalogue = mock.MagicMock()
         win._update_download_button = mock.MagicMock()
         win._ensure_stem_cache_listener = mock.MagicMock()
+        win._schedule_stem_yaml_fetches = mock.MagicMock()
 
         DownloadCenterWindow._refresh_done(win, True, {MDX_ARCH_TYPE: ["M"]}, {})
 
         win._ensure_stem_cache_listener.assert_called_once_with()
+        win._schedule_stem_yaml_fetches.assert_called_once_with()
+
+    def test_schedule_coalesces_repeated_calls(self) -> None:
+        """Every keystroke scans the whole catalogue twice on the main thread.
+
+        Arming a single timeout means a burst of typing costs one scan, not one
+        per character.
+        """
+        from ui.download_center import DownloadCenterWindow
+
+        win = object.__new__(DownloadCenterWindow)
+        win._stem_fetch_armed = False
+
+        with mock.patch("gi.repository.GLib.timeout_add") as timeout_add:
+            for _ in range(5):
+                DownloadCenterWindow._schedule_stem_yaml_fetches(win)
+
+        self.assertEqual(timeout_add.call_count, 1)
+        callback = timeout_add.call_args[0][1]
+
+        # Once the timeout fires the next burst must arm again.
+        with mock.patch.object(win, "_visible_catalogue_labels", return_value=[]), (
+            mock.patch.object(win, "_pending_stem_yaml_urls", return_value=[])
+        ):
+            self.assertFalse(callback())
+        with mock.patch("gi.repository.GLib.timeout_add") as timeout_add2:
+            DownloadCenterWindow._schedule_stem_yaml_fetches(win)
+        self.assertEqual(timeout_add2.call_count, 1)
+
+    def test_visible_labels_scoped_to_active_tab(self) -> None:
+        """"Visible" must mean the tab on screen, not every tab's filter result."""
+        from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
+
+        win = object.__new__(DownloadCenterWindow)
+        win._available = {
+            MDX_ARCH_TYPE: ["MDX Model"],
+            "VR Arc": ["VR Model"],
+        }
+        win._search_entries = {}
+        win._purpose = PURPOSE_ALL
+        win.stack = mock.MagicMock()
+        win.stack.get_visible_child_name.return_value = MDX_ARCH_TYPE
+
+        self.assertEqual(win._visible_catalogue_labels(), ["MDX Model"])
+
+    def test_visible_labels_fall_back_when_no_active_tab(self) -> None:
+        from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
+
+        win = object.__new__(DownloadCenterWindow)
+        win._available = {MDX_ARCH_TYPE: ["MDX Model"], "VR Arc": ["VR Model"]}
+        win._search_entries = {}
+        win._purpose = PURPOSE_ALL
+        win.stack = mock.MagicMock()
+        win.stack.get_visible_child_name.return_value = None
+
+        self.assertEqual(
+            sorted(win._visible_catalogue_labels()), ["MDX Model", "VR Model"]
+        )
+
+    def test_schedule_stem_yaml_fetches_prioritizes_visible(self) -> None:
+        """Drive the real URL selection, not a scripted list of return values.
+
+        Exercises `_yaml_config_url`, the already-has-stems skip, the stem-cache
+        hit predicate and the visible/bulk split against real `catalogue_meta`
+        and a real seeded stem cache. Only `enqueue_missing` /
+        `ensure_worker_started` are stubbed — they are the boundary under test.
+        """
+        import os
+        import tempfile
+
+        import core.catalogue_stem_cache as csc
+        from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
+
+        def meta_for(label: str, yaml_url: str | None, stems: list[str]) -> EntryMeta:
+            files = {"m.ckpt": f"https://example.test/{label}.ckpt"}
+            if yaml_url:
+                files["m.yaml"] = yaml_url
+            return EntryMeta(
+                label=label,
+                display=label,
+                arch=MDX_ARCH_TYPE,
+                files=files,
+                stems=stems,
+            )
+
+        cached_url = "https://example.test/cached.yaml"
+        catalogue_meta = {
+            # Matches the "kim" query; needs a fetch.
+            "Kim Vocal 1": meta_for("Kim Vocal 1", "https://example.test/kim.yaml", []),
+            # Matches, but its stems are already known — must be skipped.
+            "Kim Inst 2": meta_for("Kim Inst 2", "https://example.test/inst.yaml", ["Vocals"]),
+            # Matches, but the stem cache already answers for it — must be skipped.
+            "Kim Cached 3": meta_for("Kim Cached 3", cached_url, []),
+            # Does not match the query, so it belongs in the bulk half.
+            "Other Model": meta_for("Other Model", "https://example.test/other.yaml", []),
+            # No YAML config at all — must never be enqueued.
+            "No Yaml": meta_for("No Yaml", None, []),
+        }
+
+        class _Entry:
+            def __init__(self, text: str) -> None:
+                self._text = text
+
+            def get_text(self) -> str:
+                return self._text
+
+        win = object.__new__(DownloadCenterWindow)
+        win.manager = mock.MagicMock()
+        win.manager.catalogue_meta = catalogue_meta
+        win._available = {MDX_ARCH_TYPE: list(catalogue_meta)}
+        # Stands in for a Gtk.SearchEntry, which needs a display to construct;
+        # _visible_catalogue_labels only ever calls get_text() on it.
+        win._search_entries = typing.cast(
+            "dict[str, Any]", {MDX_ARCH_TYPE: _Entry("kim")}
+        )
+        win._purpose = PURPOSE_ALL
+        win.stack = mock.MagicMock()
+        win.stack.get_visible_child_name.return_value = MDX_ARCH_TYPE
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "catalogue_stem_cache.json")
+            with mock.patch.object(csc, "_cache_path", return_value=cache_path):
+                with mock.patch("core.model_display.clear_display_cache"):
+                    csc.clear_catalogue_stem_cache()
+                    csc.remember_stems(cached_url, ["Vocals", "other"], "Vocals", ok=True)
+                    with mock.patch.object(csc, "enqueue_missing") as enqueue, (
+                        mock.patch.object(csc, "ensure_worker_started")
+                    ) as ensure:
+                        DownloadCenterWindow._flush_stem_yaml_fetches(win)
+                    csc.clear_catalogue_stem_cache()
+
+        self.assertEqual(
+            enqueue.call_args_list,
+            [
+                mock.call(["https://example.test/kim.yaml"], priority=True),
+                mock.call(["https://example.test/other.yaml"], priority=False),
+            ],
+        )
+        ensure.assert_called_once_with()
 
 
 if __name__ == "__main__":

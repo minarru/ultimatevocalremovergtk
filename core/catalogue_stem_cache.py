@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import queue
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set
 
@@ -17,11 +19,20 @@ from .mdx_config_fetch import _urlopen
 _SUCCESS_TTL_SECONDS = 7 * 24 * 3600
 _FAILURE_TTL_SECONDS = 6 * 3600
 _MAX_BODY_BYTES = 2 * 1024 * 1024
+_FETCH_WORKERS = 2
 
 _memory_entries: Optional[Dict[str, Dict[str, Any]]] = None
+#: Guards ``_memory_entries`` and the cache file. Reentrant because
+#: ``remember_stems`` holds it across ``_ensure_loaded``. Needed since
+#: ``_FETCH_WORKERS`` > 1 writes from several pool threads at once.
+_entries_lock = threading.RLock()
 
-_url_queue: queue.Queue[str] = queue.Queue()
-_queued_urls: Set[str] = set()
+#: PriorityQueue items are ``(priority, sequence, url)`` — lower priority first.
+_url_queue: queue.PriorityQueue[tuple[int, int, str]] = queue.PriorityQueue()
+_queue_seq = itertools.count()
+#: url -> best priority currently queued, so a later priority enqueue can
+#: promote a URL already sitting in the bulk backlog.
+_queued_priority: Dict[str, int] = {}
 _queue_lock = threading.Lock()
 _subscribers: List[Callable[[], None]] = []
 _subscribers_lock = threading.Lock()
@@ -60,22 +71,23 @@ def _cache_path() -> str:
 
 def _ensure_loaded() -> Dict[str, Dict[str, Any]]:
     global _memory_entries
-    if _memory_entries is not None:
-        return _memory_entries
-    entries: Dict[str, Dict[str, Any]] = {}
-    try:
-        with open(_cache_path(), "r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-        if isinstance(payload, dict):
-            raw = payload.get("entries")
-            if isinstance(raw, dict):
-                for key, entry in raw.items():
-                    if isinstance(key, str) and isinstance(entry, dict):
-                        entries[key] = entry
-    except (OSError, ValueError, TypeError):
-        pass
-    _memory_entries = entries
-    return entries
+    with _entries_lock:
+        if _memory_entries is not None:
+            return _memory_entries
+        entries: Dict[str, Dict[str, Any]] = {}
+        try:
+            with open(_cache_path(), "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            if isinstance(payload, dict):
+                raw = payload.get("entries")
+                if isinstance(raw, dict):
+                    for key, entry in raw.items():
+                        if isinstance(key, str) and isinstance(entry, dict):
+                            entries[key] = entry
+        except (OSError, ValueError, TypeError):
+            pass
+        _memory_entries = entries
+        return entries
 
 
 def _entry_ttl_seconds(entry: Mapping[str, Any]) -> float:
@@ -130,24 +142,32 @@ def remember_stems(
         "fetched_at": now,
         "ok": ok,
     }
-    entries = _ensure_loaded()
-    entries[key] = entry
-    try:
-        cache_path = _cache_path()
-        os.makedirs(os.path.dirname(cache_path) or ".", exist_ok=True)
-        with open(cache_path, "w", encoding="utf-8") as handle:
-            json.dump({"fetched_at": now, "entries": entries}, handle)
-    except OSError:
-        pass
+    # Held across the write: json.dump iterates the shared dict, so an
+    # unguarded concurrent insert raises "dictionary changed size during
+    # iteration" — which _fetch_and_remember would then record as a failed
+    # fetch, hiding a good result behind the 6h failure TTL.
+    with _entries_lock:
+        entries = _ensure_loaded()
+        entries[key] = entry
+        try:
+            cache_path = _cache_path()
+            os.makedirs(os.path.dirname(cache_path) or ".", exist_ok=True)
+            tmp_path = f"{cache_path}.tmp"
+            with open(tmp_path, "w", encoding="utf-8") as handle:
+                json.dump({"fetched_at": now, "entries": entries}, handle)
+            os.replace(tmp_path, cache_path)
+        except OSError:
+            pass
 
 
 def clear_catalogue_stem_cache() -> None:
     global _memory_entries
-    _memory_entries = None
-    try:
-        os.remove(_cache_path())
-    except OSError:
-        pass
+    with _entries_lock:
+        _memory_entries = None
+        try:
+            os.remove(_cache_path())
+        except OSError:
+            pass
     from .model_display import clear_display_cache
 
     clear_display_cache()
@@ -200,19 +220,30 @@ def _notify_subscribers() -> None:
             pass
 
 
-def enqueue_missing(urls: Iterable[str]) -> None:
+def enqueue_missing(urls: Iterable[str], *, priority: bool = False) -> None:
+    """Queue YAML URLs for background stem fetch.
+
+    ``priority=True`` jumps ahead of bulk/background URLs (Download Center
+    visible rows). A URL already queued at the same or better priority is
+    skipped; one queued at a worse priority is re-queued at the better one and
+    the worker drops the superseded copy.
+    """
     if not catalogue_stems_enabled():
         return
+    prio = 0 if priority else 1
     with _queue_lock:
         to_put: list[str] = []
         for url in urls:
             key = normalize_config_url(str(url))
-            if not key or key in _queued_urls:
+            if not key:
                 continue
-            _queued_urls.add(key)
+            current = _queued_priority.get(key)
+            if current is not None and current <= prio:
+                continue
+            _queued_priority[key] = prio
             to_put.append(key)
         for key in to_put:
-            _url_queue.put(key)
+            _url_queue.put((prio, next(_queue_seq), key))
 
 
 def ensure_worker_started() -> None:
@@ -249,8 +280,27 @@ def _fetch_and_remember(url: str) -> None:
         remember_stems(url, [], None, ok=False)
 
 
-def _drain_queued_urls(first: str) -> list[str]:
-    """Collect ``first`` plus any URLs currently queued (holds ``_queue_lock``)."""
+def _dedupe_sorted(items: list[tuple[int, int, str]]) -> list[tuple[int, int, str]]:
+    """Drop superseded copies of a URL, keeping the best-priority one.
+
+    ``items`` must already be sorted, so the first copy of each URL is the one
+    with the lowest ``(priority, sequence)``. Promotion re-queues a URL rather
+    than mutating the existing entry, so duplicates are expected here.
+    """
+    seen: Set[str] = set()
+    out: list[tuple[int, int, str]] = []
+    for item in items:
+        if item[2] in seen:
+            continue
+        seen.add(item[2])
+        out.append(item)
+    return out
+
+
+def _drain_queued_items(
+    first: tuple[int, int, str],
+) -> list[tuple[int, int, str]]:
+    """Collect ``first`` plus any items currently queued (holds ``_queue_lock``)."""
     pending = [first]
     with _queue_lock:
         while True:
@@ -258,31 +308,52 @@ def _drain_queued_urls(first: str) -> list[str]:
                 pending.append(_url_queue.get_nowait())
             except queue.Empty:
                 break
-    return pending
+    pending.sort()
+    return _dedupe_sorted(pending)
 
 
 def _worker_loop() -> None:
     while True:
         first = _url_queue.get()
         _worker_idle.clear()
-        pending = _drain_queued_urls(first)
+        pending = _drain_queued_items(first)
+        workers = max(1, _FETCH_WORKERS)
         try:
-            while pending:
-                for url in pending:
-                    _fetch_and_remember(url)
+            # One pool for the whole batch: a fresh executor per chunk spawned
+            # ~N threads to fetch N URLs.
+            with ThreadPoolExecutor(
+                max_workers=workers, thread_name_prefix="uvr-stem-yaml"
+            ) as pool:
+                while pending:
+                    chunk = pending[:workers]
+                    pending = pending[workers:]
+                    futures = [
+                        pool.submit(_fetch_and_remember, item[2]) for item in chunk
+                    ]
+                    for future in as_completed(futures):
+                        future.result()
                     with _queue_lock:
-                        _queued_urls.discard(url)
-                pending = []
-                with _queue_lock:
-                    while True:
-                        try:
-                            pending.append(_url_queue.get_nowait())
-                        except queue.Empty:
-                            break
-            _notify_subscribers()
+                        for prio, _seq, key in chunk:
+                            # Leave the record in place if the URL was promoted
+                            # while this chunk was in flight — the re-queued
+                            # copy still has to run.
+                            if _queued_priority.get(key) == prio:
+                                _queued_priority.pop(key, None)
+                        newly: list[tuple[int, int, str]] = []
+                        while True:
+                            try:
+                                newly.append(_url_queue.get_nowait())
+                            except queue.Empty:
+                                break
+                    if newly:
+                        pending = _dedupe_sorted(sorted(pending + newly))
+                    # Per chunk, not per drain: subtitles for prioritized
+                    # visible rows must appear without waiting on the whole
+                    # catalogue.
+                    _notify_subscribers()
         finally:
             with _queue_lock:
-                idle = _url_queue.empty() and not _queued_urls
+                idle = _url_queue.empty() and not _queued_priority
             if idle:
                 _worker_idle.set()
 
@@ -300,5 +371,5 @@ def _reset_worker_state_for_tests() -> None:
                 _url_queue.get_nowait()
             except queue.Empty:
                 break
-        _queued_urls.clear()
+        _queued_priority.clear()
     _worker_idle.set()

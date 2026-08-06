@@ -73,6 +73,7 @@ class MergedCatalogues:
     meta: Dict[str, EntryMeta]
 
 
+
 def invalidate_catalogue_merge() -> None:
     """Drop cached supplement/full merges (call when any source changes)."""
     global _merge_generation, _supp_cache
@@ -145,9 +146,8 @@ def _build_meta(
     catalogue: Mapping[str, Any],
     arch: str,
     extra_meta: Mapping[str, Mapping[str, Any]],
-    pending_yaml: List[str],
 ) -> Dict[str, EntryMeta]:
-    from .catalogue_stem_cache import catalogue_stems_enabled, lookup_stems
+    from .catalogue_stem_cache import lookup_stems
 
     out: Dict[str, EntryMeta] = {}
     for label, model in catalogue.items():
@@ -168,8 +168,6 @@ def _build_meta(
                     stems = list(hit.stems)
                     if not target:
                         target = hit.target_instrument
-                elif hit is None and catalogue_stems_enabled():
-                    pending_yaml.append(yaml_url)
         out[label] = EntryMeta(
             label=label,
             display=canonical_display_name(label),
@@ -227,20 +225,13 @@ def merged_catalogues(
     # checkpoint that has to resolve in the runtime pickers. Deduping first
     # silently un-named five legacy upstream models.
     meta: Dict[str, EntryMeta] = {}
-    pending_yaml: List[str] = []
     for catalogue, arch in (
         (vr_all, VR_ARCH_TYPE),
         (mdx_all, MDX_ARCH_TYPE),
         (demucs_all, DEMUCS_ARCH_TYPE),
         (apollo_all, APOLLO_ARCH_TYPE),
     ):
-        meta.update(_build_meta(catalogue, arch, extra_meta, pending_yaml))
-
-    if pending_yaml:
-        from .catalogue_stem_cache import enqueue_missing, ensure_worker_started
-
-        enqueue_missing(pending_yaml)
-        ensure_worker_started()
+        meta.update(_build_meta(catalogue, arch, extra_meta))
 
     from .download_sizes import content_ids_from_cache
 
@@ -263,7 +254,11 @@ def merged_catalogues(
         f"dedupe_dropped={dropped} with_stems={with_stems}",
     )
     result = MergedCatalogues(
-        vr=vr_out, mdx=mdx_out, demucs=demucs_out, apollo=apollo_out, meta=meta
+        vr=vr_out,
+        mdx=mdx_out,
+        demucs=demucs_out,
+        apollo=apollo_out,
+        meta=meta,
     )
     # A clear_display_cache / invalidate mid-flight bumps the generation; do
     # not publish that stale result under the new live key.

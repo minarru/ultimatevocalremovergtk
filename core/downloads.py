@@ -22,7 +22,7 @@ import ssl
 import threading
 import time
 import urllib.request
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from bundled.constants import (
     ALL_TYPES,
@@ -87,6 +87,14 @@ _MODEL_DATA_URLS = [
     (DEMUCS_MODEL_NAME_DATA_LINK, paths.DEMUCS_MODEL_NAME_SELECT),
 ]
 
+#: Name mappers merge remote over local so fork/local-only keys survive refresh.
+_NAME_MAPPER_DESTS = frozenset(
+    {
+        paths.MDX_MODEL_NAME_SELECT,
+        paths.DEMUCS_MODEL_NAME_SELECT,
+    }
+)
+
 
 def _latest_version_key() -> str:
     if OPERATING_SYSTEM == "Darwin":
@@ -108,6 +116,18 @@ def _ssl_context() -> ssl.SSLContext:
 
 def _urlopen(url: str):
     return urllib.request.urlopen(url, context=_ssl_context(), timeout=_DOWNLOAD_TIMEOUT_SECONDS)
+
+
+def _json_file_matches(path: str, payload: Mapping[str, Any]) -> bool:
+    """True when ``path`` already holds an equivalent JSON object."""
+    if not os.path.isfile(path):
+        return False
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            existing = json.load(handle)
+    except (OSError, ValueError, TypeError):
+        return False
+    return existing == payload
 
 
 def vip_downloads(password: str, link_type: Tuple[bytes, bytes] = VIP_REPO) -> str:
@@ -297,7 +317,14 @@ class DownloadManager:
             stats = prefetch_remote_sizes(urls)
             identity = prefetch_same_size_identity(urls)
             self._reapply_content_dedupe()
-            self._size_warmup_done_for = signature
+            # Only mark the URL set warm once the identity pass has nothing
+            # left; it HEADs at most _IDENTITY_HEAD_CAP per call, and latching
+            # here would strand the remainder for the rest of the session.
+            # Re-running is cheap — the size pass skips every fresh entry.
+            if identity.get("capped"):
+                self._size_warmup_done_for = None
+            else:
+                self._size_warmup_done_for = signature
             debug_elapsed(
                 "download",
                 "size_cache_warmup done "
@@ -736,8 +763,14 @@ class DownloadManager:
         Port of ``download_model_settings``; on any failure existing local files
         are left untouched. Returns ``True`` on a successful refresh.
 
+        Name mappers are written as a pure upstream mirror; fork-local keys
+        live in a sibling ``*_local.json`` overlay (see :mod:`core.name_mapper`)
+        and are merged on read, so an upstream deletion propagates instead of
+        surviving forever in a union file. Hash maps replace. Unchanged payloads
+        are not rewritten; stem-check invalidation runs only when a file changes.
+
         When ``repo`` is supplied, its stem-check cache is invalidated after a
-        successful refresh so model lists reflect the new mapper data.
+        successful refresh that actually changed on-disk data.
         """
         debug("download", "update_model_settings start")
         try:
@@ -752,18 +785,34 @@ class DownloadManager:
             )
             return False
 
-        for (url, dest), data in zip(_MODEL_DATA_URLS, fetched):
+        changed = False
+        for (_url, dest), data in zip(_MODEL_DATA_URLS, fetched):
+            if not isinstance(data, dict):
+                continue
+            payload = data
+            if dest in _NAME_MAPPER_DESTS:
+                # Rescue fork keys older builds wrote into the mirror, then let
+                # the mirror track upstream exactly.
+                from .name_mapper import migrate_local_only_keys
+
+                if migrate_local_only_keys(dest, data):
+                    changed = True
+            if _json_file_matches(dest, payload):
+                continue
+            text = json.dumps(payload, indent=4)
             try:
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                with open(dest, "w") as out_file:
-                    out_file.write(json.dumps(data, indent=4))
+                os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
+                with open(dest, "w", encoding="utf-8") as out_file:
+                    out_file.write(text)
+                changed = True
             except OSError:
                 continue
-        if repo is not None:
+        if changed and repo is not None:
             repo.invalidate_stem_check()
         debug(
             "download",
-            f"update_model_settings ok invalidate_stem={repo is not None}",
+            f"update_model_settings ok changed={changed} "
+            f"invalidate_stem={changed and repo is not None}",
         )
         return True
 
