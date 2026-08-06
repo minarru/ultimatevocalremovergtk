@@ -712,8 +712,7 @@ class DownloadManager:
             from .mdx_c_registry import register_mdx_c_from_download_jobs
 
             if register_mdx_c_from_download_jobs(jobs) and repo is not None:
-                repo.invalidate_stem_check()
-                repo.reload_mappers()
+                repo.invalidate_models()
             # Apollo models are recognised by an md5 -> config_yaml mapping;
             # write it now so the Audio Tools picker does not prompt for a
             # config the catalogue already specified.
@@ -869,11 +868,13 @@ class DownloadManager:
             except OSError:
                 continue
         if changed and repo is not None:
-            repo.invalidate_stem_check()
+            # Not invalidate_stem_check: the hash maps and name mappers were
+            # just rewritten on disk, and only reload_mappers picks those up.
+            repo.invalidate_models()
         debug(
             "download",
             f"update_model_settings ok changed={changed} "
-            f"invalidate_stem={changed and repo is not None}",
+            f"invalidated={changed and repo is not None}",
         )
         return True
 

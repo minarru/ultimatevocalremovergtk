@@ -224,21 +224,55 @@ class ModelRepository:
         result is cached against the current model set so the (file-hashing) work
         only happens once per change.
         """
-        tags = tuple(self.all_model_tags())
-        if self._stem_check_cache is not None and self._stem_check_cache[0] == tags:
+        # Keyed on the model set plus ``mdx.stems`` -- and deliberately nothing
+        # else. That one field is the only setting that reaches a dry-check
+        # filter (``mdxnet_stem_select`` -> ``_mdx_c_primary_for_select``, see
+        # ``primary_stem`` below); the Demucs analogue is guarded by
+        # ``is_ensemble_mode``, which is always False on this path. Do not widen
+        # this to a full Settings fingerprint: every unrelated settings edit
+        # would then re-hash every checkpoint.
+        key = (tuple(self.all_model_tags()), str(settings.mdx.stems))
+        if self._stem_check_cache is not None and self._stem_check_cache[0] == key:
             return self._stem_check_cache[1]
         model_data: List[ModelConfig] = [
-            ModelConfig(settings, self, tag, is_dry_check=True) for tag in tags
+            ModelConfig(settings, self, tag, is_dry_check=True) for tag in key[0]
         ]
-        self._stem_check_cache = (tags, model_data)
+        self._stem_check_cache = (key, model_data)
         return model_data
 
     def invalidate_stem_check(self) -> None:
+        """Drop the dry-check pools only.
+
+        Narrow primitive: use it when the *filters* changed but the files on
+        disk did not. When model files were added, removed or rewritten, call
+        :meth:`invalidate_models` instead -- the mappers and display caches are
+        derived from those files too.
+        """
         from .debug_log import debug
 
         debug("model", "invalidate_stem_check")
         self._stem_check_cache = None
         self._karaoke_cache = None
+
+    def invalidate_models(self) -> None:
+        """The set of model files on disk changed: drop every derived cache.
+
+        The single entry point for that event. ``reload_mappers`` already
+        chains ``clear_display_cache`` -> ``invalidate_catalogue_merge``, so
+        this covers the dry-check pools, the ephemeral hash cache, the hash and
+        name mappers, and the display/catalogue merges together.
+
+        Clearing ``model_hash_table`` is cheap despite appearances: every entry
+        it holds is also in the persistent stat-guarded table, so refilling
+        costs an ``os.stat`` per checkpoint rather than an md5.
+        """
+        from .debug_log import debug
+
+        debug("model", "invalidate_models")
+        self._stem_check_cache = None
+        self._karaoke_cache = None
+        self.model_hash_table.clear()
+        self.reload_mappers()
 
     def model_list(
         self,

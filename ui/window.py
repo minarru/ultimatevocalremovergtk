@@ -1068,8 +1068,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         debug("ui", f"refresh_models source={source}")
         # New model files may add hash/name mappings and change stem filtering.
-        self.context.repo.reload_mappers()
-        self.context.repo.invalidate_stem_check()
+        self.context.repo.invalidate_models()
         for view in self._views:
             view.refresh_models()
             method = getattr(view, "method_key", type(view).__name__)
