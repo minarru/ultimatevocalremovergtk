@@ -7,6 +7,7 @@ import time
 import unittest
 from unittest.mock import patch
 
+import core.download_sizes as download_sizes
 from core.download_sizes import (
     _CACHE_TTL_SECONDS,
     _IDENTITY_HEAD_CAP,
@@ -183,6 +184,137 @@ class PrefetchRemoteSizesTests(unittest.TestCase):
                         stats = prefetch_remote_sizes(urls)
             self.assertEqual(stats["fetched"], 5)
             self.assertEqual(head.call_count, 5)
+
+    def test_prefetch_stops_submitting_once_shutdown_requested(self) -> None:
+        """Interpreter exit must not wait on the whole queue of pending HEADs.
+
+        ThreadPoolExecutor's atexit hook joins its workers *after* the queue
+        drains, so submitting every stale URL up front makes quitting the app
+        block on hundreds of 20s-timeout requests. Submitting in bounded waves
+        and checking the shutdown flag between them caps that wait at one wave.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "download_size_cache.json")
+            urls = [f"https://example.com/{i}.ckpt" for i in range(20)]
+            calls: list[str] = []
+
+            def fake_head(url: str):
+                calls.append(url)
+                download_sizes.request_shutdown()
+                return (1024, "e")
+
+            try:
+                with patch("core.download_sizes._cache_path", return_value=cache_path):
+                    with patch(
+                        "core.download_sizes._head_remote_meta", side_effect=fake_head
+                    ):
+                        with patch.dict(os.environ, {"UVR_SIZE_HEAD_WORKERS": "2"}):
+                            prefetch_remote_sizes(urls)
+            finally:
+                download_sizes._shutdown.clear()
+
+        self.assertLessEqual(
+            len(calls), 2, f"kept submitting after shutdown: {len(calls)} HEADs"
+        )
+
+    def test_identity_pass_stops_submitting_once_shutdown_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "download_size_cache.json")
+            now = time.time()
+            payload = {
+                f"https://example.com/{i}.ckpt": {"size": 100, "fetched_at": now}
+                for i in range(20)
+            }
+            with open(cache_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle)
+            calls: list[str] = []
+
+            def fake_head(url: str):
+                calls.append(url)
+                download_sizes.request_shutdown()
+                return (100, "etag")
+
+            try:
+                with patch("core.download_sizes._cache_path", return_value=cache_path):
+                    with patch(
+                        "core.download_sizes._head_remote_meta", side_effect=fake_head
+                    ):
+                        with patch.dict(os.environ, {"UVR_SIZE_HEAD_WORKERS": "2"}):
+                            prefetch_same_size_identity(list(payload))
+            finally:
+                download_sizes._shutdown.clear()
+
+        self.assertLessEqual(
+            len(calls), 2, f"kept submitting after shutdown: {len(calls)} HEADs"
+        )
+
+    def test_identity_pass_targets_oldest_entries_first(self) -> None:
+        """The capped window must follow staleness, not URL order.
+
+        Sorting by URL always picks the same alphabetically-first slice, so a
+        host that never returns an ETag keeps those URLs in the candidate
+        cohort forever and permanently blocks everything after them.
+        """
+        total = _IDENTITY_HEAD_CAP + 10
+        now = time.time()
+        # Alphabetically-first URLs are the *freshest*, so URL order and
+        # staleness order disagree.
+        payload = {
+            f"https://example.com/{i:03d}.ckpt": {"size": 100, "fetched_at": now - i}
+            for i in range(total)
+        }
+        oldest = {
+            f"https://example.com/{i:03d}.ckpt" for i in range(total - _IDENTITY_HEAD_CAP, total)
+        }
+        calls: list[str] = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "download_size_cache.json")
+            with open(cache_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle)
+            with patch("core.download_sizes._cache_path", return_value=cache_path):
+                with patch(
+                    "core.download_sizes._head_remote_meta",
+                    side_effect=lambda url: (calls.append(url), (100, None))[1],
+                ):
+                    prefetch_same_size_identity(list(payload))
+
+        self.assertEqual(set(calls), oldest)
+
+    def test_identity_pass_rotates_across_calls(self) -> None:
+        """A URL that yields no etag must not block the tail on the next pass."""
+        total = _IDENTITY_HEAD_CAP + 10
+        now = time.time()
+        payload = {
+            f"https://example.com/{i:03d}.ckpt": {"size": 100, "fetched_at": now - i}
+            for i in range(total)
+        }
+        first: list[str] = []
+        second: list[str] = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "download_size_cache.json")
+            with open(cache_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle)
+            with patch("core.download_sizes._cache_path", return_value=cache_path):
+                # Neither pass yields an etag, so every URL stays a candidate.
+                with patch(
+                    "core.download_sizes._head_remote_meta",
+                    side_effect=lambda url: (first.append(url), (100, None))[1],
+                ):
+                    prefetch_same_size_identity(list(payload))
+                with patch(
+                    "core.download_sizes._head_remote_meta",
+                    side_effect=lambda url: (second.append(url), (100, None))[1],
+                ):
+                    prefetch_same_size_identity(list(payload))
+
+        never_tried = set(payload) - set(first)
+        self.assertEqual(len(never_tried), 10)
+        self.assertTrue(
+            never_tried.issubset(set(second)),
+            "second pass repeated the first window instead of rotating",
+        )
 
     def test_identity_pass_caps_heads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -23,7 +23,7 @@ Earlier catalogues always win (upstream → Politrees → extras → mvsepless).
 **Network behaviour (Download Center):**
 
 - Checkpoint size HEADs run when the Download Center opens (and after a successful Refresh), not at app startup. Same-size identity HEADs are capped and parallelized.
-- Refresh merges remote **name mappers** over local JSON (`{**local, **remote}`) so fork/local-only keys survive; hash maps still replace when content changes.
+- **Name mappers** are split in two: `model_name_mapper.json` mirrors upstream verbatim, and a sibling `model_name_mapper_local.json` holds fork-local and locally-registered names. Reads merge the two (overlay wins); refresh overwrites only the mirror, so a key upstream *deletes* actually disappears instead of surviving forever in a union file. Existing installs are migrated once — keys in the mirror that upstream no longer ships move to the overlay, and the overlay's existence marks the migration done. Hash maps still replace when content changes.
 - Catalogue YAML stem subtitles are fetched in the background with at most two concurrent GETs; currently visible rows are prioritized over the rest of the catalogue.
 
 Entries this build cannot run yet still appear in the matching network tab as **Unsupported** (grayed, not downloadable), with a short reason. Use **Hide unsupported** in the Download Center filters to conceal them. First-pass unsupported classes:

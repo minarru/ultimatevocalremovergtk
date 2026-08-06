@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import ssl
+import threading
 import time
 import urllib.error
 import urllib.request
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from . import paths
@@ -20,6 +22,40 @@ _CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 _TIMEOUT_SECONDS = 20
 _IDENTITY_HEAD_CAP = 64
 _DEFAULT_HEAD_WORKERS = 8
+
+#: Stops the HEAD wave loops below from submitting any more work.
+#:
+#: ``ThreadPoolExecutor`` joins its (non-daemon) workers at interpreter exit
+#: *after* everything already submitted has run, so submitting the whole stale
+#: backlog up front made quitting block on hundreds of requests at
+#: ``_TIMEOUT_SECONDS`` each. What bounds that wait is submitting in waves of
+#: ``workers``: the exit join can only ever wait on the wave in flight.
+#:
+#: This flag is the *cooperative* half, for an explicit in-app shutdown. It
+#: cannot help at interpreter exit — ``concurrent.futures.thread`` registers
+#: its hook with ``threading._register_atexit``, which runs before plain
+#: ``atexit`` handlers — so the wave loops also treat a ``RuntimeError`` from
+#: ``submit`` ("cannot schedule new futures after interpreter shutdown") as a
+#: stop signal rather than letting it escape a background thread.
+_shutdown = threading.Event()
+
+
+def request_shutdown() -> None:
+    """Stop submitting further HEAD waves (idempotent)."""
+    _shutdown.set()
+
+
+atexit.register(request_shutdown)
+
+
+def _submit_wave(
+    pool: ThreadPoolExecutor, wave: List[str]
+) -> Optional[Dict["Future[Tuple[Optional[int], Optional[str]]]", str]]:
+    """Submit one wave, or ``None`` once no more work can be scheduled."""
+    try:
+        return {pool.submit(_fetch_size_meta, url): url for url in wave}
+    except RuntimeError:
+        return None
 
 
 def _cache_path() -> str:
@@ -185,19 +221,24 @@ def prefetch_remote_sizes(urls: Iterable[str]) -> Dict[str, int]:
     failed = 0
     if to_fetch:
         workers = min(_head_workers(), len(to_fetch))
+        remaining = list(to_fetch)
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(_fetch_size_meta, url): url for url in to_fetch}
-            for future in as_completed(futures):
-                url = futures[future]
-                try:
-                    size, etag = future.result()
-                except Exception:
-                    size, etag = None, None
-                _store_entry(payload, url, size=size, etag=etag, now=now)
-                if size is not None:
-                    fetched += 1
-                else:
-                    failed += 1
+            while remaining and not _shutdown.is_set():
+                wave, remaining = remaining[:workers], remaining[workers:]
+                futures = _submit_wave(pool, wave)
+                if futures is None:
+                    break
+                for future in as_completed(futures):
+                    url = futures[future]
+                    try:
+                        size, etag = future.result()
+                    except Exception:
+                        size, etag = None, None
+                    _store_entry(payload, url, size=size, etag=etag, now=now)
+                    if size is not None:
+                        fetched += 1
+                    else:
+                        failed += 1
         _write_cache(payload)
 
     return {
@@ -245,6 +286,7 @@ def prefetch_same_size_identity(urls: Iterable[str]) -> Dict[str, int]:
     payload = _read_cache()
     now = time.time()
     by_size: Dict[int, List[str]] = defaultdict(list)
+    fetched_at_by_url: Dict[str, float] = {}
     for url in unique:
         key = normalize_checkpoint_url(url) or url
         entry = payload.get(key)
@@ -258,32 +300,49 @@ def prefetch_same_size_identity(urls: Iterable[str]) -> Dict[str, int]:
             continue
         if isinstance(etag, str) and etag:
             continue
+        stamp = entry.get("fetched_at")
+        fetched_at_by_url[url] = float(stamp) if isinstance(stamp, (int, float)) else 0.0
         by_size[size].append(url)
 
-    targets = sorted(
-        url for cohort in by_size.values() if len(cohort) > 1 for url in cohort
-    )
-    if len(targets) > _IDENTITY_HEAD_CAP:
-        targets = targets[:_IDENTITY_HEAD_CAP]
+    # Oldest first, not alphabetical: a URL whose host never returns an ETag
+    # stays in the cohort forever, and ordering by URL would let the same
+    # early-sorting few block the tail on every pass. A HEAD refreshes
+    # fetched_at even when no etag comes back, so tried URLs rotate to the
+    # back and the window advances by itself.
+    candidates = [url for cohort in by_size.values() if len(cohort) > 1 for url in cohort]
+    candidates.sort(key=lambda url: (fetched_at_by_url.get(url, 0.0), url))
+    capped = len(candidates) > _IDENTITY_HEAD_CAP
+    targets = candidates[:_IDENTITY_HEAD_CAP] if capped else candidates
     if not targets:
-        return {"total": 0, "fetched": 0, "failed": 0, "skipped": len(unique)}
+        return {
+            "total": 0,
+            "fetched": 0,
+            "failed": 0,
+            "skipped": len(unique),
+            "capped": 0,
+        }
 
     fetched = 0
     failed = 0
     workers = min(_head_workers(), len(targets))
+    remaining = list(targets)
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_fetch_size_meta, url): url for url in targets}
-        for future in as_completed(futures):
-            url = futures[future]
-            try:
-                size, etag = future.result()
-            except Exception:
-                size, etag = None, None
-            _store_entry(payload, url, size=size, etag=etag, now=now)
-            if etag:
-                fetched += 1
-            else:
-                failed += 1
+        while remaining and not _shutdown.is_set():
+            wave, remaining = remaining[:workers], remaining[workers:]
+            futures = _submit_wave(pool, wave)
+            if futures is None:
+                break
+            for future in as_completed(futures):
+                url = futures[future]
+                try:
+                    size, etag = future.result()
+                except Exception:
+                    size, etag = None, None
+                _store_entry(payload, url, size=size, etag=etag, now=now)
+                if etag:
+                    fetched += 1
+                else:
+                    failed += 1
     _write_cache(payload)
 
     debug(
@@ -296,6 +355,9 @@ def prefetch_same_size_identity(urls: Iterable[str]) -> Dict[str, int]:
         "fetched": fetched,
         "failed": failed,
         "skipped": len(unique) - len(targets),
+        # Non-zero when candidates outran the cap, so the caller knows another
+        # pass still has work to do rather than marking the warmup complete.
+        "capped": len(candidates) - len(targets),
     }
 
 

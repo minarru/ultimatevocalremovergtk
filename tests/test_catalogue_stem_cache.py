@@ -238,21 +238,140 @@ training:
                 done.set()
             return _FakeResponse(body)
 
-        with mock.patch.object(csc, "_urlopen", side_effect=fake_urlopen):
-            csc.enqueue_missing([bulk], priority=False)
-            csc.enqueue_missing([prio], priority=True)
-            csc.ensure_worker_started()
-            self.assertTrue(done.wait(timeout=2.0), "worker did not finish both")
-            self.assertTrue(
-                _wait_until(
-                    lambda: (
-                        csc.lookup_stems(bulk) is not None
-                        and csc.lookup_stems(prio) is not None
+        # One worker: both URLs would otherwise land in the same chunk and run
+        # concurrently, making the assertion depend on thread scheduling rather
+        # than on the priority queue.
+        with mock.patch.object(csc, "_FETCH_WORKERS", 1):
+            with mock.patch.object(csc, "_urlopen", side_effect=fake_urlopen):
+                csc.enqueue_missing([bulk], priority=False)
+                csc.enqueue_missing([prio], priority=True)
+                csc.ensure_worker_started()
+                self.assertTrue(done.wait(timeout=2.0), "worker did not finish both")
+                self.assertTrue(
+                    _wait_until(
+                        lambda: (
+                            csc.lookup_stems(bulk) is not None
+                            and csc.lookup_stems(prio) is not None
+                        )
                     )
                 )
-            )
         self.assertEqual(order[0], prio)
         self.assertEqual(order[1], bulk)
+
+    def test_remember_stems_is_thread_safe(self) -> None:
+        """Concurrent writers must not corrupt the shared entry dict or its file.
+
+        ``_FETCH_WORKERS`` > 1 means the pool calls this from several threads;
+        an unguarded read-modify-write raises "dictionary changed size during
+        iteration" out of json.dump, which _fetch_and_remember then miscodes as
+        a failed fetch.
+        """
+        errors: list[BaseException] = []
+        per_thread = 60
+        threads_count = 4
+        # Seed enough entries that each json.dump spends real time iterating
+        # the shared dict — that iteration is the window the race lands in.
+        seeded = 3000
+        entries = csc._ensure_loaded()
+        for i in range(seeded):
+            entries[f"https://example.test/seed-{i}.yaml"] = {
+                "stems": ["Vocals"],
+                "target_instrument": None,
+                "fetched_at": time.time(),
+                "ok": True,
+            }
+
+        def writer(n: int) -> None:
+            try:
+                for i in range(per_thread):
+                    csc.remember_stems(
+                        f"https://example.test/t{n}-{i}.yaml", ["Vocals"], None, ok=True
+                    )
+            except BaseException as exc:  # noqa: BLE001 - recorded for assertion
+                errors.append(exc)
+
+        threads = [
+            threading.Thread(target=writer, args=(n,)) for n in range(threads_count)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10.0)
+
+        self.assertEqual([repr(e) for e in errors], [])
+        for n in range(threads_count):
+            for i in range(per_thread):
+                self.assertIsNotNone(
+                    csc.lookup_stems(f"https://example.test/t{n}-{i}.yaml"),
+                    f"entry t{n}-{i} missing from memory cache",
+                )
+        with open(self.cache_path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+        self.assertEqual(
+            len(payload["entries"]),
+            seeded + threads_count * per_thread,
+            "on-disk cache lost entries to interleaved writes",
+        )
+
+    def test_priority_promotes_already_queued_url(self) -> None:
+        """A bulk-queued URL re-enqueued with priority must jump the queue.
+
+        The Download Center bulk-enqueues the whole catalogue on open, then
+        re-enqueues visible rows as filters change. Without promotion every
+        later call is a no-op and prioritization never takes effect.
+        """
+        bulk = [f"https://example.test/bulk-{i}.yaml" for i in range(4)]
+        promoted = bulk[3]
+        body = b"training:\n  instruments: [Vocals]\n"
+        order: list[str] = []
+        done = threading.Event()
+
+        def fake_urlopen(u: str) -> _FakeResponse:
+            order.append(u)
+            if len(order) >= len(bulk):
+                done.set()
+            return _FakeResponse(body)
+
+        with mock.patch.object(csc, "_FETCH_WORKERS", 1):
+            with mock.patch.object(csc, "_urlopen", side_effect=fake_urlopen):
+                csc.enqueue_missing(bulk, priority=False)
+                csc.enqueue_missing([promoted], priority=True)
+                csc.ensure_worker_started()
+                self.assertTrue(done.wait(timeout=3.0), "worker did not finish")
+        self.assertEqual(order[0], promoted)
+        self.assertEqual(sorted(order), sorted(bulk), "a URL was fetched twice")
+
+    def test_notify_fires_per_chunk_not_only_at_drain(self) -> None:
+        """Subscribers hear about finished chunks while work remains.
+
+        Notifying only after the queue drains means the first stem subtitle
+        appears only once the last YAML in the catalogue has been fetched,
+        which cancels out prioritizing visible rows.
+        """
+        urls = [f"https://example.test/chunk-{i}.yaml" for i in range(4)]
+        body = b"training:\n  instruments: [Vocals]\n"
+        calls: list[int] = []
+
+        def on_notify() -> None:
+            calls.append(1)
+
+        def fake_urlopen(u: str) -> _FakeResponse:
+            return _FakeResponse(body)
+
+        csc.subscribe(on_notify)
+        with mock.patch.object(csc, "_urlopen", side_effect=fake_urlopen):
+            csc.enqueue_missing(urls)
+            csc.ensure_worker_started()
+            self.assertTrue(
+                _wait_until(
+                    lambda: all(csc.lookup_stems(u) is not None for u in urls),
+                    timeout=3.0,
+                ),
+                "worker did not finish all URLs",
+            )
+            time.sleep(0.05)
+        # 4 URLs at _FETCH_WORKERS=2 is two chunks, so two notifies.
+        self.assertEqual(len(calls), 2)
 
     def test_worker_concurrency_at_most_two(self) -> None:
         urls = [f"https://example.test/conc-{i}.yaml" for i in range(6)]

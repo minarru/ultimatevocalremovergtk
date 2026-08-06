@@ -92,7 +92,7 @@ class CatalogStemMergeTests(unittest.TestCase):
         enqueue.assert_not_called()
         ensure.assert_not_called()
 
-    def test_miss_records_pending_yaml_without_starting_worker(self) -> None:
+    def test_stem_cache_miss_does_not_start_worker(self) -> None:
         supplements = (
             {},
             {"M": {"m.ckpt": "https://example.test/m.ckpt", "m.yaml": _YAML_URL_QS}},
@@ -112,7 +112,7 @@ class CatalogStemMergeTests(unittest.TestCase):
                         merged = catalog_sources.merged_catalogues(
                             vr={}, mdx={}, demucs={}
                         )
-        self.assertEqual(merged.pending_yaml, (_YAML_URL,))
+        self.assertEqual(merged.meta["M"].stems, [])
         enqueue.assert_not_called()
         ensure.assert_not_called()
 
@@ -170,7 +170,7 @@ class CatalogStemMergeTests(unittest.TestCase):
                             merged = catalog_sources.merged_catalogues(
                                 vr={}, mdx={}, demucs={}
                             )
-        self.assertEqual(merged.pending_yaml, ())
+        self.assertEqual(merged.meta["M"].stems, [])
         enqueue.assert_not_called()
         ensure.assert_not_called()
 
@@ -200,7 +200,6 @@ class CatalogStemMergeTests(unittest.TestCase):
         meta = merged.meta["M"]
         self.assertEqual(meta.stems, [])
         self.assertIsNone(meta.target_instrument)
-        self.assertEqual(merged.pending_yaml, ())
         enqueue.assert_not_called()
         ensure.assert_not_called()
 

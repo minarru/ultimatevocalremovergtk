@@ -129,10 +129,17 @@ class RegisterMdxDisplayNameTests(unittest.TestCase):
             try:
                 paths.MDX_MODELS_DIR = models_dir
                 paths.MDX_MODEL_NAME_SELECT = mapper_path
+                from core.name_mapper import load_name_mapper, local_overlay_path
+
                 self.assertTrue(register_mdx_display_name(checkpoint, "Friendly Name"))
-                with open(mapper_path, "r", encoding="utf-8") as handle:
+                # Locally-registered names go to the overlay, never the mirror.
+                self.assertFalse(os.path.exists(mapper_path))
+                with open(local_overlay_path(mapper_path), "r", encoding="utf-8") as handle:
                     payload = json.load(handle)
                 self.assertEqual(payload["catalog_model.ckpt"], "Friendly Name")
+                self.assertEqual(
+                    load_name_mapper(mapper_path)["catalog_model.ckpt"], "Friendly Name"
+                )
                 self.assertFalse(register_mdx_display_name(checkpoint, "Other Name"))
             finally:
                 paths.MDX_MODELS_DIR = original_models_dir

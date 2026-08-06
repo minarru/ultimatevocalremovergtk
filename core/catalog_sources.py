@@ -71,9 +71,6 @@ class MergedCatalogues:
     demucs: Dict[str, Any]
     apollo: Dict[str, Any]
     meta: Dict[str, EntryMeta]
-    #: YAML config URLs still missing from the stem cache. Download Center
-    #: enqueues these (visible rows first); merge itself does not start fetches.
-    pending_yaml: Tuple[str, ...] = ()
 
 
 
@@ -149,9 +146,8 @@ def _build_meta(
     catalogue: Mapping[str, Any],
     arch: str,
     extra_meta: Mapping[str, Mapping[str, Any]],
-    pending_yaml: List[str],
 ) -> Dict[str, EntryMeta]:
-    from .catalogue_stem_cache import catalogue_stems_enabled, lookup_stems
+    from .catalogue_stem_cache import lookup_stems
 
     out: Dict[str, EntryMeta] = {}
     for label, model in catalogue.items():
@@ -172,8 +168,6 @@ def _build_meta(
                     stems = list(hit.stems)
                     if not target:
                         target = hit.target_instrument
-                elif hit is None and catalogue_stems_enabled():
-                    pending_yaml.append(yaml_url)
         out[label] = EntryMeta(
             label=label,
             display=canonical_display_name(label),
@@ -231,14 +225,13 @@ def merged_catalogues(
     # checkpoint that has to resolve in the runtime pickers. Deduping first
     # silently un-named five legacy upstream models.
     meta: Dict[str, EntryMeta] = {}
-    pending_yaml: List[str] = []
     for catalogue, arch in (
         (vr_all, VR_ARCH_TYPE),
         (mdx_all, MDX_ARCH_TYPE),
         (demucs_all, DEMUCS_ARCH_TYPE),
         (apollo_all, APOLLO_ARCH_TYPE),
     ):
-        meta.update(_build_meta(catalogue, arch, extra_meta, pending_yaml))
+        meta.update(_build_meta(catalogue, arch, extra_meta))
 
     from .download_sizes import content_ids_from_cache
 
@@ -260,14 +253,12 @@ def merged_catalogues(
         f"catalog_sources merged entries={len(meta)} "
         f"dedupe_dropped={dropped} with_stems={with_stems}",
     )
-    # Preserve discovery order; Download Center prioritizes visible URLs.
     result = MergedCatalogues(
         vr=vr_out,
         mdx=mdx_out,
         demucs=demucs_out,
         apollo=apollo_out,
         meta=meta,
-        pending_yaml=tuple(dict.fromkeys(pending_yaml)),
     )
     # A clear_display_cache / invalidate mid-flight bumps the generation; do
     # not publish that stale result under the new live key.

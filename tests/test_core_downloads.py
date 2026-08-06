@@ -1,6 +1,7 @@
 import os
 import shutil
 import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -103,6 +104,66 @@ class VipDownloadsTests(unittest.TestCase):
         self.assertEqual(vip_downloads("definitely-wrong-password"), NO_CODE)
 
 
+class WarmSizeCacheTests(unittest.TestCase):
+    """The warm marker must not latch while identity HEADs remain capped."""
+
+    def _manager(self):
+        from unittest import mock
+
+        from core.downloads import DownloadManager
+
+        manager = DownloadManager.__new__(DownloadManager)
+        manager._size_warmup_lock = threading.Lock()
+        manager._size_warmup_done_for = None
+        manager.ensure_catalogues = mock.MagicMock(return_value=True)
+        manager.catalogue_checkpoint_urls = mock.MagicMock(
+            return_value=["https://example.test/a.ckpt"]
+        )
+        manager._reapply_content_dedupe = mock.MagicMock()
+        return manager
+
+    def test_capped_identity_pass_leaves_warmup_repeatable(self) -> None:
+        from unittest import mock
+
+        from core import downloads as downloads_mod
+
+        manager = self._manager()
+        with mock.patch.object(
+            downloads_mod, "prefetch_remote_sizes", return_value={
+                "total": 1, "fresh": 1, "fetched": 0, "failed": 0
+            }
+        ), mock.patch.object(
+            downloads_mod,
+            "prefetch_same_size_identity",
+            return_value={"total": 64, "fetched": 0, "failed": 64, "skipped": 0, "capped": 10},
+        ):
+            manager.warm_size_cache()
+        self.assertIsNone(
+            manager._size_warmup_done_for,
+            "latched while identity candidates remained, stranding them for the session",
+        )
+
+    def test_uncapped_identity_pass_marks_warm(self) -> None:
+        from unittest import mock
+
+        from core import downloads as downloads_mod
+
+        manager = self._manager()
+        with mock.patch.object(
+            downloads_mod, "prefetch_remote_sizes", return_value={
+                "total": 1, "fresh": 1, "fetched": 0, "failed": 0
+            }
+        ), mock.patch.object(
+            downloads_mod,
+            "prefetch_same_size_identity",
+            return_value={"total": 2, "fetched": 2, "failed": 0, "skipped": 0, "capped": 0},
+        ):
+            manager.warm_size_cache()
+        self.assertEqual(
+            manager._size_warmup_done_for, frozenset({"https://example.test/a.ckpt"})
+        )
+
+
 class UpdateModelSettingsTests(unittest.TestCase):
     def test_name_mapper_keeps_local_only_keys(self) -> None:
         import io
@@ -111,7 +172,6 @@ class UpdateModelSettingsTests(unittest.TestCase):
         from unittest import mock
 
         from core import downloads as downloads_mod
-        from core import paths
         from core.downloads import DownloadManager
 
         remote_mdx = {"a.ckpt": "Upstream A"}
@@ -126,44 +186,6 @@ class UpdateModelSettingsTests(unittest.TestCase):
             mdx_hash = os.path.join(tmp, "mdx_hash.json")
             with open(mdx_mapper, "w", encoding="utf-8") as handle:
                 json.dump({"local_only.ckpt": "Local Only", "a.ckpt": "Old A"}, handle)
-
-            payloads = {
-                "vr": remote_vr_hash,
-                "mdx_hash": remote_mdx_hash,
-                "mdx_name": remote_mdx,
-                "demucs_name": remote_demucs,
-            }
-            url_order = [
-                ("vr", vr_hash),
-                ("mdx_hash", mdx_hash),
-                ("mdx_name", mdx_mapper),
-                ("demucs_name", demucs_mapper),
-            ]
-
-            def fake_urlopen(url: str):
-                key = next(k for k, _ in url_order)
-                # Match by dest pairing through _MODEL_DATA_URLS patch below.
-                raise AssertionError("use side_effect list")
-
-            responses = [
-                io.BytesIO(json.dumps(remote_vr_hash).encode()),
-                io.BytesIO(json.dumps(remote_mdx_hash).encode()),
-                io.BytesIO(json.dumps(remote_mdx).encode()),
-                io.BytesIO(json.dumps(remote_demucs).encode()),
-            ]
-            # urlopen context manager
-            class _Resp:
-                def __init__(self, raw: bytes) -> None:
-                    self._raw = raw
-
-                def __enter__(self) -> "_Resp":
-                    return self
-
-                def __exit__(self, *args: object) -> None:
-                    return None
-
-                def read(self) -> bytes:
-                    return self._raw
 
             # json.load uses the response as a file-like object
             class _FileResp:
@@ -199,8 +221,15 @@ class UpdateModelSettingsTests(unittest.TestCase):
             ), mock.patch.object(downloads_mod, "_urlopen", side_effect=side):
                 ok = DownloadManager().update_model_settings()
             self.assertTrue(ok)
+            from core.name_mapper import load_name_mapper
+
+            # The mirror now tracks upstream exactly; the fork key was migrated
+            # into the sibling overlay and comes back through the merged read.
             with open(mdx_mapper, encoding="utf-8") as handle:
-                merged = json.load(handle)
+                mirror = json.load(handle)
+            self.assertEqual(mirror, remote_mdx)
+
+            merged = load_name_mapper(mdx_mapper)
             self.assertEqual(merged["local_only.ckpt"], "Local Only")
             self.assertEqual(merged["a.ckpt"], "Upstream A")
 

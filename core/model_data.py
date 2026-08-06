@@ -135,13 +135,20 @@ class ModelRepository:
         for attr, path in (
             ("vr_hash_MAPPER", paths.VR_HASH_JSON),
             ("mdx_hash_MAPPER", paths.MDX_HASH_JSON),
-            ("mdx_name_select_MAPPER", paths.MDX_MODEL_NAME_SELECT),
-            ("demucs_name_select_MAPPER", paths.DEMUCS_MODEL_NAME_SELECT),
         ):
             try:
                 setattr(self, attr, load_model_hash_data(path))
             except (FileNotFoundError, ValueError):
                 setattr(self, attr, {})
+
+        # Name mappers are mirror + local overlay, not a single file.
+        from .name_mapper import load_name_mapper
+
+        for attr, path in (
+            ("mdx_name_select_MAPPER", paths.MDX_MODEL_NAME_SELECT),
+            ("demucs_name_select_MAPPER", paths.DEMUCS_MODEL_NAME_SELECT),
+        ):
+            setattr(self, attr, load_name_mapper(path))
 
     def list_vr_models(self) -> List[str]:
         return _list_models(paths.VR_MODELS_DIR, (".pth",))
