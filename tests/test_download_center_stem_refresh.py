@@ -218,10 +218,45 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win._update_status_from_catalogue = mock.MagicMock()
         win._update_download_button = mock.MagicMock()
         win._ensure_stem_cache_listener = mock.MagicMock()
+        win._schedule_stem_yaml_fetches = mock.MagicMock()
 
         DownloadCenterWindow._refresh_done(win, True, {MDX_ARCH_TYPE: ["M"]}, {})
 
         win._ensure_stem_cache_listener.assert_called_once_with()
+        win._schedule_stem_yaml_fetches.assert_called_once_with()
+
+    def test_schedule_stem_yaml_fetches_prioritizes_visible(self) -> None:
+        from ui.download_center import DownloadCenterWindow
+
+        win = object.__new__(DownloadCenterWindow)
+        win._visible_catalogue_labels = mock.MagicMock(return_value=["Visible"])
+        win._pending_stem_yaml_urls = mock.MagicMock(
+            side_effect=[
+                ["https://example.test/visible.yaml"],
+                [
+                    "https://example.test/visible.yaml",
+                    "https://example.test/bulk.yaml",
+                ],
+            ]
+        )
+
+        with mock.patch(
+            "core.catalogue_stem_cache.catalogue_stems_enabled", return_value=True
+        ), mock.patch(
+            "core.catalogue_stem_cache.enqueue_missing"
+        ) as enqueue, mock.patch(
+            "core.catalogue_stem_cache.ensure_worker_started"
+        ) as ensure:
+            DownloadCenterWindow._schedule_stem_yaml_fetches(win)
+
+        self.assertEqual(
+            enqueue.call_args_list,
+            [
+                mock.call(["https://example.test/visible.yaml"], priority=True),
+                mock.call(["https://example.test/bulk.yaml"], priority=False),
+            ],
+        )
+        ensure.assert_called_once_with()
 
 
 if __name__ == "__main__":

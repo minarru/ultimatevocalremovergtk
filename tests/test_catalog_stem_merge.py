@@ -92,7 +92,7 @@ class CatalogStemMergeTests(unittest.TestCase):
         enqueue.assert_not_called()
         ensure.assert_not_called()
 
-    def test_miss_enqueues_yaml_url_and_starts_worker(self) -> None:
+    def test_miss_records_pending_yaml_without_starting_worker(self) -> None:
         supplements = (
             {},
             {"M": {"m.ckpt": "https://example.test/m.ckpt", "m.yaml": _YAML_URL_QS}},
@@ -109,9 +109,12 @@ class CatalogStemMergeTests(unittest.TestCase):
                     with mock.patch(
                         "core.catalogue_stem_cache.ensure_worker_started"
                     ) as ensure:
-                        catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
-        enqueue.assert_called_once_with([_YAML_URL])
-        ensure.assert_called_once_with()
+                        merged = catalog_sources.merged_catalogues(
+                            vr={}, mdx={}, demucs={}
+                        )
+        self.assertEqual(merged.pending_yaml, (_YAML_URL,))
+        enqueue.assert_not_called()
+        ensure.assert_not_called()
 
     def test_existing_stems_skip_cache_and_enqueue(self) -> None:
         supplements = (
@@ -164,9 +167,10 @@ class CatalogStemMergeTests(unittest.TestCase):
                         with mock.patch(
                             "core.catalogue_stem_cache.ensure_worker_started"
                         ) as ensure:
-                            catalog_sources.merged_catalogues(
+                            merged = catalog_sources.merged_catalogues(
                                 vr={}, mdx={}, demucs={}
                             )
+        self.assertEqual(merged.pending_yaml, ())
         enqueue.assert_not_called()
         ensure.assert_not_called()
 
@@ -196,6 +200,7 @@ class CatalogStemMergeTests(unittest.TestCase):
         meta = merged.meta["M"]
         self.assertEqual(meta.stems, [])
         self.assertIsNone(meta.target_instrument)
+        self.assertEqual(merged.pending_yaml, ())
         enqueue.assert_not_called()
         ensure.assert_not_called()
 

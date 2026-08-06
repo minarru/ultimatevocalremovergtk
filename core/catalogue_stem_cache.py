@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import queue
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set
 
@@ -17,10 +19,13 @@ from .mdx_config_fetch import _urlopen
 _SUCCESS_TTL_SECONDS = 7 * 24 * 3600
 _FAILURE_TTL_SECONDS = 6 * 3600
 _MAX_BODY_BYTES = 2 * 1024 * 1024
+_FETCH_WORKERS = 2
 
 _memory_entries: Optional[Dict[str, Dict[str, Any]]] = None
 
-_url_queue: queue.Queue[str] = queue.Queue()
+#: PriorityQueue items are ``(priority, sequence, url)`` — lower priority first.
+_url_queue: queue.PriorityQueue[tuple[int, int, str]] = queue.PriorityQueue()
+_queue_seq = itertools.count()
 _queued_urls: Set[str] = set()
 _queue_lock = threading.Lock()
 _subscribers: List[Callable[[], None]] = []
@@ -29,6 +34,8 @@ _worker_thread: Optional[threading.Thread] = None
 _worker_lock = threading.Lock()
 _worker_idle = threading.Event()
 _worker_idle.set()
+_active_fetches = 0
+_active_fetches_lock = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -200,9 +207,16 @@ def _notify_subscribers() -> None:
             pass
 
 
-def enqueue_missing(urls: Iterable[str]) -> None:
+def enqueue_missing(urls: Iterable[str], *, priority: bool = False) -> None:
+    """Queue YAML URLs for background stem fetch.
+
+    ``priority=True`` jumps ahead of bulk/background URLs (Download Center
+    visible rows). Already-queued URLs are not duplicated; a later priority
+    enqueue of an in-flight URL is a no-op.
+    """
     if not catalogue_stems_enabled():
         return
+    prio = 0 if priority else 1
     with _queue_lock:
         to_put: list[str] = []
         for url in urls:
@@ -212,7 +226,7 @@ def enqueue_missing(urls: Iterable[str]) -> None:
             _queued_urls.add(key)
             to_put.append(key)
         for key in to_put:
-            _url_queue.put(key)
+            _url_queue.put((prio, next(_queue_seq), key))
 
 
 def ensure_worker_started() -> None:
@@ -230,27 +244,42 @@ def ensure_worker_started() -> None:
 
 
 def _fetch_and_remember(url: str) -> None:
+    global _active_fetches
+    with _active_fetches_lock:
+        _active_fetches += 1
     try:
-        with _urlopen(url) as response:
-            data = response.read(_MAX_BODY_BYTES + 1)
-        if not isinstance(data, (bytes, bytearray)):
+        try:
+            with _urlopen(url) as response:
+                data = response.read(_MAX_BODY_BYTES + 1)
+            if not isinstance(data, (bytes, bytearray)):
+                remember_stems(url, [], None, ok=False)
+                return
+            body = bytes(data)
+            if len(body) > _MAX_BODY_BYTES:
+                remember_stems(url, [], None, ok=False)
+                return
+            stems, target = parse_stems_from_yaml_bytes(body)
+            if not stems:
+                remember_stems(url, [], None, ok=False)
+                return
+            remember_stems(url, stems, target, ok=True)
+        except Exception:
             remember_stems(url, [], None, ok=False)
-            return
-        body = bytes(data)
-        if len(body) > _MAX_BODY_BYTES:
-            remember_stems(url, [], None, ok=False)
-            return
-        stems, target = parse_stems_from_yaml_bytes(body)
-        if not stems:
-            remember_stems(url, [], None, ok=False)
-            return
-        remember_stems(url, stems, target, ok=True)
-    except Exception:
-        remember_stems(url, [], None, ok=False)
+    finally:
+        with _active_fetches_lock:
+            _active_fetches -= 1
 
 
-def _drain_queued_urls(first: str) -> list[str]:
-    """Collect ``first`` plus any URLs currently queued (holds ``_queue_lock``)."""
+def active_fetch_count() -> int:
+    """How many stem YAML fetches are in flight (for tests)."""
+    with _active_fetches_lock:
+        return _active_fetches
+
+
+def _drain_queued_items(
+    first: tuple[int, int, str],
+) -> list[tuple[int, int, str]]:
+    """Collect ``first`` plus any items currently queued (holds ``_queue_lock``)."""
     pending = [first]
     with _queue_lock:
         while True:
@@ -258,6 +287,7 @@ def _drain_queued_urls(first: str) -> list[str]:
                 pending.append(_url_queue.get_nowait())
             except queue.Empty:
                 break
+    pending.sort()
     return pending
 
 
@@ -265,20 +295,28 @@ def _worker_loop() -> None:
     while True:
         first = _url_queue.get()
         _worker_idle.clear()
-        pending = _drain_queued_urls(first)
+        pending = _drain_queued_items(first)
         try:
             while pending:
-                for url in pending:
-                    _fetch_and_remember(url)
-                    with _queue_lock:
-                        _queued_urls.discard(url)
-                pending = []
+                chunk = pending[:_FETCH_WORKERS]
+                pending = pending[_FETCH_WORKERS:]
+                with ThreadPoolExecutor(max_workers=len(chunk)) as pool:
+                    futures = [
+                        pool.submit(_fetch_and_remember, item[2]) for item in chunk
+                    ]
+                    for future in as_completed(futures):
+                        future.result()
                 with _queue_lock:
+                    for item in chunk:
+                        _queued_urls.discard(item[2])
+                    newly: list[tuple[int, int, str]] = []
                     while True:
                         try:
-                            pending.append(_url_queue.get_nowait())
+                            newly.append(_url_queue.get_nowait())
                         except queue.Empty:
                             break
+                if newly:
+                    pending = sorted(pending + newly)
             _notify_subscribers()
         finally:
             with _queue_lock:

@@ -20,6 +20,12 @@ After merging, a **dedupe pass** keeps the first selectable for each of:
 
 Earlier catalogues always win (upstream → Politrees → extras → mvsepless). Demucs bags only collide on identical file→URL maps or normalized labels — shared bag members are not treated as duplicates.
 
+**Network behaviour (Download Center):**
+
+- Checkpoint size HEADs run when the Download Center opens (and after a successful Refresh), not at app startup. Same-size identity HEADs are capped and parallelized.
+- Refresh merges remote **name mappers** over local JSON (`{**local, **remote}`) so fork/local-only keys survive; hash maps still replace when content changes.
+- Catalogue YAML stem subtitles are fetched in the background with at most two concurrent GETs; currently visible rows are prioritized over the rest of the catalogue.
+
 Entries this build cannot run yet still appear in the matching network tab as **Unsupported** (grayed, not downloadable), with a short reason. Use **Hide unsupported** in the Download Center filters to conceal them. First-pass unsupported classes:
 
 | Class | Why |

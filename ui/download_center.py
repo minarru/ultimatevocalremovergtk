@@ -376,6 +376,7 @@ class DownloadCenterWindow:
             list_box.invalidate_filter()
         self._update_catalogue_page_state(arch)
         self._update_download_button()
+        self._schedule_stem_yaml_fetches()
 
     def _on_purpose_changed(self, *_args: typing.Any) -> None:
         label = get_combo_value(self.purpose_row) or PURPOSE_FILTER_OPTIONS[0][1]
@@ -384,6 +385,7 @@ class DownloadCenterWindow:
             PURPOSE_ALL,
         )
         self._invalidate_all_filters()
+        self._schedule_stem_yaml_fetches()
 
     def _on_sort_changed(self, *_args: typing.Any) -> None:
         label = get_combo_value(self.sort_row) or SORT_OPTIONS[0][1]
@@ -658,12 +660,75 @@ class DownloadCenterWindow:
         self._update_status_from_catalogue()
         self._update_download_button()
         self._ensure_stem_cache_listener()
+        self._schedule_stem_yaml_fetches()
 
     def _ensure_stem_cache_listener(self) -> None:
         from core.catalogue_stem_cache import ensure_worker_started, subscribe
 
         subscribe(self._schedule_stem_subtitle_refresh)
         ensure_worker_started()
+
+    def _visible_catalogue_labels(self) -> list[str]:
+        labels: list[str] = []
+        for arch, models in self._available.items():
+            query = ""
+            entry = self._search_entries.get(arch)
+            if entry is not None:
+                query = entry.get_text() or ""
+            labels.extend(
+                catalogue_matches(list(models or []), query, purpose=self._purpose)
+            )
+        return labels
+
+    def _pending_stem_yaml_urls(self, labels: list[str] | None = None) -> list[str]:
+        """YAML URLs still missing from the stem cache for ``labels`` (or all)."""
+        from core.catalog_sources import _yaml_config_url
+        from core.catalogue_stem_cache import catalogue_stems_enabled, lookup_stems
+
+        if not catalogue_stems_enabled():
+            return []
+        if labels is None:
+            metas = list(self.manager.catalogue_meta.values())
+        else:
+            metas = []
+            for name in labels:
+                meta = self.manager.catalogue_meta.get(name)
+                if meta is not None:
+                    metas.append(meta)
+        urls: list[str] = []
+        seen: set[str] = set()
+        for meta in metas:
+            if meta.stems:
+                continue
+            url = _yaml_config_url(meta.files)
+            if not url or url in seen:
+                continue
+            hit = lookup_stems(url)
+            if hit is None:
+                seen.add(url)
+                urls.append(url)
+        return urls
+
+    def _schedule_stem_yaml_fetches(self) -> None:
+        """Prioritize visible rows, then drain the rest while DC is open."""
+        from core.catalogue_stem_cache import (
+            enqueue_missing,
+            ensure_worker_started,
+            catalogue_stems_enabled,
+        )
+
+        if not catalogue_stems_enabled():
+            return
+        visible = self._pending_stem_yaml_urls(self._visible_catalogue_labels())
+        all_pending = self._pending_stem_yaml_urls()
+        visible_set = set(visible)
+        bulk = [url for url in all_pending if url not in visible_set]
+        if visible:
+            enqueue_missing(visible, priority=True)
+        if bulk:
+            enqueue_missing(bulk, priority=False)
+        if visible or bulk:
+            ensure_worker_started()
 
     def _schedule_stem_subtitle_refresh(self) -> None:
         idle_on_main(self._arm_stem_subtitle_refresh)
@@ -913,6 +978,7 @@ class DownloadCenterWindow:
         self._update_status_from_catalogue()
         self._update_download_button()
         self._ensure_stem_cache_listener()
+        self._schedule_stem_yaml_fetches()
 
     def _open_vip(self) -> None:
         from .download import open_vip_code_dialog

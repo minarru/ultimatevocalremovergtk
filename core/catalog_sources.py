@@ -71,6 +71,10 @@ class MergedCatalogues:
     demucs: Dict[str, Any]
     apollo: Dict[str, Any]
     meta: Dict[str, EntryMeta]
+    #: YAML config URLs still missing from the stem cache. Download Center
+    #: enqueues these (visible rows first); merge itself does not start fetches.
+    pending_yaml: Tuple[str, ...] = ()
+
 
 
 def invalidate_catalogue_merge() -> None:
@@ -236,12 +240,6 @@ def merged_catalogues(
     ):
         meta.update(_build_meta(catalogue, arch, extra_meta, pending_yaml))
 
-    if pending_yaml:
-        from .catalogue_stem_cache import enqueue_missing, ensure_worker_started
-
-        enqueue_missing(pending_yaml)
-        ensure_worker_started()
-
     from .download_sizes import content_ids_from_cache
 
     content_ids = content_ids_from_cache(
@@ -262,8 +260,14 @@ def merged_catalogues(
         f"catalog_sources merged entries={len(meta)} "
         f"dedupe_dropped={dropped} with_stems={with_stems}",
     )
+    # Preserve discovery order; Download Center prioritizes visible URLs.
     result = MergedCatalogues(
-        vr=vr_out, mdx=mdx_out, demucs=demucs_out, apollo=apollo_out, meta=meta
+        vr=vr_out,
+        mdx=mdx_out,
+        demucs=demucs_out,
+        apollo=apollo_out,
+        meta=meta,
+        pending_yaml=tuple(dict.fromkeys(pending_yaml)),
     )
     # A clear_display_cache / invalidate mid-flight bumps the generation; do
     # not publish that stale result under the new live key.

@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from core.download_sizes import (
     _CACHE_TTL_SECONDS,
+    _IDENTITY_HEAD_CAP,
     content_ids_from_cache,
     describe_download_size,
     format_download_size,
@@ -168,6 +169,39 @@ class PrefetchRemoteSizesTests(unittest.TestCase):
                 ids = content_ids_from_cache([a, b, c])
                 self.assertEqual(ids[a], "etag-a")
                 self.assertEqual(ids[b], "etag-a")
+
+    def test_prefetch_fetches_multiple_stale_urls(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "download_size_cache.json")
+            urls = [f"https://example.com/{i}.ckpt" for i in range(5)]
+            with patch("core.download_sizes._cache_path", return_value=cache_path):
+                with patch(
+                    "core.download_sizes._head_remote_meta",
+                    return_value=(1024, "e"),
+                ) as head:
+                    with patch.dict(os.environ, {"UVR_SIZE_HEAD_WORKERS": "4"}):
+                        stats = prefetch_remote_sizes(urls)
+            self.assertEqual(stats["fetched"], 5)
+            self.assertEqual(head.call_count, 5)
+
+    def test_identity_pass_caps_heads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "download_size_cache.json")
+            now = time.time()
+            payload = {
+                f"https://example.com/{i}.ckpt": {"size": 100, "fetched_at": now}
+                for i in range(_IDENTITY_HEAD_CAP + 10)
+            }
+            with open(cache_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle)
+            with patch("core.download_sizes._cache_path", return_value=cache_path):
+                with patch(
+                    "core.download_sizes._head_remote_meta",
+                    return_value=(100, "etag"),
+                ) as head:
+                    stats = prefetch_same_size_identity(list(payload))
+            self.assertEqual(stats["total"], _IDENTITY_HEAD_CAP)
+            self.assertEqual(head.call_count, _IDENTITY_HEAD_CAP)
 
 
 if __name__ == "__main__":

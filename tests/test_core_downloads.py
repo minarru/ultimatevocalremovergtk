@@ -103,5 +103,151 @@ class VipDownloadsTests(unittest.TestCase):
         self.assertEqual(vip_downloads("definitely-wrong-password"), NO_CODE)
 
 
+class UpdateModelSettingsTests(unittest.TestCase):
+    def test_name_mapper_keeps_local_only_keys(self) -> None:
+        import io
+        import json
+        import tempfile
+        from unittest import mock
+
+        from core import downloads as downloads_mod
+        from core import paths
+        from core.downloads import DownloadManager
+
+        remote_mdx = {"a.ckpt": "Upstream A"}
+        remote_demucs = {"d.th": "Upstream D"}
+        remote_vr_hash = {"h1": {}}
+        remote_mdx_hash = {"h2": {}}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            mdx_mapper = os.path.join(tmp, "mdx_mapper.json")
+            demucs_mapper = os.path.join(tmp, "demucs_mapper.json")
+            vr_hash = os.path.join(tmp, "vr_hash.json")
+            mdx_hash = os.path.join(tmp, "mdx_hash.json")
+            with open(mdx_mapper, "w", encoding="utf-8") as handle:
+                json.dump({"local_only.ckpt": "Local Only", "a.ckpt": "Old A"}, handle)
+
+            payloads = {
+                "vr": remote_vr_hash,
+                "mdx_hash": remote_mdx_hash,
+                "mdx_name": remote_mdx,
+                "demucs_name": remote_demucs,
+            }
+            url_order = [
+                ("vr", vr_hash),
+                ("mdx_hash", mdx_hash),
+                ("mdx_name", mdx_mapper),
+                ("demucs_name", demucs_mapper),
+            ]
+
+            def fake_urlopen(url: str):
+                key = next(k for k, _ in url_order)
+                # Match by dest pairing through _MODEL_DATA_URLS patch below.
+                raise AssertionError("use side_effect list")
+
+            responses = [
+                io.BytesIO(json.dumps(remote_vr_hash).encode()),
+                io.BytesIO(json.dumps(remote_mdx_hash).encode()),
+                io.BytesIO(json.dumps(remote_mdx).encode()),
+                io.BytesIO(json.dumps(remote_demucs).encode()),
+            ]
+            # urlopen context manager
+            class _Resp:
+                def __init__(self, raw: bytes) -> None:
+                    self._raw = raw
+
+                def __enter__(self) -> "_Resp":
+                    return self
+
+                def __exit__(self, *args: object) -> None:
+                    return None
+
+                def read(self) -> bytes:
+                    return self._raw
+
+            # json.load uses the response as a file-like object
+            class _FileResp:
+                def __init__(self, data: dict) -> None:
+                    self._buf = io.StringIO(json.dumps(data))
+
+                def __enter__(self) -> io.StringIO:
+                    return self._buf
+
+                def __exit__(self, *args: object) -> None:
+                    return None
+
+            side = [
+                _FileResp(remote_vr_hash),
+                _FileResp(remote_mdx_hash),
+                _FileResp(remote_mdx),
+                _FileResp(remote_demucs),
+            ]
+
+            with mock.patch.object(
+                downloads_mod,
+                "_MODEL_DATA_URLS",
+                [
+                    ("https://x/vr", vr_hash),
+                    ("https://x/mdx_hash", mdx_hash),
+                    ("https://x/mdx_name", mdx_mapper),
+                    ("https://x/demucs_name", demucs_mapper),
+                ],
+            ), mock.patch.object(
+                downloads_mod,
+                "_NAME_MAPPER_DESTS",
+                frozenset({mdx_mapper, demucs_mapper}),
+            ), mock.patch.object(downloads_mod, "_urlopen", side_effect=side):
+                ok = DownloadManager().update_model_settings()
+            self.assertTrue(ok)
+            with open(mdx_mapper, encoding="utf-8") as handle:
+                merged = json.load(handle)
+            self.assertEqual(merged["local_only.ckpt"], "Local Only")
+            self.assertEqual(merged["a.ckpt"], "Upstream A")
+
+    def test_identical_payload_skips_invalidate(self) -> None:
+        import io
+        import json
+        import tempfile
+        from unittest import mock
+
+        from core import downloads as downloads_mod
+        from core.downloads import DownloadManager
+
+        data = {"a.ckpt": "A"}
+        with tempfile.TemporaryDirectory() as tmp:
+            dests = [
+                os.path.join(tmp, name)
+                for name in ("vr.json", "mdx_hash.json", "mdx_name.json", "demucs.json")
+            ]
+            for dest in dests:
+                with open(dest, "w", encoding="utf-8") as handle:
+                    json.dump(data, handle)
+
+            class _FileResp:
+                def __init__(self, payload: dict) -> None:
+                    self._buf = io.StringIO(json.dumps(payload))
+
+                def __enter__(self) -> io.StringIO:
+                    return self._buf
+
+                def __exit__(self, *args: object) -> None:
+                    return None
+
+            side = [_FileResp(data) for _ in dests]
+            repo = mock.Mock()
+            with mock.patch.object(
+                downloads_mod,
+                "_MODEL_DATA_URLS",
+                [(f"https://x/{i}", dest) for i, dest in enumerate(dests)],
+            ), mock.patch.object(
+                downloads_mod,
+                "_NAME_MAPPER_DESTS",
+                frozenset(dests[2:]),
+            ), mock.patch.object(downloads_mod, "_urlopen", side_effect=side):
+                ok = DownloadManager().update_model_settings(repo)
+            self.assertTrue(ok)
+            repo.invalidate_stem_check.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

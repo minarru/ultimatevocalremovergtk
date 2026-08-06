@@ -358,7 +358,11 @@ def _start_chip_debug_cycle(
 
 
 def start_download_size_cache_warmup(app_context: typing.Any) -> None:
-    """Prefetch model download sizes on a background thread (7-day cache TTL)."""
+    """Prefetch checkpoint download sizes (7-day TTL).
+
+    Intended for Download Center open / refresh — not app startup — so a cold
+    size cache does not HEAD hundreds of URLs before the user needs sizes.
+    """
     if getattr(app_context, "_size_cache_warmup_started", False):
         return
     app_context._size_cache_warmup_started = True
@@ -379,6 +383,7 @@ def start_download_size_cache_warmup(app_context: typing.Any) -> None:
 
 def open_download_center(parent_window: typing.Any, app_context: typing.Any, on_models_changed: typing.Any=None):
     """Open or raise the Download Center utility window."""
+    start_download_size_cache_warmup(app_context)
     center = getattr(app_context, "_download_center_window", None)
     if center is not None:
         center.present()

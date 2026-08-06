@@ -222,6 +222,67 @@ training:
             time.sleep(0.05)
         self.assertEqual(len(calls), 1)
 
+    def test_priority_url_fetched_before_bulk(self) -> None:
+        bulk = "https://example.test/bulk.yaml"
+        prio = "https://example.test/prio.yaml"
+        body = b"training:\n  instruments: [Vocals]\n"
+        order: list[str] = []
+        done = threading.Event()
+        opens = 0
+
+        def fake_urlopen(u: str) -> _FakeResponse:
+            nonlocal opens
+            order.append(u)
+            opens += 1
+            if opens >= 2:
+                done.set()
+            return _FakeResponse(body)
+
+        with mock.patch.object(csc, "_urlopen", side_effect=fake_urlopen):
+            csc.enqueue_missing([bulk], priority=False)
+            csc.enqueue_missing([prio], priority=True)
+            csc.ensure_worker_started()
+            self.assertTrue(done.wait(timeout=2.0), "worker did not finish both")
+            self.assertTrue(
+                _wait_until(
+                    lambda: (
+                        csc.lookup_stems(bulk) is not None
+                        and csc.lookup_stems(prio) is not None
+                    )
+                )
+            )
+        self.assertEqual(order[0], prio)
+        self.assertEqual(order[1], bulk)
+
+    def test_worker_concurrency_at_most_two(self) -> None:
+        urls = [f"https://example.test/conc-{i}.yaml" for i in range(6)]
+        body = b"training:\n  instruments: [Vocals]\n"
+        lock = threading.Lock()
+        active = 0
+        max_seen = 0
+        done = threading.Event()
+        finished = 0
+
+        def fake_urlopen(u: str) -> _FakeResponse:
+            nonlocal active, max_seen, finished
+            with lock:
+                active += 1
+                max_seen = max(max_seen, active)
+            time.sleep(0.04)
+            with lock:
+                active -= 1
+                finished += 1
+                if finished >= len(urls):
+                    done.set()
+            return _FakeResponse(body)
+
+        with mock.patch.object(csc, "_urlopen", side_effect=fake_urlopen):
+            csc.enqueue_missing(urls)
+            csc.ensure_worker_started()
+            self.assertTrue(done.wait(timeout=3.0), "worker did not finish")
+        self.assertLessEqual(max_seen, 2)
+        self.assertGreaterEqual(max_seen, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
