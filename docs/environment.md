@@ -133,6 +133,7 @@ Notes:
 | `UVR_DEBUG_QUEUE_CHIP_INTERVAL` | seconds (default `4`) | Interval between chip debug scenarios |
 | `UVR_DEBUG_QUEUE_POPUP` | `1` | Open download popover on window map (disables autohide) |
 | `UVR_DEBUG_QUEUE_STICKY` | `1` | Never auto-dismiss finished queue items; keep chip visible when empty |
+| `UVR_DEBUG_OOM` | `1` | Add menu entries to mock the GPU OOM recovery dialog (no inference) |
 
 **Chip debug example** (visual QA for morph icons and labels):
 
@@ -141,6 +142,14 @@ UVR_DEBUG_QUEUE_CHIP=1 UVR_DEBUG_QUEUE_POPUP=1 UVR_DEV_CSS=1 ./run_uvr.sh
 ```
 
 Scenarios cycled by `UVR_DEBUG_QUEUE_CHIP=1`: `active`, `success`, `partial`, `failed`, `cancelled`.
+
+**OOM dialog mock** (Export / Stop / Retry chrome without a real CUDA failure):
+
+```bash
+UVR_DEBUG_OOM=1 ./run_uvr.sh
+# Menu → Mock GPU OOM dialog (all three buttons)
+# Menu → Mock OOM (Separation) (Stop + Retry only)
+```
 
 ---
 

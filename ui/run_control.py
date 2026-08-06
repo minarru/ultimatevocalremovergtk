@@ -95,6 +95,7 @@ class RunController:
         self._last_progress_combine: Optional[int] = None
         self._stop_confirm_dialog: Optional[Adw.AlertDialog] = None
         self._shutdown_dialog: Optional[Adw.AlertDialog] = None
+        self._oom_dialog: Optional[Adw.AlertDialog] = None
         self._cleanup_target: Any = None
         self._cleanup_attempts = 0
         self._shutdown_target: Any = None
@@ -162,6 +163,7 @@ class RunController:
             on_complete=self._on_complete,
             on_stopped=self._on_stopped,
             on_error=self._on_error,
+            on_oom_choice=self._on_oom_choice,
         )
         debug("ui", f"handle_start -> {type(target).__name__}.start()")
         target.start(callbacks)
@@ -468,13 +470,61 @@ class RunController:
         self._window.log_panel.clear_progress()
         clear_run_start()
 
+    def _on_oom_choice(self, request: typing.Any) -> None:
+        """Present the mid-run OOM dialog; ``request.respond`` unblocks the worker."""
+        from core.oom_choice import OOM_CHOICE_STOP
+        from .oom_dialog import present_oom_choice_dialog
+
+        if self._oom_dialog is not None:
+            debug("ui", "oom dialog already open — forcing stop")
+            request.respond(OOM_CHOICE_STOP)
+            return
+
+        debug(
+            "ui",
+            "present oom dialog "
+            f"kind={getattr(request, 'process_kind', '')!r} "
+            f"export={getattr(request, 'can_export', False)} "
+            f"retry={getattr(request, 'can_retry', False)}",
+        )
+        self._run_ui_suspended = True
+        self._window._stop_pulse()
+
+        def on_choice(choice: str) -> None:
+            self._oom_dialog = None
+            self._run_ui_suspended = False
+            if self.is_running():
+                self._window._start_pulse()
+            label = {
+                "export": "Export completed outputs",
+                "stop": "Stop",
+                "retry": "Retry with smaller segment",
+            }.get(choice, choice)
+            self._window.console.append(f"\nGPU OOM recovery: {label}\n")
+            request.respond(choice)
+
+        self._oom_dialog = present_oom_choice_dialog(
+            self._window,
+            request,
+            on_choice=on_choice,
+        )
+
     def _on_stopped(self) -> None:
         from core.error_context import clear_run_error_context
 
         debug("ui", "on_stopped cooperative worker stop")
         clear_run_error_context()
         self._cleanup_target = None
+        runner = getattr(self._window.context, "runner", None)
+        exported = bool(getattr(runner, "_last_oom_exported", False))
         self._finish_run_ui(stopped=True)
+        if exported:
+            toast = Adw.Toast.new("Exported completed ensemble outputs.")
+            output_dir = self._run_output_dir
+            if output_dir and os.path.isdir(output_dir):
+                toast.set_button_label(_OPEN_FOLDER_LABEL)
+                toast.connect("button-clicked", self._on_open_output_folder, output_dir)
+            self._window.toast_overlay.add_toast(toast)
 
     def _on_complete(self) -> None:
         from core.error_context import clear_run_error_context

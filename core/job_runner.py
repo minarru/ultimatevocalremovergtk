@@ -14,6 +14,7 @@ import typing
 
 import os
 import re
+import threading
 import time
 from collections import Counter
 from dataclasses import dataclass
@@ -70,6 +71,20 @@ from .inference_cleanup import (
     clear_source_mapper,
     release_inference_memory as _release_inference_resources,
     release_separator,
+)
+from .oom_choice import (
+    OOM_CHOICE_AUTO,
+    OOM_CHOICE_EXPORT,
+    OOM_CHOICE_RETRY,
+    OOM_CHOICE_STOP,
+    OomChoiceRequest,
+)
+from .oom_markers import is_oom_message
+from .oom_segment import (
+    backoff_candidates,
+    default_segment,
+    effective_segment,
+    supports_segment_backoff,
 )
 
 if TYPE_CHECKING:
@@ -210,7 +225,9 @@ class JobCallbacks:
     metadata (``local_step``, ``pass_index``, ``pass_total``, ``detail``,
     ``combine_index``, ``combine_total``). ``on_console`` receives text chunks;
     ``on_complete`` fires once on success; ``on_error`` receives the raised
-    exception. The GTK layer marshals each of these onto the main loop.
+    exception. ``on_oom_choice`` receives an :class:`OomChoiceRequest` on the
+    main loop; the worker blocks until ``request.respond`` is called. The GTK
+    layer marshals each of these onto the main loop.
     """
 
     on_progress: Optional[Callable[..., None]] = None
@@ -218,6 +235,7 @@ class JobCallbacks:
     on_complete: Optional[Callable[[], None]] = None
     on_stopped: Optional[Callable[[], None]] = None
     on_error: Optional[Callable[[BaseException], None]] = None
+    on_oom_choice: Optional[Callable[[OomChoiceRequest], None]] = None
 
     def progress(
         self,
@@ -266,6 +284,36 @@ class JobCallbacks:
         if self.on_error:
             self.on_error(exc)
 
+    def request_oom_choice(
+        self,
+        request: OomChoiceRequest,
+        runner: "JobRunner",
+    ) -> str:
+        """Ask the UI for an OOM recovery choice, or return ``auto`` if unbound."""
+        if not self.on_oom_choice:
+            return OOM_CHOICE_AUTO
+
+        done = threading.Event()
+        box: dict[str, str] = {"choice": OOM_CHOICE_STOP}
+
+        def reply(choice: str) -> None:
+            box["choice"] = str(choice or OOM_CHOICE_STOP)
+            done.set()
+
+        request.reply = reply
+        debug(
+            "worker",
+            "oom choice requested "
+            f"kind={request.process_kind!r} export={request.can_export} "
+            f"retry={request.can_retry}",
+        )
+        self.on_oom_choice(request)
+        while not done.wait(timeout=0.05):
+            check_stopped(runner)
+        choice = box["choice"]
+        debug("worker", f"oom choice={choice!r}")
+        return choice
+
 
 class JobRunner:
     """Runs separation on a ``KThread`` worker and reports through callbacks."""
@@ -286,11 +334,21 @@ class JobRunner:
         self._active_separator: Any = None
         self._run_protect_identities: set[FileIdentity] = set()
         self._last_backend_name: Optional[str] = None
+        self._mdx_segment_override: Optional[int] = None
+        self._ensemble_salvage_members: list[dict[str, Any]] = []
+        self._last_oom_exported = False
 
     # -- Public control ---------------------------------------------------------
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
+
+    def _reset_run_state(self) -> None:
+        self._is_stopped = False
+        self._is_paused = False
+        self._mdx_segment_override = None
+        self._ensemble_salvage_members = []
+        self._last_oom_exported = False
 
     def start(self, input_paths: Sequence[str], callbacks: JobCallbacks) -> None:
         """Launch the worker thread. No-op if a run is already in flight.
@@ -306,8 +364,7 @@ class JobRunner:
             return
         from kthread import KThread
 
-        self._is_stopped = False
-        self._is_paused = False
+        self._reset_run_state()
         paths = list(input_paths)
         self._thread = KThread(
             target=self._run,
@@ -322,8 +379,7 @@ class JobRunner:
             return
         from kthread import KThread
 
-        self._is_stopped = False
-        self._is_paused = False
+        self._reset_run_state()
         paths = list(input_paths)
         self._thread = KThread(
             target=self._run_ensemble,
@@ -516,24 +572,85 @@ class JobRunner:
                 "Low GPU memory — freed all cached models for this run\n"
             )
 
-    def _run_seperator(self, seperator: typing.Any):
-        """Run one separator and return captured stem arrays (for ensemble RAM path)."""
+    def _build_separator(
+        self,
+        current_model: ModelConfig,
+        process_data: ProcessData,
+        *,
+        SeperateVR: Any,
+        SeperateMDX: Any,
+        SeperateMDXC: Any,
+        SeperateDemucs: Any,
+    ) -> Any:
+        """Construct the engine instance for ``current_model``."""
+        self._apply_segment_override(current_model)
+        if current_model.process_method == VR_ARCH_TYPE:
+            return SeperateVR(current_model, process_data)
+        if current_model.process_method == MDX_ARCH_TYPE:
+            if current_model.is_mdx_c:
+                return SeperateMDXC(current_model, process_data)
+            return SeperateMDX(current_model, process_data)
+        if current_model.process_method == DEMUCS_ARCH_TYPE:
+            return SeperateDemucs(current_model, process_data)
+        raise NotImplementedError(
+            f"engine for '{current_model.process_method}' not available"
+        )
+
+    def _apply_segment_override(self, model: Any, seperator: Any = None) -> None:
+        """Apply run-local MDX segment override to model and optional separator."""
+        if self._mdx_segment_override is None:
+            return
+        size = int(self._mdx_segment_override)
+        if hasattr(model, "mdx_segment_size"):
+            model.mdx_segment_size = size
+        if hasattr(model, "is_mdx_c_seg_def"):
+            model.is_mdx_c_seg_def = False
+        if seperator is not None:
+            if hasattr(seperator, "mdx_segment_size"):
+                seperator.mdx_segment_size = size
+            if hasattr(seperator, "is_mdx_c_seg_def"):
+                seperator.is_mdx_c_seg_def = False
+
+    def _park_after_oom(self, seperator: Any = None) -> None:
+        """Free GPU-resident weights after an OOM so the dialog is not under pressure."""
+        if seperator is not None:
+            release_separator(seperator)
+            if self._active_separator is seperator:
+                self._active_separator = None
+        _release_inference_resources(self, park_weights=True)
+
+    @staticmethod
+    def _is_oom_exc(exc: BaseException) -> bool:
+        try:
+            import torch
+
+            if isinstance(exc, torch.cuda.OutOfMemoryError):
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+        return is_oom_message(str(exc))
+
+    def _prepare_separator_vram(self, seperator: typing.Any) -> None:
+        """Park unused cached weights when free VRAM is tight before inference."""
+        from engines.model_weight_cache import (
+            ensure_weight_cache_vram_headroom,
+            model_file_identity,
+        )
+
+        prefer = model_file_identity(getattr(seperator, "model_path", "") or "")
+        ensure_weight_cache_vram_headroom(
+            getattr(seperator, "device", None),
+            protect_identities=self._run_protect_identities or None,
+            prefer_gpu_identity=prefer,
+        )
+
+    def _run_seperator_once(self, seperator: typing.Any) -> dict:
+        """Run one separator once and return captured stem arrays."""
         self._active_separator = seperator
         self._last_backend_name = getattr(seperator, "_backend_name", None)
         self._last_captured_stem_paths = {}
-        stems: dict = {}
         try:
-            from engines.model_weight_cache import (
-                ensure_weight_cache_vram_headroom,
-                model_file_identity,
-            )
-
-            prefer = model_file_identity(getattr(seperator, "model_path", "") or "")
-            ensure_weight_cache_vram_headroom(
-                getattr(seperator, "device", None),
-                protect_identities=self._run_protect_identities or None,
-                prefer_gpu_identity=prefer,
-            )
+            self._prepare_separator_vram(seperator)
             seperator.seperate()
             stems = _capture_separator_stem_arrays(seperator)
             self._last_captured_stem_paths = _capture_separator_stem_paths(seperator)
@@ -543,6 +660,202 @@ class JobRunner:
             release_separator(seperator)
             if self._active_separator is seperator:
                 self._active_separator = None
+
+    def _run_seperator(
+        self,
+        seperator: typing.Any,
+        *,
+        callbacks: Optional[JobCallbacks] = None,
+        model: Any = None,
+        process_kind: str = "separation",
+        rebuild: Optional[Callable[[], Any]] = None,
+    ):
+        """Run one separator with mid-run CUDA OOM recovery when callbacks allow it."""
+        if callbacks is None or rebuild is None or model is None:
+            return self._run_seperator_once(seperator)
+
+        build = rebuild
+        active = seperator
+        self._apply_segment_override(model, active)
+
+        while True:
+            check_stopped(self)
+            try:
+                return self._run_seperator_once(active)
+            except ProcessStopped:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                if not self._is_oom_exc(exc):
+                    raise
+                debug("worker", f"oom during separate: {type(exc).__name__}: {exc}")
+                self._park_after_oom(active)
+                active = None
+
+                current = effective_segment(model)
+                default = default_segment(model)
+                candidates = (
+                    backoff_candidates(current, default)
+                    if supports_segment_backoff(model)
+                    else []
+                )
+                can_retry = bool(candidates)
+                can_export = (
+                    process_kind == "ensemble" and bool(self._ensemble_salvage_members)
+                )
+                first_retry = candidates[0] if candidates else None
+                try:
+                    model_label = _model_output_label(model) if model is not None else ""
+                except Exception:  # noqa: BLE001 - best-effort label for the dialog
+                    model_label = str(
+                        getattr(model, "model_name", None)
+                        or getattr(model, "model_basename", "")
+                        or ""
+                    )
+
+                while True:
+                    check_stopped(self)
+                    request = OomChoiceRequest(
+                        process_kind=process_kind,
+                        model_label=model_label,
+                        current_segment=current,
+                        default_segment=default,
+                        first_retry_segment=first_retry,
+                        can_export=can_export,
+                        can_retry=can_retry,
+                        completed_members=len(self._ensemble_salvage_members),
+                    )
+                    choice = callbacks.request_oom_choice(request, self)
+
+                    if choice == OOM_CHOICE_EXPORT:
+                        if can_export:
+                            self._export_ensemble_salvage(callbacks)
+                        raise ProcessStopped()
+
+                    if choice == OOM_CHOICE_STOP:
+                        raise ProcessStopped()
+
+                    if choice in (OOM_CHOICE_RETRY, OOM_CHOICE_AUTO):
+                        if not candidates:
+                            if choice == OOM_CHOICE_AUTO:
+                                raise exc
+                            can_retry = False
+                            first_retry = None
+                            continue
+
+                        last_oom = exc
+                        for segment in candidates:
+                            check_stopped(self)
+                            self._mdx_segment_override = int(segment)
+                            self._apply_segment_override(model)
+                            callbacks.console(
+                                f"CUDA OOM — retrying with segment size {segment}\n"
+                            )
+                            try:
+                                active = build()
+                                self._apply_segment_override(model, active)
+                                return self._run_seperator_once(active)
+                            except ProcessStopped:
+                                raise
+                            except Exception as retry_exc:  # noqa: BLE001
+                                if not self._is_oom_exc(retry_exc):
+                                    raise
+                                last_oom = retry_exc
+                                debug(
+                                    "worker",
+                                    f"oom retry failed segment={segment}: {retry_exc}",
+                                )
+                                self._park_after_oom(active)
+                                active = None
+                        if choice == OOM_CHOICE_AUTO:
+                            raise last_oom
+                        # Both candidates failed — re-ask (retry may now be empty).
+                        current = effective_segment(model)
+                        candidates = (
+                            backoff_candidates(current, default)
+                            if supports_segment_backoff(model)
+                            else []
+                        )
+                        can_retry = bool(candidates)
+                        first_retry = candidates[0] if candidates else None
+                        can_export = (
+                            process_kind == "ensemble"
+                            and bool(self._ensemble_salvage_members)
+                        )
+                        continue
+
+                    # Unknown choice — treat as stop.
+                    raise ProcessStopped()
+
+    def _export_ensemble_salvage(self, callbacks: JobCallbacks) -> None:
+        """Write completed ensemble member stems into the user export folder."""
+        export_root = str(self.settings.process.export_path or "")
+        if not export_root:
+            callbacks.console("OOM export skipped — export path is empty\n")
+            return
+        os.makedirs(export_root, exist_ok=True)
+        members = list(self._ensemble_salvage_members)
+        if not members:
+            callbacks.console("OOM export skipped — no completed members\n")
+            return
+
+        wav_type_set = resolve_wav_type_set(self.settings)
+        save_format_name = self.settings.process.save_format.value
+        mp3_bit_set = self.settings.process.mp3_bitrate
+        flac_bit_set = self.settings.process.flac_bit_depth
+        try:
+            amplification_threshold = float(
+                self.settings.process.amplification_threshold or 0.0
+            )
+        except (TypeError, ValueError):
+            amplification_threshold = 0.0
+        written = 0
+        save_all = bool(self.settings.ensemble.save_all_outputs)
+        for member in members:
+            arrays = member.get("arrays") or {}
+            paths = member.get("paths") or {}
+            remapped: dict[str, str] = {}
+            for stem_tag, path in paths.items():
+                name = os.path.basename(path) if path else f"{stem_tag}.wav"
+                remapped[stem_tag] = os.path.join(export_root, name)
+            if not remapped and arrays:
+                base = member.get("audio_file_base") or "ensemble_member"
+                for stem_tag in arrays:
+                    remapped[stem_tag] = os.path.join(
+                        export_root, f"{base} ({stem_tag}).wav"
+                    )
+            if not arrays:
+                # Save-all (or disk) path: copy any known member files into export root.
+                for stem_tag, path in paths.items():
+                    if path and os.path.isfile(path):
+                        dest = remapped.get(stem_tag) or os.path.join(
+                            export_root, os.path.basename(path)
+                        )
+                        if os.path.abspath(path) != os.path.abspath(dest):
+                            import shutil
+
+                            shutil.copy2(path, dest)
+                        written += 1
+                continue
+            _write_captured_stems(
+                arrays,
+                remapped,
+                is_normalization=bool(self.settings.process.normalization),
+                amplification_threshold=amplification_threshold,
+                wav_type_set=wav_type_set,
+                save_format_name=save_format_name,
+                mp3_bit_set=mp3_bit_set,
+                flac_bit_set=flac_bit_set,
+            )
+            written += len(arrays)
+        self._last_oom_exported = True
+        if written == 0 and save_all:
+            callbacks.console(
+                "Completed ensemble member outputs were already saved under the export folder\n"
+            )
+        else:
+            callbacks.console(
+                f"Exported {written} completed ensemble stem(s) to {export_root}\n"
+            )
 
     def _run(self, input_paths: List[str], callbacks: JobCallbacks) -> None:
         debug("worker", "_run entered")
@@ -721,22 +1034,36 @@ class JobRunner:
                             capture_stems_only=chunked,
                         )
 
-                        if current_model.process_method == VR_ARCH_TYPE:
-                            seperator = SeperateVR(current_model, process_data)
-                        elif current_model.process_method == MDX_ARCH_TYPE:
-                            seperator = SeperateMDXC(current_model, process_data) if current_model.is_mdx_c else SeperateMDX(current_model, process_data)
-                        elif current_model.process_method == DEMUCS_ARCH_TYPE:
-                            seperator = SeperateDemucs(current_model, process_data)
-                        else:
-                            raise NotImplementedError(f"engine for '{current_model.process_method}' not available")
+                        def _make_rebuild(
+                            model: ModelConfig, pdata: ProcessData
+                        ) -> Callable[[], Any]:
+                            def _rebuild() -> Any:
+                                return self._build_separator(
+                                    model,
+                                    pdata,
+                                    SeperateVR=SeperateVR,
+                                    SeperateMDX=SeperateMDX,
+                                    SeperateMDXC=SeperateMDXC,
+                                    SeperateDemucs=SeperateDemucs,
+                                )
 
+                            return _rebuild
+
+                        rebuild_sep = _make_rebuild(current_model, process_data)
+                        seperator = rebuild_sep()
                         engine = type(seperator).__name__
                         debug(
                             "worker",
                             f"separate start engine={engine} model={current_model.model_basename!r} "
                             f"chunk={chunk_num}/{n_chunks}",
                         )
-                        member_stems = self._run_seperator(seperator) or {}
+                        member_stems = self._run_seperator(
+                            seperator,
+                            callbacks=callbacks,
+                            model=current_model,
+                            process_kind="separation",
+                            rebuild=rebuild_sep,
+                        ) or {}
                         if chunked:
                             paths = getattr(self, "_last_captured_stem_paths", None) or {}
                             for stem_tag, arr in member_stems.items():
@@ -916,6 +1243,7 @@ class JobRunner:
                 current_model = None
                 # stem_tag -> list of member waveforms for in-memory combine
                 ensemble_stem_arrays: dict = {}
+                self._ensemble_salvage_members = []
                 track_title = track_basename_from_path(audio_file)
                 stamp = testing_timestamp_prefix(self.settings)
                 ensemble_final_base = format_track_base(
@@ -950,6 +1278,8 @@ class JobRunner:
                     )
 
                     member_stem_parts: dict = {}
+                    member_paths: dict = {}
+                    last_member_stems: dict = {}
                     for chunk_num, (_start, _end, mix_slice) in enumerate(chunks, start=1):
                         check_stopped(self)
                         snapshot_worker_file(audio_file, current_model)
@@ -977,41 +1307,71 @@ class JobRunner:
                             capture_stems_only=chunked,
                         )
 
-                        if current_model.process_method == VR_ARCH_TYPE:
-                            seperator = SeperateVR(current_model, process_data)
-                        elif current_model.process_method == MDX_ARCH_TYPE:
-                            seperator = SeperateMDXC(current_model, process_data) if current_model.is_mdx_c else SeperateMDX(current_model, process_data)
-                        elif current_model.process_method == DEMUCS_ARCH_TYPE:
-                            seperator = SeperateDemucs(current_model, process_data)
-                        else:
-                            raise NotImplementedError(f"engine for '{current_model.process_method}' not available")
+                        def _make_rebuild(
+                            model: ModelConfig, pdata: ProcessData
+                        ) -> Callable[[], Any]:
+                            def _rebuild() -> Any:
+                                return self._build_separator(
+                                    model,
+                                    pdata,
+                                    SeperateVR=SeperateVR,
+                                    SeperateMDX=SeperateMDX,
+                                    SeperateMDXC=SeperateMDXC,
+                                    SeperateDemucs=SeperateDemucs,
+                                )
 
+                            return _rebuild
+
+                        rebuild_ens = _make_rebuild(current_model, process_data)
+                        seperator = rebuild_ens()
                         engine = type(seperator).__name__
                         debug(
                             "worker",
                             f"ensemble separate start engine={engine} model={current_model.model_basename!r} "
                             f"chunk={chunk_num}/{n_chunks}",
                         )
-                        member_stems = self._run_seperator(seperator) or {}
+                        member_stems = self._run_seperator(
+                            seperator,
+                            callbacks=callbacks,
+                            model=current_model,
+                            process_kind="ensemble",
+                            rebuild=rebuild_ens,
+                        ) or {}
+                        last_member_stems = member_stems
+                        chunk_paths = getattr(self, "_last_captured_stem_paths", None) or {}
                         if chunked:
                             for stem_tag, arr in member_stems.items():
-                                member_stem_parts.setdefault(
-                                    _ensemble_stem_bucket(stem_tag), []
-                                ).append(arr)
+                                bucket = _ensemble_stem_bucket(stem_tag)
+                                member_stem_parts.setdefault(bucket, []).append(arr)
+                                if stem_tag in chunk_paths:
+                                    member_paths[bucket] = chunk_paths[stem_tag]
                         else:
                             for stem_tag, arr in member_stems.items():
-                                ensemble_stem_arrays.setdefault(
-                                    _ensemble_stem_bucket(stem_tag), []
-                                ).append(arr)
+                                bucket = _ensemble_stem_bucket(stem_tag)
+                                ensemble_stem_arrays.setdefault(bucket, []).append(arr)
+                                if stem_tag in chunk_paths:
+                                    member_paths[bucket] = chunk_paths[stem_tag]
                         debug("worker", f"ensemble separate done engine={engine}")
 
+                    salvage_arrays: dict = {}
                     if chunked:
                         for stem_tag, parts in member_stem_parts.items():
+                            concat = concat_stems(parts, overlap_samples=ov_samples)
                             ensemble_stem_arrays.setdefault(
                                 _ensemble_stem_bucket(stem_tag), []
-                            ).append(
-                                concat_stems(parts, overlap_samples=ov_samples)
-                            )
+                            ).append(concat)
+                            salvage_arrays[_ensemble_stem_bucket(stem_tag)] = concat
+                    else:
+                        for stem_tag, arr in last_member_stems.items():
+                            salvage_arrays[_ensemble_stem_bucket(stem_tag)] = arr
+                    self._ensemble_salvage_members.append(
+                        {
+                            "arrays": salvage_arrays,
+                            "paths": member_paths,
+                            "audio_file_base": audio_file_base,
+                            "model_label": model_label,
+                        }
+                    )
                     callbacks.console("\n")
 
                 # Combine each member's stems into the final ensemble outputs.

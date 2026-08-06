@@ -326,6 +326,9 @@ class MainWindow(Adw.ApplicationWindow):
         tools.append("Model options", "win.model_options")
         tools.append("Download Center", "win.download")
         tools.append("Error Log", "win.error_log")
+        if os.environ.get("UVR_DEBUG_OOM", "").strip() in ("1", "true", "yes"):
+            tools.append("Mock GPU OOM dialog", "win.mock_oom_dialog")
+            tools.append("Mock OOM (Separation)", "win.mock_oom_dialog_separation")
         menu.append_section(None, tools)
         info = Gio.Menu()
         info.append("Settings", "win.settings")
@@ -654,6 +657,8 @@ class MainWindow(Adw.ApplicationWindow):
             "start": self._on_start_action,
             "stop": self._on_stop_action,
             "shortcuts": self._on_shortcuts,
+            "mock_oom_dialog": self._on_mock_oom_dialog,
+            "mock_oom_dialog_separation": self._on_mock_oom_dialog_separation,
         }
         for name, handler in handlers.items():
             action = Gio.SimpleAction.new(name, None)
@@ -1102,6 +1107,31 @@ class MainWindow(Adw.ApplicationWindow):
         from .errorlog import open_error_log
 
         open_error_log(self)
+
+    def _on_mock_oom_dialog(self, _action: Gio.SimpleAction, _param: typing.Any) -> None:
+        self._present_mock_oom_dialog(separation=False)
+
+    def _on_mock_oom_dialog_separation(
+        self, _action: Gio.SimpleAction, _param: typing.Any
+    ) -> None:
+        self._present_mock_oom_dialog(separation=True)
+
+    def _present_mock_oom_dialog(self, *, separation: bool) -> None:
+        """Show the OOM recovery dialog with forced options (``UVR_DEBUG_OOM``)."""
+        from .oom_dialog import mock_oom_request, present_oom_choice_dialog
+
+        request = mock_oom_request(separation=separation)
+
+        def on_choice(choice: str) -> None:
+            label = {
+                "export": "Export completed",
+                "stop": "Stop",
+                "retry": "Retry with smaller segment",
+            }.get(choice, choice)
+            self.console.append(f"\n[UVR_DEBUG_OOM] chose {label}\n")
+            self.toast(f"OOM mock: {label}")
+
+        present_oom_choice_dialog(self, request, on_choice=on_choice)
 
     def _input_row_for_drop(self):
         """Resolve the visible tab's input row, or ``None`` when not routable."""

@@ -14,6 +14,7 @@ from gi.repository import GLib
 
 from core import JobCallbacks
 from core.debug_log import correlation_seq, debug, preview_text, verbose
+from core.oom_choice import OomChoiceRequest
 
 _PROGRESS_LOG_STEP = 0.05
 _last_progress_log = -1.0
@@ -105,6 +106,7 @@ def gtk_job_callbacks(
     on_complete: Optional[Callable[[], None]] = None,
     on_stopped: Optional[Callable[[], None]] = None,
     on_error: Optional[Callable[[BaseException], None]] = None,
+    on_oom_choice: Optional[Callable[[OomChoiceRequest], None]] = None,
 ) -> JobCallbacks:
     """Build :class:`JobCallbacks` whose handlers run on the GTK main loop."""
     return JobCallbacks(
@@ -113,4 +115,5 @@ def gtk_job_callbacks(
         on_complete=main_thread(on_complete) if on_complete else None,
         on_stopped=main_thread(on_stopped) if on_stopped else None,
         on_error=main_thread(on_error) if on_error else None,
+        on_oom_choice=main_thread(on_oom_choice) if on_oom_choice else None,
     )
