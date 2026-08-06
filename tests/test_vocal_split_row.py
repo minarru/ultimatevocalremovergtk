@@ -48,9 +48,14 @@ class VocalSplitRowTests(unittest.TestCase):
 
         repo = ModelRepository()
 
-        # Patch karaoke_model_list to return a test model
+        # Mutable so a test can install a model mid-session, the way a download
+        # does, and count how often the (expensive) list is resolved.
+        self.karaoke_models = ["VR Arc: UVR-BVE-4B"]
+        self.karaoke_calls = 0
+
         def patched_karaoke(settings: typing.Any):
-            return ["VR Arc: UVR-BVE-4B"]
+            self.karaoke_calls += 1
+            return list(self.karaoke_models)
         repo.karaoke_model_list = patched_karaoke
 
         self.changed = 0
@@ -216,6 +221,70 @@ class VocalSplitRowTests(unittest.TestCase):
 
         # Stored value should be the full tag
         self.assertEqual(settings.get("set_vocal_splitter"), "VR Arc: UVR-BVE-4B")
+
+    def test_refresh_repopulates_an_already_expanded_row(self):
+        """`_models_ready` latched True forever, so a karaoke model installed
+        mid-session stayed invisible until the app restarted."""
+        from ui.widgets.rows import combo_values
+
+        row = self._row()
+        row.apply_from_settings(self._settings())
+        row.set_expanded(True)
+        self.assertNotIn("UVR-BVE-5B", " ".join(combo_values(row.splitter_row)))
+
+        self.karaoke_models.append("VR Arc: UVR-BVE-5B")
+        row.refresh_models()
+
+        self.assertIn("UVR-BVE-5B", " ".join(combo_values(row.splitter_row)))
+
+    def test_refresh_keeps_the_current_selection(self):
+        from ui.widgets.rows import combo_values, get_combo_value
+
+        row = self._row()
+        row.apply_from_settings(self._settings())
+        row.set_expanded(True)
+        displayed = combo_values(row.splitter_row)
+        row.splitter_row.set_selected(displayed.index("UVR-BVE-4B"))
+
+        self.karaoke_models.append("VR Arc: UVR-BVE-5B")
+        row.refresh_models()
+
+        self.assertEqual(get_combo_value(row.splitter_row), "VR Arc: UVR-BVE-4B")
+        settings = self._settings()
+        row.persist_to_settings(settings)
+        self.assertEqual(settings.get("set_vocal_splitter"), "VR Arc: UVR-BVE-4B")
+
+    def test_refresh_of_a_collapsed_row_defers_the_work(self):
+        """Laziness pin: resolving the karaoke list hashes checkpoints, so a
+        collapsed row must not pay for a refresh it cannot show."""
+        from ui.widgets.rows import combo_values
+
+        row = self._row()
+        row.apply_from_settings(self._settings())
+        self.assertFalse(row.get_expanded())
+        calls_before = self.karaoke_calls
+
+        self.karaoke_models.append("VR Arc: UVR-BVE-5B")
+        row.refresh_models()
+
+        self.assertEqual(self.karaoke_calls, calls_before, "collapsed row must not resolve")
+        row.set_expanded(True)
+        self.assertIn("UVR-BVE-5B", " ".join(combo_values(row.splitter_row)))
+
+    def test_refresh_preserves_a_selection_absent_from_the_new_list(self):
+        from ui.widgets.rows import combo_values, get_combo_value
+
+        row = self._row()
+        row.apply_from_settings(self._settings())
+        row.set_expanded(True)
+        displayed = combo_values(row.splitter_row)
+        row.splitter_row.set_selected(displayed.index("UVR-BVE-4B"))
+
+        # The selected model is gone from the fresh list (deleted or renamed).
+        self.karaoke_models[:] = ["VR Arc: UVR-BVE-5B"]
+        row.refresh_models()
+
+        self.assertEqual(get_combo_value(row.splitter_row), "VR Arc: UVR-BVE-4B")
 
 
 if __name__ == "__main__":

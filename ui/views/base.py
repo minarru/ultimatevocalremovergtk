@@ -240,12 +240,41 @@ class MethodView:
             self.populate_models()
         finally:
             self._loading = False
-        # Secondary / pre-process / vocal-split combos repopulate lazily the next
-        # time their expander is opened.
+        self._invalidate_model_combos()
+        self.update_stem_labels()
+
+    def _invalidate_model_combos(self) -> None:
+        """Drop the combo lists, repopulating any section already on screen.
+
+        Collapsed sections stay lazy: they repopulate on the next
+        ``notify::expanded``. Open ones cannot rely on that -- GObject emits
+        ``notify`` only when the property changes, so an expander the user
+        already opened would keep its stale list until collapsed and reopened.
+        """
         self._model_combos_populated = False
         for entry in self._model_combos:
             entry["ready"] = False
-        self.update_stem_labels()
+        self._repopulate_model_combos_if_visible()
+
+    def _repopulate_model_combos_if_visible(self) -> None:
+        expanded = any(
+            expander is not None and expander.get_expanded()
+            for expander in (
+                getattr(self, "secondary_expander", None),
+                getattr(self, "preproc_expander", None),
+            )
+        )
+        if not expanded:
+            return
+        # Deferred: this runs from the model refresh that follows a download,
+        # right as the toast paints, and populating resolves every combo's
+        # model list.
+        previous = getattr(self, "_defer_combo_populate", False)
+        self._defer_combo_populate = True
+        try:
+            self._ensure_model_combos_populated()
+        finally:
+            self._defer_combo_populate = previous
 
     def selected_model(self) -> str:
         return get_combo_value(self.model_row) or CHOOSE_MODEL
@@ -879,9 +908,7 @@ class MethodView:
 
         show_change_defaults_dialog(self.context, self._window_root())
         # Stored params may have changed; refresh stem labels and model lists.
-        self._model_combos_populated = False
-        for entry in self._model_combos:
-            entry["ready"] = False
+        self._invalidate_model_combos()
         self.update_stem_labels()
 
 

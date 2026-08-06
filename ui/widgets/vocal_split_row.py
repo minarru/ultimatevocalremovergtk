@@ -233,6 +233,25 @@ class VocalSplitRow(Adw.ExpanderRow):
         finally:
             self._syncing = False
 
+    def refresh_models(self) -> None:
+        """Re-list karaoke models after the installed set changed.
+
+        Snapshotting the combo into ``_stored_splitter`` first is load-bearing:
+        while ``_models_ready`` is True the combo is authoritative, and demoting
+        it without capturing the value would revert the selection to whatever
+        the last ``apply_from_settings`` stored. The snapshot is also what keeps
+        ``_populate_models_now``'s "stored tag missing from the fresh list stays
+        selectable" branch working across a refresh.
+
+        Collapsed rows are left invalidated but unpopulated -- resolving the
+        list hashes checkpoints, and the next expand will do it.
+        """
+        if self._models_ready:
+            self._stored_splitter = get_combo_value(self.splitter_row) or NO_MODEL
+        self._models_ready = False
+        if self.get_expanded():
+            self._populate_models()
+
     def _on_row_changed(self, *_args: typing.Any) -> None:
         if self._syncing:
             return
