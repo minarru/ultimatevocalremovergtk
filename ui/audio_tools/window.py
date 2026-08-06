@@ -397,6 +397,10 @@ class AudioToolsPage:
         self._set("apollo_model", get_combo_value(self.apollo_model_row))
         self.window._refresh_start_readiness()
 
+    def refresh_models(self) -> None:
+        """Uniform hook for ``MainWindow._model_list_consumers``."""
+        self._refresh_apollo_models()
+
     def refresh_apollo_models(self) -> None:
         """Public hook: re-read Apollo models after a Download Center batch."""
         self._refresh_apollo_models()
