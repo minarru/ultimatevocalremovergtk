@@ -170,6 +170,89 @@ class ModelHashWireTests(unittest.TestCase):
         self.assertEqual(repo.model_hash_table[path], "abc123")
         self.assertEqual(settings.process.model_hash_table[path]["hash"], "abc123")
 
+    def test_replaced_checkpoint_ignores_the_in_memory_hash(self) -> None:
+        """A checkpoint swapped at the same path must re-hash, not reuse.
+
+        ``lookup_trusted`` collapses "absent" and "stale" into ``None``. When it
+        correctly reports a replaced file, ``get_model_hash`` used to fall
+        through to the unguarded in-memory dict and return the previous md5 --
+        resolving the new checkpoint to the *old* model's params.
+        """
+        from unittest import mock
+
+        from core import model_hash_cache as mhc
+        from core.model_data import ModelConfig, ModelRepository
+        from core.settings import Settings
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "w.ckpt")
+        with open(path, "wb") as handle:
+            handle.write(b"first payload")
+
+        settings = Settings()
+        repo = ModelRepository()
+        mhc.remember(settings.process.model_hash_table, path, "OLDHASH")
+        repo.model_hash_table = {path: "OLDHASH"}
+
+        # Different length, so the size guard trips regardless of mtime_ns
+        # granularity on this filesystem.
+        with open(path, "wb") as handle:
+            handle.write(b"a completely different, longer payload")
+
+        cfg = ModelConfig.__new__(ModelConfig)
+        cfg.settings = settings
+        cfg.repo = repo
+        cfg.model_path = path
+        cfg.model_status = True
+        cfg.model_hash = None
+        cfg.is_dry_check = True
+
+        with mock.patch(
+            "core.model_data.compute_checkpoint_hash", return_value="NEWHASH"
+        ):
+            cfg.get_model_hash()
+
+        self.assertEqual(cfg.model_hash, "NEWHASH")
+        self.assertEqual(repo.model_hash_table[path], "NEWHASH")
+
+    def test_absent_persistent_entry_still_uses_the_in_memory_hash(self) -> None:
+        """Eviction must be scoped to *stale* entries.
+
+        Treating "no persistent entry" as stale would disable the in-memory
+        cache wholesale and reintroduce an md5 per dry check.
+        """
+        from unittest import mock
+
+        from core.model_data import ModelConfig, ModelRepository
+        from core.settings import Settings
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "w.ckpt")
+        with open(path, "wb") as handle:
+            handle.write(b"payload")
+
+        settings = Settings()
+        repo = ModelRepository()
+        repo.model_hash_table = {path: "MEMONLY"}
+
+        cfg = ModelConfig.__new__(ModelConfig)
+        cfg.settings = settings
+        cfg.repo = repo
+        cfg.model_path = path
+        cfg.model_status = True
+        cfg.model_hash = None
+        cfg.is_dry_check = True
+
+        with mock.patch(
+            "core.model_data.compute_checkpoint_hash",
+            side_effect=AssertionError("must not re-hash an unchanged file"),
+        ):
+            cfg.get_model_hash()
+
+        self.assertEqual(cfg.model_hash, "MEMONLY")
+
     def test_appcontext_seeds_trusted_hashes(self) -> None:
         from ui.context import AppContext
 

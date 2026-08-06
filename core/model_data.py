@@ -1072,7 +1072,7 @@ class _ModelConfigImplementation:
         return None
 
     def get_model_hash(self) -> None:
-        from .model_hash_cache import lookup_trusted, remember
+        from .model_hash_cache import is_stale, lookup_trusted, remember
 
         self.model_hash = None
         if not os.path.isfile(self.model_path):
@@ -1085,6 +1085,12 @@ class _ModelConfigImplementation:
             self.model_hash = trusted
             cache[path] = trusted
             return
+        # Only the persistent table is stat-guarded. When it reports the file
+        # changed, the unguarded in-memory copy below is stale by definition --
+        # drop it, or a checkpoint replaced at the same path keeps resolving to
+        # the previous model's params for the rest of the session.
+        if is_stale(self.settings.process.model_hash_table, path):
+            cache.pop(path, None)
         cached = cache.get(path)
         if cached:
             self.model_hash = cached
