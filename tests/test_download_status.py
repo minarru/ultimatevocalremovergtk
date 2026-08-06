@@ -78,7 +78,12 @@ class PerStatusPresentationTests(unittest.TestCase):
                 self.assertEqual(_row_button_state(_item(status)), expected)
 
     def test_row_progress_modes(self) -> None:
-        self.assertEqual(row_progress_for(STATUS_QUEUED).mode, "pulse")
+        # A queued item has genuinely made no progress. "pulse" made GTK render
+        # its activity block at a fixed 20% of the trough (measured), and with
+        # no repeating timer to move it, the row read as a bar stuck at 20%.
+        presentation = row_progress_for(STATUS_QUEUED)
+        self.assertEqual(presentation.mode, "empty")
+        self.assertTrue(presentation.visible)
         self.assertEqual(row_progress_for(STATUS_DOWNLOADING).mode, "fraction")
         self.assertEqual(row_progress_for(STATUS_COMPLETE).mode, "full")
         self.assertEqual(row_progress_for(STATUS_EXISTS).mode, "full")

@@ -48,8 +48,6 @@ class DownloadInfoThrottleTests(unittest.TestCase):
                     manager._download_file_url(
                         "https://example.com/model.onnx",
                         tmp_path,
-                        0,
-                        1,
                         None,
                         None,
                         info_calls.append,

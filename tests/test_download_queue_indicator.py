@@ -94,7 +94,7 @@ class ChipRingStateTests(unittest.TestCase):
         summary = summarize_queue(items)
         state = chip_ring_state(items, summary)
         self.assertEqual(state.outcome, "active")
-        self.assertAlmostEqual(state.progress, 0.4)
+        self.assertAlmostEqual(state.progress, (0.4 + 0.8) / 3)
 
     def test_active_queued_only_is_zero(self) -> None:
         items = [_item("a", status="queued"), _item("b", status="queued")]
@@ -102,6 +102,50 @@ class ChipRingStateTests(unittest.TestCase):
         state = chip_ring_state(items, summary)
         self.assertEqual(state.outcome, "active")
         self.assertEqual(state.progress, 0.0)
+
+    def test_finished_items_stay_in_the_aggregate(self) -> None:
+        """The ring is a batch aggregate, not a mean over active items.
+
+        Averaging over ACTIVE_STATUSES alone dropped completed work out of
+        both halves of the fraction, so the ring snapped back to 0% every time
+        a model finished — reading 0% with four of five models on disk.
+        """
+        items = [
+            _item("a", status="complete", progress=1.0),
+            _item("b", status="complete", progress=1.0),
+            _item("c", status="complete", progress=1.0),
+            _item("d", status="complete", progress=1.0),
+            _item("e", status="downloading", progress=0.0),
+        ]
+        state = chip_ring_state(items, summarize_queue(items))
+        self.assertEqual(state.outcome, "active")
+        self.assertAlmostEqual(state.progress, 0.8)
+
+    def test_progress_never_decreases_as_items_finish(self) -> None:
+        seen: list[float] = []
+        total = 4
+        for done in range(total):
+            for fraction in (0.0, 0.5, 1.0):
+                items = [
+                    _item(f"done{i}", status="complete", progress=1.0)
+                    for i in range(done)
+                ]
+                items.append(_item("cur", status="downloading", progress=fraction))
+                items += [
+                    _item(f"q{i}", status="queued") for i in range(done + 1, total)
+                ]
+                seen.append(chip_ring_state(items, summarize_queue(items)).progress)
+        self.assertEqual(seen, sorted(seen))
+
+    def test_terminal_failures_still_advance_the_ring(self) -> None:
+        """A failed item will never progress; holding the ring back on it
+        would stall the batch. Its outcome is carried by the ring's morph."""
+        items = [
+            _item("a", status="failed"),
+            _item("b", status="downloading", progress=0.5),
+        ]
+        state = chip_ring_state(items, summarize_queue(items))
+        self.assertAlmostEqual(state.progress, 0.75)
 
     def test_failed_outcome(self) -> None:
         items = [_item("a", status="failed"), _item("b", status="complete")]

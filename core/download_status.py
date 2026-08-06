@@ -30,7 +30,7 @@ TERMINAL_STATUSES: FrozenSet[str] = frozenset({
 SUCCESS_STATUSES: FrozenSet[str] = frozenset({STATUS_COMPLETE, STATUS_EXISTS})
 ALL_STATUSES: FrozenSet[str] = ACTIVE_STATUSES | TERMINAL_STATUSES
 
-ProgressMode = Literal["pulse", "fraction", "full", "empty"]
+ProgressMode = Literal["fraction", "full", "empty"]
 
 
 @dataclass(frozen=True)
@@ -43,7 +43,11 @@ class RowProgress:
 
 # Popover Gtk.ProgressBar presentation per status.
 ROW_PROGRESS: dict[str, RowProgress] = {
-    STATUS_QUEUED: RowProgress("pulse"),
+    # Not "pulse": GTK renders a pulse activity block at a fixed 20% of the
+    # trough, and the popover only refreshes on queue notifications, so nothing
+    # ever moves it. An empty trough is the honest rendering — the queue runs
+    # one item at a time, so a queued item really is at zero.
+    STATUS_QUEUED: RowProgress("empty"),
     STATUS_DOWNLOADING: RowProgress("fraction"),
     STATUS_COMPLETE: RowProgress("full"),
     STATUS_EXISTS: RowProgress("full"),

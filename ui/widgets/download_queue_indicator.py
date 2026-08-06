@@ -63,14 +63,22 @@ class ChipRingState:
 def chip_ring_state(items: List[DownloadQueueItem], summary: QueueSummary) -> ChipRingState:
     """Aggregate progress and outcome for the single header chip ring."""
     if summary.has_active:
-        active = [item for item in items if item.status in ACTIVE_STATUSES]
-        if active:
+        # Aggregate over the whole batch, not just the active slice. Averaging
+        # over ACTIVE_STATUSES dropped finished items out of numerator and
+        # denominator together, so the ring snapped back to 0% on every
+        # completion — showing 0% with four of five models already on disk.
+        # Terminal items count as done whatever their outcome: a failed or
+        # cancelled item will never progress, and the ring conveys outcome
+        # separately by morphing.
+        if items:
             progress = sum(
-                max(0.0, min(1.0, item.progress))
+                1.0
+                if item.status in TERMINAL_STATUSES
+                else max(0.0, min(1.0, item.progress))
                 if item.status == STATUS_DOWNLOADING
                 else 0.0
-                for item in active
-            ) / len(active)
+                for item in items
+            ) / len(items)
         else:
             progress = 0.0
         return ChipRingState(progress=progress, outcome="active")
@@ -397,7 +405,6 @@ class DownloadQueueIndicator:
         progress.set_margin_start(2)
         progress.set_margin_bottom(4)
         progress.set_hexpand(True)
-        progress.set_pulse_step(0.05)
 
         detail = Gtk.Label(xalign=0.0)
         detail.set_wrap(True)
@@ -451,9 +458,6 @@ class DownloadQueueIndicator:
         progress.set_visible(presentation.visible)
         if not presentation.visible:
             pass
-        elif presentation.mode == "pulse":
-            progress.set_fraction(0.0)
-            progress.pulse()
         elif presentation.mode == "fraction":
             progress.set_fraction(max(0.0, min(1.0, item.progress)))
         elif presentation.mode == "full":
