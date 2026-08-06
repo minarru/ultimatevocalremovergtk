@@ -226,6 +226,63 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win._ensure_stem_cache_listener.assert_called_once_with()
         win._schedule_stem_yaml_fetches.assert_called_once_with()
 
+    def test_schedule_coalesces_repeated_calls(self) -> None:
+        """Every keystroke scans the whole catalogue twice on the main thread.
+
+        Arming a single timeout means a burst of typing costs one scan, not one
+        per character.
+        """
+        from ui.download_center import DownloadCenterWindow
+
+        win = object.__new__(DownloadCenterWindow)
+        win._stem_fetch_armed = False
+
+        with mock.patch("gi.repository.GLib.timeout_add") as timeout_add:
+            for _ in range(5):
+                DownloadCenterWindow._schedule_stem_yaml_fetches(win)
+
+        self.assertEqual(timeout_add.call_count, 1)
+        callback = timeout_add.call_args[0][1]
+
+        # Once the timeout fires the next burst must arm again.
+        with mock.patch.object(win, "_visible_catalogue_labels", return_value=[]), (
+            mock.patch.object(win, "_pending_stem_yaml_urls", return_value=[])
+        ):
+            self.assertFalse(callback())
+        with mock.patch("gi.repository.GLib.timeout_add") as timeout_add2:
+            DownloadCenterWindow._schedule_stem_yaml_fetches(win)
+        self.assertEqual(timeout_add2.call_count, 1)
+
+    def test_visible_labels_scoped_to_active_tab(self) -> None:
+        """"Visible" must mean the tab on screen, not every tab's filter result."""
+        from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
+
+        win = object.__new__(DownloadCenterWindow)
+        win._available = {
+            MDX_ARCH_TYPE: ["MDX Model"],
+            "VR Arc": ["VR Model"],
+        }
+        win._search_entries = {}
+        win._purpose = PURPOSE_ALL
+        win.stack = mock.MagicMock()
+        win.stack.get_visible_child_name.return_value = MDX_ARCH_TYPE
+
+        self.assertEqual(win._visible_catalogue_labels(), ["MDX Model"])
+
+    def test_visible_labels_fall_back_when_no_active_tab(self) -> None:
+        from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
+
+        win = object.__new__(DownloadCenterWindow)
+        win._available = {MDX_ARCH_TYPE: ["MDX Model"], "VR Arc": ["VR Model"]}
+        win._search_entries = {}
+        win._purpose = PURPOSE_ALL
+        win.stack = mock.MagicMock()
+        win.stack.get_visible_child_name.return_value = None
+
+        self.assertEqual(
+            sorted(win._visible_catalogue_labels()), ["MDX Model", "VR Model"]
+        )
+
     def test_schedule_stem_yaml_fetches_prioritizes_visible(self) -> None:
         """Drive the real URL selection, not a scripted list of return values.
 
@@ -283,6 +340,8 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
             "dict[str, Any]", {MDX_ARCH_TYPE: _Entry("kim")}
         )
         win._purpose = PURPOSE_ALL
+        win.stack = mock.MagicMock()
+        win.stack.get_visible_child_name.return_value = MDX_ARCH_TYPE
 
         with tempfile.TemporaryDirectory() as tmp:
             cache_path = os.path.join(tmp, "catalogue_stem_cache.json")
@@ -293,7 +352,7 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
                     with mock.patch.object(csc, "enqueue_missing") as enqueue, (
                         mock.patch.object(csc, "ensure_worker_started")
                     ) as ensure:
-                        DownloadCenterWindow._schedule_stem_yaml_fetches(win)
+                        DownloadCenterWindow._flush_stem_yaml_fetches(win)
                     csc.clear_catalogue_stem_cache()
 
         self.assertEqual(

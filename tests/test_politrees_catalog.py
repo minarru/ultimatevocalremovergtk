@@ -43,6 +43,13 @@ class MergeCatalogueTests(unittest.TestCase):
 
 
 class ResolveJobsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # resolve_mdx_jobs fetches a missing MDX-C config; these tests only
+        # assert on the resolved job list.
+        patcher = patch("core.mdx_config_fetch.ensure_mdx_c_config", return_value=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_resolve_trvlvr_mdx_job(self) -> None:
         jobs = resolve_mdx_jobs({"model.onnx": "config.yaml"}, NORMAL_REPO)
         self.assertEqual(len(jobs), 1)

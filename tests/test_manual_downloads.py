@@ -17,6 +17,12 @@ from core.downloads import DownloadManager
 
 class ManualDownloadMergeTests(unittest.TestCase):
     def setUp(self) -> None:
+        # manual_links resolves jobs, which fetches a missing MDX-C config.
+        patcher = mock.patch(
+            "core.mdx_config_fetch.ensure_mdx_c_config", return_value=False
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.manager = DownloadManager()
         self.manager.online_data = {
             "roformer_download_list": {"TR Roformer": {"tr.ckpt": "tr.yaml"}},

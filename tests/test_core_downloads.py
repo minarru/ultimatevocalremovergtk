@@ -10,8 +10,25 @@ from core.downloads import DownloadManager, vip_downloads
 from core import paths
 
 
+def _stub_config_fetch(test: unittest.TestCase) -> None:
+    """Stop job resolution from fetching a missing MDX-C config over the network.
+
+    ``resolve_mdx_jobs`` calls ``ensure_mdx_c_config``, which downloads the YAML
+    when it is absent locally. Tests only care about the job list, so pretend
+    the config is unavailable — the same outcome as an offline machine.
+    """
+    for target in (
+        "core.mdx_config_fetch.ensure_mdx_c_config",
+        "core.downloads.ensure_mdx_c_config",
+    ):
+        patcher = patch(target, return_value=False)
+        patcher.start()
+        test.addCleanup(patcher.stop)
+
+
 class DownloadManagerResolveTests(unittest.TestCase):
     def setUp(self):
+        _stub_config_fetch(self)
         self.manager = DownloadManager()
         self.manager.vr_download_list = {"VR Test": "test_vr.pth"}
         self.manager.mdx_download_list = {"MDX Test": {"model.onnx": "config.yaml"}}

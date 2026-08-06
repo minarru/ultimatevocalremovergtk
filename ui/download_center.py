@@ -128,6 +128,7 @@ class DownloadCenterWindow:
         self._sort_mode = SORT_NAME
         self._hide_unsupported = False
         self._stem_refresh_armed = False
+        self._stem_fetch_armed = False
 
         saved_code = self.settings.process.user_code
         if saved_code:
@@ -669,14 +670,27 @@ class DownloadCenterWindow:
         ensure_worker_started()
 
     def _visible_catalogue_labels(self) -> list[str]:
+        """Labels the user can actually see: active tab, current filters.
+
+        Scoped to the visible stack page — matching every tab's filter would
+        make "visible" mean most of the catalogue and drain the priority lane
+        of any meaning. Falls back to all tabs before a page is selected.
+        """
+        active = self.stack.get_visible_child_name()
+        if active is not None and active in self._available:
+            archs = [active]
+        else:
+            archs = list(self._available)
         labels: list[str] = []
-        for arch, models in self._available.items():
+        for arch in archs:
             query = ""
             entry = self._search_entries.get(arch)
             if entry is not None:
                 query = entry.get_text() or ""
             labels.extend(
-                catalogue_matches(list(models or []), query, purpose=self._purpose)
+                catalogue_matches(
+                    list(self._available.get(arch) or []), query, purpose=self._purpose
+                )
             )
         return labels
 
@@ -710,7 +724,17 @@ class DownloadCenterWindow:
         return urls
 
     def _schedule_stem_yaml_fetches(self) -> None:
+        """Arm a debounced rescan; a burst of typing costs one pass, not one each."""
+        if self._stem_fetch_armed:
+            return
+        self._stem_fetch_armed = True
+        from gi.repository import GLib
+
+        GLib.timeout_add(250, self._flush_stem_yaml_fetches)
+
+    def _flush_stem_yaml_fetches(self) -> bool:
         """Prioritize visible rows, then drain the rest while DC is open."""
+        self._stem_fetch_armed = False
         from core.catalogue_stem_cache import (
             enqueue_missing,
             ensure_worker_started,
@@ -718,7 +742,7 @@ class DownloadCenterWindow:
         )
 
         if not catalogue_stems_enabled():
-            return
+            return False
         visible = self._pending_stem_yaml_urls(self._visible_catalogue_labels())
         all_pending = self._pending_stem_yaml_urls()
         visible_set = set(visible)
@@ -729,6 +753,7 @@ class DownloadCenterWindow:
             enqueue_missing(bulk, priority=False)
         if visible or bulk:
             ensure_worker_started()
+        return False
 
     def _schedule_stem_subtitle_refresh(self) -> None:
         idle_on_main(self._arm_stem_subtitle_refresh)

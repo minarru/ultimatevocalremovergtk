@@ -317,34 +317,40 @@ def _worker_loop() -> None:
         first = _url_queue.get()
         _worker_idle.clear()
         pending = _drain_queued_items(first)
+        workers = max(1, _FETCH_WORKERS)
         try:
-            while pending:
-                chunk = pending[:_FETCH_WORKERS]
-                pending = pending[_FETCH_WORKERS:]
-                with ThreadPoolExecutor(max_workers=len(chunk)) as pool:
+            # One pool for the whole batch: a fresh executor per chunk spawned
+            # ~N threads to fetch N URLs.
+            with ThreadPoolExecutor(
+                max_workers=workers, thread_name_prefix="uvr-stem-yaml"
+            ) as pool:
+                while pending:
+                    chunk = pending[:workers]
+                    pending = pending[workers:]
                     futures = [
                         pool.submit(_fetch_and_remember, item[2]) for item in chunk
                     ]
                     for future in as_completed(futures):
                         future.result()
-                with _queue_lock:
-                    for prio, _seq, key in chunk:
-                        # Leave the record in place if the URL was promoted
-                        # while this chunk was in flight — the re-queued copy
-                        # still has to run.
-                        if _queued_priority.get(key) == prio:
-                            _queued_priority.pop(key, None)
-                    newly: list[tuple[int, int, str]] = []
-                    while True:
-                        try:
-                            newly.append(_url_queue.get_nowait())
-                        except queue.Empty:
-                            break
-                if newly:
-                    pending = _dedupe_sorted(sorted(pending + newly))
-                # Per chunk, not per drain: subtitles for prioritized visible
-                # rows must appear without waiting on the whole catalogue.
-                _notify_subscribers()
+                    with _queue_lock:
+                        for prio, _seq, key in chunk:
+                            # Leave the record in place if the URL was promoted
+                            # while this chunk was in flight — the re-queued
+                            # copy still has to run.
+                            if _queued_priority.get(key) == prio:
+                                _queued_priority.pop(key, None)
+                        newly: list[tuple[int, int, str]] = []
+                        while True:
+                            try:
+                                newly.append(_url_queue.get_nowait())
+                            except queue.Empty:
+                                break
+                    if newly:
+                        pending = _dedupe_sorted(sorted(pending + newly))
+                    # Per chunk, not per drain: subtitles for prioritized
+                    # visible rows must appear without waiting on the whole
+                    # catalogue.
+                    _notify_subscribers()
         finally:
             with _queue_lock:
                 idle = _url_queue.empty() and not _queued_priority

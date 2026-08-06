@@ -22,9 +22,10 @@ Earlier catalogues always win (upstream → Politrees → extras → mvsepless).
 
 **Network behaviour (Download Center):**
 
-- Checkpoint size HEADs run when the Download Center opens (and after a successful Refresh), not at app startup. Same-size identity HEADs are capped and parallelized.
+- Checkpoint size HEADs run when the Download Center opens (and after a successful Refresh), not at app startup. Same-size identity HEADs are capped per pass and ordered oldest-first, so a host that never returns an `ETag` cannot permanently block the rest; the pass repeats until nothing is left over.
+- **Trade-off of deferring the warmup:** etag-based rehost dedupe reads the size cache, so on a fresh install — before the Download Center has been opened once — there are no etags yet and content-identity dedupe is inactive in the separation-view pickers. URL/label dedupe still applies. It converges after the first Download Center visit.
 - **Name mappers** are split in two: `model_name_mapper.json` mirrors upstream verbatim, and a sibling `model_name_mapper_local.json` holds fork-local and locally-registered names. Reads merge the two (overlay wins); refresh overwrites only the mirror, so a key upstream *deletes* actually disappears instead of surviving forever in a union file. Existing installs are migrated once — keys in the mirror that upstream no longer ships move to the overlay, and the overlay's existence marks the migration done. Hash maps still replace when content changes.
-- Catalogue YAML stem subtitles are fetched in the background with at most two concurrent GETs; currently visible rows are prioritized over the rest of the catalogue.
+- Catalogue YAML stem subtitles are fetched in the background with at most two concurrent GETs; rows on the **active tab** matching the current filters are prioritized over the rest of the catalogue, and a row already queued in the bulk backlog is promoted when it becomes visible. Rescans are debounced (250 ms), so a burst of typing costs one catalogue scan rather than one per keystroke.
 
 Entries this build cannot run yet still appear in the matching network tab as **Unsupported** (grayed, not downloadable), with a short reason. Use **Hide unsupported** in the Download Center filters to conceal them. First-pass unsupported classes:
 

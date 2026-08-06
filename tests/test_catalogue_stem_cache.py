@@ -373,6 +373,36 @@ training:
         # 4 URLs at _FETCH_WORKERS=2 is two chunks, so two notifies.
         self.assertEqual(len(calls), 2)
 
+    def test_batch_reuses_one_thread_pool(self) -> None:
+        """Thread creation must not scale with the number of URLs.
+
+        A fresh executor per chunk spawned ~N threads to fetch N URLs; one pool
+        per batch caps it at _FETCH_WORKERS.
+        """
+        urls = [f"https://example.test/pool-{i}.yaml" for i in range(8)]
+        body = b"training:\n  instruments: [Vocals]\n"
+        names: set[str] = set()
+        lock = threading.Lock()
+
+        def fake_urlopen(u: str) -> _FakeResponse:
+            with lock:
+                names.add(threading.current_thread().name)
+            return _FakeResponse(body)
+
+        with mock.patch.object(csc, "_urlopen", side_effect=fake_urlopen):
+            csc.enqueue_missing(urls)
+            csc.ensure_worker_started()
+            self.assertTrue(
+                _wait_until(
+                    lambda: all(csc.lookup_stems(u) is not None for u in urls),
+                    timeout=3.0,
+                ),
+                "worker did not finish all URLs",
+            )
+        self.assertLessEqual(
+            len(names), csc._FETCH_WORKERS, f"spawned {len(names)} threads for {len(urls)} URLs"
+        )
+
     def test_worker_concurrency_at_most_two(self) -> None:
         urls = [f"https://example.test/conc-{i}.yaml" for i in range(6)]
         body = b"training:\n  instruments: [Vocals]\n"
