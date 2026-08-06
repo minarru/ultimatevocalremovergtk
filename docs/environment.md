@@ -65,7 +65,7 @@ G_MESSAGES_DEBUG=uvr-download UVR_LOG_FILE=/tmp/uvr.log python -m ui
 | `UVR_SIZE_HEAD_WORKERS` | positive int (default `8`) | Parallelism for Download Center size/identity HEAD warmup, and the size of each submitted wave. Non-numeric or `0` falls back to the default |
 | `UVR_INSECURE_DOWNLOADS` | `1` | Disable TLS certificate verification (**dev only**) |
 
-Download size-cache warmup (`size_cache_warmup start` in logs) is scheduled when the Download Center opens, not at main-window map. HEADs are submitted a wave at a time so quitting mid-warmup only waits on the wave in flight, not the whole backlog. Catalogue YAML stem fetches are rate-limited (≤2 concurrent), notify per completed chunk, and prioritize visible Download Center rows — a row already queued in the bulk backlog is promoted when it becomes visible. Name-mapper refresh merges local-only keys; see [models.md](models.md).
+Download size-cache warmup (`size_cache_warmup start` in logs) is scheduled when the Download Center opens, not at main-window map. HEADs are submitted a wave at a time so quitting mid-warmup only waits on the wave in flight, not the whole backlog. When the warmup's identity pass drops rehosted duplicates, the open Download Center removes those rows in place (`catalogue refresh removed N row(s)` in logs) instead of rebuilding the list. Catalogue YAML stem fetches are rate-limited (≤2 concurrent), notify per completed chunk, and prioritize visible Download Center rows — a row already queued in the bulk backlog is promoted when it becomes visible. Name-mapper refresh merges local-only keys; see [models.md](models.md).
 
 ---
 

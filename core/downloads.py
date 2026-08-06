@@ -183,6 +183,39 @@ class DownloadManager:
         self.catalogue_meta: Dict[str, Any] = {}
         self._size_warmup_lock = threading.Lock()
         self._size_warmup_done_for: Optional[frozenset[str]] = None
+        self._catalogue_changed_subscribers: List[Callable[[], None]] = []
+        self._catalogue_changed_lock = threading.Lock()
+
+    # -- Catalogue change notification ------------------------------------------
+
+    def subscribe_catalogue_changed(self, callback: Callable[[], None]) -> None:
+        """Call ``callback`` when the in-memory catalogue lists lose entries.
+
+        Fired from the size-warmup thread, so listeners must marshal to their
+        own loop. Mirrors ``catalogue_stem_cache.subscribe`` deliberately —
+        one notification shape for both background catalogue refinements.
+        """
+        with self._catalogue_changed_lock:
+            if callback not in self._catalogue_changed_subscribers:
+                self._catalogue_changed_subscribers.append(callback)
+
+    def unsubscribe_catalogue_changed(self, callback: Callable[[], None]) -> None:
+        with self._catalogue_changed_lock:
+            try:
+                self._catalogue_changed_subscribers.remove(callback)
+            except ValueError:
+                pass
+
+    def _notify_catalogue_changed(self) -> None:
+        with self._catalogue_changed_lock:
+            callbacks = list(self._catalogue_changed_subscribers)
+        for callback in callbacks:
+            try:
+                callback()
+            except Exception:
+                # A listener raising here would kill the warmup thread mid-wave
+                # and strand the rest of the identity pass.
+                debug("download", "catalogue_changed subscriber raised")
 
     # -- Catalogue + size cache -------------------------------------------------
 
@@ -292,6 +325,7 @@ class DownloadManager:
         dropped = before - after
         if dropped:
             debug("download", f"content dedupe dropped {dropped} download row(s)")
+            self._notify_catalogue_changed()
 
     def warm_size_cache(self) -> Dict[str, int]:
         """Prefetch remote sizes for catalogue checkpoint URLs (7-day TTL)."""

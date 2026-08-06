@@ -129,6 +129,7 @@ class DownloadCenterWindow:
         self._hide_unsupported = False
         self._stem_refresh_armed = False
         self._stem_fetch_armed = False
+        self._catalogue_refresh_armed = False
 
         saved_code = self.settings.process.user_code
         if saved_code:
@@ -660,14 +661,72 @@ class DownloadCenterWindow:
         self._update_tab_counts()
         self._update_status_from_catalogue()
         self._update_download_button()
-        self._ensure_stem_cache_listener()
+        self._ensure_background_listeners()
         self._schedule_stem_yaml_fetches()
 
-    def _ensure_stem_cache_listener(self) -> None:
+    def _ensure_background_listeners(self) -> None:
+        """Listen for both background catalogue refinements.
+
+        Stem YAML fetches rewrite subtitles; the size warmup's identity HEADs
+        can drop whole rows. Both land after the list has rendered, and both
+        notify from a worker thread.
+        """
         from core.catalogue_stem_cache import ensure_worker_started, subscribe
 
         subscribe(self._schedule_stem_subtitle_refresh)
         ensure_worker_started()
+        self.manager.subscribe_catalogue_changed(self._schedule_catalogue_row_refresh)
+
+    def _schedule_catalogue_row_refresh(self) -> None:
+        idle_on_main(self._arm_catalogue_row_refresh)
+
+    def _arm_catalogue_row_refresh(self) -> None:
+        if self._catalogue_refresh_armed:
+            return
+        self._catalogue_refresh_armed = True
+        from gi.repository import GLib
+
+        GLib.timeout_add(250, self._flush_catalogue_row_refresh)
+
+    def _flush_catalogue_row_refresh(self) -> bool:
+        """Drop rows the content dedupe removed, leaving the rest alone.
+
+        Deliberately not ``_rebuild_catalogue``: this fires while the user is
+        browsing, and a rebuild clears every list box — resetting scroll
+        position and recreating ~500 rows to delete a handful. Dedupe only ever
+        removes, so removal is the whole contract.
+        """
+        self._catalogue_refresh_armed = False
+        self._available = self.manager.available_downloads()
+        self._unsupported = self.manager.unsupported_downloads()
+
+        live: set[tuple[str, str]] = set()
+        for arch, names in self._available.items():
+            for name in names:
+                live.add((arch, name))
+        for arch, rows in self._unsupported.items():
+            for name, _reason in rows:
+                live.add((arch, name))
+
+        gone = [key for key in self._row_actions if key not in live]
+        if not gone:
+            return False
+
+        for key in gone:
+            arch, _name = key
+            action = self._row_actions.pop(key, None)
+            self._row_checks.pop(key, None)
+            self._size_lookup_ids.pop(key, None)
+            list_box = self._list_boxes.get(arch)
+            if list_box is not None and action is not None:
+                list_box.remove(action)
+
+        debug("download", f"catalogue refresh removed {len(gone)} row(s)")
+        self._update_tab_counts()
+        self._update_status_from_catalogue()
+        # A removed row may have been checked — the button count must follow.
+        self._update_download_button()
+        return False
 
     def _visible_catalogue_labels(self) -> list[str]:
         """Labels the user can actually see: active tab, current filters.
@@ -1002,7 +1061,7 @@ class DownloadCenterWindow:
         self._update_tab_counts()
         self._update_status_from_catalogue()
         self._update_download_button()
-        self._ensure_stem_cache_listener()
+        self._ensure_background_listeners()
         self._schedule_stem_yaml_fetches()
 
     def _open_vip(self) -> None:

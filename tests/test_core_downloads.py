@@ -295,5 +295,103 @@ class UpdateModelSettingsTests(unittest.TestCase):
             repo.invalidate_stem_check.assert_not_called()
 
 
+class CatalogueChangedSubscriberTests(unittest.TestCase):
+    """`_reapply_content_dedupe` must tell listeners when rows disappear.
+
+    The identity HEAD pass finishes long after the Download Center has rendered,
+    so a rehosted duplicate stays on screen unless the drop is announced.
+    """
+
+    def _manager(self) -> DownloadManager:
+        manager = DownloadManager()
+        manager.vr_download_list = {}
+        manager.demucs_download_list = {}
+        manager.apollo_download_list = {}
+        # Same bytes rehosted under a different name/label/URL: only the shared
+        # content id can collapse these two.
+        manager.mdx_download_list = {
+            "Kept Model": {"kept.ckpt": "https://example.test/kept.ckpt"},
+            "Rehosted Copy": {"rehosted.ckpt": "https://mirror.test/rehosted.ckpt"},
+        }
+        return manager
+
+    def test_notifies_subscribers_when_dedupe_drops_a_row(self):
+        manager = self._manager()
+        calls = []
+        manager.subscribe_catalogue_changed(lambda: calls.append(1))
+
+        with patch(
+            "core.downloads.content_ids_from_cache",
+            return_value={
+                "https://example.test/kept.ckpt": "etag-abc",
+                "https://mirror.test/rehosted.ckpt": "etag-abc",
+            },
+        ):
+            manager._reapply_content_dedupe()
+
+        self.assertEqual(list(manager.mdx_download_list), ["Kept Model"])
+        self.assertEqual(len(calls), 1)
+
+    def test_silent_when_nothing_is_dropped(self):
+        """The warm path is the common one — it must cost no re-render."""
+        manager = self._manager()
+        calls = []
+        manager.subscribe_catalogue_changed(lambda: calls.append(1))
+
+        with patch(
+            "core.downloads.content_ids_from_cache",
+            return_value={
+                "https://example.test/kept.ckpt": "etag-abc",
+                "https://mirror.test/rehosted.ckpt": "etag-xyz",
+            },
+        ):
+            manager._reapply_content_dedupe()
+
+        self.assertEqual(len(manager.mdx_download_list), 2)
+        self.assertEqual(calls, [])
+
+    def test_unsubscribe_stops_delivery(self):
+        manager = self._manager()
+        calls = []
+
+        def listener() -> None:
+            calls.append(1)
+
+        manager.subscribe_catalogue_changed(listener)
+        manager.unsubscribe_catalogue_changed(listener)
+
+        with patch(
+            "core.downloads.content_ids_from_cache",
+            return_value={
+                "https://example.test/kept.ckpt": "etag-abc",
+                "https://mirror.test/rehosted.ckpt": "etag-abc",
+            },
+        ):
+            manager._reapply_content_dedupe()
+
+        self.assertEqual(calls, [])
+
+    def test_failing_subscriber_does_not_break_the_warmup_thread(self):
+        manager = self._manager()
+        calls = []
+
+        def boom() -> None:
+            raise RuntimeError("subscriber blew up")
+
+        manager.subscribe_catalogue_changed(boom)
+        manager.subscribe_catalogue_changed(lambda: calls.append(1))
+
+        with patch(
+            "core.downloads.content_ids_from_cache",
+            return_value={
+                "https://example.test/kept.ckpt": "etag-abc",
+                "https://mirror.test/rehosted.ckpt": "etag-abc",
+            },
+        ):
+            manager._reapply_content_dedupe()
+
+        self.assertEqual(len(calls), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

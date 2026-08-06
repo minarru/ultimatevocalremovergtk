@@ -189,18 +189,19 @@ class StemSubtitleDebounceTests(unittest.TestCase):
 
 
 class DownloadCenterStemSubscriptionTests(unittest.TestCase):
-    def test_ensure_stem_cache_listener_subscribes_and_starts_worker(self) -> None:
+    def test_ensure_background_listeners_subscribes_and_starts_worker(self) -> None:
         from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
         win._stem_refresh_armed = False
+        win.manager = mock.MagicMock()
 
         with mock.patch(
             "core.catalogue_stem_cache.subscribe"
         ) as subscribe, mock.patch(
             "core.catalogue_stem_cache.ensure_worker_started"
         ) as ensure:
-            DownloadCenterWindow._ensure_stem_cache_listener(win)
+            DownloadCenterWindow._ensure_background_listeners(win)
 
         subscribe.assert_called_once_with(win._schedule_stem_subtitle_refresh)
         ensure.assert_called_once_with()
@@ -218,12 +219,12 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win._update_tab_counts = mock.MagicMock()
         win._update_status_from_catalogue = mock.MagicMock()
         win._update_download_button = mock.MagicMock()
-        win._ensure_stem_cache_listener = mock.MagicMock()
+        win._ensure_background_listeners = mock.MagicMock()
         win._schedule_stem_yaml_fetches = mock.MagicMock()
 
         DownloadCenterWindow._refresh_done(win, True, {MDX_ARCH_TYPE: ["M"]}, {})
 
-        win._ensure_stem_cache_listener.assert_called_once_with()
+        win._ensure_background_listeners.assert_called_once_with()
         win._schedule_stem_yaml_fetches.assert_called_once_with()
 
     def test_schedule_coalesces_repeated_calls(self) -> None:
