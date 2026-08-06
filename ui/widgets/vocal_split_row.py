@@ -33,6 +33,7 @@ from ..help_text import (
     VOC_SPLIT_MODEL_SELECT_HELP,
 )
 from ..option_summaries import OFF, vocal_split_summary
+from .lazy_populate import LazyPopulator
 from .rows import (
     get_combo_value,
     make_combo_row,
@@ -66,10 +67,12 @@ class VocalSplitRow(Adw.ExpanderRow):
         #: combo starts seeded with just the stored tag and is filled on first
         #: expansion. Until then its value must not be written back, or an
         #: unopened row would clobber the stored tag with ``NO_MODEL``.
-        self._models_ready = False
+        #: ``_populator.ready`` is that gate.
         self._stored_splitter = NO_MODEL
-        self._defer_populate = False
-        self._populate_idle_scheduled = False
+        self._populator = LazyPopulator(
+            is_expanded=self.get_expanded,
+            populate=self._populate_models_now,
+        )
 
         self.split_switch = make_switch_row("Enable vocal split mode")
         self.splitter_row = make_combo_row("Vocal splitter model", [NO_MODEL])
@@ -100,7 +103,7 @@ class VocalSplitRow(Adw.ExpanderRow):
             row.connect("notify::active", self._on_row_changed)
         for row in (self.splitter_row, self.deverb_row):
             row.connect("notify::selected", self._on_row_changed)
-        self.connect("notify::expanded", self._populate_models)
+        self.connect("notify::expanded", self._on_expanded)
 
         self.set_subtitle(OFF)
         self._sync_dependents()
@@ -122,7 +125,7 @@ class VocalSplitRow(Adw.ExpanderRow):
             set_combo_value(
                 self.deverb_row, process.deverb_vocal_opt or _DEFAULT_DEVERB
             )
-            if not self._models_ready:
+            if not self._populator.ready:
                 seed = (
                     [NO_MODEL]
                     if self._stored_splitter == NO_MODEL
@@ -139,12 +142,9 @@ class VocalSplitRow(Adw.ExpanderRow):
         # hand would be shut on them by an unrelated settings reload. Defer
         # the karaoke-model hash off the restore path (same F1 pattern as
         # MethodView._sync_expander_summaries).
-        self._defer_populate = True
-        try:
+        with self._populator.defer():
             if self.split_switch.get_active() or self.deverb_switch.get_active():
                 self.set_expanded(True)
-        finally:
-            self._defer_populate = False
 
     def persist_to_settings(self, settings: typing.Any) -> None:
         """Write every global vocal-split key back to ``settings``."""
@@ -157,7 +157,7 @@ class VocalSplitRow(Adw.ExpanderRow):
         )
         # Only trust the combo once its real list has loaded; before that it is
         # a seeded placeholder and the stored tag is authoritative.
-        if self._models_ready:
+        if self._populator.ready:
             process.vocal_splitter = get_combo_value(self.splitter_row)
         else:
             process.vocal_splitter = self._stored_splitter
@@ -181,28 +181,10 @@ class VocalSplitRow(Adw.ExpanderRow):
         self.save_inst_switch.set_sensitive(split_on)
         self.deverb_row.set_sensitive(self.deverb_switch.get_active())
 
-    def _populate_models(self, *_args: typing.Any) -> None:
-        if self._models_ready or not self.get_expanded():
-            return
-        if self._defer_populate:
-            if not self._populate_idle_scheduled:
-                self._populate_idle_scheduled = True
-                from ..dispatch import idle_on_main
-
-                idle_on_main(self._run_deferred_populate)
-            return
-        self._populate_models_now()
-
-    def _run_deferred_populate(self) -> None:
-        self._populate_idle_scheduled = False
-        if self._models_ready or not self.get_expanded():
-            return
-        self._populate_models_now()
+    def _on_expanded(self, *_args: typing.Any) -> None:
+        self._populator.ensure()
 
     def _populate_models_now(self) -> None:
-        if self._models_ready:
-            return
-        self._models_ready = True
         try:
             values = self._repo.karaoke_model_list(self._settings)
         except Exception:
@@ -237,27 +219,25 @@ class VocalSplitRow(Adw.ExpanderRow):
         """Re-list karaoke models after the installed set changed.
 
         Snapshotting the combo into ``_stored_splitter`` first is load-bearing:
-        while ``_models_ready`` is True the combo is authoritative, and demoting
-        it without capturing the value would revert the selection to whatever
-        the last ``apply_from_settings`` stored. The snapshot is also what keeps
+        while the list is populated the combo is authoritative, and invalidating
+        without capturing the value would revert the selection to whatever the
+        last ``apply_from_settings`` stored. The snapshot is also what keeps
         ``_populate_models_now``'s "stored tag missing from the fresh list stays
         selectable" branch working across a refresh.
 
-        Collapsed rows are left invalidated but unpopulated -- resolving the
-        list hashes checkpoints, and the next expand will do it.
+        A collapsed row is invalidated but not repopulated -- resolving the list
+        hashes checkpoints, and the next expand will do it.
         """
-        if self._models_ready:
+        if self._populator.ready:
             self._stored_splitter = get_combo_value(self.splitter_row) or NO_MODEL
-        self._models_ready = False
-        if self.get_expanded():
-            self._populate_models()
+        self._populator.invalidate()
 
     def _on_row_changed(self, *_args: typing.Any) -> None:
         if self._syncing:
             return
         self._sync_dependents()
         if self._settings is not None:
-            if self._models_ready:
+            if self._populator.ready:
                 self._stored_splitter = (
                     get_combo_value(self.splitter_row) or NO_MODEL
                 )
