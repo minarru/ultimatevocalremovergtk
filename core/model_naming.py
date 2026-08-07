@@ -63,6 +63,12 @@ _AUTHOR_RE = re.compile(
 
 _DEMUCS_RE = re.compile(r"^Demucs (v\d+): (.+)$", re.IGNORECASE)
 
+#: mvsepless HyperACE rows append this parenthetical; crop it for display.
+_HYPERACE_FINETUNE_PAREN_RE = re.compile(
+    r"\s*\(\s*finetuned\s+anvuew\s+vocal\s+model\s*\)\s*",
+    re.IGNORECASE,
+)
+
 
 #: Category prefixes that themselves declare a family. ``Roformer Model: `` is
 #: absent on purpose: it does not say *which* Roformer, and the remainder does.
@@ -114,6 +120,12 @@ def canonical_family(text: str) -> str:
     return ""
 
 
+def _strip_hyperace_finetune_paren(text: str) -> str:
+    """Drop the mvsepless HyperACE ``(finetuned anvuew vocal model)`` note."""
+    cleaned = _HYPERACE_FINETUNE_PAREN_RE.sub(" ", text)
+    return re.sub(r"\s+", " ", cleaned).strip(" -—\u2014")
+
+
 def canonical_display_name(label: str) -> str:
     """Return the canonical display name for a catalogue label.
 
@@ -155,6 +167,7 @@ def canonical_display_name(label: str) -> str:
     remainder = remainder.replace(TITLE_SEPARATOR.strip(), " ")
     remainder = remainder.replace(AUTHOR_SEPARATOR.strip(), " ")
     remainder = re.sub(r"\s+", " ", remainder).strip(" -—")
+    remainder = _strip_hyperace_finetune_paren(remainder)
 
     if family and remainder:
         title = f"{family}{TITLE_SEPARATOR}{remainder}"
@@ -169,6 +182,8 @@ def canonical_display_name(label: str) -> str:
 
 
 def _join(family: str, remainder: str, author: str) -> str:
-    text = re.sub(r"\s+", " ", remainder.replace("|", " ")).strip(" -\u2014")
+    text = _strip_hyperace_finetune_paren(
+        re.sub(r"\s+", " ", remainder.replace("|", " ")).strip(" -\u2014")
+    )
     title = f"{family}{TITLE_SEPARATOR}{text}" if text else family
     return f"{title}{AUTHOR_SEPARATOR}{author}" if author else title

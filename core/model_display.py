@@ -335,10 +335,15 @@ def display_name_for_basename(
         return basename
     lookup = catalogue_index if catalogue_index is not None else load_mdx_catalog_display_index()
     if basename in lookup:
-        return lookup[basename]
+        catalogue_name = lookup[basename]
+        # VIP / raw catalogue rows sometimes echo the filename; prefer mapper.
+        if catalogue_name != basename:
+            return catalogue_name
     mapped = lookup_mapper_display(basename, name_mapper)
     if mapped:
         return mapped
+    if basename in lookup:
+        return lookup[basename]
     return basename
 
 

@@ -53,6 +53,18 @@ class CanonicalDisplayNameTests(unittest.TestCase):
             "MelBand Roformer — Inst Fullness v8 (experimental) · Gabox",
         )
 
+    def test_crops_hyperace_finetune_parenthetical(self) -> None:
+        self.assertEqual(
+            canonical_display_name(
+                "BS Roformer Instrumental HyperACE v2 "
+                "(finetuned anvuew vocal model) by Unwa"
+            ),
+            "BandSplit Roformer — Instrumental HyperACE v2 · Unwa",
+        )
+        # Idempotent on the already-cropped (and already-canonical) form.
+        cropped = "BandSplit Roformer — Instrumental HyperACE v2 · Unwa"
+        self.assertEqual(canonical_display_name(cropped), cropped)
+
     def test_label_without_family_passes_through(self) -> None:
         self.assertEqual(canonical_display_name("UVR-DeNoise-Lite"), "UVR-DeNoise-Lite")
 

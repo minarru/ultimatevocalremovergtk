@@ -171,6 +171,16 @@ class DisplayNameForBasenameTests(unittest.TestCase):
             "manual_stem",
         )
 
+    def test_mapper_when_catalogue_echoes_basename(self) -> None:
+        mapper = {"MDX23C_D1581.ckpt": "MDX23C-InstVoc D1581"}
+        catalogue = {"MDX23C_D1581": "MDX23C_D1581"}
+        self.assertEqual(
+            display_name_for_basename(
+                "MDX23C_D1581", mapper, catalogue_index=catalogue
+            ),
+            "MDX23C-InstVoc D1581",
+        )
+
 
 class MapBasenamesToDisplayTests(unittest.TestCase):
     def test_demucs_catalogue_priority_over_mapper(self) -> None:
