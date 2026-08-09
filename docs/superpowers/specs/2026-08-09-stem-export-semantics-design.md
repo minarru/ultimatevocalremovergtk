@@ -41,21 +41,33 @@ then displays exactly as-is.
 
 ## Design
 
-### One shared core alias table, two purpose-specific layers on top
+### One shared core alias table, three call sites, not three copies
 
-`_STEM_ALIASES` (UI, `ui/widgets/stem_only.py`) and `_ENSEMBLE_STEM_ALIASES`
-(ensemble, `core/model_stem_semantics.py`) are, underneath their different
-names, almost the same data — both map common raw stem spellings
-(`vocals`, `inst`, `drums`, …) to the same canonical labels. Maintaining
-them as two hand-synced dicts is exactly the sprawl to avoid: every new
-curated name has to be added twice, and the two copies can silently drift.
+There turn out to be **three** near-duplicate vocabularies for "what does
+`vocals`/`instrumental`/`drums` mean," not two:
 
-They consolidate **only where the two tables already agree** — vocals/
-vocal/instrumental/inst/other/bass/drums/guitar/piano resolve to the exact
-same canonical values in both today, verified by direct comparison, not
-assumed. Those become one shared table, `_STEM_NAME_ALIASES` in
-`core/model_stem_semantics.py` (the existing home of the ensemble
-semantics), exposed as a small pure lookup:
+1. `_STEM_ALIASES` (UI, `ui/widgets/stem_only.py`).
+2. `_ENSEMBLE_STEM_ALIASES` (`core/model_stem_semantics.py`), used by
+   `canonical_ensemble_stem_tag` for filename/export-tag canonicalization.
+3. `core/stems.py`'s `_VOCAL_TOKENS` / `_INSTRUMENTAL_TOKENS` /
+   `_SIMPLE_STEM_TOKENS` — used by `bucket_for_model_stem`, which
+   `ensemble_stem_bucket` actually delegates to. This is the one the new
+   stem-focus anchoring mechanism depends on, and it was previously assumed
+   (incorrectly) to be `_ENSEMBLE_STEM_ALIASES` itself.
+
+The third copy has already drifted from the other two: it recognizes
+`"instrument"` as an instrumental-family alias (added later, specifically so
+`bs_inst_hyperace2_unwa` matches — see the related ensemble-stem-semantics
+design) and neither of the other two tables know about it, so a model stem
+literally called `"instrument"` displays wrong in the UI today even though
+ensemble bucketing already handles it correctly.
+
+They consolidate **only where all sources already agree or are a strict,
+verified addition** — vocals/vocal/voc/instrumental/inst/instrument/other/
+bass/drums/guitar/piano resolve to the same canonical concept everywhere
+they overlap today (checked directly, not assumed). Those become one shared
+table, `_STEM_NAME_ALIASES` in `core/model_stem_semantics.py` (the existing
+home of the ensemble semantics), exposed as a small pure lookup:
 
 ```python
 def canonical_stem_alias(name: str) -> Optional[str]:
@@ -63,10 +75,16 @@ def canonical_stem_alias(name: str) -> Optional[str]:
     for UI display, ensemble bucketing, and stem-focus anchoring."""
 ```
 
-`ensemble_stem_bucket`'s alias table gains `"voc"` (an ensemble-only spelling
-today) through this move — harmless, since it resolves to the same
-already-shared `VOCAL_STEM` both sides already agree on, not a new concept
-on either side.
+`bucket_for_model_stem` (`core/stems.py`) is rewritten to ask
+`canonical_stem_alias` whether a token is the vocals/instrumental/drums/
+bass/guitar/piano concept, instead of consulting its own private token
+sets — removing that third copy rather than adding a fourth. Net effect on
+existing behavior: the UI gains `"voc"` and `"instrument"` as recognized
+aliases (previously only `core/stems.py` knew them); ensemble tag
+canonicalization gains `"instrument"`; `bucket_for_model_stem`'s own
+resolution is behavior-identical (same tokens, now sourced from one place
+instead of its own copy), which the existing
+`tests/test_ensemble_stem_buckets.py` suite is the regression guard for.
 
 What does **not** consolidate, and why each stays separate:
 
