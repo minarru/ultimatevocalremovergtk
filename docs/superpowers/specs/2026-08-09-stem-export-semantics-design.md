@@ -41,25 +41,72 @@ then displays exactly as-is.
 
 ## Design
 
-### Two tables, kept deliberately separate
+### One shared core alias table, two purpose-specific layers on top
 
-Per the related ensemble-stem-semantics design, three strings already exist
-per stem concept: the yaml's raw name, an ensemble bucket/export tag, and a
-UI display label. This design adds a fourth role — a **persistence anchor**
-— and is explicit about which existing mechanism answers which question, so
-no single table has to be the answer to everything:
+`_STEM_ALIASES` (UI, `ui/widgets/stem_only.py`) and `_ENSEMBLE_STEM_ALIASES`
+(ensemble, `core/model_stem_semantics.py`) are, underneath their different
+names, almost the same data — both map common raw stem spellings
+(`vocals`, `inst`, `drums`, …) to the same canonical labels. Maintaining
+them as two hand-synced dicts is exactly the sprawl to avoid: every new
+curated name has to be added twice, and the two copies can silently drift.
 
-| Table | Lives in | Answers | Scope |
-|---|---|---|---|
-| `_ENSEMBLE_STEM_ALIASES` / `ensemble_stem_bucket` | `core/model_stem_semantics.py` | "what bucket does this stem belong to, for combining/matching" | Reused as-is; not modified by this design |
-| `_STEM_ALIASES` / `canonical_stem_name` | `ui/widgets/stem_only.py` | "what should this stem be *called* on screen" | Extended: new curated entries for cosmetic casing only |
-| *(new)* persistence anchor | `ui/widgets/stem_only.py` | "which physical stem did the user actually ask for, independent of this model's primary/secondary labeling" | New: described below |
+They consolidate **only where the two tables already agree** — vocals/
+vocal/instrumental/inst/other/bass/drums/guitar/piano resolve to the exact
+same canonical values in both today, verified by direct comparison, not
+assumed. Those become one shared table, `_STEM_NAME_ALIASES` in
+`core/model_stem_semantics.py` (the existing home of the ensemble
+semantics), exposed as a small pure lookup:
 
-The persistence anchor is **not** a third naming table, and it does not
-depend on the display table at all — it's a single call to
-`ensemble_stem_bucket`, gated by confidence (below). This keeps the two
-existing tables fully decoupled from each other: display casing can never
-affect which stem gets exported, and vice versa.
+```python
+def canonical_stem_alias(name: str) -> Optional[str]:
+    """Shared raw-name -> canonical-stem lookup. Single source of truth
+    for UI display, ensemble bucketing, and stem-focus anchoring."""
+```
+
+`ensemble_stem_bucket`'s alias table gains `"voc"` (an ensemble-only spelling
+today) through this move — harmless, since it resolves to the same
+already-shared `VOCAL_STEM` both sides already agree on, not a new concept
+on either side.
+
+What does **not** consolidate, and why each stays separate:
+
+- **UI's specialty names** (`speech`, `music`, `sfx`, `effects`) stay in the
+  UI's own table, not the shared one. Verified, not assumed: today,
+  `canonical_ensemble_stem_tag("speech")` passes through unchanged
+  (`'speech'`, lowercase) because ensemble's table has no such entries.
+  Moving them into a table ensemble also reads would silently start
+  capitalizing ensemble bucket tags/filenames for specialty-stem models —
+  a real behavior change to ensemble output, not a consequence-free
+  rename. If that capitalization is wanted on the ensemble side too, it's
+  a separate, deliberate decision — not a side effect of this cleanup.
+- **`_ENSEMBLE_STEM_PRESERVE`** (ensemble's karaoke/BV/specialty
+  protection) isn't part of the alias table at all — it's a distinct check
+  in `canonical_ensemble_stem_tag` that runs *before* the alias table is
+  ever consulted. Sharing the core alias table doesn't touch it.
+- **Complement ("No X") handling** stays separate per consumer — verified,
+  not assumed: the ensemble table's flat `"no other": NO_OTHER_STEM` entry
+  matches a fully-lowercase raw yaml value directly, while the UI's
+  `canonical_stem_name` only recognizes an already-capitalized `"No "`
+  prefix (`"No vocals"`) before splitting and re-looking-up the suffix.
+  These catch different real inputs; unifying them would make one of the
+  two *less* robust, not simpler.
+- **`_COMPLEMENT_DISPLAY`** (UI's prettified complement labels, e.g. `"Mix
+  minus Other"`) and the ensemble bucket tags remain distinct strings for
+  the same previously-diagnosed reason: a parenthesized display label
+  breaks the ensemble member-collection filename regex. Not touched here.
+
+New curated entries (the ongoing process described below) default to the
+shared core table, since that's where the actual new-model pressure
+concentrates (new vocals/instrumental-family spellings). A curator can
+still add a UI-only or ensemble-only entry when a name is genuinely
+specific to one side — the structure doesn't force false unification.
+
+Per the related ensemble-stem-semantics design, distinct strings already
+exist per stem concept for good reasons (yaml name, bucket/export tag,
+display label). This design adds a fourth role, the **persistence anchor**,
+which is not a naming table either — it's a single call to
+`ensemble_stem_bucket`, gated by confidence (below), so display casing can
+never affect which stem gets exported, and vice versa.
 
 ### New setting: `process.stem_focus`
 
@@ -143,14 +190,17 @@ anchoring code calls `resolve_karaoke_confidence` directly for the tuple.
 
 ### Display casing: curated table, human-confirmed additions
 
-`_STEM_ALIASES` gains entries for names observed in real checkpoints that
-aren't already covered (exact strings, no pattern-matching or generic
-humanizer, per earlier discussion). Each new entry is proposed with its
-source (which model, which raw stems) and confirmed before being added —
-especially for any name that might be alluding to an existing concept rather
-than being self-evidently novel casing. This is a process rule for
-implementation, not a one-time task in this spec: new naming conventions
-will keep appearing, and each is a small, separate, reviewable change.
+The shared `_STEM_NAME_ALIASES` table gains entries for names observed in
+real checkpoints that aren't already covered (exact strings, no
+pattern-matching or generic humanizer, per earlier discussion). Because the
+table is now shared, a single curated addition improves display casing,
+ensemble bucketing, and stem-focus anchoring at once, instead of needing the
+same name added to two places. Each new entry is proposed with its source
+(which model, which raw stems) and confirmed before being added — especially
+for any name that might be alluding to an existing concept rather than being
+self-evidently novel casing. This is a process rule for implementation, not
+a one-time task in this spec: new naming conventions will keep appearing,
+and each is a small, separate, reviewable change.
 
 ### Verification: an audit script, not just tests
 
@@ -194,6 +244,11 @@ from a fresh install.
 
 Stdlib unittest, no network, no GTK (all pure functions):
 
+- `canonical_stem_alias` — the shared core table, plus a regression test
+  that `canonical_ensemble_stem_tag("speech")` / `"sfx"` / `"music"` /
+  `"effects"` are still returned unchanged (lowercase) after the
+  consolidation — the exact behavior the design deliberately preserves by
+  keeping specialty names out of the shared table.
 - `canonical_stem_name` / `stem_display_label` — one case per newly curated
   entry, added incrementally as entries are confirmed.
 - New anchoring logic — match-primary, match-secondary, no-match-falls-back-
