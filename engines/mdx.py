@@ -118,6 +118,15 @@ def scnet_variant_from_state_dict(keys: typing.Sequence[str]) -> typing.Optional
 _SCNET_MASKED_HINTS = {"scnet_masked", "SCNet Masked"}
 
 
+class UnknownMDXCArchitecture(ValueError):
+    """The config's ``model``/``cls`` section matches no known MDX-C variant.
+
+    A distinct type from a plain ``ValueError`` so callers that try a
+    fallback build path on "not this architecture" don't also catch a
+    genuine ``ValueError`` raised by a variant's own constructor.
+    """
+
+
 def _build_mdx_c_model(
     config: typing.Any,
     state_dict_keys: typing.Optional[typing.Sequence[str]] = None,
@@ -133,13 +142,27 @@ def _build_mdx_c_model(
 
     model_cfg = getattr(config, 'model', None)
     if model_cfg is None:
-        raise ValueError('Unknown MDX-C architecture in configuration.')
+        raise UnknownMDXCArchitecture('Unknown MDX-C architecture in configuration.')
 
     if 'num_bands' in model_cfg:
         kwargs = _filter_init_kwargs(MelBandRoformer, model_cfg)
         kwargs['match_input_audio_length'] = True
         return MelBandRoformer(**kwargs)
-    if 'freqs_per_bands' in model_cfg:
+    # Most BS-Roformer yamls declare freqs_per_bands explicitly, but some
+    # (e.g. the "BS Roformer SW" shared-weight variant) omit it and rely on
+    # BSRoformer's own DEFAULT_FREQS_PER_BANDS. Without this fallback such a
+    # config falls through every other architecture check below and gets
+    # built as TFC_TDF_net instead, which crashes on the first field it reads
+    # (``model.norm``) that a Roformer config never had.
+    is_bs_roformer_without_declared_bands = (
+        'freqs_per_bands' not in model_cfg
+        and 'stereo' in model_cfg
+        and 'depth' in model_cfg
+        and 'band_SR' not in model_cfg
+        and 'sources' not in model_cfg
+        and 'band_specs' not in model_cfg
+    )
+    if 'freqs_per_bands' in model_cfg or is_bs_roformer_without_declared_bands:
         kwargs = _filter_init_kwargs(BSRoformer, model_cfg)
         # HyperACE attaches a segm branch to every mask estimator. Prefer the
         # checkpoint's own keys: only the packaged v2-instrumental yaml carries
@@ -152,6 +175,11 @@ def _build_mdx_c_model(
             variant = 'v2'
         if variant is not None:
             kwargs['hyperace'] = variant
+        # Value Residual Learning checkpoints (e.g. Inst-EXP-Value-Residual)
+        # carry a to_value_residual_mix subtree that plain BSRoformer lacks;
+        # detect it the same way as the hyperace/SCNet variant checks above.
+        if any('to_value_residual_mix' in key for key in (state_dict_keys or ())):
+            kwargs['value_residual'] = True
         return BSRoformer(**kwargs)
     if 'band_SR' in model_cfg or 'sources' in model_cfg:
         has_tran_kwargs = any(str(key).startswith('tran_') for key in model_cfg)
@@ -173,7 +201,7 @@ def _build_mdx_c_model(
         from ml.bandit import MultiMaskMultiSourceBandSplitRNN
 
         return MultiMaskMultiSourceBandSplitRNN(**_filter_init_kwargs(MultiMaskMultiSourceBandSplitRNN, model_cfg))
-    raise ValueError('Unknown MDX-C architecture in configuration.')
+    raise UnknownMDXCArchitecture('Unknown MDX-C architecture in configuration.')
 
 def _mdx_pitch_reference_sr() -> int:
     return 44100
@@ -252,6 +280,24 @@ def mdx_export_routing_flags(
             else stem_list
         ),
     }
+
+
+def mdx_combined_secondary_key(sources: typing.Any, stem_list: typing.Any, secondary_stem_label: typing.Any):
+    """Key in ``sources`` holding the complement of a 2-stem MDX-C model.
+
+    ``secondary_stem_label`` is a UVR pair name, which for a model trained on
+    stems outside the pair table (``center``/``wide``) matches no source key at
+    all. Fall back to the model's own other instrument.
+    """
+    key = resolve_in_sources(sources, StemId(str(secondary_stem_label or "")))
+    if key is None and len(stem_list) == 2:
+        key = resolve_in_sources(sources, StemId(str(stem_list[1])))
+    if key is None:
+        available = sorted(map(str, sources.keys())) if isinstance(sources, dict) else []
+        raise KeyError(
+            f"stem {str(secondary_stem_label)!r} not in sources {available}"
+        )
+    return key
 
 
 def derive_mdx_complement(native_source: typing.Any, mix: typing.Any, *, invert_spec: typing.Any=False, match_frequency_pitch: typing.Any=None):
@@ -725,9 +771,9 @@ class SeperateMDXC(SeperateAttributes):
                     
                     if self.is_mdx_combine_stems and len(stem_list) >= 2:
                         if len(stem_list) == 2:
-                            sec_key = resolve_in_sources(
-                                working_sources, StemId(self.secondary_stem)
-                            ) or self.secondary_stem
+                            sec_key = mdx_combined_secondary_key(
+                                working_sources, stem_list, self.secondary_stem
+                            )
                             secondary_source = working_sources[sec_key]
                         else:
                             prim_key = resolve_in_sources(

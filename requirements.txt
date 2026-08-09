@@ -17,7 +17,10 @@ attrs==26.1.0
 audioread==3.1.0
 # Roformer (BS-Roformer / Mel-Band Roformer) architecture deps. Vendored in
 # ml/{attend,bs_roformer,mel_band_roformer}.py; einops/librosa/packaging are
-# already pinned above. These two are the only new packages roformer needs.
+# already pinned above. beartype and rotary-embedding-torch (below) are the
+# base roformer deps. PoPE-pytorch + its own deps (einx, frozendict,
+# torch-einops-utils) are only for BSRoformer's optional ``use_pope`` path
+# (community "BS PolarFormer" checkpoints) -- see ml/bs_roformer.py.
 beartype==0.22.9
 certifi==2026.6.17
 cffi==2.0.0
@@ -27,8 +30,10 @@ cython==3.2.6
 decorator==5.3.1
 diffq==0.2.4
 einops==0.8.2
+einx==0.4.3
 filelock==3.29.4
 flatbuffers==25.12.19
+frozendict==2.4.7
 frozenlist==1.8.0
 fsspec==2026.6.0
 future==1.0.0
@@ -70,6 +75,7 @@ patsy==1.0.2
 pillow==12.2.0
 platformdirs==4.10.0
 pooch==1.9.0
+PoPE-pytorch==0.2.1
 propcache==0.5.2
 protobuf==7.35.1
 psutil==7.2.2
@@ -97,6 +103,7 @@ statsmodels==0.14.6
 sympy==1.14.0
 threadpoolctl==3.6.0
 torch==2.12.1
+torch-einops-utils==0.1.15
 torchmetrics==1.9.0
 torchvision==0.27.1
 tqdm==4.68.3

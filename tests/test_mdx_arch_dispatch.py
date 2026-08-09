@@ -175,6 +175,94 @@ class MdxArchDispatchTests(unittest.TestCase):
         model = _build_mdx_c_model(config)
         self.assertEqual(model.__class__.__name__, "BSRoformer")
 
+    def test_bs_roformer_without_declared_bands_still_dispatches_as_bs_roformer(
+        self,
+    ) -> None:
+        """"BS Roformer SW" (shared-weight, multi-stem) yamls omit
+        freqs_per_bands entirely and rely on BSRoformer's own
+        DEFAULT_FREQS_PER_BANDS. Missing the fallback here used to fall
+        through every architecture check and land on TFC_TDF_net, which
+        crashes reading model.norm -- a field only MDX23C configs declare."""
+        config = ConfigDict(
+            {
+                "model": {
+                    "dim": 32,
+                    "depth": 1,
+                    "stereo": True,
+                    "num_stems": 2,
+                    "time_transformer_depth": 1,
+                    "freq_transformer_depth": 1,
+                    "use_shared_bias": True,
+                },
+                "audio": {"sample_rate": 44100, "hop_length": 512},
+                "training": {"instruments": ["Vocals", "Instrumental"]},
+                "inference": {"batch_size": 1, "dim_t": 256},
+            }
+        )
+        model = _build_mdx_c_model(config)
+        self.assertEqual(model.__class__.__name__, "BSRoformer")
+
+    def test_bs_roformer_use_pope_dispatches_and_builds(self) -> None:
+        """``use_pope`` (community "BS PolarFormer" checkpoints) is a yaml
+        key that already matches BSRoformer's own constructor arg name, so
+        it flows through _filter_init_kwargs without any checkpoint-key
+        detection -- unlike hyperace/value_residual above."""
+        from ml.bs_roformer import DEFAULT_FREQS_PER_BANDS
+
+        config = ConfigDict(
+            {
+                "model": {
+                    "dim": 32,
+                    "depth": 1,
+                    "stereo": True,
+                    "num_stems": 1,
+                    "time_transformer_depth": 1,
+                    "freq_transformer_depth": 1,
+                    "freqs_per_bands": DEFAULT_FREQS_PER_BANDS,
+                    "use_pope": True,
+                },
+                "audio": {"sample_rate": 44100, "hop_length": 512},
+                "training": {"instruments": ["Vocals", "Instrumental"]},
+                "inference": {"batch_size": 1, "dim_t": 256},
+            }
+        )
+        model = _build_mdx_c_model(config)
+        self.assertEqual(model.__class__.__name__, "BSRoformer")
+        state_dict_keys = model.state_dict().keys()
+        self.assertTrue(any(k.endswith("pope_embed.bias") for k in state_dict_keys))
+        self.assertFalse(any("rotary_embed" in k for k in state_dict_keys))
+
+    def test_bs_roformer_use_pope_shares_one_embedding_per_axis(self) -> None:
+        """The real checkpoints this ports (e.g. bs_pope_vocals_zfturbo) carry
+        identical pope_embed weights at every layer for a given axis (time or
+        freq) and different weights between axes -- i.e. one shared PoPE
+        module per axis, not one per layer. Verified by loading a real
+        checkpoint's state dict; this test locks in the same sharing via
+        object identity so a future refactor can't silently instantiate a
+        fresh PoPE per layer instead of reusing the module."""
+        from ml.bs_roformer import BSRoformer, DEFAULT_FREQS_PER_BANDS
+
+        model = BSRoformer(
+            dim=32,
+            depth=3,
+            stereo=True,
+            num_stems=1,
+            time_transformer_depth=1,
+            freq_transformer_depth=1,
+            freqs_per_bands=DEFAULT_FREQS_PER_BANDS,
+            use_pope=True,
+        )
+        pope_embed_ids = {
+            name: id(module)
+            for name, module in model.named_modules()
+            if name.endswith("pope_embed")
+        }
+        time_pope_embeds = {v for k, v in pope_embed_ids.items() if ".0.layers.0.0." in k}
+        freq_pope_embeds = {v for k, v in pope_embed_ids.items() if ".1.layers.0.0." in k}
+        self.assertEqual(len(time_pope_embeds), 1)
+        self.assertEqual(len(freq_pope_embeds), 1)
+        self.assertNotEqual(time_pope_embeds, freq_pope_embeds)
+
     def test_bs_roformer_preserves_input_length(self) -> None:
         import torch
 

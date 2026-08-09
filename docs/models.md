@@ -43,26 +43,35 @@ Supported Mel-Band / BS-Roformer / MDX23C / SCNet (including Masked and Tran) / 
 
 ### Triaging an unsupported entry
 
-[`scripts/model_probe.py`](../scripts/model_probe.py) answers "could this build run it?" **without downloading the weights**. The architecture comes from the yaml (a couple of KB), so it instantiates with random parameters and runs a real forward pass; `--check-keys` then range-fetches only the checkpoint *header* — ~90 KB of a 448 MB file — to diff `state_dict` names.
+[`scripts/model_probe.py`](../scripts/model_probe.py) answers "could this build run it?" **without downloading the weights**. The architecture comes from the yaml (a couple of KB), so it instantiates with random parameters and runs a real forward pass; `--check-keys` then range-fetches only the checkpoint *header* — ~90 KB of a 448 MB file — to diff `state_dict` names (cached by URL across repeat runs).
 
 ```bash
 python scripts/model_probe.py --entry mbr_syhft_4stem              # fetch yaml, build, forward
 python scripts/model_probe.py --entry mbr_wsa --check-keys         # + remote state_dict diff
 python scripts/model_probe.py --config <local.yaml> --checkpoint <local.ckpt>   # fully offline
 python scripts/model_probe.py --config <local.yaml> --json out.json
+python scripts/model_probe.py --sweep --check-keys --json sweep.json   # every unsupported catalogue entry, one summary
 ```
 
 Verdicts, worst to best. Exit status is 0 only for `buildable`:
 
 | Verdict | Meaning |
 |---|---|
+| `probe-error` | (`--sweep` only) The entry itself couldn't be fetched/read — not a build/forward outcome. |
 | `build-failed` | The architecture does not instantiate — a genuinely unported feature. |
 | `forward-failed` | Instantiates but the forward pass breaks. |
-| `config-ignored` | Builds *only* because `_filter_init_kwargs` discarded keys the yaml asked for. |
+| `config-ignored` | Builds *only* because kwarg filtering discarded keys the yaml asked for. |
 | `key-mismatch` | Runs, but parameter names disagree with the checkpoint. |
 | `buildable` | Builds, runs, and (if checked) matches the checkpoint's keys. |
 
 `config-ignored` is the one to watch: [`engines.mdx._filter_init_kwargs`](../engines/mdx.py) drops yaml keys a class does not accept, so a model can build cleanly while missing the exact feature that made it unsupported. Use this verdict to catch gaps between yaml and the port before flipping catalogue support flags.
+
+[`docs/unsupported-models-probe.md`](unsupported-models-probe.md) is a point-in-time `--sweep --check-keys` run over every currently-unsupported entry, with per-group findings (which gaps are real architecture work vs. plumbing, and which verdicts undersell how wrong a build actually is).
+
+**VR and MSST HTDemucs are probeable, not supported.** The script builds `CascadedASPPNet`/`CascadedNet` ([`ml/vr_network/`](../ml/vr_network/)) and the vendored-but-unwired `HTDemucs` ([`vendor/demucs/htdemucs.py`](../vendor/demucs/htdemucs.py)) straight from a mvsepless yaml, entirely inside the probe script — neither `engines/vr.py` nor `engines/demucs_engine.py` changed, so this does not add real separation support for either class, only triage. Two things worth knowing:
+
+- **VR's architecture variant is derived from the checkpoint's byte size**, never declared in the yaml (`engines/vr.py`'s own selection heuristic) — probing a VR entry needs `--checkpoint` or `--check-keys` so the probe has a size to work from; without one it reports `build-failed` rather than guessing.
+- **VR6 ("v6 beta3") entries have no matching network class anywhere in this port** — `ml/vr_network/` only ever implements the VR5/"5.1" family. The probe reports these as `build-failed` explicitly rather than silently building the wrong (VR5) architecture for them.
 
 ## HyperACE BS-Roformer
 
@@ -87,6 +96,14 @@ python scripts/model_probe.py --config <hyperace.yaml> --checkpoint <hyperace.ck
 All three published checkpoints were verified this way against ~300 KB of range-fetched headers rather than 853 MB of weights.
 
 HyperACE configs may still carry `use_torch_checkpoint` in yaml; it is accepted but optional on BS-Roformer builds that implement checkpointing.
+
+## PoPE BS-Roformer ("BS PolarFormer")
+
+A handful of community BS-Roformer checkpoints (`use_pope: true` in the training yaml, labelled "BS PolarFormer" upstream) replace rotary position embeddings with **Polar Coordinate Positional Embedding** ([arXiv:2509.10534](https://arxiv.org/abs/2509.10534)) — magnitudes go through `softplus` and get rotated by a per-head, per-frequency phase, with an extra learned bias on the key side. `BSRoformer(use_pope=True)` in [`ml/bs_roformer.py`](../ml/bs_roformer.py) wires this in via [`PoPE-pytorch`](https://pypi.org/project/PoPE-pytorch/) (same author/lineage as the `rotary-embedding-torch` dependency BS-Roformer already used), pinned in `requirements.txt` along with its own `einx`/`frozendict`/`torch-einops-utils` deps.
+
+Unlike `hyperace`/`value_residual` above, `use_pope` is a literal yaml key that already matches the constructor argument name, so it reaches `BSRoformer.__init__` through the ordinary `_filter_init_kwargs` path — no checkpoint-key detection needed.
+
+**One `PoPE` module per axis, not per layer.** `time_pope_embed`/`freq_pope_embed` are each built once and shared across every one of `depth` outer layers (mirroring how `RotaryEmbedding` is shared in the non-PoPE path). This was verified against a real checkpoint (`bs_pope_vocals_zfturbo`), not assumed: `pope_embed.bias`/`pope_embed.inv_freqs` are byte-identical across all 12 layers for a given axis and differ only between time and freq — confirming the training code shares one module per axis rather than training 12 independent ones. Loading that checkpoint into this build reports `state_dict 723 matched, 0 missing, 0 unexpected`.
 
 ## SCNet (4-stem music separation)
 

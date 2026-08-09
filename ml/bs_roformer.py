@@ -20,6 +20,7 @@ from beartype import BeartypeConf, beartype as _beartype
 beartype = _beartype(conf=BeartypeConf(is_pep484_tower=True))
 
 from rotary_embedding_torch import RotaryEmbedding
+from PoPE_pytorch import PoPE, flash_attn_with_pope
 
 from einops import rearrange, pack, unpack
 from einops.layers.torch import Rearrange
@@ -97,7 +98,9 @@ class Attention(Module):
             dim_head: int = 64,
             dropout: float = 0.,
             rotary_embed: RotaryEmbedding | None = None,
-            flash: bool = True
+            pope_embed: PoPE | None = None,
+            flash: bool = True,
+            learned_value_residual_mix: bool = False
     ) -> None:
         super().__init__()
         self.heads = heads
@@ -105,11 +108,20 @@ class Attention(Module):
         dim_inner = heads * dim_head
 
         self.rotary_embed = rotary_embed
+        self.pope_embed = pope_embed
+        assert not (self.rotary_embed is not None and self.pope_embed is not None), \
+            'cannot have both rotary and pope embeddings'
 
         self.attend = Attend(flash=flash, dropout=dropout)
 
         self.norm = RMSNorm(dim)
         self.to_qkv = nn.Linear(dim, dim_inner * 3, bias=False)
+
+        # Value Residual Learning (arXiv:2410.17897): later layers mix their
+        # own value projection with the first layer's, gated per head. Only
+        # present on checkpoints trained with it (e.g. Inst-EXP-Value-Residual),
+        # which is why this is a subtree that may simply not exist.
+        self.to_value_residual_mix = nn.Linear(dim, heads) if learned_value_residual_mix else None
 
         self.to_gates = nn.Linear(dim, heads)
 
@@ -118,22 +130,32 @@ class Attention(Module):
             nn.Dropout(dropout)
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, value_residual: Tensor | None = None) -> tuple[Tensor, Tensor]:
         x = self.norm(x)
 
         q, k, v = rearrange(self.to_qkv(x), 'b n (qkv h d) -> qkv b h n d', qkv=3, h=self.heads)
+        orig_v = v
 
-        if self.rotary_embed is not None:
-            q = self.rotary_embed.rotate_queries_or_keys(q)
-            k = self.rotary_embed.rotate_queries_or_keys(k)
+        if self.to_value_residual_mix is not None:
+            assert value_residual is not None
+            mix = self.to_value_residual_mix(x)
+            mix = rearrange(mix, 'b n h -> b h n 1').sigmoid()
+            v = v.lerp(value_residual, mix)
 
-        out = self.attend(q, k, v)
+        if self.pope_embed is not None:
+            out = flash_attn_with_pope(q, k, v, pos_emb=self.pope_embed(q.shape[-2]), softmax_scale=self.scale)
+        else:
+            if self.rotary_embed is not None:
+                q = self.rotary_embed.rotate_queries_or_keys(q)
+                k = self.rotary_embed.rotate_queries_or_keys(k)
+
+            out = self.attend(q, k, v)
 
         gates = self.to_gates(x)
         out = out * rearrange(gates, 'b n h -> b h n 1').sigmoid()
 
         out = rearrange(out, 'b h n d -> b n (h d)')
-        return self.to_out(out)
+        return self.to_out(out), orig_v
 
 
 class LinearAttention(Module):
@@ -205,18 +227,22 @@ class Transformer(Module):
             ff_mult: int = 4,
             norm_output: bool = True,
             rotary_embed: RotaryEmbedding | None = None,
+            pope_embed: PoPE | None = None,
             flash_attn: bool = True,
-            linear_attn: bool = False
+            linear_attn: bool = False,
+            add_value_residual: bool = False
     ) -> None:
         super().__init__()
         self.layers = ModuleList([])
+        self.linear_attn = linear_attn
 
         for _ in range(depth):
             if linear_attn:
                 attn: AttnModule = LinearAttention(dim=dim, dim_head=dim_head, heads=heads, dropout=attn_dropout, flash=flash_attn)
             else:
                 attn = Attention(dim=dim, dim_head=dim_head, heads=heads, dropout=attn_dropout,
-                                 rotary_embed=rotary_embed, flash=flash_attn)
+                                 rotary_embed=rotary_embed, pope_embed=pope_embed, flash=flash_attn,
+                                 learned_value_residual_mix=add_value_residual)
 
             self.layers.append(ModuleList([
                 attn,
@@ -225,15 +251,21 @@ class Transformer(Module):
 
         self.norm = RMSNorm(dim) if norm_output else nn.Identity()
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, value_residual: Tensor | None = None) -> tuple[Tensor, Tensor | None]:
+        first_values: Tensor | None = None
 
         for layer in self.layers:
             layer_pair = cast(ModuleList, layer)
             attn, ff = cast(tuple[AttnModule, FeedForward], (layer_pair[0], layer_pair[1]))
-            x = attn(x) + x
+            if self.linear_attn:
+                x = cast(Tensor, attn(x)) + x
+            else:
+                attn_out, next_values = cast(Tuple[Tensor, Tensor], attn(x, value_residual=value_residual))
+                x = attn_out + x
+                first_values = default(first_values, next_values)
             x = ff(x) + x
 
-        return self.norm(x)
+        return self.norm(x), first_values
 
 
 # bandsplit module
@@ -404,6 +436,16 @@ class BSRoformer(Module):
             # not from the ``model:`` section — see engines.mdx._build_mdx_c_model.
             # Accepts a variant name (``"v1"``/``"v2"``) or a bool meaning v2.
             hyperace: bool | str = False,
+            # Value Residual Learning (arXiv:2410.17897). Detected from the
+            # checkpoint's own ``to_value_residual_mix`` keys in
+            # engines.mdx._build_mdx_c_model, not read from the yaml.
+            value_residual: bool = False,
+            # Polar Coordinate Positional Embedding (arXiv:2509.10534), a
+            # RoPE replacement used by some community "BS PolarFormer"
+            # checkpoints. Unlike hyperace/value_residual above, this one
+            # yaml keys line up with the constructor arg directly, so no
+            # checkpoint-key detection is needed.
+            use_pope: bool = False,
     ) -> None:
         super().__init__()
 
@@ -425,18 +467,32 @@ class BSRoformer(Module):
             norm_output=False
         )
 
-        time_rotary_embed = RotaryEmbedding(dim=dim_head)
-        freq_rotary_embed = RotaryEmbedding(dim=dim_head)
+        time_rotary_embed: RotaryEmbedding | None
+        freq_rotary_embed: RotaryEmbedding | None
+        time_pope_embed: PoPE | None
+        freq_pope_embed: PoPE | None
+        if use_pope:
+            time_pope_embed = PoPE(dim=dim_head, heads=heads)
+            freq_pope_embed = PoPE(dim=dim_head, heads=heads)
+            time_rotary_embed = freq_rotary_embed = None
+        else:
+            time_rotary_embed = RotaryEmbedding(dim=dim_head)
+            freq_rotary_embed = RotaryEmbedding(dim=dim_head)
+            time_pope_embed = freq_pope_embed = None
 
-        for _ in range(depth):
+        for layer_index in range(depth):
+            # The first layer has no prior value stream to mix with.
+            is_first = layer_index == 0
             tran_modules: list[Transformer] = []
             if linear_transformer_depth > 0:
                 tran_modules.append(Transformer(depth=linear_transformer_depth, linear_attn=True, **transformer_kwargs))
             tran_modules.append(
-                Transformer(depth=time_transformer_depth, rotary_embed=time_rotary_embed, **transformer_kwargs)
+                Transformer(depth=time_transformer_depth, rotary_embed=time_rotary_embed, pope_embed=time_pope_embed,
+                            add_value_residual=value_residual and not is_first, **transformer_kwargs)
             )
             tran_modules.append(
-                Transformer(depth=freq_transformer_depth, rotary_embed=freq_rotary_embed, **transformer_kwargs)
+                Transformer(depth=freq_transformer_depth, rotary_embed=freq_rotary_embed, pope_embed=freq_pope_embed,
+                            add_value_residual=value_residual and not is_first, **transformer_kwargs)
             )
             self.layers.append(nn.ModuleList(tran_modules))
 
@@ -547,6 +603,11 @@ class BSRoformer(Module):
         # axial / hierarchical attention (stays on accelerator)
 
         store: list[Tensor | None] = [None] * len(self.layers)
+        # Value residual anchors: the first layer's un-mixed value projection,
+        # reused by every later layer's ``to_value_residual_mix`` gate. Stay
+        # None on checkpoints without that subtree, where nothing reads them.
+        time_v_residual: Tensor | None = None
+        freq_v_residual: Tensor | None = None
         for i, transformer_block in enumerate(self.layers):
             block_list = cast(ModuleList, transformer_block)
             block = cast(list[Transformer], [block_list[j] for j in range(len(block_list))])
@@ -556,9 +617,9 @@ class BSRoformer(Module):
 
                 x, ft_ps = pack([x], 'b * d')
                 if self.use_torch_checkpoint:
-                    x = cast(Tensor, checkpoint(linear_transformer, x, use_reentrant=False))
+                    x = cast(Tuple[Tensor, Optional[Tensor]], checkpoint(linear_transformer, x, None, use_reentrant=False))[0]
                 else:
-                    x = linear_transformer(x)
+                    x, _ = linear_transformer(x)
                 x, = unpack(x, ft_ps, 'b * d')
             else:
                 time_transformer, freq_transformer = block
@@ -574,18 +635,26 @@ class BSRoformer(Module):
             x, ps = pack([x], '* t d')
 
             if self.use_torch_checkpoint:
-                x = cast(Tensor, checkpoint(time_transformer, x, use_reentrant=False))
+                x, next_time_v_residual = cast(
+                    Tuple[Tensor, Optional[Tensor]],
+                    checkpoint(time_transformer, x, time_v_residual, use_reentrant=False),
+                )
             else:
-                x = time_transformer(x)
+                x, next_time_v_residual = time_transformer(x, value_residual=time_v_residual)
+            time_v_residual = default(time_v_residual, next_time_v_residual)
 
             x, = unpack(x, ps, '* t d')
             x = rearrange(x, 'b f t d -> b t f d')
             x, ps = pack([x], '* f d')
 
             if self.use_torch_checkpoint:
-                x = cast(Tensor, checkpoint(freq_transformer, x, use_reentrant=False))
+                x, next_freq_v_residual = cast(
+                    Tuple[Tensor, Optional[Tensor]],
+                    checkpoint(freq_transformer, x, freq_v_residual, use_reentrant=False),
+                )
             else:
-                x = freq_transformer(x)
+                x, next_freq_v_residual = freq_transformer(x, value_residual=freq_v_residual)
+            freq_v_residual = default(freq_v_residual, next_freq_v_residual)
 
             x, = unpack(x, ps, '* f d')
             if self.skip_connection:

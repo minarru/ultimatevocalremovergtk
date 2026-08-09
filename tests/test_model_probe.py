@@ -251,6 +251,188 @@ class BuildFromConfigTests(unittest.TestCase):
             self.assertIn("architecture", built.error.lower())
 
 
+class InstantiateRoutingTests(unittest.TestCase):
+    """A real ValueError from a variant's own constructor must not be
+    reinterpreted as 'not an MDX-C config, try TFC_TDF_net instead' —
+    only UnknownMDXCArchitecture means that."""
+
+    @unittest.skipUnless(os.path.isfile(_MDX23C_CONFIG), "config not present")
+    def test_a_genuine_valueerror_is_not_swallowed_into_the_tfc_tdf_fallback(
+        self,
+    ) -> None:
+        from unittest.mock import patch
+
+        with patch(
+            "engines.mdx._build_mdx_c_model",
+            side_effect=ValueError("bad kwarg value"),
+        ):
+            built = model_probe.build_from_config(_MDX23C_CONFIG)
+        self.assertIsNone(built.module)
+        self.assertIn("bad kwarg value", built.error)
+
+
+def _vr_model_section(**overrides: Any) -> Any:
+    from ml_collections import ConfigDict
+
+    base = dict(
+        is_vr5=True, is_vr6=False, model_params={"bins": 256}, nout=None, nout_lstm=None
+    )
+    base.update(overrides)
+    return ConfigDict(base)
+
+
+class VrModelBuildTests(unittest.TestCase):
+    """VR's architecture variant comes from checkpoint byte size, never the
+    yaml — that's the one fact this whole builder exists to respect."""
+
+    def test_a_classic_bucket_builds_cascadedasppnet(self) -> None:
+        module = model_probe._build_vr_model(
+            _vr_model_section(), checkpoint_size_bytes=31191 * 1024
+        )
+        self.assertEqual(type(module).__name__, "CascadedASPPNet")
+
+    def test_a_5_1_bucket_builds_cascadednet(self) -> None:
+        module = model_probe._build_vr_model(
+            _vr_model_section(nout=32, nout_lstm=128), checkpoint_size_bytes=56817 * 1024
+        )
+        self.assertEqual(type(module).__name__, "CascadedNet")
+
+    def test_refuses_to_guess_the_variant_without_a_checkpoint_size(self) -> None:
+        with self.assertRaises(ValueError):
+            model_probe._build_vr_model(_vr_model_section(), checkpoint_size_bytes=None)
+
+    def test_vr6_is_reported_as_unported_rather_than_built_wrong(self) -> None:
+        """No class anywhere in ml/vr_network implements VR6 — building the
+        VR5 network for it would silently report the wrong architecture."""
+        with self.assertRaises(ValueError):
+            model_probe._build_vr_model(
+                _vr_model_section(is_vr6=True), checkpoint_size_bytes=31191 * 1024
+            )
+
+
+class HtdemucsModelBuildTests(unittest.TestCase):
+    """The vendored HTDemucs is never imported by demucs_engine.py — this is
+    the only thing in the repo that actually instantiates it."""
+
+    def _config(self, **htdemucs_overrides: Any) -> Any:
+        from ml_collections import ConfigDict
+
+        htdemucs = dict(channels=8, depth=2, t_layers=1, num_subbands=1)
+        htdemucs.update(htdemucs_overrides)
+        return ConfigDict(
+            {
+                "model": "htdemucs",
+                "htdemucs": htdemucs,
+                "training": {"instruments": ["vocals", "other"], "segment": 2},
+            }
+        )
+
+    def test_builds_with_sources_from_training_instruments(self) -> None:
+        config = self._config()
+        module, _dropped = model_probe._build_htdemucs_model(config, config.htdemucs)
+        self.assertEqual(type(module).__name__, "HTDemucs")
+        self.assertEqual(sorted(module.sources), ["other", "vocals"])
+
+    def test_an_unaccepted_kwarg_is_reported_dropped_not_silently_ignored(self) -> None:
+        """``num_subbands`` is a real MSST yaml field this vendored copy's
+        __init__ has no parameter for."""
+        config = self._config()
+        _module, dropped = model_probe._build_htdemucs_model(config, config.htdemucs)
+        self.assertIn("num_subbands", dropped)
+
+    def test_raises_without_training_instruments(self) -> None:
+        from ml_collections import ConfigDict
+
+        config = ConfigDict(
+            {"model": "htdemucs", "htdemucs": {"channels": 8}, "training": {}}
+        )
+        with self.assertRaises(ValueError):
+            model_probe._build_htdemucs_model(config, config.htdemucs)
+
+
+class VrAndHtdemucsRoutingTests(unittest.TestCase):
+    """End to end through build_from_config / forward_probe, not just the
+    builder helpers — this is what --entry actually exercises."""
+
+    def _write(self, tmp: str, name: str, text: str) -> str:
+        path = os.path.join(tmp, name)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        return path
+
+    def test_htdemucs_config_builds_and_runs_via_model_type_hint(self) -> None:
+        import tempfile
+
+        yaml_text = """
+model: htdemucs
+htdemucs:
+  channels: 8
+  depth: 4
+  t_layers: 1
+training:
+  instruments: [vocals, other]
+  segment: 2
+audio:
+  sample_rate: 44100
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(tmp, "ht.yaml", yaml_text)
+            built = model_probe.build_from_config(path, model_type_hint="htdemucs")
+        self.assertEqual(built.architecture, "HTDemucs")
+        forward = model_probe.forward_probe(built)
+        self.assertTrue(forward.ok, forward.error)
+
+    def test_vr_config_without_a_checkpoint_size_reports_build_failed_not_a_crash(
+        self,
+    ) -> None:
+        import tempfile
+
+        yaml_text = """
+model:
+  is_vr5: true
+  is_vr6: false
+  nout: null
+  nout_lstm: null
+  model_params:
+    bins: 256
+training:
+  instruments: [Instrumental, Vocals]
+audio:
+  sample_rate: 44100
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(tmp, "vr.yaml", yaml_text)
+            built = model_probe.build_from_config(path, model_type_hint="vr")
+        self.assertIsNone(built.module)
+        self.assertIn("checkpoint size", built.error)
+
+    def test_vr_config_with_a_checkpoint_size_builds_and_runs(self) -> None:
+        import tempfile
+
+        yaml_text = """
+model:
+  is_vr5: true
+  is_vr6: false
+  nout: null
+  nout_lstm: null
+  model_params:
+    bins: 256
+training:
+  instruments: [Instrumental, Vocals]
+audio:
+  sample_rate: 44100
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(tmp, "vr.yaml", yaml_text)
+            built = model_probe.build_from_config(
+                path, model_type_hint="vr", checkpoint_size_bytes=31191 * 1024
+            )
+        self.assertEqual(built.architecture, "CascadedASPPNet")
+        forward = model_probe.forward_probe(built)
+        self.assertTrue(forward.ok, forward.error)
+        self.assertEqual(len(forward.input_shape), 4, "VR takes a spectrogram, not a waveform")
+
+
 class DroppedConfigKeyTests(unittest.TestCase):
     """``_filter_init_kwargs`` silently drops yaml keys a class does not accept,
     so a model can build while missing the very feature that made it unsupported."""
@@ -312,6 +494,23 @@ class ForwardProbeTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(result.error, "boom")
 
+    def test_a_mono_stereo_false_module_gets_single_channel_noise(self) -> None:
+        """BSRoformer/MelBandRoformer assert their own stereo flag against the
+        input's channel count -- probing a mono config (``stereo: false``)
+        with the usual 2-channel noise trips that assertion every time."""
+        from ml.bs_roformer import DEFAULT_FREQS_PER_BANDS, BSRoformer
+
+        module = BSRoformer(
+            dim=8, depth=1, stereo=False, freqs_per_bands=DEFAULT_FREQS_PER_BANDS
+        )
+        module.eval()
+        built = model_probe.BuiltModel(
+            config_path="x.yaml", architecture="BSRoformer", module=module
+        )
+        result = model_probe.forward_probe(built, seconds=0.1)
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(result.input_shape[:2], (1, 1))
+
 
 _CATALOGUE = {
     "mbr_syhft_4stem": {
@@ -350,6 +549,89 @@ class ResolveTargetTests(unittest.TestCase):
     def test_config_filename_comes_from_the_url(self) -> None:
         target = model_probe.resolve_target("mbr_syhft_4stem", catalogue=_CATALOGUE)
         self.assertEqual(target.config_name, "c.yaml")
+
+
+class IterCatalogueTargetsTests(unittest.TestCase):
+    """The triage workload: sweep the whole catalogue, not one entry."""
+
+    def test_defaults_to_unsupported_entries_only(self) -> None:
+        targets = list(model_probe.iter_catalogue_targets(_CATALOGUE))
+        self.assertEqual([t.entry_id for t in targets], ["medley_thing"])
+
+    def test_include_supported_widens_it_to_the_whole_catalogue(self) -> None:
+        targets = list(
+            model_probe.iter_catalogue_targets(_CATALOGUE, unsupported_only=False)
+        )
+        self.assertEqual(
+            sorted(t.entry_id for t in targets), ["mbr_syhft_4stem", "medley_thing"]
+        )
+
+
+class SweepCatalogueTests(unittest.TestCase):
+    """One bad entry (no config_url, fetch failure, ...) must not abort the sweep."""
+
+    @unittest.skipUnless(os.path.isfile(_SCNET_CONFIG), "config not present")
+    def test_tallies_a_buildable_result_and_a_probe_error_separately(self) -> None:
+        from unittest.mock import patch
+        import io as _io
+        import contextlib
+
+        targets = [
+            model_probe.ProbeTarget(
+                entry_id="ok", label="OK", config_url="https://example.invalid/ok.yaml"
+            ),
+            model_probe.ProbeTarget(entry_id="bad", label="Bad", config_url=""),
+        ]
+        with patch("model_probe._fetch_config", return_value=_SCNET_CONFIG):
+            with contextlib.redirect_stdout(_io.StringIO()):
+                results = model_probe.sweep_catalogue(targets)
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0].verdict, "buildable")
+        self.assertEqual(results[1].verdict, model_probe.VERDICT_PROBE_ERROR)
+
+        summary = model_probe.render_summary(results)
+        self.assertIn("1 buildable", summary)
+        self.assertIn("1 probe-error", summary)
+
+    @unittest.skipUnless(os.path.isfile(_SCNET_CONFIG), "config not present")
+    def test_releases_each_module_so_a_long_sweep_does_not_exhaust_memory(self) -> None:
+        """A sweep builds real models back to back; keeping every one's
+        weights resident until the whole sweep finishes is what runs a
+        machine out of RAM (observed on a real 300-entry sweep)."""
+        from unittest.mock import patch
+        import io as _io
+        import contextlib
+
+        targets = [
+            model_probe.ProbeTarget(
+                entry_id="ok", label="OK", config_url="https://example.invalid/ok.yaml"
+            )
+        ]
+        with patch("model_probe._fetch_config", return_value=_SCNET_CONFIG):
+            with contextlib.redirect_stdout(_io.StringIO()):
+                results = model_probe.sweep_catalogue(targets)
+
+        self.assertIsNone(results[0].build.module)
+        # verdict/ok must still be correct after the module is gone.
+        self.assertEqual(results[0].verdict, "buildable")
+        self.assertTrue(results[0].build.ok)
+
+
+class BuiltModelReleaseTests(unittest.TestCase):
+    def test_release_module_preserves_ok_after_clearing_the_module(self) -> None:
+        built = model_probe.BuiltModel("c.yaml", "SCNet", module=object(), parameters=1)
+        self.assertTrue(built.ok)
+        built.release_module()
+        self.assertIsNone(built.module)
+        self.assertTrue(built.ok)
+
+    def test_release_module_preserves_a_failed_build_too(self) -> None:
+        built = model_probe.BuiltModel("c.yaml", "", error="boom")
+        self.assertFalse(built.ok)
+        built.release_module()
+        self.assertIsNone(built.module)
+        self.assertFalse(built.ok)
 
 
 class ReportTests(unittest.TestCase):
@@ -455,6 +737,45 @@ class HttpRangeReaderTests(unittest.TestCase):
         self.assertEqual(size, 123456)
 
 
+class CachedCheckpointKeysTests(unittest.TestCase):
+    """The point: a repeat ``--check-keys`` run must not re-do the range-fetch."""
+
+    def test_a_repeat_url_is_served_from_disk_without_a_real_fetch(self) -> None:
+        import tempfile
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            url = "https://example.invalid/ckpt.safetensors"
+            with patch(
+                "model_probe.remote_checkpoint_keys", return_value=["a.weight"]
+            ) as fake:
+                first = model_probe.cached_remote_checkpoint_keys(url, tmp)
+                self.assertEqual(fake.call_count, 1)
+            # No patch active: a real fetch here would hit net_guard and raise,
+            # so this only passes if the cache, not the network, served it.
+            second = model_probe.cached_remote_checkpoint_keys(url, tmp)
+        self.assertEqual(first, ["a.weight"])
+        self.assertEqual(second, ["a.weight"])
+
+    def test_different_urls_are_cached_independently(self) -> None:
+        import tempfile
+        from unittest.mock import patch
+
+        def fake(url: str) -> list:
+            return [f"{url}-key"]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("model_probe.remote_checkpoint_keys", side_effect=fake):
+                a = model_probe.cached_remote_checkpoint_keys(
+                    "https://example.invalid/a.safetensors", tmp
+                )
+                b = model_probe.cached_remote_checkpoint_keys(
+                    "https://example.invalid/b.safetensors", tmp
+                )
+        self.assertEqual(a, ["https://example.invalid/a.safetensors-key"])
+        self.assertEqual(b, ["https://example.invalid/b.safetensors-key"])
+
+
 class CliTests(unittest.TestCase):
     """``--config`` is the fully offline path: no catalogue, no checkpoint."""
 
@@ -520,6 +841,30 @@ class CliTests(unittest.TestCase):
                 payload = json.load(handle)
         self.assertEqual(payload["verdict"], "buildable")
         self.assertEqual(payload["architecture"], "SCNet")
+
+    @unittest.skipUnless(os.path.isfile(_SCNET_CONFIG), "config not present")
+    def test_sweep_probes_the_catalogue_and_writes_a_json_summary(self) -> None:
+        import io as _io
+        import contextlib
+        import tempfile
+        from unittest.mock import patch
+
+        buf = _io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "sweep.json")
+            with patch(
+                "core.mvsepless_catalog.load_mvsepless_models", return_value=_CATALOGUE
+            ), patch("model_probe._fetch_config", return_value=_SCNET_CONFIG):
+                with contextlib.redirect_stdout(buf):
+                    code = model_probe.main(["--sweep", "--json", out])
+            with open(out, encoding="utf-8") as handle:
+                payload = json.load(handle)
+        # _CATALOGUE has one unsupported entry (medley_thing); --sweep defaults
+        # to unsupported-only, so exactly that one gets probed.
+        self.assertEqual(len(payload["results"]), 1)
+        self.assertEqual(payload["results"][0]["entry_id"], "medley_thing")
+        self.assertEqual(code, 0)
+        self.assertIn("buildable", buf.getvalue())
 
 
 if __name__ == "__main__":
