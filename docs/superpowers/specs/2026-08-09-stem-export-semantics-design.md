@@ -55,27 +55,23 @@ no single table has to be the answer to everything:
 | `_STEM_ALIASES` / `canonical_stem_name` | `ui/widgets/stem_only.py` | "what should this stem be *called* on screen" | Extended: new curated entries for cosmetic casing only |
 | *(new)* persistence anchor | `ui/widgets/stem_only.py` | "which physical stem did the user actually ask for, independent of this model's primary/secondary labeling" | New: described below |
 
-The persistence anchor is **not** a third naming table. It's a comparison
-that reuses the other two, choosing between them by confidence (below).
+The persistence anchor is **not** a third naming table, and it does not
+depend on the display table at all — it's a single call to
+`ensemble_stem_bucket`, gated by confidence (below). This keeps the two
+existing tables fully decoupled from each other: display casing can never
+affect which stem gets exported, and vice versa.
 
-### New setting: `process.stem_focus` + `process.stem_focus_bucket`
+### New setting: `process.stem_focus`
 
-Two plain string fields, next to the existing `process.primary_stem_only` /
-`secondary_stem_only` they complement (same shared VR/MDX namespace — this
-explicitly also covers <=2-stem MDX-C models, which already go through the
-same exclusive-mode code path as VR and classic MDX; no separate handling
-needed).
+One plain string field — the chosen stem's ensemble bucket tag (e.g.
+`Vocals`, `Instrumental_WithBackingVocals`) — next to the existing
+`process.primary_stem_only` / `secondary_stem_only` it complements (same
+shared VR/MDX namespace — this explicitly also covers <=2-stem MDX-C
+models, which already go through the same exclusive-mode code path as VR
+and classic MDX; no separate handling needed). Empty string means "All."
 
-- `stem_focus`: the chosen stem's plain canonical name (via
-  `canonical_stem_name`, cheap, always computable, no model flags needed).
-  Empty string means "All."
-- `stem_focus_bucket`: the chosen stem's ensemble bucket tag (via
-  `ensemble_stem_bucket`), set **only** when it was computed under curated
-  confidence (see below). Empty when not available.
-
-Both are written together whenever the user picks a stem, and both are read
-together whenever a newly-selected model needs its exclusive-mode combo
-re-synced.
+There is deliberately only one field. See confidence tiering below for why
+a second "safe fallback" field isn't needed.
 
 ### Confidence tiering
 
@@ -84,28 +80,33 @@ re-synced.
 
 - `is_bv_model` is only ever set from curated hash-table metadata
   (`core/model_data.py:1063`) — never guessed. It's either confidently known
-  or `False`.
+  or `False`. Always safe to pass through unconditionally.
 - `is_karaoke` (`resolve_is_karaoke`) checks curated metadata first, but
   **falls back to `infer_is_karaoke_from_hints`** — a substring search for
   `"karaoke"` across the model's name/config/weight basename — for any model
   without a curated entry. That's every new community model until someone
   curates it.
 
-A new, additive helper, `is_karaoke_curated(model_data) -> bool`, reports
-*only* the first (reliable) branch — whether curated metadata settled it —
-without changing `resolve_is_karaoke`'s existing `bool` contract (it has
-three production call sites today; none of them need to change).
+**The fix is a single confidence gate on one boolean, not a second parallel
+mechanism.** `ensemble_stem_bucket(stem, is_karaoke=False, is_bv=False)`
+already falls through to the plain alias-table lookup by default — that
+*is* the safe fallback, and it's already there. So: pass `is_karaoke=True`
+into `ensemble_stem_bucket` only when it came from curated metadata; pass
+`False` whenever it's merely guessed (never pass a guessed `True`). No
+second field, no second comparison path — an uncurated model's stems
+naturally bucket through the same plain alias table the fallback would have
+used anyway.
 
-**Rule:** bucket-tag comparison is only used when curated confidence holds
-for the model providing the anchor *and* the model being switched to.
-`stem_focus_bucket` is only ever written when the source model's karaoke
-classification came from curated metadata (`is_bv_model` needs no such
-check — it's never guessed). If either side falls back to guessed
-confidence, comparison uses the plain `stem_focus` canonical name instead —
-still a real improvement over today's position-based booleans, just not
-karaoke/BV-aware. A guessed classification is never used to compute or
-compare a bucket tag, so a wrong guess degrades to the simpler (safe)
-matching mode rather than producing a confident wrong answer.
+`resolve_is_karaoke` currently has no way to report *how* it decided —
+callers just get a `bool`. Rather than add a second function that
+re-derives the same curated-check independently (two places that have to
+agree forever), its body is extracted into
+`resolve_karaoke_confidence(...) -> tuple[bool, bool]` (`is_karaoke`,
+`is_curated`), and `resolve_is_karaoke` becomes a one-line wrapper:
+`return resolve_karaoke_confidence(**kwargs)[0]`. Its three existing
+production call sites (`core/model_data.py`, `core/model_stem_semantics.py`,
+`scripts/generate_models_catalogue.py`) keep working unchanged; the new
+anchoring code calls `resolve_karaoke_confidence` directly for the tuple.
 
 ### Data flow
 
@@ -122,23 +123,23 @@ matching mode rather than producing a confident wrong answer.
    (`super()._configure_save_stems(model)`), so no per-view changes are
    needed beyond this one method.
 2. **`sync_from_settings`** (exclusive branch): if `stem_focus` is set,
-   compute the *new* model's bucket only if its own karaoke/BV
-   classification is curated-confidence; if either that or `stem_focus_bucket`
-   itself is unavailable, compare `stem_focus` against the new model's plain
-   canonical primary/secondary names instead. Then:
-   - Matches primary → select "primary only," and immediately re-persist
-     `is_primary_stem_only=True` / `secondary=False` for this model — not
-     just a display update. A run started without touching the widget again
-     after a model switch must already have correct flags on disk.
-   - Matches secondary → mirror.
-   - Matches neither → "All." `stem_focus`/`stem_focus_bucket` are **not**
-     cleared — the preference stays parked for a future model where it's
-     relevant, rather than being discarded because the current model is
-     unrelated (e.g. a dereverb model).
+   compute the *new* model's primary/secondary buckets via
+   `ensemble_stem_bucket`, gating `is_karaoke` by
+   `resolve_karaoke_confidence` as above, and compare against `stem_focus`:
+   - Matches primary's bucket → select "primary only," and immediately
+     re-persist `is_primary_stem_only=True` / `secondary=False` for this
+     model — not just a display update. A run started without touching the
+     widget again after a model switch must already have correct flags on
+     disk.
+   - Matches secondary's bucket → mirror.
+   - Matches neither → "All." `stem_focus` is **not** cleared — the
+     preference stays parked for a future model where it's relevant, rather
+     than being discarded because the current model is unrelated (e.g. a
+     dereverb model).
 3. **When the user changes the combo themselves**, persistence writes the
    existing booleans (unchanged, engines don't change) and re-derives
-   `stem_focus` / `stem_focus_bucket` from whichever physical stem was
-   picked, using the same confidence rule.
+   `stem_focus` from whichever physical stem was picked, via the same
+   confidence-gated `ensemble_stem_bucket` call.
 
 ### Display casing: curated table, human-confirmed additions
 
@@ -184,10 +185,10 @@ the house style of `scripts/model_probe.py`:
 
 ## Migration risk
 
-`process.stem_focus` / `stem_focus_bucket` don't exist in any current
-`settings.json`. First load after upgrade simply has them empty ("All"
-until the user picks something), which is a one-time no-op, not a
-regression — no different from a fresh install.
+`process.stem_focus` doesn't exist in any current `settings.json`. First
+load after upgrade simply has it empty ("All" until the user picks
+something), which is a one-time no-op, not a regression — no different
+from a fresh install.
 
 ## Testing
 
@@ -197,10 +198,11 @@ Stdlib unittest, no network, no GTK (all pure functions):
   entry, added incrementally as entries are confirmed.
 - New anchoring logic — match-primary, match-secondary, no-match-falls-back-
   to-All, focus-survives-an-irrelevant-model-switch, and the confidence
-  downgrade (guessed karaoke on either side → plain-name comparison, never a
-  bucket comparison).
-- `is_karaoke_curated` — curated-metadata true/false, and absence of
-  metadata (falls to `False`, distinct from `resolve_is_karaoke`'s guess).
+  gate itself: a guessed (non-curated) `is_karaoke` must never reach
+  `ensemble_stem_bucket` as `True`, only ever `False`.
+- `resolve_karaoke_confidence` — curated-metadata case returns
+  `(True, True)`; guessed case returns `(guess, False)`; `resolve_is_karaoke`
+  still returns a plain `bool` matching its existing three call sites.
 - `scripts/stem_semantics_audit.py` gets the same lightweight CLI tests as
   `model_probe.py` (arg parsing, JSON output shape) — its *findings* are for
   human review, not asserted in CI.
@@ -211,9 +213,8 @@ Stdlib unittest, no network, no GTK (all pure functions):
   keys. Explicitly rejected earlier in this design's review — it's faithful
   upstream-parity behavior, not a bug, and not what was reported.
 - Building a general "pair type" taxonomy (dereverb/denoise/karaoke/vocals as
-  formal categories). The bucket/canonical-name comparison never needs to
-  know what *kind* of pair it's looking at, only whether two stem identities
-  match.
+  formal categories). The bucket comparison never needs to know what *kind*
+  of pair it's looking at, only whether two stem identities match.
 - Adding a name-guessing fallback for `is_bv_model` (it stays curated-only,
   matching today's behavior — extending it to guess would reintroduce the
   exact reliability problem this design works around for `is_karaoke`).
