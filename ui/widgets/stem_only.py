@@ -301,6 +301,10 @@ class SaveStemsSection:
         self._subset_stems: List[str] = []
         self._exclusive_primary: Optional[str] = None
         self._exclusive_secondary: Optional[str] = None
+        self._exclusive_is_karaoke: bool = False
+        self._exclusive_is_karaoke_curated: bool = False
+        self._exclusive_is_bv: bool = False
+        self._exclusive_stem_count: int = 2
         self._demucs_export_primary: Optional[str] = None
         self._demucs_export_secondary: Optional[str] = None
         self._subset_mode = _QUICK_ALL
@@ -429,6 +433,10 @@ class SaveStemsSection:
         has_model: bool = True,
         stem_label_overrides: Optional[Dict[str, str]] = None,
         export_semantics_note: str = "",
+        is_karaoke: bool = False,
+        is_karaoke_curated: bool = False,
+        is_bv: bool = False,
+        stem_count: int = 2,
     ) -> None:
         self.mode = "exclusive"
         self._has_model = has_model
@@ -436,6 +444,10 @@ class SaveStemsSection:
         self._secondary_key = secondary_key
         self._exclusive_primary = primary_stem
         self._exclusive_secondary = secondary_stem
+        self._exclusive_is_karaoke = is_karaoke
+        self._exclusive_is_karaoke_curated = is_karaoke_curated
+        self._exclusive_is_bv = is_bv
+        self._exclusive_stem_count = stem_count
         self._stem_label_overrides = stem_label_overrides
         self._export_semantics_note = export_semantics_note or ""
         self._hide_all_rows()

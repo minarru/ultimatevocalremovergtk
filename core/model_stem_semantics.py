@@ -834,6 +834,32 @@ def ensemble_stem_bucket(
     ).value
 
 
+def confident_stem_bucket(
+    stem: str,
+    *,
+    stem_count: int,
+    is_karaoke: bool,
+    is_karaoke_curated: bool,
+    is_bv: bool,
+) -> str:
+    """``ensemble_stem_bucket``, but a guessed (non-curated) ``is_karaoke``
+    is never passed through as ``True``.
+
+    ``ensemble_stem_bucket(stem, is_karaoke=False, is_bv=False)`` already
+    falls through to the plain alias-table lookup by default -- that *is*
+    the safe fallback for an uncurated model's stems, so nothing else is
+    needed here beyond gating the one boolean that isn't always reliable.
+    ``is_bv`` needs no such gate: it is only ever set from curated
+    metadata, never guessed.
+    """
+    return ensemble_stem_bucket(
+        stem,
+        stem_count=stem_count,
+        is_karaoke=is_karaoke and is_karaoke_curated,
+        is_bv=is_bv,
+    )
+
+
 def model_stem_count(model: typing.Any) -> int:
     """Return how many stems a model actually produces, across architectures."""
     from core.stems import model_stem_count as _model_stem_count

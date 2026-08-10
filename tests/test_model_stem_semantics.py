@@ -14,6 +14,9 @@ from bundled.constants import (
     VOCAL_STEM,
 )
 from core.model_stem_semantics import (
+    BUCKET_BV_VOCALS,
+    BUCKET_LEAD_VOCALS,
+    BUCKET_VOCALS,
     DUAL_STEM_WEIGHTS,
     INTENT_DRUM_BASS_SEP,
     INTENT_DUAL_VOC_INST,
@@ -26,6 +29,7 @@ from core.model_stem_semantics import (
     VOCALS_OTHER_DISPLAY_OVERRIDES,
     apply_karaoke_quick_export_default,
     canonical_stem_alias,
+    confident_stem_bucket,
     export_intent_from_fields,
     export_intent_from_model,
     export_stem_label,
@@ -533,6 +537,36 @@ class SpecialtyStemIntentTests(unittest.TestCase):
         self.assertEqual(
             backend_focus_label("", "", ["male", "female"]),
             "specialty_two_stem",
+        )
+
+
+class ConfidentStemBucketTests(unittest.TestCase):
+    """A guessed (non-curated) is_karaoke must never reach
+    ensemble_stem_bucket as True -- only ever False, which is the same
+    fallback ensemble_stem_bucket already uses by default."""
+
+    def test_curated_karaoke_uses_the_karaoke_bucket(self) -> None:
+        self.assertEqual(
+            confident_stem_bucket(
+                "Vocals", stem_count=2, is_karaoke=True, is_karaoke_curated=True, is_bv=False
+            ),
+            BUCKET_LEAD_VOCALS,
+        )
+
+    def test_guessed_karaoke_falls_back_to_the_plain_bucket(self) -> None:
+        self.assertEqual(
+            confident_stem_bucket(
+                "Vocals", stem_count=2, is_karaoke=True, is_karaoke_curated=False, is_bv=False
+            ),
+            BUCKET_VOCALS,
+        )
+
+    def test_is_bv_is_never_gated(self) -> None:
+        self.assertEqual(
+            confident_stem_bucket(
+                "Vocals", stem_count=2, is_karaoke=False, is_karaoke_curated=False, is_bv=True
+            ),
+            BUCKET_BV_VOCALS,
         )
 
 

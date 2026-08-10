@@ -73,6 +73,7 @@ class ProcessSettings:
     device: str | None = None
     primary_stem_only: bool = False
     secondary_stem_only: bool = False
+    stem_focus: str = ""
     testing_audio: bool = False
     add_model_name: bool = False
     accept_any_input: bool = False

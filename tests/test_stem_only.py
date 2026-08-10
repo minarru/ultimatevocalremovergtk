@@ -313,6 +313,36 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertFalse(self.section._subset_block.get_visible())
         self.assertTrue(self.section._exclusive_block.get_visible())
 
+    def test_configure_exclusive_accepts_and_stores_confidence_kwargs(self) -> None:
+        self.section.configure_exclusive(
+            primary_stem=VOCAL_STEM,
+            secondary_stem=INST_STEM,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+            is_karaoke=True,
+            is_karaoke_curated=True,
+            is_bv=False,
+            stem_count=2,
+        )
+        self.assertTrue(self.section._exclusive_is_karaoke)
+        self.assertTrue(self.section._exclusive_is_karaoke_curated)
+        self.assertFalse(self.section._exclusive_is_bv)
+        self.assertEqual(self.section._exclusive_stem_count, 2)
+
+    def test_configure_exclusive_confidence_kwargs_default_safely(self) -> None:
+        self.section.configure_exclusive(
+            primary_stem=VOCAL_STEM,
+            secondary_stem=INST_STEM,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.assertFalse(self.section._exclusive_is_karaoke)
+        self.assertFalse(self.section._exclusive_is_karaoke_curated)
+        self.assertFalse(self.section._exclusive_is_bv)
+        self.assertEqual(self.section._exclusive_stem_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
