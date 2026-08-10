@@ -31,6 +31,7 @@ from bundled.constants import (
     VOL_COMPENSATION,
 )
 from core.settings import Settings
+from core.stems import StemId, resolve_in_sources
 
 from core.model_stem_semantics import (
     apply_karaoke_quick_export_default,
@@ -95,6 +96,22 @@ def nearest_mdx_segment_size(dim_t: int) -> int:
     if not MDX_SEGMENTS:
         return dim_t
     return min(MDX_SEGMENTS, key=lambda value: (abs(value - dim_t), value))
+
+
+def mdx_stem_selection_is_stale(stems: typing.Sequence[str], stored: typing.Any) -> bool:
+    """Whether a persisted ``mdx.stems`` value no longer names one of ``stems``.
+
+    ``stored`` is written from canonical UVR stem labels (e.g. ``Vocals``) by
+    the save-stems widget, while ``stems`` (a model's own ``mdx_model_stems``)
+    carries a checkpoint's own yaml casing -- commonly lowercase (``vocals``)
+    for community MDX-C multi-stem models. A raw membership check flags a
+    merely differently-cased match as stale and resets the selection to
+    ``ALL_STEMS``, silently discarding it.
+    """
+    if not stored or stored == ALL_STEMS:
+        return False
+    lookup = {str(stem): stem for stem in stems}
+    return resolve_in_sources(lookup, StemId(str(stored))) is None
 
 
 @register_method_view
@@ -242,7 +259,7 @@ class MDXView(MethodView):
         # only meaningful for 3+ stem MDX23C models).
         if 0 < len(stems) < 3:
             self.settings.mdx.stems = stems[0]
-        elif len(stems) >= 3 and self.settings.mdx.stems not in (*stems, ALL_STEMS):
+        elif len(stems) >= 3 and mdx_stem_selection_is_stale(stems, self.settings.mdx.stems):
             self.settings.mdx.stems = ALL_STEMS
         apply_karaoke_quick_export_default(
             self.settings,

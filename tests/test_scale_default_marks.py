@@ -91,5 +91,36 @@ class MdxSegmentDefaultWiringTests(unittest.TestCase):
         self.assertEqual(nearest_mdx_segment_size(9999), 4000)
 
 
+class MdxStemSelectionStaleTests(unittest.TestCase):
+    """A persisted ``mdx.stems`` value is only "stale" (no longer valid for
+    the selected model) when it names none of the model's stems -- but the
+    model's stems carry a checkpoint's own yaml casing (often lowercase),
+    while the save-stems widget persists canonical UVR labels (``Vocals``).
+    A case-sensitive check flags a merely differently-cased match as stale
+    and silently resets the user's stem selection to "All Stems"."""
+
+    def test_a_differently_cased_match_is_not_stale(self) -> None:
+        from ui.views.mdx import mdx_stem_selection_is_stale
+
+        self.assertFalse(
+            mdx_stem_selection_is_stale(["drums", "bass", "other", "vocals"], "Vocals")
+        )
+
+    def test_a_name_the_model_does_not_have_is_stale(self) -> None:
+        from ui.views.mdx import mdx_stem_selection_is_stale
+
+        self.assertTrue(
+            mdx_stem_selection_is_stale(["drums", "bass", "other", "vocals"], "Piano")
+        )
+
+    def test_all_stems_is_never_stale(self) -> None:
+        from bundled.constants import ALL_STEMS
+        from ui.views.mdx import mdx_stem_selection_is_stale
+
+        self.assertFalse(
+            mdx_stem_selection_is_stale(["drums", "bass", "other", "vocals"], ALL_STEMS)
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

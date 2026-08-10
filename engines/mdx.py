@@ -241,7 +241,10 @@ def mdx_export_routing_flags(
     is_ensemble_4_stem = is_4_stem_ensemble and is_not_single_stem
     is_vocals_quick_export = (
         len(selected_stems) == 1
-        and selected_stems[0] == VOCAL_STEM
+        # A checkpoint's own yaml casing (often lowercase, e.g. ``vocals``)
+        # rarely matches the canonical ``VOCAL_STEM`` constant a raw ``==``
+        # would need -- is_vocal_target compares case/alias-insensitively.
+        and is_vocal_target(selected_stems[0])
         and (is_primary_stem_only or is_secondary_stem_only)
     )
     is_complement_export = (
@@ -280,6 +283,22 @@ def mdx_export_routing_flags(
             else stem_list
         ),
     }
+
+
+def mdx_selected_stems(stem_list: typing.Any, stems_selected: typing.Any) -> typing.List[str]:
+    """Model-native stem names from ``stem_list`` matching the saved subset pick.
+
+    ``stems_selected`` is persisted using canonical UVR stem labels (e.g.
+    ``Vocals``), while ``stem_list`` carries a checkpoint's own yaml casing --
+    commonly lowercase (``vocals``) for community MDX-C multi-stem models. A
+    raw membership check between the two matches nothing whenever they
+    disagree, silently discarding the user's stem-subset/quick-export choice
+    and falling back to exporting every stem.
+    """
+    lookup = {str(stem): stem for stem in (stems_selected or [])}
+    return [
+        stem for stem in stem_list if resolve_in_sources(lookup, StemId(str(stem))) is not None
+    ]
 
 
 def mdx_combined_secondary_key(sources: typing.Any, stem_list: typing.Any, secondary_stem_label: typing.Any):
@@ -674,7 +693,7 @@ class SeperateMDXC(SeperateAttributes):
         # selection is intersected with the model's actual stems, so checking a
         # stem the model does not produce is simply ignored. An empty selection
         # (or one covering every stem) keeps the original "all stems" behaviour.
-        selected_stems = [stem for stem in stem_list if stem in (self.mdxnet_stems_selected or [])]
+        selected_stems = mdx_selected_stems(stem_list, self.mdxnet_stems_selected)
         if not self.is_secondary_model and len(selected_stems) == 1:
             self.mdxnet_stem_select = selected_stems[0]
 
