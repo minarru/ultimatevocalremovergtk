@@ -39,6 +39,7 @@ from core.model_stem_semantics import (
     preferred_quick_export_mode,
     recommended_export_note,
     resolve_is_karaoke,
+    resolve_karaoke_confidence,
     shows_voc_inst_quick_export,
     stem_display_overrides,
 )
@@ -304,6 +305,27 @@ class KaraokeDetectionTests(unittest.TestCase):
     def test_vocal_target_is_case_insensitive(self):
         self.assertTrue(is_vocal_target("Vocals"))
         self.assertTrue(is_vocal_target("vocals"))
+
+    def test_confidence_true_when_curated(self) -> None:
+        self.assertEqual(
+            resolve_karaoke_confidence(model_data={"is_karaoke": True}),
+            (True, True),
+        )
+
+    def test_confidence_false_when_guessed_from_name(self) -> None:
+        self.assertEqual(
+            resolve_karaoke_confidence(
+                model_name="BandSplit Roformer | Karaoke Frazer by becruily",
+            ),
+            (True, False),
+        )
+
+    def test_confidence_false_and_not_karaoke_with_no_signal(self) -> None:
+        self.assertEqual(resolve_karaoke_confidence(), (False, False))
+
+    def test_resolve_is_karaoke_still_returns_a_plain_bool(self) -> None:
+        self.assertIs(resolve_is_karaoke(model_data={"is_karaoke": True}), True)
+        self.assertIs(resolve_is_karaoke(), False)
 
 
 class RecommendedExportNoteTests(unittest.TestCase):

@@ -227,6 +227,33 @@ def infer_is_karaoke_from_hints(
     return "karaoke" in text
 
 
+def resolve_karaoke_confidence(
+    *,
+    model_data: Optional[Mapping] = None,
+    model_name: str = "",
+    config_yaml: str = "",
+    weight_basename: str = "",
+) -> Tuple[bool, bool]:
+    """Resolve ``(is_karaoke, is_curated)``.
+
+    ``is_curated`` is ``True`` only when curated hash metadata settled it.
+    ``False`` means ``is_karaoke`` came from
+    :func:`infer_is_karaoke_from_hints`'s name/config/weight-basename
+    substring guess, which is unreliable for any model without a curated
+    hash-table entry -- i.e. every new community model until someone
+    curates it.
+    """
+    if model_data:
+        if model_data.get("is_karaoke") or model_data.get("is_karaokee"):
+            return True, True
+    guess = infer_is_karaoke_from_hints(
+        model_name=model_name,
+        config_yaml=config_yaml,
+        weight_basename=weight_basename,
+    )
+    return guess, False
+
+
 def resolve_is_karaoke(
     *,
     model_data: Optional[Mapping] = None,
@@ -235,14 +262,13 @@ def resolve_is_karaoke(
     weight_basename: str = "",
 ) -> bool:
     """Resolve karaoke flag from hash metadata or catalogue/config hints."""
-    if model_data:
-        if model_data.get("is_karaoke") or model_data.get("is_karaokee"):
-            return True
-    return infer_is_karaoke_from_hints(
+    is_karaoke, _is_curated = resolve_karaoke_confidence(
+        model_data=model_data,
         model_name=model_name,
         config_yaml=config_yaml,
         weight_basename=weight_basename,
     )
+    return is_karaoke
 
 
 def is_vocals_other_pair(instruments: Sequence[str]) -> bool:
