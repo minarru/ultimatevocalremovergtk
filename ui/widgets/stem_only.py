@@ -277,6 +277,80 @@ def _persist_exclusive_choice(settings: typing.Any, primary_key: str, secondary_
     set_flat(settings, secondary_key, name == secondary_key)
 
 
+def _exclusive_name_from_focus(
+    settings: typing.Any,
+    *,
+    primary_stem: Optional[str],
+    secondary_stem: Optional[str],
+    primary_key: str,
+    secondary_key: str,
+    is_karaoke: bool,
+    is_karaoke_curated: bool,
+    is_bv: bool,
+    stem_count: int,
+) -> Optional[str]:
+    """Resolve the exclusive-mode combo choice from ``process.stem_focus``.
+
+    Returns ``None`` when no focus is recorded yet (caller falls back to
+    ``_exclusive_name_from_settings``'s legacy boolean-based read). Once a
+    focus is recorded, always returns a definite choice -- ``primary_key``/
+    ``secondary_key`` on a match, or ``_TOGGLE_ALL`` when neither of this
+    model's stems match (a different, unrelated pair type).
+    """
+    from core.model_stem_semantics import confident_stem_bucket
+
+    focus = getattr(settings.process, "stem_focus", "") or ""
+    if not focus:
+        return None
+    if primary_stem and confident_stem_bucket(
+        primary_stem,
+        stem_count=stem_count,
+        is_karaoke=is_karaoke,
+        is_karaoke_curated=is_karaoke_curated,
+        is_bv=is_bv,
+    ) == focus:
+        return primary_key
+    if secondary_stem and confident_stem_bucket(
+        secondary_stem,
+        stem_count=stem_count,
+        is_karaoke=is_karaoke,
+        is_karaoke_curated=is_karaoke_curated,
+        is_bv=is_bv,
+    ) == focus:
+        return secondary_key
+    return _TOGGLE_ALL
+
+
+def _stem_focus_for_choice(
+    name: str,
+    *,
+    primary_stem: Optional[str],
+    secondary_stem: Optional[str],
+    primary_key: str,
+    secondary_key: str,
+    is_karaoke: bool,
+    is_karaoke_curated: bool,
+    is_bv: bool,
+    stem_count: int,
+) -> str:
+    """Bucket tag to persist as ``process.stem_focus`` for an exclusive pick."""
+    from core.model_stem_semantics import confident_stem_bucket
+
+    if name == primary_key and primary_stem:
+        stem = primary_stem
+    elif name == secondary_key and secondary_stem:
+        stem = secondary_stem
+    else:
+        return ""
+    return confident_stem_bucket(
+        stem,
+        stem_count=stem_count,
+        is_karaoke=is_karaoke,
+        is_karaoke_curated=is_karaoke_curated,
+        is_bv=is_bv,
+    )
+
+
 def _export_label_for_choice(name: str, options: Dict[str, StemOnlyOption]) -> str:
     if name == _TOGGLE_ALL:
         return "Exporting all outputs"
@@ -570,9 +644,25 @@ class SaveStemsSection:
         self._loading = True
         try:
             if self.mode == "exclusive":
-                name = _exclusive_name_from_settings(
-                    self.settings, self._primary_key, self._secondary_key
+                name = _exclusive_name_from_focus(
+                    self.settings,
+                    primary_stem=self._exclusive_primary,
+                    secondary_stem=self._exclusive_secondary,
+                    primary_key=self._primary_key,
+                    secondary_key=self._secondary_key,
+                    is_karaoke=self._exclusive_is_karaoke,
+                    is_karaoke_curated=self._exclusive_is_karaoke_curated,
+                    is_bv=self._exclusive_is_bv,
+                    stem_count=self._exclusive_stem_count,
                 )
+                if name is None:
+                    name = _exclusive_name_from_settings(
+                        self.settings, self._primary_key, self._secondary_key
+                    )
+                else:
+                    _persist_exclusive_choice(
+                        self.settings, self._primary_key, self._secondary_key, name
+                    )
                 set_combo_value(self._exclusive_row, name)
             elif self.mode == "subset":
                 self._sync_subset_from_settings()
@@ -587,6 +677,17 @@ class SaveStemsSection:
             name = get_combo_value(self._exclusive_row) or _TOGGLE_ALL
             _persist_exclusive_choice(
                 self.settings, self._primary_key, self._secondary_key, name
+            )
+            self.settings.process.stem_focus = _stem_focus_for_choice(
+                name,
+                primary_stem=self._exclusive_primary,
+                secondary_stem=self._exclusive_secondary,
+                primary_key=self._primary_key,
+                secondary_key=self._secondary_key,
+                is_karaoke=self._exclusive_is_karaoke,
+                is_karaoke_curated=self._exclusive_is_karaoke_curated,
+                is_bv=self._exclusive_is_bv,
+                stem_count=self._exclusive_stem_count,
             )
         elif self.mode == "subset":
             self._persist_subset()
