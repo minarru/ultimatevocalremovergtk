@@ -654,20 +654,46 @@ def normalize_stem_label(stem: str) -> str:
     return stem
 
 
-# Known MUSDB / UVR stems that must share one ensemble bucket regardless of
-# yaml vs Demucs casing. Specialty labels (Speech, Lead Vocals, …) are excluded
-# on purpose so they are never folded into Vocals/Other.
-_ENSEMBLE_STEM_ALIASES = {
+# Raw-name -> canonical-stem lookup shared by UI display, ensemble
+# bucketing, and stem-focus persistence anchoring. Only entries every
+# consumer already agrees on (or a strict, verified addition) belong here.
+# UI-only specialty names (speech/music/sfx/effects) and each consumer's
+# own complement ("No X") handling stay separate -- see
+# docs/superpowers/specs/2026-08-09-stem-export-semantics-design.md.
+_STEM_NAME_ALIASES: Dict[str, str] = {
     "vocals": VOCAL_STEM,
     "vocal": VOCAL_STEM,
     "voc": VOCAL_STEM,
     "instrumental": INST_STEM,
     "inst": INST_STEM,
+    "instrument": INST_STEM,
     "other": OTHER_STEM,
     "bass": BASS_STEM,
     "drums": DRUM_STEM,
     "guitar": GUITAR_STEM,
     "piano": PIANO_STEM,
+}
+
+
+def canonical_stem_alias(name: Optional[str]) -> Optional[str]:
+    """Shared raw-name -> canonical-stem lookup, casefolded.
+
+    Single source of truth for UI display, ensemble bucketing, and
+    stem-focus anchoring. Returns ``None`` for anything not in the shared
+    core vocabulary -- callers layer their own purpose-specific handling
+    (specialty names, complement stems, karaoke/BV identity codes) on top.
+    """
+    if not name:
+        return None
+    return _STEM_NAME_ALIASES.get(str(name).strip().casefold())
+
+
+# Ensemble-only: complement ("No X") tags, matched as a whole lowercase
+# string. Kept separate from _STEM_NAME_ALIASES -- unlike the UI's
+# NO_STEM-prefix-then-suffix-lookup approach (ui/widgets/stem_only.py), this
+# must match a raw, fully-lowercase yaml value directly. Verified: the UI's
+# canonical_stem_name only recognizes an already-capitalized "No " prefix.
+_ENSEMBLE_STEM_COMPLEMENTS: Dict[str, str] = {
     "no other": NO_OTHER_STEM,
     "no bass": NO_BASS_STEM,
     "no drums": NO_DRUM_STEM,
@@ -692,7 +718,7 @@ _ENSEMBLE_STEM_PRESERVE = frozenset(
     }
 )
 
-_ENSEMBLE_STEM_CANONICAL = frozenset(_ENSEMBLE_STEM_ALIASES.values()) | frozenset(
+_ENSEMBLE_STEM_CANONICAL = frozenset(
     {
         VOCAL_STEM,
         INST_STEM,
@@ -727,7 +753,10 @@ def canonical_ensemble_stem_tag(stem: str) -> str:
         return stripped
     if stripped in _ENSEMBLE_STEM_CANONICAL:
         return stripped
-    aliased = _ENSEMBLE_STEM_ALIASES.get(stripped.casefold())
+    complement = _ENSEMBLE_STEM_COMPLEMENTS.get(stripped.casefold())
+    if complement is not None:
+        return complement
+    aliased = canonical_stem_alias(stripped)
     if aliased is not None:
         return aliased
     # Title Case / odd casing of a known label (e.g. ``VOCALS`` → ``Vocals``).

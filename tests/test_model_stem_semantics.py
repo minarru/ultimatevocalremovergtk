@@ -9,6 +9,8 @@ from bundled.constants import (
     INST_WITH_LEAD_VOCALS_STEM,
     LEAD_VOCAL_STEM,
     LEAD_VOCAL_STEM_LABEL,
+    NO_BASS_STEM,
+    NO_OTHER_STEM,
     VOCAL_STEM,
 )
 from core.model_stem_semantics import (
@@ -23,6 +25,7 @@ from core.model_stem_semantics import (
     INTENT_VOCALS,
     VOCALS_OTHER_DISPLAY_OVERRIDES,
     apply_karaoke_quick_export_default,
+    canonical_stem_alias,
     export_intent_from_fields,
     export_intent_from_model,
     export_stem_label,
@@ -231,6 +234,53 @@ class EnsembleStemCanonicalizationTests(unittest.TestCase):
             canonical_ensemble_stem_tag(LEAD_VOCAL_STEM_LABEL),
             VOCAL_STEM,
         )
+
+
+class CanonicalStemAliasTests(unittest.TestCase):
+    def test_resolves_the_shared_core_vocabulary(self) -> None:
+        self.assertEqual(canonical_stem_alias("vocals"), VOCAL_STEM)
+        self.assertEqual(canonical_stem_alias("VOCALS"), VOCAL_STEM)
+        self.assertEqual(canonical_stem_alias("voc"), VOCAL_STEM)
+        self.assertEqual(canonical_stem_alias("instrumental"), INST_STEM)
+        self.assertEqual(canonical_stem_alias("instrument"), INST_STEM)
+        self.assertEqual(canonical_stem_alias("drums"), "Drums")
+        self.assertEqual(canonical_stem_alias("bass"), "Bass")
+        self.assertEqual(canonical_stem_alias("guitar"), "Guitar")
+        self.assertEqual(canonical_stem_alias("piano"), "Piano")
+        self.assertEqual(canonical_stem_alias("other"), "Other")
+
+    def test_returns_none_outside_the_shared_vocabulary(self) -> None:
+        self.assertIsNone(canonical_stem_alias("speech"))
+        self.assertIsNone(canonical_stem_alias("singer_1"))
+        self.assertIsNone(canonical_stem_alias(""))
+        self.assertIsNone(canonical_stem_alias(None))
+
+
+class EnsembleStemCanonicalizationRegressionTests(unittest.TestCase):
+    """Locks in canonical_ensemble_stem_tag's existing contract through the
+    refactor -- specialty names must stay unchanged, karaoke/BV labels must
+    stay preserved, complement tags must stay ensemble-specific."""
+
+    def test_specialty_names_pass_through_unchanged(self) -> None:
+        from core.model_stem_semantics import canonical_ensemble_stem_tag
+
+        self.assertEqual(canonical_ensemble_stem_tag("speech"), "speech")
+        self.assertEqual(canonical_ensemble_stem_tag("sfx"), "sfx")
+        self.assertEqual(canonical_ensemble_stem_tag("music"), "music")
+        self.assertEqual(canonical_ensemble_stem_tag("effects"), "effects")
+
+    def test_complement_tags_still_resolve(self) -> None:
+        from core.model_stem_semantics import canonical_ensemble_stem_tag
+
+        self.assertEqual(canonical_ensemble_stem_tag("no other"), NO_OTHER_STEM)
+        self.assertEqual(canonical_ensemble_stem_tag("no bass"), NO_BASS_STEM)
+
+    def test_instrument_alias_now_recognized(self) -> None:
+        """New: core/stems.py already recognized "instrument" for bucketing;
+        ensemble tag canonicalization gains it too via the shared table."""
+        from core.model_stem_semantics import canonical_ensemble_stem_tag
+
+        self.assertEqual(canonical_ensemble_stem_tag("instrument"), INST_STEM)
 
 
 class KaraokeDetectionTests(unittest.TestCase):
