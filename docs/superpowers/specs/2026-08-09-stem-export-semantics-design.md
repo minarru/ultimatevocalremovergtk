@@ -135,6 +135,13 @@ shared VR/MDX namespace — this explicitly also covers <=2-stem MDX-C
 models, which already go through the same exclusive-mode code path as VR
 and classic MDX; no separate handling needed). Empty string means "All."
 
+This is a genuinely global, method-agnostic preference by design: Demucs's
+`is_primary_stem_only_Demucs`/`secondary_stem_only_Demucs` keys stay in
+their own separate namespace (unchanged, per existing upstream parity), and
+the Ensemble page's own exclusive-mode toggle, but all three read/write the
+same `process.stem_focus` value. The intent is "what stem the user wants,"
+which is a concept the user holds across methods, not a per-method setting.
+
 There is deliberately only one field. See confidence tiering below for why
 a second "safe fallback" field isn't needed.
 

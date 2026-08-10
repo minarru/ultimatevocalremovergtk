@@ -612,6 +612,10 @@ class EnsemblePage:
                 has_model=True,
                 stem_label_overrides=stem_display_overrides(model),
                 export_semantics_note=recommended_export_note(model),
+                is_karaoke=bool(getattr(model, "is_karaoke", False)),
+                is_karaoke_curated=bool(getattr(model, "is_karaoke_curated", False)),
+                is_bv=bool(getattr(model, "is_bv_model", False)),
+                stem_count=2,
             )
             self.save_stems.sync_from_settings()
         else:

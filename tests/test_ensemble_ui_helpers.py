@@ -162,5 +162,62 @@ class MainStemChangedOrderTests(unittest.TestCase):
         )
 
 
+class RebuildStemOnlyTogglesConfidenceTests(unittest.TestCase):
+    """Regression: _rebuild_stem_only_toggles is a second configure_exclusive
+    call site the stem-focus anchoring plan's spec missed (it claimed only
+    one call site existed) -- it must forward the same karaoke/bv
+    confidence signals as MethodView._configure_save_stems, or the
+    ensemble page silently drives stem-focus anchoring with
+    is_karaoke=False/is_karaoke_curated=False/is_bv=False regardless of
+    the resolved model's real metadata."""
+
+    def _page(self):
+        from unittest import mock
+
+        import ui.ensemble.window as ensemble_window
+
+        save_stems = mock.Mock()
+        page = object.__new__(ensemble_window.EnsemblePage)
+        page.settings = mock.Mock()
+        page.save_stems = save_stems
+        page.stems_group = mock.Mock()
+        page._ensemble_stem_pair = mock.Mock(return_value=("Vocals", "Instrumental"))
+        page._ensemble_pair = mock.Mock(
+            return_value=mock.Mock(is_multi_or_four=mock.Mock(return_value=False))
+        )
+        page._update_stems_group_metadata = mock.Mock()
+        return page, save_stems
+
+    def test_passes_karaoke_and_bv_confidence_from_the_resolved_model(self) -> None:
+        from types import SimpleNamespace
+
+        from unittest import mock
+
+        page, save_stems = self._page()
+        model = SimpleNamespace(is_karaoke=True, is_karaoke_curated=True, is_bv_model=False)
+        page._resolve_ensemble_semantics_model = mock.Mock(return_value=model)
+
+        page._rebuild_stem_only_toggles()
+
+        _, kwargs = save_stems.configure_exclusive.call_args
+        self.assertTrue(kwargs["is_karaoke"])
+        self.assertTrue(kwargs["is_karaoke_curated"])
+        self.assertFalse(kwargs["is_bv"])
+        self.assertEqual(kwargs["stem_count"], 2)
+
+    def test_defaults_safely_when_the_model_cannot_be_resolved(self) -> None:
+        from unittest import mock
+
+        page, save_stems = self._page()
+        page._resolve_ensemble_semantics_model = mock.Mock(return_value=None)
+
+        page._rebuild_stem_only_toggles()
+
+        _, kwargs = save_stems.configure_exclusive.call_args
+        self.assertFalse(kwargs["is_karaoke"])
+        self.assertFalse(kwargs["is_karaoke_curated"])
+        self.assertFalse(kwargs["is_bv"])
+
+
 if __name__ == "__main__":
     unittest.main()

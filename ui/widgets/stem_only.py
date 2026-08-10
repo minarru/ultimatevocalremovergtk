@@ -277,6 +277,40 @@ def _persist_exclusive_choice(settings: typing.Any, primary_key: str, secondary_
     set_flat(settings, secondary_key, name == secondary_key)
 
 
+def _stem_focus_tag(
+    stem: str,
+    *,
+    stem_count: int,
+    is_karaoke: bool,
+    is_karaoke_curated: bool,
+    is_bv: bool,
+) -> str:
+    """Focus-anchor tag for one stem: a bucket tag when recognized, or a
+    raw-name tag when not.
+
+    Every unrecognized stem (DeEcho/DeNoise/DeReverb-style pairs, crowd/
+    woodwinds removers, ...) collapses to the same StemBucket.UNKNOWN, so
+    anchoring on the bucket directly would make two *different* stems on
+    the *same* model compare equal -- the anchor would false-match and
+    silently flip which stem gets exported, exactly the bug this
+    mechanism exists to prevent. Falling back to the casefolded raw name
+    keeps each unrecognized stem distinct.
+    """
+    from core.model_stem_semantics import confident_stem_bucket
+    from core.stems import StemBucket
+
+    bucket = confident_stem_bucket(
+        stem,
+        stem_count=stem_count,
+        is_karaoke=is_karaoke,
+        is_karaoke_curated=is_karaoke_curated,
+        is_bv=is_bv,
+    )
+    if bucket == StemBucket.UNKNOWN.value:
+        return f"raw:{str(stem).strip().casefold()}"
+    return bucket
+
+
 def _exclusive_name_from_focus(
     settings: typing.Any,
     *,
@@ -297,12 +331,10 @@ def _exclusive_name_from_focus(
     ``secondary_key`` on a match, or ``_TOGGLE_ALL`` when neither of this
     model's stems match (a different, unrelated pair type).
     """
-    from core.model_stem_semantics import confident_stem_bucket
-
     focus = getattr(settings.process, "stem_focus", "") or ""
     if not focus:
         return None
-    if primary_stem and confident_stem_bucket(
+    if primary_stem and _stem_focus_tag(
         primary_stem,
         stem_count=stem_count,
         is_karaoke=is_karaoke,
@@ -310,7 +342,7 @@ def _exclusive_name_from_focus(
         is_bv=is_bv,
     ) == focus:
         return primary_key
-    if secondary_stem and confident_stem_bucket(
+    if secondary_stem and _stem_focus_tag(
         secondary_stem,
         stem_count=stem_count,
         is_karaoke=is_karaoke,
@@ -333,16 +365,14 @@ def _stem_focus_for_choice(
     is_bv: bool,
     stem_count: int,
 ) -> str:
-    """Bucket tag to persist as ``process.stem_focus`` for an exclusive pick."""
-    from core.model_stem_semantics import confident_stem_bucket
-
+    """Focus tag to persist as ``process.stem_focus`` for an exclusive pick."""
     if name == primary_key and primary_stem:
         stem = primary_stem
     elif name == secondary_key and secondary_stem:
         stem = secondary_stem
     else:
         return ""
-    return confident_stem_bucket(
+    return _stem_focus_tag(
         stem,
         stem_count=stem_count,
         is_karaoke=is_karaoke,

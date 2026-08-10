@@ -19,6 +19,7 @@ from ui.widgets.stem_only import (
     _QUICK_VOCALS,
     _TOGGLE_ALL,
     _LEAD_VOCAL_PAIR_LABELS,
+    _stem_focus_tag,
     build_stem_only_options,
     canonical_stem_name,
     roformer_lead_vocal_label_overrides,
@@ -426,6 +427,88 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertFalse(self.section._exclusive_is_karaoke_curated)
         self.assertFalse(self.section._exclusive_is_bv)
         self.assertEqual(self.section._exclusive_stem_count, 2)
+
+    def test_unrecognized_stem_focus_does_not_flip_on_resync_of_the_same_model(self) -> None:
+        """Regression: two different unrecognized stems on the same model
+        (e.g. a DeReverb pair) must not collide on the shared
+        StemBucket.UNKNOWN anchor -- picking "reverb only" and then
+        re-resolving the SAME model (e.g. tab reactivation) must not
+        silently flip the pick to "noreverb only"."""
+        self.section.configure_exclusive(
+            primary_stem="noreverb",
+            secondary_stem="reverb",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        set_combo_value(self.section._exclusive_row, "is_secondary_stem_only")
+        self.section.persist_to_settings()
+        self.assertTrue(self.settings["is_secondary_stem_only"])
+
+        self.section.configure_exclusive(
+            primary_stem="noreverb",
+            secondary_stem="reverb",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        self.assertFalse(self.settings["is_primary_stem_only"])
+        self.assertTrue(self.settings["is_secondary_stem_only"])
+
+    def test_two_different_unrecognized_stem_models_do_not_collide(self) -> None:
+        """Before the fix, every unrecognized stem bucketed to the same
+        StemBucket.UNKNOWN, so a focus set on one DeReverb-style model
+        would false-match an unrelated DeEcho-style model."""
+        self.section.configure_exclusive(
+            primary_stem="noreverb",
+            secondary_stem="reverb",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        set_combo_value(self.section._exclusive_row, "is_secondary_stem_only")
+        self.section.persist_to_settings()
+
+        self.section.configure_exclusive(
+            primary_stem="noecho",
+            secondary_stem="echo",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        self.assertFalse(self.settings["is_primary_stem_only"])
+        self.assertFalse(self.settings["is_secondary_stem_only"])
+
+
+class StemFocusTagTests(unittest.TestCase):
+    def test_recognized_stem_returns_bucket_tag(self) -> None:
+        self.assertEqual(
+            _stem_focus_tag(
+                "vocals", stem_count=2, is_karaoke=False, is_karaoke_curated=False, is_bv=False
+            ),
+            VOCAL_STEM,
+        )
+
+    def test_unrecognized_stem_returns_a_raw_name_tag(self) -> None:
+        self.assertEqual(
+            _stem_focus_tag(
+                "reverb", stem_count=2, is_karaoke=False, is_karaoke_curated=False, is_bv=False
+            ),
+            "raw:reverb",
+        )
+
+    def test_different_unrecognized_stems_get_different_tags(self) -> None:
+        tag_a = _stem_focus_tag(
+            "reverb", stem_count=2, is_karaoke=False, is_karaoke_curated=False, is_bv=False
+        )
+        tag_b = _stem_focus_tag(
+            "echo", stem_count=2, is_karaoke=False, is_karaoke_curated=False, is_bv=False
+        )
+        self.assertNotEqual(tag_a, tag_b)
 
 
 if __name__ == "__main__":
