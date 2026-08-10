@@ -88,6 +88,16 @@ class StemDisplayLabelTests(unittest.TestCase):
         self.assertEqual(roformer_lead_vocal_label_overrides(_Model()), _LEAD_VOCAL_PAIR_LABELS)
         self.assertIsNone(roformer_lead_vocal_label_overrides(None))
 
+    def test_gains_shared_table_aliases_not_previously_recognized(self) -> None:
+        self.assertEqual(canonical_stem_name("voc"), VOCAL_STEM)
+        self.assertEqual(canonical_stem_name("instrument"), INST_STEM)
+
+    def test_specialty_names_still_resolve_locally(self) -> None:
+        self.assertEqual(canonical_stem_name("speech"), "Speech")
+        self.assertEqual(canonical_stem_name("sfx"), "Sfx")
+        self.assertEqual(canonical_stem_name("music"), "Music")
+        self.assertEqual(canonical_stem_name("effects"), "Effects")
+
     def test_vocals_other_overrides_skipped_for_multi_stem_models(self):
         class _Training:
             instruments = ["other", "vocals", "drums", "bass"]

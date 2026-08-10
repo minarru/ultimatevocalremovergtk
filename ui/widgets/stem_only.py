@@ -30,6 +30,7 @@ from bundled.constants import (
 
 from core.model_stem_semantics import (
     VOCALS_OTHER_DISPLAY_OVERRIDES,
+    canonical_stem_alias,
     stem_display_overrides,
 )
 
@@ -77,17 +78,12 @@ STEM_ONLY_ICONS: Dict[str, str] = {
 }
 ALL_STEMS_ICON = "ungroup-symbolic"
 
-# Lowercase / yaml aliases -> canonical UVR stem labels.
+# UI-only: names with no ensemble/bucket significance today. Kept separate
+# from the shared core table on purpose -- folding them in would change
+# core/model_stem_semantics.canonical_ensemble_stem_tag's output for these
+# stems (verified: it passes them through unchanged today). See
+# docs/superpowers/specs/2026-08-09-stem-export-semantics-design.md.
 _STEM_ALIASES: Dict[str, str] = {
-    "vocals": VOCAL_STEM,
-    "vocal": VOCAL_STEM,
-    "instrumental": INST_STEM,
-    "inst": INST_STEM,
-    "other": OTHER_STEM,
-    "bass": BASS_STEM,
-    "drums": DRUM_STEM,
-    "guitar": GUITAR_STEM,
-    "piano": PIANO_STEM,
     "speech": "Speech",
     "music": "Music",
     "sfx": "Sfx",
@@ -123,6 +119,9 @@ def canonical_stem_name(stem: Optional[str]) -> Optional[str]:
     """Normalize model/yaml stem strings to canonical UVR labels."""
     if not stem:
         return stem
+    shared = canonical_stem_alias(stem)
+    if shared is not None:
+        return shared
     if stem in _STEM_ALIASES:
         return _STEM_ALIASES[stem]
     lowered = stem.lower()
@@ -130,7 +129,7 @@ def canonical_stem_name(stem: Optional[str]) -> Optional[str]:
         return _STEM_ALIASES[lowered]
     if stem.startswith(NO_STEM) and len(stem) > len(NO_STEM):
         suffix = stem[len(NO_STEM) :]
-        canonical_suffix = _STEM_ALIASES.get(suffix.lower(), suffix)
+        canonical_suffix = canonical_stem_alias(suffix) or _STEM_ALIASES.get(suffix.lower(), suffix)
         if canonical_suffix == suffix and suffix[:1].islower():
             canonical_suffix = suffix.title()
         return f"{NO_STEM}{canonical_suffix}"
