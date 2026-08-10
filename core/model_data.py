@@ -30,7 +30,7 @@ from .demucs_models import (
     resolve_demucs_model_file,
 )
 from .mdx_c_registry import compute_checkpoint_hash, try_register_from_catalog
-from .model_stem_semantics import is_vocal_target, resolve_is_karaoke
+from .model_stem_semantics import is_vocal_target, resolve_karaoke_confidence
 from .model_display import (
     display_name_for_basename,
     map_basenames_to_display,
@@ -659,6 +659,7 @@ class _ModelConfigImplementation:
         self.secondary_model_scale_drums = None
         self.is_multi_stem_ensemble = False
         self.is_karaoke = False
+        self.is_karaoke_curated = False
         self.is_bv_model = False
         self.bv_model_rebalance = 0
         self.is_sec_bv_rebalance = False
@@ -1059,13 +1060,15 @@ class _ModelConfigImplementation:
             return
         if IS_KARAOKEE in self.model_data.keys():
             self.is_karaoke = self.model_data[IS_KARAOKEE]
+            self.is_karaoke_curated = True
         if IS_BV_MODEL in self.model_data.keys():
             self.is_bv_model = self.model_data[IS_BV_MODEL]
         if IS_BV_MODEL_REBAL in self.model_data.keys() and self.is_bv_model:
             self.bv_model_rebalance = self.model_data[IS_BV_MODEL_REBAL]
 
     def apply_karaoke_metadata(self, config_yaml: str = "") -> None:
-        """Set ``is_karaoke`` from hash JSON and catalogue/config name hints."""
+        """Set ``is_karaoke``/``is_karaoke_curated`` from hash JSON and
+        catalogue/config name hints."""
         self.check_if_karaokee_model()
         if self.is_karaoke:
             return
@@ -1074,13 +1077,15 @@ class _ModelConfigImplementation:
             model_path = getattr(self, "model_path", None) or ""
             if model_path:
                 weight_basename = os.path.splitext(os.path.basename(model_path))[0]
-        if resolve_is_karaoke(
+        is_karaoke, is_curated = resolve_karaoke_confidence(
             model_data=self.model_data,
             model_name=str(self.model_name or ""),
             config_yaml=config_yaml,
             weight_basename=str(weight_basename or ""),
-        ):
+        )
+        if is_karaoke:
             self.is_karaoke = True
+            self.is_karaoke_curated = is_curated
 
     def get_vr_model_path(self) -> None:
         resolved_name = resolve_vr_model_basename(

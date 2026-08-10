@@ -69,5 +69,56 @@ class AssembleEnsembleTests(unittest.TestCase):
         self.assertEqual(models, [first, second])
 
 
+class ModelConfigKaraokeConfidenceTests(unittest.TestCase):
+    """ModelConfig.is_karaoke_curated must agree with which branch of
+    resolve_karaoke_confidence actually set is_karaoke."""
+
+    def _model(self) -> typing.Any:
+        from types import SimpleNamespace
+        from core.model_data import _ModelConfigImplementation
+
+        # Minimal stand-in with just the attributes check_if_karaokee_model
+        # and apply_karaoke_metadata read/write.
+        model = SimpleNamespace(
+            model_data=None,
+            is_karaoke=False,
+            is_karaoke_curated=False,
+            is_bv_model=False,
+            bv_model_rebalance=0,
+            model_name="",
+            model_basename=None,
+            model_path=None,
+        )
+        # Bind the check_if_karaokee_model method so apply_karaoke_metadata can call it
+        model.check_if_karaokee_model = lambda: _ModelConfigImplementation.check_if_karaokee_model(model)  # type: ignore[arg-type]
+        return model
+
+    def test_curated_hash_metadata_sets_curated_true(self) -> None:
+        from core.model_data import _ModelConfigImplementation
+
+        model = self._model()
+        model.model_data = {"is_karaoke": True}
+        _ModelConfigImplementation.check_if_karaokee_model(model)
+        self.assertTrue(model.is_karaoke)
+        self.assertTrue(model.is_karaoke_curated)
+
+    def test_guessed_from_name_sets_curated_false(self) -> None:
+        from core.model_data import _ModelConfigImplementation
+
+        model = self._model()
+        model.model_name = "BandSplit Roformer | Karaoke Frazer by becruily"
+        _ModelConfigImplementation.apply_karaoke_metadata(model)
+        self.assertTrue(model.is_karaoke)
+        self.assertFalse(model.is_karaoke_curated)
+
+    def test_no_signal_leaves_both_false(self) -> None:
+        from core.model_data import _ModelConfigImplementation
+
+        model = self._model()
+        _ModelConfigImplementation.apply_karaoke_metadata(model)
+        self.assertFalse(model.is_karaoke)
+        self.assertFalse(model.is_karaoke_curated)
+
+
 if __name__ == "__main__":
     unittest.main()
