@@ -123,5 +123,21 @@ class FilenameSafetyTests(unittest.TestCase):
                 self.assertEqual(match.group(1), bucket)
 
 
+class ThirdVocabularyConsolidationTests(unittest.TestCase):
+    """core/stems.py's bucket_for_model_stem had its own private token sets,
+    already drifted from the other two tables (it alone recognized
+    "instrument"). This locks in that the drift is now gone in both
+    directions: the new alias reaches bucketing (already true) *and* stays
+    behavior-identical for every token the old private sets recognized."""
+
+    def test_instrument_alias_resolves_to_instrumental_bucket(self) -> None:
+        self.assertEqual(
+            ensemble_stem_bucket("instrument", stem_count=1), BUCKET_INSTRUMENTAL
+        )
+
+    def test_voc_alias_resolves_to_vocals_bucket(self) -> None:
+        self.assertEqual(ensemble_stem_bucket("voc", stem_count=2), BUCKET_VOCALS)
+
+
 if __name__ == "__main__":
     unittest.main()

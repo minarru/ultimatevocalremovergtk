@@ -162,13 +162,16 @@ _IDENTITY_BUCKETS = {
     "backing vocals": StemBucket.BACKING_VOCALS,
 }
 
-_VOCAL_TOKENS = frozenset({"vocals", "vocal", "voc"})
-_INSTRUMENTAL_TOKENS = frozenset({"instrumental", "inst", "instrument"})
-_SIMPLE_STEM_TOKENS = {
-    "drums": StemBucket.DRUMS,
-    "bass": StemBucket.BASS,
-    "guitar": StemBucket.GUITAR,
-    "piano": StemBucket.PIANO,
+# Canonical label -> bucket enum for the plain single-instrument stems.
+# Alias spellings (vocals/voc/drums/...) live in the shared
+# core.model_stem_semantics table bucket_for_model_stem now queries via
+# canonical_stem_alias; this dict only maps already-canonical labels to
+# their bucket, it is not alias data.
+_SIMPLE_STEM_BUCKETS = {
+    DRUM_STEM: StemBucket.DRUMS,
+    BASS_STEM: StemBucket.BASS,
+    GUITAR_STEM: StemBucket.GUITAR,
+    PIANO_STEM: StemBucket.PIANO,
 }
 
 
@@ -225,6 +228,8 @@ def bucket_for_model_stem(
     is_bv: bool = False,
 ) -> StemBucket:
     """Map a model stem id to an ensemble bucket (may be ``UNKNOWN``)."""
+    from core.model_stem_semantics import canonical_stem_alias
+
     raw = stem.raw if isinstance(stem, StemId) else stem
     token = str(raw or "").strip().casefold()
     if not token:
@@ -234,8 +239,9 @@ def bucket_for_model_stem(
     if identity is not None:
         return identity
 
-    is_vocal = token in _VOCAL_TOKENS
-    is_instrumental = token in _INSTRUMENTAL_TOKENS or (
+    canonical = canonical_stem_alias(token)
+    is_vocal = canonical == VOCAL_STEM
+    is_instrumental = canonical == INST_STEM or (
         token == "other" and 1 <= stem_count <= 2
     )
 
@@ -256,7 +262,7 @@ def bucket_for_model_stem(
         return StemBucket.INSTRUMENTAL
     if token == "other":
         return StemBucket.OTHER
-    simple = _SIMPLE_STEM_TOKENS.get(token)
+    simple = _SIMPLE_STEM_BUCKETS.get(canonical) if canonical else None
     if simple is not None:
         return simple
     return StemBucket.UNKNOWN
