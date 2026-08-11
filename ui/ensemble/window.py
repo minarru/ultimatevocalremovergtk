@@ -89,6 +89,7 @@ from ..hints import set_icon_button_a11y, set_tooltip
 from ..markup import set_row_subtitle, set_row_title
 from core.model_display import format_tag_subtitle, format_tag_title
 from core import (
+    canonical_saved_ensemble_name,
     delete_ensemble,
     list_saved_ensembles,
     load_ensemble,
@@ -795,18 +796,19 @@ class EnsemblePage:
 
     def _do_save_ensemble(self, name: str, selected: List[str]) -> None:
         try:
+            canonical_name = canonical_saved_ensemble_name(name)
             save_ensemble(
-                name,
+                canonical_name,
                 self._ensemble_pair(),
                 self.settings.ensemble.type or MAX_MIN,
                 selected,
             )
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             self._toast(f"Couldn't save ensemble: {exc}")
             return
-        self.settings.ensemble.chosen_ensemble = name
+        self.settings.ensemble.chosen_ensemble = canonical_name
         self._refresh_saved_list()
-        self._toast(f"Saved ensemble '{name}'.")
+        self._toast(f"Saved ensemble '{canonical_name}'.")
 
     def _on_delete_clicked(self, _button: Gtk.Button) -> None:
         name = get_combo_value(self.saved_row)

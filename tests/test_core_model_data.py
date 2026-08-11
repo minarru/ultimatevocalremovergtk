@@ -102,6 +102,26 @@ class ModelConfigKaraokeConfidenceTests(unittest.TestCase):
         self.assertTrue(model.is_karaoke)
         self.assertTrue(model.is_karaoke_curated)
 
+    def test_curated_false_metadata_blocks_name_inference(self) -> None:
+        from core.model_data import _ModelConfigImplementation
+
+        model = self._model()
+        model.model_data = {"is_karaoke": False}
+        model.model_name = "Karaoke-labelled model"
+        _ModelConfigImplementation.apply_karaoke_metadata(model)
+        self.assertFalse(model.is_karaoke)
+        self.assertTrue(model.is_karaoke_curated)
+
+    def test_legacy_typo_false_metadata_blocks_name_inference(self) -> None:
+        from core.model_data import _ModelConfigImplementation
+
+        model = self._model()
+        model.model_data = {"is_karaokee": False}
+        model.model_name = "Karaoke-labelled model"
+        _ModelConfigImplementation.apply_karaoke_metadata(model)
+        self.assertFalse(model.is_karaoke)
+        self.assertTrue(model.is_karaoke_curated)
+
     def test_guessed_from_name_sets_curated_false(self) -> None:
         from core.model_data import _ModelConfigImplementation
 

@@ -18,6 +18,7 @@ import dataclasses
 import errno
 import json
 import os
+import tempfile
 import ssl
 import threading
 import time
@@ -128,6 +129,82 @@ def _json_file_matches(path: str, payload: Mapping[str, Any]) -> bool:
     except (OSError, ValueError, TypeError):
         return False
     return existing == payload
+
+
+def _transactional_json_refresh(writes: Mapping[str, Mapping[str, Any]]) -> tuple[bool, bool]:
+    """Stage and commit a set of JSON files, rolling back on commit failure."""
+    staged: Dict[str, str] = {}
+    backups: Dict[str, Optional[str]] = {}
+    committed: List[str] = []
+    try:
+        for path, payload in writes.items():
+            if _json_file_matches(path, payload):
+                continue
+            text = json.dumps(payload, indent=4)
+            directory = os.path.dirname(path) or "."
+            os.makedirs(directory, exist_ok=True)
+            fd, tmp_path = tempfile.mkstemp(
+                prefix=f".{os.path.basename(path)}.", suffix=".tmp", dir=directory
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    handle.write(text)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+            staged[path] = tmp_path
+
+        if not staged:
+            return True, False
+
+        # Keep rollback copies in the same directories so restoration remains
+        # an atomic rename even when model-data files live in different roots.
+        for path in staged:
+            if not os.path.isfile(path):
+                backups[path] = None
+                continue
+            directory = os.path.dirname(path) or "."
+            fd, backup_path = tempfile.mkstemp(
+                prefix=f".{os.path.basename(path)}.", suffix=".bak", dir=directory
+            )
+            try:
+                with open(path, "rb") as source, os.fdopen(fd, "wb") as backup:
+                    backup.write(source.read())
+            except Exception:
+                try:
+                    os.unlink(backup_path)
+                except OSError:
+                    pass
+                raise
+            backups[path] = backup_path
+
+        for path, tmp_path in staged.items():
+            os.replace(tmp_path, path)
+            committed.append(path)
+    except Exception as exc:
+        debug("download", f"model-data commit failed error={type(exc).__name__}: {exc}")
+        for path in reversed(committed):
+            backup_path = backups.get(path)
+            try:
+                if backup_path is None:
+                    if os.path.isfile(path):
+                        os.unlink(path)
+                else:
+                    os.replace(backup_path, path)
+            except OSError:
+                pass
+        return False, False
+    finally:
+        for tmp_path in list(staged.values()) + list(backups.values()):
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+    return True, True
 
 
 def vip_downloads(password: str, link_type: Tuple[bytes, bytes] = VIP_REPO) -> str:
@@ -783,7 +860,11 @@ class DownloadManager:
         try:
             with _urlopen(url) as response:
                 length_header = response.getheader("Content-Length")
-                file_total = int(length_header) if length_header and length_header.isdigit() else 0
+                file_total = (
+                    int(length_header)
+                    if isinstance(length_header, str) and length_header.isdigit()
+                    else 0
+                )
                 downloaded = 0
                 last_info_at = 0.0
                 last_info_text = ""
@@ -817,6 +898,11 @@ class DownloadManager:
                                 last_info_at = now
                                 last_info_text = info_text
                                 on_info(info_text)
+                if file_total and downloaded != file_total:
+                    raise OSError(
+                        f"Incomplete download: received {downloaded} bytes, "
+                        f"expected {file_total}"
+                    )
         except Exception:
             if os.path.isfile(tmp_path):
                 try:
@@ -855,28 +941,30 @@ class DownloadManager:
             )
             return False
 
-        changed = False
+        writes: Dict[str, Mapping[str, Any]] = {}
+        semantic_changed = False
         for (_url, dest), data in zip(_MODEL_DATA_URLS, fetched):
             if not isinstance(data, dict):
-                continue
-            payload = data
+                debug("download", f"update_model_settings invalid payload path={dest}")
+                return False
+            payload: Mapping[str, Any] = data
             if dest in _NAME_MAPPER_DESTS:
-                # Rescue fork keys older builds wrote into the mirror, then let
-                # the mirror track upstream exactly.
-                from .name_mapper import migrate_local_only_keys
+                # Plan the first-run overlay migration without writing it yet;
+                # the overlay marker participates in the same transaction.
+                from .name_mapper import local_overlay_path, plan_local_overlay_migration
 
-                if migrate_local_only_keys(dest, data):
-                    changed = True
-            if _json_file_matches(dest, payload):
-                continue
-            text = json.dumps(payload, indent=4)
-            try:
-                os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
-                with open(dest, "w", encoding="utf-8") as out_file:
-                    out_file.write(text)
-                changed = True
-            except OSError:
-                continue
+                local_only = plan_local_overlay_migration(dest, data)
+                if local_only is not None:
+                    writes[local_overlay_path(dest)] = local_only
+                    semantic_changed = semantic_changed or bool(local_only)
+            if not _json_file_matches(dest, payload):
+                semantic_changed = True
+            writes[dest] = payload
+
+        ok, _wrote_files = _transactional_json_refresh(writes)
+        if not ok:
+            return False
+        changed = semantic_changed
         if changed and repo is not None:
             # Not invalidate_stem_check: the hash maps and name mappers were
             # just rewritten on disk, and only reload_mappers picks those up.

@@ -16,6 +16,10 @@ Usage:
     python scripts/stem_semantics_audit.py                    # print a table
     python scripts/stem_semantics_audit.py --guessed-only      # only the risk surface
     python scripts/stem_semantics_audit.py --json /tmp/out.json
+    python scripts/stem_semantics_audit.py --quiet             # suppress progress
+
+Progress is written to stderr so stdout remains suitable for redirection.
+Ctrl-C exits with status 130 without replacing the requested JSON report.
 """
 
 from __future__ import annotations
@@ -127,13 +131,23 @@ def _entry_for_target(
     )
 
 
-def _iter_entries(*, guessed_only: bool = False) -> Iterator[StemSemanticsEntry]:
+def _iter_entries(
+    *, guessed_only: bool = False, show_progress: bool = False
+) -> Iterator[StemSemanticsEntry]:
     from core.mvsepless_catalog import load_mvsepless_models
     from scripts.model_probe import iter_catalogue_targets
 
     catalogue = load_mvsepless_models() or {}
     curated_table = _curated_hash_table()
-    for target in iter_catalogue_targets(catalogue, unsupported_only=False):
+    targets = list(iter_catalogue_targets(catalogue, unsupported_only=False))
+    total = len(targets)
+    for index, target in enumerate(targets, 1):
+        if show_progress:
+            print(
+                f"[{index:>{len(str(total))}}/{total}] {target.entry_id}: {target.label}",
+                file=sys.stderr,
+                flush=True,
+            )
         entry = catalogue.get(target.entry_id) or {}
         result = _entry_for_target(target, entry, curated_table)
         if guessed_only and result.is_karaoke_curated:
@@ -155,6 +169,20 @@ def render_table(entries: List[StemSemanticsEntry]) -> str:
     return "\n".join(lines)
 
 
+def _write_json(path: str, entries: List[StemSemanticsEntry]) -> None:
+    """Atomically replace ``path`` so interruption cannot leave partial JSON."""
+    tmp_path = f"{path}.part"
+    try:
+        with open(tmp_path, "w") as f:
+            json.dump([asdict(e) for e in entries], f, indent=2)
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     import argparse
 
@@ -165,15 +193,28 @@ def main(argv: Optional[List[str]] = None) -> int:
         action="store_true",
         help="Only show entries whose is_karaoke came from a name guess, not curated metadata.",
     )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Do not print per-model progress to stderr.",
+    )
     args = parser.parse_args(argv)
 
-    entries = list(_iter_entries(guessed_only=args.guessed_only))
+    try:
+        entries = list(
+            _iter_entries(
+                guessed_only=args.guessed_only,
+                show_progress=not args.quiet,
+            )
+        )
+    except KeyboardInterrupt:
+        print("\nAudit interrupted; no report was written.", file=sys.stderr)
+        return 130
     entries.sort(key=lambda e: e.is_karaoke_curated)  # guessed (False) sorts first
 
     print(render_table(entries))
     if args.json_path:
-        with open(args.json_path, "w") as f:
-            json.dump([asdict(e) for e in entries], f, indent=2)
+        _write_json(args.json_path, entries)
     return 0
 
 

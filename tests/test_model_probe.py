@@ -737,6 +737,36 @@ class HttpRangeReaderTests(unittest.TestCase):
         self.assertEqual(size, 123456)
 
 
+class FetchConfigTests(unittest.TestCase):
+    def test_completed_download_atomically_replaces_the_destination(self) -> None:
+        import tempfile
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            model_probe, "remote_size", return_value=4
+        ), patch.object(
+            model_probe, "http_range_reader", return_value=lambda start, end: b"yaml"
+        ):
+            path = model_probe._fetch_config("https://example.invalid/config.yaml", tmp)
+            with open(path, "rb") as handle:
+                self.assertEqual(handle.read(), b"yaml")
+            self.assertFalse(os.path.exists(f"{path}.part"))
+
+    def test_interrupted_download_leaves_no_cache_file(self) -> None:
+        import tempfile
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            model_probe, "remote_size", return_value=4
+        ), patch.object(
+            model_probe, "http_range_reader", return_value=lambda start, end: (_ for _ in ()).throw(KeyboardInterrupt())
+        ):
+            with self.assertRaises(KeyboardInterrupt):
+                model_probe._fetch_config("https://example.invalid/config.yaml", tmp)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "config.yaml")))
+            self.assertFalse(os.path.exists(os.path.join(tmp, "config.yaml.part")))
+
+
 class CachedCheckpointKeysTests(unittest.TestCase):
     """The point: a repeat ``--check-keys`` run must not re-do the range-fetch."""
 

@@ -72,12 +72,15 @@ class DownloadCenterStateTests(unittest.TestCase):
         win._rebuild_catalogue()
 
         key = (MDX_ARCH_TYPE, "Model A")
-        win._row_checks[key].set_active(True)
-        self.assertEqual(win._selected_entries(), [("Model A", MDX_ARCH_TYPE)])
+        # Size lookup is unrelated to this selection-preservation test and
+        # would otherwise start a worker against the bare MagicMock manager.
+        with patch.object(win, "_lookup_row_size"):
+            win._row_checks[key].set_active(True)
+            self.assertEqual(win._selected_entries(), [("Model A", MDX_ARCH_TYPE)])
 
-        # Simulate changing the Sort dropdown: same available models, rebuilt
-        # from scratch. The previously-checked model must still be checked.
-        win._rebuild_catalogue()
+            # Simulate changing the Sort dropdown: same available models, rebuilt
+            # from scratch. The previously-checked model must still be checked.
+            win._rebuild_catalogue()
         self.assertTrue(win._row_checks[key].get_active())
         self.assertEqual(win._selected_entries(), [("Model A", MDX_ARCH_TYPE)])
 
@@ -110,18 +113,21 @@ class DownloadCenterStateTests(unittest.TestCase):
             apply_done.set()
 
         with patch("ui.download_center.idle_on_main", side_effect=fake_idle_on_main):
-            win._lookup_row_size(key_a)
-            a_started.wait(timeout=5)
+            try:
+                win._lookup_row_size(key_a)
+                self.assertTrue(a_started.wait(timeout=5))
 
-            # Checking a second model while A's lookup is still in flight
-            # used to bump a single shared counter and strand row A's
-            # subtitle on "Looking up size…" forever.
-            win._lookup_row_size(key_b)
-            apply_done.wait(timeout=5)
-            apply_done.clear()
+                # Checking a second model while A's lookup is still in flight
+                # used to bump a single shared counter and strand row A's
+                # subtitle on "Looking up size…" forever.
+                win._lookup_row_size(key_b)
+                self.assertTrue(apply_done.wait(timeout=5))
+                apply_done.clear()
 
-            a_release.set()
-            apply_done.wait(timeout=5)
+                a_release.set()
+                self.assertTrue(apply_done.wait(timeout=5))
+            finally:
+                a_release.set()
 
         self.assertIn("12 MB", win._row_actions[key_a].get_subtitle() or "")
         self.assertIn("5 MB", win._row_actions[key_b].get_subtitle() or "")

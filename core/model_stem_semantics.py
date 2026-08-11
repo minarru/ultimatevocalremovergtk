@@ -243,9 +243,12 @@ def resolve_karaoke_confidence(
     hash-table entry -- i.e. every new community model until someone
     curates it.
     """
-    if model_data:
-        if model_data.get("is_karaoke") or model_data.get("is_karaokee"):
-            return True, True
+    if isinstance(model_data, Mapping):
+        # Presence is authoritative: an explicit false is curated metadata,
+        # not permission to fall through to an unreliable name-based guess.
+        for key in ("is_karaoke", "is_karaokee"):
+            if key in model_data:
+                return bool(model_data[key]), True
     guess = infer_is_karaoke_from_hints(
         model_name=model_name,
         config_yaml=config_yaml,
