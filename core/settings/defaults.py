@@ -27,6 +27,7 @@ def default_process() -> dict:
         "device": None,
         "primary_stem_only": False,
         "secondary_stem_only": False,
+        "stem_focus": "",
         "testing_audio": False,
         "add_model_name": False,
         "accept_any_input": False,

@@ -323,24 +323,39 @@ class ViewInputs:
         self._verifying = True
         self._verify_stop.clear()
         self._verify_total = len(self.paths)
+        prior_unreadable = set(self.context.unreadable_input_paths) & set(self.paths)
         self._status.clear()
         self.verify_button.set_label(f"Verifying… 0/{self._verify_total}")
         self._sync_actions()
         snapshot = list(self.paths)
-        threading.Thread(target=self._verify_worker, args=(snapshot,), daemon=True).start()
+        threading.Thread(
+            target=self._verify_worker,
+            args=(snapshot, prior_unreadable),
+            daemon=True,
+        ).start()
 
-    def _verify_worker(self, paths: typing.Any) -> None:
+    def _verify_worker(
+        self, paths: typing.Any, prior_unreadable: typing.Any = ()
+    ) -> None:
         broken = []
+        verified_paths = []
         cancelled = False
         for index, path in enumerate(paths, start=1):
             if self._verify_stop.is_set():
                 cancelled = True
                 break
             is_valid, info = inspect_audio(path)
+            verified_paths.append(path)
             idle_on_main(self._apply_result, path, is_valid, info, index)
             if not is_valid:
                 broken.append((path, info))
-        idle_on_main(self._verify_done, broken, cancelled)
+        idle_on_main(
+            self._verify_done,
+            broken,
+            cancelled,
+            verified_paths,
+            prior_unreadable,
+        )
 
     def _apply_result(self, path: typing.Any, is_valid: typing.Any, info: typing.Any, index: int) -> None:
         self._status[path] = (is_valid, info)
@@ -352,10 +367,24 @@ class ViewInputs:
         set_row_subtitle(row, f"{path}\n{info}")
         self._files_group.set_title(self._total_text())
 
-    def _verify_done(self, broken: typing.Any, cancelled: bool = False) -> None:
+    def _verify_done(
+        self,
+        broken: typing.Any,
+        cancelled: bool = False,
+        verified_paths: typing.Any = (),
+        prior_unreadable: typing.Any = (),
+    ) -> None:
         self._verifying = False
         self._verify_stop.clear()
         failed_paths = [p for p, _info in broken]
+        current_paths = set(self.paths)
+        if cancelled:
+            preserved = (
+                (set(prior_unreadable) & current_paths) - set(verified_paths)
+            )
+            failed_paths = sorted(preserved | (set(failed_paths) & current_paths))
+        else:
+            failed_paths = sorted(set(failed_paths) & current_paths)
         self.context.set_unreadable_input_paths(failed_paths)
         self._rebuild_list()
         self._sync_actions()
@@ -365,15 +394,13 @@ class ViewInputs:
         debug("ui", f"verify_inputs count={total} ok={total - len(broken)} cancelled={cancelled}")
         if cancelled:
             self._toast("Verification cancelled")
-            return
-        if broken:
+        elif broken:
             report_lines = "\n".join(f"{os.path.basename(p)}: {info}" for p, info in broken)
             set_error_log(
                 "Audio Input Verification Report:\n\nBroken / unreadable files:\n\n" + report_lines
             )
             self._toast(f"{len(broken)} file(s) could not be read.")
         else:
-            self.context.clear_unreadable_input_paths()
             self._toast("No errors found!")
         if self._on_inputs_changed is not None:
             # Refresh Start readiness without changing the path list.

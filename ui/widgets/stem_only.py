@@ -30,6 +30,7 @@ from bundled.constants import (
 
 from core.model_stem_semantics import (
     VOCALS_OTHER_DISPLAY_OVERRIDES,
+    canonical_stem_alias,
     stem_display_overrides,
 )
 
@@ -77,17 +78,12 @@ STEM_ONLY_ICONS: Dict[str, str] = {
 }
 ALL_STEMS_ICON = "ungroup-symbolic"
 
-# Lowercase / yaml aliases -> canonical UVR stem labels.
+# UI-only: names with no ensemble/bucket significance today. Kept separate
+# from the shared core table on purpose -- folding them in would change
+# core/model_stem_semantics.canonical_ensemble_stem_tag's output for these
+# stems (verified: it passes them through unchanged today). See
+# docs/superpowers/specs/2026-08-09-stem-export-semantics-design.md.
 _STEM_ALIASES: Dict[str, str] = {
-    "vocals": VOCAL_STEM,
-    "vocal": VOCAL_STEM,
-    "instrumental": INST_STEM,
-    "inst": INST_STEM,
-    "other": OTHER_STEM,
-    "bass": BASS_STEM,
-    "drums": DRUM_STEM,
-    "guitar": GUITAR_STEM,
-    "piano": PIANO_STEM,
     "speech": "Speech",
     "music": "Music",
     "sfx": "Sfx",
@@ -123,6 +119,9 @@ def canonical_stem_name(stem: Optional[str]) -> Optional[str]:
     """Normalize model/yaml stem strings to canonical UVR labels."""
     if not stem:
         return stem
+    shared = canonical_stem_alias(stem)
+    if shared is not None:
+        return shared
     if stem in _STEM_ALIASES:
         return _STEM_ALIASES[stem]
     lowered = stem.lower()
@@ -130,7 +129,7 @@ def canonical_stem_name(stem: Optional[str]) -> Optional[str]:
         return _STEM_ALIASES[lowered]
     if stem.startswith(NO_STEM) and len(stem) > len(NO_STEM):
         suffix = stem[len(NO_STEM) :]
-        canonical_suffix = _STEM_ALIASES.get(suffix.lower(), suffix)
+        canonical_suffix = canonical_stem_alias(suffix) or _STEM_ALIASES.get(suffix.lower(), suffix)
         if canonical_suffix == suffix and suffix[:1].islower():
             canonical_suffix = suffix.title()
         return f"{NO_STEM}{canonical_suffix}"
@@ -278,6 +277,110 @@ def _persist_exclusive_choice(settings: typing.Any, primary_key: str, secondary_
     set_flat(settings, secondary_key, name == secondary_key)
 
 
+def _stem_focus_tag(
+    stem: str,
+    *,
+    stem_count: int,
+    is_karaoke: bool,
+    is_karaoke_curated: bool,
+    is_bv: bool,
+) -> str:
+    """Focus-anchor tag for one stem: a bucket tag when recognized, or a
+    raw-name tag when not.
+
+    Every unrecognized stem (DeEcho/DeNoise/DeReverb-style pairs, crowd/
+    woodwinds removers, ...) collapses to the same StemBucket.UNKNOWN, so
+    anchoring on the bucket directly would make two *different* stems on
+    the *same* model compare equal -- the anchor would false-match and
+    silently flip which stem gets exported, exactly the bug this
+    mechanism exists to prevent. Falling back to the casefolded raw name
+    keeps each unrecognized stem distinct.
+    """
+    from core.model_stem_semantics import confident_stem_bucket
+    from core.stems import StemBucket
+
+    bucket = confident_stem_bucket(
+        stem,
+        stem_count=stem_count,
+        is_karaoke=is_karaoke,
+        is_karaoke_curated=is_karaoke_curated,
+        is_bv=is_bv,
+    )
+    if bucket == StemBucket.UNKNOWN.value:
+        return f"raw:{str(stem).strip().casefold()}"
+    return bucket
+
+
+def _exclusive_name_from_focus(
+    settings: typing.Any,
+    *,
+    primary_stem: Optional[str],
+    secondary_stem: Optional[str],
+    primary_key: str,
+    secondary_key: str,
+    is_karaoke: bool,
+    is_karaoke_curated: bool,
+    is_bv: bool,
+    stem_count: int,
+) -> Optional[str]:
+    """Resolve the exclusive-mode combo choice from ``process.stem_focus``.
+
+    Returns ``None`` when no focus is recorded yet (caller falls back to
+    ``_exclusive_name_from_settings``'s legacy boolean-based read). Once a
+    focus is recorded, always returns a definite choice -- ``primary_key``/
+    ``secondary_key`` on a match, or ``_TOGGLE_ALL`` when neither of this
+    model's stems match (a different, unrelated pair type).
+    """
+    focus = getattr(settings.process, "stem_focus", "") or ""
+    if not focus:
+        return None
+    if primary_stem and _stem_focus_tag(
+        primary_stem,
+        stem_count=stem_count,
+        is_karaoke=is_karaoke,
+        is_karaoke_curated=is_karaoke_curated,
+        is_bv=is_bv,
+    ) == focus:
+        return primary_key
+    if secondary_stem and _stem_focus_tag(
+        secondary_stem,
+        stem_count=stem_count,
+        is_karaoke=is_karaoke,
+        is_karaoke_curated=is_karaoke_curated,
+        is_bv=is_bv,
+    ) == focus:
+        return secondary_key
+    return _TOGGLE_ALL
+
+
+def _stem_focus_for_choice(
+    name: str,
+    *,
+    primary_stem: Optional[str],
+    secondary_stem: Optional[str],
+    primary_key: str,
+    secondary_key: str,
+    is_karaoke: bool,
+    is_karaoke_curated: bool,
+    is_bv: bool,
+    stem_count: int,
+) -> str:
+    """Focus tag to persist as ``process.stem_focus`` for an exclusive pick."""
+    if name == primary_key and primary_stem:
+        stem = primary_stem
+    elif name == secondary_key and secondary_stem:
+        stem = secondary_stem
+    else:
+        return ""
+    return _stem_focus_tag(
+        stem,
+        stem_count=stem_count,
+        is_karaoke=is_karaoke,
+        is_karaoke_curated=is_karaoke_curated,
+        is_bv=is_bv,
+    )
+
+
 def _export_label_for_choice(name: str, options: Dict[str, StemOnlyOption]) -> str:
     if name == _TOGGLE_ALL:
         return "Exporting all outputs"
@@ -302,6 +405,10 @@ class SaveStemsSection:
         self._subset_stems: List[str] = []
         self._exclusive_primary: Optional[str] = None
         self._exclusive_secondary: Optional[str] = None
+        self._exclusive_is_karaoke: bool = False
+        self._exclusive_is_karaoke_curated: bool = False
+        self._exclusive_is_bv: bool = False
+        self._exclusive_stem_count: int = 2
         self._demucs_export_primary: Optional[str] = None
         self._demucs_export_secondary: Optional[str] = None
         self._subset_mode = _QUICK_ALL
@@ -430,6 +537,10 @@ class SaveStemsSection:
         has_model: bool = True,
         stem_label_overrides: Optional[Dict[str, str]] = None,
         export_semantics_note: str = "",
+        is_karaoke: bool = False,
+        is_karaoke_curated: bool = False,
+        is_bv: bool = False,
+        stem_count: int = 2,
     ) -> None:
         self.mode = "exclusive"
         self._has_model = has_model
@@ -437,6 +548,10 @@ class SaveStemsSection:
         self._secondary_key = secondary_key
         self._exclusive_primary = primary_stem
         self._exclusive_secondary = secondary_stem
+        self._exclusive_is_karaoke = is_karaoke
+        self._exclusive_is_karaoke_curated = is_karaoke_curated
+        self._exclusive_is_bv = is_bv
+        self._exclusive_stem_count = stem_count
         self._stem_label_overrides = stem_label_overrides
         self._export_semantics_note = export_semantics_note or ""
         self._hide_all_rows()
@@ -559,9 +674,25 @@ class SaveStemsSection:
         self._loading = True
         try:
             if self.mode == "exclusive":
-                name = _exclusive_name_from_settings(
-                    self.settings, self._primary_key, self._secondary_key
+                name = _exclusive_name_from_focus(
+                    self.settings,
+                    primary_stem=self._exclusive_primary,
+                    secondary_stem=self._exclusive_secondary,
+                    primary_key=self._primary_key,
+                    secondary_key=self._secondary_key,
+                    is_karaoke=self._exclusive_is_karaoke,
+                    is_karaoke_curated=self._exclusive_is_karaoke_curated,
+                    is_bv=self._exclusive_is_bv,
+                    stem_count=self._exclusive_stem_count,
                 )
+                if name is None:
+                    name = _exclusive_name_from_settings(
+                        self.settings, self._primary_key, self._secondary_key
+                    )
+                else:
+                    _persist_exclusive_choice(
+                        self.settings, self._primary_key, self._secondary_key, name
+                    )
                 set_combo_value(self._exclusive_row, name)
             elif self.mode == "subset":
                 self._sync_subset_from_settings()
@@ -576,6 +707,17 @@ class SaveStemsSection:
             name = get_combo_value(self._exclusive_row) or _TOGGLE_ALL
             _persist_exclusive_choice(
                 self.settings, self._primary_key, self._secondary_key, name
+            )
+            self.settings.process.stem_focus = _stem_focus_for_choice(
+                name,
+                primary_stem=self._exclusive_primary,
+                secondary_stem=self._exclusive_secondary,
+                primary_key=self._primary_key,
+                secondary_key=self._secondary_key,
+                is_karaoke=self._exclusive_is_karaoke,
+                is_karaoke_curated=self._exclusive_is_karaoke_curated,
+                is_bv=self._exclusive_is_bv,
+                stem_count=self._exclusive_stem_count,
             )
         elif self.mode == "subset":
             self._persist_subset()

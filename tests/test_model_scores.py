@@ -80,6 +80,19 @@ class PurposeAndSortTests(unittest.TestCase):
         karaoke = filter_labels_by_purpose(labels, PURPOSE_KARAOKE)
         self.assertEqual(karaoke, ["Roformer Model: Karaoke by Gabox"])
 
+    def test_curated_intent_overrides_name_guess(self) -> None:
+        label = "Mel-Band Roformer General by Someone"
+        self.assertEqual(
+            model_scores.purpose_for_label(label, intent="vocals"),
+            PURPOSE_VOCALS,
+        )
+        self.assertEqual(
+            filter_labels_by_purpose(
+                [label], PURPOSE_VOCALS, intents={label: "vocals"}
+            ),
+            [label],
+        )
+
     def test_sort_labels_by_sdr(self) -> None:
         labels = ["alpha", "BS-Roformer-Viperx-1297", "BS-Roformer-Viperx-1143"]
         ordered = sort_labels_by_sdr(labels)
@@ -99,6 +112,13 @@ class PurposeAndSortTests(unittest.TestCase):
         ]
         matches = catalogue_matches(names, "", purpose=PURPOSE_KARAOKE)
         self.assertEqual(matches, ["Roformer Model: Karaoke by Gabox"])
+
+    def test_catalogue_matches_uses_curated_intent(self) -> None:
+        label = "Mel-Band Roformer General by Someone"
+        matches = catalogue_matches(
+            [label], "", purpose=PURPOSE_VOCALS, intents={label: "vocals"}
+        )
+        self.assertEqual(matches, [label])
 
 
 _FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "model_scores_sample.json")

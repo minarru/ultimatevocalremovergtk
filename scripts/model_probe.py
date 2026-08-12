@@ -875,8 +875,16 @@ def _fetch_config(url: str, dest_dir: str) -> str:
     if os.path.isfile(dest):
         return dest
     read = http_range_reader(url)
-    with open(dest, "wb") as handle:
-        handle.write(read(0, remote_size(url)))
+    tmp_dest = f"{dest}.part"
+    try:
+        with open(tmp_dest, "wb") as handle:
+            handle.write(read(0, remote_size(url)))
+        os.replace(tmp_dest, dest)
+    finally:
+        try:
+            os.unlink(tmp_dest)
+        except FileNotFoundError:
+            pass
     return dest
 
 

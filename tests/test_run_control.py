@@ -90,6 +90,57 @@ class HandleCloseRequestTests(unittest.TestCase):
         target.unpause.assert_called_once()
         controller._present_shutdown_confirm.assert_called_once()
 
+    def test_active_downloads_alone_require_shutdown_confirmation(self) -> None:
+        stop_button = mock.Mock()
+        stop_button.get_sensitive.return_value = False
+        context = mock.Mock()
+        context.active_download_count.return_value = 2
+        window = mock.Mock(stop_button=stop_button, context=context)
+
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._running_target = None
+        controller._on_close_complete = None
+        controller._shutdown_dialog = None
+        controller._stop_confirm_dialog = None
+        controller._close_deferred = False
+        controller._present_shutdown_confirm = mock.Mock()
+
+        result = controller.handle_close_request(lambda _deferred: None)
+
+        self.assertTrue(result)
+        self.assertTrue(controller._close_deferred)
+        controller._present_shutdown_confirm.assert_called_once_with()
+
+    def test_shutdown_poll_waits_for_download_cleanup(self) -> None:
+        context = mock.Mock()
+        context.active_download_count.side_effect = [1, 0]
+        window = mock.Mock(context=context)
+
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._shutdown_target = None
+        controller._shutdown_attempts = 0
+        controller._close_deferred = True
+        controller._complete_shutdown = mock.Mock()
+
+        self.assertTrue(controller._poll_shutdown())
+        self.assertFalse(controller._poll_shutdown())
+        controller._complete_shutdown.assert_called_once_with(deferred=True)
+
+
+class ApplicationQuitTests(unittest.TestCase):
+    def test_quit_action_closes_main_window_through_its_guard(self) -> None:
+        from ui.application import UVRApplication
+
+        window = mock.Mock()
+        app = mock.Mock(_main_window=window)
+
+        UVRApplication._on_quit_requested(app)
+
+        window.close.assert_called_once_with()
+        app.quit.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

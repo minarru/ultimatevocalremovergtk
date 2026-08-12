@@ -9,9 +9,14 @@ from bundled.constants import (
     INST_WITH_LEAD_VOCALS_STEM,
     LEAD_VOCAL_STEM,
     LEAD_VOCAL_STEM_LABEL,
+    NO_BASS_STEM,
+    NO_OTHER_STEM,
     VOCAL_STEM,
 )
 from core.model_stem_semantics import (
+    BUCKET_BV_VOCALS,
+    BUCKET_LEAD_VOCALS,
+    BUCKET_VOCALS,
     DUAL_STEM_WEIGHTS,
     INTENT_DRUM_BASS_SEP,
     INTENT_DUAL_VOC_INST,
@@ -23,6 +28,8 @@ from core.model_stem_semantics import (
     INTENT_VOCALS,
     VOCALS_OTHER_DISPLAY_OVERRIDES,
     apply_karaoke_quick_export_default,
+    canonical_stem_alias,
+    confident_stem_bucket,
     export_intent_from_fields,
     export_intent_from_model,
     export_stem_label,
@@ -36,6 +43,7 @@ from core.model_stem_semantics import (
     preferred_quick_export_mode,
     recommended_export_note,
     resolve_is_karaoke,
+    resolve_karaoke_confidence,
     shows_voc_inst_quick_export,
     stem_display_overrides,
 )
@@ -233,6 +241,53 @@ class EnsembleStemCanonicalizationTests(unittest.TestCase):
         )
 
 
+class CanonicalStemAliasTests(unittest.TestCase):
+    def test_resolves_the_shared_core_vocabulary(self) -> None:
+        self.assertEqual(canonical_stem_alias("vocals"), VOCAL_STEM)
+        self.assertEqual(canonical_stem_alias("VOCALS"), VOCAL_STEM)
+        self.assertEqual(canonical_stem_alias("voc"), VOCAL_STEM)
+        self.assertEqual(canonical_stem_alias("instrumental"), INST_STEM)
+        self.assertEqual(canonical_stem_alias("instrument"), INST_STEM)
+        self.assertEqual(canonical_stem_alias("drums"), "Drums")
+        self.assertEqual(canonical_stem_alias("bass"), "Bass")
+        self.assertEqual(canonical_stem_alias("guitar"), "Guitar")
+        self.assertEqual(canonical_stem_alias("piano"), "Piano")
+        self.assertEqual(canonical_stem_alias("other"), "Other")
+
+    def test_returns_none_outside_the_shared_vocabulary(self) -> None:
+        self.assertIsNone(canonical_stem_alias("speech"))
+        self.assertIsNone(canonical_stem_alias("singer_1"))
+        self.assertIsNone(canonical_stem_alias(""))
+        self.assertIsNone(canonical_stem_alias(None))
+
+
+class EnsembleStemCanonicalizationRegressionTests(unittest.TestCase):
+    """Locks in canonical_ensemble_stem_tag's existing contract through the
+    refactor -- specialty names must stay unchanged, karaoke/BV labels must
+    stay preserved, complement tags must stay ensemble-specific."""
+
+    def test_specialty_names_pass_through_unchanged(self) -> None:
+        from core.model_stem_semantics import canonical_ensemble_stem_tag
+
+        self.assertEqual(canonical_ensemble_stem_tag("speech"), "speech")
+        self.assertEqual(canonical_ensemble_stem_tag("sfx"), "sfx")
+        self.assertEqual(canonical_ensemble_stem_tag("music"), "music")
+        self.assertEqual(canonical_ensemble_stem_tag("effects"), "effects")
+
+    def test_complement_tags_still_resolve(self) -> None:
+        from core.model_stem_semantics import canonical_ensemble_stem_tag
+
+        self.assertEqual(canonical_ensemble_stem_tag("no other"), NO_OTHER_STEM)
+        self.assertEqual(canonical_ensemble_stem_tag("no bass"), NO_BASS_STEM)
+
+    def test_instrument_alias_now_recognized(self) -> None:
+        """New: core/stems.py already recognized "instrument" for bucketing;
+        ensemble tag canonicalization gains it too via the shared table."""
+        from core.model_stem_semantics import canonical_ensemble_stem_tag
+
+        self.assertEqual(canonical_ensemble_stem_tag("instrument"), INST_STEM)
+
+
 class KaraokeDetectionTests(unittest.TestCase):
     def test_infer_karaoke_from_catalogue_label(self):
         self.assertTrue(
@@ -254,6 +309,54 @@ class KaraokeDetectionTests(unittest.TestCase):
     def test_vocal_target_is_case_insensitive(self):
         self.assertTrue(is_vocal_target("Vocals"))
         self.assertTrue(is_vocal_target("vocals"))
+
+    def test_confidence_true_when_curated(self) -> None:
+        self.assertEqual(
+            resolve_karaoke_confidence(model_data={"is_karaoke": True}),
+            (True, True),
+        )
+
+    def test_explicit_curated_false_overrides_name_guess(self) -> None:
+        self.assertEqual(
+            resolve_karaoke_confidence(
+                model_data={"is_karaoke": False},
+                model_name="Karaoke-labelled model",
+            ),
+            (False, True),
+        )
+
+    def test_legacy_typo_false_is_curated(self) -> None:
+        self.assertEqual(
+            resolve_karaoke_confidence(
+                model_data={"is_karaokee": False},
+                model_name="Karaoke-labelled model",
+            ),
+            (False, True),
+        )
+
+    def test_canonical_false_wins_over_legacy_true(self) -> None:
+        self.assertEqual(
+            resolve_karaoke_confidence(
+                model_data={"is_karaoke": False, "is_karaokee": True},
+                model_name="Karaoke-labelled model",
+            ),
+            (False, True),
+        )
+
+    def test_confidence_false_when_guessed_from_name(self) -> None:
+        self.assertEqual(
+            resolve_karaoke_confidence(
+                model_name="BandSplit Roformer | Karaoke Frazer by becruily",
+            ),
+            (True, False),
+        )
+
+    def test_confidence_false_and_not_karaoke_with_no_signal(self) -> None:
+        self.assertEqual(resolve_karaoke_confidence(), (False, False))
+
+    def test_resolve_is_karaoke_still_returns_a_plain_bool(self) -> None:
+        self.assertIs(resolve_is_karaoke(model_data={"is_karaoke": True}), True)
+        self.assertIs(resolve_is_karaoke(), False)
 
 
 class RecommendedExportNoteTests(unittest.TestCase):
@@ -461,6 +564,36 @@ class SpecialtyStemIntentTests(unittest.TestCase):
         self.assertEqual(
             backend_focus_label("", "", ["male", "female"]),
             "specialty_two_stem",
+        )
+
+
+class ConfidentStemBucketTests(unittest.TestCase):
+    """A guessed (non-curated) is_karaoke must never reach
+    ensemble_stem_bucket as True -- only ever False, which is the same
+    fallback ensemble_stem_bucket already uses by default."""
+
+    def test_curated_karaoke_uses_the_karaoke_bucket(self) -> None:
+        self.assertEqual(
+            confident_stem_bucket(
+                "Vocals", stem_count=2, is_karaoke=True, is_karaoke_curated=True, is_bv=False
+            ),
+            BUCKET_LEAD_VOCALS,
+        )
+
+    def test_guessed_karaoke_falls_back_to_the_plain_bucket(self) -> None:
+        self.assertEqual(
+            confident_stem_bucket(
+                "Vocals", stem_count=2, is_karaoke=True, is_karaoke_curated=False, is_bv=False
+            ),
+            BUCKET_VOCALS,
+        )
+
+    def test_is_bv_is_never_gated(self) -> None:
+        self.assertEqual(
+            confident_stem_bucket(
+                "Vocals", stem_count=2, is_karaoke=False, is_karaoke_curated=False, is_bv=True
+            ),
+            BUCKET_BV_VOCALS,
         )
 
 

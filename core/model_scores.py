@@ -308,8 +308,12 @@ def purpose_bucket(intent: str) -> str:
     return PURPOSE_OTHER
 
 
-def purpose_for_label(label: str) -> str:
-    return purpose_bucket(infer_name_intent_from_label(label or ""))
+def purpose_for_label(label: str, *, intent: Optional[str] = None) -> str:
+    """Return the purpose bucket, preferring curated catalogue intent."""
+    resolved = str(intent or INTENT_UNKNOWN)
+    if resolved == INTENT_UNKNOWN:
+        resolved = infer_name_intent_from_label(label or "")
+    return purpose_bucket(resolved)
 
 
 def format_sdr_subtitle(
@@ -362,8 +366,18 @@ def sort_labels_by_sdr(
     return [label for _i, label in indexed]
 
 
-def filter_labels_by_purpose(labels: Iterable[str], purpose: str) -> List[str]:
+def filter_labels_by_purpose(
+    labels: Iterable[str],
+    purpose: str,
+    *,
+    intents: Optional[Mapping[str, str]] = None,
+) -> List[str]:
     """Filter catalogue labels by purpose bucket (``all`` returns everything)."""
     if purpose in ("", PURPOSE_ALL, None):
         return list(labels)
-    return [label for label in labels if purpose_for_label(label) == purpose]
+    known = intents or {}
+    return [
+        label
+        for label in labels
+        if purpose_for_label(label, intent=known.get(label)) == purpose
+    ]

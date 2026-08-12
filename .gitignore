@@ -90,6 +90,7 @@ scripts/*
 !scripts/generate_models_catalogue.py
 !scripts/model_sweep.py
 !scripts/model_probe.py
+!scripts/stem_semantics_audit.py
 
 # Fetched Politrees yaml cache for catalogue regeneration
 docs/.yaml_cache/

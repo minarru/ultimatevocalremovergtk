@@ -89,6 +89,7 @@ from ..hints import set_icon_button_a11y, set_tooltip
 from ..markup import set_row_subtitle, set_row_title
 from core.model_display import format_tag_subtitle, format_tag_title
 from core import (
+    canonical_saved_ensemble_name,
     delete_ensemble,
     list_saved_ensembles,
     load_ensemble,
@@ -612,6 +613,10 @@ class EnsemblePage:
                 has_model=True,
                 stem_label_overrides=stem_display_overrides(model),
                 export_semantics_note=recommended_export_note(model),
+                is_karaoke=bool(getattr(model, "is_karaoke", False)),
+                is_karaoke_curated=bool(getattr(model, "is_karaoke_curated", False)),
+                is_bv=bool(getattr(model, "is_bv_model", False)),
+                stem_count=2,
             )
             self.save_stems.sync_from_settings()
         else:
@@ -765,9 +770,10 @@ class EnsemblePage:
         self._present_save_dialog(selected)
 
     def _present_save_dialog(self, selected: List[str]) -> None:
+        prompt = "Enter a name for this ensemble."
         dialog = Adw.AlertDialog(
             heading="Save Ensemble",
-            body="Enter a name for this ensemble.",
+            body=prompt,
         )
         entry = Gtk.Entry()
         entry.set_placeholder_text("Ensemble name")
@@ -777,32 +783,46 @@ class EnsemblePage:
         dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
         dialog.set_default_response("save")
         dialog.set_close_response("cancel")
+        dialog.set_response_enabled("save", False)
+
+        def validate_name(*_args: typing.Any) -> None:
+            try:
+                canonical_saved_ensemble_name(entry.get_text())
+            except ValueError as exc:
+                dialog.set_response_enabled("save", False)
+                dialog.set_body(str(exc) if entry.get_text() else prompt)
+                entry.add_css_class("error")
+            else:
+                dialog.set_response_enabled("save", True)
+                dialog.set_body(prompt)
+                entry.remove_css_class("error")
+
+        entry.connect("changed", validate_name)
 
         def on_response(_dlg: typing.Any, response: typing.Any):
             if response == "save":
                 name = entry.get_text().strip()
-                if name:
-                    self._do_save_ensemble(name, selected)
-                else:
-                    self._toast("Ensemble name cannot be empty.")
+                self._do_save_ensemble(name, selected)
 
         dialog.connect("response", on_response)
         dialog.present(self.window)
+        entry.grab_focus()
 
     def _do_save_ensemble(self, name: str, selected: List[str]) -> None:
         try:
+            canonical_name = canonical_saved_ensemble_name(name)
             save_ensemble(
-                name,
+                canonical_name,
                 self._ensemble_pair(),
                 self.settings.ensemble.type or MAX_MIN,
                 selected,
             )
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             self._toast(f"Couldn't save ensemble: {exc}")
             return
-        self.settings.ensemble.chosen_ensemble = name
+        self.settings.ensemble.chosen_ensemble = canonical_name
         self._refresh_saved_list()
-        self._toast(f"Saved ensemble '{name}'.")
+        self._toast(f"Saved ensemble '{canonical_name}'.")
 
     def _on_delete_clicked(self, _button: Gtk.Button) -> None:
         name = get_combo_value(self.saved_row)

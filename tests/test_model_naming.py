@@ -12,6 +12,7 @@ class StripCataloguePrefixTests(unittest.TestCase):
             "BandSplit Roformer | HyperACE v2 by Unwa",
         )
         self.assertEqual(strip_catalogue_prefix("MDX23C Model VIP: Foo"), "Foo")
+        self.assertEqual(strip_catalogue_prefix("MDX23 Model: Legacy"), "Legacy")
         self.assertEqual(strip_catalogue_prefix("SCnet: 4-stems Huge by Aname"), "4-stems Huge by Aname")
 
     def test_strips_vr_prefixes(self) -> None:
@@ -88,6 +89,10 @@ class CanonicalDisplayNameTests(unittest.TestCase):
         self.assertEqual(
             canonical_display_name("Apollo Model: EDM Restoration by essid"),
             "Apollo — EDM Restoration · essid",
+        )
+        self.assertEqual(
+            canonical_display_name("MDX23 Model: MDX23C_D1581"),
+            "MDX23C — D1581",
         )
 
     def test_remainder_family_beats_the_prefix(self) -> None:

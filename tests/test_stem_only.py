@@ -19,9 +19,11 @@ from ui.widgets.stem_only import (
     _QUICK_VOCALS,
     _TOGGLE_ALL,
     _LEAD_VOCAL_PAIR_LABELS,
+    _stem_focus_tag,
     build_stem_only_options,
     canonical_stem_name,
     roformer_lead_vocal_label_overrides,
+    set_combo_value,
     stem_display_label,
 )
 
@@ -87,6 +89,16 @@ class StemDisplayLabelTests(unittest.TestCase):
 
         self.assertEqual(roformer_lead_vocal_label_overrides(_Model()), _LEAD_VOCAL_PAIR_LABELS)
         self.assertIsNone(roformer_lead_vocal_label_overrides(None))
+
+    def test_gains_shared_table_aliases_not_previously_recognized(self) -> None:
+        self.assertEqual(canonical_stem_name("voc"), VOCAL_STEM)
+        self.assertEqual(canonical_stem_name("instrument"), INST_STEM)
+
+    def test_specialty_names_still_resolve_locally(self) -> None:
+        self.assertEqual(canonical_stem_name("speech"), "Speech")
+        self.assertEqual(canonical_stem_name("sfx"), "Sfx")
+        self.assertEqual(canonical_stem_name("music"), "Music")
+        self.assertEqual(canonical_stem_name("effects"), "Effects")
 
     def test_vocals_other_overrides_skipped_for_multi_stem_models(self):
         class _Training:
@@ -170,6 +182,89 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.section.persist_to_settings()
         self.assertTrue(self.settings["is_primary_stem_only"])
         self.assertFalse(self.settings["is_secondary_stem_only"])
+
+    def test_stem_focus_survives_switching_to_a_model_where_it_is_secondary(self) -> None:
+        """The bug this whole feature exists to fix: picking "Instrumental
+        Only" on a vocals-primary model, then switching to a model where
+        the instrumental happens to be the *secondary* stem, must still
+        export the instrumental -- not silently flip to vocals."""
+        self.section.configure_exclusive(
+            primary_stem=VOCAL_STEM,
+            secondary_stem=INST_STEM,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        set_combo_value(self.section._exclusive_row, "is_secondary_stem_only")
+        self.section.persist_to_settings()
+        self.assertEqual(self.settings.process.stem_focus, INST_STEM)
+
+        # Switch to a model where Instrumental is now primary, Vocals secondary.
+        self.section.configure_exclusive(
+            primary_stem=INST_STEM,
+            secondary_stem=VOCAL_STEM,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        self.assertTrue(self.settings["is_primary_stem_only"])
+        self.assertFalse(self.settings["is_secondary_stem_only"])
+        self.assertIn("Instrumental", self.section.export_summary())
+
+    def test_stem_focus_falls_back_to_all_for_an_unrelated_model(self) -> None:
+        self.settings.process.stem_focus = INST_STEM
+        self.section.configure_exclusive(
+            primary_stem="noreverb",
+            secondary_stem="reverb",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        self.assertFalse(self.settings["is_primary_stem_only"])
+        self.assertFalse(self.settings["is_secondary_stem_only"])
+        # The preference stays parked, not discarded, for a future relevant model.
+        self.assertEqual(self.settings.process.stem_focus, INST_STEM)
+
+    def test_empty_stem_focus_uses_legacy_boolean_behavior(self) -> None:
+        """Before any pick under the new mechanism, behavior is unchanged."""
+        self.settings["is_primary_stem_only"] = True
+        self.section.configure_exclusive(
+            primary_stem=VOCAL_STEM,
+            secondary_stem=INST_STEM,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        self.assertIn("Vocals", self.section.export_summary())
+
+    def test_persist_writes_stem_focus_from_the_chosen_stem(self) -> None:
+        self.section.configure_exclusive(
+            primary_stem=VOCAL_STEM,
+            secondary_stem=INST_STEM,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        set_combo_value(self.section._exclusive_row, "is_primary_stem_only")
+        self.section.persist_to_settings()
+        self.assertEqual(self.settings.process.stem_focus, VOCAL_STEM)
+
+    def test_persist_all_clears_stem_focus(self) -> None:
+        self.settings.process.stem_focus = VOCAL_STEM
+        self.section.configure_exclusive(
+            primary_stem=VOCAL_STEM,
+            secondary_stem=INST_STEM,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        set_combo_value(self.section._exclusive_row, _TOGGLE_ALL)
+        self.section.persist_to_settings()
+        self.assertEqual(self.settings.process.stem_focus, "")
 
     def test_subset_quick_instrumental_persist(self):
         self.settings["is_secondary_stem_only"] = True
@@ -302,6 +397,118 @@ class SaveStemsSectionTests(unittest.TestCase):
         )
         self.assertFalse(self.section._subset_block.get_visible())
         self.assertTrue(self.section._exclusive_block.get_visible())
+
+    def test_configure_exclusive_accepts_and_stores_confidence_kwargs(self) -> None:
+        self.section.configure_exclusive(
+            primary_stem=VOCAL_STEM,
+            secondary_stem=INST_STEM,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+            is_karaoke=True,
+            is_karaoke_curated=True,
+            is_bv=False,
+            stem_count=2,
+        )
+        self.assertTrue(self.section._exclusive_is_karaoke)
+        self.assertTrue(self.section._exclusive_is_karaoke_curated)
+        self.assertFalse(self.section._exclusive_is_bv)
+        self.assertEqual(self.section._exclusive_stem_count, 2)
+
+    def test_configure_exclusive_confidence_kwargs_default_safely(self) -> None:
+        self.section.configure_exclusive(
+            primary_stem=VOCAL_STEM,
+            secondary_stem=INST_STEM,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.assertFalse(self.section._exclusive_is_karaoke)
+        self.assertFalse(self.section._exclusive_is_karaoke_curated)
+        self.assertFalse(self.section._exclusive_is_bv)
+        self.assertEqual(self.section._exclusive_stem_count, 2)
+
+    def test_unrecognized_stem_focus_does_not_flip_on_resync_of_the_same_model(self) -> None:
+        """Regression: two different unrecognized stems on the same model
+        (e.g. a DeReverb pair) must not collide on the shared
+        StemBucket.UNKNOWN anchor -- picking "reverb only" and then
+        re-resolving the SAME model (e.g. tab reactivation) must not
+        silently flip the pick to "noreverb only"."""
+        self.section.configure_exclusive(
+            primary_stem="noreverb",
+            secondary_stem="reverb",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        set_combo_value(self.section._exclusive_row, "is_secondary_stem_only")
+        self.section.persist_to_settings()
+        self.assertTrue(self.settings["is_secondary_stem_only"])
+
+        self.section.configure_exclusive(
+            primary_stem="noreverb",
+            secondary_stem="reverb",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        self.assertFalse(self.settings["is_primary_stem_only"])
+        self.assertTrue(self.settings["is_secondary_stem_only"])
+
+    def test_two_different_unrecognized_stem_models_do_not_collide(self) -> None:
+        """Before the fix, every unrecognized stem bucketed to the same
+        StemBucket.UNKNOWN, so a focus set on one DeReverb-style model
+        would false-match an unrelated DeEcho-style model."""
+        self.section.configure_exclusive(
+            primary_stem="noreverb",
+            secondary_stem="reverb",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        set_combo_value(self.section._exclusive_row, "is_secondary_stem_only")
+        self.section.persist_to_settings()
+
+        self.section.configure_exclusive(
+            primary_stem="noecho",
+            secondary_stem="echo",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        self.assertFalse(self.settings["is_primary_stem_only"])
+        self.assertFalse(self.settings["is_secondary_stem_only"])
+
+
+class StemFocusTagTests(unittest.TestCase):
+    def test_recognized_stem_returns_bucket_tag(self) -> None:
+        self.assertEqual(
+            _stem_focus_tag(
+                "vocals", stem_count=2, is_karaoke=False, is_karaoke_curated=False, is_bv=False
+            ),
+            VOCAL_STEM,
+        )
+
+    def test_unrecognized_stem_returns_a_raw_name_tag(self) -> None:
+        self.assertEqual(
+            _stem_focus_tag(
+                "reverb", stem_count=2, is_karaoke=False, is_karaoke_curated=False, is_bv=False
+            ),
+            "raw:reverb",
+        )
+
+    def test_different_unrecognized_stems_get_different_tags(self) -> None:
+        tag_a = _stem_focus_tag(
+            "reverb", stem_count=2, is_karaoke=False, is_karaoke_curated=False, is_bv=False
+        )
+        tag_b = _stem_focus_tag(
+            "echo", stem_count=2, is_karaoke=False, is_karaoke_curated=False, is_bv=False
+        )
+        self.assertNotEqual(tag_a, tag_b)
 
 
 if __name__ == "__main__":

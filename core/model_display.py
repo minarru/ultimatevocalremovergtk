@@ -26,11 +26,13 @@ _MAPPER_EXTENSIONS = ("", ".ckpt", ".pth", ".onnx", ".yaml", ".th", ".gz")
 
 _MDX_CATALOG_SOURCE_KEYS = (
     "mdx_download_list",
+    "mdx23_download_list",
     "mdx23c_download_list",
     "roformer_download_list",
     "scnet_download_list",
     "bandit_download_list",
     "mdx_download_vip_list",
+    "mdx23_download_vip_list",
     "mdx23c_download_vip_list",
     "roformer_download_vip_list",
 )
@@ -46,7 +48,9 @@ _CATALOGUE_LABEL_PREFIXES = (
     "Bandit v2: ",
     "Bandit: ",
     "MDX23C Model VIP: ",
+    "MDX23 Model VIP: ",
     "MDX23C Model: ",
+    "MDX23 Model: ",
     "MDX23C: ",
     "MDX-Net Model VIP: ",
     "MDX-Net Model: ",

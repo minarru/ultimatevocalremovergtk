@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, NO_MODEL, VR_ARCH_TYPE
 from core.downloads import DownloadManager, vip_downloads
 from core import paths
+from core.catalog_sources import EntryMeta
 
 
 def _stub_config_fetch(test: unittest.TestCase) -> None:
@@ -112,6 +113,59 @@ class DownloadManagerResolveTests(unittest.TestCase):
 
             self.assertEqual(result, "exists")
             repo.invalidate_models.assert_called_once()
+
+
+class DownloadManagerAvailabilityTests(unittest.TestCase):
+    def test_installed_cross_source_alias_is_not_offered(self) -> None:
+        retained_label = "SCnet: 4-stems Huge SCNet Strong Fullness by Aname"
+        alias_label = "SCNet 4 Stems Huge Strong Fullness by Aname"
+        retained_checkpoint = "huge_scnet_4stems_strong_fullness.ckpt"
+        installed_checkpoint = "scnet_huge_4stem_str_fullness_aname.ckpt"
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            paths, "MDX_MODELS_DIR", tmp
+        ):
+            with open(os.path.join(tmp, installed_checkpoint), "wb") as handle:
+                handle.write(b"installed alias")
+
+            manager = DownloadManager()
+            manager.mdx_download_list = {
+                retained_label: {
+                    retained_checkpoint: "https://curated/strong-fullness.ckpt"
+                }
+            }
+            manager.catalogue_meta = {
+                retained_label: EntryMeta(
+                    label=retained_label,
+                    display=retained_label,
+                    arch=MDX_ARCH_TYPE,
+                    checkpoint=retained_checkpoint,
+                ),
+                alias_label: EntryMeta(
+                    label=alias_label,
+                    display=alias_label,
+                    arch=MDX_ARCH_TYPE,
+                    checkpoint=installed_checkpoint,
+                ),
+            }
+
+            available = manager.available_downloads(MDX_ARCH_TYPE)
+
+        self.assertNotIn(retained_label, available[MDX_ARCH_TYPE])
+
+
+class LegacyCatalogueSchemaTests(unittest.TestCase):
+    def test_rebuild_accepts_bundled_mdx23_key(self) -> None:
+        manager = DownloadManager()
+        manager.online_data = {
+            "mdx23_download_list": {
+                "MDX23 Model: Legacy": {"legacy.ckpt": "legacy.yaml"}
+            }
+        }
+
+        manager._rebuild_catalogues()
+
+        self.assertIn("MDX23 Model: Legacy", manager.mdx_download_list)
 
 
 class VipDownloadsTests(unittest.TestCase):

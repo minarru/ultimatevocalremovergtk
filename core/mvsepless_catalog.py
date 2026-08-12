@@ -67,6 +67,17 @@ _UNSUPPORTED_ENTRY_IDS: Dict[str, str] = {
     "bs_cr_4stem_zf_turbo": "BS Conformer not ported",
 }
 
+
+def _quarantine_reason(entry_id: str, entry: Mapping[str, Any]) -> str:
+    """Return why a known malformed remote record must be omitted."""
+    checkpoint_url = str(entry.get("checkpoint_url") or "")
+    if (
+        entry_id == "scnet_mid_side_gilliaaan"
+        and "/mdx23c/mdx23c_mid_side_gilliaaan.ckpt" in checkpoint_url
+    ):
+        return "SCNet record points at the MDX23C Mid-Side checkpoint"
+    return ""
+
 _MODEL_TYPE_TO_LIST_KEY: Dict[str, str] = {
     "mel_band_roformer": "roformer_download_list",
     "bs_roformer": "roformer_download_list",
@@ -397,15 +408,35 @@ def convert_mvsepless_catalog(
     }
     unsupported_labels: Dict[str, str] = {}
     metadata: Dict[str, Dict[str, Any]] = {}
+    claimed_supported_labels: set[str] = set()
 
     for entry_id, entry in models.items():
         if not isinstance(entry, dict):
+            continue
+        quarantine = _quarantine_reason(str(entry_id), entry)
+        if quarantine:
+            debug("download", f"mvsepless quarantined id={entry_id} reason={quarantine}")
             continue
         model_type = str(entry.get("model_type") or "")
         label = entry_label(str(entry_id), entry)
         files = entry_files(entry)
         supported, reason = classify_entry(str(entry_id), entry)
         arch = _MODEL_TYPE_TO_ARCH.get(model_type, MDX_ARCH_TYPE)
+
+        # ``full_name`` is not unique in the upstream payload. Preserve every
+        # runnable weight by giving later collisions a stable id suffix; the
+        # first spelling remains unchanged for compatibility with other
+        # catalogue sources and existing searches.
+        if supported and files is not None:
+            base_label = label
+            candidate = label
+            suffix = 1
+            while candidate.casefold() in claimed_supported_labels:
+                discriminator = str(entry_id) if suffix == 1 else f"{entry_id}-{suffix}"
+                candidate = f"{base_label} [{discriminator}]"
+                suffix += 1
+            label = candidate
+            claimed_supported_labels.add(label.casefold())
 
         # Before the supported/unsupported split so grayed-out rows carry
         # metadata too. ``setdefault`` matches the upstream-wins rule the
@@ -440,10 +471,20 @@ def convert_mvsepless_catalog(
             )
             unsupported_labels[label] = f"unmapped model_type {model_type!r}"
             continue
-        # Upstream-wins within the converted set too (first label keeps files).
-        if label in lists[list_key]:
-            continue
         lists[list_key][label] = files
+
+    # Unsupported records cannot be selected, so duplicate names carry no
+    # useful distinction and only create repeated disabled rows in the UI.
+    for arch, rows in unsupported.items():
+        seen: set[str] = set()
+        unique: List[Tuple[str, str]] = []
+        for label, reason in rows:
+            identity = normalize_catalogue_label(label) or label.casefold()
+            if identity in seen:
+                continue
+            seen.add(identity)
+            unique.append((label, reason))
+        unsupported[arch] = unique
 
     # Flatten MDX-family lists the same way Politrees / extras do for the UI.
     mdx_flat: Dict[str, Any] = {}

@@ -81,10 +81,24 @@ def migrate_local_only_keys(mapper_path: str, remote: Mapping[str, object]) -> b
     written unconditionally here — empty when there was nothing to rescue — and
     its existence means the mirror is authoritative from now on.
     """
+    local_only = plan_local_overlay_migration(mapper_path, remote)
+    if local_only is None:
+        return False
+    written = _write_object(local_overlay_path(mapper_path), local_only)
+    return bool(local_only) and written
+
+
+def plan_local_overlay_migration(
+    mapper_path: str, remote: Mapping[str, object]
+) -> Dict[str, str] | None:
+    """Return the first-run overlay payload, or ``None`` if already migrated.
+
+    The caller can stage this payload alongside the upstream mirror so a
+    refresh does not leave a half-migrated mapper when a later write fails.
+    An empty mapping is significant: writing it creates the migration marker.
+    """
     overlay_path = local_overlay_path(mapper_path)
     if os.path.exists(overlay_path):
-        return False
+        return None
     mirror = _load_object(mapper_path)
-    local_only = {key: value for key, value in mirror.items() if key not in remote}
-    _write_object(overlay_path, local_only)
-    return bool(local_only)
+    return {key: value for key, value in mirror.items() if key not in remote}

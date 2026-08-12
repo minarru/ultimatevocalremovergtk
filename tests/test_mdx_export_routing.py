@@ -7,7 +7,7 @@ from unittest import mock
 import numpy as np
 
 from bundled.constants import ALL_STEMS, VOCAL_STEM
-from engines.mdx import derive_mdx_complement, mdx_export_routing_flags
+from engines.mdx import derive_mdx_complement, mdx_export_routing_flags, mdx_selected_stems
 
 
 class MDXExportRoutingTests(unittest.TestCase):
@@ -51,6 +51,26 @@ class MDXExportRoutingTests(unittest.TestCase):
         )
         self.assertFalse(routing["is_complement_export"])
 
+    def test_vocals_quick_export_matches_the_models_native_cased_stem_name(self) -> None:
+        """Community MDX-C yamls commonly declare lowercase stem names
+        (``training.instruments: [drums, bass, other, vocals]``), but
+        "Instrumental Only" / "Vocals Only" quick export persists the
+        canonical ``Vocals`` constant into ``selected_stems``. A raw ``==``
+        against ``VOCAL_STEM`` here missed every lowercase-stem model,
+        falling through to native-pick (exports vocals only) instead of the
+        primary/secondary-only path -- the opposite of "Instrumental Only"."""
+        routing = mdx_export_routing_flags(
+            **self._base_kwargs(
+                stem_list=["drums", "bass", "other", "vocals"],
+                selected_stems=["vocals"],
+                mdxnet_stem_select="vocals",
+                is_secondary_stem_only=True,
+            )
+        )
+        self.assertFalse(routing["is_complement_export"])
+        self.assertFalse(routing["is_native_pick"])
+        self.assertFalse(routing["multi_stem_export"])
+
     def test_stem_subset_routing(self) -> None:
         routing = mdx_export_routing_flags(
             **self._base_kwargs(
@@ -75,6 +95,32 @@ class MDXExportRoutingTests(unittest.TestCase):
         working.pop("Vocals")
         self.assertIn("Vocals", cached)
         self.assertNotIn("Vocals", working)
+
+
+class MdxSelectedStemsTests(unittest.TestCase):
+    """``mdxnet_stems_selected`` is persisted using canonical UVR labels
+    (``Vocals``); ``stem_list`` carries a checkpoint's own yaml casing (often
+    lowercase). A raw membership check between the two silently matches
+    nothing for any model that doesn't spell its stems exactly like the UVR
+    constants -- which most community MDX-C multi-stem yamls don't."""
+
+    def test_matches_the_models_native_casing_against_a_canonical_selection(
+        self,
+    ) -> None:
+        selected = mdx_selected_stems(
+            ["drums", "bass", "other", "vocals"], ["Vocals"]
+        )
+        self.assertEqual(selected, ["vocals"])
+
+    def test_matches_when_both_sides_already_agree(self) -> None:
+        selected = mdx_selected_stems(
+            ["Vocals", "Instrumental", "Drums", "Bass"], ["Vocals", "Drums"]
+        )
+        self.assertEqual(selected, ["Vocals", "Drums"])
+
+    def test_empty_selection_matches_nothing(self) -> None:
+        self.assertEqual(mdx_selected_stems(["vocals", "other"], []), [])
+        self.assertEqual(mdx_selected_stems(["vocals", "other"], None), [])
 
 
 if __name__ == "__main__":

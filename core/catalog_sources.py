@@ -30,7 +30,11 @@ from bundled.constants import (
     VR_ARCH_TYPE,
 )
 
-from .catalog_dedupe import dedupe_download_catalogue, primary_checkpoint_url
+from .catalog_dedupe import (
+    dedupe_download_catalogue,
+    normalize_catalogue_label,
+    primary_checkpoint_url,
+)
 from .debug_log import debug
 from .extra_catalog import apollo_download_list, merge_extra_catalogues
 from .model_naming import canonical_display_name
@@ -146,6 +150,7 @@ def _build_meta(
     catalogue: Mapping[str, Any],
     arch: str,
     extra_meta: Mapping[str, Mapping[str, Any]],
+    alias_meta: Mapping[str, Mapping[str, Any]],
 ) -> Dict[str, EntryMeta]:
     from .catalogue_stem_cache import lookup_stems
 
@@ -156,7 +161,11 @@ def _build_meta(
             if isinstance(model, dict)
             else {str(model): ""}
         )
-        source_meta = extra_meta.get(label) or {}
+        source_meta = (
+            extra_meta.get(label)
+            or alias_meta.get(normalize_catalogue_label(label))
+            or {}
+        )
         stems_raw = source_meta.get("stems")
         stems = list(stems_raw) if isinstance(stems_raw, list) else []
         target = source_meta.get("target_instrument") or None
@@ -179,6 +188,31 @@ def _build_meta(
             intent=str(source_meta.get("intent") or INTENT_UNKNOWN),
         )
     return out
+
+
+def _metadata_alias_index(
+    metadata: Mapping[str, Mapping[str, Any]],
+) -> Dict[str, Mapping[str, Any]]:
+    """Index the richest metadata record under each logical label identity."""
+    aliases: Dict[str, Mapping[str, Any]] = {}
+
+    def richness(value: Mapping[str, Any]) -> Tuple[int, int, int]:
+        stems = value.get("stems")
+        intent = str(value.get("intent") or INTENT_UNKNOWN)
+        return (
+            len(stems) if isinstance(stems, list) else 0,
+            1 if value.get("target_instrument") else 0,
+            1 if intent != INTENT_UNKNOWN else 0,
+        )
+
+    for label, value in metadata.items():
+        identity = normalize_catalogue_label(label)
+        if not identity:
+            continue
+        current = aliases.get(identity)
+        if current is None or richness(value) > richness(current):
+            aliases[identity] = value
+    return aliases
 
 
 def _checkpoint_urls(*catalogues: Mapping[str, Any]) -> List[str]:
@@ -218,6 +252,7 @@ def merged_catalogues(
     mdx_all = merge_supplemental_list(mdx, supp_mdx)
     demucs_all = merge_supplemental_list(demucs, supp_demucs)
     apollo_all = apollo_download_list()
+    alias_meta = _metadata_alias_index(extra_meta)
 
     # Metadata is built **before** dedupe, on purpose. Dedupe is right for the
     # Download Center's list — do not offer one weight twice — but wrong for a
@@ -231,7 +266,7 @@ def merged_catalogues(
         (demucs_all, DEMUCS_ARCH_TYPE),
         (apollo_all, APOLLO_ARCH_TYPE),
     ):
-        meta.update(_build_meta(catalogue, arch, extra_meta))
+        meta.update(_build_meta(catalogue, arch, extra_meta, alias_meta))
 
     from .download_sizes import content_ids_from_cache
 

@@ -32,6 +32,7 @@ class UVRApplication(Adw.Application):
     def __init__(self):
         super().__init__(application_id=APP_ID)
         self._did_activate = False
+        self._main_window: Optional[MainWindow] = None
 
     def do_startup(self):
         Adw.Application.do_startup(self)
@@ -62,7 +63,7 @@ class UVRApplication(Adw.Application):
         load_application_styles()
         self._apply_saved_color_scheme()
         quit_action = Gio.SimpleAction.new("quit", None)
-        quit_action.connect("activate", lambda *_: self.quit())
+        quit_action.connect("activate", self._on_quit_requested)
         self.add_action(quit_action)
         open_output = Gio.SimpleAction.new(
             "open-output-folder", GLib.VariantType.new("s")
@@ -78,6 +79,14 @@ class UVRApplication(Adw.Application):
         if window is None or param is None:
             return
         open_folder_in_file_manager(window, param.get_string())
+
+    def _on_quit_requested(self, *_args: object) -> None:
+        """Route accelerators/menu quit through MainWindow's guarded close."""
+        window = self._main_window
+        if window is not None:
+            window.close()
+            return
+        self.quit()
 
     @staticmethod
     def _cleanup_stale_ensemble_temps() -> None:
@@ -107,9 +116,10 @@ class UVRApplication(Adw.Application):
         from core.separate_import import warm_import_separate_engines
 
         warm_import_separate_engines()
-        window = self.props.active_window
+        window = self._main_window
         if window is None:
             window = MainWindow(application=self)
+            self._main_window = window
         window.present()
 
 
