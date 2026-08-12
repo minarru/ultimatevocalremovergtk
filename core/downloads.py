@@ -50,6 +50,7 @@ from bundled.constants import (
 
 from . import paths
 from .debug_log import debug
+from .catalog_dedupe import normalize_catalogue_label
 from .download_sizes import (
     content_ids_from_cache,
     describe_download_size,
@@ -506,6 +507,7 @@ class DownloadManager:
         """Build the VIP-merged catalogues from ``online_data`` (no disk filter)."""
         self.vr_download_list = dict(self.online_data.get("vr_download_list", {}))
         self.mdx_download_list = dict(self.online_data.get("mdx_download_list", {}))
+        self.mdx_download_list.update(self.online_data.get("mdx23_download_list", {}))
         self.mdx_download_list.update(self.online_data.get("mdx23c_download_list", {}))
         # Roformer models (BS-Roformer / Mel-Band Roformer) ship in their own
         # ``roformer_download_list`` but use the same compact
@@ -518,6 +520,7 @@ class DownloadManager:
         if self.decoded_vip_link != NO_CODE:
             self.vr_download_list.update(self.online_data.get("vr_download_vip_list", {}))
             self.mdx_download_list.update(self.online_data.get("mdx_download_vip_list", {}))
+            self.mdx_download_list.update(self.online_data.get("mdx23_download_vip_list", {}))
             self.mdx_download_list.update(self.online_data.get("mdx23c_download_vip_list", {}))
             self.mdx_download_list.update(self.online_data.get("roformer_download_vip_list", {}))
 
@@ -589,6 +592,27 @@ class DownloadManager:
 
     # -- Download lists ---------------------------------------------------------
 
+    def _installed_mdx_alias_keys(self) -> set[str]:
+        """Return logical catalogue identities with any checkpoint on disk.
+
+        ``catalogue_meta`` deliberately retains rows removed by catalogue
+        deduplication. That makes it the authoritative alias inventory when
+        two sources give the same model different local filenames.
+        """
+        installed: set[str] = set()
+        for meta in self.catalogue_meta.values():
+            if getattr(meta, "arch", None) != MDX_ARCH_TYPE:
+                continue
+            checkpoint = getattr(meta, "checkpoint", None)
+            label = getattr(meta, "label", None)
+            if not checkpoint or not label:
+                continue
+            if os.path.isfile(os.path.join(paths.MDX_MODELS_DIR, checkpoint)):
+                key = normalize_catalogue_label(label)
+                if key:
+                    installed.add(key)
+        return installed
+
     def available_downloads(self, model_type: str = ALL_TYPES) -> Dict[str, List[str]]:
         """Return ``{arch_type: [selectable, ...]}`` of not-yet-downloaded models.
 
@@ -613,12 +637,16 @@ class DownloadManager:
 
         if model_type in (MDX_ARCH_TYPE, ALL_TYPES):
             mdx_list: List[str] = []
+            installed_alias_keys = self._installed_mdx_alias_keys()
             for selectable, model in self.mdx_download_list.items():
                 if isinstance(model, dict):
                     model_name = mdx_checkpoint_filename(model)
                 else:
                     model_name = str(model)
-                if not os.path.isfile(os.path.join(paths.MDX_MODELS_DIR, model_name)):
+                alias_key = normalize_catalogue_label(selectable)
+                if not os.path.isfile(
+                    os.path.join(paths.MDX_MODELS_DIR, model_name)
+                ) and alias_key not in installed_alias_keys:
                     mdx_list.append(selectable)
             result[MDX_ARCH_TYPE] = mdx_list or [NO_NEW_MODELS]
 
@@ -1011,6 +1039,7 @@ class DownloadManager:
 
         vr = dict(source.get("vr_download_list", {}))
         mdx = dict(source.get("mdx_download_list", {}))
+        mdx.update(source.get("mdx23_download_list", {}))
         mdx.update(source.get("mdx23c_download_list", {}))
         mdx.update(source.get("roformer_download_list", {}))
         demucs = dict(source.get("demucs_download_list", {}))
@@ -1018,6 +1047,7 @@ class DownloadManager:
         if self.decoded_vip_link != NO_CODE:
             vr.update(source.get("vr_download_vip_list", {}))
             mdx.update(source.get("mdx_download_vip_list", {}))
+            mdx.update(source.get("mdx23_download_vip_list", {}))
             mdx.update(source.get("mdx23c_download_vip_list", {}))
             mdx.update(source.get("roformer_download_vip_list", {}))
 

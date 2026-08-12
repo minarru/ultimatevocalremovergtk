@@ -5,10 +5,10 @@ callbacks from that thread. GTK widgets may only be touched from the main loop,
 so the helpers here wrap those callbacks with ``GLib.idle_add``. Later phases use
 :func:`gtk_job_callbacks` to bind progress/console/completion to widgets safely.
 """
-import typing
-
-from typing import Callable, Optional
+import threading
 import time
+import typing
+from typing import Callable, Optional
 
 from gi.repository import GLib
 
@@ -100,6 +100,41 @@ def main_thread(func: Callable) -> Callable:
     return wrapper
 
 
+def latest_main_thread(func: Callable) -> Callable:
+    """Marshal only the newest pending call to ``func`` onto the main loop.
+
+    Progress producers can run much faster than GTK can paint. Keeping one
+    pending source bounds main-loop work while retaining the newest value; a
+    call arriving while the handler runs schedules the next source normally.
+    """
+    lock = threading.Lock()
+    pending = False
+    latest_args: tuple[typing.Any, ...] = ()
+    latest_kwargs: dict[str, typing.Any] = {}
+
+    def wrapper(*args: typing.Any, **kwargs: typing.Any) -> None:
+        nonlocal pending, latest_args, latest_kwargs
+        with lock:
+            latest_args = args
+            latest_kwargs = kwargs
+            if pending:
+                return
+            pending = True
+
+        def invoke() -> bool:
+            nonlocal pending
+            with lock:
+                call_args = latest_args
+                call_kwargs = latest_kwargs
+                pending = False
+            func(*call_args, **call_kwargs)
+            return GLib.SOURCE_REMOVE
+
+        GLib.idle_add(invoke)
+
+    return wrapper
+
+
 def gtk_job_callbacks(
     on_progress: Optional[Callable[[float], None]] = None,
     on_console: Optional[Callable[[str], None]] = None,
@@ -110,7 +145,7 @@ def gtk_job_callbacks(
 ) -> JobCallbacks:
     """Build :class:`JobCallbacks` whose handlers run on the GTK main loop."""
     return JobCallbacks(
-        on_progress=main_thread(on_progress) if on_progress else None,
+        on_progress=latest_main_thread(on_progress) if on_progress else None,
         on_console=main_thread(on_console) if on_console else None,
         on_complete=main_thread(on_complete) if on_complete else None,
         on_stopped=main_thread(on_stopped) if on_stopped else None,

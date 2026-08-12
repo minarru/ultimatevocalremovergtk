@@ -137,7 +137,7 @@ class RunController:
             # its "response"/"closed" handlers stay live and can later fire
             # against state already mutated by the shutdown-confirm flow below.
             dialog.force_close()
-        if self.is_running():
+        if self.is_running() or self._active_download_count():
             self._close_deferred = True
             self._present_shutdown_confirm()
             return True
@@ -276,7 +276,23 @@ class RunController:
         dialog.present(self._window)
 
     def _present_shutdown_confirm(self) -> None:
-        heading, body = QUIT_WHILE_PROCESSING_CONFIRM
+        download_count = self._active_download_count()
+        if self.is_running() and download_count:
+            heading = "Stop processing and downloads?"
+            body = (
+                "Processing and model downloads are still running. "
+                "Stopping now may leave the current output incomplete; partial "
+                "model downloads will be removed."
+            )
+        elif download_count:
+            heading = "Cancel model downloads and quit?"
+            noun = "download is" if download_count == 1 else "downloads are"
+            body = (
+                f"{download_count} model {noun} still active. Partial downloads "
+                "will be removed before the application quits."
+            )
+        else:
+            heading, body = QUIT_WHILE_PROCESSING_CONFIRM
         dialog = Adw.AlertDialog(heading=heading, body=body)
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("quit", "Stop and Quit")
@@ -302,6 +318,7 @@ class RunController:
                 pending["run"] = lambda: self._confirm_shutdown_stop(captured)
                 if captured is not None and hasattr(captured, "stop"):
                     captured.stop()
+                self._window.context.stop_all_workers(force=False)
                 self._defer_dialog_action(pending["run"], label="shutdown")
                 pending["run"] = None
             else:
@@ -381,11 +398,10 @@ class RunController:
 
     def _poll_shutdown(self) -> bool:
         target = self._shutdown_target
-        if target is None:
-            self._complete_shutdown(deferred=self._close_deferred)
-            return False
         self._shutdown_attempts += 1
-        alive = self._worker_is_running(target)
+        worker_alive = self._worker_is_running(target) if target is not None else False
+        downloads_alive = self._active_download_count() > 0
+        alive = worker_alive or downloads_alive
         if not alive:
             debug("cleanup", f"shutdown poll attempt={self._shutdown_attempts} worker_alive=False")
             self._shutdown_target = None
@@ -775,6 +791,11 @@ class RunController:
             deferred = getattr(self._window, "_deferred_model_refresh", None)
             if deferred is not None:
                 self._window._apply_model_refresh(source=deferred)
+
+    def _active_download_count(self) -> int:
+        context: Any = getattr(self._window, "context", None)
+        getter: Any = getattr(context, "active_download_count", None)
+        return int(typing.cast(Any, getter())) if callable(getter) else 0
 
     def refresh_start_readiness(self) -> Optional[str]:
         """Synchronize Start sensitivity, tooltip and accessibility description."""

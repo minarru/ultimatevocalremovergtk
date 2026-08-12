@@ -22,11 +22,13 @@ from .model_display import (
 
 _MDX_CATALOG_SOURCE_KEYS = (
     "mdx_download_list",
+    "mdx23_download_list",
     "mdx23c_download_list",
     "roformer_download_list",
     "scnet_download_list",
     "bandit_download_list",
     "mdx_download_vip_list",
+    "mdx23_download_vip_list",
     "mdx23c_download_vip_list",
     "roformer_download_vip_list",
 )

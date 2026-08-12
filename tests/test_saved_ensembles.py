@@ -15,7 +15,10 @@ class SavedEnsemblePersistenceTests(unittest.TestCase):
             path = model_data.save_ensemble(" My Mix ", "Vocals", "max", ["a", "b"])
             self.assertEqual(os.path.basename(path), "My_Mix.json")
             self.assertEqual(model_data.list_saved_ensembles(), ["My_Mix"])
-            self.assertEqual(model_data.load_ensemble("My Mix")["selected_models"], ["a", "b"])
+            loaded = model_data.load_ensemble("My Mix")
+            self.assertIsNotNone(loaded)
+            assert loaded is not None
+            self.assertEqual(loaded["selected_models"], ["a", "b"])
             self.assertTrue(model_data.delete_ensemble("My Mix"))
             self.assertEqual(model_data.list_saved_ensembles(), [])
 

@@ -57,11 +57,24 @@ _NETWORKS = [
 _CLAMP_MAX_WIDTH = 800
 
 
+def catalogue_label_matches(label: str, query: str, *, extra: str = "") -> bool:
+    """Match the raw label, its displayed canonical name, or auxiliary text."""
+    folded = query.strip().casefold()
+    if not folded:
+        return True
+    return any(
+        folded in candidate.casefold()
+        for candidate in (label, canonical_display_name(label), extra)
+        if candidate
+    )
+
+
 def catalogue_matches(
     names: list[str],
     query: str,
     *,
     purpose: str = PURPOSE_ALL,
+    intents: typing.Mapping[str, str] | None = None,
 ) -> list[str]:
     """Return selectable catalogue names matching query and purpose filter.
 
@@ -71,16 +84,8 @@ def catalogue_matches(
     selectable = [
         name for name in names if name not in (NO_NEW_MODELS, NO_CONNECTION)
     ]
-    selectable = filter_labels_by_purpose(selectable, purpose)
-    folded = query.strip().casefold()
-    if not folded:
-        return selectable
-    return [
-        name
-        for name in selectable
-        if folded in name.casefold()
-        or folded in canonical_display_name(name).casefold()
-    ]
+    selectable = filter_labels_by_purpose(selectable, purpose, intents=intents)
+    return [name for name in selectable if catalogue_label_matches(name, query)]
 
 
 def resolve_catalogue_action_row(row: Gtk.ListBoxRow) -> Adw.ActionRow | None:
@@ -116,6 +121,7 @@ class DownloadCenterWindow:
         self._available: dict[str, list[str]] = {}
         self._unsupported: dict[str, list[tuple[str, str]]] = {}
         self._catalogue_online: bool | None = None
+        self._catalogue_notice = ""
         self._refreshing = False
         self._size_lookup_ids: dict[tuple[str, str], int] = {}
         self._row_checks: dict[tuple[str, str], Gtk.CheckButton] = {}
@@ -130,6 +136,7 @@ class DownloadCenterWindow:
         self._stem_refresh_armed = False
         self._stem_fetch_armed = False
         self._catalogue_refresh_armed = False
+        self._downloads_dirty = False
 
         saved_code = self.settings.process.user_code
         if saved_code:
@@ -159,6 +166,8 @@ class DownloadCenterWindow:
 
     def present(self) -> None:
         self.window.present()
+        if self._downloads_dirty and self._available:
+            self._apply_download_completion_refresh()
         if not self._available:
             self.start_refresh()
 
@@ -332,15 +341,18 @@ class DownloadCenterWindow:
             return False
         if self._hide_unsupported and fetch(action, "_uvr_unsupported", False):
             return False
-        if self._purpose != PURPOSE_ALL and purpose_for_label(label) != self._purpose:
+        intent = self._catalogue_intent(label)
+        if (
+            self._purpose != PURPOSE_ALL
+            and purpose_for_label(label, intent=intent) != self._purpose
+        ):
             return False
         search = self._search_entries.get(arch)
         if search is None:
             return True
         query = search.get_text().strip().casefold()
-        if not query:
-            return True
-        return query in str(label).casefold()
+        reason = fetch(action, "_uvr_unsupported_reason", "")
+        return catalogue_label_matches(str(label), query, extra=str(reason))
 
     def _row_sort_key(self, row: typing.Any) -> tuple[int, int, float, str]:
         """Order key: supported first, then the active sort mode, then name."""
@@ -470,6 +482,7 @@ class DownloadCenterWindow:
         action.set_sensitive(False)
         stash(action, "_uvr_model_name", name)
         stash(action, "_uvr_unsupported", True)
+        stash(action, "_uvr_unsupported_reason", reason)
         stash(action, "_uvr_sdr", parse_sdr_score(name))
         stash(action, "_uvr_sdr_stem", None)
         stash(action, "_uvr_stems_text", "")
@@ -577,29 +590,42 @@ class DownloadCenterWindow:
             active_arch = self.stack.get_visible_child_name()
             active_search = self._search_entries.get(active_arch or "")
             query = active_search.get_text().strip() if active_search is not None else ""
-            if query and active_arch:
+            if active_arch and (query or self._purpose != PURPOSE_ALL):
                 network_label = next(
                     (label for label, arch in _NETWORKS if arch == active_arch),
                     "current network",
                 )
-                shown = len(
-                    catalogue_matches(self._available.get(active_arch) or [], query)
-                )
-                self.status_label.set_label(
-                    f"{shown} match{'es' if shown != 1 else ''} for “{query}” "
-                    f"in {network_label}"
-                )
+                shown = self._matching_count(active_arch, query)
+                if query:
+                    message = (
+                        f"{shown} match{'es' if shown != 1 else ''} for “{query}” "
+                        f"in {network_label}"
+                    )
+                else:
+                    purpose_label = next(
+                        (
+                            label
+                            for value, label in PURPOSE_FILTER_OPTIONS
+                            if value == self._purpose
+                        ),
+                        "selected purpose",
+                    )
+                    message = (
+                        f"{shown} {purpose_label.casefold()} "
+                        f"model{'s' if shown != 1 else ''} in {network_label}"
+                    )
+                self._set_catalogue_status(message)
             elif count:
-                self.status_label.set_label(
+                self._set_catalogue_status(
                     f"{count} selected · {total} available across all networks"
                 )
             elif not self._refreshing:
                 if total:
-                    self.status_label.set_label(
+                    self._set_catalogue_status(
                         f"{total} models available — check one or more, then Download"
                     )
                 else:
-                    self.status_label.set_label(
+                    self._set_catalogue_status(
                         "All available models are already installed"
                     )
         self._update_tab_badges()
@@ -609,20 +635,52 @@ class DownloadCenterWindow:
             return
         debug("download", "ui refresh start")
         self._refreshing = True
-        self.status_label.set_label("Refreshing catalogue…")
         self._refresh_spinner.set_visible(True)
         self._refresh_spinner.start()
         self.refresh_button.set_sensitive(False)
         self._update_download_button()
+        self.status_label.set_label("Refreshing catalogue…")
         threading.Thread(target=self._refresh_worker, daemon=True).start()
 
     def _refresh_worker(self) -> None:
-        is_online = self.manager.refresh()
-        if is_online and self.settings.process.auto_update_model_params:
-            self.manager.update_model_settings(self.context.repo)
-        available = self.manager.available_downloads() if is_online else {}
-        unsupported = self.manager.unsupported_downloads() if is_online else {}
+        try:
+            is_online = self.manager.refresh()
+            if is_online and self.settings.process.auto_update_model_params:
+                self.manager.update_model_settings(self.context.repo)
+            usable = is_online or self.manager.ensure_catalogues()
+            available = self.manager.available_downloads() if usable else {}
+            unsupported = self.manager.unsupported_downloads() if usable else {}
+        except Exception as exc:  # noqa: BLE001 - surfaced through the UI/log
+            from .errorlog import log_error
+
+            log_error("Download Center", exc, context="refreshing catalogue")
+            idle_on_main(self._refresh_failed, str(exc).strip() or type(exc).__name__)
+            return
         idle_on_main(self._refresh_done, is_online, available, unsupported)
+
+    def _finish_refresh_controls(self) -> None:
+        self._refreshing = False
+        self.refresh_button.set_sensitive(True)
+        self._refresh_spinner.stop()
+        self._refresh_spinner.set_visible(False)
+
+    def _refresh_failed(self, message: str) -> None:
+        self._finish_refresh_controls()
+        self._catalogue_online = False
+        if self._available:
+            self._catalogue_notice = "Refresh failed — showing previous catalogue · "
+            self._update_download_button()
+        else:
+            self._catalogue_notice = ""
+            self.status_label.set_label("Catalogue refresh failed")
+            for _label, arch in _NETWORKS:
+                self._set_catalogue_page_message(
+                    arch,
+                    "Catalogue unavailable",
+                    description="The catalogue could not be refreshed. Try again.",
+                    offline=True,
+                )
+        self._toast(f"Couldn't refresh catalogue: {message}")
 
     def _refresh_done(
         self,
@@ -630,14 +688,10 @@ class DownloadCenterWindow:
         available: dict,
         unsupported: dict | None = None,
     ) -> None:
-        self._refreshing = False
+        self._finish_refresh_controls()
         self._catalogue_online = is_online
-        self.refresh_button.set_sensitive(True)
-        self._refresh_spinner.stop()
-        self._refresh_spinner.set_visible(False)
-        if not is_online:
-            self._available = {}
-            self._unsupported = {}
+        if not is_online and not available and not self._available:
+            self._catalogue_notice = ""
             self.status_label.set_label(NO_CONNECTION)
             self._clear_catalogue()
             for _label, arch in _NETWORKS:
@@ -649,8 +703,10 @@ class DownloadCenterWindow:
                 )
             return
 
-        self._available = available
-        self._unsupported = unsupported or {}
+        if is_online or available:
+            self._available = available
+            self._unsupported = unsupported or {}
+        self._catalogue_notice = "" if is_online else "Offline — showing saved catalogue · "
         self._rebuild_catalogue()
         counts = {arch: len(models) for arch, models in available.items()}
         debug(
@@ -741,6 +797,7 @@ class DownloadCenterWindow:
         else:
             archs = list(self._available)
         labels: list[str] = []
+        intents = self._catalogue_intents()
         for arch in archs:
             query = ""
             entry = self._search_entries.get(arch)
@@ -748,10 +805,29 @@ class DownloadCenterWindow:
                 query = entry.get_text() or ""
             labels.extend(
                 catalogue_matches(
-                    list(self._available.get(arch) or []), query, purpose=self._purpose
+                    list(self._available.get(arch) or []),
+                    query,
+                    purpose=self._purpose,
+                    intents=intents,
                 )
             )
         return labels
+
+    def _catalogue_intents(self) -> dict[str, str]:
+        """Return curated purpose metadata for the current catalogue rows."""
+        manager = getattr(self, "manager", None)
+        metadata = getattr(manager, "catalogue_meta", {})
+        return {
+            label: meta.intent
+            for label, meta in metadata.items()
+            if meta.intent
+        }
+
+    def _catalogue_intent(self, label: str) -> str | None:
+        manager = getattr(self, "manager", None)
+        metadata = getattr(manager, "catalogue_meta", {})
+        meta = metadata.get(label)
+        return meta.intent if meta is not None else None
 
     def _pending_stem_yaml_urls(self, labels: list[str] | None = None) -> list[str]:
         """YAML URLs still missing from the stem cache for ``labels`` (or all)."""
@@ -868,24 +944,28 @@ class DownloadCenterWindow:
         unsupported = self._unsupported_count(visible_only=True)
         selected = len(self._selected_entries())
         if selected:
-            self.status_label.set_label(
+            self._set_catalogue_status(
                 f"{selected} selected · {total} available across all networks"
             )
             return
         if total and unsupported:
-            self.status_label.set_label(
+            self._set_catalogue_status(
                 f"{total} downloadable · {unsupported} unsupported shown"
             )
         elif total:
-            self.status_label.set_label(
+            self._set_catalogue_status(
                 f"{total} models available — check one or more, then Download"
             )
         elif unsupported:
-            self.status_label.set_label(
+            self._set_catalogue_status(
                 f"{unsupported} unsupported models listed (not downloadable)"
             )
         else:
-            self.status_label.set_label("All available models are already installed")
+            self._set_catalogue_status("All available models are already installed")
+
+    def _set_catalogue_status(self, message: str) -> None:
+        notice = getattr(self, "_catalogue_notice", "")
+        self.status_label.set_label(f"{notice}{message}")
 
     def _update_tab_counts(self) -> None:
         for network_label, arch in _NETWORKS:
@@ -942,7 +1022,7 @@ class DownloadCenterWindow:
             list_parent.set_visible(False)
 
     def _update_catalogue_page_state(self, arch: str) -> None:
-        if self._catalogue_online is False:
+        if self._catalogue_online is False and not self._available:
             self._set_catalogue_page_message(
                 arch,
                 "Catalogue unavailable",
@@ -960,7 +1040,12 @@ class DownloadCenterWindow:
         names = self._available.get(arch) or []
         search = self._search_entries.get(arch)
         query = search.get_text().strip() if search is not None else ""
-        matches = catalogue_matches(names, query, purpose=self._purpose)
+        matches = catalogue_matches(
+            names,
+            query,
+            purpose=self._purpose,
+            intents=self._catalogue_intents(),
+        )
         unsupported_matches = self._unsupported_matches(arch, query)
         if (query or self._purpose != PURPOSE_ALL) and not matches and not unsupported_matches:
             if query:
@@ -995,16 +1080,23 @@ class DownloadCenterWindow:
             rows = [
                 (label, reason)
                 for label, reason in rows
-                if purpose_for_label(label) == self._purpose
+                if purpose_for_label(label, intent=self._catalogue_intent(label))
+                == self._purpose
             ]
-        folded = query.strip().casefold()
-        if not folded:
-            return rows
         return [
             (label, reason)
             for label, reason in rows
-            if folded in label.casefold() or folded in reason.casefold()
+            if catalogue_label_matches(label, query, extra=reason)
         ]
+
+    def _matching_count(self, arch: str, query: str) -> int:
+        supported = catalogue_matches(
+            self._available.get(arch) or [],
+            query,
+            purpose=self._purpose,
+            intents=self._catalogue_intents(),
+        )
+        return len(supported) + len(self._unsupported_matches(arch, query))
 
     def _rebuild_catalogue(self) -> None:
         previously_selected = {(arch, name) for name, arch in self._selected_entries()}
@@ -1053,16 +1145,21 @@ class DownloadCenterWindow:
         self._toast(f"Queued {len(ids)} download(s)")
 
     def refresh_after_downloads(self) -> None:
-        """Rebuild catalogue after a download batch completes."""
+        """Remove newly installed rows without disturbing catalogue state."""
         self._catalogue_online = True
-        self._available = self.manager.available_downloads()
-        self._unsupported = self.manager.unsupported_downloads()
-        self._rebuild_catalogue()
-        self._update_tab_counts()
-        self._update_status_from_catalogue()
-        self._update_download_button()
-        self._ensure_background_listeners()
-        self._schedule_stem_yaml_fetches()
+        if not self.window.get_visible():
+            # The cached window survives close by being hidden. Avoid rebuilding
+            # hundreds of rows off-screen; consume the latest manager state on
+            # the next presentation instead.
+            self._downloads_dirty = True
+            return
+        self._apply_download_completion_refresh()
+
+    def _apply_download_completion_refresh(self) -> None:
+        self._downloads_dirty = False
+        # Downloads only make catalogue rows unavailable. Reuse the incremental
+        # removal path so active tab, filters, checkboxes, and scroll survive.
+        self._flush_catalogue_row_refresh()
 
     def _open_vip(self) -> None:
         from .download import open_vip_code_dialog

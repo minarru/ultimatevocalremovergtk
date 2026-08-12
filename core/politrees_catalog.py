@@ -22,6 +22,7 @@ def _politrees_cache_path() -> str:
 
 _POLITREES_MDX_SOURCE_KEYS = (
     "mdx_download_list",
+    "mdx23_download_list",
     "mdx23c_download_list",
     "roformer_download_list",
     "scnet_download_list",

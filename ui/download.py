@@ -27,7 +27,7 @@ from core.download_status import (
 from core.downloads import DownloadManager
 from core.model_naming import canonical_display_name
 
-from .dispatch import idle_on_main
+from .dispatch import idle_on_main, latest_main_thread
 from .dialogs.utils import configure_dialog_width, fill_dialog_width, present_modal_dialog, set_dialog_content
 from .files import open_folder_in_file_manager, open_uri_in_browser
 from .help_text import OPEN_EXTERNAL_LINK_HINT, OPEN_INSTALL_FOLDER_HINT
@@ -158,6 +158,8 @@ def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any, *, 
     def refresh() -> None:
         indicator.refresh()
 
+    schedule_refresh = latest_main_thread(refresh)
+
     def after_batch() -> None:
         batch_items = [
             item
@@ -188,7 +190,7 @@ def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any, *, 
             items=batch_items,
         )
 
-    queue.set_on_changed(lambda: idle_on_main(refresh))
+    queue.set_on_changed(schedule_refresh)
     queue.set_on_batch_complete(lambda: idle_on_main(after_batch))
     if os.environ.get("UVR_DEBUG_QUEUE"):
         _seed_debug_queue(queue)
@@ -197,7 +199,7 @@ def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any, *, 
         _start_chip_debug_cycle(queue, indicator, chip_debug_scenarios)
     if os.environ.get("UVR_DEBUG_QUEUE_POPUP"):
         _auto_open_popover(main_window, indicator)
-    idle_on_main(refresh)
+    schedule_refresh()
     return indicator
 
 
@@ -554,4 +556,3 @@ def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
     set_dialog_content(dialog, scroller)
     present_modal_dialog(dialog, parent)
     return dialog
-

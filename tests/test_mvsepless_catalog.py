@@ -180,6 +180,72 @@ class ConvertTests(unittest.TestCase):
             )
         )
 
+    def test_supported_duplicate_names_keep_every_checkpoint(self) -> None:
+        raw = {}
+        raw.update(
+            _entry(
+                model_type="mel_band_roformer",
+                full_name="Duplicate Friendly Name",
+                ckpt="mel/first.ckpt",
+                cfg="mel/first.yaml",
+                entry_id="first_id",
+            )
+        )
+        raw.update(
+            _entry(
+                model_type="mel_band_roformer",
+                full_name="Duplicate Friendly Name",
+                ckpt="mel/second.ckpt",
+                cfg="mel/second.yaml",
+                entry_id="second_id",
+            )
+        )
+
+        converted = convert_mvsepless_catalog(raw)
+
+        self.assertEqual(
+            list(converted["mdx_download_list"]),
+            ["Duplicate Friendly Name", "Duplicate Friendly Name [second_id]"],
+        )
+        self.assertEqual(
+            converted["metadata"]["Duplicate Friendly Name [second_id]"]["entry_id"],
+            "second_id",
+        )
+
+    def test_unsupported_duplicate_names_collapse_to_one_row(self) -> None:
+        raw = {}
+        for entry_id in ("demucs_a", "demucs_b"):
+            raw.update(
+                _entry(
+                    model_type="htdemucs",
+                    full_name="Same Unsupported Demucs",
+                    ckpt=f"htdemucs/{entry_id}.ckpt",
+                    cfg=f"htdemucs/{entry_id}.yaml",
+                    entry_id=entry_id,
+                )
+            )
+
+        converted = convert_mvsepless_catalog(raw)
+
+        self.assertEqual(
+            converted["unsupported"][DEMUCS_ARCH_TYPE],
+            [("Same Unsupported Demucs", "MSST Demucs single-ckpt format not supported")],
+        )
+
+    def test_known_cross_arch_checkpoint_record_is_quarantined(self) -> None:
+        raw = _entry(
+            model_type="scnet",
+            full_name="SCNet Mid-Side by Gilliaaan",
+            ckpt="mdx23c/mdx23c_mid_side_gilliaaan.ckpt",
+            cfg="scnet/scnet_mid_side_gilliaaan.yaml",
+            entry_id="scnet_mid_side_gilliaaan",
+        )
+
+        converted = convert_mvsepless_catalog(raw)
+
+        self.assertEqual(converted["mdx_download_list"], {})
+        self.assertNotIn("SCNet Mid-Side by Gilliaaan", converted["metadata"])
+
 
 class MergeTests(unittest.TestCase):
     def test_upstream_labels_win(self) -> None:

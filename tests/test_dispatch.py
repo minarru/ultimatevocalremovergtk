@@ -2,7 +2,7 @@ import typing
 import unittest
 from unittest.mock import MagicMock, patch
 
-from ui.dispatch import gtk_job_callbacks, idle_on_main, main_thread
+from ui.dispatch import gtk_job_callbacks, idle_on_main, latest_main_thread, main_thread
 
 
 class DispatchTests(unittest.TestCase):
@@ -31,8 +31,54 @@ class DispatchTests(unittest.TestCase):
         wrapped("ok")
         self.assertEqual(seen, ["ok"])
 
+    @patch("ui.dispatch.GLib.idle_add")
+    def test_latest_main_thread_bounds_pending_work_and_delivers_newest(
+        self, idle_add: typing.Any
+    ) -> None:
+        pending = []
+        idle_add.side_effect = lambda func: pending.append(func) or len(pending)
+        seen = []
+        wrapped = latest_main_thread(seen.append)
+
+        for value in range(100):
+            wrapped(value)
+
+        self.assertEqual(len(pending), 1)
+        pending.pop()()
+        self.assertEqual(seen, [99])
+
+        wrapped(100)
+        self.assertEqual(len(pending), 1)
+        pending.pop()()
+        self.assertEqual(seen, [99, 100])
+
+    @patch("ui.dispatch.GLib.idle_add")
+    def test_coalesced_progress_delivers_final_value_before_completion(
+        self, idle_add: typing.Any
+    ) -> None:
+        pending = []
+        idle_add.side_effect = lambda func: pending.append(func) or len(pending)
+        seen = []
+        callbacks = gtk_job_callbacks(
+            on_progress=lambda value, **_metadata: seen.append(("progress", value)),
+            on_complete=lambda: seen.append(("complete", None)),
+        )
+
+        callbacks.progress(0.2)
+        callbacks.progress(0.8)
+        callbacks.progress(1.0)
+        callbacks.complete()
+
+        self.assertEqual(len(pending), 2)
+        pending.pop(0)()
+        pending.pop(0)()
+        self.assertEqual(seen, [("progress", 1.0), ("complete", None)])
+
+    @patch("ui.dispatch.latest_main_thread", side_effect=lambda func: func)
     @patch("ui.dispatch.main_thread", side_effect=lambda func: func)
-    def test_gtk_job_callbacks_wraps_handlers(self, _main_thread: typing.Any):
+    def test_gtk_job_callbacks_wraps_handlers(
+        self, _main_thread: typing.Any, _latest_main_thread: typing.Any
+    ):
         progress = MagicMock()
         console = MagicMock()
         complete = MagicMock()
@@ -68,8 +114,11 @@ class DispatchTests(unittest.TestCase):
         error.assert_called_once()
         self.assertIsInstance(error.call_args.args[0], RuntimeError)
 
+    @patch("ui.dispatch.latest_main_thread", side_effect=lambda func: func)
     @patch("ui.dispatch.main_thread", side_effect=lambda func: func)
-    def test_gtk_job_callbacks_forward_progress_metadata(self, _main_thread: typing.Any):
+    def test_gtk_job_callbacks_forward_progress_metadata(
+        self, _main_thread: typing.Any, _latest_main_thread: typing.Any
+    ):
         progress = MagicMock()
         callbacks = gtk_job_callbacks(on_progress=progress)
 

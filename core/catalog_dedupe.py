@@ -11,11 +11,16 @@ from __future__ import annotations
 import os
 import re
 from typing import Any, Dict, Mapping, Optional, Tuple
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 _LABEL_PREFIXES = (
+    "roformer model vip:",
     "roformer model:",
+    "mdx23c model vip:",
     "mdx23c model:",
+    "mdx23 model vip:",
+    "mdx23 model:",
+    "mdx-net model vip:",
     "mdx-net model:",
     "scnet:",
     "bandit:",
@@ -36,8 +41,6 @@ _STOP_WORDS = frozenset(
         "a",
         "an",
         "and",
-        "v5",
-        "hq",
     }
 )
 
@@ -91,11 +94,18 @@ def primary_checkpoint_url(model: object) -> Optional[str]:
 def normalize_catalogue_label(label: str) -> str:
     """Collapse cosmetic label differences for duplicate detection."""
     text = str(label or "").casefold().strip()
+    family = ""
     for prefix in _LABEL_PREFIXES:
         if text.startswith(prefix):
+            if prefix == "scnet:":
+                family = "scnet"
             text = text[len(prefix) :].strip()
             break
 
+    # ``+`` is part of several real model version names (v1+, Fv7+). Treat it
+    # like the written word "Plus" instead of letting punctuation stripping
+    # collapse those weights onto their non-plus predecessors.
+    text = text.replace("+", " plus ")
     text = text.replace("mel-band", "melband").replace("mel band", "melband")
     text = text.replace("band-split", "bandsplit").replace("bs-roformer", "bandsplit roformer")
     text = text.replace("bs roformer", "bandsplit roformer")
@@ -107,6 +117,12 @@ def normalize_catalogue_label(label: str) -> str:
     text = re.sub(r"[^a-z0-9]+", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     parts = [part for part in text.split() if part not in _STOP_WORDS]
+    # Some sources express SCNet as a catalogue prefix while others put it in
+    # the title, and the older curated labels do both (``SCnet: ... SCNet``).
+    # Keep the family once, in a stable position, so those source aliases
+    # collide without weakening identity matching for the descriptive title.
+    if family == "scnet" or "scnet" in parts:
+        parts = ["scnet", *(part for part in parts if part != "scnet")]
     return " ".join(parts)
 
 
@@ -136,6 +152,23 @@ def _lookup_content_id(
     return None
 
 
+def _checkpoint_name_matches_url(model: object) -> bool:
+    """Whether a model's local checkpoint name matches its remote basename.
+
+    A shared URL normally means aliases for the same bytes. When one alias
+    renames the file to a conflicting model title while another keeps the
+    remote basename, the matching entry is the trustworthy one. This catches
+    malformed source rows such as a ``Bleedless`` local name pointing at the
+    ``Fullness`` checkpoint without penalising ordinary single-entry rehosts.
+    """
+    name = primary_checkpoint_name(model)
+    url = primary_checkpoint_url(model)
+    if not name or not url:
+        return False
+    remote_name = os.path.basename(unquote(urlsplit(url).path))
+    return name.casefold() == remote_name.casefold()
+
+
 def dedupe_download_catalogue(
     catalogue: Mapping[str, Any],
     *,
@@ -162,7 +195,26 @@ def dedupe_download_catalogue(
     seen_bags: set[Tuple[Tuple[str, str], ...]] = set()
     ids = content_ids or {}
 
+    # Prefer a filename-consistent row within a same-URL collision even when
+    # it appears later. With no unique consistent row, insertion priority still
+    # decides as before.
+    url_rows: Dict[str, list[Tuple[str, Any]]] = {}
     for label, model in catalogue.items():
+        url = primary_checkpoint_url(model)
+        if url:
+            url_rows.setdefault(url, []).append((label, model))
+    preferred_url_labels: Dict[str, str] = {}
+    for url, rows in url_rows.items():
+        matching = [label for label, model in rows if _checkpoint_name_matches_url(model)]
+        if len(rows) > 1 and len(matching) == 1:
+            preferred_url_labels[url] = matching[0]
+
+    for label, model in catalogue.items():
+        url = primary_checkpoint_url(model) if not demucs_bags else None
+        preferred = preferred_url_labels.get(url or "")
+        if preferred is not None and label != preferred:
+            continue
+
         norm = normalize_catalogue_label(label)
         if norm and norm in seen_labels:
             continue

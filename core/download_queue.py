@@ -104,6 +104,29 @@ class DownloadQueue:
                     break
         self._notify()
 
+    def cancel_all(self) -> int:
+        """Cancel every queued or downloading item and return its count.
+
+        Download workers are cooperative: queued items become terminal
+        immediately, while the current transfer observes its stop event and
+        removes its partial file before leaving the active state.
+        """
+        cancelled = 0
+        with self._lock:
+            for item in self._items:
+                if item.status not in ACTIVE_STATUSES:
+                    continue
+                cancelled += 1
+                item.stop_event.set()
+                if item.status == STATUS_QUEUED:
+                    item.status = STATUS_CANCELLED
+                    item.detail = default_detail_for_status(STATUS_CANCELLED)
+                else:
+                    item.detail = "Cancelling…"
+        if cancelled:
+            self._notify()
+        return cancelled
+
     def retry(self, item_id: str) -> bool:
         """Re-queue a failed item. Returns True when the item was requeued."""
         with self._lock:

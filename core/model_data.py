@@ -1075,7 +1075,7 @@ class _ModelConfigImplementation:
         """Set ``is_karaoke``/``is_karaoke_curated`` from hash JSON and
         catalogue/config name hints."""
         self.check_if_karaokee_model()
-        if self.is_karaoke_curated:
+        if getattr(self, "is_karaoke_curated", False):
             return
         weight_basename = getattr(self, "model_basename", None)
         if not weight_basename:
@@ -1466,8 +1466,6 @@ _ENSEMBLE_NAME_RE = re.compile(r"^[A-Za-z0-9 _-]{1,25}$")
 
 def canonical_saved_ensemble_name(name: str) -> str:
     """Validate and canonicalize a user-supplied saved-ensemble name."""
-    if not isinstance(name, str):
-        raise ValueError("Ensemble name must be text")
     value = name.strip()
     if not value or not _ENSEMBLE_NAME_RE.fullmatch(value):
         raise ValueError(
