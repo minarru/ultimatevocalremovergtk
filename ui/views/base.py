@@ -28,7 +28,6 @@ from bundled.constants import (
     NO_MODEL,
     OTHER_STEM,
     PRE_PROC_MODEL_ACTIVATE_HELP,
-    PRE_PROC_MODEL_HELP,
     PRE_PROC_MODEL_INST_MIX_HELP,
     SAVE_STEM_ONLY_HELP,
     SECONDARY_MODEL_ACTIVATE_HELP,
@@ -843,7 +842,7 @@ class MethodView:
                 "demucs_pre_proc_model",
                 lambda: repo.model_list(settings, VOCAL_STEM, INST_STEM, is_no_demucs=True),
                 "Pre-process model",
-                hint=PRE_PROC_MODEL_HELP,
+                hint=SECONDARY_MODEL_HELP,
             )
             inst_mix_row = self.add_option_switch(self.preproc_expander, "is_demucs_pre_proc_model_inst_mix", "Save instrumental mixture", hint=PRE_PROC_MODEL_INST_MIX_HELP)
             self._bind_switch_dependents(activate, [model_row, inst_mix_row])

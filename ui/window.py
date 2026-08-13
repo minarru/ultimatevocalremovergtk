@@ -44,6 +44,7 @@ from .context import AppContext
 from .ensemble import EnsemblePage
 from .help_text import (
     MAIN_MENU_HINT,
+    MODEL_OPTIONS_BUTTON_HINT,
     MODEL_OPTIONS_ROW_HINT,
     VIEW_INPUTS_BUTTON_HINT,
 )

@@ -19,6 +19,7 @@ from core.audio_formats import expand_audio_paths
 from ..help_text import (
     CLEAR_INPUT_FILES_HINT,
     REMOVE_FROM_LIST_HINT,
+    SELECT_INPUT_FILES_HINT,
     SELECT_OUTPUT_FOLDER_HINT,
 )
 from ..hints import set_icon_button_a11y
@@ -115,7 +116,7 @@ class InputFilesRow(Adw.ExpanderRow):
         self.add_suffix(self._clear_button)
 
         button = Gtk.Button(icon_name="document-open-symbolic", valign=Gtk.Align.CENTER)
-        set_icon_button_a11y(button, "Add input audio files")
+        set_icon_button_a11y(button, f"Add audio files. {SELECT_INPUT_FILES_HINT}")
         button.add_css_class("flat")
         button.connect("clicked", self._on_clicked)
         self.add_suffix(button)

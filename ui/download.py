@@ -30,7 +30,7 @@ from core.model_naming import canonical_display_name
 from .dispatch import idle_on_main, latest_main_thread
 from .dialogs.utils import configure_dialog_width, fill_dialog_width, present_modal_dialog, set_dialog_content
 from .files import open_folder_in_file_manager, open_uri_in_browser
-from .help_text import OPEN_INSTALL_FOLDER_HINT
+from .help_text import OPEN_EXTERNAL_LINK_HINT, OPEN_INSTALL_FOLDER_HINT
 from .hints import set_icon_button_a11y
 from .notifications import (
     NOTIFY_DOWNLOAD_COMPLETE,
@@ -464,7 +464,7 @@ def open_vip_code_dialog(parent: typing.Any, app_context: typing.Any, on_validat
     ):
         row = Adw.ActionRow(title=title)
         button = Gtk.Button(icon_name="adw-external-link-symbolic", valign=Gtk.Align.CENTER)
-        set_icon_button_a11y(button, f"Open {title} in default browser")
+        set_icon_button_a11y(button, f"{OPEN_EXTERNAL_LINK_HINT}: {title}")
         button.connect(
             "clicked",
             lambda _b, url=link: open_uri_in_browser(parent, url, on_error=toast),
@@ -524,7 +524,7 @@ def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
                 link_row.set_title(label)
                 link_row.set_subtitle(url)
                 open_button = Gtk.Button(icon_name="adw-external-link-symbolic", valign=Gtk.Align.CENTER)
-                set_icon_button_a11y(open_button, f"Open {label} in default browser")
+                set_icon_button_a11y(open_button, f"{OPEN_EXTERNAL_LINK_HINT}: {label}")
                 open_button.connect(
                     "clicked",
                     lambda _b, u=url: open_uri_in_browser(parent, u),

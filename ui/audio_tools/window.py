@@ -360,7 +360,7 @@ class AudioToolsPage:
         apollo_folder_button.add_css_class("flat")
         from ..hints import set_icon_button_a11y
 
-        set_icon_button_a11y(apollo_folder_button, "Open Apollo models folder")
+        set_icon_button_a11y(apollo_folder_button, "Open the Apollo models folder")
         apollo_folder_button.connect("clicked", self._on_open_apollo_folder)
         self.apollo_group.set_header_suffix(apollo_folder_button)
 
