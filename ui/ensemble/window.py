@@ -282,7 +282,7 @@ class EnsemblePage:
         )
         set_tooltip(
             self.preset_row,
-            "Quick dual-stem algorithm pairs. Choose Custom to set Primary and Secondary independently.",
+            "Choose a preset algorithm pair, or Custom to set Primary and Secondary separately",
         )
         self.preset_row.connect("notify::selected", self._on_preset_changed)
         group.add(self.preset_row)

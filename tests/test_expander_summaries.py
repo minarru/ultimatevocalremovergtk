@@ -70,6 +70,18 @@ class ExpanderSummaryTests(unittest.TestCase):
         view._sync_expander_summaries()
         self.assertEqual(view.preproc_expander.get_subtitle(), OFF)
 
+    def test_preproc_model_picker_has_preproc_specific_tooltip(self):
+        from ui.help_text import PRE_PROC_MODEL_HELP, SECONDARY_MODEL_HELP
+
+        window = self._window()
+        view = window._views_by_stack["demucs"]
+        entry = next(
+            item for item in view._model_combos if item["key"] == "demucs_pre_proc_model"
+        )
+
+        self.assertEqual(entry["row"].get_tooltip_text(), PRE_PROC_MODEL_HELP)
+        self.assertNotEqual(entry["row"].get_tooltip_text(), SECONDARY_MODEL_HELP)
+
     def test_views_without_a_preproc_section_are_skipped(self):
         window = self._window()
         view = window._views_by_stack["mdx"]
