@@ -83,6 +83,11 @@ _COLOR_SCHEME_OPTIONS = (
 )
 
 
+def persistence_feedback(error: Optional[str], success: str) -> str:
+    """Return exactly one honest result message for a settings write."""
+    return error or success
+
+
 class ProfileStore:
     """Read/write named settings profiles as JSON, matching ``UVR.py``.
 
@@ -411,10 +416,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
         self.auto_update_model_params_row = Adw.SwitchRow(
             title="Update model parameters with catalogue",
-            subtitle=(
-                "Refresh recognition data when the Download Center catalogue "
-                "is refreshed"
-            ),
+            subtitle="Refresh recognition data when the Download Center catalogue is refreshed",
         )
         self.auto_update_model_params_row.connect(
             "notify::active",
@@ -708,15 +710,15 @@ class PreferencesDialog(Adw.PreferencesDialog):
         else:
             self.settings.update({k: v for k, v in data.items() if k in FLAT_TO_PATH})
         error = self.context.try_save_settings(trigger="profile-load")
-        if error:
-            self.add_toast(Adw.Toast.new(error))
         from core.debug_log import debug
 
         debug("settings", f"profile load name={name}")
         self._reload_widgets()
         if self._on_settings_reloaded is not None:
             self._on_settings_reloaded()
-        self.add_toast(Adw.Toast.new(f'Loaded profile "{name}"'))
+        self.add_toast(
+            Adw.Toast.new(persistence_feedback(error, f'Loaded profile "{name}"'))
+        )
 
     def _on_remove_profile(self, _button: typing.Any) -> None:
         name = get_combo_value(self.profile_combo)
@@ -773,10 +775,10 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
         self.settings.reset_to_default()
         error = self.context.try_save_settings(trigger="reset")
-        if error:
-            self.add_toast(Adw.Toast.new(error))
         debug("settings", "profile reset confirmed")
         self._reload_widgets()
         if self._on_settings_reloaded is not None:
             self._on_settings_reloaded()
-        self.add_toast(Adw.Toast.new("Settings reset to default"))
+        self.add_toast(
+            Adw.Toast.new(persistence_feedback(error, "Settings reset to default"))
+        )

@@ -17,6 +17,7 @@ Importing this package must never import ``tkinter``; heavy ML dependencies
 from .model_data import (
     ENSEMBLE_CACHE_DIR,
     ModelRepository,
+    canonical_saved_ensemble_name,
     delete_ensemble,
     list_saved_ensembles,
     load_ensemble,
@@ -41,6 +42,7 @@ __all__ = [
     "AudioToolRunner",
     "Ensembler",
     "ENSEMBLE_CACHE_DIR",
+    "canonical_saved_ensemble_name",
     "list_saved_ensembles",
     "save_ensemble",
     "load_ensemble",

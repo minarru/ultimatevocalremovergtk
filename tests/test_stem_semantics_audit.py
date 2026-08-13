@@ -3,11 +3,13 @@ walking and config fetching are patched; only the script's own logic
 (sorting, table rendering, JSON output shape) is under test."""
 
 import importlib.util
+import io
 import json
 import os
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from typing import Any
 from unittest.mock import patch
 
@@ -49,6 +51,34 @@ class RenderTableTests(unittest.TestCase):
         self.assertIn("config unreadable", table)
 
 
+class IterEntriesProgressTests(unittest.TestCase):
+    def test_reports_each_target_to_stderr(self) -> None:
+        from types import SimpleNamespace
+
+        catalogue = {"first": {}, "second": {}}
+        targets = [
+            SimpleNamespace(entry_id="first", label="First Model"),
+            SimpleNamespace(entry_id="second", label="Second Model"),
+        ]
+        with patch(
+            "core.mvsepless_catalog.load_mvsepless_models", return_value=catalogue
+        ), patch(
+            "scripts.model_probe.iter_catalogue_targets", return_value=iter(targets)
+        ), patch.object(
+            stem_semantics_audit, "_curated_hash_table", return_value={}
+        ), patch.object(
+            stem_semantics_audit,
+            "_entry_for_target",
+            side_effect=[_entry("first", curated=False), _entry("second", curated=True)],
+        ), redirect_stderr(io.StringIO()) as stderr:
+            entries = list(stem_semantics_audit._iter_entries(show_progress=True))
+
+        self.assertEqual([entry.entry_id for entry in entries], ["first", "second"])
+        progress = stderr.getvalue()
+        self.assertIn("[1/2] first: First Model", progress)
+        self.assertIn("[2/2] second: Second Model", progress)
+
+
 class MainCliTests(unittest.TestCase):
     def test_json_output_is_written_to_the_given_path(self) -> None:
         entries = [_entry("guessed", curated=False), _entry("curated", curated=True)]
@@ -72,6 +102,45 @@ class MainCliTests(unittest.TestCase):
                     data = json.load(f)
                 self.assertEqual(data[0]["entry_id"], "guessed")
                 self.assertEqual(data[1]["entry_id"], "curated")
+
+    def test_progress_is_enabled_by_default_and_quiet_can_disable_it(self) -> None:
+        with patch.object(
+            stem_semantics_audit, "_iter_entries", return_value=iter([])
+        ) as mocked:
+            stem_semantics_audit.main([])
+            mocked.assert_called_once_with(guessed_only=False, show_progress=True)
+
+        with patch.object(
+            stem_semantics_audit, "_iter_entries", return_value=iter([])
+        ) as mocked:
+            stem_semantics_audit.main(["--quiet"])
+            mocked.assert_called_once_with(guessed_only=False, show_progress=False)
+
+    def test_keyboard_interrupt_exits_130_without_writing_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            json_path = os.path.join(tmp, "out.json")
+            with patch.object(
+                stem_semantics_audit,
+                "_iter_entries",
+                side_effect=KeyboardInterrupt,
+            ), redirect_stderr(io.StringIO()) as stderr:
+                exit_code = stem_semantics_audit.main(["--json", json_path])
+            self.assertEqual(exit_code, 130)
+            self.assertFalse(os.path.exists(json_path))
+            self.assertIn("interrupted", stderr.getvalue().lower())
+
+    def test_json_replacement_is_atomic(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            json_path = os.path.join(tmp, "out.json")
+            with open(json_path, "w") as handle:
+                handle.write("old")
+            stem_semantics_audit._write_json(
+                json_path, [_entry("new", curated=True)]
+            )
+            with open(json_path) as handle:
+                data = json.load(handle)
+            self.assertEqual(data[0]["entry_id"], "new")
+            self.assertFalse(os.path.exists(f"{json_path}.part"))
 
 
 class RemoteCheckpointHashTests(unittest.TestCase):

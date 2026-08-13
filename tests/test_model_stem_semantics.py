@@ -316,6 +316,33 @@ class KaraokeDetectionTests(unittest.TestCase):
             (True, True),
         )
 
+    def test_explicit_curated_false_overrides_name_guess(self) -> None:
+        self.assertEqual(
+            resolve_karaoke_confidence(
+                model_data={"is_karaoke": False},
+                model_name="Karaoke-labelled model",
+            ),
+            (False, True),
+        )
+
+    def test_legacy_typo_false_is_curated(self) -> None:
+        self.assertEqual(
+            resolve_karaoke_confidence(
+                model_data={"is_karaokee": False},
+                model_name="Karaoke-labelled model",
+            ),
+            (False, True),
+        )
+
+    def test_canonical_false_wins_over_legacy_true(self) -> None:
+        self.assertEqual(
+            resolve_karaoke_confidence(
+                model_data={"is_karaoke": False, "is_karaokee": True},
+                model_name="Karaoke-labelled model",
+            ),
+            (False, True),
+        )
+
     def test_confidence_false_when_guessed_from_name(self) -> None:
         self.assertEqual(
             resolve_karaoke_confidence(

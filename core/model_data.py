@@ -17,7 +17,9 @@ import typing
 
 import json
 import os
+import re
 import threading
+import tempfile
 from typing import AbstractSet, Any, Callable, Dict, List, Optional, Sequence, Tuple, cast
 
 from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
@@ -1059,7 +1061,10 @@ class _ModelConfigImplementation:
         if not self.model_data:
             return
         if IS_KARAOKEE in self.model_data.keys():
-            self.is_karaoke = self.model_data[IS_KARAOKEE]
+            self.is_karaoke = bool(self.model_data[IS_KARAOKEE])
+            self.is_karaoke_curated = True
+        elif "is_karaokee" in self.model_data:
+            self.is_karaoke = bool(self.model_data["is_karaokee"])
             self.is_karaoke_curated = True
         if IS_BV_MODEL in self.model_data.keys():
             self.is_bv_model = self.model_data[IS_BV_MODEL]
@@ -1070,7 +1075,7 @@ class _ModelConfigImplementation:
         """Set ``is_karaoke``/``is_karaoke_curated`` from hash JSON and
         catalogue/config name hints."""
         self.check_if_karaokee_model()
-        if self.is_karaoke:
+        if getattr(self, "is_karaoke_curated", False):
             return
         weight_basename = getattr(self, "model_basename", None)
         if not weight_basename:
@@ -1083,9 +1088,8 @@ class _ModelConfigImplementation:
             config_yaml=config_yaml,
             weight_basename=str(weight_basename or ""),
         )
-        if is_karaoke:
-            self.is_karaoke = True
-            self.is_karaoke_curated = is_curated
+        self.is_karaoke = is_karaoke
+        self.is_karaoke_curated = is_curated
 
     def get_vr_model_path(self) -> None:
         resolved_name = resolve_vr_model_basename(
@@ -1457,19 +1461,46 @@ from .model_config.config import ModelConfig
 ENSEMBLE_CACHE_DIR = paths.ENSEMBLE_CACHE_DIR
 
 
+_ENSEMBLE_NAME_RE = re.compile(r"^[A-Za-z0-9 _-]{1,25}$")
+
+
+def canonical_saved_ensemble_name(name: str) -> str:
+    """Validate and canonicalize a user-supplied saved-ensemble name."""
+    value = name.strip()
+    if not value or not _ENSEMBLE_NAME_RE.fullmatch(value):
+        raise ValueError(
+            "Ensemble names may contain only letters, numbers, spaces, "
+            "underscores, and hyphens (maximum 25 characters)."
+        )
+    if value.startswith("-") or value.endswith("-"):
+        raise ValueError("Ensemble names cannot start or end with a hyphen.")
+    return value.replace(" ", "_")
+
+
 def _saved_ensemble_path(name: str) -> str:
-    return os.path.join(ENSEMBLE_CACHE_DIR, f"{name.replace(' ', '_')}.json")
+    canonical = canonical_saved_ensemble_name(name)
+    root = os.path.abspath(ENSEMBLE_CACHE_DIR)
+    path = os.path.abspath(os.path.join(root, f"{canonical}.json"))
+    if os.path.commonpath((root, path)) != root:
+        raise ValueError("Ensemble path escapes the ensemble cache")
+    return path
 
 
 def list_saved_ensembles() -> List[str]:
     """Return the names of every saved ensemble (UVR's ``last_found_ensembles``)."""
     if not os.path.isdir(ENSEMBLE_CACHE_DIR):
         return []
-    names = [
-        os.path.splitext(entry)[0]
-        for entry in os.listdir(ENSEMBLE_CACHE_DIR)
-        if entry.lower().endswith(".json")
-    ]
+    names = []
+    for entry in os.listdir(ENSEMBLE_CACHE_DIR):
+        if not entry.lower().endswith(".json"):
+            continue
+        stem = os.path.splitext(entry)[0]
+        try:
+            canonical = canonical_saved_ensemble_name(stem)
+        except ValueError:
+            continue
+        if canonical == stem:
+            names.append(canonical)
     return sorted(names)
 
 
@@ -1484,15 +1515,26 @@ def save_ensemble(
         if isinstance(ensemble_main_stem, EnsemblePair)
         else coerce_ensemble_pair(ensemble_main_stem)
     )
-    os.makedirs(ENSEMBLE_CACHE_DIR, exist_ok=True)
     saved_data = {
         "ensemble_main_stem": pair.value,
         "ensemble_type": ensemble_type,
         "selected_models": list(selected_models),
     }
     path = _saved_ensemble_path(name)
-    with open(path, "w") as outfile:
-        outfile.write(json.dumps(saved_data, indent=4))
+    os.makedirs(ENSEMBLE_CACHE_DIR, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=f".{os.path.basename(path)}.", suffix=".tmp", dir=ENSEMBLE_CACHE_DIR
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as outfile:
+            json.dump(saved_data, outfile, indent=4)
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
     return path
 
 

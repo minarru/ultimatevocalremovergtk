@@ -37,6 +37,27 @@ class NormalizeLabelTests(unittest.TestCase):
         b = normalize_catalogue_label("VR Arch Single Model v5: UVR-DeEcho-Normal by FoxJoy")
         self.assertEqual(a, b)
 
+    def test_scnet_prefix_and_inline_family_variants_match(self) -> None:
+        curated = normalize_catalogue_label(
+            "SCnet: 4-stems Huge SCNet Fullness by Aname"
+        )
+        mvsepless = normalize_catalogue_label(
+            "SCNet 4 Stems Huge Fullness by Aname"
+        )
+        self.assertEqual(curated, mvsepless)
+
+    def test_hq_variant_remains_distinct(self) -> None:
+        regular = normalize_catalogue_label("MDX-Net Model: UVR-MDX-NET Inst 1")
+        hq = normalize_catalogue_label("MDX-Net Model: UVR-MDX-NET Inst HQ 1")
+        self.assertNotEqual(regular, hq)
+
+    def test_plus_variant_matches_written_plus_but_not_base(self) -> None:
+        symbol = normalize_catalogue_label("Mel-Band Roformer Instrumental v1+")
+        written = normalize_catalogue_label("Mel-Band Roformer Instrumental v1 Plus")
+        base = normalize_catalogue_label("Mel-Band Roformer Instrumental v1")
+        self.assertEqual(symbol, written)
+        self.assertNotEqual(symbol, base)
+
 
 class PrimaryCheckpointTests(unittest.TestCase):
     def test_dict_skips_yaml(self) -> None:
@@ -101,6 +122,18 @@ class DedupeCatalogueTests(unittest.TestCase):
         out = dedupe_download_catalogue(catalogue)
         self.assertEqual(list(out), list(catalogue)[:1])
 
+    def test_drops_scnet_cross_source_alias(self) -> None:
+        catalogue = {
+            "SCnet: 4-stems Huge SCNet Fullness by Aname": {
+                "huge_scnet_4stems_fullness.ckpt": "https://curated/fullness.ckpt"
+            },
+            "SCNet 4 Stems Huge Fullness by Aname": {
+                "scnet_huge_4stem_fullness_aname.ckpt": "https://mv/fullness.ckpt"
+            },
+        }
+        out = dedupe_download_catalogue(catalogue)
+        self.assertEqual(list(out), list(catalogue)[:1])
+
     def test_casefold_checkpoint_collision(self) -> None:
         catalogue = {
             "A": {"Model.ckpt": "https://a"},
@@ -139,6 +172,19 @@ class DedupeCatalogueTests(unittest.TestCase):
         }
         out = dedupe_download_catalogue(catalogue)
         self.assertEqual(list(out), ["Bleedless"])
+
+    def test_same_url_prefers_checkpoint_name_matching_remote(self) -> None:
+        url = "https://hf.co/x/mel_band_roformer_vocals_fullness_aname.ckpt"
+        catalogue = {
+            "Vocals Bleedless": {
+                "melband_roformer_vocals_bleedness_by_aname.ckpt": url,
+            },
+            "Vocals Fullness": {
+                "mel_band_roformer_vocals_fullness_aname.ckpt": url,
+            },
+        }
+        out = dedupe_download_catalogue(catalogue)
+        self.assertEqual(list(out), ["Vocals Fullness"])
 
     def test_keeps_first_content_id_collision(self) -> None:
         catalogue = {

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from typing import Any, cast
 from ui.widget_state import fetch, stash
 
 
@@ -43,6 +44,49 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
         child = action.get_child()
         self.assertIsNotNone(child)
         self.assertFalse(isinstance(child, Adw.ActionRow))
+
+    def test_live_filter_matches_the_canonical_name_shown_to_user(self) -> None:
+        from types import SimpleNamespace
+
+        from gi.repository import Adw, Gtk
+
+        from core.model_scores import PURPOSE_ALL
+        from ui.download_center import DownloadCenterWindow
+
+        raw = "Roformer Model: Mel-Band Roformer | Inst v2 by Unwa"
+        win = object.__new__(DownloadCenterWindow)
+        win._hide_unsupported = False
+        win._purpose = PURPOSE_ALL
+        cast(Any, win).manager = SimpleNamespace(catalogue_meta={})
+        search = Gtk.SearchEntry()
+        search.set_text("MelBand")
+        win._search_entries = {"mdx": search}
+        row = Adw.ActionRow()
+        stash(row, "_uvr_model_name", raw)
+
+        self.assertTrue(win._row_matches_filter(row, "mdx"))
+
+    def test_live_filter_matches_an_unsupported_reason(self) -> None:
+        from types import SimpleNamespace
+
+        from gi.repository import Adw, Gtk
+
+        from core.model_scores import PURPOSE_ALL
+        from ui.download_center import DownloadCenterWindow
+
+        win = object.__new__(DownloadCenterWindow)
+        win._hide_unsupported = False
+        win._purpose = PURPOSE_ALL
+        cast(Any, win).manager = SimpleNamespace(catalogue_meta={})
+        search = Gtk.SearchEntry()
+        search.set_text("newer build")
+        win._search_entries = {"mdx": search}
+        row = Adw.ActionRow()
+        stash(row, "_uvr_model_name", "Future Model")
+        stash(row, "_uvr_unsupported", True)
+        stash(row, "_uvr_unsupported_reason", "needs a newer build")
+
+        self.assertTrue(win._row_matches_filter(row, "mdx"))
 
 
 class CanonicalSearchTests(unittest.TestCase):

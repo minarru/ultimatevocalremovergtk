@@ -18,6 +18,7 @@ import dataclasses
 import errno
 import json
 import os
+import tempfile
 import ssl
 import threading
 import time
@@ -49,6 +50,7 @@ from bundled.constants import (
 
 from . import paths
 from .debug_log import debug
+from .catalog_dedupe import normalize_catalogue_label
 from .download_sizes import (
     content_ids_from_cache,
     describe_download_size,
@@ -128,6 +130,82 @@ def _json_file_matches(path: str, payload: Mapping[str, Any]) -> bool:
     except (OSError, ValueError, TypeError):
         return False
     return existing == payload
+
+
+def _transactional_json_refresh(writes: Mapping[str, Mapping[str, Any]]) -> tuple[bool, bool]:
+    """Stage and commit a set of JSON files, rolling back on commit failure."""
+    staged: Dict[str, str] = {}
+    backups: Dict[str, Optional[str]] = {}
+    committed: List[str] = []
+    try:
+        for path, payload in writes.items():
+            if _json_file_matches(path, payload):
+                continue
+            text = json.dumps(payload, indent=4)
+            directory = os.path.dirname(path) or "."
+            os.makedirs(directory, exist_ok=True)
+            fd, tmp_path = tempfile.mkstemp(
+                prefix=f".{os.path.basename(path)}.", suffix=".tmp", dir=directory
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    handle.write(text)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+            staged[path] = tmp_path
+
+        if not staged:
+            return True, False
+
+        # Keep rollback copies in the same directories so restoration remains
+        # an atomic rename even when model-data files live in different roots.
+        for path in staged:
+            if not os.path.isfile(path):
+                backups[path] = None
+                continue
+            directory = os.path.dirname(path) or "."
+            fd, backup_path = tempfile.mkstemp(
+                prefix=f".{os.path.basename(path)}.", suffix=".bak", dir=directory
+            )
+            try:
+                with open(path, "rb") as source, os.fdopen(fd, "wb") as backup:
+                    backup.write(source.read())
+            except Exception:
+                try:
+                    os.unlink(backup_path)
+                except OSError:
+                    pass
+                raise
+            backups[path] = backup_path
+
+        for path, tmp_path in staged.items():
+            os.replace(tmp_path, path)
+            committed.append(path)
+    except Exception as exc:
+        debug("download", f"model-data commit failed error={type(exc).__name__}: {exc}")
+        for path in reversed(committed):
+            backup_path = backups.get(path)
+            try:
+                if backup_path is None:
+                    if os.path.isfile(path):
+                        os.unlink(path)
+                else:
+                    os.replace(backup_path, path)
+            except OSError:
+                pass
+        return False, False
+    finally:
+        for tmp_path in list(staged.values()) + list(backups.values()):
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+    return True, True
 
 
 def vip_downloads(password: str, link_type: Tuple[bytes, bytes] = VIP_REPO) -> str:
@@ -429,6 +507,7 @@ class DownloadManager:
         """Build the VIP-merged catalogues from ``online_data`` (no disk filter)."""
         self.vr_download_list = dict(self.online_data.get("vr_download_list", {}))
         self.mdx_download_list = dict(self.online_data.get("mdx_download_list", {}))
+        self.mdx_download_list.update(self.online_data.get("mdx23_download_list", {}))
         self.mdx_download_list.update(self.online_data.get("mdx23c_download_list", {}))
         # Roformer models (BS-Roformer / Mel-Band Roformer) ship in their own
         # ``roformer_download_list`` but use the same compact
@@ -441,6 +520,7 @@ class DownloadManager:
         if self.decoded_vip_link != NO_CODE:
             self.vr_download_list.update(self.online_data.get("vr_download_vip_list", {}))
             self.mdx_download_list.update(self.online_data.get("mdx_download_vip_list", {}))
+            self.mdx_download_list.update(self.online_data.get("mdx23_download_vip_list", {}))
             self.mdx_download_list.update(self.online_data.get("mdx23c_download_vip_list", {}))
             self.mdx_download_list.update(self.online_data.get("roformer_download_vip_list", {}))
 
@@ -512,6 +592,27 @@ class DownloadManager:
 
     # -- Download lists ---------------------------------------------------------
 
+    def _installed_mdx_alias_keys(self) -> set[str]:
+        """Return logical catalogue identities with any checkpoint on disk.
+
+        ``catalogue_meta`` deliberately retains rows removed by catalogue
+        deduplication. That makes it the authoritative alias inventory when
+        two sources give the same model different local filenames.
+        """
+        installed: set[str] = set()
+        for meta in self.catalogue_meta.values():
+            if getattr(meta, "arch", None) != MDX_ARCH_TYPE:
+                continue
+            checkpoint = getattr(meta, "checkpoint", None)
+            label = getattr(meta, "label", None)
+            if not checkpoint or not label:
+                continue
+            if os.path.isfile(os.path.join(paths.MDX_MODELS_DIR, checkpoint)):
+                key = normalize_catalogue_label(label)
+                if key:
+                    installed.add(key)
+        return installed
+
     def available_downloads(self, model_type: str = ALL_TYPES) -> Dict[str, List[str]]:
         """Return ``{arch_type: [selectable, ...]}`` of not-yet-downloaded models.
 
@@ -536,12 +637,16 @@ class DownloadManager:
 
         if model_type in (MDX_ARCH_TYPE, ALL_TYPES):
             mdx_list: List[str] = []
+            installed_alias_keys = self._installed_mdx_alias_keys()
             for selectable, model in self.mdx_download_list.items():
                 if isinstance(model, dict):
                     model_name = mdx_checkpoint_filename(model)
                 else:
                     model_name = str(model)
-                if not os.path.isfile(os.path.join(paths.MDX_MODELS_DIR, model_name)):
+                alias_key = normalize_catalogue_label(selectable)
+                if not os.path.isfile(
+                    os.path.join(paths.MDX_MODELS_DIR, model_name)
+                ) and alias_key not in installed_alias_keys:
                     mdx_list.append(selectable)
             result[MDX_ARCH_TYPE] = mdx_list or [NO_NEW_MODELS]
 
@@ -783,7 +888,11 @@ class DownloadManager:
         try:
             with _urlopen(url) as response:
                 length_header = response.getheader("Content-Length")
-                file_total = int(length_header) if length_header and length_header.isdigit() else 0
+                file_total = (
+                    int(length_header)
+                    if isinstance(length_header, str) and length_header.isdigit()
+                    else 0
+                )
                 downloaded = 0
                 last_info_at = 0.0
                 last_info_text = ""
@@ -817,6 +926,11 @@ class DownloadManager:
                                 last_info_at = now
                                 last_info_text = info_text
                                 on_info(info_text)
+                if file_total and downloaded != file_total:
+                    raise OSError(
+                        f"Incomplete download: received {downloaded} bytes, "
+                        f"expected {file_total}"
+                    )
         except Exception:
             if os.path.isfile(tmp_path):
                 try:
@@ -855,28 +969,30 @@ class DownloadManager:
             )
             return False
 
-        changed = False
+        writes: Dict[str, Mapping[str, Any]] = {}
+        semantic_changed = False
         for (_url, dest), data in zip(_MODEL_DATA_URLS, fetched):
             if not isinstance(data, dict):
-                continue
-            payload = data
+                debug("download", f"update_model_settings invalid payload path={dest}")
+                return False
+            payload: Mapping[str, Any] = data
             if dest in _NAME_MAPPER_DESTS:
-                # Rescue fork keys older builds wrote into the mirror, then let
-                # the mirror track upstream exactly.
-                from .name_mapper import migrate_local_only_keys
+                # Plan the first-run overlay migration without writing it yet;
+                # the overlay marker participates in the same transaction.
+                from .name_mapper import local_overlay_path, plan_local_overlay_migration
 
-                if migrate_local_only_keys(dest, data):
-                    changed = True
-            if _json_file_matches(dest, payload):
-                continue
-            text = json.dumps(payload, indent=4)
-            try:
-                os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
-                with open(dest, "w", encoding="utf-8") as out_file:
-                    out_file.write(text)
-                changed = True
-            except OSError:
-                continue
+                local_only = plan_local_overlay_migration(dest, data)
+                if local_only is not None:
+                    writes[local_overlay_path(dest)] = local_only
+                    semantic_changed = semantic_changed or bool(local_only)
+            if not _json_file_matches(dest, payload):
+                semantic_changed = True
+            writes[dest] = payload
+
+        ok, _wrote_files = _transactional_json_refresh(writes)
+        if not ok:
+            return False
+        changed = semantic_changed
         if changed and repo is not None:
             # Not invalidate_stem_check: the hash maps and name mappers were
             # just rewritten on disk, and only reload_mappers picks those up.
@@ -923,6 +1039,7 @@ class DownloadManager:
 
         vr = dict(source.get("vr_download_list", {}))
         mdx = dict(source.get("mdx_download_list", {}))
+        mdx.update(source.get("mdx23_download_list", {}))
         mdx.update(source.get("mdx23c_download_list", {}))
         mdx.update(source.get("roformer_download_list", {}))
         demucs = dict(source.get("demucs_download_list", {}))
@@ -930,6 +1047,7 @@ class DownloadManager:
         if self.decoded_vip_link != NO_CODE:
             vr.update(source.get("vr_download_vip_list", {}))
             mdx.update(source.get("mdx_download_vip_list", {}))
+            mdx.update(source.get("mdx23_download_vip_list", {}))
             mdx.update(source.get("mdx23c_download_vip_list", {}))
             mdx.update(source.get("roformer_download_vip_list", {}))
 

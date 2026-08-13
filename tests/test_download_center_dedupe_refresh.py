@@ -26,6 +26,7 @@ def _bare_window() -> Any:
     win._list_boxes = {}
     win._available = {}
     win._unsupported = {}
+    win._downloads_dirty = False
     return win
 
 
@@ -164,6 +165,52 @@ class CatalogueRowRemovalTests(unittest.TestCase):
 
         win._list_boxes[MDX_ARCH_TYPE].remove.assert_not_called()
         win._update_download_button.assert_not_called()
+
+
+class DownloadCompletionRefreshTests(unittest.TestCase):
+    def test_hidden_window_is_marked_dirty_without_touching_rows(self) -> None:
+        from ui.download_center import DownloadCenterWindow
+
+        win = _bare_window()
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = False
+        win._flush_catalogue_row_refresh = mock.MagicMock()
+
+        DownloadCenterWindow.refresh_after_downloads(win)
+
+        self.assertTrue(win._downloads_dirty)
+        win._flush_catalogue_row_refresh.assert_not_called()
+
+    def test_visible_window_uses_incremental_removal_not_rebuild(self) -> None:
+        from ui.download_center import DownloadCenterWindow
+
+        win = _bare_window()
+        win.window = mock.MagicMock()
+        win.window.get_visible.return_value = True
+        win._flush_catalogue_row_refresh = mock.MagicMock()
+        win._rebuild_catalogue = mock.MagicMock()
+
+        DownloadCenterWindow.refresh_after_downloads(win)
+
+        self.assertFalse(win._downloads_dirty)
+        win._flush_catalogue_row_refresh.assert_called_once_with()
+        win._rebuild_catalogue.assert_not_called()
+
+    def test_present_consumes_hidden_window_dirty_marker(self) -> None:
+        from ui.download_center import DownloadCenterWindow
+
+        win = _bare_window()
+        win.window = mock.MagicMock()
+        win._available = {MDX_ARCH_TYPE: ["Still available"]}
+        win._downloads_dirty = True
+        win._apply_download_completion_refresh = mock.MagicMock()
+        win.start_refresh = mock.MagicMock()
+
+        DownloadCenterWindow.present(win)
+
+        win.window.present.assert_called_once_with()
+        win._apply_download_completion_refresh.assert_called_once_with()
+        win.start_refresh.assert_not_called()
 
 
 class CatalogueListenerWiringTests(unittest.TestCase):

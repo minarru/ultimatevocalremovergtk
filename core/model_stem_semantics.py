@@ -243,9 +243,12 @@ def resolve_karaoke_confidence(
     hash-table entry -- i.e. every new community model until someone
     curates it.
     """
-    if model_data:
-        if model_data.get("is_karaoke") or model_data.get("is_karaokee"):
-            return True, True
+    if isinstance(model_data, Mapping):
+        # Presence is authoritative: an explicit false is curated metadata,
+        # not permission to fall through to an unreliable name-based guess.
+        for key in ("is_karaoke", "is_karaokee"):
+            if key in model_data:
+                return bool(model_data[key]), True
     guess = infer_is_karaoke_from_hints(
         model_name=model_name,
         config_yaml=config_yaml,
@@ -570,37 +573,37 @@ def recommended_export_note(model: typing.Any) -> str:
     intent = export_intent_from_model(model)
     if intent == INTENT_DUAL_VOC_INST:
         if is_dual_stem_weight(model_weight_basename(model)):
-            return "Both Vocals and Instrumental are first-class exports for this model."
-        return "Vocals and Instrumental are both valid primary exports."
+            return "Both Vocals and Instrumental are first-class exports for this model"
+        return "Vocals and Instrumental are both valid primary exports"
     if intent == INTENT_KARAOKE:
         primary = str(getattr(model, "primary_stem", "") or "")
         target = target_instrument(model)
         if is_vocal_target(primary) or is_vocal_target(target):
             return (
                 "Karaoke model: Instrumental (backing) is usually the desired export; "
-                "Vocals is the isolated vocal stem."
+                "Vocals is the isolated vocal stem"
             )
         if is_instrumental_target(primary) or is_instrumental_target(target):
-            return "Karaoke model: Instrumental primary; Vocals is the complement stem."
-        return "Karaoke model: instrumental backing is typically the desired export."
+            return "Karaoke model: Instrumental primary; Vocals is the complement stem"
+        return "Karaoke model: instrumental backing is typically the desired export"
     if intent == INTENT_DRUM_BASS_SEP:
-        return "Drum/bass separation model — pick No Drum-Bass or Drum-Bass."
+        return "Drum/bass separation model — pick No Drum-Bass or Drum-Bass"
     if intent == INTENT_INSTRUMENTAL and target_instrument(model).lower() == "other":
-        return "Instrumental model: Vocals + Instrumental (Instrumental is the backing track)."
+        return "Instrumental model: Vocals + Instrumental (Instrumental is the backing track)"
     if intent == INTENT_SPECIAL_FX:
         stem = target_instrument(model) or str(getattr(model, "primary_stem", "") or "")
         if stem:
             return describe_special_fx_stem(stem)
-        return "Post-processing stem export."
+        return "Post-processing stem export"
     if intent == INTENT_SPECIALTY_STEM:
         instruments = training_instruments(model)
         if instruments:
             names = " / ".join(format_specialty_instrument_name(name) for name in instruments)
             return (
                 f"Specialty stems: export {names} "
-                "individually (not Vocals/Instrumental quick export)."
+                "individually (not Vocals/Instrumental quick export)"
             )
-        return "Specialty stem model — use per-stem subset export."
+        return "Specialty stem model — use per-stem subset export"
     return ""
 
 

@@ -43,16 +43,14 @@ class ConsumerRegistryTests(unittest.TestCase):
         window._audio_tools_page.refresh_models.assert_called_once_with()
         window.vocal_split_row.refresh_models.assert_called_once_with()
 
-    def test_invalidates_the_repository_first(self) -> None:
-        """Consumers re-read through the repo, so its caches must go first."""
+    def test_repaint_does_not_reinvalidate_the_repository(self) -> None:
+        """A repository notification must not schedule itself forever."""
         window = _window()
-        order: list[str] = []
-        window.context.repo.invalidate_models.side_effect = lambda: order.append("repo")
-        window._views[0].refresh_models.side_effect = lambda: order.append("view")
 
         MainWindow._apply_model_refresh(window)
 
-        self.assertEqual(order[:2], ["repo", "view"])
+        window.context.repo.invalidate_models.assert_not_called()
+        window._views[0].refresh_models.assert_called_once_with()
 
     def test_a_missing_consumer_does_not_abort_the_rest(self) -> None:
         """Refresh can fire before the window finishes building."""
@@ -71,10 +69,10 @@ class RunDeferralTests(unittest.TestCase):
         window._run_controller.is_running.return_value = True
 
         with mock.patch.object(MainWindow, "_apply_model_refresh") as apply_refresh:
-            MainWindow._refresh_models(window, source="repo")
+            MainWindow._refresh_models(window, source="repository")
 
         apply_refresh.assert_not_called()
-        self.assertEqual(window._deferred_model_refresh, "repo")
+        self.assertEqual(window._deferred_model_refresh, "repository")
 
     def test_refresh_outside_a_run_applies_immediately(self) -> None:
         window = _window()
@@ -82,9 +80,18 @@ class RunDeferralTests(unittest.TestCase):
         window._run_controller.is_running.return_value = False
 
         with mock.patch.object(MainWindow, "_apply_model_refresh") as apply_refresh:
-            MainWindow._refresh_models(window, source="repo")
+            MainWindow._refresh_models(window, source="repository")
 
-        apply_refresh.assert_called_once_with(source="repo")
+        apply_refresh.assert_called_once_with(source="repository")
+
+    def test_external_refresh_invalidates_and_waits_for_repository_notification(self) -> None:
+        window = _window()
+
+        with mock.patch.object(MainWindow, "_apply_model_refresh") as apply_refresh:
+            MainWindow._refresh_models(window, source="download_center")
+
+        window.context.repo.invalidate_models.assert_called_once_with()
+        apply_refresh.assert_not_called()
 
     def test_applying_clears_the_deferred_marker(self) -> None:
         window = _window()
@@ -96,6 +103,25 @@ class RunDeferralTests(unittest.TestCase):
 
 
 class RepositorySubscriptionTests(unittest.TestCase):
+    def test_repository_flush_does_not_schedule_a_second_refresh(self) -> None:
+        window = _window()
+        window._model_refresh_armed = False
+        scheduled: list[Any] = []
+        window.context.repo.invalidate_models.side_effect = lambda: MainWindow._on_models_changed(
+            window
+        )
+
+        with mock.patch(
+            "ui.window.idle_on_main", side_effect=lambda fn, *a, **k: scheduled.append(fn)
+        ):
+            MainWindow._refresh_models(window, source="download_center")
+            self.assertEqual(len(scheduled), 1)
+            scheduled.pop()()
+
+        self.assertEqual(scheduled, [])
+        for view in window._views:
+            view.refresh_models.assert_called_once_with()
+
     def test_notification_coalesces_into_one_refresh(self) -> None:
         """A download batch invalidates more than once; the user should not
         pay for several full refreshes."""

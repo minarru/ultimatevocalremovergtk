@@ -28,6 +28,7 @@ _EXTRA_MODELS_FILE = os.path.join(
 #: (same compact ``{selectable: {checkpoint: config}}`` schema).
 _EXTRA_MDX_SOURCE_KEYS = (
     "mdx_download_list",
+    "mdx23_download_list",
     "mdx23c_download_list",
     "roformer_download_list",
     "scnet_download_list",

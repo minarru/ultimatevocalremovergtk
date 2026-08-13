@@ -44,7 +44,6 @@ from .context import AppContext
 from .ensemble import EnsemblePage
 from .help_text import (
     MAIN_MENU_HINT,
-    MODEL_OPTIONS_BUTTON_HINT,
     MODEL_OPTIONS_ROW_HINT,
     VIEW_INPUTS_BUTTON_HINT,
 )
@@ -1065,6 +1064,15 @@ class MainWindow(Adw.ApplicationWindow):
     def _refresh_models(self, *, source: str = "download_center") -> None:
         from core.debug_log import debug
 
+        if source != "repository":
+            # Cache invalidation is the event source. Its repository
+            # notification owns the single UI repaint; repainting here as well
+            # would duplicate the work, and invalidating from the repaint path
+            # creates an endless idle-callback feedback loop.
+            debug("ui", f"refresh_models invalidate source={source}")
+            self.context.repo.invalidate_models()
+            return
+
         controller = getattr(self, "_run_controller", None)
         if controller is not None and controller.is_running():
             debug("ui", f"refresh_models deferred source={source} (run in progress)")
@@ -1092,9 +1100,9 @@ class MainWindow(Adw.ApplicationWindow):
         from core.debug_log import debug
 
         debug("ui", f"refresh_models source={source}")
-        # New model files may add hash/name mappings and change stem filtering.
-        # First: every consumer below re-reads through the repository.
-        self.context.repo.invalidate_models()
+        # Repository caches are already invalidated before this repaint is
+        # scheduled. This method must remain notification-free: calling
+        # invalidate_models here makes the idle flush notify itself forever.
         for consumer in self._model_list_consumers():
             consumer.refresh_models()
         for view in self._views:

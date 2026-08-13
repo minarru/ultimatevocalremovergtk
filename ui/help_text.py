@@ -146,9 +146,7 @@ SAVE_STEM_ONLY_HELP = (
 )
 
 RUN_WORKLOAD_HINT = (
-    "Relative workload: passes = inferences, outputs = files written, "
-    "Fastest/Typical/Slower = export and run cost. Cost factors name heavy "
-    "settings such as TTA, shifts, or high overlap"
+    "Passes = model runs; outputs = saved files; speed labels are relative"
 )
 
 PROGRESS_ETA_HINT = (

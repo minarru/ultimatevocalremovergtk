@@ -29,9 +29,11 @@ _CATEGORY_PREFIXES = (
     "VR Arch Single Model ",
     "VR Arch ",
     "MDX23C Model VIP: ",
+    "MDX23 Model VIP: ",
     "MDX-Net Model VIP: ",
     "Roformer Model VIP: ",
     "MDX23C Model: ",
+    "MDX23 Model: ",
     "MDX-Net Model: ",
     "Roformer Model: ",
     "Apollo Model: ",
@@ -48,7 +50,7 @@ _CATEGORY_PREFIXES = (
 _FAMILY_PATTERNS = (
     (re.compile(r"^mel[\s_-]?band[\s_-]?roformer\b", re.IGNORECASE), "MelBand Roformer"),
     (re.compile(r"^(?:bs|band[\s_-]?split)[\s_-]?roformer\b", re.IGNORECASE), "BandSplit Roformer"),
-    (re.compile(r"^mdx23c\b", re.IGNORECASE), "MDX23C"),
+    (re.compile(r"^mdx23c(?=$|[\s_|-])", re.IGNORECASE), "MDX23C"),
     (re.compile(r"^scnet\b", re.IGNORECASE), "SCNet"),
     (re.compile(r"^bandit\b", re.IGNORECASE), "Bandit"),
     (re.compile(r"^apollo\b", re.IGNORECASE), "Apollo"),
@@ -75,7 +77,9 @@ _HYPERACE_FINETUNE_PAREN_RE = re.compile(
 _PREFIX_FAMILIES = {
     "SCnet: ": "SCNet",
     "MDX23C Model VIP: ": "MDX23C",
+    "MDX23 Model VIP: ": "MDX23C",
     "MDX23C Model: ": "MDX23C",
+    "MDX23 Model: ": "MDX23C",
     "MDX23C: ": "MDX23C",
     "MDX-Net Model VIP: ": "MDX-Net",
     "MDX-Net Model: ": "MDX-Net",
@@ -166,7 +170,7 @@ def canonical_display_name(label: str) -> str:
     remainder = remainder.replace("|", " ")
     remainder = remainder.replace(TITLE_SEPARATOR.strip(), " ")
     remainder = remainder.replace(AUTHOR_SEPARATOR.strip(), " ")
-    remainder = re.sub(r"\s+", " ", remainder).strip(" -—")
+    remainder = re.sub(r"\s+", " ", remainder).strip(" _-—")
     remainder = _strip_hyperace_finetune_paren(remainder)
 
     if family and remainder:

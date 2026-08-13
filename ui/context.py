@@ -110,3 +110,11 @@ class AppContext:
         """Cooperatively stop (or force-terminate) every started worker."""
         if self._runner is not None:
             self._runner.stop(force=force)
+        queue = getattr(self, "_download_queue", None)
+        if queue is not None:
+            queue.cancel_all()
+
+    def active_download_count(self) -> int:
+        """Return queued/downloading model count without creating a queue."""
+        queue = getattr(self, "_download_queue", None)
+        return queue.active_count() if queue is not None else 0

@@ -85,6 +85,34 @@ class EntryMetaTests(unittest.TestCase):
         self.assertEqual(meta.stems, ["Vocals", "other"])
         self.assertEqual(meta.target_instrument, "Vocals")
 
+    def test_normalized_alias_metadata_enriches_retained_source(self) -> None:
+        retained = "Roformer Model: MelBand Roformer | Vocals by Someone"
+        alias = "Mel-Band Roformer Vocals by Someone"
+        with _with_supplements(
+            (
+                {},
+                {alias: {"alias.ckpt": "https://x/alias.ckpt"}},
+                {},
+                {
+                    alias: {
+                        "stems": ["vocals", "other"],
+                        "target_instrument": "vocals",
+                        "intent": "vocals",
+                    }
+                },
+            )
+        ):
+            merged = catalog_sources.merged_catalogues(
+                vr={},
+                mdx={retained: {"retained.ckpt": "https://x/retained.ckpt"}},
+                demucs={},
+            )
+
+        self.assertIn(retained, merged.mdx)
+        self.assertNotIn(alias, merged.mdx)
+        self.assertEqual(merged.meta[retained].stems, ["vocals", "other"])
+        self.assertEqual(merged.meta[retained].intent, "vocals")
+
     def test_entry_without_mvsepless_metadata_still_gets_meta(self) -> None:
         with _with_supplements(_NO_SUPPLEMENTS):
             merged = catalog_sources.merged_catalogues(

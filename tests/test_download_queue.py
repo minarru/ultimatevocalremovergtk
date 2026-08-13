@@ -73,6 +73,38 @@ class DownloadQueueTests(unittest.TestCase):
 
         release.set()
 
+    def test_cancel_all_cancels_queued_and_signals_current_download(self) -> None:
+        from core.download_status import STATUS_CANCELLED, STATUS_DOWNLOADING
+
+        started = threading.Event()
+        release = threading.Event()
+
+        def blocking_download(jobs: typing.Any, **kwargs: typing.Any):
+            started.set()
+            release.wait(timeout=5)
+            return "stopped"
+
+        self.manager.download.side_effect = blocking_download
+        first_id = self.queue.enqueue("First", "MDX-Net")
+        self.assertTrue(started.wait(timeout=5))
+        second_id = self.queue.enqueue("Second", "MDX-Net")
+
+        self.assertEqual(self.queue.cancel_all(), 2)
+        items = {item.item_id: item for item in self.queue.items()}
+        assert first_id is not None and second_id is not None
+        self.assertEqual(items[first_id].status, STATUS_DOWNLOADING)
+        self.assertTrue(items[first_id].stop_event.is_set())
+        self.assertEqual(items[first_id].detail, "Cancelling…")
+        self.assertEqual(items[second_id].status, STATUS_CANCELLED)
+        self.assertEqual(self.queue.active_count(), 1)
+
+        release.set()
+        for _ in range(100):
+            if self.queue.active_count() == 0:
+                break
+            threading.Event().wait(0.01)
+        self.assertEqual(self.queue.active_count(), 0)
+
     def test_ensure_worker_never_double_starts(self) -> None:
         spawn_count = {"n": 0}
         barrier = threading.Barrier(20)

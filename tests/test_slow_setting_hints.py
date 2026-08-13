@@ -12,6 +12,7 @@ from core.run_estimate import (
     _denoise_should_count,
 )
 from core.settings import Settings
+from ui.help_text import MAX_HELP_TEXT_CHARS, RUN_WORKLOAD_HINT, SAVE_STEM_ONLY_HELP
 
 
 def _settings(values: dict[str, object]) -> Settings:
@@ -135,6 +136,23 @@ class CostFactorHintTests(unittest.TestCase):
         )
         self.assertIn("Export help", composed)
         self.assertIn("Cost factors: Overlap 29", composed)
+
+    def test_composed_live_tooltip_stays_brief_with_all_cost_factors(self) -> None:
+        estimate = WorkloadEstimate(
+            inference_passes=8,
+            output_count=12,
+            uses_gpu=True,
+            sample_mode=False,
+            sample_seconds=30,
+            export_tier=RunCostTier.SLOWER,
+            hints=("TTA", "Overlap 50", "Match frequency", "Denoise", "Shifts 20"),
+        )
+        composed = compose_stem_group_tooltip(
+            SAVE_STEM_ONLY_HELP,
+            estimate,
+            workload_hint=RUN_WORKLOAD_HINT,
+        )
+        self.assertLessEqual(len(composed), MAX_HELP_TEXT_CHARS)
 
 
 if __name__ == "__main__":

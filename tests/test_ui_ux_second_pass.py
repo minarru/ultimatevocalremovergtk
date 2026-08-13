@@ -115,6 +115,18 @@ class ProfileOverwriteDetectionTests(unittest.TestCase):
                 handle.write("{}")
             self.assertIn("My_Profile", store.list_profiles())
 
+    def test_persistence_error_replaces_success_feedback(self) -> None:
+        from ui.preferences import persistence_feedback
+
+        error = "Couldn't save settings: read-only filesystem"
+        self.assertEqual(
+            persistence_feedback(error, "Settings reset to default"), error
+        )
+        self.assertEqual(
+            persistence_feedback(None, "Settings reset to default"),
+            "Settings reset to default",
+        )
+
 
 class CollectInvalidKeepsDialogOpenTests(unittest.TestCase):
     def test_collect_invalid_is_distinct_from_none(self) -> None:
