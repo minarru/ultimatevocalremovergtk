@@ -111,7 +111,7 @@ class LogPanel(Gtk.Box):
 
         self.log_copy_button = Gtk.Button(icon_name="edit-copy-symbolic")
         self.log_copy_button.add_css_class("flat")
-        set_icon_button_a11y(self.log_copy_button, "Copy the full log to the clipboard")
+        set_icon_button_a11y(self.log_copy_button, "Copy full log")
         self._log_meta_row.append(self.log_copy_button)
 
         self.log_clear_button = Gtk.Button(icon_name="eraser3-symbolic")
@@ -158,7 +158,7 @@ class LogPanel(Gtk.Box):
         self.expand_button.add_css_class("flat")
         self.expand_button.add_css_class("uvr-log-expander-arrow")
         self.expand_button.set_valign(Gtk.Align.CENTER)
-        set_icon_button_a11y(self.expand_button, "Show or hide the processing log")
+        self._sync_expand_button_a11y(False)
         self.expand_button.connect("toggled", self._on_expand_toggled)
         action_row.append(self.expand_button)
 
@@ -312,10 +312,12 @@ class LogPanel(Gtk.Box):
 
     def set_expanded(self, expanded: bool) -> None:
         if self.get_expanded() == expanded and self.expand_button.get_active() == expanded:
+            self._sync_expand_button_a11y(expanded)
             return
         self._syncing_expand = True
         self.expand_button.set_active(expanded)
         self._log_revealer.set_reveal_child(expanded)
+        self._sync_expand_button_a11y(expanded)
         self._notify_expanded_changed(expanded)
         self._syncing_expand = False
 
@@ -335,11 +337,16 @@ class LogPanel(Gtk.Box):
         if self._on_expanded_changed is not None:
             self._on_expanded_changed(expanded)
 
+    def _sync_expand_button_a11y(self, expanded: bool) -> None:
+        action = "Hide" if expanded else "Show"
+        set_icon_button_a11y(self.expand_button, f"{action} processing log")
+
     def _on_expand_toggled(self, button: Gtk.ToggleButton) -> None:
         if self._syncing_expand:
             return
         expanded = button.get_active()
         self._log_revealer.set_reveal_child(expanded)
+        self._sync_expand_button_a11y(expanded)
         self._notify_expanded_changed(expanded)
 
     def _on_log_revealed(self, revealer: Gtk.Revealer, _pspec: typing.Any) -> None:

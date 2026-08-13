@@ -11,6 +11,7 @@ Style guide
 * Separate sections with a single blank line; avoid trailing blank lines.
 * Plain text only — GTK tooltips do not render Markdown (no ``**bold**``).
 * Prefer single-line strings for short prose — GTK wraps at the tooltip width
+* Keep tooltips at or below 240 characters; move longer guidance into visible UI
 * Use ``\\n\\n`` only between distinct sections (title and body, notes, bullet lists)
 * Do not embed mid-sentence line breaks in source; each forced ``\\n`` becomes a hard wrap
 
@@ -25,6 +26,7 @@ from typing import Dict, Iterator, List
 
 # Abbreviations / phrases that may end with a period mid-line.
 _ALLOWED_PERIOD_SUFFIXES = ("etc.", "e.g.", "i.e.", "vs.", "U.S.")
+MAX_HELP_TEXT_CHARS = 240
 
 
 def validate_help_text(text: str, *, name: str = "") -> List[str]:
@@ -32,7 +34,12 @@ def validate_help_text(text: str, *, name: str = "") -> List[str]:
     issues: List[str] = []
     prefix = f"{name}: " if name else ""
     if not text:
+        issues.append(f"{prefix}empty tooltip text")
         return issues
+    if len(text) > MAX_HELP_TEXT_CHARS:
+        issues.append(
+            f"{prefix}{len(text)} characters exceeds the {MAX_HELP_TEXT_CHARS}-character limit"
+        )
     if text != text.strip():
         issues.append(f"{prefix}leading or trailing whitespace on the full string")
     if text.startswith("**") or "***" in text:
@@ -72,256 +79,220 @@ def iter_help_strings() -> Iterator[tuple[str, str]]:
                     yield f"{name}[{key!r}]", item
 
 
-# --- Upstream UVR hints (ported from the original Tk help strings) ---
+# --- Shared hints (including compatibility names from the former Tk UI) ---
+
+STOP_HELP = "Stop the current task after confirmation"
+
+SETTINGS_HELP = "Open Preferences or the Download Center"
+
+COMMAND_TEXT_HELP = "Processing log with status, progress, warnings, and errors"
+
+PITCH_SHIFT_HELP = (
+    "Shift pitch in semitones: positive values raise pitch and negative values lower it. "
+    "Enable Time correction to preserve duration"
+)
 
-STOP_HELP = """Stops ongoing tasks
-
-• A confirmation pop-up will appear before stopping"""
-
-SETTINGS_HELP = "Accesses the main settings and the \"Download Center.\""
-
-COMMAND_TEXT_HELP = "Shows the status and progress of ongoing tasks"
-
-PITCH_SHIFT_HELP = """Choose the pitch for processing tracks:
-
-• Whole numbers indicate semitones
-• Using higher pitches may cut the upper bandwidth, even in high-quality models
-• Upping the pitch can be better for tracks with deeper vocals
-• Dropping the pitch may take more processing time but works well for tracks with high-pitched vocals"""
-
-AGGRESSION_SETTING_HELP = """Adjust the intensity of primary stem extraction:
-
-• It ranges from -100 - 100
-• Bigger values mean deeper extractions
-• Typically, it's set to 5 for vocals & instrumentals
-• Values beyond 5 might muddy the sound for non-vocal models"""
-
-WINDOW_SIZE_HELP = """Select window size to balance quality and speed:
-
-• 1024 - Quick but lesser quality
-• 512 - Medium speed and quality
-• 320 - Takes longer but may offer better quality"""
-
-MDX_SEGMENT_SIZE_HELP = """Pick a segment size to balance speed, resource use, and quality:
-• Smaller sizes consume less resources
-• Bigger sizes consume more resources, but may provide better results
-• Classic MDX-Net default size is 256
-• For MDX-C / MDX23C models, "Default" uses the segment size from the model's yaml config (shown as a tick on the slider)"""
-
-DEMUCS_STEMS_HELP = """Select a stem for extraction with the chosen model:
-
-• All Stems - Extracts all available stems
-• Vocals - Only the "vocals" stem
-• Other - Only the "other" stem
-• Bass - Only the "bass" stem
-• Drums - Only the "drums" stem"""
-
-SEGMENT_HELP = """Adjust segments to manage RAM or V-RAM usage:
-
-• Smaller sizes consume less resources
-• Bigger sizes consume more resources, but may provide better results
-• "Default" picks the optimal size"""
-
-ENSEMBLE_MAIN_STEM_HELP = """Select the stem type for ensembling:
-
-• Vocals/Instrumental:
-  - Primary Stem: Vocals
-  - Secondary Stem: Instrumental (mixture minus vocals)
-
-• Lead Vocals/Instrumental (With Backing Vocals):
-  - For karaoke and backing-vocal models
-  - Primary Stem: Lead Vocals
-  - Secondary Stem: Instrumental with backing vocals left in
-  - These models separate lead vocals from everything else, so their
-    "instrumental" still contains the backing vocals. That is not the same
-    quantity as a clean instrumental, so they get their own pair rather than
-    being mixed with standard Vocals/Instrumental models
-
-• Other/No Other:
-  - Primary Stem: Other
-  - Secondary Stem: No Other (mixture minus "other")
-
-• Bass/No Bass:
-  - Primary Stem: Bass
-  - Secondary Stem: No Bass (mixture minus bass)
-
-• Drums/No Drums:
-  - Primary Stem: Drums
-  - Secondary Stem: No Drums (mixture minus drums)
-
-• 4 Stem Ensemble:
-  - Gathers all 4-stem Demucs models and ensembles all outputs
-
-• Multi-stem Ensemble:
-  - The "Jungle Ensemble" gathers all models and ensembles any related outputs"""
-
-ENSEMBLE_TYPE_HELP = """Choose how member outputs are combined
-
-Dual-stem ensembles use a Primary algorithm and a Secondary algorithm (saved as Primary/Secondary). 4-stem and multi-stem ensembles use a single algorithm for every stem
-
-Algorithm atoms:
-• Max Spec — Keep the strongest magnitude per bin (fuller; can add artifacts)
-• Min Spec — Keep the weakest magnitude per bin (cleaner; can sound muddy)
-• Average — Mean of all member waveforms
-• Median Spec — Per-bin median of complex spectrograms (robust with 3+ models)
-• Soft Spec — Softmax blend with automatic magnitude-agreement weights (no manual weights)
-• Max Mag / Avg Phase — Max Spec magnitudes with a stable average phase
-• Hybrid Spec — Average of Max Spec and Min Spec results
-• Chunk Min — Time-domain: keep the quietest chunk from any member
-
-Default dual-stem pair is Max Spec / Min Spec"""
-
-ENSEMBLE_LISTBOX_HELP = "Displays all available models for the chosen main stem pair"
-
-IS_TIME_CORRECTION_HELP = "When checked, the output will retain the original BPM of the input"
-
-SAVE_STEM_ONLY_HELP = """Choose which stems are written to disk. All Stems exports every output file; selecting a single stem saves only that file
-
-The workload line below (passes, outputs, GPU/CPU) is a relative guide, not an exact time estimate. Hover for cost-factor details when heavier settings are active"""
-
-RUN_WORKLOAD_HINT = """Workload line (relative, not clock time):
-• passes — how many model inferences the run performs
-• outputs — how many files will be written
-• Fastest / Typical / Slower — relative export cost (from outputs) and run cost (from passes plus heavy settings such as TTA, shifts, or high overlap)
-• Cost factors (when listed) — those heavy settings, called out separately"""
-
-PROGRESS_ETA_HINT = """The progress bar and time estimate track separation only. While a model is loading or stems are being written, the last separation fill is held and the status shows that phase. Ensemble combine shows Combining i/n (with a rough time left when possible). Before the first separation tick the bar pulses (Importing engines / Loading model). The estimate uses known pass counts and pauses its clock outside inference; it stabilizes after separation is underway"""
-
-IS_NORMALIZATION_HELP = "Normalizes output to prevent clipping"
-
-IS_MATCH_MIX_LEVEL_HELP = """Scale multi-stem outputs so their sum matches the input mix level
-
-• Uses one shared gain across all exported stems (keeps relative balance)
-• Fixes models that run systematically hot or quiet (e.g. some SCNet checkpoints)
-• Applies when exporting two or more stems from the same separation"""
-
-IS_PREVENT_EXPORT_CLIPPING_HELP = """Scale outputs so peaks fit integer PCM / FLAC / MP3 without hard clipping
-
-• Uses one shared gain across multi-stem exports so relative levels stay intact
-• Skipped automatically when saving 32/64-bit float WAV (those formats keep peaks above 1.0)
-• Different from Normalize output, which can reshape each stem independently"""
-
-AMPLIFICATION_THRESHOLD_HELP = """Raise quiet outputs so their peak reaches this level (0–1)
-
-• 0 — off (default); leave quiet stems as-is
-• 0.9 — match common audio-separator-style loudness targeting
-• Applies after peak limiting when Normalize output is enabled"""
-
-LONG_FILE_CHUNK_HELP = """Split very long inputs into wall-clock time slices before separation
-
-• 0 — off (default); process the whole file in one pass
-• 600 — typical for hour+ podcasts / DJ mixes (10-minute slices)
-• This is not MDX segment size or Demucs segment — those are in-model windows
-• Slices are crossfaded using the overlap setting when stitched back together"""
-
-LONG_FILE_CHUNK_OVERLAP_HELP = """Crossfade length (seconds) between long-file chunks
-
-• Clamped to less than half the chunk duration
-• Reduces clicks at slice boundaries; 2 seconds is a solid default"""
-
-IS_CUDA_SELECT_HELP = """If you have more than one GPU, you can pick which one to use for processing"""
-
-CROP_SIZE_HELP = """Only compatible with select models only!
-
-Setting should match training crop-size value. Leave as is if unsure"""
-
-IS_TTA_HELP = """This option performs Test-Time-Augmentation to improve the separation quality
-
-Note: Having this selected will increase the time it takes to complete a conversion"""
-
-IS_POST_PROCESS_HELP = """This option can potentially identify leftover instrumental artifacts within the vocal outputs
-
-This option may improve the separation of some songs
-
-Note: Selecting this option can adversely affect the conversion process, depending on the track. Because of this, it is only recommended as a last resort"""
-
-IS_HIGH_END_PROCESS_HELP = "The application will mirror the missing frequency range of the output"
-
-SHIFTS_HELP = """Performs multiple predictions with random shifts of the input and averages them
-
-• The higher number of shifts, the longer the prediction will take
-  - Not recommended unless you have a GPU"""
-
-OVERLAP_HELP = """• This option controls the amount of overlap between prediction windows
-  - Higher values can provide better results, but will lead to longer processing times
-  - You can choose between 0.001-0.999"""
-
-MDX_OVERLAP_HELP = """• This option controls the amount of overlap between prediction windows
-  - Higher values can provide better results, but will lead to longer processing times
-  - For Non-MDX23C models: You can choose between 0.001-0.999"""
-
-OVERLAP_23_HELP = """• This option controls the amount of overlap between prediction windows
-  - Higher values can provide better results, but will lead to longer processing times"""
-
-IS_SEGMENT_DEFAULT_HELP = """• For MDX-C / MDX23C models, choose "Default" on Segment size to use the value from the model's yaml config"""
-
-IS_SPLIT_MODE_HELP = """• Enables "Segments"
-• Deselecting this option is only recommended for those with powerful PCs"""
-
-IS_DEMUCS_COMBINE_STEMS_HELP = "The application will create the secondary stem by combining the remaining stems instead of inverting the primary stem with the mixture"
-
-COMPENSATE_HELP = """Compensates the audio of the primary stems to allow for a better secondary stem"""
-
-IS_DENOISE_HELP = """• Standard: This setting reduces the noise created by MDX-Net models
-  - This option only reduces noise in non-MDX23 models
-• Denoise Model: This setting employs a special denoise model to eliminate noise produced by any MDX-Net model
-  - This option works on all MDX-Net models
-  - You must have the "UVR-DeNoise-Lite" VR Arch model installed to use this option
-• Please Note: Both options will increase separation time"""
-
-VOC_SPLIT_MODEL_SELECT_HELP = """• Select a model from the list of lead and backing vocal models to run through vocal stems automatically"""
-
-IS_VOC_SPLIT_INST_SAVE_SELECT_HELP = """• When activated, you will receive extra instrumental outputs that include: one with just the lead vocals and another with only the backing vocals"""
-
-IS_VOC_SPLIT_MODEL_SELECT_HELP = """• When activated, this option auto-processes generated vocal stems, using either a karaoke model to remove lead vocals or another to remove backing vocals
-  - This option splits the vocal track into two separate parts: lead vocals and backing vocals, providing two extra vocal outputs
-  - The results will be organized in the same way, whether you use a karaoke model or a background vocal model
-  - This option does not work in ensemble mode at this time"""
-
-IS_DEVERB_OPT_HELP = """• Select the vocal type you wish to deverb automatically
-  - Example: Choosing "Lead Vocals Only" will only remove reverb from a lead vocal stem"""
-
-IS_DEVERB_VOC_HELP = """• This option removes reverb from a vocal stem
-  - You must have the "UVR-DeEcho-DeReverb" VR Arch model installed to use this option
-  - This option does not work in ensemble mode at this time"""
-
-IS_FREQUENCY_MATCH_HELP = """Matches the frequency cut-off of the primary stem to that of the secondary stem"""
-
-CLEAR_CACHE_HELP = "Clears settings for unrecognized models chosen by the user"
-
-IS_SAVE_ALL_OUTPUTS_ENSEMBLE_HELP = "If enabled, all individual ensemble-generated outputs are retained"
-
-IS_APPEND_ENSEMBLE_NAME_HELP = "When enabled, the ensemble name is added to the final output"
-
-IS_WAV_ENSEMBLE_HELP = """Processes ensemble algorithms with waveforms instead of spectrograms when activated:
-• Might lead to increased distortion
-• Waveform ensembling is faster than spectrogram ensembling"""
-
-DONATE_HELP = """Opens official UVR "Buy Me a Coffee" external link for project donations!"""
-
-IS_INVERT_SPEC_HELP = """Potentially enhances the secondary stem quality:
-• Inverts primary stem using spectrograms, instead of waveforms
-• Slightly slower inversion method"""
-
-IS_TESTING_AUDIO_HELP = "Appends a 10-digit number to saved files to avoid accidental overwrites"
+AGGRESSION_SETTING_HELP = (
+    "Controls extraction strength from 0 to 50. Higher values extract more "
+    "aggressively and may muddy non-vocal stems; 5 is the usual starting point"
+)
+
+WINDOW_SIZE_HELP = (
+    "Balance speed and detail: 1024 is fastest, 512 is balanced, and 320 is "
+    "slowest but may preserve more detail"
+)
+
+MDX_SEGMENT_SIZE_HELP = (
+    "Segment size balances memory use and quality. Classic MDX-Net defaults to "
+    "256; MDX-C models can use Default to read the YAML configuration"
+)
+
+DEMUCS_STEMS_HELP = "Choose a Demucs stem focus or export every native stem"
+
+SEGMENT_HELP = (
+    "Demucs segment length. Smaller values use less memory; larger values may "
+    "improve quality but use more memory. Default lets the model choose"
+)
+
+ENSEMBLE_MAIN_STEM_HELP = (
+    "Choose compatible stem outputs to combine. No X means mixture minus X; "
+    "the lead-vocal pair keeps backing vocals in its instrumental side. "
+    "4-stem and multi-stem modes combine each matching native stem"
+)
+
+ENSEMBLE_TYPE_HELP = (
+    "Choose how member outputs for this stem are combined. Max Spec favors "
+    "stronger bins, Min Spec favors weaker bins, Average blends waveforms, "
+    "and the remaining choices provide advanced spectral or time-domain blends"
+)
+
+ENSEMBLE_LISTBOX_HELP = "List models compatible with the chosen main stem pair"
+
+IS_TIME_CORRECTION_HELP = "Preserve the input duration while shifting pitch"
+
+SAVE_STEM_ONLY_HELP = (
+    "Choose outputs to write. Choices depend on the selected model or ensemble stem pair"
+)
+
+RUN_WORKLOAD_HINT = (
+    "Passes = model runs; outputs = saved files; speed labels are relative"
+)
+
+PROGRESS_ETA_HINT = (
+    "Progress and ETA cover model inference. The bar pulses while loading, "
+    "holds while saving, and shows combine progress for ensembles. ETA "
+    "stabilizes after inference begins"
+)
+
+IS_NORMALIZATION_HELP = "Scale peaks above 1.0 down to prevent clipping"
+
+IS_MATCH_MIX_LEVEL_HELP = (
+    "Apply one shared gain so two or more exported stems sum to the input mix "
+    "level without changing their relative balance"
+)
+
+IS_PREVENT_EXPORT_CLIPPING_HELP = (
+    "Scale PCM, FLAC, and MP3 exports to fit their range. Multi-stem exports "
+    "share one gain to preserve balance. Skipped for 32-bit and 64-bit float WAV"
+)
+
+AMPLIFICATION_THRESHOLD_HELP = (
+    "Raise quiet outputs to the selected peak level from 0 to 1. Set 0 to "
+    "disable. This applies after peak reduction and independently of Normalize output"
+)
+
+LONG_FILE_CHUNK_HELP = (
+    "Split long inputs into overlapping time slices before separation. Set 0 "
+    "to disable; 600 gives 10-minute slices. This is separate from model segment size"
+)
+
+LONG_FILE_CHUNK_OVERLAP_HELP = (
+    "Crossfade length between long-file slices. Longer overlaps can smooth "
+    "boundaries; the value is kept below half the chunk duration"
+)
+
+IS_CUDA_SELECT_HELP = "Choose which detected GPU to use for processing"
+
+CROP_SIZE_HELP = (
+    "Legacy VR crop-size setting retained for saved-profile compatibility; "
+    "current VR inference does not use it"
+)
+
+IS_TTA_HELP = (
+    "Run test-time augmentation and average the predictions. This may improve "
+    "separation quality but increases processing time"
+)
+
+IS_POST_PROCESS_HELP = (
+    "Try to remove residual instrumental artifacts from vocal outputs. Results "
+    "vary by track and may sound worse, so use this as a last resort"
+)
+
+IS_HIGH_END_PROCESS_HELP = "Mirror the output's missing high-frequency range"
+
+SHIFTS_HELP = (
+    "Average predictions from randomly shifted inputs. More shifts may improve "
+    "quality but increase processing time, especially on CPU"
+)
+
+OVERLAP_HELP = (
+    "Overlap between Demucs prediction windows. Higher values may improve joins "
+    "but increase runtime; choices are 0.25, 0.50, 0.75, and 0.99"
+)
+
+MDX_OVERLAP_HELP = (
+    "Overlap between prediction windows. Classic MDX-Net offers Default, 0.25, "
+    "0.50, 0.75, or 0.99; MDX-C models use values from 2 to 50"
+)
+
+OVERLAP_23_HELP = (
+    "Overlap between MDX-C prediction windows. Higher values may improve joins "
+    "but increase runtime and memory use"
+)
+
+IS_SEGMENT_DEFAULT_HELP = (
+    "For MDX-C models, Default reads the segment size from the YAML configuration"
+)
+
+IS_SPLIT_MODE_HELP = (
+    "Process the track in segments to reduce memory use. Demucs v4 always "
+    "enables this; the switch affects older Demucs models only"
+)
+
+IS_DEMUCS_COMBINE_STEMS_HELP = (
+    "Create the complement by adding the remaining native stems instead of "
+    "subtracting the primary stem from the mixture"
+)
+
+COMPENSATE_HELP = (
+    "Classic MDX-Net only: scale the primary output before deriving its complement"
+)
+
+IS_DENOISE_HELP = (
+    "Standard averages positive and negative classic MDX-Net predictions. "
+    "Denoise Model runs UVR-DeNoise-Lite on supported vocal outputs. Both add processing time"
+)
+
+VOC_SPLIT_MODEL_SELECT_HELP = (
+    "Choose the lead/backing-vocal model used to process generated vocal stems"
+)
+
+IS_VOC_SPLIT_INST_SAVE_SELECT_HELP = (
+    "When the main instrumental is available, also save Instrumental with Lead "
+    "Vocals and Instrumental with Backing Vocals; skipped for Vocals-only export"
+)
+
+IS_VOC_SPLIT_MODEL_SELECT_HELP = (
+    "Split generated vocals into lead and backing vocals with the selected "
+    "model. Adds two vocal outputs and another inference pass"
+)
+
+IS_DEVERB_OPT_HELP = "Choose which generated vocal stems are de-reverberated"
+
+IS_DEVERB_VOC_HELP = (
+    "Also save de-reverberated and reverb-only versions of selected vocal "
+    "outputs. Requires UVR-DeEcho-DeReverb"
+)
+
+IS_FREQUENCY_MATCH_HELP = (
+    "With pitch shift and Spectral inversion active for classic vocals/instrumental "
+    "MDX-Net runs, align the mixture cutoff before deriving the complement; otherwise no effect"
+)
+
+CLEAR_CACHE_HELP = "Edit or delete saved defaults for a model"
+
+IS_SAVE_ALL_OUTPUTS_ENSEMBLE_HELP = "Keep every member-model output after combining the ensemble"
+
+IS_APPEND_ENSEMBLE_NAME_HELP = "Add the ensemble name to final output filenames"
+
+IS_WAV_ENSEMBLE_HELP = (
+    "Use waveform-domain Max Spec or Min Spec when supported. Spectral-only "
+    "algorithms ignore this setting; Average and Chunk Min already use waveforms"
+)
+
+DONATE_HELP = "Open the official UVR donation page in the default browser"
+
+IS_INVERT_SPEC_HELP = (
+    "Derive the complement by subtracting spectrograms instead of waveforms. "
+    "This is slower and may improve some outputs"
+)
+
+IS_TESTING_AUDIO_HELP = "Add a timestamp to output names to avoid overwrites"
 
 IS_MODEL_TESTING_AUDIO_HELP = "Appends the model name to outputs for comparison across different models"
 
-IS_ACCEPT_ANY_INPUT_HELP = """Allows all types of inputs when enabled, even non-audio formats
+IS_ACCEPT_ANY_INPUT_HELP = (
+    "Allow files outside the supported audio extensions. Experimental; invalid "
+    "or unreadable files can still fail verification"
+)
 
-For experimental use only. Not recommended for regular use"""
-
-DELETE_YOUR_SETTINGS_HELP = """Contains your saved settings. Confirmation will be requested before deleting a selected setting"""
+DELETE_YOUR_SETTINGS_HELP = "Delete the selected saved profile after confirmation"
 
 SET_STEM_NAME_HELP = "Select the primary stem for the given model"
 
-IS_CREATE_MODEL_FOLDER_HELP = """Two new directories will be generated for the outputs in the export directory after each conversion
-
-• Example:
-─ Export Directory
-└── First Directory (Named after the model)
-└── Second Directory (Named after the track)
-└── Output File(s)"""
+IS_CREATE_MODEL_FOLDER_HELP = (
+    "Save each run under model and track subfolders inside the output directory"
+)
 
 MDX_DIM_T_SET_HELP = "This is an internal model setting — avoid changing it unless you're certain about it!"
 
@@ -336,240 +307,165 @@ POPUP_COMPENSATE_HELP = (
 
 VR_MODEL_PARAM_HELP = "Select the required parameters to run the chosen model"
 
-CHOSEN_ENSEMBLE_HELP = """Default Ensemble Selections:
-• Save the current ensemble configuration
-• Clear all selected models
+CHOSEN_ENSEMBLE_HELP = (
+    "Load a curated recipe or saved ensemble. Save and delete apply only to "
+    "your presets; curated recipes are read-only"
+)
 
-Note: You can also select previously saved ensembles"""
+CHOSEN_PROCESS_METHOD_HELP = (
+    "Choose VR Architecture, MDX-Net, or Demucs for separation; Ensemble to "
+    "combine models; or Audio Tools for alignment, restoration, and transforms"
+)
 
-CHOSEN_PROCESS_METHOD_HELP = """Choose a Processing Method:
+INPUT_FOLDER_ENTRY_HELP = (
+    "Choose audio files to process. Batches above 100 files may take a long "
+    "time; at most 500 files are accepted"
+)
 
-Select from various AI networks and algorithms to process your track:
+OUTPUT_FOLDER_ENTRY_HELP = "Choose where processed files are saved"
 
-• VR Architecture: Uses magnitude spectrograms for source separation
-• MDX-Net: Employs a Hybrid Spectrogram network for source separation
-• Demucs v3: Also utilizes a Hybrid Spectrogram network for source separation
-• Ensemble Mode: Combine results from multiple models and networks for optimal results
-• Audio Tools: Additional utilities for added convenience"""
+INPUT_FOLDER_BUTTON_HELP = "Open the selected input file's folder"
+
+OUTPUT_FOLDER_BUTTON_HELP = "Open the selected output folder"
 
-INPUT_FOLDER_ENTRY_HELP = """Select Input:
+CHOOSE_MODEL_HELP = "Choose an installed model for the selected processing method"
+
+FORMAT_SETTING_HELP = "Choose the saved audio format"
 
-Choose the audio file(s) you want to process. Batch runs support many files at once; selections above 100 files may take a long time, and the list is capped at 500 files"""
-
-OUTPUT_FOLDER_ENTRY_HELP = """Select Output:
-
-Choose the directory where the processed files will be saved"""
-
-INPUT_FOLDER_BUTTON_HELP = """Open Input Folder Button:
-
-Open the directory containing the selected input audio file(s)"""
-
-OUTPUT_FOLDER_BUTTON_HELP = """Open Output Folder Button:
-
-Open the selected output folder"""
-
-CHOOSE_MODEL_HELP = "Each processing method has its own set of options and models — choose the model for the selected processing method"
-
-FORMAT_SETTING_HELP = "Save Outputs As:"
-
-SECONDARY_MODEL_ACTIVATE_HELP = """When enabled, the application will perform an additional inference using the selected model(s) above"""
-
-SECONDARY_MODEL_HELP = """Choose the Secondary Model:
-
-Select the secondary model associated with the stem you want to process with the current method"""
-
-INPUT_SEC_FIELDS_HELP = "Right click here to choose your inputs!"
-
-SECONDARY_MODEL_SCALE_HELP = """The scale determines how the final audio outputs will be averaged between the primary and secondary models
-
-For example:
-
-• 10% - 10 percent of the main model result will be factored into the final result
-• 50% - The results from the main and secondary models will be averaged evenly
-• 90% - 90 percent of the main model result will be factored into the final result"""
-
-PRE_PROC_MODEL_ACTIVATE_HELP = """When enabled, the application will use the selected model to isolate the instrumental stem
-
-Subsequently, all non-vocal stems will be extracted from this generated instrumental
-
-Key Points:
-• This feature can significantly reduce vocal bleed in non-vocal stems
-• Available exclusively in the Demucs tool
-• Compatible only with non-vocal and non-instrumental stem outputs
-• Expect an increase in total processing time
-• Only the VR or MDX-Net Vocal Instrumental/Vocals models can be chosen for this process"""
-
-AUDIO_TOOLS_HELP = """Select from various audio tools to process your track:
-
-• Manual Ensemble: Requires 2 or more selected files as inputs. This allows tracks to be processed using the algorithms from Ensemble Mode
-• Time Stretch: Adjust the playback speed of the selected inputs to be faster or slower
-• Change Pitch: Modify the pitch of the selected inputs
-• Align Inputs: Choose 2 audio file and the application will align them and provide the difference in alignment
-  - This tool provides similar functionality to "Utagoe."
-  - Primary Audio: This is usually a mixture
-  - Secondary Audio: This is usually an instrumental
-• Matchering: Choose 2 audio files. The matchering algorithm will master the target audio to have the same RMS, FR, peak amplitude, and stereo width as the reference audio
-• Apollo Restore: Apollo is a music restoration AI that fixes distortions and artifacts from audio codecs, especially at low bitrates. It effectively restores MP3s at 32 kbps and above, improving audio quality across compression levels"""
-
-APOLLO_CHUNK_SIZE_HELP = """Pick a chunk size to balance speed, resource use, and quality:
-• Smaller sizes consume less resources
-• Bigger sizes consume more resources, but may provide better results
-• Default size is 10. Quality can change based on your pick"""
-
-APOLLO_OVERLAP_HELP = """This option controls the amount of overlap between prediction windows
-
-• Higher values increase quality but slow processing and use more resources
-• Default value is 5"""
-
-CHOOSE_APOLLO_MODEL_HELP = "Choose the Apollo model to use to restore audio"
-
-ROFORMER_MODEL_HELP = """Enable for BS-Roformer, Mel-Band Roformer, SCNet, or Bandit checkpoints. They use the MDX-C yaml-config flow but require this flag so the engine routes to the correct network instead of the standard TFC-TDF net"""
-
-PRE_PROC_MODEL_INST_MIX_HELP = """When enabled, the application will generate a third output without the selected stem and vocals"""
-
-MODEL_SAMPLE_MODE_HELP = """Allows the user to process only part of a track to sample settings or a model without running a full conversion
-
-Notes:
-
-• The number in the parentheses is the current number of seconds the generated sample will be
-• You can choose the number of seconds to extract from the track in the "Additional Settings" menu"""
-
-POST_PROCESS_THREASHOLD_HELP = """Allows the user to control the intensity of the Post_process option
-
-Notes:
-
-• Higher values potentially remove more artifacts. However, bleed might increase
-• Lower values limit artifact removal"""
-
-BATCH_SIZE_HELP = """Specify the number of batches to be processed at a time
-
-Notes:
-
-• Higher values mean more RAM usage but slightly faster processing times
-• Lower values mean less RAM usage but slightly longer processing times
-• Batch size value has no effect on output quality"""
-
-VR_MODEL_NOUT_HELP = ""
-
-VR_MODEL_NOUT_LSTM_HELP = ""
-
-IS_PHASE_HELP = """Select the phase for the secondary audio
-
-• Note: Using the "Automatic" option is strongly recommended"""
-
-IS_ALIGN_TRACK_HELP = "Enable this to save the secondary track once aligned"
-
-IS_MATCH_SILENCE_HELP = """Aligns the initial silence of the secondary audio with the primary audio
-
-• Note: Avoid using this option if the primary audio begins solely with vocals"""
-
-IS_MATCH_SPEC_HELP = """Align the secondary audio based on the primary audio's spectrogram
-
-• Note: This may enhance alignment in specific cases"""
-
-TIME_WINDOW_ALIGN_HELP = """This setting determines the window size for alignment analysis, especially for pairs with minor timing variations:
-
-• None: Disables time window analysis
-• 1: Analyzes pair by 0.0625-second windows
-• 2: Analyzes pair by 0.125-second windows
-• 3: Analyzes pair by 0.25-second windows
-• 4: Analyzes pair by 0.50-second windows
-• 5: Analyzes pair by 0.75-second windows
-• 6: Analyzes pair by 1-second windows
-• 7: Analyzes pair by 2-second windows
-
-Shifts Options:
-• Low: Cycles through 0.0625 and 0.5-second windows to find an optimal match
-• Medium: Cycles through 0.0625, 0.125, and 0.5-second windows to find an optimal match
-• High: Cycles through 0.0625, 0.125, 0.25, and 0.5-second windows to find an optimal match
-
-Important Points to Consider:
-  - Using the "Shifts" option may require more processing time and might not guarantee better results
-  - Opting for smaller analysis windows can increase processing times
-  - The best settings are likely to vary based on the specific tracks being processed"""
-
-INTRO_ANALYSIS_ALIGN_HELP = """This setting determines the portion of the audio input to be analyzed for initial alignment
-
-• Default: Analyzes 10% (or 1/10th) of the audio's total length
-• 1: Analyzes 12.5% (or 1/8th) of the audio's total length
-• 2: Analyzes 16.67% (or 1/6th) of the audio's total length
-• 3: Analyzes 25% (or 1/4th) of the audio's total length
-• 4: Analyzes 50% (or half) of the audio's total length
-
-Shifts Options:
-• Low: Cycles through 2 intro analysis values
-• Medium: Cycles through 3 intro analysis values
-• High: Cycles through 5 intro analysis values
-
-Important Points to Consider:
-  - Using the "Shifts" option will require more processing time and might not guarantee better results
-  - Optimal settings may vary depending on the specific tracks being processed"""
-
-VOLUME_ANALYSIS_ALIGN_HELP = """This setting specifies the volume adjustments to be made on the secondary input:
-
-• None: No volume adjustments are made
-• Low: Analyzes the audio within a 4dB range, adjusting in 1dB increments
-• Medium: Analyzes the audio within a 6dB range, adjusting in 1dB increments
-• High: Analyzes the audio within a 6dB range, adjusting in 0.5dB increments
-• Very High: Analyzes the audio within a 10dB range, adjusting in 0.5dB increments
-
-Important Points to Consider:
-  - Selecting more extensive analysis options (e.g., High, Very High) will lead to longer processing times
-  - Optimal settings might vary based on the specific tracks being processed"""
-
-PHASE_SHIFTS_ALIGN_HELP = """This setting specifies the phase adjustments to be made on the secondary input:
-
-Shifts Options:
-• None: No phase adjustments are made
-• Very Low: Analyzes the audio within range of 2 different phase positions
-• Low: Analyzes the audio within range of 4 different phase positions
-• Medium: Analyzes the audio within range of 8 different phase positions
-• High: Analyzes the audio within range of 18 different phase positions
-• Very High: Analyzes the audio within range of 36 different phase positions
-• Maximum: Analyzes the audio in all 360 phase positions
-
-Important Points to Consider:
-  - This option only works with time correction
-  - This option can be helpful if one of the inputs were from an analog source
-  - Selecting more extensive analysis options (e.g., High, Very High) will lead to longer processing times
-  - Selecting "Maximum" can take hours to process
-  - Optimal settings might vary based on the specific tracks being processed"""
+SECONDARY_MODEL_ACTIVATE_HELP = (
+    "Run the configured secondary model and blend its result with the primary model"
+)
+
+SECONDARY_MODEL_HELP = "Choose the secondary model for this stem pair"
+
+INPUT_SEC_FIELDS_HELP = "Choose the paired primary and secondary inputs"
+
+SECONDARY_MODEL_SCALE_HELP = (
+    "Primary-model influence in the blend: 0.9 means 90% primary and 10% "
+    "secondary; 0.5 gives both models equal weight"
+)
+
+PRE_PROC_MODEL_ACTIVATE_HELP = (
+    "Run a VR or MDX vocal model first, then separate non-vocal stems from its "
+    "instrumental output. Demucs only; may reduce vocal bleed but adds an inference pass"
+)
+
+PRE_PROC_MODEL_HELP = (
+    "Choose the VR or MDX vocal model whose instrumental output is fed into "
+    "Demucs when separating non-vocal stems"
+)
+
+AUDIO_TOOLS_HELP = (
+    "Combine files, change speed or pitch, align paired tracks, match a target "
+    "to a reference, or restore codec-damaged audio with Apollo"
+)
+
+APOLLO_CHUNK_SIZE_HELP = (
+    "Processing chunk size. Smaller values use less memory; larger values may "
+    "improve quality but use more memory. Default is 10"
+)
+
+APOLLO_OVERLAP_HELP = (
+    "Overlap between Apollo prediction windows. Higher values may improve "
+    "quality but increase runtime and memory use. Default is 5"
+)
+
+CHOOSE_APOLLO_MODEL_HELP = "Choose an installed Apollo restoration model"
+
+ROFORMER_MODEL_HELP = (
+    "Enable for BS-Roformer, Mel-Band Roformer, SCNet, or Bandit checkpoints so "
+    "the engine uses the configured network instead of the standard TFC-TDF model"
+)
+
+PRE_PROC_MODEL_INST_MIX_HELP = (
+    "Also save the mixture of remaining instrumental stems, excluding vocals "
+    "and the selected focus stem"
+)
+
+MODEL_SAMPLE_MODE_HELP = (
+    "Process only the beginning of each input. Set the clip duration in "
+    "Preferences → Processing → Sample mode"
+)
+
+POST_PROCESS_THREASHOLD_HELP = (
+    "Mask threshold used by Post-process. Lower values affect more time regions; "
+    "higher values are more selective"
+)
+
+BATCH_SIZE_HELP = (
+    "Number of segments processed per inference batch. Higher values use more "
+    "memory and may run faster; output quality is unchanged. Roformer models use their YAML batch size"
+)
+
+VR_MODEL_NOUT_HELP = (
+    "Internal VR 5.1 model width. Keep the detected value unless checkpoint "
+    "documentation specifies another"
+)
+
+VR_MODEL_NOUT_LSTM_HELP = (
+    "Internal VR 5.1 LSTM width. Keep the detected value unless checkpoint "
+    "documentation specifies another"
+)
+
+IS_PHASE_HELP = "Choose the secondary input phase; Automatic is recommended"
+
+IS_ALIGN_TRACK_HELP = "Save the aligned secondary track as an additional output"
+
+IS_MATCH_SILENCE_HELP = (
+    "Match the secondary input's leading silence to the primary input. Avoid "
+    "this when the primary begins with vocals alone"
+)
+
+IS_MATCH_SPEC_HELP = (
+    "Blend alignment candidates in the spectrogram domain. This may improve "
+    "some pairs and increases processing work"
+)
+
+TIME_WINDOW_ALIGN_HELP = (
+    "Window length used for fine alignment. Smaller windows and Shifts presets "
+    "test more candidates and take longer; None disables fine time correction"
+)
+
+INTRO_ANALYSIS_ALIGN_HELP = (
+    "Choose where to sample the track for initial alignment. Default samples "
+    "at 10% of the duration; Shifts presets test several positions and take longer"
+)
+
+VOLUME_ANALYSIS_ALIGN_HELP = (
+    "Search gain offsets for the secondary input. Higher presets search a wider "
+    "or finer dB range and take longer; None keeps the original level"
+)
+
+PHASE_SHIFTS_ALIGN_HELP = (
+    "Try multiple phase offsets for the secondary input during time-window "
+    "alignment. More offsets take longer; Maximum tests all 360 positions"
+)
 
 if sys.platform == "darwin":
-    IS_GPU_CONVERSION_HELP = """• Use GPU for Processing (if available):
-  - If checked, the application will attempt to use your GPU for faster processing
-  - If a GPU is not detected, it will default to CPU processing
-  - GPU processing for MacOS only works with VR Arch models
-
-• Please Note:
-  - CPU processing is significantly slower than GPU processing
-  - Only Macs with M1 chips can be used for GPU processing"""
+    IS_GPU_CONVERSION_HELP = (
+        "Use Apple Metal (MPS) when available and fall back to CPU otherwise. "
+        "GPU support varies by model architecture"
+    )
 else:
-    IS_GPU_CONVERSION_HELP = """• Use GPU for Processing (if available):
-  - If checked, the application will attempt to use your GPU for faster processing
-  - If a GPU is not detected, it will default to CPU processing
+    IS_GPU_CONVERSION_HELP = (
+        "Use an available GPU and fall back to CPU otherwise. CUDA supports "
+        "NVIDIA GPUs; DirectML supports compatible Windows AMD/Intel PyTorch models"
+    )
 
-• Please Note:
-  - CPU processing is significantly slower than GPU processing
-  - NVIDIA GPUs use CUDA; on Windows, enable DirectML for AMD/Intel GPUs
-  - DirectML accelerates PyTorch models only; classic MDX ONNX models stay on CPU"""
-
-IS_AUTOCAST_HELP = """• FP16 autocast (CUDA):
-  - Speeds up VR, MDX-Net, and Roformer forwards on modern NVIDIA GPUs
-  - Demucs stays full precision (FP16 produces invalid results there)
-  - A tiny quality difference vs FP32 is possible
-  - Only applies when GPU conversion is on and CUDA is available
-  - UVR_AUTOCAST in the environment overrides this setting when set"""
+IS_AUTOCAST_HELP = (
+    "Use CUDA FP16 for faster VR, MDX-Net, and Roformer inference. This has no "
+    "effect on Demucs or CPU and may slightly affect quality; UVR_AUTOCAST overrides it"
+)
 
 
 # --- GTK shell ---
 
 PROCESS_METHOD_HINT = """
-Choose the separation algorithm:
+Choose the separation architecture:
 
 • VR Architecture — magnitude spectrogram source separation
-• MDX-Net — hybrid spectrogram network
-• Demucs v3/4 — hybrid spectrogram network (multi-stem capable)
+• MDX-Net — spectrogram-based models, including MDX-C and Roformer
+• Demucs v3/4 — hybrid waveform/spectrogram models with multi-stem support
 """.strip()
 
 VIEW_TAB_HINTS: Dict[str, str] = {
@@ -577,7 +473,7 @@ VIEW_TAB_HINTS: Dict[str, str] = {
         "Separate vocals, instrumentals, and other stems using VR, MDX-Net, or Demucs models"
     ),
     "ensemble": (
-        "Combine outputs from multiple models and algorithms for higher-quality results"
+        "Combine outputs from multiple compatible models with selectable algorithms"
     ),
     "audio_tools": (
         "Time stretch, change pitch, align tracks, matchering, manual ensemble, and Apollo audio restoration"
@@ -589,26 +485,23 @@ OUTPUT_FORMAT_HINT = "Choose the audio format for saved output files (WAV, FLAC,
 # --- Separation / method views ---
 
 MDX_OVERLAP_HINT = (
-    "Overlap between prediction windows — available values follow the selected model: "
-    "classic MDX-Net uses the Default/0.25-0.99 scale, while MDX23C models use 2-50"
+    "Overlap between prediction windows. Classic MDX-Net offers Default, 0.25, "
+    "0.50, 0.75, or 0.99; MDX-C models use values from 2 to 50"
 )
 
 MDX_SEGMENT_SIZE_HINT = (
-    "Segment size balances speed and quality — classic MDX-Net uses 32-4000 "
-    "(default 256), while MDX-C / MDX23C models can pick Default to use the "
-    "yaml config value"
+    "Segment size balances memory use and quality. Classic MDX-Net uses 32 to "
+    "4000; MDX-C models can use Default to read the YAML configuration"
 )
 
 MDX_STEMS_HINT = (
-    "Choose which stems to export. Common exports provide All stems, Instrumental only "
-    "(derived from vocals), or Vocals only. Custom stems selects native outputs; "
-    "single-stem picks export one file unless Advanced complement is enabled"
+    "Choose native stems to export, or use the Instrumental and Vocals shortcuts. "
+    "Include complement also writes No X for a single custom stem"
 )
 
 DEMUCS_STEMS_SAVE_HELP = (
-    "Choose stem focus and which files to write. All stems exports every native output; "
-    "Instrumental or Vocals only are one-click shortcuts. Other focuses use the export "
-    "filter to pick the focus stem, its complement, or both"
+    "Choose a stem focus and which files to write. All stems writes every native "
+    "output; other focuses can write the stem, its complement, or both"
 )
 
 QUICK_EXPORT_INSTRUMENTAL_HINT = (
@@ -631,8 +524,8 @@ DEMUCS_CHUNK_HINT = "Process the audio in chunks to reduce memory usage (legacy 
 # --- Ensemble page ---
 
 ENSEMBLE_SAVED_PRESET_HINT = (
-    "Load a curated recipe or a previously saved ensemble\n\n"
-    "Save / delete apply to your own presets only (curated recipes are read-only)"
+    "Load a curated recipe or saved ensemble. Save and delete apply only to "
+    "your presets; curated recipes are read-only"
 )
 ENSEMBLE_SAVE_BUTTON_HINT = "Save current ensemble"
 ENSEMBLE_DELETE_BUTTON_HINT = "Delete selected saved ensemble"
@@ -640,8 +533,8 @@ ENSEMBLE_DELETE_BUTTON_HINT = "Delete selected saved ensemble"
 # --- Audio tools page ---
 
 MANUAL_ENSEMBLE_ALGORITHM_HINT = (
-    "Choose how the selected files are combined: Max/Min/Average/Median/Soft Spec, "
-    "Max Mag / Avg Phase, Hybrid Spec, Chunk Min, or Combine Inputs. Soft Spec uses automatic weights"
+    "Choose how files are combined. Average and Chunk Min always use waveforms; "
+    "other methods use frequency bins unless waveform mode supports them. Combine Inputs adds tracks"
 )
 PLAYBACK_RATE_HINT = (
     "Playback rate multiplier: values below 1 slow the track down, values above 1 speed it up"
@@ -652,10 +545,12 @@ FLAC_BIT_DEPTH_HINT = "Bit depth used when saving FLAC output (16-bit or 24-bit)
 # --- Main window chrome ---
 
 MAIN_MENU_HINT = "Main menu"
-VIEW_INPUTS_BUTTON_HINT = "Verify inputs"
-MODEL_OPTIONS_BUTTON_HINT = "Advanced and extra-model options for VR, MDX-Net, and Demucs"
-MODEL_OPTIONS_ROW_HINT = "Open batch size, secondary models, vocal split, and other per-architecture options"
-ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT = "Tune inference options for the selected ensemble member architectures"
+VIEW_INPUTS_BUTTON_HINT = "Review and verify inputs"
+MODEL_OPTIONS_BUTTON_HINT = "Open inference, extra-model, and model-maintenance options"
+MODEL_OPTIONS_ROW_HINT = "Open inference, extra-model, and model-maintenance options for each architecture"
+ENSEMBLE_MEMBER_MODEL_OPTIONS_HINT = (
+    "Adjust architecture-level inference and extra-model options used by selected ensemble members"
+)
 
 # --- Preferences / download / inputs ---
 
@@ -677,16 +572,16 @@ DUAL_BATCH_REMOVE_HINT = "Remove selected"
 DUAL_BATCH_CLEAR_HINT = "Clear all"
 
 DUAL_INPUTS_HINT = (
-    "Paired audio files processed together — for align, primary is usually the mixture "
-    "and secondary is usually the instrumental"
+    "Edit paired inputs. Alignment usually uses a primary mix and secondary "
+    "instrumental; Matchering uses a target and reference"
 )
 
-OPEN_EXTERNAL_LINK_HINT = "Open link in the default browser"
-OPEN_INSTALL_FOLDER_HINT = "Open the install folder in the file manager"
+OPEN_EXTERNAL_LINK_HINT = "Open in default browser"
+OPEN_INSTALL_FOLDER_HINT = "Open install folder"
 
 # --- Stem-only toggles ---
 
-STEM_ONLY_ALL_HINT = "Export every stem this model produces (default)"
+STEM_ONLY_ALL_HINT = "Export every stem this model produces"
 
 
 def stem_only_tooltip(stem: str) -> str:
@@ -701,4 +596,3 @@ def primary_stem_only_tooltip() -> str:
 
 def secondary_stem_only_tooltip() -> str:
     return "Export only the model's secondary stem; skip the primary output"
-

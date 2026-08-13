@@ -199,9 +199,7 @@ class DownloadCenterWindow:
         header.set_title_widget(self.switcher)
 
         self.vip_button = Gtk.Button(icon_name="dialog-password-symbolic")
-        set_icon_button_a11y(
-            self.vip_button, f"{VIP_DOWNLOAD_CODE_HINT} (Unlock VIP models)"
-        )
+        set_icon_button_a11y(self.vip_button, VIP_DOWNLOAD_CODE_HINT)
         self.vip_button.connect("clicked", lambda *_: self._open_vip())
         header.pack_start(self.vip_button)
 
@@ -210,7 +208,7 @@ class DownloadCenterWindow:
         menu.append("Manual downloads", "dc.manual")
         menu_button = Gtk.MenuButton()
         menu_button.set_icon_name("open-menu-symbolic")
-        set_icon_button_a11y(menu_button, "Models folder and manual download links")
+        set_icon_button_a11y(menu_button, "Models and manual downloads")
         menu_button.set_menu_model(menu)
         header.pack_end(menu_button)
 

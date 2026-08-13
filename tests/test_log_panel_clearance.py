@@ -67,6 +67,16 @@ class LogPanelClearanceTests(unittest.TestCase):
             panel.options_overlay_clearance(),
         )
 
+    def test_expand_button_tooltip_describes_next_action(self):
+        panel = LogPanel.__new__(LogPanel)
+        panel.expand_button = MagicMock()
+
+        panel._sync_expand_button_a11y(False)
+        panel.expand_button.set_tooltip_text.assert_called_with("Show processing log")
+
+        panel._sync_expand_button_a11y(True)
+        panel.expand_button.set_tooltip_text.assert_called_with("Hide processing log")
+
 
 if __name__ == "__main__":
     unittest.main()
