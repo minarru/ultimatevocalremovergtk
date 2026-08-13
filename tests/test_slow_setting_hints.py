@@ -1,5 +1,6 @@
 """Cost-factor workload hint tests (no GTK imports)."""
 import unittest
+from unittest import mock
 
 from bundled.constants import DEMUCS_ARCH_TYPE, ENSEMBLE_MODE, MDX_ARCH_TYPE, VR_ARCH_TYPE
 from core.run_estimate import (
@@ -8,6 +9,7 @@ from core.run_estimate import (
     compose_stem_group_tooltip,
     cost_factor_hints,
     format_workload_tooltip_section,
+    _denoise_should_count,
 )
 from core.settings import Settings
 
@@ -75,6 +77,28 @@ class CostFactorHintTests(unittest.TestCase):
         self.assertIn("Shifts 2", hints)
         self.assertIn("Overlap 16", hints)
         self.assertIn("Denoise", hints)
+
+    def test_standard_denoise_skipped_for_resolved_roformer(self) -> None:
+        settings = _settings({"denoise_option": "Standard"})
+        self.assertFalse(
+            _denoise_should_count(settings, MDX_ARCH_TYPE, is_classic_mdx=False)
+        )
+        self.assertTrue(
+            _denoise_should_count(settings, MDX_ARCH_TYPE, is_classic_mdx=True)
+        )
+        # Unresolved architecture keeps the hint (same as ensemble without members).
+        self.assertIn("Denoise", cost_factor_hints(settings, MDX_ARCH_TYPE))
+        with mock.patch(
+            "core.run_estimate._resolved_mdx_is_classic", return_value=False
+        ):
+            self.assertNotIn("Denoise", cost_factor_hints(settings, MDX_ARCH_TYPE))
+
+    def test_denoise_model_counts_regardless_of_architecture(self) -> None:
+        settings = _settings({"denoise_option": "Denoise Model"})
+        self.assertTrue(
+            _denoise_should_count(settings, MDX_ARCH_TYPE, is_classic_mdx=False)
+        )
+        self.assertIn("Denoise", cost_factor_hints(settings, MDX_ARCH_TYPE))
 
     def test_format_summary_excludes_hints(self) -> None:
         estimate = WorkloadEstimate(

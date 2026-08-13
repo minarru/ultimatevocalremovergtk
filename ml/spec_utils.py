@@ -698,13 +698,21 @@ def ensemble_inputs(
     is_wave: bool = False,
     is_array: bool = False,
     min_peak: float = 0.0,
+    on_progress: Callable[[float], None] | None = None,
 ) -> None:
 
+    def _tick(fraction: float) -> None:
+        if on_progress is not None:
+            on_progress(max(0.0, min(1.0, float(fraction))))
+
     if algorithm == AVERAGE:
+        _tick(0.4)
         output: np.ndarray = average_audio(audio_input, is_array=is_array)
         samplerate = 44100
+        _tick(0.9)
     elif algorithm == CHUNK_MIN:
         wavs_, samplerate = _load_ensemble_waves(audio_input, is_array=is_array)
+        _tick(0.5)
         padded = _pad_ensemble_members(wavs_, is_wavs=True)
         # ensemble_wav splits along axis 0 (time); use time-major (T, C).
         time_major = [w.T for w in padded]
@@ -713,8 +721,10 @@ def ensemble_inputs(
             output = np.asfortranarray([chunked, chunked])
         else:
             output = chunked.T
+        _tick(0.9)
     else:
         wavs_, samplerate = _load_ensemble_waves(audio_input, is_array=is_array)
+        _tick(0.5)
         wave_shapes = [w.shape[1] for w in wavs_]
         target_shape = wavs_[wave_shapes.index(max(wave_shapes))].shape
 
@@ -727,6 +737,7 @@ def ensemble_inputs(
             output = spectrogram_to_wave_no_mp(ensembling(algorithm, specs))
 
         output = to_shape(output, target_shape)
+        _tick(0.9)
 
     sf.write(
         save_path,
@@ -734,6 +745,7 @@ def ensemble_inputs(
         int(samplerate),
         subtype=wav_type_set,
     )
+    _tick(1.0)
 
 def to_shape(x: np.ndarray, target_shape: Sequence[int]) -> np.ndarray:
     padding_list = []
@@ -989,13 +1001,29 @@ def combine_arrarys(audio_sources: Sequence[np.ndarray], is_swap: bool = False) 
         
     return source
     
-def combine_audio(paths: list[str], audio_file_base: str | None = None, wav_type_set: str = 'FLOAT', save_format: SaveFormatFn | None = None) -> None:
-    
-    source = combine_arrarys([load_audio(i) for i in paths])
+def combine_audio(
+    paths: list[str],
+    audio_file_base: str | None = None,
+    wav_type_set: str = 'FLOAT',
+    save_format: SaveFormatFn | None = None,
+    on_progress: Callable[[float], None] | None = None,
+) -> None:
+    def _tick(fraction: float) -> None:
+        if on_progress is not None:
+            on_progress(max(0.0, min(1.0, float(fraction))))
+
+    loaded = []
+    total = max(1, len(paths))
+    for index, path in enumerate(paths, start=1):
+        loaded.append(load_audio(path))
+        _tick(0.7 * index / total)
+    source = combine_arrarys(loaded)
+    _tick(0.9)
     save_path = f"{audio_file_base} combined.wav"
     sf.write(save_path, source.T, 44100, subtype=wav_type_set)
     if save_format is not None:
         save_format(save_path)
+    _tick(1.0)
     
 def reduce_mix_bv(inst_source: np.ndarray, voc_source: np.ndarray, reduction_rate: float = 0.9) -> np.ndarray:
     # Reduce the volume

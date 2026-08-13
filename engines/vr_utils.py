@@ -71,6 +71,8 @@ def vr_denoiser(
     is_deverber: typing.Any=False,
     model_path: typing.Any=None,
     settings: typing.Any=None,
+    on_batch: typing.Callable[[int, int], None] | None = None,
+    check_run_control: typing.Callable[[], None] | None = None,
 ) -> typing.Any:
     """Denoise ``X``; returns ``(wave, wave_2)`` when ``is_deverber``, else ``wave``.
 
@@ -134,8 +136,12 @@ def vr_denoiser(
 
     with torch.inference_mode():
         mask_parts = []
+        n_batches = max(1, (patches + batchsize - 1) // batchsize)
+        done = 0
         # Stream patches per batch instead of materializing all windows.
         for i in range(0, patches, batchsize):
+            if check_run_control is not None:
+                check_run_control()
             end = min(i + batchsize, patches)
             X_batch = np.stack(
                 [
@@ -153,6 +159,9 @@ def vr_denoiser(
             if torch.is_tensor(pred) and pred.dtype != torch.float32:
                 pred = pred.float()
             mask_parts.append(torch.cat([pred[b] for b in range(pred.shape[0])], dim=2))
+            done += 1
+            if on_batch is not None:
+                on_batch(done, n_batches)
 
         mask = torch.cat(mask_parts, dim=2).detach().cpu().numpy()
 

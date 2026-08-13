@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple
 from bundled.constants import (
     ALL_STEMS,
     DEMUCS_ARCH_TYPE,
+    DENOISE_M,
+    DENOISE_S,
     ENSEMBLE_MODE,
     MDX_ARCH_TYPE,
     NO_MODEL,
@@ -24,7 +26,6 @@ if TYPE_CHECKING:
 # Engine progress mapping (see engines/base.py).
 _LOAD_END = 0.10
 _SAVE_START = 0.92
-_INFER_SPAN = _SAVE_START - _LOAD_END
 
 # Per-model local step ranges passed through JobCallbacks.progress.
 _LOCAL_LOAD_END = 0.10
@@ -33,11 +34,8 @@ _LOCAL_COMBINE_START = 0.97
 _LOCAL_SAVE_END = 0.96
 
 # Live ETA tuning.
-_MIN_INFER_FRAC_FOR_ETA = 0.08
-_MIN_INFER_ELAPSED_FOR_ETA = 20.0
+_MIN_INFER_ELAPSED_FOR_ETA = 2.0
 _ETA_EMA_ALPHA = 0.35
-_MAX_SAMPLES = 8
-_SAMPLE_WINDOW_SEC = 15.0
 
 
 class RunCostTier(str, Enum):
@@ -106,9 +104,63 @@ def _demucs_shifts_value(settings: Settings) -> int:
         return 0
 
 
-def _denoise_active(settings: Settings) -> bool:
+def _denoise_option_value(settings: Settings) -> str:
     denoise = settings.mdx.denoise_option
-    return denoise not in (None, "", "None", "none")
+    return str(getattr(denoise, "value", denoise) or "")
+
+
+def _resolved_mdx_is_classic(
+    settings: typing.Any,
+    method_key: str,
+    repo: typing.Any = None,
+    model_name: Optional[str] = None,
+) -> Optional[bool]:
+    """True if a resolved MDX model is classic, False if MDX-C/Roformer, else None."""
+    if repo is None:
+        return None
+    try:
+        from .model_config import assemble_model
+
+        if method_key == ENSEMBLE_MODE:
+            models = assemble_model(settings, repo, arch_type=ENSEMBLE_MODE)
+        else:
+            name = model_name or getattr(settings.mdx, "model", None)
+            if not name or name in (NO_MODEL, ""):
+                return None
+            models = assemble_model(settings, repo, name, method_key)
+    except (ValueError, NotImplementedError, TypeError, AttributeError):
+        return None
+    mdx_models = [
+        m for m in (models or [])
+        if getattr(m, "process_method", None) == MDX_ARCH_TYPE
+    ]
+    if not mdx_models:
+        return None
+    return any(
+        not getattr(m, "is_mdx_c", False) and not getattr(m, "is_roformer", False)
+        for m in mdx_models
+    )
+
+
+def _denoise_should_count(
+    settings: Settings,
+    method_key: str,
+    *,
+    is_classic_mdx: Optional[bool] = None,
+) -> bool:
+    """Whether Denoise adds cost: Model always; Standard only for classic MDX."""
+    if method_key not in (MDX_ARCH_TYPE, ENSEMBLE_MODE):
+        return False
+    option = _denoise_option_value(settings)
+    if option in ("", "None", "none"):
+        return False
+    if option == DENOISE_M:
+        return True
+    if option != DENOISE_S:
+        return True
+    if is_classic_mdx is False:
+        return False
+    return True
 
 
 def _vocal_splitter_active(settings: Settings) -> bool:
@@ -117,7 +169,13 @@ def _vocal_splitter_active(settings: Settings) -> bool:
     )
 
 
-def cost_factor_hints(settings: typing.Any, method_key: str) -> Tuple[str, ...]:
+def cost_factor_hints(
+    settings: typing.Any,
+    method_key: str,
+    *,
+    repo: typing.Any = None,
+    model_name: Optional[str] = None,
+) -> Tuple[str, ...]:
     """Return readable labels for settings that add cost beyond pass/output counts.
 
     Pre-process is omitted (already counted as +2 passes). Ensemble uses the
@@ -136,7 +194,13 @@ def cost_factor_hints(settings: typing.Any, method_key: str) -> Tuple[str, ...]:
             hints.append(f"Overlap {overlap}")
         if settings.mdx.is_match_frequency_pitch and _pitch_change_active(settings):
             hints.append("Match frequency")
-        if _denoise_active(settings):
+        if _denoise_should_count(
+            settings,
+            method_key,
+            is_classic_mdx=_resolved_mdx_is_classic(
+                settings, method_key, repo, model_name
+            ),
+        ):
             hints.append("Denoise")
     if include_demucs:
         shifts = _demucs_shifts_value(settings)
@@ -166,7 +230,14 @@ def classify_run_tier(run_units: int) -> Optional[RunCostTier]:
     return RunCostTier.SLOWER
 
 
-def compute_run_cost_units(settings: typing.Any, method_key: str, inference_passes: int) -> int:
+def compute_run_cost_units(
+    settings: typing.Any,
+    method_key: str,
+    inference_passes: int,
+    *,
+    repo: typing.Any = None,
+    model_name: Optional[str] = None,
+) -> int:
     """Score relative run cost from passes plus heavy settings multipliers."""
     units = max(0, int(inference_passes))
     include_vr = method_key in (VR_ARCH_TYPE, VR_ARCH_PM, ENSEMBLE_MODE)
@@ -181,7 +252,13 @@ def compute_run_cost_units(settings: typing.Any, method_key: str, inference_pass
             units += shifts - 1
     if include_mdx:
         units += max(0, _mdx_overlap_value(settings) - 7) // 8
-        if _denoise_active(settings):
+        if _denoise_should_count(
+            settings,
+            method_key,
+            is_classic_mdx=_resolved_mdx_is_classic(
+                settings, method_key, repo, model_name
+            ),
+        ):
             units += 1
     return units
 
@@ -374,7 +451,9 @@ def estimate_workload(
     )
     if inference_passes <= 0:
         inference_passes = 1
-    run_units = compute_run_cost_units(settings, method_key, inference_passes)
+    run_units = compute_run_cost_units(
+        settings, method_key, inference_passes, repo=repo, model_name=model_name
+    )
     return WorkloadEstimate(
         inference_passes=inference_passes,
         output_count=counted,
@@ -383,7 +462,9 @@ def estimate_workload(
         sample_seconds=int(settings.process.sample_mode_duration or 30),
         export_tier=classify_export_tier(counted),
         run_tier=classify_run_tier(run_units),
-        hints=cost_factor_hints(settings, method_key),
+        hints=cost_factor_hints(
+            settings, method_key, repo=repo, model_name=model_name
+        ),
     )
 
 
@@ -444,14 +525,6 @@ def _format_mmss(seconds: float) -> str:
     return f"{minutes}:{secs:02d}"
 
 
-def _infer_fraction(fraction: float) -> float:
-    if fraction < _LOAD_END:
-        return 0.0
-    if fraction >= _SAVE_START:
-        return 1.0
-    return (fraction - _LOAD_END) / _INFER_SPAN
-
-
 _LOCAL_INFER_SPAN = _LOCAL_SAVE_START - _LOCAL_LOAD_END
 
 
@@ -465,11 +538,11 @@ def _local_infer_progress(local_step: Optional[float]) -> float:
 class ProgressEtaTracker:
     """Phase-aware live ETA for separation progress callbacks.
 
-    Load / save / combine are indeterminate for the bar. The determinate bar and
-    ETA only track inference; the inference clock pauses outside that phase.
+    Load / save / combine are indeterminate for the bar. The determinate bar
+    remaps to inference-only fill; remaining time is ``t * (1 - p) / p`` after
+    a short infer-clock gate. The inference clock pauses outside that phase.
     """
 
-    _samples: List[Tuple[float, float]] = field(default_factory=list)
     _smoothed_remaining: Optional[float] = None
     _local_step: Optional[float] = None
     _pass_index: Optional[int] = None
@@ -487,7 +560,6 @@ class ProgressEtaTracker:
     _infer_elapsed_total: float = 0.0
 
     def reset(self) -> None:
-        self._samples.clear()
         self._smoothed_remaining = None
         self._local_step = None
         self._pass_index = None
@@ -561,14 +633,6 @@ class ProgressEtaTracker:
         display = self.inference_display_fraction(fraction)
         if display is not None:
             self._held_display = max(self._held_display, display)
-        infer_frac = display if display is not None else _infer_fraction(fraction)
-        if infer_frac <= 0.0:
-            return
-        self._samples.append((infer_frac, now))
-        cutoff = now - _SAMPLE_WINDOW_SEC
-        self._samples = [(f, t) for f, t in self._samples if t >= cutoff]
-        if len(self._samples) > _MAX_SAMPLES:
-            self._samples = self._samples[-_MAX_SAMPLES:]
 
     def _note_combine_index(self, combine_index: int, now: float) -> None:
         if (
@@ -600,7 +664,6 @@ class ProgressEtaTracker:
         if self._current_pass_infer_acc >= 0.05:
             self._pass_durations.append(self._current_pass_infer_acc)
         self._current_pass_infer_acc = 0.0
-        self._samples.clear()
         self._smoothed_remaining = None
 
     def phase(self, fraction: float) -> str:
@@ -668,59 +731,25 @@ class ProgressEtaTracker:
         if phase != "inference":
             return None
 
-        local_infer = _local_infer_progress(self._local_step)
-        total = self._pass_total or 1
-        index = self._pass_index or 1
+        display = self.inference_display_fraction(fraction)
+        if display is None or display <= 0.0:
+            return None
         elapsed_infer = self._infer_elapsed(now)
-        if (
-            local_infer < _MIN_INFER_FRAC_FOR_ETA
-            and elapsed_infer < _MIN_INFER_ELAPSED_FOR_ETA
-            and not self._pass_durations
-        ):
+        if elapsed_infer < _MIN_INFER_ELAPSED_FOR_ETA:
             return None
-
-        avg = self._avg_pass_duration()
-        remaining_after = max(0, total - index) * (avg or 0.0)
-        current_left: Optional[float] = None
-
-        if len(self._samples) >= 2:
-            first_frac, first_t = self._samples[0]
-            last_frac, last_t = self._samples[-1]
-            delta_frac = last_frac - first_frac
-            delta_t = last_t - first_t
-            if delta_frac > 0.001 and delta_t > 0.0:
-                # samples are overall inference fraction; convert to current-pass rate
-                display = self.inference_display_fraction(fraction) or 0.0
-                rate = delta_frac / delta_t
-                if rate > 0:
-                    current_left = max(0.0, (1.0 - display) / rate)
-
-        if current_left is None and avg is not None:
-            current_left = max(0.0, (1.0 - local_infer) * avg)
-        elif current_left is None and local_infer >= 0.05 and elapsed_infer > 0:
-            # Single-pass fallback using inference-only elapsed.
-            current_left = max(0.0, elapsed_infer / local_infer - elapsed_infer)
-
-        if current_left is None:
-            return None
-        # When using overall display rate, remaining_after is already included.
-        if len(self._samples) >= 2 and avg is not None:
-            return current_left
-        return current_left + remaining_after
+        return elapsed_infer * (1.0 - display) / display
 
     def _combine_remaining(self, now: float) -> Optional[float]:
         if not self._combine_total or not self._combine_index:
             return None
+        if not self._combine_durations:
+            return None
         left_steps = max(0, self._combine_total - self._combine_index)
-        if self._combine_durations:
-            avg = sum(self._combine_durations) / len(self._combine_durations)
-            current = 0.0
-            if self._combine_step_started is not None:
-                current = max(0.0, avg - (now - self._combine_step_started))
-            return max(0.0, current + avg * left_steps)
-        # Rough prior: a few percent of inference time per remaining combine step.
-        per_step = max(1.0, 0.04 * max(self._infer_elapsed_total, 30.0))
-        return per_step * max(1, left_steps + 1)
+        avg = sum(self._combine_durations) / len(self._combine_durations)
+        current = 0.0
+        if self._combine_step_started is not None:
+            current = max(0.0, avg - (now - self._combine_step_started))
+        return max(0.0, current + avg * left_steps)
 
     def _smooth_remaining(self, raw: Optional[float]) -> Optional[float]:
         if raw is None:

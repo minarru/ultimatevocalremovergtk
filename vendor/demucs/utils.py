@@ -271,9 +271,10 @@ def apply_model_v1(model, mix, shifts=None, split=False, progress=False, set_pro
         offsets = list(range(max_shift))
         random.shuffle(offsets)
         out = 0
-        for offset in offsets[:shifts]:
+        for shift_i, offset in enumerate(offsets[:shifts]):
             shifted = mix[..., offset:offset + length + max_shift]
             if set_progress_bar:
+                set_progress_bar(0.1, (0.8 / max(1, shifts) * (shift_i + 1)))
                 shifted_out = apply_model_v1(model, shifted, set_progress_bar=set_progress_bar)
             else:
                 shifted_out = apply_model_v1(model, shifted)
@@ -284,8 +285,12 @@ def apply_model_v1(model, mix, shifts=None, split=False, progress=False, set_pro
         valid_length = model.valid_length(length)
         delta = valid_length - length
         padded = F.pad(mix, (delta // 2, delta - delta // 2))
+        if set_progress_bar:
+            set_progress_bar(0.1, 0)
         with th.no_grad():
             out = model(padded.unsqueeze(0))[0]
+        if set_progress_bar:
+            set_progress_bar(0.1, 0.8)
         return center_trim(out, mix)
 
 def apply_model_v2(model, mix, shifts=None, split=False,
@@ -353,6 +358,7 @@ def apply_model_v2(model, mix, shifts=None, split=False,
             
             if set_progress_bar:
                 progress_value += 1
+                set_progress_bar(0.1, (0.8 / max(1, shifts) * progress_value))
                 shifted_out = apply_model_v2(model, shifted, set_progress_bar=set_progress_bar)
             else:
                 shifted_out = apply_model_v2(model, shifted)
@@ -363,8 +369,12 @@ def apply_model_v2(model, mix, shifts=None, split=False,
         valid_length = model.valid_length(length)
         mix = tensor_chunk(mix)
         padded_mix = mix.padded(valid_length)
+        if set_progress_bar:
+            set_progress_bar(0.1, 0)
         with th.no_grad():
             out = model(padded_mix.unsqueeze(0))[0]
+        if set_progress_bar:
+            set_progress_bar(0.1, 0.8)
         return center_trim(out, length)
 
 

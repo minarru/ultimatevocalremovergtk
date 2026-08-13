@@ -116,7 +116,12 @@ class AudioTools:
 
     # -- Manual ensemble (port of ``Ensembler.ensemble_manual_process``) -------
 
-    def ensemble_manual(self, audio_inputs: Sequence[str], audio_file_base: str) -> None:
+    def ensemble_manual(
+        self,
+        audio_inputs: Sequence[str],
+        audio_file_base: str,
+        on_progress: Callable[[float], None] | None = None,
+    ) -> None:
         from ml import spec_utils
 
         algorithm = self.settings.audio_tools.choose_algorithm
@@ -135,10 +140,16 @@ class AudioTools:
             stem_save_path,
             is_wave=self.is_wav_ensemble,
             min_peak=self.amplification_threshold,
+            on_progress=on_progress,
         )
         self._save_format(stem_save_path)
 
-    def combine_audio(self, audio_inputs: Sequence[str], audio_file_base: str) -> None:
+    def combine_audio(
+        self,
+        audio_inputs: Sequence[str],
+        audio_file_base: str,
+        on_progress: Callable[[float], None] | None = None,
+    ) -> None:
         from ml import spec_utils
 
         track = sanitize_filename_component(audio_file_base) or "audio"
@@ -147,6 +158,7 @@ class AudioTools:
             os.path.join(self.main_export_path, f"{self.is_testing_audio}{track}"),
             self.wav_type_set,
             save_format=self._save_format,
+            on_progress=on_progress,
         )
 
     # -- Time-stretch / pitch shift (port of ``pitch_or_time_shift``) ----------
@@ -443,13 +455,16 @@ class AudioToolRunner:
         for num, path in enumerate(inputs, start=1):
             callbacks.console(f'File {num} "{os.path.basename(path)}"\n')
         callbacks.console("\nProcessing...\n")
-        callbacks.progress(0.5)
+        callbacks.progress(0.0)
+
+        def on_progress(fraction: float) -> None:
+            callbacks.progress(max(0.0, min(1.0, float(fraction))))
 
         algorithm = self.settings.audio_tools.choose_algorithm
         if algorithm == COMBINE_INPUTS:
-            audio_tool.combine_audio(inputs, audio_file_base)
+            audio_tool.combine_audio(inputs, audio_file_base, on_progress=on_progress)
         else:
-            audio_tool.ensemble_manual(inputs, audio_file_base)
+            audio_tool.ensemble_manual(inputs, audio_file_base, on_progress=on_progress)
         callbacks.progress(1.0)
         callbacks.console("Done\n")
 
@@ -466,6 +481,7 @@ class AudioToolRunner:
                 continue
             callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}".\n')
             callbacks.console(f"{base_text}Processing...\n")
+            callbacks.progress((file_num - 1) / total)
             audio_file_base = _basename_no_ext(audio_file)
             audio_tool.pitch_or_time_shift(tool, audio_file, audio_file_base)
             callbacks.progress(file_num / total)
@@ -542,6 +558,7 @@ class AudioToolRunner:
             audio_file_2_base = _basename_no_ext(file_two)
 
             if tool == MATCH_INPUTS:
+                callbacks.progress((file_num - 1) / total)
                 audio_tool.match_inputs(pair, audio_file_base, command_text)
             else:
                 command_text("Starting...\n")

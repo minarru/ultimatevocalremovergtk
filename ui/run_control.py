@@ -656,35 +656,22 @@ class RunController:
             self._window._start_pulse()
             return
 
-        # Mid-run load/save/combine: keep the last inference fill and show phase
-        # text (GTK pulse would wipe the determinate bar). Pulse only before any
-        # inference progress exists.
-        if self._eta_tracker.is_indeterminate(fraction):
-            held = self._eta_tracker.held_display
-            if held > _PROGRESS_EPSILON:
-                self._window._stop_pulse()
-                self._window.log_panel.set_progress_fraction(held)
-            else:
-                self._window._start_pulse()
-            return
-
         display = self._eta_tracker.inference_display_fraction(fraction)
-        if display is None:
-            held = self._eta_tracker.held_display
-            if held > _PROGRESS_EPSILON:
-                self._window._stop_pulse()
-                self._window.log_panel.set_progress_fraction(held)
-            else:
+        if local_step is None:
+            # Audio tools and other callers that only send a global fraction.
+            display = fraction
+        elif display is None:
+            phase = self._eta_tracker.phase(fraction)
+            if (
+                phase == "loading"
+                and self._eta_tracker.held_display <= _PROGRESS_EPSILON
+            ):
                 self._window._start_pulse()
-            return
+                return
+            # Ticked save / deverb / combine: paint the runner fraction.
+            display = fraction
         self._window._stop_pulse()
         self._window.log_panel.set_progress_fraction(display)
-
-    def _progress_text(self, fraction: float, local_step: Optional[float] = None, **kwargs: typing.Any) -> str:
-        now = time.monotonic()
-        elapsed = max(0.0, now - self._run_started_at)
-        self._eta_tracker.update(fraction, now, local_step=local_step, **kwargs)
-        return self._eta_tracker.format_text(fraction, elapsed, now=now)
 
     def _report_error(self, message: str, exc: BaseException) -> None:
         from .errorlog import log_error, present_error_dialog

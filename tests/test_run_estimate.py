@@ -425,7 +425,7 @@ class ProgressEtaTrackerTests(unittest.TestCase):
         # Resume inference on next pass
         tracker.update(0.55, 410.0, local_step=0.30, pass_index=2, pass_total=2)
         self.assertFalse(tracker.is_indeterminate(0.55))
-        self.assertEqual(len(tracker._samples), 1)  # samples reset on pass boundary
+        self.assertGreaterEqual(len(tracker._pass_durations), 1)
 
     def test_pass_boundary_records_duration(self):
         tracker = ProgressEtaTracker()
@@ -449,7 +449,19 @@ class ProgressEtaTrackerTests(unittest.TestCase):
         )
         text = tracker.format_text(0.95, 90.0, now=90.0)
         self.assertIn("Combining ensemble (1/3)", text)
-        self.assertIn("left", text)
+        self.assertNotIn("left", text)
+        tracker.update(
+            0.97,
+            100.0,
+            local_step=0.99,
+            pass_index=1,
+            pass_total=1,
+            combine_index=2,
+            combine_total=3,
+        )
+        text_next = tracker.format_text(0.97, 100.0, now=100.0)
+        self.assertIn("Combining ensemble (2/3)", text_next)
+        self.assertIn("left", text_next)
 
     def test_early_inference_calculating(self):
         tracker = ProgressEtaTracker()
@@ -457,6 +469,10 @@ class ProgressEtaTrackerTests(unittest.TestCase):
         text = tracker.format_text(0.12, 40.0, now=40.0)
         self.assertIn("Calculating estimate", text)
         self.assertIn("%", text)
+        tracker.update(0.18, 42.5, local_step=0.28, pass_index=1, pass_total=1)
+        later = tracker.format_text(0.18, 2.5, now=42.5)
+        self.assertIn("left", later)
+        self.assertNotIn("Calculating estimate", later)
 
     def test_saving_phase_via_global_fraction(self):
         tracker = ProgressEtaTracker()
@@ -468,18 +484,12 @@ class ProgressEtaTrackerTests(unittest.TestCase):
     def test_mdx_climb_does_not_show_one_minute_early(self):
         tracker = ProgressEtaTracker()
         t0 = 1000.0
-        tracker.update(0.15, t0 + 30.0, local_step=0.20, pass_index=1, pass_total=1)
-        text_early = tracker.format_text(0.15, 30.0, now=t0 + 30.0)
-        if "left" in text_early:
-            self.assertNotIn("0:59 left", text_early)
-            self.assertNotIn("1:00 left", text_early)
-        tracker.update(0.25, t0 + 90.0, local_step=0.35, pass_index=1, pass_total=1)
-        tracker.update(0.30, t0 + 150.0, local_step=0.45, pass_index=1, pass_total=1)
-        tracker.update(0.35, t0 + 210.0, local_step=0.55, pass_index=1, pass_total=1)
-        text_mid = tracker.format_text(0.35, 210.0, now=t0 + 210.0)
-        self.assertIn("left", text_mid)
-        remaining_sec = int(text_mid.split("~")[1].split(" left")[0].split(":")[0]) * 60
-        remaining_sec += int(text_mid.split("~")[1].split(" left")[0].split(":")[1])
+        tracker.update(0.15, t0, local_step=0.22, pass_index=1, pass_total=1)
+        tracker.update(0.15, t0 + 30.0, local_step=0.22, pass_index=1, pass_total=1)
+        text = tracker.format_text(0.15, 30.0, now=t0 + 30.0)
+        self.assertIn("left", text)
+        remaining_sec = int(text.split("~")[1].split(" left")[0].split(":")[0]) * 60
+        remaining_sec += int(text.split("~")[1].split(" left")[0].split(":")[1])
         self.assertGreaterEqual(remaining_sec, 120)
 
     def test_ema_smoothing_does_not_halve_on_one_tick(self):

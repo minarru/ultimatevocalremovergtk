@@ -53,7 +53,10 @@ from .application import apply_color_scheme
 from .dispatch import idle_on_main
 from .help_text import (
     AMPLIFICATION_THRESHOLD_HELP,
+    IS_ACCEPT_ANY_INPUT_HELP,
+    IS_CREATE_MODEL_FOLDER_HELP,
     IS_MATCH_MIX_LEVEL_HELP,
+    IS_MODEL_TESTING_AUDIO_HELP,
     IS_NORMALIZATION_HELP,
     IS_PREVENT_EXPORT_CLIPPING_HELP,
     LONG_FILE_CHUNK_HELP,
@@ -289,6 +292,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
             row.connect("notify::active", self._on_bool_changed, key)
             process_group.add(row)
             self._process_switches[key] = row
+        set_tooltip(self._process_switches["is_add_model_name"], IS_MODEL_TESTING_AUDIO_HELP)
+        set_tooltip(self._process_switches["is_create_model_folder"], IS_CREATE_MODEL_FOLDER_HELP)
+        set_tooltip(self._process_switches["is_accept_any_input"], IS_ACCEPT_ANY_INPUT_HELP)
         set_tooltip(self._process_switches["is_normalization"], IS_NORMALIZATION_HELP)
         set_tooltip(self._process_switches["is_match_mix_level"], IS_MATCH_MIX_LEVEL_HELP)
         set_tooltip(
