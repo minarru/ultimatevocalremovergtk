@@ -1,6 +1,7 @@
 {
   "include": [
     "ui",
+    "cli",
     "core",
     "engines",
     "tests",
@@ -9,6 +10,7 @@
     "scripts",
     "__version__.py"
   ],
+
   "exclude": [
     "**/__pycache__",
     "**/.venv",

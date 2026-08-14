@@ -1,0 +1,48 @@
+"""argparse root for the headless CLI (``python -m cli``)."""
+
+from __future__ import annotations
+
+import argparse
+from typing import Optional, Sequence
+
+from .bench import cmd_bench_ab
+from .separate import add_separate_args, cmd_separate
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python -m cli",
+        description="Headless Ultimate Vocal Remover GTK runner",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    separate = sub.add_parser("separate", help="Run a single-method separation job")
+    add_separate_args(separate)
+    separate.set_defaults(func=cmd_separate)
+
+    bench = sub.add_parser(
+        "bench-ab",
+        help="A/B two env configurations via subprocess separate runs + stem null metrics",
+    )
+    add_separate_args(bench)
+    bench.add_argument(
+        "--env",
+        action="append",
+        required=True,
+        metavar="KEY=VALUE",
+        help="Env assignment for leg A then B (exactly two required)",
+    )
+    bench.add_argument(
+        "--json",
+        default=None,
+        help="Optional path to write a JSON summary",
+    )
+    bench.set_defaults(func=cmd_bench_ab)
+
+    return parser
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    return int(args.func(args))
