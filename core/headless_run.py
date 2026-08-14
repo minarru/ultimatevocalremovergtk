@@ -38,6 +38,8 @@ METHOD_ALIASES = {
     "demucs": DEMUCS_ARCH_TYPE,
     "vr": VR_ARCH_PM,
     "vr-architecture": VR_ARCH_PM,
+    "ensemble": ENSEMBLE_MODE,
+    "ensemble mode": ENSEMBLE_MODE,
 }
 
 _MODEL_KEY_BY_METHOD = {
@@ -106,7 +108,7 @@ def resolve_method(method: Optional[str]) -> Optional[str]:
     if key in METHOD_ALIASES:
         return METHOD_ALIASES[key]
     # Allow passing the exact settings string.
-    for value in (MDX_ARCH_TYPE, DEMUCS_ARCH_TYPE, VR_ARCH_PM):
+    for value in (MDX_ARCH_TYPE, DEMUCS_ARCH_TYPE, VR_ARCH_PM, ENSEMBLE_MODE):
         if key == value.lower():
             return value
     raise ValueError(
@@ -364,8 +366,8 @@ def build_settings(
     chosen = settings.process.method
     if chosen == ENSEMBLE_MODE and not allow_ensemble:
         raise ValueError(
-            "ensemble mode is not supported by the headless CLI (v1); "
-            "pass --method mdx|demucs|vr"
+            "ensemble runs use their own command: python -m cli ensemble "
+            "(separate --method takes mdx|demucs|vr)"
         )
 
     if model is not None:
@@ -632,3 +634,115 @@ def settings_summary(settings: Settings) -> dict[str, Any]:
             settings.process.long_file_chunk_overlap_seconds
         ),
     }
+
+
+def apply_saved_ensemble(
+    settings: Settings, name: str, *, repo: Optional[Any] = None
+) -> None:
+    """Load a user-saved or curated ensemble into ``settings.ensemble`` (does not persist).
+
+    Resolution order: GUI ``Curated: …`` label, then a user-saved file of that
+    exact name, then a curated preset id. User-saved wins when the token matches
+    both a saved file and a curated id. Curated members go through
+    ``resolve_member_tags`` the same way the GUI does.
+    """
+    from .ensemble_presets import (
+        curated_combo_label,
+        curated_id_from_combo_label,
+        list_curated_ensembles,
+        load_curated_ensemble,
+        resolve_member_tags,
+    )
+    from .model_data import ModelRepository, list_saved_ensembles, load_ensemble
+    from .stems import coerce_ensemble_pair
+
+    raw = str(name).strip()
+    if not raw:
+        raise ValueError("ensemble name is empty")
+
+    data = None
+    is_curated = False
+    chosen = raw
+
+    curated_id = curated_id_from_combo_label(raw)
+    if curated_id is not None:
+        data = load_curated_ensemble(curated_id)
+        if data is not None:
+            is_curated = True
+            chosen = curated_combo_label(curated_id)
+
+    if data is None:
+        data = load_ensemble(raw)
+        if data is not None:
+            is_curated = False
+            chosen = raw
+
+    if data is None:
+        cid = raw.replace(" ", "_")
+        if cid in list_curated_ensembles():
+            data = load_curated_ensemble(cid)
+            if data is not None:
+                is_curated = True
+                chosen = curated_combo_label(cid)
+
+    if data is None:
+        curated = [curated_combo_label(i) for i in list_curated_ensembles()[:6]]
+        saved = list(list_saved_ensembles()[:6])
+        known = ", ".join(repr(n) for n in [*curated, *saved]) or "(none)"
+        raise ValueError(f"unknown ensemble {raw!r}; available: {known}")
+
+    members = list(data.get("selected_models") or [])
+    if is_curated:
+        members = resolve_member_tags(members, repo or ModelRepository())
+
+    settings.ensemble.selected_models = members
+    settings.ensemble.type = str(data.get("ensemble_type") or "") or settings.ensemble.type
+    settings.ensemble.main_stem = coerce_ensemble_pair(data.get("ensemble_main_stem"))
+    settings.ensemble.chosen_ensemble = chosen
+
+
+def resolve_ensemble_members(
+    tokens: Sequence[str], repo: Optional[Any] = None
+) -> list[str]:
+    """Resolve CLI member tokens to ``{arch}: {display}`` ensemble tags.
+
+    Accepts a full tag, or a unique substring of one, using the same
+    normalize-and-match rules as ``--model``. Duplicates collapse, order is
+    preserved.
+    """
+    from .model_data import ModelRepository
+
+    repository = repo or ModelRepository()
+    available = list(repository.all_model_tags())
+
+    resolved: list[str] = []
+    for token in tokens:
+        raw = str(token).strip()
+        if not raw:
+            raise ValueError("ensemble member token is empty")
+        if raw in available:
+            resolved.append(raw)
+            continue
+
+        query = _normalize_model_query(raw)
+        if not query:
+            raise ValueError(f"unknown ensemble member {raw!r}")
+        matches = [
+            tag for tag in available if query in _normalize_model_query(tag)
+        ]
+        unique = list(dict.fromkeys(matches))
+        if len(unique) == 1:
+            resolved.append(unique[0])
+            continue
+        if len(unique) > 1:
+            preview = ", ".join(repr(name) for name in unique[:6])
+            more = "" if len(unique) <= 6 else f", … (+{len(unique) - 6} more)"
+            raise ValueError(
+                f"ambiguous ensemble member {raw!r}; matches: {preview}{more}"
+            )
+        raise ValueError(
+            f"unknown ensemble member {raw!r}; pass a full "
+            f"'{{arch}}: {{display}}' tag or a unique substring"
+        )
+
+    return list(dict.fromkeys(resolved))

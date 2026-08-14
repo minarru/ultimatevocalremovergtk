@@ -195,7 +195,7 @@ class ResolveMethodTests(unittest.TestCase):
 
     def test_unknown(self) -> None:
         with self.assertRaises(ValueError):
-            resolve_method("ensemble")
+            resolve_method("not-a-method")
 
 
 class BuildSettingsTests(unittest.TestCase):
