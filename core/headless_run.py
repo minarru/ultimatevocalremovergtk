@@ -1,6 +1,7 @@
 """Headless separation helpers (no GTK).
 
-Used by ``python -m core.cli`` to drive :class:`JobRunner` synchronously with
+GTK-free library imported by :mod:`cli` (``python -m cli``) and
+``scripts/model_sweep.py`` to drive :class:`JobRunner` synchronously with
 the same settings schema as the GUI.
 """
 
