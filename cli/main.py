@@ -6,6 +6,7 @@ import argparse
 from typing import Optional, Sequence
 
 from .bench import cmd_bench_ab
+from .ensemble import add_ensemble_args, cmd_ensemble
 from .separate import add_separate_args, cmd_separate
 
 
@@ -19,6 +20,12 @@ def build_parser() -> argparse.ArgumentParser:
     separate = sub.add_parser("separate", help="Run a single-method separation job")
     add_separate_args(separate)
     separate.set_defaults(func=cmd_separate)
+
+    ensemble = sub.add_parser(
+        "ensemble", help="Run several models and combine their stems"
+    )
+    add_ensemble_args(ensemble)
+    ensemble.set_defaults(func=cmd_ensemble)
 
     bench = sub.add_parser(
         "bench-ab",
