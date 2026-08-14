@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from typing import Any, Sequence
 from unittest import mock
 
 import numpy as np
@@ -29,6 +30,7 @@ from core.headless_run import (
     parse_cli_stems,
     resolve_cli_model_arg,
     resolve_method,
+    run_separation_sync,
     settings_summary,
 )
 from core.settings import Settings
@@ -294,6 +296,125 @@ class SettingsSummaryTests(unittest.TestCase):
         summary = settings_summary(settings)
         self.assertEqual(summary["model"], "Model X")
         self.assertEqual(summary["model_key"], "mdx_net_model")
+
+
+class _InterruptRunner:
+    """JobRunner stand-in: start hangs until stop() fires on_stopped."""
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self._thread = None
+        self._alive = True
+        self.stops: list[bool] = []
+        self._callbacks: Any = None
+
+    def is_running(self) -> bool:
+        return self._alive
+
+    def start(self, input_paths: Sequence[str], callbacks: Any) -> None:
+        self._callbacks = callbacks
+
+    def stop(self, *, force: bool = False) -> None:
+        self.stops.append(force)
+        self._alive = False
+        # Soft stop leaves the wait loop hanging (real workers take time to
+        # unwind); only force completes via on_stopped so a second interrupt
+        # or hang timeout can escalate.
+        if force and self._callbacks is not None:
+            self._callbacks.stopped()
+
+    def release_inference_memory(self, **kwargs: Any) -> None:
+        pass
+
+
+class InterruptTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.settings = Settings()
+        self.settings.process.export_path = "/tmp/out"
+
+    def test_keyboard_interrupt_returns_stopped_not_raised(self) -> None:
+        runner = _InterruptRunner(self.settings)
+
+        def fake_event() -> Any:
+            class _Evt:
+                def __init__(self) -> None:
+                    self._set = False
+                    self.waits = 0
+
+                def set(self) -> None:
+                    self._set = True
+
+                def is_set(self) -> bool:
+                    return self._set
+
+                def wait(self, timeout: Any = None) -> bool:
+                    self.waits += 1
+                    if self._set:
+                        return True
+                    if self.waits == 1:
+                        raise KeyboardInterrupt()
+                    return True
+
+            return _Evt()
+
+        with mock.patch("core.headless_run.JobRunner", lambda settings: runner), \
+             mock.patch("core.headless_run.threading.Event", fake_event):
+            result = run_separation_sync(
+                self.settings, ["/tmp/in.wav"], print_console=False
+            )
+        self.assertTrue(result.stopped)
+        self.assertTrue(result.interrupted)
+        self.assertTrue(result.ok is False)
+        self.assertEqual(runner.stops, [False])
+
+    def test_second_interrupt_forces_stop(self) -> None:
+        runner = _InterruptRunner(self.settings)
+
+        def fake_event() -> Any:
+            class _Evt:
+                def __init__(self) -> None:
+                    self._set = False
+                    self.waits = 0
+
+                def set(self) -> None:
+                    self._set = True
+
+                def is_set(self) -> bool:
+                    return self._set
+
+                def wait(self, timeout: Any = None) -> bool:
+                    self.waits += 1
+                    if self._set:
+                        return True
+                    if self.waits == 1:
+                        raise KeyboardInterrupt()
+                    if self.waits == 2:
+                        raise KeyboardInterrupt()
+                    return True
+
+            return _Evt()
+
+        with mock.patch("core.headless_run.JobRunner", lambda settings: runner), \
+             mock.patch("core.headless_run.threading.Event", fake_event):
+            result = run_separation_sync(
+                self.settings, ["/tmp/in.wav"], print_console=False
+            )
+        self.assertTrue(result.stopped)
+        self.assertEqual(runner.stops, [False, True])
+
+    def test_signal_handler_is_restored(self) -> None:
+        import signal as signalmod
+
+        previous = signalmod.getsignal(signalmod.SIGINT)
+        runner = _InterruptRunner(self.settings)
+        with mock.patch("core.headless_run.JobRunner", lambda settings: runner):
+            # Completes immediately via the fake start → we still need
+            # on_complete. Use the existing complete-on-start fake for restore.
+            runner.start = (  # type: ignore[method-assign]
+                lambda paths, callbacks: callbacks.complete()
+            )
+            run_separation_sync(self.settings, ["/tmp/in.wav"], print_console=False)
+        self.assertEqual(signalmod.getsignal(signalmod.SIGINT), previous)
 
 
 if __name__ == "__main__":

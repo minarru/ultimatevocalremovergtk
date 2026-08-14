@@ -314,6 +314,36 @@ class CliArgparseTests(unittest.TestCase):
             self.assertIn("error:", mock_stderr.getvalue())
             self.assertEqual(mock_stderr.getvalue().count("error:"), 1)
 
+    @mock.patch("cli.bench.subprocess.run")
+    def test_bench_ab_child_130_skips_leg_b(self, mock_run: typing.Any) -> None:
+        mock_run.return_value = mock.Mock(returncode=130)
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = os.path.join(tmp, "in.wav")
+            open(wav, "wb").close()
+            out = os.path.join(tmp, "ab")
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                with mock.patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+                    code = main(
+                        [
+                            "bench-ab",
+                            wav,
+                            "-o",
+                            out,
+                            "--env",
+                            "UVR_AUTOCAST=0",
+                            "--env",
+                            "UVR_AUTOCAST=1",
+                            "--json",
+                        ]
+                    )
+            self.assertEqual(code, 130)
+            self.assertEqual(mock_run.call_count, 1)
+            payload = json.loads(mock_stdout.getvalue())
+            self.assertIs(payload["ok"], False)
+            self.assertTrue(payload["stopped"])
+            self.assertIn("interrupted", payload["error"]["message"].lower())
+            self.assertIn("interrupted", mock_stderr.getvalue().lower())
+
 
 class ReportingFlagTests(unittest.TestCase):
     def test_json_is_boolean_on_separate(self) -> None:
@@ -431,6 +461,33 @@ class JsonSeparateTests(unittest.TestCase):
         self.assertIs(payload["ok"], False)
         self.assertIn(missing, payload["error"]["message"])
         self.assertIn("error:", mock_stderr.getvalue())
+
+    def test_stopped_run_exits_130_and_emits_json(self) -> None:
+        from cli.main import main
+        from core.headless_run import HeadlessResult
+
+        result = HeadlessResult(
+            ok=False,
+            elapsed_s=0.5,
+            export_path="/tmp/o",
+            stopped=True,
+            interrupted=True,
+        )
+        buf = io.StringIO()
+        err = io.StringIO()
+        with mock.patch("cli.separate.check_runtime_deps", return_value=None), \
+             mock.patch("cli.separate.os.path.isfile", return_value=True), \
+             mock.patch("cli.separate.os.makedirs"), \
+             mock.patch("cli.separate.build_settings", return_value=Settings()), \
+             mock.patch("cli.separate.run_separation_sync", return_value=result), \
+             mock.patch("sys.stdout", buf), \
+             mock.patch("sys.stderr", err):
+            code = main(["separate", "a.wav", "-o", "/tmp/o", "--json"])
+        self.assertEqual(code, 130)
+        payload = json.loads(buf.getvalue())
+        self.assertFalse(payload["ok"])
+        self.assertTrue(payload["stopped"])
+        self.assertIn("stopped", err.getvalue().lower())
 
 
 class TrampolineTests(unittest.TestCase):

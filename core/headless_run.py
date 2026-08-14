@@ -7,6 +7,7 @@ the same settings schema as the GUI.
 from __future__ import annotations
 
 import os
+import signal
 import sys
 import threading
 import time
@@ -93,6 +94,7 @@ class HeadlessResult:
     export_path: str
     error: Optional[BaseException] = None
     stopped: bool = False
+    interrupted: bool = False
     console: list[str] = field(default_factory=list)
 
 
@@ -480,6 +482,31 @@ def _run_job(
 
     runner = JobRunner(settings)
     started = time.perf_counter()
+    interrupts = {"count": 0}
+
+    def _request_stop(*, force: bool) -> None:
+        interrupts["count"] += 1
+        use_force = force or interrupts["count"] >= 2
+        hint = "forcing stop" if use_force else "stopping… (Ctrl-C again to force)"
+        print(f"\n{hint}", file=sys.stderr)
+        try:
+            runner.stop(force=use_force)
+        except Exception:
+            pass
+
+    def _on_signal(signum: int, frame: Any) -> None:
+        _request_stop(force=False)
+
+    prev_int = signal.getsignal(signal.SIGINT)
+    prev_term: Any = None
+    signal.signal(signal.SIGINT, _on_signal)
+    if hasattr(signal, "SIGTERM"):
+        prev_term = signal.getsignal(signal.SIGTERM)
+        try:
+            signal.signal(signal.SIGTERM, _on_signal)
+        except (OSError, ValueError, AttributeError):
+            prev_term = None
+
     try:
         getattr(runner, start_attr)(list(input_paths), callbacks)
         while not done.wait(timeout=0.25):
@@ -491,10 +518,21 @@ def _run_job(
                 runner.stop(force=True)
                 raise TimeoutError(f"separation exceeded {join_timeout:.0f}s")
     except KeyboardInterrupt:
-        runner.stop(force=True)
-        done.wait(timeout=5.0)
-        raise
+        _request_stop(force=False)
+        try:
+            if not done.wait(timeout=5.0):
+                _request_stop(force=True)
+                done.wait(timeout=2.0)
+        except KeyboardInterrupt:
+            _request_stop(force=True)
+            done.wait(timeout=2.0)
     finally:
+        try:
+            signal.signal(signal.SIGINT, prev_int)
+            if prev_term is not None:
+                signal.signal(signal.SIGTERM, prev_term)
+        except (OSError, ValueError, AttributeError):
+            pass
         # Wait for the worker thread to finish cleanup.
         thread = getattr(runner, "_thread", None)
         if thread is not None and thread.is_alive():
@@ -505,6 +543,9 @@ def _run_job(
             # Best-effort: never mask the original start/run failure (e.g. missing deps).
             pass
 
+    if interrupts["count"]:
+        outcome["stopped"] = True
+
     elapsed = time.perf_counter() - started
     err = error_box[0] if error_box else None
     ok = err is None and not outcome["stopped"]
@@ -514,6 +555,7 @@ def _run_job(
         export_path=export_path,
         error=err,
         stopped=bool(outcome["stopped"]),
+        interrupted=bool(interrupts["count"]),
         console=console_lines,
     )
 

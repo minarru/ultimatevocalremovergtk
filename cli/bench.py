@@ -122,7 +122,7 @@ def cmd_bench_ab(args: argparse.Namespace) -> int:
     machine_output = bool(args.json)
     child_quiet = bool(args.quiet or machine_output)
 
-    def run_leg(label: str, out_dir: str, key: str, value: str) -> tuple[int, float]:
+    def run_leg(label: str, out_dir: str, key: str, value: str) -> int | tuple[int, float]:
         env = _child_env(base_env)
         env[key] = value
         argv = build_separate_argv(
@@ -145,14 +145,35 @@ def cmd_bench_ab(args: argparse.Namespace) -> int:
         run_kwargs: dict[str, Any] = {"env": env, "check": False}
         if machine_output:
             run_kwargs["stdout"] = subprocess.DEVNULL
-        proc = subprocess.run(argv, **run_kwargs)
+        try:
+            proc = subprocess.run(argv, **run_kwargs)
+        except KeyboardInterrupt:
+            return fail(
+                args,
+                "bench-ab interrupted",
+                exit_code=130,
+                extra={"stopped": True},
+            )
+        if proc.returncode == 130:
+            return fail(
+                args,
+                f"{label} interrupted",
+                exit_code=130,
+                extra={"stopped": True},
+            )
         elapsed = time.perf_counter() - started
         return proc.returncode, elapsed
 
-    code_a, wall_a = run_leg("A", dir_a, key_a, val_a)
+    leg_a = run_leg("A", dir_a, key_a, val_a)
+    if isinstance(leg_a, int):
+        return leg_a
+    code_a, wall_a = leg_a
     if code_a != 0:
         return fail(args, f"A failed with exit code {code_a}", exit_code=1)
-    code_b, wall_b = run_leg("B", dir_b, key_b, val_b)
+    leg_b = run_leg("B", dir_b, key_b, val_b)
+    if isinstance(leg_b, int):
+        return leg_b
+    code_b, wall_b = leg_b
     if code_b != 0:
         return fail(args, f"B failed with exit code {code_b}", exit_code=1)
 

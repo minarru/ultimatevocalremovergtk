@@ -157,7 +157,12 @@ def cmd_separate(args: argparse.Namespace) -> int:
             exc=result.error,
         )
     if result.stopped:
-        return fail(args, "separation stopped", exit_code=1)
+        return fail(
+            args,
+            "separation stopped",
+            exit_code=130,
+            extra={"stopped": True},
+        )
 
     if args.json:
         payload = {

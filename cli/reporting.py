@@ -72,6 +72,7 @@ def fail(
     *,
     exit_code: int,
     exc: Optional[BaseException] = None,
+    extra: Optional[dict[str, Any]] = None,
 ) -> int:
     """Print a human error on stderr; under ``--json`` also emit one failure document."""
     print(f"error: {message}", file=sys.stderr)
@@ -79,5 +80,8 @@ def fail(
         error: dict[str, Any] = {"message": message}
         if exc is not None:
             error["type"] = type(exc).__name__
-        emit_json({"ok": False, "error": error})
+        payload: dict[str, Any] = {"ok": False, "error": error}
+        if extra:
+            payload.update(extra)
+        emit_json(payload)
     return exit_code
