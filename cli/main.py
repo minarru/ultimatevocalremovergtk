@@ -7,6 +7,7 @@ from typing import Optional, Sequence
 
 from .bench import cmd_bench_ab
 from .ensemble import add_ensemble_args, cmd_ensemble
+from .list_models import add_list_models_args, cmd_list_models
 from .separate import add_separate_args, cmd_separate
 
 
@@ -46,6 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional path to write the JSON summary (was --json before v5.7)",
     )
     bench.set_defaults(func=cmd_bench_ab)
+
+    listing = sub.add_parser("list-models", help="List installed models and saved/curated ensembles")
+    add_list_models_args(listing)
+    listing.set_defaults(func=cmd_list_models)
 
     return parser
 
