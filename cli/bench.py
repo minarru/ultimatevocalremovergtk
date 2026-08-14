@@ -17,6 +17,7 @@ from core.bench_metrics import (
 )
 
 from .process_flags import collect_overrides, overrides_to_argv
+from .reporting import fail
 from .separate import check_runtime_deps
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -57,6 +58,7 @@ def build_separate_argv(
     long_chunk_overlap: Optional[float] = None,
     overrides: Sequence[tuple[str, Any]] = (),
     vocal_split: Optional[str] = None,
+    quiet: bool = False,
 ) -> list[str]:
     argv = [sys.executable, "-m", "cli", "separate", *inputs, "-o", output]
     if method:
@@ -76,26 +78,29 @@ def build_separate_argv(
     argv.extend(overrides_to_argv(overrides))
     if vocal_split:
         argv.extend(["--vocal-split", vocal_split])
+    if quiet:
+        argv.append("--quiet")
     return argv
 
 
 def cmd_bench_ab(args: argparse.Namespace) -> int:
     dep_err = check_runtime_deps()
     if dep_err:
-        print(f"error: {dep_err}", file=sys.stderr)
-        return 2
+        return fail(args, dep_err, exit_code=2)
 
     if len(args.env) != 2:
-        print("error: bench-ab requires exactly two --env KEY=value flags", file=sys.stderr)
-        return 2
+        return fail(
+            args,
+            "bench-ab requires exactly two --env KEY=value flags",
+            exit_code=2,
+        )
 
     try:
         key_a, val_a = parse_env_assignment(args.env[0])
         key_b, val_b = parse_env_assignment(args.env[1])
         process_overrides = collect_overrides(args)
     except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+        return fail(args, str(exc), exit_code=2, exc=exc)
 
     os.makedirs(args.output, exist_ok=True)
     label_a = sanitize_env_label([f"{key_a}={val_a}"])
@@ -110,11 +115,12 @@ def cmd_bench_ab(args: argparse.Namespace) -> int:
 
     missing = [p for p in args.inputs if not os.path.isfile(p)]
     if missing:
-        print(f"error: input not found: {missing[0]}", file=sys.stderr)
-        return 2
+        return fail(args, f"input not found: {missing[0]}", exit_code=2)
 
     inputs = [os.path.abspath(p) for p in args.inputs]
     base_env = os.environ.copy()
+    machine_output = bool(args.json)
+    child_quiet = bool(args.quiet or machine_output)
 
     def run_leg(label: str, out_dir: str, key: str, value: str) -> tuple[bool, float, str]:
         env = _child_env(base_env)
@@ -131,10 +137,15 @@ def cmd_bench_ab(args: argparse.Namespace) -> int:
             long_chunk_overlap=args.long_chunk_overlap,
             overrides=process_overrides,
             vocal_split=args.vocal_split,
+            quiet=child_quiet,
         )
-        print(f"\n=== bench-ab {label}: {key}={value} ===", flush=True)
+        if not machine_output:
+            print(f"\n=== bench-ab {label}: {key}={value} ===", flush=True)
         started = time.perf_counter()
-        proc = subprocess.run(argv, env=env, check=False)
+        run_kwargs: dict[str, Any] = {"env": env, "check": False}
+        if machine_output:
+            run_kwargs["stdout"] = subprocess.DEVNULL
+        proc = subprocess.run(argv, **run_kwargs)
         elapsed = time.perf_counter() - started
         ok = proc.returncode == 0
         if not ok:
@@ -154,33 +165,38 @@ def cmd_bench_ab(args: argparse.Namespace) -> int:
     report = compare_stem_dirs(dir_a, dir_b)
     speedup = (wall_a / wall_b) if wall_b > 0 else float("inf")
 
-    print("\n=== bench-ab summary ===")
-    print(f"A {key_a}={val_a}  wall_s={wall_a:.3f}  dir={dir_a}")
-    print(f"B {key_b}={val_b}  wall_s={wall_b:.3f}  dir={dir_b}")
-    print(f"speedup_A_over_B={speedup:.3f}x  ( >1 means A slower than B )")
-    print(f"paired_stems={len(report.pairs)}")
-    print(f"max_rms_diff={report.max_rms_diff:.6g}")
-    print(f"max_peak_abs_diff={report.max_peak_abs_diff:.6g}")
-    if report.only_a:
-        print(f"only_in_A={report.only_a}")
-    if report.only_b:
-        print(f"only_in_B={report.only_b}")
-    for pair in report.pairs:
-        print(
-            f"  {pair.name}: rms_diff={pair.rms_diff:.6g} "
-            f"peak_abs_diff={pair.peak_abs_diff:.6g}"
-        )
-
     payload = {
         "a": {"env": {key_a: val_a}, "wall_s": wall_a, "dir": dir_a},
         "b": {"env": {key_b: val_b}, "wall_s": wall_b, "dir": dir_b},
         "speedup_a_over_b": speedup,
         "compare": report.to_dict(),
     }
-    if args.json:
-        with open(args.json, "w", encoding="utf-8") as fh:
+
+    if machine_output:
+        print(json.dumps(payload, indent=2))
+    else:
+        print("\n=== bench-ab summary ===")
+        print(f"A {key_a}={val_a}  wall_s={wall_a:.3f}  dir={dir_a}")
+        print(f"B {key_b}={val_b}  wall_s={wall_b:.3f}  dir={dir_b}")
+        print(f"speedup_A_over_B={speedup:.3f}x  ( >1 means A slower than B )")
+        print(f"paired_stems={len(report.pairs)}")
+        print(f"max_rms_diff={report.max_rms_diff:.6g}")
+        print(f"max_peak_abs_diff={report.max_peak_abs_diff:.6g}")
+        if report.only_a:
+            print(f"only_in_A={report.only_a}")
+        if report.only_b:
+            print(f"only_in_B={report.only_b}")
+        for pair in report.pairs:
+            print(
+                f"  {pair.name}: rms_diff={pair.rms_diff:.6g} "
+                f"peak_abs_diff={pair.peak_abs_diff:.6g}"
+            )
+
+    if args.json_out:
+        with open(args.json_out, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, indent=2)
             fh.write("\n")
-        print(f"json={args.json}")
+        if not machine_output:
+            print(f"json={args.json_out}")
 
     return 0

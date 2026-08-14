@@ -18,6 +18,7 @@ from core.settings import Settings
 from core.settings.access import apply_settings_overrides
 
 from .process_flags import add_process_args, collect_overrides
+from .reporting import add_reporting_args, emit_json, fail, finish_progress, make_progress_printer
 
 _REQUIRED_RUNTIME_MODULES = ("kthread", "soundfile")
 
@@ -91,13 +92,13 @@ def add_separate_args(parser: argparse.ArgumentParser) -> None:
         help="Crossfade overlap between long-file chunks in seconds",
     )
     add_process_args(parser)
+    add_reporting_args(parser)
 
 
 def cmd_separate(args: argparse.Namespace) -> int:
     dep_err = check_runtime_deps()
     if dep_err:
-        print(f"error: {dep_err}", file=sys.stderr)
-        return 2
+        return fail(args, dep_err, exit_code=2)
 
     os.makedirs(args.output, exist_ok=True)
     try:
@@ -128,24 +129,46 @@ def cmd_separate(args: argparse.Namespace) -> int:
             ),
         )
     except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+        return fail(args, str(exc), exit_code=2, exc=exc)
 
-    if args.print_settings:
+    if args.print_settings and not args.json:
         print(json.dumps(settings_summary(settings), indent=2))
 
     missing = [p for p in args.inputs if not os.path.isfile(p)]
     if missing:
-        print(f"error: input not found: {missing[0]}", file=sys.stderr)
-        return 2
+        return fail(args, f"input not found: {missing[0]}", exit_code=2)
 
-    result = run_separation_sync(settings, [os.path.abspath(p) for p in args.inputs])
+    machine_output = bool(args.json)
+    on_progress = None if args.quiet else make_progress_printer()
+    result = run_separation_sync(
+        settings,
+        [os.path.abspath(p) for p in args.inputs],
+        # JSON owns stdout. Engine console text would corrupt the document.
+        print_console=not (args.quiet or machine_output),
+        on_progress=on_progress,
+    )
+    if on_progress is not None:
+        finish_progress()
     if result.error is not None:
-        print(f"error: {type(result.error).__name__}: {result.error}", file=sys.stderr)
-        return 1
+        return fail(
+            args,
+            f"{type(result.error).__name__}: {result.error}",
+            exit_code=1,
+            exc=result.error,
+        )
     if result.stopped:
-        print("error: separation stopped", file=sys.stderr)
-        return 1
-    print(f"elapsed_s={result.elapsed_s:.3f}")
-    print(f"export_path={result.export_path}")
+        return fail(args, "separation stopped", exit_code=1)
+
+    if args.json:
+        payload = {
+            "ok": True,
+            "elapsed_s": result.elapsed_s,
+            "export_path": result.export_path,
+        }
+        if args.print_settings:
+            payload["settings"] = settings_summary(settings)
+        emit_json(payload)
+    else:
+        print(f"elapsed_s={result.elapsed_s:.3f}")
+        print(f"export_path={result.export_path}")
     return 0

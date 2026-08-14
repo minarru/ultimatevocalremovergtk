@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 from bundled.constants import (
     ALL_STEMS,
@@ -438,6 +438,7 @@ def _run_job(
     start_attr: str,
     print_console: bool,
     join_timeout: Optional[float],
+    on_progress: Optional[Callable[..., None]] = None,
 ) -> HeadlessResult:
     """Start ``JobRunner.<start_attr>`` and block until complete / error / stop."""
     if not input_paths:
@@ -470,6 +471,7 @@ def _run_job(
         done.set()
 
     callbacks = JobCallbacks(
+        on_progress=on_progress,
         on_console=on_console,
         on_complete=on_complete,
         on_stopped=on_stopped,
@@ -522,6 +524,7 @@ def run_separation_sync(
     *,
     print_console: bool = True,
     join_timeout: Optional[float] = None,
+    on_progress: Optional[Callable[..., None]] = None,
 ) -> HeadlessResult:
     """Start :class:`JobRunner` and block until complete / error / stop."""
     if settings.process.method == ENSEMBLE_MODE:
@@ -532,6 +535,7 @@ def run_separation_sync(
         start_attr="start",
         print_console=print_console,
         join_timeout=join_timeout,
+        on_progress=on_progress,
     )
 
 
@@ -541,6 +545,7 @@ def run_ensemble_sync(
     *,
     print_console: bool = True,
     join_timeout: Optional[float] = None,
+    on_progress: Optional[Callable[..., None]] = None,
 ) -> HeadlessResult:
     """Run an ensemble through :meth:`JobRunner.start_ensemble` and block."""
     return _run_job(
@@ -549,6 +554,7 @@ def run_ensemble_sync(
         start_attr="start_ensemble",
         print_console=print_console,
         join_timeout=join_timeout,
+        on_progress=on_progress,
     )
 
 

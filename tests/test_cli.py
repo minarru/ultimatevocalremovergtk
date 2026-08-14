@@ -3,6 +3,7 @@
 from __future__ import annotations
 import typing
 
+import io
 import json
 import os
 import subprocess
@@ -221,7 +222,7 @@ class CliArgparseTests(unittest.TestCase):
                     "UVR_AUTOCAST=0",
                     "--env",
                     "UVR_AUTOCAST=1",
-                    "--json",
+                    "--json-out",
                     summary,
                 ]
             )
@@ -245,6 +246,160 @@ class CliArgparseTests(unittest.TestCase):
             with open(summary, encoding="utf-8") as fh:
                 payload = json.load(fh)
             self.assertIn("speedup_a_over_b", payload)
+
+    @mock.patch("cli.bench.subprocess.run")
+    @mock.patch("cli.bench.compare_stem_dirs")
+    def test_bench_ab_json_owns_stdout(
+        self, mock_compare: typing.Any, mock_run: typing.Any
+    ) -> None:
+        mock_run.return_value = mock.Mock(returncode=0)
+        from core.bench_metrics import StemCompareReport
+
+        mock_compare.return_value = StemCompareReport(pairs=[], only_a=[], only_b=[])
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = os.path.join(tmp, "in.wav")
+            open(wav, "wb").close()
+            out = os.path.join(tmp, "ab")
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                code = main(
+                    [
+                        "bench-ab",
+                        wav,
+                        "-o",
+                        out,
+                        "--env",
+                        "UVR_AUTOCAST=0",
+                        "--env",
+                        "UVR_AUTOCAST=1",
+                        "--json",
+                    ]
+                )
+            self.assertEqual(code, 0)
+            payload = json.loads(mock_stdout.getvalue())
+            self.assertIn("speedup_a_over_b", payload)
+            self.assertEqual(mock_run.call_count, 2)
+            for call in mock_run.call_args_list:
+                child_argv = call.args[0]
+                self.assertIn("--quiet", child_argv)
+                self.assertIs(call.kwargs.get("stdout"), subprocess.DEVNULL)
+
+
+class ReportingFlagTests(unittest.TestCase):
+    def test_json_is_boolean_on_separate(self) -> None:
+        from cli.main import build_parser
+
+        args = build_parser().parse_args(["separate", "a.wav", "-o", "/tmp/o", "--json"])
+        self.assertIs(args.json, True)
+
+    def test_bench_ab_uses_json_out_for_the_file(self) -> None:
+        from cli.main import build_parser
+
+        args = build_parser().parse_args(
+            ["bench-ab", "a.wav", "-o", "/tmp/o", "--env", "A=1", "--env", "B=2",
+             "--json-out", "/tmp/s.json"]
+        )
+        self.assertEqual(args.json_out, "/tmp/s.json")
+        self.assertIs(args.json, False)
+
+    def test_parser_builds_without_conflicts(self) -> None:
+        from cli.main import build_parser
+
+        build_parser()  # raises argparse.ArgumentError on a duplicate option string
+
+
+class ProgressPrinterTests(unittest.TestCase):
+    def test_none_when_not_a_tty(self) -> None:
+        import io
+
+        from cli.reporting import make_progress_printer
+
+        self.assertIsNone(make_progress_printer(io.StringIO()))
+
+    def test_writes_carriage_returned_line_on_a_tty(self) -> None:
+        from cli.reporting import make_progress_printer
+
+        class _Tty(io.StringIO):
+            def isatty(self) -> bool:
+                return True
+
+        stream = _Tty()
+        printer = make_progress_printer(stream)
+        self.assertIsNotNone(printer)
+        assert printer is not None
+        printer(0.5, detail="MDX pass 1/2")
+        written = stream.getvalue()
+        self.assertIn("50.0%", written)
+        self.assertIn("MDX pass 1/2", written)
+        self.assertTrue(written.startswith("\r"))
+
+    def test_combine_kwargs_appear_in_the_line(self) -> None:
+        import io
+
+        from cli.reporting import make_progress_printer
+
+        class _Tty(io.StringIO):
+            def isatty(self) -> bool:
+                return True
+
+        stream = _Tty()
+        printer = make_progress_printer(stream)
+        assert printer is not None
+        printer(0.8, combine_index=1, combine_total=3, detail="stems")
+        self.assertIn("combine 1/3", stream.getvalue())
+
+
+class JsonSeparateTests(unittest.TestCase):
+    @mock.patch("cli.separate.run_separation_sync")
+    @mock.patch("cli.separate.build_settings")
+    @mock.patch("cli.separate.check_runtime_deps", return_value=None)
+    def test_json_print_settings_is_one_document(
+        self,
+        _mock_deps: typing.Any,
+        mock_build: typing.Any,
+        mock_run: typing.Any,
+    ) -> None:
+        settings = Settings.defaults()
+        mock_build.return_value = settings
+        mock_run.return_value = HeadlessResult(
+            ok=True, elapsed_s=1.5, export_path="/tmp/o"
+        )
+        with tempfile.NamedTemporaryFile(suffix=".wav") as fh:
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                code = main(
+                    [
+                        "separate",
+                        fh.name,
+                        "-o",
+                        "/tmp/o",
+                        "--method",
+                        "mdx",
+                        "--json",
+                        "--print-settings",
+                    ]
+                )
+        self.assertEqual(code, 0)
+        payload = json.loads(mock_stdout.getvalue())
+        self.assertIs(payload["ok"], True)
+        self.assertIn("settings", payload)
+        self.assertIsInstance(payload["settings"], dict)
+        mock_run.assert_called_once()
+        self.assertIs(mock_run.call_args.kwargs.get("print_console"), False)
+
+    @mock.patch("cli.separate.check_runtime_deps", return_value=None)
+    def test_json_missing_input_emits_failure_document(
+        self, _mock_deps: typing.Any
+    ) -> None:
+        missing = "/tmp/uvr-cli-missing-input-does-not-exist.wav"
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            with mock.patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+                code = main(
+                    ["separate", missing, "-o", "/tmp/o", "--json"]
+                )
+        self.assertEqual(code, 2)
+        payload = json.loads(mock_stdout.getvalue())
+        self.assertIs(payload["ok"], False)
+        self.assertIn(missing, payload["error"]["message"])
+        self.assertIn("error:", mock_stderr.getvalue())
 
 
 class TrampolineTests(unittest.TestCase):

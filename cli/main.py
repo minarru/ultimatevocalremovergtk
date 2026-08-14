@@ -33,9 +33,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Env assignment for leg A then B (exactly two required)",
     )
     bench.add_argument(
-        "--json",
+        "--json-out",
         default=None,
-        help="Optional path to write a JSON summary",
+        metavar="PATH",
+        help="Optional path to write the JSON summary (was --json before v5.7)",
     )
     bench.set_defaults(func=cmd_bench_ab)
 
