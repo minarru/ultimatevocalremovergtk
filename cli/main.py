@@ -46,4 +46,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
-    return int(args.func(args))
+    try:
+        return int(args.func(args))
+    except KeyboardInterrupt:
+        from .reporting import fail
+
+        return fail(
+            args,
+            "interrupted",
+            exit_code=130,
+            extra={"stopped": True},
+        )

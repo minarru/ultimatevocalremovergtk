@@ -482,10 +482,13 @@ def _run_job(
 
     runner = JobRunner(settings)
     started = time.perf_counter()
-    interrupts = {"count": 0}
+    interrupts: dict[str, Any] = {"count": 0, "force_at": None}
 
     def _request_stop(*, force: bool) -> None:
         interrupts["count"] += 1
+        if interrupts["force_at"] is None:
+            # Escalate a stubborn cooperative stop after ~5s without a second signal.
+            interrupts["force_at"] = time.perf_counter() + 5.0
         use_force = force or interrupts["count"] >= 2
         hint = "forcing stop" if use_force else "stopping… (Ctrl-C again to force)"
         print(f"\n{hint}", file=sys.stderr)
@@ -517,6 +520,13 @@ def _run_job(
             if join_timeout is not None and (time.perf_counter() - started) > join_timeout:
                 runner.stop(force=True)
                 raise TimeoutError(f"separation exceeded {join_timeout:.0f}s")
+            force_at = interrupts["force_at"]
+            if (
+                force_at is not None
+                and interrupts["count"] < 2
+                and time.perf_counter() >= force_at
+            ):
+                _request_stop(force=True)
     except KeyboardInterrupt:
         _request_stop(force=False)
         try:

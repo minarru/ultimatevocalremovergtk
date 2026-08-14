@@ -489,6 +489,20 @@ class JsonSeparateTests(unittest.TestCase):
         self.assertTrue(payload["stopped"])
         self.assertIn("stopped", err.getvalue().lower())
 
+    def test_main_keyboard_interrupt_emits_json_130(self) -> None:
+        buf = io.StringIO()
+        err = io.StringIO()
+        with mock.patch(
+            "cli.separate.check_runtime_deps",
+            side_effect=KeyboardInterrupt,
+        ), mock.patch("sys.stdout", buf), mock.patch("sys.stderr", err):
+            code = main(["separate", "a.wav", "-o", "/tmp/o", "--json"])
+        self.assertEqual(code, 130)
+        payload = json.loads(buf.getvalue())
+        self.assertFalse(payload["ok"])
+        self.assertTrue(payload["stopped"])
+        self.assertIn("interrupted", err.getvalue().lower())
+
 
 class TrampolineTests(unittest.TestCase):
     def test_core_cli_delegates_to_cli_main(self) -> None:

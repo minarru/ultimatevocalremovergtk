@@ -316,12 +316,12 @@ class _InterruptRunner:
 
     def stop(self, *, force: bool = False) -> None:
         self.stops.append(force)
-        self._alive = False
-        # Soft stop leaves the wait loop hanging (real workers take time to
-        # unwind); only force completes via on_stopped so a second interrupt
-        # or hang timeout can escalate.
-        if force and self._callbacks is not None:
-            self._callbacks.stopped()
+        # Soft stop leaves the worker "running" (real stubborn jobs stay
+        # is_running until unwind); only force completes via on_stopped.
+        if force:
+            self._alive = False
+            if self._callbacks is not None:
+                self._callbacks.stopped()
 
     def release_inference_memory(self, **kwargs: Any) -> None:
         pass
@@ -415,6 +415,118 @@ class InterruptTests(unittest.TestCase):
             )
             run_separation_sync(self.settings, ["/tmp/in.wav"], print_console=False)
         self.assertEqual(signalmod.getsignal(signalmod.SIGINT), previous)
+
+    def test_installed_sigint_handler_soft_then_force(self) -> None:
+        import signal as signalmod
+
+        runner = _InterruptRunner(self.settings)
+        handlers: dict[str, Any] = {}
+        stop_snapshots: list[list[bool]] = []
+
+        def start_and_capture(paths: Sequence[str], callbacks: Any) -> None:
+            runner._callbacks = callbacks
+            handlers["int"] = signalmod.getsignal(signalmod.SIGINT)
+            if hasattr(signalmod, "SIGTERM"):
+                handlers["term"] = signalmod.getsignal(signalmod.SIGTERM)
+
+        runner.start = start_and_capture  # type: ignore[method-assign]
+
+        def fake_event() -> Any:
+            class _Evt:
+                def __init__(self) -> None:
+                    self._set = False
+                    self.waits = 0
+
+                def set(self) -> None:
+                    self._set = True
+
+                def is_set(self) -> bool:
+                    return self._set
+
+                def wait(self, timeout: Any = None) -> bool:
+                    self.waits += 1
+                    if self._set:
+                        return True
+                    handler = handlers["int"]
+                    if self.waits == 1:
+                        handler(signalmod.SIGINT, None)
+                        stop_snapshots.append(list(runner.stops))
+                        return False
+                    if self.waits == 2:
+                        handler(signalmod.SIGINT, None)
+                        stop_snapshots.append(list(runner.stops))
+                        return False
+                    return self._set
+
+            return _Evt()
+
+        with mock.patch("core.headless_run.JobRunner", lambda settings: runner), \
+             mock.patch("core.headless_run.threading.Event", fake_event):
+            result = run_separation_sync(
+                self.settings, ["/tmp/in.wav"], print_console=False
+            )
+        self.assertTrue(result.stopped)
+        self.assertTrue(result.interrupted)
+        self.assertEqual(stop_snapshots, [[False], [False, True]])
+        self.assertEqual(runner.stops, [False, True])
+        self.assertIsNot(handlers["int"], signalmod.default_int_handler)
+        self.assertTrue(callable(handlers["int"]))
+        if hasattr(signalmod, "SIGTERM"):
+            self.assertIs(handlers["term"], handlers["int"])
+
+    def test_hang_deadline_forces_stop_without_second_signal(self) -> None:
+        import signal as signalmod
+
+        runner = _InterruptRunner(self.settings)
+        handlers: dict[str, Any] = {}
+        clock = {"t": 1000.0}
+
+        def start_and_capture(paths: Sequence[str], callbacks: Any) -> None:
+            runner._callbacks = callbacks
+            handlers["int"] = signalmod.getsignal(signalmod.SIGINT)
+
+        runner.start = start_and_capture  # type: ignore[method-assign]
+
+        def fake_event() -> Any:
+            class _Evt:
+                def __init__(self) -> None:
+                    self._set = False
+                    self.waits = 0
+
+                def set(self) -> None:
+                    self._set = True
+
+                def is_set(self) -> bool:
+                    return self._set
+
+                def wait(self, timeout: Any = None) -> bool:
+                    self.waits += 1
+                    if self._set:
+                        return True
+                    if self.waits == 1:
+                        handlers["int"](signalmod.SIGINT, None)
+                        # Expire the cooperative hang deadline before the
+                        # wait-loop check (no real 5s sleep).
+                        clock["t"] += 6.0
+                        return False
+                    return self._set
+
+            return _Evt()
+
+        with mock.patch("core.headless_run.JobRunner", lambda settings: runner), \
+             mock.patch("core.headless_run.threading.Event", fake_event), \
+             mock.patch(
+                 "core.headless_run.time.perf_counter",
+                 side_effect=lambda: clock["t"],
+             ):
+            result = run_separation_sync(
+                self.settings, ["/tmp/in.wav"], print_console=False
+            )
+        self.assertTrue(result.stopped)
+        self.assertEqual(runner.stops, [False, True])
+        # Soft stop recorded before the deadline force.
+        self.assertIs(runner.stops[0], False)
+        self.assertIs(runner.stops[1], True)
 
 
 if __name__ == "__main__":
