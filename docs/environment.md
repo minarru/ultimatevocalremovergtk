@@ -94,24 +94,38 @@ Drive the same `JobRunner` path as the GUI without GTK:
 
 ```bash
 # Use the project venv (required for kthread, soundfile, torch, …)
-./.venv/bin/python -m core.cli separate /path/to/song.wav -o /tmp/uvr_out --method mdx
+./.venv/bin/python -m cli separate /path/to/song.wav -o /tmp/uvr_out --method mdx
 
 # Force CPU / print resolved settings
-./.venv/bin/python -m core.cli separate song.wav -o /tmp/out --cpu --print-settings
+./.venv/bin/python -m cli separate song.wav -o /tmp/out --cpu --print-settings
 
 # Force both stems (ignores GUI karaoke "instrumental only" defaults)
-./.venv/bin/python -m core.cli separate song.wav -o /tmp/out --method mdx --stems both
+./.venv/bin/python -m cli separate song.wav -o /tmp/out --method mdx --stems both
 
 # A/B autocast (two fresh subprocesses + stem null metrics)
-./.venv/bin/python -m core.cli bench-ab song.wav -o /tmp/uvr_ab \
+./.venv/bin/python -m cli bench-ab song.wav -o /tmp/uvr_ab \
   --method mdx --model "Your Model Name" --stems both \
   --env UVR_AUTOCAST=0 --env UVR_AUTOCAST=1 \
-  --json /tmp/uvr_ab/summary.json
+  --json-out /tmp/uvr_ab/summary.json
 ```
+
+`python -m core.cli` and `python -m core` still work as trampolines to
+`python -m cli`; they are kept for older scripts and will not gain new flags.
+
+**Breaking change in this release:** `bench-ab --json PATH` is now
+`bench-ab --json-out PATH`. `--json` is a boolean on every subcommand and
+prints a machine-readable object on stdout.
+
+Shared flags (`separate`, `ensemble`, and `bench-ab`): `--cpu`/`--gpu`,
+`--device`, `--autocast`/`--no-autocast`, `--format`, `--wav-type`,
+`--mp3-bitrate`, `--flac-depth`, `--vocal-split MODEL`/`--no-vocal-split`,
+`--save-split-inst`, `--normalize`, `--match-mix`, `--sample`/`--sample-seconds`,
+`--set`, `--quiet`, `--json`. Karaoke models still default to instrumental-only
+output unless `--stems both` is passed. That is engine behaviour and is not
+changed here.
 
 Notes:
 
-- Ensemble mode is rejected in v1 (`--method mdx|demucs|vr`).
 - CLI overrides are **not** written back to `settings.json`.
 - Autocast: unset `UVR_AUTOCAST` uses the persisted `is_autocast` setting; `--env UVR_AUTOCAST=…` overrides for A/B benches.
 - `--model` accepts GUI display names, on-disk basenames/filenames, or a
@@ -121,9 +135,31 @@ Notes:
   unchanged).
 - `--stems` overrides which outputs are saved for the run only
   (`both` / `primary` / `secondary` / `vocals` / `instrumental`, plus Demucs
-  `bass`/`drums`/`other`). Omit to keep GUI/settings defaults (karaoke models
-  may default to instrumental-only).
+  `bass`/`drums`/`other`). Omit to keep GUI/settings defaults.
 - `bench-ab` requires exactly two `--env KEY=value` flags; outputs land in `ab_a_*` / `ab_b_*` under `-o`.
+- `--json` reserves stdout for one JSON document (success *or* failure) and
+  therefore implies quiet engine-console output; progress and human `error:`
+  lines remain on stderr. Failures are `{"ok": false, "error": {"type", "message"}}`.
+  Argparse usage errors stay argparse-shaped (they happen before `func()`).
+- Ctrl-C / SIGTERM is a first-class stop: first signal is cooperative
+  (`JobRunner.stop(force=False)`), second (or a 5s hang) is `force=True`.
+  Exit code 130. `--json` still emits one document with `"stopped": true`.
+  There is no traceback. `bench-ab` does not start the other leg.
+- `--print-settings --json` nests settings under the result's `settings` key
+  instead of printing a second document.
+- `ensemble` requires `--ensemble NAME` or `--model`/`--models`. It does not
+  inherit `selected_models` from the last GUI session.
+- `--ensemble` accepts a user-saved name, a curated preset id, or the GUI
+  label `Curated: …`. Curated members go through `resolve_member_tags`.
+- An ad-hoc ensemble (`--model` / `--models` without `--ensemble`) requires an
+  explicit `--main-stem`. Ad-hoc members clear any saved-ensemble name so
+  output naming cannot use a stale preset label.
+- Members outside `ensemble_model_list` for the chosen `--main-stem` print a
+  warning on stderr and still run.
+- `--sample-seconds N` also enables sample mode.
+- `bench-ab` forwards every process, splitter, stem, and long-chunk option to
+  both child legs. `--json-out PATH` writes a file; boolean `--json` prints the
+  single machine-readable benchmark payload.
 
 ---
 

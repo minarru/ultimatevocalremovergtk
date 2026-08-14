@@ -24,7 +24,7 @@ python -m unittest tests.test_dispatch                                  # one mo
 python -m unittest tests.test_dispatch.DispatchTests.test_main_thread_wrapper  # one test
 ```
 
-Type checking is **basedpyright** (a pyright fork — same CLI, same config file), configured in [pyrightconfig.json](pyrightconfig.json): `standard` mode plus a few strict-mode rules, over `ui/ core/ engines/ tests/ bundled/ ml/ scripts/` (plus `__version__.py`). Keep `models/` and `vendor/demucs` excluded — do not chase type errors there. Stubs live in [typings/](typings/). Install the checker with `pip install -r requirements-dev.txt`; CI runs it on every PR.
+Type checking is **basedpyright** (a pyright fork — same CLI, same config file), configured in [pyrightconfig.json](pyrightconfig.json): `standard` mode plus a few strict-mode rules, over `ui/ cli/ core/ engines/ tests/ bundled/ ml/ scripts/` (plus `__version__.py`). Keep `models/` and `vendor/demucs` excluded — do not chase type errors there. Stubs live in [typings/](typings/). Install the checker with `pip install -r requirements-dev.txt`; CI runs it on every PR.
 
 basedpyright's own extra rules are left **off**: measured against this tree they are almost all false positives (`reportUnreachable` fires on the `sys.platform` branches that `"pythonPlatform": "Linux"` statically prunes; `reportPrivateLocalImportUsage` fires on tests importing `_`-prefixed helpers). Its `recommended` mode reports ~15k diagnostics — don't enable it wholesale. If you want to tighten a rule despite existing violations, use `basedpyright --writebaseline` rather than turning the rule off.
 
@@ -45,8 +45,11 @@ Other:
 
 ```bash
 ./resources/compile_resources.sh   # rebuild ui/data/uvr.gresource after touching resources/icons or style.css
-python -m core.cli separate song.wav -o /tmp/out --method mdx --stems both   # headless separation
-python -m core.cli bench-ab song.wav -o /tmp/ab --env UVR_AUTOCAST=0 --env UVR_AUTOCAST=1
+python -m cli separate song.wav -o /tmp/out --method mdx --stems both   # headless separation
+python -m cli ensemble song.wav -o /tmp/out --ensemble "My Mix"         # saved or curated
+python -m cli ensemble song.wav -o /tmp/out --ensemble "Curated: kim vocal"
+python -m cli list-models --method mdx                                  # what is installed
+python -m cli bench-ab song.wav -o /tmp/ab --env UVR_AUTOCAST=0 --env UVR_AUTOCAST=1
 python scripts/generate_models_catalogue.py   # regenerate docs/models-catalogue.md
 python scripts/model_sweep.py --list      # local-only: every installed model, one real run each
 python scripts/model_sweep.py --method mdx --json /tmp/sweep.json
@@ -58,10 +61,11 @@ There is no linter/formatter config in the repo.
 
 ## Architecture
 
-Layers, strictly one-directional (`ui` → `core` → `engines` → `ml`; `bundled` is read by all):
+Layers, strictly one-directional (`ui` → `core` → `engines` → `ml`, and `cli` → `core`; `bundled` is read by all):
 
 - **`bundled/`** — read-only shipped data: `constants/` (stems, process methods, help strings, and a frozen legacy settings-key table for pickle migration), `error_handling.py` (traceback-substring → user message matching), changelog, download metadata. Imported as `from bundled.constants import *` in engine/model code to mirror upstream's flat namespace.
 - **`core/`** — Tk-free backend facade. Public surface is re-exported in [core/__init__.py](core/__init__.py): `Settings`, `ModelConfig`/`ModelRepository`/`assemble_model`, `ProcessData`, `JobRunner`/`JobCallbacks`, `AudioToolRunner`.
+- **`cli/`** — headless front end (`python -m cli`), a presentation layer peer of `ui/`. `core/cli.py` and `core/__main__.py` remain as trampolines that import `cli.main` **lazily inside a function body** — the single permitted `core → cli` reference, and the reason importing `core` still never pulls in `cli`.
 - **`engines/`** — separation orchestration. `SeperateAttributes` ([engines/base.py](engines/base.py)) is the shared engine base; `SeperateVR` / `SeperateMDX` / `SeperateMDXC` / `SeperateDemucs` are selected in [engines/orchestration.py](engines/orchestration.py). [engines/separate.py](engines/separate.py) is a re-export shim for upstream import paths.
 - **`ml/`** — networks and DSP (VR network, MDX/MDX-C, BS/Mel-Band Roformer, SCNet, Bandit, Apollo, `spec_utils`). Ported upstream code; type-checked at the same `standard` level as the app (same `reportMissingParameterType` floor).
 - **`vendor/demucs/`** — vendored Demucs fork.
@@ -71,6 +75,8 @@ Layers, strictly one-directional (`ui` → `core` → `engines` → `ml`; `bundl
 **No tkinter, anywhere.** `core` exists specifically to be framework-agnostic; importing tkinter from it breaks the whole design.
 
 **Settings are typed and nested.** `Settings` owns the defaults and persists nested JSON to `settings.json`; a legacy `data.pkl` is imported once and renamed to `data.pkl.bak`. Existing widgets may use the flat `get`/`set` bridge defined by `core/settings/flat_map.py`, but new fields belong in the typed dataclasses and typed defaults first.
+
+**`--set` and named CLI flags share one validated path.** `set_path` cannot reject an unknown field on its own — the settings sections are plain dataclasses without `slots`, so `setattr` invents the attribute instead of raising. Anything that accepts a user-supplied settings path must go through `validate_setting_path` / `apply_settings_overrides` in [core/settings/access.py](core/settings/access.py). Named `cli` flags compile to `(path, value)` pairs in `cli/process_flags.py` rather than growing `build_settings`' signature.
 
 **Enum settings are `str, Enum` — but don't stringify them.** `process.method` and `process.save_format` are enums ([core/types/enums.py](core/types/enums.py)), as are the schema-v3 closed vocabularies in [core/types/settings_enums.py](core/types/settings_enums.py) (wav type, bitrate, denoise/phase options, audio tool, manual-ensemble algorithm, colour scheme) and `ensemble.main_stem` ([core/stems.py](core/stems.py)). `==` against a bundled constant, dict lookup, `.lower()` and `json.dumps` all behave as the value string, so most code Just Works. `str(v)` and `f"{v}"` do **not** — they yield `"SaveFormat.WAV"`, not `"WAV"`. Route filenames, paths and log lines through `enum_value` ([core/settings/coerce.py](core/settings/coerce.py)), re-exported for the UI from [ui/settings_bind.py](ui/settings_bind.py); it unwraps enums and passes everything else through.
 
@@ -134,4 +140,6 @@ Known bugs and roadmap gaps are tracked in [docs/tracked-issues.md](docs/tracked
 - A model combo seeded before its real list loads must not persist its value: if the stored tag is absent from the fresh list the combo falls to index 0 and writes `NO_MODEL` over the user's choice. The gate is `LazyPopulator.ready` (per-combo `entry["ready"]` in `MethodView`); a refresh must snapshot the combo's current value *before* invalidating, or the selection reverts to whatever was last applied.
 - Never call `widget.destroy()` in a test or smoke script — with no running main loop it segfaults.
 - GTK widget behaviour and layout-diagnosis notes live in [ui/CLAUDE.md](ui/CLAUDE.md), loaded when working under `ui/`.
+- Headless CLI layer rules live in [cli/CLAUDE.md](cli/CLAUDE.md), loaded when working under `cli/`.
+- **Read-only CLI commands default to offline.** `map_basenames_to_display`, `all_model_tags`, and `karaoke_model_list` (used by `--vocal-split`) reach `_merged_for_display()`, which fetches the politrees and mvsepless catalogues (30s timeout each). `cli/offline.py`'s `catalogue_offline()` sets both disable flags; `--online` means "do not force them on" and does not clear flags the caller already set. The flags are read at call time, so setting them before the repository is touched works.
 - This working tree often carries long-lived uncommitted edits (model metadata under `models/*/model_data/`). Never run unscoped `git checkout -- .`, `git restore .`, `git reset --hard`, `git stash` or `git clean`; restore only exact paths, and stage explicitly rather than `git add -A`.

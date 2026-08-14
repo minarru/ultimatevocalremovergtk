@@ -130,6 +130,22 @@ python -m ui
 
 `run_uvr.sh` also installs a desktop entry under `~/.local/share/applications/` on first launch. A template is provided at `packaging/org.uvr.UltimateVocalRemover.desktop`.
 
+### Headless CLI
+
+No GTK needed — the same engine, driven from a terminal:
+
+```bash
+python -m cli separate song.wav -o ~/stems --method mdx --stems both
+python -m cli ensemble song.wav -o ~/stems --ensemble "My Mix"
+python -m cli ensemble song.wav -o ~/stems --ensemble "Curated: kim vocal"
+python -m cli ensemble song.wav -o ~/stems --model "MDX-Net: A" \
+  --model "MDX-Net: B" --main-stem vocals_instrumental
+python -m cli list-models --method ensemble
+```
+
+`python -m cli <command> --help` lists every flag. `--set section.field=value`
+reaches any typed setting that has no dedicated flag.
+
 ## Upgrading
 
 This fork is distributed as **source** (no in-app binary update). To upgrade to a newer release:
@@ -171,6 +187,7 @@ Source code is grouped by layer at the repository root:
 | Path | Role |
 |---|---|
 | `ui/` | GTK4 / libadwaita interface (`python -m ui`) |
+| `cli/` | Headless command-line interface (`python -m cli`) |
 | `core/` | Backend facade: settings, job runner, paths, downloads |
 | `engines/` | Separation orchestration (VR, MDX, Demucs) |
 | `ml/` | Neural networks and audio DSP helpers |
