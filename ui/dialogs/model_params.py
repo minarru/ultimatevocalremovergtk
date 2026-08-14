@@ -56,6 +56,16 @@ from core.mdx_c_registry import infer_mdx_c_architecture
 from core.model_config import ModelConfig
 from core.model_data import load_mdx_c_config
 from core.model_display import display_name_for_model
+from ..help_text import (
+    MDX_DIM_F_SET_HELP,
+    MDX_DIM_T_SET_HELP,
+    MDX_N_FFT_SCALE_SET_HELP,
+    POPUP_COMPENSATE_HELP,
+    SET_STEM_NAME_HELP,
+    VR_MODEL_NOUT_HELP,
+    VR_MODEL_NOUT_LSTM_HELP,
+    VR_MODEL_PARAM_HELP,
+)
 from ..hints import set_tooltip
 from ..spacing import inset_md
 from .utils import present_modal_dialog, run_blocking_dialog, set_dialog_content, set_form_dialog_content
@@ -191,6 +201,7 @@ class _ParamDialog:
     def _add_stem_row(self, group: typing.Any):
         self.stem_row = make_combo_row("Primary stem", list(STEM_SET_MENU))
         set_combo_value(self.stem_row, self.existing.get("primary_stem", VOCAL_STEM))
+        set_tooltip(self.stem_row, SET_STEM_NAME_HELP)
         group.add(self.stem_row)
 
     def _add_karaoke_rows(self, group: typing.Any):
@@ -209,6 +220,7 @@ class _ParamDialog:
         params = _list_param_files(paths.VR_PARAM_DIR, ".json") or [NONE_SELECTED]
         self.vr_param_row = make_combo_row("Model parameters", params)
         set_combo_value(self.vr_param_row, self.existing.get("vr_model_param", params[0]))
+        set_tooltip(self.vr_param_row, VR_MODEL_PARAM_HELP)
         group.add(self.vr_param_row)
 
         self.is_51_row = Adw.SwitchRow(title="VR 5.1 model")
@@ -216,9 +228,11 @@ class _ParamDialog:
         group.add(self.is_51_row)
         self.nout_row = make_discrete_scale_row("Out channels", [str(v) for v in NOUT_SEL])
         set_scale_row_value(self.nout_row, str(self.existing.get("nout", 32)))
+        set_tooltip(self.nout_row, VR_MODEL_NOUT_HELP)
         group.add(self.nout_row)
         self.nout_lstm_row = make_discrete_scale_row("Out channels (LSTM)", [str(v) for v in NOUT_LSTM_SEL])
         set_scale_row_value(self.nout_lstm_row, str(self.existing.get("nout_lstm", 128)))
+        set_tooltip(self.nout_lstm_row, VR_MODEL_NOUT_LSTM_HELP)
         group.add(self.nout_lstm_row)
 
         self._add_karaoke_rows(group)
@@ -227,12 +241,16 @@ class _ParamDialog:
         self._add_stem_row(group)
         detected = self._detect_mdx_shapes()
         self.dim_f_row = self._entry_row("Dim_f", self.existing.get("mdx_dim_f_set", detected.get("dim_f", MDX_POP_DIMF[0])))
+        set_tooltip(self.dim_f_row, MDX_DIM_F_SET_HELP)
         group.add(self.dim_f_row)
         self.dim_t_row = self._entry_row("Dim_t", self.existing.get("mdx_dim_t_set", detected.get("dim_t", "8")))
+        set_tooltip(self.dim_t_row, MDX_DIM_T_SET_HELP)
         group.add(self.dim_t_row)
         self.n_fft_row = self._entry_row("N_FFT scale", self.existing.get("mdx_n_fft_scale_set", detected.get("n_fft", MDX_POP_NFFT[2])))
+        set_tooltip(self.n_fft_row, MDX_N_FFT_SCALE_SET_HELP)
         group.add(self.n_fft_row)
         self.compensate_row = self._entry_row("Volume compensation", self.existing.get("compensate", "1.035"))
+        set_tooltip(self.compensate_row, POPUP_COMPENSATE_HELP)
         group.add(self.compensate_row)
         self._add_karaoke_rows(group)
 

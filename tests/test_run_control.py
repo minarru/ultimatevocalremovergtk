@@ -142,5 +142,39 @@ class ApplicationQuitTests(unittest.TestCase):
         app.quit.assert_not_called()
 
 
+class OnProgressBarTests(unittest.TestCase):
+    def _controller(self) -> tuple[RunController, mock.Mock]:
+        from core.run_estimate import ProgressEtaTracker
+
+        window = mock.Mock()
+        window.log_panel = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._run_ui_suspended = False
+        controller._eta_tracker = ProgressEtaTracker()
+        controller._last_progress_ui_at = 0.0
+        controller._last_progress_phase = None
+        controller._last_progress_pass = None
+        controller._last_progress_combine = None
+        controller._run_started_at = 0.0
+        return controller, window
+
+    def test_save_ticks_move_the_bar(self) -> None:
+        controller, window = self._controller()
+        controller._on_progress(0.4, local_step=0.50, pass_index=1, pass_total=1)
+        first = window.log_panel.set_progress_fraction.call_args[0][0]
+        controller._last_progress_ui_at = 0.0
+        controller._on_progress(0.93, local_step=0.93, pass_index=1, pass_total=1)
+        second = window.log_panel.set_progress_fraction.call_args[0][0]
+        self.assertGreater(second, first)
+        self.assertAlmostEqual(second, 0.93)
+
+    def test_load_without_fill_pulses(self) -> None:
+        controller, window = self._controller()
+        controller._on_progress(0.05, local_step=0.05, pass_index=1, pass_total=1)
+        window._start_pulse.assert_called()
+        window.log_panel.set_progress_fraction.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

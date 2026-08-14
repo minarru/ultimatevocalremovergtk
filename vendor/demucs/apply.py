@@ -215,9 +215,11 @@ def apply_model(model,
         mix = tensor_chunk(mix)
         padded_mix = mix.padded(length + 2 * max_shift)
         out = 0
-        for _ in range(shifts):
+        for shift_i in range(shifts):
             offset = random.randint(0, max_shift)
             shifted = TensorChunk(padded_mix, offset, length + max_shift - offset)
+            if set_progress_bar:
+                set_progress_bar(0.1, (0.8 / shifts * (shift_i + 1)))
             shifted_out = apply_model(model, shifted, **kwargs)
             out += shifted_out[..., max_shift - offset:]
         out /= shifts
@@ -266,8 +268,12 @@ def apply_model(model,
             valid_length = length
         mix = tensor_chunk(mix)
         padded_mix = mix.padded(valid_length).to(device)
+        if set_progress_bar:
+            set_progress_bar(0.1, 0)
         with th.no_grad():
             out = model(padded_mix)
+        if set_progress_bar:
+            set_progress_bar(0.1, 0.8)
         return center_trim(out, length)
     
 def demucs_segments(demucs_segment, demucs_model):

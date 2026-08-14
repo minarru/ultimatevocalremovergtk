@@ -7,6 +7,7 @@ from ui.help_text import (
     COMPENSATE_HELP,
     CROP_SIZE_HELP,
     ENSEMBLE_LISTBOX_HELP,
+    ENSEMBLE_TYPE_HELP,
     IS_DEVERB_VOC_HELP,
     IS_DENOISE_HELP,
     IS_FREQUENCY_MATCH_HELP,
@@ -23,6 +24,7 @@ from ui.help_text import (
     POST_PROCESS_THREASHOLD_HELP,
     PRE_PROC_MODEL_HELP,
     PROCESS_METHOD_HINT,
+    PROGRESS_ETA_HINT,
     SAVE_STEM_ONLY_HELP,
     STEM_ONLY_ALL_HINT,
     VIEW_INPUTS_BUTTON_HINT,
@@ -72,11 +74,18 @@ class HelpTextStyleTests(unittest.TestCase):
         self.assertIn("spectrogram-based models", PROCESS_METHOD_HINT)
         self.assertNotIn("MDX-Net — hybrid spectrogram", PROCESS_METHOD_HINT)
         self.assertIn("compatible", ENSEMBLE_LISTBOX_HELP)
+        self.assertIn("Max Spec", ENSEMBLE_TYPE_HELP)
+        self.assertIn("Median Spec", ENSEMBLE_TYPE_HELP)
+        self.assertIn("Chunk Min", ENSEMBLE_TYPE_HELP)
+        self.assertIn("Primary/Secondary", ENSEMBLE_TYPE_HELP)
         self.assertNotIn("writes one file", SAVE_STEM_ONLY_HELP)
         self.assertNotIn("default", STEM_ONLY_ALL_HINT.casefold())
         self.assertIn("unless waveform mode supports", MANUAL_ENSEMBLE_ALGORITHM_HINT)
         self.assertEqual(VIEW_INPUTS_BUTTON_HINT, "Review and verify inputs")
         self.assertEqual(VIP_DOWNLOAD_CODE_HINT, "Enter VIP download code")
+        self.assertNotIn("holds while saving", PROGRESS_ETA_HINT)
+        self.assertIn("fills during inference", PROGRESS_ETA_HINT)
+        self.assertIn("Combining i/n", PROGRESS_ETA_HINT)
 
 
 if __name__ == "__main__":

@@ -534,7 +534,14 @@ class SeperateMDX(SeperateAttributes):
 
             with torch.inference_mode():
                 hop_idx = 0
-                progress_units = max(1, n_chunks)
+                hop_weight = (
+                    2
+                    if self.is_denoise and not self.is_denoise_model and not is_match_mix
+                    else 1
+                )
+                progress_units = max(1, n_chunks * hop_weight)
+                if not is_match_mix:
+                    self.progress_total = progress_units
                 while hop_idx < n_chunks:
                     self.check_run_control()
                     take = min(effective_batch, n_chunks - hop_idx)
@@ -571,9 +578,10 @@ class SeperateMDX(SeperateAttributes):
                         continue
 
                     for _ in range(take):
-                        self.running_inference_progress_bar(
-                            progress_units, is_match_mix=is_match_mix
-                        )
+                        for _unit in range(hop_weight):
+                            self.running_inference_progress_bar(
+                                progress_units, is_match_mix=is_match_mix
+                            )
                     _scatter_ola(tar_waves, meta)
                     hop_idx += take
 
@@ -602,6 +610,8 @@ class SeperateMDX(SeperateAttributes):
                         self.device,
                         model_path=self.DENOISER_MODEL,
                         settings=self.settings,
+                        on_batch=self.denoise_progress_callback(),
+                        check_run_control=self.check_run_control,
                     )
                 else:
                     source = vr_denoiser(
@@ -609,6 +619,8 @@ class SeperateMDX(SeperateAttributes):
                         self.device,
                         model_path=self.DENOISER_MODEL,
                         settings=self.settings,
+                        on_batch=self.denoise_progress_callback(),
+                        check_run_control=self.check_run_control,
                     )
 
             return source
@@ -971,6 +983,8 @@ class SeperateMDXC(SeperateAttributes):
                                 self.device,
                                 model_path=self.DENOISER_MODEL,
                                 settings=self.settings,
+                                on_batch=self.denoise_progress_callback(),
+                                check_run_control=self.check_run_control,
                             )
                             if sources[VOCAL_STEM].shape[1] != org_mix.shape[1]:
                                 sources[VOCAL_STEM] = spec_utils.match_array_shapes(sources[VOCAL_STEM], org_mix)

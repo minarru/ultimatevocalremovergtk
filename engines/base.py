@@ -14,6 +14,7 @@ from core.export_naming import stem_wav_path
 from core.gpu_backend import resolve_inference_backend
 from core.model_display import display_name_for_model
 from core.stems import StemBucket, StemLiteral, export_stem_key, filename_tag
+from core.progress_ticks import InferenceProgress
 from core.run_estimate import save_progress_local_step
 from ml import spec_utils
 
@@ -43,6 +44,8 @@ class SeperateAttributes:
         self.list_all_models: list
         self.process_data = process_data
         self.progress_value = 0
+        self.progress_total = 0
+        self._infer_progress = InferenceProgress()
         self._save_stem_total = 1
         self._save_stem_index = 0
         self.set_progress_bar = process_data.set_progress_bar
@@ -351,16 +354,49 @@ class SeperateAttributes:
         else:
             self.write_to_console(INFERENCE_STEP_1)
         
+    def report_inference_unit(self) -> None:
+        """Advance one hop unit (0.10–0.80)."""
+        total = max(1, int(self.progress_total), self._infer_progress.total)
+        frac = self._infer_progress.hop(total)
+        self.progress_value = self._infer_progress.value
+        self.progress_total = self._infer_progress.total
+        self.set_progress_bar(0.1, frac - 0.1)
+
     def running_inference_progress_bar(
         self, length: float, is_match_mix: bool = False
     ) -> None:
-        if not is_match_mix:
-            self.progress_value += 1
+        units = max(1, int(length))
+        if is_match_mix:
+            frac = self._infer_progress.extra(units)
+            self.set_progress_bar(0.1, frac - 0.1)
+            return
+        if self.progress_total <= 0:
+            self.progress_total = units
+        elif units > self.progress_total:
+            self.progress_total = units
+        self.report_inference_unit()
 
-            if (0.8/length*self.progress_value) >= 0.8:
-                length = self.progress_value + 1
-  
-            self.set_progress_bar(0.1, (0.8/length*self.progress_value))
+    def denoise_progress_callback(self) -> Any:
+        """Continue through 0.80–0.89 across ``vr_denoiser`` patch batches."""
+
+        def on_batch(_done: int, total: int) -> None:
+            frac = self._infer_progress.extra(max(1, int(total)))
+            self.set_progress_bar(0.1, frac - 0.1)
+
+        return on_batch
+
+    def deverb_progress_callback(self) -> Any:
+        """Tick deverb batches inside the current save-stem slice (0.90–0.96)."""
+
+        def on_batch(done: int, total: int) -> None:
+            stem_total = max(1, int(getattr(self, "_save_stem_total", 1)))
+            index = int(getattr(self, "_save_stem_index", 0))
+            start = save_progress_local_step(index, stem_total)
+            end = save_progress_local_step(index + 1, stem_total)
+            span = max(0.0, end - start)
+            self.set_progress_bar(start + span * (max(0, int(done)) / max(1, int(total))))
+
+        return on_batch
         
     def load_cached_sources(self) -> None:
         
@@ -634,6 +670,8 @@ class SeperateAttributes:
                 is_deverber=True,
                 model_path=self.DEVERBER_MODEL,
                 settings=self.settings,
+                on_batch=self.deverb_progress_callback(),
+                check_run_control=self.check_run_control,
             )
             save_audio_file(stem_path.replace(".wav", "_deverbed.wav"), stem_source_deverbed)
             save_audio_file(stem_path.replace(".wav", "_reverb_only.wav"), stem_source_2)

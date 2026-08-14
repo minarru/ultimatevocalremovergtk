@@ -161,6 +161,51 @@ def _progress_detail(
     return " · ".join(parts) if parts else None
 
 
+@dataclass
+class _ProgressSink:
+    """Mutable last-fraction holder shared by a run's progress callback."""
+
+    fraction: float = 0.0
+
+
+def _bind_set_progress_bar(
+    runner: "JobRunner",
+    callbacks: "JobCallbacks",
+    progress_ctx: dict[str, Any],
+    *,
+    total_files: int,
+    total_chunk_units: int,
+    sink: _ProgressSink,
+) -> Callable[..., None]:
+    """Map engine ``set_progress_bar(step, iterations)`` onto ``callbacks.progress``."""
+
+    def set_progress_bar(
+        step: typing.Any, inference_iterations: typing.Any = 0
+    ) -> None:
+        total_count = max(1, runner.true_model_count * total_chunk_units)
+        base = 1.0 / total_count
+        local_step = step + inference_iterations
+        fraction = base * runner.iteration - base + base * local_step
+        sink.fraction = fraction
+        callbacks.progress(
+            fraction,
+            local_step=local_step,
+            pass_index=max(1, runner.iteration),
+            pass_total=total_count,
+            detail=_progress_detail(
+                file_num=progress_ctx["file_num"],
+                file_total=total_files,
+                model=progress_ctx["model"],
+                model_num=progress_ctx["model_num"],
+                model_count=progress_ctx["model_count"],
+                chunk_num=progress_ctx["chunk_num"],
+                chunk_total=progress_ctx["chunk_total"],
+            ),
+        )
+
+    return set_progress_bar
+
+
 def _long_file_chunk_settings(settings: Settings) -> tuple:
     """Return ``(chunk_seconds, overlap_seconds)``; chunk ``<= 0`` means off."""
     try:
@@ -911,7 +956,7 @@ class JobRunner:
             if total_chunk_units <= 0:
                 total_chunk_units = max(1, total_files)
 
-            last_progress_fraction = 0.0
+            progress_sink = _ProgressSink()
             progress_ctx = {
                 "file_num": 1,
                 "model": None,
@@ -920,31 +965,6 @@ class JobRunner:
                 "chunk_num": 0,
                 "chunk_total": 0,
             }
-
-            def make_progress():
-                def set_progress_bar(step: typing.Any, inference_iterations: typing.Any=0):
-                    nonlocal last_progress_fraction
-                    total_count = max(1, self.true_model_count * total_chunk_units)
-                    base = 1.0 / total_count
-                    local_step = step + inference_iterations
-                    fraction = base * self.iteration - base + base * local_step
-                    last_progress_fraction = fraction
-                    callbacks.progress(
-                        fraction,
-                        local_step=local_step,
-                        pass_index=max(1, self.iteration),
-                        pass_total=total_count,
-                        detail=_progress_detail(
-                            file_num=progress_ctx["file_num"],
-                            file_total=total_files,
-                            model=progress_ctx["model"],
-                            model_num=progress_ctx["model_num"],
-                            model_count=progress_ctx["model_count"],
-                            chunk_num=progress_ctx["chunk_num"],
-                            chunk_total=progress_ctx["chunk_total"],
-                        ),
-                    )
-                return set_progress_bar
 
             try:
                 amp_threshold = float(
@@ -976,7 +996,17 @@ class JobRunner:
                     )
                 ov_samples = overlaps_for_chunks(chunks) if chunked else []
 
-                set_progress_bar = pausable_callback(self, make_progress())
+                set_progress_bar = pausable_callback(
+                    self,
+                    _bind_set_progress_bar(
+                        self,
+                        callbacks,
+                        progress_ctx,
+                        total_files=total_files,
+                        total_chunk_units=total_chunk_units,
+                        sink=progress_sink,
+                    ),
+                )
 
                 for model_num, current_model in enumerate(models, start=1):
                     check_stopped(self)
@@ -1181,7 +1211,7 @@ class JobRunner:
             if total_chunk_units <= 0:
                 total_chunk_units = max(1, total_files)
 
-            last_progress_fraction = 0.0
+            progress_sink = _ProgressSink()
             progress_ctx = {
                 "file_num": 1,
                 "model": None,
@@ -1190,31 +1220,6 @@ class JobRunner:
                 "chunk_num": 0,
                 "chunk_total": 0,
             }
-
-            def make_progress():
-                def set_progress_bar(step: typing.Any, inference_iterations: typing.Any=0):
-                    nonlocal last_progress_fraction
-                    total_count = max(1, self.true_model_count * total_chunk_units)
-                    base = 1.0 / total_count
-                    local_step = step + inference_iterations
-                    fraction = base * self.iteration - base + base * local_step
-                    last_progress_fraction = fraction
-                    callbacks.progress(
-                        fraction,
-                        local_step=local_step,
-                        pass_index=max(1, self.iteration),
-                        pass_total=total_count,
-                        detail=_progress_detail(
-                            file_num=progress_ctx["file_num"],
-                            file_total=total_files,
-                            model=progress_ctx["model"],
-                            model_num=progress_ctx["model_num"],
-                            model_count=progress_ctx["model_count"],
-                            chunk_num=progress_ctx["chunk_num"],
-                            chunk_total=progress_ctx["chunk_total"],
-                        ),
-                    )
-                return set_progress_bar
 
             for file_num, plan in enumerate(file_plans, start=1):
                 check_stopped(self)
@@ -1239,7 +1244,17 @@ class JobRunner:
                     )
                 ov_samples = overlaps_for_chunks(chunks) if chunked else []
 
-                set_progress_bar = pausable_callback(self, make_progress())
+                set_progress_bar = pausable_callback(
+                    self,
+                    _bind_set_progress_bar(
+                        self,
+                        callbacks,
+                        progress_ctx,
+                        total_files=total_files,
+                        total_chunk_units=total_chunk_units,
+                        sink=progress_sink,
+                    ),
+                )
                 current_model = None
                 # stem_tag -> list of member waveforms for in-memory combine
                 ensemble_stem_arrays: dict = {}
@@ -1398,7 +1413,7 @@ class JobRunner:
                         combine_steps.append((SECONDARY_STEM, {"is_inst_mix": True}))
 
                 combine_total = max(1, len(combine_steps))
-                combine_start = last_progress_fraction
+                combine_start = progress_sink.fraction
                 combine_end = file_num / max(1, total_files)
                 for combine_idx, (stem_name, kwargs) in enumerate(combine_steps):
                     ensemble.ensemble_outputs(
@@ -1411,7 +1426,7 @@ class JobRunner:
                     span = max(combine_end - combine_start, 0.0)
                     fraction = combine_start + span * ((combine_idx + 1) / combine_total)
                     local_step = combine_progress_local_step(combine_idx, combine_total)
-                    last_progress_fraction = fraction
+                    progress_sink.fraction = fraction
                     total_count = max(1, self.true_model_count * total_files)
                     callbacks.progress(
                         fraction,

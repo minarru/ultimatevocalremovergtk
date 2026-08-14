@@ -11,7 +11,8 @@ Style guide
 * Separate sections with a single blank line; avoid trailing blank lines.
 * Plain text only — GTK tooltips do not render Markdown (no ``**bold**``).
 * Prefer single-line strings for short prose — GTK wraps at the tooltip width
-* Keep tooltips at or below 240 characters; move longer guidance into visible UI
+* Keep tooltips at or below 240 characters, except ensemble algorithm
+  reference lists (``ENSEMBLE_TYPE_HELP``)
 * Use ``\\n\\n`` only between distinct sections (title and body, notes, bullet lists)
 * Do not embed mid-sentence line breaks in source; each forced ``\\n`` becomes a hard wrap
 
@@ -27,6 +28,7 @@ from typing import Dict, Iterator, List
 # Abbreviations / phrases that may end with a period mid-line.
 _ALLOWED_PERIOD_SUFFIXES = ("etc.", "e.g.", "i.e.", "vs.", "U.S.")
 MAX_HELP_TEXT_CHARS = 240
+_LENGTH_EXEMPT_NAMES = frozenset({"ENSEMBLE_TYPE_HELP"})
 
 
 def validate_help_text(text: str, *, name: str = "") -> List[str]:
@@ -36,7 +38,7 @@ def validate_help_text(text: str, *, name: str = "") -> List[str]:
     if not text:
         issues.append(f"{prefix}empty tooltip text")
         return issues
-    if len(text) > MAX_HELP_TEXT_CHARS:
+    if name not in _LENGTH_EXEMPT_NAMES and len(text) > MAX_HELP_TEXT_CHARS:
         issues.append(
             f"{prefix}{len(text)} characters exceeds the {MAX_HELP_TEXT_CHARS}-character limit"
         )
@@ -120,11 +122,20 @@ ENSEMBLE_MAIN_STEM_HELP = (
     "4-stem and multi-stem modes combine each matching native stem"
 )
 
-ENSEMBLE_TYPE_HELP = (
-    "Choose how member outputs for this stem are combined. Max Spec favors "
-    "stronger bins, Min Spec favors weaker bins, Average blends waveforms, "
-    "and the remaining choices provide advanced spectral or time-domain blends"
-)
+ENSEMBLE_TYPE_HELP = """How member outputs are combined
+
+Dual-stem ensembles use a Primary and a Secondary algorithm (saved as Primary/Secondary). 4-stem and multi-stem ensembles use one algorithm for every stem
+
+• Max Spec — strongest magnitude per bin (fuller; can add artifacts)
+• Min Spec — weakest magnitude per bin (cleaner; can sound muddy)
+• Average — mean of member waveforms
+• Median Spec — per-bin median of complex spectrograms (robust with 3+ models)
+• Soft Spec — softmax blend with automatic magnitude-agreement weights
+• Max Mag / Avg Phase — Max Spec magnitudes with a stable average phase
+• Hybrid Spec — average of Max Spec and Min Spec
+• Chunk Min — time-domain: quietest chunk from any member
+
+Default dual-stem pair is Max Spec / Min Spec"""
 
 ENSEMBLE_LISTBOX_HELP = "List models compatible with the chosen main stem pair"
 
@@ -139,9 +150,9 @@ RUN_WORKLOAD_HINT = (
 )
 
 PROGRESS_ETA_HINT = (
-    "Progress and ETA cover model inference. The bar pulses while loading, "
-    "holds while saving, and shows combine progress for ensembles. ETA "
-    "stabilizes after inference begins"
+    "The bar pulses while loading, then fills during inference, save, and "
+    "deverb. Ensemble combine shows Combining i/n. Time left appears a couple "
+    "of seconds after inference starts and pauses outside inference"
 )
 
 IS_NORMALIZATION_HELP = "Scale peaks above 1.0 down to prevent clipping"
@@ -279,7 +290,7 @@ IS_INVERT_SPEC_HELP = (
 
 IS_TESTING_AUDIO_HELP = "Add a timestamp to output names to avoid overwrites"
 
-IS_MODEL_TESTING_AUDIO_HELP = "Appends the model name to outputs for comparison across different models"
+IS_MODEL_TESTING_AUDIO_HELP = "Append the model name to output filenames so you can compare models"
 
 IS_ACCEPT_ANY_INPUT_HELP = (
     "Allow files outside the supported audio extensions. Experimental; invalid "
@@ -288,24 +299,25 @@ IS_ACCEPT_ANY_INPUT_HELP = (
 
 DELETE_YOUR_SETTINGS_HELP = "Delete the selected saved profile after confirmation"
 
-SET_STEM_NAME_HELP = "Select the primary stem for the given model"
+SET_STEM_NAME_HELP = "Primary stem this model produces"
 
 IS_CREATE_MODEL_FOLDER_HELP = (
-    "Save each run under model and track subfolders inside the output directory"
+    "Write outputs into a model folder and a track folder under the export "
+    "directory (export / <model> / <track> / file(s))"
 )
 
-MDX_DIM_T_SET_HELP = "This is an internal model setting — avoid changing it unless you're certain about it!"
+MDX_DIM_T_SET_HELP = "Internal time-dimension setting — leave the default unless you know the training value"
 
-MDX_DIM_F_SET_HELP = "This is an internal model setting — avoid changing it unless you're certain about it!"
+MDX_DIM_F_SET_HELP = "Internal frequency-dimension setting — leave the default unless you know the training value"
 
-MDX_N_FFT_SCALE_SET_HELP = "Specify the N_FFT size used during model training"
+MDX_N_FFT_SCALE_SET_HELP = "N_FFT size used when the model was trained — leave the default unless you know it"
 
 POPUP_COMPENSATE_HELP = (
     "Select the appropriate volume compensation for the chosen model\n\n"
     f"Reminder: {COMPENSATE_HELP}"
 )
 
-VR_MODEL_PARAM_HELP = "Select the required parameters to run the chosen model"
+VR_MODEL_PARAM_HELP = "Parameter file required to run this VR model"
 
 CHOSEN_ENSEMBLE_HELP = (
     "Load a curated recipe or saved ensemble. Save and delete apply only to "
