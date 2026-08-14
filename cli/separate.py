@@ -8,8 +8,16 @@ import os
 import sys
 from typing import Optional
 
-from core.headless_run import build_settings, run_separation_sync, settings_summary
+from core.headless_run import (
+    build_settings,
+    resolve_vocal_splitter,
+    run_separation_sync,
+    settings_summary,
+)
 from core.settings import Settings
+from core.settings.access import apply_settings_overrides
+
+from .process_flags import add_process_args, collect_overrides
 
 _REQUIRED_RUNTIME_MODULES = ("kthread", "soundfile")
 
@@ -57,9 +65,6 @@ def add_separate_args(parser: argparse.ArgumentParser) -> None:
         help="Path to settings.json (default: UVR data dir settings file)",
     )
     parser.add_argument(
-        "--cpu", action="store_true", help="Force CPU (sets is_gpu_conversion=False)"
-    )
-    parser.add_argument(
         "--stems",
         default=None,
         help=(
@@ -85,6 +90,7 @@ def add_separate_args(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Crossfade overlap between long-file chunks in seconds",
     )
+    add_process_args(parser)
 
 
 def cmd_separate(args: argparse.Namespace) -> int:
@@ -101,10 +107,25 @@ def cmd_separate(args: argparse.Namespace) -> int:
             method=args.method,
             model=args.model,
             stems=args.stems,
-            use_gpu=False if args.cpu else None,
             stable_names=True,
             long_chunk_seconds=args.long_chunk_seconds,
             long_chunk_overlap=args.long_chunk_overlap,
+        )
+        resolved_splitter = None
+        if args.vocal_split:
+            from core.model_data import ModelRepository
+
+            from .offline import catalogue_offline
+
+            with catalogue_offline(True):
+                resolved_splitter = resolve_vocal_splitter(
+                    args.vocal_split, settings, ModelRepository()
+                )
+        apply_settings_overrides(
+            settings,
+            collect_overrides(
+                args, resolved_vocal_splitter=resolved_splitter
+            ),
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)

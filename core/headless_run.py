@@ -346,6 +346,7 @@ def build_settings(
     allow_ensemble: bool = False,
     long_chunk_seconds: Optional[float] = None,
     long_chunk_overlap: Optional[float] = None,
+    overrides: Optional[Sequence[tuple[str, Any]]] = None,
 ) -> Settings:
     """Load settings and apply CLI overrides (does not persist)."""
     path = settings_path or SETTINGS_DATA_FILE
@@ -393,7 +394,41 @@ def build_settings(
     if long_chunk_overlap is not None:
         settings.process.long_file_chunk_overlap_seconds = float(long_chunk_overlap)
 
+    if overrides:
+        from .settings.access import apply_settings_overrides
+
+        apply_settings_overrides(settings, overrides)
+
     return settings
+
+
+def resolve_vocal_splitter(model_arg: str, settings: Settings, repo: Any) -> str:
+    """Resolve a CLI vocal-splitter token against the karaoke/BV model pool."""
+    raw = str(model_arg).strip()
+    if not raw:
+        raise ValueError("--vocal-split value is empty")
+
+    pool = list(repo.karaoke_model_list(settings))
+    if not pool:
+        raise ValueError(
+            "no karaoke or backing-vocal models are installed; "
+            "download one before using --vocal-split"
+        )
+    if raw in pool:
+        return raw
+
+    query = _normalize_model_query(raw)
+    matches = [tag for tag in pool if query and query in _normalize_model_query(tag)]
+    unique = list(dict.fromkeys(matches))
+    if len(unique) == 1:
+        return unique[0]
+    if len(unique) > 1:
+        preview = ", ".join(repr(name) for name in unique[:6])
+        raise ValueError(f"ambiguous --vocal-split {raw!r}; matches: {preview}")
+    raise ValueError(
+        f"unknown --vocal-split {raw!r}; installed splitters: "
+        f"{', '.join(repr(t) for t in pool[:6])}"
+    )
 
 
 def _run_job(

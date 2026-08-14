@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 import time
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from core.bench_metrics import (
     compare_stem_dirs,
@@ -16,6 +16,7 @@ from core.bench_metrics import (
     sanitize_env_label,
 )
 
+from .process_flags import collect_overrides, overrides_to_argv
 from .separate import check_runtime_deps
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -50,11 +51,12 @@ def build_separate_argv(
     method: Optional[str],
     model: Optional[str],
     settings: Optional[str],
-    cpu: bool,
     stems: Optional[str] = None,
     print_settings: bool = False,
     long_chunk_seconds: Optional[float] = None,
     long_chunk_overlap: Optional[float] = None,
+    overrides: Sequence[tuple[str, Any]] = (),
+    vocal_split: Optional[str] = None,
 ) -> list[str]:
     argv = [sys.executable, "-m", "cli", "separate", *inputs, "-o", output]
     if method:
@@ -65,14 +67,15 @@ def build_separate_argv(
         argv.extend(["--settings", settings])
     if stems:
         argv.extend(["--stems", stems])
-    if cpu:
-        argv.append("--cpu")
     if print_settings:
         argv.append("--print-settings")
     if long_chunk_seconds is not None:
         argv.extend(["--long-chunk-seconds", str(long_chunk_seconds)])
     if long_chunk_overlap is not None:
         argv.extend(["--long-chunk-overlap", str(long_chunk_overlap)])
+    argv.extend(overrides_to_argv(overrides))
+    if vocal_split:
+        argv.extend(["--vocal-split", vocal_split])
     return argv
 
 
@@ -89,6 +92,7 @@ def cmd_bench_ab(args: argparse.Namespace) -> int:
     try:
         key_a, val_a = parse_env_assignment(args.env[0])
         key_b, val_b = parse_env_assignment(args.env[1])
+        process_overrides = collect_overrides(args)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -121,11 +125,12 @@ def cmd_bench_ab(args: argparse.Namespace) -> int:
             method=args.method,
             model=args.model,
             settings=args.settings,
-            cpu=args.cpu,
             stems=args.stems,
             print_settings=args.print_settings,
             long_chunk_seconds=args.long_chunk_seconds,
             long_chunk_overlap=args.long_chunk_overlap,
+            overrides=process_overrides,
+            vocal_split=args.vocal_split,
         )
         print(f"\n=== bench-ab {label}: {key}={value} ===", flush=True)
         started = time.perf_counter()
