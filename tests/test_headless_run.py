@@ -194,8 +194,9 @@ class ResolveMethodTests(unittest.TestCase):
         self.assertEqual(resolve_method("vr"), VR_ARCH_PM)
 
     def test_unknown(self) -> None:
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as ctx:
             resolve_method("not-a-method")
+        self.assertIn("ensemble", str(ctx.exception))
 
 
 class BuildSettingsTests(unittest.TestCase):
@@ -527,6 +528,32 @@ class InterruptTests(unittest.TestCase):
         # Soft stop recorded before the deadline force.
         self.assertIs(runner.stops[0], False)
         self.assertIs(runner.stops[1], True)
+
+    def test_late_interrupt_after_complete_keeps_stopped_false(self) -> None:
+        import signal as signalmod
+
+        runner = _InterruptRunner(self.settings)
+        handlers: dict[str, Any] = {}
+
+        def start_complete_then_interrupt(
+            paths: Sequence[str], callbacks: Any
+        ) -> None:
+            runner._callbacks = callbacks
+            handler: Any = signalmod.getsignal(signalmod.SIGINT)
+            handlers["int"] = handler
+            callbacks.complete()
+            handler(signalmod.SIGINT, None)
+
+        runner.start = start_complete_then_interrupt  # type: ignore[method-assign]
+
+        with mock.patch("core.headless_run.JobRunner", lambda settings: runner):
+            result = run_separation_sync(
+                self.settings, ["/tmp/in.wav"], print_console=False
+            )
+        self.assertFalse(result.stopped)
+        self.assertTrue(result.ok)
+        self.assertTrue(result.interrupted)
+        self.assertEqual(runner.stops, [False])
 
 
 if __name__ == "__main__":

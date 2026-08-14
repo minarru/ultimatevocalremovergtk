@@ -69,3 +69,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             exit_code=130,
             extra={"stopped": True},
         )
+    except (ValueError, OSError) as exc:
+        from .reporting import fail
+
+        # User/config errors that escape a command (e.g. --set process.method
+        # to Ensemble Mode on `separate`) must still own --json stdout.
+        return fail(args, str(exc), exit_code=2, exc=exc)

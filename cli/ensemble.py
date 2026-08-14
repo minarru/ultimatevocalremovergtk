@@ -8,7 +8,7 @@ import os
 import sys
 
 from bundled.constants import CHOOSE_ENSEMBLE_OPTION, ENSEMBLE_ALGORITHMS
-from core.ensemble_algorithms import format_ensemble_type, parse_ensemble_type
+from core.ensemble_algorithms import format_ensemble_type
 from core.headless_run import (
     apply_saved_ensemble,
     build_settings,
@@ -40,7 +40,10 @@ def add_ensemble_args(parser: argparse.ArgumentParser) -> None:
         "--ensemble",
         default=None,
         metavar="NAME",
-        help="Load a saved ensemble preset by name",
+        help=(
+            "Saved ensemble name, curated preset id, or GUI label "
+            "'Curated: …'"
+        ),
     )
     parser.add_argument(
         "--model",
@@ -191,7 +194,19 @@ def cmd_ensemble(args: argparse.Namespace) -> int:
         if args.main_stem is not None:
             settings.ensemble.main_stem = EnsemblePair(args.main_stem)
         if args.algorithm is not None:
-            primary, secondary = parse_ensemble_type(args.algorithm)
+            text = str(args.algorithm).strip()
+            if "/" in text:
+                primary, _sep, secondary = text.partition("/")
+                primary, secondary = primary.strip(), secondary.strip()
+            else:
+                primary = secondary = text
+            allowed = set(ENSEMBLE_ALGORITHMS)
+            if primary not in allowed or secondary not in allowed:
+                raise ValueError(
+                    f"unknown --algorithm {args.algorithm!r}; expected atoms: "
+                    + ", ".join(ENSEMBLE_ALGORITHMS)
+                )
+            # Reject unknown atoms before format (parse_ensemble_type would coerce).
             settings.ensemble.type = format_ensemble_type(primary, secondary)
     except ValueError as exc:
         return fail(args, str(exc), exit_code=2, exc=exc)

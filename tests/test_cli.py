@@ -503,6 +503,35 @@ class JsonSeparateTests(unittest.TestCase):
         self.assertTrue(payload["stopped"])
         self.assertIn("interrupted", err.getvalue().lower())
 
+    def test_json_set_ensemble_mode_emits_failure_document(self) -> None:
+        """--set process.method=Ensemble Mode must not leave --json stdout empty."""
+        buf = io.StringIO()
+        err = io.StringIO()
+        with mock.patch("cli.separate.check_runtime_deps", return_value=None), \
+             mock.patch("cli.separate.os.path.isfile", return_value=True), \
+             mock.patch("cli.separate.os.makedirs"), \
+             mock.patch("cli.separate.build_settings", return_value=Settings()), \
+             mock.patch("sys.stdout", buf), \
+             mock.patch("sys.stderr", err):
+            code = main(
+                [
+                    "separate",
+                    "a.wav",
+                    "-o",
+                    "/tmp/o",
+                    "--json",
+                    "--set",
+                    "process.method=Ensemble Mode",
+                ]
+            )
+        self.assertEqual(code, 2)
+        payload = json.loads(buf.getvalue())
+        self.assertIs(payload["ok"], False)
+        self.assertIn("ensemble", payload["error"]["message"].lower())
+        self.assertEqual(payload["error"]["type"], "ValueError")
+        self.assertIn("error:", err.getvalue())
+        self.assertNotIn("Traceback", err.getvalue())
+
 
 class TrampolineTests(unittest.TestCase):
     def test_core_cli_delegates_to_cli_main(self) -> None:

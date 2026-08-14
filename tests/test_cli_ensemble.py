@@ -217,6 +217,50 @@ class EnsembleSettingsWiringTests(_CmdEnsembleCase):
         self.assertEqual(settings.ensemble.main_stem, EnsemblePair.KARAOKE)
         self.assertEqual(settings.ensemble.type, MAX_MIN)
 
+    def test_unknown_algorithm_is_rejected(self) -> None:
+        from cli.ensemble import cmd_ensemble
+
+        args = build_parser().parse_args(
+            [
+                "ensemble",
+                "a.wav",
+                "-o",
+                "/tmp/o",
+                "--model",
+                _TAG_A,
+                "--model",
+                _TAG_B,
+                "--main-stem",
+                "vocals_instrumental",
+                "--algorithm",
+                "Bogus/Nonsense",
+            ]
+        )
+        err = io.StringIO()
+        with mock.patch("cli.ensemble.os.path.isfile", return_value=True), \
+             mock.patch("cli.ensemble.os.makedirs"), \
+             mock.patch("cli.ensemble.ModelRepository"), \
+             mock.patch("cli.ensemble.build_settings", return_value=Settings()), \
+             mock.patch("cli.ensemble.resolve_ensemble_members",
+                        side_effect=lambda tokens, repo=None: list(tokens)), \
+             mock.patch("cli.ensemble.run_ensemble_sync", return_value=_Result()) as run, \
+             redirect_stderr(err):
+            code = cmd_ensemble(args)
+        self.assertEqual(code, 2)
+        run.assert_not_called()
+        self.assertIn("Bogus/Nonsense", err.getvalue())
+        self.assertIn("error:", err.getvalue())
+
+    def test_ensemble_help_mentions_curated(self) -> None:
+        out = io.StringIO()
+        with mock.patch("sys.stdout", out):
+            with self.assertRaises(SystemExit):
+                build_parser().parse_args(["ensemble", "--help"])
+        help_text = out.getvalue()
+        self.assertIn("Curated:", help_text)
+        self.assertIn("curated", help_text.casefold())
+        self.assertIn("saved", help_text.casefold())
+
     def test_set_beats_named_main_stem(self) -> None:
         from cli.ensemble import cmd_ensemble
 

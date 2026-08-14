@@ -113,7 +113,7 @@ def resolve_method(method: Optional[str]) -> Optional[str]:
         if key == value.lower():
             return value
     raise ValueError(
-        f"unknown method {method!r}; expected one of: mdx, demucs, vr "
+        f"unknown method {method!r}; expected one of: mdx, demucs, vr, ensemble "
         f"(or exact settings values)"
     )
 
@@ -456,7 +456,7 @@ def _run_job(
     console_lines: list[str] = []
     error_box: list[BaseException] = []
     done = threading.Event()
-    outcome = {"stopped": False}
+    outcome = {"stopped": False, "completed": False}
 
     def on_console(text: str) -> None:
         console_lines.append(text)
@@ -465,6 +465,7 @@ def _run_job(
             sys.stdout.flush()
 
     def on_complete() -> None:
+        outcome["completed"] = True
         done.set()
 
     def on_stopped() -> None:
@@ -503,9 +504,12 @@ def _run_job(
     def _on_signal(signum: int, frame: Any) -> None:
         _request_stop(force=False)
 
-    prev_int = signal.getsignal(signal.SIGINT)
+    prev_int: Any = signal.getsignal(signal.SIGINT)
     prev_term: Any = None
-    signal.signal(signal.SIGINT, _on_signal)
+    try:
+        signal.signal(signal.SIGINT, _on_signal)
+    except (OSError, ValueError, AttributeError):
+        prev_int = None
     if hasattr(signal, "SIGTERM"):
         prev_term = signal.getsignal(signal.SIGTERM)
         try:
@@ -541,10 +545,11 @@ def _run_job(
             done.wait(timeout=2.0)
     finally:
         try:
-            signal.signal(signal.SIGINT, prev_int)
+            if prev_int is not None:
+                signal.signal(signal.SIGINT, prev_int)
             if prev_term is not None:
                 signal.signal(signal.SIGTERM, prev_term)
-        except (OSError, ValueError, AttributeError):
+        except (OSError, ValueError, AttributeError, TypeError):
             pass
         # Wait for the worker thread to finish cleanup.
         thread = getattr(runner, "_thread", None)
@@ -556,7 +561,8 @@ def _run_job(
             # Best-effort: never mask the original start/run failure (e.g. missing deps).
             pass
 
-    if interrupts["count"]:
+    # A late Ctrl-C after on_complete must not rewrite a finished run as stopped.
+    if interrupts["count"] and not outcome["completed"]:
         outcome["stopped"] = True
 
     elapsed = time.perf_counter() - started
