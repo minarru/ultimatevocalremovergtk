@@ -31,7 +31,16 @@ class _Result:
     console: list[str] = []
 
 
-class EnsembleMemberSourceTests(unittest.TestCase):
+class _CmdEnsembleCase(unittest.TestCase):
+    """Command-level helpers: patch the by-value import of ``check_runtime_deps``."""
+
+    def setUp(self) -> None:
+        deps = mock.patch("cli.ensemble.check_runtime_deps", return_value=None)
+        deps.start()
+        self.addCleanup(deps.stop)
+
+
+class EnsembleMemberSourceTests(_CmdEnsembleCase):
     def test_adhoc_models_populate_selected_models(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
@@ -80,6 +89,33 @@ class EnsembleMemberSourceTests(unittest.TestCase):
             self.assertEqual(cmd_ensemble(args), 2)
         self.assertIn("--ensemble", err.getvalue())
 
+    def test_saved_preset_alone_runs_without_main_stem_flag(self) -> None:
+        from cli.ensemble import cmd_ensemble
+
+        settings = Settings()
+        args = build_parser().parse_args(
+            ["ensemble", "a.wav", "-o", "/tmp/o", "--ensemble", "My Mix"]
+        )
+
+        def fake_apply(target: Settings, name: str, **_kwargs: object) -> None:
+            target.ensemble.selected_models = [_TAG_A, _TAG_B]
+            target.ensemble.type = MAX_MIN
+            target.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
+            target.ensemble.chosen_ensemble = name
+
+        with mock.patch("cli.ensemble.os.path.isfile", return_value=True), \
+             mock.patch("cli.ensemble.os.makedirs"), \
+             mock.patch("cli.ensemble.ModelRepository"), \
+             mock.patch("cli.ensemble.build_settings", return_value=settings), \
+             mock.patch("cli.ensemble.apply_saved_ensemble", side_effect=fake_apply), \
+             mock.patch("cli.ensemble.run_ensemble_sync", return_value=_Result()) as run:
+            self.assertEqual(cmd_ensemble(args), 0)
+        run.assert_called_once()
+        called = run.call_args.args[0]
+        self.assertEqual(called.ensemble.selected_models, [_TAG_A, _TAG_B])
+        self.assertEqual(called.ensemble.main_stem, EnsemblePair.VOCALS_INSTRUMENTAL)
+        self.assertEqual(called.ensemble.chosen_ensemble, "My Mix")
+
     def test_saved_preset_is_loaded_then_overridden_by_models(self) -> None:
         from cli.ensemble import cmd_ensemble
 
@@ -108,7 +144,7 @@ class EnsembleMemberSourceTests(unittest.TestCase):
         self.assertEqual(settings.ensemble.chosen_ensemble, CHOOSE_ENSEMBLE_OPTION)
 
 
-class EnsembleSettingsWiringTests(unittest.TestCase):
+class EnsembleSettingsWiringTests(_CmdEnsembleCase):
     def test_uses_run_ensemble_sync_not_run_separation_sync(self) -> None:
         from cli.ensemble import cmd_ensemble
 
