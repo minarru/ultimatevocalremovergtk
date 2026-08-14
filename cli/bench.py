@@ -122,7 +122,7 @@ def cmd_bench_ab(args: argparse.Namespace) -> int:
     machine_output = bool(args.json)
     child_quiet = bool(args.quiet or machine_output)
 
-    def run_leg(label: str, out_dir: str, key: str, value: str) -> tuple[bool, float, str]:
+    def run_leg(label: str, out_dir: str, key: str, value: str) -> tuple[int, float]:
         env = _child_env(base_env)
         env[key] = value
         argv = build_separate_argv(
@@ -147,20 +147,14 @@ def cmd_bench_ab(args: argparse.Namespace) -> int:
             run_kwargs["stdout"] = subprocess.DEVNULL
         proc = subprocess.run(argv, **run_kwargs)
         elapsed = time.perf_counter() - started
-        ok = proc.returncode == 0
-        if not ok:
-            print(
-                f"error: {label} failed with exit code {proc.returncode}",
-                file=sys.stderr,
-            )
-        return ok, elapsed, out_dir
+        return proc.returncode, elapsed
 
-    ok_a, wall_a, _ = run_leg("A", dir_a, key_a, val_a)
-    if not ok_a:
-        return 1
-    ok_b, wall_b, _ = run_leg("B", dir_b, key_b, val_b)
-    if not ok_b:
-        return 1
+    code_a, wall_a = run_leg("A", dir_a, key_a, val_a)
+    if code_a != 0:
+        return fail(args, f"A failed with exit code {code_a}", exit_code=1)
+    code_b, wall_b = run_leg("B", dir_b, key_b, val_b)
+    if code_b != 0:
+        return fail(args, f"B failed with exit code {code_b}", exit_code=1)
 
     report = compare_stem_dirs(dir_a, dir_b)
     speedup = (wall_a / wall_b) if wall_b > 0 else float("inf")

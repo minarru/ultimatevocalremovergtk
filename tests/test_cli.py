@@ -283,6 +283,37 @@ class CliArgparseTests(unittest.TestCase):
                 self.assertIn("--quiet", child_argv)
                 self.assertIs(call.kwargs.get("stdout"), subprocess.DEVNULL)
 
+    @mock.patch("cli.bench.subprocess.run")
+    def test_bench_ab_json_leg_failure_emits_document(
+        self, mock_run: typing.Any
+    ) -> None:
+        mock_run.return_value = mock.Mock(returncode=3)
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = os.path.join(tmp, "in.wav")
+            open(wav, "wb").close()
+            out = os.path.join(tmp, "ab")
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                with mock.patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+                    code = main(
+                        [
+                            "bench-ab",
+                            wav,
+                            "-o",
+                            out,
+                            "--env",
+                            "UVR_AUTOCAST=0",
+                            "--env",
+                            "UVR_AUTOCAST=1",
+                            "--json",
+                        ]
+                    )
+            self.assertEqual(code, 1)
+            payload = json.loads(mock_stdout.getvalue())
+            self.assertIs(payload["ok"], False)
+            self.assertIn("A failed with exit code 3", payload["error"]["message"])
+            self.assertIn("error:", mock_stderr.getvalue())
+            self.assertEqual(mock_stderr.getvalue().count("error:"), 1)
+
 
 class ReportingFlagTests(unittest.TestCase):
     def test_json_is_boolean_on_separate(self) -> None:
