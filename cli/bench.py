@@ -187,6 +187,14 @@ def cmd_bench_ab(args: argparse.Namespace) -> int:
         "compare": report.to_dict(),
     }
 
+    # Complete the optional file write before claiming success on stdout. If
+    # it fails, ``cli.main`` can emit the one JSON failure document promised
+    # by ``--json`` without leaving a successful document ahead of it.
+    if args.json_out:
+        with open(args.json_out, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
+            fh.write("\n")
+
     if machine_output:
         print(json.dumps(payload, indent=2))
     else:
@@ -207,11 +215,7 @@ def cmd_bench_ab(args: argparse.Namespace) -> int:
                 f"peak_abs_diff={pair.peak_abs_diff:.6g}"
             )
 
-    if args.json_out:
-        with open(args.json_out, "w", encoding="utf-8") as fh:
-            json.dump(payload, fh, indent=2)
-            fh.write("\n")
-        if not machine_output:
+        if args.json_out:
             print(f"json={args.json_out}")
 
     return 0

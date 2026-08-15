@@ -315,6 +315,40 @@ class CliArgparseTests(unittest.TestCase):
             self.assertEqual(mock_stderr.getvalue().count("error:"), 1)
 
     @mock.patch("cli.bench.subprocess.run")
+    def test_bench_ab_json_out_failure_emits_one_document(
+        self, mock_run: typing.Any
+    ) -> None:
+        mock_run.return_value = mock.Mock(returncode=0)
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = os.path.join(tmp, "in.wav")
+            open(wav, "wb").close()
+            out = os.path.join(tmp, "ab")
+            json_out = os.path.join(tmp, "missing", "summary.json")
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                with mock.patch("sys.stderr", new_callable=io.StringIO) as mock_stderr:
+                    code = main(
+                        [
+                            "bench-ab",
+                            wav,
+                            "-o",
+                            out,
+                            "--env",
+                            "UVR_AUTOCAST=0",
+                            "--env",
+                            "UVR_AUTOCAST=1",
+                            "--json",
+                            "--json-out",
+                            json_out,
+                        ]
+                    )
+            self.assertEqual(code, 2)
+            payload = json.loads(mock_stdout.getvalue())
+            self.assertIs(payload["ok"], False)
+            self.assertEqual(payload["error"]["type"], "FileNotFoundError")
+            self.assertIn(json_out, payload["error"]["message"])
+            self.assertEqual(mock_stderr.getvalue().count("error:"), 1)
+
+    @mock.patch("cli.bench.subprocess.run")
     def test_bench_ab_child_130_skips_leg_b(self, mock_run: typing.Any) -> None:
         mock_run.return_value = mock.Mock(returncode=130)
         with tempfile.TemporaryDirectory() as tmp:
