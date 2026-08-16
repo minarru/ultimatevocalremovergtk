@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import json
 import os
 import signal
@@ -10,6 +9,7 @@ import shutil
 import sys
 import time
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any, Callable, Sequence
 
 from bundled.constants import ENSEMBLE_MODE
@@ -270,8 +270,9 @@ def _promote(
 def run_batch(
     args: Any,
     job: ResolvedJob,
-    runner: Callable[..., RunResult],
+    runner: Callable[..., RunResult] | None = None,
 ) -> BatchOutcome:
+    del runner  # batches go through JobRunner.start_resolved
     started = time.perf_counter()
     collided = preflight_collisions(job, args.on_exists)
     os.makedirs(job.output, exist_ok=True)
@@ -284,8 +285,12 @@ def run_batch(
 
     shared_runner = JobRunner(job.settings)
     shared_models = shared_runner.resolve_models()
+    planned_all = tuple(job.resolved.inputs) if job.resolved is not None else ()
+    active: list[Any] = []
+    stages: list[str] = []
     try:
-        for index, input_path in enumerate(job.inputs, start=1):
+        for index, planned_item in enumerate(planned_all, start=1):
+            input_path = planned_item.path
             if input_path in collided and args.on_exists == "skip":
                 item = {
                     "input": input_path, "status": "skipped", "outputs": [],
@@ -296,87 +301,138 @@ def run_batch(
                 continue
             stage = os.path.join(temp_root, str(index))
             os.makedirs(stage, exist_ok=True)
-            input_started = time.perf_counter()
-            settings = copy.deepcopy(job.settings)
-            settings.process.export_path = stage
+            active.append(planned_item)
+            stages.append(stage)
             emit_event(
                 args, "progress", fraction=0.0, phase="input_started",
-                input=input_path, index=index, total=len(job.inputs),
+                input=input_path, index=index, total=len(planned_all),
             )
+
+        if active:
             progress = make_progress_printer(args)
-            planned_item = job.resolved.inputs[index - 1]
-            result = runner(
-                settings,
-                [input_path],
+            batch_job = SimpleNamespace(
+                command=job.command,
+                output=job.output,
+                inputs=tuple(active),
+            )
+            result = run_runner_cli(
+                shared_runner,
+                lambda callbacks: shared_runner.start_resolved(
+                    batch_job,
+                    callbacks,
+                    models=shared_models,
+                    fail_fast=bool(getattr(args, "fail_fast", False)),
+                    export_paths=tuple(stages),
+                ),
                 print_console=not args.quiet,
                 on_progress=progress,
-                runner=shared_runner,
-                models=shared_models,
-                planned=(planned_item,),
-                planned_output_root=job.output,
             )
             if progress is not None:
                 finish_progress(args)
-            if result.stopped:
+
+            last_outcomes = tuple(getattr(shared_runner, "last_outcomes", ()) or ())
+            if result.interrupted:
                 interrupted = True
-                item = {
-                    "input": input_path, "status": "failed", "error": "interrupted",
-                    "outputs": [], "elapsed_s": time.perf_counter() - input_started,
-                }
-                outcomes.append(item)
-                emit_event(args, "input_finished", **item)
-                break
-            if result.error is not None:
-                item = {
-                    "input": input_path,
-                    "status": "failed",
-                    "error": f"{type(result.error).__name__}: {result.error}",
-                    "outputs": [],
-                    "elapsed_s": time.perf_counter() - input_started,
-                }
-                outcomes.append(item)
-                emit_event(args, "input_finished", **item)
-                if args.fail_fast:
+
+            for planned_item, stage, outcome in zip(active, stages, last_outcomes):
+                input_path = planned_item.path
+                elapsed = float(outcome.elapsed_s)
+                if outcome.stopped:
+                    interrupted = True
+                    item = {
+                        "input": input_path, "status": "failed", "error": "interrupted",
+                        "outputs": [], "elapsed_s": elapsed,
+                    }
+                    outcomes.append(item)
+                    emit_event(args, "input_finished", **item)
                     break
-                continue
-            try:
-                outputs = _promote(
-                    stage, job.output, args.on_exists,
-                    destinations=[
-                        output.path
-                        for output in planned_item.outputs
-                        if not output.conditional
-                    ],
-                )
-                if not outputs:
-                    raise OSError("separation completed without generating output files")
-            except PromotionSkipped:
+                if outcome.status == "failed":
+                    item = {
+                        "input": input_path,
+                        "status": "failed",
+                        "error": outcome.error or "failed",
+                        "outputs": [],
+                        "elapsed_s": elapsed,
+                    }
+                    outcomes.append(item)
+                    emit_event(args, "input_finished", **item)
+                    continue
+                if outcome.status == "skipped":
+                    item = {
+                        "input": input_path, "status": "skipped", "outputs": [],
+                        "elapsed_s": elapsed,
+                    }
+                    outcomes.append(item)
+                    emit_event(args, "input_finished", **item)
+                    continue
+                try:
+                    outputs = _promote(
+                        stage, job.output, args.on_exists,
+                        destinations=[
+                            output.path
+                            for output in planned_item.outputs
+                            if not output.conditional
+                        ],
+                    )
+                    if not outputs:
+                        raise OSError(
+                            "separation completed without generating output files"
+                        )
+                except PromotionSkipped:
+                    item = {
+                        "input": input_path, "status": "skipped", "outputs": [],
+                        "elapsed_s": elapsed,
+                    }
+                    outcomes.append(item)
+                    emit_event(args, "input_finished", **item)
+                    continue
+                except OSError as exc:
+                    item = {
+                        "input": input_path,
+                        "status": "failed",
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "outputs": [],
+                        "elapsed_s": elapsed,
+                    }
+                    outcomes.append(item)
+                    emit_event(args, "input_finished", **item)
+                    if getattr(args, "fail_fast", False):
+                        break
+                    continue
                 item = {
-                    "input": input_path, "status": "skipped", "outputs": [],
-                    "elapsed_s": time.perf_counter() - input_started,
+                    "input": input_path, "status": "success", "outputs": outputs,
+                    "elapsed_s": elapsed,
                 }
                 outcomes.append(item)
                 emit_event(args, "input_finished", **item)
-                continue
-            except OSError as exc:
+
+            if result.error is not None and not last_outcomes:
+                interrupted = interrupted or bool(result.interrupted or result.stopped)
                 item = {
-                    "input": input_path,
+                    "input": active[0].path,
                     "status": "failed",
-                    "error": f"{type(exc).__name__}: {exc}",
+                    "error": (
+                        "interrupted" if result.stopped and result.error is None
+                        else f"{type(result.error).__name__}: {result.error}"
+                    ),
                     "outputs": [],
-                    "elapsed_s": time.perf_counter() - input_started,
+                    "elapsed_s": result.elapsed_s,
                 }
                 outcomes.append(item)
                 emit_event(args, "input_finished", **item)
-                if args.fail_fast:
-                    break
-                continue
-            item = {
-                "input": input_path, "status": "success", "outputs": outputs,
-                "elapsed_s": time.perf_counter() - input_started,
-            }
-            outcomes.append(item)
-            emit_event(args, "input_finished", **item)
+            elif (
+                (result.stopped or result.interrupted)
+                and last_outcomes
+                and not any(item.get("error") == "interrupted" for item in outcomes)
+            ):
+                interrupted = True
+                last = active[len(last_outcomes) - 1]
+                item = {
+                    "input": last.path, "status": "failed", "error": "interrupted",
+                    "outputs": [], "elapsed_s": result.elapsed_s,
+                }
+                outcomes.append(item)
+                emit_event(args, "input_finished", **item)
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
         parent = os.path.dirname(temp_root)
