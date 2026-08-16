@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -84,6 +85,9 @@ class PromotionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             os.makedirs(stage)
             os.makedirs(output)
+            # Seed collision on the first sorted name so the successful first
+            # replace must be rolled back from a real backup, not only moved.
+            open(os.path.join(output, "song (Instrumental).wav"), "wb").write(b"old-i")
             open(os.path.join(output, "song (Vocals).wav"), "wb").write(b"old-v")
             open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new-v")
             open(os.path.join(stage, "song (Instrumental).wav"), "wb").write(b"new-i")
@@ -104,10 +108,49 @@ class PromotionTests(unittest.TestCase):
                 with self.assertRaises(OSError):
                     _promote(stage, output, "overwrite", destinations=destinations)
 
+            with open(os.path.join(output, "song (Instrumental).wav"), "rb") as fh:
+                self.assertEqual(fh.read(), b"old-i")
             with open(os.path.join(output, "song (Vocals).wav"), "rb") as fh:
                 self.assertEqual(fh.read(), b"old-v")
             self.assertTrue(os.path.isfile(os.path.join(stage, "song (Vocals).wav")))
             self.assertTrue(os.path.isfile(os.path.join(stage, "song (Instrumental).wav")))
+
+    def test_overwrite_cleans_partial_backups_when_copy_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            stage = os.path.join(root, "stage")
+            output = os.path.join(root, "out")
+            os.makedirs(stage)
+            os.makedirs(output)
+            open(os.path.join(output, "song (Instrumental).wav"), "wb").write(b"old-i")
+            open(os.path.join(output, "song (Vocals).wav"), "wb").write(b"old-v")
+            open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new-v")
+            open(os.path.join(stage, "song (Instrumental).wav"), "wb").write(b"new-i")
+            destinations = [
+                os.path.join(output, "song (Vocals).wav"),
+                os.path.join(output, "song (Instrumental).wav"),
+            ]
+            real_copy2 = shutil.copy2
+            calls = {"n": 0}
+
+            def flaky_copy2(src: str, dst: str, *args: object, **kwargs: object) -> object:
+                calls["n"] += 1
+                if calls["n"] == 2:
+                    raise OSError("simulated backup failure")
+                return real_copy2(src, dst, *args, **kwargs)
+
+            with mock.patch("cli.execution.shutil.copy2", flaky_copy2):
+                with self.assertRaises(OSError):
+                    _promote(stage, output, "overwrite", destinations=destinations)
+
+            leftover = [
+                name for name in os.listdir(output)
+                if "uvr-overwrite.bak" in name
+            ]
+            self.assertEqual(leftover, [])
+            with open(os.path.join(output, "song (Instrumental).wav"), "rb") as fh:
+                self.assertEqual(fh.read(), b"old-i")
+            with open(os.path.join(output, "song (Vocals).wav"), "rb") as fh:
+                self.assertEqual(fh.read(), b"old-v")
 
     def test_overwrite_removes_backups_after_success(self) -> None:
         with tempfile.TemporaryDirectory() as root:

@@ -257,15 +257,15 @@ def _promote(
                     break
                 index += 1
     backups: list[tuple[str, str]] = []
-    if policy == "overwrite":
-        for _source, target in entries:
-            if os.path.exists(target):
-                bak = _overwrite_backup_path(target)
-                shutil.copy2(target, bak)
-                backups.append((target, bak))
     promoted: list[str] = []
     moved: list[tuple[str, str]] = []
     try:
+        if policy == "overwrite":
+            for _source, target in entries:
+                if os.path.exists(target):
+                    bak = _overwrite_backup_path(target)
+                    shutil.copy2(target, bak)
+                    backups.append((target, bak))
         for source, initial_target in entries:
             target = initial_target
             target_root = os.path.dirname(target)
