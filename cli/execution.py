@@ -7,6 +7,7 @@ import os
 import signal
 import shutil
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from types import SimpleNamespace
@@ -22,6 +23,15 @@ from .job import ResolvedJob
 from .reporting import emit_event, ensure_job_id, finish_progress, make_progress_printer
 
 MANIFEST_SCHEMA_VERSION = 1
+
+_LOCKS_GUARD = threading.Lock()
+_OUTPUT_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _output_dir_lock(output: str) -> threading.Lock:
+    key = os.path.abspath(output)
+    with _LOCKS_GUARD:
+        return _OUTPUT_LOCKS.setdefault(key, threading.Lock())
 
 
 class PromotionSkipped(Exception):
@@ -204,7 +214,62 @@ def _overwrite_backup_path(target: str) -> str:
     return os.path.join(directory, f".{name}.uvr-overwrite.bak")
 
 
+def _apply_unit_rename(
+    entries: list[tuple[str, str]],
+    destinations: Sequence[str],
+    track_base: str,
+    *,
+    start_index: int = 2,
+) -> list[tuple[str, str]]:
+    """Pick the next free unit suffix; recheck until the chosen set stays free."""
+    dest_by_name = {os.path.basename(path): path for path in destinations}
+    index = start_index
+    while True:
+        rewritten = [
+            _with_unit_suffix(path, track_base, index) for path in destinations
+        ]
+        if any(os.path.exists(path) for path in rewritten):
+            index += 1
+            continue
+        remapped: list[tuple[str, str]] = []
+        for source, target in entries:
+            original = dest_by_name.get(os.path.basename(source))
+            base_path = original if original is not None else target
+            remapped.append(
+                (source, _with_unit_suffix(base_path, track_base, index))
+            )
+        # Recheck under the output-dir lock so a raced suffix bumps again.
+        if any(os.path.exists(path) for path in rewritten):
+            index += 1
+            continue
+        return remapped
+
+
 def _promote(
+    stage: str,
+    output: str,
+    policy: str,
+    *,
+    destinations: Sequence[str] | None = None,
+) -> list[str]:
+    with _output_dir_lock(output):
+        return _promote_locked(
+            stage, output, policy, destinations=destinations,
+        )
+
+
+def promote_with_lock(
+    stage: str,
+    output: str,
+    policy: str,
+    *,
+    destinations: Sequence[str] | None = None,
+) -> list[str]:
+    """Serialize promotion for one output directory (alias of ``_promote``)."""
+    return _promote(stage, output, policy, destinations=destinations)
+
+
+def _promote_locked(
     stage: str,
     output: str,
     policy: str,
@@ -224,6 +289,16 @@ def _promote(
         list(destinations) if destinations is not None
         else [target for _source, target in entries]
     )
+    track_base: str | None = None
+    if destinations is not None:
+        track_base = next(
+            (
+                base
+                for path in destinations
+                if (base := _track_base_from_destination(path)) is not None
+            ),
+            None,
+        )
     if policy == "fail":
         collision = next((path for path in collision_paths if os.path.exists(path)), None)
         if collision:
@@ -235,27 +310,8 @@ def _promote(
     if policy == "rename" and destinations is not None and any(
         os.path.exists(path) for path in destinations
     ):
-        track_base = next(
-            (
-                base
-                for path in destinations
-                if (base := _track_base_from_destination(path)) is not None
-            ),
-            None,
-        )
         if track_base is not None:
-            index = 2
-            while True:
-                rewritten = [
-                    _with_unit_suffix(path, track_base, index) for path in destinations
-                ]
-                if not any(os.path.exists(path) for path in rewritten):
-                    entries = [
-                        (source, _with_unit_suffix(target, track_base, index))
-                        for source, target in entries
-                    ]
-                    break
-                index += 1
+            entries = _apply_unit_rename(entries, destinations, track_base)
     backups: list[tuple[str, str]] = []
     promoted: list[str] = []
     moved: list[tuple[str, str]] = []
@@ -266,7 +322,9 @@ def _promote(
                     bak = _overwrite_backup_path(target)
                     shutil.copy2(target, bak)
                     backups.append((target, bak))
-        for source, initial_target in entries:
+        pending = list(entries)
+        while pending:
+            source, initial_target = pending.pop(0)
             target = initial_target
             target_root = os.path.dirname(target)
             os.makedirs(target_root, exist_ok=True)
@@ -276,6 +334,15 @@ def _promote(
                 if policy == "skip":
                     continue
                 if policy == "rename":
+                    if destinations is not None and track_base is not None:
+                        # Raced suffix after the initial pick — bump and retry.
+                        remapped = _apply_unit_rename(
+                            [(source, initial_target), *pending],
+                            destinations,
+                            track_base,
+                        )
+                        pending = remapped
+                        continue
                     target = _unique_target(target)
             os.replace(source, target)
             moved.append((source, target))

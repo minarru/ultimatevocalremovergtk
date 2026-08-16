@@ -178,6 +178,42 @@ class PromotionTests(unittest.TestCase):
             ]
             self.assertEqual(leftover, [])
 
+    def test_rename_retries_after_lock_recheck(self) -> None:
+        # destinations collide on song (Vocals).wav; a race makes song_2 busy
+        # after the first free-index check so promotion must land on song_3.
+        with tempfile.TemporaryDirectory() as root:
+            stage = os.path.join(root, "stage")
+            output = os.path.join(root, "out")
+            os.makedirs(stage)
+            os.makedirs(output)
+            open(os.path.join(output, "song (Vocals).wav"), "wb").write(b"old")
+            open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new")
+            destinations = [os.path.join(output, "song (Vocals).wav")]
+            song_2 = os.path.join(output, "song_2 (Vocals).wav")
+            real_exists = os.path.exists
+            song_2_checks = {"n": 0}
+
+            def exists(path: str) -> bool:
+                if os.path.abspath(path) == os.path.abspath(song_2):
+                    song_2_checks["n"] += 1
+                    # First rename candidate looks free, then busy after recheck.
+                    return song_2_checks["n"] > 1
+                return real_exists(path)
+
+            with mock.patch("cli.execution.os.path.exists", exists):
+                promoted = _promote(
+                    stage, output, "rename", destinations=destinations,
+                )
+
+            self.assertEqual(
+                [os.path.basename(path) for path in promoted],
+                ["song_3 (Vocals).wav"],
+            )
+            self.assertTrue(os.path.isfile(os.path.join(output, "song_3 (Vocals).wav")))
+            self.assertFalse(
+                os.path.isfile(os.path.join(output, "song_2 (Vocals)_2.wav"))
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
