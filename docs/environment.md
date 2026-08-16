@@ -88,81 +88,203 @@ Download size-cache warmup (`size_cache_warmup start` in logs) is scheduled when
 
 ---
 
-## Headless CLI
+## Command-line interface
 
-Drive the same `JobRunner` path as the GUI without GTK:
+The installer exposes the source-tree launcher as `uvr` when
+`~/.local/bin/uvr` is available. Use `./uvr` directly otherwise. The
+launcher always selects this checkout's virtual environment.
+
+This CLI is still pre-release and intentionally does not retain compatibility
+shims for its earlier experimental surface:
+
+| Earlier experimental interface | Current interface |
+| --- | --- |
+| `python -m core` / `python -m core.cli` | Removed; use `uvr` |
+| `python -m cli` | Internal/testing only; public scripts use `uvr` |
+| `bench-ab` | `uvr bench` |
+| `list-models` | `uvr models list` |
+| `--json` | `--report json` |
+| `--json-out` | `--manifest-out` for job manifests |
+| `--print-settings` | `--verbose`, `--dry-run`, or `uvr settings show` |
+| `--method` | Removed; the canonical model ID determines the family |
+| `--cpu` / `--gpu` | `--device auto|cpu|cuda:N|mps|directml:N` |
+
+The removed Python headless helpers have likewise been replaced by the public
+resolved-job and blocking-runner APIs in `core`; no import trampoline remains.
+
+### Commands and model IDs
 
 ```bash
-# Use the project venv (required for kthread, soundfile, torch, …)
-./.venv/bin/python -m cli separate /path/to/song.wav -o /tmp/uvr_out --method mdx
+uvr models list --family mdx
+uvr models show mdx:UVR-MDX-NET-Inst_HQ_4
+uvr devices list
 
-# Force CPU / print resolved settings
-./.venv/bin/python -m cli separate song.wav -o /tmp/out --cpu --print-settings
+uvr separate song.wav -o /tmp/stems \
+  --model mdx:UVR-MDX-NET-Inst_HQ_4
 
-# Force both stems (ignores GUI karaoke "instrumental only" defaults)
-./.venv/bin/python -m cli separate song.wav -o /tmp/out --method mdx --stems both
-
-# A/B autocast (two fresh subprocesses + stem null metrics)
-./.venv/bin/python -m cli bench-ab song.wav -o /tmp/uvr_ab \
-  --method mdx --model "Your Model Name" --stems both \
-  --env UVR_AUTOCAST=0 --env UVR_AUTOCAST=1 \
-  --json-out /tmp/uvr_ab/summary.json
+uvr ensemble song.wav -o /tmp/stems \
+  --model mdx:model-a --model demucs:hdemucs_mmi \
+  --main-stem vocals_instrumental
 ```
 
-`python -m core.cli` and `python -m core` still work as trampolines to
-`python -m cli`; they are kept for older scripts and will not gain new flags.
+Canonical model IDs are `vr:<basename>`, `mdx:<basename>`, and
+`demucs:<basename>`. An unqualified display name, basename, or substring is
+accepted only when it resolves uniquely across every installed family. Unknown
+checkpoints must be registered before use:
 
-**Breaking change in this release:** `bench-ab --json PATH` is now
-`bench-ab --json-out PATH`. `--json` is a boolean on every subcommand and
-prints a machine-readable object on stdout.
+```bash
+uvr models register model.ckpt --family mdx --config model.json
+```
 
-Shared flags (`separate`, `ensemble`, and `bench-ab`): `--cpu`/`--gpu`,
-`--device`, `--autocast`/`--no-autocast`, `--format`, `--wav-type`,
-`--mp3-bitrate`, `--flac-depth`, `--vocal-split MODEL`/`--no-vocal-split`,
-`--save-split-inst`, `--normalize`, `--match-mix`, `--sample`/`--sample-seconds`,
-`--set`, `--quiet`, `--json`. Karaoke models still default to instrumental-only
-output unless `--stems both` is passed. That is engine behaviour and is not
-changed here.
+Registration copies the checkpoint into the managed model tree and stores its
+validated per-hash configuration. Local metadata overrides catalogue metadata.
 
-Notes:
+### Defaults and profiles
 
-- CLI overrides are **not** written back to `settings.json`.
-- Autocast: unset `UVR_AUTOCAST` uses the persisted `is_autocast` setting; `--env UVR_AUTOCAST=…` overrides for A/B benches.
-- `--model` accepts GUI display names, on-disk basenames/filenames, or a
-  **unique** substring of those (`karaoke_frazer` → Frazer Roformer when only
-  one installed model matches). Ambiguous queries raise before separation starts.
-  Filenames are mapped to display labels for the run only (UI/settings storage
-  unchanged).
-- `--stems` overrides which outputs are saved for the run only
-  (`both` / `primary` / `secondary` / `vocals` / `instrumental`, plus Demucs
-  `bass`/`drums`/`other`). Omit to keep GUI/settings defaults.
-- `bench-ab` requires exactly two `--env KEY=value` flags; outputs land in `ab_a_*` / `ab_b_*` under `-o`.
-- `--json` reserves stdout for one JSON document (success *or* failure) and
-  therefore implies quiet engine-console output; progress and human `error:`
-  lines remain on stderr. Failures are `{"ok": false, "error": {"type", "message"}}`.
-  Argparse usage errors stay argparse-shaped (they happen before `func()`).
-- Ctrl-C / SIGTERM is a first-class stop: first signal is cooperative
-  (`JobRunner.stop(force=False)`), second (or a 5s hang) is `force=True`.
-  Exit code 130. `--json` still emits one document with `"stopped": true`.
-  There is no traceback. `bench-ab` does not start the other leg.
-- `--print-settings --json` nests settings under the result's `settings` key
-  instead of printing a second document.
-- `ensemble` requires `--ensemble NAME` or `--model`/`--models`. It does not
-  inherit `selected_models` from the last GUI session.
-- `--ensemble` accepts a user-saved name, a curated preset id, or the GUI
-  label `Curated: …`. Curated members go through `resolve_member_tags`.
-- An ad-hoc ensemble (`--model` / `--models` without `--ensemble`) requires an
-  explicit `--main-stem`. Ad-hoc members clear any saved-ensemble name so
-  output naming cannot use a stale preset label.
-- Members outside `ensemble_model_list` for the chosen `--main-stem` print a
-  warning on stderr and still run.
-- `--sample-seconds N` also enables sample mode.
-- `bench-ab` forwards every process, splitter, stem, and long-chunk option to
-  both child legs. `--json-out PATH` writes a file; boolean `--json` prints the
-  single machine-readable benchmark payload.
+CLI jobs start from typed application defaults and do not read GUI settings
+implicitly. Select `--profile gui`, a named sparse profile, or a JSON profile
+path explicitly:
+
+```bash
+uvr settings profile create fast-gpu \
+  --model mdx:UVR-MDX-NET-Inst_HQ_4 \
+  --set process.autocast=true --set mdx.segment_size=256
+
+uvr separate song.wav -o /tmp/stems --profile fast-gpu
+uvr settings explain mdx.segment_size --profile fast-gpu
+```
+
+When a profile supplies the model, ensemble preset, or member list, an
+interactive run previews the effective plan and asks `Use these settings?
+[y/N]`. Machine and non-TTY runs must pass `--accept-inherited`. CLI and
+profile changes never write back to GUI settings.
+
+A portable sparse profile uses schema version 1. Identity is separate from the
+flat setting map; use either `model`, `ensemble`, or `members`:
+
+```json
+{
+  "schema_version": 1,
+  "name": "fast-gpu",
+  "model": "mdx:UVR-MDX-NET-Inst_HQ_4",
+  "ensemble": null,
+  "members": [],
+  "settings": {
+    "process.autocast": true,
+    "mdx.segment_size": 256
+  }
+}
+```
+
+Precedence is built-in defaults, model-native automatic values, ensemble
+preset, profile, named CLI flags, `--set`, environment, then derived runtime
+values. `UVR_AUTOCAST` is the currently supported environment override.
+
+### Inspection and validation
+
+```bash
+uvr separate song.wav -o /tmp/stems --model mdx:model --dry-run
+uvr validate separate song.wav -o /tmp/stems \
+  --model mdx:model --level runtime
+uvr models validate mdx:model
+```
+
+Dry-run verifies input paths, checkpoint existence/hash, model configuration,
+and planned outputs. It does not load weights, import the inference engines,
+create output directories, or start a runner.
+
+Validation levels are `config`, `model`, `runtime`, and `load`. The last
+level loads the checkpoint through the applicable runtime without inference.
+
+### Audio Tools and administration
+
+The GUI Audio Tools are also available through `uvr audio`: `inspect`,
+`ensemble`, `stretch`, `pitch`, `align`, `match`, and Apollo `restore`.
+Single-input tools accept files or directories; align and match require
+repeatable `--pair A B`. They use the same profiles, reports, validation,
+dry-run, staging, collision policies, manifests, and replay checks as
+separation jobs. Validate them with `uvr validate audio TOOL ...`.
+
+`uvr models catalog` searches downloadable catalogue entries and `uvr models
+download ENTRY...` is the only processing-adjacent command that downloads
+models. `uvr models configure` manages validated local hash metadata. Saved
+ensembles can be created or deleted with `uvr ensembles create|delete`, and
+`uvr update check` performs a read-only source-release check.
+
+### Batch safety and manifests
+
+Directories are accepted as inputs. Use `--recursive` and repeatable
+`--include GLOB` filters. Inputs are sorted and deduplicated.
+
+```bash
+uvr separate ~/Music -o /tmp/stems --recursive --include '*.flac' \
+  --model mdx:model --on-exists rename --continue-on-error
+
+uvr separate song.wav -o /tmp/stems --model mdx:model --manifest
+uvr run /tmp/stems/uvr-manifest-JOB_ID.json -o /tmp/replay
+```
+
+Outputs are staged per input and promoted only after success.
+`--on-exists` accepts `fail` (default), `overwrite`, `rename`, or
+`skip`. Batches continue after an input failure by default; `--fail-fast`
+reverses this. Manifests record effective settings, provenance, model hashes,
+inputs, outputs, backend, and outcomes. Replay rejects changed model hashes
+unless `--allow-model-change` is supplied.
+
+### Reports and exit codes
+
+`--report human|json|jsonl` selects output ownership. JSON is exactly one
+versioned result document. JSONL emits versioned planning, progress,
+per-input, and terminal events. Engine logs never enter machine-readable
+stdout. `--quiet` suppresses progress and engine chatter; `--verbose`
+prints the effective plan for a real job.
+
+JSON documents have the stable outer shape below. Success results add the
+effective `plan`, per-input outcomes, timings, and output paths; failures use
+the same envelope with `ok: false` and an `error` object.
+
+```json
+{
+  "schema_version": 1,
+  "job_id": "UUID",
+  "ok": true,
+  "status": "success",
+  "command": "separate",
+  "plan": {},
+  "inputs": []
+}
+```
+
+JSONL writes one object per line. Its `event` values are `planned`, `started`,
+`progress`, `input_finished`, and `finished`; every event includes the schema
+version and job ID. Diagnostics remain on stderr in both machine modes.
+
+Exit codes are: `0` success/skipped, `1` complete runtime failure, `2`
+usage/configuration/validation/confirmation failure, `3` partial batch
+success, and `130` interruption.
+
+| Manifest `schema_version` | `1` for `separate` / `ensemble`; `2` for `audio` |
+| Interrupt document | `ok: false`, `status: "failed"`, `stopped: true`, exit `130` |
+| Planning / validate / dry-run | Installed + cached metadata only. Missing MDX-C YAML is an error; use `uvr models download` |
+
+### Benchmarking and completion
+
+```bash
+uvr bench song.wav -o /tmp/bench --model mdx:model \
+  --a-env UVR_AUTOCAST=0 --b-env UVR_AUTOCAST=1 \
+  --a-set mdx.segment_size=256 --b-set mdx.segment_size=512
+
+uvr completion bash
+```
+
+Both benchmark legs validate before leg A starts and use a fresh job-ID
+directory. Use per-leg model/profile/environment/setting flags for broader
+comparisons and `--keep-outputs always|failure|never` for retention.
+
+GPU kernels may not be bitwise deterministic. The CLI intentionally has no
+`--seed` option until an engine exposes a real controllable randomness source.
 
 ---
-
 ## UI development
 
 | Variable | Values | Purpose |

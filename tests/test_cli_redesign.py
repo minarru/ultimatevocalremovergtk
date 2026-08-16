@@ -382,5 +382,14 @@ class BatchExecutionTests(unittest.TestCase):
             )
 
 
+class SettingPathsTests(unittest.TestCase):
+    def test_setting_paths_include_audio_and_ui(self) -> None:
+        from cli.discovery import _setting_paths
+
+        paths = _setting_paths()
+        self.assertIn("audio_tools.apollo_model", paths)
+        self.assertIn("ui.confirm_processing_plan", paths)
+
+
 if __name__ == "__main__":
     unittest.main()
