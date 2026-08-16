@@ -89,6 +89,7 @@ from .oom_segment import (
 if TYPE_CHECKING:
     from engines.model_weight_cache import FileIdentity
     from kthread import KThread
+    from .job_plan import PlannedInput, ResolvedJob
 
 
 def collect_run_model_paths(models: Sequence[ModelConfig]) -> set[str]:
@@ -261,6 +262,18 @@ def _write_captured_stems(
         _save_format(path, save_format_name, mp3_bit_set, flac_bit_set)
 
 
+@dataclass(frozen=True)
+class InputOutcome:
+    """Per-input result from :meth:`JobRunner.start_resolved`."""
+
+    path: str
+    status: str  # "success" | "failed" | "skipped"
+    outputs: tuple[str, ...] = ()
+    error: str | None = None
+    elapsed_s: float = 0.0
+    stopped: bool = False
+
+
 @dataclass
 class JobCallbacks:
     """Callbacks invoked from the worker thread.
@@ -400,6 +413,8 @@ class JobRunner:
         self._run_planned: Sequence[Any] | None = None
         self._run_output_root: str | None = None
         self._run_path_map: dict[str, str] | None = None
+        self._resolved_command: str | None = None
+        self.last_outcomes: tuple[InputOutcome, ...] = ()
 
     # -- Public control ---------------------------------------------------------
 
@@ -416,6 +431,8 @@ class JobRunner:
         self._run_planned = None
         self._run_output_root = None
         self._run_path_map = None
+        self._resolved_command = None
+        self.last_outcomes = ()
 
     def start(
         self,
@@ -487,6 +504,144 @@ class JobRunner:
         )
         debug("worker", f"KThread ensemble start files={len(paths)}")
         self._thread.start()
+
+    def start_resolved(
+        self,
+        job: "ResolvedJob",
+        callbacks: JobCallbacks,
+        *,
+        models: Sequence[Any] | None = None,
+        fail_fast: bool = True,
+        export_paths: Sequence[str] | None = None,
+    ) -> None:
+        """Assemble models once and walk every planned input on one worker.
+
+        Does not promote outputs. Per-input results land in
+        :attr:`last_outcomes`. ``on_complete`` fires when the batch finishes
+        without an unexpected runner failure; per-input failures are recorded
+        as outcomes and do not call ``on_error``.
+        """
+        if self.is_running():
+            return
+        from kthread import KThread
+
+        self._reset_run_state()
+        self._run_output_root = job.output
+        self._resolved_command = job.command
+        self._thread = KThread(
+            target=self._run_resolved,
+            args=(job, callbacks, models, fail_fast, export_paths),
+        )
+        debug("worker", f"KThread resolved start inputs={len(job.inputs)}")
+        self._thread.start()
+
+    def _run_resolved(
+        self,
+        job: "ResolvedJob",
+        callbacks: JobCallbacks,
+        models: Sequence[Any] | None,
+        fail_fast: bool,
+        export_paths: Sequence[str] | None,
+    ) -> None:
+        outcomes: list[InputOutcome] = []
+        try:
+            if models is not None:
+                self._run_models = list(models)
+            else:
+                self._run_models = self.resolve_models()
+            self._run_output_root = job.output
+            self._resolved_command = job.command
+
+            for index, planned in enumerate(job.inputs):
+                previous_export: str | None = None
+                if export_paths is not None:
+                    previous_export = self.settings.process.export_path
+                    self.settings.process.export_path = export_paths[index]
+                try:
+                    outcome = self._run_one_planned(planned, callbacks)
+                finally:
+                    if export_paths is not None and previous_export is not None:
+                        self.settings.process.export_path = previous_export
+                outcomes.append(outcome)
+                self.last_outcomes = tuple(outcomes)
+                if outcome.stopped:
+                    break
+                if outcome.status == "failed" and fail_fast:
+                    break
+
+            self.last_outcomes = tuple(outcomes)
+            if any(item.stopped for item in outcomes):
+                callbacks.stopped()
+            else:
+                callbacks.complete()
+        except Exception as exc:  # noqa: BLE001 - surfaced through the callback
+            self.last_outcomes = tuple(outcomes)
+            if self._is_stopped:
+                callbacks.stopped()
+                return
+            callbacks.error(exc)
+            _release_inference_resources(self, park_weights=True)
+
+    def _run_one_planned(
+        self,
+        planned: "PlannedInput",
+        callbacks: JobCallbacks,
+    ) -> InputOutcome:
+        """Run a single planned input using the existing ``_run`` / ``_run_ensemble`` body."""
+        started = time.perf_counter()
+        box: dict[str, Any] = {
+            "status": "success",
+            "error": None,
+            "stopped": False,
+            "outputs": tuple(output.path for output in planned.outputs),
+        }
+
+        def on_stopped() -> None:
+            box["stopped"] = True
+            box["status"] = "skipped"
+
+        def on_error(exc: BaseException) -> None:
+            box["status"] = "failed"
+            box["error"] = str(exc)
+            box["outputs"] = ()
+
+        item_callbacks = JobCallbacks(
+            on_progress=callbacks.on_progress,
+            on_console=callbacks.on_console,
+            on_complete=None,
+            on_stopped=on_stopped,
+            on_error=on_error,
+            on_oom_choice=callbacks.on_oom_choice,
+            on_input_start=callbacks.on_input_start,
+            on_input_finished=callbacks.on_input_finished,
+        )
+
+        self._run_planned = (planned,)
+        use_ensemble = (
+            self._resolved_command == "ensemble"
+            or self.settings.process.method == ProcessMethod.ENSEMBLE
+        )
+        try:
+            if use_ensemble:
+                self._run_ensemble([planned.path], item_callbacks)
+            else:
+                self._run([planned.path], item_callbacks)
+        except Exception as exc:  # noqa: BLE001 - convert to outcome
+            return InputOutcome(
+                path=planned.path,
+                status="failed",
+                error=str(exc),
+                elapsed_s=time.perf_counter() - started,
+            )
+
+        return InputOutcome(
+            path=planned.path,
+            status=str(box["status"]),
+            outputs=tuple(box["outputs"]) if box["status"] == "success" else (),
+            error=box["error"],
+            elapsed_s=time.perf_counter() - started,
+            stopped=bool(box["stopped"]),
+        )
 
     def _naming_for_file(
         self,
