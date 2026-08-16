@@ -182,12 +182,37 @@ class RunController:
         runner = self._window.context.runner
         if plan is not None:
             import copy
-            runner.settings = copy.deepcopy(plan.settings)
+            plan_settings = copy.deepcopy(plan.settings)
+            runner.settings = plan_settings
+            self._apply_page_runner_settings(target, plan_settings)
         else:
             runner.settings = self._window.settings
         callbacks = self._callbacks()
         debug("ui", f"handle_start -> {type(target).__name__}.start()")
         target.start(callbacks)
+
+    def _apply_page_runner_settings(
+        self, target: typing.Any, settings: typing.Any
+    ) -> None:
+        """Audio Tools owns a page-local runner; apply the plan copy there too."""
+        import copy
+
+        if not hasattr(target, "_runner"):
+            return
+        page_runner = getattr(target, "_runner", None)
+        if page_runner is None:
+            page_runner = target.runner
+        page_runner.settings = copy.deepcopy(settings)
+
+    def _restore_runner_settings(self) -> None:
+        window = self._window
+        if window.context._runner is not None:
+            window.context.runner.settings = window.settings
+        page = getattr(window, "_audio_tools_page", None)
+        if page is not None:
+            page_runner = getattr(page, "_runner", None)
+            if page_runner is not None:
+                page_runner.settings = window.settings
 
     def _set_preflight_busy(self, busy: bool) -> None:
         self._preflight_in_progress = busy
@@ -714,8 +739,7 @@ class RunController:
         runner = getattr(self._window.context, "runner", None)
         exported = bool(getattr(runner, "_last_oom_exported", False))
         self._finish_run_ui(stopped=True)
-        if self._window.context._runner is not None:
-            self._window.context.runner.settings = self._window.settings
+        self._restore_runner_settings()
         if exported:
             toast = Adw.Toast.new("Exported completed ensemble outputs.")
             output_dir = self._run_output_dir
@@ -736,8 +760,7 @@ class RunController:
         self._window.log_panel.mark_run_complete()
         self._running_target = None
         clear_run_start()
-        if self._window.context._runner is not None:
-            self._window.context.runner.settings = self._window.settings
+        self._restore_runner_settings()
         output_dir = self._run_output_dir
         self._show_complete_toast(output_dir)
         self._send_completion_notification(output_dir)
@@ -754,8 +777,7 @@ class RunController:
         self._send_failure_notification()
         self._running_target = None
         clear_run_start()
-        if self._window.context._runner is not None:
-            self._window.context.runner.settings = self._window.settings
+        self._restore_runner_settings()
         # Worker already parks on failure; park again here in case UI cleanup
         # races ahead of the worker finally/except path.
         self._schedule_release_inference_memory(park_weights=True)

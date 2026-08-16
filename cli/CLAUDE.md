@@ -16,7 +16,7 @@ The command-line front end. A presentation layer, exactly like `ui/`.
   `ensure_mdx_c_config(..., allow_network=False)`, not `catalogue_offline()`.
 - **Reports are versioned.** `--report json` owns one stdout document;
   `--report jsonl` owns one event per line. Usage errors follow the selected
-  report mode. Interrupts use exit 130.
+  report mode. Interrupts use exit 130 and `"stopped": true`.
 - **Ctrl-C is cooperative then forced.** `_run_job` must not re-raise
   `KeyboardInterrupt`. Restore the previous SIGINT/SIGTERM handlers in `finally`.
 - **Clean defaults are the implicit profile.** GUI state is read only through

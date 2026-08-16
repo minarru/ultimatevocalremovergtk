@@ -21,7 +21,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Sequence
 
 from bundled.constants import (
-    CHOOSE_ENSEMBLE_OPTION,
     DEMUCS_ARCH_TYPE,
     ENSEMBLE_MODE,
     INST_STEM,
@@ -655,6 +654,8 @@ class JobRunner:
     def resolve_models(self) -> List[ModelConfig]:
         """Build the ``ModelConfig`` list for the currently chosen method."""
         method = ProcessMethod(self.settings.process.method)
+        if method is ProcessMethod.ENSEMBLE:
+            return assemble_model(self.settings, self.repo, arch_type=ENSEMBLE_MODE)
         if method is ProcessMethod.VR:
             model_name = self.settings.vr.model
         elif method is ProcessMethod.MDX:
@@ -1657,11 +1658,9 @@ class Ensembler:
         self.settings = settings
         self.is_save_all_outputs_ensemble = settings.ensemble.save_all_outputs
 
-        chosen = settings.ensemble.chosen_ensemble
-        if chosen and chosen != CHOOSE_ENSEMBLE_OPTION:
-            chosen_ensemble_name = sanitize_filename_component(chosen) or "Ensembled"
-        else:
-            chosen_ensemble_name = "Ensembled"
+        from core.export_naming import ensemble_name_for_export
+
+        chosen_ensemble_name = ensemble_name_for_export(settings.ensemble.chosen_ensemble)
         from core.ensemble_algorithms import parse_ensemble_type
 
         ensemble_type_value = settings.ensemble.type

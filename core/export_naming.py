@@ -118,6 +118,19 @@ def sanitize_filename_component(text: str | None) -> str:
     return cleaned
 
 
+def ensemble_name_for_export(chosen: str | None) -> str:
+    """Map ``chosen_ensemble`` to the export label used by planning and Ensembler.
+
+    The GUI sentinel ``CHOOSE_ENSEMBLE_OPTION`` ('Choose Option') becomes
+    ``"Ensembled"``, matching ad-hoc ensembles that never pick a saved name.
+    """
+    from bundled.constants import CHOOSE_ENSEMBLE_OPTION
+
+    if chosen and chosen != CHOOSE_ENSEMBLE_OPTION:
+        return sanitize_filename_component(chosen) or "Ensembled"
+    return "Ensembled"
+
+
 def format_track_base(
     *,
     track: str,

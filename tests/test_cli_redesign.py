@@ -133,8 +133,10 @@ class ProfileTests(unittest.TestCase):
     def test_canonicalize_primary_resolves_with_family_exact(self) -> None:
         from cli.job import _canonicalize_model_references
         from core.model_identity import ModelRecord
+        from core.types import ProcessMethod
 
         settings = Settings.defaults()
+        settings.process.method = ProcessMethod.MDX
         settings.mdx.model = "Model A"
         record = ModelRecord("mdx:model_a", "mdx", "model_a", "Model A")
         with patch("cli.job.ModelIdentityService") as service_cls:
@@ -142,6 +144,30 @@ class ProfileTests(unittest.TestCase):
             service.resolve.return_value = record
             _canonicalize_model_references(settings, Mock())
         service.resolve.assert_any_call("Model A", family="mdx", fuzzy=False)
+
+    def test_canonicalize_ignores_stale_unused_family_primary(self) -> None:
+        """GUI profile may keep a stale VR primary while --model selects MDX."""
+        from cli.job import _canonicalize_model_references
+        from core.model_identity import ModelRecord
+        from core.types import ProcessMethod
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.MDX
+        settings.mdx.model = "mdx:good"
+        settings.vr.model = "vr:stale-missing"
+        mdx_record = ModelRecord("mdx:good", "mdx", "good", "Good")
+
+        def resolve(raw: str, **kwargs: Any) -> ModelRecord:
+            if kwargs.get("family") == "vr" or "stale" in str(raw):
+                raise ValueError("unknown or unregistered model")
+            return mdx_record
+
+        with patch("cli.job.ModelIdentityService") as service_cls:
+            service = service_cls.return_value
+            service.resolve.side_effect = resolve
+            _canonicalize_model_references(settings, Mock())
+        self.assertEqual(settings.mdx.model, "MDX-Net: Good")
+
 
 
 class DeviceResolutionTests(unittest.TestCase):
@@ -380,6 +406,54 @@ class BatchExecutionTests(unittest.TestCase):
             self.assertTrue(
                 os.path.isfile(os.path.join(output, "song (Vocals).wav"))
             )
+
+    def test_run_batch_ensemble_calls_resolve_models(self) -> None:
+        """Ensemble jobs share models via resolve_models (ENSEMBLE_MODE assemble)."""
+        from bundled.constants import ENSEMBLE_MODE
+        from core.types import ProcessMethod
+
+        with tempfile.TemporaryDirectory() as root:
+            source = os.path.join(root, "a.wav")
+            open(source, "wb").close()
+            output = os.path.join(root, "out")
+            settings = Settings.defaults()
+            settings.process.method = ProcessMethod.ENSEMBLE
+            settings.process.export_path = output
+            planned = (_planned_input(source, output, "a"),)
+            job = ResolvedJob(
+                command="ensemble",
+                settings=settings,
+                profile=LoadedProfile("defaults", "built-in"),
+                inputs=[source],
+                output=output,
+                plan={"identity": {"id": "ensemble", "hash": "h"}},
+                resolved=SimpleNamespace(inputs=planned),
+            )
+            fake_models = [object(), object()]
+            captured: dict[str, Any] = {}
+
+            def runner(settings: Settings, paths: list[str], **kwargs: Any) -> RunResult:
+                captured["models"] = kwargs.get("models")
+                captured["shared_runner"] = kwargs.get("runner")
+                name = f"{format_stem_basename('a', 'Vocals')}.wav"
+                with open(
+                    os.path.join(settings.process.export_path, name), "wb"
+                ) as handle:
+                    handle.write(b"ok")
+                return RunResult(0.1, completed=True)
+
+            with patch(
+                "core.job_runner.assemble_model", return_value=fake_models
+            ) as assemble:
+                outcome = run_batch(_args(), job, runner)
+
+            self.assertEqual(outcome.exit_code, 0)
+            assemble.assert_called_once()
+            self.assertEqual(
+                assemble.call_args.kwargs.get("arch_type"), ENSEMBLE_MODE
+            )
+            self.assertIs(captured["models"], fake_models)
+            self.assertIsInstance(captured["shared_runner"], JobRunner)
 
 
 class SettingPathsTests(unittest.TestCase):

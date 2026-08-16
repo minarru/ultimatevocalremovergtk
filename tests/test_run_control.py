@@ -234,6 +234,44 @@ class StartTargetSettingsCopyTests(unittest.TestCase):
         self.assertEqual(window.context.runner.settings.mdx.compensate, 1.055)
         target.start.assert_called_once()
 
+    def test_start_target_applies_plan_to_audio_tools_page_runner(self) -> None:
+        from core.settings import Settings
+
+        window_settings = Settings.defaults()
+        plan_settings = Settings.defaults()
+        plan_settings.mdx.compensate = 1.055
+        plan = mock.Mock(settings=plan_settings)
+
+        context_runner = mock.Mock()
+        context_runner.settings = window_settings
+        context = mock.Mock()
+        context._runner = context_runner
+        context.runner = context_runner
+
+        page_runner = mock.Mock()
+        page_runner.settings = window_settings
+        target = mock.Mock()
+        target._runner = page_runner
+
+        window = mock.Mock()
+        window.settings = window_settings
+        window.context = context
+        window._audio_tools_page = target
+
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._callbacks = mock.Mock(return_value=object())
+
+        controller._start_target(target, plan)
+
+        self.assertIsNone(window.settings.mdx.compensate)
+        self.assertEqual(page_runner.settings.mdx.compensate, 1.055)
+        self.assertIsNot(page_runner.settings, plan.settings)
+
+        controller._restore_runner_settings()
+        self.assertIs(page_runner.settings, window_settings)
+        self.assertIs(context_runner.settings, window_settings)
+
 
 class PlanRecheckTests(unittest.TestCase):
     def test_finished_recheck_starts_only_when_settings_and_models_are_current(self) -> None:

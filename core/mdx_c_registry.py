@@ -214,7 +214,7 @@ def load_mdx_catalog_index() -> Dict[str, str]:
 
     from .politrees_catalog import load_politrees_links
 
-    politrees = load_politrees_links()
+    politrees = load_politrees_links(allow_network=False)
     if isinstance(politrees, dict):
         catalogues.extend(_catalogues_from_source(politrees))
 
@@ -263,6 +263,8 @@ def register_mdx_c_checkpoint(
         except (OSError, ValueError, TypeError):
             pass
 
+    # Network-forbidden planning is also non-mutating: skip writing the hash
+    # registry whenever network access is disallowed (even if write=True).
     if write and _ALLOW_NETWORK.get():
         os.makedirs(paths.MDX_HASH_DIR, exist_ok=True)
         with open(json_path, "w", encoding="utf-8") as handle:

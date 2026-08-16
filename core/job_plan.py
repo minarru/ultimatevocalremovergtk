@@ -413,8 +413,10 @@ class JobResolver:
         total = len(spec.inputs)
         descriptor = descriptors[0] if descriptors else ModelDescriptor("", "", "", "")
         stem_entries = planned_output_stems(settings, descriptors, command=spec.command)
+        from .export_naming import ensemble_name_for_export
+
         ensemble_label = (
-            str(settings.ensemble.chosen_ensemble or "Ensembled")
+            ensemble_name_for_export(settings.ensemble.chosen_ensemble)
             if spec.command == "ensemble" else None
         )
         model_label = descriptor.display if spec.command != "ensemble" else None

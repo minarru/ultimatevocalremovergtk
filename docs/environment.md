@@ -107,7 +107,7 @@ shims for its earlier experimental surface:
 | `--json-out` | `--manifest-out` for job manifests |
 | `--print-settings` | `--verbose`, `--dry-run`, or `uvr settings show` |
 | `--method` | Removed; the canonical model ID determines the family |
-| `--cpu` / `--gpu` | `--device auto|cpu|cuda:N|mps|directml:N` |
+| `--cpu` / `--gpu` | `--device auto\|cpu\|cuda:N\|mps\|directml:N` |
 
 The removed Python headless helpers have likewise been replaced by the public
 resolved-job and blocking-runner APIs in `core`; no import trampoline remains.
@@ -263,6 +263,8 @@ Exit codes are: `0` success/skipped, `1` complete runtime failure, `2`
 usage/configuration/validation/confirmation failure, `3` partial batch
 success, and `130` interruption.
 
+| | |
+| --- | --- |
 | Manifest `schema_version` | `1` for `separate` / `ensemble`; `2` for `audio` |
 | Interrupt document | `ok: false`, `status: "failed"`, `stopped: true`, exit `130` |
 | Planning / validate / dry-run | Installed + cached metadata only. Missing MDX-C YAML is an error; use `uvr models download` |

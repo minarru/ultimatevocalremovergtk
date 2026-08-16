@@ -179,6 +179,8 @@ def _canonicalize_model_references(
     settings: Settings, repo: ModelRepository
 ) -> dict[str, dict[str, str]]:
     from core.settings.access import get_path, set_path
+    from core.settings.coerce import enum_value
+    from core.types import ProcessMethod
 
     identities: dict[str, dict[str, str]] = {}
     sentinels = {"", "none", "no model selected", "choose model"}
@@ -190,11 +192,23 @@ def _canonicalize_model_references(
         "process.vocal_splitter": ("vr", "mdx"),
         "demucs.pre_proc_model": ("vr", "mdx"),
     }
+    method_value = str(enum_value(settings.process.method) or "")
+    active_primary_family = {
+        ProcessMethod.VR.value: "vr",
+        ProcessMethod.VR_ARCH.value: "vr",
+        ProcessMethod.MDX.value: "mdx",
+        ProcessMethod.DEMUCS.value: "demucs",
+        ProcessMethod.APOLLO.value: "apollo",
+    }.get(method_value)
     service = ModelIdentityService(repo)
     for path in MODEL_REFERENCE_SETTING_PATHS | frozenset(family_by_path):
         section_name = path.split(".", 1)[0]
         active = True
-        if path == "process.vocal_splitter":
+        if path in family_by_path:
+            # Only the job's own family primary is load-bearing; stale GUI
+            # primaries in unused families must not abort --profile gui.
+            active = family_by_path[path] == active_primary_family
+        elif path == "process.vocal_splitter":
             active = settings.process.vocal_splitter_enabled
         elif path == "demucs.pre_proc_model":
             active = settings.demucs.is_pre_proc_model_activate

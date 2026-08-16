@@ -67,6 +67,22 @@ class PlannedOutputStemTests(unittest.TestCase):
             [VOCAL_STEM, "Instrumental"],
         )
 
+    def test_adhoc_ensemble_sentinel_label_is_ensembled(self) -> None:
+        from bundled.constants import CHOOSE_ENSEMBLE_OPTION
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.ENSEMBLE
+        settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
+        settings.ensemble.append_ensemble_name = True
+        settings.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
+        resolver = JobResolver(Mock())
+        spec = JobSpec("ensemble", settings, ("/tmp/song.wav",), "/tmp/out")
+        planned = resolver._plan_inputs(
+            settings, spec, (_desc("Vocals"), _desc("Vocals")),
+        )
+        self.assertEqual(planned[0].naming.ensemble_label, "Ensembled")
+        self.assertNotIn("Choose Option", planned[0].naming.track_base)
+
 
 class MdxCOfflinePlanningTests(unittest.TestCase):
     def test_ensure_mdx_c_config_offline_does_not_fetch(self) -> None:
