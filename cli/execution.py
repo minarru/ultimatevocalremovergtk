@@ -10,10 +10,11 @@ import sys
 import time
 from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Sequence, cast
 
 from bundled.constants import ENSEMBLE_MODE
 from core.blocking_runner import RunResult, run_blocking
+from core.job_plan import ResolvedJob as CoreResolvedJob
 from core.job_runner import JobCallbacks, JobRunner
 from core.settings import Settings
 
@@ -310,10 +311,13 @@ def run_batch(
 
         if active:
             progress = make_progress_printer(args)
-            batch_job = SimpleNamespace(
-                command=job.command,
-                output=job.output,
-                inputs=tuple(active),
+            batch_job = cast(
+                CoreResolvedJob,
+                SimpleNamespace(
+                    command=job.command,
+                    output=job.output,
+                    inputs=tuple(active),
+                ),
             )
             result = run_runner_cli(
                 shared_runner,
@@ -331,7 +335,7 @@ def run_batch(
                 finish_progress(args)
 
             last_outcomes = tuple(getattr(shared_runner, "last_outcomes", ()) or ())
-            if result.interrupted:
+            if result.interrupted or result.stopped:
                 interrupted = True
 
             for planned_item, stage, outcome in zip(active, stages, last_outcomes):
@@ -407,28 +411,25 @@ def run_batch(
                 emit_event(args, "input_finished", **item)
 
             if result.error is not None and not last_outcomes:
-                interrupted = interrupted or bool(result.interrupted or result.stopped)
                 item = {
                     "input": active[0].path,
                     "status": "failed",
-                    "error": (
-                        "interrupted" if result.stopped and result.error is None
-                        else f"{type(result.error).__name__}: {result.error}"
-                    ),
+                    "error": f"{type(result.error).__name__}: {result.error}",
                     "outputs": [],
                     "elapsed_s": result.elapsed_s,
                 }
                 outcomes.append(item)
                 emit_event(args, "input_finished", **item)
             elif (
-                (result.stopped or result.interrupted)
-                and last_outcomes
+                interrupted
+                and len(last_outcomes) < len(active)
                 and not any(item.get("error") == "interrupted" for item in outcomes)
             ):
-                interrupted = True
-                last = active[len(last_outcomes) - 1]
+                # Attribute the stop to the next unprocessed input — never
+                # re-label a completed success as interrupted.
+                pending = active[len(last_outcomes)]
                 item = {
-                    "input": last.path, "status": "failed", "error": "interrupted",
+                    "input": pending.path, "status": "failed", "error": "interrupted",
                     "outputs": [], "elapsed_s": result.elapsed_s,
                 }
                 outcomes.append(item)

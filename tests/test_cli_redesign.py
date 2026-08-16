@@ -411,9 +411,11 @@ class BatchExecutionTests(unittest.TestCase):
             )
 
     def test_run_batch_uses_start_resolved_with_stage_export_paths(self) -> None:
-        captured: dict[str, object] = {}
+        captured: dict[str, Any] = {}
 
-        def fake_start_resolved(_self, job, callbacks, **kwargs):
+        def fake_start_resolved(
+            _self: JobRunner, job: Any, callbacks: JobCallbacks, **kwargs: Any
+        ) -> None:
             captured["job_output"] = job.output
             captured["export_paths"] = kwargs.get("export_paths")
             captured["planned_dir"] = job.inputs[0].naming.export_directory
@@ -426,12 +428,79 @@ class BatchExecutionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             job = self.make_job(output, [source])
             with patch("core.job_runner.JobRunner.start_resolved", fake_start_resolved):
-                run_batch(_args(), job, runner=lambda *_a, **_k: None)
+                run_batch(_args(), job)
         paths = captured["export_paths"]
         self.assertTrue(paths)
         self.assertTrue(str(paths[0]).startswith(str(captured["job_output"])))
         self.assertIn(".uvr-tmp", str(paths[0]))
         self.assertEqual(captured["planned_dir"], captured["job_output"])
+
+    def test_run_batch_interrupt_does_not_relabel_promoted_success(self) -> None:
+        """Force-stop after one success must not duplicate that path as interrupted."""
+        with tempfile.TemporaryDirectory() as root:
+            inputs = [os.path.join(root, "a.wav"), os.path.join(root, "b.wav")]
+            for path in inputs:
+                open(path, "wb").close()
+            output = os.path.join(root, "out")
+            job = self.make_job(output, inputs)
+
+            def fake_start_resolved(
+                self: JobRunner, batch_job: Any, callbacks: JobCallbacks, **kwargs: Any
+            ) -> None:
+                planned = batch_job.inputs[0]
+                stage = kwargs["export_paths"][0]
+                name = f"{format_stem_basename(planned.naming.track_base, 'Vocals')}.wav"
+                path = os.path.join(stage, name)
+                with open(path, "wb") as handle:
+                    handle.write(b"ok")
+                self.last_outcomes = (
+                    InputOutcome(planned.path, "success", outputs=(path,), elapsed_s=0.1),
+                )
+                if callbacks.on_stopped:
+                    callbacks.on_stopped()
+
+            with patch.object(JobRunner, "resolve_models", return_value=[]), patch(
+                "core.job_runner.JobRunner.start_resolved", fake_start_resolved
+            ):
+                outcome = run_batch(_args(), job)
+
+            paths = [item["input"] for item in outcome.inputs]
+            self.assertEqual(paths.count(inputs[0]), 1)
+            self.assertEqual(outcome.inputs[0]["status"], "success")
+            self.assertEqual(outcome.inputs[1]["status"], "failed")
+            self.assertEqual(outcome.inputs[1]["error"], "interrupted")
+            self.assertEqual(outcome.inputs[1]["input"], inputs[1])
+            self.assertTrue(outcome.interrupted)
+            self.assertEqual(outcome.exit_code, 130)
+            self.assertTrue(os.path.isfile(os.path.join(output, "a (Vocals).wav")))
+
+    def test_run_batch_interrupt_with_empty_outcomes_emits_interrupted_row(self) -> None:
+        """Interrupt before any InputOutcome must not report status success."""
+        with tempfile.TemporaryDirectory() as root:
+            source = os.path.join(root, "song.wav")
+            open(source, "wb").close()
+            output = os.path.join(root, "out")
+            job = self.make_job(output, [source])
+
+            def fake_start_resolved(
+                self: JobRunner, _job: Any, callbacks: JobCallbacks, **_kwargs: Any
+            ) -> None:
+                self.last_outcomes = ()
+                if callbacks.on_stopped:
+                    callbacks.on_stopped()
+
+            with patch.object(JobRunner, "resolve_models", return_value=[]), patch(
+                "core.job_runner.JobRunner.start_resolved", fake_start_resolved
+            ):
+                outcome = run_batch(_args(), job)
+
+            self.assertTrue(outcome.interrupted)
+            self.assertEqual(outcome.exit_code, 130)
+            self.assertNotEqual(outcome.status, "success")
+            self.assertEqual(len(outcome.inputs), 1)
+            self.assertEqual(outcome.inputs[0]["status"], "failed")
+            self.assertEqual(outcome.inputs[0]["error"], "interrupted")
+            self.assertEqual(outcome.inputs[0]["input"], source)
 
     def test_run_batch_ensemble_calls_resolve_models(self) -> None:
         """Ensemble jobs share models via resolve_models (ENSEMBLE_MODE assemble)."""
