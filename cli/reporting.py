@@ -1,27 +1,100 @@
-"""Console reporting for the headless CLI: progress line, --quiet, --json."""
+"""Versioned human, JSON, and JSONL reporting for the public CLI."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+import uuid
 from typing import Any, Callable, Optional, TextIO
+
+REPORT_SCHEMA_VERSION = 1
+REPORT_CHOICES = ("human", "json", "jsonl")
 
 
 def add_reporting_args(parser: argparse.ArgumentParser) -> None:
-    """Attach --quiet and --json to a subcommand parser."""
-    parser.add_argument(
+    group = parser.add_argument_group("Reporting")
+    group.add_argument(
+        "--report",
+        choices=REPORT_CHOICES,
+        default="human",
+        help="Result format (default: human)",
+    )
+    group.add_argument(
         "--quiet",
         action="store_true",
-        help="Suppress engine console output; errors and the summary still print",
+        help="Suppress progress and engine logs; retain errors and the result",
     )
-    parser.add_argument(
-        "--json",
+    group.add_argument(
+        "--verbose",
         action="store_true",
-        help="Print a machine-readable result object on stdout",
+        help="Show the effective plan before processing",
     )
+
+
+def ensure_job_id(args: Any) -> str:
+    value = getattr(args, "job_id", None)
+    if not value:
+        value = str(uuid.uuid4())
+        args.job_id = value
+    return str(value)
+
+
+def report_mode(args: Any) -> str:
+    return str(getattr(args, "report", "human"))
+
+
+def base_payload(args: Any, **values: Any) -> dict[str, Any]:
+    return {
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "job_id": ensure_job_id(args),
+        **values,
+    }
+
+
+def emit_document(args: Any, payload: dict[str, Any]) -> None:
+    """Emit one final result in the selected format."""
+    mode = report_mode(args)
+    document = base_payload(args, **payload)
+    if mode == "json":
+        print(json.dumps(document, indent=2, sort_keys=True))
+    elif mode == "jsonl":
+        print(json.dumps({"event": "finished", **document}, sort_keys=True))
+    else:
+        _emit_human_result(document)
+
+
+def emit_event(args: Any, event: str, **values: Any) -> None:
+    if report_mode(args) != "jsonl":
+        return
+    print(
+        json.dumps(base_payload(args, event=event, **values), sort_keys=True),
+        flush=True,
+    )
+
+
+def _emit_human_result(payload: dict[str, Any]) -> None:
+    print(f"status={payload.get('status') or 'success'}")
+    if "elapsed_s" in payload:
+        print(f"elapsed_s={float(payload['elapsed_s']):.3f}")
+    if payload.get("export_path"):
+        print(f"export_path={payload['export_path']}")
+    results = payload.get("inputs")
+    if isinstance(results, list) and len(results) > 1:
+        succeeded = sum(item.get("status") == "success" for item in results)
+        failed = sum(item.get("status") == "failed" for item in results)
+        skipped = sum(item.get("status") == "skipped" for item in results)
+        print(
+            f"inputs={len(results)} succeeded={succeeded} "
+            f"failed={failed} skipped={skipped}"
+        )
+        for item in results:
+            if item.get("status") == "failed":
+                print(f"error[{item.get('input')}]={item.get('error')}", file=sys.stderr)
 
 
 def make_progress_printer(
+    args: Any = None,
     stream: Optional[TextIO] = None,
 ) -> Optional[Callable[..., None]]:
     """Return an ``on_progress`` callback, or ``None`` when not on a TTY.
@@ -30,6 +103,23 @@ def make_progress_printer(
     runs on the JobRunner worker thread; it only touches a stream, never a
     widget.
     """
+    # A stream as the first positional parameter remains useful to core-facing
+    # callers; public CLI code passes the Namespace.
+    if args is not None and not hasattr(args, "report") and hasattr(args, "write"):
+        stream = args
+        args = None
+    if getattr(args, "quiet", False):
+        return None
+    if report_mode(args) == "jsonl":
+        def jsonl_progress(fraction: float, **meta: Any) -> None:
+            emit_event(
+                args,
+                "progress",
+                fraction=max(0.0, min(1.0, float(fraction))),
+                **meta,
+            )
+
+        return jsonl_progress
     out = stream if stream is not None else sys.stderr
     if not getattr(out, "isatty", lambda: False)():
         return None
@@ -51,8 +141,13 @@ def make_progress_printer(
     return on_progress
 
 
-def finish_progress(stream: Optional[TextIO] = None) -> None:
+def finish_progress(args: Any = None, stream: Optional[TextIO] = None) -> None:
     """Close out the in-place progress line with a newline."""
+    if args is not None and not hasattr(args, "report") and hasattr(args, "write"):
+        stream = args
+        args = None
+    if report_mode(args) != "human":
+        return
     out = stream if stream is not None else sys.stderr
     if getattr(out, "isatty", lambda: False)():
         out.write("\n")
@@ -60,28 +155,33 @@ def finish_progress(stream: Optional[TextIO] = None) -> None:
 
 
 def emit_json(payload: dict[str, Any]) -> None:
-    """Write one JSON document to stdout. The only function allowed to print there under ``--json``."""
-    import json
-
-    print(json.dumps(payload, indent=2))
+    """Internal compatibility helper; new commands use :func:`emit_document`."""
+    print(json.dumps(payload, indent=2, sort_keys=True))
 
 
 def fail(
-    args: argparse.Namespace,
+    args: Any,
     message: str,
     *,
     exit_code: int,
     exc: Optional[BaseException] = None,
     extra: Optional[dict[str, Any]] = None,
+    kind: str = "configuration",
 ) -> int:
-    """Print a human error on stderr; under ``--json`` also emit one failure document."""
+    """Report one failure without contaminating machine-readable stdout."""
     print(f"error: {message}", file=sys.stderr)
-    if getattr(args, "json", False):
-        error: dict[str, Any] = {"message": message}
+    if report_mode(args) != "human":
+        error: dict[str, Any] = {"kind": kind, "message": message}
         if exc is not None:
             error["type"] = type(exc).__name__
-        payload: dict[str, Any] = {"ok": False, "error": error}
+        payload: dict[str, Any] = {
+            "ok": False,
+            "status": "failed",
+            "error": error,
+        }
         if extra:
             payload.update(extra)
-        emit_json(payload)
+        if exit_code == 130:
+            payload.setdefault("stopped", True)
+        emit_document(args, payload)
     return exit_code
