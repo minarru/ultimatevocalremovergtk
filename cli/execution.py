@@ -223,6 +223,17 @@ def _apply_unit_rename(
 ) -> list[tuple[str, str]]:
     """Pick the next free unit suffix; recheck until the chosen set stays free."""
     dest_by_name = {os.path.basename(path): path for path in destinations}
+
+    def _remap(index: int) -> list[tuple[str, str]]:
+        remapped: list[tuple[str, str]] = []
+        for source, target in entries:
+            original = dest_by_name.get(os.path.basename(source))
+            base_path = original if original is not None else target
+            remapped.append(
+                (source, _with_unit_suffix(base_path, track_base, index))
+            )
+        return remapped
+
     index = start_index
     while True:
         rewritten = [
@@ -231,15 +242,18 @@ def _apply_unit_rename(
         if any(os.path.exists(path) for path in rewritten):
             index += 1
             continue
-        remapped: list[tuple[str, str]] = []
-        for source, target in entries:
-            original = dest_by_name.get(os.path.basename(source))
-            base_path = original if original is not None else target
-            remapped.append(
-                (source, _with_unit_suffix(base_path, track_base, index))
-            )
-        # Recheck under the output-dir lock so a raced suffix bumps again.
+        remapped = _remap(index)
+        # Recheck destinations under the lock so a raced suffix bumps again.
         if any(os.path.exists(path) for path in rewritten):
+            index += 1
+            continue
+        # Conditional / extra stage stems are not in ``destinations`` but still
+        # remapped — require those targets free too, or bumping never helps.
+        if any(os.path.exists(target) for _source, target in remapped):
+            next_targets = [target for _source, target in _remap(index + 1)]
+            if next_targets == [target for _source, target in remapped]:
+                # ``_with_unit_suffix`` no-op'd; caller must use ``_unique_target``.
+                return remapped
             index += 1
             continue
         return remapped
@@ -341,9 +355,19 @@ def _promote_locked(
                             destinations,
                             track_base,
                         )
-                        pending = remapped
-                        continue
-                    target = _unique_target(target)
+                        remapped_target = next(
+                            (path for src, path in remapped if src == source),
+                            initial_target,
+                        )
+                        if os.path.exists(remapped_target):
+                            # Extra stem or non-matching name: unit rename cannot
+                            # clear this collision — fall back like pre-lock.
+                            target = _unique_target(initial_target)
+                        else:
+                            pending = remapped
+                            continue
+                    else:
+                        target = _unique_target(target)
             os.replace(source, target)
             moved.append((source, target))
             promoted.append(target)
