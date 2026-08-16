@@ -1,317 +1,102 @@
-"""The ``ensemble`` command: run several models and combine their stems."""
+"""Multi-model ensemble command."""
 
 from __future__ import annotations
 
 import argparse
-import json
-import os
 import sys
 
-from bundled.constants import CHOOSE_ENSEMBLE_OPTION, ENSEMBLE_ALGORITHMS
-from core.ensemble_algorithms import format_ensemble_type
-from core.headless_run import (
-    apply_saved_ensemble,
-    build_settings,
-    resolve_ensemble_members,
-    resolve_vocal_splitter,
-    run_ensemble_sync,
-    settings_summary,
-)
-from core.model_data import ModelRepository
-from core.settings.access import apply_settings_overrides
 from core.stems import EnsemblePair
 
-from .offline import catalogue_offline
-from .process_flags import add_process_args, collect_overrides
-from .reporting import add_reporting_args, emit_json, fail, finish_progress, make_progress_printer
-from .separate import check_runtime_deps
-
-_MAIN_STEM_CHOICES = tuple(
-    pair.value for pair in EnsemblePair if pair is not EnsemblePair.CHOOSE
+from .execution import run_batch, run_ensemble_cli, write_manifest
+from .job import (
+    add_job_input_args,
+    add_job_output_args,
+    add_profile_args,
+    format_effective_plan,
+    resolve_ensemble_job,
 )
+from .process_flags import add_process_args
+from .reporting import add_reporting_args, emit_document, emit_event, fail, report_mode
+from .separate import check_runtime_deps, confirm_inherited
+
+_MAIN_STEMS = tuple(pair.value for pair in EnsemblePair if pair is not EnsemblePair.CHOOSE)
 
 
 def add_ensemble_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("inputs", nargs="+", help="Input audio file path(s)")
-    parser.add_argument(
-        "-o", "--output", required=True, help="Export directory for stem outputs"
+    add_job_input_args(parser)
+    model = parser.add_argument_group("Model")
+    identity = model.add_mutually_exclusive_group()
+    identity.add_argument("--ensemble", metavar="NAME", help="Saved or curated ensemble")
+    identity.add_argument(
+        "--model", action="append", default=None, dest="models", metavar="ID",
+        help="Canonical or unique member model; repeat at least twice",
     )
-    parser.add_argument(
-        "--ensemble",
-        default=None,
-        metavar="NAME",
-        help=(
-            "Saved ensemble name, curated preset id, or GUI label "
-            "'Curated: …'"
-        ),
+    model.add_argument("--main-stem", choices=_MAIN_STEMS, default=None)
+    model.add_argument("--algorithm", metavar="PRIMARY/SECONDARY", default=None)
+    model.add_argument(
+        "--wav-ensemble", action=argparse.BooleanOptionalAction, default=None,
+        help="Enable or disable time-domain combination",
     )
-    parser.add_argument(
-        "--model",
-        action="append",
-        default=None,
-        dest="models",
-        metavar="TAG",
-        help=(
-            "Ad-hoc member, repeatable. A full '{arch}: {display}' tag or a "
-            "unique substring of one. Overrides a preset's member list."
-        ),
+    model.add_argument(
+        "--save-all-outputs", action=argparse.BooleanOptionalAction, default=None,
+        help="Keep or discard member outputs",
     )
-    parser.add_argument(
-        "--models",
-        default=None,
-        dest="models_csv",
-        metavar="TAG,TAG",
-        help="Comma-separated members (convenience form of repeated --model)",
-    )
-    parser.add_argument(
-        "--main-stem",
-        choices=_MAIN_STEM_CHOICES,
-        default=None,
-        help="Ensemble main-stem pair id",
-    )
-    parser.add_argument(
-        "--algorithm",
-        default=None,
-        metavar="PRIMARY/SECONDARY",
-        help=(
-            "Ensemble algorithm pair, e.g. 'Max Spec/Min Spec'. A single token "
-            "is used for 4-stem and multi-stem runs. Atoms: "
-            + ", ".join(ENSEMBLE_ALGORITHMS)
-        ),
-    )
-    parser.add_argument(
-        "--wav-ensemble",
-        action="store_true",
-        help="Combine in the time domain instead of spectrograms",
-    )
-    save_group = parser.add_mutually_exclusive_group()
-    save_group.add_argument(
-        "--save-all-outputs",
-        action="store_true",
-        help="Keep every member's stems alongside the combined result",
-    )
-    save_group.add_argument(
-        "--no-save-all-outputs",
-        action="store_true",
-        help="Delete member stems after combining",
-    )
-    parser.add_argument(
-        "--settings",
-        default=None,
-        help="Path to settings.json (default: UVR data dir settings file)",
-    )
-    parser.add_argument(
-        "--stems",
-        default=None,
-        help="Which stems to save for this run only (see `separate --stems`)",
-    )
-    parser.add_argument(
-        "--print-settings",
-        action="store_true",
-        help="Print resolved method/model/export knobs before running",
-    )
-    parser.add_argument(
-        "--long-chunk-seconds",
-        type=float,
-        default=None,
-        help="Whole-file chunk length in seconds (0/omit = off)",
-    )
-    parser.add_argument(
-        "--long-chunk-overlap",
-        type=float,
-        default=None,
-        help="Crossfade overlap between long-file chunks in seconds",
-    )
-    parser.add_argument(
-        "--online",
-        action="store_true",
-        help=(
-            "Do not force catalogue fetches off while resolving names. "
-            "Does not clear UVR_DISABLE_POLITREES / UVR_DISABLE_MVSEPLESS if "
-            "already set."
-        ),
-    )
+    output = parser.add_argument_group("Stem selection")
+    output.add_argument("--stems", default=None)
+    performance = parser.add_argument_group("Long files")
+    performance.add_argument("--long-chunk-seconds", type=float, default=None)
+    performance.add_argument("--long-chunk-overlap", type=float, default=None)
+    add_job_output_args(parser)
+    add_profile_args(parser)
     add_process_args(parser)
     add_reporting_args(parser)
-
-
-def _member_tokens(args: argparse.Namespace) -> list[str]:
-    tokens = list(args.models or [])
-    if args.models_csv:
-        tokens.extend(
-            part.strip() for part in str(args.models_csv).split(",") if part.strip()
-        )
-    return tokens
+    parser.add_argument("--dry-run", action="store_true")
 
 
 def cmd_ensemble(args: argparse.Namespace) -> int:
+    try:
+        job = resolve_ensemble_job(args)
+    except (OSError, ValueError) as exc:
+        return fail(args, str(exc), exit_code=2, exc=exc)
+    emit_event(args, "planned", command="ensemble", plan=job.plan)
+    if args.dry_run:
+        if report_mode(args) == "human":
+            print(format_effective_plan(job.plan))
+        else:
+            emit_document(args, {
+                "ok": True, "status": "validated", "dry_run": True,
+                "plan": job.plan, "inputs": [],
+            })
+        return 0
+    if job.identity_inherited and not args.accept_inherited:
+        result = confirm_inherited(args, job.plan)
+        if result:
+            return result
+    elif args.verbose or (job.identity_inherited and not args.quiet):
+        print(format_effective_plan(job.plan), file=sys.stderr)
     dep_err = check_runtime_deps()
     if dep_err:
-        return fail(args, dep_err, exit_code=2)
-
-    tokens = _member_tokens(args)
-    if not args.ensemble and not tokens:
-        return fail(
-            args,
-            "ensemble requires --ensemble NAME or --model/--models; "
-            "do not inherit members from the last GUI session",
-            exit_code=2,
-        )
-
-    os.makedirs(args.output, exist_ok=True)
+        return fail(args, dep_err, exit_code=2, kind="runtime")
+    emit_event(args, "started", command="ensemble", plan=job.plan)
+    outcome = run_batch(args, job, run_ensemble_cli)
     try:
-        settings = build_settings(
-            settings_path=args.settings,
-            export_path=os.path.abspath(args.output),
-            method="ensemble",
-            stems=args.stems,
-            stable_names=True,
-            allow_ensemble=True,
-            long_chunk_seconds=args.long_chunk_seconds,
-            long_chunk_overlap=args.long_chunk_overlap,
+        manifest = write_manifest(
+            args, job, outcome,
+            original_argv=getattr(args, "original_argv", sys.argv[1:]),
         )
-    except ValueError as exc:
-        return fail(args, str(exc), exit_code=2, exc=exc)
-
-    try:
-        resolved_splitter = None
-        repo = None
-        with catalogue_offline(not args.online):
-            repo = ModelRepository()
-            if args.ensemble:
-                apply_saved_ensemble(settings, args.ensemble, repo=repo)
-            if tokens:
-                settings.ensemble.selected_models = resolve_ensemble_members(
-                    tokens, repo
-                )
-                # The members no longer exactly represent the named preset.
-                settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
-            if args.vocal_split:
-                resolved_splitter = resolve_vocal_splitter(
-                    args.vocal_split, settings, repo
-                )
-
-        if args.main_stem is not None:
-            settings.ensemble.main_stem = EnsemblePair(args.main_stem)
-        if args.algorithm is not None:
-            text = str(args.algorithm).strip()
-            if "/" in text:
-                primary, _sep, secondary = text.partition("/")
-                primary, secondary = primary.strip(), secondary.strip()
-            else:
-                primary = secondary = text
-            allowed = set(ENSEMBLE_ALGORITHMS)
-            if primary not in allowed or secondary not in allowed:
-                raise ValueError(
-                    f"unknown --algorithm {args.algorithm!r}; expected atoms: "
-                    + ", ".join(ENSEMBLE_ALGORITHMS)
-                )
-            # Reject unknown atoms before format (parse_ensemble_type would coerce).
-            settings.ensemble.type = format_ensemble_type(primary, secondary)
-    except ValueError as exc:
-        return fail(args, str(exc), exit_code=2, exc=exc)
-
-    if args.wav_ensemble:
-        settings.ensemble.wav_ensemble = True
-    if args.save_all_outputs:
-        settings.ensemble.save_all_outputs = True
-    elif args.no_save_all_outputs:
-        settings.ensemble.save_all_outputs = False
-
-    try:
-        # Apply last: --set must beat process flags and ensemble-specific named
-        # flags such as --main-stem, --algorithm, and --save-all-outputs.
-        apply_settings_overrides(
-            settings,
-            collect_overrides(
-                args, resolved_vocal_splitter=resolved_splitter
-            ),
-        )
-    except ValueError as exc:
-        return fail(args, str(exc), exit_code=2, exc=exc)
-
-    if tokens and not args.ensemble and args.main_stem is None:
-        return fail(
-            args,
-            "an ad-hoc ensemble requires --main-stem; "
-            "do not inherit this semantic choice from the last GUI session",
-            exit_code=2,
-        )
-    if settings.ensemble.main_stem == EnsemblePair.CHOOSE:
-        return fail(args, "choose an ensemble --main-stem", exit_code=2)
-
-    members = list(settings.ensemble.selected_models)
-    if len(members) < 2:
-        source = f"saved ensemble {args.ensemble!r}" if args.ensemble else "--model/--models"
-        return fail(
-            args,
-            f"an ensemble needs at least 2 members, got {len(members)} from {source}",
-            exit_code=2,
-        )
-
-    with catalogue_offline(not args.online):
-        try:
-            raw_eligible = repo.ensemble_model_list(
-                settings, settings.ensemble.main_stem
-            )
-        except Exception:
-            raw_eligible = None
-    if isinstance(raw_eligible, (list, tuple, set)):
-        eligible = set(raw_eligible)
-        ineligible = [m for m in members if m not in eligible]
-        if ineligible:
-            preview = ", ".join(repr(m) for m in ineligible[:6])
-            print(
-                f"warning: {len(ineligible)} member(s) are outside the "
-                f"{settings.ensemble.main_stem.value} pool and may not combine: "
-                f"{preview}",
-                file=sys.stderr,
-            )
-
-    missing = [p for p in args.inputs if not os.path.isfile(p)]
-    if missing:
-        return fail(args, f"input not found: {missing[0]}", exit_code=2)
-
-    if args.print_settings and not args.json:
-        print(json.dumps(settings_summary(settings), indent=2))
-
-    on_progress = None if args.quiet else make_progress_printer()
-    result = run_ensemble_sync(
-        settings,
-        [os.path.abspath(p) for p in args.inputs],
-        print_console=not (args.quiet or args.json),
-        on_progress=on_progress,
-    )
-    if on_progress is not None:
-        finish_progress()
-
-    if result.error is not None:
-        return fail(
-            args,
-            f"{type(result.error).__name__}: {result.error}",
-            exit_code=1,
-            exc=result.error,
-        )
-    if result.stopped:
-        return fail(
-            args,
-            "ensemble stopped",
-            exit_code=130,
-            extra={"stopped": True},
-        )
-
-    if args.json:
-        payload = {
-            "ok": True,
-            "elapsed_s": result.elapsed_s,
-            "export_path": result.export_path,
-            "members": members,
-        }
-        if args.print_settings:
-            payload["settings"] = settings_summary(settings)
-        emit_json(payload)
-    else:
-        print(f"elapsed_s={result.elapsed_s:.3f}")
-        print(f"export_path={result.export_path}")
-        print(f"members={len(members)}")
-    return 0
+    except OSError as exc:
+        return fail(args, f"manifest write failed: {exc}", exit_code=1, exc=exc, kind="runtime")
+    payload = {
+        "ok": outcome.exit_code == 0,
+        "status": outcome.status,
+        "command": "ensemble",
+        "elapsed_s": outcome.elapsed_s,
+        "export_path": job.output,
+        "plan": job.plan,
+        "inputs": outcome.inputs,
+        "stopped": outcome.interrupted,
+    }
+    if manifest:
+        payload["manifest"] = manifest
+    emit_document(args, payload)
+    return outcome.exit_code

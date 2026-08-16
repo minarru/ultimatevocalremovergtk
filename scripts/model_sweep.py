@@ -426,52 +426,79 @@ def run_child(spec_path: str) -> int:
             spec = json.load(handle)
 
         export_dir = spec["export_dir"]
-        os.makedirs(export_dir, exist_ok=True)
 
-        from bundled.constants import ENSEMBLE_MODE
-        from core.headless_run import build_settings, run_ensemble_sync, run_separation_sync
-        from core.types import ProcessMethod
+        from core import ModelRepository, Settings
+        from core.blocking_runner import run_blocking
+        from core.job_plan import JobResolver, JobSpec, ValidationLevel
+        from core.job_runner import JobRunner
+        from core.model_identity import ModelIdentityService
+        from core.settings.job_resolution import SettingsLayer, SettingsResolver
+        from core.settings.flat_map import FLAT_TO_PATH
 
         kind = spec["kind"]
-        settings = build_settings(
-            settings_path=spec["settings_path"],
+        profile = Settings.load(spec["settings_path"])
+        assignments = []
+        for key, value in (spec.get("overrides") or {}).items():
+            if "." in key:
+                path = key
+            else:
+                section, field_name = FLAT_TO_PATH[key]
+                path = f"{section}.{field_name}"
+            assignments.append((path, value))
+        settings, provenance = SettingsResolver().resolve(
+            profile,
             export_path=export_dir,
             method=spec.get("method"),
-            model=spec.get("model"),
-            use_gpu=False if spec.get("cpu") else None,
-            stable_names=True,
-            allow_ensemble=(kind == KIND_ENSEMBLE),
+            stable_naming=True,
+            layers=(SettingsLayer("profile", tuple(assignments)),),
         )
-        if kind == KIND_ENSEMBLE:
-            settings.process.method = ProcessMethod(ENSEMBLE_MODE)
-        apply_overrides(settings, spec.get("overrides") or {})
+        if spec.get("cpu"):
+            settings.process.use_gpu = False
+            settings.process.device = "cpu"
 
-        if kind == KIND_SINGLE and not _model_is_recognized(
-            settings, spec.get("method"), spec.get("model")
-        ):
-            result["unrecognized"] = True
-            result["elapsed_s"] = time.perf_counter() - started
-            _write_result(job_dir, result)
-            return 0
+        repo = ModelRepository()
+        if kind == KIND_SINGLE:
+            record = ModelIdentityService(repo).resolve(
+                f"{spec['method']}:{spec['model']}"
+            )
+            from core.types import ProcessMethod
+
+            settings.process.method = ProcessMethod(record.method)
+            setattr(getattr(settings, record.family), "model", record.id)
 
         timeout = float(spec.get("timeout") or DEFAULT_TIMEOUT)
         if kind == KIND_TOOL:
-            outcome_error, stopped = _run_tool(settings, spec["input_path"], timeout)
-        elif kind == KIND_ENSEMBLE:
-            outcome = run_ensemble_sync(
-                settings, [spec["input_path"]], print_console=True, join_timeout=timeout
-            )
-            outcome_error, stopped = outcome.error, outcome.stopped
+            outcome = _run_tool(settings, spec["input_path"], timeout, repo=repo)
         else:
-            outcome = run_separation_sync(
-                settings, [spec["input_path"]], print_console=True, join_timeout=timeout
+            command = "ensemble" if kind == KIND_ENSEMBLE else "separate"
+            plan = JobResolver(repo).resolve(
+                JobSpec(
+                    command, settings, (spec["input_path"],), export_dir, provenance
+                ),
+                ValidationLevel.MODEL,
             )
-            outcome_error, stopped = outcome.error, outcome.stopped
+            errors = [item.message for item in plan.diagnostics if item.severity == "error"]
+            if errors:
+                result["unrecognized"] = any("configuration" in item.code for item in plan.diagnostics)
+                raise ValueError(errors[0])
+            os.makedirs(export_dir, exist_ok=True)
+            runner = JobRunner(plan.settings)
+            if command == "ensemble":
+                start_runner = lambda callbacks: runner.start_ensemble([spec["input_path"]], callbacks)
+            else:
+                start_runner = lambda callbacks: runner.start([spec["input_path"]], callbacks)
+            def write_console(text: str) -> None:
+                sys.stdout.write(text)
 
-        result["stopped"] = bool(stopped)
-        if outcome_error is not None:
-            result["error_type"] = type(outcome_error).__name__
-            result["message"] = str(outcome_error)
+            outcome = run_blocking(
+                runner, start_runner, timeout=timeout,
+                on_console=write_console,
+            )
+
+        result["stopped"] = bool(outcome.stopped)
+        if outcome.error is not None:
+            result["error_type"] = type(outcome.error).__name__
+            result["message"] = str(outcome.error)
     except BaseException as exc:  # noqa: BLE001 - the point is to report anything
         result["error_type"] = type(exc).__name__
         result["message"] = f"{exc}\n{traceback.format_exc()}"
@@ -497,64 +524,49 @@ def _write_result(job_dir: str, result: Dict[str, Any]) -> None:
         json.dump(result, handle)
 
 
-def _run_tool(settings: Any, input_path: str, timeout: float) -> tuple:
+def _run_tool(settings: Any, input_path: str, timeout: float, *, repo: Any):
     """Run the Apollo restore tool, mirroring the UI's model resolution."""
-    import threading
-
-    from core import ModelRepository
+    from core.audio_plan import AudioJobResolver, AudioJobSpec
     from core.apollo import ApolloModelData
     from core.audio_tools import AudioToolRunner
-    from core.job_runner import JobCallbacks
+    from core.blocking_runner import run_blocking
+    from core.job_plan import ValidationLevel
 
-    repo = ModelRepository()
+    plan = AudioJobResolver(repo).resolve(
+        AudioJobSpec(
+            APOLLO_RESTORE, settings, settings.process.export_path,
+            (input_path,), provenance={"profile": "profile"},
+        ),
+        ValidationLevel.MODEL,
+    )
+    errors = [item.message for item in plan.diagnostics if item.severity == "error"]
+    if errors:
+        raise ValueError(errors[0])
+    os.makedirs(plan.output, exist_ok=True)
     model_data = ApolloModelData(
-        settings.audio_tools.apollo_model,
+        plan.settings.audio_tools.apollo_model,
         model_hash_table=repo.model_hash_table,
         on_unrecognized=None,
     )
     if not model_data.is_model_status:
         raise RuntimeError(f"Apollo model not valid: {settings.audio_tools.apollo_model}")
 
-    done = threading.Event()
-    error_box: List[BaseException] = []
-    stopped_box: List[bool] = []
-
-    def _on_console(text: str) -> None:
+    runner = AudioToolRunner(plan.settings)
+    def write_console(text: str) -> None:
         sys.stdout.write(text)
 
-    def _on_stopped() -> None:
-        stopped_box.append(True)
-        done.set()
-
-    def _on_error(exc: BaseException) -> None:
-        error_box.append(exc)
-        done.set()
-
-    callbacks = JobCallbacks(
-        on_console=_on_console,
-        on_complete=done.set,
-        on_stopped=_on_stopped,
-        on_error=_on_error,
+    return run_blocking(
+        runner,
+        lambda callbacks: runner.start(
+            APOLLO_RESTORE, [input_path], [], callbacks,
+            apollo_params={
+                "extracted_params": model_data.extracted_params,
+                "config": model_data.config,
+            },
+        ),
+        timeout=timeout,
+        on_console=write_console,
     )
-    runner = AudioToolRunner(settings)
-    runner.start(
-        APOLLO_RESTORE,
-        [input_path],
-        [],
-        callbacks,
-        apollo_params={
-            "extracted_params": model_data.extracted_params,
-            "config": model_data.config,
-        },
-    )
-    if not done.wait(timeout=timeout):
-        # A bare stop() only sets a flag (core/audio_tools.py); it never
-        # calls KThread.terminate(). Without force=True the non-daemon
-        # worker thread keeps running after this raises, and the child
-        # can't exit on its own — the parent would have to SIGKILL it.
-        runner.stop(force=True)
-        raise TimeoutError(f"audio tool exceeded {timeout:.0f}s")
-    return (error_box[0] if error_box else None), bool(stopped_box)
 
 
 def spawn_child(*, spec: Dict[str, Any], job_dir: str, env: Dict[str, str], timeout: float):

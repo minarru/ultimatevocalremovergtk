@@ -171,7 +171,13 @@ class ModelRepository:
         self._models_changed_subscribers: List[Callable[[], None]] = []
         self._models_changed_lock = threading.Lock()
         self._notifying_models_changed = False
+        self._inventory_generation = 0
         self.reload_mappers()
+
+    @property
+    def inventory_generation(self) -> int:
+        """Monotonic token invalidating previously resolved effective plans."""
+        return self._inventory_generation
 
     # -- Change notification ----------------------------------------------------
 
@@ -275,20 +281,20 @@ class ModelRepository:
         )
         return [f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}{name}" for name in names]
 
-    def mdx_catalogue_display_index(self) -> Dict[str, str]:
+    def mdx_catalogue_display_index(self, *, allow_network: bool = False) -> Dict[str, str]:
         from .model_display import load_mdx_catalog_display_index
 
-        return load_mdx_catalog_display_index()
+        return load_mdx_catalog_display_index(allow_network=allow_network)
 
-    def vr_catalogue_display_index(self) -> Dict[str, str]:
+    def vr_catalogue_display_index(self, *, allow_network: bool = False) -> Dict[str, str]:
         from .model_display import load_vr_catalog_display_index
 
-        return load_vr_catalog_display_index()
+        return load_vr_catalog_display_index(allow_network=allow_network)
 
-    def demucs_catalogue_display_index(self) -> Dict[str, str]:
+    def demucs_catalogue_display_index(self, *, allow_network: bool = False) -> Dict[str, str]:
         from .model_display import load_demucs_catalog_display_index
 
-        return load_demucs_catalog_display_index()
+        return load_demucs_catalog_display_index(allow_network=allow_network)
 
     def list_demucs_model_tags(self) -> List[str]:
         names = sorted(
@@ -355,7 +361,8 @@ class ModelRepository:
         """
         from .debug_log import debug
 
-        debug("model", "invalidate_models")
+        self._inventory_generation += 1
+        debug("model", f"invalidate_models generation={self._inventory_generation}")
         self._stem_check_cache = None
         self._karaoke_cache = None
         self.model_hash_table.clear()
@@ -485,6 +492,16 @@ class ModelRepository:
         rebuilding ``ModelConfig`` (which hashes the model file) more than once.
         """
         try:
+            if str(model_name or "").partition(":")[0].casefold() in {"vr", "mdx", "demucs"}:
+                from .model_identity import ModelIdentityService
+
+                family = {
+                    VR_ARCH_TYPE: "vr", VR_ARCH_PM: "vr",
+                    MDX_ARCH_TYPE: "mdx", DEMUCS_ARCH_TYPE: "demucs",
+                }.get(process_method)
+                model_name = ModelIdentityService(self).engine_value(
+                    model_name, family=family
+                )
             return ModelConfig(settings, self, model_name, process_method, is_dry_check=True)
         except (FileNotFoundError, ValueError, KeyError, OSError, json.JSONDecodeError) as exc:
             from .debug_log import debug
@@ -1505,7 +1522,9 @@ def list_saved_ensembles() -> List[str]:
 
 
 def save_ensemble(
-    name: str, ensemble_main_stem: Any, ensemble_type: str, selected_models: typing.Any
+    name: str, ensemble_main_stem: Any, ensemble_type: str, selected_models: typing.Any,
+    *, wav_ensemble: bool = False, save_all_outputs: bool = True,
+    identity_schema_version: int = 2,
 ) -> str:
     """Persist an ensemble (``ensemble_main_stem`` is an :class:`~core.stems.EnsemblePair` id)."""
     from core.stems import EnsemblePair, coerce_ensemble_pair
@@ -1519,6 +1538,9 @@ def save_ensemble(
         "ensemble_main_stem": pair.value,
         "ensemble_type": ensemble_type,
         "selected_models": list(selected_models),
+        "is_wav_ensemble": bool(wav_ensemble),
+        "save_all_outputs": bool(save_all_outputs),
+        "identity_schema_version": identity_schema_version,
     }
     path = _saved_ensemble_path(name)
     os.makedirs(ENSEMBLE_CACHE_DIR, exist_ok=True)

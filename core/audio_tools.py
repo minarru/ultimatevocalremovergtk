@@ -306,6 +306,17 @@ def _basename_no_ext(path: str) -> str:
     return os.path.splitext(os.path.basename(path))[0]
 
 
+def _output_files(path: typing.Any) -> set[str]:
+    root = str(path)
+    if not os.path.isdir(root):
+        return set()
+    return {
+        os.path.join(folder, name)
+        for folder, _dirs, files in os.walk(root)
+        for name in files
+    }
+
+
 class AudioToolRunner:
     """Runs an audio tool on a ``KThread`` worker, reporting via callbacks.
 
@@ -320,6 +331,8 @@ class AudioToolRunner:
         self._thread = None
         self._is_stopped = False
         self._is_paused = False
+        self._active_unit: tuple[str, ...] | None = None
+        self._active_before: set[str] = set()
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
@@ -331,6 +344,7 @@ class AudioToolRunner:
         dual_pairs: Sequence[Tuple[str, str]],
         callbacks: JobCallbacks,
         apollo_params: Optional[dict] = None,
+        output_name: str | None = None,
     ) -> None:
         if self.is_running():
             return
@@ -344,7 +358,10 @@ class AudioToolRunner:
         )
         self._is_stopped = False
         self._is_paused = False
+        self._active_unit = None
+        self._active_before = set()
         self._apollo_params = apollo_params or {}
+        self._output_name = output_name
         self._thread = KThread(
             target=self._run,
             args=(tool, list(single_inputs), [tuple(p) for p in dual_pairs], callbacks),
@@ -427,6 +444,7 @@ class AudioToolRunner:
         except ProcessStopped:
             debug("audio", "_run ProcessStopped")
             callbacks.console(PROCESS_STOPPED_BY_USER)
+            self._finish_active_unit(callbacks, ProcessStopped())
             callbacks.stopped()
             _release_inference_resources(self)
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
@@ -437,20 +455,44 @@ class AudioToolRunner:
                 _release_inference_resources(self)
                 return
             debug("audio", f"_run failed {type(exc).__name__}: {exc}")
+            self._finish_active_unit(callbacks, exc)
             callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
             callbacks.error(exc)
             _release_inference_resources(self, park_weights=True)
         else:
             _release_inference_resources(self)
 
+    def _start_unit(
+        self, callbacks: JobCallbacks, paths: typing.Sequence[str], output: typing.Any
+    ) -> None:
+        self._active_unit = tuple(paths)
+        self._active_before = _output_files(output)
+        callbacks.input_started(paths)
+
+    def _finish_active_unit(
+        self, callbacks: JobCallbacks, error: BaseException | None = None,
+        output: typing.Any = None,
+    ) -> None:
+        if self._active_unit is None:
+            return
+        generated = (
+            sorted(_output_files(output) - self._active_before)
+            if output is not None else []
+        )
+        callbacks.input_finished(self._active_unit, generated, error)
+        self._active_unit = None
+        self._active_before = set()
+
     def _run_manual_ensemble(self, audio_tool: typing.Any, inputs: typing.Any, callbacks: typing.Any) -> None:
+        if inputs:
+            self._start_unit(callbacks, inputs, audio_tool.main_export_path)
         if len(inputs) <= 1:
             raise ValueError("Manual Ensemble needs at least two input files.")
         missing = [p for p in inputs if not os.path.isfile(p)]
         if missing:
             raise ValueError(f'File not found: "{os.path.basename(missing[0])}"')
 
-        audio_file_base = _basename_no_ext(inputs[0])
+        audio_file_base = getattr(self, "_output_name", None) or _basename_no_ext(inputs[0])
         snapshot_worker_file(inputs[0])
         for num, path in enumerate(inputs, start=1):
             callbacks.console(f'File {num} "{os.path.basename(path)}"\n')
@@ -467,6 +509,7 @@ class AudioToolRunner:
             audio_tool.ensemble_manual(inputs, audio_file_base, on_progress=on_progress)
         callbacks.progress(1.0)
         callbacks.console("Done\n")
+        self._finish_active_unit(callbacks, output=audio_tool.main_export_path)
 
     def _run_pitch_time(self, audio_tool: typing.Any, tool: typing.Any, inputs: typing.Any, callbacks: typing.Any) -> None:
         if not inputs:
@@ -477,8 +520,12 @@ class AudioToolRunner:
             snapshot_worker_file(audio_file)
             base_text = f"File {file_num}/{total} "
             if not os.path.isfile(audio_file):
+                error = FileNotFoundError(audio_file)
+                callbacks.input_started((audio_file,))
+                callbacks.input_finished((audio_file,), (), error)
                 callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n')
                 continue
+            self._start_unit(callbacks, (audio_file,), audio_tool.main_export_path)
             callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}".\n')
             callbacks.console(f"{base_text}Processing...\n")
             callbacks.progress((file_num - 1) / total)
@@ -486,6 +533,7 @@ class AudioToolRunner:
             audio_tool.pitch_or_time_shift(tool, audio_file, audio_file_base)
             callbacks.progress(file_num / total)
             callbacks.console(f"{base_text}Done\n")
+            self._finish_active_unit(callbacks, output=audio_tool.main_export_path)
 
     def _run_apollo(self, audio_tool: typing.Any, inputs: typing.Any, callbacks: typing.Any) -> None:
         if not inputs:
@@ -504,8 +552,12 @@ class AudioToolRunner:
             snapshot_worker_file(audio_file)
             base_text = f"File {file_num}/{total} "
             if not os.path.isfile(audio_file):
+                error = FileNotFoundError(audio_file)
+                callbacks.input_started((audio_file,))
+                callbacks.input_finished((audio_file,), (), error)
                 callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n')
                 continue
+            self._start_unit(callbacks, (audio_file,), audio_tool.main_export_path)
             callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}".\n')
             callbacks.console(f"{base_text}Restoring...\n")
             audio_file_base = _basename_no_ext(audio_file)
@@ -523,6 +575,7 @@ class AudioToolRunner:
             )
             callbacks.progress(file_num / total)
             callbacks.console(f"{base_text}Done\n")
+            self._finish_active_unit(callbacks, output=audio_tool.main_export_path)
 
     def _run_dual(self, audio_tool: typing.Any, tool: typing.Any, dual_pairs: typing.Any, callbacks: typing.Any) -> None:
         if not dual_pairs:
@@ -537,11 +590,21 @@ class AudioToolRunner:
             base_text = f"Pair {file_num}/{total} "
 
             if not os.path.isfile(file_one) or not os.path.isfile(file_two):
+                error = FileNotFoundError(file_one if not os.path.isfile(file_one) else file_two)
+                callbacks.input_started((file_one, file_two))
+                callbacks.input_finished((file_one, file_two), (), error)
                 callbacks.console(f"\n{base_text}One or both files were not found.\n")
                 continue
             if file_one == file_two:
+                error = ValueError("input pair uses the same file twice")
+                callbacks.input_started((file_one, file_two))
+                callbacks.input_finished((file_one, file_two), (), error)
                 callbacks.console(f"\n{base_text}{text_labels[0]} & {text_labels[1]} are the same; skipping.\n")
                 continue
+
+            self._start_unit(
+                callbacks, (file_one, file_two), audio_tool.main_export_path
+            )
 
             callbacks.console(f'\n{base_text}{text_labels[0]}:  "{os.path.basename(file_one)}"\n')
             callbacks.console(f'{base_text}{text_labels[1]}:  "{os.path.basename(file_two)}"\n')
@@ -571,3 +634,4 @@ class AudioToolRunner:
                 )
             callbacks.progress(file_num / total)
             callbacks.console(f"{base_text}Done\n")
+            self._finish_active_unit(callbacks, output=audio_tool.main_export_path)

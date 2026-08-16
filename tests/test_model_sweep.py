@@ -425,15 +425,16 @@ class RunChildTests(unittest.TestCase):
         audio files must have ``ok`` agree with the non-zero exit code."""
         import json
         import tempfile
-        from types import SimpleNamespace
         from unittest import mock
+        from core.blocking_runner import RunResult
+        from core.settings import Settings
 
         with tempfile.TemporaryDirectory() as tmp:
             export_dir = os.path.join(tmp, "out")
             spec = {
                 "kind": model_sweep.KIND_SINGLE,
                 "method": "mdx",
-                "model": None,
+                "model": "test.onnx",
                 "overrides": {},
                 "settings_path": os.path.join(tmp, "settings.json"),
                 "input_path": os.path.join(tmp, "in.wav"),
@@ -445,12 +446,14 @@ class RunChildTests(unittest.TestCase):
             with open(spec_path, "w") as handle:
                 json.dump(spec, handle)
 
-            fake_outcome = SimpleNamespace(error=None, stopped=False)
-            with mock.patch(
-                "core.headless_run.build_settings", return_value=object()
-            ), mock.patch(
-                "core.headless_run.run_separation_sync", return_value=fake_outcome
-            ):
+            settings = Settings.defaults()
+            settings.process.export_path = export_dir
+            record = mock.Mock(id="mdx:test.onnx", family="mdx", method="MDX-Net")
+            plan = mock.Mock(diagnostics=[], settings=settings)
+            with mock.patch("core.settings.Settings.load", return_value=settings), \
+                 mock.patch("core.model_identity.ModelIdentityService.resolve", return_value=record), \
+                 mock.patch("core.job_plan.JobResolver.resolve", return_value=plan), \
+                 mock.patch("core.blocking_runner.run_blocking", return_value=RunResult(0.1, completed=True)):
                 rc = model_sweep.run_child(spec_path)
 
             with open(os.path.join(tmp, "result.json")) as handle:
@@ -466,15 +469,16 @@ class RunChildTests(unittest.TestCase):
         """Sanity counterpart: a clean run that does write output still passes."""
         import json
         import tempfile
-        from types import SimpleNamespace
         from unittest import mock
+        from core.blocking_runner import RunResult
+        from core.settings import Settings
 
         with tempfile.TemporaryDirectory() as tmp:
             export_dir = os.path.join(tmp, "out")
             spec = {
                 "kind": model_sweep.KIND_SINGLE,
                 "method": "mdx",
-                "model": None,
+                "model": "test.onnx",
                 "overrides": {},
                 "settings_path": os.path.join(tmp, "settings.json"),
                 "input_path": os.path.join(tmp, "in.wav"),
@@ -486,18 +490,20 @@ class RunChildTests(unittest.TestCase):
             with open(spec_path, "w") as handle:
                 json.dump(spec, handle)
 
-            def _fake_run_separation_sync(*_args: object, **_kwargs: object) -> SimpleNamespace:
+            def _fake_run_blocking(*_args: object, **_kwargs: object) -> RunResult:
                 os.makedirs(export_dir, exist_ok=True)
                 with open(os.path.join(export_dir, "out (Vocals).wav"), "wb") as handle:
                     handle.write(b"RIFFdata")
-                return SimpleNamespace(error=None, stopped=False)
+                return RunResult(0.1, completed=True)
 
-            with mock.patch(
-                "core.headless_run.build_settings", return_value=object()
-            ), mock.patch(
-                "core.headless_run.run_separation_sync",
-                side_effect=_fake_run_separation_sync,
-            ):
+            settings = Settings.defaults()
+            settings.process.export_path = export_dir
+            record = mock.Mock(id="mdx:test.onnx", family="mdx", method="MDX-Net")
+            plan = mock.Mock(diagnostics=[], settings=settings)
+            with mock.patch("core.settings.Settings.load", return_value=settings), \
+                 mock.patch("core.model_identity.ModelIdentityService.resolve", return_value=record), \
+                 mock.patch("core.job_plan.JobResolver.resolve", return_value=plan), \
+                 mock.patch("core.blocking_runner.run_blocking", side_effect=_fake_run_blocking):
                 rc = model_sweep.run_child(spec_path)
 
             with open(os.path.join(tmp, "result.json")) as handle:
@@ -507,29 +513,33 @@ class RunChildTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(len(result["outputs"]), 1)
 
-    def test_run_tool_force_stops_worker_on_timeout(self) -> None:
-        """Finding 2: a timed-out audio tool must be force-stopped so the
-        non-daemon worker thread doesn't outlive the child process."""
+    def test_run_tool_uses_resolved_audio_plan_and_generic_blocker(self) -> None:
         from unittest import mock
+        from core.blocking_runner import RunResult
+        from core.settings import Settings
 
-        fake_model_data = mock.Mock(is_model_status=True, extracted_params={}, config={})
+        fake_model_data = mock.Mock(is_model_status=True, extracted_params={"ok": True}, config={})
         fake_repo = mock.Mock(model_hash_table={})
         fake_runner = mock.Mock()
-
-        settings = mock.Mock()
+        settings = Settings.defaults()
         settings.audio_tools.apollo_model = "apollo_universal_model.ckpt"
+        settings.process.export_path = "/tmp/out"
+        plan = mock.Mock(diagnostics=[], settings=settings, output="/tmp/out")
+        outcome = RunResult(0.01, stopped=True, error=TimeoutError("timeout"))
 
         with mock.patch(
             "core.apollo.ApolloModelData", return_value=fake_model_data
         ), mock.patch(
             "core.audio_tools.AudioToolRunner", return_value=fake_runner
         ), mock.patch(
-            "core.ModelRepository", return_value=fake_repo
+            "core.audio_plan.AudioJobResolver.resolve", return_value=plan
+        ), mock.patch(
+            "core.blocking_runner.run_blocking", return_value=outcome
+        ), mock.patch(
+            "os.makedirs"
         ):
-            with self.assertRaises(TimeoutError):
-                model_sweep._run_tool(settings, "/tmp/in.wav", 0.01)
-
-        fake_runner.stop.assert_called_once_with(force=True)
+            result = model_sweep._run_tool(settings, "/tmp/in.wav", 0.01, repo=fake_repo)
+        self.assertIs(result, outcome)
 
 
 class SpawnChildProcessGroupTests(unittest.TestCase):

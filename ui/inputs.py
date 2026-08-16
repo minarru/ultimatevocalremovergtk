@@ -19,6 +19,7 @@ import threading
 from gi.repository import Adw, GLib, Gtk
 
 from bundled.constants import AUDIO_INPUT_TOTAL_TEXT, VERIFY_INPUTS_TEXT
+from core.audio_probe import probe_audio
 
 from .dialogs.utils import close_on_escape
 from .errorlog import log_error, set_error_log
@@ -57,37 +58,19 @@ def inspect_audio(path: str):
     ``librosa`` (UVR's own verification path). All imports are lazy so the dialog
     can be constructed without the ML/audio stack present.
     """
-    if not os.path.isfile(path):
-        return False, "file not found"
-
-    try:
-        import soundfile as sf
-
-        info = sf.info(path)
-        duration = info.frames / info.samplerate if info.samplerate else 0
-        return True, f"{_fmt_duration(duration)} \u2022 {info.format} \u2022 {info.channels}ch \u2022 {info.samplerate} Hz"
-    except Exception:
-        pass
-
-    try:
-        import contextlib
-        import wave
-
-        with contextlib.closing(wave.open(path, "r")) as handle:
-            rate = handle.getframerate()
-            duration = handle.getnframes() / float(rate) if rate else 0
-            return True, f"{_fmt_duration(duration)} \u2022 WAV \u2022 {handle.getnchannels()}ch \u2022 {rate} Hz"
-    except Exception:
-        pass
-
-    try:
-        import librosa
-
-        librosa.load(path, duration=3, mono=False, sr=44100)
-        return True, "readable"
-    except Exception as exc:  # noqa: BLE001 - reported back to the user
-        log_error("Verify Inputs", exc, context=f"path={path!r}")
-        return False, "Could not read this file"
+    result = probe_audio(path)
+    if not result.readable:
+        if result.error and result.error != "file_not_found":
+            log_error(
+                "Verify Inputs", RuntimeError(result.error), context=f"path={path!r}"
+            )
+        return False, "file not found" if result.error == "file_not_found" else "Could not read this file"
+    if result.format and result.duration_seconds is not None:
+        return True, (
+            f"{_fmt_duration(result.duration_seconds)} \u2022 {result.format} \u2022 "
+            f"{result.channels}ch \u2022 {result.sample_rate} Hz"
+        )
+    return True, "readable"
 
 
 class ViewInputs:

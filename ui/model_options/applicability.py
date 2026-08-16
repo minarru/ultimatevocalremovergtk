@@ -11,17 +11,16 @@ from bundled.constants import (
     VR_ARCH_PM,
     VR_ARCH_TYPE,
 )
+from core.model_applicability import (
+    applicable_stack_names,
+    member_arch_counts,
+    stack_name_for_method_key,
+    stack_name_for_model_reference,
+)
 
 OPEN_CONTEXT_SEPARATION = "separation"
 OPEN_CONTEXT_ENSEMBLE = "ensemble"
 OPEN_CONTEXT_AUDIO_TOOLS = "audio_tools"
-
-_ARCH_TO_STACK = {
-    VR_ARCH_PM: "vr",
-    VR_ARCH_TYPE: "vr",
-    MDX_ARCH_TYPE: "mdx",
-    DEMUCS_ARCH_TYPE: "demucs",
-}
 
 _STACK_TITLES = {
     "vr": "VR Architecture",
@@ -30,41 +29,8 @@ _STACK_TITLES = {
 }
 
 
-def stack_name_for_method_key(method_key: str) -> Optional[str]:
-    return _ARCH_TO_STACK.get(method_key)
-
-
 def stack_name_for_member_tag(tag: str) -> Optional[str]:
-    if not tag or ENSEMBLE_PARTITION not in tag:
-        return None
-    arch, _, _ = tag.partition(ENSEMBLE_PARTITION)
-    return _ARCH_TO_STACK.get(arch)
-
-
-def member_arch_counts(selected_models: Sequence[str]) -> dict[str, int]:
-    counts = {"vr": 0, "mdx": 0, "demucs": 0}
-    for tag in selected_models or []:
-        stack = stack_name_for_member_tag(tag)
-        if stack:
-            counts[stack] += 1
-    return counts
-
-
-def applicable_stack_names(
-    context: str,
-    *,
-    active_method_key: str,
-    selected_models: Sequence[str],
-) -> set[str]:
-    if context == OPEN_CONTEXT_AUDIO_TOOLS:
-        return set()
-    if context == OPEN_CONTEXT_SEPARATION:
-        stack = stack_name_for_method_key(active_method_key)
-        return {stack} if stack else set()
-    if context == OPEN_CONTEXT_ENSEMBLE:
-        counts = member_arch_counts(selected_models)
-        return {stack for stack, count in counts.items() if count > 0}
-    return set()
+    return stack_name_for_model_reference(tag)
 
 
 def should_hide_unused_stacks(context: str, applicable: Iterable[str]) -> bool:

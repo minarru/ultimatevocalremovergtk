@@ -328,7 +328,7 @@ class DownloadManagerMergeTests(unittest.TestCase):
         mock_merge: typing.Any,
     ) -> None:
         mock_extra.side_effect = lambda vr, mdx, demucs: (dict(vr), dict(mdx), dict(demucs))
-        mock_merge.side_effect = lambda vr, mdx, demucs: (
+        mock_merge.side_effect = lambda vr, mdx, demucs, **_kwargs: (
             dict(vr),
             {**mdx, "Mvsepless Mel": {"a.ckpt": "https://x/a.ckpt"}},
             dict(demucs),

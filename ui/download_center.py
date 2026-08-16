@@ -25,7 +25,6 @@ from core.model_scores import (
     SORT_NAME,
     SORT_OPTIONS,
     SORT_SDR,
-    filter_labels_by_purpose,
     format_sdr_subtitle,
     parse_sdr_score,
     purpose_for_label,
@@ -38,6 +37,7 @@ from .dispatch import idle_on_main
 from .help_text import VIP_DOWNLOAD_CODE_HINT
 from .hints import set_icon_button_a11y
 from core.model_naming import canonical_display_name
+from core.model_catalogue import catalogue_label_matches, filter_catalogue_labels
 from core.model_scores import primary_sdr, sdr_for_files
 
 from .markup import set_row_subtitle, set_row_title
@@ -57,18 +57,6 @@ _NETWORKS = [
 _CLAMP_MAX_WIDTH = 800
 
 
-def catalogue_label_matches(label: str, query: str, *, extra: str = "") -> bool:
-    """Match the raw label, its displayed canonical name, or auxiliary text."""
-    folded = query.strip().casefold()
-    if not folded:
-        return True
-    return any(
-        folded in candidate.casefold()
-        for candidate in (label, canonical_display_name(label), extra)
-        if candidate
-    )
-
-
 def catalogue_matches(
     names: list[str],
     query: str,
@@ -81,11 +69,10 @@ def catalogue_matches(
     Matching covers both the raw catalogue label and its canonical rendering,
     so a user typing what the row *shows* finds it.
     """
-    selectable = [
-        name for name in names if name not in (NO_NEW_MODELS, NO_CONNECTION)
-    ]
-    selectable = filter_labels_by_purpose(selectable, purpose, intents=intents)
-    return [name for name in selectable if catalogue_label_matches(name, query)]
+    return filter_catalogue_labels(
+        names, query, purpose=purpose, intents=dict(intents or {}),
+        sentinels=(NO_NEW_MODELS, NO_CONNECTION),
+    )
 
 
 def resolve_catalogue_action_row(row: Gtk.ListBoxRow) -> Adw.ActionRow | None:

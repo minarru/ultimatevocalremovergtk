@@ -1,12 +1,14 @@
 """Typed-settings access helpers (nested paths and the legacy flat bridge).
 
-Framework-agnostic: lives in ``core`` so headless tools can write settings
+Framework-agnostic: lives in ``core`` so noninteractive tools can write settings
 without importing the GTK layer. ``ui.settings_bind`` re-exports these.
 """
 
 from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
+import difflib
+from enum import Enum
 from typing import Any, Iterable
 
 from core.settings import Settings
@@ -60,7 +62,17 @@ def _section_names(settings: Settings) -> list[str]:
     )
 
 
-def validate_setting_path(settings: Settings, path: str) -> tuple[str, str]:
+def _setting_paths(settings: Settings) -> list[str]:
+    return [
+        f"{section_name}.{field.name}"
+        for section_name in _section_names(settings)
+        for field in fields(getattr(settings, section_name))
+    ]
+
+
+def validate_setting_path(
+    settings: Settings, path: str, *, allow_containers: bool = False
+) -> tuple[str, str]:
     """Split ``section.field`` and reject anything :class:`Settings` lacks.
 
     :func:`set_path` cannot do this itself: the settings sections are plain
@@ -80,17 +92,71 @@ def validate_setting_path(settings: Settings, path: str) -> tuple[str, str]:
         )
 
     if field_name not in {f.name for f in fields(section)}:
+        matches = difflib.get_close_matches(path, _setting_paths(settings), n=5)
+        suggestion = f"; close matches: {', '.join(matches)}" if matches else ""
         raise ValueError(
             f"unknown setting {path!r}; section {section_name!r} has no field "
-            f"{field_name!r}"
+            f"{field_name!r}{suggestion}"
         )
 
-    if isinstance(getattr(section, field_name), (list, dict)):
+    if not allow_containers and isinstance(getattr(section, field_name), (list, dict)):
         raise ValueError(
             f"setting {path!r} is a container and cannot be set from a single value"
         )
 
     return section_name, field_name
+
+
+def validate_setting_value(settings: Settings, path: str, value: Any) -> None:
+    """Reject scalar values that permissive GUI migration coercion would hide."""
+    section_name, field_name = validate_setting_path(settings, path)
+    if path == "ensemble.type":
+        from bundled.constants import ENSEMBLE_ALGORITHMS
+
+        atoms = [part.strip() for part in str(value).split("/")]
+        if not atoms or any(atom not in ENSEMBLE_ALGORITHMS for atom in atoms):
+            raise ValueError(
+                f"invalid value for {path}: {value!r}; expected one or two known algorithms"
+            )
+        return
+    current = getattr(getattr(settings, section_name), field_name)
+    if isinstance(current, bool):
+        valid = isinstance(value, bool) or value in (0, 1)
+        if isinstance(value, str):
+            valid = value.strip().lower() in {
+                "0", "1", "false", "true", "no", "yes", "off", "on", "",
+            }
+        if not valid:
+            raise ValueError(f"invalid boolean for {path}: {value!r}")
+        return
+    if isinstance(current, Enum):
+        try:
+            type(current)(value)
+        except (TypeError, ValueError) as exc:
+            allowed = ", ".join(repr(item.value) for item in type(current))
+            raise ValueError(f"invalid value for {path}: {value!r}; expected {allowed}") from exc
+        return
+    if isinstance(current, int) and not isinstance(value, bool):
+        try:
+            int(str(value).strip())
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"invalid integer for {path}: {value!r}") from exc
+        if isinstance(value, float) and not value.is_integer():
+            raise ValueError(f"invalid integer for {path}: {value!r}")
+        return
+    if isinstance(current, float) and not isinstance(value, bool):
+        try:
+            float(str(value).strip())
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"invalid number for {path}: {value!r}") from exc
+        return
+    if current is None:
+        from core.settings.coerce import coerce_field
+
+        converted = coerce_field(section_name, field_name, value)
+        sentinels = {"", "auto", "default", "none", "null"}
+        if converted is None and str(value).strip().lower() not in sentinels:
+            raise ValueError(f"invalid value for {path}: {value!r}")
 
 
 def apply_settings_overrides(
@@ -102,8 +168,9 @@ def apply_settings_overrides(
     instead of silently dropping the override.
     """
     pairs = list(overrides)
-    for path, _value in pairs:
+    for path, value in pairs:
         validate_setting_path(settings, path)
+        validate_setting_value(settings, path, value)
     for path, value in pairs:
         set_path(settings, path, value)
 

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+UVR_ENTRY="$(readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")"
+UVR_ROOT="$(cd -- "$(dirname -- "${UVR_ENTRY}")" && pwd)"
+UVR_PYTHON="${UVR_ROOT}/.venv/bin/python"
+
+if [[ ! -x "${UVR_PYTHON}" ]]; then
+    echo "UVR virtual environment not found. Run ${UVR_ROOT}/install_packages.sh first." >&2
+    exit 2
+fi
+
+if [[ "${1:-}" == "gui" ]]; then
+    shift
+    exec "${UVR_ROOT}/run_uvr.sh" "$@"
+fi
+
+export PYTHONPATH="${UVR_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
+exec "${UVR_PYTHON}" -m cli "$@"

@@ -1,30 +1,26 @@
-"""The ``separate`` command: one method, one or more input files."""
+"""Single-model separation command."""
 
 from __future__ import annotations
 
 import argparse
-import json
-import os
 import sys
 from typing import Optional
 
-from core.headless_run import (
-    build_settings,
-    resolve_vocal_splitter,
-    run_separation_sync,
-    settings_summary,
+from .execution import run_batch, run_separation_cli, write_manifest
+from .job import (
+    add_job_input_args,
+    add_job_output_args,
+    add_profile_args,
+    format_effective_plan,
+    resolve_separate_job,
 )
-from core.settings import Settings
-from core.settings.access import apply_settings_overrides
-
-from .process_flags import add_process_args, collect_overrides
-from .reporting import add_reporting_args, emit_json, fail, finish_progress, make_progress_printer
+from .process_flags import add_process_args
+from .reporting import add_reporting_args, emit_document, emit_event, fail, report_mode
 
 _REQUIRED_RUNTIME_MODULES = ("kthread", "soundfile")
 
 
 def check_runtime_deps() -> Optional[str]:
-    """Return a short error message if core runtime packages are missing."""
     missing = []
     for name in _REQUIRED_RUNTIME_MODULES:
         try:
@@ -33,147 +29,105 @@ def check_runtime_deps() -> Optional[str]:
             missing.append(name)
     if not missing:
         return None
-    return (
-        f"missing Python packages: {', '.join(missing)}. "
-        f"Use the project venv, e.g. "
-        f"`./.venv/bin/python -m cli ...` "
-        f"(current interpreter: {sys.executable})"
-    )
+    return f"missing Python packages: {', '.join(missing)}; run install_packages.sh"
 
 
 def add_separate_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("inputs", nargs="+", help="Input audio file path(s)")
-    parser.add_argument(
-        "-o", "--output", required=True, help="Export directory for stem outputs"
-    )
-    parser.add_argument(
-        "--method",
-        choices=("mdx", "demucs", "vr"),
-        default=None,
-        help="Process method (default: value from settings / last GUI session)",
-    )
-    parser.add_argument(
+    add_job_input_args(parser)
+    model = parser.add_argument_group("Model")
+    model.add_argument(
         "--model",
         default=None,
-        help=(
-            "Model display name, on-disk basename, or weight filename/path "
-            "(e.g. 'v4 | hdemucs_mmi' or hdemucs_mmi.yaml); default: settings"
-        ),
+        help="Canonical model ID or a unique installed model name",
     )
-    parser.add_argument(
-        "--settings",
-        default=None,
-        help="Path to settings.json (default: UVR data dir settings file)",
-    )
-    parser.add_argument(
+    output = parser.add_argument_group("Stem selection")
+    output.add_argument(
         "--stems",
         default=None,
-        help=(
-            "Which stems to save for this run only: both|primary|secondary|"
-            "vocals|instrumental|bass|drums|other "
-            "(or vocals,instrumental). Default: settings / last GUI session"
-        ),
+        help="both, primary, secondary, vocals, instrumental, bass, drums, or other",
     )
-    parser.add_argument(
-        "--print-settings",
-        action="store_true",
-        help="Print resolved method/model/export knobs before running",
-    )
-    parser.add_argument(
-        "--long-chunk-seconds",
-        type=float,
-        default=None,
-        help="Whole-file chunk length in seconds (0/omit = off)",
-    )
-    parser.add_argument(
-        "--long-chunk-overlap",
-        type=float,
-        default=None,
-        help="Crossfade overlap between long-file chunks in seconds",
-    )
+    performance = parser.add_argument_group("Long files")
+    performance.add_argument("--long-chunk-seconds", type=float, default=None)
+    performance.add_argument("--long-chunk-overlap", type=float, default=None)
+    add_job_output_args(parser)
+    add_profile_args(parser)
     add_process_args(parser)
     add_reporting_args(parser)
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Resolve and verify the model without loading weights or processing",
+    )
+
+
+def confirm_inherited(args: argparse.Namespace, plan: dict) -> int:
+    print(format_effective_plan(plan), file=sys.stderr)
+    if report_mode(args) != "human":
+        return fail(
+            args,
+            "profile-supplied identity requires --accept-inherited in machine mode",
+            exit_code=2,
+            extra={"plan": plan},
+        )
+    if not getattr(sys.stdin, "isatty", lambda: False)():
+        return fail(
+            args,
+            "cannot confirm profile-supplied identity non-interactively; pass --accept-inherited",
+            exit_code=2,
+        )
+    sys.stderr.write("Use these settings? [y/N] ")
+    sys.stderr.flush()
+    if sys.stdin.readline().strip().lower() not in {"y", "yes"}:
+        return fail(args, "aborted; no files processed", exit_code=2)
+    return 0
 
 
 def cmd_separate(args: argparse.Namespace) -> int:
-    dep_err = check_runtime_deps()
-    if dep_err:
-        return fail(args, dep_err, exit_code=2)
-
-    os.makedirs(args.output, exist_ok=True)
     try:
-        settings: Settings = build_settings(
-            settings_path=args.settings,
-            export_path=os.path.abspath(args.output),
-            method=args.method,
-            model=args.model,
-            stems=args.stems,
-            stable_names=True,
-            long_chunk_seconds=args.long_chunk_seconds,
-            long_chunk_overlap=args.long_chunk_overlap,
-        )
-        resolved_splitter = None
-        if args.vocal_split:
-            from core.model_data import ModelRepository
-
-            from .offline import catalogue_offline
-
-            with catalogue_offline(True):
-                resolved_splitter = resolve_vocal_splitter(
-                    args.vocal_split, settings, ModelRepository()
-                )
-        apply_settings_overrides(
-            settings,
-            collect_overrides(
-                args, resolved_vocal_splitter=resolved_splitter
-            ),
-        )
-    except ValueError as exc:
+        job = resolve_separate_job(args)
+    except (OSError, ValueError) as exc:
         return fail(args, str(exc), exit_code=2, exc=exc)
 
-    if args.print_settings and not args.json:
-        print(json.dumps(settings_summary(settings), indent=2))
+    emit_event(args, "planned", command="separate", plan=job.plan)
+    if args.dry_run:
+        if report_mode(args) == "human":
+            print(format_effective_plan(job.plan))
+        else:
+            emit_document(
+                args,
+                {"ok": True, "status": "validated", "dry_run": True, "plan": job.plan, "inputs": []},
+            )
+        return 0
+    if job.identity_inherited and not args.accept_inherited:
+        result = confirm_inherited(args, job.plan)
+        if result:
+            return result
+    elif args.verbose or (job.identity_inherited and not args.quiet):
+        print(format_effective_plan(job.plan), file=sys.stderr)
 
-    missing = [p for p in args.inputs if not os.path.isfile(p)]
-    if missing:
-        return fail(args, f"input not found: {missing[0]}", exit_code=2)
-
-    machine_output = bool(args.json)
-    on_progress = None if args.quiet else make_progress_printer()
-    result = run_separation_sync(
-        settings,
-        [os.path.abspath(p) for p in args.inputs],
-        # JSON owns stdout. Engine console text would corrupt the document.
-        print_console=not (args.quiet or machine_output),
-        on_progress=on_progress,
-    )
-    if on_progress is not None:
-        finish_progress()
-    if result.error is not None:
-        return fail(
-            args,
-            f"{type(result.error).__name__}: {result.error}",
-            exit_code=1,
-            exc=result.error,
+    dep_err = check_runtime_deps()
+    if dep_err:
+        return fail(args, dep_err, exit_code=2, kind="runtime")
+    emit_event(args, "started", command="separate", plan=job.plan)
+    outcome = run_batch(args, job, run_separation_cli)
+    try:
+        manifest = write_manifest(
+            args, job, outcome,
+            original_argv=getattr(args, "original_argv", sys.argv[1:]),
         )
-    if result.stopped:
-        return fail(
-            args,
-            "separation stopped",
-            exit_code=130,
-            extra={"stopped": True},
-        )
-
-    if args.json:
-        payload = {
-            "ok": True,
-            "elapsed_s": result.elapsed_s,
-            "export_path": result.export_path,
-        }
-        if args.print_settings:
-            payload["settings"] = settings_summary(settings)
-        emit_json(payload)
-    else:
-        print(f"elapsed_s={result.elapsed_s:.3f}")
-        print(f"export_path={result.export_path}")
-    return 0
+    except OSError as exc:
+        return fail(args, f"manifest write failed: {exc}", exit_code=1, exc=exc, kind="runtime")
+    payload = {
+        "ok": outcome.exit_code == 0,
+        "status": outcome.status,
+        "command": "separate",
+        "elapsed_s": outcome.elapsed_s,
+        "export_path": job.output,
+        "plan": job.plan,
+        "inputs": outcome.inputs,
+        "stopped": outcome.interrupted,
+    }
+    if manifest:
+        payload["manifest"] = manifest
+    emit_document(args, payload)
+    return outcome.exit_code

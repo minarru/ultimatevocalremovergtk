@@ -147,7 +147,10 @@ def find_download_selection(tag: str, manager: typing.Any) -> Optional[Tuple[str
     if not arch or not model_name:
         return None
     if hasattr(manager, "ensure_catalogues"):
-        manager.ensure_catalogues()
+        try:
+            manager.ensure_catalogues(allow_network=False)
+        except TypeError:
+            manager.ensure_catalogues()
     catalogue = _catalogue_for_arch(manager, arch)
     if not catalogue:
         return None

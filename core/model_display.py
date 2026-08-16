@@ -215,7 +215,7 @@ def _flatten_source(source: Dict, keys: Tuple[str, ...]) -> Dict[str, Any]:
     return flat
 
 
-def _display_base(keys: Tuple[str, ...]) -> Dict[str, Any]:
+def _display_base(keys: Tuple[str, ...], *, allow_network: bool) -> Dict[str, Any]:
     """Flatten one architecture's catalogues from the cache **and** Politrees.
 
     Politrees is read here as well as inside the merge because the merge omits
@@ -226,7 +226,7 @@ def _display_base(keys: Tuple[str, ...]) -> Dict[str, Any]:
     from .politrees_catalog import load_politrees_links
 
     flat = _flatten_source(_load_manual_download_cache(), keys)
-    politrees = load_politrees_links()
+    politrees = load_politrees_links(allow_network=allow_network)
     if isinstance(politrees, dict):
         for label, model in _flatten_source(politrees, keys).items():
             flat.setdefault(label, model)
@@ -239,8 +239,8 @@ _display_generation: int = 0
 _format_tag_title_cache: dict[tuple[str, int], str] = {}
 
 
-@functools.lru_cache(maxsize=4)
-def _merged_for_display_at(generation: int):
+@functools.lru_cache(maxsize=8)
+def _merged_for_display_at(generation: int, allow_network: bool):
     """Cached merge keyed by :data:`_display_generation`.
 
     Callers should use :func:`_merged_for_display` so they always read the
@@ -251,13 +251,14 @@ def _merged_for_display_at(generation: int):
     from .catalog_sources import merged_catalogues
 
     return merged_catalogues(
-        vr=_display_base(_VR_CATALOG_SOURCE_KEYS),
-        mdx=_display_base(_MDX_CATALOG_SOURCE_KEYS),
-        demucs=_display_base(_DEMUCS_CATALOG_SOURCE_KEYS),
+        vr=_display_base(_VR_CATALOG_SOURCE_KEYS, allow_network=allow_network),
+        mdx=_display_base(_MDX_CATALOG_SOURCE_KEYS, allow_network=allow_network),
+        demucs=_display_base(_DEMUCS_CATALOG_SOURCE_KEYS, allow_network=allow_network),
+        allow_network=allow_network,
     )
 
 
-def _merged_for_display():
+def _merged_for_display(*, allow_network: bool = True):
     """Merged catalogues built from the upstream cache plus every supplement.
 
     Reads the same merge the Download Center does, which is the whole point:
@@ -269,7 +270,7 @@ def _merged_for_display():
     dropdown entry. Invalidate through :func:`clear_display_cache` whenever a
     source changes (politrees refresh, hash-mapper reload).
     """
-    return _merged_for_display_at(_display_generation)
+    return _merged_for_display_at(_display_generation, allow_network)
 
 
 def clear_display_cache() -> None:
@@ -308,19 +309,19 @@ def _index_from_meta(merged: "MergedCatalogues", arch: str) -> Dict[str, str]:
     return index
 
 
-def load_mdx_catalog_display_index() -> Dict[str, str]:
+def load_mdx_catalog_display_index(*, allow_network: bool = True) -> Dict[str, str]:
     """Build MDX checkpoint-basename→display-name index from every source."""
-    return _index_from_meta(_merged_for_display(), MDX_ARCH_TYPE)
+    return _index_from_meta(_merged_for_display(allow_network=allow_network), MDX_ARCH_TYPE)
 
 
-def load_vr_catalog_display_index() -> Dict[str, str]:
+def load_vr_catalog_display_index(*, allow_network: bool = True) -> Dict[str, str]:
     """Build VR basename→runtime-display index from every source."""
-    return _index_from_meta(_merged_for_display(), VR_ARCH_TYPE)
+    return _index_from_meta(_merged_for_display(allow_network=allow_network), VR_ARCH_TYPE)
 
 
-def load_demucs_catalog_display_index() -> Dict[str, str]:
+def load_demucs_catalog_display_index(*, allow_network: bool = True) -> Dict[str, str]:
     """Build Demucs stem→runtime-display index from every source."""
-    return _index_from_meta(_merged_for_display(), DEMUCS_ARCH_TYPE)
+    return _index_from_meta(_merged_for_display(allow_network=allow_network), DEMUCS_ARCH_TYPE)
 
 
 def display_name_for_basename(
@@ -522,20 +523,31 @@ def map_basenames_to_display(
     basenames: Iterable[str],
     arch: str,
     repo: "ModelRepository",
+    *,
+    allow_network: bool = False,
 ) -> List[str]:
     """Map on-disk basenames to runtime display labels for a method dropdown."""
+    def catalogue_index(name: str) -> Dict[str, str]:
+        provider = getattr(repo, name)
+        try:
+            return provider(allow_network=allow_network)
+        except TypeError:
+            # Small repository fakes and third-party adapters predating the
+            # policy parameter are intrinsically local-only.
+            return provider()
+
     names = list(basenames)
     if arch in (VR_ARCH_TYPE,):
-        lookup = repo.vr_catalogue_display_index()
+        lookup = catalogue_index("vr_catalogue_display_index")
         return [lookup.get(name, name) for name in names]
     if arch in (MDX_ARCH_TYPE,):
-        catalogue = repo.mdx_catalogue_display_index()
+        catalogue = catalogue_index("mdx_catalogue_display_index")
         return [
             display_name_for_basename(name, repo.mdx_name_select_MAPPER, catalogue_index=catalogue)
             for name in names
         ]
     if arch in (DEMUCS_ARCH_TYPE,):
-        catalogue = repo.demucs_catalogue_display_index()
+        catalogue = catalogue_index("demucs_catalogue_display_index")
         return [
             catalogue.get(name)
             or lookup_mapper_display(name, repo.demucs_name_select_MAPPER)

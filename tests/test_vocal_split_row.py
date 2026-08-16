@@ -200,8 +200,8 @@ class VocalSplitRowTests(unittest.TestCase):
         row.set_expanded(True)
         self.assertIn("UVR-BVE-4B", " ".join(combo_values(row.splitter_row)))
 
-    def test_model_list_shows_friendly_names_but_stores_full_tags(self):
-        """Combo displays friendly name (no arch prefix) but persists full tag."""
+    def test_model_list_shows_friendly_names_but_stores_canonical_ids(self):
+        """Combo displays friendly names while persisting canonical identities."""
         from ui.widgets.rows import combo_values, get_combo_value
 
         row = self._row()
@@ -219,8 +219,8 @@ class VocalSplitRowTests(unittest.TestCase):
         settings = self._settings()
         row.persist_to_settings(settings)
 
-        # Stored value should be the full tag
-        self.assertEqual(settings.get("set_vocal_splitter"), "VR Arc: UVR-BVE-4B")
+        # Stored value is independent from the friendly label.
+        self.assertEqual(settings.get("set_vocal_splitter"), "vr:UVR-BVE-4B")
 
     def test_refresh_repopulates_an_already_expanded_row(self):
         """`_models_ready` latched True forever, so a karaoke model installed
@@ -249,10 +249,10 @@ class VocalSplitRowTests(unittest.TestCase):
         self.karaoke_models.append("VR Arc: UVR-BVE-5B")
         row.refresh_models()
 
-        self.assertEqual(get_combo_value(row.splitter_row), "VR Arc: UVR-BVE-4B")
+        self.assertEqual(get_combo_value(row.splitter_row), "vr:UVR-BVE-4B")
         settings = self._settings()
         row.persist_to_settings(settings)
-        self.assertEqual(settings.get("set_vocal_splitter"), "VR Arc: UVR-BVE-4B")
+        self.assertEqual(settings.get("set_vocal_splitter"), "vr:UVR-BVE-4B")
 
     def test_refresh_of_a_collapsed_row_defers_the_work(self):
         """Laziness pin: resolving the karaoke list hashes checkpoints, so a
@@ -284,7 +284,7 @@ class VocalSplitRowTests(unittest.TestCase):
         self.karaoke_models[:] = ["VR Arc: UVR-BVE-5B"]
         row.refresh_models()
 
-        self.assertEqual(get_combo_value(row.splitter_row), "VR Arc: UVR-BVE-4B")
+        self.assertEqual(get_combo_value(row.splitter_row), "vr:UVR-BVE-4B")
 
 
 if __name__ == "__main__":

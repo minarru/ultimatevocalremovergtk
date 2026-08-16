@@ -27,10 +27,20 @@ def assemble_model(
 ) -> List["ModelConfig"]:
     """Build the model configurations for one separation run."""
     from .config import ModelConfig
+    from ..model_identity import ModelIdentityService
+
+    identities = ModelIdentityService(repo)
+
+    def engine_value(
+        value: str, *, member: bool = False, family: str | None = None
+    ) -> str:
+        if str(value or "").split(":", 1)[0].casefold() not in {"vr", "mdx", "demucs"}:
+            return value
+        return identities.engine_value(value, member=member, family=family)
 
     if arch_type == ENSEMBLE_MODE:
         selected = settings.ensemble.selected_models or []
-        models = [ModelConfig(settings, repo, name) for name in selected]
+        models = [ModelConfig(settings, repo, engine_value(name, member=True)) for name in selected]
         valid = [item for item in models if item.model_status]
         skipped = len(models) - len(valid)
         if skipped:
@@ -51,6 +61,11 @@ def assemble_model(
         return valid
     if not model:
         raise ValueError(f"assemble_model requires a model name for {arch_type}")
+    family = {
+        VR_ARCH_TYPE: "vr", VR_ARCH_PM: "vr",
+        MDX_ARCH_TYPE: "mdx", DEMUCS_ARCH_TYPE: "demucs",
+    }.get(arch_type)
+    model = engine_value(model, family=family)
     if arch_type == ENSEMBLE_CHECK:
         return [ModelConfig(settings, repo, model)]
     if arch_type in (VR_ARCH_TYPE, VR_ARCH_PM):

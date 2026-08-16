@@ -81,6 +81,7 @@ APOLLO_MODELS_DIR = os.path.join(MODELS_DIR, "Apollo_Models")
 APOLLO_CONFIG_PATH = os.path.join(APOLLO_MODELS_DIR, "model_configs")
 APOLLO_HASH_DIR = os.path.join(APOLLO_MODELS_DIR, "model_data")
 APOLLO_HASH_JSON = os.path.join(APOLLO_HASH_DIR, "model_data.json")
+REGISTERED_MODEL_INDEX = os.path.join(DATA_DIR, "registered_models.json")
 
 DENOISER_MODEL_PATH = os.path.join(VR_MODELS_DIR, "UVR-DeNoise-Lite.pth")
 DEVERBER_MODEL_PATH = os.path.join(VR_MODELS_DIR, "UVR-DeEcho-DeReverb.pth")

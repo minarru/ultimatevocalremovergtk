@@ -90,6 +90,7 @@ from ..widgets.rows import (
     make_combo_row,
     make_switch_row,
     set_combo_value,
+    set_combo_tag_values,
     set_combo_values,
     use_wrapping_list,
 )
@@ -408,14 +409,26 @@ class AudioToolsPage:
     def _refresh_apollo_models(self) -> None:
         """Repopulate the Apollo model picker from the models on disk."""
         from core.apollo import list_apollo_models
+        from core.model_identity import ModelIdentityService
 
         found = list_apollo_models()
-        models = [CHOOSE_MODEL, *found]
+        identities = ModelIdentityService(self.context.repo)
+        records = [
+            record for record in identities.records()
+            if record.family == "apollo" and record.installed
+        ]
+        models = [CHOOSE_MODEL, *((record.id, record.display) for record in records)]
         stored = self.settings.audio_tools.apollo_model or CHOOSE_MODEL
+        if stored != CHOOSE_MODEL:
+            try:
+                stored = identities.resolve(str(stored), family="apollo").id
+                self.settings.audio_tools.apollo_model = stored
+            except ValueError:
+                pass
         was_loading = self._loading
         self._loading = True
         try:
-            set_combo_values(self.apollo_model_row, models)
+            set_combo_tag_values(self.apollo_model_row, models)
             if not set_combo_value(self.apollo_model_row, stored):
                 self.apollo_model_row.set_selected(0)
         finally:
@@ -757,6 +770,31 @@ class AudioToolsPage:
             return self._apollo_blocked_reason()
         return None
 
+    def build_job_spec(self) -> typing.Any:
+        """Snapshot the active Audio Tools page for shared runtime preflight."""
+        import copy
+
+        from core.audio_plan import AudioJobSpec
+        from core.audio_tools import DUAL_INPUT_TOOLS
+
+        settings = copy.deepcopy(self.settings)
+        settings.process.export_path = self.output_row.path
+        tool = self._current_tool()
+        if tool in DUAL_INPUT_TOOLS:
+            inputs: tuple[str, ...] = ()
+            pairs = tuple((str(left), str(right)) for left, right in self._dual_pairs)
+        else:
+            inputs = tuple(str(path) for path in self.inputs_row.paths)
+            pairs = ()
+        return AudioJobSpec(
+            tool=tool,
+            settings=settings,
+            output=self.output_row.path,
+            inputs=inputs,
+            pairs=pairs,
+            provenance={"profile": "gui"},
+        )
+
     def _apollo_blocked_reason(self) -> Optional[str]:
         """Side-effect-free Apollo readiness check (no toasts / dialogs)."""
         from core.apollo import list_apollo_models
@@ -825,8 +863,13 @@ class AudioToolsPage:
             return None
 
         handler = make_apollo_unrecognized_handler(lambda: self.window)
+        from core.model_identity import ModelIdentityService
+
+        engine_name = ModelIdentityService(self.context.repo).engine_value(
+            model_name, family="apollo"
+        )
         model_data = ApolloModelData(
-            model_name,
+            engine_name,
             model_hash_table=self.context.repo.model_hash_table,
             on_unrecognized=handler,
         )

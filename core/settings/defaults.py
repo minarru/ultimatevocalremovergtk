@@ -197,12 +197,14 @@ def default_ui() -> dict:
         "notify_process_failed": True,
         "notify_download_complete": True,
         "notify_download_failed": True,
+        "confirm_processing_plan": True,
     }
 
 
 def default_settings_dict() -> dict:
     return {
         "schema_version": SETTINGS_SCHEMA_VERSION,
+        "identity_schema_version": 2,
         "process": default_process(),
         "vr": default_vr(),
         "mdx": default_mdx(),

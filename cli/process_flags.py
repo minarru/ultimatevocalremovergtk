@@ -1,9 +1,8 @@
 """Process flags shared by ``separate`` and ``ensemble``.
 
-Every named flag compiles to a ``(settings path, value)`` pair rather than a
-``build_settings`` keyword argument, so named flags and ``--set`` share one
-validation path (``core.settings.access.apply_settings_overrides``) and
-``build_settings`` keeps a small signature.
+Every named flag compiles to a ``(settings path, value)`` pair. Named flags and
+``--set`` therefore share the typed ``SettingsResolver`` path, with ``--set``
+remaining the final CLI layer.
 """
 
 from __future__ import annotations
@@ -15,17 +14,15 @@ from core.settings.coerce import enum_value
 from core.settings.access import parse_setting_assignment
 from core.types import FlacBitDepth, Mp3Bitrate, SaveFormat, WavType
 
-# dest -> (settings path, value written when the flag is present)
-_BOOL_FLAG_PATHS: dict[str, tuple[str, Any]] = {
-    "cpu": ("process.use_gpu", False),
-    "gpu": ("process.use_gpu", True),
-    "autocast": ("process.autocast", True),
-    "no_autocast": ("process.autocast", False),
-    "normalize": ("process.normalization", True),
-    "match_mix": ("process.match_mix_level", True),
-    "sample": ("process.sample_mode", True),
-    "save_split_inst": ("process.save_inst_vocal_splitter", True),
-    "no_vocal_split": ("process.vocal_splitter_enabled", False),
+# dest -> settings path for symmetric BooleanOptionalAction flags.
+_BOOL_FLAG_PATHS: dict[str, str] = {
+    "autocast": "process.autocast",
+    "normalize": "process.normalization",
+    "match_mix": "process.match_mix_level",
+    "sample": "process.sample_mode",
+    "save_split_inst": "process.save_inst_vocal_splitter",
+    "model_folders": "process.create_model_folder",
+    "include_model_name": "process.add_model_name",
 }
 
 # dest -> settings path, for flags whose value is written straight through
@@ -34,70 +31,77 @@ _VALUE_FLAG_PATHS: dict[str, str] = {
     "wav_type": "process.wav_type",
     "mp3_bitrate": "process.mp3_bitrate",
     "flac_depth": "process.flac_bit_depth",
-    "device": "process.device",
     "sample_seconds": "process.sample_mode_duration",
 }
 
 
 def add_process_args(parser: argparse.ArgumentParser) -> None:
     """Attach the shared process flags to a subcommand parser."""
-    gpu_group = parser.add_mutually_exclusive_group()
-    gpu_group.add_argument(
-        "--cpu", action="store_true", help="Force CPU (process.use_gpu=False)"
+    performance = parser.add_argument_group("Performance")
+    performance.add_argument(
+        "--autocast",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable autocast (UVR_AUTOCAST still wins)",
     )
-    gpu_group.add_argument(
-        "--gpu", action="store_true", help="Force GPU (process.use_gpu=True)"
-    )
-
-    autocast_group = parser.add_mutually_exclusive_group()
-    autocast_group.add_argument(
-        "--autocast", action="store_true", help="Enable autocast (UVR_AUTOCAST still wins)"
-    )
-    autocast_group.add_argument(
-        "--no-autocast", action="store_true", help="Disable autocast"
-    )
-
-    parser.add_argument(
+    performance.add_argument(
         "--device",
         default=None,
         metavar="ID",
-        help="GPU device id from list_gpu_devices (e.g. 0, mps, directml)",
+        help="auto, cpu, cuda:N, mps, or directml:N (default: auto)",
     )
-    parser.add_argument(
+    output = parser.add_argument_group("Output format")
+    output.add_argument(
         "--format",
         type=str.upper,
         choices=[fmt.value for fmt in SaveFormat],
         default=None,
         help="Export format (case-insensitive)",
     )
-    parser.add_argument(
+    output.add_argument(
         "--wav-type",
         choices=[wav.value for wav in WavType],
         default=None,
         help="WAV sample format",
     )
-    parser.add_argument(
+    output.add_argument(
         "--mp3-bitrate",
         choices=[rate.value for rate in Mp3Bitrate],
         default=None,
         help="MP3 bitrate",
     )
-    parser.add_argument(
+    output.add_argument(
         "--flac-depth",
         choices=[depth.value for depth in FlacBitDepth],
         default=None,
         help="FLAC bit depth",
     )
-    parser.add_argument(
-        "--normalize", action="store_true", help="Normalize outputs"
+    output.add_argument(
+        "--model-folders",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Place outputs in per-model folders",
     )
-    parser.add_argument(
-        "--match-mix", action="store_true", help="Match the mix level"
+    output.add_argument(
+        "--include-model-name",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Include the canonical model label in output filenames",
     )
-    parser.add_argument(
-        "--sample", action="store_true", help="Sample mode (short excerpt only)"
+    post = parser.add_argument_group("Post-processing")
+    post.add_argument(
+        "--normalize", action=argparse.BooleanOptionalAction, default=None,
+        help="Enable or disable output normalization"
     )
-    parser.add_argument(
+    post.add_argument(
+        "--match-mix", action=argparse.BooleanOptionalAction, default=None,
+        help="Enable or disable mix-level matching"
+    )
+    performance.add_argument(
+        "--sample", action=argparse.BooleanOptionalAction, default=None,
+        help="Enable or disable sample mode"
+    )
+    performance.add_argument(
         "--sample-seconds",
         type=int,
         default=None,
@@ -105,7 +109,7 @@ def add_process_args(parser: argparse.ArgumentParser) -> None:
         help="Sample-mode duration in seconds",
     )
 
-    split_group = parser.add_mutually_exclusive_group()
+    split_group = post.add_mutually_exclusive_group()
     split_group.add_argument(
         "--vocal-split",
         default=None,
@@ -120,13 +124,15 @@ def add_process_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Disable the vocal splitter for this run",
     )
-    parser.add_argument(
+    post.add_argument(
         "--save-split-inst",
-        action="store_true",
-        help="Also save the vocal splitter's instrumental",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable saving the splitter instrumental",
     )
 
-    parser.add_argument(
+    advanced = parser.add_argument_group("Advanced settings")
+    advanced.add_argument(
         "--set",
         action="append",
         default=None,
@@ -151,9 +157,13 @@ def collect_overrides(
     """
     overrides: list[tuple[str, Any]] = []
 
-    for dest, (path, value) in _BOOL_FLAG_PATHS.items():
-        if getattr(args, dest, False):
-            overrides.append((path, value))
+    for dest, path in _BOOL_FLAG_PATHS.items():
+        value = getattr(args, dest, None)
+        if value is not None:
+            overrides.append((path, bool(value)))
+
+    if getattr(args, "no_vocal_split", False):
+        overrides.append(("process.vocal_splitter_enabled", False))
 
     for dest, path in _VALUE_FLAG_PATHS.items():
         value = getattr(args, dest, None)
@@ -168,7 +178,7 @@ def collect_overrides(
 
     if getattr(args, "sample_seconds", None) is not None:
         # Duration without --sample would otherwise be stored and ignored.
-        if not getattr(args, "sample", False):
+        if getattr(args, "sample", None) is not True:
             overrides.append(("process.sample_mode", True))
 
     for item in getattr(args, "set_items", None) or []:

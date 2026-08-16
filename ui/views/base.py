@@ -223,17 +223,30 @@ class MethodView:
         names = map_basenames_to_display(basenames, arch, repo)
         from core.model_scores import sort_labels_by_sdr
 
-        names = sort_labels_by_sdr(
+        sorted_names = sort_labels_by_sdr(
             names,
             score_texts=[(display, basename) for display, basename in zip(names, basenames)],
         )
-        set_combo_values(self.model_row, [CHOOSE_MODEL, *names])
+        basename_by_display = {display: basename for display, basename in zip(names, basenames)}
+        from core.model_identity import FAMILY_BY_ARCH, ModelId
+
+        family = FAMILY_BY_ARCH[arch]
+        items = [
+            (str(ModelId(family, basename_by_display[name])), name)
+            for name in sorted_names
+        ]
+        set_combo_tag_values(self.model_row, [CHOOSE_MODEL, *items])
         stored = get_flat(self.settings, self.model_key, CHOOSE_MODEL)
         if stored not in (CHOOSE_MODEL, NO_MODEL, None):
-            display = current_display_for_stored_model(stored, basenames, arch, repo)
-            if display != stored:
-                stored = display
-                set_flat(self.settings, self.model_key, display)
+            try:
+                from core.model_identity import ModelIdentityService
+
+                stored = ModelIdentityService(repo).resolve(
+                    str(stored), family=family
+                ).id
+                set_flat(self.settings, self.model_key, stored)
+            except ValueError:
+                pass
         set_combo_value(self.model_row, stored)
 
     def refresh_models(self) -> None:
@@ -653,8 +666,14 @@ class MethodView:
                     values = entry["provider"]()
                 except Exception:
                     values = []
+                from core.model_identity import ModelIdentityService
+
+                identities = ModelIdentityService(self.context.repo)
                 tag_items = [
-                    (tag, format_tag_title(tag, self.context.repo))
+                    (
+                        identities.canonical_id_from_member_tag(tag),
+                        format_tag_title(tag, self.context.repo),
+                    )
                     for tag in values
                 ]
                 set_combo_tag_values(entry["row"], [NO_MODEL, *tag_items])

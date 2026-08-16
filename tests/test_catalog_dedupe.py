@@ -246,7 +246,7 @@ class DownloadManagerDedupeTests(unittest.TestCase):
         _unsupported: typing.Any,
     ) -> None:
         mock_extra.side_effect = lambda vr, mdx, demucs: (dict(vr), dict(mdx), dict(demucs))
-        mock_mv.side_effect = lambda vr, mdx, demucs: (
+        mock_mv.side_effect = lambda vr, mdx, demucs, **_kwargs: (
             dict(vr),
             {
                 "First": {"same.ckpt": "https://a/same.ckpt"},

@@ -191,13 +191,18 @@ class VocalSplitRow(Adw.ExpanderRow):
             values = []
         self._syncing = True
         try:
+            from core.model_identity import ModelIdentityService
+
+            identities = ModelIdentityService(self._repo)
             tag_items = []
             for tag in values:
                 try:
                     friendly = format_tag_title(tag, self._repo)
+                    stored_id = identities.canonical_id_from_member_tag(tag)
                 except Exception:
                     friendly = tag
-                tag_items.append((tag, friendly))
+                    stored_id = tag
+                tag_items.append((stored_id, friendly))
             # A stored tag absent from the fresh list -- a deleted/renamed model,
             # an older catalogue, or ``karaoke_model_list`` raising -- must still
             # be selectable, or selecting it here would silently rewrite it to
@@ -206,7 +211,8 @@ class VocalSplitRow(Adw.ExpanderRow):
             known_tags = {NO_MODEL, *(tag for tag, _ in tag_items)}
             if self._stored_splitter not in known_tags:
                 try:
-                    friendly = format_tag_title(self._stored_splitter, self._repo)
+                    legacy = identities.legacy_member_tag(self._stored_splitter)
+                    friendly = format_tag_title(legacy, self._repo)
                 except Exception:
                     friendly = self._stored_splitter
                 tag_items.append((self._stored_splitter, friendly))

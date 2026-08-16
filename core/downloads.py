@@ -305,13 +305,13 @@ class DownloadManager:
             or self.apollo_download_list
         )
 
-    def ensure_catalogues(self) -> bool:
+    def ensure_catalogues(self, *, allow_network: bool = True) -> bool:
         """Populate download catalogues from in-memory, bundled, or Politrees data."""
         if self._has_any_catalogue():
             return True
         if self.online_data:
             self._rebuild_catalogues()
-            self._merge_politrees_supplement()
+            self._merge_politrees_supplement(allow_network=allow_network)
             if self._has_any_catalogue():
                 return True
         self.online_data = self._load_cache()
@@ -319,10 +319,10 @@ class DownloadManager:
             debug("download", "ensure_catalogues no bundled cache")
             # Apollo (and any other fork-curated list) is bundled locally, so it
             # is still available with no upstream cache at all.
-            self._merge_politrees_supplement()
+            self._merge_politrees_supplement(allow_network=allow_network)
             return self._has_any_catalogue()
         self._rebuild_catalogues()
-        self._merge_politrees_supplement()
+        self._merge_politrees_supplement(allow_network=allow_network)
         debug(
             "download",
             "ensure_catalogues bundled fallback "
@@ -537,7 +537,7 @@ class DownloadManager:
         debug("download", f"vip_validate unlocked={unlocked}")
         return unlocked
 
-    def _merge_politrees_supplement(self) -> None:
+    def _merge_politrees_supplement(self, *, allow_network: bool = True) -> None:
         """Merge every supplemental catalogue source over the upstream lists.
 
         The merge itself lives in :mod:`core.catalog_sources` so the runtime
@@ -551,6 +551,7 @@ class DownloadManager:
             vr=self.vr_download_list,
             mdx=self.mdx_download_list,
             demucs=self.demucs_download_list,
+            allow_network=allow_network,
         )
         self.vr_download_list = merged.vr
         self.mdx_download_list = merged.mdx

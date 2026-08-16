@@ -261,7 +261,9 @@ def _write_disk_cache(data: Dict[str, Any]) -> None:
         debug("download", f"mvsepless cache write failed err={exc}")
 
 
-def load_mvsepless_models(*, force: bool = False) -> Optional[Dict[str, Any]]:
+def load_mvsepless_models(
+    *, force: bool = False, allow_network: bool = True
+) -> Optional[Dict[str, Any]]:
     """Return raw ``models.json`` dict, or ``None`` when disabled/unavailable."""
     global _cached_models, _cached_loaded_at, _cached_converted
 
@@ -291,9 +293,18 @@ def load_mvsepless_models(*, force: bool = False) -> Optional[Dict[str, Any]]:
                 from .model_display import clear_display_cache
 
                 clear_display_cache()
-            if (now - fetched_at) >= _MVSEPLESS_CACHE_TTL_SECONDS:
+            if allow_network and (now - fetched_at) >= _MVSEPLESS_CACHE_TTL_SECONDS:
                 _start_background_refresh()
             return _cached_models
+
+    if not allow_network:
+        data = _read_disk_cache()
+        if isinstance(data, dict):
+            _cached_models = data
+            _cached_loaded_at = now
+            _cached_converted = None
+            return data
+        return None
 
     data: Optional[Dict[str, Any]] = None
     from_disk = False
@@ -501,7 +512,9 @@ def convert_mvsepless_catalog(
     }
 
 
-def load_converted_mvsepless(*, force: bool = False) -> Optional[Dict[str, Any]]:
+def load_converted_mvsepless(
+    *, force: bool = False, allow_network: bool = True
+) -> Optional[Dict[str, Any]]:
     """Fetch/convert with in-memory cache of the converted shape."""
     global _cached_converted
 
@@ -510,7 +523,7 @@ def load_converted_mvsepless(*, force: bool = False) -> Optional[Dict[str, Any]]
     if not force and _cached_converted is not None:
         return _cached_converted
 
-    models = load_mvsepless_models(force=force)
+    models = load_mvsepless_models(force=force, allow_network=allow_network)
     if not models:
         return None
     _cached_converted = convert_mvsepless_catalog(models)
@@ -522,9 +535,14 @@ def merge_mvsepless_catalogues(
     mdx: Mapping[str, Any],
     demucs: Mapping[str, Any],
     converted: Optional[Mapping[str, Any]] = None,
+    *,
+    allow_network: bool = True,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """Merge supported mvsepless entries; never overwrite existing labels."""
-    data = load_converted_mvsepless() if converted is None else converted
+    data = (
+        load_converted_mvsepless(allow_network=allow_network)
+        if converted is None else converted
+    )
     if not data:
         return dict(vr), dict(mdx), dict(demucs)
 
@@ -582,9 +600,14 @@ def unsupported_mvsepless_downloads(
 
 def mvsepless_metadata(
     converted: Optional[Mapping[str, Any]] = None,
+    *,
+    allow_network: bool = True,
 ) -> Dict[str, Dict[str, Any]]:
     """Return ``{label: metadata}`` for every mvsepless entry."""
-    data = load_converted_mvsepless() if converted is None else converted
+    data = (
+        load_converted_mvsepless(allow_network=allow_network)
+        if converted is None else converted
+    )
     if not data:
         return {}
     meta = data.get("metadata") or {}

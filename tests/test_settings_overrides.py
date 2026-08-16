@@ -71,6 +71,12 @@ class ApplySettingsOverridesTests(unittest.TestCase):
         )
         self.assertIs(self.settings.process.use_gpu, False)
 
+    def test_invalid_numeric_value_is_not_silently_coerced(self) -> None:
+        with self.assertRaisesRegex(ValueError, "invalid integer"):
+            apply_settings_overrides(
+                self.settings, [("mdx.segment_size", "not-a-number")]
+            )
+
 
 class ParseSettingAssignmentTests(unittest.TestCase):
     def test_splits_on_first_equals(self) -> None:

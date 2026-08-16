@@ -46,6 +46,7 @@ from bundled.constants import (
     SAMPLE_MODE_CHECKBOX,
 )
 from core.export_naming import preview_output_name
+from core.json_store import read_json_object, safe_json_path, write_json_atomic
 from core.platform import system_name
 from core.paths import SETTINGS_CACHE_DIR
 
@@ -102,7 +103,7 @@ class ProfileStore:
         self.directory = directory
 
     def _path(self, name: str) -> str:
-        return os.path.join(self.directory, f"{name.replace(' ', '_')}.json")
+        return safe_json_path(self.directory, name.replace(" ", "_"))
 
     def list_profiles(self):
         try:
@@ -118,10 +119,8 @@ class ProfileStore:
     def save(self, name: str, data: dict) -> Optional[str]:
         """Write ``data`` as a profile. Returns an error message, or ``None`` on success."""
         try:
-            os.makedirs(self.directory, exist_ok=True)
-            with open(self._path(name), "w") as outfile:
-                outfile.write(json.dumps(data, indent=4))
-        except OSError as exc:
+            write_json_atomic(self._path(name), data)
+        except (OSError, ValueError) as exc:
             return f"Couldn't save profile: {exc}"
         return None
 
@@ -130,11 +129,10 @@ class ProfileStore:
         if not os.path.isfile(path):
             return None
         try:
-            with open(path, "r") as infile:
-                data = json.load(infile)
+            data = read_json_object(path)
         except (ValueError, OSError):
             return None
-        return data if isinstance(data, dict) else None
+        return data
 
     def remove(self, name: str) -> tuple[bool, Optional[str]]:
         """Remove a profile. Returns ``(removed, error_message)``."""
@@ -268,6 +266,20 @@ class PreferencesDialog(Adw.PreferencesDialog):
             notifications_group.add(row)
             self._notification_switches[key] = row
         page.add(notifications_group)
+
+        run_group = Adw.PreferencesGroup(
+            title="Run confirmation",
+            description="Review resolved models, outputs, and device before processing",
+        )
+        self.confirm_processing_plan_row = Adw.SwitchRow(
+            title="Confirm processing plan before starting",
+            subtitle="Applies to Separation and Ensemble runs",
+        )
+        self.confirm_processing_plan_row.connect(
+            "notify::active", self._on_bool_changed, "confirm_processing_plan"
+        )
+        run_group.add(self.confirm_processing_plan_row)
+        page.add(run_group)
 
         return page
 
@@ -451,6 +463,9 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
             for key, row in self._notification_switches.items():
                 row.set_active(bool(get_flat(self.settings, key, True)))
+            self.confirm_processing_plan_row.set_active(
+                bool(self.settings.ui.confirm_processing_plan)
+            )
 
             if hasattr(self, "directml_row"):
                 self.directml_row.set_active(bool(self.settings.process.use_directml))

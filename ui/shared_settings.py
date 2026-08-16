@@ -14,6 +14,11 @@ from dataclasses import dataclass, replace
 from typing import AbstractSet, Iterable, Optional, Sequence
 
 from bundled.constants import WAV
+from core.input_discovery import (
+    partition_input_paths,
+    prune_unreadable_paths,
+    remove_unreadable_from_paths,
+)
 from core.settings import Settings
 from .protocols import (
     FormatRow,
@@ -82,23 +87,6 @@ def export_path_is_valid(path: str) -> bool:
     return export_path_blocked_reason(path) is None
 
 
-def partition_input_paths(paths: Sequence[str]) -> tuple[list[str], list[str]]:
-    """Return ``(existing_files, missing_paths)`` in original order, deduped."""
-    existing: list[str] = []
-    missing: list[str] = []
-    seen: set[str] = set()
-    for raw in paths:
-        path = (raw or "").strip()
-        if not path or path in seen:
-            continue
-        seen.add(path)
-        if os.path.isfile(path):
-            existing.append(path)
-        else:
-            missing.append(path)
-    return existing, missing
-
-
 def sanitize_input_paths(
     paths: Sequence[str],
     *,
@@ -117,25 +105,6 @@ def sanitize_input_paths(
         truncated_count=truncated_count,
         large_batch=large_batch,
     )
-
-
-def prune_unreadable_paths(
-    unreadable: AbstractSet[str],
-    current_paths: Sequence[str],
-) -> set[str]:
-    """Keep only unreadable paths that are still in the current selection."""
-    current = {p for p in current_paths if p}
-    return {p for p in unreadable if p in current}
-
-
-def remove_unreadable_from_paths(
-    paths: Sequence[str],
-    unreadable: AbstractSet[str],
-) -> list[str]:
-    """Drop paths that are marked unreadable, preserving order."""
-    if not unreadable:
-        return list(paths)
-    return [p for p in paths if p and p not in unreadable]
 
 
 def input_paths_blocked_reason(

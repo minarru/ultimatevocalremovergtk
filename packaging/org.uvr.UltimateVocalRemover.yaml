@@ -120,18 +120,18 @@ modules:
     build-commands:
       # App code (read-only) -> /app/share/uvr
       - mkdir -p /app/share/uvr
-      - cp -r ui core engines vendor ml bundled __version__.py requirements.txt /app/share/uvr/
+      - cp -r ui cli core engines vendor ml bundled __version__.py requirements.txt /app/share/uvr/
       # Thin launcher -> /app/bin/uvr
       - |
         cat > /app/bin/uvr <<'SH'
         #!/bin/sh
         export PYTHONPATH="/app/share/uvr:${PYTHONPATH}"
-        exec python3 -m ui "$@"
+        exec python3 -m cli "$@"
         SH
       - chmod 755 /app/bin/uvr
       # Desktop entry + icon + AppStream metadata.
       # NOTE: the committed .desktop uses absolute dev paths; the Flatpak one
-      # must use `Exec=uvr` and `Icon=org.uvr.UltimateVocalRemover`. Provide a
+      # must use `Exec=uvr gui` and `Icon=org.uvr.UltimateVocalRemover`. Provide a
       # flatpak-specific copy (packaging/org.uvr.UltimateVocalRemover.flatpak.desktop)
       # or rewrite at build time.
       - install -Dm644 packaging/org.uvr.UltimateVocalRemover.flatpak.desktop

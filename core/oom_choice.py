@@ -15,7 +15,7 @@ OomChoice = str
 
 @dataclass
 class OomChoiceRequest:
-    """Payload shown in the OOM recovery dialog / delivered to headless auto."""
+    """Payload shown in the OOM recovery dialog or handled noninteractively."""
 
     process_kind: str  # "separation" | "ensemble"
     model_label: str

@@ -45,11 +45,13 @@ class AudioToolsPreferencesResyncTests(unittest.TestCase):
         cls._app.register()
 
     def _page(self):
+        from core.model_data import ModelRepository
         from core.settings import Settings
         from ui.audio_tools.window import AudioToolsPage
 
         class _Context:
             settings = Settings.defaults()
+            repo = ModelRepository()
 
         context = _Context()
         return AudioToolsPage(_StubWindow(), context)

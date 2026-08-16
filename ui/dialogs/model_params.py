@@ -120,13 +120,13 @@ def _existing_params(context: typing.Any, model_data: typing.Any):
     hash_dir = _hash_dir_for(model_data.process_method)
     if not hash_dir or not model_data.model_hash:
         return None
-    json_path = os.path.join(hash_dir, f"{model_data.model_hash}.json")
-    if os.path.isfile(json_path):
-        try:
-            with open(json_path, "r") as handle:
-                return json.load(handle)
-        except (ValueError, OSError):
-            return None
+    from core.model_registry import ModelRegistryService
+
+    local = ModelRegistryService(context.repo).read_local(
+        model_data.process_method, model_data.model_hash
+    )
+    if local is not None:
+        return local
     mapper = context.repo.vr_hash_MAPPER if model_data.process_method == VR_ARCH_TYPE else context.repo.mdx_hash_MAPPER
     for stored_hash, stored in mapper.items():
         if model_data.model_hash in stored_hash:
@@ -139,9 +139,17 @@ def _write_params(model_data: typing.Any, params: typing.Any):
     hash_dir = _hash_dir_for(model_data.process_method)
     if not hash_dir or not model_data.model_hash:
         return
-    os.makedirs(hash_dir, exist_ok=True)
-    with open(os.path.join(hash_dir, f"{model_data.model_hash}.json"), "w") as handle:
-        handle.write(json.dumps(params, indent=4))
+    from core.model_registry import ModelRegistryService
+
+    family = "vr" if model_data.process_method == VR_ARCH_TYPE else "mdx"
+    ModelRegistryService(getattr(model_data, "repo", None)).configure(
+        family,
+        model_data.process_method,
+        model_data.model_hash,
+        params,
+        model_path=str(getattr(model_data, "model_path", "") or ""),
+        replace=True,
+    )
 
 
 def _list_param_files(directory: typing.Any, extension: typing.Any):
@@ -595,19 +603,24 @@ def show_change_defaults_dialog(context: typing.Any, parent: typing.Any):
         dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.set_default_response("cancel")
         dialog.set_close_response("cancel")
-        dialog.connect("response", on_delete_confirmed, hash_file)
+        dialog.connect("response", on_delete_confirmed, model_data)
         dialog.present(parent)
 
-    def on_delete_confirmed(_dialog: typing.Any, response: typing.Any, hash_file: str):
+    def on_delete_confirmed(
+        _dialog: typing.Any, response: typing.Any, model_data: typing.Any
+    ):
         if response != "delete":
             return
-        if hash_file and os.path.isfile(hash_file):
-            try:
-                os.remove(hash_file)
-            except OSError as exc:
-                toast(f"Couldn't delete parameters: {exc}")
-                return
-            repo.invalidate_models()
+        try:
+            from core.model_registry import ModelRegistryService
+
+            removed = ModelRegistryService(repo).reset_local(
+                model_data.process_method, model_data.model_hash
+            )
+        except (OSError, ValueError) as exc:
+            toast(f"Couldn't delete parameters: {exc}")
+            return
+        if removed:
             toast(DEFINED_PARAMETERS_DELETED_TEXT)
         else:
             toast("No defined parameters found.")

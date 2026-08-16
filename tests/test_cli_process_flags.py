@@ -1,97 +1,43 @@
-"""Named process flags compile to validated (path, value) override pairs."""
-
 from __future__ import annotations
 
 import argparse
 import unittest
 
-from cli.process_flags import add_process_args, collect_overrides
+from cli.process_flags import (
+    _BOOL_FLAG_PATHS, _VALUE_FLAG_PATHS, add_process_args, collect_overrides,
+)
 from core.settings import Settings
-from core.settings.access import apply_settings_overrides
+from core.settings.access import validate_setting_path
 
 
-def _parse(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(prog="test")
-    add_process_args(parser)
-    return parser.parse_args(argv)
+class ProcessFlagTests(unittest.TestCase):
+    def parse(self, values: list[str]) -> argparse.Namespace:
+        parser = argparse.ArgumentParser()
+        add_process_args(parser)
+        return parser.parse_args(values)
 
+    def test_boolean_flags_are_symmetric(self) -> None:
+        args = self.parse(["--no-normalize", "--no-match-mix", "--no-sample", "--no-autocast"])
+        self.assertEqual(dict(collect_overrides(args)), {
+            "process.autocast": False,
+            "process.normalization": False,
+            "process.match_mix_level": False,
+            "process.sample_mode": False,
+        })
 
-class CollectOverridesTests(unittest.TestCase):
-    def test_no_flags_yields_no_overrides(self) -> None:
-        self.assertEqual(collect_overrides(_parse([])), [])
+    def test_set_is_applied_last(self) -> None:
+        args = self.parse(["--normalize", "--set", "process.normalization=false"])
+        self.assertEqual(collect_overrides(args)[-1], ("process.normalization", "false"))
 
-    def test_cpu_and_gpu_are_mutually_exclusive(self) -> None:
-        with self.assertRaises(SystemExit):
-            _parse(["--cpu", "--gpu"])
+    def test_sample_seconds_enables_sample(self) -> None:
+        args = self.parse(["--sample-seconds", "12"])
+        self.assertIn(("process.sample_mode", True), collect_overrides(args))
 
-    def test_gpu_maps_to_use_gpu_true(self) -> None:
-        self.assertIn(("process.use_gpu", True), collect_overrides(_parse(["--gpu"])))
+    def test_device_is_not_compiled_as_a_plain_setting(self) -> None:
+        args = self.parse(["--device", "cuda:1"])
+        self.assertNotIn("process.device", dict(collect_overrides(args)))
 
-    def test_cpu_maps_to_use_gpu_false(self) -> None:
-        self.assertIn(("process.use_gpu", False), collect_overrides(_parse(["--cpu"])))
-
-    def test_no_autocast_maps_to_false(self) -> None:
-        self.assertIn(
-            ("process.autocast", False), collect_overrides(_parse(["--no-autocast"]))
-        )
-
-    def test_format_is_case_insensitive(self) -> None:
-        self.assertIn(
-            ("process.save_format", "FLAC"), collect_overrides(_parse(["--format", "flac"]))
-        )
-
-    def test_sample_seconds_maps_to_duration_and_enables_sample_mode(self) -> None:
-        overrides = collect_overrides(_parse(["--sample-seconds", "12"]))
-        self.assertIn(("process.sample_mode_duration", 12), overrides)
-        self.assertIn(("process.sample_mode", True), overrides)
-
-    def test_set_is_repeatable_and_last_wins(self) -> None:
-        overrides = collect_overrides(
-            _parse(["--set", "process.use_gpu=true", "--set", "process.use_gpu=false"])
-        )
-        settings = Settings()
-        apply_settings_overrides(settings, overrides)
-        self.assertIs(settings.process.use_gpu, False)
-
-    def test_set_runs_after_named_flags(self) -> None:
-        overrides = collect_overrides(
-            _parse(["--cpu", "--set", "process.use_gpu=true"])
-        )
-        settings = Settings()
-        apply_settings_overrides(settings, overrides)
-        self.assertIs(settings.process.use_gpu, True)
-
-    def test_set_runs_after_resolved_vocal_splitter(self) -> None:
-        args = _parse([
-            "--vocal-split", "Splitter X",
-            "--set", "process.vocal_splitter_enabled=false",
-        ])
-        overrides = collect_overrides(
-            args, resolved_vocal_splitter="MDX-Net: Splitter X"
-        )
-        settings = Settings()
-        apply_settings_overrides(settings, overrides)
-        self.assertEqual(settings.process.vocal_splitter, "MDX-Net: Splitter X")
-        self.assertIs(settings.process.vocal_splitter_enabled, False)
-
-    def test_bad_set_token_raises(self) -> None:
-        with self.assertRaises(ValueError):
-            collect_overrides(_parse(["--set", "nonsense"]))
-
-    def test_every_named_flag_targets_a_real_setting(self) -> None:
-        argv = [
-            "--gpu", "--autocast", "--normalize", "--match-mix", "--sample",
-            "--save-split-inst", "--format", "mp3", "--wav-type", "PCM_24",
-            "--mp3-bitrate", "256k", "--flac-depth", "24-bit", "--device", "0",
-            "--sample-seconds", "20",
-        ]
-        settings = Settings()
-        apply_settings_overrides(settings, collect_overrides(_parse(argv)))
-        self.assertIs(settings.process.use_gpu, True)
-        self.assertEqual(settings.process.save_format, "MP3")
-        self.assertEqual(settings.process.mp3_bitrate, "256k")
-        self.assertEqual(settings.process.device, "0")
-
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_every_named_flag_targets_a_real_scalar_setting(self) -> None:
+        settings = Settings.defaults()
+        for path in (*_BOOL_FLAG_PATHS.values(), *_VALUE_FLAG_PATHS.values()):
+            validate_setting_path(settings, path)

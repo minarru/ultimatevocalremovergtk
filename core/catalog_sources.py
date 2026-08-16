@@ -48,9 +48,9 @@ from .politrees_catalog import (
 
 #: Bumped by :func:`invalidate_catalogue_merge` when any catalogue source changes.
 _merge_generation: int = 0
-_supp_cache: Optional[
-    Tuple[int, Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]]]
-] = None
+_supp_cache: Dict[
+    bool, Tuple[int, Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]]]
+] = {}
 _merge_cache: Dict[Tuple[Any, ...], "MergedCatalogues"] = {}
 
 
@@ -80,9 +80,9 @@ class MergedCatalogues:
 
 def invalidate_catalogue_merge() -> None:
     """Drop cached supplement/full merges (call when any source changes)."""
-    global _merge_generation, _supp_cache
+    global _merge_generation
     _merge_generation += 1
-    _supp_cache = None
+    _supp_cache.clear()
     _merge_cache.clear()
 
 
@@ -94,7 +94,7 @@ def _upstream_fingerprint(
     return (frozenset(vr), frozenset(mdx), frozenset(demucs))
 
 
-def _collect_supplemental_sources() -> Tuple[
+def _collect_supplemental_sources(*, allow_network: bool) -> Tuple[
     Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]
 ]:
     """Collect politrees + extras + mvsepless entries, **without** any base.
@@ -108,23 +108,28 @@ def _collect_supplemental_sources() -> Tuple[
     mdx: Dict[str, Any] = {}
     demucs: Dict[str, Any] = {}
 
-    politrees = load_politrees_links()
+    politrees = load_politrees_links(allow_network=allow_network)
     if politrees:
         vr, mdx, demucs = merge_politrees_catalogues(vr, mdx, demucs, politrees)
     vr, mdx, demucs = merge_extra_catalogues(vr, mdx, demucs)
-    vr, mdx, demucs = merge_mvsepless_catalogues(vr, mdx, demucs)
-    return dict(vr), dict(mdx), dict(demucs), mvsepless_metadata()
+    vr, mdx, demucs = merge_mvsepless_catalogues(
+        vr, mdx, demucs, allow_network=allow_network
+    )
+    return (
+        dict(vr), dict(mdx), dict(demucs),
+        mvsepless_metadata(allow_network=allow_network),
+    )
 
 
-def _supplemental_sources() -> Tuple[
+def _supplemental_sources(*, allow_network: bool) -> Tuple[
     Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]
 ]:
     """Cached wrapper around :func:`_collect_supplemental_sources`."""
-    global _supp_cache
-    if _supp_cache is not None and _supp_cache[0] == _merge_generation:
-        return _supp_cache[1]
-    result = _collect_supplemental_sources()
-    _supp_cache = (_merge_generation, result)
+    cached = _supp_cache.get(allow_network)
+    if cached is not None and cached[0] == _merge_generation:
+        return cached[1]
+    result = _collect_supplemental_sources(allow_network=allow_network)
+    _supp_cache[allow_network] = (_merge_generation, result)
     return result
 
 
@@ -231,12 +236,16 @@ def merged_catalogues(
     mdx: Mapping[str, Any],
     demucs: Mapping[str, Any],
     force: bool = False,
+    allow_network: bool = True,
 ) -> MergedCatalogues:
     """Merge every source over the supplied upstream catalogues, then dedupe."""
     gen_at_start = _merge_generation
-    supp_vr, supp_mdx, supp_demucs, extra_meta = _supplemental_sources()
+    supp_vr, supp_mdx, supp_demucs, extra_meta = _supplemental_sources(
+        allow_network=allow_network
+    )
     cache_key = (
         gen_at_start,
+        allow_network,
         _upstream_fingerprint(vr, mdx, demucs),
         _upstream_fingerprint(supp_vr, supp_mdx, supp_demucs),
         frozenset(extra_meta),

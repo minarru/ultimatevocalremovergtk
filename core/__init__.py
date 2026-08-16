@@ -30,6 +30,24 @@ from .job_runner import Ensembler, JobCallbacks, JobRunner
 from .paths import DATA_DIR, ensure_data_dir
 from .process_data import ProcessData
 from .settings import Settings
+from .model_identity import ModelId, ModelIdentityService, ModelRecord
+from .job_plan import (
+    Diagnostic,
+    JobResolver,
+    JobSpec,
+    ModelDescriptor,
+    PlannedInput,
+    PlannedOutput,
+    Provenance,
+    ResolvedJob,
+    ValidationLevel,
+)
+from .audio_plan import AudioJobResolver, AudioJobSpec, PlannedAudioUnit, ResolvedAudioJob
+from .blocking_runner import BlockingRunner, RunResult, run_blocking
+from .ensemble_service import EnsembleService, ResolvedEnsemblePreset
+from .model_catalogue import CatalogEntryId, ModelCatalogueService, ModelCatalogueRecord
+from .model_registry import ModelRegistryService
+from .settings.job_resolution import SettingsLayer, SettingsResolver
 
 __all__ = [
     "Settings",
@@ -51,4 +69,31 @@ __all__ = [
     "DATA_DIR",
     "available_cuda_devices",
     "list_gpu_devices",
+    "ModelId",
+    "ModelRecord",
+    "ModelIdentityService",
+    "JobSpec",
+    "JobResolver",
+    "ResolvedJob",
+    "ValidationLevel",
+    "Provenance",
+    "Diagnostic",
+    "ModelDescriptor",
+    "PlannedInput",
+    "PlannedOutput",
+    "AudioJobSpec",
+    "AudioJobResolver",
+    "ResolvedAudioJob",
+    "PlannedAudioUnit",
+    "BlockingRunner",
+    "RunResult",
+    "run_blocking",
+    "SettingsLayer",
+    "SettingsResolver",
+    "EnsembleService",
+    "ResolvedEnsemblePreset",
+    "CatalogEntryId",
+    "ModelCatalogueRecord",
+    "ModelCatalogueService",
+    "ModelRegistryService",
 ]

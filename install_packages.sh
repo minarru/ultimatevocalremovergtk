@@ -422,6 +422,19 @@ HERE="${PROJECT_ROOT}"
 source "${PROJECT_ROOT}/packaging/desktop_entry.sh"
 install_desktop_entry --update || true
 
+# Install the source-tree CLI launcher without replacing an unrelated command.
+_uvr_user_bin="${HOME}/.local/bin"
+_uvr_cli_target="${_uvr_user_bin}/uvr"
+_uvr_cli_source="${PROJECT_ROOT}/uvr"
+mkdir -p "${_uvr_user_bin}" 2>/dev/null || true
+if [[ -L "${_uvr_cli_target}" && "$(readlink "${_uvr_cli_target}")" == "${_uvr_cli_source}" ]]; then
+    : # already installed
+elif [[ -e "${_uvr_cli_target}" || -L "${_uvr_cli_target}" ]]; then
+    echo "Not replacing existing command at ${_uvr_cli_target}; use ${_uvr_cli_source} directly." >&2
+else
+    ln -s "${_uvr_cli_source}" "${_uvr_cli_target}" 2>/dev/null || true
+fi
+
 # Seed the launcher health stamp so the first post-install run_uvr.sh launch
 # does not repeat the GTK import probe install already performed.
 _stamp_dir="${XDG_CACHE_HOME:-${HOME}/.cache}/uvr"

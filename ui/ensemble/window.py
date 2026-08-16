@@ -90,10 +90,8 @@ from ..markup import set_row_subtitle, set_row_title
 from core.model_display import format_tag_subtitle, format_tag_title
 from core import (
     canonical_saved_ensemble_name,
-    delete_ensemble,
     list_saved_ensembles,
     load_ensemble,
-    save_ensemble,
 )
 from core.ensemble_presets import (
     classify_preset_members,
@@ -682,21 +680,26 @@ class EnsemblePage:
         if not name or name == CHOOSE_ENSEMBLE_OPTION:
             self.settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
             return
-        curated_id = curated_id_from_combo_label(name)
-        if curated_id is not None:
-            data = load_curated_ensemble(curated_id)
-            if not data:
-                self._toast(f"Could not load curated recipe '{curated_id}'.")
-                return
-            self.settings.ensemble.chosen_ensemble = name
-            self._apply_saved_ensemble(data, curated_id=curated_id)
-            return
-        data = load_ensemble(name)
-        if not data:
+        from core.ensemble_service import EnsembleService
+
+        try:
+            preset = EnsembleService(self.context.repo).apply(self.settings, name)
+        except ValueError:
             self._toast(f"Could not load ensemble '{name}'.")
             return
-        self.settings.ensemble.chosen_ensemble = name
-        self._apply_saved_ensemble(data)
+        self._loading = True
+        try:
+            set_combo_value(self.main_stem_row, preset.main_stem.value)
+            self._refresh_ensemble_type_values()
+        finally:
+            self._loading = False
+        self._rebuild_stem_only_toggles()
+        self._rebuild_model_list(list(preset.members))
+        self._persist_selected_models()
+        if preset.description:
+            self._toast(preset.description)
+        if preset.kind == "curated":
+            self._offer_download_missing(list(preset.source_members))
 
     def _apply_saved_ensemble(self, data: dict, *, curated_id: Optional[str] = None) -> None:
         self._loading = True
@@ -811,11 +814,16 @@ class EnsemblePage:
     def _do_save_ensemble(self, name: str, selected: List[str]) -> None:
         try:
             canonical_name = canonical_saved_ensemble_name(name)
-            save_ensemble(
+            from core.ensemble_service import EnsembleService
+
+            EnsembleService(self.context.repo).create(
                 canonical_name,
-                self._ensemble_pair(),
-                self.settings.ensemble.type or MAX_MIN,
-                selected,
+                members=selected,
+                main_stem=self._ensemble_pair().value,
+                algorithm=self.settings.ensemble.type or MAX_MIN,
+                wav_ensemble=self.settings.ensemble.wav_ensemble,
+                save_all_outputs=self.settings.ensemble.save_all_outputs,
+                replace=True,
             )
         except (OSError, ValueError) as exc:
             self._toast(f"Couldn't save ensemble: {exc}")
@@ -847,7 +855,9 @@ class EnsemblePage:
     def _on_delete_confirmed(self, _dialog: typing.Any, response: typing.Any, name: str) -> None:
         if response != "delete":
             return
-        if delete_ensemble(name):
+        from core.ensemble_service import EnsembleService
+
+        if EnsembleService.delete(name):
             self.settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
             self._refresh_saved_list()
             self._toast(f"Deleted ensemble '{name}'.")
@@ -1003,7 +1013,15 @@ class EnsemblePage:
     # -- Model multi-select list ------------------------------------------------
 
     def _rebuild_model_list(self, preselected: List[str]) -> None:
-        preselected_set = set(preselected)
+        from core.model_identity import ModelIdentityService
+
+        identities = ModelIdentityService(self.context.repo)
+        preselected_set: set[str] = set()
+        for reference in preselected:
+            try:
+                preselected_set.add(identities.legacy_member_tag(reference))
+            except ValueError:
+                preselected_set.add(reference)
         child = self.models_listbox.get_first_child()
         while child is not None:
             nxt = child.get_next_sibling()
@@ -1087,7 +1105,16 @@ class EnsemblePage:
         return list(self.settings.ensemble.selected_models or [])
 
     def _persist_selected_models(self) -> None:
-        self.settings.ensemble.selected_models = self._selected_model_tags()
+        from core.model_identity import ModelIdentityService
+
+        identities = ModelIdentityService(self.context.repo)
+        selected: list[str] = []
+        for tag in self._selected_model_tags():
+            try:
+                selected.append(identities.canonical_id_from_member_tag(tag))
+            except ValueError:
+                continue
+        self.settings.ensemble.selected_models = selected
 
     def _models_summary(self) -> str:
         """Single-line description of the current member-model selection."""
@@ -1286,6 +1313,21 @@ class EnsemblePage:
         if output_reason:
             return output_reason
         return self._config_blocked_reason()
+
+    def build_job_spec(self) -> typing.Any:
+        import copy
+
+        from core.job_plan import JobSpec
+
+        self.settings.process.method = ProcessMethod.ENSEMBLE
+        self._persist_selected_models()
+        return JobSpec(
+            "ensemble",
+            copy.deepcopy(self.settings),
+            tuple(self.input_row.paths),
+            self.output_row.path,
+            {"profile": "gui"},
+        )
 
     def _update_ensemble_banner(self) -> None:
         """Reveal the empty-state banner while the ensemble config is incomplete."""

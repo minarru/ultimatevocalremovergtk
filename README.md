@@ -130,21 +130,43 @@ python -m ui
 
 `run_uvr.sh` also installs a desktop entry under `~/.local/share/applications/` on first launch. A template is provided at `packaging/org.uvr.UltimateVocalRemover.desktop`.
 
-### Headless CLI
+### Command-line interface
 
-No GTK needed — the same engine, driven from a terminal:
+The installer adds the source-tree `uvr` launcher to `~/.local/bin` when that
+name is available. The launcher uses the project virtual environment; `./uvr`
+always works directly from the checkout.
 
 ```bash
-python -m cli separate song.wav -o ~/stems --method mdx --stems both
-python -m cli ensemble song.wav -o ~/stems --ensemble "My Mix"
-python -m cli ensemble song.wav -o ~/stems --ensemble "Curated: kim vocal"
-python -m cli ensemble song.wav -o ~/stems --model "MDX-Net: A" \
-  --model "MDX-Net: B" --main-stem vocals_instrumental
-python -m cli list-models --method ensemble
+uvr models list --family mdx
+uvr separate song.wav -o ~/stems --model mdx:UVR-MDX-NET-Inst_HQ_4
+uvr separate ~/Music -o ~/stems --recursive --include '*.flac' --dry-run
+uvr ensemble song.wav -o ~/stems --ensemble "Curated: kim vocal"
+uvr ensemble song.wav -o ~/stems --model mdx:model-a \
+  --model demucs:hdemucs_mmi --main-stem vocals_instrumental
+uvr audio inspect song.wav
+uvr audio stretch song.wav -o ~/processed --rate 1.1 --dry-run
+uvr audio restore song.wav -o ~/processed --model apollo:apollo_edm_by_essid
+uvr models catalog --family apollo --query restoration
+uvr ensembles create my-mix --member mdx:model-a --member demucs:model-b \
+  --main-stem vocals_instrumental --algorithm 'Max Spec/Min Spec'
+uvr update check
 ```
 
-`python -m cli <command> --help` lists every flag. `--set section.field=value`
-reaches any typed setting that has no dedicated flag.
+CLI runs start from clean defaults. Use `--profile gui`, a named sparse profile,
+or a profile JSON path to inherit settings. A profile-supplied model or ensemble
+identity is previewed and confirmed; scripts must add `--accept-inherited`.
+Named flags and `--set section.field=value` are ephemeral and never modify GUI
+settings.
+
+`--dry-run` verifies inputs, model hashes, and configuration without loading
+weights, creating the output directory, or starting inference. Automation can
+select `--report json` for one result document or `--report jsonl` for progress
+events. Batch directories, collision policies, partial-failure handling,
+manifests, validation levels, model registration, devices, profiles, shell
+completion, and A/B benchmarking are described in
+[docs/environment.md](docs/environment.md#command-line-interface).
+That section also documents migration from the earlier experimental CLI;
+compatibility aliases are intentionally not shipped before release.
 
 ## Upgrading
 
@@ -187,8 +209,8 @@ Source code is grouped by layer at the repository root:
 | Path | Role |
 |---|---|
 | `ui/` | GTK4 / libadwaita interface (`python -m ui`) |
-| `cli/` | Headless command-line interface (`python -m cli`) |
-| `core/` | Backend facade: settings, job runner, paths, downloads |
+| `cli/` | Headless command-line interface (`uvr`; internal `python -m cli`) |
+| `core/` | Frontend-neutral identities, discovery, planning, settings, devices, presets, registry, naming, and job execution |
 | `engines/` | Separation orchestration (VR, MDX, Demucs) |
 | `ml/` | Neural networks and audio DSP helpers |
 | `bundled/` | Read-only constants, changelog, download metadata |
@@ -199,6 +221,16 @@ Source code is grouped by layer at the repository root:
 **Bundled (shipped with the repo):** `bundled/`, model metadata under `models/`, `ml/` VR parameter JSON, `vendor/`.
 
 **Runtime (your machine, not in git):** `settings.json`, `profiles/*.json`, `ensembles/*.json`, `ensemble_temps/`, downloaded model weights. In a writable checkout these live at the repo root; otherwise they resolve under `DATA_DIR` (see `core/paths.py`). Legacy `data.pkl` is imported once when present.
+
+The GUI and CLI share canonical model IDs (`vr:…`, `mdx:…`, `demucs:…`, and `apollo:…`)
+and the same frontend-neutral job resolver. On the first GUI startup after this
+change, stored GUI model references are migrated offline on a worker thread.
+Every changed JSON file receives a one-time `.pre-canonical-id.bak` backup;
+CLI profile operations remain separate and never rewrite GUI storage. The GUI
+performs runtime preflight before Separation, Ensemble, and Audio Tools jobs and, by default,
+asks for confirmation of Separation and Ensemble plans. This confirmation can
+be disabled in Settings without disabling preflight; Audio Tools never adds a
+confirmation dialog.
 
 ## Notes
 

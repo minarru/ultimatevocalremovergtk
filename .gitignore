@@ -74,6 +74,7 @@ models/VR_Models/model_data/*
 data.pkl
 data.pkl.bak
 settings.json
+settings.json.*.bak
 download_size_cache.json
 politrees_model_links.json
 ensemble_temps/

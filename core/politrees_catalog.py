@@ -116,7 +116,9 @@ def _write_disk_cache(data: Dict) -> None:
         debug("download", f"politrees cache write failed err={exc}")
 
 
-def load_politrees_links(*, force: bool = False) -> Optional[Dict]:
+def load_politrees_links(
+    *, force: bool = False, allow_network: bool = True
+) -> Optional[Dict]:
     """Return Politrees ``model_list_links.json`` or ``None`` when disabled/offline."""
     global _cached_links, _cached_weight_index, _cached_loaded_at
 
@@ -146,9 +148,18 @@ def load_politrees_links(*, force: bool = False) -> Optional[Dict]:
                 from .model_display import clear_display_cache
 
                 clear_display_cache()
-            if (now - fetched_at) >= _POLITREES_CACHE_TTL_SECONDS:
+            if allow_network and (now - fetched_at) >= _POLITREES_CACHE_TTL_SECONDS:
                 _start_background_refresh()
             return _cached_links
+
+    if not allow_network:
+        data = _read_disk_cache()
+        if isinstance(data, dict):
+            _cached_links = data
+            _cached_weight_index = None
+            _cached_loaded_at = now
+            return data
+        return None
 
     data: Optional[Dict] = None
     from_disk = False

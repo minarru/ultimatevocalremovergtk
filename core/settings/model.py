@@ -235,11 +235,13 @@ class UiSettings:
     notify_process_failed: bool = True
     notify_download_complete: bool = True
     notify_download_failed: bool = True
+    confirm_processing_plan: bool = True
 
 
 @dataclass
 class Settings:
     schema_version: int = SETTINGS_SCHEMA_VERSION
+    identity_schema_version: int = 2
     process: ProcessSettings = field(default_factory=ProcessSettings)
     vr: VrSettings = field(default_factory=VrSettings)
     mdx: MdxSettings = field(default_factory=MdxSettings)
@@ -267,6 +269,7 @@ class Settings:
         )
         return _json_value({
             "schema_version": self.schema_version,
+            "identity_schema_version": self.identity_schema_version,
             "process": asdict(process),
             "vr": asdict(self.vr),
             "mdx": asdict(self.mdx),
@@ -284,6 +287,7 @@ class Settings:
         # v3 file claiming v1 and mis-gate the next migration.
         return cls(
             schema_version=SETTINGS_SCHEMA_VERSION,
+            identity_schema_version=int(coerced.get("identity_schema_version") or 0),
             process=_merge_dataclass(ProcessSettings, ProcessSettings(), coerced.get("process")),
             vr=_merge_dataclass(VrSettings, VrSettings(), coerced.get("vr")),
             mdx=_merge_dataclass(MdxSettings, MdxSettings(), coerced.get("mdx")),
@@ -333,6 +337,7 @@ class Settings:
     def reset_to_default(self) -> None:
         fresh = self.defaults()
         self.schema_version = fresh.schema_version
+        self.identity_schema_version = fresh.identity_schema_version
         self.process = copy.deepcopy(fresh.process)
         self.vr = copy.deepcopy(fresh.vr)
         self.mdx = copy.deepcopy(fresh.mdx)
