@@ -287,6 +287,8 @@ class JobResolver:
                     models = self._assemble(settings, spec.command, records)
                 if len(models) != len(records):
                     raise ValueError("one or more model configurations are unavailable")
+                if any(not getattr(model, "model_status", False) for model in models):
+                    raise ValueError("one or more model configurations are unavailable")
             except (OSError, ValueError) as exc:
                 diagnostics.append(Diagnostic("model.configuration", str(exc)))
         descriptors = tuple(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
@@ -97,6 +98,38 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         with patch("core.job_plan.assemble_model", side_effect=fake_assemble):
             resolver._assemble(Settings.defaults(), "separate", [record])
         self.assertEqual(seen, [False])
+
+    def test_resolve_unavailable_model_status_is_configuration_diagnostic(self) -> None:
+        from core.job_plan import JobResolver, ValidationLevel
+        from core.model_identity import ModelRecord
+
+        settings = Settings.defaults()
+        settings.mdx.model = "mdx:broken"
+        record = ModelRecord(
+            id="mdx:broken", family="mdx", basename="broken", display="Broken"
+        )
+        unavailable = Mock(
+            model_status=False,
+            compensate=None,
+            model_path="",
+            model_hash_dir="",
+            primary_stem="Vocals",
+            secondary_stem="Instrumental",
+        )
+        resolver = JobResolver(Mock(inventory_generation=0))
+        resolver._identity_records = Mock(return_value=[record])  # type: ignore[method-assign]
+
+        with tempfile.NamedTemporaryFile(suffix=".wav") as handle:
+            spec = JobSpec("separate", settings, (handle.name,), "/tmp/out")
+            with patch.object(resolver, "_assemble", return_value=[unavailable]):
+                resolved = resolver.resolve(spec, ValidationLevel.MODEL)
+
+        config_diags = [
+            item for item in resolved.diagnostics if item.code == "model.configuration"
+        ]
+        self.assertEqual(len(config_diags), 1)
+        self.assertEqual(config_diags[0].severity, "error")
+        self.assertFalse(resolved.ok)
 
 
 if __name__ == "__main__":
