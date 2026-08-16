@@ -17,7 +17,11 @@ from bundled.constants import (
 
 from . import paths
 from .json_store import (
-    backup_once, locked_json_path, read_json_object, write_json_atomic,
+    backup_once,
+    content_digest,
+    locked_json_path,
+    read_json_object,
+    write_json_if_unchanged,
 )
 from .model_identity import (
     FAMILIES,
@@ -282,6 +286,7 @@ def migrate_identity_storage(
                 continue
             try:
                 with locked_json_path(path):
+                    digest = content_digest(path)
                     payload = read_json_object(path)
                     if int(payload.get("identity_schema_version") or 0) >= IDENTITY_SCHEMA_VERSION:
                         continue
@@ -316,9 +321,21 @@ def migrate_identity_storage(
                             f"{path}: {item}" for item in migrator.conflicts
                         )
                         payload = profile.to_json_dict()
-                    backups.append(backup_once(path))
-                    write_json_atomic(path, payload)
-                    changed += 1
+                    if content_digest(path) != digest:
+                        conflicts.append(
+                            f"{path}: skipped because the on-disk file changed "
+                            "during migration"
+                        )
+                        continue
+                    backup = backup_once(path)
+                    if write_json_if_unchanged(path, payload, digest):
+                        backups.append(backup)
+                        changed += 1
+                    else:
+                        conflicts.append(
+                            f"{path}: skipped because the on-disk file changed "
+                            "during migration"
+                        )
             except (OSError, ValueError, TypeError) as exc:
                 failures.append(f"{path}: {exc}")
     final_settings = _settings_identity_values(settings)

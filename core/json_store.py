@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -40,6 +41,15 @@ def safe_json_path(directory: str, name: str, *, suffix: str = ".json") -> str:
     return path
 
 
+def content_digest(path: str) -> str:
+    """SHA-256 of the file bytes; empty string if the path does not exist."""
+    try:
+        with open(path, "rb") as handle:
+            return hashlib.sha256(handle.read()).hexdigest()
+    except FileNotFoundError:
+        return ""
+
+
 def read_json_object(path: str) -> dict[str, Any]:
     with _path_lock(path), open(path, encoding="utf-8") as handle:
         value = json.load(handle)
@@ -68,6 +78,20 @@ def write_json_atomic(path: str, payload: dict[str, Any]) -> None:
             except OSError:
                 pass
             raise
+
+
+def write_json_if_unchanged(
+    path: str, payload: dict[str, Any], expected_digest: str,
+) -> bool:
+    """Under the path lock, write only if content_digest(path) == expected_digest.
+
+    Return False (and do not write) on mismatch. Missing file matches digest ''.
+    """
+    with _path_lock(path):
+        if content_digest(path) != expected_digest:
+            return False
+        write_json_atomic(path, payload)
+        return True
 
 
 def backup_once(path: str, *, suffix: str = ".pre-canonical-id.bak") -> str:

@@ -158,6 +158,46 @@ class IdentityServiceTests(unittest.TestCase):
         self.assertEqual(settings.identity_schema_version, 0)
         context.save_settings.assert_not_called()
 
+    def test_migration_skips_file_edited_after_read(self) -> None:
+        from core import json_store
+
+        with tempfile.TemporaryDirectory() as root:
+            ensembles = os.path.join(root, "ensembles")
+            os.makedirs(ensembles)
+            ensemble_path = os.path.join(ensembles, "mix.json")
+            live = {"selected_models": ["User live edit"]}
+            with open(ensemble_path, "w", encoding="utf-8") as handle:
+                json.dump({"selected_models": ["MDX-Net: Model A"]}, handle)
+
+            real_read = json_store.read_json_object
+
+            def read_then_live_edit(path: str) -> dict:
+                payload = real_read(path)
+                with open(path, "w", encoding="utf-8") as handle:
+                    json.dump(live, handle)
+                return payload
+
+            settings = Settings.defaults()
+            settings.identity_schema_version = 0
+            with patch(
+                "core.identity_migration.read_json_object",
+                side_effect=read_then_live_edit,
+            ):
+                result = migrate_identity_storage(
+                    settings,
+                    _Repo(),
+                    profile_directory=os.path.join(root, "profiles"),
+                    ensemble_directory=ensembles,
+                )
+            with open(ensemble_path, encoding="utf-8") as handle:
+                saved = json.load(handle)
+            self.assertEqual(saved, live)
+            self.assertEqual(result.files_changed, 0)
+            self.assertFalse(os.path.isfile(ensemble_path + ".pre-canonical-id.bak"))
+            self.assertTrue(
+                any("changed" in item.casefold() for item in result.conflicts)
+            )
+
     def test_repository_initialization_is_singleton_under_concurrency(self) -> None:
         from ui.context import AppContext
 
