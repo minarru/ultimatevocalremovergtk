@@ -18,7 +18,8 @@ class JsonDigestTests(unittest.TestCase):
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write('{"a": 2}\n')
             self.assertFalse(write_json_if_unchanged(path, {"a": 3}, digest))
-            self.assertEqual(json.loads(open(path, encoding="utf-8").read())["a"], 2)
+            with open(path, encoding="utf-8") as handle:
+                self.assertEqual(json.loads(handle.read())["a"], 2)
 
     def test_write_proceeds_when_digest_matches(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -27,7 +28,8 @@ class JsonDigestTests(unittest.TestCase):
                 handle.write('{"a": 1}\n')
             digest = content_digest(path)
             self.assertTrue(write_json_if_unchanged(path, {"a": 3}, digest))
-            self.assertEqual(json.loads(open(path, encoding="utf-8").read())["a"], 3)
+            with open(path, encoding="utf-8") as handle:
+                self.assertEqual(json.loads(handle.read())["a"], 3)
 
     def test_missing_file_matches_empty_digest(self) -> None:
         with tempfile.TemporaryDirectory() as root:

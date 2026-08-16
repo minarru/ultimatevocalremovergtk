@@ -198,6 +198,50 @@ class IdentityServiceTests(unittest.TestCase):
                 any("changed" in item.casefold() for item in result.conflicts)
             )
 
+    def test_migration_write_reject_leaves_no_backup(self) -> None:
+        """write_json_if_unchanged False must not leave a .pre-canonical-id.bak."""
+        from core.json_store import write_json_if_unchanged as real_write
+
+        with tempfile.TemporaryDirectory() as root:
+            ensembles = os.path.join(root, "ensembles")
+            os.makedirs(ensembles)
+            ensemble_path = os.path.join(ensembles, "mix.json")
+            with open(ensemble_path, "w", encoding="utf-8") as handle:
+                json.dump({"selected_models": ["MDX-Net: Model A"]}, handle)
+
+            def write_after_hijack(
+                path: str,
+                payload: dict,
+                expected_digest: str,
+                *,
+                backup_suffix: str | None = None,
+            ) -> bool:
+                with open(path, "w", encoding="utf-8") as handle:
+                    json.dump({"selected_models": ["hijacked"]}, handle)
+                return real_write(
+                    path, payload, expected_digest, backup_suffix=backup_suffix,
+                )
+
+            settings = Settings.defaults()
+            settings.identity_schema_version = 0
+            with patch(
+                "core.identity_migration.write_json_if_unchanged",
+                side_effect=write_after_hijack,
+            ):
+                result = migrate_identity_storage(
+                    settings,
+                    _Repo(),
+                    profile_directory=os.path.join(root, "profiles"),
+                    ensemble_directory=ensembles,
+                )
+            self.assertEqual(result.files_changed, 0)
+            self.assertFalse(os.path.isfile(ensemble_path + ".pre-canonical-id.bak"))
+            self.assertTrue(
+                any("changed" in item.casefold() for item in result.conflicts)
+            )
+            with open(ensemble_path, encoding="utf-8") as handle:
+                self.assertEqual(json.load(handle)["selected_models"], ["hijacked"])
+
     def test_repository_initialization_is_singleton_under_concurrency(self) -> None:
         from ui.context import AppContext
 

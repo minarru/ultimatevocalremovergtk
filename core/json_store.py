@@ -81,15 +81,23 @@ def write_json_atomic(path: str, payload: dict[str, Any]) -> None:
 
 
 def write_json_if_unchanged(
-    path: str, payload: dict[str, Any], expected_digest: str,
+    path: str,
+    payload: dict[str, Any],
+    expected_digest: str,
+    *,
+    backup_suffix: str | None = None,
 ) -> bool:
     """Under the path lock, write only if content_digest(path) == expected_digest.
 
     Return False (and do not write) on mismatch. Missing file matches digest ''.
+    When backup_suffix is set and the path exists, copy it once after the digest
+    matches and before replacing the file — so a False return never leaves a bak.
     """
     with _path_lock(path):
         if content_digest(path) != expected_digest:
             return False
+        if backup_suffix is not None and os.path.isfile(path):
+            backup_once(path, suffix=backup_suffix)
         write_json_atomic(path, payload)
         return True
 

@@ -17,7 +17,6 @@ from bundled.constants import (
 
 from . import paths
 from .json_store import (
-    backup_once,
     content_digest,
     locked_json_path,
     read_json_object,
@@ -321,15 +320,11 @@ def migrate_identity_storage(
                             f"{path}: {item}" for item in migrator.conflicts
                         )
                         payload = profile.to_json_dict()
-                    if content_digest(path) != digest:
-                        conflicts.append(
-                            f"{path}: skipped because the on-disk file changed "
-                            "during migration"
-                        )
-                        continue
-                    backup = backup_once(path)
-                    if write_json_if_unchanged(path, payload, digest):
-                        backups.append(backup)
+                    backup_suffix = ".pre-canonical-id.bak"
+                    if write_json_if_unchanged(
+                        path, payload, digest, backup_suffix=backup_suffix,
+                    ):
+                        backups.append(f"{path}{backup_suffix}")
                         changed += 1
                     else:
                         conflicts.append(
