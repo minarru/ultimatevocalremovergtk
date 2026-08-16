@@ -10,7 +10,8 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 from bundled.constants import CKPT
 
 from . import paths
-from .mdx_config_fetch import _ALLOW_NETWORK, ensure_mdx_c_config
+from .access_policy import current_access_policy
+from .mdx_config_fetch import ensure_mdx_c_config
 from .model_display import (
     _is_checkpoint_name,
     build_checkpoint_display_index,
@@ -19,6 +20,7 @@ from .model_display import (
     resolve_mdx_model_basename,
     sanitize_catalogue_label,
 )
+from .politrees_catalog import load_politrees_links
 
 _MDX_CATALOG_SOURCE_KEYS = (
     "mdx_download_list",
@@ -207,14 +209,17 @@ def _catalogues_from_source(source: Dict) -> List[Dict[str, object]]:
     return catalogues
 
 
-def load_mdx_catalog_index() -> Dict[str, str]:
+def load_mdx_catalog_index(*, allow_network: bool | None = None) -> Dict[str, str]:
     """Build checkpoint→yaml index from bundled and cached download catalogues."""
     catalogues: List[Dict[str, object]] = []
     catalogues.extend(_catalogues_from_source(_load_manual_download_cache()))
 
-    from .politrees_catalog import load_politrees_links
-
-    politrees = load_politrees_links(allow_network=False)
+    network = (
+        current_access_policy().allow_network
+        if allow_network is None
+        else allow_network
+    )
+    politrees = load_politrees_links(allow_network=network)
     if isinstance(politrees, dict):
         catalogues.extend(_catalogues_from_source(politrees))
 
@@ -263,9 +268,9 @@ def register_mdx_c_checkpoint(
         except (OSError, ValueError, TypeError):
             pass
 
-    # Network-forbidden planning is also non-mutating: skip writing the hash
-    # registry whenever network access is disallowed (even if write=True).
-    if write and _ALLOW_NETWORK.get():
+    # Offline / non-mutating planning skips writing the hash registry even when
+    # write=True; AccessPolicy.allow_metadata_writes is the single gate.
+    if write and current_access_policy().allow_metadata_writes:
         os.makedirs(paths.MDX_HASH_DIR, exist_ok=True)
         with open(json_path, "w", encoding="utf-8") as handle:
             handle.write(json.dumps(params, indent=4))

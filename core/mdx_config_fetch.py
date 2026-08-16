@@ -13,6 +13,7 @@ from typing import Iterator, Iterable, Optional
 from bundled.constants import MDX23_CONFIG_CHECKS, POLITREES_CONFIG_SUBDIRS, POLITREES_RAW_BASE
 
 from . import paths
+from .access_policy import access_policy, current_access_policy
 from .debug_log import debug
 
 _DOWNLOAD_TIMEOUT_SECONDS = 30
@@ -25,7 +26,11 @@ def mdx_c_network(allow_network: bool) -> Iterator[None]:
     """Temporarily allow or forbid MDX-C YAML downloads in this context."""
     token = _ALLOW_NETWORK.set(allow_network)
     try:
-        yield
+        with access_policy(
+            allow_network=allow_network,
+            allow_metadata_writes=allow_network,
+        ):
+            yield
     finally:
         _ALLOW_NETWORK.reset(token)
 
@@ -101,9 +106,10 @@ def config_source_urls(filename: str) -> list[str]:
 def ensure_mdx_c_config(filename: str, *, allow_network: bool | None = None) -> bool:
     """Ensure ``filename`` exists under ``MDX_C_CONFIG_PATH``, fetching if needed.
 
-    Explicit ``allow_network`` overrides the ``mdx_c_network`` / ``_ALLOW_NETWORK``
-    context. When network is forbidden and the file is missing, return ``False``
-    without opening a socket or writing.
+    Explicit ``allow_network`` overrides the active ``AccessPolicy``. When omitted,
+    the decision follows ``current_access_policy().allow_network`` (also set by
+    ``mdx_c_network``). When network is forbidden and the file is missing, return
+    ``False`` without opening a socket or writing.
     """
     safe = _safe_config_name(filename)
     if not safe:
@@ -114,7 +120,11 @@ def ensure_mdx_c_config(filename: str, *, allow_network: bool | None = None) -> 
     if os.path.isfile(dest):
         return True
 
-    allowed = _ALLOW_NETWORK.get() if allow_network is None else allow_network
+    allowed = (
+        current_access_policy().allow_network
+        if allow_network is None
+        else allow_network
+    )
     if not allowed:
         debug("download", f"mdx_c_config offline-miss name={safe}")
         return False
