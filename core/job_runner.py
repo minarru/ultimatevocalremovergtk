@@ -49,11 +49,11 @@ def _ensemble_stem_bucket(stem_tag: str) -> str:
     """
     return canonical_ensemble_stem_tag(stem_tag)
 from .export_naming import (
+    OutputNamingContext,
+    build_output_naming_context,
     format_stem_basename,
-    format_track_base,
+    rebase_output_naming,
     sanitize_filename_component,
-    testing_timestamp_prefix,
-    track_basename_from_path,
 )
 from .model_config import ModelConfig, assemble_model
 from .model_data import ModelRepository
@@ -281,6 +281,10 @@ class JobCallbacks:
     on_stopped: Optional[Callable[[], None]] = None
     on_error: Optional[Callable[[BaseException], None]] = None
     on_oom_choice: Optional[Callable[[OomChoiceRequest], None]] = None
+    on_input_start: Optional[Callable[[tuple[str, ...]], None]] = None
+    on_input_finished: Optional[
+        Callable[[tuple[str, ...], tuple[str, ...], BaseException | None], None]
+    ] = None
 
     def progress(
         self,
@@ -305,6 +309,17 @@ class JobCallbacks:
             combine_index=combine_index,
             combine_total=combine_total,
         )
+
+    def input_started(self, paths: typing.Sequence[str]) -> None:
+        if self.on_input_start:
+            self.on_input_start(tuple(paths))
+
+    def input_finished(
+        self, paths: typing.Sequence[str], generated: typing.Sequence[str] = (),
+        error: BaseException | None = None,
+    ) -> None:
+        if self.on_input_finished:
+            self.on_input_finished(tuple(paths), tuple(generated), error)
 
     def console(self, text: str) -> None:
         seq = next_seq()
@@ -382,6 +397,9 @@ class JobRunner:
         self._mdx_segment_override: Optional[int] = None
         self._ensemble_salvage_members: list[dict[str, Any]] = []
         self._last_oom_exported = False
+        self._run_models: Sequence[Any] | None = None
+        self._run_planned: Sequence[Any] | None = None
+        self._run_output_root: str | None = None
 
     # -- Public control ---------------------------------------------------------
 
@@ -394,22 +412,47 @@ class JobRunner:
         self._mdx_segment_override = None
         self._ensemble_salvage_members = []
         self._last_oom_exported = False
+        self._run_models = None
+        self._run_planned = None
+        self._run_output_root = None
 
-    def start(self, input_paths: Sequence[str], callbacks: JobCallbacks) -> None:
+    def start(
+        self,
+        input_paths: Sequence[str],
+        callbacks: JobCallbacks,
+        *,
+        models: Sequence[Any] | None = None,
+        planned: Sequence[Any] | None = None,
+        planned_output_root: str | None = None,
+    ) -> None:
         """Launch the worker thread. No-op if a run is already in flight.
 
         Routes to the ensemble worker when ``chosen_process_method`` is
         ``ENSEMBLE_MODE`` (mirroring ``process_start``'s branch), otherwise the
         single-method worker.
+
+        When ``models`` is supplied, the worker reuses that assembly and does
+        not call :meth:`resolve_models`. When ``planned`` is supplied, per-file
+        basenames come from the matching :class:`~core.job_plan.PlannedInput`
+        after rebasing onto the current export path.
         """
         if self.is_running():
             return
         if self.settings.process.method == ProcessMethod.ENSEMBLE:
-            self.start_ensemble(input_paths, callbacks)
+            self.start_ensemble(
+                input_paths,
+                callbacks,
+                models=models,
+                planned=planned,
+                planned_output_root=planned_output_root,
+            )
             return
         from kthread import KThread
 
         self._reset_run_state()
+        self._run_models = list(models) if models is not None else None
+        self._run_planned = tuple(planned) if planned is not None else None
+        self._run_output_root = planned_output_root
         paths = list(input_paths)
         self._thread = KThread(
             target=self._run,
@@ -418,13 +461,24 @@ class JobRunner:
         debug("worker", f"KThread start files={len(paths)}")
         self._thread.start()
 
-    def start_ensemble(self, input_paths: Sequence[str], callbacks: JobCallbacks) -> None:
+    def start_ensemble(
+        self,
+        input_paths: Sequence[str],
+        callbacks: JobCallbacks,
+        *,
+        models: Sequence[Any] | None = None,
+        planned: Sequence[Any] | None = None,
+        planned_output_root: str | None = None,
+    ) -> None:
         """Launch the ensemble worker thread explicitly. No-op if already running."""
         if self.is_running():
             return
         from kthread import KThread
 
         self._reset_run_state()
+        self._run_models = list(models) if models is not None else None
+        self._run_planned = tuple(planned) if planned is not None else None
+        self._run_output_root = planned_output_root
         paths = list(input_paths)
         self._thread = KThread(
             target=self._run_ensemble,
@@ -432,6 +486,34 @@ class JobRunner:
         )
         debug("worker", f"KThread ensemble start files={len(paths)}")
         self._thread.start()
+
+    def _naming_for_file(
+        self,
+        audio_file: str,
+        *,
+        export_path: str,
+        **build_kwargs: Any,
+    ) -> OutputNamingContext:
+        """Build or rebase per-file naming for the current run."""
+        if self._run_planned:
+            target = os.path.abspath(audio_file)
+            item = next(
+                (
+                    entry
+                    for entry in self._run_planned
+                    if os.path.abspath(entry.path) == target
+                ),
+                None,
+            )
+            if item is not None:
+                return rebase_output_naming(
+                    item.naming,
+                    self.settings.process.export_path,
+                    self._run_output_root or item.naming.export_directory,
+                )
+        return build_output_naming_context(
+            self.settings, audio_file, export_path=export_path, **build_kwargs
+        )
 
     def _prepare_paths_for_run(
         self, input_paths: List[str], callbacks: JobCallbacks
@@ -923,7 +1005,10 @@ class JobRunner:
             if not export_path:
                 raise ValueError("export_path is required")
             resolve_started = time.perf_counter()
-            models = self.resolve_models()
+            if self._run_models is not None:
+                models = list(self._run_models)
+            else:
+                models = self.resolve_models()
             debug_elapsed("worker", "resolve_models", resolve_started, count=len(models))
             self.iteration = 0
             self._build_all_models(models)
@@ -1017,25 +1102,18 @@ class JobRunner:
                         lambda text, base_text=base_text: callbacks.console(base_text + text),
                     )
 
-                    track_title = track_basename_from_path(audio_file)
                     model_label = _model_output_label(current_model)
-                    audio_file_base = format_track_base(
-                        track=track_title,
-                        model=model_label if self.settings.process.add_model_name else None,
+                    naming = self._naming_for_file(
+                        audio_file,
+                        export_path=export_path,
                         file_index=file_num,
                         file_total=total_files,
-                        timestamp=testing_timestamp_prefix(self.settings),
+                        model_label=model_label,
                     )
-
-                    model_export_path = export_path
-                    if self.settings.process.create_model_folder:
-                        if model_label:
-                            model_export_path = os.path.join(
-                                export_path,
-                                sanitize_filename_component(model_label),
-                                track_title,
-                            )
-                            os.makedirs(model_export_path, exist_ok=True)
+                    audio_file_base = naming.track_base
+                    model_export_path = naming.export_directory
+                    if model_export_path != export_path:
+                        os.makedirs(model_export_path, exist_ok=True)
 
                     stem_parts: dict = {}
                     stem_paths: dict = {}
@@ -1170,7 +1248,10 @@ class JobRunner:
 
         try:
             input_paths = self._prepare_paths_for_run(input_paths, callbacks)
-            models = assemble_model(self.settings, self.repo, arch_type=ENSEMBLE_MODE)
+            if self._run_models is not None:
+                models = list(self._run_models)
+            else:
+                models = assemble_model(self.settings, self.repo, arch_type=ENSEMBLE_MODE)
             if len(models) <= 1:
                 raise RuntimeError("Select at least two models to run an ensemble")
 
@@ -1259,16 +1340,15 @@ class JobRunner:
                 # stem_tag -> list of member waveforms for in-memory combine
                 ensemble_stem_arrays: dict = {}
                 self._ensemble_salvage_members = []
-                track_title = track_basename_from_path(audio_file)
-                stamp = testing_timestamp_prefix(self.settings)
-                ensemble_final_base = format_track_base(
-                    track=track_title,
-                    model=None,
+                final_naming = self._naming_for_file(
+                    audio_file,
+                    export_path=export_path,
                     file_index=file_num,
                     file_total=total_files,
-                    timestamp=stamp,
-                    ensemble=ensemble.append_ensemble_label,
+                    ensemble_label=ensemble.append_ensemble_label,
+                    force_ensemble_label=True,
                 )
+                ensemble_final_base = final_naming.track_base
 
                 for current_model_num, current_model in enumerate(models, start=1):
                     check_stopped(self)
@@ -1284,13 +1364,15 @@ class JobRunner:
                     )
 
                     model_label = _model_output_label(current_model)
-                    audio_file_base = format_track_base(
-                        track=track_title,
-                        model=model_label,
+                    member_naming = self._naming_for_file(
+                        audio_file,
+                        export_path=export_path,
                         file_index=file_num,
                         file_total=total_files,
-                        timestamp=stamp,
+                        model_label=model_label,
+                        force_model_label=True,
                     )
+                    audio_file_base = member_naming.track_base
 
                     member_stem_parts: dict = {}
                     member_paths: dict = {}

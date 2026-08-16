@@ -10,9 +10,11 @@ Stem labels stay human-readable inside parentheses.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import re
 import time
+from dataclasses import dataclass
 from typing import Optional
 
 from bundled.constants import WAV
@@ -21,6 +23,85 @@ from .settings import Settings
 # Characters unsafe in a single path component on common platforms.
 _UNSAFE = re.compile(r'[/\\:\0<>"|?*]')
 _MULTI_SPACE = re.compile(r"\s+")
+
+
+@dataclass(frozen=True)
+class OutputNamingContext:
+    """All stable inputs used to construct one track's output basename."""
+
+    input_path: str
+    track: str
+    track_base: str
+    export_directory: str
+    extension: str
+    file_index: int | None = None
+    file_total: int = 1
+    model_label: str | None = None
+    ensemble_label: str | None = None
+    timestamp: str | None = None
+
+
+def build_output_naming_context(
+    settings: Settings,
+    input_path: str,
+    *,
+    export_path: str,
+    file_index: int | None = None,
+    file_total: int = 1,
+    model_label: str | None = None,
+    ensemble_label: str | None = None,
+    force_model_label: bool = False,
+    force_ensemble_label: bool = False,
+) -> OutputNamingContext:
+    track = track_basename_from_path(input_path)
+    timestamp = testing_timestamp_prefix(settings)
+    track_base = format_track_base(
+        track=track,
+        model=model_label if settings.process.add_model_name or force_model_label else None,
+        ensemble=(
+            ensemble_label
+            if settings.process.add_model_name or force_ensemble_label
+            else None
+        ),
+        file_index=file_index,
+        file_total=file_total,
+        timestamp=timestamp,
+    )
+    directory = export_path
+    if settings.process.create_model_folder and model_label:
+        directory = os.path.join(
+            export_path, sanitize_filename_component(model_label), track
+        )
+    extension = str(getattr(settings.process.save_format, "value", "wav") or "wav").lower()
+    return OutputNamingContext(
+        input_path=input_path,
+        track=track,
+        track_base=track_base,
+        export_directory=directory,
+        extension=extension,
+        file_index=file_index,
+        file_total=file_total,
+        model_label=model_label,
+        ensemble_label=ensemble_label,
+        timestamp=timestamp,
+    )
+
+
+def rebase_output_naming(
+    naming: OutputNamingContext,
+    export_path: str,
+    planned_output_root: str,
+) -> OutputNamingContext:
+    """Keep track_base / labels; rewrite export_directory under export_path."""
+    root = os.path.abspath(planned_output_root)
+    current = os.path.abspath(naming.export_directory)
+    rel = os.path.relpath(current, root)
+    if rel.startswith(".."):
+        raise ValueError(
+            f"planned export {naming.export_directory!r} is not under {planned_output_root!r}"
+        )
+    directory = os.path.abspath(export_path) if rel == "." else os.path.join(export_path, rel)
+    return dataclasses.replace(naming, export_directory=directory)
 
 
 def sanitize_filename_component(text: str | None) -> str:
