@@ -272,8 +272,8 @@ success, and `130` interruption.
 | Interrupt document | `ok: false`, `status: "failed"`, `stopped: true`, exit `130` |
 | Planning / validate / dry-run | Installed + cached metadata only. Missing MDX-C YAML is an error; use `uvr models download` |
 | Access policy | Planning/validate/identity: `access_policy(allow_network=False, allow_metadata_writes=False)`. Downloads default online. |
-| Batch execution | `JobRunner.start_resolved` assembles once; CLI stages and promotes. |
-| Overwrite | Existing destinations are backed up until the whole unit succeeds; failure restores backups and returns files to staging. |
+| Batch execution | Models assemble once; `JobRunner.start_resolved` runs one input per call and the CLI promotes each before the next starts. |
+| Overwrite | Existing destinations are moved aside until the whole unit succeeds; failure restores backups and returns files to staging. |
 
 Planning / validate / identity use
 `access_policy(allow_network=False, allow_metadata_writes=False)` /

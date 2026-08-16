@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import signal
@@ -10,14 +11,11 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from types import SimpleNamespace
 from typing import Any, Callable, Sequence, cast
 
-from bundled.constants import ENSEMBLE_MODE
 from core.blocking_runner import RunResult, run_blocking
 from core.job_plan import ResolvedJob as CoreResolvedJob
-from core.job_runner import JobCallbacks, JobRunner
-from core.settings import Settings
+from core.job_runner import JobCallbacks
 
 from .job import ResolvedJob
 from .reporting import emit_event, ensure_job_id, finish_progress, make_progress_printer
@@ -109,59 +107,6 @@ def run_runner_cli(
     return result.with_interrupted(bool(interrupted["count"]))
 
 
-def _run_job_cli(
-    settings: Settings,
-    input_paths: Sequence[str],
-    *,
-    ensemble: bool,
-    print_console: bool = True,
-    join_timeout: float | None = None,
-    on_progress: Callable[..., None] | None = None,
-    runner: JobRunner | None = None,
-    models: Sequence[Any] | None = None,
-    planned: Sequence[Any] | None = None,
-    planned_output_root: str | None = None,
-) -> RunResult:
-    if not input_paths:
-        raise ValueError("at least one input path is required")
-    if not settings.process.export_path:
-        raise ValueError("export_path is empty")
-    job_runner = runner or JobRunner(settings)
-    # A batch deliberately reuses one runner/repository and the engine weight
-    # cache, but each input has a distinct staging export directory.
-    job_runner.settings = settings
-    if ensemble:
-        start = lambda callbacks: job_runner.start_ensemble(
-            list(input_paths),
-            callbacks,
-            models=models,
-            planned=planned,
-            planned_output_root=planned_output_root,
-        )
-    else:
-        start = lambda callbacks: job_runner.start(
-            list(input_paths),
-            callbacks,
-            models=models,
-            planned=planned,
-            planned_output_root=planned_output_root,
-        )
-    return run_runner_cli(
-        job_runner, start, print_console=print_console,
-        join_timeout=join_timeout, on_progress=on_progress,
-    )
-
-
-def run_separation_cli(settings: Settings, input_paths: Sequence[str], **kwargs: Any) -> RunResult:
-    if settings.process.method == ENSEMBLE_MODE:
-        raise ValueError("ensemble mode requires run_ensemble_cli")
-    return _run_job_cli(settings, input_paths, ensemble=False, **kwargs)
-
-
-def run_ensemble_cli(settings: Settings, input_paths: Sequence[str], **kwargs: Any) -> RunResult:
-    return _run_job_cli(settings, input_paths, ensemble=True, **kwargs)
-
-
 def preflight_collisions(job: ResolvedJob, policy: str) -> set[str]:
     planned_inputs = job.resolved.inputs if job.resolved is not None else ()
     collided: set[str] = set()
@@ -220,8 +165,12 @@ def _apply_unit_rename(
     track_base: str,
     *,
     start_index: int = 2,
-) -> list[tuple[str, str]]:
-    """Pick the next free unit suffix; recheck until the chosen set stays free."""
+) -> tuple[int, list[tuple[str, str]]]:
+    """Pick one free unit suffix for the whole unit.
+
+    Returns the chosen index alongside the remapped entries so a mid-move race
+    can restart the unit at a strictly higher index.
+    """
     dest_by_name = {os.path.basename(path): path for path in destinations}
 
     def _remap(index: int) -> list[tuple[str, str]]:
@@ -243,13 +192,9 @@ def _apply_unit_rename(
             index += 1
             continue
         remapped = _remap(index)
-        # Recheck destinations under the lock so a raced suffix bumps again.
-        if any(os.path.exists(path) for path in rewritten):
-            index += 1
-            continue
         # Extra stage files may collide too. Only bump when unit-suffix can still
         # move a colliding target; no-op names (sidecar.txt) stay put forever and
-        # must not keep this loop alive — mid-move falls back to ``_unique_target``.
+        # must not keep this loop alive — those fall back to ``_unique_target``.
         next_by_source = {source: target for source, target in _remap(index + 1)}
         progressable = False
         for source, target in remapped:
@@ -261,7 +206,7 @@ def _apply_unit_rename(
         if progressable:
             index += 1
             continue
-        return remapped
+        return index, remapped
 
 
 def _promote(
@@ -275,17 +220,6 @@ def _promote(
         return _promote_locked(
             stage, output, policy, destinations=destinations,
         )
-
-
-def promote_with_lock(
-    stage: str,
-    output: str,
-    policy: str,
-    *,
-    destinations: Sequence[str] | None = None,
-) -> list[str]:
-    """Serialize promotion for one output directory (alias of ``_promote``)."""
-    return _promote(stage, output, policy, destinations=destinations)
 
 
 def _promote_locked(
@@ -326,69 +260,76 @@ def _promote_locked(
         collision = next((path for path in collision_paths if os.path.exists(path)), None)
         if collision:
             raise PromotionSkipped(collision)
-    if policy == "rename" and destinations is not None and any(
-        os.path.exists(path) for path in destinations
+    # Unit renaming needs both a destination list and a shared track base;
+    # without them a collision falls back to a per-file ``_unique_target``.
+    unit_destinations: Sequence[str] | None = None
+    unit_track_base = ""
+    if policy == "rename" and destinations is not None and track_base is not None:
+        unit_destinations = destinations
+        unit_track_base = track_base
+    unit_index: int | None = None
+    attempt = list(entries)
+    if unit_destinations is not None and any(
+        os.path.exists(path) for path in unit_destinations
     ):
-        if track_base is not None:
-            entries = _apply_unit_rename(entries, destinations, track_base)
+        unit_index, attempt = _apply_unit_rename(
+            entries, unit_destinations, unit_track_base
+        )
     backups: list[tuple[str, str]] = []
     promoted: list[str] = []
     moved: list[tuple[str, str]] = []
     try:
         if policy == "overwrite":
+            # Move, don't copy: the backup only has to survive until the whole
+            # unit lands, and a rename is atomic within the output directory.
             for _source, target in entries:
                 if os.path.exists(target):
                     bak = _overwrite_backup_path(target)
-                    shutil.copy2(target, bak)
+                    os.replace(target, bak)
                     backups.append((target, bak))
-        pending = list(entries)
-        while pending:
-            source, initial_target = pending.pop(0)
-            target = initial_target
-            target_root = os.path.dirname(target)
-            os.makedirs(target_root, exist_ok=True)
-            if os.path.exists(target):
-                if policy == "fail":
-                    raise FileExistsError(target)
-                if policy == "skip":
-                    continue
-                if policy == "rename":
-                    if destinations is not None and track_base is not None:
-                        # Raced suffix after the initial pick — bump and retry.
-                        remapped = _apply_unit_rename(
-                            [(source, initial_target), *pending],
-                            destinations,
-                            track_base,
-                        )
-                        remapped_target = next(
-                            (path for src, path in remapped if src == source),
-                            initial_target,
-                        )
-                        if os.path.exists(remapped_target):
-                            # Extra stem or non-matching name: unit rename cannot
-                            # clear this collision — fall back like pre-lock.
-                            target = _unique_target(initial_target)
-                        else:
-                            pending = remapped
-                            continue
-                    else:
+        while True:
+            restart = False
+            for source, initial_target in attempt:
+                target = initial_target
+                os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+                if os.path.exists(target):
+                    if policy == "fail":
+                        raise FileExistsError(target)
+                    if policy == "skip":
+                        continue
+                    if policy == "rename":
+                        if unit_destinations is not None and _matches_unit_name(
+                            os.path.basename(source), unit_track_base
+                        ):
+                            # A raced suffix splits the unit; restart it whole.
+                            restart = True
+                            break
                         target = _unique_target(target)
-            os.replace(source, target)
-            moved.append((source, target))
-            promoted.append(target)
-    except Exception:
-        if moved:
+                os.replace(source, target)
+                moved.append((source, target))
+                promoted.append(target)
+            if not restart or unit_destinations is None:
+                break
             for source, target in reversed(moved):
                 if os.path.exists(target):
                     os.makedirs(os.path.dirname(source) or ".", exist_ok=True)
                     os.replace(target, source)
-            for target, bak in backups:
-                if os.path.exists(bak):
-                    os.replace(bak, target)
-        else:
-            for _target, bak in backups:
-                if os.path.exists(bak):
-                    os.unlink(bak)
+            moved.clear()
+            promoted.clear()
+            unit_index, attempt = _apply_unit_rename(
+                entries,
+                unit_destinations,
+                unit_track_base,
+                start_index=2 if unit_index is None else unit_index + 1,
+            )
+    except BaseException:
+        for source, target in reversed(moved):
+            if os.path.exists(target):
+                os.makedirs(os.path.dirname(source) or ".", exist_ok=True)
+                os.replace(target, source)
+        for target, bak in backups:
+            if os.path.exists(bak):
+                os.replace(bak, target)
         raise
     for _target, bak in backups:
         if os.path.exists(bak):
@@ -396,12 +337,7 @@ def _promote_locked(
     return promoted
 
 
-def run_batch(
-    args: Any,
-    job: ResolvedJob,
-    runner: Callable[..., RunResult] | None = None,
-) -> BatchOutcome:
-    del runner  # batches go through JobRunner.start_resolved
+def run_batch(args: Any, job: ResolvedJob) -> BatchOutcome:
     started = time.perf_counter()
     collided = preflight_collisions(job, args.on_exists)
     os.makedirs(job.output, exist_ok=True)
@@ -414,47 +350,45 @@ def run_batch(
 
     shared_runner = JobRunner(job.settings)
     shared_models = shared_runner.resolve_models()
-    planned_all = tuple(job.resolved.inputs) if job.resolved is not None else ()
-    active: list[Any] = []
-    stages: list[str] = []
+    resolved: Any = job.resolved
+    planned_all: tuple[Any, ...] = tuple(getattr(resolved, "inputs", None) or ())
+    total = len(planned_all)
+    progress = make_progress_printer(args)
+
+    def record(item: dict[str, Any]) -> None:
+        outcomes.append(item)
+        emit_event(args, "input_finished", **item)
+
     try:
+        # One run per input: a completed input is promoted out of staging before
+        # the next one starts, so a mid-batch death keeps what already finished.
         for index, planned_item in enumerate(planned_all, start=1):
             input_path = planned_item.path
             if input_path in collided and args.on_exists == "skip":
-                item = {
+                record({
                     "input": input_path, "status": "skipped", "outputs": [],
                     "elapsed_s": 0.0,
-                }
-                outcomes.append(item)
-                emit_event(args, "input_finished", **item)
+                })
                 continue
             stage = os.path.join(temp_root, str(index))
             os.makedirs(stage, exist_ok=True)
-            active.append(planned_item)
-            stages.append(stage)
             emit_event(
                 args, "progress", fraction=0.0, phase="input_started",
-                input=input_path, index=index, total=len(planned_all),
+                input=input_path, index=index, total=total,
             )
-
-        if active:
-            progress = make_progress_printer(args)
-            batch_job = cast(
+            item_job = cast(
                 CoreResolvedJob,
-                SimpleNamespace(
-                    command=job.command,
-                    output=job.output,
-                    inputs=tuple(active),
-                ),
+                dataclasses.replace(resolved, inputs=(planned_item,)),
             )
+            shared_runner.last_outcomes = ()
             result = run_runner_cli(
                 shared_runner,
                 lambda callbacks: shared_runner.start_resolved(
-                    batch_job,
+                    item_job,
                     callbacks,
                     models=shared_models,
-                    fail_fast=bool(getattr(args, "fail_fast", False)),
-                    export_paths=tuple(stages),
+                    fail_fast=True,
+                    export_paths=(stage,),
                 ),
                 print_console=not args.quiet,
                 on_progress=progress,
@@ -463,42 +397,43 @@ def run_batch(
                 finish_progress(args)
 
             last_outcomes = tuple(getattr(shared_runner, "last_outcomes", ()) or ())
-            if result.interrupted or result.stopped:
-                interrupted = True
+            outcome = last_outcomes[0] if last_outcomes else None
+            stop_requested = bool(
+                result.interrupted
+                or result.stopped
+                or (outcome is not None and outcome.stopped)
+            )
+            elapsed = (
+                float(outcome.elapsed_s) if outcome is not None
+                else float(result.elapsed_s)
+            )
+            failure: str | None = None
+            if result.error is not None:
+                # An unexpected runner failure belongs to the in-flight input.
+                failure = f"{type(result.error).__name__}: {result.error}"
+            elif outcome is None:
+                failure = (
+                    "interrupted" if stop_requested
+                    else "runner produced no result"
+                )
+            elif outcome.stopped:
+                failure = "interrupted"
+            elif outcome.status == "failed":
+                failure = outcome.error or "failed"
 
-            for planned_item, stage, outcome in zip(active, stages, last_outcomes):
-                input_path = planned_item.path
-                elapsed = float(outcome.elapsed_s)
-                if outcome.stopped:
-                    interrupted = True
-                    item = {
-                        "input": input_path, "status": "failed", "error": "interrupted",
-                        "outputs": [], "elapsed_s": elapsed,
-                    }
-                    outcomes.append(item)
-                    emit_event(args, "input_finished", **item)
-                    break
-                if outcome.status == "failed":
-                    item = {
-                        "input": input_path,
-                        "status": "failed",
-                        "error": outcome.error or "failed",
-                        "outputs": [],
-                        "elapsed_s": elapsed,
-                    }
-                    outcomes.append(item)
-                    emit_event(args, "input_finished", **item)
-                    continue
-                if outcome.status == "skipped":
-                    item = {
-                        "input": input_path, "status": "skipped", "outputs": [],
-                        "elapsed_s": elapsed,
-                    }
-                    outcomes.append(item)
-                    emit_event(args, "input_finished", **item)
-                    continue
+            if failure is not None:
+                record({
+                    "input": input_path, "status": "failed", "error": failure,
+                    "outputs": [], "elapsed_s": elapsed,
+                })
+            elif outcome is not None and outcome.status == "skipped":
+                record({
+                    "input": input_path, "status": "skipped", "outputs": [],
+                    "elapsed_s": elapsed,
+                })
+            else:
                 try:
-                    outputs = _promote(
+                    promoted = _promote(
                         stage, job.output, args.on_exists,
                         destinations=[
                             output.path
@@ -506,62 +441,40 @@ def run_batch(
                             if not output.conditional
                         ],
                     )
-                    if not outputs:
+                    if not promoted:
                         raise OSError(
                             "separation completed without generating output files"
                         )
                 except PromotionSkipped:
-                    item = {
+                    record({
                         "input": input_path, "status": "skipped", "outputs": [],
                         "elapsed_s": elapsed,
-                    }
-                    outcomes.append(item)
-                    emit_event(args, "input_finished", **item)
-                    continue
+                    })
                 except OSError as exc:
-                    item = {
-                        "input": input_path,
-                        "status": "failed",
-                        "error": f"{type(exc).__name__}: {exc}",
-                        "outputs": [],
-                        "elapsed_s": elapsed,
-                    }
-                    outcomes.append(item)
-                    emit_event(args, "input_finished", **item)
-                    if getattr(args, "fail_fast", False):
-                        break
-                    continue
-                item = {
-                    "input": input_path, "status": "success", "outputs": outputs,
-                    "elapsed_s": elapsed,
-                }
-                outcomes.append(item)
-                emit_event(args, "input_finished", **item)
+                    failure = f"{type(exc).__name__}: {exc}"
+                    record({
+                        "input": input_path, "status": "failed", "error": failure,
+                        "outputs": [], "elapsed_s": elapsed,
+                    })
+                else:
+                    record({
+                        "input": input_path, "status": "success",
+                        "outputs": promoted, "elapsed_s": elapsed,
+                    })
+            shutil.rmtree(stage, ignore_errors=True)
 
-            if result.error is not None and not last_outcomes:
-                item = {
-                    "input": active[0].path,
-                    "status": "failed",
-                    "error": f"{type(result.error).__name__}: {result.error}",
-                    "outputs": [],
-                    "elapsed_s": result.elapsed_s,
-                }
-                outcomes.append(item)
-                emit_event(args, "input_finished", **item)
-            elif (
-                interrupted
-                and len(last_outcomes) < len(active)
-                and not any(item.get("error") == "interrupted" for item in outcomes)
-            ):
-                # Attribute the stop to the next unprocessed input — never
-                # re-label a completed success as interrupted.
-                pending = active[len(last_outcomes)]
-                item = {
-                    "input": pending.path, "status": "failed", "error": "interrupted",
-                    "outputs": [], "elapsed_s": result.elapsed_s,
-                }
-                outcomes.append(item)
-                emit_event(args, "input_finished", **item)
+            if stop_requested:
+                interrupted = True
+                if failure != "interrupted" and index < total:
+                    # Attribute the stop to the next unprocessed input — never
+                    # re-label a completed success as interrupted.
+                    record({
+                        "input": planned_all[index].path, "status": "failed",
+                        "error": "interrupted", "outputs": [], "elapsed_s": 0.0,
+                    })
+                break
+            if failure is not None and getattr(args, "fail_fast", False):
+                break
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
         parent = os.path.dirname(temp_root)

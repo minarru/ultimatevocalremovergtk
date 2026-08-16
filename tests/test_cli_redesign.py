@@ -10,15 +10,14 @@ from contextlib import redirect_stderr, redirect_stdout
 from typing import Any
 from unittest.mock import Mock, patch
 
-from types import SimpleNamespace
-
 from cli.execution import (
-    BatchOutcome, preflight_collisions, run_batch, run_runner_cli, run_separation_cli,
-    write_manifest,
+    BatchOutcome, preflight_collisions, run_batch, run_runner_cli, write_manifest,
 )
 from core.export_naming import OutputNamingContext, format_stem_basename
 from core.input_discovery import discover_inputs
-from core.job_plan import PlannedInput, PlannedOutput
+from core.job_plan import (
+    PlannedInput, PlannedOutput, ResolvedJob as CoreResolvedJob, ValidationLevel,
+)
 from cli.job import ResolvedJob, _device_override
 from cli.profiles import LoadedProfile, load_profile, save_profile
 from cli.replay import _flat_settings
@@ -49,6 +48,19 @@ def _planned_input(
         for stem in stems
     )
     return PlannedInput(path, naming, outputs)
+
+
+def _core_job(
+    command: str,
+    settings: Settings,
+    planned: tuple[PlannedInput, ...],
+    output: str,
+) -> CoreResolvedJob:
+    """A real ``core`` ResolvedJob: ``run_batch`` slices it with dataclasses.replace."""
+    return CoreResolvedJob(
+        command, settings, planned, (), {}, (),
+        ValidationLevel.MODEL, 0, "fingerprint", "cpu", output,
+    )
 
 
 class InputDiscoveryTests(unittest.TestCase):
@@ -233,30 +245,6 @@ class BatchExecutionTests(unittest.TestCase):
         self.assertEqual(out.getvalue(), "")
         self.assertEqual(err.getvalue(), "engine line\n")
 
-    def test_reused_runner_receives_each_inputs_staging_settings(self) -> None:
-        class Runner:
-            def __init__(self) -> None:
-                self.settings = Settings.defaults()
-                self._thread = None
-
-            def is_running(self) -> bool:
-                return False
-
-            def start(self, _paths: list[str], callbacks: JobCallbacks, **_kwargs: Any) -> None:
-                callbacks.complete()
-
-            def stop(self, *, force: bool = False) -> None:
-                pass
-
-        settings = Settings.defaults()
-        settings.process.export_path = "/tmp/stage-2"
-        runner = Runner()
-        result = run_separation_cli(
-            settings, ["/tmp/input.wav"], print_console=False, runner=runner
-        )
-        self.assertTrue(result.ok)
-        self.assertIs(runner.settings, settings)
-
     def make_job(self, root: str, inputs: list[str]) -> ResolvedJob:
         settings = Settings.defaults()
         settings.process.export_path = root
@@ -269,7 +257,7 @@ class BatchExecutionTests(unittest.TestCase):
             profile=LoadedProfile("defaults", "built-in"),
             inputs=inputs, output=root,
             plan={"identity": {"id": "mdx:a", "hash": "h"}},
-            resolved=SimpleNamespace(inputs=planned),
+            resolved=_core_job("separate", settings, planned, root),
         )
 
     def test_continue_on_error_promotes_success_and_returns_partial(self) -> None:
@@ -343,10 +331,15 @@ class BatchExecutionTests(unittest.TestCase):
             open(second, "wb").close()
             output = os.path.join(root, "out")
             job = self.make_job(output, [first, second])
-            job.resolved = SimpleNamespace(inputs=(
-                _planned_input(first, output, "1-song"),
-                _planned_input(second, output, "2-song"),
-            ))
+            job.resolved = _core_job(
+                "separate",
+                job.settings,
+                (
+                    _planned_input(first, output, "1-song"),
+                    _planned_input(second, output, "2-song"),
+                ),
+                output,
+            )
 
             def one(self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks) -> InputOutcome:
                 name = f"{format_stem_basename(planned.naming.track_base, 'Vocals')}.wav"
@@ -502,6 +495,146 @@ class BatchExecutionTests(unittest.TestCase):
             self.assertEqual(outcome.inputs[0]["error"], "interrupted")
             self.assertEqual(outcome.inputs[0]["input"], source)
 
+    def test_run_batch_promotes_each_input_before_the_next_one_runs(self) -> None:
+        """A mid-batch death must not take completed inputs down with it."""
+        with tempfile.TemporaryDirectory() as root:
+            inputs = [os.path.join(root, "a.wav"), os.path.join(root, "b.wav")]
+            for path in inputs:
+                open(path, "wb").close()
+            output = os.path.join(root, "out")
+            job = self.make_job(output, inputs)
+            seen: list[list[str]] = []
+
+            def one(self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks) -> InputOutcome:
+                seen.append(sorted(
+                    name for name in os.listdir(output) if name != ".uvr-tmp"
+                ))
+                name = f"{format_stem_basename(planned.naming.track_base, 'Vocals')}.wav"
+                os.makedirs(self.settings.process.export_path, exist_ok=True)
+                path = os.path.join(self.settings.process.export_path, name)
+                with open(path, "wb") as handle:
+                    handle.write(b"ok")
+                return InputOutcome(planned.path, "success", outputs=(path,), elapsed_s=0.1)
+
+            with patch.object(JobRunner, "resolve_models", return_value=[]), patch.object(
+                JobRunner, "_run_one_planned", one
+            ):
+                outcome = run_batch(_args(), job)
+
+            self.assertEqual(outcome.exit_code, 0)
+            self.assertEqual(seen[0], [])
+            self.assertEqual(seen[1], ["a (Vocals).wav"])
+
+    def test_run_batch_slices_one_planned_input_per_run(self) -> None:
+        batches: list[tuple[str, ...]] = []
+        stages: list[tuple[str, ...]] = []
+
+        def fake_start_resolved(
+            self: JobRunner, batch_job: Any, callbacks: JobCallbacks, **kwargs: Any
+        ) -> None:
+            batches.append(tuple(item.path for item in batch_job.inputs))
+            stages.append(tuple(kwargs["export_paths"]))
+            self.last_outcomes = tuple(
+                InputOutcome(item.path, "skipped", elapsed_s=0.0)
+                for item in batch_job.inputs
+            )
+            if callbacks.on_complete:
+                callbacks.on_complete()
+
+        with tempfile.TemporaryDirectory() as root:
+            inputs = [os.path.join(root, "a.wav"), os.path.join(root, "b.wav")]
+            for path in inputs:
+                open(path, "wb").close()
+            output = os.path.join(root, "out")
+            job = self.make_job(output, inputs)
+            with patch.object(JobRunner, "resolve_models", return_value=[]), patch(
+                "core.job_runner.JobRunner.start_resolved", fake_start_resolved
+            ):
+                run_batch(_args(), job)
+
+        self.assertEqual(batches, [(inputs[0],), (inputs[1],)])
+        self.assertEqual([len(item) for item in stages], [1, 1])
+        self.assertNotEqual(stages[0][0], stages[1][0])
+
+    def test_run_batch_jsonl_events_interleave_per_input(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            inputs = [os.path.join(root, "a.wav"), os.path.join(root, "b.wav")]
+            for path in inputs:
+                open(path, "wb").close()
+            output = os.path.join(root, "out")
+            job = self.make_job(output, inputs)
+
+            def one(self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks) -> InputOutcome:
+                name = f"{format_stem_basename(planned.naming.track_base, 'Vocals')}.wav"
+                os.makedirs(self.settings.process.export_path, exist_ok=True)
+                path = os.path.join(self.settings.process.export_path, name)
+                with open(path, "wb") as handle:
+                    handle.write(b"ok")
+                return InputOutcome(planned.path, "success", outputs=(path,), elapsed_s=0.1)
+
+            out = io.StringIO()
+            with patch.object(JobRunner, "resolve_models", return_value=[]), patch.object(
+                JobRunner, "_run_one_planned", one
+            ), redirect_stdout(out):
+                run_batch(_args(report="jsonl"), job)
+
+            events = [json.loads(line) for line in out.getvalue().splitlines()]
+            self.assertEqual(
+                [
+                    (item["event"], item.get("phase"), item["input"])
+                    for item in events
+                ],
+                [
+                    ("progress", "input_started", inputs[0]),
+                    ("input_finished", None, inputs[0]),
+                    ("progress", "input_started", inputs[1]),
+                    ("input_finished", None, inputs[1]),
+                ],
+            )
+
+    def test_run_batch_unexpected_failure_after_success_is_not_success(self) -> None:
+        """A runner-level raise mid-batch must fail the in-flight input."""
+        with tempfile.TemporaryDirectory() as root:
+            inputs = [os.path.join(root, "a.wav"), os.path.join(root, "b.wav")]
+            for path in inputs:
+                open(path, "wb").close()
+            output = os.path.join(root, "out")
+            job = self.make_job(output, inputs)
+
+            def fake_start_resolved(
+                self: JobRunner, batch_job: Any, callbacks: JobCallbacks, **kwargs: Any
+            ) -> None:
+                planned = batch_job.inputs[0]
+                if planned.path.endswith("b.wav"):
+                    self.last_outcomes = ()
+                    if callbacks.on_error:
+                        callbacks.on_error(RuntimeError("boom"))
+                    return
+                stage = kwargs["export_paths"][0]
+                name = f"{format_stem_basename(planned.naming.track_base, 'Vocals')}.wav"
+                path = os.path.join(stage, name)
+                with open(path, "wb") as handle:
+                    handle.write(b"ok")
+                self.last_outcomes = (
+                    InputOutcome(planned.path, "success", outputs=(path,), elapsed_s=0.1),
+                )
+                if callbacks.on_complete:
+                    callbacks.on_complete()
+
+            with patch.object(JobRunner, "resolve_models", return_value=[]), patch(
+                "core.job_runner.JobRunner.start_resolved", fake_start_resolved
+            ):
+                outcome = run_batch(_args(), job)
+
+            self.assertEqual(
+                [(item["input"], item["status"]) for item in outcome.inputs],
+                [(inputs[0], "success"), (inputs[1], "failed")],
+            )
+            self.assertIn("RuntimeError: boom", outcome.inputs[1]["error"])
+            self.assertEqual(outcome.status, "partial")
+            self.assertEqual(outcome.exit_code, 3)
+            self.assertTrue(os.path.isfile(os.path.join(output, "a (Vocals).wav")))
+
     def test_run_batch_ensemble_calls_resolve_models(self) -> None:
         """Ensemble jobs share models via resolve_models (ENSEMBLE_MODE assemble)."""
         from bundled.constants import ENSEMBLE_MODE
@@ -522,7 +655,7 @@ class BatchExecutionTests(unittest.TestCase):
                 inputs=[source],
                 output=output,
                 plan={"identity": {"id": "ensemble", "hash": "h"}},
-                resolved=SimpleNamespace(inputs=planned),
+                resolved=_core_job("ensemble", settings, planned, output),
             )
             fake_models = [object(), object()]
             captured: dict[str, Any] = {}

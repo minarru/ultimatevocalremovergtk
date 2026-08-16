@@ -7,7 +7,7 @@ import sys
 
 from core.stems import EnsemblePair
 
-from .execution import run_batch, run_ensemble_cli, write_manifest
+from .execution import run_batch, write_manifest
 from .job import (
     add_job_input_args,
     add_job_output_args,
@@ -78,7 +78,7 @@ def cmd_ensemble(args: argparse.Namespace) -> int:
     if dep_err:
         return fail(args, dep_err, exit_code=2, kind="runtime")
     emit_event(args, "started", command="ensemble", plan=job.plan)
-    outcome = run_batch(args, job, run_ensemble_cli)
+    outcome = run_batch(args, job)
     try:
         manifest = write_manifest(
             args, job, outcome,

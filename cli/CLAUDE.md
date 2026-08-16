@@ -28,11 +28,14 @@ The command-line front end. A presentation layer, exactly like `ui/`.
 - **Dry runs verify model files but have no run-side effects.** They hash and
   resolve checkpoint metadata, but do not load weights, create output, check
   heavy runtime dependencies, or start a runner.
-- **`JobRunner.start_resolved` is the batch entry.** It assembles once; CLI
-  still stages and promotes. Successful inputs are promoted according to
-  `--on-exists` under a per-output-dir `threading.Lock`. Overwrite copies
-  existing destinations to `.{name}.uvr-overwrite.bak` until the whole unit
-  succeeds; failure restores backups and returns files to staging.
+- **`JobRunner.start_resolved` is the batch entry, one input per call.** Models
+  assemble once and are reused; `run_batch` runs each planned input on its own
+  staging directory and promotes it before starting the next, so a mid-batch
+  death keeps what already finished. Promotion follows `--on-exists` under a
+  per-output-dir `threading.Lock`. Overwrite *moves* existing destinations to
+  `.{name}.uvr-overwrite.bak` until the whole unit succeeds; failure restores
+  backups and returns files to staging. A `rename` collision discovered
+  mid-move rolls the unit back and restarts it on one new suffix — never two.
   Failed/interrupted staging is removed. Exit 3 means partial.
 - **Bench identities are explicit.** A GUI profile may supply settings, but
   never the model identity. Both dry validations finish before leg A and every
