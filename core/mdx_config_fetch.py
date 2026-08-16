@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import contextvars
 import os
 import ssl
 import urllib.error
@@ -18,21 +17,18 @@ from .debug_log import debug
 
 _DOWNLOAD_TIMEOUT_SECONDS = 30
 
-_ALLOW_NETWORK = contextvars.ContextVar("uvr_mdx_c_allow_network", default=True)
-
-
 @contextlib.contextmanager
 def mdx_c_network(allow_network: bool) -> Iterator[None]:
-    """Temporarily allow or forbid MDX-C YAML downloads in this context."""
-    token = _ALLOW_NETWORK.set(allow_network)
-    try:
-        with access_policy(
-            allow_network=allow_network,
-            allow_metadata_writes=allow_network,
-        ):
-            yield
-    finally:
-        _ALLOW_NETWORK.reset(token)
+    """Temporarily allow or forbid MDX-C YAML downloads in this context.
+
+    A thin alias for :func:`core.access_policy.access_policy`: the policy is the
+    single source of truth for both the fetch and the metadata write.
+    """
+    with access_policy(
+        allow_network=allow_network,
+        allow_metadata_writes=allow_network,
+    ):
+        yield
 
 
 def _ssl_context() -> ssl.SSLContext:

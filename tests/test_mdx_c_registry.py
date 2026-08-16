@@ -185,6 +185,44 @@ class RegisterMdxCCheckpointTests(unittest.TestCase):
                 paths.MDX_HASH_DIR = original_hash_dir
                 paths.MDX_C_CONFIG_PATH = original_config_dir
 
+    def test_metadata_write_gate_returns_params_without_writing(self) -> None:
+        """Planning under a no-write policy resolves params but leaves no JSON."""
+        from core.access_policy import access_policy
+
+        with tempfile.TemporaryDirectory() as tmp:
+            hash_dir = os.path.join(tmp, "model_data")
+            config_dir = os.path.join(hash_dir, "mdx_c_configs")
+            os.makedirs(config_dir)
+            checkpoint = os.path.join(tmp, "models", "test_model.ckpt")
+            os.makedirs(os.path.dirname(checkpoint))
+            with open(checkpoint, "wb") as handle:
+                handle.write(b"test checkpoint bytes for hashing")
+
+            yaml_name = "config_musdb18_scnet.yaml"
+            shutil.copyfile(
+                os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name),
+                os.path.join(config_dir, yaml_name),
+            )
+
+            original_hash_dir = paths.MDX_HASH_DIR
+            original_config_dir = paths.MDX_C_CONFIG_PATH
+            try:
+                paths.MDX_HASH_DIR = hash_dir
+                paths.MDX_C_CONFIG_PATH = config_dir
+                with access_policy(
+                    allow_network=False, allow_metadata_writes=False
+                ):
+                    params = register_mdx_c_checkpoint(checkpoint, yaml_name)
+                self.assertIsNotNone(params)
+                model_hash = compute_checkpoint_hash(checkpoint)
+                assert model_hash is not None
+                self.assertFalse(
+                    os.path.exists(os.path.join(hash_dir, f"{model_hash}.json"))
+                )
+            finally:
+                paths.MDX_HASH_DIR = original_hash_dir
+                paths.MDX_C_CONFIG_PATH = original_config_dir
+
 
 class TryRegisterFromCatalogTests(unittest.TestCase):
     def test_resolves_from_custom_index(self) -> None:

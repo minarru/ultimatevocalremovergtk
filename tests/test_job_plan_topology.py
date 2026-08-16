@@ -96,15 +96,15 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         fetch.assert_not_called()
 
     def test_job_assemble_disables_mdx_c_network(self) -> None:
+        from core.access_policy import current_access_policy
         from core.job_plan import JobResolver
-        from core.mdx_config_fetch import _ALLOW_NETWORK
         from core.model_identity import ModelRecord
         from core.settings import Settings
 
         seen: list[bool] = []
 
         def fake_assemble(*_args: object, **_kwargs: object) -> list[object]:
-            seen.append(_ALLOW_NETWORK.get())
+            seen.append(current_access_policy().allow_network)
             return []
 
         resolver = JobResolver(Mock())
