@@ -9,11 +9,11 @@ The command-line front end. A presentation layer, exactly like `ui/`.
 - **Named process flags are typed settings layers.** They compile to `(path,
   value)` pairs and flow through `SettingsResolver`; `--set` is the last CLI
   layer.
-- **Read-only listing passes `allow_network=False` into catalogue helpers;**
-  `core.offline.catalogue_offline` is a deprecated no-op. Resolving display
-  names otherwise fetches two catalogues with 30s timeouts.
-- **Planning / validate / dry-run** use `mdx_c_network(False)` /
-  `ensure_mdx_c_config(..., allow_network=False)`, not `catalogue_offline()`.
+- **Read-only listing passes `allow_network=False` into catalogue helpers.**
+  Resolving display names otherwise fetches two catalogues with 30s timeouts.
+- **Planning / validate / identity** use
+  `access_policy(allow_network=False, allow_metadata_writes=False)` /
+  `mdx_c_network(False)`, not `catalogue_offline()`. Downloads default online.
 - **Reports are versioned.** `--report json` owns one stdout document;
   `--report jsonl` owns one event per line. Usage errors follow the selected
   report mode. Interrupts use exit 130 and `"stopped": true`.
@@ -28,8 +28,12 @@ The command-line front end. A presentation layer, exactly like `ui/`.
 - **Dry runs verify model files but have no run-side effects.** They hash and
   resolve checkpoint metadata, but do not load weights, create output, check
   heavy runtime dependencies, or start a runner.
-- **Batch outputs are staged.** Successful inputs are promoted according to
-  `--on-exists`; failed/interrupted staging is removed. Exit 3 means partial.
+- **`JobRunner.start_resolved` is the batch entry.** It assembles once; CLI
+  still stages and promotes. Successful inputs are promoted according to
+  `--on-exists` under a per-output-dir `threading.Lock`. Overwrite copies
+  existing destinations to `.{name}.uvr-overwrite.bak` until the whole unit
+  succeeds; failure restores backups and returns files to staging.
+  Failed/interrupted staging is removed. Exit 3 means partial.
 - **Bench identities are explicit.** A GUI profile may supply settings, but
   never the model identity. Both dry validations finish before leg A and every
   run gets a new job-ID directory.

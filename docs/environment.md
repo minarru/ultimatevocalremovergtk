@@ -224,12 +224,15 @@ uvr separate song.wav -o /tmp/stems --model mdx:model --manifest
 uvr run /tmp/stems/uvr-manifest-JOB_ID.json -o /tmp/replay
 ```
 
-Outputs are staged per input and promoted only after success.
-`--on-exists` accepts `fail` (default), `overwrite`, `rename`, or
-`skip`. Batches continue after an input failure by default; `--fail-fast`
-reverses this. Manifests record effective settings, provenance, model hashes,
-inputs, outputs, backend, and outcomes. Replay rejects changed model hashes
-unless `--allow-model-change` is supplied.
+Outputs are staged per input and promoted only after success, serialized
+by a per-output-dir `threading.Lock`. `--on-exists` accepts `fail`
+(default), `overwrite`, `rename`, or `skip`. Overwrite copies existing
+destinations to `.{name}.uvr-overwrite.bak` until the whole unit succeeds;
+failure restores backups and returns files to staging. Batches continue
+after an input failure by default; `--fail-fast` reverses this. Manifests
+record effective settings, provenance, model hashes, inputs, outputs,
+backend, and outcomes. Replay rejects changed model hashes unless
+`--allow-model-change` is supplied.
 
 ### Reports and exit codes
 
@@ -268,9 +271,13 @@ success, and `130` interruption.
 | Manifest `schema_version` | `1` for `separate` / `ensemble`; `2` for `audio` |
 | Interrupt document | `ok: false`, `status: "failed"`, `stopped: true`, exit `130` |
 | Planning / validate / dry-run | Installed + cached metadata only. Missing MDX-C YAML is an error; use `uvr models download` |
+| Access policy | Planning/validate/identity: `access_policy(allow_network=False, allow_metadata_writes=False)`. Downloads default online. |
+| Batch execution | `JobRunner.start_resolved` assembles once; CLI stages and promotes. |
+| Overwrite | Existing destinations are backed up until the whole unit succeeds; failure restores backups and returns files to staging. |
 
-Planning / validate / dry-run use `mdx_c_network(False)` /
-`ensure_mdx_c_config(..., allow_network=False)`, not `catalogue_offline()`.
+Planning / validate / identity use
+`access_policy(allow_network=False, allow_metadata_writes=False)` /
+`mdx_c_network(False)`, not `catalogue_offline()`.
 
 ### Benchmarking and completion
 
