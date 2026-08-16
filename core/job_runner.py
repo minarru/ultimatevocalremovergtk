@@ -400,6 +400,7 @@ class JobRunner:
         self._run_models: Sequence[Any] | None = None
         self._run_planned: Sequence[Any] | None = None
         self._run_output_root: str | None = None
+        self._run_path_map: dict[str, str] | None = None
 
     # -- Public control ---------------------------------------------------------
 
@@ -415,6 +416,7 @@ class JobRunner:
         self._run_models = None
         self._run_planned = None
         self._run_output_root = None
+        self._run_path_map = None
 
     def start(
         self,
@@ -498,23 +500,24 @@ class JobRunner:
 
         ``PlannedInput.naming`` is the **final** export basename only. Ensemble
         member writes must use :meth:`_ensemble_member_naming_for_file` instead.
+
+        When ``_run_planned`` is set, every input must resolve to a planned
+        entry (after sample-mode path remapping). A miss fails closed.
         """
-        if self._run_planned:
+        if self._run_planned is not None:
             target = os.path.abspath(audio_file)
+            if self._run_path_map is not None:
+                target = self._run_path_map.get(target, target)
             item = next(
-                (
-                    entry
-                    for entry in self._run_planned
-                    if os.path.abspath(entry.path) == target
-                ),
-                None,
+                entry
+                for entry in self._run_planned
+                if os.path.abspath(entry.path) == target
             )
-            if item is not None:
-                return rebase_output_naming(
-                    item.naming,
-                    self.settings.process.export_path,
-                    self._run_output_root or item.naming.export_directory,
-                )
+            return rebase_output_naming(
+                item.naming,
+                self.settings.process.export_path,
+                self._run_output_root or item.naming.export_directory,
+            )
         return build_output_naming_context(
             self.settings, audio_file, export_path=export_path, **build_kwargs
         )
@@ -567,6 +570,13 @@ class JobRunner:
             self.settings, input_paths, on_fallback=on_fallback
         )
         debug_elapsed("worker", "prepare_input_paths", prep_started, files=len(prepared))
+        if self._run_planned is not None:
+            # Sample mode (and any future rewrite) can replace paths; map the
+            # prepared path back to the original so planned lookup still hits.
+            self._run_path_map = {
+                os.path.abspath(prep): os.path.abspath(orig)
+                for orig, prep in zip(input_paths, prepared)
+            }
         return prepared
 
     def pause(self) -> None:
