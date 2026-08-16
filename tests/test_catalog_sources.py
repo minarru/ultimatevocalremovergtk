@@ -173,6 +173,22 @@ class MergeCacheTests(unittest.TestCase):
                 catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
         self.assertGreater(dedupe.call_count, calls_after_first)
 
+    def test_supplement_cache_does_not_publish_after_invalidate(self) -> None:
+        calls = {"n": 0}
+
+        def collect(*, allow_network: bool):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                catalog_sources.invalidate_catalogue_merge()
+            return ({}, {}, {}, {})
+
+        with unittest.mock.patch.object(
+            catalog_sources, "_collect_supplemental_sources", side_effect=collect
+        ):
+            catalog_sources._supplemental_sources(allow_network=False)
+            catalog_sources._supplemental_sources(allow_network=False)
+        self.assertEqual(calls["n"], 2)
+
 
 @_STEM_CACHE_OFF
 class MergePriorityDedupeTests(unittest.TestCase):

@@ -125,11 +125,13 @@ def _supplemental_sources(*, allow_network: bool) -> Tuple[
     Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]
 ]:
     """Cached wrapper around :func:`_collect_supplemental_sources`."""
+    gen = _merge_generation
     cached = _supp_cache.get(allow_network)
-    if cached is not None and cached[0] == _merge_generation:
+    if cached is not None and cached[0] == gen:
         return cached[1]
     result = _collect_supplemental_sources(allow_network=allow_network)
-    _supp_cache[allow_network] = (_merge_generation, result)
+    if _merge_generation == gen:
+        _supp_cache[allow_network] = (gen, result)
     return result
 
 
