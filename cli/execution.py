@@ -199,6 +199,11 @@ def _with_unit_suffix(path: str, track_base: str, index: int) -> str:
     )
 
 
+def _overwrite_backup_path(target: str) -> str:
+    directory, name = os.path.split(target)
+    return os.path.join(directory, f".{name}.uvr-overwrite.bak")
+
+
 def _promote(
     stage: str,
     output: str,
@@ -251,20 +256,47 @@ def _promote(
                     ]
                     break
                 index += 1
+    backups: list[tuple[str, str]] = []
+    if policy == "overwrite":
+        for _source, target in entries:
+            if os.path.exists(target):
+                bak = _overwrite_backup_path(target)
+                shutil.copy2(target, bak)
+                backups.append((target, bak))
     promoted: list[str] = []
-    for source, initial_target in entries:
-        target = initial_target
-        target_root = os.path.dirname(target)
-        os.makedirs(target_root, exist_ok=True)
-        if os.path.exists(target):
-            if policy == "fail":
-                raise FileExistsError(target)
-            if policy == "skip":
-                continue
-            if policy == "rename":
-                target = _unique_target(target)
-        os.replace(source, target)
-        promoted.append(target)
+    moved: list[tuple[str, str]] = []
+    try:
+        for source, initial_target in entries:
+            target = initial_target
+            target_root = os.path.dirname(target)
+            os.makedirs(target_root, exist_ok=True)
+            if os.path.exists(target):
+                if policy == "fail":
+                    raise FileExistsError(target)
+                if policy == "skip":
+                    continue
+                if policy == "rename":
+                    target = _unique_target(target)
+            os.replace(source, target)
+            moved.append((source, target))
+            promoted.append(target)
+    except Exception:
+        if moved:
+            for source, target in reversed(moved):
+                if os.path.exists(target):
+                    os.makedirs(os.path.dirname(source) or ".", exist_ok=True)
+                    os.replace(target, source)
+            for target, bak in backups:
+                if os.path.exists(bak):
+                    os.replace(bak, target)
+        else:
+            for _target, bak in backups:
+                if os.path.exists(bak):
+                    os.unlink(bak)
+        raise
+    for _target, bak in backups:
+        if os.path.exists(bak):
+            os.unlink(bak)
     return promoted
 
 
