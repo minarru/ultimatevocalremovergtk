@@ -176,5 +176,110 @@ class OnProgressBarTests(unittest.TestCase):
         window.log_panel.set_progress_fraction.assert_not_called()
 
 
+class AudioPreflightTests(unittest.TestCase):
+    def test_audio_plan_skips_confirmation_but_still_uses_acceptance_recheck(self) -> None:
+        from bundled.constants import TIME_STRETCH
+        from core.audio_plan import ResolvedAudioJob
+        from core.job_plan import ValidationLevel
+        from core.settings import Settings
+
+        settings = Settings.defaults()
+        plan = ResolvedAudioJob(
+            TIME_STRETCH, settings, "/tmp/out", (), {}, (),
+            ValidationLevel.RUNTIME, 0, "fingerprint", "cpu",
+        )
+        window = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._set_preflight_busy = mock.Mock()
+        controller._accept_plan = mock.Mock()
+        controller._present_plan_confirmation = mock.Mock()
+        target = object()
+
+        controller._finish_preflight(target, "fingerprint", plan, None)
+
+        controller._accept_plan.assert_called_once_with(target, "fingerprint", plan)
+        controller._present_plan_confirmation.assert_not_called()
+
+
+class StartTargetSettingsCopyTests(unittest.TestCase):
+    def test_start_target_does_not_mutate_window_settings(self) -> None:
+        from core.settings import Settings
+
+        window_settings = Settings.defaults()
+        self.assertIsNone(window_settings.mdx.compensate)
+
+        plan_settings = Settings.defaults()
+        plan_settings.mdx.compensate = 1.055
+        plan = mock.Mock(settings=plan_settings)
+
+        runner = mock.Mock()
+        runner.settings = window_settings
+        context = mock.Mock()
+        context._runner = runner
+        context.runner = runner
+
+        window = mock.Mock()
+        window.settings = window_settings
+        window.context = context
+
+        target = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._callbacks = mock.Mock(return_value=object())
+
+        controller._start_target(target, plan)
+
+        self.assertIsNone(window.settings.mdx.compensate)
+        self.assertEqual(window.context.runner.settings.mdx.compensate, 1.055)
+        target.start.assert_called_once()
+
+
+class PlanRecheckTests(unittest.TestCase):
+    def test_finished_recheck_starts_only_when_settings_and_models_are_current(self) -> None:
+        from core.job_plan import settings_fingerprint
+        from core.settings import Settings
+
+        settings = Settings.defaults()
+        target = mock.Mock()
+        target.build_job_spec.return_value = mock.Mock(settings=settings)
+        window = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._set_preflight_busy = mock.Mock()
+        controller._start_target = mock.Mock()
+        controller._begin_preflight = mock.Mock()
+        plan = object()
+
+        controller._finish_plan_recheck(
+            target, settings_fingerprint(settings), plan, True, None
+        )
+
+        controller._set_preflight_busy.assert_called_once_with(False)
+        controller._start_target.assert_called_once_with(target, plan)
+        controller._begin_preflight.assert_not_called()
+
+    def test_stale_recheck_returns_to_preflight(self) -> None:
+        from core.job_plan import settings_fingerprint
+        from core.settings import Settings
+
+        settings = Settings.defaults()
+        target = mock.Mock()
+        target.build_job_spec.return_value = mock.Mock(settings=settings)
+        window = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._set_preflight_busy = mock.Mock()
+        controller._start_target = mock.Mock()
+        controller._begin_preflight = mock.Mock()
+
+        controller._finish_plan_recheck(
+            target, settings_fingerprint(settings), object(), False, None
+        )
+
+        controller._start_target.assert_not_called()
+        controller._begin_preflight.assert_called_once_with(target)
+
+
 if __name__ == "__main__":
     unittest.main()

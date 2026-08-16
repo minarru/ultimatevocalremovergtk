@@ -107,6 +107,9 @@ class RunController:
         # get_application() is typed Gtk.Application; Adw.Application is a subclass.
         self._exit_app: Optional[Gtk.Application] = None
         self._run_ui_suspended = False
+        self._preflight_in_progress = False
+        self._plan_dialog: Optional[Adw.AlertDialog] = None
+        self._preflight_start_label: Optional[str] = None
 
     @property
     def running_target(self) -> Any:
@@ -157,7 +160,16 @@ class RunController:
             self._window.toast(reason)
             return
 
-        callbacks = gtk_job_callbacks(
+        if self._preflight_in_progress or self._plan_dialog is not None:
+            return
+        if hasattr(target, "build_job_spec"):
+            self._begin_preflight(target)
+            return
+
+        self._start_target(target)
+
+    def _callbacks(self) -> typing.Any:
+        return gtk_job_callbacks(
             on_progress=self._on_progress,
             on_console=self._append_console,
             on_complete=self._on_complete,
@@ -165,8 +177,176 @@ class RunController:
             on_error=self._on_error,
             on_oom_choice=self._on_oom_choice,
         )
+
+    def _start_target(self, target: typing.Any, plan: typing.Any=None) -> None:
+        runner = self._window.context.runner
+        if plan is not None:
+            import copy
+            runner.settings = copy.deepcopy(plan.settings)
+        else:
+            runner.settings = self._window.settings
+        callbacks = self._callbacks()
         debug("ui", f"handle_start -> {type(target).__name__}.start()")
         target.start(callbacks)
+
+    def _set_preflight_busy(self, busy: bool) -> None:
+        self._preflight_in_progress = busy
+        button = self._window.start_button
+        if busy:
+            self._preflight_start_label = button.get_label()
+            button.set_label("Preparing…")
+            button.set_sensitive(False)
+        else:
+            button.set_label(self._preflight_start_label or "Start")
+            self._preflight_start_label = None
+            self._window._refresh_start_readiness()
+
+    def _begin_preflight(self, target: typing.Any) -> None:
+        from core.job_plan import settings_fingerprint
+
+        try:
+            spec = target.build_job_spec()
+        except Exception as exc:  # noqa: BLE001 - presented through normal UI
+            self._window.toast(f"Could not prepare processing plan: {exc}")
+            return
+        fingerprint = settings_fingerprint(spec.settings)
+        self._set_preflight_busy(True)
+
+        def worker() -> None:
+            from core.audio_plan import AudioJobResolver, AudioJobSpec
+            from core.job_plan import JobResolver, ValidationLevel
+
+            try:
+                if isinstance(spec, AudioJobSpec):
+                    plan = AudioJobResolver(self._window.context.repo).resolve(
+                        spec, ValidationLevel.RUNTIME
+                    )
+                else:
+                    plan = JobResolver(self._window.context.repo).resolve(
+                        spec, ValidationLevel.RUNTIME
+                    )
+                error: BaseException | None = None
+            except Exception as exc:  # noqa: BLE001 - marshalled to GTK
+                plan, error = None, exc
+            idle_on_main(
+                self._finish_preflight, target, fingerprint, plan, error
+            )
+
+        threading.Thread(
+            target=worker, name="uvr-job-preflight", daemon=True
+        ).start()
+
+    def _finish_preflight(
+        self, target: typing.Any, fingerprint: str, plan: typing.Any,
+        error: BaseException | None,
+    ) -> None:
+        self._set_preflight_busy(False)
+        if error is not None:
+            self._window.toast(f"Could not prepare processing plan: {error}")
+            return
+        errors = [item.message for item in plan.diagnostics if item.severity == "error"]
+        if errors:
+            self._window.toast(errors[0])
+            return
+        from core.audio_plan import ResolvedAudioJob
+
+        if isinstance(plan, ResolvedAudioJob):
+            self._accept_plan(target, fingerprint, plan)
+            return
+        if not self._window.settings.ui.confirm_processing_plan:
+            self._accept_plan(target, fingerprint, plan)
+            return
+        self._present_plan_confirmation(target, fingerprint, plan)
+
+    def _present_plan_confirmation(
+        self, target: typing.Any, fingerprint: str, plan: typing.Any
+    ) -> None:
+        from core.job_plan import format_effective_plan
+
+        dialog = Adw.AlertDialog(
+            heading="Review processing plan",
+            body=format_effective_plan(plan),
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("start", "Start Processing")
+        dialog.set_response_appearance("start", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def response(_dialog: typing.Any, choice: str) -> None:
+            self._plan_dialog = None
+            if choice == "start":
+                self._accept_plan(target, fingerprint, plan)
+            else:
+                self._window._refresh_start_readiness()
+
+        dialog.connect("response", response)
+        self._plan_dialog = dialog
+        dialog.present(self._window)
+
+    def _accept_plan(
+        self, target: typing.Any, fingerprint: str, plan: typing.Any
+    ) -> None:
+        from core.job_plan import settings_fingerprint
+
+        try:
+            current = target.build_job_spec()
+        except Exception as exc:  # noqa: BLE001
+            self._window.toast(f"Could not recheck processing plan: {exc}")
+            return
+        if settings_fingerprint(current.settings) != fingerprint:
+            self._window.toast("Processing settings or models changed; reviewing the updated plan")
+            self._begin_preflight(target)
+            return
+        self._set_preflight_busy(True)
+
+        def worker() -> None:
+            from core.audio_plan import AudioJobResolver, ResolvedAudioJob
+            from core.job_plan import JobResolver
+
+            try:
+                is_current = (
+                    AudioJobResolver(self._window.context.repo).is_current(plan)
+                    if isinstance(plan, ResolvedAudioJob)
+                    else JobResolver(self._window.context.repo).is_current(plan)
+                )
+                error: BaseException | None = None
+            except Exception as exc:  # noqa: BLE001 - marshalled to GTK
+                is_current, error = False, exc
+            idle_on_main(
+                self._finish_plan_recheck,
+                target, fingerprint, plan, is_current, error,
+            )
+
+        threading.Thread(
+            target=worker, name="uvr-plan-recheck", daemon=True
+        ).start()
+
+    def _finish_plan_recheck(
+        self, target: typing.Any, fingerprint: str, plan: typing.Any,
+        is_current: bool, error: BaseException | None,
+    ) -> None:
+        from core.job_plan import settings_fingerprint
+
+        self._set_preflight_busy(False)
+        if error is not None:
+            self._window.toast(f"Could not recheck processing plan: {error}")
+            return
+        try:
+            current = target.build_job_spec()
+            settings_unchanged = (
+                settings_fingerprint(current.settings) == fingerprint
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._window.toast(f"Could not recheck processing plan: {exc}")
+            return
+        if not is_current or not settings_unchanged:
+            self._window.toast(
+                "Processing settings or models changed; reviewing the updated plan"
+            )
+            self._begin_preflight(target)
+            return
+        self._start_target(target, plan)
 
     def begin_run(self, target: typing.Any) -> None:
         """Shared bookkeeping when any run target starts its worker."""
@@ -534,6 +714,8 @@ class RunController:
         runner = getattr(self._window.context, "runner", None)
         exported = bool(getattr(runner, "_last_oom_exported", False))
         self._finish_run_ui(stopped=True)
+        if self._window.context._runner is not None:
+            self._window.context.runner.settings = self._window.settings
         if exported:
             toast = Adw.Toast.new("Exported completed ensemble outputs.")
             output_dir = self._run_output_dir
@@ -554,6 +736,8 @@ class RunController:
         self._window.log_panel.mark_run_complete()
         self._running_target = None
         clear_run_start()
+        if self._window.context._runner is not None:
+            self._window.context.runner.settings = self._window.settings
         output_dir = self._run_output_dir
         self._show_complete_toast(output_dir)
         self._send_completion_notification(output_dir)
@@ -570,6 +754,8 @@ class RunController:
         self._send_failure_notification()
         self._running_target = None
         clear_run_start()
+        if self._window.context._runner is not None:
+            self._window.context.runner.settings = self._window.settings
         # Worker already parks on failure; park again here in case UI cleanup
         # races ahead of the worker finally/except path.
         self._schedule_release_inference_memory(park_weights=True)
