@@ -328,7 +328,9 @@ def migrate_identity_storage(
         if old != final_settings[path]
     )
     return IdentityMigrationResult(
-        converted, cleared, changed, tuple(failures), tuple(backups),
+        converted, cleared, changed,
+        tuple(failures) + tuple(conflicts),
+        tuple(backups),
         settings_changes, tuple(conflicts),
     )
 

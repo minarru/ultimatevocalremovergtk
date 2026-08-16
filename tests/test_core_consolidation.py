@@ -71,6 +71,26 @@ class IdentityServiceTests(unittest.TestCase):
         self.assertEqual(settings.mdx.voc_inst_secondary_model, "Kim")
         self.assertNotEqual(settings.mdx.voc_inst_secondary_model, NO_MODEL)
 
+    def test_ambiguous_secondary_is_recorded_on_conflicts_and_failures(self) -> None:
+        settings = Settings.defaults()
+        settings.identity_schema_version = 0
+        settings.mdx.voc_inst_secondary_model = "Kim"
+        with tempfile.TemporaryDirectory() as root, patch(
+            "core.identity_migration.resolve_model_record",
+            side_effect=ValueError("ambiguous model 'Kim'; matches: mdx:a, vr:a"),
+        ):
+            result = migrate_identity_storage(
+                settings,
+                _Repo(),
+                profile_directory=os.path.join(root, "profiles"),
+                ensemble_directory=os.path.join(root, "ensembles"),
+            )
+        self.assertEqual(settings.mdx.voc_inst_secondary_model, "Kim")
+        self.assertTrue(result.conflicts)
+        self.assertTrue(any("ambiguous" in item for item in result.conflicts))
+        for item in result.conflicts:
+            self.assertIn(item, result.failures)
+
     def test_storage_migration_is_atomic_versioned_and_backed_up(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             settings_path = os.path.join(root, "settings.json")

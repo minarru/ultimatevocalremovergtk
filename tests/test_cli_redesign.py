@@ -130,6 +130,19 @@ class ProfileTests(unittest.TestCase):
         flat = _flatten_settings(settings)
         self.assertEqual(flat["mdx.stems_selected"], ["Vocals", "Drums"])
 
+    def test_canonicalize_primary_resolves_with_family_exact(self) -> None:
+        from cli.job import _canonicalize_model_references
+        from core.model_identity import ModelRecord
+
+        settings = Settings.defaults()
+        settings.mdx.model = "Model A"
+        record = ModelRecord("mdx:model_a", "mdx", "model_a", "Model A")
+        with patch("cli.job.ModelIdentityService") as service_cls:
+            service = service_cls.return_value
+            service.resolve.return_value = record
+            _canonicalize_model_references(settings, Mock())
+        service.resolve.assert_any_call("Model A", family="mdx", fuzzy=False)
+
 
 class DeviceResolutionTests(unittest.TestCase):
     def test_directml_sets_the_backend_flag(self) -> None:

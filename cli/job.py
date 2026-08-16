@@ -191,7 +191,7 @@ def _canonicalize_model_references(
         "demucs.pre_proc_model": ("vr", "mdx"),
     }
     service = ModelIdentityService(repo)
-    for path in MODEL_REFERENCE_SETTING_PATHS:
+    for path in MODEL_REFERENCE_SETTING_PATHS | frozenset(family_by_path):
         section_name = path.split(".", 1)[0]
         active = True
         if path == "process.vocal_splitter":
