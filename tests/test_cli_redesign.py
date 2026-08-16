@@ -295,6 +295,53 @@ class BatchExecutionTests(unittest.TestCase):
             self.assertTrue(os.path.isfile(os.path.join(output, "1-song (Vocals).wav")))
             self.assertTrue(os.path.isfile(os.path.join(output, "2-song (Vocals).wav")))
 
+    def test_run_batch_passes_final_planned_for_runner_rebase(self) -> None:
+        """planned stays under job.output; JobRunner rebases once onto the stage."""
+        with tempfile.TemporaryDirectory() as root:
+            source = os.path.join(root, "song.wav")
+            open(source, "wb").close()
+            output = os.path.join(root, "out")
+            job = self.make_job(output, [source])
+            captured: dict[str, Any] = {}
+
+            def runner(settings: Settings, paths: list[str], **kwargs: Any) -> RunResult:
+                planned = kwargs["planned"]
+                captured["planned"] = planned
+                captured["planned_output_root"] = kwargs["planned_output_root"]
+                captured["stage"] = settings.process.export_path
+                jr = JobRunner(settings)
+                jr._run_planned = planned
+                jr._run_output_root = kwargs["planned_output_root"]
+                naming = jr._naming_for_file(
+                    paths[0], export_path=settings.process.export_path,
+                )
+                captured["rebased"] = naming
+                name = f"{format_stem_basename(naming.track_base, 'Vocals')}.wav"
+                os.makedirs(naming.export_directory, exist_ok=True)
+                with open(os.path.join(naming.export_directory, name), "wb") as handle:
+                    handle.write(b"ok")
+                return RunResult(0.1, completed=True)
+
+            with patch.object(JobRunner, "resolve_models", return_value=[]):
+                outcome = run_batch(_args(), job, runner)
+            self.assertEqual(outcome.exit_code, 0)
+            planned = captured["planned"][0]
+            self.assertEqual(
+                os.path.abspath(planned.naming.export_directory),
+                os.path.abspath(output),
+            )
+            self.assertEqual(
+                os.path.abspath(captured["planned_output_root"]),
+                os.path.abspath(output),
+            )
+            self.assertEqual(
+                os.path.abspath(captured["rebased"].export_directory),
+                os.path.abspath(captured["stage"]),
+            )
+            self.assertTrue(
+                os.path.isfile(os.path.join(output, "song (Vocals).wav"))
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

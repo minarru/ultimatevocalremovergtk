@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import dataclasses
 import json
 import os
 import signal
@@ -15,7 +14,6 @@ from typing import Any, Callable, Sequence
 
 from bundled.constants import ENSEMBLE_MODE
 from core.blocking_runner import RunResult, run_blocking
-from core.export_naming import rebase_output_naming
 from core.job_runner import JobCallbacks, JobRunner
 from core.settings import Settings
 
@@ -307,12 +305,6 @@ def run_batch(
             )
             progress = make_progress_printer(args)
             planned_item = job.resolved.inputs[index - 1]
-            staged = dataclasses.replace(
-                planned_item,
-                naming=rebase_output_naming(
-                    planned_item.naming, stage, job.output,
-                ),
-            )
             result = runner(
                 settings,
                 [input_path],
@@ -320,7 +312,7 @@ def run_batch(
                 on_progress=progress,
                 runner=shared_runner,
                 models=shared_models,
-                planned=(staged,),
+                planned=(planned_item,),
                 planned_output_root=job.output,
             )
             if progress is not None:
