@@ -494,7 +494,11 @@ class JobRunner:
         export_path: str,
         **build_kwargs: Any,
     ) -> OutputNamingContext:
-        """Build or rebase per-file naming for the current run."""
+        """Build or rebase per-file naming for the current run.
+
+        ``PlannedInput.naming`` is the **final** export basename only. Ensemble
+        member writes must use :meth:`_ensemble_member_naming_for_file` instead.
+        """
         if self._run_planned:
             target = os.path.abspath(audio_file)
             item = next(
@@ -513,6 +517,26 @@ class JobRunner:
                 )
         return build_output_naming_context(
             self.settings, audio_file, export_path=export_path, **build_kwargs
+        )
+
+    def _ensemble_member_naming_for_file(
+        self,
+        audio_file: str,
+        *,
+        export_path: str,
+        file_index: int,
+        file_total: int,
+        model_label: str,
+    ) -> OutputNamingContext:
+        """Per-member basename; never rebased from ``PlannedInput.naming``."""
+        return build_output_naming_context(
+            self.settings,
+            audio_file,
+            export_path=export_path,
+            file_index=file_index,
+            file_total=file_total,
+            model_label=model_label,
+            force_model_label=True,
         )
 
     def _prepare_paths_for_run(
@@ -1364,13 +1388,12 @@ class JobRunner:
                     )
 
                     model_label = _model_output_label(current_model)
-                    member_naming = self._naming_for_file(
+                    member_naming = self._ensemble_member_naming_for_file(
                         audio_file,
                         export_path=export_path,
                         file_index=file_num,
                         file_total=total_files,
                         model_label=model_label,
-                        force_model_label=True,
                     )
                     audio_file_base = member_naming.track_base
 
