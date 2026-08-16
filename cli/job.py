@@ -18,7 +18,6 @@ from core.settings.job_resolution import (
 
 from core.input_discovery import discover_inputs
 from core.model_identity import ModelIdentityService, ModelRecord, canonical_member_tag, resolve_model_id
-from core.offline import catalogue_offline
 from .process_flags import collect_overrides
 from .profiles import (
     IDENTITY_SETTING_PATHS,
@@ -251,32 +250,31 @@ def resolve_separate_job(
     model_query = args.model or profile.model
     if not model_query:
         raise ValueError("separate requires --model or a profile containing a model")
-    with catalogue_offline(True):
-        record = resolve_model_id(model_query, repo)
-        settings, sources = _resolved_settings(
-            base, output=output, method=record.family, model=record,
-            stems=args.stems, long_chunk_seconds=args.long_chunk_seconds,
-            long_chunk_overlap=args.long_chunk_overlap,
-            base_provenance=_profile_provenance(base, profile),
-            model_source="cli" if args.model else profile.source,
-        )
-        resolved_splitter = None
-        split_record = None
-        if getattr(args, "vocal_split", None):
-            splitter_id = resolve_splitter_identity(args.vocal_split, settings, repo)
-            split_record = resolve_model_id(splitter_id, repo)
-            resolved_splitter = canonical_member_tag(split_record)
-        overrides = collect_overrides(args, resolved_vocal_splitter=resolved_splitter)
-        _validate_job_overrides(overrides)
-        device_pairs, device_explicit = _device_pairs(args, profile)
-        layers = [SettingsLayer("cli" if device_explicit else "derived", tuple(device_pairs))]
-        layers.append(SettingsLayer("cli", tuple(overrides)))
-        settings, sources = SettingsResolver().resolve(
-            settings,
-            layers=layers,
-            base_provenance=sources,
-        )
-        model_chains = _canonicalize_model_references(settings, repo)
+    record = resolve_model_id(model_query, repo)
+    settings, sources = _resolved_settings(
+        base, output=output, method=record.family, model=record,
+        stems=args.stems, long_chunk_seconds=args.long_chunk_seconds,
+        long_chunk_overlap=args.long_chunk_overlap,
+        base_provenance=_profile_provenance(base, profile),
+        model_source="cli" if args.model else profile.source,
+    )
+    resolved_splitter = None
+    split_record = None
+    if getattr(args, "vocal_split", None):
+        splitter_id = resolve_splitter_identity(args.vocal_split, settings, repo)
+        split_record = resolve_model_id(splitter_id, repo)
+        resolved_splitter = canonical_member_tag(split_record)
+    overrides = collect_overrides(args, resolved_vocal_splitter=resolved_splitter)
+    _validate_job_overrides(overrides)
+    device_pairs, device_explicit = _device_pairs(args, profile)
+    layers = [SettingsLayer("cli" if device_explicit else "derived", tuple(device_pairs))]
+    layers.append(SettingsLayer("cli", tuple(overrides)))
+    settings, sources = SettingsResolver().resolve(
+        settings,
+        layers=layers,
+        base_provenance=sources,
+    )
+    model_chains = _canonicalize_model_references(settings, repo)
     from core.job_plan import JobResolver, JobSpec, ValidationLevel
 
     level = validation_level or ValidationLevel.MODEL
@@ -346,69 +344,67 @@ def resolve_ensemble_job(
     )
     records: list[ModelRecord] = []
     preset_paths: set[str] = set()
-    with catalogue_offline(True):
-        if preset:
-            EnsembleService(repo).apply(settings, preset)
-            preset_paths.update({
-                "ensemble.chosen_ensemble", "ensemble.main_stem",
-                "ensemble.type", "ensemble.selected_models",
-                "ensemble.wav_ensemble", "ensemble.save_all_outputs",
-            })
-            sources.update({path: "preset" for path in preset_paths})
-            # Presets sit below explicit profile settings in the precedence
-            # chain, so restore the sparse profile layer after preset loading.
-            apply_profile_values(settings, profile.settings)
-            sources.update({path: profile.source for path in profile.settings})
-        if member_tokens:
-            records = [resolve_model_id(token, repo) for token in member_tokens]
-            settings.ensemble.selected_models = [canonical_member_tag(item) for item in records]
-            sources["ensemble.selected_models"] = (
-                "cli" if args.models else profile.source
-            )
-        if args.main_stem:
-            settings.ensemble.main_stem = EnsemblePair(args.main_stem)
-            sources["ensemble.main_stem"] = "cli"
-        if args.algorithm:
-            primary, sep, secondary = args.algorithm.partition("/")
-            atoms = (primary.strip(), (secondary if sep else primary).strip())
-            invalid = [atom for atom in atoms if atom not in ENSEMBLE_ALGORITHMS]
-            if invalid:
-                raise ValueError(
-                    f"unknown ensemble algorithm {invalid[0]!r}; expected one of: "
-                    + ", ".join(ENSEMBLE_ALGORITHMS)
-                )
-            settings.ensemble.type = format_ensemble_type(
-                *atoms
-            )
-            sources["ensemble.type"] = "cli"
-        if args.wav_ensemble is not None:
-            settings.ensemble.wav_ensemble = bool(args.wav_ensemble)
-            sources["ensemble.wav_ensemble"] = "cli"
-        if args.save_all_outputs is not None:
-            settings.ensemble.save_all_outputs = bool(args.save_all_outputs)
-            sources["ensemble.save_all_outputs"] = "cli"
-        overrides = collect_overrides(args)
-        _validate_job_overrides(overrides)
-        device_pairs, device_explicit = _device_pairs(args, profile)
-        layers = [SettingsLayer("cli" if device_explicit else "derived", tuple(device_pairs))]
-        layers.append(SettingsLayer("cli", tuple(overrides)))
-        settings, sources = SettingsResolver().resolve(
-            settings,
-            layers=layers,
-            base_provenance=sources,
+    if preset:
+        EnsembleService(repo).apply(settings, preset)
+        preset_paths.update({
+            "ensemble.chosen_ensemble", "ensemble.main_stem",
+            "ensemble.type", "ensemble.selected_models",
+            "ensemble.wav_ensemble", "ensemble.save_all_outputs",
+        })
+        sources.update({path: "preset" for path in preset_paths})
+        # Presets sit below explicit profile settings in the precedence
+        # chain, so restore the sparse profile layer after preset loading.
+        apply_profile_values(settings, profile.settings)
+        sources.update({path: profile.source for path in profile.settings})
+    if member_tokens:
+        records = [resolve_model_id(token, repo) for token in member_tokens]
+        settings.ensemble.selected_models = [canonical_member_tag(item) for item in records]
+        sources["ensemble.selected_models"] = (
+            "cli" if args.models else profile.source
         )
-        model_chains = _canonicalize_model_references(settings, repo)
+    if args.main_stem:
+        settings.ensemble.main_stem = EnsemblePair(args.main_stem)
+        sources["ensemble.main_stem"] = "cli"
+    if args.algorithm:
+        primary, sep, secondary = args.algorithm.partition("/")
+        atoms = (primary.strip(), (secondary if sep else primary).strip())
+        invalid = [atom for atom in atoms if atom not in ENSEMBLE_ALGORITHMS]
+        if invalid:
+            raise ValueError(
+                f"unknown ensemble algorithm {invalid[0]!r}; expected one of: "
+                + ", ".join(ENSEMBLE_ALGORITHMS)
+            )
+        settings.ensemble.type = format_ensemble_type(
+            *atoms
+        )
+        sources["ensemble.type"] = "cli"
+    if args.wav_ensemble is not None:
+        settings.ensemble.wav_ensemble = bool(args.wav_ensemble)
+        sources["ensemble.wav_ensemble"] = "cli"
+    if args.save_all_outputs is not None:
+        settings.ensemble.save_all_outputs = bool(args.save_all_outputs)
+        sources["ensemble.save_all_outputs"] = "cli"
+    overrides = collect_overrides(args)
+    _validate_job_overrides(overrides)
+    device_pairs, device_explicit = _device_pairs(args, profile)
+    layers = [SettingsLayer("cli" if device_explicit else "derived", tuple(device_pairs))]
+    layers.append(SettingsLayer("cli", tuple(overrides)))
+    settings, sources = SettingsResolver().resolve(
+        settings,
+        layers=layers,
+        base_provenance=sources,
+    )
+    model_chains = _canonicalize_model_references(settings, repo)
     if not records:
         # Resolve preset tags back to canonical records for reports/manifests.
-        with catalogue_offline(True):
-            for tag in settings.ensemble.selected_models:
-                arch, _sep, display = str(tag).partition(": ")
-                family = {
-                    "VR Arc": "vr",
-                    "MDX-Net": "mdx",
-                    "Demucs": "demucs",
-                }.get(arch)
-                records.append(resolve_model_id(f"{family}:{display}" if family else display, repo))
+        for tag in settings.ensemble.selected_models:
+            arch, _sep, display = str(tag).partition(": ")
+            family = {
+                "VR Arc": "vr",
+                "MDX-Net": "mdx",
+                "Demucs": "demucs",
+            }.get(arch)
+            records.append(resolve_model_id(f"{family}:{display}" if family else display, repo))
     if len(records) < 2:
         raise ValueError("an ensemble needs at least two members")
     if not explicit_identity and profile.members:

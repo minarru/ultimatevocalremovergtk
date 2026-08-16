@@ -28,7 +28,7 @@ from .export_naming import (
 )
 from .model_config import assemble_model
 from .model_identity import ModelIdentityService, ModelRecord
-from .offline import catalogue_offline
+from .access_policy import access_policy
 from .settings import Settings
 from .stems import EnsemblePair, coerce_ensemble_pair
 
@@ -283,7 +283,7 @@ class JobResolver:
         verify_model = level is not ValidationLevel.CONFIG
         if records and verify_model:
             try:
-                with catalogue_offline(True):
+                with access_policy(allow_network=False, allow_metadata_writes=False):
                     models = self._assemble(settings, spec.command, records)
                 if len(models) != len(records):
                     raise ValueError("one or more model configurations are unavailable")

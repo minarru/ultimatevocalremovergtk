@@ -147,13 +147,10 @@ class AdministrationCoreTests(unittest.TestCase):
             )
         network.assert_not_called()
 
-    def test_offline_context_never_mutates_process_environment(self) -> None:
-        from core.offline import catalogue_offline
+    def test_catalogue_offline_is_removed(self) -> None:
+        import importlib.util
 
-        with patch.dict(os.environ, {}, clear=True):
-            with catalogue_offline(True):
-                self.assertNotIn("UVR_DISABLE_POLITREES", os.environ)
-                self.assertNotIn("UVR_DISABLE_MVSEPLESS", os.environ)
+        self.assertIsNone(importlib.util.find_spec("core.offline"))
 
     def test_legacy_ensemble_tag_resolves_to_canonical_id(self) -> None:
         records = [ModelRecord("mdx:model_a", "mdx", "model_a", "Model A")]
