@@ -238,6 +238,31 @@ class PromotionTests(unittest.TestCase):
             with open(os.path.join(output, "song_2 (Bass).wav"), "rb") as fh:
                 self.assertEqual(fh.read(), b"busy")
 
+    def test_rename_noop_extra_name_does_not_hang(self) -> None:
+        # Remappable Vocals collide so unit index advances, but sidecar.txt is a
+        # non-matching name that _with_unit_suffix cannot change and already exists.
+        with tempfile.TemporaryDirectory() as root:
+            stage = os.path.join(root, "stage")
+            output = os.path.join(root, "out")
+            os.makedirs(stage)
+            os.makedirs(output)
+            open(os.path.join(output, "song (Vocals).wav"), "wb").write(b"old")
+            open(os.path.join(output, "sidecar.txt"), "wb").write(b"busy")
+            open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new-v")
+            open(os.path.join(stage, "sidecar.txt"), "wb").write(b"new-s")
+            destinations = [os.path.join(output, "song (Vocals).wav")]
+
+            promoted = _promote(
+                stage, output, "rename", destinations=destinations,
+            )
+
+            names = sorted(os.path.basename(path) for path in promoted)
+            self.assertEqual(names, ["sidecar_2.txt", "song_2 (Vocals).wav"])
+            with open(os.path.join(output, "sidecar.txt"), "rb") as fh:
+                self.assertEqual(fh.read(), b"busy")
+            with open(os.path.join(output, "sidecar_2.txt"), "rb") as fh:
+                self.assertEqual(fh.read(), b"new-s")
+
 
 if __name__ == "__main__":
     unittest.main()

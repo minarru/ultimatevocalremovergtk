@@ -247,13 +247,18 @@ def _apply_unit_rename(
         if any(os.path.exists(path) for path in rewritten):
             index += 1
             continue
-        # Conditional / extra stage stems are not in ``destinations`` but still
-        # remapped — require those targets free too, or bumping never helps.
-        if any(os.path.exists(target) for _source, target in remapped):
-            next_targets = [target for _source, target in _remap(index + 1)]
-            if next_targets == [target for _source, target in remapped]:
-                # ``_with_unit_suffix`` no-op'd; caller must use ``_unique_target``.
-                return remapped
+        # Extra stage files may collide too. Only bump when unit-suffix can still
+        # move a colliding target; no-op names (sidecar.txt) stay put forever and
+        # must not keep this loop alive — mid-move falls back to ``_unique_target``.
+        next_by_source = {source: target for source, target in _remap(index + 1)}
+        progressable = False
+        for source, target in remapped:
+            if not os.path.exists(target):
+                continue
+            if next_by_source.get(source) != target:
+                progressable = True
+                break
+        if progressable:
             index += 1
             continue
         return remapped
