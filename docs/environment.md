@@ -267,6 +267,9 @@ success, and `130` interruption.
 | Interrupt document | `ok: false`, `status: "failed"`, `stopped: true`, exit `130` |
 | Planning / validate / dry-run | Installed + cached metadata only. Missing MDX-C YAML is an error; use `uvr models download` |
 
+Planning / validate / dry-run use `mdx_c_network(False)` /
+`ensure_mdx_c_config(..., allow_network=False)`, not `catalogue_offline()`.
+
 ### Benchmarking and completion
 
 ```bash

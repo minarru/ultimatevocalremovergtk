@@ -221,28 +221,24 @@ def _model_info(record: Any, repo: Any, *, detailed: bool = False) -> dict[str, 
 
 
 def cmd_models_list(args: argparse.Namespace) -> int:
-    from core.offline import catalogue_offline
     from core.model_data import ModelRepository
 
-    with catalogue_offline(True):
-        repo = ModelRepository()
-        rows = [
-            _model_info(record, repo)
-            for record in iter_model_records(repo)
-            if args.family is None or record.family == args.family
-        ]
+    repo = ModelRepository()
+    rows = [
+        _model_info(record, repo)
+        for record in iter_model_records(repo)
+        if args.family is None or record.family == args.family
+    ]
     return _print_rows(args, rows)
 
 
 def cmd_models_show(args: argparse.Namespace) -> int:
-    from core.offline import catalogue_offline
     from core.model_data import ModelRepository
 
     try:
-        with catalogue_offline(True):
-            repo = ModelRepository()
-            record = resolve_model_id(args.model, repo)
-            info = _model_info(record, repo, detailed=True)
+        repo = ModelRepository()
+        record = resolve_model_id(args.model, repo)
+        info = _model_info(record, repo, detailed=True)
         if not info.get("configured"):
             raise ValueError(f"model configuration is unavailable for {record.id}")
         path = str(info.get("path") or "")
@@ -303,7 +299,6 @@ def cmd_models_register(args: argparse.Namespace) -> int:
             "id": existing_id, "registered": False,
             "already_registered": True,
         }])
-    from core.offline import catalogue_offline
     from core.model_data import ModelRepository
     if os.path.exists(destination):
         return fail(args, f"model destination already exists: {destination}", exit_code=2)
@@ -325,10 +320,9 @@ def cmd_models_register(args: argparse.Namespace) -> int:
                 model_path=destination, replace=False,
             )
             hash_created = True
-        with catalogue_offline(True):
-            repo = ModelRepository()
-            record = resolve_model_id(f"{args.family}:{os.path.splitext(os.path.basename(source))[0]}", repo)
-            info = _model_info(record, repo)
+        repo = ModelRepository()
+        record = resolve_model_id(f"{args.family}:{os.path.splitext(os.path.basename(source))[0]}", repo)
+        info = _model_info(record, repo)
         if not info.get("configured"):
             raise ValueError("registered checkpoint could not be configured")
         ModelRegistryService.remember_registered(model_hash, record.id)
@@ -579,14 +573,12 @@ def cmd_ensembles_show(args: argparse.Namespace) -> int:
     row = matches[0]
     data = dict(row.get("data") or {})
     try:
-        from core.offline import catalogue_offline
         from core.model_data import ModelRepository
-        with catalogue_offline(True):
-            repo = ModelRepository()
-            members = [
-                canonical_id_from_member_tag(tag, repo)
-                for tag in data.get("selected_models") or []
-            ]
+        repo = ModelRepository()
+        members = [
+            canonical_id_from_member_tag(tag, repo)
+            for tag in data.get("selected_models") or []
+        ]
     except (OSError, ValueError):
         members = list(data.get("selected_models") or [])
     detail = {
@@ -799,16 +791,14 @@ def cmd_profile_create(args: argparse.Namespace) -> int:
         members = list(args.member)
         reference_paths = MODEL_REFERENCE_SETTING_PATHS.intersection(values)
         if model or members or reference_paths:
-            from core.offline import catalogue_offline
             from core.model_data import ModelRepository
-            with catalogue_offline(True):
-                repo = ModelRepository()
-                model = resolve_model_id(model, repo).id if model else None
-                members = [resolve_model_id(item, repo).id for item in members]
-                for setting_path in reference_paths:
-                    values[setting_path] = resolve_model_id(
-                        str(values[setting_path]), repo
-                    ).id
+            repo = ModelRepository()
+            model = resolve_model_id(model, repo).id if model else None
+            members = [resolve_model_id(item, repo).id for item in members]
+            for setting_path in reference_paths:
+                values[setting_path] = resolve_model_id(
+                    str(values[setting_path]), repo
+                ).id
         if args.ensemble:
             needle = args.ensemble.casefold()
             matches = [
@@ -859,10 +849,8 @@ def cmd_completion(args: argparse.Namespace) -> int:
     commands = " ".join(subcommands.choices)
     dynamic: list[str] = ["defaults", "gui", *_setting_paths(), *list_profiles()]
     try:
-        from core.offline import catalogue_offline
         from core.model_data import ModelRepository
-        with catalogue_offline(True):
-            dynamic.extend(record.id for record in iter_model_records(ModelRepository()))
+        dynamic.extend(record.id for record in iter_model_records(ModelRepository()))
         dynamic.extend(str(row["id"]) for row in _ensemble_rows())
         from core.gpu import list_gpu_devices
         dynamic.append("cpu")

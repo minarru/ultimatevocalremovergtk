@@ -12,6 +12,8 @@ The command-line front end. A presentation layer, exactly like `ui/`.
 - **Read-only listing passes `allow_network=False` into catalogue helpers;**
   `core.offline.catalogue_offline` is a deprecated no-op. Resolving display
   names otherwise fetches two catalogues with 30s timeouts.
+- **Planning / validate / dry-run** use `mdx_c_network(False)` /
+  `ensure_mdx_c_config(..., allow_network=False)`, not `catalogue_offline()`.
 - **Reports are versioned.** `--report json` owns one stdout document;
   `--report jsonl` owns one event per line. Usage errors follow the selected
   report mode. Interrupts use exit 130.
