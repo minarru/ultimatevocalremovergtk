@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 from bundled.constants import CKPT
 
 from . import paths
-from .mdx_config_fetch import ensure_mdx_c_config
+from .mdx_config_fetch import _ALLOW_NETWORK, ensure_mdx_c_config
 from .model_display import (
     _is_checkpoint_name,
     build_checkpoint_display_index,
@@ -263,7 +263,7 @@ def register_mdx_c_checkpoint(
         except (OSError, ValueError, TypeError):
             pass
 
-    if write:
+    if write and _ALLOW_NETWORK.get():
         os.makedirs(paths.MDX_HASH_DIR, exist_ok=True)
         with open(json_path, "w", encoding="utf-8") as handle:
             handle.write(json.dumps(params, indent=4))

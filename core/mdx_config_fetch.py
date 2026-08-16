@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import os
 import ssl
 import urllib.error
 import urllib.request
-from typing import Iterable, Optional
+from typing import Iterator, Iterable, Optional
 
 from bundled.constants import MDX23_CONFIG_CHECKS, POLITREES_CONFIG_SUBDIRS, POLITREES_RAW_BASE
 
@@ -14,6 +16,18 @@ from . import paths
 from .debug_log import debug
 
 _DOWNLOAD_TIMEOUT_SECONDS = 30
+
+_ALLOW_NETWORK = contextvars.ContextVar("uvr_mdx_c_allow_network", default=True)
+
+
+@contextlib.contextmanager
+def mdx_c_network(allow_network: bool) -> Iterator[None]:
+    """Temporarily allow or forbid MDX-C YAML downloads in this context."""
+    token = _ALLOW_NETWORK.set(allow_network)
+    try:
+        yield
+    finally:
+        _ALLOW_NETWORK.reset(token)
 
 
 def _ssl_context() -> ssl.SSLContext:
@@ -84,8 +98,13 @@ def config_source_urls(filename: str) -> list[str]:
     return urls
 
 
-def ensure_mdx_c_config(filename: str) -> bool:
-    """Ensure ``filename`` exists under ``MDX_C_CONFIG_PATH``, fetching if needed."""
+def ensure_mdx_c_config(filename: str, *, allow_network: bool | None = None) -> bool:
+    """Ensure ``filename`` exists under ``MDX_C_CONFIG_PATH``, fetching if needed.
+
+    Explicit ``allow_network`` overrides the ``mdx_c_network`` / ``_ALLOW_NETWORK``
+    context. When network is forbidden and the file is missing, return ``False``
+    without opening a socket or writing.
+    """
     safe = _safe_config_name(filename)
     if not safe:
         debug("download", f"mdx_c_config rejected unsafe name={filename!r}")
@@ -94,6 +113,11 @@ def ensure_mdx_c_config(filename: str) -> bool:
     dest = _config_dest(safe)
     if os.path.isfile(dest):
         return True
+
+    allowed = _ALLOW_NETWORK.get() if allow_network is None else allow_network
+    if not allowed:
+        debug("download", f"mdx_c_config offline-miss name={safe}")
+        return False
 
     for url in config_source_urls(safe):
         if _fetch_url_to_file(url, dest):

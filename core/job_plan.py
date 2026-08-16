@@ -385,13 +385,18 @@ class JobResolver:
     def _assemble(
         self, settings: Settings, command: str, records: Sequence[ModelRecord]
     ) -> list[Any]:
-        method_value = str(getattr(settings.process.method, "value", settings.process.method))
-        if command == "ensemble" or method_value == ENSEMBLE_MODE:
-            settings.ensemble.selected_models = [record.id for record in records]
-            return assemble_model(settings, self.repo, arch_type=ENSEMBLE_MODE)
-        record = records[0]
-        setattr(getattr(settings, record.family), "model", record.id)
-        return assemble_model(settings, self.repo, record.id, record.method)
+        from .mdx_config_fetch import mdx_c_network
+
+        with mdx_c_network(False):
+            method_value = str(
+                getattr(settings.process.method, "value", settings.process.method)
+            )
+            if command == "ensemble" or method_value == ENSEMBLE_MODE:
+                settings.ensemble.selected_models = [record.id for record in records]
+                return assemble_model(settings, self.repo, arch_type=ENSEMBLE_MODE)
+            record = records[0]
+            setattr(getattr(settings, record.family), "model", record.id)
+            return assemble_model(settings, self.repo, record.id, record.method)
 
     def _runtime_diagnostics(self, settings: Settings) -> list[Diagnostic]:
         missing = [name for name in ("kthread", "soundfile") if importlib.util.find_spec(name) is None]
