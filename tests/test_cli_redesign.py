@@ -104,6 +104,32 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(values["mdx.stems_selected"], ["Vocals"])
         self.assertNotIn("process.model_hash_table", values)
 
+    def test_gui_profile_does_not_double_prefix_canonical_ids(self) -> None:
+        settings = Settings.defaults()
+        settings.process.method = settings.process.method  # keep
+        from core.types import ProcessMethod
+        settings.process.method = ProcessMethod.MDX
+        settings.mdx.model = "mdx:UVR-MDX-NET-Inst_HQ_4"
+        with patch("cli.profiles.Settings.load", return_value=settings):
+            _loaded, profile = load_profile("gui")
+        self.assertEqual(profile.model, "mdx:UVR-MDX-NET-Inst_HQ_4")
+
+    def test_gui_profile_prefixes_legacy_display_names(self) -> None:
+        settings = Settings.defaults()
+        from core.types import ProcessMethod
+        settings.process.method = ProcessMethod.MDX
+        settings.mdx.model = "UVR-MDX-NET-Inst_HQ_4"
+        with patch("cli.profiles.Settings.load", return_value=settings):
+            _loaded, profile = load_profile("gui")
+        self.assertEqual(profile.model, "mdx:UVR-MDX-NET-Inst_HQ_4")
+
+    def test_flatten_keeps_list_settings(self) -> None:
+        from cli.profiles import _flatten_settings
+        settings = Settings.defaults()
+        settings.mdx.stems_selected = ["Vocals", "Drums"]
+        flat = _flatten_settings(settings)
+        self.assertEqual(flat["mdx.stems_selected"], ["Vocals", "Drums"])
+
 
 class DeviceResolutionTests(unittest.TestCase):
     def test_directml_sets_the_backend_flag(self) -> None:
