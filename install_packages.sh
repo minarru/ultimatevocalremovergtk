@@ -240,6 +240,37 @@ if sys.version_info < (3, 13):
 PY
 }
 
+# CPU `onnxruntime` and GPU `onnxruntime-gpu` both unpack into the same
+# site-packages/onnxruntime/ tree. Uninstalling only the CPU distribution
+# deletes the Python API (InferenceSession) while leaving onnxruntime-gpu
+# metadata satisfied, so a later `pip install -r requirements-cuda-linux.txt`
+# is a no-op and import fails with:
+#   cannot import name 'InferenceSession' from 'onnxruntime' (unknown location)
+install_onnxruntime_cuda() {
+    local venv_python="$1"
+    echo "Replacing CPU ONNX Runtime with onnxruntime-gpu ..."
+    if [[ "${use_uv}" -eq 1 ]]; then
+        uv pip uninstall --python "${venv_python}" onnxruntime onnxruntime-gpu || true
+    else
+        "${venv_python}" -m pip uninstall -y onnxruntime onnxruntime-gpu || true
+    fi
+    local site
+    site="$("${venv_python}" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
+    rm -rf "${site}/onnxruntime"
+    if [[ "${use_uv}" -eq 1 ]]; then
+        uv pip install --python "${venv_python}" -r "${PROJECT_ROOT}/requirements-cuda-linux.txt"
+    else
+        "${venv_python}" -m pip install -r "${PROJECT_ROOT}/requirements-cuda-linux.txt"
+    fi
+    echo "Verifying onnxruntime ..."
+    "${venv_python}" - <<'PY'
+from onnxruntime import InferenceSession  # noqa: F401
+import onnxruntime as ort
+print(f"  onnxruntime: {ort.__file__}")
+print(f"  providers: {ort.get_available_providers()}")
+PY
+}
+
 # Smoke-check that gi + GTK 4.0 + Adw 1 import and print their versions. Fatal in
 # 'system' mode (the whole point of Option B), advisory otherwise.
 gtk_smoke_check() {
@@ -327,13 +358,7 @@ if [[ "${INSTALL_MODE}" == "system" ]]; then
     fi
 
     if [[ "${GPU_BACKEND}" == "cuda" ]]; then
-        if [[ "${use_uv}" -eq 1 ]]; then
-            uv pip uninstall --python "${VENV_PYTHON}" onnxruntime || true
-            uv pip install --python "${VENV_PYTHON}" -r "${PROJECT_ROOT}/requirements-cuda-linux.txt"
-        else
-            "${VENV_PYTHON}" -m pip uninstall -y onnxruntime || true
-            "${VENV_PYTHON}" -m pip install -r "${PROJECT_ROOT}/requirements-cuda-linux.txt"
-        fi
+        install_onnxruntime_cuda "${VENV_PYTHON}"
     fi
 
     gtk_smoke_check "${VENV_PYTHON}" 1
@@ -366,8 +391,7 @@ else
         uv pip install --python "${VENV_PYTHON}" -r "${PROJECT_ROOT}/requirements.txt"
 
         if [[ "${GPU_BACKEND}" == "cuda" ]]; then
-            uv pip uninstall --python "${VENV_PYTHON}" onnxruntime || true
-            uv pip install --python "${VENV_PYTHON}" -r "${PROJECT_ROOT}/requirements-cuda-linux.txt"
+            install_onnxruntime_cuda "${VENV_PYTHON}"
         fi
     else
         validate_python "${PYTHON_BIN}"
@@ -381,8 +405,7 @@ else
         python -m pip install -r "${PROJECT_ROOT}/requirements.txt"
 
         if [[ "${GPU_BACKEND}" == "cuda" ]]; then
-            python -m pip uninstall -y onnxruntime
-            python -m pip install -r "${PROJECT_ROOT}/requirements-cuda-linux.txt"
+            install_onnxruntime_cuda "${VENV_PYTHON}"
         fi
     fi
 

@@ -1,6 +1,11 @@
 # Linux NVIDIA CUDA overlay for UVR.
 # Install after requirements.txt:  pip install -r requirements-cuda-linux.txt
 # Or use:  ./install_packages.sh --cuda
+#
+# Both this wheel and CPU onnxruntime unpack into site-packages/onnxruntime/.
+# Uninstall the CPU *and* GPU distributions (and remove any leftover
+# onnxruntime/ directory) before installing this file, or pip will treat
+# onnxruntime-gpu as already satisfied and leave InferenceSession missing.
 
 onnxruntime-gpu==1.26.0
 

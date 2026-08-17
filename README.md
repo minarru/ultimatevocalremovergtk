@@ -249,6 +249,7 @@ confirmation dialog.
 | FFmpeg errors on non-WAV files | Install `ffmpeg` and ensure it is on your `PATH` |
 | Time Stretch / Pitch Shift unavailable | Install `rubberband-cli` |
 | `gi` / GTK import errors | Install distro GTK4, libadwaita, and `python3-gi`; recreate the venv with `./install_packages.sh` |
+| `cannot import name 'InferenceSession' from 'onnxruntime'` | Leftover CUDA overlay in `.venv`. Rerun `./install_packages.sh --cuda` (it now uninstalls both CPU and GPU wheels and verifies the import). |
 | Out-of-memory during separation | Lower segment or window size in model settings |
 | No models in a dropdown | Open **Download Center** and fetch models for that process method |
 | Errors during processing | Open **Error Log** from the menu or press `Ctrl+E`; details are also shown in the log panel |
