@@ -32,7 +32,11 @@ from .demucs_models import (
     resolve_demucs_model_file,
 )
 from .mdx_c_registry import compute_checkpoint_hash, try_register_from_catalog
-from .model_stem_semantics import is_vocal_target, resolve_karaoke_confidence
+from .model_stem_semantics import (
+    is_vocal_target,
+    resolve_karaoke_confidence,
+    vocal_split_primary_stem,
+)
 from .model_display import (
     display_name_for_basename,
     map_basenames_to_display,
@@ -829,6 +833,7 @@ class _ModelConfigImplementation:
                                         self.secondary_stem = VOCAL_STEM
                                     else:
                                         self.primary_stem = target
+                                        self.primary_stem_native = str(target)
                                         self.secondary_stem = secondary_stem(
                                             str(self.primary_stem or "")
                                         )
@@ -850,6 +855,7 @@ class _ModelConfigImplementation:
                                             self.mdx_model_stems,
                                             self.mdxnet_stem_select,
                                         )
+                                    self.primary_stem_native = str(self.primary_stem or "")
                                     if self.is_ensemble_mode:
                                         self.mdxnet_stem_select = self.ensemble_primary_stem
                                     self.secondary_stem = secondary_stem(
@@ -963,10 +969,10 @@ class _ModelConfigImplementation:
 
         if self.is_vocal_split_model and self.model_status:
             self.is_secondary_model_activated = False
-            if self.is_bv_model:
-                primary = BV_VOCAL_STEM if self.primary_stem_native == VOCAL_STEM else LEAD_VOCAL_STEM
-            else:
-                primary = LEAD_VOCAL_STEM if self.primary_stem_native == VOCAL_STEM else BV_VOCAL_STEM
+            primary = vocal_split_primary_stem(
+                is_bv_model=bool(self.is_bv_model),
+                native_stem=self.primary_stem_native or self.primary_stem,
+            )
             self.primary_stem, self.secondary_stem = primary, secondary_stem(primary)
 
         # Derive the vocal-splitter "save only" flags now that stems are known.
@@ -1403,6 +1409,36 @@ def _secondary_slot_for_stem(main_model_primary_stem: str) -> Optional[str]:
     return None
 
 
+def _model_config_for_reference(
+    settings: Settings,
+    repo: ModelRepository,
+    reference: str,
+    **kwargs: Any,
+):
+    """Build a nested ModelConfig from a settings model reference.
+
+    Canonical IDs (``mdx:...``) are not ensemble member tags. Passing them to
+    :class:`ModelConfig` with the default ``ENSEMBLE_MODE`` leaves ``model_path``
+    unset and crashes when reading ``model_basename``.
+    """
+    from .model_identity import ModelIdentityService
+
+    raw = str(reference or "").strip()
+    if not raw or raw in {CHOOSE_MODEL, NO_MODEL}:
+        return None
+    try:
+        record = ModelIdentityService(repo).resolve(raw, fuzzy=False)
+    except ValueError:
+        return None
+    return ModelConfig(
+        settings,
+        repo,
+        record.engine_name or record.display,
+        record.arch,
+        **kwargs,
+    )
+
+
 def process_determine_secondary_model(
     settings: Settings,
     repo: ModelRepository,
@@ -1429,7 +1465,7 @@ def process_determine_secondary_model(
 
     secondary_model = None
     if secondary_model_name and secondary_model_name != NO_MODEL:
-        secondary_model = ModelConfig(
+        secondary_model = _model_config_for_reference(
             settings,
             repo,
             secondary_model_name,
@@ -1438,7 +1474,7 @@ def process_determine_secondary_model(
             is_primary_model_primary_stem_only=is_primary_stem_only,
             is_primary_model_secondary_stem_only=is_secondary_stem_only,
         )
-        if not secondary_model.model_status:
+        if secondary_model is not None and not secondary_model.model_status:
             secondary_model = None
 
     return secondary_model, secondary_model_scale
@@ -1448,14 +1484,14 @@ def process_determine_demucs_pre_proc_model(settings: Settings, repo: ModelRepos
     """Tk-free port of ``MainWindow.process_determine_demucs_pre_proc_model``."""
     pre_proc_name = settings.demucs.pre_proc_model
     if pre_proc_name != NO_MODEL and settings.demucs.is_pre_proc_model_activate:
-        pre_proc_model = ModelConfig(
+        pre_proc_model = _model_config_for_reference(
             settings,
             repo,
             pre_proc_name,
             primary_model_primary_stem=primary_stem,
             is_pre_proc_model=True,
         )
-        if pre_proc_model.model_status:
+        if pre_proc_model is not None and pre_proc_model.model_status:
             return pre_proc_model
     return None
 
@@ -1464,8 +1500,10 @@ def process_determine_vocal_split_model(settings: Settings, repo: ModelRepositor
     """Tk-free port of ``MainWindow.process_determine_vocal_split_model``."""
     split_name = settings.process.vocal_splitter
     if split_name != NO_MODEL and settings.process.vocal_splitter_enabled:
-        vocal_splitter_model = ModelConfig(settings, repo, split_name, is_vocal_split_model=True)
-        if vocal_splitter_model.model_status:
+        vocal_splitter_model = _model_config_for_reference(
+            settings, repo, split_name, is_vocal_split_model=True
+        )
+        if vocal_splitter_model is not None and vocal_splitter_model.model_status:
             return vocal_splitter_model
     return None
 

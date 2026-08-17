@@ -24,7 +24,11 @@ from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
 from core.torch_checkpoint import as_model_state_dict, load_torch_checkpoint
-from core.model_stem_semantics import is_vocal_target
+from core.model_stem_semantics import (
+    is_vocal_target,
+    vocal_inst_from_sources,
+    vocal_split_source_roles,
+)
 from core.stems import StemId, resolve_in_sources
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
@@ -317,6 +321,30 @@ def mdx_combined_secondary_key(sources: typing.Any, stem_list: typing.Any, secon
             f"stem {str(secondary_stem_label)!r} not in sources {available}"
         )
     return key
+
+
+def _channel_last_for_write(arr: typing.Any) -> typing.Any:
+    data = np.asarray(arr)
+    if data.ndim == 2 and data.shape[0] == 2:
+        return data.T
+    return data
+
+
+def mdx_vocal_split_chain_sources(
+    maps: dict[str, typing.Any],
+    demix_sources: typing.Any,
+) -> dict[str, typing.Any]:
+    """Prefer exported maps; fill vocals/inst from community yaml demix keys."""
+    merged = dict(maps)
+    mapped_vocal, mapped_inst = vocal_inst_from_sources(merged)
+    demix_vocal, demix_inst = vocal_inst_from_sources(
+        demix_sources if isinstance(demix_sources, dict) else None
+    )
+    if not isinstance(mapped_vocal, np.ndarray) and isinstance(demix_vocal, np.ndarray):
+        merged[VOCAL_STEM] = _channel_last_for_write(demix_vocal)
+    if not isinstance(mapped_inst, np.ndarray) and isinstance(demix_inst, np.ndarray):
+        merged[INST_STEM] = _channel_last_for_write(demix_inst)
+    return merged
 
 
 def derive_mdx_complement(native_source: typing.Any, mix: typing.Any, *, invert_spec: typing.Any=False, match_frequency_pitch: typing.Any=None):
@@ -692,7 +720,22 @@ class SeperateMDXC(SeperateAttributes):
 
         stem_list = [self.mdx_c_configs.training.target_instrument] if self.mdx_c_configs.training.target_instrument and not self.is_vocal_main_target else [i for i in self.mdx_c_configs.training.instruments]
 
-        if self.is_secondary_model:
+        if self.is_vocal_split_model:
+            if isinstance(sources, dict):
+                working_split = dict(sources)
+            else:
+                native = str(
+                    self.primary_stem_native
+                    or getattr(self.mdx_c_configs.training, "target_instrument", None)
+                    or VOCAL_STEM
+                )
+                working_split = {native: sources}
+            written = self._write_vocal_split_pair(working_split, mix, samplerate)
+            if self.is_secondary_model or self.is_pre_proc_model:
+                return written
+            return None
+
+        if self.is_secondary_model and not self.is_vocal_split_model:
             if self.is_pre_proc_model:
                 self.mdxnet_stem_select = stem_list[0]
             else:
@@ -738,8 +781,6 @@ class SeperateMDXC(SeperateAttributes):
             )
             complement_path = self.stem_export_wav_path(complement_stem)
             self.write_audio(complement_path, complement_source, samplerate, stem_name=complement_stem)
-            if stem == VOCAL_STEM and not self.is_sec_bv_rebalance:
-                self.process_vocal_split_chain({VOCAL_STEM: stem})
         elif routing["multi_stem_export"]:
             export_stems = routing["export_stems"]
             if isinstance(sources, dict):
@@ -757,9 +798,6 @@ class SeperateMDXC(SeperateAttributes):
                 primary_stem_path = self.stem_export_wav_path(stem)
                 self.primary_source = sources[stem].T
                 self.write_audio(primary_stem_path, self.primary_source, samplerate, stem_name=stem)
-                
-                if stem == VOCAL_STEM and not self.is_sec_bv_rebalance:
-                    self.process_vocal_split_chain({VOCAL_STEM:stem})
         else:
             working_sources: Any = dict(sources) if isinstance(sources, dict) else sources
             if len(stem_list) == 1:
@@ -843,11 +881,45 @@ class SeperateMDXC(SeperateAttributes):
 
                 self.primary_source_map = self.final_process(primary_stem_path, self.primary_source, self.secondary_source_primary, self.primary_stem, samplerate)
 
-        secondary_sources = {**self.primary_source_map, **self.secondary_source_map}
+        secondary_sources = mdx_vocal_split_chain_sources(
+            {**self.primary_source_map, **self.secondary_source_map},
+            sources,
+        )
         self.process_vocal_split_chain(secondary_sources)
         
         if self.is_secondary_model or self.is_pre_proc_model:
             return secondary_sources
+        return None
+
+    def _write_vocal_split_pair(
+        self, sources: dict[str, Any], mix: Any, samplerate: int
+    ) -> dict[str, Any]:
+        """Save lead/backing from yaml-keyed demix output; never use lead_only as a dict key."""
+        lead_key, backing_key = vocal_split_source_roles(
+            sources, is_bv_model=bool(self.is_bv_model)
+        )
+        lead = sources[lead_key] if lead_key is not None else None
+        backing = sources[backing_key] if backing_key is not None else None
+        mix_arr = np.asarray(mix) if mix is not None else None
+        if lead is None and backing is not None and mix_arr is not None:
+            lead = mix_arr - spec_utils.to_shape(np.asarray(backing), mix_arr.shape)
+        if backing is None and lead is not None and mix_arr is not None:
+            backing = mix_arr - spec_utils.to_shape(np.asarray(lead), mix_arr.shape)
+        written: dict[str, Any] = {}
+        items: list[tuple[str, Any]] = []
+        if lead is not None:
+            items.append((LEAD_VOCAL_STEM, lead))
+        if backing is not None:
+            items.append((BV_VOCAL_STEM, backing))
+        if not items:
+            return written
+        self.begin_save_phase(len(items))
+        for logic, audio in items:
+            path = self.stem_export_wav_path(logic)
+            arr = _channel_last_for_write(audio)
+            self.write_audio(path, arr, samplerate, stem_name=logic)
+            written[logic] = arr
+        return written
 
     def overlap_add(self, result: typing.Any, counter: typing.Any, x: typing.Any, l: typing.Any, j: typing.Any, start: typing.Any, window: typing.Any):
         if x.device != result.device:

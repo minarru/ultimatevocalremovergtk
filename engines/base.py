@@ -14,6 +14,11 @@ from core.export_naming import stem_wav_path
 from core.gpu_backend import resolve_inference_backend
 from core.model_display import display_name_for_model
 from core.stems import StemBucket, StemLiteral, export_stem_key, filename_tag
+from core.model_stem_semantics import (
+    is_vocal_target,
+    vocal_inst_from_sources,
+    vocal_split_write_logic_stem,
+)
 from core.progress_ticks import InferenceProgress
 from core.run_estimate import save_progress_local_step
 from ml import spec_utils
@@ -438,9 +443,13 @@ class SeperateAttributes:
             ]
             return all(conditions)
         
-        # Retrieve sources from the dictionary with default fallbacks
-        master_inst_source = sources.get(INST_STEM, None)
-        master_vocal_source = sources.get(VOCAL_STEM, None)
+        # Retrieve vocal/instrumental arrays by alias, not exact UVR labels
+        # (community MDX-C yamls commonly use lowercase ``vocals`` / ``other``).
+        master_vocal_source, master_inst_source = vocal_inst_from_sources(sources)
+        if not isinstance(master_vocal_source, np.ndarray):
+            master_vocal_source = None
+        if not isinstance(master_inst_source, np.ndarray):
+            master_inst_source = None
 
         # Process the vocal split chain if conditions are met. The splitter model
         # is optional: a run with the chain disabled leaves it unset.
@@ -450,7 +459,8 @@ class SeperateAttributes:
             process_chain_model(
                 self.vocal_split_model,
                 self.process_data,
-                vocal_stem_path=self.master_vocal_path,
+                vocal_stem_path=self.master_vocal_path
+                or getattr(self, "audio_file_base", None),
                 master_vocal_source=master_vocal_source,
                 master_inst_source=master_inst_source
             )
@@ -675,6 +685,14 @@ class SeperateAttributes:
             )
             save_audio_file(stem_path.replace(".wav", "_deverbed.wav"), stem_source_deverbed)
             save_audio_file(stem_path.replace(".wav", "_reverb_only.wav"), stem_source_2)
+
+        if self.is_vocal_split_model:
+            logic = vocal_split_write_logic_stem(
+                stem_name, is_bv_model=bool(self.is_bv_model)
+            )
+            if logic is None:
+                return
+            stem_name = logic
             
         is_bv_model_lead = (self.is_bv_model_rebalenced and self.is_vocal_split_model and stem_name == LEAD_VOCAL_STEM)
         is_bv_rebalance_lead = (self.is_bv_model_rebalenced and self.is_vocal_split_model and stem_name == BV_VOCAL_STEM)
@@ -706,7 +724,8 @@ class SeperateAttributes:
 
                 self._report_save_progress()
 
-        if stem_name == VOCAL_STEM:
+        # Yaml instruments are often ``vocals``, not canonical ``Vocals``.
+        if stem_name and is_vocal_target(stem_name):
             self.master_vocal_path = stem_path
 
     def pitch_fix(self, source: Any, sr_pitched: float, org_mix: Any) -> Any:
