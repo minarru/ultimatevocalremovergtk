@@ -263,7 +263,7 @@ class InstantiateRoutingTests(unittest.TestCase):
         from unittest.mock import patch
 
         with patch(
-            "engines.mdx._build_mdx_c_model",
+            "engines.mdx_c._build_mdx_c_model",
             side_effect=ValueError("bad kwarg value"),
         ):
             built = model_probe.build_from_config(_MDX23C_CONFIG)

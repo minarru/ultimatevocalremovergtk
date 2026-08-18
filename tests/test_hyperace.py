@@ -114,13 +114,13 @@ class BuildDetectionTests(unittest.TestCase):
         return [k for k in model.state_dict() if ".segm." in k]
 
     def test_flagless_config_builds_plain_without_checkpoint_keys(self) -> None:
-        from engines.mdx import _build_mdx_c_model
+        from engines.mdx_c import _build_mdx_c_model
 
         model = _build_mdx_c_model(self._config(flag=False))
         self.assertEqual(self._segm_keys(model), [])
 
     def test_checkpoint_keys_enable_the_branch_without_any_flag(self) -> None:
-        from engines.mdx import _build_mdx_c_model
+        from engines.mdx_c import _build_mdx_c_model
 
         model = _build_mdx_c_model(
             self._config(flag=False),
@@ -132,7 +132,7 @@ class BuildDetectionTests(unittest.TestCase):
         self.assertEqual(len(self._segm_keys(model)), 471)
 
     def test_v1_checkpoint_keys_select_the_v1_head(self) -> None:
-        from engines.mdx import _build_mdx_c_model
+        from engines.mdx_c import _build_mdx_c_model
 
         model = _build_mdx_c_model(
             self._config(flag=False),
@@ -144,7 +144,7 @@ class BuildDetectionTests(unittest.TestCase):
         self.assertEqual(len(self._segm_keys(model)), 398)
 
     def test_the_packaged_flag_still_works_on_its_own(self) -> None:
-        from engines.mdx import _build_mdx_c_model
+        from engines.mdx_c import _build_mdx_c_model
 
         model = _build_mdx_c_model(self._config(flag=True))
         self.assertEqual(len(self._segm_keys(model)), 471)
@@ -192,7 +192,7 @@ class CheckpointParityTests(unittest.TestCase):
         from ml_collections import ConfigDict
 
         from core.model_data import load_mdx_c_config
-        from engines.mdx import _build_mdx_c_model
+        from engines.mdx_c import _build_mdx_c_model
 
         cls.config = ConfigDict(load_mdx_c_config(_CONFIG))
         cls.model = _build_mdx_c_model(cls.config)

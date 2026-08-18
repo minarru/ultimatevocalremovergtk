@@ -17,7 +17,8 @@ if TYPE_CHECKING:
 
 def _engine_classes():
     from .demucs_engine import SeperateDemucs
-    from .mdx import SeperateMDX, SeperateMDXC
+    from .mdx import SeperateMDX
+    from .mdx_c import SeperateMDXC
     from .vr import SeperateVR
 
     return SeperateVR, SeperateMDX, SeperateMDXC, SeperateDemucs

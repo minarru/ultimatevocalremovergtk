@@ -9,7 +9,7 @@ try:
 except ImportError:
     ConfigDict = None
 
-from engines.mdx import _build_mdx_c_model, _mdx_c_hop_length
+from engines.mdx_c import _build_mdx_c_model, _mdx_c_hop_length
 
 
 @unittest.skipIf(ConfigDict is None, "ml_collections not installed")

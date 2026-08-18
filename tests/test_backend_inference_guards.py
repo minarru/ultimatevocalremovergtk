@@ -13,7 +13,7 @@ import torch
 
 class RoformerOlaWindowTests(unittest.TestCase):
     def test_final_flush_uses_finish_only_for_last_chunk(self) -> None:
-        from engines.mdx import select_roformer_ola_window
+        from engines.mdx_c import select_roformer_ola_window
 
         start_w, mid_w, finish_w = "start", "middle", "finish"
         C = 100

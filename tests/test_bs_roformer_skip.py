@@ -6,7 +6,7 @@ from typing import cast
 import torch
 from torch.nn import ModuleList
 
-from engines.mdx import _filter_init_kwargs
+from engines.mdx_c import _filter_init_kwargs
 from ml.bs_roformer import BSRoformer
 
 
