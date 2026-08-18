@@ -21,7 +21,7 @@ from bundled.constants import (
 
 from core.model_stem_semantics import recommended_export_note
 
-from ..widgets.stem_only import _FOCUS_INSTRUMENTAL, _FOCUS_VOCALS
+from core.stem_selection import _FOCUS_INSTRUMENTAL, _FOCUS_VOCALS
 from .base import MethodView, register_method_view
 
 

@@ -7,19 +7,13 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Mapping
 
 from bundled.constants import (
-    ALL_STEMS,
-    BASS_STEM,
     DEMUCS_ARCH_TYPE,
-    DRUM_STEM,
     ENSEMBLE_MODE,
     MDX_ARCH_TYPE,
-    OTHER_STEM,
-    VOCAL_STEM,
     VR_ARCH_PM,
 )
 
 from ..model_identity import ModelIdentityService
-from ..stems import StemBucket
 from ..types import ProcessMethod
 from .access import apply_settings_overrides
 from .model import Settings
@@ -35,14 +29,6 @@ METHOD_ALIASES = {
     "ensemble mode": ENSEMBLE_MODE,
 }
 
-_STEM_ALIASES = {
-    "both": "both", "all": "both", "primary": "primary",
-    "secondary": "secondary", "vocals": "vocals", "vocal": "vocals",
-    "instrumental": "instrumental", "inst": "instrumental",
-    "bass": "bass", "drums": "drums", "drum": "drums", "other": "other",
-}
-
-
 def coerce_process_method(value: str | None) -> str | None:
     if value is None:
         return None
@@ -53,57 +39,6 @@ def coerce_process_method(value: str | None) -> str | None:
         if token == method.casefold():
             return method
     raise ValueError(f"unknown processing family {value!r}")
-
-
-def apply_stem_selection(settings: Settings, selection: str) -> str:
-    tokens = {
-        _STEM_ALIASES.get(part.strip().casefold(), "")
-        for part in str(selection).replace(";", ",").split(",") if part.strip()
-    }
-    if "" in tokens or not tokens:
-        raise ValueError(f"invalid stem selection {selection!r}")
-
-    def exclusive(primary: bool, secondary: bool) -> None:
-        settings.process.primary_stem_only = primary
-        settings.process.secondary_stem_only = secondary
-        settings.demucs.is_primary_stem_only = primary
-        settings.demucs.is_secondary_stem_only = secondary
-
-    def clear_focus() -> None:
-        settings.process.stem_focus = ""
-
-    if "both" in tokens or tokens >= {"vocals", "instrumental"}:
-        exclusive(False, False)
-        clear_focus()
-        settings.demucs.stems = settings.mdx.stems = ALL_STEMS
-        settings.mdx.stems_selected = []
-        return "both"
-    if len(tokens) != 1:
-        raise ValueError(f"ambiguous stem selection {selection!r}")
-    choice = next(iter(tokens))
-    if choice in {"primary", "secondary"}:
-        exclusive(choice == "primary", choice == "secondary")
-        clear_focus()
-        settings.mdx.stems = ALL_STEMS
-        settings.mdx.stems_selected = []
-        return choice
-    if choice in {"vocals", "instrumental"}:
-        exclusive(False, False)
-        settings.process.stem_focus = (
-            StemBucket.VOCALS.value
-            if choice == "vocals"
-            else StemBucket.INSTRUMENTAL.value
-        )
-        settings.demucs.stems = settings.mdx.stems = VOCAL_STEM
-        settings.mdx.stems_selected = [VOCAL_STEM]
-        return choice
-    focus = {"bass": BASS_STEM, "drums": DRUM_STEM, "other": OTHER_STEM}[choice]
-    exclusive(False, False)
-    settings.process.stem_focus = focus
-    settings.demucs.stems = focus
-    settings.mdx.stems = ALL_STEMS
-    settings.mdx.stems_selected = []
-    return choice
 
 
 def resolve_splitter_identity(reference: str, settings: Settings, repo: Any) -> str:
@@ -177,6 +112,6 @@ class SettingsResolver:
 
 
 __all__ = [
-    "SettingsLayer", "SettingsResolver", "apply_stem_selection",
+    "SettingsLayer", "SettingsResolver",
     "coerce_process_method", "resolve_splitter_identity",
 ]

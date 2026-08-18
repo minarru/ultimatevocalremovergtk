@@ -12,14 +12,17 @@ from bundled.constants import (
     VOCAL_STEM,
 )
 from core.settings import Settings
-from ui.widgets.stem_only import (
-    SaveStemsSection,
+from core.stem_selection import (
+    _FOCUS_VOCALS,
     _QUICK_ALL,
     _QUICK_INSTRUMENTAL,
     _QUICK_VOCALS,
     _TOGGLE_ALL,
-    _LEAD_VOCAL_PAIR_LABELS,
     _stem_focus_tag,
+)
+from ui.widgets.stem_only import (
+    SaveStemsSection,
+    _LEAD_VOCAL_PAIR_LABELS,
     build_stem_only_options,
     canonical_stem_name,
     roformer_lead_vocal_label_overrides,
@@ -544,8 +547,6 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertFalse(self.settings["is_secondary_stem_only"])
 
     def test_demucs_lowercase_vocals_focus_matches_vocals_chip(self) -> None:
-        from ui.widgets.stem_only import _FOCUS_VOCALS
-
         self.settings["demucs_stems"] = "vocals"
         self.settings["is_primary_stem_only_Demucs"] = True
         self.settings["is_secondary_stem_only_Demucs"] = False
