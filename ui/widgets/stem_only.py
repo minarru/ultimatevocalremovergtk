@@ -1197,16 +1197,19 @@ class SaveStemsSection:
         active = self._demucs_active_name()
         if active == _QUICK_ALL:
             self.settings.demucs.stems = ALL_STEMS
+            self.settings.process.stem_focus = ""
             set_flat(self.settings, self._primary_key, False)
             set_flat(self.settings, self._secondary_key, False)
             return
         if active == _FOCUS_INSTRUMENTAL:
             self.settings.demucs.stems = VOCAL_STEM
+            self.settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
             set_flat(self.settings, self._primary_key, False)
             set_flat(self.settings, self._secondary_key, True)
             return
         if active == _FOCUS_VOCALS:
             self.settings.demucs.stems = VOCAL_STEM
+            self.settings.process.stem_focus = StemBucket.VOCALS.value
             set_flat(self.settings, self._primary_key, True)
             set_flat(self.settings, self._secondary_key, False)
             return
@@ -1217,9 +1220,34 @@ class SaveStemsSection:
             _persist_exclusive_choice(
                 self.settings, self._primary_key, self._secondary_key, name
             )
+            if name == self._primary_key:
+                self.settings.process.stem_focus = _stem_focus_tag(
+                    active,
+                    stem_count=self._demucs_stem_count,
+                    is_karaoke=False,
+                    is_karaoke_curated=False,
+                    is_bv=False,
+                )
+            elif name == self._secondary_key:
+                self.settings.process.stem_focus = _stem_focus_tag(
+                    secondary_stem(active),
+                    stem_count=2,
+                    is_karaoke=False,
+                    is_karaoke_curated=False,
+                    is_bv=False,
+                )
+            else:
+                self.settings.process.stem_focus = ""
         else:
             set_flat(self.settings, self._primary_key, True)
             set_flat(self.settings, self._secondary_key, False)
+            self.settings.process.stem_focus = _stem_focus_tag(
+                active,
+                stem_count=self._demucs_stem_count,
+                is_karaoke=False,
+                is_karaoke_curated=False,
+                is_bv=False,
+            )
 
     def _demucs_export_summary(self) -> str:
         if self._demucs_is_all_stems():
