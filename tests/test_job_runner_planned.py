@@ -125,6 +125,21 @@ class JobRunnerPlannedTests(unittest.TestCase):
         self.assertEqual(naming.track_base, "2-song Model")
         self.assertEqual(naming.export_directory, "/stage")
 
+    def test_ensemble_member_naming_uses_original_sample_path(self) -> None:
+        settings = Settings.defaults()
+        runner = JobRunner(settings)
+        runner._run_path_map = {
+            "/cache/song_30s_abc.wav": "/in/01. Song.wav",
+        }
+        naming = runner._ensemble_member_naming_for_file(
+            "/cache/song_30s_abc.wav",
+            export_path="/stage",
+            file_index=1,
+            file_total=1,
+            model_label="ModelX",
+        )
+        self.assertEqual(naming.track_base, "01. Song ModelX")
+
     def test_prepare_paths_builds_path_map_when_planned(self) -> None:
         settings = Settings.defaults()
         settings.process.sample_mode = False

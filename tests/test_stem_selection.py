@@ -120,6 +120,28 @@ class UnmatchedFocusDiagnosticTests(unittest.TestCase):
         model.is_vocal_split_model = True
         self.assertEqual(self._diagnose(BASS_STEM, model), [])
 
+    def test_cli_unmatched_focus_is_error_but_inherited_is_warning(self) -> None:
+        from core.job_plan import ModelDescriptor, _stem_focus_diagnostics
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = BASS_STEM
+        model = _StubModel("vocals", "other")
+        descriptor = ModelDescriptor("stub", "mdx", "stub", "Stub Model")
+        explicit = _stem_focus_diagnostics(
+            settings,
+            [model],
+            [descriptor],
+            {"process.stem_focus": "cli"},
+        )
+        inherited = _stem_focus_diagnostics(
+            settings,
+            [model],
+            [descriptor],
+            {"process.stem_focus": "gui"},
+        )
+        self.assertEqual(explicit[0].severity, "error")
+        self.assertEqual(inherited[0].severity, "warning")
+
 
 class StemSelectionProvenanceTests(unittest.TestCase):
     def test_resolved_settings_records_stem_focus(self) -> None:

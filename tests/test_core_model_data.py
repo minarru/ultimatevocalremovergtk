@@ -227,6 +227,10 @@ class _FocusStub:
         self.mdx_stem_count = 2
         self.demucs_stem_count = 0
         self.mdx_model_stems: list[str] = []
+        self.mdxnet_stems_selected: list[str] = []
+        self.is_mdx_include_stem_complement = False
+        self.available_stem_routes: tuple[typing.Any, ...] = ()
+        self.selected_stem_routes: tuple[typing.Any, ...] = ()
         self.demucs_source_list: list[str] = []
         self.is_primary_stem_only = False
         self.is_secondary_stem_only = False
@@ -302,6 +306,75 @@ class StemIdentityAssembleTests(unittest.TestCase):
         stub.apply()
         self.assertEqual(
             (stub.is_primary_stem_only, stub.is_secondary_stem_only), (False, False)
+        )
+
+    def test_multi_stem_mdx_focus_populates_native_subset(self) -> None:
+        from bundled.constants import BASS_STEM
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = BASS_STEM
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.apply()
+        self.assertEqual(stub.mdxnet_stems_selected, ["bass"])
+        self.assertEqual(stub.mdxnet_stem_select, "bass")
+        self.assertEqual(
+            (stub.is_primary_stem_only, stub.is_secondary_stem_only),
+            (False, False),
+        )
+
+    def test_multi_stem_mdx_include_complement_adds_derived_route(self) -> None:
+        from bundled.constants import BASS_STEM
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = BASS_STEM
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.is_mdx_include_stem_complement = True
+        stub.apply()
+        complement = next(
+            route
+            for route in stub.available_stem_routes
+            if route.concept == "raw:no bass"
+        )
+        self.assertTrue(complement.conditional)
+        self.assertIsNone(complement.native)
+
+    def test_multi_stem_mdx_instrumental_focus_uses_vocal_complement(self) -> None:
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.apply()
+        self.assertEqual(stub.mdxnet_stems_selected, ["vocals"])
+        self.assertEqual(stub.mdxnet_stem_select, "vocals")
+        self.assertEqual(
+            (stub.is_primary_stem_only, stub.is_secondary_stem_only),
+            (False, True),
+        )
+
+    def test_demucs_native_focus_replaces_stale_primary(self) -> None:
+        from bundled.constants import BASS_STEM, DEMUCS_ARCH_TYPE
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = BASS_STEM
+        stub = _FocusStub(settings, "Vocals", "Instrumental")
+        stub.process_method = DEMUCS_ARCH_TYPE
+        stub.mdx_stem_count = 0
+        stub.mdx_model_stems = []
+        stub.demucs_stem_count = 4
+        stub.demucs_source_list = ["Bass", "Drums", "Other", "Vocals"]
+        stub.apply()
+        self.assertEqual(stub.demucs_stems, BASS_STEM)
+        self.assertEqual(stub.primary_stem, BASS_STEM)
+        self.assertEqual(
+            (stub.is_primary_stem_only, stub.is_secondary_stem_only),
+            (True, False),
         )
 
 

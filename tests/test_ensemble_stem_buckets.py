@@ -209,6 +209,24 @@ class VocalSplitRoleTests(unittest.TestCase):
         )
 
 
+class FinalEnsembleFilterTests(unittest.TestCase):
+    def test_native_focus_filters_only_the_final_route(self) -> None:
+        from core.job_runner import _filter_final_ensemble_stems
+
+        self.assertEqual(
+            _filter_final_ensemble_stems(
+                ["Bass", "Drums", "Other", "Vocals"], "Bass"
+            ),
+            ["Bass"],
+        )
+
+    def test_unmatched_inherited_focus_falls_back_to_all_routes(self) -> None:
+        from core.job_runner import _filter_final_ensemble_stems
+
+        stems = ["Bass", "Drums", "Other", "Vocals"]
+        self.assertEqual(_filter_final_ensemble_stems(stems, "Piano"), stems)
+
+
 class StemFocusMatchTests(unittest.TestCase):
     def test_vocals_focus_on_inst_primary_selects_secondary(self) -> None:
         from core.stems import exclusive_flags_for_focus

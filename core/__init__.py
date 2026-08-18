@@ -48,6 +48,7 @@ from .ensemble_service import EnsembleService, ResolvedEnsemblePreset
 from .model_catalogue import CatalogEntryId, ModelCatalogueService, ModelCatalogueRecord
 from .model_registry import ModelRegistryService
 from .settings.job_resolution import SettingsLayer, SettingsResolver
+from .stems import StemRoute, StemRouteKind, StemSelection, StemSelectionStatus
 
 __all__ = [
     "Settings",
@@ -90,6 +91,10 @@ __all__ = [
     "run_blocking",
     "SettingsLayer",
     "SettingsResolver",
+    "StemRoute",
+    "StemRouteKind",
+    "StemSelection",
+    "StemSelectionStatus",
     "EnsembleService",
     "ResolvedEnsemblePreset",
     "CatalogEntryId",

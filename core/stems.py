@@ -82,6 +82,53 @@ class StemId:
         return self.raw
 
 
+class StemRouteKind(str, Enum):
+    """How an export route is produced."""
+
+    NATIVE = "native"
+    DERIVED = "derived"
+    SPLITTER = "splitter"
+    SPECIALTY = "specialty"
+
+
+class StemSelectionStatus(str, Enum):
+    """Result of resolving one stem-focus request."""
+
+    EMPTY = "empty"
+    MATCHED = "matched"
+    UNMATCHED = "unmatched"
+    INSUFFICIENT_MEMBERS = "insufficient_members"
+
+
+@dataclass(frozen=True)
+class StemRoute:
+    """One canonical, exportable model or ensemble output.
+
+    ``native`` preserves the model/yaml key used to address source arrays.
+    ``concept`` is the stable selection identity (a bucket value or
+    ``raw:<casefolded-name>``). ``label`` is the standalone filename label and
+    ``filename_tag`` is the canonical ensemble/capture tag.
+    """
+
+    native: Optional[StemId]
+    concept: str
+    label: str
+    filename_tag: str
+    kind: StemRouteKind = StemRouteKind.NATIVE
+    conditional: bool = False
+    selected_by_default: bool = True
+
+
+@dataclass(frozen=True)
+class StemSelection:
+    """Canonical result of matching ``process.stem_focus`` to routes."""
+
+    requested: str
+    routes: Tuple[StemRoute, ...]
+    status: StemSelectionStatus
+    available: Tuple[str, ...]
+
+
 class EnsemblePair(str, Enum):
     """Persisted ensemble main-stem request (stable ids, not UI labels)."""
 
@@ -621,6 +668,216 @@ def export_stem_label(model: Any, stem: str, *, for_ensemble: bool = False) -> s
     if isinstance(key, (StemBucket, StemLiteral)):
         return filename_tag(key)
     return str(key)
+
+
+def _concept_id(key: StemKey) -> str:
+    if isinstance(key, StemBucket):
+        return key.value
+    return f"raw:{key.tag.strip().casefold()}"
+
+
+def native_stem_route(
+    model: Any,
+    stem: str | StemId,
+    *,
+    conditional: bool = False,
+    selected_by_default: bool = True,
+) -> StemRoute:
+    """Build the canonical route for one model-native source key."""
+    native = stem if isinstance(stem, StemId) else StemId(str(stem))
+    key = export_stem_key(model, native, for_ensemble=True)
+    if not isinstance(key, (StemBucket, StemLiteral)):
+        key = StemLiteral(key)
+    return StemRoute(
+        native=native,
+        concept=_concept_id(key),
+        label=export_stem_label(model, native.raw),
+        filename_tag=filename_tag(key),
+        kind=(
+            StemRouteKind.SPLITTER
+            if bool(getattr(model, "is_vocal_split_model", False))
+            else (
+                StemRouteKind.SPECIALTY
+                if isinstance(key, StemLiteral)
+                else StemRouteKind.NATIVE
+            )
+        ),
+        conditional=conditional,
+        selected_by_default=selected_by_default,
+    )
+
+
+def derived_stem_route(
+    concept: StemBucket | StemLiteral | str,
+    *,
+    label: str | None = None,
+    tag: str | None = None,
+    conditional: bool = False,
+    selected_by_default: bool = False,
+    kind: StemRouteKind = StemRouteKind.DERIVED,
+) -> StemRoute:
+    """Build a route with no model-native source key."""
+    if isinstance(concept, StemBucket):
+        key: StemKey = concept
+    elif isinstance(concept, StemLiteral):
+        key = concept
+    else:
+        bucket = focus_bucket(str(concept))
+        key = bucket if bucket is not StemBucket.UNKNOWN else StemLiteral(str(concept))
+    route_tag = tag or filename_tag(key)
+    route_label = label or (ui_label(key) if isinstance(key, StemBucket) else key.tag)
+    return StemRoute(
+        native=None,
+        concept=_concept_id(key),
+        label=route_label,
+        filename_tag=route_tag,
+        kind=kind,
+        conditional=conditional,
+        selected_by_default=selected_by_default,
+    )
+
+
+def _dedupe_routes(routes: Sequence[StemRoute]) -> Tuple[StemRoute, ...]:
+    result: list[StemRoute] = []
+    positions: dict[str, int] = {}
+    for route in routes:
+        identity = route.concept.casefold()
+        previous = positions.get(identity)
+        if previous is None:
+            positions[identity] = len(result)
+            result.append(route)
+            continue
+        existing = result[previous]
+        # Prefer a native route, but retain default/guarantee information from
+        # either spelling of the same semantic output.
+        chosen = route if existing.native is None and route.native is not None else existing
+        result[previous] = StemRoute(
+            native=chosen.native,
+            concept=chosen.concept,
+            label=chosen.label,
+            filename_tag=chosen.filename_tag,
+            kind=chosen.kind,
+            conditional=existing.conditional and route.conditional,
+            selected_by_default=(
+                existing.selected_by_default or route.selected_by_default
+            ),
+        )
+    return tuple(result)
+
+
+def model_stem_routes(model: Any) -> Tuple[StemRoute, ...]:
+    """Complete canonical route inventory for an assembled model config."""
+    def _stems(attribute: str) -> tuple[str, ...]:
+        value = getattr(model, attribute, ())
+        if not isinstance(value, (list, tuple)):
+            return ()
+        return tuple(str(item) for item in value if item)
+
+    mdx_stems = _stems("mdx_model_stems")
+    demucs_stems = _stems("demucs_source_list")
+    native_stems = mdx_stems or demucs_stems
+    if not native_stems:
+        native_stems = tuple(
+            str(item)
+            for item in (
+                getattr(model, "primary_stem", None),
+                getattr(model, "secondary_stem", None),
+            )
+            if item
+        )
+
+    routes: list[StemRoute] = [native_stem_route(model, stem) for stem in native_stems]
+    secondary = str(getattr(model, "secondary_stem", "") or "")
+    selected_mdx = _stems("mdxnet_stems_selected")
+    include_selected_complement = bool(
+        len(mdx_stems) > 2
+        and len(selected_mdx) == 1
+        and getattr(model, "is_mdx_include_stem_complement", False)
+        and not getattr(model, "is_primary_stem_only", False)
+        and not getattr(model, "is_secondary_stem_only", False)
+    )
+
+    # A one-target model's other side and a Demucs focus complement are
+    # computed from the mix rather than addressed in the native source map.
+    if secondary and not any(
+        route.native is not None and route.native.matches(secondary) for route in routes
+    ):
+        secondary_key = bucket_for_model_stem(secondary, **stem_context(model))
+        secondary_concept: StemBucket | StemLiteral = (
+            secondary_key
+            if secondary_key is not StemBucket.UNKNOWN
+            else StemLiteral(secondary)
+        )
+        routes.append(
+            derived_stem_route(
+                secondary_concept,
+                label=(ui_label(secondary_key) if secondary_key is not StemBucket.UNKNOWN else secondary),
+                conditional=include_selected_complement,
+                selected_by_default=(
+                    len(native_stems) <= 1 or include_selected_complement
+                ),
+            )
+        )
+
+    # Multi-source models can derive a vocals complement without changing its
+    # identity when the Combine Stems recipe changes.
+    concepts = {route.concept for route in routes}
+    has_vocals = StemBucket.VOCALS.value in concepts
+    has_instrumental = StemBucket.INSTRUMENTAL.value in concepts
+    if len(native_stems) > 2 and has_vocals and not has_instrumental:
+        routes.append(derived_stem_route(StemBucket.INSTRUMENTAL))
+
+    return _dedupe_routes(routes)
+
+
+def _route_matches_focus(route: StemRoute, requested: str) -> bool:
+    if route.concept.casefold() == requested.casefold():
+        return True
+    wanted = focus_bucket(requested)
+    actual = focus_bucket(route.concept)
+    if wanted is StemBucket.UNKNOWN or actual is StemBucket.UNKNOWN:
+        return False
+    return actual is wanted or _plain_family(actual) is _plain_family(wanted)
+
+
+def select_stem_routes(
+    routes: Sequence[StemRoute], focus: str
+) -> StemSelection:
+    """Resolve one focus against a complete route inventory."""
+    available = tuple(dict.fromkeys(route.concept for route in routes))
+    requested = normalize_stem_focus(focus)
+    if not requested:
+        defaults = tuple(route for route in routes if route.selected_by_default)
+        return StemSelection(
+            "", defaults or tuple(routes), StemSelectionStatus.EMPTY, available
+        )
+    matched = tuple(route for route in routes if _route_matches_focus(route, requested))
+    return StemSelection(
+        requested,
+        matched,
+        StemSelectionStatus.MATCHED if matched else StemSelectionStatus.UNMATCHED,
+        available,
+    )
+
+
+def select_ensemble_stem_routes(
+    routes: Sequence[StemRoute],
+    contributor_union: Sequence[StemRoute],
+    focus: str,
+) -> StemSelection:
+    """Resolve final ensemble routes, distinguishing low contributor count."""
+    selection = select_stem_routes(routes, focus)
+    if selection.status is not StemSelectionStatus.UNMATCHED:
+        return selection
+    union_selection = select_stem_routes(contributor_union, focus)
+    if union_selection.status is StemSelectionStatus.MATCHED:
+        return StemSelection(
+            union_selection.requested,
+            (),
+            StemSelectionStatus.INSUFFICIENT_MEMBERS,
+            selection.available,
+        )
+    return selection
 
 
 def resolve_in_sources(

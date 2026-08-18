@@ -990,11 +990,92 @@ class _ModelConfigImplementation:
         live persisted object that read-only callers such as
         ``estimate_workload`` also assemble from.
         """
-        if self.is_vocal_split_model:
-            return
-        from core.stems import StemBucket, exclusive_flags_for_model, ui_label
+        from core.stems import (
+            StemBucket,
+            StemRouteKind,
+            exclusive_flags_for_model,
+            model_stem_routes,
+            select_stem_routes,
+            ui_label,
+        )
 
         focus = str(getattr(self.settings.process, "stem_focus", "") or "")
+        routes = model_stem_routes(self)
+        selection = select_stem_routes(routes, focus)
+        self.available_stem_routes = routes
+        self.selected_stem_routes = selection.routes
+        if self.is_vocal_split_model:
+            return
+        if not focus:
+            return
+
+        # Four/multi-stem ensemble focus filters final ensemble writes. Members
+        # must retain their complete outputs for aggregation.
+        if bool(getattr(self, "is_ensemble_mode", False)):
+            from core.stems import coerce_ensemble_pair
+
+            if coerce_ensemble_pair(self.settings.ensemble.main_stem).is_multi_or_four():
+                return
+
+        if len(selection.routes) == 1:
+            route = selection.routes[0]
+            native = route.native.raw if route.native is not None else None
+            if (
+                self.process_method == MDX_ARCH_TYPE
+                and len(self.mdx_model_stems) > 2
+            ):
+                if native is not None:
+                    self.mdxnet_stems_selected = [native]
+                    self.mdxnet_stem_select = native
+                    self.primary_stem = native
+                    self.secondary_stem = secondary_stem(native)
+                    is_vocal_quick = (
+                        route.concept == StemBucket.VOCALS.value
+                        and (
+                            self.is_primary_stem_only
+                            or self.is_secondary_stem_only
+                        )
+                    )
+                    if not is_vocal_quick:
+                        self.is_primary_stem_only = False
+                        self.is_secondary_stem_only = False
+                    refreshed = model_stem_routes(self)
+                    self.available_stem_routes = refreshed
+                    self.selected_stem_routes = select_stem_routes(
+                        refreshed, focus
+                    ).routes
+                    return
+                if route.concept == StemBucket.INSTRUMENTAL.value:
+                    vocal = next(
+                        (
+                            candidate.native.raw
+                            for candidate in routes
+                            if candidate.native is not None
+                            and candidate.concept == StemBucket.VOCALS.value
+                        ),
+                        None,
+                    )
+                    if vocal is not None:
+                        self.mdxnet_stems_selected = [vocal]
+                        self.mdxnet_stem_select = vocal
+                        self.primary_stem = vocal
+                        self.secondary_stem = ui_label(StemBucket.INSTRUMENTAL)
+                        self.is_primary_stem_only = False
+                        self.is_secondary_stem_only = True
+                        return
+            if self.process_method == DEMUCS_ARCH_TYPE:
+                if native is not None:
+                    self.demucs_stems = native
+                    self.primary_stem = native
+                    self.secondary_stem = secondary_stem(native)
+                    self.is_primary_stem_only = True
+                    self.is_secondary_stem_only = False
+                    return
+                if route.kind is StemRouteKind.DERIVED:
+                    self.is_primary_stem_only = False
+                    self.is_secondary_stem_only = True
+                    return
+
         flags = exclusive_flags_for_model(self, focus)
         if flags is None:
             return
@@ -1381,6 +1462,12 @@ class _ModelConfigImplementation:
             is_secondary_stem_only=bool(self.is_secondary_stem_only),
             mdx_model_stems=tuple(self.mdx_model_stems),
             demucs_source_list=tuple(self.demucs_source_list),
+            available_routes=tuple(
+                getattr(self, "available_stem_routes", ())
+            ),
+            selected_routes=tuple(
+                getattr(self, "selected_stem_routes", ())
+            ),
         )
         self.secondary_chain = SecondaryChain(
             secondary_model=self.secondary_model,

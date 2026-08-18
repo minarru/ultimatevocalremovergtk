@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional, Tuple
 
+from ..stems import StemRoute
+
 
 @dataclass
 class ModelIdentity:
@@ -62,6 +64,8 @@ class StemRouting:
     is_secondary_stem_only: bool = False
     mdx_model_stems: Tuple[str, ...] = ()
     demucs_source_list: Tuple[str, ...] = ()
+    available_routes: Tuple[StemRoute, ...] = ()
+    selected_routes: Tuple[StemRoute, ...] = ()
 
 
 @dataclass
