@@ -15,7 +15,7 @@ from bundled.constants import (
 )
 from core.job_plan import JobResolver, JobSpec, ModelDescriptor, planned_output_stems
 from core.settings import Settings
-from core.stems import EnsemblePair
+from core.stems import EnsemblePair, FOCUS_SECONDARY
 from core.types import ProcessMethod
 
 
@@ -125,7 +125,7 @@ class PlannedOutputStemTests(unittest.TestCase):
             with self.subTest(pair=pair):
                 settings = Settings.defaults()
                 settings.ensemble.main_stem = pair
-                settings.process.secondary_stem_only = True
+                settings.process.stem_focus = FOCUS_SECONDARY
                 stems = planned_output_stems(
                     settings, (_desc(primary, complement),), command="ensemble"
                 )
@@ -256,6 +256,29 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         self.assertFalse(ok)
         fetch.assert_not_called()
 
+    def test_identity_records_keep_legacy_arch_member_tags(self) -> None:
+        from core.job_plan import JobResolver
+        from core.model_identity import ModelRecord, canonical_member_tag
+        from core.settings import Settings
+        from core.types import ProcessMethod
+
+        record = ModelRecord(
+            "mdx:UVR-MDX-NET-Inst_HQ_4",
+            "mdx",
+            "UVR-MDX-NET-Inst_HQ_4",
+            "MDX-Net — UVR-MDX-NET Inst HQ 4",
+        )
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.MDX
+        settings.mdx.model = canonical_member_tag(record)
+        resolver = JobResolver(Mock())
+        resolver.identities = Mock()
+        resolver.identities.resolve.return_value = record
+        self.assertEqual(resolver._identity_records(settings, "separate"), [record])
+        query = resolver.identities.resolve.call_args[0][0]
+        self.assertEqual(query, canonical_member_tag(record))
+        self.assertFalse(query.startswith("mdx:MDX-Net:"))
+
     def test_job_assemble_disables_mdx_c_network(self) -> None:
         from core.access_policy import current_access_policy
         from core.job_plan import JobResolver
@@ -307,6 +330,37 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         self.assertEqual(len(config_diags), 1)
         self.assertEqual(config_diags[0].severity, "error")
         self.assertFalse(resolved.ok)
+
+    def test_positional_sentinel_plans_primary_stem(self) -> None:
+        from core.stems import FOCUS_PRIMARY
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = FOCUS_PRIMARY
+        stems = planned_output_stems(
+            settings, (_desc("Vocals", "Instrumental"),), command="separate"
+        )
+        self.assertEqual(stems, ((VOCAL_STEM, False),))
+
+    def test_positional_sentinel_plans_dual_stem_ensemble_half(self) -> None:
+        from core.stems import FOCUS_SECONDARY
+
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
+        settings.process.stem_focus = FOCUS_SECONDARY
+        stems = planned_output_stems(
+            settings, (_desc("Vocals"), _desc("Vocals")), command="ensemble"
+        )
+        self.assertEqual(stems, (("Instrumental", False),))
+
+    def test_four_stem_ensemble_ignores_positional_sentinel(self) -> None:
+        from core.stems import FOCUS_PRIMARY
+
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = EnsemblePair.FOUR_STEM
+        settings.process.stem_focus = FOCUS_PRIMARY
+        stems = planned_output_stems(settings, (_desc("Vocals"),), command="ensemble")
+        labels = tuple(stem for stem, _conditional in stems)
+        self.assertEqual(labels, (BASS_STEM, DRUM_STEM, OTHER_STEM, VOCAL_STEM))
 
 
 if __name__ == "__main__":

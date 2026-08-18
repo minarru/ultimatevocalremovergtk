@@ -258,6 +258,13 @@ class StemFocusMatchTests(unittest.TestCase):
         self.assertEqual(normalize_stem_focus("Vocals"), StemBucket.VOCALS.value)
         self.assertEqual(normalize_stem_focus(""), "")
 
+    def test_normalize_stem_focus_keeps_positional_sentinels(self) -> None:
+        from core.stems import FOCUS_PRIMARY, FOCUS_SECONDARY, normalize_stem_focus
+
+        self.assertEqual(normalize_stem_focus("primary"), FOCUS_PRIMARY)
+        self.assertEqual(normalize_stem_focus("PRIMARY"), FOCUS_PRIMARY)
+        self.assertEqual(normalize_stem_focus("secondary", strict=True), FOCUS_SECONDARY)
+
     def test_focus_other_is_the_other_stem_not_the_instrumental_side(self) -> None:
         """``other`` as a *pick* means Other; only a 2-stem model's native
         ``other`` reads as the instrumental side, and that match happens in
@@ -360,6 +367,33 @@ class StemFocusMatchTests(unittest.TestCase):
         from core.stems import EnsemblePair, exclusive_flags_for_pair
 
         self.assertIsNone(exclusive_flags_for_pair("", EnsemblePair.VOCALS_INSTRUMENTAL))
+
+    def test_exclusive_flags_for_pair_positional_sentinels(self) -> None:
+        from core.stems import (
+            EnsemblePair,
+            FOCUS_PRIMARY,
+            FOCUS_SECONDARY,
+            exclusive_flags_for_focus,
+            exclusive_flags_for_pair,
+        )
+
+        self.assertEqual(
+            exclusive_flags_for_pair(FOCUS_PRIMARY, EnsemblePair.VOCALS_INSTRUMENTAL),
+            (True, False),
+        )
+        self.assertEqual(
+            exclusive_flags_for_pair(FOCUS_SECONDARY, EnsemblePair.FOUR_STEM),
+            (False, True),
+        )
+        self.assertEqual(
+            exclusive_flags_for_focus(
+                FOCUS_PRIMARY,
+                primary_stem="other",
+                secondary_stem="vocals",
+                stem_count=2,
+            ),
+            (True, False),
+        )
 
 
 if __name__ == "__main__":

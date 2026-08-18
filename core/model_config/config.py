@@ -90,8 +90,8 @@ class ModelConfig:
         except (TypeError, ValueError):
             self.amplification_threshold = 0.0
         self.is_use_directml = bool(process.use_directml)
-        self.is_primary_stem_only = process.primary_stem_only
-        self.is_secondary_stem_only = process.secondary_stem_only
+        self.is_primary_stem_only = False
+        self.is_secondary_stem_only = False
         self.is_denoise = denoise_opt != DENOISE_NONE
         self.is_mdx_c_seg_def = mdx.is_mdx_c_seg_def
         self.mdx_batch_size = (
@@ -403,16 +403,6 @@ class ModelConfig:
                 DEF_OPT if demucs.segment is None else str(demucs.segment)
             )
             self.is_chunk_demucs = demucs.is_chunk_demucs
-            self.is_primary_stem_only = (
-                process.primary_stem_only
-                if self.is_ensemble_mode
-                else demucs.is_primary_stem_only
-            )
-            self.is_secondary_stem_only = (
-                process.secondary_stem_only
-                if self.is_ensemble_mode
-                else demucs.is_secondary_stem_only
-            )
             self.get_demucs_model_data()
             self.get_demucs_model_path()
 
@@ -484,12 +474,11 @@ class ModelConfig:
         selection, but :func:`~core.stems.run_export_routes` writes the full
         inventory.
 
-        When focus is empty, CLI ``--stems primary|secondary`` still lives in
-        the exclusive-save flags. Those flags filter to the primary/secondary
-        native (or derived complement) here so engines export that one route.
-        A multi-stem MDX-C custom subset still lives in
-        ``mdxnet_stems_selected`` (natives) and is applied after that. Do not
-        fold those names into ``stem_focus``.
+        CLI ``--stems primary|secondary`` stores positional sentinels in
+        ``stem_focus``. Those pick the primary/secondary native (or derived
+        complement) here so engines export that one route. A multi-stem MDX-C
+        custom subset still lives in ``mdxnet_stems_selected`` (natives) and
+        is applied after that. Do not fold subset names into ``stem_focus``.
 
         Resolution is **per-config only**: assembling a model must never write
         back into ``self.settings``. One ``Settings`` assembles many configs
@@ -498,9 +487,11 @@ class ModelConfig:
         ``estimate_workload`` also assemble from.
         """
         from core.stems import (
+            FOCUS_PRIMARY,
             StemSelectionStatus,
             coerce_ensemble_pair,
             model_stem_routes,
+            positional_stem_focus,
             route_matches_stem,
             routes_for_ensemble_pair,
             routes_matching_stems,
@@ -509,28 +500,33 @@ class ModelConfig:
 
         focus = str(getattr(self.settings.process, "stem_focus", "") or "")
         routes = model_stem_routes(self)
-        selection = select_stem_routes(routes, focus)
         self.available_stem_routes = routes
-        if selection.status is StemSelectionStatus.UNMATCHED:
-            selected = tuple(
-                route for route in routes if route.selected_by_default
-            ) or tuple(routes)
+        positional = positional_stem_focus(focus)
+        selection_matched = False
+        if positional:
+            target = (
+                self.primary_stem if positional == FOCUS_PRIMARY else self.secondary_stem
+            )
+            matched = tuple(
+                route
+                for route in routes
+                if route_matches_stem(route, target, self)
+            )
+            selected = matched[:1] if matched else (
+                tuple(route for route in routes if route.selected_by_default)
+                or tuple(routes)
+            )
         else:
-            selected = selection.routes
-
-        if selection.status is StemSelectionStatus.EMPTY:
-            primary_only = bool(getattr(self, "is_primary_stem_only", False))
-            secondary_only = bool(getattr(self, "is_secondary_stem_only", False))
-            if primary_only ^ secondary_only:
-                target = self.primary_stem if primary_only else self.secondary_stem
-                matched = tuple(
-                    route
-                    for route in routes
-                    if route_matches_stem(route, target, self)
-                )
-                if matched:
-                    selected = matched[:1]
+            selection = select_stem_routes(routes, focus)
+            selection_matched = selection.status is StemSelectionStatus.MATCHED
+            if selection.status is StemSelectionStatus.UNMATCHED:
+                selected = tuple(
+                    route for route in routes if route.selected_by_default
+                ) or tuple(routes)
             else:
+                selected = selection.routes
+
+            if selection.status is StemSelectionStatus.EMPTY:
                 mdx_stems = tuple(
                     str(stem)
                     for stem in (getattr(self, "mdx_model_stems", None) or ())
@@ -543,7 +539,9 @@ class ModelConfig:
                 )
                 if len(mdx_stems) > 2 and sidecar:
                     native_concepts = {
-                        route.concept for route in routes if route.native is not None
+                        route.concept
+                        for route in routes
+                        if route.native is not None
                     }
                     matched = routes_matching_stems(routes, sidecar, self)
                     matched_concepts = {route.concept for route in matched}
@@ -556,7 +554,7 @@ class ModelConfig:
         if (
             not self.is_vocal_split_model
             and bool(getattr(self, "is_ensemble_mode", False))
-            and selection.status is not StemSelectionStatus.MATCHED
+            and not selection_matched
         ):
             pair = coerce_ensemble_pair(self.settings.ensemble.main_stem)
             if not pair.is_multi_or_four():

@@ -638,13 +638,18 @@ def apply_karaoke_quick_export_default(
         return False
     if settings.get(stems_key) not in (ALL_STEMS, None):
         return False
+    process = getattr(settings, "process", None)
+    if process is not None and str(getattr(process, "stem_focus", "") or ""):
+        return False
     if settings.get(primary_key) or settings.get(secondary_key):
         return False
     vocal = vocal_stem_key(model, stems)
     settings.set(selected_key, [vocal])
     settings.set(stems_key, vocal)
-    settings.set(primary_key, False)
-    settings.set(secondary_key, True)
+    from core.stems import StemBucket
+
+    if process is not None:
+        process.stem_focus = StemBucket.INSTRUMENTAL.value
     return True
 
 

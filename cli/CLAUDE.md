@@ -28,7 +28,8 @@ The command-line front end. A presentation layer, exactly like `ui/`.
   from an instrumental-primary model. Availability is diagnosed at plan time:
   an explicit CLI pick that no route provides is an `error`; the same value
   inherited via `--profile gui` is a `warning` and falls back to every viable
-  output. `--stems primary|secondary|both` remains the positional override.
+  output. `--stems primary|secondary|both` remains the positional override and
+  writes `primary` / `secondary` (or empty for both) into `process.stem_focus`.
 - **Inherited identity is never silent.** A profile-supplied primary identity
   requires TTY confirmation or `--accept-inherited`; dry-run never prompts.
 - **Dry runs verify model files but have no run-side effects.** They hash and

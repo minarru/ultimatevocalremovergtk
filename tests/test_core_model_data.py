@@ -69,6 +69,37 @@ class AssembleEnsembleTests(unittest.TestCase):
         self.assertEqual(models, [first, second])
 
 
+class AssembleMdxIdentityTests(unittest.TestCase):
+    def test_legacy_member_tag_becomes_engine_name(self) -> None:
+        """CLI canonicalize stores ``MDX-Net: Display``; assemble must not use it as a filename."""
+        from core.model_identity import ModelIdentityService, ModelRecord, canonical_member_tag
+
+        record = ModelRecord(
+            "mdx:UVR-MDX-NET-Inst_HQ_4",
+            "mdx",
+            "UVR-MDX-NET-Inst_HQ_4",
+            "UVR-MDX-NET Inst HQ 4",
+            engine_name="UVR-MDX-NET-Inst_HQ_4",
+        )
+        tag = canonical_member_tag(record)
+        captured: list[str] = []
+
+        def fake_config(
+            _settings: object, _repo: object, model_name: str, *_args: object, **_kwargs: object
+        ) -> MagicMock:
+            captured.append(model_name)
+            model = MagicMock()
+            model.model_status = True
+            return model
+
+        settings = Settings.defaults()
+        with patch.object(ModelIdentityService, "records", return_value=(record,)):
+            with patch("core.model_config.config.ModelConfig", side_effect=fake_config):
+                assemble_model(settings, MagicMock(), tag, MDX_ARCH_TYPE)
+        self.assertEqual(captured, [record.engine_name])
+        self.assertNotIn(":", captured[0])
+
+
 class ModelConfigKaraokeConfidenceTests(unittest.TestCase):
     """ModelConfig.is_karaoke_curated must agree with which branch of
     resolve_karaoke_confidence actually set is_karaoke."""
@@ -259,25 +290,14 @@ class StemIdentityAssembleTests(unittest.TestCase):
 
         settings = Settings.defaults()
         settings.process.stem_focus = StemBucket.VOCALS.value
-        before = (
-            settings.process.primary_stem_only,
-            settings.process.secondary_stem_only,
-            settings.demucs.is_primary_stem_only,
-            settings.demucs.is_secondary_stem_only,
-        )
+        before = settings.process.stem_focus
 
         vocals_primary = _FocusStub(settings, "vocals", "other")
         vocals_primary.apply()
         inst_primary = _FocusStub(settings, "other", "vocals")
         inst_primary.apply()
 
-        after = (
-            settings.process.primary_stem_only,
-            settings.process.secondary_stem_only,
-            settings.demucs.is_primary_stem_only,
-            settings.demucs.is_secondary_stem_only,
-        )
-        self.assertEqual(before, after)
+        self.assertEqual(settings.process.stem_focus, before)
         # Focus resolves onto selected routes; assembled flags/natives stay put.
         self.assertEqual(
             [route.concept for route in vocals_primary.selected_stem_routes],
@@ -480,39 +500,39 @@ class StemIdentityAssembleTests(unittest.TestCase):
             },
         )
 
-    def test_empty_focus_honors_primary_only_flag(self) -> None:
+    def test_empty_focus_mdx_sidecar_filters_native_subset(self) -> None:
+        from bundled.constants import BASS_STEM, DRUM_STEM
         from core.stems import StemBucket
-
-        settings = Settings.defaults()
-        stub = _FocusStub(settings, "vocals", "other")
-        stub.is_primary_stem_only = True
-        stub.apply()
-        selected = stub.selected_stem_routes
-        self.assertEqual(len(selected), 1)
-        self.assertEqual(selected[0].concept, StemBucket.VOCALS.value)
-        self.assertIsNotNone(selected[0].native)
-        self.assertTrue(selected[0].native.matches("vocals"))
-        self.assertTrue(stub.is_primary_stem_only)
-        self.assertFalse(stub.is_secondary_stem_only)
-
-    def test_empty_focus_honors_derived_secondary_flag(self) -> None:
-        from core.stems import StemBucket, StemRouteKind
 
         settings = Settings.defaults()
         stub = _FocusStub(settings, "vocals", "Instrumental")
         stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
         stub.mdx_stem_count = 4
-        stub.is_secondary_stem_only = True
+        stub.mdxnet_stems_selected = [BASS_STEM, DRUM_STEM]
+        stub.apply()
+        selected = stub.selected_stem_routes
+        self.assertEqual(
+            {route.concept for route in selected},
+            {StemBucket.BASS.value, StemBucket.DRUMS.value},
+        )
+
+    def test_positional_sentinel_wins_over_sidecar(self) -> None:
+        from bundled.constants import BASS_STEM, DRUM_STEM
+        from core.stems import FOCUS_PRIMARY, StemBucket
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = FOCUS_PRIMARY
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.mdxnet_stems_selected = [BASS_STEM, DRUM_STEM]
         stub.apply()
         selected = stub.selected_stem_routes
         self.assertEqual(len(selected), 1)
-        self.assertEqual(selected[0].concept, StemBucket.INSTRUMENTAL.value)
-        self.assertIsNone(selected[0].native)
-        self.assertEqual(selected[0].kind, StemRouteKind.DERIVED)
-        self.assertTrue(stub.is_secondary_stem_only)
-        self.assertFalse(stub.is_primary_stem_only)
+        self.assertEqual(selected[0].concept, StemBucket.VOCALS.value)
+        self.assertTrue(selected[0].native.matches("vocals"))
 
-    def test_focus_wins_over_conflicting_exclusive_flags(self) -> None:
+    def test_concept_focus_ignores_instance_exclusive_flags(self) -> None:
         from bundled.constants import BASS_STEM
         from core.stems import StemBucket
 
@@ -528,37 +548,48 @@ class StemIdentityAssembleTests(unittest.TestCase):
         self.assertEqual(selected[0].concept, StemBucket.BASS.value)
         self.assertTrue(selected[0].native.matches("bass"))
 
-    def test_empty_focus_exclusive_wins_over_sidecar(self) -> None:
-        from bundled.constants import BASS_STEM, DRUM_STEM
-        from core.stems import StemBucket
-
-        settings = Settings.defaults()
-        stub = _FocusStub(settings, "vocals", "Instrumental")
-        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
-        stub.mdx_stem_count = 4
-        stub.mdxnet_stems_selected = [BASS_STEM, DRUM_STEM]
-        stub.is_primary_stem_only = True
-        stub.apply()
-        selected = stub.selected_stem_routes
-        self.assertEqual(len(selected), 1)
-        self.assertEqual(selected[0].concept, StemBucket.VOCALS.value)
-        self.assertTrue(selected[0].native.matches("vocals"))
-
-    def test_ensemble_pair_wins_over_empty_focus_primary_flag(self) -> None:
-        from core.stems import EnsemblePair, StemBucket
+    def test_ensemble_pair_wins_over_positional_sentinel(self) -> None:
+        from core.stems import EnsemblePair, FOCUS_PRIMARY, StemBucket
 
         settings = Settings.defaults()
         settings.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
+        settings.process.stem_focus = FOCUS_PRIMARY
         stub = _FocusStub(settings, "vocals", "Instrumental")
         stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
         stub.mdx_stem_count = 4
         stub.is_ensemble_mode = True
-        stub.is_primary_stem_only = True
         stub.apply()
         self.assertEqual(
             {route.concept for route in stub.selected_stem_routes},
             {StemBucket.VOCALS.value, StemBucket.INSTRUMENTAL.value},
         )
+
+    def test_positional_sentinel_picks_primary_route(self) -> None:
+        from core.stems import FOCUS_PRIMARY, StemBucket
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = FOCUS_PRIMARY
+        stub = _FocusStub(settings, "vocals", "other")
+        stub.apply()
+        selected = stub.selected_stem_routes
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0].concept, StemBucket.VOCALS.value)
+        self.assertFalse(stub.is_primary_stem_only)
+
+    def test_positional_sentinel_picks_derived_secondary(self) -> None:
+        from core.stems import FOCUS_SECONDARY, StemBucket, StemRouteKind
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = FOCUS_SECONDARY
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.apply()
+        selected = stub.selected_stem_routes
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0].concept, StemBucket.INSTRUMENTAL.value)
+        self.assertIsNone(selected[0].native)
+        self.assertEqual(selected[0].kind, StemRouteKind.DERIVED)
 
 
 if __name__ == "__main__":

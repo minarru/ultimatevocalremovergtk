@@ -44,7 +44,6 @@ from core.stem_selection import (
     _QUICK_VOCALS,
     _SUBSET_CUSTOM,
     _TOGGLE_ALL,
-    _exclusive_name_from_settings,
 )
 from core.stems import (
     EnsemblePair,
@@ -1111,13 +1110,13 @@ class SaveStemsSection:
             try:
                 self._demucs_export_options = _fill_export_combo(self._demucs_export_row, options)
                 if not from_settings:
-                    self._state.ensure_demucs_export_defaults(self.settings)
-                flag = _exclusive_name_from_settings(
-                    self.settings, self._primary_key, self._secondary_key
-                )
+                    self._state.ensure_demucs_export_defaults(
+                        self.settings, native=primary
+                    )
+                focus = str(getattr(self.settings.process, "stem_focus", "") or "")
                 set_combo_value(
                     self._demucs_export_row,
-                    self._state.export_choice_from_flag(primary, flag),
+                    self._state.export_choice_from_focus(primary, focus),
                 )
             finally:
                 self._loading = was_loading

@@ -565,6 +565,9 @@ def exclusive_flags_for_focus(
     """
     if not str(focus or "").strip():
         return None
+    positional = _positional_exclusive_flags(focus)
+    if positional is not None:
+        return positional
     ctx = {
         "stem_count": stem_count,
         "is_karaoke": is_karaoke,
@@ -601,6 +604,9 @@ def exclusive_flags_for_pair(
     """
     if not str(focus or "").strip():
         return None
+    positional = _positional_exclusive_flags(focus)
+    if positional is not None:
+        return positional
     wanted = focus_bucket(focus)
     primary_b, secondary_b = pair.buckets()
 
@@ -670,19 +676,44 @@ def focus_bucket(token: str) -> StemBucket:
     return simple if simple is not None else StemBucket.UNKNOWN
 
 
+FOCUS_PRIMARY = "primary"
+FOCUS_SECONDARY = "secondary"
+_POSITIONAL_FOCUS = frozenset({FOCUS_PRIMARY, FOCUS_SECONDARY})
+
+
+def positional_stem_focus(value: Any) -> str:
+    """Return ``primary`` / ``secondary``, or ``""`` if ``value`` is not one."""
+    token = str(value or "").strip().casefold()
+    return token if token in _POSITIONAL_FOCUS else ""
+
+
+def _positional_exclusive_flags(focus: str) -> tuple[bool, bool] | None:
+    token = positional_stem_focus(focus)
+    if token == FOCUS_PRIMARY:
+        return True, False
+    if token == FOCUS_SECONDARY:
+        return False, True
+    return None
+
+
 def normalize_stem_focus(value: Any, *, strict: bool = False) -> str:
-    """Canonical ``process.stem_focus``: bucket tag, ``raw:…``, or empty.
+    """Canonical ``process.stem_focus``: bucket tag, ``raw:…``, positional, or empty.
 
     Accepts aliases (``vocals`` ≡ ``Vocals``) so CLI ``--set`` and GTK persist
-    the same exclusive-pick vocabulary. A specialty stem must be named
-    explicitly as ``raw:<stem>``; a bare unrecognized token is a typo, not a
-    silent specialty pick. ``strict`` raises on one, matching ``--set``
-    validation; the permissive default drops it so a hand-edited
-    ``settings.json`` degrades to "export everything" instead of failing load.
+    the same exclusive-pick vocabulary. CLI ``--stems primary|secondary`` stores
+    those positional sentinels here; they are not :class:`StemBucket` values.
+    A specialty stem must be named explicitly as ``raw:<stem>``; a bare
+    unrecognized token is a typo, not a silent specialty pick. ``strict``
+    raises on one, matching ``--set`` validation; the permissive default drops
+    it so a hand-edited ``settings.json`` degrades to "export everything"
+    instead of failing load.
     """
     token = "" if value is None else str(value).strip()
     if not token:
         return ""
+    positional = positional_stem_focus(token)
+    if positional:
+        return positional
     if token.startswith("raw:"):
         rest = token[4:].strip()
         if rest:
@@ -699,6 +730,7 @@ def normalize_stem_focus(value: Any, *, strict: bool = False) -> str:
         )
         raise ValueError(
             f"unknown stem focus {token!r}; expected one of {known}, "
+            f"{FOCUS_PRIMARY}, {FOCUS_SECONDARY}, "
             f"or 'raw:{token.casefold()}' for a specialty stem"
         )
     try:

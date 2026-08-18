@@ -16,8 +16,6 @@ class ApplyStemSelectionTests(unittest.TestCase):
         settings = Settings.defaults()
         self.assertEqual(apply_stem_selection(settings, "vocals"), "vocals")
         self.assertEqual(settings.process.stem_focus, StemBucket.VOCALS.value)
-        self.assertFalse(settings.process.primary_stem_only)
-        self.assertFalse(settings.process.secondary_stem_only)
         flags = exclusive_flags_for_focus(
             settings.process.stem_focus,
             primary_stem="other",
@@ -30,15 +28,14 @@ class ApplyStemSelectionTests(unittest.TestCase):
         settings = Settings.defaults()
         apply_stem_selection(settings, "instrumental")
         self.assertEqual(settings.process.stem_focus, StemBucket.INSTRUMENTAL.value)
-        self.assertFalse(settings.process.primary_stem_only)
 
-    def test_primary_clears_focus(self) -> None:
+    def test_primary_writes_positional_sentinel(self) -> None:
+        from core.stems import FOCUS_PRIMARY
+
         settings = Settings.defaults()
         settings.process.stem_focus = StemBucket.VOCALS.value
         apply_stem_selection(settings, "primary")
-        self.assertEqual(settings.process.stem_focus, "")
-        self.assertTrue(settings.process.primary_stem_only)
-        self.assertFalse(settings.process.secondary_stem_only)
+        self.assertEqual(settings.process.stem_focus, FOCUS_PRIMARY)
 
     def test_both_clears_focus(self) -> None:
         settings = Settings.defaults()
@@ -52,7 +49,6 @@ class ApplyStemSelectionTests(unittest.TestCase):
         apply_stem_selection(settings, "bass")
         self.assertEqual(settings.process.stem_focus, BASS_STEM)
         self.assertEqual(settings.demucs.stems, BASS_STEM)
-        self.assertFalse(settings.process.primary_stem_only)
 
     def test_inherited_lowercase_mdx_stems_match_vocals_concept(self) -> None:
         settings = Settings.defaults()
@@ -114,6 +110,16 @@ class UnmatchedFocusDiagnosticTests(unittest.TestCase):
 
     def test_empty_focus_is_silent(self) -> None:
         self.assertEqual(self._diagnose("", _StubModel("vocals", "other")), [])
+
+    def test_positional_sentinel_is_silent(self) -> None:
+        from core.stems import FOCUS_PRIMARY, FOCUS_SECONDARY
+
+        self.assertEqual(
+            self._diagnose(FOCUS_PRIMARY, _StubModel("vocals", "other")), []
+        )
+        self.assertEqual(
+            self._diagnose(FOCUS_SECONDARY, _StubModel("vocals", "other")), []
+        )
 
     def test_vocal_splitters_are_exempt(self) -> None:
         model = _StubModel("vocals", "other")

@@ -34,6 +34,8 @@ from .access_policy import access_policy
 from .settings import Settings
 from .stems import (
     EnsemblePair,
+    FOCUS_PRIMARY,
+    FOCUS_SECONDARY,
     StemBucket,
     StemLiteral,
     StemRoute,
@@ -44,6 +46,7 @@ from .stems import (
     focus_bucket,
     model_stem_routes,
     model_stem_count,
+    positional_stem_focus,
     select_ensemble_stem_routes,
     select_stem_routes,
     ui_label,
@@ -245,7 +248,7 @@ def _stem_focus_diagnostics(
     than leaving the user to notice the extra files afterwards.
     """
     focus = str(settings.process.stem_focus or "")
-    if not focus:
+    if not focus or positional_stem_focus(focus):
         return []
     source = (provenance or {}).get("process.stem_focus", "")
     severity = "error" if source == Provenance.CLI.value else "warning"
@@ -408,41 +411,30 @@ def planned_output_routes(
 ) -> tuple[StemRoute, ...]:
     """Canonical routes that this resolved job intends to write."""
     focus = str(settings.process.stem_focus or "")
+    positional = positional_stem_focus(focus)
     if command == "ensemble":
         routes, _union = _ensemble_output_routes(settings, descriptors)
+        if positional:
+            selected = tuple(routes)
+            if not coerce_ensemble_pair(settings.ensemble.main_stem).is_multi_or_four():
+                if positional == FOCUS_PRIMARY:
+                    selected = selected[:1]
+                elif positional == FOCUS_SECONDARY:
+                    selected = selected[1:2]
+            return selected
         selection = select_ensemble_stem_routes(routes, _union, focus)
         selected = selection.routes if selection.routes else routes
-        if not focus and not coerce_ensemble_pair(settings.ensemble.main_stem).is_multi_or_four():
-            if settings.process.primary_stem_only:
-                selected = selected[:1]
-            elif settings.process.secondary_stem_only:
-                selected = selected[1:2]
         return tuple(selected)
 
     routes = _fallback_descriptor_routes(descriptors[0]) if descriptors else ()
-    selection = select_stem_routes(routes, focus)
-    selected = selection.routes if selection.routes else tuple(
-        route for route in routes if route.selected_by_default
-    )
-    if (
-        focus
-        and settings.mdx.is_mdx_include_stem_complement
-        and not settings.process.primary_stem_only
-        and not settings.process.secondary_stem_only
-        and any(route.native is not None for route in selected)
-    ):
-        selected = tuple(dict.fromkeys((
-            *selected,
-            *(route for route in routes if route.native is None and route.conditional),
-        )))
-    if not focus:
-        if settings.process.primary_stem_only:
+    if positional:
+        if positional == FOCUS_PRIMARY:
             primary = descriptors[0].primary_stem if descriptors else None
             selected = tuple(
                 route for route in routes
                 if route.native is not None and route.native.matches(primary or "")
             )
-        elif settings.process.secondary_stem_only:
+        else:
             secondary = descriptors[0].secondary_stem if descriptors else None
             selected = tuple(
                 route for route in routes
@@ -450,6 +442,24 @@ def planned_output_routes(
                     route.native is not None and route.native.matches(secondary or "")
                 ) or (route.native is None and route.label == secondary)
             )
+        return tuple(selected) if selected else tuple(
+            route for route in routes if route.selected_by_default
+        ) or tuple(routes)
+
+    selection = select_stem_routes(routes, focus)
+    selected = selection.routes if selection.routes else tuple(
+        route for route in routes if route.selected_by_default
+    )
+    if (
+        focus
+        and not positional
+        and settings.mdx.is_mdx_include_stem_complement
+        and any(route.native is not None for route in selected)
+    ):
+        selected = tuple(dict.fromkeys((
+            *selected,
+            *(route for route in routes if route.native is None and route.conditional),
+        )))
     return tuple(selected)
 
 
@@ -652,10 +662,7 @@ class JobResolver:
             MDX_ARCH_TYPE: ("mdx", settings.mdx.model),
             DEMUCS_ARCH_TYPE: ("demucs", settings.demucs.model),
         }[method_value]
-        token = str(reference)
-        if token.partition(":")[0].casefold() not in {"vr", "mdx", "demucs"}:
-            token = f"{family}:{token}"
-        return [self.identities.resolve(token)]
+        return [self.identities.resolve(str(reference), family=family)]
 
     def _assemble(
         self, settings: Settings, command: str, records: Sequence[ModelRecord]

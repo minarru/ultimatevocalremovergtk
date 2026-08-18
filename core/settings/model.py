@@ -71,8 +71,6 @@ class ProcessSettings:
     autocast: bool = False
     use_directml: bool = False
     device: str | None = None
-    primary_stem_only: bool = False
-    secondary_stem_only: bool = False
     stem_focus: str = ""
     testing_audio: bool = False
     add_model_name: bool = False
@@ -174,8 +172,6 @@ class DemucsSettings:
     chunks_demucs: int | str | None = None
     margin_demucs: int = 44100
     is_chunk_demucs: bool = False
-    is_primary_stem_only: bool = False
-    is_secondary_stem_only: bool = False
     is_split_mode: bool = True
     is_demucs_combine_stems: bool = True
     voc_inst_secondary_model: str = NO_MODEL
@@ -305,6 +301,23 @@ class Settings:
     def from_flat(cls, data: dict[str, Any]) -> Settings:
         settings = cls.defaults()
         settings.update(data)
+        from .coerce import _migrate_exclusive_flags_to_stem_focus
+
+        nested = {
+            "process": {
+                "stem_focus": settings.process.stem_focus,
+                "primary_stem_only": data.get("is_primary_stem_only"),
+                "secondary_stem_only": data.get("is_secondary_stem_only"),
+            },
+            "demucs": {
+                "is_primary_stem_only": data.get("is_primary_stem_only_Demucs"),
+                "is_secondary_stem_only": data.get("is_secondary_stem_only_Demucs"),
+            },
+        }
+        _migrate_exclusive_flags_to_stem_focus(nested)
+        process = nested.get("process")
+        if isinstance(process, dict) and process.get("stem_focus"):
+            settings.process.stem_focus = str(process["stem_focus"])
         return settings
 
     def get(self, key: str, default: Any = None) -> Any:
