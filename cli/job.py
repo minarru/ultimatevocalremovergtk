@@ -358,11 +358,15 @@ def resolve_ensemble_job(
         apply_profile_values(settings, profile.settings)
         sources.update({path: profile.source for path in profile.settings})
     if member_tokens:
+        from bundled.constants import CHOOSE_ENSEMBLE_OPTION
+
         records = [resolve_model_id(token, repo) for token in member_tokens]
         settings.ensemble.selected_models = [canonical_member_tag(item) for item in records]
+        settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         sources["ensemble.selected_models"] = (
             "cli" if args.models else profile.source
         )
+        sources["ensemble.chosen_ensemble"] = "derived"
     if args.main_stem:
         settings.ensemble.main_stem = EnsemblePair(args.main_stem)
         sources["ensemble.main_stem"] = "cli"
