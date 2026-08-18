@@ -32,14 +32,26 @@ from core.model_stem_semantics import (
     VOCALS_OTHER_DISPLAY_OVERRIDES,
     stem_display_overrides,
 )
+from core.stem_selection import (
+    DemucsView,
+    ExclusiveView,
+    StemSelectionState,
+    SubsetView,
+    _FOCUS_INSTRUMENTAL,
+    _FOCUS_VOCALS,
+    _QUICK_ALL,
+    _QUICK_INSTRUMENTAL,
+    _QUICK_VOCALS,
+    _SUBSET_CUSTOM,
+    _TOGGLE_ALL,
+    _exclusive_name_from_settings,
+)
 from core.stems import (
     EnsemblePair,
     StemBucket,
     bucket_for_model_stem,
     canonical_stem_alias,
     concept_is,
-    exclusive_flags_for_pair,
-    focus_matches_stem,
 )
 
 from ..dialogs.utils import present_modal_dialog, set_form_dialog_content
@@ -55,16 +67,8 @@ from ..help_text import (
     secondary_stem_only_tooltip,
 )
 from ..markup import set_row_subtitle
-from ..settings_bind import get_flat, set_flat
 from ..spacing import inset_md
 from .rows import get_combo_value, make_combo_row, set_combo_tag_values, set_combo_value
-
-_TOGGLE_ALL = "all"
-_QUICK_ALL = "quick_all"
-_QUICK_INSTRUMENTAL = "quick_instrumental"
-_QUICK_VOCALS = "quick_vocals"
-_FOCUS_INSTRUMENTAL = "focus_instrumental"
-_FOCUS_VOCALS = "focus_vocals"
 
 # Stable display order for "<stem> Only" entries.
 _STEM_ONLY_ORDER = (INST_STEM, VOCAL_STEM, BASS_STEM, DRUM_STEM, OTHER_STEM)
@@ -279,134 +283,6 @@ def _fill_export_combo(row: Adw.ComboRow, options: List[StemOnlyOption]) -> Dict
     return {opt.name: opt for opt in options}
 
 
-def _exclusive_name_from_settings(settings: typing.Any, primary_key: str, secondary_key: str) -> str:
-    primary_on = bool(get_flat(settings, primary_key))
-    secondary_on = bool(get_flat(settings, secondary_key))
-    if primary_on and not secondary_on:
-        return primary_key
-    if secondary_on and not primary_on:
-        return secondary_key
-    return _TOGGLE_ALL
-
-
-def _persist_exclusive_choice(settings: typing.Any, primary_key: str, secondary_key: str, name: str) -> None:
-    set_flat(settings, primary_key, name == primary_key)
-    set_flat(settings, secondary_key, name == secondary_key)
-
-
-def _stem_focus_tag(
-    stem: str,
-    *,
-    stem_count: int,
-    is_karaoke: bool,
-    is_karaoke_curated: bool,
-    is_bv: bool,
-) -> str:
-    """Focus-anchor tag for one stem: a bucket tag when recognized, or a
-    raw-name tag when not.
-
-    Every unrecognized stem (DeEcho/DeNoise/DeReverb-style pairs, crowd/
-    woodwinds removers, ...) collapses to the same StemBucket.UNKNOWN, so
-    anchoring on the bucket directly would make two *different* stems on
-    the *same* model compare equal -- the anchor would false-match and
-    silently flip which stem gets exported, exactly the bug this
-    mechanism exists to prevent. Falling back to the casefolded raw name
-    keeps each unrecognized stem distinct.
-    """
-    from core.model_stem_semantics import confident_stem_bucket
-    from core.stems import StemBucket
-
-    bucket = confident_stem_bucket(
-        stem,
-        stem_count=stem_count,
-        is_karaoke=is_karaoke,
-        is_karaoke_curated=is_karaoke_curated,
-        is_bv=is_bv,
-    )
-    if bucket == StemBucket.UNKNOWN.value:
-        return f"raw:{str(stem).strip().casefold()}"
-    return bucket
-
-
-def _exclusive_name_from_focus(
-    settings: typing.Any,
-    *,
-    primary_stem: Optional[str],
-    secondary_stem: Optional[str],
-    primary_key: str,
-    secondary_key: str,
-    is_karaoke: bool,
-    is_karaoke_curated: bool,
-    is_bv: bool,
-    stem_count: int,
-    ensemble_pair: Optional[EnsemblePair] = None,
-) -> Optional[str]:
-    """Resolve the exclusive-mode combo choice from ``process.stem_focus``.
-
-    Returns ``None`` when no focus is recorded yet (caller falls back to
-    ``_exclusive_name_from_settings``'s legacy boolean-based read). Once a
-    focus is recorded, always returns a definite choice -- ``primary_key``/
-    ``secondary_key`` on a match, or ``_TOGGLE_ALL`` when neither of this
-    model's stems match (a different, unrelated pair type).
-    """
-    focus = getattr(settings.process, "stem_focus", "") or ""
-    if not focus:
-        return None
-    if ensemble_pair is not None:
-        flags = exclusive_flags_for_pair(focus, ensemble_pair)
-        if flags == (True, False):
-            return primary_key
-        if flags == (False, True):
-            return secondary_key
-        return _TOGGLE_ALL
-    ctx = {
-        "stem_count": stem_count,
-        "is_karaoke": is_karaoke,
-        "is_bv": is_bv,
-    }
-    if primary_stem and focus_matches_stem(focus, primary_stem, **ctx):
-        return primary_key
-    if secondary_stem and focus_matches_stem(focus, secondary_stem, **ctx):
-        return secondary_key
-    return _TOGGLE_ALL
-
-
-def _stem_focus_for_choice(
-    name: str,
-    *,
-    primary_stem: Optional[str],
-    secondary_stem: Optional[str],
-    primary_key: str,
-    secondary_key: str,
-    is_karaoke: bool,
-    is_karaoke_curated: bool,
-    is_bv: bool,
-    stem_count: int,
-    ensemble_pair: Optional[EnsemblePair] = None,
-) -> str:
-    """Focus tag to persist as ``process.stem_focus`` for an exclusive pick."""
-    if ensemble_pair is not None:
-        primary_b, secondary_b = ensemble_pair.buckets()
-        if name == primary_key and primary_b is not StemBucket.UNKNOWN:
-            return primary_b.value
-        if name == secondary_key and secondary_b is not StemBucket.UNKNOWN:
-            return secondary_b.value
-        return ""
-    if name == primary_key and primary_stem:
-        stem = primary_stem
-    elif name == secondary_key and secondary_stem:
-        stem = secondary_stem
-    else:
-        return ""
-    return _stem_focus_tag(
-        stem,
-        stem_count=stem_count,
-        is_karaoke=is_karaoke,
-        is_karaoke_curated=is_karaoke_curated,
-        is_bv=is_bv,
-    )
-
-
 def _export_label_for_choice(name: str, options: Dict[str, StemOnlyOption]) -> str:
     if name == _TOGGLE_ALL:
         return "Exporting all outputs"
@@ -423,30 +299,12 @@ class SaveStemsSection:
         self.settings = settings
         self._on_changed = on_changed
         self._loading = False
+        self._state = StemSelectionState()
 
-        self.mode = "hidden"
-        self._has_model = False
-        self._primary_key = "is_primary_stem_only"
-        self._secondary_key = "is_secondary_stem_only"
-        self._subset_stems: List[str] = []
-        self._exclusive_primary: Optional[str] = None
-        self._exclusive_secondary: Optional[str] = None
-        self._exclusive_is_karaoke: bool = False
-        self._exclusive_is_karaoke_curated: bool = False
-        self._exclusive_is_bv: bool = False
-        self._exclusive_stem_count: int = 2
-        self._exclusive_pair: Optional[EnsemblePair] = None
-        self._demucs_export_primary: Optional[str] = None
-        self._demucs_export_secondary: Optional[str] = None
-        self._subset_mode = _QUICK_ALL
         self._stem_label_overrides: Optional[Dict[str, str]] = None
         self._export_semantics_note = ""
-        self._demucs_stem_count = 4
         self._exclusive_options: Dict[str, StemOnlyOption] = {}
         self._demucs_export_options: Dict[str, StemOnlyOption] = {}
-        self._demucs_focus_map: Dict[str, str] = {}
-        self._custom_selected: Set[str] = set()
-        self._custom_all = True
         self._draft_custom_selected: Set[str] = set()
         self._draft_custom_all = True
         self._custom_checks: Dict[str, Gtk.CheckButton] = {}
@@ -500,6 +358,158 @@ class SaveStemsSection:
         """Hint/tooltip target: host PreferencesGroup once attached."""
         return self._host if self._host is not None else self._holder
 
+    @property
+    def mode(self) -> str:
+        return self._state.mode
+
+    @mode.setter
+    def mode(self, value: str) -> None:
+        self._state.mode = value
+
+    @property
+    def _has_model(self) -> bool:
+        return self._state.has_model
+
+    @_has_model.setter
+    def _has_model(self, value: bool) -> None:
+        self._state.has_model = value
+
+    @property
+    def _primary_key(self) -> str:
+        return self._state.primary_key
+
+    @_primary_key.setter
+    def _primary_key(self, value: str) -> None:
+        self._state.primary_key = value
+
+    @property
+    def _secondary_key(self) -> str:
+        return self._state.secondary_key
+
+    @_secondary_key.setter
+    def _secondary_key(self, value: str) -> None:
+        self._state.secondary_key = value
+
+    @property
+    def _subset_stems(self) -> List[str]:
+        return self._state.subset_stems
+
+    @_subset_stems.setter
+    def _subset_stems(self, value: List[str]) -> None:
+        self._state.subset_stems = list(value)
+
+    @property
+    def _exclusive_primary(self) -> Optional[str]:
+        return self._state.exclusive_primary
+
+    @_exclusive_primary.setter
+    def _exclusive_primary(self, value: Optional[str]) -> None:
+        self._state.exclusive_primary = value
+
+    @property
+    def _exclusive_secondary(self) -> Optional[str]:
+        return self._state.exclusive_secondary
+
+    @_exclusive_secondary.setter
+    def _exclusive_secondary(self, value: Optional[str]) -> None:
+        self._state.exclusive_secondary = value
+
+    @property
+    def _exclusive_is_karaoke(self) -> bool:
+        return self._state.is_karaoke
+
+    @_exclusive_is_karaoke.setter
+    def _exclusive_is_karaoke(self, value: bool) -> None:
+        self._state.is_karaoke = value
+
+    @property
+    def _exclusive_is_karaoke_curated(self) -> bool:
+        return self._state.is_karaoke_curated
+
+    @_exclusive_is_karaoke_curated.setter
+    def _exclusive_is_karaoke_curated(self, value: bool) -> None:
+        self._state.is_karaoke_curated = value
+
+    @property
+    def _exclusive_is_bv(self) -> bool:
+        return self._state.is_bv
+
+    @_exclusive_is_bv.setter
+    def _exclusive_is_bv(self, value: bool) -> None:
+        self._state.is_bv = value
+
+    @property
+    def _exclusive_stem_count(self) -> int:
+        return self._state.stem_count
+
+    @_exclusive_stem_count.setter
+    def _exclusive_stem_count(self, value: int) -> None:
+        self._state.stem_count = value
+
+    @property
+    def _exclusive_pair(self) -> Optional[EnsemblePair]:
+        return self._state.ensemble_pair
+
+    @_exclusive_pair.setter
+    def _exclusive_pair(self, value: Optional[EnsemblePair]) -> None:
+        self._state.ensemble_pair = value
+
+    @property
+    def _demucs_export_primary(self) -> Optional[str]:
+        return self._state.demucs_export_primary
+
+    @_demucs_export_primary.setter
+    def _demucs_export_primary(self, value: Optional[str]) -> None:
+        self._state.demucs_export_primary = value
+
+    @property
+    def _demucs_export_secondary(self) -> Optional[str]:
+        return self._state.demucs_export_secondary
+
+    @_demucs_export_secondary.setter
+    def _demucs_export_secondary(self, value: Optional[str]) -> None:
+        self._state.demucs_export_secondary = value
+
+    @property
+    def _subset_mode(self) -> str:
+        return self._state.subset_mode
+
+    @_subset_mode.setter
+    def _subset_mode(self, value: str) -> None:
+        self._state.subset_mode = value
+
+    @property
+    def _demucs_stem_count(self) -> int:
+        return self._state.demucs_stem_count
+
+    @_demucs_stem_count.setter
+    def _demucs_stem_count(self, value: int) -> None:
+        self._state.demucs_stem_count = value
+
+    @property
+    def _demucs_focus_map(self) -> Dict[str, str]:
+        return self._state.demucs_focus_map
+
+    @_demucs_focus_map.setter
+    def _demucs_focus_map(self, value: Dict[str, str]) -> None:
+        self._state.demucs_focus_map = value
+
+    @property
+    def _custom_selected(self) -> Set[str]:
+        return self._state.custom_selected
+
+    @_custom_selected.setter
+    def _custom_selected(self, value: Set[str]) -> None:
+        self._state.custom_selected = set(value)
+
+    @property
+    def _custom_all(self) -> bool:
+        return self._state.custom_all
+
+    @_custom_all.setter
+    def _custom_all(self, value: bool) -> None:
+        self._state.custom_all = value
+
     def attach_to(self, group: Adw.PreferencesGroup) -> None:
         """Add export rows directly to ``group`` (avoids a nested PreferencesGroup)."""
         for row in self._rows:
@@ -547,8 +557,7 @@ class SaveStemsSection:
         )
 
     def configure_hidden(self, *, has_model: bool = False) -> None:
-        self.mode = "hidden"
-        self._has_model = has_model
+        self._state.configure_hidden(has_model=has_model)
         self._stem_label_overrides = None
         self._export_semantics_note = ""
         self._section_visible = False
@@ -570,17 +579,18 @@ class SaveStemsSection:
         stem_count: int = 2,
         ensemble_pair: Optional[EnsemblePair] = None,
     ) -> None:
-        self.mode = "exclusive"
-        self._has_model = has_model
-        self._primary_key = primary_key
-        self._secondary_key = secondary_key
-        self._exclusive_primary = primary_stem
-        self._exclusive_secondary = secondary_stem
-        self._exclusive_is_karaoke = is_karaoke
-        self._exclusive_is_karaoke_curated = is_karaoke_curated
-        self._exclusive_is_bv = is_bv
-        self._exclusive_stem_count = stem_count
-        self._exclusive_pair = ensemble_pair
+        self._state.configure_exclusive(
+            primary_stem=primary_stem,
+            secondary_stem=secondary_stem,
+            primary_key=primary_key,
+            secondary_key=secondary_key,
+            has_model=has_model,
+            is_karaoke=is_karaoke,
+            is_karaoke_curated=is_karaoke_curated,
+            is_bv=is_bv,
+            stem_count=stem_count,
+            ensemble_pair=ensemble_pair,
+        )
         self._stem_label_overrides = stem_label_overrides
         self._export_semantics_note = export_semantics_note or ""
         self._hide_all_rows()
@@ -615,13 +625,14 @@ class SaveStemsSection:
         stem_label_overrides: Optional[Dict[str, str]] = None,
         export_semantics_note: str = "",
     ) -> None:
-        self.mode = "subset"
-        self._has_model = has_model
+        self._state.configure_subset(
+            stems=stems,
+            primary_key=primary_key,
+            secondary_key=secondary_key,
+            has_model=has_model,
+        )
         self._stem_label_overrides = stem_label_overrides
         self._export_semantics_note = export_semantics_note or ""
-        self._primary_key = primary_key
-        self._secondary_key = secondary_key
-        self._subset_stems = [s for s in stems if s != ALL_STEMS]
         self._hide_all_rows()
         if not has_model:
             self._section_visible = False
@@ -658,36 +669,33 @@ class SaveStemsSection:
         demucs_stem_count: int = 4,
         export_semantics_note: str = "",
     ) -> None:
-        self.mode = "demucs"
-        self._has_model = has_model
+        self._state.configure_demucs(
+            focus_stems=focus_stems,
+            primary_key=primary_key,
+            secondary_key=secondary_key,
+            has_model=has_model,
+            demucs_stem_count=demucs_stem_count,
+        )
         self._stem_label_overrides = None
         self._export_semantics_note = export_semantics_note or ""
-        self._demucs_stem_count = max(1, demucs_stem_count)
-        self._primary_key = primary_key
-        self._secondary_key = secondary_key
         self._hide_all_rows()
         if not has_model:
             self._section_visible = False
             return
         self._section_visible = True
         items: List[Tuple[str, str]] = []
-        self._demucs_focus_map = {}
         for entry in focus_stems:
             if entry == ALL_STEMS:
                 name, label = _QUICK_ALL, ALL_STEMS
-                self._demucs_focus_map[name] = ALL_STEMS
             elif entry == _FOCUS_INSTRUMENTAL:
                 name = _FOCUS_INSTRUMENTAL
                 label = _QUICK_EXPORT_LABELS[_QUICK_INSTRUMENTAL]
-                self._demucs_focus_map[name] = _FOCUS_INSTRUMENTAL
             elif entry == _FOCUS_VOCALS:
                 name = _FOCUS_VOCALS
                 label = _QUICK_EXPORT_LABELS[_QUICK_VOCALS]
-                self._demucs_focus_map[name] = _FOCUS_VOCALS
             else:
                 name = entry
                 label = stem_display_label(entry)
-                self._demucs_focus_map[name] = entry
             items.append((name, label))
         was_loading = self._loading
         self._loading = True
@@ -702,58 +710,48 @@ class SaveStemsSection:
         was_loading = self._loading
         self._loading = True
         try:
-            if self.mode == "exclusive":
-                name = _exclusive_name_from_focus(
-                    self.settings,
-                    primary_stem=self._exclusive_primary,
-                    secondary_stem=self._exclusive_secondary,
-                    primary_key=self._primary_key,
-                    secondary_key=self._secondary_key,
-                    is_karaoke=self._exclusive_is_karaoke,
-                    is_karaoke_curated=self._exclusive_is_karaoke_curated,
-                    is_bv=self._exclusive_is_bv,
-                    stem_count=self._exclusive_stem_count,
-                    ensemble_pair=self._exclusive_pair,
-                )
-                if name is None:
-                    name = _exclusive_name_from_settings(
-                        self.settings, self._primary_key, self._secondary_key
+            view = self._state.read(self.settings)
+            if isinstance(view, ExclusiveView):
+                set_combo_value(self._exclusive_row, view.choice)
+            elif isinstance(view, SubsetView):
+                if self._quick_row.get_visible() and self._state.vocal_stem_in_subset():
+                    set_combo_value(
+                        self._quick_row,
+                        view.mode if view.mode != _SUBSET_CUSTOM else _QUICK_ALL,
                     )
-                else:
-                    _persist_exclusive_choice(
-                        self.settings, self._primary_key, self._secondary_key, name
-                    )
-                set_combo_value(self._exclusive_row, name)
-            elif self.mode == "subset":
-                self._sync_subset_from_settings()
-            elif self.mode == "demucs":
-                self._sync_demucs_from_settings()
+                self._apply_subset_dimming()
+            elif isinstance(view, DemucsView):
+                set_combo_value(self._demucs_focus_row, view.active)
+                self._update_demucs_export_visibility(from_settings=True)
         finally:
             self._loading = was_loading
         self._refresh_primary_semantics()
 
     def persist_to_settings(self) -> None:
         if self.mode == "exclusive":
-            name = get_combo_value(self._exclusive_row) or _TOGGLE_ALL
-            _persist_exclusive_choice(
-                self.settings, self._primary_key, self._secondary_key, name
-            )
-            self.settings.process.stem_focus = _stem_focus_for_choice(
-                name,
-                primary_stem=self._exclusive_primary,
-                secondary_stem=self._exclusive_secondary,
-                primary_key=self._primary_key,
-                secondary_key=self._secondary_key,
-                is_karaoke=self._exclusive_is_karaoke,
-                is_karaoke_curated=self._exclusive_is_karaoke_curated,
-                is_bv=self._exclusive_is_bv,
-                stem_count=self._exclusive_stem_count,
-                ensemble_pair=self._exclusive_pair,
+            self._state.write(
+                self.settings,
+                ExclusiveView(choice=get_combo_value(self._exclusive_row) or _TOGGLE_ALL),
             )
         elif self.mode == "subset":
-            self._persist_subset()
+            self._state.write(
+                self.settings,
+                SubsetView(
+                    mode=self._subset_mode,
+                    selected=set(self._custom_selected),
+                    custom_all=self._custom_all,
+                ),
+            )
         elif self.mode == "demucs":
-            self._persist_demucs()
+            active = self._demucs_active_name()
+            self._state.write(
+                self.settings,
+                DemucsView(
+                    active=active,
+                    export_choice=get_combo_value(self._demucs_export_row) or _TOGGLE_ALL,
+                    export_filter_visible=self._demucs_export_row.get_visible(),
+                ),
+            )
 
     def export_summary(self) -> str:
         if not self._has_model:
@@ -772,29 +770,12 @@ class SaveStemsSection:
         return [self.export_summary()]
 
     def expected_output_count(self) -> int:
-        if not self._has_model or self.mode == "hidden":
-            return 0
-        if self.mode == "exclusive":
-            name = get_combo_value(self._exclusive_row) or _TOGGLE_ALL
-            return 2 if name == _TOGGLE_ALL else 1
-        if self.mode == "subset":
-            if self._subset_mode in (_QUICK_INSTRUMENTAL, _QUICK_VOCALS):
-                return 1
-            if self._subset_mode == _QUICK_ALL or self._custom_all:
-                return max(1, len(self._subset_stems))
-            if not self._custom_selected:
-                return max(1, len(self._subset_stems))
-            return len(self._custom_selected)
-        if self.mode == "demucs":
-            if self._demucs_is_quick_instrumental() or self._demucs_is_quick_vocals():
-                return 1
-            if self._demucs_is_all_stems():
-                return max(1, self._demucs_stem_count)
-            if self._demucs_export_row.get_visible():
-                name = get_combo_value(self._demucs_export_row) or _TOGGLE_ALL
-                return 2 if name == _TOGGLE_ALL else 1
-            return 1
-        return 0
+        return self._state.expected_output_count(
+            exclusive_choice=get_combo_value(self._exclusive_row) or _TOGGLE_ALL,
+            demucs_active=self._demucs_active_name(),
+            demucs_export_choice=get_combo_value(self._demucs_export_row) or _TOGGLE_ALL,
+            demucs_export_visible=self._demucs_export_row.get_visible(),
+        )
 
     def active_hint(self) -> str:
         if self._export_semantics_note:
@@ -841,19 +822,7 @@ class SaveStemsSection:
         self._custom_row.set_sensitive(True)
 
     def _vocal_stem_in_subset(self) -> Optional[str]:
-        count = len(self._subset_stems)
-        for stem in self._subset_stems:
-            if concept_is(stem, StemBucket.VOCALS, stem_count=count):
-                return stem
-        return None
-
-    def _selection_matches_vocal_stem(self, selected: Set[str]) -> bool:
-        if not selected or len(selected) != 1:
-            return False
-        chosen = next(iter(selected))
-        return concept_is(
-            chosen, StemBucket.VOCALS, stem_count=len(self._subset_stems)
-        )
+        return self._state.vocal_stem_in_subset()
 
     def _set_custom_selection(
         self,
@@ -861,109 +830,14 @@ class SaveStemsSection:
         *,
         highlight_all_when_empty: bool = True,
     ) -> None:
-        stem_set = set(self._subset_stems)
-        if not selected:
-            self._custom_all = highlight_all_when_empty
-            self._custom_selected = set()
-        elif selected >= stem_set:
-            self._custom_all = True
-            self._custom_selected = set()
-        else:
-            self._custom_all = False
-            self._custom_selected = set(selected)
+        self._state.set_custom_selection(
+            selected, highlight_all_when_empty=highlight_all_when_empty
+        )
         self._refresh_custom_subtitle()
 
     def _apply_subset_chip_selection(self, mode: str, selected: Set[str]) -> None:
-        """Update in-memory custom selection to match quick/custom mode."""
-        if mode == _QUICK_INSTRUMENTAL:
-            self._set_custom_selection(set(), highlight_all_when_empty=False)
-        elif mode == _QUICK_VOCALS:
-            vocal = self._vocal_stem_in_subset()
-            self._set_custom_selection(
-                {vocal} if vocal else set(),
-                highlight_all_when_empty=False,
-            )
-        elif mode == _QUICK_ALL:
-            self._set_custom_selection(set(), highlight_all_when_empty=True)
-        else:
-            self._set_custom_selection(selected, highlight_all_when_empty=True)
-
-    def _stored_subset_selection(self) -> Tuple[str, Set[str]]:
-        selected = list(self.settings.mdx.stems_selected or [])
-        if not selected:
-            legacy = self.settings.mdx.stems
-            if legacy and legacy != ALL_STEMS:
-                selected = [legacy]
-        selected_set = set(selected)
-        stem_set = set(self._subset_stems)
-        primary_on = bool(get_flat(self.settings, self._primary_key))
-        secondary_on = bool(get_flat(self.settings, self._secondary_key))
-
-        if self._vocal_stem_in_subset() and self._selection_matches_vocal_stem(selected_set):
-            if secondary_on and not primary_on:
-                return _QUICK_INSTRUMENTAL, selected_set
-            if primary_on and not secondary_on:
-                return _QUICK_VOCALS, selected_set
-        if not selected_set or selected_set >= stem_set:
-            if not primary_on and not secondary_on:
-                return _QUICK_ALL, stem_set
-        return "custom", selected_set
-
-    def _sync_subset_from_settings(self) -> None:
-        mode, selected = self._stored_subset_selection()
-        self._subset_mode = mode
-        if self._quick_row.get_visible() and self._vocal_stem_in_subset():
-            set_combo_value(self._quick_row, mode if mode != "custom" else _QUICK_ALL)
-        self._apply_subset_chip_selection(mode, selected)
-        self._apply_subset_dimming()
-
-    def _persist_subset(self) -> None:
-        if self._subset_mode != "custom":
-            if self._subset_mode == _QUICK_ALL:
-                self.settings.mdx.stems_selected = []
-                self.settings.mdx.stems = ALL_STEMS
-                self.settings.process.stem_focus = ""
-                set_flat(self.settings, self._primary_key, False)
-                set_flat(self.settings, self._secondary_key, False)
-            elif self._subset_mode == _QUICK_INSTRUMENTAL:
-                self.settings.mdx.stems_selected = [VOCAL_STEM]
-                self.settings.mdx.stems = VOCAL_STEM
-                self.settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
-                set_flat(self.settings, self._primary_key, False)
-                set_flat(self.settings, self._secondary_key, True)
-            elif self._subset_mode == _QUICK_VOCALS:
-                self.settings.mdx.stems_selected = [VOCAL_STEM]
-                self.settings.mdx.stems = VOCAL_STEM
-                self.settings.process.stem_focus = StemBucket.VOCALS.value
-                set_flat(self.settings, self._primary_key, True)
-                set_flat(self.settings, self._secondary_key, False)
-            return
-
-        if self._custom_all or not self._custom_selected or self._custom_selected >= set(
-            self._subset_stems
-        ):
-            self.settings.mdx.stems_selected = []
-            self.settings.mdx.stems = ALL_STEMS
-            self.settings.process.stem_focus = ""
-        else:
-            selected = [stem for stem in self._subset_stems if stem in self._custom_selected]
-            self.settings.mdx.stems_selected = selected
-            self.settings.mdx.stems = (
-                selected[0] if len(selected) == 1 else ALL_STEMS
-            )
-            if len(selected) == 1:
-                bucket = bucket_for_model_stem(
-                    selected[0], stem_count=len(self._subset_stems)
-                )
-                self.settings.process.stem_focus = (
-                    bucket.value
-                    if bucket is not StemBucket.UNKNOWN
-                    else f"raw:{selected[0].strip().casefold()}"
-                )
-            else:
-                self.settings.process.stem_focus = ""
-        set_flat(self.settings, self._primary_key, False)
-        set_flat(self.settings, self._secondary_key, False)
+        self._state.apply_subset_chip_selection(mode, selected)
+        self._refresh_custom_subtitle()
 
     def _subset_export_summary(self) -> str:
         if self._subset_mode == _QUICK_INSTRUMENTAL:
@@ -1123,7 +997,7 @@ class SaveStemsSection:
         return get_combo_value(self._demucs_focus_row) or _QUICK_ALL
 
     def _demucs_focus_value(self) -> str:
-        return self._demucs_focus_map.get(self._demucs_active_name(), ALL_STEMS)
+        return self._state.demucs_focus_value(self._demucs_active_name())
 
     def _demucs_is_quick_vocals(self) -> bool:
         return self._demucs_active_name() == _FOCUS_VOCALS
@@ -1135,27 +1009,7 @@ class SaveStemsSection:
         return self._demucs_active_name() == _QUICK_ALL
 
     def _demucs_needs_export_filter(self) -> bool:
-        return self._demucs_active_name() not in (_QUICK_ALL, _FOCUS_INSTRUMENTAL, _FOCUS_VOCALS)
-
-    def _sync_demucs_from_settings(self) -> None:
-        focus = self.settings.demucs.stems or ALL_STEMS
-        primary_on = bool(get_flat(self.settings, self._primary_key))
-        secondary_on = bool(get_flat(self.settings, self._secondary_key))
-
-        # ``demucs.stems`` holds a stem name, not a focus tag; Demucs sources
-        # are always the 4-stem set, so ``other`` here is the MUSDB residual.
-        focus_is_vocals = concept_is(str(focus), StemBucket.VOCALS, stem_count=4)
-        if focus == ALL_STEMS:
-            active = _QUICK_ALL
-        elif focus_is_vocals and secondary_on and not primary_on:
-            active = _FOCUS_INSTRUMENTAL
-        elif focus_is_vocals and primary_on and not secondary_on:
-            active = _FOCUS_VOCALS
-        else:
-            active = focus
-
-        set_combo_value(self._demucs_focus_row, active)
-        self._update_demucs_export_visibility(from_settings=True)
+        return self._state.demucs_needs_export_filter(self._demucs_active_name())
 
     def _update_demucs_export_visibility(self, *, from_settings: bool) -> None:
         if self._demucs_needs_export_filter():
@@ -1173,81 +1027,17 @@ class SaveStemsSection:
             self._loading = True
             try:
                 self._demucs_export_options = _fill_export_combo(self._demucs_export_row, options)
-                if from_settings:
-                    name = _exclusive_name_from_settings(
-                        self.settings, self._primary_key, self._secondary_key
-                    )
-                else:
-                    if not get_flat(self.settings, self._primary_key) and not get_flat(
-                        self.settings, self._secondary_key
-                    ):
-                        set_flat(self.settings, self._primary_key, True)
-                        set_flat(self.settings, self._secondary_key, False)
-                    name = _exclusive_name_from_settings(
-                        self.settings, self._primary_key, self._secondary_key
-                    )
+                if not from_settings:
+                    self._state.ensure_demucs_export_defaults(self.settings)
+                name = _exclusive_name_from_settings(
+                    self.settings, self._primary_key, self._secondary_key
+                )
                 set_combo_value(self._demucs_export_row, name)
             finally:
                 self._loading = was_loading
             self._demucs_export_row.set_visible(True)
         else:
             self._demucs_export_row.set_visible(False)
-
-    def _persist_demucs(self) -> None:
-        active = self._demucs_active_name()
-        if active == _QUICK_ALL:
-            self.settings.demucs.stems = ALL_STEMS
-            self.settings.process.stem_focus = ""
-            set_flat(self.settings, self._primary_key, False)
-            set_flat(self.settings, self._secondary_key, False)
-            return
-        if active == _FOCUS_INSTRUMENTAL:
-            self.settings.demucs.stems = VOCAL_STEM
-            self.settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
-            set_flat(self.settings, self._primary_key, False)
-            set_flat(self.settings, self._secondary_key, True)
-            return
-        if active == _FOCUS_VOCALS:
-            self.settings.demucs.stems = VOCAL_STEM
-            self.settings.process.stem_focus = StemBucket.VOCALS.value
-            set_flat(self.settings, self._primary_key, True)
-            set_flat(self.settings, self._secondary_key, False)
-            return
-
-        self.settings.demucs.stems = active
-        if self._demucs_export_row.get_visible():
-            name = get_combo_value(self._demucs_export_row) or _TOGGLE_ALL
-            _persist_exclusive_choice(
-                self.settings, self._primary_key, self._secondary_key, name
-            )
-            if name == self._primary_key:
-                self.settings.process.stem_focus = _stem_focus_tag(
-                    active,
-                    stem_count=self._demucs_stem_count,
-                    is_karaoke=False,
-                    is_karaoke_curated=False,
-                    is_bv=False,
-                )
-            elif name == self._secondary_key:
-                self.settings.process.stem_focus = _stem_focus_tag(
-                    secondary_stem(active),
-                    stem_count=2,
-                    is_karaoke=False,
-                    is_karaoke_curated=False,
-                    is_bv=False,
-                )
-            else:
-                self.settings.process.stem_focus = ""
-        else:
-            set_flat(self.settings, self._primary_key, True)
-            set_flat(self.settings, self._secondary_key, False)
-            self.settings.process.stem_focus = _stem_focus_tag(
-                active,
-                stem_count=self._demucs_stem_count,
-                is_karaoke=False,
-                is_karaoke_curated=False,
-                is_bv=False,
-            )
 
     def _demucs_export_summary(self) -> str:
         if self._demucs_is_all_stems():

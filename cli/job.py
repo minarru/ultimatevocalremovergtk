@@ -12,9 +12,9 @@ from core.settings import Settings
 from core.settings.job_resolution import (
     SettingsLayer,
     SettingsResolver,
-    apply_stem_selection,
     resolve_splitter_identity,
 )
+from core.stem_selection import apply_stem_selection
 
 from core.input_discovery import discover_inputs
 from core.model_identity import ModelIdentityService, ModelRecord, canonical_member_tag, resolve_model_id

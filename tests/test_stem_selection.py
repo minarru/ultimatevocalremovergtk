@@ -6,7 +6,7 @@ import unittest
 
 from bundled.constants import ALL_STEMS, BASS_STEM, INST_STEM, VOCAL_STEM
 from core.settings import Settings
-from core.settings.job_resolution import apply_stem_selection
+from core.stem_selection import apply_stem_selection
 from core.stems import StemBucket, exclusive_flags_for_focus
 from cli.job import _resolved_settings
 

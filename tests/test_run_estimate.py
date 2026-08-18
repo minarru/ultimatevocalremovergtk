@@ -30,10 +30,12 @@ from core.run_estimate import (
     format_workload_line,
     save_progress_local_step,
 )
-from ui.widgets.stem_only import (
-    SaveStemsSection,
+from core.stem_selection import (
     _QUICK_ALL,
     _QUICK_VOCALS,
+)
+from ui.widgets.stem_only import (
+    SaveStemsSection,
 )
 
 
