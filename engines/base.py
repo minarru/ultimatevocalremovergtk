@@ -4,7 +4,6 @@ from typing import Any, Sequence, TYPE_CHECKING
 import os
 
 import numpy as np
-import soundfile as sf
 import torch
 
 from bundled.constants import *
@@ -13,17 +12,12 @@ from core.debug_log import debug, trace_phase
 from core.export_naming import stem_wav_path
 from core.gpu_backend import resolve_inference_backend
 from core.model_display import display_name_for_model
-from core.stems import StemBucket, StemLiteral, export_stem_key, filename_tag, stem_concept
-from core.model_stem_semantics import (
-    is_vocal_target,
-    vocal_inst_from_sources,
-)
+from core.stems import StemBucket, StemLiteral, export_stem_key, filename_tag
+from core.model_stem_semantics import vocal_inst_from_sources
 from core.progress_ticks import InferenceProgress
 from core.run_estimate import save_progress_local_step
 from ml import spec_utils
 
-from .export import save_format
-from .vr_utils import vr_denoiser
 from .orchestration import process_chain_model
 
 if TYPE_CHECKING:
@@ -558,205 +552,9 @@ class SeperateAttributes:
         samplerate: int,
         stem_name: str | None = None,
     ) -> None:
-        
-        def save_audio_file(path: str, source: Any) -> None:
-            # Ensemble scratch / long-file chunking: keep arrays in memory and
-            # skip disk when the caller asked to capture stems only, or when
-            # this is an ensemble member that should not keep every output.
-            capture_only = bool(getattr(self, "capture_stems_only", False))
-            ensemble_buffer = (
-                self.is_ensemble_mode
-                and not self.is_vocal_split_model
-                and not getattr(self, "is_save_all_outputs_ensemble", False)
-            )
-            if capture_only or ensemble_buffer:
-                if stem_name:
-                    # Ensemble combine keys must match disk export tags
-                    # (export_stem_key / filename_tag), not raw yaml ids.
-                    if ensemble_buffer:
-                        key = export_stem_key(self, stem_name, for_ensemble=True)
-                        buffer_key = (
-                            filename_tag(key)
-                            if isinstance(key, (StemBucket, StemLiteral))
-                            else str(key)
-                        )
-                    else:
-                        buffer_key = stem_name
-                    buffers = getattr(self, "_ensemble_stem_buffers", None)
-                    if buffers is None:
-                        buffers = {}
-                        self._ensemble_stem_buffers = buffers
-                    # Long-file chunking stores raw chunks (normalize after
-                    # concat / ensemble). Classic ensemble members keep the
-                    # historical pre-combine normalize.
-                    if capture_only:
-                        buffers[buffer_key] = np.asarray(source)
-                    else:
-                        buffers[buffer_key] = np.asarray(
-                            spec_utils.normalize(
-                                source,
-                                self.is_normalization,
-                                min_peak=self.amplification_threshold,
-                            )
-                        )
-                    paths = getattr(self, "_ensemble_stem_paths", None)
-                    if paths is None:
-                        paths = {}
-                        self._ensemble_stem_paths = paths
-                    paths[buffer_key] = path
-                return
+        from .stem_writer import write_audio as _write_audio
 
-            from core.stem_levels import export_format_can_clip, scale_to_peak_limit
-
-            if self.is_prevent_export_clipping and export_format_can_clip(
-                self.save_format, self.wav_type_set
-            ):
-                source, _gain = scale_to_peak_limit(source)
-
-            source = spec_utils.normalize(
-                source,
-                self.is_normalization,
-                min_peak=self.amplification_threshold,
-            )
-
-            if is_not_ensemble and self.save_format == FLAC:
-                from core.audio_io import flac_subtype, replace_audio_suffix
-
-                flac_path = replace_audio_suffix(path, ".flac")
-                sf.write(
-                    flac_path,
-                    source,
-                    samplerate,
-                    format="FLAC",
-                    subtype=flac_subtype(self.flac_bit_set),
-                )
-                return
-
-            sf.write(path, source, samplerate, subtype=self.wav_type_set)
-
-            if is_not_ensemble:
-                save_format(path, self.save_format, self.mp3_bit_set, self.flac_bit_set)
-
-        def save_voc_split_instrumental(
-            stem_name: str | None,
-            stem_source: Any,
-            is_inst_invert: bool = False,
-        ) -> None:
-            local = stem_concept(self, stem_name)
-            inst_stem_name = (
-                INST_WITH_LEAD_VOCALS_STEM
-                if local is StemBucket.LEAD_VOCALS
-                else INST_WITH_BACKING_VOCALS_STEM
-            )
-            inst_stem_path = self.audio_file_base_voc_split(inst_stem_name)
-            stem_source = -stem_source if is_inst_invert else stem_source
-            inst_stem_source = spec_utils.combine_arrarys([self.master_inst_source, stem_source], is_swap=True)
-            save_with_message(inst_stem_path, inst_stem_name, inst_stem_source)
-
-        def save_voc_split_vocal(
-            stem_name: str | None, stem_source: Any
-        ) -> None:
-            local = stem_concept(self, stem_name)
-            voc_split_stem_name = (
-                LEAD_VOCAL_STEM_LABEL
-                if local is StemBucket.LEAD_VOCALS
-                else BV_VOCAL_STEM_LABEL
-            )
-            voc_split_stem_path = self.audio_file_base_voc_split(voc_split_stem_name)
-            save_with_message(voc_split_stem_path, voc_split_stem_name, stem_source)
-
-        def save_with_message(
-            stem_path: str, stem_name: str | None, stem_source: Any
-        ) -> None:
-            saved_bucket = stem_concept(self, stem_name)
-            is_deverb = self.is_deverb_vocals and (
-                self.deverb_vocal_opt == stem_name or
-                (self.deverb_vocal_opt == 'ALL' and saved_bucket in (
-                    StemBucket.VOCALS,
-                    StemBucket.LEAD_VOCALS,
-                    StemBucket.BACKING_VOCALS,
-                )))
-
-            self.write_to_console(f'{SAVING_STEM[0]}{stem_name}{SAVING_STEM[1]}')
-            
-            if is_deverb and is_not_ensemble:
-                deverb_vocals(stem_path, stem_source)
-            
-            save_audio_file(stem_path, stem_source)
-            self.write_to_console(DONE, base_text='')
-            
-        def deverb_vocals(stem_path: str, stem_source: Any) -> None:
-            self.write_to_console(INFERENCE_STEP_DEVERBING, base_text='')
-            stem_source_deverbed, stem_source_2 = vr_denoiser(
-                stem_source,
-                self.device,
-                is_deverber=True,
-                model_path=self.DEVERBER_MODEL,
-                settings=self.settings,
-                on_batch=self.deverb_progress_callback(),
-                check_run_control=self.check_run_control,
-            )
-            save_audio_file(stem_path.replace(".wav", "_deverbed.wav"), stem_source_deverbed)
-            save_audio_file(stem_path.replace(".wav", "_reverb_only.wav"), stem_source_2)
-
-        bucket = stem_concept(self, stem_name)
-        if self.is_vocal_split_model:
-            if bucket is StemBucket.UNKNOWN:
-                return
-
-        is_lead = bucket is StemBucket.LEAD_VOCALS
-        is_backing = bucket is StemBucket.BACKING_VOCALS
-        is_vocal_family = bucket in (
-            StemBucket.VOCALS,
-            StemBucket.LEAD_VOCALS,
-            StemBucket.BACKING_VOCALS,
-        )
-        is_inst_family = bucket in (
-            StemBucket.INSTRUMENTAL,
-            StemBucket.INST_WITH_BV,
-            StemBucket.INST_WITH_LEAD,
-        )
-        is_bv_model_lead = (
-            self.is_bv_model_rebalenced and self.is_vocal_split_model and is_lead
-        )
-        is_bv_rebalance_lead = (
-            self.is_bv_model_rebalenced and self.is_vocal_split_model and is_backing
-        )
-        is_no_vocal_save = (
-            self.is_inst_only_voc_splitter and is_vocal_family
-        ) or is_bv_model_lead
-        is_not_ensemble = (not self.is_ensemble_mode or self.is_vocal_split_model)
-        is_do_not_save_inst = (
-            self.is_save_vocal_only and self.is_sec_bv_rebalance and is_inst_family
-        )
-
-        # Bound unconditionally: every read below sits behind the same
-        # ``is_bv_rebalance_lead`` guard that assigns it.
-        bv_rebalance_lead_source = None
-        if is_bv_rebalance_lead:
-            master_voc_source = spec_utils.match_array_shapes(self.master_vocal_source, stem_source, is_swap=True)
-            bv_rebalance_lead_source = stem_source-master_voc_source
-            
-        if not is_bv_model_lead and not is_do_not_save_inst:
-            if self.is_vocal_split_model or not self.is_secondary_model:
-                if self.is_vocal_split_model and not self.is_inst_only_voc_splitter:
-                    save_voc_split_vocal(stem_name, stem_source)
-                    if is_bv_rebalance_lead:
-                        save_voc_split_vocal(LEAD_VOCAL_STEM, bv_rebalance_lead_source)
-                else:
-                    if not is_no_vocal_save:
-                        save_with_message(stem_path, stem_name, stem_source)
-                    
-                if self.is_save_inst_vocal_splitter and not self.is_save_vocal_only:
-                    save_voc_split_instrumental(stem_name, stem_source)
-                    if is_bv_rebalance_lead:
-                        save_voc_split_instrumental(LEAD_VOCAL_STEM, bv_rebalance_lead_source, is_inst_invert=True)
-
-                self._report_save_progress()
-
-        # Yaml instruments are often ``vocals``, not canonical ``Vocals``.
-        if stem_name and is_vocal_target(stem_name):
-            self.master_vocal_path = stem_path
+        _write_audio(self, stem_path, stem_source, samplerate, stem_name)
 
     def pitch_fix(self, source: Any, sr_pitched: float, org_mix: Any) -> Any:
         semitone_shift = self.semitone_shift
