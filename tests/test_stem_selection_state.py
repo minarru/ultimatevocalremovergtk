@@ -46,7 +46,7 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
         )
-        state.write(settings, ExclusiveView(choice="is_secondary_stem_only"))
+        state.write(settings, ExclusiveView(choice=INST_STEM))
         self.assertEqual(settings.process.stem_focus, INST_STEM)
 
         state.configure_exclusive(
@@ -57,7 +57,7 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
         )
         view = state.read(settings)
         assert isinstance(view, ExclusiveView)
-        self.assertEqual(view.choice, "is_primary_stem_only")
+        self.assertEqual(view.choice, INST_STEM)
         self.assertTrue(settings.process.primary_stem_only)
         self.assertFalse(settings.process.secondary_stem_only)
 
@@ -77,7 +77,28 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
         )
         view = state.read(settings)
         assert isinstance(view, ExclusiveView)
-        self.assertEqual(view.choice, "is_primary_stem_only")
+        self.assertEqual(view.choice, VOCAL_STEM)
+
+    def test_unmatched_focus_parks_and_clears_flags(self) -> None:
+        from bundled.constants import INST_STEM
+        from core.settings import Settings
+        from core.stem_selection import ExclusiveView, StemSelectionState, _TOGGLE_ALL
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = INST_STEM
+        state = StemSelectionState()
+        state.configure_exclusive(
+            primary_stem="noreverb",
+            secondary_stem="reverb",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+        )
+        view = state.read(settings)
+        assert isinstance(view, ExclusiveView)
+        self.assertEqual(view.choice, _TOGGLE_ALL)
+        self.assertEqual(settings.process.stem_focus, INST_STEM)
+        self.assertFalse(settings.process.primary_stem_only)
+        self.assertFalse(settings.process.secondary_stem_only)
 
     def test_subset_quick_instrumental_persist(self) -> None:
         from bundled.constants import BASS_STEM, DRUM_STEM, VOCAL_STEM

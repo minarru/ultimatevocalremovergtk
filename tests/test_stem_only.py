@@ -199,7 +199,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        set_combo_value(self.section._exclusive_row, "is_secondary_stem_only")
+        set_combo_value(self.section._exclusive_row, INST_STEM)
         self.section.persist_to_settings()
         self.assertEqual(self.settings.process.stem_focus, INST_STEM)
 
@@ -252,7 +252,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only",
             has_model=True,
         )
-        set_combo_value(self.section._exclusive_row, "is_primary_stem_only")
+        set_combo_value(self.section._exclusive_row, VOCAL_STEM)
         self.section.persist_to_settings()
         self.assertEqual(self.settings.process.stem_focus, VOCAL_STEM)
 
@@ -445,7 +445,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        set_combo_value(self.section._exclusive_row, "is_secondary_stem_only")
+        set_combo_value(self.section._exclusive_row, "raw:reverb")
         self.section.persist_to_settings()
         self.assertTrue(self.settings["is_secondary_stem_only"])
 
@@ -472,7 +472,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        set_combo_value(self.section._exclusive_row, "is_secondary_stem_only")
+        set_combo_value(self.section._exclusive_row, "raw:reverb")
         self.section.persist_to_settings()
 
         self.section.configure_exclusive(
