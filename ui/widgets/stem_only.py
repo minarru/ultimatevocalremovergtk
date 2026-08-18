@@ -30,13 +30,13 @@ from bundled.constants import (
 
 from core.model_stem_semantics import (
     VOCALS_OTHER_DISPLAY_OVERRIDES,
-    canonical_stem_alias,
     stem_display_overrides,
 )
 from core.stems import (
     EnsemblePair,
     StemBucket,
     bucket_for_model_stem,
+    canonical_stem_alias,
     concept_is,
     exclusive_flags_for_pair,
     focus_matches_stem,
@@ -88,7 +88,7 @@ ALL_STEMS_ICON = "ungroup-symbolic"
 
 # UI-only: names with no ensemble/bucket significance today. Kept separate
 # from the shared core table on purpose -- folding them in would change
-# core/model_stem_semantics.canonical_ensemble_stem_tag's output for these
+# core/stems.canonical_ensemble_stem_tag's output for these
 # stems (verified: it passes them through unchanged today). See
 # docs/superpowers/specs/2026-08-09-stem-export-semantics-design.md.
 _STEM_ALIASES: Dict[str, str] = {

@@ -62,7 +62,7 @@ def _print_detail(args: argparse.Namespace, row: dict[str, Any]) -> int:
 def _human_cell(value: Any, *, key: str | None = None) -> str:
     value = _jsonable(value)
     if key in {"primary_stem", "secondary_stem"} and isinstance(value, str) and value:
-        from core.model_stem_semantics import canonical_stem_alias
+        from core.stems import canonical_stem_alias
 
         return canonical_stem_alias(value) or value
     if isinstance(value, (dict, list, tuple)):

@@ -9,9 +9,9 @@ from core.model_stem_semantics import (
     BUCKET_INSTRUMENTAL,
     BUCKET_LEAD_VOCALS,
     BUCKET_VOCALS,
-    canonical_ensemble_stem_tag,
     export_stem_label,
 )
+from core.stems import canonical_ensemble_stem_tag
 
 
 class _FakeModel:

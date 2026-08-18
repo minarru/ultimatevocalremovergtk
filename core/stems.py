@@ -17,6 +17,8 @@ from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 from bundled.constants import (
     BACKING_VOCALS_TAG,
     BASS_STEM,
+    BV_VOCAL_STEM,
+    BV_VOCAL_STEM_LABEL,
     DRUM_STEM,
     FOUR_STEM_ENSEMBLE,
     GUITAR_STEM,
@@ -25,12 +27,15 @@ from bundled.constants import (
     INST_WITH_BACKING_VOCALS_TAG,
     INST_WITH_LEAD_VOCALS_STEM,
     INST_WITH_LEAD_VOCALS_TAG,
+    LEAD_VOCAL_STEM,
     LEAD_VOCAL_STEM_LABEL,
     LEAD_VOCALS_TAG,
     MULTI_STEM_ENSEMBLE,
     NO_BASS_STEM,
     NO_DRUM_STEM,
+    NO_GUITAR_STEM,
     NO_OTHER_STEM,
+    NO_PIANO_STEM,
     OTHER_STEM,
     PIANO_STEM,
     VOCAL_STEM,
@@ -223,16 +228,148 @@ _INST_FAMILY = {
 }
 
 # Canonical label -> bucket enum for the plain single-instrument stems.
-# Alias spellings (vocals/voc/drums/...) live in the shared
-# core.model_stem_semantics table bucket_for_model_stem now queries via
-# canonical_stem_alias; this dict only maps already-canonical labels to
-# their bucket, it is not alias data.
+# Alias spellings live in _STEM_NAME_ALIASES / canonical_stem_alias; this
+# dict only maps already-canonical labels to their bucket.
 _SIMPLE_STEM_BUCKETS = {
     DRUM_STEM: StemBucket.DRUMS,
     BASS_STEM: StemBucket.BASS,
     GUITAR_STEM: StemBucket.GUITAR,
     PIANO_STEM: StemBucket.PIANO,
 }
+
+# Raw-name -> canonical-stem lookup shared by UI display, ensemble
+# bucketing, and stem-focus persistence anchoring. Only entries every
+# consumer already agrees on (or a strict, verified addition) belong here.
+# UI-only specialty names (speech/music/sfx/effects) and each consumer's
+# own complement ("No X") handling stay separate -- see
+# docs/superpowers/specs/2026-08-09-stem-export-semantics-design.md.
+_STEM_NAME_ALIASES: dict[str, str] = {
+    "vocals": VOCAL_STEM,
+    "vocal": VOCAL_STEM,
+    "voc": VOCAL_STEM,
+    "instrumental": INST_STEM,
+    "inst": INST_STEM,
+    "instrument": INST_STEM,
+    "other": OTHER_STEM,
+    "bass": BASS_STEM,
+    "drums": DRUM_STEM,
+    "guitar": GUITAR_STEM,
+    "piano": PIANO_STEM,
+}
+
+
+def canonical_stem_alias(name: Optional[str]) -> Optional[str]:
+    """Shared raw-name -> canonical-stem lookup, casefolded.
+
+    Single source of truth for UI display, ensemble bucketing, and
+    stem-focus anchoring. Returns ``None`` for anything not in the shared
+    core vocabulary -- callers layer their own purpose-specific handling
+    (specialty names, complement stems, karaoke/BV identity codes) on top.
+    """
+    if not name:
+        return None
+    return _STEM_NAME_ALIASES.get(str(name).strip().casefold())
+
+
+# Ensemble-only: complement ("No X") tags, matched as a whole lowercase
+# string. Kept separate from _STEM_NAME_ALIASES -- unlike the UI's
+# NO_STEM-prefix-then-suffix-lookup approach (ui/widgets/stem_only.py), this
+# must match a raw, fully-lowercase yaml value directly. Verified: the UI's
+# canonical_stem_name only recognizes an already-capitalized "No " prefix.
+_ENSEMBLE_STEM_COMPLEMENTS: dict[str, str] = {
+    "no other": NO_OTHER_STEM,
+    "no bass": NO_BASS_STEM,
+    "no drums": NO_DRUM_STEM,
+    "no guitar": NO_GUITAR_STEM,
+    "no piano": NO_PIANO_STEM,
+}
+
+_ENSEMBLE_STEM_PRESERVE = frozenset(
+    {
+        LEAD_VOCAL_STEM,
+        BV_VOCAL_STEM,
+        LEAD_VOCAL_STEM_LABEL,
+        BV_VOCAL_STEM_LABEL,
+        INST_WITH_LEAD_VOCALS_STEM,
+        INST_WITH_BACKING_VOCALS_STEM,
+        # Bucket tags written into ensemble member filenames. The combine stage
+        # re-reads them from the filename, so they must survive unchanged.
+        INST_WITH_BACKING_VOCALS_TAG,
+        INST_WITH_LEAD_VOCALS_TAG,
+        LEAD_VOCALS_TAG,
+        BACKING_VOCALS_TAG,
+    }
+)
+
+_ENSEMBLE_STEM_CANONICAL = frozenset(
+    {
+        VOCAL_STEM,
+        INST_STEM,
+        OTHER_STEM,
+        BASS_STEM,
+        DRUM_STEM,
+        GUITAR_STEM,
+        PIANO_STEM,
+        NO_OTHER_STEM,
+        NO_BASS_STEM,
+        NO_DRUM_STEM,
+        NO_GUITAR_STEM,
+        NO_PIANO_STEM,
+    }
+)
+
+
+def canonical_ensemble_stem_tag(stem: str) -> str:
+    """Normalize a stem tag for multi-stem ensemble bucketing and filenames.
+
+    Only folds well-known aliases (``vocals`` → ``Vocals``, ``drums`` →
+    ``Drums``, …). Leaves karaoke/BV identity codes and specialty stems
+    (Speech, Lead Vocals, Sfx, …) unchanged so they never merge with MUSDB
+    stems by accident.
+    """
+    if not stem:
+        return stem
+    stripped = str(stem).strip()
+    if not stripped:
+        return stripped
+    if stripped in _ENSEMBLE_STEM_PRESERVE:
+        return stripped
+    if stripped in _ENSEMBLE_STEM_CANONICAL:
+        return stripped
+    complement = _ENSEMBLE_STEM_COMPLEMENTS.get(stripped.casefold())
+    if complement is not None:
+        return complement
+    aliased = canonical_stem_alias(stripped)
+    if aliased is not None:
+        return aliased
+    # Title Case / odd casing of a known label (e.g. ``VOCALS`` → ``Vocals``).
+    for label in _ENSEMBLE_STEM_CANONICAL:
+        if label.casefold() == stripped.casefold():
+            return label
+    return stripped
+
+
+def karaoke_bv_export_labels(model: Any) -> Optional[dict[str, str]]:
+    """Vocals/Instrumental → human karaoke/BV export labels, or ``None``."""
+    if model is None:
+        return None
+    is_bv = bool(getattr(model, "is_bv_model", False))
+    is_karaoke = bool(getattr(model, "is_karaoke", False))
+    if not is_bv and not is_karaoke:
+        return None
+    if is_bv:
+        return {
+            VOCAL_STEM: BV_VOCAL_STEM_LABEL,
+            INST_STEM: INST_WITH_LEAD_VOCALS_STEM,
+            LEAD_VOCAL_STEM: LEAD_VOCAL_STEM_LABEL,
+            BV_VOCAL_STEM: BV_VOCAL_STEM_LABEL,
+        }
+    return {
+        VOCAL_STEM: LEAD_VOCAL_STEM_LABEL,
+        INST_STEM: INST_WITH_BACKING_VOCALS_STEM,
+        LEAD_VOCAL_STEM: LEAD_VOCAL_STEM_LABEL,
+        BV_VOCAL_STEM: BV_VOCAL_STEM_LABEL,
+    }
 
 
 def coerce_ensemble_pair(value: Any) -> EnsemblePair:
@@ -299,8 +436,6 @@ def bucket_for_model_stem(
     A splitter's instrumental complement is Backing Vocals (or Lead Vocals when
     the splitter is a BV model), never Inst-with-BGV.
     """
-    from core.model_stem_semantics import canonical_stem_alias
-
     raw = stem.raw if isinstance(stem, StemId) else stem
     token = str(raw or "").strip().casefold()
     if not token:
@@ -515,8 +650,6 @@ def focus_bucket(token: str) -> StemBucket:
     stem. Cross-spelling matching against a 2-stem model's native ``other``
     still happens later, in :func:`focus_matches_stem`.
     """
-    from core.model_stem_semantics import canonical_stem_alias
-
     folded = token.casefold()
     identity = _IDENTITY_BUCKETS.get(folded)
     if identity is not None:
@@ -638,11 +771,6 @@ def export_stem_key(
     Ensemble mode returns :class:`StemKey`. Outside ensemble, returns a string
     label (karaoke/BV human names or the raw stem).
     """
-    from core.model_stem_semantics import (
-        canonical_ensemble_stem_tag,
-        karaoke_bv_export_labels,
-    )
-
     raw = stem.raw if isinstance(stem, StemId) else stem
     if not raw:
         return raw
@@ -884,8 +1012,6 @@ def resolve_in_sources(
     sources: Optional[Mapping[str, Any]], stem: str | StemId
 ) -> Optional[str]:
     """Return the key in ``sources`` matching ``stem`` (case/alias insensitive)."""
-    from core.model_stem_semantics import canonical_ensemble_stem_tag
-
     if not isinstance(sources, Mapping):
         return None
     raw = stem.raw if isinstance(stem, StemId) else stem
