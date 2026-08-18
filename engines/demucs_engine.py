@@ -23,7 +23,14 @@ from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
 from core.demucs_models import demucs_pretrained_load_name
-from core.stems import StemBucket, stem_concept
+from core.stems import (
+    StemBucket,
+    StemRouteKind,
+    exports_named_stem,
+    route_matches_stem,
+    run_export_routes,
+    stem_concept,
+)
 from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
@@ -198,8 +205,38 @@ class SeperateDemucs(SeperateAttributes):
                     
         if not self.is_vocal_split_model:
             self.cache_source(source)
-        
-        if (self.demucs_stems == ALL_STEMS and not self.process_data.is_ensemble_master) or self.is_4_stem_ensemble and not self.is_return_dual:
+
+        def _demucs_map_key(stem: str) -> str | None:
+            if stem in self.demucs_source_map:
+                return stem
+            want = str(stem).casefold()
+            for key in self.demucs_source_map:
+                if str(key).casefold() == want:
+                    return str(key)
+            return None
+
+        export_routes = run_export_routes(self)
+        native_export = tuple(
+            route for route in export_routes if route.native is not None
+        )
+        if native_export:
+            write_all_sources = (
+                (
+                    len(native_export) == len(self.demucs_source_map)
+                    and not self.process_data.is_ensemble_master
+                )
+                or (self.is_4_stem_ensemble and not self.is_return_dual)
+            )
+        else:
+            write_all_sources = (
+                (
+                    self.demucs_stems == ALL_STEMS
+                    and not self.process_data.is_ensemble_master
+                )
+                or (self.is_4_stem_ensemble and not self.is_return_dual)
+            )
+
+        if write_all_sources:
             if isinstance(source, np.ndarray) and (
                 self.is_match_mix_level or self.is_prevent_export_clipping
             ):
@@ -246,13 +283,34 @@ class SeperateDemucs(SeperateAttributes):
         else:
             if self.is_secondary_model_activated and self.secondary_model:
                     self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, self.process_data, main_process_method=self.process_method)
-                    
-            save_writes = int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only)
-            if self.is_demucs_pre_proc_model_inst_mix and self.pre_proc_model and not self.is_4_stem_ensemble:
-                save_writes += int(not self.is_primary_stem_only)
-            self.begin_save_phase(max(1, save_writes))
 
-            if not self.is_primary_stem_only:
+            write_secondary = any(
+                route.kind is StemRouteKind.DERIVED for route in export_routes
+            ) or exports_named_stem(self, self.secondary_stem)
+            extra_inst_mix = 0
+            if (
+                write_secondary
+                and self.is_demucs_pre_proc_model_inst_mix
+                and self.pre_proc_model
+                and not self.is_4_stem_ensemble
+            ):
+                extra_inst_mix = 1
+            self.begin_save_phase(max(1, len(export_routes) + extra_inst_mix))
+
+            native_route = next(
+                (route for route in export_routes if route.native is not None),
+                None,
+            )
+            primary_key = (
+                native_route.native.raw
+                if native_route is not None and native_route.native is not None
+                else self.primary_stem
+            )
+            primary_map_key = _demucs_map_key(primary_key) or _demucs_map_key(
+                self.primary_stem
+            ) or self.primary_stem
+
+            if write_secondary:
                 def secondary_save(sec_stem_name: typing.Any, source: typing.Any, raw_mixture: typing.Any=None, is_inst_mixture: typing.Any=False):
                     nonlocal mix
                     secondary_source = self.secondary_source if not is_inst_mixture else None
@@ -263,9 +321,9 @@ class SeperateDemucs(SeperateAttributes):
                         if self.is_demucs_combine_stems:
                             source = list(source)
                             if is_inst_mixture:
-                                source = [i for n, i in enumerate(source) if not n in [self.demucs_source_map[self.primary_stem], self.demucs_source_map[VOCAL_STEM]]]
+                                source = [i for n, i in enumerate(source) if not n in [self.demucs_source_map[primary_map_key], self.demucs_source_map[VOCAL_STEM]]]
                             else:
-                                source.pop(self.demucs_source_map[self.primary_stem])
+                                source.pop(self.demucs_source_map[primary_map_key])
                                 
                             source = source[:len(source) - 2] if is_no_piano_guitar else source
                             secondary_source = np.zeros_like(source[0])
@@ -278,7 +336,7 @@ class SeperateDemucs(SeperateAttributes):
                                     mix = prepare_mix(self.audio_file)
                                 raw_mixture = mix
        
-                            secondary_source = source[self.demucs_source_map[self.primary_stem]]
+                            secondary_source = source[self.demucs_source_map[primary_map_key]]
                             
                             if self.is_invert_spec:
                                 secondary_source = spec_utils.invert_stem(raw_mixture, secondary_source)
@@ -294,15 +352,44 @@ class SeperateDemucs(SeperateAttributes):
 
                     self.write_audio(secondary_stem_path, secondary_source, samplerate, stem_name=sec_stem_name)
 
-                secondary_save(self.secondary_stem, source, raw_mixture=mix)
+                derived_label = next(
+                    (
+                        route.label
+                        for route in export_routes
+                        if route.kind is StemRouteKind.DERIVED
+                    ),
+                    self.secondary_stem,
+                )
+                secondary_save(derived_label, source, raw_mixture=mix)
                 
-                if self.is_demucs_pre_proc_model_inst_mix and self.pre_proc_model and not self.is_4_stem_ensemble:
+                if extra_inst_mix:
                     secondary_save(f"{self.secondary_stem} {INST_STEM}", source, raw_mixture=inst_mix, is_inst_mixture=True)
 
-            if not self.is_secondary_stem_only:
+            for route in native_export:
+                if write_secondary and route_matches_stem(
+                    route, self.secondary_stem, self
+                ):
+                    continue
+                native_raw = route.native.raw if route.native is not None else self.primary_stem
+                map_key = _demucs_map_key(native_raw)
+                if map_key is None:
+                    continue
+                primary_stem_path = self.stem_export_wav_path(map_key)
+                if not isinstance(self.primary_source, np.ndarray) or len(native_export) > 1:
+                    self.primary_source = source[self.demucs_source_map[map_key]].T
+
+                self.primary_source_map = self.final_process(
+                    primary_stem_path,
+                    self.primary_source,
+                    self.secondary_source_primary,
+                    map_key,
+                    samplerate,
+                )
+
+            if not native_export and exports_named_stem(self, self.primary_stem):
                 primary_stem_path = self.stem_export_wav_path(self.primary_stem)
                 if not isinstance(self.primary_source, np.ndarray):
-                    self.primary_source = source[self.demucs_source_map[self.primary_stem]].T
+                    self.primary_source = source[self.demucs_source_map[primary_map_key]].T
                 
                 self.primary_source_map = self.final_process(primary_stem_path, self.primary_source, self.secondary_source_primary, self.primary_stem, samplerate)
 

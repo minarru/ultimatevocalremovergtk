@@ -988,6 +988,97 @@ def select_stem_routes(
     )
 
 
+def route_matches_stem(
+    route: StemRoute,
+    stem: str | StemId | None,
+    model: Any | None = None,
+) -> bool:
+    """True when ``stem`` names this route's native key, concept, or label."""
+    if stem is None:
+        return False
+    token = stem.raw if isinstance(stem, StemId) else str(stem)
+    if not token.strip():
+        return False
+    if route.native is not None and route.native.matches(stem):
+        return True
+    if route.concept.casefold() == token.strip().casefold():
+        return True
+    if route.label.casefold() == token.strip().casefold():
+        return True
+    ctx = stem_context(model) if model is not None else {
+        "stem_count": 2,
+        "is_karaoke": False,
+        "is_bv": False,
+        "is_vocal_split": False,
+    }
+    if focus_matches_stem(route.concept, token, **ctx):
+        return True
+    return focus_matches_stem(token, route.label, **ctx)
+
+
+def _route_matches_pair(route: StemRoute, pair: EnsemblePair, model: Any) -> bool:
+    primary_bucket, secondary_bucket = pair.buckets()
+    for bucket in (primary_bucket, secondary_bucket):
+        if bucket is StemBucket.UNKNOWN:
+            continue
+        if route.concept == bucket.value:
+            return True
+        actual = focus_bucket(route.concept)
+        if actual is not StemBucket.UNKNOWN and (
+            actual is bucket or _plain_family(actual) is _plain_family(bucket)
+        ):
+            return True
+    for half in pair.stem_halves():
+        if half and route_matches_stem(route, half, model):
+            return True
+    return False
+
+
+def routes_for_ensemble_pair(
+    routes: Sequence[StemRoute], pair: EnsemblePair, model: Any
+) -> Tuple[StemRoute, ...]:
+    """Inventory routes that belong to a dual-stem ensemble pair."""
+    if pair.is_multi_or_four() or pair is EnsemblePair.CHOOSE:
+        return ()
+    return tuple(route for route in routes if _route_matches_pair(route, pair, model))
+
+
+def run_export_routes(model: Any) -> Tuple[StemRoute, ...]:
+    """Routes this run should write, including splitter and 4-stem member rules.
+
+    Vocal splitters keep both lead/backing writes. Four-stem and multi-stem
+    ensemble *members* emit their full inventory so the final combine can
+    still apply ``process.stem_focus``. Every other run uses
+    ``selected_stem_routes``.
+    """
+    available = tuple(getattr(model, "available_stem_routes", ()) or ())
+    selected = tuple(getattr(model, "selected_stem_routes", ()) or ())
+    if getattr(model, "is_vocal_split_model", False):
+        return available
+    if getattr(model, "is_secondary_model", False) or getattr(
+        model, "is_pre_proc_model", False
+    ):
+        return available or selected
+    if getattr(model, "is_inst_only_voc_splitter", False) or getattr(
+        model, "is_sec_bv_rebalance", False
+    ):
+        return available or selected
+    if getattr(model, "is_ensemble_mode", False):
+        settings = getattr(model, "settings", None)
+        ensemble = getattr(settings, "ensemble", None) if settings is not None else None
+        pair = coerce_ensemble_pair(getattr(ensemble, "main_stem", None))
+        if pair.is_multi_or_four():
+            return available
+    return selected or available
+
+
+def exports_named_stem(model: Any, stem: str | StemId | None) -> bool:
+    """True when ``run_export_routes`` includes a route for ``stem``."""
+    return any(
+        route_matches_stem(route, stem, model) for route in run_export_routes(model)
+    )
+
+
 def select_ensemble_stem_routes(
     routes: Sequence[StemRoute],
     contributor_union: Sequence[StemRoute],

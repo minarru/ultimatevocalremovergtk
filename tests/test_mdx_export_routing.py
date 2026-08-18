@@ -7,6 +7,7 @@ from unittest import mock
 import numpy as np
 
 from bundled.constants import ALL_STEMS, VOCAL_STEM
+from core.stems import StemBucket, StemId, StemRoute, StemRouteKind
 from engines.mdx_c import (
     derive_mdx_complement,
     derive_mdx_multi_complement,
@@ -15,18 +16,36 @@ from engines.mdx_c import (
 )
 
 
+def _native(name: str, concept: str | None = None) -> StemRoute:
+    return StemRoute(
+        native=StemId(name),
+        concept=concept or name,
+        label=name,
+        filename_tag=name,
+        kind=StemRouteKind.NATIVE,
+    )
+
+
+def _derived(concept: str, label: str | None = None) -> StemRoute:
+    return StemRoute(
+        native=None,
+        concept=concept,
+        label=label or concept,
+        filename_tag=label or concept,
+        kind=StemRouteKind.DERIVED,
+    )
+
+
 class MDXExportRoutingTests(unittest.TestCase):
     def _base_kwargs(self, **overrides: typing.Any):
         values = dict(
             stem_list=["Vocals", "Instrumental", "Drums", "Bass"],
-            selected_stems=["Vocals"],
+            export_routes=(_native("Vocals", StemBucket.VOCALS.value),),
             mdxnet_stem_select="Vocals",
             is_secondary_model=False,
             is_pre_proc_model=False,
             is_ensemble_master=False,
             is_4_stem_ensemble=False,
-            is_primary_stem_only=False,
-            is_secondary_stem_only=False,
             include_stem_complement=False,
         )
         values.update(overrides)
@@ -41,45 +60,55 @@ class MDXExportRoutingTests(unittest.TestCase):
         self.assertFalse(routing["multi_stem_export"])
 
     def test_native_pick_when_complement_disabled(self) -> None:
-        routing = mdx_export_routing_flags(**self._base_kwargs())
-        self.assertFalse(routing["is_complement_export"])
-        self.assertTrue(routing["is_native_pick"])
-        self.assertTrue(routing["multi_stem_export"])
-        self.assertEqual(routing["export_stems"], ["Vocals"])
-
-    def test_vocals_quick_export_skips_complement(self) -> None:
         routing = mdx_export_routing_flags(
             **self._base_kwargs(
-                include_stem_complement=True,
-                is_primary_stem_only=True,
+                export_routes=(_native("Bass", StemBucket.BASS.value),),
+                mdxnet_stem_select="Bass",
             )
         )
         self.assertFalse(routing["is_complement_export"])
+        self.assertTrue(routing["is_native_pick"])
+        self.assertTrue(routing["multi_stem_export"])
+        self.assertEqual(routing["export_stems"], ["Bass"])
 
-    def test_vocals_quick_export_matches_the_models_native_cased_stem_name(self) -> None:
-        """Community MDX-C yamls commonly declare lowercase stem names
-        (``training.instruments: [drums, bass, other, vocals]``), but
-        "Instrumental Only" / "Vocals Only" quick export persists the
-        canonical ``Vocals`` constant into ``selected_stems``. A raw ``==``
-        against ``VOCAL_STEM`` here missed every lowercase-stem model,
-        falling through to native-pick (exports vocals only) instead of the
-        primary/secondary-only path -- the opposite of "Instrumental Only"."""
+    def test_vocals_native_is_not_complement_without_include(self) -> None:
+        routing = mdx_export_routing_flags(**self._base_kwargs())
+        self.assertFalse(routing["is_complement_export"])
+
+    def test_derived_instrumental_is_not_include_complement(self) -> None:
         routing = mdx_export_routing_flags(
             **self._base_kwargs(
-                stem_list=["drums", "bass", "other", "vocals"],
-                selected_stems=["vocals"],
-                mdxnet_stem_select="vocals",
-                is_secondary_stem_only=True,
+                export_routes=(_derived(StemBucket.INSTRUMENTAL.value, "Instrumental"),),
+                include_stem_complement=True,
             )
         )
         self.assertFalse(routing["is_complement_export"])
         self.assertFalse(routing["is_native_pick"])
         self.assertFalse(routing["multi_stem_export"])
 
+    def test_vocals_native_matches_the_models_native_cased_stem_name(self) -> None:
+        """Community MDX-C yamls commonly declare lowercase stem names
+        (``training.instruments: [drums, bass, other, vocals]``). Route
+        natives keep that yaml casing so export_stems match the source map."""
+        routing = mdx_export_routing_flags(
+            **self._base_kwargs(
+                stem_list=["drums", "bass", "other", "vocals"],
+                export_routes=(_native("vocals", StemBucket.VOCALS.value),),
+                mdxnet_stem_select="vocals",
+            )
+        )
+        self.assertFalse(routing["is_complement_export"])
+        self.assertTrue(routing["is_native_pick"])
+        self.assertTrue(routing["multi_stem_export"])
+        self.assertEqual(routing["export_stems"], ["vocals"])
+
     def test_stem_subset_routing(self) -> None:
         routing = mdx_export_routing_flags(
             **self._base_kwargs(
-                selected_stems=["Vocals", "Drums"],
+                export_routes=(
+                    _native("Vocals", StemBucket.VOCALS.value),
+                    _native("Drums", StemBucket.DRUMS.value),
+                ),
                 mdxnet_stem_select=ALL_STEMS,
             )
         )

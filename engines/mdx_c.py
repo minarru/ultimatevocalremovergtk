@@ -20,7 +20,14 @@ from core.model_stem_semantics import (
     vocal_inst_from_sources,
     vocal_split_source_roles,
 )
-from core.stems import StemId, resolve_in_sources
+from core.stems import (
+    StemBucket,
+    StemId,
+    StemRouteKind,
+    exports_named_stem,
+    resolve_in_sources,
+    run_export_routes,
+)
 from ml import spec_utils
 
 from .base import SeperateAttributes
@@ -190,46 +197,66 @@ def select_roformer_ola_window(start: typing.Any, chunk_size: typing.Any, mix_le
 def mdx_export_routing_flags(
     *,
     stem_list: typing.Any,
-    selected_stems: typing.Any,
+    export_routes: typing.Any,
     mdxnet_stem_select: typing.Any,
     is_secondary_model: typing.Any,
     is_pre_proc_model: typing.Any,
     is_ensemble_master: typing.Any,
     is_4_stem_ensemble: typing.Any,
-    is_primary_stem_only: typing.Any,
-    is_secondary_stem_only: typing.Any,
     include_stem_complement: typing.Any,
 ):
-    is_full_selection = (not selected_stems) or set(selected_stems) == set(stem_list)
-    is_all_stems = mdxnet_stem_select == ALL_STEMS
+    routes = tuple(export_routes or ())
+    natives = tuple(route for route in routes if route.native is not None)
+    derived = tuple(
+        route for route in routes if route.kind is StemRouteKind.DERIVED
+    )
+    native_names = [
+        route.native.raw for route in natives if route.native is not None
+    ]
+    has_derived_inst = any(
+        route.concept == StemBucket.INSTRUMENTAL.value for route in derived
+    )
+    has_other_derived = any(
+        route.concept != StemBucket.INSTRUMENTAL.value for route in derived
+    )
+    is_full_selection = (not native_names) or set(
+        name.casefold() for name in native_names
+    ) == set(str(stem).casefold() for stem in stem_list)
+    is_all_stems = (
+        mdxnet_stem_select == ALL_STEMS
+        and not derived
+        and (not native_names or is_full_selection)
+    )
     is_not_ensemble_master = not is_ensemble_master
     is_not_single_stem = not len(stem_list) <= 2
     is_not_secondary_model = not is_secondary_model
     is_ensemble_4_stem = is_4_stem_ensemble and is_not_single_stem
     is_vocals_quick_export = (
-        len(selected_stems) == 1
-        # A checkpoint's own yaml casing (often lowercase, e.g. ``vocals``)
-        # rarely matches the canonical ``VOCAL_STEM`` constant a raw ``==``
-        # would need -- is_vocal_target compares case/alias-insensitively.
-        and is_vocal_target(selected_stems[0])
-        and (is_primary_stem_only or is_secondary_stem_only)
+        len(natives) == 1
+        and is_vocal_target(native_names[0])
+        and not derived
+        and not bool(include_stem_complement)
     )
     is_complement_export = (
-        len(selected_stems) == 1
-        and bool(include_stem_complement)
+        len(natives) == 1
+        and not has_derived_inst
+        and (
+            bool(include_stem_complement)
+            or has_other_derived
+        )
         and not is_vocals_quick_export
     )
     is_native_pick = (
-        len(selected_stems) == 1
+        len(natives) == 1
         and is_not_ensemble_master
         and is_not_single_stem
         and is_not_secondary_model
         and not is_pre_proc_model
-        and not is_vocals_quick_export
         and not is_complement_export
+        and not has_derived_inst
     )
     is_stem_subset = (
-        len(selected_stems) >= 2 and not is_full_selection
+        len(natives) >= 2 and not is_full_selection
         and is_not_ensemble_master and is_not_single_stem
         and is_not_secondary_model and not is_pre_proc_model
     )
@@ -245,7 +272,7 @@ def mdx_export_routing_flags(
         "is_stem_subset": is_stem_subset,
         "multi_stem_export": multi_stem_export,
         "export_stems": (
-            [stem for stem in stem_list if stem in selected_stems]
+            mdx_selected_stems(stem_list, native_names)
             if (is_stem_subset or is_native_pick)
             else stem_list
         ),
@@ -418,24 +445,26 @@ class SeperateMDXC(SeperateAttributes):
             self.secondary_stem = secondary_stem(str(self.mdxnet_stem_select or ""))
             self.is_primary_stem_only, self.is_secondary_stem_only = False, False
 
-        # Restrict export to the user-chosen subset of this model's stems. The
-        # selection is intersected with the model's actual stems, so checking a
-        # stem the model does not produce is simply ignored. An empty selection
-        # (or one covering every stem) keeps the original "all stems" behaviour.
-        selected_stems = mdx_selected_stems(stem_list, self.mdxnet_stems_selected)
+        export_routes = run_export_routes(self)
+        selected_stems = mdx_selected_stems(
+            stem_list,
+            [
+                route.native.raw
+                for route in export_routes
+                if route.native is not None
+            ],
+        )
         if not self.is_secondary_model and len(selected_stems) == 1:
             self.mdxnet_stem_select = selected_stems[0]
 
         routing = mdx_export_routing_flags(
             stem_list=stem_list,
-            selected_stems=selected_stems,
+            export_routes=export_routes,
             mdxnet_stem_select=self.mdxnet_stem_select,
             is_secondary_model=self.is_secondary_model,
             is_pre_proc_model=self.is_pre_proc_model,
             is_ensemble_master=self.process_data.is_ensemble_master,
             is_4_stem_ensemble=self.is_4_stem_ensemble,
-            is_primary_stem_only=self.is_primary_stem_only,
-            is_secondary_stem_only=self.is_secondary_stem_only,
             include_stem_complement=getattr(self, "is_mdx_include_stem_complement", False),
         )
         is_complement_export = routing["is_complement_export"]
@@ -505,10 +534,8 @@ class SeperateMDXC(SeperateAttributes):
                                                                                                          main_process_method=self.process_method, 
                                                                                                          main_model_primary=self.primary_stem)
 
-            self.begin_save_phase(
-                int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only) or 1
-            )
-            if not self.is_primary_stem_only:
+            self.begin_save_phase(len(run_export_routes(self)) or 1)
+            if exports_named_stem(self, self.secondary_stem):
                 secondary_stem_path = self.stem_export_wav_path(self.secondary_stem)
                 if not isinstance(self.secondary_source, np.ndarray):
                     
@@ -549,7 +576,7 @@ class SeperateMDXC(SeperateAttributes):
                             
                 self.secondary_source_map = self.final_process(secondary_stem_path, self.secondary_source, self.secondary_source_secondary, self.secondary_stem, samplerate)    
 
-            if not self.is_secondary_stem_only:
+            if exports_named_stem(self, self.primary_stem):
                 primary_stem_path = self.stem_export_wav_path(self.primary_stem)
                 if not isinstance(self.primary_source, np.ndarray):
                     self.primary_source = source_primary.T
