@@ -51,6 +51,7 @@ def _resolved_settings(
         apply_stem_selection(settings, stems)
         for path in (
             "process.primary_stem_only", "process.secondary_stem_only",
+            "process.stem_focus",
             "mdx.stems", "mdx.stems_selected", "demucs.stems",
         ):
             sources[path] = "cli"
@@ -464,7 +465,11 @@ def format_effective_plan(plan: dict[str, Any]) -> str:
     settings = plan.get("settings") or {}
     process = settings.get("process") or {}
     lines.append(f"  format: {process.get('save_format')}")
-    stem_mode = "primary" if process.get("primary_stem_only") else "secondary" if process.get("secondary_stem_only") else "both"
+    focus = process.get("stem_focus") or ""
+    if focus:
+        stem_mode = focus
+    else:
+        stem_mode = "primary" if process.get("primary_stem_only") else "secondary" if process.get("secondary_stem_only") else "both"
     lines.append(f"  stems: {stem_mode}")
     lines.append(
         f"  normalize: {process.get('normalization')}  "

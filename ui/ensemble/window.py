@@ -615,6 +615,7 @@ class EnsemblePage:
                 is_karaoke_curated=bool(getattr(model, "is_karaoke_curated", False)),
                 is_bv=bool(getattr(model, "is_bv_model", False)),
                 stem_count=2,
+                ensemble_pair=self._ensemble_pair(),
             )
             self.save_stems.sync_from_settings()
         else:

@@ -33,6 +33,14 @@ from core.model_stem_semantics import (
     canonical_stem_alias,
     stem_display_overrides,
 )
+from core.stems import (
+    EnsemblePair,
+    StemBucket,
+    bucket_for_model_stem,
+    concept_is,
+    exclusive_flags_for_pair,
+    focus_matches_stem,
+)
 
 from ..dialogs.utils import present_modal_dialog, set_form_dialog_content
 from ..help_text import (
@@ -216,10 +224,19 @@ def build_stem_only_options(
             entries.sort(
                 key=lambda entry: (
                     0
-                    if stem_display_label(entry[0], overrides=stem_label_overrides)
-                    == VOCAL_STEM
+                    if bucket_for_model_stem(
+                        stem_display_label(entry[0], overrides=stem_label_overrides),
+                        stem_count=2,  # a primary/secondary pair, by construction
+                    )
+                    in (
+                        StemBucket.VOCALS,
+                        StemBucket.LEAD_VOCALS,
+                        StemBucket.BACKING_VOCALS,
+                    )
                     else 1,
-                    _stem_only_rank(entry[0]),
+                    _stem_only_rank(
+                        stem_display_label(entry[0], overrides=stem_label_overrides)
+                    ),
                 )
             )
         else:
@@ -322,6 +339,7 @@ def _exclusive_name_from_focus(
     is_karaoke_curated: bool,
     is_bv: bool,
     stem_count: int,
+    ensemble_pair: Optional[EnsemblePair] = None,
 ) -> Optional[str]:
     """Resolve the exclusive-mode combo choice from ``process.stem_focus``.
 
@@ -334,21 +352,21 @@ def _exclusive_name_from_focus(
     focus = getattr(settings.process, "stem_focus", "") or ""
     if not focus:
         return None
-    if primary_stem and _stem_focus_tag(
-        primary_stem,
-        stem_count=stem_count,
-        is_karaoke=is_karaoke,
-        is_karaoke_curated=is_karaoke_curated,
-        is_bv=is_bv,
-    ) == focus:
+    if ensemble_pair is not None:
+        flags = exclusive_flags_for_pair(focus, ensemble_pair)
+        if flags == (True, False):
+            return primary_key
+        if flags == (False, True):
+            return secondary_key
+        return _TOGGLE_ALL
+    ctx = {
+        "stem_count": stem_count,
+        "is_karaoke": is_karaoke,
+        "is_bv": is_bv,
+    }
+    if primary_stem and focus_matches_stem(focus, primary_stem, **ctx):
         return primary_key
-    if secondary_stem and _stem_focus_tag(
-        secondary_stem,
-        stem_count=stem_count,
-        is_karaoke=is_karaoke,
-        is_karaoke_curated=is_karaoke_curated,
-        is_bv=is_bv,
-    ) == focus:
+    if secondary_stem and focus_matches_stem(focus, secondary_stem, **ctx):
         return secondary_key
     return _TOGGLE_ALL
 
@@ -364,8 +382,16 @@ def _stem_focus_for_choice(
     is_karaoke_curated: bool,
     is_bv: bool,
     stem_count: int,
+    ensemble_pair: Optional[EnsemblePair] = None,
 ) -> str:
     """Focus tag to persist as ``process.stem_focus`` for an exclusive pick."""
+    if ensemble_pair is not None:
+        primary_b, secondary_b = ensemble_pair.buckets()
+        if name == primary_key and primary_b is not StemBucket.UNKNOWN:
+            return primary_b.value
+        if name == secondary_key and secondary_b is not StemBucket.UNKNOWN:
+            return secondary_b.value
+        return ""
     if name == primary_key and primary_stem:
         stem = primary_stem
     elif name == secondary_key and secondary_stem:
@@ -409,6 +435,7 @@ class SaveStemsSection:
         self._exclusive_is_karaoke_curated: bool = False
         self._exclusive_is_bv: bool = False
         self._exclusive_stem_count: int = 2
+        self._exclusive_pair: Optional[EnsemblePair] = None
         self._demucs_export_primary: Optional[str] = None
         self._demucs_export_secondary: Optional[str] = None
         self._subset_mode = _QUICK_ALL
@@ -541,6 +568,7 @@ class SaveStemsSection:
         is_karaoke_curated: bool = False,
         is_bv: bool = False,
         stem_count: int = 2,
+        ensemble_pair: Optional[EnsemblePair] = None,
     ) -> None:
         self.mode = "exclusive"
         self._has_model = has_model
@@ -552,6 +580,7 @@ class SaveStemsSection:
         self._exclusive_is_karaoke_curated = is_karaoke_curated
         self._exclusive_is_bv = is_bv
         self._exclusive_stem_count = stem_count
+        self._exclusive_pair = ensemble_pair
         self._stem_label_overrides = stem_label_overrides
         self._export_semantics_note = export_semantics_note or ""
         self._hide_all_rows()
@@ -684,6 +713,7 @@ class SaveStemsSection:
                     is_karaoke_curated=self._exclusive_is_karaoke_curated,
                     is_bv=self._exclusive_is_bv,
                     stem_count=self._exclusive_stem_count,
+                    ensemble_pair=self._exclusive_pair,
                 )
                 if name is None:
                     name = _exclusive_name_from_settings(
@@ -718,6 +748,7 @@ class SaveStemsSection:
                 is_karaoke_curated=self._exclusive_is_karaoke_curated,
                 is_bv=self._exclusive_is_bv,
                 stem_count=self._exclusive_stem_count,
+                ensemble_pair=self._exclusive_pair,
             )
         elif self.mode == "subset":
             self._persist_subset()
@@ -810,8 +841,9 @@ class SaveStemsSection:
         self._custom_row.set_sensitive(True)
 
     def _vocal_stem_in_subset(self) -> Optional[str]:
+        count = len(self._subset_stems)
         for stem in self._subset_stems:
-            if canonical_stem_name(stem) == VOCAL_STEM:
+            if concept_is(stem, StemBucket.VOCALS, stem_count=count):
                 return stem
         return None
 
@@ -819,7 +851,9 @@ class SaveStemsSection:
         if not selected or len(selected) != 1:
             return False
         chosen = next(iter(selected))
-        return canonical_stem_name(chosen) == VOCAL_STEM or chosen == VOCAL_STEM
+        return concept_is(
+            chosen, StemBucket.VOCALS, stem_count=len(self._subset_stems)
+        )
 
     def _set_custom_selection(
         self,
@@ -888,16 +922,19 @@ class SaveStemsSection:
             if self._subset_mode == _QUICK_ALL:
                 self.settings.mdx.stems_selected = []
                 self.settings.mdx.stems = ALL_STEMS
+                self.settings.process.stem_focus = ""
                 set_flat(self.settings, self._primary_key, False)
                 set_flat(self.settings, self._secondary_key, False)
             elif self._subset_mode == _QUICK_INSTRUMENTAL:
                 self.settings.mdx.stems_selected = [VOCAL_STEM]
                 self.settings.mdx.stems = VOCAL_STEM
+                self.settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
                 set_flat(self.settings, self._primary_key, False)
                 set_flat(self.settings, self._secondary_key, True)
             elif self._subset_mode == _QUICK_VOCALS:
                 self.settings.mdx.stems_selected = [VOCAL_STEM]
                 self.settings.mdx.stems = VOCAL_STEM
+                self.settings.process.stem_focus = StemBucket.VOCALS.value
                 set_flat(self.settings, self._primary_key, True)
                 set_flat(self.settings, self._secondary_key, False)
             return
@@ -907,12 +944,24 @@ class SaveStemsSection:
         ):
             self.settings.mdx.stems_selected = []
             self.settings.mdx.stems = ALL_STEMS
+            self.settings.process.stem_focus = ""
         else:
             selected = [stem for stem in self._subset_stems if stem in self._custom_selected]
             self.settings.mdx.stems_selected = selected
             self.settings.mdx.stems = (
                 selected[0] if len(selected) == 1 else ALL_STEMS
             )
+            if len(selected) == 1:
+                bucket = bucket_for_model_stem(
+                    selected[0], stem_count=len(self._subset_stems)
+                )
+                self.settings.process.stem_focus = (
+                    bucket.value
+                    if bucket is not StemBucket.UNKNOWN
+                    else f"raw:{selected[0].strip().casefold()}"
+                )
+            else:
+                self.settings.process.stem_focus = ""
         set_flat(self.settings, self._primary_key, False)
         set_flat(self.settings, self._secondary_key, False)
 
@@ -926,7 +975,9 @@ class SaveStemsSection:
         selected = [stem for stem in self._subset_stems if stem in self._custom_selected]
         if not selected:
             return "Exporting all stems"
-        if len(selected) == 1 and canonical_stem_name(selected[0]) == OTHER_STEM:
+        if len(selected) == 1 and concept_is(
+            selected[0], StemBucket.OTHER, stem_count=len(self._subset_stems)
+        ):
             return "Exporting Other stem"
         return "Exporting " + ", ".join(
             stem_display_label(stem, overrides=self._stem_label_overrides) for stem in selected
@@ -1091,11 +1142,14 @@ class SaveStemsSection:
         primary_on = bool(get_flat(self.settings, self._primary_key))
         secondary_on = bool(get_flat(self.settings, self._secondary_key))
 
+        # ``demucs.stems`` holds a stem name, not a focus tag; Demucs sources
+        # are always the 4-stem set, so ``other`` here is the MUSDB residual.
+        focus_is_vocals = concept_is(str(focus), StemBucket.VOCALS, stem_count=4)
         if focus == ALL_STEMS:
             active = _QUICK_ALL
-        elif focus == VOCAL_STEM and secondary_on and not primary_on:
+        elif focus_is_vocals and secondary_on and not primary_on:
             active = _FOCUS_INSTRUMENTAL
-        elif focus == VOCAL_STEM and primary_on and not secondary_on:
+        elif focus_is_vocals and primary_on and not secondary_on:
             active = _FOCUS_VOCALS
         else:
             active = focus

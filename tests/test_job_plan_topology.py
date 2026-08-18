@@ -50,6 +50,60 @@ class PlannedOutputStemTests(unittest.TestCase):
         labels = {stem for stem, _conditional in stems}
         self.assertTrue({"Vocals", "Instrumental", "Drums", "Bass"} <= labels)
 
+    def test_ensemble_vocals_focus_plans_only_the_vocal_half(self) -> None:
+        from bundled.constants import LEAD_VOCAL_STEM_LABEL
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = StemBucket.VOCALS.value
+        settings.ensemble.main_stem = EnsemblePair.KARAOKE
+        stems = planned_output_stems(
+            settings, (_desc("Vocals"), _desc("Vocals")), command="ensemble",
+        )
+        self.assertEqual(stems, ((LEAD_VOCAL_STEM_LABEL, False),))
+
+    def test_ensemble_instrumental_focus_does_not_pick_other_pair(self) -> None:
+        from bundled.constants import OTHER_STEM
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
+        settings.ensemble.main_stem = EnsemblePair.OTHER
+        stems = planned_output_stems(
+            settings, (_desc("Other", "No Other"),), command="ensemble",
+        )
+        # Unmatched focus exports the pair's real stem, not a guessed instrumental.
+        self.assertEqual(stems, ((OTHER_STEM, False),))
+
+    def test_separate_four_stem_other_is_not_instrumental_focus(self) -> None:
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
+        desc = ModelDescriptor(
+            "mdx:a", "mdx", "a", "A",
+            primary_stem="Vocals",
+            secondary_stem="other",
+            stem_count=4,
+        )
+        stems = planned_output_stems(settings, (desc,), command="separate")
+        labels = tuple(stem for stem, _conditional in stems)
+        self.assertEqual(labels, ("Vocals", "other"))
+
+    def test_separate_two_stem_other_matches_instrumental_focus(self) -> None:
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
+        desc = ModelDescriptor(
+            "mdx:a", "mdx", "a", "A",
+            primary_stem="Vocals",
+            secondary_stem="other",
+            stem_count=2,
+        )
+        stems = planned_output_stems(settings, (desc,), command="separate")
+        self.assertEqual(stems, (("other", False),))
+
     def test_resolver_plan_outputs_use_ensemble_pair(self) -> None:
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.ENSEMBLE

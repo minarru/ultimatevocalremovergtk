@@ -35,7 +35,6 @@ from .mdx_c_registry import compute_checkpoint_hash, try_register_from_catalog
 from .model_stem_semantics import (
     is_vocal_target,
     resolve_karaoke_confidence,
-    vocal_split_primary_stem,
 )
 from .model_display import (
     display_name_for_basename,
@@ -969,11 +968,8 @@ class _ModelConfigImplementation:
 
         if self.is_vocal_split_model and self.model_status:
             self.is_secondary_model_activated = False
-            primary = vocal_split_primary_stem(
-                is_bv_model=bool(self.is_bv_model),
-                native_stem=self.primary_stem_native or self.primary_stem,
-            )
-            self.primary_stem, self.secondary_stem = primary, secondary_stem(primary)
+
+        self._apply_stem_focus()
 
         # Derive the vocal-splitter "save only" flags now that stems are known.
         self.is_inst_only_voc_splitter = self.check_only_selection_stem(INST_STEM_ONLY)
@@ -981,6 +977,50 @@ class _ModelConfigImplementation:
 
         self.vocal_splitter_model_data()
         self._sync_option_groups()
+
+    def _apply_stem_focus(self) -> None:
+        """Honor ``process.stem_focus`` as the exclusive-pick (GTK and CLI).
+
+        Vocal splitters keep both lead/backing writes; skip them. Empty focus
+        leaves the positional booleans unchanged.
+
+        Resolution is **per-config only**: assembling a model must never write
+        back into ``self.settings``. One ``Settings`` assembles many configs
+        (ensemble members, secondaries, pre-process), and in the GUI it is the
+        live persisted object that read-only callers such as
+        ``estimate_workload`` also assemble from.
+        """
+        if self.is_vocal_split_model:
+            return
+        from core.stems import StemBucket, exclusive_flags_for_model, ui_label
+
+        focus = str(getattr(self.settings.process, "stem_focus", "") or "")
+        flags = exclusive_flags_for_model(self, focus)
+        if flags is None:
+            return
+        primary_only, secondary_only = flags
+        self.is_primary_stem_only = primary_only
+        self.is_secondary_stem_only = secondary_only
+        chosen = None
+        if primary_only:
+            chosen = self.primary_stem
+        elif secondary_only:
+            chosen = self.secondary_stem
+        if chosen:
+            self.mdxnet_stem_select = chosen
+        if self.process_method == DEMUCS_ARCH_TYPE:
+            from core.stems import focus_bucket
+
+            wanted = focus_bucket(focus)
+            if wanted in (
+                StemBucket.VOCALS,
+                StemBucket.LEAD_VOCALS,
+                StemBucket.BACKING_VOCALS,
+                StemBucket.INSTRUMENTAL,
+            ):
+                self.demucs_stems = VOCAL_STEM
+            elif wanted is not StemBucket.UNKNOWN:
+                self.demucs_stems = ui_label(wanted)
 
     # -- Secondary / vocal-split / pre-process resolution -----------------------
     # Faithful Tk-free ports of ``MainWindow.process_determine_*`` /
@@ -1035,8 +1075,6 @@ class _ModelConfigImplementation:
         stems instead.
         """
         chosen_method = self.settings.process.method
-        is_demucs = chosen_method == DEMUCS_ARCH_TYPE
-
         # In ensemble mode the stem-only labels follow the chosen ensemble pair
         # (UVR's ``update_stem_checkbox_labels``), not the member model's stems.
         if chosen_method == ENSEMBLE_MODE:
@@ -1046,37 +1084,68 @@ class _ModelConfigImplementation:
             primary_for_label = self.primary_stem
             secondary_for_label = self.secondary_stem
 
-        stem_primary_label = f"{primary_for_label} Only" if primary_for_label else ""
-        stem_secondary_label = f"{secondary_for_label} Only" if secondary_for_label else ""
-        if is_demucs:
-            stem_primary_bool = self.settings.demucs.is_primary_stem_only
-            stem_secondary_bool = self.settings.demucs.is_secondary_stem_only
-        else:
-            stem_primary_bool = self.settings.process.primary_stem_only
-            stem_secondary_bool = self.settings.process.secondary_stem_only
+        # The resolved per-config flags, not the raw settings: they already
+        # encode the demucs/ensemble selection this used to redo by hand, and
+        # they carry ``process.stem_focus`` (applied in ``_apply_stem_focus``),
+        # which settings alone no longer reflect.
+        stem_primary_bool = bool(self.is_primary_stem_only)
+        stem_secondary_bool = bool(self.is_secondary_stem_only)
 
         is_save_inst_splitter = self.settings.process.save_inst_vocal_splitter
         has_voc_splitter = self.settings.process.vocal_splitter != NO_MODEL
 
+        from core.stems import (
+            StemBucket,
+            bucket_for_model_stem,
+            coerce_ensemble_pair,
+            stem_context,
+        )
+
+        vocal_buckets = {
+            StemBucket.VOCALS,
+            StemBucket.LEAD_VOCALS,
+            StemBucket.BACKING_VOCALS,
+        }
+        inst_buckets = {
+            StemBucket.INSTRUMENTAL,
+            StemBucket.INST_WITH_BV,
+            StemBucket.INST_WITH_LEAD,
+        }
+        if chosen_method == ENSEMBLE_MODE:
+            primary_bucket, secondary_bucket = coerce_ensemble_pair(
+                self.settings.ensemble.main_stem
+            ).buckets()
+        else:
+            ctx = stem_context(self)
+            primary_bucket = bucket_for_model_stem(str(primary_for_label or ""), **ctx)
+            secondary_bucket = bucket_for_model_stem(
+                str(secondary_for_label or ""), **ctx
+            )
+
+        primary_is_vocals = primary_bucket in vocal_buckets
+        secondary_is_vocals = secondary_bucket in vocal_buckets
+        primary_is_inst = primary_bucket in inst_buckets
+        secondary_is_inst = secondary_bucket in inst_buckets
+
         if checktype == VOCAL_STEM_ONLY:
             return not (
-                (not VOCAL_STEM_ONLY == stem_primary_label and stem_primary_bool) or
-                (not VOCAL_STEM_ONLY in stem_secondary_label and stem_secondary_bool)
+                (not primary_is_vocals and stem_primary_bool) or
+                (not secondary_is_vocals and stem_secondary_bool)
             )
         elif checktype == INST_STEM_ONLY:
             return (
-                (INST_STEM_ONLY == stem_primary_label and stem_primary_bool and is_save_inst_splitter and has_voc_splitter) or
-                (INST_STEM_ONLY == stem_secondary_label and stem_secondary_bool and is_save_inst_splitter and has_voc_splitter)
+                (primary_is_inst and stem_primary_bool and is_save_inst_splitter and has_voc_splitter) or
+                (secondary_is_inst and stem_secondary_bool and is_save_inst_splitter and has_voc_splitter)
             )
         elif checktype == IS_SAVE_VOC_ONLY:
             return (
-                (VOCAL_STEM_ONLY == stem_primary_label and stem_primary_bool) or
-                (VOCAL_STEM_ONLY == stem_secondary_label and stem_secondary_bool)
+                (primary_is_vocals and stem_primary_bool) or
+                (secondary_is_vocals and stem_secondary_bool)
             )
         elif checktype == IS_SAVE_INST_ONLY:
             return (
-                (INST_STEM_ONLY == stem_primary_label and stem_primary_bool) or
-                (INST_STEM_ONLY == stem_secondary_label and stem_secondary_bool)
+                (primary_is_inst and stem_primary_bool) or
+                (secondary_is_inst and stem_secondary_bool)
             )
         return False
 

@@ -47,6 +47,13 @@ class EnsembleMemberFlags:
 
 @dataclass
 class StemRouting:
+    """Native yaml/hash stem keys and exclusive-export flags.
+
+    ``primary_stem`` / ``secondary_stem`` / ``primary_stem_native`` keep the
+    checkpoint spelling. They are never rewritten to ``lead_only`` or UVR
+    Title Case. Filenames and exclusive picks use :func:`stem_concept`.
+    """
+
     primary_stem: Optional[str] = None
     secondary_stem: Optional[str] = None
     primary_stem_native: Optional[str] = None

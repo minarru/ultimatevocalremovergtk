@@ -211,5 +211,99 @@ class NestedCanonicalModelConfigTests(unittest.TestCase):
         self.assertTrue(captured.get("has_model_path"))
 
 
+class _FocusStub:
+    """Minimal stand-in carrying just what ``_apply_stem_focus`` reads."""
+
+    def __init__(self, settings: Settings, primary: str, secondary: str) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+
+        self.settings = settings
+        self.is_vocal_split_model = False
+        self.primary_stem = primary
+        self.secondary_stem = secondary
+        self.is_karaoke = False
+        self.is_bv_model = False
+        self.process_method = MDX_ARCH_TYPE
+        self.mdx_stem_count = 2
+        self.demucs_stem_count = 0
+        self.mdx_model_stems: list[str] = []
+        self.demucs_source_list: list[str] = []
+        self.is_primary_stem_only = False
+        self.is_secondary_stem_only = False
+        self.mdxnet_stem_select = None
+        self.demucs_stems = None
+
+    def apply(self) -> None:
+        from core.model_data import _ModelConfigImplementation
+
+        _ModelConfigImplementation._apply_stem_focus(self)  # type: ignore[arg-type]
+
+
+class StemIdentityAssembleTests(unittest.TestCase):
+    def test_vocal_split_model_keeps_its_native_primary_stem(self) -> None:
+        """The old assemble rewrote a splitter's primary to ``lead_only``.
+
+        Native yaml/hash spelling must survive; the lead/backing concept is
+        derived instead (see tests/test_vocal_split_stems.py).
+        """
+        from core.model_data import _ModelConfigImplementation
+        from core.stems import StemBucket, stem_concept
+
+        stub = _FocusStub(Settings.defaults(), "vocals", "other")
+        stub.is_vocal_split_model = True
+        _ModelConfigImplementation._apply_stem_focus(stub)  # type: ignore[arg-type]
+        self.assertEqual(stub.primary_stem, "vocals")
+        self.assertEqual(stub.secondary_stem, "other")
+        self.assertEqual(stem_concept(stub, "vocals"), StemBucket.LEAD_VOCALS)
+
+    def test_applying_focus_never_writes_back_into_settings(self) -> None:
+        """One Settings assembles many configs (ensemble members, secondaries,
+        pre-process), and in the GUI it is the live persisted object that
+        read-only callers like estimate_workload also assemble from. Writing
+        resolved flags back into it leaked one model's pick onto the next and
+        silently rewrote the user's saved Save-stems toggles."""
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = StemBucket.VOCALS.value
+        before = (
+            settings.process.primary_stem_only,
+            settings.process.secondary_stem_only,
+            settings.demucs.is_primary_stem_only,
+            settings.demucs.is_secondary_stem_only,
+        )
+
+        vocals_primary = _FocusStub(settings, "vocals", "other")
+        vocals_primary.apply()
+        inst_primary = _FocusStub(settings, "other", "vocals")
+        inst_primary.apply()
+
+        after = (
+            settings.process.primary_stem_only,
+            settings.process.secondary_stem_only,
+            settings.demucs.is_primary_stem_only,
+            settings.demucs.is_secondary_stem_only,
+        )
+        self.assertEqual(before, after)
+        # Each config still resolves the focus onto its own stems.
+        self.assertEqual(
+            (vocals_primary.is_primary_stem_only, vocals_primary.is_secondary_stem_only),
+            (True, False),
+        )
+        self.assertEqual(
+            (inst_primary.is_primary_stem_only, inst_primary.is_secondary_stem_only),
+            (False, True),
+        )
+
+    def test_focus_naming_no_stem_exports_everything(self) -> None:
+        settings = Settings.defaults()
+        settings.process.stem_focus = "Bass"
+        stub = _FocusStub(settings, "vocals", "other")
+        stub.apply()
+        self.assertEqual(
+            (stub.is_primary_stem_only, stub.is_secondary_stem_only), (False, False)
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

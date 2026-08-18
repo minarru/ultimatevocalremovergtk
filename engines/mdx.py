@@ -908,9 +908,9 @@ class SeperateMDXC(SeperateAttributes):
         written: dict[str, Any] = {}
         items: list[tuple[str, Any]] = []
         if lead is not None:
-            items.append((LEAD_VOCAL_STEM, lead))
+            items.append((LEAD_VOCAL_STEM_LABEL, lead))
         if backing is not None:
-            items.append((BV_VOCAL_STEM, backing))
+            items.append((BV_VOCAL_STEM_LABEL, backing))
         if not items:
             return written
         self.begin_save_phase(len(items))

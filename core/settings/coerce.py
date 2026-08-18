@@ -325,6 +325,8 @@ _ENSEMBLE_PAIR_FIELDS = frozenset({("ensemble", "main_stem")})
 
 _ENSEMBLE_TYPE_FIELDS = frozenset({("ensemble", "type")})
 
+_STEM_FOCUS_FIELDS = frozenset({("process", "stem_focus")})
+
 # (section, field) → (enum type, default member)
 _ENUM_FIELDS: dict[tuple[str, str], tuple[type[Enum], Enum]] = {
     ("process", "method"): (ProcessMethod, ProcessMethod.MDX),
@@ -375,6 +377,10 @@ def coerce_field(section_name: str, field: str, value: Any) -> Any:
         return coerce_ensemble_pair(value)
     if path in _ENSEMBLE_TYPE_FIELDS:
         return coerce_ensemble_type(value)
+    if path in _STEM_FOCUS_FIELDS:
+        from core.stems import normalize_stem_focus
+
+        return normalize_stem_focus(value)
     if enum_entry := _ENUM_FIELDS.get(path):
         enum_type, default = enum_entry
         return coerce_enum(enum_type, value, default)

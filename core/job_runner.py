@@ -37,7 +37,12 @@ from bundled.constants import (
 from . import paths
 from .audio_io import resolve_wav_type_set
 from .model_stem_semantics import canonical_ensemble_stem_tag
-from .stems import StemBucket, coerce_ensemble_pair, filename_tag
+from .stems import (
+    StemBucket,
+    coerce_ensemble_pair,
+    exclusive_flags_for_pair,
+    filename_tag,
+)
 
 
 def _ensemble_stem_bucket(stem_tag: str) -> str:
@@ -1677,9 +1682,20 @@ class JobRunner:
                         (output_stem, {"is_4_stem": True}) for output_stem in stem_names
                     ]
                 else:
-                    if not self.settings.process.secondary_stem_only:
+                    primary_only = self.settings.process.primary_stem_only
+                    secondary_only = self.settings.process.secondary_stem_only
+                    # ``process.stem_focus`` overrides the positional booleans,
+                    # resolved against the chosen pair's buckets — never the
+                    # already-remapped stem_halves labels with a fake count of 2.
+                    focus_flags = exclusive_flags_for_pair(
+                        str(self.settings.process.stem_focus or ""),
+                        coerce_ensemble_pair(self.settings.ensemble.main_stem),
+                    )
+                    if focus_flags is not None:
+                        primary_only, secondary_only = focus_flags
+                    if not secondary_only:
                         combine_steps.append((PRIMARY_STEM, {}))
-                    if not self.settings.process.primary_stem_only:
+                    if not primary_only:
                         combine_steps.append((SECONDARY_STEM, {}))
                         combine_steps.append((SECONDARY_STEM, {"is_inst_mix": True}))
 

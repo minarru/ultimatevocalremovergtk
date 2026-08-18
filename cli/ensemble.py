@@ -17,7 +17,7 @@ from .job import (
 )
 from .process_flags import add_process_args
 from .reporting import add_reporting_args, emit_document, emit_event, fail, report_mode
-from .separate import check_runtime_deps, confirm_inherited
+from .separate import STEMS_HELP, check_runtime_deps, confirm_inherited
 
 _MAIN_STEMS = tuple(pair.value for pair in EnsemblePair if pair is not EnsemblePair.CHOOSE)
 
@@ -42,7 +42,7 @@ def add_ensemble_args(parser: argparse.ArgumentParser) -> None:
         help="Keep or discard member outputs",
     )
     output = parser.add_argument_group("Stem selection")
-    output.add_argument("--stems", default=None)
+    output.add_argument("--stems", default=None, help=STEMS_HELP)
     performance = parser.add_argument_group("Long files")
     performance.add_argument("--long-chunk-seconds", type=float, default=None)
     performance.add_argument("--long-chunk-overlap", type=float, default=None)

@@ -30,7 +30,14 @@ from .model_config import assemble_model
 from .model_identity import ModelIdentityService, ModelRecord
 from .access_policy import access_policy
 from .settings import Settings
-from .stems import EnsemblePair, coerce_ensemble_pair
+from .stems import (
+    EnsemblePair,
+    coerce_ensemble_pair,
+    exclusive_flags_for_focus,
+    exclusive_flags_for_pair,
+    focus_is_resolvable,
+    model_stem_count,
+)
 
 
 class ValidationLevel(str, Enum):
@@ -71,6 +78,9 @@ class ModelDescriptor:
     primary_stem: str | None = None
     secondary_stem: str | None = None
     metadata_source: str | None = None
+    stem_count: int = 0
+    is_karaoke: bool = False
+    is_bv: bool = False
 
 
 @dataclass(frozen=True)
@@ -168,7 +178,53 @@ def _descriptor(record: ModelRecord, model: Any, verify: bool) -> ModelDescripto
             if os.path.isfile(str(getattr(model, "model_hash_dir", "") or ""))
             else "model-catalog"
         ),
+        stem_count=model_stem_count(model),
+        is_karaoke=bool(getattr(model, "is_karaoke", False)),
+        is_bv=bool(getattr(model, "is_bv_model", False)),
     )
+
+
+def _stem_focus_diagnostics(
+    settings: Settings,
+    models: Sequence[Any],
+    descriptors: Sequence[ModelDescriptor],
+) -> list[Diagnostic]:
+    """Report a ``process.stem_focus`` that names none of a model's stems.
+
+    Such a focus cannot be honored, and the run silently falls back to
+    exporting every stem — worth saying out loud before a long job rather
+    than leaving the user to notice the extra files afterwards.
+    """
+    focus = str(settings.process.stem_focus or "")
+    if not focus:
+        return []
+    result: list[Diagnostic] = []
+    for index, model in enumerate(models):
+        if getattr(model, "is_vocal_split_model", False):
+            continue
+        if focus_is_resolvable(model, focus):
+            continue
+        label = (
+            descriptors[index].display
+            if index < len(descriptors)
+            else getattr(model, "model_basename", "") or "model"
+        )
+        stems = ", ".join(
+            str(stem)
+            for stem in (
+                getattr(model, "primary_stem", None),
+                getattr(model, "secondary_stem", None),
+            )
+            if stem
+        )
+        result.append(
+            Diagnostic(
+                "stems.focus_unmatched",
+                f"stem focus {focus!r} matches no stem of {label}"
+                + (f" (has {stems}); exporting all stems" if stems else "; exporting all stems"),
+            )
+        )
+    return result
 
 
 def planned_output_stems(
@@ -198,11 +254,37 @@ def planned_output_stems(
             result.append((left, False))
         if right and not right.startswith("No "):
             result.append((right, False))
+        flags = exclusive_flags_for_pair(
+            str(settings.process.stem_focus or ""), pair
+        )
+        if flags is None:
+            primary_only = settings.process.primary_stem_only
+            secondary_only = settings.process.secondary_stem_only
+        else:
+            primary_only, secondary_only = flags
+        if primary_only:
+            return tuple(item for item in result if item[0] == left)
+        if secondary_only:
+            return tuple(item for item in result if item[0] == right)
         return tuple(result)
     descriptor = descriptors[0] if descriptors else ModelDescriptor("", "", "", "")
-    if settings.process.primary_stem_only:
+    primary_only = settings.process.primary_stem_only
+    secondary_only = settings.process.secondary_stem_only
+    # ``process.stem_focus`` overrides the positional booleans, and resolves
+    # against this model's own stems (assemble does the same, per config).
+    flags = exclusive_flags_for_focus(
+        str(settings.process.stem_focus or ""),
+        primary_stem=descriptor.primary_stem,
+        secondary_stem=descriptor.secondary_stem,
+        stem_count=descriptor.stem_count,
+        is_karaoke=descriptor.is_karaoke,
+        is_bv=descriptor.is_bv,
+    )
+    if flags is not None:
+        primary_only, secondary_only = flags
+    if primary_only:
         return ((descriptor.primary_stem or "Primary", False),)
-    if settings.process.secondary_stem_only:
+    if secondary_only:
         return ((descriptor.secondary_stem or "Secondary", False),)
     return (
         (descriptor.primary_stem or "Primary", False),
@@ -301,6 +383,7 @@ class JobResolver:
         provenance = dict(spec.provenance)
         if models:
             _apply_model_native_values(settings, records, models, provenance)
+        diagnostics.extend(_stem_focus_diagnostics(settings, models, descriptors))
         if level in {ValidationLevel.RUNTIME, ValidationLevel.LOAD}:
             diagnostics.extend(self._runtime_diagnostics(settings))
         if level is ValidationLevel.LOAD and models and not diagnostics:

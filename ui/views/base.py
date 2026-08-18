@@ -39,7 +39,7 @@ from bundled.constants import (
     VR_ARCH_TYPE,
 )
 from core.settings import Settings
-from core.stems import EnsemblePair, StemBucket, ui_label
+from core.stems import EnsemblePair, StemBucket, model_stem_count, ui_label
 
 from ..hints import HelpHintManager
 from ..widgets.rows import (
@@ -339,11 +339,11 @@ class MethodView:
             has_model=True,
             stem_label_overrides=stem_display_overrides(model),
             export_semantics_note=recommended_export_note(model),
-            is_karaoke=bool(getattr(model, "is_karaoke", False)),
-            is_karaoke_curated=bool(getattr(model, "is_karaoke_curated", False)),
-            is_bv=bool(getattr(model, "is_bv_model", False)),
-            stem_count=2,
-        )
+                is_karaoke=bool(getattr(model, "is_karaoke", False)),
+                is_karaoke_curated=bool(getattr(model, "is_karaoke_curated", False)),
+                is_bv=bool(getattr(model, "is_bv_model", False)),
+                stem_count=max(1, model_stem_count(model)),
+            )
 
     def _update_stem_group_metadata(self) -> None:
         line1 = self.save_stems.export_summary()

@@ -119,6 +119,13 @@ def validate_setting_value(settings: Settings, path: str, value: Any) -> None:
                 f"invalid value for {path}: {value!r}; expected one or two known algorithms"
             )
         return
+    if path == "process.stem_focus":
+        from core.stems import normalize_stem_focus
+
+        # Permissive coercion turns a typo into "export everything"; --set must
+        # reject it instead. Empty is a valid clear.
+        normalize_stem_focus(value, strict=bool(str(value).strip()))
+        return
     current = getattr(getattr(settings, section_name), field_name)
     if isinstance(current, bool):
         valid = isinstance(value, bool) or value in (0, 1)

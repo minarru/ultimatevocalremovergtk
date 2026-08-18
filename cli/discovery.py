@@ -44,7 +44,7 @@ from .reporting import add_reporting_args, emit_document, emit_event, fail, repo
 def _print_rows(args: argparse.Namespace, rows: list[dict[str, Any]]) -> int:
     if report_mode(args) == "human":
         for row in rows:
-            print("\t".join(_human_cell(value) for value in row.values()))
+            print("\t".join(_human_cell(value, key=key) for key, value in row.items()))
     else:
         emit_document(args, {"ok": True, "status": "success", "items": rows})
     return 0
@@ -59,8 +59,12 @@ def _print_detail(args: argparse.Namespace, row: dict[str, Any]) -> int:
     return 0
 
 
-def _human_cell(value: Any) -> str:
+def _human_cell(value: Any, *, key: str | None = None) -> str:
     value = _jsonable(value)
+    if key in {"primary_stem", "secondary_stem"} and isinstance(value, str) and value:
+        from core.model_stem_semantics import canonical_stem_alias
+
+        return canonical_stem_alias(value) or value
     if isinstance(value, (dict, list, tuple)):
         return json.dumps(value, sort_keys=True, separators=(",", ":"))
     if value is None:

@@ -164,6 +164,17 @@ _IDENTITY_BUCKETS = {
     "backing_vocals": StemBucket.BACKING_VOCALS,
 }
 
+_VOCAL_FAMILY = {
+    StemBucket.VOCALS,
+    StemBucket.LEAD_VOCALS,
+    StemBucket.BACKING_VOCALS,
+}
+_INST_FAMILY = {
+    StemBucket.INSTRUMENTAL,
+    StemBucket.INST_WITH_BV,
+    StemBucket.INST_WITH_LEAD,
+}
+
 # Canonical label -> bucket enum for the plain single-instrument stems.
 # Alias spellings (vocals/voc/drums/...) live in the shared
 # core.model_stem_semantics table bucket_for_model_stem now queries via
@@ -225,11 +236,22 @@ def filename_tag(key: StemKey) -> str:
 def bucket_for_model_stem(
     stem: str | StemId,
     *,
-    stem_count: int = 2,
+    stem_count: int,
     is_karaoke: bool = False,
     is_bv: bool = False,
+    is_vocal_split: bool = False,
 ) -> StemBucket:
-    """Map a model stem id to an ensemble bucket (may be ``UNKNOWN``)."""
+    """Map a model stem id to an ensemble bucket (may be ``UNKNOWN``).
+
+    ``stem_count`` is **required**: native ``other`` means the instrumental
+    side on a 2-stem model and the MUSDB residual on a 4-stem one, so a
+    defaulted count silently mis-resolves it. With a model in hand, prefer
+    :func:`stem_concept`, which derives the whole context from the model.
+
+    ``is_vocal_split`` is the karaoke/BV *splitter role*, not karaoke-as-primary.
+    A splitter's instrumental complement is Backing Vocals (or Lead Vocals when
+    the splitter is a BV model), never Inst-with-BGV.
+    """
     from core.model_stem_semantics import canonical_stem_alias
 
     raw = stem.raw if isinstance(stem, StemId) else stem
@@ -246,6 +268,12 @@ def bucket_for_model_stem(
     is_instrumental = canonical == INST_STEM or (
         token == "other" and 1 <= stem_count <= 2
     )
+
+    if is_vocal_split:
+        if is_vocal:
+            return StemBucket.BACKING_VOCALS if is_bv else StemBucket.LEAD_VOCALS
+        if is_instrumental:
+            return StemBucket.LEAD_VOCALS if is_bv else StemBucket.BACKING_VOCALS
 
     if is_karaoke:
         if is_vocal:
@@ -270,16 +298,284 @@ def bucket_for_model_stem(
     return StemBucket.UNKNOWN
 
 
+def concept_is(
+    stem: str | StemId,
+    bucket: StemBucket,
+    *,
+    stem_count: int,
+    is_karaoke: bool = False,
+    is_bv: bool = False,
+    is_vocal_split: bool = False,
+) -> bool:
+    """True when ``stem`` resolves to ``bucket`` under the given run context."""
+    return (
+        bucket_for_model_stem(
+            stem,
+            stem_count=stem_count,
+            is_karaoke=is_karaoke,
+            is_bv=is_bv,
+            is_vocal_split=is_vocal_split,
+        )
+        is bucket
+    )
+
+
+def focus_matches_stem(
+    focus: str,
+    stem: str | StemId | None,
+    *,
+    stem_count: int,
+    is_karaoke: bool = False,
+    is_bv: bool = False,
+    is_vocal_split: bool = False,
+) -> bool:
+    """True when a persisted ``process.stem_focus`` names this native stem.
+
+    Accepts bucket tags (``Vocals``, ``Lead_Vocals``), UI labels, yaml
+    aliases (``vocals``), and ``raw:`` specialty anchors.
+    """
+    if not focus or stem is None:
+        return False
+    raw = stem.raw if isinstance(stem, StemId) else str(stem)
+    token = raw.strip()
+    if not token:
+        return False
+    want = str(focus).strip()
+    if not want:
+        return False
+    if want.startswith("raw:"):
+        return want == f"raw:{token.casefold()}"
+
+    ctx = {
+        "stem_count": stem_count,
+        "is_karaoke": is_karaoke,
+        "is_bv": is_bv,
+        "is_vocal_split": is_vocal_split,
+    }
+    stem_bucket = bucket_for_model_stem(token, **ctx)
+    if stem_bucket is StemBucket.UNKNOWN:
+        return False
+    if stem_bucket.value == want or ui_label(stem_bucket) == want:
+        return True
+    # CLI ``--stems vocals`` stores the plain Vocals bucket; karaoke remaps
+    # the same native key to Lead Vocals. Match the un-remapped family too,
+    # including already-remapped labels (``Lead Vocals``), not only native keys.
+    focus_as_stem = bucket_for_model_stem(want, stem_count=stem_count)
+    if focus_as_stem is StemBucket.UNKNOWN:
+        return False
+    return _plain_family(stem_bucket) is _plain_family(focus_as_stem)
+
+
+def exclusive_flags_for_focus(
+    focus: str,
+    *,
+    primary_stem: str | None,
+    secondary_stem: str | None,
+    stem_count: int,
+    is_karaoke: bool = False,
+    is_bv: bool = False,
+) -> tuple[bool, bool] | None:
+    """Return ``(primary_only, secondary_only)``, or ``None`` if focus is empty.
+
+    A focus that names neither stem — or both — yields ``(False, False)``:
+    export everything rather than guess. Callers that can warn should ask
+    :func:`focus_is_resolvable` first.
+    """
+    if not str(focus or "").strip():
+        return None
+    ctx = {
+        "stem_count": stem_count,
+        "is_karaoke": is_karaoke,
+        "is_bv": is_bv,
+    }
+    primary_hit = focus_matches_stem(focus, primary_stem, **ctx)
+    secondary_hit = focus_matches_stem(focus, secondary_stem, **ctx)
+    if primary_hit and not secondary_hit:
+        return True, False
+    if secondary_hit and not primary_hit:
+        return False, True
+    return False, False
+
+
+def _plain_family(bucket: StemBucket) -> StemBucket:
+    """Collapse karaoke/BV remaps onto the Vocals / Instrumental family."""
+    if bucket in _VOCAL_FAMILY:
+        return StemBucket.VOCALS
+    if bucket in _INST_FAMILY:
+        return StemBucket.INSTRUMENTAL
+    return bucket
+
+
+def exclusive_flags_for_pair(
+    focus: str, pair: EnsemblePair
+) -> tuple[bool, bool] | None:
+    """Like :func:`exclusive_flags_for_focus`, keyed on pair buckets.
+
+    Ensemble combine and dry-run never have a model: they have an
+    :class:`EnsemblePair`. Matching the pair's *labels* (``Lead Vocals``,
+    ``Other``) through :func:`exclusive_flags_for_focus` is wrong — those
+    strings are already concepts, and ``stem_count=2`` would turn Other
+    into Instrumental and leave ``--stems vocals`` unmatched on karaoke.
+    """
+    if not str(focus or "").strip():
+        return None
+    wanted = focus_bucket(focus)
+    primary_b, secondary_b = pair.buckets()
+
+    def hit(bucket: StemBucket) -> bool:
+        if bucket is StemBucket.UNKNOWN or wanted is StemBucket.UNKNOWN:
+            return False
+        if bucket is wanted:
+            return True
+        return _plain_family(bucket) is _plain_family(wanted)
+
+    primary_hit = hit(primary_b)
+    secondary_hit = hit(secondary_b)
+    if primary_hit and not secondary_hit:
+        return True, False
+    if secondary_hit and not primary_hit:
+        return False, True
+    return False, False
+
+
+def exclusive_flags_for_model(model: Any, focus: str) -> tuple[bool, bool] | None:
+    """:func:`exclusive_flags_for_focus` with the context read off ``model``."""
+    return exclusive_flags_for_focus(
+        focus,
+        primary_stem=getattr(model, "primary_stem", None),
+        secondary_stem=getattr(model, "secondary_stem", None),
+        stem_count=model_stem_count(model),
+        is_karaoke=bool(getattr(model, "is_karaoke", False)),
+        is_bv=bool(getattr(model, "is_bv_model", False)),
+    )
+
+
+def focus_is_resolvable(model: Any, focus: str) -> bool:
+    """True when ``focus`` is empty or names exactly one of the model's stems.
+
+    False means the exclusive pick cannot be honored and the run will fall
+    back to exporting every stem — the condition worth reporting at plan time.
+    """
+    flags = exclusive_flags_for_model(model, focus)
+    return flags is None or flags != (False, False)
+
+
+def focus_bucket(token: str) -> StemBucket:
+    """Resolve a *focus* token to its bucket, independent of any model.
+
+    Unlike :func:`bucket_for_model_stem` this never reinterprets ``other`` as
+    the instrumental side: as a user-typed pick, ``other`` means the Other
+    stem. Cross-spelling matching against a 2-stem model's native ``other``
+    still happens later, in :func:`focus_matches_stem`.
+    """
+    from core.model_stem_semantics import canonical_stem_alias
+
+    folded = token.casefold()
+    identity = _IDENTITY_BUCKETS.get(folded)
+    if identity is not None:
+        return identity
+    for member in StemBucket:
+        if member is StemBucket.UNKNOWN:
+            continue
+        if folded in (member.value.casefold(), ui_label(member).casefold()):
+            return member
+    canonical = canonical_stem_alias(folded)
+    if canonical == VOCAL_STEM:
+        return StemBucket.VOCALS
+    if canonical == INST_STEM:
+        return StemBucket.INSTRUMENTAL
+    if folded == "other" or canonical == OTHER_STEM:
+        return StemBucket.OTHER
+    simple = _SIMPLE_STEM_BUCKETS.get(canonical) if canonical else None
+    return simple if simple is not None else StemBucket.UNKNOWN
+
+
+def normalize_stem_focus(value: Any, *, strict: bool = False) -> str:
+    """Canonical ``process.stem_focus``: bucket tag, ``raw:…``, or empty.
+
+    Accepts aliases (``vocals`` ≡ ``Vocals``) so CLI ``--set`` and GTK persist
+    the same exclusive-pick vocabulary. A specialty stem must be named
+    explicitly as ``raw:<stem>``; a bare unrecognized token is a typo, not a
+    silent specialty pick. ``strict`` raises on one, matching ``--set``
+    validation; the permissive default drops it so a hand-edited
+    ``settings.json`` degrades to "export everything" instead of failing load.
+    """
+    token = "" if value is None else str(value).strip()
+    if not token:
+        return ""
+    if token.startswith("raw:"):
+        rest = token[4:].strip()
+        if rest:
+            return f"raw:{rest.casefold()}"
+        if strict:
+            raise ValueError("stem focus 'raw:' needs a stem name after the prefix")
+        return ""
+    bucket = focus_bucket(token)
+    if bucket is not StemBucket.UNKNOWN:
+        return bucket.value
+    if strict:
+        known = ", ".join(
+            sorted(member.value for member in StemBucket if member is not StemBucket.UNKNOWN)
+        )
+        raise ValueError(
+            f"unknown stem focus {token!r}; expected one of {known}, "
+            f"or 'raw:{token.casefold()}' for a specialty stem"
+        )
+    try:
+        from core.debug_log import debug
+
+        debug("settings", f"process.stem_focus unknown value={token!r}; using all stems")
+    except Exception:
+        pass
+    return ""
+
+
+def stem_context(model: Any) -> dict[str, Any]:
+    """Resolver context read off a model, for ``**``-splatting into the helpers.
+
+    The single derivation point for ``stem_count``/``is_karaoke``/``is_bv``/
+    ``is_vocal_split``. Build context this way rather than by hand, so a call
+    site cannot quietly omit one and get a different concept.
+    """
+    return {
+        "stem_count": model_stem_count(model),
+        "is_karaoke": bool(getattr(model, "is_karaoke", False)),
+        "is_bv": bool(getattr(model, "is_bv_model", False)),
+        "is_vocal_split": bool(getattr(model, "is_vocal_split_model", False)),
+    }
+
+
+def stem_concept(
+    model: Any,
+    stem: str | StemId | None = None,
+) -> StemBucket:
+    """Concept for ``stem``, or the model's native primary when omitted."""
+    raw = stem if stem is not None else getattr(model, "primary_stem", None)
+    return bucket_for_model_stem(raw or "", **stem_context(model))
+
+
 def model_stem_count(model: Any) -> int:
     """How many stems a model produces across MDX/Demucs fields.
 
     Returns ``0`` when nothing is known (do not guess 2).
     """
+    def _count(value: Any) -> int:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _len(value: Any) -> int:
+        try:
+            return len(value or ())
+        except TypeError:
+            return 0
+
     counts = (
-        int(getattr(model, "mdx_stem_count", 0) or 0),
-        int(getattr(model, "demucs_stem_count", 0) or 0),
-        len(getattr(model, "mdx_model_stems", ()) or ()),
-        len(getattr(model, "demucs_source_list", ()) or ()),
+        _count(getattr(model, "mdx_stem_count", 0)),
+        _count(getattr(model, "demucs_stem_count", 0)),
+        _len(getattr(model, "mdx_model_stems", ())),
+        _len(getattr(model, "demucs_source_list", ())),
     )
     return max(counts)
 
@@ -295,38 +591,27 @@ def export_stem_key(
     Ensemble mode returns :class:`StemKey`. Outside ensemble, returns a string
     label (karaoke/BV human names or the raw stem).
     """
-    from bundled.constants import (
-        BV_VOCAL_STEM,
-        BV_VOCAL_STEM_LABEL,
-        LEAD_VOCAL_STEM,
-        LEAD_VOCAL_STEM_LABEL,
-    )
     from core.model_stem_semantics import (
         canonical_ensemble_stem_tag,
-        is_backing_vocal_stem,
         karaoke_bv_export_labels,
     )
 
     raw = stem.raw if isinstance(stem, StemId) else stem
     if not raw:
         return raw
+    bucket = bucket_for_model_stem(raw, **stem_context(model))
     if for_ensemble:
-        bucket = bucket_for_model_stem(
-            raw,
-            stem_count=model_stem_count(model),
-            is_karaoke=bool(getattr(model, "is_karaoke", False)),
-            is_bv=bool(getattr(model, "is_bv_model", False)),
-        )
         if bucket is not StemBucket.UNKNOWN:
             return bucket
         return StemLiteral(canonical_ensemble_stem_tag(str(raw)))
-    if raw == LEAD_VOCAL_STEM:
-        return LEAD_VOCAL_STEM_LABEL
-    if raw == BV_VOCAL_STEM or is_backing_vocal_stem(str(raw)):
-        return BV_VOCAL_STEM_LABEL
+    if bucket is not StemBucket.UNKNOWN:
+        return ui_label(bucket)
     labels = karaoke_bv_export_labels(model)
     if not labels:
         return raw
+    matched = resolve_in_sources(labels, raw)
+    if matched is not None:
+        return labels[matched]
     return labels.get(raw, raw)
 
 
