@@ -458,8 +458,12 @@ class SeperateAttributes:
             process_chain_model(
                 self.vocal_split_model,
                 self.process_data,
-                vocal_stem_path=self.master_vocal_path
-                or getattr(self, "audio_file_base", None),
+                vocal_stem_path=self.master_vocal_path,
+                vocal_stem_base=(
+                    getattr(self, "audio_file_base", None)
+                    if not self.master_vocal_path
+                    else None
+                ),
                 master_vocal_source=master_vocal_source,
                 master_inst_source=master_inst_source
             )
@@ -664,9 +668,10 @@ class SeperateAttributes:
         def save_with_message(
             stem_path: str, stem_name: str | None, stem_source: Any
         ) -> None:
+            saved_bucket = stem_concept(self, stem_name)
             is_deverb = self.is_deverb_vocals and (
                 self.deverb_vocal_opt == stem_name or
-                (self.deverb_vocal_opt == 'ALL' and bucket in (
+                (self.deverb_vocal_opt == 'ALL' and saved_bucket in (
                     StemBucket.VOCALS,
                     StemBucket.LEAD_VOCALS,
                     StemBucket.BACKING_VOCALS,

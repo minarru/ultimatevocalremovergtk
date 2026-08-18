@@ -235,6 +235,26 @@ class WriteAudioGuardTests(unittest.TestCase):
         sep.mdx_stem_count = 2
         self.assertEqual(stem_concept(sep, "vocals"), StemBucket.LEAD_VOCALS)
 
+    def test_deverb_all_does_not_process_splitter_instrumental(self) -> None:
+        sep = self._vocal_split_writer()
+        sep.capture_stems_only = False
+        sep.is_deverb_vocals = True
+        sep.is_save_inst_vocal_splitter = True
+        sep.master_inst_source = _arr(2.0).T
+        sep.device = "cpu"
+        sep.DEVERBER_MODEL = "/tmp/deverb.pth"
+        sep.settings = MagicMock()
+        sep.mp3_bit_set = "320k"
+        sep.flac_bit_set = "PCM_16"
+        sep.deverb_progress_callback = MagicMock(return_value=None)
+        sep.check_run_control = MagicMock()
+        with (
+            patch("engines.base.vr_denoiser", return_value=(_arr(0.5).T, _arr(0.5).T)) as deverb,
+            patch("engines.base.sf.write"),
+        ):
+            sep.write_audio("/tmp/x.wav", _arr(1.0).T, 44100, stem_name="vocals")
+        deverb.assert_called_once()
+
 
 class VocalSplitChainHandoffTests(unittest.TestCase):
     def _sep(self, **kwargs: Any) -> SeperateAttributes:
@@ -273,14 +293,13 @@ class VocalSplitChainHandoffTests(unittest.TestCase):
         chain.assert_not_called()
 
     def test_missing_vocal_path_still_passes_a_basename(self) -> None:
-        sep = self._sep(master_vocal_path=None, audio_file_base="Ice Cream Truck")
+        sep = self._sep(master_vocal_path=None, audio_file_base="01. Song")
         voc = _arr(1.0).T
         with patch("engines.base.process_chain_model") as chain:
             sep._process_vocal_split_chain({VOCAL_STEM: voc})
         chain.assert_called_once()
-        path = chain.call_args.kwargs["vocal_stem_path"]
-        self.assertIsInstance(path, str)
-        self.assertTrue(path)
+        self.assertIsNone(chain.call_args.kwargs["vocal_stem_path"])
+        self.assertEqual(chain.call_args.kwargs["vocal_stem_base"], "01. Song")
 
 
 class ProcessChainModelPathTests(unittest.TestCase):
@@ -303,6 +322,24 @@ class ProcessChainModelPathTests(unittest.TestCase):
         self.assertIsInstance(audio, np.ndarray)
         self.assertIsInstance(base, str)
         self.assertTrue(base)
+
+    def test_explicit_fallback_base_preserves_dots(self) -> None:
+        model = MagicMock()
+        model.bv_model_rebalance = False
+        process_data = MagicMock()
+        with (
+            patch("engines.orchestration._build_seperator") as build,
+            patch("engines.orchestration._run_seperator", return_value=None),
+        ):
+            process_chain_model(
+                model,
+                process_data,
+                vocal_stem_path=None,
+                vocal_stem_base="01. Song",
+                master_vocal_source=_arr(1.0).T,
+            )
+        _audio, base = build.call_args.kwargs["vocal_stem_path"]
+        self.assertEqual(base, "01. Song")
 
 
 class _SplitSaveFake:
@@ -343,6 +380,54 @@ class MdxcVocalSplitSaveTests(unittest.TestCase):
             self._save({"vocals": _arr(1.0), INST_STEM: _arr(2.0)}),
             [LEAD_VOCAL_STEM_LABEL, BV_VOCAL_STEM_LABEL],
         )
+
+    def test_native_rate_mix_is_restored_before_splitter_complement(self) -> None:
+        from types import SimpleNamespace
+
+        fake = SimpleNamespace(
+            mdx_c_configs=SimpleNamespace(
+                audio=SimpleNamespace(sample_rate=48000),
+                training=SimpleNamespace(target_instrument=None, instruments=["Vocals"]),
+            ),
+            is_roformer=False,
+            primary_model_name="main",
+            model_basename="main",
+            primary_sources=None,
+            audio_file="/tmp/song.wav",
+            is_vocal_split_model=True,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            primary_stem_native="Vocals",
+            is_bv_model=False,
+            start_inference_console_write=lambda: None,
+            write_to_console=lambda *args, **kwargs: None,
+            demix=lambda mix: {"Vocals": np.ones((2, 480), dtype=np.float32)},
+        )
+        captured: dict[str, Any] = {}
+
+        def write_pair(sources: dict[str, Any], mix: Any, samplerate: int) -> dict[str, Any]:
+            captured["source_length"] = sources["Vocals"].shape[1]
+            captured["mix_length"] = mix.shape[1]
+            captured["samplerate"] = samplerate
+            return {}
+
+        fake._write_vocal_split_pair = write_pair
+        with (
+            patch("engines.mdx.prepare_mix", return_value=np.ones((2, 441), dtype=np.float32)),
+            patch(
+                "engines.mdx.librosa.resample",
+                side_effect=lambda audio, *, orig_sr, target_sr, axis: np.ones(
+                    (2, 480 if target_sr == 48000 else 441), dtype=np.float32
+                ),
+            ),
+        ):
+            SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
+
+        self.assertEqual(captured, {
+            "source_length": 441,
+            "mix_length": 441,
+            "samplerate": 44100,
+        })
 
     def test_three_stem_karaoke_skips_splitter_instrumental(self) -> None:
         self.assertEqual(
