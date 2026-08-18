@@ -247,7 +247,7 @@ def run_separator(
 
 def export_ensemble_salvage(runner: Any, callbacks: Any) -> None:
     """Write completed ensemble member stems into the user export folder."""
-    from .job_runner import _write_captured_stems
+    from .run_loop import _write_captured_stems
 
     export_root = str(runner.settings.process.export_path or "")
     if not export_root:

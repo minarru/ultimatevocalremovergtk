@@ -23,13 +23,11 @@ from bundled.constants import (
     ENSEMBLE_MODE,
     MDX_ARCH_TYPE,
     PRIMARY_STEM,
-    PROCESS_STOPPED_BY_USER,
     SECONDARY_STEM,
     VR_ARCH_PM,
     VR_ARCH_TYPE,
 )
 
-from . import paths
 from .audio_io import resolve_wav_type_set
 from .ensembler import (
     Ensembler,
@@ -48,11 +46,16 @@ from .process_data import ProcessData
 from .sample_mode import prepare_input_paths
 from .settings import Settings
 from .stems import coerce_ensemble_pair, exclusive_flags_for_pair
-from .run_control import ProcessStopped, check_stopped, pausable_callback
+from .run_control import check_stopped
 from .run_estimate import combine_progress_local_step, count_inference_passes_from_models
 from .debug_log import debug, debug_elapsed, next_seq, preview_text, set_correlation_seq, verbose
-from .error_context import snapshot_worker_file
 from .model_display import display_name_for_model
+from .run_loop import (
+    FileState,
+    _write_captured_stems,
+    run_models_on_files,
+    with_worker_lifecycle,
+)
 from .separate_import import import_separate_engines
 from .types import ProcessMethod
 from .inference_cleanup import (
@@ -64,7 +67,7 @@ from .oom_choice import (
     OOM_CHOICE_STOP,
     OomChoiceRequest,
 )
-from .separator_run import apply_segment_override, run_separator
+from .separator_run import apply_segment_override
 
 if TYPE_CHECKING:
     from engines.model_weight_cache import FileIdentity
@@ -96,13 +99,6 @@ def collect_run_model_paths(models: Sequence[ModelConfig]) -> set[str]:
     return found
 
 
-def _decoded_mix_for_process(audio_file: typing.Any):
-    """Decode once per track so ensemble / secondary models reuse the same mix."""
-    from engines.mix import prepare_mix
-
-    return prepare_mix(audio_file)
-
-
 _MODEL_KEY_BY_METHOD = {
     VR_ARCH_PM: "vr_model",
     MDX_ARCH_TYPE: "mdx_net_model",
@@ -114,132 +110,6 @@ def _model_output_label(model: ModelConfig) -> str:
     """Return the user-facing model label for export paths and test mode."""
     label = display_name_for_model(model.process_method, model.model_name, model.repo)
     return label or model.model_basename or ""
-
-
-def _progress_detail(
-    *,
-    file_num: int,
-    file_total: int,
-    model: typing.Any,
-    model_num: int,
-    model_count: int,
-    chunk_num: int = 0,
-    chunk_total: int = 0,
-) -> Optional[str]:
-    """Short status detail for the progress line (file / chunk / member model)."""
-    parts: List[str] = []
-    if file_total > 1:
-        parts.append(f"File {file_num}/{file_total}")
-    if chunk_total > 1 and chunk_num > 0:
-        parts.append(f"Chunk {chunk_num}/{chunk_total}")
-    if model is not None:
-        label = _model_output_label(model)
-        if model_count > 1:
-            parts.append(f"Model {model_num}/{model_count}" + (f" · {label}" if label else ""))
-        elif label:
-            parts.append(label)
-    return " · ".join(parts) if parts else None
-
-
-@dataclass
-class _ProgressSink:
-    """Mutable last-fraction holder shared by a run's progress callback."""
-
-    fraction: float = 0.0
-
-
-def _bind_set_progress_bar(
-    runner: "JobRunner",
-    callbacks: "JobCallbacks",
-    progress_ctx: dict[str, Any],
-    *,
-    total_files: int,
-    total_chunk_units: int,
-    sink: _ProgressSink,
-) -> Callable[..., None]:
-    """Map engine ``set_progress_bar(step, iterations)`` onto ``callbacks.progress``."""
-
-    def set_progress_bar(
-        step: typing.Any, inference_iterations: typing.Any = 0
-    ) -> None:
-        total_count = max(1, runner.true_model_count * total_chunk_units)
-        base = 1.0 / total_count
-        local_step = step + inference_iterations
-        fraction = base * runner.iteration - base + base * local_step
-        sink.fraction = fraction
-        callbacks.progress(
-            fraction,
-            local_step=local_step,
-            pass_index=max(1, runner.iteration),
-            pass_total=total_count,
-            detail=_progress_detail(
-                file_num=progress_ctx["file_num"],
-                file_total=total_files,
-                model=progress_ctx["model"],
-                model_num=progress_ctx["model_num"],
-                model_count=progress_ctx["model_count"],
-                chunk_num=progress_ctx["chunk_num"],
-                chunk_total=progress_ctx["chunk_total"],
-            ),
-        )
-
-    return set_progress_bar
-
-
-def _long_file_chunk_settings(settings: Settings) -> tuple:
-    """Return ``(chunk_seconds, overlap_seconds)``; chunk ``<= 0`` means off."""
-    try:
-        chunk_seconds = float(settings.process.long_file_chunk_seconds or 0.0)
-    except (TypeError, ValueError):
-        chunk_seconds = 0.0
-    try:
-        overlap_seconds = float(
-            settings.process.long_file_chunk_overlap_seconds or 0.0
-        )
-    except (TypeError, ValueError):
-        overlap_seconds = 0.0
-    return chunk_seconds, overlap_seconds
-
-
-def _write_captured_stems(
-    stem_arrays: dict,
-    stem_paths: dict,
-    *,
-    is_normalization: bool,
-    amplification_threshold: float,
-    wav_type_set: typing.Any,
-    save_format_name: typing.Any,
-    mp3_bit_set: typing.Any,
-    flac_bit_set: typing.Any,
-) -> None:
-    """Write deferred stem arrays to their original export paths."""
-    import soundfile as sf
-    from engines.separate import save_format as _save_format
-    from ml import spec_utils
-    from bundled.constants import FLAC
-    from core.audio_io import flac_subtype, replace_audio_suffix
-
-    for stem_name, source in stem_arrays.items():
-        path = stem_paths.get(stem_name)
-        if not path:
-            continue
-        wave = spec_utils.normalize(
-            source,
-            is_normalization,
-            min_peak=amplification_threshold,
-        )
-        if save_format_name == FLAC:
-            flac_path = replace_audio_suffix(path, ".flac")
-            sf.write(
-                flac_path,
-                wave,
-                44100,
-                format="FLAC",
-                subtype=flac_subtype(flac_bit_set),
-            )
-            continue
-        sf.write(path, wave, 44100, subtype=wav_type_set)
-        _save_format(path, save_format_name, mp3_bit_set, flac_bit_set)
 
 
 @dataclass(frozen=True)
@@ -365,6 +235,258 @@ class JobCallbacks:
         choice = box["choice"]
         debug("worker", f"oom choice={choice!r}")
         return choice
+
+
+class _SingleRunHooks:
+    """Single-method naming, stem concat, and export for :func:`run_models_on_files`."""
+
+    process_kind = "separation"
+
+    def __init__(self, export_path: str, amp_threshold: float) -> None:
+        self.export_path = export_path
+        self.amp_threshold = amp_threshold
+
+    def before_file(self, runner: Any, state: FileState) -> None:
+        return
+
+    def export_and_base(
+        self, runner: Any, state: FileState, model: Any
+    ) -> tuple[str, str]:
+        model_label = _model_output_label(model)
+        naming = runner._naming_for_file(
+            state.audio_file,
+            export_path=self.export_path,
+            file_index=state.file_num,
+            file_total=state.total_files,
+            model_label=model_label,
+        )
+        if naming.export_directory != self.export_path:
+            os.makedirs(naming.export_directory, exist_ok=True)
+        state.scratch["stem_parts"] = {}
+        state.scratch["stem_paths"] = {}
+        return naming.track_base, naming.export_directory
+
+    def extra_process_data(
+        self, runner: Any, state: FileState, model: Any
+    ) -> dict:
+        return {"is_ensemble_master": False, "is_4_stem_ensemble": False}
+
+    def after_chunk(
+        self,
+        runner: Any,
+        state: FileState,
+        model: Any,
+        stems: dict,
+        paths: dict,
+        chunked: bool,
+    ) -> None:
+        if not chunked:
+            return
+        parts = state.scratch["stem_parts"]
+        stored_paths = state.scratch["stem_paths"]
+        for stem_tag, arr in stems.items():
+            parts.setdefault(stem_tag, []).append(arr)
+            if stem_tag in paths:
+                stored_paths[stem_tag] = paths[stem_tag]
+
+    def after_model(self, runner: Any, state: FileState, model: Any) -> None:
+        from core.audio_chunking import concat_stems
+
+        parts = state.scratch.get("stem_parts") or {}
+        if not (state.chunked and parts):
+            return
+        final_stems = {
+            stem: concat_stems(chunk_parts, overlap_samples=state.ov_samples)
+            for stem, chunk_parts in parts.items()
+        }
+        _write_captured_stems(
+            final_stems,
+            state.scratch["stem_paths"],
+            is_normalization=bool(runner.settings.process.normalization),
+            amplification_threshold=self.amp_threshold,
+            wav_type_set=resolve_wav_type_set(runner.settings),
+            save_format_name=runner.settings.process.save_format.value,
+            mp3_bit_set=runner.settings.process.mp3_bitrate,
+            flac_bit_set=runner.settings.process.flac_bit_depth,
+        )
+
+    def after_file(self, runner: Any, state: FileState) -> None:
+        return
+
+
+class _EnsembleRunHooks:
+    """Ensemble member naming, salvage, and combine for :func:`run_models_on_files`."""
+
+    process_kind = "ensemble"
+
+    def __init__(self, ensemble: Ensembler, is_4_stem: bool) -> None:
+        self.ensemble = ensemble
+        self.export_path = ensemble.ensemble_folder_name
+        self.is_4_stem = is_4_stem
+
+    def before_file(self, runner: Any, state: FileState) -> None:
+        state.scratch["ensemble_stem_arrays"] = {}
+        runner._ensemble_salvage_members = []
+        final_naming = runner._naming_for_file(
+            state.audio_file,
+            export_path=self.export_path,
+            file_index=state.file_num,
+            file_total=state.total_files,
+            ensemble_label=self.ensemble.append_ensemble_label,
+            force_ensemble_label=True,
+        )
+        state.scratch["ensemble_final_base"] = final_naming.track_base
+
+    def export_and_base(
+        self, runner: Any, state: FileState, model: Any
+    ) -> tuple[str, str]:
+        model_label = _model_output_label(model)
+        state.callbacks.console(
+            f"Ensemble Mode - {model_label} - "
+            f"Model {state.progress_ctx['model_num']}/{state.model_count}\n"
+        )
+        member_naming = runner._ensemble_member_naming_for_file(
+            state.audio_file,
+            export_path=self.export_path,
+            file_index=state.file_num,
+            file_total=state.total_files,
+            model_label=model_label,
+        )
+        state.scratch["member_stem_parts"] = {}
+        state.scratch["member_paths"] = {}
+        state.scratch["last_member_stems"] = {}
+        state.scratch["audio_file_base"] = member_naming.track_base
+        state.scratch["model_label"] = model_label
+        return member_naming.track_base, self.export_path
+
+    def extra_process_data(
+        self, runner: Any, state: FileState, model: Any
+    ) -> dict:
+        return {
+            "is_ensemble_master": True,
+            "is_4_stem_ensemble": self.is_4_stem,
+            "is_save_all_outputs_ensemble": bool(
+                runner.settings.ensemble.save_all_outputs
+            ),
+        }
+
+    def after_chunk(
+        self,
+        runner: Any,
+        state: FileState,
+        model: Any,
+        stems: dict,
+        paths: dict,
+        chunked: bool,
+    ) -> None:
+        scratch = state.scratch
+        scratch["last_member_stems"] = stems
+        if chunked:
+            for stem_tag, arr in stems.items():
+                bucket = _ensemble_stem_bucket(stem_tag)
+                scratch["member_stem_parts"].setdefault(bucket, []).append(arr)
+                if stem_tag in paths:
+                    scratch["member_paths"][bucket] = paths[stem_tag]
+            return
+        for stem_tag, arr in stems.items():
+            bucket = _ensemble_stem_bucket(stem_tag)
+            scratch["ensemble_stem_arrays"].setdefault(bucket, []).append(arr)
+            if stem_tag in paths:
+                scratch["member_paths"][bucket] = paths[stem_tag]
+
+    def after_model(self, runner: Any, state: FileState, model: Any) -> None:
+        from core.audio_chunking import concat_stems
+
+        scratch = state.scratch
+        salvage_arrays: dict = {}
+        if state.chunked:
+            for stem_tag, parts in scratch["member_stem_parts"].items():
+                concat = concat_stems(parts, overlap_samples=state.ov_samples)
+                scratch["ensemble_stem_arrays"].setdefault(
+                    _ensemble_stem_bucket(stem_tag), []
+                ).append(concat)
+                salvage_arrays[_ensemble_stem_bucket(stem_tag)] = concat
+        else:
+            for stem_tag, arr in scratch["last_member_stems"].items():
+                salvage_arrays[_ensemble_stem_bucket(stem_tag)] = arr
+        runner._ensemble_salvage_members.append(
+            {
+                "arrays": salvage_arrays,
+                "paths": scratch["member_paths"],
+                "audio_file_base": scratch["audio_file_base"],
+                "model_label": scratch["model_label"],
+            }
+        )
+        state.callbacks.console("\n")
+
+    def after_file(self, runner: Any, state: FileState) -> None:
+        callbacks = state.callbacks
+        callbacks.console(state.base_text + "Ensembling outputs...\n")
+        combine_started = time.perf_counter()
+        ensemble_stem_arrays = state.scratch["ensemble_stem_arrays"]
+        ensemble_final_base = state.scratch["ensemble_final_base"]
+        export_path = self.export_path
+        combine_steps: List[tuple] = []
+        if self.is_4_stem:
+            stem_names = [
+                name
+                for name, arrs in ensemble_stem_arrays.items()
+                if len(arrs) > 1
+            ]
+            if not stem_names:
+                stem_names = _extract_stems(ensemble_final_base, export_path)
+            stem_names = _filter_final_ensemble_stems(
+                stem_names, str(runner.settings.process.stem_focus or "")
+            )
+            combine_steps = [
+                (output_stem, {"is_4_stem": True}) for output_stem in stem_names
+            ]
+        else:
+            primary_only = runner.settings.process.primary_stem_only
+            secondary_only = runner.settings.process.secondary_stem_only
+            # ``process.stem_focus`` overrides the positional booleans,
+            # resolved against the chosen pair's buckets — never the
+            # already-remapped stem_halves labels with a fake count of 2.
+            focus_flags = exclusive_flags_for_pair(
+                str(runner.settings.process.stem_focus or ""),
+                coerce_ensemble_pair(runner.settings.ensemble.main_stem),
+            )
+            if focus_flags is not None:
+                primary_only, secondary_only = focus_flags
+            if not secondary_only:
+                combine_steps.append((PRIMARY_STEM, {}))
+            if not primary_only:
+                combine_steps.append((SECONDARY_STEM, {}))
+                combine_steps.append((SECONDARY_STEM, {"is_inst_mix": True}))
+
+        combine_total = max(1, len(combine_steps))
+        combine_start = state.progress_sink.fraction
+        combine_end = state.file_num / max(1, state.total_files)
+        for combine_idx, (stem_name, kwargs) in enumerate(combine_steps):
+            self.ensemble.ensemble_outputs(
+                ensemble_final_base,
+                export_path,
+                stem_name,
+                stem_arrays=ensemble_stem_arrays,
+                **kwargs,
+            )
+            span = max(combine_end - combine_start, 0.0)
+            fraction = combine_start + span * ((combine_idx + 1) / combine_total)
+            local_step = combine_progress_local_step(combine_idx, combine_total)
+            state.progress_sink.fraction = fraction
+            total_count = max(1, runner.true_model_count * state.total_files)
+            callbacks.progress(
+                fraction,
+                local_step=local_step,
+                pass_index=total_count,
+                pass_total=total_count,
+                combine_index=combine_idx + 1,
+                combine_total=combine_total,
+                detail=f"Combining {combine_idx + 1}/{combine_total}",
+            )
+
+        debug_elapsed("worker", "ensemble combine", combine_started)
+        callbacks.console("Done\n")
 
 
 class JobRunner:
@@ -899,20 +1021,11 @@ class JobRunner:
     def _run(self, input_paths: List[str], callbacks: JobCallbacks) -> None:
         debug("worker", "_run entered")
         import_started = time.perf_counter()
-        (
-            SeperateDemucs,
-            SeperateMDX,
-            SeperateMDXC,
-            SeperateVR,
-            clear_gpu_cache,
-        ) = import_separate_engines()
+        engines = import_separate_engines()
         debug_elapsed("worker", "separate engines ready", import_started)
 
-        stime = time.perf_counter()
-        time_elapsed = lambda: f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
-
-        try:
-            input_paths = self._prepare_paths_for_run(input_paths, callbacks)
+        def body() -> None:
+            paths = self._prepare_paths_for_run(input_paths, callbacks)
             export_path = self.settings.process.export_path
             if not export_path:
                 raise ValueError("export_path is required")
@@ -927,213 +1040,22 @@ class JobRunner:
             self._set_run_protect_identities(models)
             self._ensure_vram_for_job(callbacks)
             self.true_model_count = self._count_true_models(models)
-
-            from core.audio_chunking import (
-                concat_stems,
-                overlaps_for_chunks,
-                slice_mix,
-            )
-
-            chunk_seconds, overlap_seconds = _long_file_chunk_settings(self.settings)
-            total_files = len(input_paths)
-            file_plans = []
-            total_chunk_units = 0
-            for audio_file in input_paths:
-                if not os.path.isfile(audio_file):
-                    file_plans.append(None)
-                    continue
-                decoded_mix = _decoded_mix_for_process(audio_file)
-                chunks = slice_mix(
-                    decoded_mix,
-                    chunk_seconds=chunk_seconds,
-                    overlap_seconds=overlap_seconds,
-                )
-                file_plans.append((audio_file, decoded_mix, chunks))
-                total_chunk_units += len(chunks)
-            if total_chunk_units <= 0:
-                total_chunk_units = max(1, total_files)
-
-            progress_sink = _ProgressSink()
-            progress_ctx = {
-                "file_num": 1,
-                "model": None,
-                "model_num": 0,
-                "model_count": len(models),
-                "chunk_num": 0,
-                "chunk_total": 0,
-            }
-
             try:
                 amp_threshold = float(
                     self.settings.process.amplification_threshold or 0.0
                 )
             except (TypeError, ValueError):
                 amp_threshold = 0.0
+            run_models_on_files(
+                self,
+                paths,
+                callbacks,
+                models,
+                engines=engines,
+                hooks=_SingleRunHooks(export_path, amp_threshold),
+            )
 
-            for file_num, plan in enumerate(file_plans, start=1):
-                check_stopped(self)
-                self._cached_sources_clear()
-                base_text = f"File {file_num}/{total_files} "
-                progress_ctx["file_num"] = file_num
-
-                if plan is None:
-                    audio_file = input_paths[file_num - 1]
-                    callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n')
-                    self.iteration += self.true_model_count
-                    continue
-
-                audio_file, decoded_mix, chunks = plan
-                n_chunks = len(chunks)
-                progress_ctx["chunk_total"] = n_chunks
-                chunked = n_chunks > 1
-                if chunked:
-                    callbacks.console(
-                        f"{base_text}Long-file chunking: {n_chunks} chunks "
-                        f"({chunk_seconds:g}s, overlap {overlap_seconds:g}s)\n"
-                    )
-                ov_samples = overlaps_for_chunks(chunks) if chunked else []
-
-                set_progress_bar = pausable_callback(
-                    self,
-                    _bind_set_progress_bar(
-                        self,
-                        callbacks,
-                        progress_ctx,
-                        total_files=total_files,
-                        total_chunk_units=total_chunk_units,
-                        sink=progress_sink,
-                    ),
-                )
-
-                for model_num, current_model in enumerate(models, start=1):
-                    check_stopped(self)
-                    progress_ctx["model"] = current_model
-                    progress_ctx["model_num"] = model_num
-                    write_to_console = pausable_callback(
-                        self,
-                        lambda text, base_text=base_text: callbacks.console(base_text + text),
-                    )
-
-                    model_label = _model_output_label(current_model)
-                    naming = self._naming_for_file(
-                        audio_file,
-                        export_path=export_path,
-                        file_index=file_num,
-                        file_total=total_files,
-                        model_label=model_label,
-                    )
-                    audio_file_base = naming.track_base
-                    model_export_path = naming.export_directory
-                    if model_export_path != export_path:
-                        os.makedirs(model_export_path, exist_ok=True)
-
-                    stem_parts: dict = {}
-                    stem_paths: dict = {}
-                    for chunk_num, (_start, _end, mix_slice) in enumerate(chunks, start=1):
-                        check_stopped(self)
-                        snapshot_worker_file(audio_file, current_model)
-                        self._process_iteration()
-                        progress_ctx["chunk_num"] = chunk_num
-                        if chunked:
-                            # Avoid cache hits from a prior chunk for the same model.
-                            self._cached_sources_clear()
-
-                        process_data = ProcessData(
-                            export_path=model_export_path,
-                            audio_file_base=audio_file_base,
-                            audio_file=mix_slice if chunked else decoded_mix,
-                            set_progress_bar=set_progress_bar,
-                            write_to_console=write_to_console,
-                            process_iteration=pausable_callback(self, self._process_iteration),
-                            check_run_control=pausable_callback(self, lambda: check_stopped(self)),
-                            cached_source_callback=self._cached_source_callback,
-                            cached_model_source_holder=self._cached_model_source_holder,
-                            list_all_models=self.all_models,
-                            is_ensemble_master=False,
-                            is_4_stem_ensemble=False,
-                            capture_stems_only=chunked,
-                        )
-
-                        def _make_rebuild(
-                            model: ModelConfig, pdata: ProcessData
-                        ) -> Callable[[], Any]:
-                            def _rebuild() -> Any:
-                                return self._build_separator(
-                                    model,
-                                    pdata,
-                                    SeperateVR=SeperateVR,
-                                    SeperateMDX=SeperateMDX,
-                                    SeperateMDXC=SeperateMDXC,
-                                    SeperateDemucs=SeperateDemucs,
-                                )
-
-                            return _rebuild
-
-                        rebuild_sep = _make_rebuild(current_model, process_data)
-                        seperator = rebuild_sep()
-                        engine = type(seperator).__name__
-                        debug(
-                            "worker",
-                            f"separate start engine={engine} model={current_model.model_basename!r} "
-                            f"chunk={chunk_num}/{n_chunks}",
-                        )
-                        member_stems = run_separator(
-                            self,
-                            seperator,
-                            callbacks=callbacks,
-                            model=current_model,
-                            process_kind="separation",
-                            rebuild=rebuild_sep,
-                        ) or {}
-                        if chunked:
-                            paths = getattr(self, "_last_captured_stem_paths", None) or {}
-                            for stem_tag, arr in member_stems.items():
-                                stem_parts.setdefault(stem_tag, []).append(arr)
-                                if stem_tag in paths:
-                                    stem_paths[stem_tag] = paths[stem_tag]
-                        debug("worker", f"separate done engine={engine}")
-
-                    if chunked and stem_parts:
-                        final_stems = {
-                            stem: concat_stems(parts, overlap_samples=ov_samples)
-                            for stem, parts in stem_parts.items()
-                        }
-                        _write_captured_stems(
-                            final_stems,
-                            stem_paths,
-                            is_normalization=bool(self.settings.process.normalization),
-                            amplification_threshold=amp_threshold,
-                            wav_type_set=resolve_wav_type_set(self.settings),
-                            save_format_name=self.settings.process.save_format.value,
-                            mp3_bit_set=self.settings.process.mp3_bitrate,
-                            flac_bit_set=self.settings.process.flac_bit_depth,
-                        )
-
-                clear_gpu_cache(getattr(self, "_last_backend_name", None))
-
-            callbacks.progress(1.0)
-            callbacks.console(f"\nProcess complete\n{time_elapsed()}\n")
-            callbacks.complete()
-        except ProcessStopped:
-            debug("worker", "_run ProcessStopped")
-            callbacks.console(PROCESS_STOPPED_BY_USER)
-            callbacks.stopped()
-            _release_inference_resources(self)
-        except Exception as exc:  # noqa: BLE001 - surfaced through the callback
-            if self._is_stopped:
-                debug("worker", "_run stopped during error path")
-                callbacks.console(PROCESS_STOPPED_BY_USER)
-                callbacks.stopped()
-                _release_inference_resources(self)
-                return
-            debug("worker", f"_run failed {type(exc).__name__}: {exc}")
-            callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
-            callbacks.error(exc)
-            # Park GPU-resident weights so a retry is not blocked by VRAM from
-            # the failed attempt (common after CUDA OOM).
-            _release_inference_resources(self, park_weights=True)
-        else:
-            _release_inference_resources(self)
+        with_worker_lifecycle(self, callbacks, "_run", body)
 
     def _run_ensemble(self, input_paths: List[str], callbacks: JobCallbacks) -> None:
         """Run every selected ensemble member then combine their outputs.
@@ -1147,20 +1069,11 @@ class JobRunner:
 
         debug("worker", "_run_ensemble entered")
         import_started = time.perf_counter()
-        (
-            SeperateDemucs,
-            SeperateMDX,
-            SeperateMDXC,
-            SeperateVR,
-            clear_gpu_cache,
-        ) = import_separate_engines()
+        engines = import_separate_engines()
         debug_elapsed("worker", "separate engines ready", import_started)
 
-        stime = time.perf_counter()
-        time_elapsed = lambda: f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
-
-        try:
-            input_paths = self._prepare_paths_for_run(input_paths, callbacks)
+        def body() -> None:
+            paths = self._prepare_paths_for_run(input_paths, callbacks)
             if self._run_models is not None:
                 models = list(self._run_models)
             else:
@@ -1179,304 +1092,18 @@ class JobRunner:
             self._set_run_protect_identities(models)
             self._ensure_vram_for_job(callbacks)
             self.true_model_count = self._count_true_models(models)
-
-            from core.audio_chunking import (
-                concat_stems,
-                overlaps_for_chunks,
-                slice_mix,
+            run_models_on_files(
+                self,
+                paths,
+                callbacks,
+                models,
+                engines=engines,
+                hooks=_EnsembleRunHooks(ensemble, is_4_stem),
             )
-
-            chunk_seconds, overlap_seconds = _long_file_chunk_settings(self.settings)
-            total_files = len(input_paths)
-            file_plans = []
-            total_chunk_units = 0
-            for audio_file in input_paths:
-                if not os.path.isfile(audio_file):
-                    file_plans.append(None)
-                    continue
-                decoded_mix = _decoded_mix_for_process(audio_file)
-                chunks = slice_mix(
-                    decoded_mix,
-                    chunk_seconds=chunk_seconds,
-                    overlap_seconds=overlap_seconds,
-                )
-                file_plans.append((audio_file, decoded_mix, chunks))
-                total_chunk_units += len(chunks)
-            if total_chunk_units <= 0:
-                total_chunk_units = max(1, total_files)
-
-            progress_sink = _ProgressSink()
-            progress_ctx = {
-                "file_num": 1,
-                "model": None,
-                "model_num": 0,
-                "model_count": len(models),
-                "chunk_num": 0,
-                "chunk_total": 0,
-            }
-
-            for file_num, plan in enumerate(file_plans, start=1):
-                check_stopped(self)
-                self._cached_sources_clear()
-                base_text = f"File {file_num}/{total_files} "
-                progress_ctx["file_num"] = file_num
-
-                if plan is None:
-                    audio_file = input_paths[file_num - 1]
-                    callbacks.console(f'\n{base_text}"{os.path.basename(audio_file)}" was not found.\n')
-                    self.iteration += self.true_model_count
-                    continue
-
-                audio_file, decoded_mix, chunks = plan
-                n_chunks = len(chunks)
-                progress_ctx["chunk_total"] = n_chunks
-                chunked = n_chunks > 1
-                if chunked:
-                    callbacks.console(
-                        f"{base_text}Long-file chunking: {n_chunks} chunks "
-                        f"({chunk_seconds:g}s, overlap {overlap_seconds:g}s)\n"
-                    )
-                ov_samples = overlaps_for_chunks(chunks) if chunked else []
-
-                set_progress_bar = pausable_callback(
-                    self,
-                    _bind_set_progress_bar(
-                        self,
-                        callbacks,
-                        progress_ctx,
-                        total_files=total_files,
-                        total_chunk_units=total_chunk_units,
-                        sink=progress_sink,
-                    ),
-                )
-                current_model = None
-                # stem_tag -> list of member waveforms for in-memory combine
-                ensemble_stem_arrays: dict = {}
-                self._ensemble_salvage_members = []
-                final_naming = self._naming_for_file(
-                    audio_file,
-                    export_path=export_path,
-                    file_index=file_num,
-                    file_total=total_files,
-                    ensemble_label=ensemble.append_ensemble_label,
-                    force_ensemble_label=True,
-                )
-                ensemble_final_base = final_naming.track_base
-
-                for current_model_num, current_model in enumerate(models, start=1):
-                    check_stopped(self)
-                    progress_ctx["model"] = current_model
-                    progress_ctx["model_num"] = current_model_num
-                    callbacks.console(
-                        f"Ensemble Mode - {_model_output_label(current_model)} - "
-                        f"Model {current_model_num}/{len(models)}\n"
-                    )
-                    write_to_console = pausable_callback(
-                        self,
-                        lambda text, base_text=base_text: callbacks.console(base_text + text),
-                    )
-
-                    model_label = _model_output_label(current_model)
-                    member_naming = self._ensemble_member_naming_for_file(
-                        audio_file,
-                        export_path=export_path,
-                        file_index=file_num,
-                        file_total=total_files,
-                        model_label=model_label,
-                    )
-                    audio_file_base = member_naming.track_base
-
-                    member_stem_parts: dict = {}
-                    member_paths: dict = {}
-                    last_member_stems: dict = {}
-                    for chunk_num, (_start, _end, mix_slice) in enumerate(chunks, start=1):
-                        check_stopped(self)
-                        snapshot_worker_file(audio_file, current_model)
-                        self._process_iteration()
-                        progress_ctx["chunk_num"] = chunk_num
-                        if chunked:
-                            self._cached_sources_clear()
-
-                        process_data = ProcessData(
-                            export_path=export_path,
-                            audio_file_base=audio_file_base,
-                            audio_file=mix_slice if chunked else decoded_mix,
-                            set_progress_bar=set_progress_bar,
-                            write_to_console=write_to_console,
-                            process_iteration=pausable_callback(self, self._process_iteration),
-                            check_run_control=pausable_callback(self, lambda: check_stopped(self)),
-                            cached_source_callback=self._cached_source_callback,
-                            cached_model_source_holder=self._cached_model_source_holder,
-                            list_all_models=self.all_models,
-                            is_ensemble_master=True,
-                            is_4_stem_ensemble=is_4_stem,
-                            is_save_all_outputs_ensemble=bool(
-                                self.settings.ensemble.save_all_outputs
-                            ),
-                            capture_stems_only=chunked,
-                        )
-
-                        def _make_rebuild(
-                            model: ModelConfig, pdata: ProcessData
-                        ) -> Callable[[], Any]:
-                            def _rebuild() -> Any:
-                                return self._build_separator(
-                                    model,
-                                    pdata,
-                                    SeperateVR=SeperateVR,
-                                    SeperateMDX=SeperateMDX,
-                                    SeperateMDXC=SeperateMDXC,
-                                    SeperateDemucs=SeperateDemucs,
-                                )
-
-                            return _rebuild
-
-                        rebuild_ens = _make_rebuild(current_model, process_data)
-                        seperator = rebuild_ens()
-                        engine = type(seperator).__name__
-                        debug(
-                            "worker",
-                            f"ensemble separate start engine={engine} model={current_model.model_basename!r} "
-                            f"chunk={chunk_num}/{n_chunks}",
-                        )
-                        member_stems = run_separator(
-                            self,
-                            seperator,
-                            callbacks=callbacks,
-                            model=current_model,
-                            process_kind="ensemble",
-                            rebuild=rebuild_ens,
-                        ) or {}
-                        last_member_stems = member_stems
-                        chunk_paths = getattr(self, "_last_captured_stem_paths", None) or {}
-                        if chunked:
-                            for stem_tag, arr in member_stems.items():
-                                bucket = _ensemble_stem_bucket(stem_tag)
-                                member_stem_parts.setdefault(bucket, []).append(arr)
-                                if stem_tag in chunk_paths:
-                                    member_paths[bucket] = chunk_paths[stem_tag]
-                        else:
-                            for stem_tag, arr in member_stems.items():
-                                bucket = _ensemble_stem_bucket(stem_tag)
-                                ensemble_stem_arrays.setdefault(bucket, []).append(arr)
-                                if stem_tag in chunk_paths:
-                                    member_paths[bucket] = chunk_paths[stem_tag]
-                        debug("worker", f"ensemble separate done engine={engine}")
-
-                    salvage_arrays: dict = {}
-                    if chunked:
-                        for stem_tag, parts in member_stem_parts.items():
-                            concat = concat_stems(parts, overlap_samples=ov_samples)
-                            ensemble_stem_arrays.setdefault(
-                                _ensemble_stem_bucket(stem_tag), []
-                            ).append(concat)
-                            salvage_arrays[_ensemble_stem_bucket(stem_tag)] = concat
-                    else:
-                        for stem_tag, arr in last_member_stems.items():
-                            salvage_arrays[_ensemble_stem_bucket(stem_tag)] = arr
-                    self._ensemble_salvage_members.append(
-                        {
-                            "arrays": salvage_arrays,
-                            "paths": member_paths,
-                            "audio_file_base": audio_file_base,
-                            "model_label": model_label,
-                        }
-                    )
-                    callbacks.console("\n")
-
-                # Combine each member's stems into the final ensemble outputs.
-                callbacks.console(base_text + "Ensembling outputs...\n")
-                combine_started = time.perf_counter()
-
-                combine_steps: List[tuple] = []
-                if is_4_stem:
-                    stem_names = [
-                        name
-                        for name, arrs in ensemble_stem_arrays.items()
-                        if len(arrs) > 1
-                    ]
-                    if not stem_names:
-                        stem_names = _extract_stems(ensemble_final_base, export_path)
-                    stem_names = _filter_final_ensemble_stems(
-                        stem_names, str(self.settings.process.stem_focus or "")
-                    )
-                    combine_steps = [
-                        (output_stem, {"is_4_stem": True}) for output_stem in stem_names
-                    ]
-                else:
-                    primary_only = self.settings.process.primary_stem_only
-                    secondary_only = self.settings.process.secondary_stem_only
-                    # ``process.stem_focus`` overrides the positional booleans,
-                    # resolved against the chosen pair's buckets — never the
-                    # already-remapped stem_halves labels with a fake count of 2.
-                    focus_flags = exclusive_flags_for_pair(
-                        str(self.settings.process.stem_focus or ""),
-                        coerce_ensemble_pair(self.settings.ensemble.main_stem),
-                    )
-                    if focus_flags is not None:
-                        primary_only, secondary_only = focus_flags
-                    if not secondary_only:
-                        combine_steps.append((PRIMARY_STEM, {}))
-                    if not primary_only:
-                        combine_steps.append((SECONDARY_STEM, {}))
-                        combine_steps.append((SECONDARY_STEM, {"is_inst_mix": True}))
-
-                combine_total = max(1, len(combine_steps))
-                combine_start = progress_sink.fraction
-                combine_end = file_num / max(1, total_files)
-                for combine_idx, (stem_name, kwargs) in enumerate(combine_steps):
-                    ensemble.ensemble_outputs(
-                        ensemble_final_base,
-                        export_path,
-                        stem_name,
-                        stem_arrays=ensemble_stem_arrays,
-                        **kwargs,
-                    )
-                    span = max(combine_end - combine_start, 0.0)
-                    fraction = combine_start + span * ((combine_idx + 1) / combine_total)
-                    local_step = combine_progress_local_step(combine_idx, combine_total)
-                    progress_sink.fraction = fraction
-                    total_count = max(1, self.true_model_count * total_files)
-                    callbacks.progress(
-                        fraction,
-                        local_step=local_step,
-                        pass_index=total_count,
-                        pass_total=total_count,
-                        combine_index=combine_idx + 1,
-                        combine_total=combine_total,
-                        detail=f"Combining {combine_idx + 1}/{combine_total}",
-                    )
-
-                debug_elapsed("worker", "ensemble combine", combine_started)
-                callbacks.console("Done\n")
-                clear_gpu_cache(getattr(self, "_last_backend_name", None))
-
-            # Drop the temp folder if it was a scratch dir and is now empty.
             try:
                 if os.path.isdir(export_path) and len(os.listdir(export_path)) == 0:
                     shutil.rmtree(export_path)
             except OSError:
                 pass
 
-            callbacks.progress(1.0)
-            callbacks.console(f"\nProcess complete\n{time_elapsed()}\n")
-            callbacks.complete()
-        except ProcessStopped:
-            debug("worker", "_run_ensemble ProcessStopped")
-            callbacks.console(PROCESS_STOPPED_BY_USER)
-            callbacks.stopped()
-            _release_inference_resources(self)
-        except Exception as exc:  # noqa: BLE001 - surfaced through the callback
-            if self._is_stopped:
-                debug("worker", "_run_ensemble stopped during error path")
-                callbacks.console(PROCESS_STOPPED_BY_USER)
-                callbacks.stopped()
-                _release_inference_resources(self)
-                return
-            debug("worker", f"_run_ensemble failed {type(exc).__name__}: {exc}")
-            callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
-            callbacks.error(exc)
-            _release_inference_resources(self, park_weights=True)
-        else:
-            _release_inference_resources(self)
-
+        with_worker_lifecycle(self, callbacks, "_run_ensemble", body)

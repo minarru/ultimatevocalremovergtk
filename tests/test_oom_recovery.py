@@ -226,7 +226,7 @@ class JobRunnerOomRecoveryTests(unittest.TestCase):
         self.assertIsNotNone(self.runner._mdx_segment_override)
 
     @patch("core.separator_run.prepare_separator_vram")
-    @patch("core.job_runner._write_captured_stems")
+    @patch("core.run_loop._write_captured_stems")
     @patch("core.separator_run._release_inference_resources")
     @patch("core.separator_run.release_separator")
     def test_export_writes_salvage_and_stops(
