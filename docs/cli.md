@@ -22,6 +22,18 @@ Concept names select that stem even when it is not the checkpoint primary:
 
 `--stems vocals` on an instrumental-primary 2-stem model exports vocals, not the primary. `--set process.stem_focus=vocals` is the same exclusive pick (`vocals` ≡ `Vocals`).
 
+Multi-stem MDX-C models resolve `bass`, `drums`, `other`, and `vocals` against
+their native YAML source keys. `instrumental` is a derived vocals complement;
+the **Combine Stems** setting changes whether that audio is summed from the
+remaining sources or obtained by subtraction, but does not change its identity
+or filename.
+
+For four- and multi-stem ensembles, stem selection filters final ensemble
+outputs only. Member models still produce the sources required for combining,
+and a multi-stem final output requires at least two contributing members.
+An unavailable explicit CLI selection is an error. An inherited GUI/profile
+selection warns and falls back to all viable outputs.
+
 GTK Save stems persist the same `process.stem_focus` field. `--profile gui` inherits it; pass `--stems primary|secondary|both` when you want a positional override instead.
 
 `--vocal-split` is still a model id. Splitter filenames stay Lead / Backing Vocals. `--main-stem` is still an ensemble pair id (`vocals_instrumental`, `karaoke`, …).
