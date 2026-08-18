@@ -7,7 +7,12 @@ from unittest import mock
 import numpy as np
 
 from bundled.constants import ALL_STEMS, VOCAL_STEM
-from engines.mdx import derive_mdx_complement, mdx_export_routing_flags, mdx_selected_stems
+from engines.mdx import (
+    derive_mdx_complement,
+    derive_mdx_multi_complement,
+    mdx_export_routing_flags,
+    mdx_selected_stems,
+)
 
 
 class MDXExportRoutingTests(unittest.TestCase):
@@ -88,6 +93,24 @@ class MDXExportRoutingTests(unittest.TestCase):
             complement = derive_mdx_complement(native, mix)
         expected = (-native.T + mix.T)
         np.testing.assert_array_equal(complement, expected)
+
+    def test_multi_complement_recipe_follows_combine_stems(self) -> None:
+        sources = {
+            "vocals": np.array([[1.0, 2.0], [3.0, 4.0]]),
+            "drums": np.array([[10.0, 20.0], [30.0, 40.0]]),
+            "bass": np.array([[100.0, 200.0], [300.0, 400.0]]),
+        }
+        mix = sources["vocals"] + sources["drums"] + sources["bass"]
+        with mock.patch("engines.mdx.spec_utils.to_shape", side_effect=lambda src, shape: src):
+            summed = derive_mdx_multi_complement(
+                sources, "Vocals", mix, combine_stems=True
+            )
+            subtracted = derive_mdx_multi_complement(
+                sources, "Vocals", mix, combine_stems=False
+            )
+        expected = (sources["drums"] + sources["bass"]).T
+        np.testing.assert_array_equal(summed, expected)
+        np.testing.assert_array_equal(subtracted, expected)
 
     def test_working_sources_copy_preserves_cached_dict(self) -> None:
         cached = {"Vocals": np.array([1.0]), "Instrumental": np.array([2.0])}

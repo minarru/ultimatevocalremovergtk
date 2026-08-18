@@ -13,11 +13,10 @@ from core.debug_log import debug, trace_phase
 from core.export_naming import stem_wav_path
 from core.gpu_backend import resolve_inference_backend
 from core.model_display import display_name_for_model
-from core.stems import StemBucket, StemLiteral, export_stem_key, filename_tag
+from core.stems import StemBucket, StemLiteral, export_stem_key, filename_tag, stem_concept
 from core.model_stem_semantics import (
     is_vocal_target,
     vocal_inst_from_sources,
-    vocal_split_write_logic_stem,
 )
 from core.progress_ticks import InferenceProgress
 from core.run_estimate import save_progress_local_step
@@ -459,8 +458,12 @@ class SeperateAttributes:
             process_chain_model(
                 self.vocal_split_model,
                 self.process_data,
-                vocal_stem_path=self.master_vocal_path
-                or getattr(self, "audio_file_base", None),
+                vocal_stem_path=self.master_vocal_path,
+                vocal_stem_base=(
+                    getattr(self, "audio_file_base", None)
+                    if not self.master_vocal_path
+                    else None
+                ),
                 master_vocal_source=master_vocal_source,
                 master_inst_source=master_inst_source
             )
@@ -639,9 +642,10 @@ class SeperateAttributes:
             stem_source: Any,
             is_inst_invert: bool = False,
         ) -> None:
+            local = stem_concept(self, stem_name)
             inst_stem_name = (
                 INST_WITH_LEAD_VOCALS_STEM
-                if stem_name == LEAD_VOCAL_STEM
+                if local is StemBucket.LEAD_VOCALS
                 else INST_WITH_BACKING_VOCALS_STEM
             )
             inst_stem_path = self.audio_file_base_voc_split(inst_stem_name)
@@ -652,17 +656,26 @@ class SeperateAttributes:
         def save_voc_split_vocal(
             stem_name: str | None, stem_source: Any
         ) -> None:
-            voc_split_stem_name = LEAD_VOCAL_STEM_LABEL if stem_name == LEAD_VOCAL_STEM else BV_VOCAL_STEM_LABEL
+            local = stem_concept(self, stem_name)
+            voc_split_stem_name = (
+                LEAD_VOCAL_STEM_LABEL
+                if local is StemBucket.LEAD_VOCALS
+                else BV_VOCAL_STEM_LABEL
+            )
             voc_split_stem_path = self.audio_file_base_voc_split(voc_split_stem_name)
             save_with_message(voc_split_stem_path, voc_split_stem_name, stem_source)
 
         def save_with_message(
             stem_path: str, stem_name: str | None, stem_source: Any
         ) -> None:
+            saved_bucket = stem_concept(self, stem_name)
             is_deverb = self.is_deverb_vocals and (
                 self.deverb_vocal_opt == stem_name or
-                (self.deverb_vocal_opt == 'ALL' and 
-                (stem_name == VOCAL_STEM or stem_name == LEAD_VOCAL_STEM_LABEL or stem_name == BV_VOCAL_STEM_LABEL)))
+                (self.deverb_vocal_opt == 'ALL' and saved_bucket in (
+                    StemBucket.VOCALS,
+                    StemBucket.LEAD_VOCALS,
+                    StemBucket.BACKING_VOCALS,
+                )))
 
             self.write_to_console(f'{SAVING_STEM[0]}{stem_name}{SAVING_STEM[1]}')
             
@@ -686,19 +699,36 @@ class SeperateAttributes:
             save_audio_file(stem_path.replace(".wav", "_deverbed.wav"), stem_source_deverbed)
             save_audio_file(stem_path.replace(".wav", "_reverb_only.wav"), stem_source_2)
 
+        bucket = stem_concept(self, stem_name)
         if self.is_vocal_split_model:
-            logic = vocal_split_write_logic_stem(
-                stem_name, is_bv_model=bool(self.is_bv_model)
-            )
-            if logic is None:
+            if bucket is StemBucket.UNKNOWN:
                 return
-            stem_name = logic
-            
-        is_bv_model_lead = (self.is_bv_model_rebalenced and self.is_vocal_split_model and stem_name == LEAD_VOCAL_STEM)
-        is_bv_rebalance_lead = (self.is_bv_model_rebalenced and self.is_vocal_split_model and stem_name == BV_VOCAL_STEM)
-        is_no_vocal_save = self.is_inst_only_voc_splitter and (stem_name == VOCAL_STEM or stem_name == BV_VOCAL_STEM or stem_name == LEAD_VOCAL_STEM) or is_bv_model_lead
+
+        is_lead = bucket is StemBucket.LEAD_VOCALS
+        is_backing = bucket is StemBucket.BACKING_VOCALS
+        is_vocal_family = bucket in (
+            StemBucket.VOCALS,
+            StemBucket.LEAD_VOCALS,
+            StemBucket.BACKING_VOCALS,
+        )
+        is_inst_family = bucket in (
+            StemBucket.INSTRUMENTAL,
+            StemBucket.INST_WITH_BV,
+            StemBucket.INST_WITH_LEAD,
+        )
+        is_bv_model_lead = (
+            self.is_bv_model_rebalenced and self.is_vocal_split_model and is_lead
+        )
+        is_bv_rebalance_lead = (
+            self.is_bv_model_rebalenced and self.is_vocal_split_model and is_backing
+        )
+        is_no_vocal_save = (
+            self.is_inst_only_voc_splitter and is_vocal_family
+        ) or is_bv_model_lead
         is_not_ensemble = (not self.is_ensemble_mode or self.is_vocal_split_model)
-        is_do_not_save_inst = (self.is_save_vocal_only and self.is_sec_bv_rebalance and stem_name == INST_STEM)
+        is_do_not_save_inst = (
+            self.is_save_vocal_only and self.is_sec_bv_rebalance and is_inst_family
+        )
 
         # Bound unconditionally: every read below sits behind the same
         # ``is_bv_rebalance_lead`` guard that assigns it.

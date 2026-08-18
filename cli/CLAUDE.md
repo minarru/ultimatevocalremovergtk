@@ -23,6 +23,12 @@ The command-line front end. A presentation layer, exactly like `ui/`.
   `--profile gui`; named profiles are sparse and never write back to the GUI.
 - **Models own their family.** Public IDs are `vr:`, `mdx:`, or `demucs:` IDs;
   there is no public processing-method flag.
+- **`--stems` is a concept, not a position.** It resolves against the model's
+  route inventory (`core.stems.model_stem_routes`), so `vocals` exports vocals
+  from an instrumental-primary model. Availability is diagnosed at plan time:
+  an explicit CLI pick that no route provides is an `error`; the same value
+  inherited via `--profile gui` is a `warning` and falls back to every viable
+  output. `--stems primary|secondary|both` remains the positional override.
 - **Inherited identity is never silent.** A profile-supplied primary identity
   requires TTY confirmation or `--accept-inherited`; dry-run never prompts.
 - **Dry runs verify model files but have no run-side effects.** They hash and

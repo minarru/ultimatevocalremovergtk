@@ -51,6 +51,7 @@ def _resolved_settings(
         apply_stem_selection(settings, stems)
         for path in (
             "process.primary_stem_only", "process.secondary_stem_only",
+            "process.stem_focus",
             "mdx.stems", "mdx.stems_selected", "demucs.stems",
         ):
             sources[path] = "cli"
@@ -357,11 +358,15 @@ def resolve_ensemble_job(
         apply_profile_values(settings, profile.settings)
         sources.update({path: profile.source for path in profile.settings})
     if member_tokens:
+        from bundled.constants import CHOOSE_ENSEMBLE_OPTION
+
         records = [resolve_model_id(token, repo) for token in member_tokens]
         settings.ensemble.selected_models = [canonical_member_tag(item) for item in records]
+        settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         sources["ensemble.selected_models"] = (
             "cli" if args.models else profile.source
         )
+        sources["ensemble.chosen_ensemble"] = "derived"
     if args.main_stem:
         settings.ensemble.main_stem = EnsemblePair(args.main_stem)
         sources["ensemble.main_stem"] = "cli"
@@ -464,7 +469,11 @@ def format_effective_plan(plan: dict[str, Any]) -> str:
     settings = plan.get("settings") or {}
     process = settings.get("process") or {}
     lines.append(f"  format: {process.get('save_format')}")
-    stem_mode = "primary" if process.get("primary_stem_only") else "secondary" if process.get("secondary_stem_only") else "both"
+    focus = process.get("stem_focus") or ""
+    if focus:
+        stem_mode = focus
+    else:
+        stem_mode = "primary" if process.get("primary_stem_only") else "secondary" if process.get("secondary_stem_only") else "both"
     lines.append(f"  stems: {stem_mode}")
     lines.append(
         f"  normalize: {process.get('normalization')}  "

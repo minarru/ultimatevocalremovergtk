@@ -56,8 +56,7 @@
   "reportUnusedVariable": "error",
   // Off: these only look within the declaring file, so the `_`-prefixed helpers
   // that tests import (ui.errorlog._summary_viewport_height,
-  // ui.run_control._format_mmss) and `_ModelConfigImplementation` — the base of
-  // `ModelConfig` — all read as dead. 3 of 4 hits were false positives.
+  // ui.run_control._format_mmss) all read as dead.
   "reportUnusedFunction": "none",
   "reportUnusedClass": "none"
 }

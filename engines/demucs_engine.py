@@ -23,6 +23,7 @@ from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
 from core.demucs_models import demucs_pretrained_load_name
+from core.stems import StemBucket, stem_concept
 from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
@@ -234,8 +235,11 @@ class SeperateDemucs(SeperateAttributes):
                 stem_source = self.process_secondary_stem(stem_source, secondary_model_source=stem_source_secondary, model_scale=model_scale)
                 self.write_audio(stem_path, stem_source, samplerate, stem_name=stem_name)
                 
-                if stem_name == VOCAL_STEM and not self.is_sec_bv_rebalance:
-                    self.process_vocal_split_chain({VOCAL_STEM:stem_source})
+                if (
+                    stem_concept(self, stem_name) is StemBucket.VOCALS
+                    and not self.is_sec_bv_rebalance
+                ):
+                    self.process_vocal_split_chain({stem_name: stem_source})
                 
             if self.is_secondary_model:    
                 return source

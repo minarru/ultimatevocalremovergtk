@@ -163,7 +163,7 @@ class ModelHashWireTests(unittest.TestCase):
         cfg.is_dry_check = True
 
         with mock.patch(
-            "core.model_data.compute_checkpoint_hash", return_value="abc123"
+            "core.model_config.config.compute_checkpoint_hash", return_value="abc123"
         ):
             cfg.get_model_hash()
 
@@ -209,7 +209,7 @@ class ModelHashWireTests(unittest.TestCase):
         cfg.is_dry_check = True
 
         with mock.patch(
-            "core.model_data.compute_checkpoint_hash", return_value="NEWHASH"
+            "core.model_config.config.compute_checkpoint_hash", return_value="NEWHASH"
         ):
             cfg.get_model_hash()
 
@@ -246,7 +246,7 @@ class ModelHashWireTests(unittest.TestCase):
         cfg.is_dry_check = True
 
         with mock.patch(
-            "core.model_data.compute_checkpoint_hash",
+            "core.model_config.config.compute_checkpoint_hash",
             side_effect=AssertionError("must not re-hash an unchanged file"),
         ):
             cfg.get_model_hash()

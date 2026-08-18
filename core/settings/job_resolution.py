@@ -19,6 +19,7 @@ from bundled.constants import (
 )
 
 from ..model_identity import ModelIdentityService
+from ..stems import StemBucket
 from ..types import ProcessMethod
 from .access import apply_settings_overrides
 from .model import Settings
@@ -68,8 +69,12 @@ def apply_stem_selection(settings: Settings, selection: str) -> str:
         settings.demucs.is_primary_stem_only = primary
         settings.demucs.is_secondary_stem_only = secondary
 
+    def clear_focus() -> None:
+        settings.process.stem_focus = ""
+
     if "both" in tokens or tokens >= {"vocals", "instrumental"}:
         exclusive(False, False)
+        clear_focus()
         settings.demucs.stems = settings.mdx.stems = ALL_STEMS
         settings.mdx.stems_selected = []
         return "both"
@@ -78,16 +83,23 @@ def apply_stem_selection(settings: Settings, selection: str) -> str:
     choice = next(iter(tokens))
     if choice in {"primary", "secondary"}:
         exclusive(choice == "primary", choice == "secondary")
+        clear_focus()
         settings.mdx.stems = ALL_STEMS
         settings.mdx.stems_selected = []
         return choice
     if choice in {"vocals", "instrumental"}:
-        exclusive(choice == "vocals", choice == "instrumental")
+        exclusive(False, False)
+        settings.process.stem_focus = (
+            StemBucket.VOCALS.value
+            if choice == "vocals"
+            else StemBucket.INSTRUMENTAL.value
+        )
         settings.demucs.stems = settings.mdx.stems = VOCAL_STEM
         settings.mdx.stems_selected = [VOCAL_STEM]
         return choice
     focus = {"bass": BASS_STEM, "drums": DRUM_STEM, "other": OTHER_STEM}[choice]
-    exclusive(True, False)
+    exclusive(False, False)
+    settings.process.stem_focus = focus
     settings.demucs.stems = focus
     settings.mdx.stems = ALL_STEMS
     settings.mdx.stems_selected = []

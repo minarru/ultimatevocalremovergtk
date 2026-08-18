@@ -157,6 +157,8 @@ def process_chain_model(
     vocal_stem_path: typing.Any,
     master_vocal_source: typing.Any,
     master_inst_source: typing.Any=None,
+    *,
+    vocal_stem_base: str | None = None,
 ):
     process_iteration = process_data.process_iteration
     process_iteration()
@@ -166,7 +168,9 @@ def process_chain_model(
     else:
         vocal_source = master_vocal_source
 
-    if vocal_stem_path:
+    if vocal_stem_base is not None:
+        vocal_base = vocal_stem_base
+    elif vocal_stem_path:
         vocal_base = os.path.splitext(os.path.basename(vocal_stem_path))[0]
     else:
         vocal_base = "audio"

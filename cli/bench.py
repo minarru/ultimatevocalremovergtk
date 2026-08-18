@@ -14,6 +14,7 @@ from typing import Any, Sequence
 from core.bench_metrics import compare_stem_dirs, parse_env_assignment
 
 from .reporting import add_reporting_args, emit_document, ensure_job_id, fail
+from .separate import STEMS_HELP
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -31,7 +32,7 @@ def add_bench_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--b-env", action="append", default=[], metavar="KEY=VALUE")
     parser.add_argument("--a-set", action="append", default=[], metavar="PATH=VALUE")
     parser.add_argument("--b-set", action="append", default=[], metavar="PATH=VALUE")
-    parser.add_argument("--stems")
+    parser.add_argument("--stems", help=STEMS_HELP)
     parser.add_argument(
         "--keep-outputs", choices=("always", "failure", "never"), default="always"
     )

@@ -235,14 +235,6 @@ def is_backing_vocal_stem(stem: str) -> bool:
     return str(stem).strip().casefold() in _BACKING_VOCAL_TOKENS
 
 
-def vocal_split_primary_stem(*, is_bv_model: bool, native_stem: str | None) -> str:
-    """``lead_only`` / ``backing_only`` for a vocal-splitter's native primary."""
-    native_is_vocal = is_vocal_target(str(native_stem or ""))
-    if is_bv_model:
-        return BV_VOCAL_STEM if native_is_vocal else LEAD_VOCAL_STEM
-    return LEAD_VOCAL_STEM if native_is_vocal else BV_VOCAL_STEM
-
-
 def pick_vocal_key(sources: Optional[Mapping[str, typing.Any]]) -> Optional[str]:
     """First sources-dict key that names vocals, any common casing."""
     if not isinstance(sources, Mapping):
@@ -323,30 +315,6 @@ def vocal_split_source_roles(
     if is_bv_model:
         return backing_key, vocal_key
     return vocal_key, backing_key
-
-
-def vocal_split_write_logic_stem(
-    stem_name: str | None, *, is_bv_model: bool = False
-) -> Optional[str]:
-    """Map a vocal-split ``write_audio`` stem to ``lead_only`` / ``backing_only``.
-
-    Empty or unknown names return ``None`` so they are not saved as Backing Vocals.
-    """
-    if not stem_name:
-        return None
-    raw = str(stem_name)
-    if raw in (LEAD_VOCAL_STEM, LEAD_VOCAL_STEM_LABEL) or raw.casefold() in (
-        "lead_only",
-        "lead vocals",
-    ):
-        return LEAD_VOCAL_STEM
-    if is_backing_vocal_stem(raw):
-        return BV_VOCAL_STEM
-    if is_vocal_target(raw):
-        return BV_VOCAL_STEM if is_bv_model else LEAD_VOCAL_STEM
-    if is_instrumental_target(raw):
-        return LEAD_VOCAL_STEM if is_bv_model else BV_VOCAL_STEM
-    return None
 
 
 def infer_is_karaoke_from_hints(
@@ -957,18 +925,24 @@ BUCKET_UNKNOWN = "Unknown"
 def ensemble_stem_bucket(
     stem: str,
     *,
-    stem_count: int = 2,
+    stem_count: int,
     is_karaoke: bool = False,
     is_bv: bool = False,
+    is_vocal_split: bool = False,
 ) -> str:
     """Return the ensemble bucket string for a model's stem.
 
-    Delegates to :func:`core.stems.bucket_for_model_stem`.
+    Delegates to :func:`core.stems.bucket_for_model_stem`; ``stem_count`` is
+    required for the same reason it is there.
     """
     from core.stems import bucket_for_model_stem
 
     return bucket_for_model_stem(
-        stem, stem_count=stem_count, is_karaoke=is_karaoke, is_bv=is_bv
+        stem,
+        stem_count=stem_count,
+        is_karaoke=is_karaoke,
+        is_bv=is_bv,
+        is_vocal_split=is_vocal_split,
     ).value
 
 

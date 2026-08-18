@@ -23,6 +23,8 @@ from core.stems import (
     ensemble_pair_choices,
     export_stem_label,
     filename_tag,
+    model_stem_routes,
+    select_stem_routes,
     ui_label,
 )
 
@@ -77,6 +79,34 @@ class StemHalvesTests(unittest.TestCase):
         self.assertEqual(
             EnsemblePair.BASS.stem_halves(), (BASS_STEM, NO_BASS_STEM)
         )
+
+
+class StemRouteTests(unittest.TestCase):
+    class _MultiModel:
+        primary_stem = "vocals"
+        secondary_stem = "Instrumental"
+        mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        demucs_source_list: list[str] = []
+        mdx_stem_count = 4
+        demucs_stem_count = 0
+        is_karaoke = False
+        is_bv_model = False
+        is_vocal_split_model = False
+
+    def test_multi_model_inventory_keeps_native_keys_and_derived_instrumental(self) -> None:
+        routes = model_stem_routes(self._MultiModel())
+        by_concept = {route.concept: route for route in routes}
+        self.assertEqual(by_concept[BASS_STEM].native.raw, "bass")  # type: ignore[union-attr]
+        self.assertEqual(by_concept[OTHER_STEM].label, OTHER_STEM)
+        self.assertIsNone(by_concept[INST_STEM].native)
+        self.assertFalse(by_concept[INST_STEM].selected_by_default)
+
+    def test_native_and_derived_routes_resolve_by_concept(self) -> None:
+        routes = model_stem_routes(self._MultiModel())
+        bass = select_stem_routes(routes, BASS_STEM)
+        instrumental = select_stem_routes(routes, INST_STEM)
+        self.assertEqual(bass.routes[0].native.raw, "bass")  # type: ignore[union-attr]
+        self.assertIsNone(instrumental.routes[0].native)
 
     def test_non_pair_halves_empty(self) -> None:
         for pair in (

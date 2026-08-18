@@ -483,6 +483,126 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertFalse(self.settings["is_primary_stem_only"])
         self.assertFalse(self.settings["is_secondary_stem_only"])
 
+    def test_subset_lowercase_vocals_matches_vocals_quick(self) -> None:
+        self.settings["is_primary_stem_only"] = True
+        self.settings["mdx_stems_selected"] = ["vocals"]
+        self.section.configure_subset(
+            stems=["vocals", "other"],
+            show_quick_export=True,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        self.assertEqual(self.section._subset_mode, _QUICK_VOCALS)
+
+    def test_exclusive_lowercase_focus_matches_yaml_vocals(self) -> None:
+        self.settings.process.stem_focus = "vocals"
+        self.section.configure_exclusive(
+            primary_stem="other",
+            secondary_stem="vocals",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        self.assertTrue(self.settings["is_secondary_stem_only"])
+        self.assertFalse(self.settings["is_primary_stem_only"])
+
+    def test_ensemble_karaoke_vocals_focus_selects_lead(self) -> None:
+        from bundled.constants import INST_WITH_BACKING_VOCALS_STEM, LEAD_VOCAL_STEM_LABEL
+        from core.stems import EnsemblePair, StemBucket
+
+        self.settings.process.stem_focus = StemBucket.VOCALS.value
+        self.section.configure_exclusive(
+            primary_stem=LEAD_VOCAL_STEM_LABEL,
+            secondary_stem=INST_WITH_BACKING_VOCALS_STEM,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+            ensemble_pair=EnsemblePair.KARAOKE,
+        )
+        self.section.sync_from_settings()
+        self.assertTrue(self.settings["is_primary_stem_only"])
+        self.assertFalse(self.settings["is_secondary_stem_only"])
+
+    def test_ensemble_other_pair_instrumental_focus_does_not_select_other(self) -> None:
+        from bundled.constants import NO_OTHER_STEM, OTHER_STEM
+        from core.stems import EnsemblePair, StemBucket
+
+        self.settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
+        self.section.configure_exclusive(
+            primary_stem=OTHER_STEM,
+            secondary_stem=NO_OTHER_STEM,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+            ensemble_pair=EnsemblePair.OTHER,
+        )
+        self.section.sync_from_settings()
+        self.assertFalse(self.settings["is_primary_stem_only"])
+        self.assertFalse(self.settings["is_secondary_stem_only"])
+
+    def test_demucs_lowercase_vocals_focus_matches_vocals_chip(self) -> None:
+        from ui.widgets.stem_only import _FOCUS_VOCALS
+
+        self.settings["demucs_stems"] = "vocals"
+        self.settings["is_primary_stem_only_Demucs"] = True
+        self.settings["is_secondary_stem_only_Demucs"] = False
+        self.section.configure_demucs(
+            focus_stems=[ALL_STEMS, "focus_instrumental", "focus_vocals", BASS_STEM],
+            primary_key="is_primary_stem_only_Demucs",
+            secondary_key="is_secondary_stem_only_Demucs",
+            has_model=True,
+        )
+        self.section.sync_from_settings()
+        self.assertEqual(self.section._demucs_active_name(), _FOCUS_VOCALS)
+
+    def test_demucs_native_pick_replaces_stale_focus(self) -> None:
+        self.settings.process.stem_focus = VOCAL_STEM
+        self.section.configure_demucs(
+            focus_stems=[ALL_STEMS, BASS_STEM, DRUM_STEM],
+            primary_key="is_primary_stem_only_Demucs",
+            secondary_key="is_secondary_stem_only_Demucs",
+            has_model=True,
+        )
+        set_combo_value(self.section._demucs_focus_row, BASS_STEM)
+        self.section._update_demucs_export_visibility(from_settings=False)
+        set_combo_value(
+            self.section._demucs_export_row,
+            "is_primary_stem_only_Demucs",
+        )
+        self.section.persist_to_settings()
+        self.assertEqual(self.settings.process.stem_focus, BASS_STEM)
+
+    def test_demucs_complement_pick_persists_complement_identity(self) -> None:
+        self.section.configure_demucs(
+            focus_stems=[ALL_STEMS, BASS_STEM],
+            primary_key="is_primary_stem_only_Demucs",
+            secondary_key="is_secondary_stem_only_Demucs",
+            has_model=True,
+        )
+        set_combo_value(self.section._demucs_focus_row, BASS_STEM)
+        self.section._update_demucs_export_visibility(from_settings=False)
+        set_combo_value(
+            self.section._demucs_export_row,
+            "is_secondary_stem_only_Demucs",
+        )
+        self.section.persist_to_settings()
+        self.assertEqual(self.settings.process.stem_focus, "raw:no bass")
+
+    def test_demucs_all_clears_stale_focus(self) -> None:
+        self.settings.process.stem_focus = VOCAL_STEM
+        self.section.configure_demucs(
+            focus_stems=[ALL_STEMS, BASS_STEM],
+            primary_key="is_primary_stem_only_Demucs",
+            secondary_key="is_secondary_stem_only_Demucs",
+            has_model=True,
+        )
+        set_combo_value(self.section._demucs_focus_row, _QUICK_ALL)
+        self.section.persist_to_settings()
+        self.assertEqual(self.settings.process.stem_focus, "")
+
 
 class StemFocusTagTests(unittest.TestCase):
     def test_recognized_stem_returns_bucket_tag(self) -> None:

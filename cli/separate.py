@@ -17,6 +17,13 @@ from .job import (
 from .process_flags import add_process_args
 from .reporting import add_reporting_args, emit_document, emit_event, fail, report_mode
 
+STEMS_HELP = (
+    "Which stems to save. Concept names (vocals, instrumental, bass, drums, "
+    "other) select that stem even when it is not the checkpoint primary. "
+    "Positional names (primary, secondary, both) follow the model layout and "
+    "clear process.stem_focus."
+)
+
 _REQUIRED_RUNTIME_MODULES = ("kthread", "soundfile")
 
 
@@ -44,7 +51,7 @@ def add_separate_args(parser: argparse.ArgumentParser) -> None:
     output.add_argument(
         "--stems",
         default=None,
-        help="both, primary, secondary, vocals, instrumental, bass, drums, or other",
+        help=STEMS_HELP,
     )
     performance = parser.add_argument_group("Long files")
     performance.add_argument("--long-chunk-seconds", type=float, default=None)

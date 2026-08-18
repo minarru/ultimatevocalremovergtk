@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional, Tuple
 
+from ..stems import StemRoute
+
 
 @dataclass
 class ModelIdentity:
@@ -47,6 +49,13 @@ class EnsembleMemberFlags:
 
 @dataclass
 class StemRouting:
+    """Native yaml/hash stem keys and exclusive-export flags.
+
+    ``primary_stem`` / ``secondary_stem`` / ``primary_stem_native`` keep the
+    checkpoint spelling. They are never rewritten to ``lead_only`` or UVR
+    Title Case. Filenames and exclusive picks use :func:`stem_concept`.
+    """
+
     primary_stem: Optional[str] = None
     secondary_stem: Optional[str] = None
     primary_stem_native: Optional[str] = None
@@ -55,6 +64,8 @@ class StemRouting:
     is_secondary_stem_only: bool = False
     mdx_model_stems: Tuple[str, ...] = ()
     demucs_source_list: Tuple[str, ...] = ()
+    available_routes: Tuple[StemRoute, ...] = ()
+    selected_routes: Tuple[StemRoute, ...] = ()
 
 
 @dataclass

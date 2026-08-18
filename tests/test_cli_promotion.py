@@ -8,7 +8,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from cli.execution import _promote, preflight_collisions
+from cli.execution import PromotionSkipped, _promote, preflight_collisions
 from core.export_naming import OutputNamingContext, format_stem_basename
 from core.job_plan import PlannedInput, PlannedOutput
 
@@ -403,6 +403,109 @@ class PromotionTests(unittest.TestCase):
             self.assertTrue(os.path.isfile(os.path.join(output, "song_2 (Bass).wav")))
             with open(os.path.join(output, "song_2 (Bass).wav"), "rb") as fh:
                 self.assertEqual(fh.read(), b"busy")
+
+    def test_skip_uses_actual_conditional_outputs_as_one_unit(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            stage = os.path.join(root, "stage")
+            output = os.path.join(root, "out")
+            os.makedirs(stage)
+            os.makedirs(output)
+            open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new-v")
+            open(os.path.join(stage, "song (Bass).wav"), "wb").write(b"new-b")
+            open(os.path.join(output, "song (Bass).wav"), "wb").write(b"old-b")
+
+            with self.assertRaises(PromotionSkipped):
+                _promote(
+                    stage,
+                    output,
+                    "skip",
+                    destinations=[os.path.join(output, "song (Vocals).wav")],
+                    expected_track_base="song",
+                )
+
+            self.assertFalse(os.path.exists(os.path.join(output, "song (Vocals).wav")))
+            self.assertTrue(os.path.exists(os.path.join(stage, "song (Vocals).wav")))
+
+    def test_separation_rejects_unassociated_stage_file(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            stage = os.path.join(root, "stage")
+            output = os.path.join(root, "out")
+            os.makedirs(stage)
+            open(os.path.join(stage, "sidecar.txt"), "wb").write(b"unexpected")
+            with self.assertRaisesRegex(OSError, "unexpected staged separation output"):
+                _promote(
+                    stage,
+                    output,
+                    "fail",
+                    expected_track_base="song",
+                )
+
+    def test_retained_ensemble_members_are_promoted_with_the_final_unit(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            stage = os.path.join(root, "stage")
+            output = os.path.join(root, "out")
+            members = os.path.join(stage, "Saved_Outputs")
+            os.makedirs(members)
+            open(os.path.join(stage, "song Ensemble (Vocals).wav"), "wb").write(b"final")
+            open(os.path.join(members, "song Model A (Vocals).wav"), "wb").write(b"member")
+
+            promoted = _promote(
+                stage,
+                output,
+                "fail",
+                expected_track_base="song Ensemble",
+                ensemble_member_prefix="song",
+            )
+
+            self.assertEqual(len(promoted), 2)
+            self.assertTrue(os.path.isfile(os.path.join(output, "song Ensemble (Vocals).wav")))
+            self.assertTrue(os.path.isfile(os.path.join(output, "Saved_Outputs", "song Model A (Vocals).wav")))
+
+    def test_retained_ensemble_members_share_the_unit_rename_suffix(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            stage = os.path.join(root, "stage")
+            output = os.path.join(root, "out")
+            members = os.path.join(stage, "Saved_Outputs")
+            old_members = os.path.join(output, "Saved_Outputs")
+            os.makedirs(members)
+            os.makedirs(old_members)
+            final_name = "song Ensemble (Vocals).wav"
+            member_name = "song Model A (Vocals).wav"
+            open(os.path.join(stage, final_name), "wb").write(b"new-final")
+            open(os.path.join(members, member_name), "wb").write(b"new-member")
+            open(os.path.join(output, final_name), "wb").write(b"old-final")
+            open(os.path.join(old_members, member_name), "wb").write(b"old-member")
+
+            promoted = _promote(
+                stage,
+                output,
+                "rename",
+                expected_track_base="song Ensemble",
+                ensemble_member_prefix="song",
+            )
+
+            self.assertEqual(
+                sorted(os.path.basename(path) for path in promoted),
+                ["song Ensemble_2 (Vocals).wav", "song_2 Model A (Vocals).wav"],
+            )
+
+    def test_numbered_retained_member_uses_the_numbered_track_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            stage = os.path.join(root, "stage")
+            output = os.path.join(root, "out")
+            os.makedirs(stage)
+            open(os.path.join(stage, "2-song Ensemble (Vocals).wav"), "wb").write(b"final")
+            open(os.path.join(stage, "2-song Model A (Vocals).wav"), "wb").write(b"member")
+
+            promoted = _promote(
+                stage,
+                output,
+                "fail",
+                expected_track_base="2-song Ensemble",
+                ensemble_member_prefix="2-song",
+            )
+
+            self.assertEqual(len(promoted), 2)
 
     def test_rename_noop_extra_name_does_not_hang(self) -> None:
         # Remappable Vocals collide so unit index advances, but sidecar.txt is a

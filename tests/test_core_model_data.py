@@ -75,7 +75,6 @@ class ModelConfigKaraokeConfidenceTests(unittest.TestCase):
 
     def _model(self) -> typing.Any:
         from types import SimpleNamespace
-        from core.model_data import _ModelConfigImplementation
 
         # Minimal stand-in with just the attributes check_if_karaokee_model
         # and apply_karaoke_metadata read/write.
@@ -90,52 +89,42 @@ class ModelConfigKaraokeConfidenceTests(unittest.TestCase):
             model_path=None,
         )
         # Bind the check_if_karaokee_model method so apply_karaoke_metadata can call it
-        model.check_if_karaokee_model = lambda: _ModelConfigImplementation.check_if_karaokee_model(model)  # type: ignore[arg-type]
+        model.check_if_karaokee_model = lambda: ModelConfig.check_if_karaokee_model(model)  # type: ignore[arg-type]
         return model
 
     def test_curated_hash_metadata_sets_curated_true(self) -> None:
-        from core.model_data import _ModelConfigImplementation
-
         model = self._model()
         model.model_data = {"is_karaoke": True}
-        _ModelConfigImplementation.check_if_karaokee_model(model)
+        ModelConfig.check_if_karaokee_model(model)
         self.assertTrue(model.is_karaoke)
         self.assertTrue(model.is_karaoke_curated)
 
     def test_curated_false_metadata_blocks_name_inference(self) -> None:
-        from core.model_data import _ModelConfigImplementation
-
         model = self._model()
         model.model_data = {"is_karaoke": False}
         model.model_name = "Karaoke-labelled model"
-        _ModelConfigImplementation.apply_karaoke_metadata(model)
+        ModelConfig.apply_karaoke_metadata(model)
         self.assertFalse(model.is_karaoke)
         self.assertTrue(model.is_karaoke_curated)
 
     def test_legacy_typo_false_metadata_blocks_name_inference(self) -> None:
-        from core.model_data import _ModelConfigImplementation
-
         model = self._model()
         model.model_data = {"is_karaokee": False}
         model.model_name = "Karaoke-labelled model"
-        _ModelConfigImplementation.apply_karaoke_metadata(model)
+        ModelConfig.apply_karaoke_metadata(model)
         self.assertFalse(model.is_karaoke)
         self.assertTrue(model.is_karaoke_curated)
 
     def test_guessed_from_name_sets_curated_false(self) -> None:
-        from core.model_data import _ModelConfigImplementation
-
         model = self._model()
         model.model_name = "BandSplit Roformer | Karaoke Frazer by becruily"
-        _ModelConfigImplementation.apply_karaoke_metadata(model)
+        ModelConfig.apply_karaoke_metadata(model)
         self.assertTrue(model.is_karaoke)
         self.assertFalse(model.is_karaoke_curated)
 
     def test_no_signal_leaves_both_false(self) -> None:
-        from core.model_data import _ModelConfigImplementation
-
         model = self._model()
-        _ModelConfigImplementation.apply_karaoke_metadata(model)
+        ModelConfig.apply_karaoke_metadata(model)
         self.assertFalse(model.is_karaoke)
         self.assertFalse(model.is_karaoke_curated)
 
@@ -209,6 +198,170 @@ class NestedCanonicalModelConfigTests(unittest.TestCase):
 
         self.assertEqual(captured.get("process_method"), MDX_ARCH_TYPE)
         self.assertTrue(captured.get("has_model_path"))
+
+
+class _FocusStub:
+    """Minimal stand-in carrying just what ``_apply_stem_focus`` reads."""
+
+    def __init__(self, settings: Settings, primary: str, secondary: str) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+
+        self.settings = settings
+        self.is_vocal_split_model = False
+        self.primary_stem = primary
+        self.secondary_stem = secondary
+        self.is_karaoke = False
+        self.is_bv_model = False
+        self.process_method = MDX_ARCH_TYPE
+        self.mdx_stem_count = 2
+        self.demucs_stem_count = 0
+        self.mdx_model_stems: list[str] = []
+        self.mdxnet_stems_selected: list[str] = []
+        self.is_mdx_include_stem_complement = False
+        self.available_stem_routes: tuple[typing.Any, ...] = ()
+        self.selected_stem_routes: tuple[typing.Any, ...] = ()
+        self.demucs_source_list: list[str] = []
+        self.is_primary_stem_only = False
+        self.is_secondary_stem_only = False
+        self.mdxnet_stem_select = None
+        self.demucs_stems = None
+
+    def apply(self) -> None:
+        ModelConfig._apply_stem_focus(self)  # type: ignore[arg-type]
+
+
+class StemIdentityAssembleTests(unittest.TestCase):
+    def test_vocal_split_model_keeps_its_native_primary_stem(self) -> None:
+        """The old assemble rewrote a splitter's primary to ``lead_only``.
+
+        Native yaml/hash spelling must survive; the lead/backing concept is
+        derived instead (see tests/test_vocal_split_stems.py).
+        """
+        from core.stems import StemBucket, stem_concept
+
+        stub = _FocusStub(Settings.defaults(), "vocals", "other")
+        stub.is_vocal_split_model = True
+        ModelConfig._apply_stem_focus(stub)  # type: ignore[arg-type]
+        self.assertEqual(stub.primary_stem, "vocals")
+        self.assertEqual(stub.secondary_stem, "other")
+        self.assertEqual(stem_concept(stub, "vocals"), StemBucket.LEAD_VOCALS)
+
+    def test_applying_focus_never_writes_back_into_settings(self) -> None:
+        """One Settings assembles many configs (ensemble members, secondaries,
+        pre-process), and in the GUI it is the live persisted object that
+        read-only callers like estimate_workload also assemble from. Writing
+        resolved flags back into it leaked one model's pick onto the next and
+        silently rewrote the user's saved Save-stems toggles."""
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = StemBucket.VOCALS.value
+        before = (
+            settings.process.primary_stem_only,
+            settings.process.secondary_stem_only,
+            settings.demucs.is_primary_stem_only,
+            settings.demucs.is_secondary_stem_only,
+        )
+
+        vocals_primary = _FocusStub(settings, "vocals", "other")
+        vocals_primary.apply()
+        inst_primary = _FocusStub(settings, "other", "vocals")
+        inst_primary.apply()
+
+        after = (
+            settings.process.primary_stem_only,
+            settings.process.secondary_stem_only,
+            settings.demucs.is_primary_stem_only,
+            settings.demucs.is_secondary_stem_only,
+        )
+        self.assertEqual(before, after)
+        # Each config still resolves the focus onto its own stems.
+        self.assertEqual(
+            (vocals_primary.is_primary_stem_only, vocals_primary.is_secondary_stem_only),
+            (True, False),
+        )
+        self.assertEqual(
+            (inst_primary.is_primary_stem_only, inst_primary.is_secondary_stem_only),
+            (False, True),
+        )
+
+    def test_focus_naming_no_stem_exports_everything(self) -> None:
+        settings = Settings.defaults()
+        settings.process.stem_focus = "Bass"
+        stub = _FocusStub(settings, "vocals", "other")
+        stub.apply()
+        self.assertEqual(
+            (stub.is_primary_stem_only, stub.is_secondary_stem_only), (False, False)
+        )
+
+    def test_multi_stem_mdx_focus_populates_native_subset(self) -> None:
+        from bundled.constants import BASS_STEM
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = BASS_STEM
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.apply()
+        self.assertEqual(stub.mdxnet_stems_selected, ["bass"])
+        self.assertEqual(stub.mdxnet_stem_select, "bass")
+        self.assertEqual(
+            (stub.is_primary_stem_only, stub.is_secondary_stem_only),
+            (False, False),
+        )
+
+    def test_multi_stem_mdx_include_complement_adds_derived_route(self) -> None:
+        from bundled.constants import BASS_STEM
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = BASS_STEM
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.is_mdx_include_stem_complement = True
+        stub.apply()
+        complement = next(
+            route
+            for route in stub.available_stem_routes
+            if route.concept == "raw:no bass"
+        )
+        self.assertTrue(complement.conditional)
+        self.assertIsNone(complement.native)
+
+    def test_multi_stem_mdx_instrumental_focus_uses_vocal_complement(self) -> None:
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.apply()
+        self.assertEqual(stub.mdxnet_stems_selected, ["vocals"])
+        self.assertEqual(stub.mdxnet_stem_select, "vocals")
+        self.assertEqual(
+            (stub.is_primary_stem_only, stub.is_secondary_stem_only),
+            (False, True),
+        )
+
+    def test_demucs_native_focus_replaces_stale_primary(self) -> None:
+        from bundled.constants import BASS_STEM, DEMUCS_ARCH_TYPE
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = BASS_STEM
+        stub = _FocusStub(settings, "Vocals", "Instrumental")
+        stub.process_method = DEMUCS_ARCH_TYPE
+        stub.mdx_stem_count = 0
+        stub.mdx_model_stems = []
+        stub.demucs_stem_count = 4
+        stub.demucs_source_list = ["Bass", "Drums", "Other", "Vocals"]
+        stub.apply()
+        self.assertEqual(stub.demucs_stems, BASS_STEM)
+        self.assertEqual(stub.primary_stem, BASS_STEM)
+        self.assertEqual(
+            (stub.is_primary_stem_only, stub.is_secondary_stem_only),
+            (True, False),
+        )
 
 
 if __name__ == "__main__":

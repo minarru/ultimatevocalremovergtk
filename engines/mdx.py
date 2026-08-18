@@ -355,6 +355,37 @@ def derive_mdx_complement(native_source: typing.Any, mix: typing.Any, *, invert_
     return (-shaped.T + raw_mix.T)
 
 
+def derive_mdx_multi_complement(
+    sources: dict[str, typing.Any],
+    primary_stem: str,
+    mix: typing.Any,
+    *,
+    combine_stems: bool,
+    invert_spec: bool = False,
+    match_frequency_pitch: typing.Any = None,
+) -> typing.Any:
+    """Derive a multi-source primary complement using the configured recipe."""
+    primary_key = resolve_in_sources(sources, StemId(primary_stem))
+    if primary_key is None:
+        raise KeyError(
+            f"stem {primary_stem!r} not in sources {sorted(map(str, sources))}"
+        )
+    if combine_stems:
+        remaining = [value for key, value in sources.items() if key != primary_key]
+        if not remaining:
+            raise ValueError("cannot combine a complement without remaining stems")
+        combined = np.zeros_like(remaining[0])
+        for value in remaining:
+            combined += value
+        return combined.T
+    return derive_mdx_complement(
+        sources[primary_key],
+        mix,
+        invert_spec=invert_spec,
+        match_frequency_pitch=match_frequency_pitch,
+    )
+
+
 class SeperateMDX(SeperateAttributes):        
 
     def seperate(self) -> dict[str, Any] | None:
@@ -699,6 +730,7 @@ class SeperateMDXC(SeperateAttributes):
                 self.start_inference_console_write()
                 self.write_to_console(LOADING_MODEL)
                 mix = prepare_mix(self.audio_file)
+                export_mix = mix
                 export_rate = samplerate
                 model_rate = int(getattr(self.mdx_c_configs.audio, 'sample_rate', export_rate) or export_rate)
                 if model_rate != export_rate:
@@ -714,6 +746,9 @@ class SeperateMDXC(SeperateAttributes):
                         sources = librosa.resample(
                             sources, orig_sr=model_rate, target_sr=export_rate, axis=1
                         )
+                    # Downstream subtraction, level matching, caching, and the
+                    # splitter complement must share the exported source rate.
+                    mix = export_mix
                 if not self.is_vocal_split_model:
                     self.cache_source((mix, sources))
                 self.write_to_console(DONE, base_text='')
@@ -838,23 +873,24 @@ class SeperateMDXC(SeperateAttributes):
                 secondary_stem_path = self.stem_export_wav_path(self.secondary_stem)
                 if not isinstance(self.secondary_source, np.ndarray):
                     
-                    if self.is_mdx_combine_stems and len(stem_list) >= 2:
-                        if len(stem_list) == 2:
+                    if isinstance(working_sources, dict) and len(stem_list) > 2:
+                        self.secondary_source = derive_mdx_multi_complement(
+                            working_sources,
+                            str(self.primary_stem or ""),
+                            mix,
+                            combine_stems=bool(self.is_mdx_combine_stems),
+                            invert_spec=bool(self.is_invert_spec),
+                            match_frequency_pitch=self.match_frequency_pitch,
+                        )
+                    elif self.is_mdx_combine_stems and len(stem_list) == 2:
+                        if isinstance(working_sources, dict):
                             sec_key = mdx_combined_secondary_key(
                                 working_sources, stem_list, self.secondary_stem
                             )
                             secondary_source = working_sources[sec_key]
                         else:
-                            prim_key = resolve_in_sources(
-                                working_sources, StemId(self.primary_stem)
-                            )
-                            if prim_key is not None:
-                                working_sources.pop(prim_key, None)
-                            next_stem = next(iter(working_sources))
-                            secondary_source = np.zeros_like(working_sources[next_stem])
-                            for v in working_sources.values():
-                                secondary_source += v
-                                
+                            secondary_source = working_sources
+
                         self.secondary_source = secondary_source.T 
                     elif isinstance(working_sources, dict) and resolve_in_sources(
                         working_sources, StemId(self.secondary_stem)
@@ -908,9 +944,9 @@ class SeperateMDXC(SeperateAttributes):
         written: dict[str, Any] = {}
         items: list[tuple[str, Any]] = []
         if lead is not None:
-            items.append((LEAD_VOCAL_STEM, lead))
+            items.append((LEAD_VOCAL_STEM_LABEL, lead))
         if backing is not None:
-            items.append((BV_VOCAL_STEM, backing))
+            items.append((BV_VOCAL_STEM_LABEL, backing))
         if not items:
             return written
         self.begin_save_phase(len(items))

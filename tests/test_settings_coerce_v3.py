@@ -116,6 +116,13 @@ class EnsembleTypeCoerceTests(unittest.TestCase):
     def test_unknown_atoms_fall_back(self) -> None:
         self.assertEqual(coerce_ensemble_type("Nope/Nope"), MAX_MIN)
 
+    def test_stem_focus_aliases_vocals(self) -> None:
+        from core.stems import StemBucket
+
+        self.assertEqual(coerce_field("process", "stem_focus", "vocals"), StemBucket.VOCALS.value)
+        self.assertEqual(coerce_field("process", "stem_focus", "Vocals"), StemBucket.VOCALS.value)
+        self.assertEqual(coerce_field("process", "stem_focus", ""), "")
+
 
 class JsonRoundTripTests(unittest.TestCase):
     def test_null_sentinels_round_trip(self) -> None:

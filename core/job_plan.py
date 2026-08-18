@@ -16,6 +16,8 @@ from bundled.constants import (
     DEMUCS_4_SOURCE_LIST,
     DEMUCS_ARCH_TYPE,
     ENSEMBLE_MODE,
+    INST_WITH_BACKING_VOCALS_STEM,
+    INST_WITH_LEAD_VOCALS_STEM,
     MDX_ARCH_TYPE,
     VR_ARCH_PM,
 )
@@ -30,7 +32,22 @@ from .model_config import assemble_model
 from .model_identity import ModelIdentityService, ModelRecord
 from .access_policy import access_policy
 from .settings import Settings
-from .stems import EnsemblePair, coerce_ensemble_pair
+from .stems import (
+    EnsemblePair,
+    StemBucket,
+    StemLiteral,
+    StemRoute,
+    StemRouteKind,
+    StemSelectionStatus,
+    coerce_ensemble_pair,
+    derived_stem_route,
+    focus_bucket,
+    model_stem_routes,
+    model_stem_count,
+    select_ensemble_stem_routes,
+    select_stem_routes,
+    ui_label,
+)
 
 
 class ValidationLevel(str, Enum):
@@ -71,6 +88,10 @@ class ModelDescriptor:
     primary_stem: str | None = None
     secondary_stem: str | None = None
     metadata_source: str | None = None
+    stem_count: int = 0
+    is_karaoke: bool = False
+    is_bv: bool = False
+    routes: tuple[StemRoute, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -78,6 +99,7 @@ class PlannedOutput:
     path: str
     stem: str
     conditional: bool = False
+    concept: str = ""
 
 
 @dataclass(frozen=True)
@@ -154,6 +176,39 @@ def _checkpoint_hash(path: str) -> str:
 def _descriptor(record: ModelRecord, model: Any, verify: bool) -> ModelDescriptor:
     path = str(getattr(model, "model_path", "") or "")
     digest = _checkpoint_hash(path) if verify and path and os.path.isfile(path) else None
+    routes = list(model_stem_routes(model))
+    splitter = getattr(model, "vocal_split_model", None)
+    if (
+        splitter is not None
+        and getattr(model, "is_vocal_split_model_activated", False)
+        and not getattr(model, "is_ensemble_mode", False)
+    ):
+        routes.extend(
+            dataclasses.replace(
+                route,
+                kind=StemRouteKind.SPLITTER,
+                conditional=True,
+                selected_by_default=True,
+            )
+            for route in model_stem_routes(splitter)
+        )
+        if getattr(model, "is_save_inst_vocal_splitter", False):
+            routes.extend((
+                derived_stem_route(
+                    StemBucket.INST_WITH_BV,
+                    label=INST_WITH_BACKING_VOCALS_STEM,
+                    conditional=True,
+                    selected_by_default=True,
+                    kind=StemRouteKind.SPLITTER,
+                ),
+                derived_stem_route(
+                    StemBucket.INST_WITH_LEAD,
+                    label=INST_WITH_LEAD_VOCALS_STEM,
+                    conditional=True,
+                    selected_by_default=True,
+                    kind=StemRouteKind.SPLITTER,
+                ),
+            ))
     return ModelDescriptor(
         id=record.id,
         family=record.family,
@@ -168,7 +223,234 @@ def _descriptor(record: ModelRecord, model: Any, verify: bool) -> ModelDescripto
             if os.path.isfile(str(getattr(model, "model_hash_dir", "") or ""))
             else "model-catalog"
         ),
+        stem_count=model_stem_count(model),
+        is_karaoke=bool(getattr(model, "is_karaoke", False)),
+        is_bv=bool(getattr(model, "is_bv_model", False)),
+        routes=tuple(routes),
     )
+
+
+def _stem_focus_diagnostics(
+    settings: Settings,
+    models: Sequence[Any],
+    descriptors: Sequence[ModelDescriptor],
+    provenance: Mapping[str, str] | None = None,
+    *,
+    command: str = "separate",
+) -> list[Diagnostic]:
+    """Report a ``process.stem_focus`` that names none of a model's stems.
+
+    Such a focus cannot be honored, and the run silently falls back to
+    exporting every stem — worth saying out loud before a long job rather
+    than leaving the user to notice the extra files afterwards.
+    """
+    focus = str(settings.process.stem_focus or "")
+    if not focus:
+        return []
+    source = (provenance or {}).get("process.stem_focus", "")
+    severity = "error" if source == Provenance.CLI.value else "warning"
+    if command == "ensemble":
+        routes, union = _ensemble_output_routes(settings, descriptors)
+        selection = select_ensemble_stem_routes(routes, union, focus)
+        if selection.status is StemSelectionStatus.MATCHED:
+            return []
+        insufficient = selection.status is StemSelectionStatus.INSUFFICIENT_MEMBERS
+        available = ", ".join(route.label for route in routes) or "none"
+        return [Diagnostic(
+            (
+                "stems.focus_insufficient_members"
+                if insufficient else "stems.focus_unmatched"
+            ),
+            (
+                f"stem focus {focus!r} has fewer than two ensemble contributors"
+                if insufficient
+                else f"stem focus {focus!r} matches no ensemble output"
+            ) + f" (available: {available}); exporting all stems",
+            severity,
+        )]
+
+    result: list[Diagnostic] = []
+    for index, model in enumerate(models):
+        if getattr(model, "is_vocal_split_model", False):
+            continue
+        routes = (
+            descriptors[index].routes
+            if index < len(descriptors) and descriptors[index].routes
+            else model_stem_routes(model)
+        )
+        selection = select_stem_routes(routes, focus)
+        if selection.status is StemSelectionStatus.MATCHED:
+            continue
+        label = (
+            descriptors[index].display
+            if index < len(descriptors)
+            else getattr(model, "model_basename", "") or "model"
+        )
+        stems = ", ".join(route.label for route in routes)
+        result.append(
+            Diagnostic(
+                "stems.focus_unmatched",
+                f"stem focus {focus!r} matches no stem of {label}"
+                + (f" (has {stems}); exporting all stems" if stems else "; exporting all stems"),
+                severity,
+            )
+        )
+    return result
+
+
+def _fallback_descriptor_routes(descriptor: ModelDescriptor) -> tuple[StemRoute, ...]:
+    """Route inventory for older callers constructing descriptors directly."""
+    if descriptor.routes:
+        return descriptor.routes
+
+    class _DescriptorModel:
+        primary_stem = descriptor.primary_stem
+        secondary_stem = descriptor.secondary_stem
+        mdx_model_stems = tuple(
+            stem for stem in (descriptor.primary_stem, descriptor.secondary_stem) if stem
+        )
+        demucs_source_list: tuple[str, ...] = ()
+        mdx_stem_count = descriptor.stem_count
+        demucs_stem_count = 0
+        is_karaoke = descriptor.is_karaoke
+        is_bv_model = descriptor.is_bv
+        is_vocal_split_model = False
+
+    routes = model_stem_routes(_DescriptorModel())
+    if routes:
+        return routes
+    return (
+        derived_stem_route(
+            StemLiteral("Primary"), label="Primary", selected_by_default=True
+        ),
+        derived_stem_route(
+            StemLiteral("Secondary"), label="Secondary", selected_by_default=True
+        ),
+    )
+
+
+def _ensemble_output_routes(
+    settings: Settings, descriptors: Sequence[ModelDescriptor]
+) -> tuple[tuple[StemRoute, ...], tuple[StemRoute, ...]]:
+    """Return viable final routes and the union before contributor filtering."""
+    pair = coerce_ensemble_pair(settings.ensemble.main_stem)
+    if not pair.is_multi_or_four():
+        routes_list: list[StemRoute] = []
+        for bucket, label in zip(pair.buckets(), pair.stem_halves()):
+            if not label:
+                continue
+            route_concept: StemBucket | StemLiteral = (
+                bucket if bucket is not StemBucket.UNKNOWN else StemLiteral(label)
+            )
+            routes_list.append(
+                derived_stem_route(
+                    route_concept,
+                    label=label,
+                    selected_by_default=True,
+                )
+            )
+        routes = tuple(routes_list)
+        return routes, routes
+
+    if pair is EnsemblePair.FOUR_STEM:
+        standard = tuple(
+            derived_stem_route(
+                focus_bucket(stem), label=stem, tag=stem, selected_by_default=True
+            )
+            for stem in DEMUCS_4_SOURCE_LIST
+        )
+        if not any(descriptor.routes for descriptor in descriptors):
+            return standard, standard
+        counts = {route.concept.casefold(): 0 for route in standard}
+        for descriptor in descriptors:
+            member_concepts = {
+                route.concept.casefold()
+                for route in _fallback_descriptor_routes(descriptor)
+                if route.selected_by_default
+            }
+            for concept in counts:
+                counts[concept] += int(concept in member_concepts)
+        union = tuple(
+            route for route in standard if counts[route.concept.casefold()] >= 1
+        )
+        viable = tuple(
+            route for route in standard if counts[route.concept.casefold()] >= 2
+        )
+        return viable, union
+
+    contributors: dict[str, list[StemRoute]] = {}
+    order: list[str] = []
+    for descriptor in descriptors:
+        seen_member: set[str] = set()
+        for route in _fallback_descriptor_routes(descriptor):
+            key = route.concept.casefold()
+            if key in seen_member or not route.selected_by_default:
+                continue
+            seen_member.add(key)
+            if key not in contributors:
+                contributors[key] = []
+                order.append(key)
+            contributors[key].append(route)
+    union = tuple(contributors[key][0] for key in order)
+    viable = tuple(
+        dataclasses.replace(contributors[key][0], selected_by_default=True)
+        for key in order
+        if len(contributors[key]) >= 2
+    )
+    return viable, union
+
+
+def planned_output_routes(
+    settings: Settings,
+    descriptors: Sequence[ModelDescriptor],
+    *,
+    command: str,
+) -> tuple[StemRoute, ...]:
+    """Canonical routes that this resolved job intends to write."""
+    focus = str(settings.process.stem_focus or "")
+    if command == "ensemble":
+        routes, _union = _ensemble_output_routes(settings, descriptors)
+        selection = select_ensemble_stem_routes(routes, _union, focus)
+        selected = selection.routes if selection.routes else routes
+        if not focus and not coerce_ensemble_pair(settings.ensemble.main_stem).is_multi_or_four():
+            if settings.process.primary_stem_only:
+                selected = selected[:1]
+            elif settings.process.secondary_stem_only:
+                selected = selected[1:2]
+        return tuple(selected)
+
+    routes = _fallback_descriptor_routes(descriptors[0]) if descriptors else ()
+    selection = select_stem_routes(routes, focus)
+    selected = selection.routes if selection.routes else tuple(
+        route for route in routes if route.selected_by_default
+    )
+    if (
+        focus
+        and settings.mdx.is_mdx_include_stem_complement
+        and not settings.process.primary_stem_only
+        and not settings.process.secondary_stem_only
+        and any(route.native is not None for route in selected)
+    ):
+        selected = tuple(dict.fromkeys((
+            *selected,
+            *(route for route in routes if route.native is None and route.conditional),
+        )))
+    if not focus:
+        if settings.process.primary_stem_only:
+            primary = descriptors[0].primary_stem if descriptors else None
+            selected = tuple(
+                route for route in routes
+                if route.native is not None and route.native.matches(primary or "")
+            )
+        elif settings.process.secondary_stem_only:
+            secondary = descriptors[0].secondary_stem if descriptors else None
+            selected = tuple(
+                route for route in routes
+                if (
+                    route.native is not None and route.native.matches(secondary or "")
+                ) or (route.native is None and route.label == secondary)
+            )
+    return tuple(selected)
 
 
 def planned_output_stems(
@@ -177,36 +459,13 @@ def planned_output_stems(
     *,
     command: str,
 ) -> tuple[tuple[str, bool], ...]:
-    if command == "ensemble":
-        pair = coerce_ensemble_pair(settings.ensemble.main_stem)
-        if pair is EnsemblePair.FOUR_STEM:
-            return tuple((stem, False) for stem in DEMUCS_4_SOURCE_LIST)
-        if pair is EnsemblePair.MULTI_STEM:
-            seen: dict[str, bool] = {}
-            for descriptor in descriptors:
-                for stem in (descriptor.primary_stem, descriptor.secondary_stem):
-                    if stem:
-                        seen.setdefault(stem, False)
-            topologies = {
-                (item.primary_stem, item.secondary_stem) for item in descriptors
-            }
-            conditional = len(topologies) > 1
-            return tuple((stem, conditional) for stem in seen)
-        left, right = pair.stem_halves()
-        result: list[tuple[str, bool]] = []
-        if left:
-            result.append((left, False))
-        if right and not right.startswith("No "):
-            result.append((right, False))
-        return tuple(result)
-    descriptor = descriptors[0] if descriptors else ModelDescriptor("", "", "", "")
-    if settings.process.primary_stem_only:
-        return ((descriptor.primary_stem or "Primary", False),)
-    if settings.process.secondary_stem_only:
-        return ((descriptor.secondary_stem or "Secondary", False),)
-    return (
-        (descriptor.primary_stem or "Primary", False),
-        (descriptor.secondary_stem or "Secondary", False),
+    routes = planned_output_routes(settings, descriptors, command=command)
+    return tuple(
+        (
+            route.label,
+            route.conditional,
+        )
+        for route in routes
     )
 
 
@@ -301,6 +560,13 @@ class JobResolver:
         provenance = dict(spec.provenance)
         if models:
             _apply_model_native_values(settings, records, models, provenance)
+        diagnostics.extend(_stem_focus_diagnostics(
+            settings,
+            models,
+            descriptors,
+            provenance,
+            command=spec.command,
+        ))
         if level in {ValidationLevel.RUNTIME, ValidationLevel.LOAD}:
             diagnostics.extend(self._runtime_diagnostics(settings))
         if level is ValidationLevel.LOAD and models and not diagnostics:
@@ -349,13 +615,20 @@ class JobResolver:
         )
         provenance = dict(spec.provenance)
         _apply_model_native_values(settings, records, models, provenance)
+        diagnostics = tuple(_stem_focus_diagnostics(
+            settings,
+            models,
+            descriptors,
+            provenance,
+            command=spec.command,
+        ))
         return ResolvedJob(
             spec.command,
             settings,
             self._plan_inputs(settings, spec, descriptors),
             descriptors,
             provenance,
-            (),
+            diagnostics,
             level,
             int(getattr(self.repo, "inventory_generation", 0)),
             settings_fingerprint(settings),
@@ -412,7 +685,7 @@ class JobResolver:
         result: list[PlannedInput] = []
         total = len(spec.inputs)
         descriptor = descriptors[0] if descriptors else ModelDescriptor("", "", "", "")
-        stem_entries = planned_output_stems(settings, descriptors, command=spec.command)
+        stem_routes = planned_output_routes(settings, descriptors, command=spec.command)
         from .export_naming import ensemble_name_for_export
 
         ensemble_label = (
@@ -437,9 +710,13 @@ class JobResolver:
                         f"{format_stem_basename(naming.track_base, stem)}.{naming.extension}",
                     ),
                     stem,
-                    conditional,
+                    route.conditional,
+                    route.concept,
                 )
-                for stem, conditional in stem_entries
+                for route in stem_routes
+                for stem in (
+                    route.filename_tag if spec.command == "ensemble" else route.label,
+                )
             )
             result.append(PlannedInput(path, naming, outputs))
         return tuple(result)
@@ -481,5 +758,5 @@ __all__ = [
     "Diagnostic", "JobResolver", "JobSpec", "ModelDescriptor", "PlannedInput",
     "PlannedOutput", "Provenance", "ResolvedJob", "ValidationLevel",
     "device_runtime_diagnostics", "format_effective_plan", "planned_output_stems",
-    "settings_fingerprint",
+    "planned_output_routes", "settings_fingerprint",
 ]

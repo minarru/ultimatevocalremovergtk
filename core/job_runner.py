@@ -37,7 +37,12 @@ from bundled.constants import (
 from . import paths
 from .audio_io import resolve_wav_type_set
 from .model_stem_semantics import canonical_ensemble_stem_tag
-from .stems import StemBucket, coerce_ensemble_pair, filename_tag
+from .stems import (
+    StemBucket,
+    coerce_ensemble_pair,
+    exclusive_flags_for_pair,
+    filename_tag,
+)
 
 
 def _ensemble_stem_bucket(stem_tag: str) -> str:
@@ -47,6 +52,41 @@ def _ensemble_stem_bucket(stem_tag: str) -> str:
     mode; this is a no-op for those tags and only folds leftover casing.
     """
     return canonical_ensemble_stem_tag(stem_tag)
+
+
+def _filter_final_ensemble_stems(
+    stem_names: Sequence[str], focus: str
+) -> list[str]:
+    """Apply one focus to final four/multi-stem outputs only."""
+    if not str(focus or "").strip():
+        return list(stem_names)
+    from core.stems import (
+        StemLiteral,
+        derived_stem_route,
+        focus_bucket,
+        select_stem_routes,
+    )
+
+    routes = []
+    for name in stem_names:
+        bucket = focus_bucket(str(name))
+        concept = bucket if bucket is not StemBucket.UNKNOWN else StemLiteral(str(name))
+        routes.append(
+            derived_stem_route(
+                concept,
+                label=str(name),
+                tag=_ensemble_stem_bucket(str(name)),
+                selected_by_default=True,
+            )
+        )
+    selection = select_stem_routes(routes, focus)
+    if not selection.routes:
+        return list(stem_names)
+    allowed = {route.filename_tag.casefold() for route in selection.routes}
+    return [
+        name for name in stem_names
+        if _ensemble_stem_bucket(str(name)).casefold() in allowed
+    ]
 from .export_naming import (
     OutputNamingContext,
     build_output_naming_context,
@@ -686,9 +726,12 @@ class JobRunner:
         model_label: str,
     ) -> OutputNamingContext:
         """Per-member basename; never rebased from ``PlannedInput.naming``."""
+        naming_input = os.path.abspath(audio_file)
+        if self._run_path_map is not None:
+            naming_input = self._run_path_map.get(naming_input, naming_input)
         return build_output_naming_context(
             self.settings,
-            audio_file,
+            naming_input,
             export_path=export_path,
             file_index=file_index,
             file_total=file_total,
@@ -1673,13 +1716,27 @@ class JobRunner:
                     ]
                     if not stem_names:
                         stem_names = _extract_stems(ensemble_final_base, export_path)
+                    stem_names = _filter_final_ensemble_stems(
+                        stem_names, str(self.settings.process.stem_focus or "")
+                    )
                     combine_steps = [
                         (output_stem, {"is_4_stem": True}) for output_stem in stem_names
                     ]
                 else:
-                    if not self.settings.process.secondary_stem_only:
+                    primary_only = self.settings.process.primary_stem_only
+                    secondary_only = self.settings.process.secondary_stem_only
+                    # ``process.stem_focus`` overrides the positional booleans,
+                    # resolved against the chosen pair's buckets — never the
+                    # already-remapped stem_halves labels with a fake count of 2.
+                    focus_flags = exclusive_flags_for_pair(
+                        str(self.settings.process.stem_focus or ""),
+                        coerce_ensemble_pair(self.settings.ensemble.main_stem),
+                    )
+                    if focus_flags is not None:
+                        primary_only, secondary_only = focus_flags
+                    if not secondary_only:
                         combine_steps.append((PRIMARY_STEM, {}))
-                    if not self.settings.process.primary_stem_only:
+                    if not primary_only:
                         combine_steps.append((SECONDARY_STEM, {}))
                         combine_steps.append((SECONDARY_STEM, {"is_inst_mix": True}))
 

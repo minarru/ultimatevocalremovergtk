@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Sequence, cast
 
 from core.blocking_runner import RunResult, run_blocking
+from core.export_naming import format_track_base
 from core.job_plan import ResolvedJob as CoreResolvedJob
 from core.job_runner import JobCallbacks
 
@@ -144,13 +145,37 @@ def _matches_unit_name(name: str, track_base: str) -> bool:
     return name.startswith(f"{track_base} (") or name.startswith(f"{track_base}.")
 
 
-def _with_unit_suffix(path: str, track_base: str, index: int) -> str:
+def _matches_ensemble_member_name(name: str, track_prefix: str) -> bool:
+    """Recognize retained ensemble-member exports for one input track."""
+    stem, extension = os.path.splitext(name)
+    return (
+        bool(extension)
+        and stem.startswith(f"{track_prefix} ")
+        and stem.endswith(")")
+        and stem.rfind(" (") > len(track_prefix)
+    )
+
+
+def _with_unit_suffix(
+    path: str,
+    track_base: str,
+    index: int,
+    *,
+    ensemble_member_prefix: str | None = None,
+) -> str:
     name = os.path.basename(path)
-    if not _matches_unit_name(name, track_base):
+    if _matches_unit_name(name, track_base):
+        prefix = track_base
+    elif (
+        ensemble_member_prefix is not None
+        and _matches_ensemble_member_name(name, ensemble_member_prefix)
+    ):
+        prefix = ensemble_member_prefix
+    else:
         return path
     return os.path.join(
         os.path.dirname(path),
-        f"{track_base}_{index}{name[len(track_base):]}",
+        f"{prefix}_{index}{name[len(prefix):]}",
     )
 
 
@@ -165,6 +190,7 @@ def _apply_unit_rename(
     track_base: str,
     *,
     start_index: int = 2,
+    ensemble_member_prefix: str | None = None,
 ) -> tuple[int, list[tuple[str, str]]]:
     """Pick one free unit suffix for the whole unit.
 
@@ -178,17 +204,32 @@ def _apply_unit_rename(
         for source, target in entries:
             original = dest_by_name.get(os.path.basename(source))
             base_path = original if original is not None else target
-            remapped.append(
-                (source, _with_unit_suffix(base_path, track_base, index))
-            )
+            remapped.append((
+                source,
+                _with_unit_suffix(
+                    base_path,
+                    track_base,
+                    index,
+                    ensemble_member_prefix=ensemble_member_prefix,
+                ),
+            ))
         return remapped
 
     index = start_index
     while True:
-        rewritten = [
-            _with_unit_suffix(path, track_base, index) for path in destinations
-        ]
-        if any(os.path.exists(path) for path in rewritten):
+        rewritten = [(
+            path,
+            _with_unit_suffix(
+                path,
+                track_base,
+                index,
+                ensemble_member_prefix=ensemble_member_prefix,
+            ),
+        ) for path in destinations]
+        if any(
+            rewritten_path != original and os.path.exists(rewritten_path)
+            for original, rewritten_path in rewritten
+        ):
             index += 1
             continue
         remapped = _remap(index)
@@ -215,10 +256,17 @@ def _promote(
     policy: str,
     *,
     destinations: Sequence[str] | None = None,
+    expected_track_base: str | None = None,
+    ensemble_member_prefix: str | None = None,
 ) -> list[str]:
     with _output_dir_lock(output):
         return _promote_locked(
-            stage, output, policy, destinations=destinations,
+            stage,
+            output,
+            policy,
+            destinations=destinations,
+            expected_track_base=expected_track_base,
+            ensemble_member_prefix=ensemble_member_prefix,
         )
 
 
@@ -228,6 +276,8 @@ def _promote_locked(
     policy: str,
     *,
     destinations: Sequence[str] | None = None,
+    expected_track_base: str | None = None,
+    ensemble_member_prefix: str | None = None,
 ) -> list[str]:
     entries: list[tuple[str, str]] = []
     for root, dirs, files in os.walk(stage):
@@ -236,14 +286,12 @@ def _promote_locked(
         target_root = output if rel_root == "." else os.path.join(output, rel_root)
         for name in sorted(files):
             entries.append((os.path.join(root, name), os.path.join(target_root, name)))
-    # Recheck all predictable targets before moving any file. This keeps a
-    # promotion-time race under ``fail`` from exposing half an input's stems.
-    collision_paths = (
-        list(destinations) if destinations is not None
-        else [target for _source, target in entries]
-    )
-    track_base: str | None = None
-    if destinations is not None:
+    # The staged files are authoritative. Plans intentionally omit conditional
+    # outputs, and runtime label canonicalization can expose additional files;
+    # collision policy must cover the complete unit that actually exists.
+    collision_paths = [target for _source, target in entries]
+    track_base: str | None = expected_track_base
+    if track_base is None and destinations is not None:
         track_base = next(
             (
                 base
@@ -252,6 +300,27 @@ def _promote_locked(
             ),
             None,
         )
+    if expected_track_base is not None:
+        unexpected = next(
+            (
+                source for source, _target in entries
+                if not (
+                    _matches_unit_name(os.path.basename(source), expected_track_base)
+                    or (
+                        ensemble_member_prefix is not None
+                        and _matches_ensemble_member_name(
+                            os.path.basename(source), ensemble_member_prefix
+                        )
+                    )
+                )
+            ),
+            None,
+        )
+        if unexpected is not None:
+            raise OSError(
+                "unexpected staged separation output "
+                f"{os.path.basename(unexpected)!r} for track {expected_track_base!r}"
+            )
     if policy == "fail":
         collision = next((path for path in collision_paths if os.path.exists(path)), None)
         if collision:
@@ -264,8 +333,8 @@ def _promote_locked(
     # without them a collision falls back to a per-file ``_unique_target``.
     unit_destinations: Sequence[str] | None = None
     unit_track_base = ""
-    if policy == "rename" and destinations is not None and track_base is not None:
-        unit_destinations = destinations
+    if policy == "rename" and track_base is not None:
+        unit_destinations = collision_paths
         unit_track_base = track_base
     unit_index: int | None = None
     attempt = list(entries)
@@ -273,7 +342,10 @@ def _promote_locked(
         os.path.exists(path) for path in unit_destinations
     ):
         unit_index, attempt = _apply_unit_rename(
-            entries, unit_destinations, unit_track_base
+            entries,
+            unit_destinations,
+            unit_track_base,
+            ensemble_member_prefix=ensemble_member_prefix,
         )
     backups: list[tuple[str, str]] = []
     promoted: list[str] = []
@@ -296,10 +368,17 @@ def _promote_locked(
                     if policy == "fail":
                         raise FileExistsError(target)
                     if policy == "skip":
-                        continue
+                        raise PromotionSkipped(target)
                     if policy == "rename":
-                        if unit_destinations is not None and _matches_unit_name(
-                            os.path.basename(source), unit_track_base
+                        source_name = os.path.basename(source)
+                        if unit_destinations is not None and (
+                            _matches_unit_name(source_name, unit_track_base)
+                            or (
+                                ensemble_member_prefix is not None
+                                and _matches_ensemble_member_name(
+                                    source_name, ensemble_member_prefix
+                                )
+                            )
                         ):
                             # A raced suffix splits the unit; restart it whole.
                             restart = True
@@ -321,6 +400,7 @@ def _promote_locked(
                 unit_destinations,
                 unit_track_base,
                 start_index=2 if unit_index is None else unit_index + 1,
+                ensemble_member_prefix=ensemble_member_prefix,
             )
     except BaseException:
         for source, target in reversed(moved):
@@ -440,6 +520,18 @@ def run_batch(args: Any, job: ResolvedJob) -> BatchOutcome:
                             for output in planned_item.outputs
                             if not output.conditional
                         ],
+                        expected_track_base=planned_item.naming.track_base,
+                        ensemble_member_prefix=(
+                            format_track_base(
+                                track=planned_item.naming.track,
+                                file_index=planned_item.naming.file_index,
+                                file_total=planned_item.naming.file_total,
+                                timestamp=planned_item.naming.timestamp,
+                            )
+                            if job.command == "ensemble"
+                            and job.settings.ensemble.save_all_outputs
+                            else None
+                        ),
                     )
                     if not promoted:
                         raise OSError(
