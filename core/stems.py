@@ -1016,6 +1016,32 @@ def route_matches_stem(
     return focus_matches_stem(token, route.label, **ctx)
 
 
+def routes_matching_stems(
+    routes: Sequence[StemRoute],
+    stems: Sequence[str],
+    model: Any | None = None,
+) -> Tuple[StemRoute, ...]:
+    """Native inventory routes matching ``stems``, in sidecar order.
+
+    Derived routes (no native key) are skipped so a custom MDX-C subset
+    does not pull in a vocals complement. Unmatched names are ignored.
+    """
+    picked: list[StemRoute] = []
+    seen: set[str] = set()
+    for stem in stems:
+        token = str(stem).strip()
+        if not token:
+            continue
+        for route in routes:
+            if route.native is None or route.concept in seen:
+                continue
+            if route_matches_stem(route, token, model):
+                picked.append(route)
+                seen.add(route.concept)
+                break
+    return tuple(picked)
+
+
 def _route_matches_pair(route: StemRoute, pair: EnsemblePair, model: Any) -> bool:
     primary_bucket, secondary_bucket = pair.buckets()
     for bucket in (primary_bucket, secondary_bucket):

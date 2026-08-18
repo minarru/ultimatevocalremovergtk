@@ -5,6 +5,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from core.settings import Settings
+
 _REPO = Path(__file__).resolve().parents[1]
 _STATE = _REPO / "core" / "stem_selection.py"
 _JOB_RESOLUTION = _REPO / "core" / "settings" / "job_resolution.py"
@@ -203,7 +205,7 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
 
 
 class CliStemSelectionStateTests(unittest.TestCase):
-    def _snapshot(self, settings) -> tuple[object, ...]:
+    def _snapshot(self, settings: Settings) -> tuple[object, ...]:
         return (
             settings.process.stem_focus,
             settings.process.primary_stem_only,
@@ -346,6 +348,62 @@ class SubsetConceptSelectionTests(unittest.TestCase):
         self.assertTrue(settings.process.primary_stem_only)
         self.assertFalse(settings.process.secondary_stem_only)
         self.assertFalse(settings.demucs.is_primary_stem_only)
+
+
+class DemucsConceptSelectionTests(unittest.TestCase):
+    def test_native_bass_roundtrip_uses_concept_and_native_sidecar(self) -> None:
+        from bundled.constants import ALL_STEMS, BASS_STEM
+        from core.settings import Settings
+        from core.stem_selection import DemucsView, StemSelectionState
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        state = StemSelectionState()
+        state.configure_demucs(
+            focus_stems=[ALL_STEMS, BASS_STEM],
+            primary_key="is_primary_stem_only_Demucs",
+            secondary_key="is_secondary_stem_only_Demucs",
+        )
+        state.write(
+            settings,
+            DemucsView(
+                active=StemBucket.BASS.value,
+                export_choice=StemBucket.BASS.value,
+                export_filter_visible=True,
+            ),
+        )
+        self.assertEqual(settings.demucs.stems, BASS_STEM)
+        self.assertEqual(settings.process.stem_focus, StemBucket.BASS.value)
+        self.assertTrue(settings.demucs.is_primary_stem_only)
+        self.assertFalse(settings.demucs.is_secondary_stem_only)
+
+        view = state.read(settings)
+        assert isinstance(view, DemucsView)
+        self.assertEqual(view.active, StemBucket.BASS.value)
+        self.assertEqual(view.export_choice, StemBucket.BASS.value)
+
+    def test_lowercase_vocals_plus_primary_flag_is_focus_vocals(self) -> None:
+        from bundled.constants import ALL_STEMS, BASS_STEM
+        from core.settings import Settings
+        from core.stem_selection import (
+            DemucsView,
+            StemSelectionState,
+            _FOCUS_VOCALS,
+        )
+
+        settings = Settings.defaults()
+        settings.demucs.stems = "vocals"
+        settings.demucs.is_primary_stem_only = True
+        settings.demucs.is_secondary_stem_only = False
+        state = StemSelectionState()
+        state.configure_demucs(
+            focus_stems=[ALL_STEMS, _FOCUS_VOCALS, BASS_STEM],
+            primary_key="is_primary_stem_only_Demucs",
+            secondary_key="is_secondary_stem_only_Demucs",
+        )
+        view = state.read(settings)
+        assert isinstance(view, DemucsView)
+        self.assertEqual(view.active, _FOCUS_VOCALS)
 
 
 if __name__ == "__main__":

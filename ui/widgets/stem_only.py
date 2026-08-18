@@ -742,6 +742,10 @@ class SaveStemsSection:
             return
         self._section_visible = True
         items: List[Tuple[str, str]] = []
+        ids = _subset_option_ids(
+            [entry for entry in focus_stems if entry not in (ALL_STEMS, _FOCUS_INSTRUMENTAL, _FOCUS_VOCALS)],
+            self._state.routes,
+        )
         for entry in focus_stems:
             if entry == ALL_STEMS:
                 name, label = _QUICK_ALL, ALL_STEMS
@@ -752,7 +756,7 @@ class SaveStemsSection:
                 name = _FOCUS_VOCALS
                 label = _QUICK_EXPORT_LABELS[_QUICK_VOCALS]
             else:
-                name = entry
+                name = ids.get(entry, entry)
                 label = stem_display_label(entry)
             items.append((name, label))
         was_loading = self._loading
@@ -1100,6 +1104,7 @@ class SaveStemsSection:
                 secondary_stem=secondary,
                 primary_key=self._primary_key,
                 secondary_key=self._secondary_key,
+                routes=self._state.demucs_export_routes(primary),
             )
             was_loading = self._loading
             self._loading = True
@@ -1107,10 +1112,13 @@ class SaveStemsSection:
                 self._demucs_export_options = _fill_export_combo(self._demucs_export_row, options)
                 if not from_settings:
                     self._state.ensure_demucs_export_defaults(self.settings)
-                name = _exclusive_name_from_settings(
+                flag = _exclusive_name_from_settings(
                     self.settings, self._primary_key, self._secondary_key
                 )
-                set_combo_value(self._demucs_export_row, name)
+                set_combo_value(
+                    self._demucs_export_row,
+                    self._state.export_choice_from_flag(primary, flag),
+                )
             finally:
                 self._loading = was_loading
             self._demucs_export_row.set_visible(True)
