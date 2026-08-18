@@ -484,9 +484,11 @@ class ModelConfig:
         selection, but :func:`~core.stems.run_export_routes` writes the full
         inventory.
 
-        When focus is empty, a multi-stem MDX-C custom subset still lives in
-        ``mdxnet_stems_selected`` (natives). That sidecar is applied here so
-        engines export the subset rather than every default route. Do not
+        When focus is empty, CLI ``--stems primary|secondary`` still lives in
+        the exclusive-save flags. Those flags filter to the primary/secondary
+        native (or derived complement) here so engines export that one route.
+        A multi-stem MDX-C custom subset still lives in
+        ``mdxnet_stems_selected`` (natives) and is applied after that. Do not
         fold those names into ``stem_focus``.
 
         Resolution is **per-config only**: assembling a model must never write
@@ -499,6 +501,7 @@ class ModelConfig:
             StemSelectionStatus,
             coerce_ensemble_pair,
             model_stem_routes,
+            route_matches_stem,
             routes_for_ensemble_pair,
             routes_matching_stems,
             select_stem_routes,
@@ -516,24 +519,36 @@ class ModelConfig:
             selected = selection.routes
 
         if selection.status is StemSelectionStatus.EMPTY:
-            mdx_stems = tuple(
-                str(stem)
-                for stem in (getattr(self, "mdx_model_stems", None) or ())
-                if stem
-            )
-            sidecar = tuple(
-                str(stem)
-                for stem in (getattr(self, "mdxnet_stems_selected", None) or ())
-                if stem
-            )
-            if len(mdx_stems) > 2 and sidecar:
-                native_concepts = {
-                    route.concept for route in routes if route.native is not None
-                }
-                matched = routes_matching_stems(routes, sidecar, self)
-                matched_concepts = {route.concept for route in matched}
-                if matched and matched_concepts < native_concepts:
-                    selected = matched
+            primary_only = bool(getattr(self, "is_primary_stem_only", False))
+            secondary_only = bool(getattr(self, "is_secondary_stem_only", False))
+            if primary_only ^ secondary_only:
+                target = self.primary_stem if primary_only else self.secondary_stem
+                matched = tuple(
+                    route
+                    for route in routes
+                    if route_matches_stem(route, target, self)
+                )
+                if matched:
+                    selected = matched[:1]
+            else:
+                mdx_stems = tuple(
+                    str(stem)
+                    for stem in (getattr(self, "mdx_model_stems", None) or ())
+                    if stem
+                )
+                sidecar = tuple(
+                    str(stem)
+                    for stem in (getattr(self, "mdxnet_stems_selected", None) or ())
+                    if stem
+                )
+                if len(mdx_stems) > 2 and sidecar:
+                    native_concepts = {
+                        route.concept for route in routes if route.native is not None
+                    }
+                    matched = routes_matching_stems(routes, sidecar, self)
+                    matched_concepts = {route.concept for route in matched}
+                    if matched and matched_concepts < native_concepts:
+                        selected = matched
 
         # Dual-stem ensemble members default to the pair, not a 4-stem model's
         # full native inventory. Four/multi-stem members keep the selection for

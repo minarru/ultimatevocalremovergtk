@@ -480,6 +480,86 @@ class StemIdentityAssembleTests(unittest.TestCase):
             },
         )
 
+    def test_empty_focus_honors_primary_only_flag(self) -> None:
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        stub = _FocusStub(settings, "vocals", "other")
+        stub.is_primary_stem_only = True
+        stub.apply()
+        selected = stub.selected_stem_routes
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0].concept, StemBucket.VOCALS.value)
+        self.assertIsNotNone(selected[0].native)
+        self.assertTrue(selected[0].native.matches("vocals"))
+        self.assertTrue(stub.is_primary_stem_only)
+        self.assertFalse(stub.is_secondary_stem_only)
+
+    def test_empty_focus_honors_derived_secondary_flag(self) -> None:
+        from core.stems import StemBucket, StemRouteKind
+
+        settings = Settings.defaults()
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.is_secondary_stem_only = True
+        stub.apply()
+        selected = stub.selected_stem_routes
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0].concept, StemBucket.INSTRUMENTAL.value)
+        self.assertIsNone(selected[0].native)
+        self.assertEqual(selected[0].kind, StemRouteKind.DERIVED)
+        self.assertTrue(stub.is_secondary_stem_only)
+        self.assertFalse(stub.is_primary_stem_only)
+
+    def test_focus_wins_over_conflicting_exclusive_flags(self) -> None:
+        from bundled.constants import BASS_STEM
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = BASS_STEM
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.is_primary_stem_only = True
+        stub.apply()
+        selected = stub.selected_stem_routes
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0].concept, StemBucket.BASS.value)
+        self.assertTrue(selected[0].native.matches("bass"))
+
+    def test_empty_focus_exclusive_wins_over_sidecar(self) -> None:
+        from bundled.constants import BASS_STEM, DRUM_STEM
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.mdxnet_stems_selected = [BASS_STEM, DRUM_STEM]
+        stub.is_primary_stem_only = True
+        stub.apply()
+        selected = stub.selected_stem_routes
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0].concept, StemBucket.VOCALS.value)
+        self.assertTrue(selected[0].native.matches("vocals"))
+
+    def test_ensemble_pair_wins_over_empty_focus_primary_flag(self) -> None:
+        from core.stems import EnsemblePair, StemBucket
+
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.is_ensemble_mode = True
+        stub.is_primary_stem_only = True
+        stub.apply()
+        self.assertEqual(
+            {route.concept for route in stub.selected_stem_routes},
+            {StemBucket.VOCALS.value, StemBucket.INSTRUMENTAL.value},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
