@@ -202,8 +202,6 @@ _BOOL_FIELDS: frozenset[tuple[str, str]] = frozenset(
         ("process", "use_gpu"),
         ("process", "autocast"),
         ("process", "use_directml"),
-        ("process", "primary_stem_only"),
-        ("process", "secondary_stem_only"),
         ("process", "testing_audio"),
         ("process", "add_model_name"),
         ("process", "accept_any_input"),
@@ -234,8 +232,6 @@ _BOOL_FIELDS: frozenset[tuple[str, str]] = frozenset(
         ("mdx", "is_mixer_mode"),
         ("mdx", "is_secondary_model_activate"),
         ("demucs", "is_chunk_demucs"),
-        ("demucs", "is_primary_stem_only"),
-        ("demucs", "is_secondary_stem_only"),
         ("demucs", "is_split_mode"),
         ("demucs", "is_demucs_combine_stems"),
         ("demucs", "is_secondary_model_activate"),
@@ -396,6 +392,35 @@ def _coerce_section(section_name: str, section_data: Any) -> dict[str, Any]:
     return coerced
 
 
+def _migrate_exclusive_flags_to_stem_focus(result: dict[str, Any]) -> None:
+    """Lift leftover exclusive booleans into ``process.stem_focus`` sentinels."""
+    from core.stems import FOCUS_PRIMARY, FOCUS_SECONDARY
+
+    process = result.get("process")
+    demucs = result.get("demucs")
+    if not isinstance(process, dict) and not isinstance(demucs, dict):
+        return
+    if not isinstance(process, dict):
+        process = {}
+        result["process"] = process
+    focus = str(process.get("stem_focus") or "").strip()
+    if not focus:
+        primary = bool(process.get("primary_stem_only"))
+        secondary = bool(process.get("secondary_stem_only"))
+        if not primary and not secondary and isinstance(demucs, dict):
+            primary = bool(demucs.get("is_primary_stem_only"))
+            secondary = bool(demucs.get("is_secondary_stem_only"))
+        if primary and not secondary:
+            process["stem_focus"] = FOCUS_PRIMARY
+        elif secondary and not primary:
+            process["stem_focus"] = FOCUS_SECONDARY
+    process.pop("primary_stem_only", None)
+    process.pop("secondary_stem_only", None)
+    if isinstance(demucs, dict):
+        demucs.pop("is_primary_stem_only", None)
+        demucs.pop("is_secondary_stem_only", None)
+
+
 def coerce_json_dict(data: Any) -> dict[str, Any]:
     """Coerce typed fields in a nested settings JSON document.
 
@@ -418,6 +443,7 @@ def coerce_json_dict(data: Any) -> dict[str, Any]:
             result[section] = _coerce_section(section, result[section])
     if "schema_version" in result:
         result["schema_version"] = as_int(result["schema_version"], 1)
+    _migrate_exclusive_flags_to_stem_focus(result)
     return result
 
 

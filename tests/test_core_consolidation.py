@@ -46,6 +46,13 @@ class IdentityServiceTests(unittest.TestCase):
         migrator = IdentityMigrator(_Repo())
         self.assertEqual(migrator.canonical("Model A", family="mdx"), "mdx:model_a")
 
+    def test_legacy_arch_member_tag_does_not_double_prefix(self) -> None:
+        migrator = IdentityMigrator(_Repo())
+        self.assertEqual(
+            migrator.canonical("MDX-Net: Model A", family="mdx"),
+            "mdx:model_a",
+        )
+
     def test_unknown_references_clear_to_existing_sentinels(self) -> None:
         settings = Settings.defaults()
         settings.mdx.model = "Unknown Model"

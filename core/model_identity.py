@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 from bundled.constants import (
     APOLLO_ARCH_TYPE,
@@ -34,6 +34,23 @@ ARCH_BY_FAMILY = {
 }
 FAMILY_BY_ARCH = {value: key for key, value in ARCH_BY_FAMILY.items()}
 FAMILY_BY_ARCH[VR_ARCH_PM] = "vr"
+_LEGACY_FAMILIES = {
+    VR_ARCH_TYPE.casefold(): "vr",
+    VR_ARCH_PM.casefold(): "vr",
+    MDX_ARCH_TYPE.casefold(): "mdx",
+    DEMUCS_ARCH_TYPE.casefold(): "demucs",
+}
+
+
+def _qualified_family(token: str) -> str | None:
+    """Return the model family if ``token`` already carries a family or arch prefix."""
+    prefix, separator, _rest = str(token or "").strip().partition(":")
+    if not separator:
+        return None
+    folded = prefix.casefold()
+    if folded in FAMILIES:
+        return folded
+    return _LEGACY_FAMILIES.get(folded)
 
 
 @dataclass(frozen=True, order=True)
@@ -158,13 +175,13 @@ class _ModelInventory:
         allowed_families: Iterable[str] | None = None,
     ) -> ModelRecord:
         raw = str(query or "").strip()
-        qualified, separator, _rest = raw.partition(":")
+        token_family = _qualified_family(raw)
         if family is not None:
             family = family.casefold()
             if family not in FAMILIES:
                 raise ValueError(f"unknown model family {family!r}")
-            if separator and qualified.casefold() in FAMILIES:
-                if qualified.casefold() != family:
+            if token_family is not None:
+                if token_family != family:
                     raise ValueError(
                         f"model {raw!r} does not belong to required family {family}"
                     )
@@ -176,10 +193,7 @@ class _ModelInventory:
             invalid = allowed.difference(FAMILIES)
             if invalid:
                 raise ValueError(f"unknown model family {sorted(invalid)[0]!r}")
-            if (
-                separator and qualified.casefold() in FAMILIES
-                and qualified.casefold() not in allowed
-            ):
+            if token_family is not None and token_family not in allowed:
                 raise ValueError(f"model {query!r} is not eligible for this setting")
             records = tuple(record for record in records if record.family in allowed)
         return resolve_model_record(raw, records, fuzzy=fuzzy)
@@ -193,20 +207,8 @@ def resolve_model_record(
     if not raw:
         raise ValueError("model value is empty")
     records = tuple(records)
-    family: Optional[str] = None
-    term = raw
-    prefix, separator, suffix = raw.partition(":")
-    legacy_families = {
-        VR_ARCH_TYPE.casefold(): "vr",
-        VR_ARCH_PM.casefold(): "vr",
-        MDX_ARCH_TYPE.casefold(): "mdx",
-        DEMUCS_ARCH_TYPE.casefold(): "demucs",
-    }
-    if separator and (
-        prefix.casefold() in FAMILIES or prefix.casefold() in legacy_families
-    ):
-        family = legacy_families.get(prefix.casefold(), prefix.casefold())
-        term = suffix.strip()
+    family = _qualified_family(raw)
+    term = raw.partition(":")[2].strip() if family is not None else raw
     candidates = tuple(
         record for record in records if family is None or record.family == family
     )

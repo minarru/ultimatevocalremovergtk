@@ -14,4 +14,4 @@ Loaded when working under `ui/`. Layer rules, invariants and repo workflow live 
 
 ## Settings coupling
 
-- The Save-stems widget ([ui/widgets/stem_only.py](widgets/stem_only.py)) is a GTK adapter over [`core/stem_selection.py`](../core/stem_selection.py), which writes `process.stem_focus` in lockstep with the exclusive `is_primary_stem_only` / `is_secondary_stem_only` booleans, in every branch — including the ones that clear it back to `""`. Miss a branch and the widget looks right while `--profile gui` and the plan-time diagnostics inherit a stale concept.
+- The Save-stems widget ([ui/widgets/stem_only.py](widgets/stem_only.py)) is a GTK adapter over [`core/stem_selection.py`](../core/stem_selection.py), which writes `process.stem_focus` (a concept, `raw:…` tag, or positional `primary`/`secondary` sentinel) in every branch — including the ones that clear it back to `""`. Miss a branch and the widget looks right while `--profile gui` and the plan-time diagnostics inherit a stale concept.

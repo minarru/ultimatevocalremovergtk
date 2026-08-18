@@ -27,16 +27,22 @@ def assemble_model(
 ) -> List["ModelConfig"]:
     """Build the model configurations for one separation run."""
     from .config import ModelConfig
-    from ..model_identity import ModelIdentityService
+    from ..model_identity import ModelIdentityService, _qualified_family
 
     identities = ModelIdentityService(repo)
 
     def engine_value(
         value: str, *, member: bool = False, family: str | None = None
     ) -> str:
-        if str(value or "").split(":", 1)[0].casefold() not in {"vr", "mdx", "demucs"}:
-            return value
-        return identities.engine_value(value, member=member, family=family)
+        raw = str(value or "")
+        if _qualified_family(raw) is None:
+            return raw
+        try:
+            return identities.engine_value(value, member=member, family=family)
+        except ValueError:
+            # Unresolvable tags still belong to ModelConfig so ensemble
+            # members can be skipped via model_status instead of aborting.
+            return raw
 
     if arch_type == ENSEMBLE_MODE:
         selected = settings.ensemble.selected_models or []

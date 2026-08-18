@@ -442,17 +442,11 @@ class _EnsembleRunHooks:
                 (output_stem, {"is_4_stem": True}) for output_stem in stem_names
             ]
         else:
-            primary_only = runner.settings.process.primary_stem_only
-            secondary_only = runner.settings.process.secondary_stem_only
-            # ``process.stem_focus`` overrides the positional booleans,
-            # resolved against the chosen pair's buckets — never the
-            # already-remapped stem_halves labels with a fake count of 2.
             focus_flags = exclusive_flags_for_pair(
                 str(runner.settings.process.stem_focus or ""),
                 coerce_ensemble_pair(runner.settings.ensemble.main_stem),
             )
-            if focus_flags is not None:
-                primary_only, secondary_only = focus_flags
+            primary_only, secondary_only = focus_flags or (False, False)
             if not secondary_only:
                 combine_steps.append((PRIMARY_STEM, {}))
             if not primary_only:

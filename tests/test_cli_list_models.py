@@ -45,6 +45,24 @@ class ModelIdTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "required family"):
                 service.resolve("mdx:shared", family="vr")
 
+    def test_family_does_not_prefix_legacy_arch_member_tag(self) -> None:
+        """CLI canonicalize writes ``MDX-Net: Display``; family= must not make ``mdx:MDX-Net:…``."""
+        from core.model_identity import canonical_member_tag
+
+        record = ModelRecord(
+            "mdx:UVR-MDX-NET-Inst_HQ_4",
+            "mdx",
+            "UVR-MDX-NET-Inst_HQ_4",
+            "MDX-Net — UVR-MDX-NET Inst HQ 4",
+        )
+        tag = canonical_member_tag(record)
+        self.assertEqual(tag, "MDX-Net: MDX-Net — UVR-MDX-NET Inst HQ 4")
+        service = ModelIdentityService(object())
+        with patch.object(service, "records", return_value=(record,)):
+            self.assertEqual(
+                service.resolve(tag, family="mdx", fuzzy=False).id, record.id
+            )
+
     def test_allowed_families_reject_ineligible_identity(self) -> None:
         service = ModelIdentityService(object())
         records = (

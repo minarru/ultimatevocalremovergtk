@@ -60,16 +60,15 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
         view = state.read(settings)
         assert isinstance(view, ExclusiveView)
         self.assertEqual(view.choice, INST_STEM)
-        self.assertTrue(settings.process.primary_stem_only)
-        self.assertFalse(settings.process.secondary_stem_only)
 
-    def test_empty_focus_uses_legacy_booleans(self) -> None:
+    def test_positional_sentinel_maps_to_primary_route_concept(self) -> None:
         from bundled.constants import INST_STEM, VOCAL_STEM
         from core.settings import Settings
         from core.stem_selection import ExclusiveView, StemSelectionState
+        from core.stems import FOCUS_PRIMARY
 
         settings = Settings.defaults()
-        settings.process.primary_stem_only = True
+        settings.process.stem_focus = FOCUS_PRIMARY
         state = StemSelectionState()
         state.configure_exclusive(
             primary_stem=VOCAL_STEM,
@@ -99,8 +98,6 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
         assert isinstance(view, ExclusiveView)
         self.assertEqual(view.choice, _TOGGLE_ALL)
         self.assertEqual(settings.process.stem_focus, INST_STEM)
-        self.assertFalse(settings.process.primary_stem_only)
-        self.assertFalse(settings.process.secondary_stem_only)
 
     def test_subset_quick_instrumental_persist(self) -> None:
         from bundled.constants import BASS_STEM, DRUM_STEM, VOCAL_STEM
@@ -121,8 +118,6 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
         )
         self.assertEqual(settings.mdx.stems_selected, [VOCAL_STEM])
         self.assertEqual(settings.process.stem_focus, Bucket.INSTRUMENTAL.value)
-        self.assertTrue(settings.process.secondary_stem_only)
-        self.assertFalse(settings.process.primary_stem_only)
 
     def test_subset_quick_vocals_persist(self) -> None:
         from bundled.constants import BASS_STEM, VOCAL_STEM
@@ -142,7 +137,6 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
             SubsetView(mode=_QUICK_VOCALS, selected=set(), custom_all=False),
         )
         self.assertEqual(settings.process.stem_focus, StemBucket.VOCALS.value)
-        self.assertTrue(settings.process.primary_stem_only)
 
     def test_demucs_all_clears_focus(self) -> None:
         from bundled.constants import ALL_STEMS, BASS_STEM, VOCAL_STEM
@@ -201,17 +195,12 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
         )
         self.assertEqual(settings.process.stem_focus, StemBucket.INSTRUMENTAL.value)
         self.assertEqual(settings.demucs.stems, VOCAL_STEM)
-        self.assertTrue(settings.demucs.is_secondary_stem_only)
 
 
 class CliStemSelectionStateTests(unittest.TestCase):
     def _snapshot(self, settings: Settings) -> tuple[object, ...]:
         return (
             settings.process.stem_focus,
-            settings.process.primary_stem_only,
-            settings.process.secondary_stem_only,
-            settings.demucs.is_primary_stem_only,
-            settings.demucs.is_secondary_stem_only,
             settings.mdx.stems,
             list(settings.mdx.stems_selected or []),
             settings.demucs.stems,
@@ -229,7 +218,6 @@ class CliStemSelectionStateTests(unittest.TestCase):
         StemSelectionState().write_cli_concept(via_state, StemBucket.VOCALS.value)
         self.assertEqual(self._snapshot(via_apply), self._snapshot(via_state))
         self.assertEqual(via_apply.process.stem_focus, StemBucket.VOCALS.value)
-        self.assertFalse(via_apply.process.primary_stem_only)
         self.assertEqual(via_apply.mdx.stems_selected, [VOCAL_STEM])
         self.assertEqual(via_apply.demucs.stems, VOCAL_STEM)
         self.assertNotEqual(via_apply.mdx.stems, ALL_STEMS)
@@ -246,18 +234,16 @@ class CliStemSelectionStateTests(unittest.TestCase):
         StemSelectionState().write_cli_concept(via_state, "vocal")
         self.assertEqual(via_state.process.stem_focus, StemBucket.VOCALS.value)
 
-    def test_primary_clears_focus_without_vocals_bucket(self) -> None:
+    def test_primary_writes_sentinel_without_vocals_bucket(self) -> None:
         from bundled.constants import VOCAL_STEM
         from core.settings import Settings
         from core.stem_selection import StemSelectionState, apply_stem_selection
-        from core.stems import StemBucket
+        from core.stems import FOCUS_PRIMARY, StemBucket
 
         settings = Settings.defaults()
         settings.process.stem_focus = StemBucket.VOCALS.value
         self.assertEqual(apply_stem_selection(settings, "primary"), "primary")
-        self.assertEqual(settings.process.stem_focus, "")
-        self.assertTrue(settings.process.primary_stem_only)
-        self.assertFalse(settings.process.secondary_stem_only)
+        self.assertEqual(settings.process.stem_focus, FOCUS_PRIMARY)
         self.assertNotEqual(settings.process.stem_focus, VOCAL_STEM)
 
         via_state = Settings.defaults()
@@ -290,8 +276,6 @@ class SubsetConceptSelectionTests(unittest.TestCase):
         )
         self.assertEqual(settings.mdx.stems_selected, [BASS_STEM])
         self.assertEqual(settings.process.stem_focus, StemBucket.BASS.value)
-        self.assertFalse(settings.process.primary_stem_only)
-        self.assertFalse(settings.process.secondary_stem_only)
 
         view = state.read(settings)
         assert isinstance(view, SubsetView)
@@ -345,9 +329,6 @@ class SubsetConceptSelectionTests(unittest.TestCase):
         )
         self.assertEqual(settings.process.stem_focus, StemBucket.VOCALS.value)
         self.assertEqual(settings.mdx.stems_selected, [VOCAL_STEM])
-        self.assertTrue(settings.process.primary_stem_only)
-        self.assertFalse(settings.process.secondary_stem_only)
-        self.assertFalse(settings.demucs.is_primary_stem_only)
 
 
 class DemucsConceptSelectionTests(unittest.TestCase):
@@ -374,15 +355,13 @@ class DemucsConceptSelectionTests(unittest.TestCase):
         )
         self.assertEqual(settings.demucs.stems, BASS_STEM)
         self.assertEqual(settings.process.stem_focus, StemBucket.BASS.value)
-        self.assertTrue(settings.demucs.is_primary_stem_only)
-        self.assertFalse(settings.demucs.is_secondary_stem_only)
 
         view = state.read(settings)
         assert isinstance(view, DemucsView)
         self.assertEqual(view.active, StemBucket.BASS.value)
         self.assertEqual(view.export_choice, StemBucket.BASS.value)
 
-    def test_lowercase_vocals_plus_primary_flag_is_focus_vocals(self) -> None:
+    def test_lowercase_vocals_plus_vocals_focus_is_focus_vocals(self) -> None:
         from bundled.constants import ALL_STEMS, BASS_STEM
         from core.settings import Settings
         from core.stem_selection import (
@@ -390,11 +369,11 @@ class DemucsConceptSelectionTests(unittest.TestCase):
             StemSelectionState,
             _FOCUS_VOCALS,
         )
+        from core.stems import StemBucket
 
         settings = Settings.defaults()
         settings.demucs.stems = "vocals"
-        settings.demucs.is_primary_stem_only = True
-        settings.demucs.is_secondary_stem_only = False
+        settings.process.stem_focus = StemBucket.VOCALS.value
         state = StemSelectionState()
         state.configure_demucs(
             focus_stems=[ALL_STEMS, _FOCUS_VOCALS, BASS_STEM],

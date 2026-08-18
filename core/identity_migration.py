@@ -9,10 +9,7 @@ from typing import Any
 from bundled.constants import (
     CHOOSE_ENSEMBLE_OPTION,
     CHOOSE_MODEL,
-    DEMUCS_ARCH_TYPE,
-    MDX_ARCH_TYPE,
     NO_MODEL,
-    VR_ARCH_TYPE,
 )
 
 from . import paths
@@ -23,10 +20,10 @@ from .json_store import (
     write_json_if_unchanged,
 )
 from .model_identity import (
-    FAMILIES,
     ModelIdentityService,
     ModelRecord,
     ModelId,
+    _qualified_family,
     resolve_model_record,
 )
 from .settings import Settings
@@ -127,11 +124,11 @@ class IdentityMigrator:
             return None
         query = raw
         records = self.records
+        token_family = _qualified_family(raw)
         if family:
             family = family.casefold()
-            prefix, separator, _rest = raw.partition(":")
-            if separator and prefix.casefold() in FAMILIES:
-                if prefix.casefold() != family:
+            if token_family is not None:
+                if token_family != family:
                     raise IdentityConflict(
                         f"model {raw!r} does not belong to required family {family}"
                     )
@@ -140,8 +137,7 @@ class IdentityMigrator:
             records = tuple(record for record in records if record.family == family)
         elif allowed_families is not None:
             allowed = frozenset(str(item).casefold() for item in allowed_families)
-            prefix, separator, _rest = raw.partition(":")
-            if separator and prefix.casefold() in FAMILIES and prefix.casefold() not in allowed:
+            if token_family is not None and token_family not in allowed:
                 raise IdentityConflict(
                     f"model {raw!r} is not eligible for this setting"
                 )

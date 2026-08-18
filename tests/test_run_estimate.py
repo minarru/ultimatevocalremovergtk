@@ -276,7 +276,7 @@ class RunCostUnitTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only",
             has_model=True,
         )
-        settings["is_primary_stem_only"] = True
+        settings.process.stem_focus = VOCAL_STEM
         section.sync_from_settings()
         estimate = estimate_workload(
             settings,
@@ -294,13 +294,9 @@ class SaveStemsOutputCountTests(unittest.TestCase):
     def setUp(self):
         self.settings = _Settings(
             {
-                "is_primary_stem_only": False,
-                "is_secondary_stem_only": False,
                 "mdx_stems_selected": [],
                 "mdx_stems": ALL_STEMS,
                 "demucs_stems": ALL_STEMS,
-                "is_primary_stem_only_Demucs": False,
-                "is_secondary_stem_only_Demucs": False,
             }
         )
         self.section = SaveStemsSection(settings=self.settings)
@@ -323,7 +319,7 @@ class SaveStemsOutputCountTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only",
             has_model=True,
         )
-        self.settings["is_primary_stem_only"] = True
+        self.settings.process.stem_focus = VOCAL_STEM
         self.section.sync_from_settings()
         self.assertEqual(self.section.expected_output_count(), 1)
 

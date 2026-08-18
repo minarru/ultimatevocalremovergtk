@@ -154,13 +154,9 @@ class SaveStemsSectionTests(unittest.TestCase):
     def setUp(self):
         self.settings = _Settings(
             {
-                "is_primary_stem_only": False,
-                "is_secondary_stem_only": False,
                 "mdx_stems_selected": [],
                 "mdx_stems": ALL_STEMS,
                 "demucs_stems": ALL_STEMS,
-                "is_primary_stem_only_Demucs": False,
-                "is_secondary_stem_only_Demucs": False,
             }
         )
         self.section = SaveStemsSection(settings=self.settings)
@@ -172,7 +168,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertFalse(self.section._exclusive_row.get_visible())
 
     def test_exclusive_sync_persist_round_trip(self):
-        self.settings["is_primary_stem_only"] = True
+        self.settings.process.stem_focus = VOCAL_STEM
         self.section.configure_exclusive(
             primary_stem=VOCAL_STEM,
             secondary_stem=INST_STEM,
@@ -183,8 +179,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.section.sync_from_settings()
         self.assertIn("Vocals", self.section.export_summary())
         self.section.persist_to_settings()
-        self.assertTrue(self.settings["is_primary_stem_only"])
-        self.assertFalse(self.settings["is_secondary_stem_only"])
+        self.assertEqual(self.settings.process.stem_focus, VOCAL_STEM)
 
     def test_stem_focus_survives_switching_to_a_model_where_it_is_secondary(self) -> None:
         """The bug this whole feature exists to fix: picking "Instrumental
@@ -212,8 +207,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        self.assertTrue(self.settings["is_primary_stem_only"])
-        self.assertFalse(self.settings["is_secondary_stem_only"])
+        self.assertEqual(self.settings.process.stem_focus, INST_STEM)
         self.assertIn("Instrumental", self.section.export_summary())
 
     def test_stem_focus_falls_back_to_all_for_an_unrelated_model(self) -> None:
@@ -226,14 +220,10 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        self.assertFalse(self.settings["is_primary_stem_only"])
-        self.assertFalse(self.settings["is_secondary_stem_only"])
         # The preference stays parked, not discarded, for a future relevant model.
         self.assertEqual(self.settings.process.stem_focus, INST_STEM)
 
-    def test_empty_stem_focus_uses_legacy_boolean_behavior(self) -> None:
-        """Before any pick under the new mechanism, behavior is unchanged."""
-        self.settings["is_primary_stem_only"] = True
+    def test_empty_stem_focus_exports_all(self) -> None:
         self.section.configure_exclusive(
             primary_stem=VOCAL_STEM,
             secondary_stem=INST_STEM,
@@ -242,7 +232,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        self.assertIn("Vocals", self.section.export_summary())
+        self.assertIn("Exporting all outputs", self.section.export_summary())
 
     def test_persist_writes_stem_focus_from_the_chosen_stem(self) -> None:
         self.section.configure_exclusive(
@@ -270,7 +260,9 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertEqual(self.settings.process.stem_focus, "")
 
     def test_subset_quick_instrumental_persist(self):
-        self.settings["is_secondary_stem_only"] = True
+        from core.stems import StemBucket
+
+        self.settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
         self.settings["mdx_stems_selected"] = [VOCAL_STEM]
         self.section.configure_subset(
             stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM],
@@ -285,11 +277,12 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertFalse(self.section._subset.is_all_active())
         self.section.persist_to_settings()
         self.assertEqual(self.settings["mdx_stems_selected"], [VOCAL_STEM])
-        self.assertTrue(self.settings["is_secondary_stem_only"])
-        self.assertFalse(self.settings["is_primary_stem_only"])
+        self.assertEqual(self.settings.process.stem_focus, StemBucket.INSTRUMENTAL.value)
 
     def test_subset_quick_vocals_highlights_vocal_chip(self):
-        self.settings["is_primary_stem_only"] = True
+        from core.stems import StemBucket
+
+        self.settings.process.stem_focus = StemBucket.VOCALS.value
         self.settings["mdx_stems_selected"] = [VOCAL_STEM]
         self.section.configure_subset(
             stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM],
@@ -329,8 +322,6 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.section.persist_to_settings()
         self.assertEqual(self.settings["mdx_stems_selected"], [BASS_STEM])
         self.assertEqual(self.settings["mdx_stems"], BASS_STEM)
-        self.assertFalse(self.settings["is_primary_stem_only"])
-        self.assertFalse(self.settings["is_secondary_stem_only"])
 
     def test_subset_all_stems_persist(self):
         self.section.configure_subset(
@@ -367,8 +358,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.section._on_demucs_focus_changed()
         self.section.persist_to_settings()
         self.assertEqual(self.settings["demucs_stems"], BASS_STEM)
-        self.assertTrue(self.settings["is_primary_stem_only_Demucs"])
-        self.assertFalse(self.settings["is_secondary_stem_only_Demucs"])
+        self.assertEqual(self.settings.process.stem_focus, BASS_STEM)
 
     def test_subset_hides_quick_export_when_disabled(self):
         self.section.configure_subset(
@@ -447,7 +437,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.section.sync_from_settings()
         set_combo_value(self.section._exclusive_row, "raw:reverb")
         self.section.persist_to_settings()
-        self.assertTrue(self.settings["is_secondary_stem_only"])
+        self.assertEqual(self.settings.process.stem_focus, "raw:reverb")
 
         self.section.configure_exclusive(
             primary_stem="noreverb",
@@ -457,8 +447,8 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        self.assertFalse(self.settings["is_primary_stem_only"])
-        self.assertTrue(self.settings["is_secondary_stem_only"])
+        self.assertEqual(self.settings.process.stem_focus, "raw:reverb")
+        self.assertIn("reverb", self.section.export_summary().casefold())
 
     def test_two_different_unrecognized_stem_models_do_not_collide(self) -> None:
         """Before the fix, every unrecognized stem bucketed to the same
@@ -483,11 +473,13 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        self.assertFalse(self.settings["is_primary_stem_only"])
-        self.assertFalse(self.settings["is_secondary_stem_only"])
+        self.assertEqual(self.settings.process.stem_focus, "raw:reverb")
+        self.assertIn("Exporting all outputs", self.section.export_summary())
 
     def test_subset_lowercase_vocals_matches_vocals_quick(self) -> None:
-        self.settings["is_primary_stem_only"] = True
+        from core.stems import StemBucket
+
+        self.settings.process.stem_focus = StemBucket.VOCALS.value
         self.settings["mdx_stems_selected"] = ["vocals"]
         self.section.configure_subset(
             stems=["vocals", "other"],
@@ -509,8 +501,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        self.assertTrue(self.settings["is_secondary_stem_only"])
-        self.assertFalse(self.settings["is_primary_stem_only"])
+        self.assertIn("Vocals", self.section.export_summary())
 
     def test_ensemble_karaoke_vocals_focus_selects_lead(self) -> None:
         from bundled.constants import INST_WITH_BACKING_VOCALS_STEM, LEAD_VOCAL_STEM_LABEL
@@ -526,8 +517,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             ensemble_pair=EnsemblePair.KARAOKE,
         )
         self.section.sync_from_settings()
-        self.assertTrue(self.settings["is_primary_stem_only"])
-        self.assertFalse(self.settings["is_secondary_stem_only"])
+        self.assertIn("Lead Vocal", self.section.export_summary())
 
     def test_ensemble_other_pair_instrumental_focus_does_not_select_other(self) -> None:
         from bundled.constants import NO_OTHER_STEM, OTHER_STEM
@@ -543,13 +533,13 @@ class SaveStemsSectionTests(unittest.TestCase):
             ensemble_pair=EnsemblePair.OTHER,
         )
         self.section.sync_from_settings()
-        self.assertFalse(self.settings["is_primary_stem_only"])
-        self.assertFalse(self.settings["is_secondary_stem_only"])
+        self.assertIn("Exporting all outputs", self.section.export_summary())
 
     def test_demucs_lowercase_vocals_focus_matches_vocals_chip(self) -> None:
+        from core.stems import StemBucket
+
         self.settings["demucs_stems"] = "vocals"
-        self.settings["is_primary_stem_only_Demucs"] = True
-        self.settings["is_secondary_stem_only_Demucs"] = False
+        self.settings.process.stem_focus = StemBucket.VOCALS.value
         self.section.configure_demucs(
             focus_stems=[ALL_STEMS, "focus_instrumental", "focus_vocals", BASS_STEM],
             primary_key="is_primary_stem_only_Demucs",

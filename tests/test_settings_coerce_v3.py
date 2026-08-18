@@ -123,6 +123,69 @@ class EnsembleTypeCoerceTests(unittest.TestCase):
         self.assertEqual(coerce_field("process", "stem_focus", "Vocals"), StemBucket.VOCALS.value)
         self.assertEqual(coerce_field("process", "stem_focus", ""), "")
 
+    def test_stem_focus_keeps_positional_sentinels(self) -> None:
+        from core.stems import FOCUS_PRIMARY, FOCUS_SECONDARY
+
+        self.assertEqual(coerce_field("process", "stem_focus", "primary"), FOCUS_PRIMARY)
+        self.assertEqual(coerce_field("process", "stem_focus", "Secondary"), FOCUS_SECONDARY)
+
+
+class ExclusiveFlagMigrationTests(unittest.TestCase):
+    def test_process_primary_flag_becomes_sentinel(self) -> None:
+        from core.stems import FOCUS_PRIMARY
+
+        settings = Settings.from_json_dict(
+            {
+                "process": {
+                    "stem_focus": "",
+                    "primary_stem_only": True,
+                    "secondary_stem_only": False,
+                }
+            }
+        )
+        self.assertEqual(settings.process.stem_focus, FOCUS_PRIMARY)
+        self.assertNotIn("primary_stem_only", settings.to_json_dict()["process"])
+
+    def test_demucs_flags_migrate_when_process_flags_are_off(self) -> None:
+        from core.stems import FOCUS_SECONDARY
+
+        settings = Settings.from_json_dict(
+            {
+                "process": {"stem_focus": ""},
+                "demucs": {
+                    "is_primary_stem_only": False,
+                    "is_secondary_stem_only": True,
+                },
+            }
+        )
+        self.assertEqual(settings.process.stem_focus, FOCUS_SECONDARY)
+        self.assertNotIn("is_secondary_stem_only", settings.to_json_dict()["demucs"])
+
+    def test_existing_focus_is_kept(self) -> None:
+        from core.stems import StemBucket
+
+        settings = Settings.from_json_dict(
+            {
+                "process": {
+                    "stem_focus": "vocals",
+                    "primary_stem_only": True,
+                }
+            }
+        )
+        self.assertEqual(settings.process.stem_focus, StemBucket.VOCALS.value)
+
+    def test_xor_only_both_flags_do_not_invent_a_sentinel(self) -> None:
+        settings = Settings.from_json_dict(
+            {
+                "process": {
+                    "stem_focus": "",
+                    "primary_stem_only": True,
+                    "secondary_stem_only": True,
+                }
+            }
+        )
+        self.assertEqual(settings.process.stem_focus, "")
+
 
 class JsonRoundTripTests(unittest.TestCase):
     def test_null_sentinels_round_trip(self) -> None:

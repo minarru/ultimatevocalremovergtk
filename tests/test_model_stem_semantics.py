@@ -443,22 +443,11 @@ class QuickExportSemanticsTests(unittest.TestCase):
         )
         self.assertEqual(preferred_quick_export_mode(model), "instrumental")
 
-    def test_apply_karaoke_default_sets_instrumental_flags(self):
-        class _Settings(dict):
-            def get(self, key: typing.Any, default: typing.Any=None):
-                return super().get(key, default)
+    def test_apply_karaoke_default_sets_instrumental_focus(self):
+        from core.settings import Settings
+        from core.stems import StemBucket
 
-            def set(self, key: typing.Any, value: typing.Any):
-                self[key] = value
-
-        settings = _Settings(
-            {
-                "mdx_stems": "All Stems",
-                "mdx_stems_selected": [],
-                "is_primary_stem_only": False,
-                "is_secondary_stem_only": False,
-            }
-        )
+        settings = Settings.defaults()
         model = _Model(
             is_karaoke=True,
             primary_stem=VOCAL_STEM,
@@ -472,9 +461,8 @@ class QuickExportSemanticsTests(unittest.TestCase):
                 secondary_key="is_secondary_stem_only",
             )
         )
-        self.assertEqual(settings["mdx_stems_selected"], ["Vocals"])
-        self.assertTrue(settings["is_secondary_stem_only"])
-        self.assertFalse(settings["is_primary_stem_only"])
+        self.assertEqual(settings.mdx.stems_selected, ["Vocals"])
+        self.assertEqual(settings.process.stem_focus, StemBucket.INSTRUMENTAL.value)
 
 
 class PairDetectionTests(unittest.TestCase):

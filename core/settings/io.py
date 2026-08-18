@@ -91,6 +91,12 @@ def _load_pickle_flat(path: str) -> dict[str, Any]:
         "ensemble_type",
         "selected_models",
         "chosen_ensemble",
+        # Dropped from DEFAULT_DATA; still read so pickle import can migrate
+        # them into process.stem_focus sentinels.
+        "is_primary_stem_only",
+        "is_secondary_stem_only",
+        "is_primary_stem_only_Demucs",
+        "is_secondary_stem_only_Demucs",
     }
     return {key: value for key, value in stored.items() if key in allowed}
 

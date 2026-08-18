@@ -37,8 +37,6 @@ DEFAULT_DATA = {
         'margin_demucs': 44100,
         'is_chunk_demucs': False,
         'is_chunk_mdxnet': False,
-        'is_primary_stem_only_Demucs': False,
-        'is_secondary_stem_only_Demucs': False,
         'is_split_mode': True,
         'is_demucs_combine_stems': True,#
         'is_mdx23_combine_stems': True,#
@@ -98,8 +96,6 @@ DEFAULT_DATA = {
         'is_time_correction': True,
         'is_gpu_conversion': False,
         'is_autocast': False,
-        'is_primary_stem_only': False,
-        'is_secondary_stem_only': False,
         'is_testing_audio': False,#
         'is_auto_update_model_params': True,#
         'is_add_model_name': False,
