@@ -211,7 +211,142 @@ def is_instrumental_target(stem: str) -> bool:
     if not stem:
         return False
     low = str(stem).lower()
-    return low in ("instrumental", "inst", "other")
+    return low in ("instrumental", "inst", "instrument", "other")
+
+
+# Yaml/community spellings for a dedicated backing-vocal stem. Kept out of
+# ``_STEM_NAME_ALIASES`` so they never merge with MUSDB ``Vocals``.
+_BACKING_VOCAL_TOKENS = frozenset(
+    {
+        "backing_vocal",
+        "backing_vocals",
+        "backing vocals",
+        "backing_only",
+        BV_VOCAL_STEM.casefold(),
+        BV_VOCAL_STEM_LABEL.casefold(),
+    }
+)
+
+
+def is_backing_vocal_stem(stem: str) -> bool:
+    """True for a dedicated backing-vocal yaml/logic name (not MUSDB Vocals)."""
+    if not stem:
+        return False
+    return str(stem).strip().casefold() in _BACKING_VOCAL_TOKENS
+
+
+def vocal_split_primary_stem(*, is_bv_model: bool, native_stem: str | None) -> str:
+    """``lead_only`` / ``backing_only`` for a vocal-splitter's native primary."""
+    native_is_vocal = is_vocal_target(str(native_stem or ""))
+    if is_bv_model:
+        return BV_VOCAL_STEM if native_is_vocal else LEAD_VOCAL_STEM
+    return LEAD_VOCAL_STEM if native_is_vocal else BV_VOCAL_STEM
+
+
+def pick_vocal_key(sources: Optional[Mapping[str, typing.Any]]) -> Optional[str]:
+    """First sources-dict key that names vocals, any common casing."""
+    if not isinstance(sources, Mapping):
+        return None
+    for key in sources:
+        if is_vocal_target(str(key)):
+            return str(key)
+    return None
+
+
+def pick_backing_key(sources: Optional[Mapping[str, typing.Any]]) -> Optional[str]:
+    """Backing-vocal key, else 2-stem instrumental/other. Not 4-stem ``other``."""
+    if not isinstance(sources, Mapping):
+        return None
+    instrumental: Optional[str] = None
+    other: Optional[str] = None
+    for key in sources:
+        name = str(key)
+        if is_backing_vocal_stem(name):
+            return name
+        low = name.casefold()
+        if low in ("instrumental", "inst", "instrument"):
+            if instrumental is None:
+                instrumental = name
+        elif low == "other":
+            other = name
+    if instrumental is not None:
+        return instrumental
+    if other is not None and len(sources) <= 2:
+        return other
+    return None
+
+
+def pick_instrumental_key(sources: Optional[Mapping[str, typing.Any]]) -> Optional[str]:
+    """True instrumental for inst-mixes: not backing vocals, not 4-stem ``other``."""
+    if not isinstance(sources, Mapping):
+        return None
+    instrumental: Optional[str] = None
+    other: Optional[str] = None
+    for key in sources:
+        name = str(key)
+        if is_backing_vocal_stem(name):
+            continue
+        low = name.casefold()
+        if low in ("instrumental", "inst", "instrument"):
+            if instrumental is None:
+                instrumental = name
+        elif low == "other":
+            other = name
+    if instrumental is not None:
+        return instrumental
+    if other is not None and len(sources) <= 2:
+        return other
+    return None
+
+
+def vocal_inst_from_sources(
+    sources: Optional[Mapping[str, typing.Any]],
+) -> Tuple[typing.Any, typing.Any]:
+    """``(vocal_array, instrumental_array)`` from a demix/export map, or Nones."""
+    if not isinstance(sources, Mapping):
+        return None, None
+    vocal_key = pick_vocal_key(sources)
+    inst_key = pick_instrumental_key(sources)
+    vocal = sources[vocal_key] if vocal_key is not None else None
+    inst = sources[inst_key] if inst_key is not None else None
+    return vocal, inst
+
+
+def vocal_split_source_roles(
+    sources: Optional[Mapping[str, typing.Any]],
+    *,
+    is_bv_model: bool = False,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Yaml keys for ``(lead, backing)`` audio in a vocal-splitter demix dict."""
+    vocal_key = pick_vocal_key(sources)
+    backing_key = pick_backing_key(sources)
+    if is_bv_model:
+        return backing_key, vocal_key
+    return vocal_key, backing_key
+
+
+def vocal_split_write_logic_stem(
+    stem_name: str | None, *, is_bv_model: bool = False
+) -> Optional[str]:
+    """Map a vocal-split ``write_audio`` stem to ``lead_only`` / ``backing_only``.
+
+    Empty or unknown names return ``None`` so they are not saved as Backing Vocals.
+    """
+    if not stem_name:
+        return None
+    raw = str(stem_name)
+    if raw in (LEAD_VOCAL_STEM, LEAD_VOCAL_STEM_LABEL) or raw.casefold() in (
+        "lead_only",
+        "lead vocals",
+    ):
+        return LEAD_VOCAL_STEM
+    if is_backing_vocal_stem(raw):
+        return BV_VOCAL_STEM
+    if is_vocal_target(raw):
+        return BV_VOCAL_STEM if is_bv_model else LEAD_VOCAL_STEM
+    if is_instrumental_target(raw):
+        return LEAD_VOCAL_STEM if is_bv_model else BV_VOCAL_STEM
+    return None
 
 
 def infer_is_karaoke_from_hints(

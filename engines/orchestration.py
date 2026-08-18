@@ -166,7 +166,11 @@ def process_chain_model(
     else:
         vocal_source = master_vocal_source
 
-    vocal_stem_path = [vocal_source, os.path.splitext(os.path.basename(vocal_stem_path))[0]]
+    if vocal_stem_path:
+        vocal_base = os.path.splitext(os.path.basename(vocal_stem_path))[0]
+    else:
+        vocal_base = "audio"
+    vocal_stem_path = [vocal_source, vocal_base]
 
     seperator = _build_seperator(
         secondary_model,

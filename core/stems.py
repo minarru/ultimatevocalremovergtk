@@ -160,6 +160,8 @@ _IDENTITY_BUCKETS = {
     "lead vocals": StemBucket.LEAD_VOCALS,
     "backing_only": StemBucket.BACKING_VOCALS,
     "backing vocals": StemBucket.BACKING_VOCALS,
+    "backing_vocal": StemBucket.BACKING_VOCALS,
+    "backing_vocals": StemBucket.BACKING_VOCALS,
 }
 
 # Canonical label -> bucket enum for the plain single-instrument stems.
@@ -301,6 +303,7 @@ def export_stem_key(
     )
     from core.model_stem_semantics import (
         canonical_ensemble_stem_tag,
+        is_backing_vocal_stem,
         karaoke_bv_export_labels,
     )
 
@@ -319,7 +322,7 @@ def export_stem_key(
         return StemLiteral(canonical_ensemble_stem_tag(str(raw)))
     if raw == LEAD_VOCAL_STEM:
         return LEAD_VOCAL_STEM_LABEL
-    if raw == BV_VOCAL_STEM:
+    if raw == BV_VOCAL_STEM or is_backing_vocal_stem(str(raw)):
         return BV_VOCAL_STEM_LABEL
     labels = karaoke_bv_export_labels(model)
     if not labels:

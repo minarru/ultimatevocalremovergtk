@@ -211,6 +211,7 @@ class KaraokeBvExportLabelTests(unittest.TestCase):
         model = _Model()
         self.assertEqual(export_stem_label(model, LEAD_VOCAL_STEM), LEAD_VOCAL_STEM_LABEL)
         self.assertEqual(export_stem_label(model, BV_VOCAL_STEM), BV_VOCAL_STEM_LABEL)
+        self.assertEqual(export_stem_label(model, "backing_vocal"), BV_VOCAL_STEM_LABEL)
 
 
 class EnsembleStemCanonicalizationTests(unittest.TestCase):

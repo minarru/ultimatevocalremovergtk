@@ -140,5 +140,76 @@ class ModelConfigKaraokeConfidenceTests(unittest.TestCase):
         self.assertFalse(model.is_karaoke_curated)
 
 
+def _repo_with_mdx(*basenames: str) -> MagicMock:
+    repo = MagicMock()
+    repo.list_vr_models.return_value = []
+    repo.list_mdx_models.return_value = list(basenames)
+    repo.list_demucs_models.return_value = []
+    repo.mdx_name_select_MAPPER = {}
+    repo.mdx_hash_MAPPER = {}
+    repo.vr_hash_MAPPER = {}
+    repo.model_hash_table = {}
+    repo.on_unrecognized_model = None
+    repo.mdx_catalogue_display_index.return_value = {}
+    repo.vr_catalogue_display_index.return_value = {}
+    repo.demucs_catalogue_display_index.return_value = {}
+    return repo
+
+
+class NestedCanonicalModelConfigTests(unittest.TestCase):
+    """Canonical settings IDs must not be treated as ensemble member tags."""
+
+    def _capture_config(self):
+        from core.model_data import ModelConfig as RealConfig
+
+        captured: dict[str, object] = {}
+
+        def wrapper(*args: typing.Any, **kwargs: typing.Any):
+            model = RealConfig(*args, **kwargs)
+            captured["process_method"] = model.process_method
+            captured["has_model_path"] = hasattr(model, "model_path")
+            return model
+
+        return captured, wrapper
+
+    def test_vocal_splitter_canonical_id_does_not_crash(self) -> None:
+        from core.model_data import process_determine_vocal_split_model
+
+        settings = Settings.defaults()
+        settings.process.vocal_splitter_enabled = True
+        settings.process.vocal_splitter = "mdx:KaraokeFusion"
+        repo = _repo_with_mdx("KaraokeFusion")
+        captured, wrapper = self._capture_config()
+
+        with patch("core.model_data.ModelConfig", side_effect=wrapper), patch(
+            "core.model_display.map_basenames_to_display",
+            side_effect=lambda names, *args, **kwargs: list(names),
+        ), patch("core.apollo.list_apollo_models", return_value=[]):
+            process_determine_vocal_split_model(settings, repo)
+
+        self.assertEqual(captured.get("process_method"), MDX_ARCH_TYPE)
+        self.assertTrue(captured.get("has_model_path"))
+
+    def test_secondary_canonical_id_does_not_crash(self) -> None:
+        from bundled.constants import VOCAL_STEM
+        from core.model_data import process_determine_secondary_model
+
+        settings = Settings.defaults()
+        settings.mdx.voc_inst_secondary_model = "mdx:KaraokeFusion"
+        repo = _repo_with_mdx("KaraokeFusion")
+        captured, wrapper = self._capture_config()
+
+        with patch("core.model_data.ModelConfig", side_effect=wrapper), patch(
+            "core.model_display.map_basenames_to_display",
+            side_effect=lambda names, *args, **kwargs: list(names),
+        ), patch("core.apollo.list_apollo_models", return_value=[]):
+            process_determine_secondary_model(
+                settings, repo, MDX_ARCH_TYPE, VOCAL_STEM
+            )
+
+        self.assertEqual(captured.get("process_method"), MDX_ARCH_TYPE)
+        self.assertTrue(captured.get("has_model_path"))
+
+
 if __name__ == "__main__":
     unittest.main()

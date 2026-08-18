@@ -96,6 +96,8 @@ class IdentityCodeTests(unittest.TestCase):
     def test_backing_only_resolves_without_the_bv_flag(self) -> None:
         self.assertEqual(ensemble_stem_bucket("backing_only", stem_count=2), BUCKET_BV_VOCALS)
         self.assertEqual(ensemble_stem_bucket("Backing Vocals", stem_count=2), BUCKET_BV_VOCALS)
+        self.assertEqual(ensemble_stem_bucket("backing_vocal", stem_count=3), BUCKET_BV_VOCALS)
+        self.assertEqual(ensemble_stem_bucket("backing_vocals", stem_count=3), BUCKET_BV_VOCALS)
 
     def test_identity_code_is_not_folded_into_plain_vocals(self) -> None:
         self.assertNotEqual(ensemble_stem_bucket("lead_only", stem_count=2), BUCKET_VOCALS)
