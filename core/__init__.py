@@ -15,8 +15,11 @@ Importing this package must never import ``tkinter``; heavy ML dependencies
 """
 
 from .model_data import (
-    ENSEMBLE_CACHE_DIR,
     ModelRepository,
+)
+from .ensemble_service import (
+    EnsembleService,
+    ResolvedEnsemblePreset,
     canonical_saved_ensemble_name,
     delete_ensemble,
     list_saved_ensembles,
@@ -27,7 +30,7 @@ from .model_config import ModelConfig, assemble_model
 from .audio_tools import AudioToolRunner
 from .gpu import available_cuda_devices, list_gpu_devices
 from .job_runner import Ensembler, JobCallbacks, JobRunner
-from .paths import DATA_DIR, ensure_data_dir
+from .paths import DATA_DIR, ENSEMBLE_CACHE_DIR, ensure_data_dir
 from .process_data import ProcessData
 from .settings import Settings
 from .model_identity import ModelId, ModelIdentityService, ModelRecord
@@ -44,7 +47,6 @@ from .job_plan import (
 )
 from .audio_plan import AudioJobResolver, AudioJobSpec, PlannedAudioUnit, ResolvedAudioJob
 from .blocking_runner import BlockingRunner, RunResult, run_blocking
-from .ensemble_service import EnsembleService, ResolvedEnsemblePreset
 from .model_catalogue import CatalogEntryId, ModelCatalogueService, ModelCatalogueRecord
 from .model_registry import ModelRegistryService
 from .settings.job_resolution import SettingsLayer, SettingsResolver

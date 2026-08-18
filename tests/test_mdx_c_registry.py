@@ -334,7 +334,7 @@ class ModelDataCatalogFallbackTests(unittest.TestCase):
             model_data.is_dry_check = True
             model_data.repo = None
 
-            with patch("core.model_data.try_register_from_catalog") as mock_try:
+            with patch("core.model_config.config.try_register_from_catalog") as mock_try:
                 mock_try.return_value = {
                     "config_yaml": yaml_name,
                     "is_roformer": True,

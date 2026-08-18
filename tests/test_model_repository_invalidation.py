@@ -72,7 +72,7 @@ class InvalidateModelsTests(unittest.TestCase):
         cfg.is_dry_check = True
 
         with mock.patch(
-            "core.model_data.compute_checkpoint_hash",
+            "core.model_config.config.compute_checkpoint_hash",
             side_effect=AssertionError("invalidate_models must not force a re-hash"),
         ):
             cfg.get_model_hash()

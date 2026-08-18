@@ -2,13 +2,117 @@
 
 from __future__ import annotations
 
+import json
+import os
+import re
+import tempfile
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, List, Optional
 
+from . import paths
 from .ensemble_presets import curated_combo_label, curated_id_from_combo_label
-from .model_data import ModelRepository
 from .model_identity import ModelIdentityService
 from .stems import EnsemblePair, coerce_ensemble_pair
+
+_ENSEMBLE_NAME_RE = re.compile(r"^[A-Za-z0-9 _-]{1,25}$")
+
+
+def canonical_saved_ensemble_name(name: str) -> str:
+    """Validate and canonicalize a user-supplied saved-ensemble name."""
+    value = name.strip()
+    if not value or not _ENSEMBLE_NAME_RE.fullmatch(value):
+        raise ValueError(
+            "Ensemble names may contain only letters, numbers, spaces, "
+            "underscores, and hyphens (maximum 25 characters)."
+        )
+    if value.startswith("-") or value.endswith("-"):
+        raise ValueError("Ensemble names cannot start or end with a hyphen.")
+    return value.replace(" ", "_")
+
+
+def _saved_ensemble_path(name: str) -> str:
+    canonical = canonical_saved_ensemble_name(name)
+    cache_dir = paths.ENSEMBLE_CACHE_DIR
+    root = os.path.abspath(cache_dir)
+    path = os.path.abspath(os.path.join(root, f"{canonical}.json"))
+    if os.path.commonpath((root, path)) != root:
+        raise ValueError("Ensemble path escapes the ensemble cache")
+    return path
+
+
+def list_saved_ensembles() -> List[str]:
+    """Return the names of every saved ensemble (UVR's ``last_found_ensembles``)."""
+    cache_dir = paths.ENSEMBLE_CACHE_DIR
+    if not os.path.isdir(cache_dir):
+        return []
+    names = []
+    for entry in os.listdir(cache_dir):
+        if not entry.lower().endswith(".json"):
+            continue
+        stem = os.path.splitext(entry)[0]
+        try:
+            canonical = canonical_saved_ensemble_name(stem)
+        except ValueError:
+            continue
+        if canonical == stem:
+            names.append(canonical)
+    return sorted(names)
+
+
+def save_ensemble(
+    name: str, ensemble_main_stem: Any, ensemble_type: str, selected_models: Any,
+    *, wav_ensemble: bool = False, save_all_outputs: bool = True,
+    identity_schema_version: int = 2,
+) -> str:
+    """Persist an ensemble (``ensemble_main_stem`` is an :class:`~core.stems.EnsemblePair` id)."""
+    pair = (
+        ensemble_main_stem
+        if isinstance(ensemble_main_stem, EnsemblePair)
+        else coerce_ensemble_pair(ensemble_main_stem)
+    )
+    saved_data = {
+        "ensemble_main_stem": pair.value,
+        "ensemble_type": ensemble_type,
+        "selected_models": list(selected_models),
+        "is_wav_ensemble": bool(wav_ensemble),
+        "save_all_outputs": bool(save_all_outputs),
+        "identity_schema_version": identity_schema_version,
+    }
+    path = _saved_ensemble_path(name)
+    cache_dir = paths.ENSEMBLE_CACHE_DIR
+    os.makedirs(cache_dir, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=f".{os.path.basename(path)}.", suffix=".tmp", dir=cache_dir
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as outfile:
+            json.dump(saved_data, outfile, indent=4)
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+    return path
+
+
+def load_ensemble(name: str) -> Optional[dict]:
+    """Load a saved ensemble's data (``selection_action_chosen_ensemble_load_saved``)."""
+    path = _saved_ensemble_path(name)
+    if os.path.isfile(path):
+        with open(path) as infile:
+            return json.load(infile)
+    return None
+
+
+def delete_ensemble(name: str) -> bool:
+    """Remove a saved ensemble file (UVR's ``deletion_entry``)."""
+    path = _saved_ensemble_path(name)
+    if os.path.isfile(path):
+        os.remove(path)
+        return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -27,11 +131,13 @@ class ResolvedEnsemblePreset:
 
 class EnsembleService:
     def __init__(self, repo: Any | None = None):
+        from .model_data import ModelRepository
+
         self.repo = repo or ModelRepository()
         self.identities = ModelIdentityService(self.repo)
 
     def resolve(self, name: str) -> ResolvedEnsemblePreset:
-        from . import ensemble_presets, model_data
+        from . import ensemble_presets
 
         raw = str(name or "").strip()
         if not raw:
@@ -46,7 +152,7 @@ class EnsembleService:
             if data is not None:
                 kind, preset_id, display = "curated", curated_id, curated_combo_label(curated_id)
         if data is None:
-            data = model_data.load_ensemble(raw)
+            data = load_ensemble(raw)
         if data is None:
             candidate = raw.replace(" ", "_")
             if candidate in ensemble_presets.list_curated_ensembles():
@@ -56,7 +162,7 @@ class EnsembleService:
         if data is None:
             known = [
                 *(curated_combo_label(item) for item in ensemble_presets.list_curated_ensembles()[:6]),
-                *model_data.list_saved_ensembles()[:6],
+                *list_saved_ensembles()[:6],
             ]
             raise ValueError(
                 f"unknown ensemble {raw!r}; available: "
@@ -107,8 +213,6 @@ class EnsembleService:
         algorithm: str, wav_ensemble: bool = False,
         save_all_outputs: bool = True, replace: bool = False,
     ) -> ResolvedEnsemblePreset:
-        from .model_data import load_ensemble, save_ensemble
-
         if load_ensemble(name) is not None and not replace:
             raise ValueError(f"ensemble {name!r} already exists; pass --replace")
         records = [self.identities.resolve(member) for member in members]
@@ -130,8 +234,6 @@ class EnsembleService:
 
     @staticmethod
     def delete(name: str) -> bool:
-        from .model_data import delete_ensemble
-
         return delete_ensemble(name)
 
 

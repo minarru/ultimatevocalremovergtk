@@ -75,7 +75,6 @@ class ModelConfigKaraokeConfidenceTests(unittest.TestCase):
 
     def _model(self) -> typing.Any:
         from types import SimpleNamespace
-        from core.model_data import _ModelConfigImplementation
 
         # Minimal stand-in with just the attributes check_if_karaokee_model
         # and apply_karaoke_metadata read/write.
@@ -90,52 +89,42 @@ class ModelConfigKaraokeConfidenceTests(unittest.TestCase):
             model_path=None,
         )
         # Bind the check_if_karaokee_model method so apply_karaoke_metadata can call it
-        model.check_if_karaokee_model = lambda: _ModelConfigImplementation.check_if_karaokee_model(model)  # type: ignore[arg-type]
+        model.check_if_karaokee_model = lambda: ModelConfig.check_if_karaokee_model(model)  # type: ignore[arg-type]
         return model
 
     def test_curated_hash_metadata_sets_curated_true(self) -> None:
-        from core.model_data import _ModelConfigImplementation
-
         model = self._model()
         model.model_data = {"is_karaoke": True}
-        _ModelConfigImplementation.check_if_karaokee_model(model)
+        ModelConfig.check_if_karaokee_model(model)
         self.assertTrue(model.is_karaoke)
         self.assertTrue(model.is_karaoke_curated)
 
     def test_curated_false_metadata_blocks_name_inference(self) -> None:
-        from core.model_data import _ModelConfigImplementation
-
         model = self._model()
         model.model_data = {"is_karaoke": False}
         model.model_name = "Karaoke-labelled model"
-        _ModelConfigImplementation.apply_karaoke_metadata(model)
+        ModelConfig.apply_karaoke_metadata(model)
         self.assertFalse(model.is_karaoke)
         self.assertTrue(model.is_karaoke_curated)
 
     def test_legacy_typo_false_metadata_blocks_name_inference(self) -> None:
-        from core.model_data import _ModelConfigImplementation
-
         model = self._model()
         model.model_data = {"is_karaokee": False}
         model.model_name = "Karaoke-labelled model"
-        _ModelConfigImplementation.apply_karaoke_metadata(model)
+        ModelConfig.apply_karaoke_metadata(model)
         self.assertFalse(model.is_karaoke)
         self.assertTrue(model.is_karaoke_curated)
 
     def test_guessed_from_name_sets_curated_false(self) -> None:
-        from core.model_data import _ModelConfigImplementation
-
         model = self._model()
         model.model_name = "BandSplit Roformer | Karaoke Frazer by becruily"
-        _ModelConfigImplementation.apply_karaoke_metadata(model)
+        ModelConfig.apply_karaoke_metadata(model)
         self.assertTrue(model.is_karaoke)
         self.assertFalse(model.is_karaoke_curated)
 
     def test_no_signal_leaves_both_false(self) -> None:
-        from core.model_data import _ModelConfigImplementation
-
         model = self._model()
-        _ModelConfigImplementation.apply_karaoke_metadata(model)
+        ModelConfig.apply_karaoke_metadata(model)
         self.assertFalse(model.is_karaoke)
         self.assertFalse(model.is_karaoke_curated)
 
@@ -238,9 +227,7 @@ class _FocusStub:
         self.demucs_stems = None
 
     def apply(self) -> None:
-        from core.model_data import _ModelConfigImplementation
-
-        _ModelConfigImplementation._apply_stem_focus(self)  # type: ignore[arg-type]
+        ModelConfig._apply_stem_focus(self)  # type: ignore[arg-type]
 
 
 class StemIdentityAssembleTests(unittest.TestCase):
@@ -250,12 +237,11 @@ class StemIdentityAssembleTests(unittest.TestCase):
         Native yaml/hash spelling must survive; the lead/backing concept is
         derived instead (see tests/test_vocal_split_stems.py).
         """
-        from core.model_data import _ModelConfigImplementation
         from core.stems import StemBucket, stem_concept
 
         stub = _FocusStub(Settings.defaults(), "vocals", "other")
         stub.is_vocal_split_model = True
-        _ModelConfigImplementation._apply_stem_focus(stub)  # type: ignore[arg-type]
+        ModelConfig._apply_stem_focus(stub)  # type: ignore[arg-type]
         self.assertEqual(stub.primary_stem, "vocals")
         self.assertEqual(stub.secondary_stem, "other")
         self.assertEqual(stem_concept(stub, "vocals"), StemBucket.LEAD_VOCALS)
