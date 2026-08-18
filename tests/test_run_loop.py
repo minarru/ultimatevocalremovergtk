@@ -6,6 +6,7 @@ import os
 import tempfile
 import unittest
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -18,25 +19,33 @@ class _Hooks:
 
     def __init__(self) -> None:
         self.before: list[str] = []
-        self.states: list = []
+        self.states: list[Any] = []
         self.mix_present_at_after_file: list[bool] = []
 
-    def before_file(self, runner, state) -> None:
+    def before_file(self, runner: Any, state: Any) -> None:
         self.before.append(state.audio_file)
 
-    def export_and_base(self, runner, state, model):
+    def export_and_base(self, runner: Any, state: Any, model: Any) -> tuple[str, str]:
         return "base", "/tmp"
 
-    def extra_process_data(self, runner, state, model) -> dict:
+    def extra_process_data(self, runner: Any, state: Any, model: Any) -> dict[str, bool]:
         return {"is_ensemble_master": False, "is_4_stem_ensemble": False}
 
-    def after_chunk(self, runner, state, model, stems, paths, chunked) -> None:
+    def after_chunk(
+        self,
+        runner: Any,
+        state: Any,
+        model: Any,
+        stems: Any,
+        paths: Any,
+        chunked: Any,
+    ) -> None:
         return
 
-    def after_model(self, runner, state, model) -> None:
+    def after_model(self, runner: Any, state: Any, model: Any) -> None:
         return
 
-    def after_file(self, runner, state) -> None:
+    def after_file(self, runner: Any, state: Any) -> None:
         self.mix_present_at_after_file.append(state.decoded_mix is not None)
         self.states.append(state)
 
@@ -113,11 +122,11 @@ class RunLoopLazyDecodeTests(unittest.TestCase):
         mix = np.zeros((2, 8), dtype=np.float32)
         events: list[str] = []
 
-        def _decode(path: str):
+        def _decode(path: str) -> np.ndarray:
             events.append(f"decode:{os.path.basename(path)}")
             return mix
 
-        def _run_sep(*_a, **_k):
+        def _run_sep(*_a: Any, **_k: Any) -> dict[str, Any]:
             events.append("run_separator")
             return {}
 
