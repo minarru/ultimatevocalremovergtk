@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from core.job_runner import _extract_stems
+from core.ensembler import _extract_stems
 
 
 class ExtractStemsTests(unittest.TestCase):

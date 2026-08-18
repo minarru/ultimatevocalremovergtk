@@ -1,7 +1,7 @@
 """Framework-agnostic Audio Tools backend.
 
 This is the Tk-free port of ``UVR.py``'s Audio Tools mode (the ``AudioTools``
-and manual-``Ensembler`` classes plus the ``process_tool_start`` orchestration).
+class plus the ``process_tool_start`` orchestration).
 It exposes a small set of pure functions for each tool and an
 :class:`AudioToolRunner` that drives them on a ``KThread`` worker, reporting
 progress / console / completion through the same :class:`core.JobCallbacks`
@@ -114,7 +114,7 @@ class AudioTools:
     def _save_format(self, save_path: str) -> None:
         save_format(save_path, self.save_format_sel, self.mp3_bit_set, self.flac_bit_set)
 
-    # -- Manual ensemble (port of ``Ensembler.ensemble_manual_process``) -------
+    # -- Manual ensemble -------------------------------------------------------
 
     def ensemble_manual(
         self,
