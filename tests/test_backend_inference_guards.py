@@ -144,7 +144,7 @@ class EnsembleArrayInputTests(unittest.TestCase):
 
 class CaptureEnsembleStemTests(unittest.TestCase):
     def test_capture_copies_buffers(self) -> None:
-        from core.job_runner import _capture_separator_stem_arrays
+        from core.ensembler import _capture_separator_stem_arrays
 
         sep = mock.Mock()
         arr = np.arange(6, dtype=np.float32).reshape(2, 3)
@@ -156,7 +156,7 @@ class CaptureEnsembleStemTests(unittest.TestCase):
         self.assertEqual(arr[0, 0], 0)  # copy, not view alias of buffer dict value
 
     def test_capture_empty_without_buffers(self) -> None:
-        from core.job_runner import _capture_separator_stem_arrays
+        from core.ensembler import _capture_separator_stem_arrays
 
         sep = mock.Mock(spec=[])
         self.assertEqual(_capture_separator_stem_arrays(sep), {})

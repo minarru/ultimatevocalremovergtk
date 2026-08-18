@@ -14,7 +14,7 @@ import typing
 import unittest
 
 from core.export_naming import format_stem_basename
-from core.job_runner import Ensembler
+from core.ensembler import Ensembler
 from core.model_stem_semantics import (
     BUCKET_INST_WITH_BV,
     BUCKET_LEAD_VOCALS,

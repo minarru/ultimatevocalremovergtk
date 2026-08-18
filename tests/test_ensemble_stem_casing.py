@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock
 
 from bundled.constants import VOCAL_STEM
-from core.job_runner import _capture_separator_stem_arrays, _ensemble_stem_bucket
+from core.ensembler import _capture_separator_stem_arrays, _ensemble_stem_bucket
 
 
 class EnsembleStemBucketTests(unittest.TestCase):
