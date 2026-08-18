@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional, Set
+from types import SimpleNamespace
+from typing import Any, Optional, Sequence, Set
 
 from bundled.constants import (
     ALL_STEMS,
@@ -19,10 +20,13 @@ from core.settings.model import Settings
 from core.stems import (
     EnsemblePair,
     StemBucket,
-    bucket_for_model_stem,
+    StemRoute,
+    StemSelectionStatus,
     concept_is,
+    derived_stem_route,
     exclusive_flags_for_pair,
-    focus_matches_stem,
+    model_stem_routes,
+    select_stem_routes,
 )
 
 _TOGGLE_ALL = "all"
@@ -99,83 +103,84 @@ def _persist_exclusive_choice(
     set_flat(settings, secondary_key, name == secondary_key)
 
 
-def _exclusive_name_from_focus(
-    settings: Any,
+def _route_model(
+    *,
+    primary: Optional[str] = None,
+    secondary: Optional[str] = None,
+    natives: tuple[str, ...] = (),
+    demucs_natives: tuple[str, ...] = (),
+    is_karaoke: bool = False,
+    is_bv: bool = False,
+    demucs_stem_count: int = 0,
+) -> Any:
+    """Duck-typed context for :func:`model_stem_routes` (not a dry ModelConfig)."""
+    return SimpleNamespace(
+        primary_stem=primary,
+        secondary_stem=secondary,
+        is_karaoke=is_karaoke,
+        is_bv_model=is_bv,
+        is_vocal_split_model=False,
+        mdx_model_stems=natives,
+        demucs_source_list=demucs_natives,
+        mdx_stem_count=len(natives),
+        demucs_stem_count=demucs_stem_count or len(demucs_natives),
+    )
+
+
+def _exclusive_inventory(
     *,
     primary_stem: Optional[str],
     secondary_stem_name: Optional[str],
-    primary_key: str,
-    secondary_key: str,
     is_karaoke: bool,
-    is_karaoke_curated: bool,
     is_bv: bool,
-    stem_count: int,
-    ensemble_pair: Optional[EnsemblePair] = None,
-) -> Optional[str]:
-    """Resolve the exclusive-mode combo choice from ``process.stem_focus``.
+    ensemble_pair: Optional[EnsemblePair],
+) -> tuple[StemRoute, ...]:
+    """Route inventory for exclusive Save Stems.
 
-    Returns ``None`` when no focus is recorded yet (caller falls back to
-    ``_exclusive_name_from_settings``'s legacy boolean-based read). Once a
-    focus is recorded, always returns a definite choice -- ``primary_key``/
-    ``secondary_key`` on a match, or ``_TOGGLE_ALL`` when neither of this
-    model's stems match (a different, unrelated pair type).
+    Ensemble pairs use derived bucket routes so native ``other`` is not
+    remapped to Instrumental by a 2-stem ``stem_count``.
     """
-    focus = getattr(settings.process, "stem_focus", "") or ""
-    if not focus:
-        return None
-    if ensemble_pair is not None:
-        flags = exclusive_flags_for_pair(focus, ensemble_pair)
-        if flags == (True, False):
-            return primary_key
-        if flags == (False, True):
-            return secondary_key
-        return _TOGGLE_ALL
-    ctx = {
-        "stem_count": stem_count,
-        "is_karaoke": is_karaoke,
-        "is_bv": is_bv,
-    }
-    if primary_stem and focus_matches_stem(focus, primary_stem, **ctx):
-        return primary_key
-    if secondary_stem_name and focus_matches_stem(focus, secondary_stem_name, **ctx):
-        return secondary_key
-    return _TOGGLE_ALL
-
-
-def _stem_focus_for_choice(
-    name: str,
-    *,
-    primary_stem: Optional[str],
-    secondary_stem_name: Optional[str],
-    primary_key: str,
-    secondary_key: str,
-    is_karaoke: bool,
-    is_karaoke_curated: bool,
-    is_bv: bool,
-    stem_count: int,
-    ensemble_pair: Optional[EnsemblePair] = None,
-) -> str:
-    """Focus tag to persist as ``process.stem_focus`` for an exclusive pick."""
     if ensemble_pair is not None:
         primary_b, secondary_b = ensemble_pair.buckets()
-        if name == primary_key and primary_b is not StemBucket.UNKNOWN:
-            return primary_b.value
-        if name == secondary_key and secondary_b is not StemBucket.UNKNOWN:
-            return secondary_b.value
-        return ""
-    if name == primary_key and primary_stem:
-        stem = primary_stem
-    elif name == secondary_key and secondary_stem_name:
-        stem = secondary_stem_name
-    else:
-        return ""
-    return _stem_focus_tag(
-        stem,
-        stem_count=stem_count,
-        is_karaoke=is_karaoke,
-        is_karaoke_curated=is_karaoke_curated,
-        is_bv=is_bv,
+        routes: list[StemRoute] = []
+        if primary_b is not StemBucket.UNKNOWN:
+            routes.append(
+                derived_stem_route(primary_b, label=primary_stem)
+            )
+        elif primary_stem:
+            routes.append(derived_stem_route(primary_stem, label=primary_stem))
+        if secondary_b is not StemBucket.UNKNOWN:
+            routes.append(
+                derived_stem_route(secondary_b, label=secondary_stem_name)
+            )
+        elif secondary_stem_name:
+            routes.append(
+                derived_stem_route(secondary_stem_name, label=secondary_stem_name)
+            )
+        return tuple(routes)
+    natives = tuple(
+        stem for stem in (primary_stem, secondary_stem_name) if stem
     )
+    if not natives:
+        return ()
+    return model_stem_routes(
+        _route_model(
+            primary=primary_stem,
+            secondary=secondary_stem_name,
+            natives=natives,
+            is_karaoke=is_karaoke,
+            is_bv=is_bv,
+        )
+    )
+
+
+def _route_for_native(
+    routes: Sequence[StemRoute], stem: str
+) -> Optional[StemRoute]:
+    for route in routes:
+        if route.native is not None and route.native.matches(stem):
+            return route
+    return None
 
 
 def _write_cli_exclusive(settings: Settings, primary: bool, secondary: bool) -> None:
@@ -276,10 +281,12 @@ class StemSelectionState:
         self.demucs_focus_map: dict[str, str] = {}
         self.custom_selected: Set[str] = set()
         self.custom_all = True
+        self.routes: tuple[StemRoute, ...] = ()
 
     def configure_hidden(self, *, has_model: bool = False) -> None:
         self.mode = "hidden"
         self.has_model = has_model
+        self.routes = ()
 
     def configure_exclusive(
         self,
@@ -306,6 +313,13 @@ class StemSelectionState:
         self.is_bv = is_bv
         self.stem_count = stem_count
         self.ensemble_pair = ensemble_pair
+        self.routes = _exclusive_inventory(
+            primary_stem=primary_stem,
+            secondary_stem_name=secondary_stem,
+            is_karaoke=is_karaoke,
+            is_bv=is_bv,
+            ensemble_pair=ensemble_pair,
+        )
 
     def configure_subset(
         self,
@@ -323,6 +337,17 @@ class StemSelectionState:
         self.subset_mode = _QUICK_ALL
         self.custom_selected = set()
         self.custom_all = True
+        natives = tuple(self.subset_stems)
+        self.routes = (
+            model_stem_routes(
+                _route_model(
+                    primary=natives[0] if natives else None,
+                    natives=natives,
+                )
+            )
+            if natives
+            else ()
+        )
 
     def configure_demucs(
         self,
@@ -339,6 +364,7 @@ class StemSelectionState:
         self.primary_key = primary_key
         self.secondary_key = secondary_key
         self.demucs_focus_map = {}
+        natives: list[str] = []
         for entry in focus_stems:
             if entry == ALL_STEMS:
                 self.demucs_focus_map[_QUICK_ALL] = ALL_STEMS
@@ -348,6 +374,73 @@ class StemSelectionState:
                 self.demucs_focus_map[_FOCUS_VOCALS] = _FOCUS_VOCALS
             else:
                 self.demucs_focus_map[entry] = entry
+                natives.append(entry)
+        self.routes = (
+            model_stem_routes(
+                _route_model(
+                    demucs_natives=tuple(natives),
+                    demucs_stem_count=self.demucs_stem_count,
+                )
+            )
+            if natives
+            else ()
+        )
+
+    def _primary_route(self) -> Optional[StemRoute]:
+        if not self.routes:
+            return None
+        if self.exclusive_primary:
+            match = _route_for_native(self.routes, self.exclusive_primary)
+            if match is not None:
+                return match
+        return self.routes[0]
+
+    def _secondary_route(self) -> Optional[StemRoute]:
+        if self.exclusive_secondary:
+            match = _route_for_native(self.routes, self.exclusive_secondary)
+            if match is not None:
+                return match
+        if len(self.routes) < 2:
+            return None
+        return self.routes[1]
+
+    def _concept_for_flag(self, flag: str) -> str:
+        if flag == self.primary_key:
+            route = self._primary_route()
+            return route.concept if route is not None else _TOGGLE_ALL
+        if flag == self.secondary_key:
+            route = self._secondary_route()
+            return route.concept if route is not None else _TOGGLE_ALL
+        return _TOGGLE_ALL
+
+    def _flag_name_for_route(self, route: StemRoute) -> str:
+        if self.ensemble_pair is not None:
+            flags = exclusive_flags_for_pair(route.concept, self.ensemble_pair)
+            if flags == (True, False):
+                return self.primary_key
+            if flags == (False, True):
+                return self.secondary_key
+            return _TOGGLE_ALL
+        primary = self._primary_route()
+        if primary is not None and primary.concept == route.concept:
+            return self.primary_key
+        secondary = self._secondary_route()
+        if secondary is not None and secondary.concept == route.concept:
+            return self.secondary_key
+        return _TOGGLE_ALL
+
+    def _concept_for_native(self, stem: str) -> str:
+        route = _route_for_native(self.routes, stem)
+        if route is not None:
+            return route.concept
+        count = self.demucs_stem_count if self.mode == "demucs" else self.stem_count
+        return _stem_focus_tag(
+            stem,
+            stem_count=count,
+            is_karaoke=self.is_karaoke,
+            is_karaoke_curated=self.is_karaoke_curated,
+            is_bv=self.is_bv,
+        )
 
     def vocal_stem_in_subset(self) -> Optional[str]:
         count = len(self.subset_stems)
@@ -426,27 +519,29 @@ class StemSelectionState:
 
     def read(self, settings: Any) -> ExclusiveView | SubsetView | DemucsView | None:
         if self.mode == "exclusive":
-            name = _exclusive_name_from_focus(
-                settings,
-                primary_stem=self.exclusive_primary,
-                secondary_stem_name=self.exclusive_secondary,
-                primary_key=self.primary_key,
-                secondary_key=self.secondary_key,
-                is_karaoke=self.is_karaoke,
-                is_karaoke_curated=self.is_karaoke_curated,
-                is_bv=self.is_bv,
-                stem_count=self.stem_count,
-                ensemble_pair=self.ensemble_pair,
-            )
-            if name is None:
-                name = _exclusive_name_from_settings(
+            focus = getattr(settings.process, "stem_focus", "") or ""
+            selection = select_stem_routes(self.routes, focus)
+            if selection.status is StemSelectionStatus.EMPTY:
+                flag = _exclusive_name_from_settings(
                     settings, self.primary_key, self.secondary_key
                 )
-            else:
+                return ExclusiveView(choice=self._concept_for_flag(flag))
+            if (
+                selection.status is StemSelectionStatus.MATCHED
+                and len(selection.routes) == 1
+            ):
+                route = selection.routes[0]
                 _persist_exclusive_choice(
-                    settings, self.primary_key, self.secondary_key, name
+                    settings,
+                    self.primary_key,
+                    self.secondary_key,
+                    self._flag_name_for_route(route),
                 )
-            return ExclusiveView(choice=name)
+                return ExclusiveView(choice=route.concept)
+            _persist_exclusive_choice(
+                settings, self.primary_key, self.secondary_key, _TOGGLE_ALL
+            )
+            return ExclusiveView(choice=_TOGGLE_ALL)
         if self.mode == "subset":
             mode, selected = self.stored_subset_selection(settings)
             self.subset_mode = mode
@@ -492,26 +587,38 @@ class StemSelectionState:
         view: ExclusiveView | SubsetView | DemucsView,
     ) -> None:
         if isinstance(view, ExclusiveView):
-            _persist_exclusive_choice(
-                settings, self.primary_key, self.secondary_key, view.choice
-            )
-            settings.process.stem_focus = _stem_focus_for_choice(
-                view.choice,
-                primary_stem=self.exclusive_primary,
-                secondary_stem_name=self.exclusive_secondary,
-                primary_key=self.primary_key,
-                secondary_key=self.secondary_key,
-                is_karaoke=self.is_karaoke,
-                is_karaoke_curated=self.is_karaoke_curated,
-                is_bv=self.is_bv,
-                stem_count=self.stem_count,
-                ensemble_pair=self.ensemble_pair,
-            )
+            self._write_exclusive(settings, view)
             return
         if isinstance(view, SubsetView):
             self._write_subset(settings, view)
             return
         self._write_demucs(settings, view)
+
+    def _write_exclusive(self, settings: Any, view: ExclusiveView) -> None:
+        if view.choice == _TOGGLE_ALL:
+            _persist_exclusive_choice(
+                settings, self.primary_key, self.secondary_key, _TOGGLE_ALL
+            )
+            settings.process.stem_focus = ""
+            return
+        selection = select_stem_routes(self.routes, view.choice)
+        if (
+            selection.status is not StemSelectionStatus.MATCHED
+            or len(selection.routes) != 1
+        ):
+            _persist_exclusive_choice(
+                settings, self.primary_key, self.secondary_key, _TOGGLE_ALL
+            )
+            settings.process.stem_focus = ""
+            return
+        route = selection.routes[0]
+        settings.process.stem_focus = route.concept
+        _persist_exclusive_choice(
+            settings,
+            self.primary_key,
+            self.secondary_key,
+            self._flag_name_for_route(route),
+        )
 
     def _write_subset(self, settings: Any, view: SubsetView) -> None:
         if view.mode != _SUBSET_CUSTOM:
@@ -546,14 +653,7 @@ class StemSelectionState:
             settings.mdx.stems_selected = selected
             settings.mdx.stems = selected[0] if len(selected) == 1 else ALL_STEMS
             if len(selected) == 1:
-                bucket = bucket_for_model_stem(
-                    selected[0], stem_count=len(self.subset_stems)
-                )
-                settings.process.stem_focus = (
-                    bucket.value
-                    if bucket is not StemBucket.UNKNOWN
-                    else f"raw:{selected[0].strip().casefold()}"
-                )
+                settings.process.stem_focus = self._concept_for_native(selected[0])
             else:
                 settings.process.stem_focus = ""
         set_flat(settings, self.primary_key, False)
@@ -587,13 +687,7 @@ class StemSelectionState:
                 settings, self.primary_key, self.secondary_key, name
             )
             if name == self.primary_key:
-                settings.process.stem_focus = _stem_focus_tag(
-                    active,
-                    stem_count=self.demucs_stem_count,
-                    is_karaoke=False,
-                    is_karaoke_curated=False,
-                    is_bv=False,
-                )
+                settings.process.stem_focus = self._concept_for_native(active)
             elif name == self.secondary_key:
                 settings.process.stem_focus = _stem_focus_tag(
                     secondary_stem(active),
@@ -607,13 +701,7 @@ class StemSelectionState:
             return
         set_flat(settings, self.primary_key, True)
         set_flat(settings, self.secondary_key, False)
-        settings.process.stem_focus = _stem_focus_tag(
-            active,
-            stem_count=self.demucs_stem_count,
-            is_karaoke=False,
-            is_karaoke_curated=False,
-            is_bv=False,
-        )
+        settings.process.stem_focus = self._concept_for_native(active)
 
     def ensure_demucs_export_defaults(self, settings: Any) -> None:
         """When a native-stem focus first shows the export filter, default to primary-only."""

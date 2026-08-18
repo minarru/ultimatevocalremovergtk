@@ -4,7 +4,7 @@ from __future__ import annotations
 import typing
 
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from gi.repository import Adw, Gtk
 
@@ -49,6 +49,7 @@ from core.stem_selection import (
 from core.stems import (
     EnsemblePair,
     StemBucket,
+    StemRoute,
     bucket_for_model_stem,
     canonical_stem_alias,
     concept_is,
@@ -214,6 +215,7 @@ def build_stem_only_options(
     primary_key: str,
     secondary_key: str,
     stem_label_overrides: Optional[Dict[str, str]] = None,
+    routes: Optional[Sequence[StemRoute]] = None,
 ) -> List[StemOnlyOption]:
     """Build export entries for All Stems + each stem's Only option."""
     options = [
@@ -224,6 +226,9 @@ def build_stem_only_options(
             (primary_stem, primary_key),
             (secondary_stem, secondary_key),
         ]
+        option_ids = _exclusive_option_ids(
+            primary_stem, secondary_stem, primary_key, secondary_key, routes
+        )
         if stem_label_overrides:
             entries.sort(
                 key=lambda entry: (
@@ -249,7 +254,7 @@ def build_stem_only_options(
             display = stem_display_label(stem, overrides=stem_label_overrides)
             options.append(
                 StemOnlyOption(
-                    key,
+                    option_ids.get(stem, key),
                     stem_only_tooltip(stem, overrides=stem_label_overrides),
                     display,
                     stem_only_icon(stem),
@@ -276,6 +281,35 @@ def build_stem_only_options(
             )
         )
     return options
+
+
+def _exclusive_option_ids(
+    primary_stem: str,
+    secondary_stem: str,
+    primary_key: str,
+    secondary_key: str,
+    routes: Optional[Sequence[StemRoute]],
+) -> Dict[str, str]:
+    ids = {primary_stem: primary_key, secondary_stem: secondary_key}
+    if not routes:
+        return ids
+    unused = list(routes)
+    for stem in (primary_stem, secondary_stem):
+        match = next(
+            (
+                route
+                for route in unused
+                if route.native is not None and route.native.matches(stem)
+            ),
+            None,
+        )
+        if match is not None:
+            ids[stem] = match.concept
+            unused.remove(match)
+    for stem in (primary_stem, secondary_stem):
+        if ids[stem] in (primary_key, secondary_key) and unused:
+            ids[stem] = unused.pop(0).concept
+    return ids
 
 
 def _fill_export_combo(row: Adw.ComboRow, options: List[StemOnlyOption]) -> Dict[str, StemOnlyOption]:
@@ -604,6 +638,7 @@ class SaveStemsSection:
             primary_key=primary_key,
             secondary_key=secondary_key,
             stem_label_overrides=stem_label_overrides,
+            routes=self._state.routes,
         )
         was_loading = self._loading
         self._loading = True
