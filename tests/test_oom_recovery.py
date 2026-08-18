@@ -10,6 +10,7 @@ from typing import Any, Optional
 from unittest.mock import MagicMock, patch
 
 from core.job_runner import JobCallbacks, JobRunner
+from core.separator_run import run_separator
 from core.oom_choice import (
     OOM_CHOICE_AUTO,
     OOM_CHOICE_EXPORT,
@@ -142,9 +143,9 @@ class JobRunnerOomRecoveryTests(unittest.TestCase):
             mdx_c_configs=SimpleNamespace(inference=SimpleNamespace(dim_t=256)),
         )
 
-    @patch.object(JobRunner, "_prepare_separator_vram")
-    @patch("core.job_runner._release_inference_resources")
-    @patch("core.job_runner.release_separator")
+    @patch("core.separator_run.prepare_separator_vram")
+    @patch("core.separator_run._release_inference_resources")
+    @patch("core.separator_run.release_separator")
     def test_retry_uses_reduced_segment_without_persisting(
         self, _release_sep: Any, _release_inf: Any, _prep_vram: Any
     ) -> None:
@@ -163,7 +164,8 @@ class JobRunnerOomRecoveryTests(unittest.TestCase):
 
         callbacks = JobCallbacks(on_oom_choice=on_choice, on_console=lambda _t: None)
         seperator = rebuild()
-        stems = self.runner._run_seperator(
+        stems = run_separator(
+            self.runner,
             seperator,
             callbacks=callbacks,
             model=model,
@@ -175,9 +177,9 @@ class JobRunnerOomRecoveryTests(unittest.TestCase):
         self.assertEqual(self.runner._mdx_segment_override, 1088)
         self.assertIn(1088, builds)
 
-    @patch.object(JobRunner, "_prepare_separator_vram")
-    @patch("core.job_runner._release_inference_resources")
-    @patch("core.job_runner.release_separator")
+    @patch("core.separator_run.prepare_separator_vram")
+    @patch("core.separator_run._release_inference_resources")
+    @patch("core.separator_run.release_separator")
     def test_stop_raises_process_stopped(
         self, _release_sep: Any, _release_inf: Any, _prep_vram: Any
     ) -> None:
@@ -191,7 +193,8 @@ class JobRunnerOomRecoveryTests(unittest.TestCase):
 
         callbacks = JobCallbacks(on_oom_choice=on_choice, on_console=lambda _t: None)
         with self.assertRaises(ProcessStopped):
-            self.runner._run_seperator(
+            run_separator(
+                self.runner,
                 rebuild(),
                 callbacks=callbacks,
                 model=model,
@@ -199,9 +202,9 @@ class JobRunnerOomRecoveryTests(unittest.TestCase):
                 rebuild=rebuild,
             )
 
-    @patch.object(JobRunner, "_prepare_separator_vram")
-    @patch("core.job_runner._release_inference_resources")
-    @patch("core.job_runner.release_separator")
+    @patch("core.separator_run.prepare_separator_vram")
+    @patch("core.separator_run._release_inference_resources")
+    @patch("core.separator_run.release_separator")
     def test_auto_retries_then_reraises(
         self, _release_sep: Any, _release_inf: Any, _prep_vram: Any
     ) -> None:
@@ -212,7 +215,8 @@ class JobRunnerOomRecoveryTests(unittest.TestCase):
 
         callbacks = JobCallbacks(on_console=lambda _t: None)  # no on_oom_choice → auto
         with self.assertRaises(_OomError):
-            self.runner._run_seperator(
+            run_separator(
+                self.runner,
                 rebuild(),
                 callbacks=callbacks,
                 model=model,
@@ -221,10 +225,10 @@ class JobRunnerOomRecoveryTests(unittest.TestCase):
             )
         self.assertIsNotNone(self.runner._mdx_segment_override)
 
-    @patch.object(JobRunner, "_prepare_separator_vram")
+    @patch("core.separator_run.prepare_separator_vram")
     @patch("core.job_runner._write_captured_stems")
-    @patch("core.job_runner._release_inference_resources")
-    @patch("core.job_runner.release_separator")
+    @patch("core.separator_run._release_inference_resources")
+    @patch("core.separator_run.release_separator")
     def test_export_writes_salvage_and_stops(
         self,
         _release_sep: Any,
@@ -253,7 +257,8 @@ class JobRunnerOomRecoveryTests(unittest.TestCase):
         console: list[str] = []
         callbacks = JobCallbacks(on_oom_choice=on_choice, on_console=console.append)
         with self.assertRaises(ProcessStopped):
-            self.runner._run_seperator(
+            run_separator(
+                self.runner,
                 rebuild(),
                 callbacks=callbacks,
                 model=model,
