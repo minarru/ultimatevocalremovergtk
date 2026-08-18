@@ -17,16 +17,22 @@ from bundled.constants import (
     VOCAL_STEM,
 )
 from core.settings.coerce import coerce_field
+from core.settings import Settings
 from core.stems import (
     EnsemblePair,
     StemBucket,
+    StemId,
     StemLiteral,
+    StemRoute,
+    StemRouteKind,
     bucket_for_model_stem,
     coerce_ensemble_pair,
     ensemble_pair_choices,
     export_stem_label,
+    exports_named_stem,
     filename_tag,
     model_stem_routes,
+    run_export_routes,
     select_stem_routes,
     ui_label,
 )
@@ -174,6 +180,92 @@ class StemsModuleBoundaryTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertNotIn("model_stem_semantics", source)
+
+
+def _route(name: str, concept: str) -> StemRoute:
+    return StemRoute(
+        native=StemId(name),
+        concept=concept,
+        label=name,
+        filename_tag=name,
+        kind=StemRouteKind.NATIVE,
+    )
+
+
+class RunExportRoutesTests(unittest.TestCase):
+    def _model(self, **kwargs: object):
+        from types import SimpleNamespace
+
+        values: dict[str, object] = dict(
+            available_stem_routes=(),
+            selected_stem_routes=(),
+            is_vocal_split_model=False,
+            is_ensemble_mode=False,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_inst_only_voc_splitter=False,
+            is_sec_bv_rebalance=False,
+            settings=Settings.defaults(),
+            primary_stem="vocals",
+            secondary_stem="other",
+            is_karaoke=False,
+            is_bv_model=False,
+            mdx_stem_count=2,
+            demucs_stem_count=0,
+            mdx_model_stems=[],
+            demucs_source_list=[],
+        )
+        values.update(kwargs)
+        return SimpleNamespace(**values)
+
+    def test_splitter_emits_full_inventory(self) -> None:
+        available = (
+            _route("vocals", StemBucket.VOCALS.value),
+            _route("other", StemBucket.INSTRUMENTAL.value),
+        )
+        model = self._model(
+            available_stem_routes=available,
+            selected_stem_routes=available[:1],
+            is_vocal_split_model=True,
+        )
+        self.assertEqual(run_export_routes(model), available)
+
+    def test_four_stem_ensemble_member_emits_full_inventory(self) -> None:
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = EnsemblePair.FOUR_STEM
+        available = (
+            _route("drums", StemBucket.DRUMS.value),
+            _route("bass", StemBucket.BASS.value),
+            _route("other", StemBucket.OTHER.value),
+            _route("vocals", StemBucket.VOCALS.value),
+        )
+        model = self._model(
+            available_stem_routes=available,
+            selected_stem_routes=(available[1],),
+            is_ensemble_mode=True,
+            settings=settings,
+            mdx_stem_count=4,
+        )
+        self.assertEqual(run_export_routes(model), available)
+        self.assertTrue(exports_named_stem(model, "vocals"))
+        self.assertTrue(exports_named_stem(model, "bass"))
+
+    def test_focused_run_uses_selected(self) -> None:
+        available = (
+            _route("drums", StemBucket.DRUMS.value),
+            _route("bass", StemBucket.BASS.value),
+            _route("other", StemBucket.OTHER.value),
+            _route("vocals", StemBucket.VOCALS.value),
+        )
+        selected = (available[1],)
+        model = self._model(
+            available_stem_routes=available,
+            selected_stem_routes=selected,
+            mdx_stem_count=4,
+        )
+        self.assertEqual(run_export_routes(model), selected)
+        self.assertTrue(exports_named_stem(model, "bass"))
+        self.assertFalse(exports_named_stem(model, "vocals"))
 
 
 if __name__ == "__main__":

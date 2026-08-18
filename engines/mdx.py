@@ -12,6 +12,7 @@ from onnx2pytorch import ConvertModel
 from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import trace_phase
+from core.stems import exports_named_stem, run_export_routes
 from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
@@ -149,10 +150,8 @@ class SeperateMDX(SeperateAttributes):
         if self.is_secondary_model_activated and self.secondary_model:
             self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, self.process_data, main_process_method=self.process_method, main_model_primary=self.primary_stem)
         
-        self.begin_save_phase(
-            int(not self.is_primary_stem_only) + int(not self.is_secondary_stem_only) or 1
-        )
-        if not self.is_primary_stem_only:
+        self.begin_save_phase(len(run_export_routes(self)) or 1)
+        if exports_named_stem(self, self.secondary_stem):
             secondary_stem_path = self.stem_export_wav_path(self.secondary_stem)
             if not isinstance(self.secondary_source, np.ndarray):
                 # Match-mix demix only affects invert-spec; defaults use mix-source subtraction.
@@ -168,7 +167,7 @@ class SeperateMDX(SeperateAttributes):
             
             self.secondary_source_map = self.final_process(secondary_stem_path, self.secondary_source, self.secondary_source_secondary, self.secondary_stem, samplerate)
         
-        if not self.is_secondary_stem_only:
+        if exports_named_stem(self, self.primary_stem):
             primary_stem_path = self.stem_export_wav_path(self.primary_stem)
 
             if not isinstance(self.primary_source, np.ndarray):

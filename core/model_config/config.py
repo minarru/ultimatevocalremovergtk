@@ -478,8 +478,11 @@ class ModelConfig:
     def _apply_stem_focus(self) -> None:
         """Honor ``process.stem_focus`` as the exclusive-pick (GTK and CLI).
 
-        Vocal splitters keep both lead/backing writes; skip them. Empty focus
-        leaves the positional booleans unchanged.
+        Fills ``available_stem_routes`` / ``selected_stem_routes`` only.
+        Native yaml keys and exclusive-save flags stay as assembled from
+        settings; engines read the routes. Vocal splitters still receive a
+        selection, but :func:`~core.stems.run_export_routes` writes the full
+        inventory.
 
         Resolution is **per-config only**: assembling a model must never write
         back into ``self.settings``. One ``Settings`` assembles many configs
@@ -488,117 +491,57 @@ class ModelConfig:
         ``estimate_workload`` also assemble from.
         """
         from core.stems import (
-            StemBucket,
-            StemRouteKind,
-            exclusive_flags_for_model,
+            StemSelectionStatus,
+            coerce_ensemble_pair,
             model_stem_routes,
+            routes_for_ensemble_pair,
             select_stem_routes,
-            ui_label,
         )
 
         focus = str(getattr(self.settings.process, "stem_focus", "") or "")
         routes = model_stem_routes(self)
         selection = select_stem_routes(routes, focus)
         self.available_stem_routes = routes
-        self.selected_stem_routes = selection.routes
-        if self.is_vocal_split_model:
-            return
-        if not focus:
-            return
+        if selection.status is StemSelectionStatus.UNMATCHED:
+            selected = tuple(
+                route for route in routes if route.selected_by_default
+            ) or tuple(routes)
+        else:
+            selected = selection.routes
 
-        # Four/multi-stem ensemble focus filters final ensemble writes. Members
-        # must retain their complete outputs for aggregation.
-        if bool(getattr(self, "is_ensemble_mode", False)):
-            from core.stems import coerce_ensemble_pair
+        # Dual-stem ensemble members default to the pair, not a 4-stem model's
+        # full native inventory. Four/multi-stem members keep the selection for
+        # final combine; ``run_export_routes`` emits the full inventory.
+        if (
+            not self.is_vocal_split_model
+            and bool(getattr(self, "is_ensemble_mode", False))
+            and selection.status is not StemSelectionStatus.MATCHED
+        ):
+            pair = coerce_ensemble_pair(self.settings.ensemble.main_stem)
+            if not pair.is_multi_or_four():
+                pair_routes = routes_for_ensemble_pair(routes, pair, self)
+                if pair_routes:
+                    selected = pair_routes
 
-            if coerce_ensemble_pair(self.settings.ensemble.main_stem).is_multi_or_four():
-                return
+        self.selected_stem_routes = selected
 
-        if len(selection.routes) == 1:
-            route = selection.routes[0]
-            native = route.native.raw if route.native is not None else None
-            if (
-                self.process_method == MDX_ARCH_TYPE
-                and len(self.mdx_model_stems) > 2
-            ):
-                if native is not None:
-                    self.mdxnet_stems_selected = [native]
-                    self.mdxnet_stem_select = native
-                    self.primary_stem = native
-                    self.secondary_stem = secondary_stem(native)
-                    is_vocal_quick = (
-                        route.concept == StemBucket.VOCALS.value
-                        and (
-                            self.is_primary_stem_only
-                            or self.is_secondary_stem_only
-                        )
-                    )
-                    if not is_vocal_quick:
-                        self.is_primary_stem_only = False
-                        self.is_secondary_stem_only = False
-                    refreshed = model_stem_routes(self)
-                    self.available_stem_routes = refreshed
-                    self.selected_stem_routes = select_stem_routes(
-                        refreshed, focus
-                    ).routes
-                    return
-                if route.concept == StemBucket.INSTRUMENTAL.value:
-                    vocal = next(
-                        (
-                            candidate.native.raw
-                            for candidate in routes
-                            if candidate.native is not None
-                            and candidate.concept == StemBucket.VOCALS.value
-                        ),
-                        None,
-                    )
-                    if vocal is not None:
-                        self.mdxnet_stems_selected = [vocal]
-                        self.mdxnet_stem_select = vocal
-                        self.primary_stem = vocal
-                        self.secondary_stem = ui_label(StemBucket.INSTRUMENTAL)
-                        self.is_primary_stem_only = False
-                        self.is_secondary_stem_only = True
-                        return
-            if self.process_method == DEMUCS_ARCH_TYPE:
-                if native is not None:
-                    self.demucs_stems = native
-                    self.primary_stem = native
-                    self.secondary_stem = secondary_stem(native)
-                    self.is_primary_stem_only = True
-                    self.is_secondary_stem_only = False
-                    return
-                if route.kind is StemRouteKind.DERIVED:
-                    self.is_primary_stem_only = False
-                    self.is_secondary_stem_only = True
-                    return
+    def _exclusive_sides_from_routes(self) -> tuple[bool, bool]:
+        """``(primary_only, secondary_only)`` from a single selected route.
 
-        flags = exclusive_flags_for_model(self, focus)
-        if flags is None:
-            return
-        primary_only, secondary_only = flags
-        self.is_primary_stem_only = primary_only
-        self.is_secondary_stem_only = secondary_only
-        chosen = None
-        if primary_only:
-            chosen = self.primary_stem
-        elif secondary_only:
-            chosen = self.secondary_stem
-        if chosen:
-            self.mdxnet_stem_select = chosen
-        if self.process_method == DEMUCS_ARCH_TYPE:
-            from core.stems import focus_bucket
+        Native subset picks (bass on a 4-stem MDX-C model) are not a dual-stem
+        exclusive, so both sides stay false — matching the old assemble overlay.
+        """
+        from core.stems import route_matches_stem
 
-            wanted = focus_bucket(focus)
-            if wanted in (
-                StemBucket.VOCALS,
-                StemBucket.LEAD_VOCALS,
-                StemBucket.BACKING_VOCALS,
-                StemBucket.INSTRUMENTAL,
-            ):
-                self.demucs_stems = VOCAL_STEM
-            elif wanted is not StemBucket.UNKNOWN:
-                self.demucs_stems = ui_label(wanted)
+        selected = tuple(getattr(self, "selected_stem_routes", ()) or ())
+        if len(selected) != 1:
+            return False, False
+        route = selected[0]
+        if route_matches_stem(route, self.primary_stem, self):
+            return True, False
+        if route_matches_stem(route, self.secondary_stem, self):
+            return False, True
+        return False, False
 
     # -- Secondary / vocal-split / pre-process resolution -----------------------
     # Faithful Tk-free ports of ``MainWindow.process_determine_*`` /
@@ -619,13 +562,14 @@ class ModelConfig:
     def secondary_model_data(self, primary_stem: typing.Any):
         from ..model_data import process_determine_secondary_model
 
+        primary_only, secondary_only = self._exclusive_sides_from_routes()
         secondary_model, secondary_model_scale = process_determine_secondary_model(
             self.settings,
             self.repo,
             self.process_method,
             primary_stem,
-            self.is_primary_stem_only,
-            self.is_secondary_stem_only,
+            primary_only,
+            secondary_only,
         )
         self.secondary_model = secondary_model
         self.secondary_model_scale = secondary_model_scale
@@ -666,12 +610,20 @@ class ModelConfig:
             primary_for_label = self.primary_stem
             secondary_for_label = self.secondary_stem
 
-        # The resolved per-config flags, not the raw settings: they already
-        # encode the demucs/ensemble selection this used to redo by hand, and
-        # they carry ``process.stem_focus`` (applied in ``_apply_stem_focus``),
-        # which settings alone no longer reflect.
-        stem_primary_bool = bool(self.is_primary_stem_only)
-        stem_secondary_bool = bool(self.is_secondary_stem_only)
+        # A single selected route that names this pair's primary/secondary is
+        # the exclusive pick (CLI ``--stems vocals`` included). Native subset
+        # picks such as bass do not count — see ``_exclusive_sides_from_routes``.
+        from core.stems import route_matches_stem
+
+        selected = tuple(getattr(self, "selected_stem_routes", ()) or ())
+        stem_primary_bool = False
+        stem_secondary_bool = False
+        if len(selected) == 1:
+            route = selected[0]
+            stem_primary_bool = route_matches_stem(route, primary_for_label, self)
+            stem_secondary_bool = (not stem_primary_bool) and route_matches_stem(
+                route, secondary_for_label, self
+            )
 
         is_save_inst_splitter = self.settings.process.save_inst_vocal_splitter
         has_voc_splitter = self.settings.process.vocal_splitter != NO_MODEL

@@ -90,6 +90,12 @@ class SeperateAttributes:
         self.mdx_c_configs: Any = model_data.mdx_c_configs
         self.mdxnet_stem_select = model_data.mdxnet_stem_select
         self.mdxnet_stems_selected = getattr(model_data, "mdxnet_stems_selected", []) or []
+        self.available_stem_routes = tuple(
+            getattr(model_data, "available_stem_routes", ()) or ()
+        )
+        self.selected_stem_routes = tuple(
+            getattr(model_data, "selected_stem_routes", ()) or ()
+        )
         self.mixer_path = model_data.mixer_path
         self.model_samplerate = model_data.model_samplerate
         self.model_capacity = model_data.model_capacity
