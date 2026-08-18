@@ -11,3 +11,7 @@ Loaded when working under `ui/`. Layer rules, invariants and repo workflow live 
 - `Adw.Dialog` needs `set_size_request(...)`. `set_content_width`/`set_content_height` are only *preferred* sizes; without a minimum libadwaita warns ("does not have a minimum size") and can allocate below the content's minimum, clipping children.
 - Drive the real app non-interactively for measurement: build `UVRApplication()`, arm `GLib.timeout_add(ms, lambda: (app.quit(), False)[1])`, then `app.run([])`. Scratch scripts need `PYTHONPATH=.` — `bundled` is not installed into the venv.
 - `cProfile` on Python 3.14 instruments **every** thread, not just the caller. A naive startup profile blames the main loop for the `uvr-separate-warm` thread's ~1.6 s torch import — which is correctly lazy. Attribute per call (`threading.current_thread() is MAIN`) before believing that anything blocks the main loop.
+
+## Settings coupling
+
+- The Save-stems widget ([ui/widgets/stem_only.py](widgets/stem_only.py)) writes `process.stem_focus` in lockstep with the exclusive `is_primary_stem_only` / `is_secondary_stem_only` booleans, in every branch — including the ones that clear it back to `""`. Miss a branch and the widget looks right while `--profile gui` and the plan-time diagnostics inherit a stale concept.
