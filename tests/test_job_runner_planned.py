@@ -172,7 +172,7 @@ class JobRunnerPlannedTests(unittest.TestCase):
                                     runner, "_count_true_models", return_value=1
                                 ):
                                     with patch(
-                                        "core.job_runner._release_inference_resources"
+                                        "core.run_loop._release_inference_resources"
                                     ):
                                         runner._run([], JobCallbacks())
         resolve.assert_not_called()
@@ -196,7 +196,7 @@ class JobRunnerPlannedTests(unittest.TestCase):
                                         runner, "_count_true_models", return_value=2
                                     ):
                                         with patch(
-                                            "core.job_runner._release_inference_resources"
+                                            "core.run_loop._release_inference_resources"
                                         ):
                                             runner._run_ensemble([], JobCallbacks())
         assemble.assert_not_called()

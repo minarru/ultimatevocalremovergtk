@@ -24,6 +24,74 @@ def clamp_overlap_seconds(chunk_seconds: float, overlap_seconds: float) -> float
     return max(0.0, min(overlap, chunk * 0.5 - 1e-6))
 
 
+def chunk_bounds_for_samples(
+    total_samples: int,
+    *,
+    sample_rate: int = DEFAULT_SAMPLE_RATE,
+    chunk_seconds: float,
+    overlap_seconds: float = 0.0,
+) -> List[Tuple[int, int]]:
+    """Return ``(start, end)`` sample windows matching :func:`slice_mix`.
+
+    When ``chunk_seconds`` is ``<= 0`` or the mix fits in one chunk, returns a
+    single window covering ``[0, total_samples]``.
+    """
+    total = int(total_samples)
+    if total <= 0:
+        return [(0, 0)]
+
+    try:
+        chunk_s = float(chunk_seconds)
+    except (TypeError, ValueError):
+        chunk_s = 0.0
+    if chunk_s <= 0:
+        return [(0, total)]
+
+    chunk_samples = max(1, int(round(chunk_s * sample_rate)))
+    if total <= chunk_samples:
+        return [(0, total)]
+
+    overlap_s = clamp_overlap_seconds(chunk_s, overlap_seconds)
+    overlap_samples = max(0, int(round(overlap_s * sample_rate)))
+    if overlap_samples >= chunk_samples:
+        overlap_samples = max(0, chunk_samples // 2)
+    step = max(1, chunk_samples - overlap_samples)
+
+    bounds: List[Tuple[int, int]] = []
+    start = 0
+    while start < total:
+        end = min(total, start + chunk_samples)
+        if end - start < chunk_samples and bounds:
+            # Final short remainder: pull a full window ending at ``total``.
+            start = max(0, total - chunk_samples)
+            end = total
+            bounds.append((start, end))
+            break
+        bounds.append((start, end))
+        if end >= total:
+            break
+        start += step
+    return bounds
+
+
+def chunk_count_for_samples(
+    total_samples: int,
+    *,
+    sample_rate: int = DEFAULT_SAMPLE_RATE,
+    chunk_seconds: float,
+    overlap_seconds: float = 0.0,
+) -> int:
+    """Number of windows :func:`slice_mix` would emit for ``total_samples``."""
+    return len(
+        chunk_bounds_for_samples(
+            total_samples,
+            sample_rate=sample_rate,
+            chunk_seconds=chunk_seconds,
+            overlap_seconds=overlap_seconds,
+        )
+    )
+
+
 def slice_mix(
     mix: np.ndarray,
     *,
@@ -44,41 +112,19 @@ def slice_mix(
         # Time-major fallback → channel-first.
         audio = audio.T
     total = int(audio.shape[1])
-    if total <= 0:
-        return [(0, 0, audio)]
-
-    try:
-        chunk_s = float(chunk_seconds)
-    except (TypeError, ValueError):
-        chunk_s = 0.0
-    if chunk_s <= 0:
-        return [(0, total, audio)]
-
-    chunk_samples = max(1, int(round(chunk_s * sample_rate)))
-    if total <= chunk_samples:
-        return [(0, total, audio)]
-
-    overlap_s = clamp_overlap_seconds(chunk_s, overlap_seconds)
-    overlap_samples = max(0, int(round(overlap_s * sample_rate)))
-    if overlap_samples >= chunk_samples:
-        overlap_samples = max(0, chunk_samples // 2)
-    step = max(1, chunk_samples - overlap_samples)
-
-    chunks: List[Tuple[int, int, np.ndarray]] = []
-    start = 0
-    while start < total:
-        end = min(total, start + chunk_samples)
-        if end - start < chunk_samples and chunks:
-            # Final short remainder: pull a full window ending at ``total``.
-            start = max(0, total - chunk_samples)
-            end = total
-            chunks.append((start, end, np.array(audio[:, start:end], copy=True)))
-            break
-        chunks.append((start, end, np.array(audio[:, start:end], copy=True)))
-        if end >= total:
-            break
-        start += step
-    return chunks
+    bounds = chunk_bounds_for_samples(
+        total,
+        sample_rate=sample_rate,
+        chunk_seconds=chunk_seconds,
+        overlap_seconds=overlap_seconds,
+    )
+    if len(bounds) == 1:
+        start, end = bounds[0]
+        return [(start, end, audio)]
+    return [
+        (start, end, np.array(audio[:, start:end], copy=True))
+        for start, end in bounds
+    ]
 
 
 def concat_stems(

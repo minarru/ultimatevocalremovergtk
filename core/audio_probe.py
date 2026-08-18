@@ -48,3 +48,34 @@ def probe_audio(path: str) -> AudioProbeResult:
     except Exception as exc:
         return AudioProbeResult(False, error=f"{type(exc).__name__}: {exc}")
 
+
+def audio_duration_seconds(path: str) -> float | None:
+    """Return wall-clock duration from metadata, or ``None`` if unknown.
+
+    Does not decode PCM. Falls back through libsndfile, stdlib ``wave``, then
+    ``librosa.get_duration(path=)``. A missing or unreadable path is ``None``.
+    """
+    if not os.path.isfile(path):
+        return None
+    try:
+        import soundfile as sf
+
+        info = sf.info(path)
+        if info.samplerate:
+            return float(info.frames) / float(info.samplerate)
+    except Exception:
+        pass
+    try:
+        with contextlib.closing(wave.open(path, "r")) as handle:
+            rate = handle.getframerate()
+            if rate:
+                return handle.getnframes() / float(rate)
+    except Exception:
+        pass
+    try:
+        import librosa
+
+        return float(librosa.get_duration(path=path))
+    except Exception:
+        return None
+

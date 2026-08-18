@@ -7,6 +7,7 @@ import unittest
 import numpy as np
 
 from core.audio_chunking import (
+    chunk_count_for_samples,
     clamp_overlap_seconds,
     concat_stems,
     overlap_samples_for,
@@ -42,6 +43,43 @@ class SliceMixTests(unittest.TestCase):
         self.assertEqual(chunks[0][1] - chunks[0][0], sr)
         # Final sample of last chunk reaches the end.
         self.assertEqual(chunks[-1][1], mix.shape[1])
+
+
+class ChunkCountForSamplesTests(unittest.TestCase):
+    def test_matches_slice_mix_when_chunking_disabled(self) -> None:
+        mix = np.zeros((2, 44100), dtype=np.float64)
+        chunks = slice_mix(mix, chunk_seconds=0)
+        self.assertEqual(
+            chunk_count_for_samples(mix.shape[1], chunk_seconds=0),
+            len(chunks),
+        )
+
+    def test_matches_slice_mix_for_short_mix(self) -> None:
+        mix = np.zeros((2, 1000), dtype=np.float64)
+        chunks = slice_mix(mix, chunk_seconds=10, overlap_seconds=2)
+        self.assertEqual(
+            chunk_count_for_samples(
+                mix.shape[1], chunk_seconds=10, overlap_seconds=2
+            ),
+            len(chunks),
+        )
+
+    def test_matches_slice_mix_for_pulled_back_final_chunk(self) -> None:
+        sr = 100
+        mix = np.arange(23 * sr, dtype=np.float64)
+        mix = np.stack([mix, mix])
+        chunks = slice_mix(
+            mix, sample_rate=sr, chunk_seconds=10.0, overlap_seconds=2.0
+        )
+        self.assertEqual(
+            chunk_count_for_samples(
+                mix.shape[1],
+                sample_rate=sr,
+                chunk_seconds=10.0,
+                overlap_seconds=2.0,
+            ),
+            len(chunks),
+        )
 
 
 class ConcatStemsTests(unittest.TestCase):
