@@ -5,26 +5,27 @@ import unittest
 from unittest import mock
 
 from core.job_runner import JobRunner
+from core.separator_run import run_separator
 from core.settings import Settings
 
 
 class JobRunnerSeperatorTests(unittest.TestCase):
-    @mock.patch("core.job_runner.release_separator")
+    @mock.patch("core.separator_run.release_separator")
     def test_run_seperator_releases_in_finally(self, release_mock: mock.MagicMock) -> None:
         runner = JobRunner(Settings.defaults())
         separator = mock.MagicMock()
-        runner._run_seperator(separator)
+        run_separator(runner, separator)
         separator.seperate.assert_called_once_with()
         release_mock.assert_called_once_with(separator)
         self.assertIsNone(runner._active_separator)
 
-    @mock.patch("core.job_runner.release_separator")
+    @mock.patch("core.separator_run.release_separator")
     def test_run_seperator_releases_after_exception(self, release_mock: mock.MagicMock) -> None:
         runner = JobRunner(Settings.defaults())
         separator = mock.MagicMock()
         separator.seperate.side_effect = ValueError("fail")
         with self.assertRaises(ValueError):
-            runner._run_seperator(separator)
+            run_separator(runner, separator)
         release_mock.assert_called_once_with(separator)
         self.assertIsNone(runner._active_separator)
 
