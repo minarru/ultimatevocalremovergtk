@@ -571,7 +571,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.section._update_demucs_export_visibility(from_settings=False)
         set_combo_value(
             self.section._demucs_export_row,
-            "is_primary_stem_only_Demucs",
+            BASS_STEM,
         )
         self.section.persist_to_settings()
         self.assertEqual(self.settings.process.stem_focus, BASS_STEM)
@@ -587,7 +587,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.section._update_demucs_export_visibility(from_settings=False)
         set_combo_value(
             self.section._demucs_export_row,
-            "is_secondary_stem_only_Demucs",
+            "raw:no bass",
         )
         self.section.persist_to_settings()
         self.assertEqual(self.settings.process.stem_focus, "raw:no bass")

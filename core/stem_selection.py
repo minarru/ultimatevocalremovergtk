@@ -365,7 +365,6 @@ class StemSelectionState:
             elif entry == _FOCUS_VOCALS:
                 self.demucs_focus_map[_FOCUS_VOCALS] = _FOCUS_VOCALS
             else:
-                self.demucs_focus_map[entry] = entry
                 natives.append(entry)
         self.routes = (
             model_stem_routes(
@@ -377,6 +376,38 @@ class StemSelectionState:
             if natives
             else ()
         )
+        for entry in natives:
+            concept = self._concept_for_subset_token(entry)
+            route = _route_for_native(self.routes, entry)
+            persist = (
+                route.native.raw
+                if route is not None and route.native is not None
+                else entry
+            )
+            self.demucs_focus_map[concept] = persist
+
+    def demucs_export_routes(self, native: str) -> tuple[StemRoute, ...]:
+        return _exclusive_inventory(
+            primary_stem=native,
+            secondary_stem_name=secondary_stem(native),
+            is_karaoke=False,
+            is_bv=False,
+            ensemble_pair=None,
+        )
+
+    def _demucs_persist_native(self, active: str) -> str:
+        if active in self.demucs_focus_map:
+            return self.demucs_focus_map[active]
+        concept = self._concept_for_subset_token(active)
+        return self.demucs_focus_map.get(concept, active)
+
+    def export_choice_from_flag(self, native: str, flag: str) -> str:
+        inventory = self.demucs_export_routes(native)
+        if flag == self.primary_key and inventory:
+            return inventory[0].concept
+        if flag == self.secondary_key and len(inventory) > 1:
+            return inventory[1].concept
+        return _TOGGLE_ALL
 
     def _primary_route(self) -> Optional[StemRoute]:
         if not self.routes:
@@ -599,15 +630,16 @@ class StemSelectionState:
             elif focus_is_vocals and primary_on and not secondary_on:
                 active = _FOCUS_VOCALS
             else:
-                active = focus
+                active = self._concept_for_subset_token(str(focus))
             export_filter = self.demucs_needs_export_filter(active)
             if export_filter:
-                native = self.demucs_focus_value(active)
+                native = self._demucs_persist_native(active)
                 self.demucs_export_primary = native
                 self.demucs_export_secondary = secondary_stem(native)
-                export_choice = _exclusive_name_from_settings(
+                flag = _exclusive_name_from_settings(
                     settings, self.primary_key, self.secondary_key
                 )
+                export_choice = self.export_choice_from_flag(native, flag)
             else:
                 export_choice = _TOGGLE_ALL
             return DemucsView(
@@ -748,39 +780,60 @@ class StemSelectionState:
             return
         if active == _FOCUS_INSTRUMENTAL:
             settings.demucs.stems = VOCAL_STEM
-            settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
+            settings.process.stem_focus = self._focus_from_inventory(
+                StemBucket.INSTRUMENTAL.value
+            )
             set_flat(settings, self.primary_key, False)
             set_flat(settings, self.secondary_key, True)
             return
         if active == _FOCUS_VOCALS:
             settings.demucs.stems = VOCAL_STEM
-            settings.process.stem_focus = StemBucket.VOCALS.value
+            settings.process.stem_focus = self._focus_from_inventory(
+                StemBucket.VOCALS.value
+            )
             set_flat(settings, self.primary_key, True)
             set_flat(settings, self.secondary_key, False)
             return
 
-        settings.demucs.stems = active
+        persist = self._demucs_persist_native(active)
+        settings.demucs.stems = persist
         if view.export_filter_visible:
             name = view.export_choice or _TOGGLE_ALL
-            _persist_exclusive_choice(
-                settings, self.primary_key, self.secondary_key, name
-            )
-            if name == self.primary_key:
-                settings.process.stem_focus = self._concept_for_native(active)
-            elif name == self.secondary_key:
-                settings.process.stem_focus = _stem_focus_tag(
-                    secondary_stem(active),
-                    stem_count=2,
-                    is_karaoke=False,
-                    is_karaoke_curated=False,
-                    is_bv=False,
+            inventory = self.demucs_export_routes(persist)
+            if name == self.primary_key and inventory:
+                name = inventory[0].concept
+            elif name == self.secondary_key and len(inventory) > 1:
+                name = inventory[1].concept
+            if name == _TOGGLE_ALL:
+                _persist_exclusive_choice(
+                    settings, self.primary_key, self.secondary_key, _TOGGLE_ALL
+                )
+                settings.process.stem_focus = ""
+                return
+            selection = select_stem_routes(inventory, name)
+            if (
+                selection.status is not StemSelectionStatus.MATCHED
+                or len(selection.routes) != 1
+            ):
+                _persist_exclusive_choice(
+                    settings, self.primary_key, self.secondary_key, _TOGGLE_ALL
+                )
+                settings.process.stem_focus = ""
+                return
+            route = selection.routes[0]
+            settings.process.stem_focus = route.concept
+            if route.native is not None and route.native.matches(persist):
+                _persist_exclusive_choice(
+                    settings, self.primary_key, self.secondary_key, self.primary_key
                 )
             else:
-                settings.process.stem_focus = ""
+                _persist_exclusive_choice(
+                    settings, self.primary_key, self.secondary_key, self.secondary_key
+                )
             return
         set_flat(settings, self.primary_key, True)
         set_flat(settings, self.secondary_key, False)
-        settings.process.stem_focus = self._concept_for_native(active)
+        settings.process.stem_focus = self._concept_for_subset_token(persist)
 
     def ensure_demucs_export_defaults(self, settings: Any) -> None:
         """When a native-stem focus first shows the export filter, default to primary-only."""

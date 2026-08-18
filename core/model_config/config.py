@@ -484,6 +484,11 @@ class ModelConfig:
         selection, but :func:`~core.stems.run_export_routes` writes the full
         inventory.
 
+        When focus is empty, a multi-stem MDX-C custom subset still lives in
+        ``mdxnet_stems_selected`` (natives). That sidecar is applied here so
+        engines export the subset rather than every default route. Do not
+        fold those names into ``stem_focus``.
+
         Resolution is **per-config only**: assembling a model must never write
         back into ``self.settings``. One ``Settings`` assembles many configs
         (ensemble members, secondaries, pre-process), and in the GUI it is the
@@ -495,6 +500,7 @@ class ModelConfig:
             coerce_ensemble_pair,
             model_stem_routes,
             routes_for_ensemble_pair,
+            routes_matching_stems,
             select_stem_routes,
         )
 
@@ -508,6 +514,26 @@ class ModelConfig:
             ) or tuple(routes)
         else:
             selected = selection.routes
+
+        if selection.status is StemSelectionStatus.EMPTY:
+            mdx_stems = tuple(
+                str(stem)
+                for stem in (getattr(self, "mdx_model_stems", None) or ())
+                if stem
+            )
+            sidecar = tuple(
+                str(stem)
+                for stem in (getattr(self, "mdxnet_stems_selected", None) or ())
+                if stem
+            )
+            if len(mdx_stems) > 2 and sidecar:
+                native_concepts = {
+                    route.concept for route in routes if route.native is not None
+                }
+                matched = routes_matching_stems(routes, sidecar, self)
+                matched_concepts = {route.concept for route in matched}
+                if matched and matched_concepts < native_concepts:
+                    selected = matched
 
         # Dual-stem ensemble members default to the pair, not a 4-stem model's
         # full native inventory. Four/multi-stem members keep the selection for

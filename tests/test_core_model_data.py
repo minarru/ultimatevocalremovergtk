@@ -401,6 +401,85 @@ class StemIdentityAssembleTests(unittest.TestCase):
         self.assertIsNotNone(selected[0].native)
         self.assertTrue(selected[0].native.matches(BASS_STEM))
 
+    def test_empty_focus_honors_mdx_subset_sidecar(self) -> None:
+        from bundled.constants import BASS_STEM, DRUM_STEM
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.mdxnet_stems_selected = [BASS_STEM, DRUM_STEM]
+        stub.apply()
+        selected = stub.selected_stem_routes
+        self.assertEqual(len(selected), 2)
+        self.assertIsNotNone(selected[0].native)
+        self.assertIsNotNone(selected[1].native)
+        self.assertEqual(
+            [route.concept for route in selected],
+            [StemBucket.BASS.value, StemBucket.DRUMS.value],
+        )
+        self.assertTrue(selected[0].native.matches("bass"))
+        self.assertTrue(selected[1].native.matches("drums"))
+
+    def test_empty_focus_without_sidecar_keeps_defaults(self) -> None:
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.mdxnet_stems_selected = []
+        stub.apply()
+        self.assertEqual(
+            {route.concept for route in stub.selected_stem_routes if route.native},
+            {
+                StemBucket.DRUMS.value,
+                StemBucket.BASS.value,
+                StemBucket.OTHER.value,
+                StemBucket.VOCALS.value,
+            },
+        )
+
+    def test_focus_wins_over_conflicting_sidecar(self) -> None:
+        from bundled.constants import BASS_STEM, DRUM_STEM
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = BASS_STEM
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
+        stub.mdx_stem_count = 4
+        stub.mdxnet_stems_selected = [DRUM_STEM]
+        stub.apply()
+        selected = stub.selected_stem_routes
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0].concept, StemBucket.BASS.value)
+        self.assertTrue(selected[0].native.matches("bass"))
+
+    def test_demucs_leftover_mdx_sidecar_is_ignored(self) -> None:
+        from bundled.constants import BASS_STEM, DEMUCS_ARCH_TYPE, DRUM_STEM
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        stub = _FocusStub(settings, "Vocals", "Instrumental")
+        stub.process_method = DEMUCS_ARCH_TYPE
+        stub.mdx_stem_count = 0
+        stub.mdx_model_stems = []
+        stub.mdxnet_stems_selected = [BASS_STEM, DRUM_STEM]
+        stub.demucs_stem_count = 4
+        stub.demucs_source_list = ["Bass", "Drums", "Other", "Vocals"]
+        stub.apply()
+        self.assertEqual(
+            {route.concept for route in stub.selected_stem_routes if route.native},
+            {
+                StemBucket.BASS.value,
+                StemBucket.DRUMS.value,
+                StemBucket.OTHER.value,
+                StemBucket.VOCALS.value,
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

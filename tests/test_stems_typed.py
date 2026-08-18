@@ -32,6 +32,7 @@ from core.stems import (
     exports_named_stem,
     filename_tag,
     model_stem_routes,
+    routes_matching_stems,
     run_export_routes,
     select_stem_routes,
     ui_label,
@@ -266,6 +267,37 @@ class RunExportRoutesTests(unittest.TestCase):
         self.assertEqual(run_export_routes(model), selected)
         self.assertTrue(exports_named_stem(model, "bass"))
         self.assertFalse(exports_named_stem(model, "vocals"))
+
+
+class RoutesMatchingStemsTests(unittest.TestCase):
+    def test_matches_canonical_labels_to_yaml_natives(self) -> None:
+        routes = (
+            _route("drums", StemBucket.DRUMS.value),
+            _route("bass", StemBucket.BASS.value),
+            _route("other", StemBucket.OTHER.value),
+            _route("vocals", StemBucket.VOCALS.value),
+        )
+        matched = routes_matching_stems(routes, [BASS_STEM, DRUM_STEM])
+        self.assertEqual(
+            [route.native.raw if route.native else "" for route in matched],
+            ["bass", "drums"],
+        )
+
+    def test_skips_derived_routes(self) -> None:
+        derived = StemRoute(
+            native=None,
+            concept=StemBucket.INSTRUMENTAL.value,
+            label=INST_STEM,
+            filename_tag=INST_STEM,
+            kind=StemRouteKind.DERIVED,
+        )
+        routes = (
+            _route("vocals", StemBucket.VOCALS.value),
+            derived,
+            _route("bass", StemBucket.BASS.value),
+        )
+        matched = routes_matching_stems(routes, [INST_STEM, BASS_STEM])
+        self.assertEqual([route.concept for route in matched], [StemBucket.BASS.value])
 
 
 if __name__ == "__main__":
