@@ -190,6 +190,25 @@ def _write_cli_exclusive(settings: Settings, primary: bool, secondary: bool) -> 
     settings.demucs.is_secondary_stem_only = secondary
 
 
+def _cli_concept_inventory() -> tuple[StemRoute, ...]:
+    return (
+        derived_stem_route(StemBucket.VOCALS),
+        derived_stem_route(StemBucket.INSTRUMENTAL),
+        derived_stem_route(StemBucket.BASS),
+        derived_stem_route(StemBucket.DRUMS),
+        derived_stem_route(StemBucket.OTHER),
+    )
+
+
+_CLI_CONCEPTS = {
+    "vocals": StemBucket.VOCALS.value,
+    "instrumental": StemBucket.INSTRUMENTAL.value,
+    "bass": BASS_STEM,
+    "drums": DRUM_STEM,
+    "other": OTHER_STEM,
+}
+
+
 def apply_stem_selection(settings: Settings, selection: str) -> str:
     tokens = {
         _STEM_ALIASES.get(part.strip().casefold(), "")
@@ -198,44 +217,17 @@ def apply_stem_selection(settings: Settings, selection: str) -> str:
     }
     if "" in tokens or not tokens:
         raise ValueError(f"invalid stem selection {selection!r}")
-
-    def exclusive(primary: bool, secondary: bool) -> None:
-        _write_cli_exclusive(settings, primary, secondary)
-
-    def clear_focus() -> None:
-        settings.process.stem_focus = ""
-
+    state = StemSelectionState()
     if "both" in tokens or tokens >= {"vocals", "instrumental"}:
-        exclusive(False, False)
-        clear_focus()
-        settings.demucs.stems = settings.mdx.stems = ALL_STEMS
-        settings.mdx.stems_selected = []
+        state.write_cli_positional(settings, "both")
         return "both"
     if len(tokens) != 1:
         raise ValueError(f"ambiguous stem selection {selection!r}")
     choice = next(iter(tokens))
     if choice in {"primary", "secondary"}:
-        exclusive(choice == "primary", choice == "secondary")
-        clear_focus()
-        settings.mdx.stems = ALL_STEMS
-        settings.mdx.stems_selected = []
+        state.write_cli_positional(settings, choice)
         return choice
-    if choice in {"vocals", "instrumental"}:
-        exclusive(False, False)
-        settings.process.stem_focus = (
-            StemBucket.VOCALS.value
-            if choice == "vocals"
-            else StemBucket.INSTRUMENTAL.value
-        )
-        settings.demucs.stems = settings.mdx.stems = VOCAL_STEM
-        settings.mdx.stems_selected = [VOCAL_STEM]
-        return choice
-    focus = {"bass": BASS_STEM, "drums": DRUM_STEM, "other": OTHER_STEM}[choice]
-    exclusive(False, False)
-    settings.process.stem_focus = focus
-    settings.demucs.stems = focus
-    settings.mdx.stems = ALL_STEMS
-    settings.mdx.stems_selected = []
+    state.write_cli_concept(settings, _CLI_CONCEPTS[choice])
     return choice
 
 
@@ -442,6 +434,46 @@ class StemSelectionState:
             is_bv=self.is_bv,
         )
 
+    def _concept_for_subset_token(self, token: str) -> str:
+        selection = select_stem_routes(self.routes, token)
+        if (
+            selection.status is StemSelectionStatus.MATCHED
+            and selection.routes
+        ):
+            return selection.routes[0].concept
+        return self._concept_for_native(token)
+
+    def _focus_from_inventory(self, requested: str) -> str:
+        selection = select_stem_routes(self.routes, requested)
+        if (
+            selection.status is StemSelectionStatus.MATCHED
+            and selection.routes
+        ):
+            return selection.routes[0].concept
+        return requested
+
+    def _subset_concepts(self) -> Set[str]:
+        return {self._concept_for_subset_token(stem) for stem in self.subset_stems}
+
+    def _natives_for_subset_concepts(self, concepts: Set[str]) -> list[str]:
+        natives: list[str] = []
+        seen: set[str] = set()
+        for stem in self.subset_stems:
+            concept = self._concept_for_subset_token(stem)
+            if concept not in concepts or concept in seen:
+                continue
+            route = _route_for_native(self.routes, stem)
+            if route is not None and route.native is None:
+                continue
+            persist = (
+                route.native.raw
+                if route is not None and route.native is not None
+                else stem
+            )
+            natives.append(persist)
+            seen.add(concept)
+        return natives
+
     def vocal_stem_in_subset(self) -> Optional[str]:
         count = len(self.subset_stems)
         for stem in self.subset_stems:
@@ -463,16 +495,17 @@ class StemSelectionState:
         *,
         highlight_all_when_empty: bool = True,
     ) -> None:
-        stem_set = set(self.subset_stems)
-        if not selected:
+        concepts = {self._concept_for_subset_token(token) for token in selected}
+        concept_set = self._subset_concepts()
+        if not concepts:
             self.custom_all = highlight_all_when_empty
             self.custom_selected = set()
-        elif selected >= stem_set:
+        elif concepts >= concept_set:
             self.custom_all = True
             self.custom_selected = set()
         else:
             self.custom_all = False
-            self.custom_selected = set(selected)
+            self.custom_selected = concepts
 
     def apply_subset_chip_selection(self, mode: str, selected: Set[str]) -> None:
         if mode == _QUICK_INSTRUMENTAL:
@@ -499,17 +532,20 @@ class StemSelectionState:
         primary_on = bool(get_flat(settings, self.primary_key))
         secondary_on = bool(get_flat(settings, self.secondary_key))
 
+        concepts = {
+            self._concept_for_subset_token(token) for token in selected_set
+        }
         if self.vocal_stem_in_subset() and self.selection_matches_vocal_stem(
             selected_set
         ):
             if secondary_on and not primary_on:
-                return _QUICK_INSTRUMENTAL, selected_set
+                return _QUICK_INSTRUMENTAL, concepts
             if primary_on and not secondary_on:
-                return _QUICK_VOCALS, selected_set
+                return _QUICK_VOCALS, concepts
         if not selected_set or selected_set >= stem_set:
             if not primary_on and not secondary_on:
-                return _QUICK_ALL, stem_set
-        return _SUBSET_CUSTOM, selected_set
+                return _QUICK_ALL, self._subset_concepts()
+        return _SUBSET_CUSTOM, concepts
 
     def demucs_focus_value(self, active: str) -> str:
         return self.demucs_focus_map.get(active, ALL_STEMS)
@@ -594,6 +630,44 @@ class StemSelectionState:
             return
         self._write_demucs(settings, view)
 
+    def write_cli_concept(self, settings: Settings, concept: str) -> None:
+        """Persist a CLI concept pick: focus via routes, exclusive flags off."""
+        selection = select_stem_routes(_cli_concept_inventory(), concept)
+        if (
+            selection.status is not StemSelectionStatus.MATCHED
+            or len(selection.routes) != 1
+        ):
+            raise ValueError(f"invalid stem selection {concept!r}")
+        route = selection.routes[0]
+        settings.process.stem_focus = route.concept
+        _write_cli_exclusive(settings, False, False)
+        if route.concept in (
+            StemBucket.VOCALS.value,
+            StemBucket.INSTRUMENTAL.value,
+        ):
+            settings.demucs.stems = settings.mdx.stems = VOCAL_STEM
+            settings.mdx.stems_selected = [VOCAL_STEM]
+            return
+        settings.demucs.stems = route.concept
+        settings.mdx.stems = ALL_STEMS
+        settings.mdx.stems_selected = []
+
+    def write_cli_positional(
+        self, settings: Settings, choice: str
+    ) -> None:
+        """Persist a CLI positional pick: flags only, focus cleared."""
+        settings.process.stem_focus = ""
+        if choice == "both":
+            _write_cli_exclusive(settings, False, False)
+            settings.demucs.stems = settings.mdx.stems = ALL_STEMS
+            settings.mdx.stems_selected = []
+            return
+        _write_cli_exclusive(
+            settings, choice == "primary", choice == "secondary"
+        )
+        settings.mdx.stems = ALL_STEMS
+        settings.mdx.stems_selected = []
+
     def _write_exclusive(self, settings: Any, view: ExclusiveView) -> None:
         if view.choice == _TOGGLE_ALL:
             _persist_exclusive_choice(
@@ -631,29 +705,34 @@ class StemSelectionState:
             elif view.mode == _QUICK_INSTRUMENTAL:
                 settings.mdx.stems_selected = [VOCAL_STEM]
                 settings.mdx.stems = VOCAL_STEM
-                settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
+                settings.process.stem_focus = self._focus_from_inventory(
+                    StemBucket.INSTRUMENTAL.value
+                )
                 set_flat(settings, self.primary_key, False)
                 set_flat(settings, self.secondary_key, True)
             elif view.mode == _QUICK_VOCALS:
                 settings.mdx.stems_selected = [VOCAL_STEM]
                 settings.mdx.stems = VOCAL_STEM
-                settings.process.stem_focus = StemBucket.VOCALS.value
+                settings.process.stem_focus = self._focus_from_inventory(
+                    StemBucket.VOCALS.value
+                )
                 set_flat(settings, self.primary_key, True)
                 set_flat(settings, self.secondary_key, False)
             return
 
-        if view.custom_all or not view.selected or view.selected >= set(
-            self.subset_stems
-        ):
+        concepts = {self._concept_for_subset_token(token) for token in view.selected}
+        if view.custom_all or not concepts or concepts >= self._subset_concepts():
             settings.mdx.stems_selected = []
             settings.mdx.stems = ALL_STEMS
             settings.process.stem_focus = ""
         else:
-            selected = [stem for stem in self.subset_stems if stem in view.selected]
-            settings.mdx.stems_selected = selected
-            settings.mdx.stems = selected[0] if len(selected) == 1 else ALL_STEMS
-            if len(selected) == 1:
-                settings.process.stem_focus = self._concept_for_native(selected[0])
+            natives = self._natives_for_subset_concepts(concepts)
+            settings.mdx.stems_selected = natives
+            settings.mdx.stems = natives[0] if len(natives) == 1 else ALL_STEMS
+            if len(natives) == 1:
+                settings.process.stem_focus = self._concept_for_subset_token(
+                    natives[0]
+                )
             else:
                 settings.process.stem_focus = ""
         set_flat(settings, self.primary_key, False)

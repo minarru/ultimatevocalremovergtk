@@ -312,6 +312,29 @@ def _exclusive_option_ids(
     return ids
 
 
+def _subset_option_ids(
+    stems: Sequence[str],
+    routes: Optional[Sequence[StemRoute]],
+) -> Dict[str, str]:
+    ids = {stem: stem for stem in stems}
+    if not routes:
+        return ids
+    unused = [route for route in routes if route.native is not None]
+    for stem in stems:
+        match = next(
+            (
+                route
+                for route in unused
+                if route.native is not None and route.native.matches(stem)
+            ),
+            None,
+        )
+        if match is not None:
+            ids[stem] = match.concept
+            unused.remove(match)
+    return ids
+
+
 def _fill_export_combo(row: Adw.ComboRow, options: List[StemOnlyOption]) -> Dict[str, StemOnlyOption]:
     set_combo_tag_values(row, [(opt.name, opt.display_label) for opt in options])
     return {opt.name: opt for opt in options}
@@ -859,6 +882,20 @@ class SaveStemsSection:
     def _vocal_stem_in_subset(self) -> Optional[str]:
         return self._state.vocal_stem_in_subset()
 
+    def _subset_ids(self) -> Dict[str, str]:
+        return _subset_option_ids(self._subset_stems, self._state.routes)
+
+    def _subset_token_id(self, stem: str) -> str:
+        return self._subset_ids().get(stem, stem)
+
+    def _natives_in_selection(self, selected: Set[str]) -> List[str]:
+        ids = self._subset_ids()
+        return [
+            stem
+            for stem in self._subset_stems
+            if ids.get(stem, stem) in selected or stem in selected
+        ]
+
     def _set_custom_selection(
         self,
         selected: Set[str],
@@ -881,7 +918,7 @@ class SaveStemsSection:
             return "Exporting Vocals only"
         if self._subset_mode == _QUICK_ALL or self._custom_all:
             return "Exporting all stems"
-        selected = [stem for stem in self._subset_stems if stem in self._custom_selected]
+        selected = self._natives_in_selection(self._custom_selected)
         if not selected:
             return "Exporting all stems"
         if len(selected) == 1 and concept_is(
@@ -901,8 +938,7 @@ class SaveStemsSection:
             return
         labels = [
             stem_display_label(stem, overrides=self._stem_label_overrides)
-            for stem in self._subset_stems
-            if stem in self._custom_selected
+            for stem in self._natives_in_selection(self._custom_selected)
         ]
         set_row_subtitle(self._custom_row, ", ".join(labels) if labels else ALL_STEMS)
 
@@ -922,6 +958,7 @@ class SaveStemsSection:
         self._custom_listbox.append(all_row)
         self._custom_checks[ALL_STEMS] = all_check
 
+        ids = self._subset_ids()
         for stem in self._subset_stems:
             label = stem_display_label(stem, overrides=self._stem_label_overrides)
             row = Adw.ActionRow(title=label)
@@ -930,7 +967,7 @@ class SaveStemsSection:
             row.add_prefix(check)
             row.set_activatable_widget(check)
             self._custom_listbox.append(row)
-            self._custom_checks[stem] = check
+            self._custom_checks[ids.get(stem, stem)] = check
 
     def _sync_draft_checks(self) -> None:
         was_loading = self._loading
@@ -939,11 +976,14 @@ class SaveStemsSection:
             all_check = self._custom_checks.get(ALL_STEMS)
             if all_check is not None:
                 all_check.set_active(self._draft_custom_all)
+            ids = self._subset_ids()
             for stem in self._subset_stems:
-                check = self._custom_checks.get(stem)
+                concept = ids.get(stem, stem)
+                check = self._custom_checks.get(concept)
                 if check is not None:
                     check.set_active(
-                        (not self._draft_custom_all) and stem in self._draft_custom_selected
+                        (not self._draft_custom_all)
+                        and concept in self._draft_custom_selected
                     )
         finally:
             self._loading = was_loading
@@ -986,14 +1026,15 @@ class SaveStemsSection:
         finally:
             self._loading = was_loading
         self._draft_custom_all = False
+        ids = self._subset_ids()
+        concept_set = {ids.get(stem, stem) for stem in self._subset_stems}
         self._draft_custom_selected = {
-            stem
+            ids.get(stem, stem)
             for stem in self._subset_stems
-            if self._custom_checks.get(stem) and self._custom_checks[stem].get_active()
+            if self._custom_checks.get(ids.get(stem, stem))
+            and self._custom_checks[ids.get(stem, stem)].get_active()
         }
-        if not self._draft_custom_selected or self._draft_custom_selected >= set(
-            self._subset_stems
-        ):
+        if not self._draft_custom_selected or self._draft_custom_selected >= concept_set:
             self._draft_custom_all = True
             self._draft_custom_selected = set()
             if self._custom_checks.get(ALL_STEMS):
@@ -1002,7 +1043,9 @@ class SaveStemsSection:
                 try:
                     self._custom_checks[ALL_STEMS].set_active(True)
                     for stem in self._subset_stems:
-                        self._custom_checks[stem].set_active(False)
+                        check = self._custom_checks.get(ids.get(stem, stem))
+                        if check is not None:
+                            check.set_active(False)
                 finally:
                     self._loading = was_loading
 
@@ -1145,10 +1188,16 @@ class SaveStemsSection:
 
         @property
         def _chips(self) -> Dict[str, "SaveStemsSection._ChipProxy"]:
-            return {
-                stem: SaveStemsSection._ChipProxy(self._section, stem)
-                for stem in [ALL_STEMS, *self._section._subset_stems]
+            ids = self._section._subset_ids()
+            chips: Dict[str, SaveStemsSection._ChipProxy] = {
+                ALL_STEMS: SaveStemsSection._ChipProxy(self._section, ALL_STEMS)
             }
+            for stem in self._section._subset_stems:
+                proxy = SaveStemsSection._ChipProxy(self._section, stem)
+                chips[stem] = proxy
+                concept = ids.get(stem, stem)
+                chips.setdefault(concept, proxy)
+            return chips
 
         def rebuild(self, stems: List[str], *, stem_label_overrides: typing.Any=None) -> None:
             self._section._subset_stems = list(stems)
@@ -1171,11 +1220,7 @@ class SaveStemsSection:
         def selected_stems(self) -> List[str]:
             if self._section._custom_all:
                 return []
-            return [
-                stem
-                for stem in self._section._subset_stems
-                if stem in self._section._custom_selected
-            ]
+            return self._section._natives_in_selection(self._section._custom_selected)
 
         def is_all_active(self) -> bool:
             return self._section._custom_all
@@ -1188,7 +1233,11 @@ class SaveStemsSection:
         def get_active(self) -> bool:
             if self._stem == ALL_STEMS:
                 return self._section._custom_all
-            return (not self._section._custom_all) and self._stem in self._section._custom_selected
+            concept = self._section._subset_token_id(self._stem)
+            return (not self._section._custom_all) and (
+                concept in self._section._custom_selected
+                or self._stem in self._section._custom_selected
+            )
 
     class _DemucsFocusProxy:
         def __init__(self, section: "SaveStemsSection"):
