@@ -433,12 +433,12 @@ class BSRoformer(Module):
             skip_connection: bool = False,
             # HyperACE checkpoints attach a segmentation branch to every mask
             # estimator. Enabled from the config's top-level ``hyperace2`` flag,
-            # not from the ``model:`` section — see engines.mdx._build_mdx_c_model.
+            # not from the ``model:`` section — see engines.mdx_c._build_mdx_c_model.
             # Accepts a variant name (``"v1"``/``"v2"``) or a bool meaning v2.
             hyperace: bool | str = False,
             # Value Residual Learning (arXiv:2410.17897). Detected from the
             # checkpoint's own ``to_value_residual_mix`` keys in
-            # engines.mdx._build_mdx_c_model, not read from the yaml.
+            # engines.mdx_c._build_mdx_c_model, not read from the yaml.
             value_residual: bool = False,
             # Polar Coordinate Positional Embedding (arXiv:2509.10534), a
             # RoPE replacement used by some community "BS PolarFormer"

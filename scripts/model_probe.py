@@ -251,7 +251,7 @@ class BuiltModel:
 def dropped_config_keys(model_cls: Any, model_cfg: Any) -> List[str]:
     """Config keys ``model_cls.__init__`` will not accept.
 
-    Mirrors ``engines.mdx._filter_init_kwargs``, which drops unknown keys so a
+    Mirrors ``engines.mdx_c._filter_init_kwargs``, which drops unknown keys so a
     model still builds. That silence is the trap: a checkpoint trained *with*
     a feature loads into a network built *without* it.
     """
@@ -336,7 +336,7 @@ def _build_htdemucs_model(config: Any, htdemucs_section: Any) -> Tuple[Any, List
     copy doesn't implement (e.g. ``num_subbands``) shows up as a dropped key
     rather than silently vanishing.
     """
-    from engines.mdx import _filter_init_kwargs
+    from engines.mdx_c import _filter_init_kwargs
     from vendor.demucs.htdemucs import HTDemucs
 
     kwargs = _filter_init_kwargs(HTDemucs, htdemucs_section)
@@ -371,7 +371,7 @@ def _instantiate(
     """
     import torch
 
-    from engines.mdx import UnknownMDXCArchitecture, _build_mdx_c_model
+    from engines.mdx_c import UnknownMDXCArchitecture, _build_mdx_c_model
     from ml.tfc_tdf_v3 import TFC_TDF_net
 
     model_section = getattr(config, "model", None)

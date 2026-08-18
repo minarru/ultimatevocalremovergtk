@@ -8,7 +8,7 @@ import numpy as np
 
 from core import Settings
 from core.model_data import ModelConfig, ModelRepository, _mdx_c_secondary_for_pair
-from engines.mdx import mdx_combined_secondary_key
+from engines.mdx_c import mdx_combined_secondary_key
 
 _MID_SIDE_TAG = "MDX-Net: MDX23C — Mid-Side v2e · Gilliaaan"
 

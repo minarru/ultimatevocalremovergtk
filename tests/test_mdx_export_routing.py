@@ -7,7 +7,7 @@ from unittest import mock
 import numpy as np
 
 from bundled.constants import ALL_STEMS, VOCAL_STEM
-from engines.mdx import (
+from engines.mdx_c import (
     derive_mdx_complement,
     derive_mdx_multi_complement,
     mdx_export_routing_flags,
@@ -89,7 +89,7 @@ class MDXExportRoutingTests(unittest.TestCase):
     def test_derive_mdx_complement_subtracts_native_from_mix(self) -> None:
         native = np.array([[1.0, 2.0], [3.0, 4.0]])
         mix = np.array([[10.0, 20.0], [30.0, 40.0]])
-        with mock.patch("engines.mdx.spec_utils.to_shape", side_effect=lambda src, shape: src):
+        with mock.patch("engines.mdx_c.spec_utils.to_shape", side_effect=lambda src, shape: src):
             complement = derive_mdx_complement(native, mix)
         expected = (-native.T + mix.T)
         np.testing.assert_array_equal(complement, expected)
@@ -101,7 +101,7 @@ class MDXExportRoutingTests(unittest.TestCase):
             "bass": np.array([[100.0, 200.0], [300.0, 400.0]]),
         }
         mix = sources["vocals"] + sources["drums"] + sources["bass"]
-        with mock.patch("engines.mdx.spec_utils.to_shape", side_effect=lambda src, shape: src):
+        with mock.patch("engines.mdx_c.spec_utils.to_shape", side_effect=lambda src, shape: src):
             summed = derive_mdx_multi_complement(
                 sources, "Vocals", mix, combine_stems=True
             )

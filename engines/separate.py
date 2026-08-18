@@ -4,7 +4,8 @@ from .base import SeperateAttributes
 from .demucs_engine import SeperateDemucs
 from .export import save_format
 from .gpu_cache import clear_gpu_cache
-from .mdx import SeperateMDX, SeperateMDXC
+from .mdx import SeperateMDX
+from .mdx_c import SeperateMDXC
 from .mix import gather_sources, list_to_dictionary, pitch_shift, prepare_mix, rerun_mp3
 from .orchestration import process_chain_model, process_secondary_model
 from .vr import SeperateVR

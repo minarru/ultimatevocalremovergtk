@@ -47,7 +47,7 @@ class WeightCacheTests(unittest.TestCase):
         self.assertIsNone(model_file_identity(""))
 
     def test_mdx_pitch_reference_sr(self) -> None:
-        from engines.mdx import _mdx_pitch_reference_sr
+        from engines.mdx_c import _mdx_pitch_reference_sr
 
         self.assertEqual(_mdx_pitch_reference_sr(), 44100)
 

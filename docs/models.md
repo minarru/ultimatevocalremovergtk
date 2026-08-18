@@ -64,7 +64,7 @@ Verdicts, worst to best. Exit status is 0 only for `buildable`:
 | `key-mismatch` | Runs, but parameter names disagree with the checkpoint. |
 | `buildable` | Builds, runs, and (if checked) matches the checkpoint's keys. |
 
-`config-ignored` is the one to watch: [`engines.mdx._filter_init_kwargs`](../engines/mdx.py) drops yaml keys a class does not accept, so a model can build cleanly while missing the exact feature that made it unsupported. Use this verdict to catch gaps between yaml and the port before flipping catalogue support flags.
+`config-ignored` is the one to watch: [`engines.mdx_c._filter_init_kwargs`](../engines/mdx_c.py) drops yaml keys a class does not accept, so a model can build cleanly while missing the exact feature that made it unsupported. Use this verdict to catch gaps between yaml and the port before flipping catalogue support flags.
 
 [`docs/unsupported-models-probe.md`](unsupported-models-probe.md) is a point-in-time `--sweep --check-keys` run over every currently-unsupported entry, with per-group findings (which gaps are real architecture work vs. plumbing, and which verdicts undersell how wrong a build actually is).
 
