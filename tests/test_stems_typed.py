@@ -1,5 +1,8 @@
 """Typed stem identity and hard-cutover ensemble pair coerce."""
 
+from __future__ import annotations
+
+from pathlib import Path
 import unittest
 
 from bundled.constants import (
@@ -163,6 +166,14 @@ class BucketAndExportTests(unittest.TestCase):
         self.assertIn("vocals_instrumental", ids)
         self.assertIn("karaoke", ids)
         self.assertNotIn(VOCAL_PAIR, ids)
+
+
+class StemsModuleBoundaryTests(unittest.TestCase):
+    def test_stems_does_not_import_model_stem_semantics(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "core" / "stems.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("model_stem_semantics", source)
 
 
 if __name__ == "__main__":

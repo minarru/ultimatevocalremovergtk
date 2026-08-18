@@ -28,7 +28,6 @@ from core.model_stem_semantics import (
     INTENT_VOCALS,
     VOCALS_OTHER_DISPLAY_OVERRIDES,
     apply_karaoke_quick_export_default,
-    canonical_stem_alias,
     confident_stem_bucket,
     export_intent_from_fields,
     export_intent_from_model,
@@ -39,13 +38,17 @@ from core.model_stem_semantics import (
     is_specialty_instrument_pair,
     is_vocal_target,
     is_vocals_other_pair,
-    karaoke_bv_export_labels,
     preferred_quick_export_mode,
     recommended_export_note,
     resolve_is_karaoke,
     resolve_karaoke_confidence,
     shows_voc_inst_quick_export,
     stem_display_overrides,
+)
+from core.stems import (
+    canonical_ensemble_stem_tag,
+    canonical_stem_alias,
+    karaoke_bv_export_labels,
 )
 
 
@@ -216,7 +219,7 @@ class KaraokeBvExportLabelTests(unittest.TestCase):
 
 class EnsembleStemCanonicalizationTests(unittest.TestCase):
     def test_folds_known_aliases_only(self):
-        from core.model_stem_semantics import canonical_ensemble_stem_tag
+        from core.stems import canonical_ensemble_stem_tag
 
         self.assertEqual(canonical_ensemble_stem_tag("vocals"), VOCAL_STEM)
         self.assertEqual(canonical_ensemble_stem_tag("VOCALS"), VOCAL_STEM)
@@ -225,7 +228,7 @@ class EnsembleStemCanonicalizationTests(unittest.TestCase):
         self.assertEqual(canonical_ensemble_stem_tag("instrumental"), INST_STEM)
 
     def test_preserves_specialty_and_karaoke_labels(self):
-        from core.model_stem_semantics import canonical_ensemble_stem_tag
+        from core.stems import canonical_ensemble_stem_tag
 
         self.assertEqual(canonical_ensemble_stem_tag(LEAD_VOCAL_STEM), LEAD_VOCAL_STEM)
         self.assertEqual(canonical_ensemble_stem_tag(LEAD_VOCAL_STEM_LABEL), LEAD_VOCAL_STEM_LABEL)
@@ -234,7 +237,7 @@ class EnsembleStemCanonicalizationTests(unittest.TestCase):
         self.assertEqual(canonical_ensemble_stem_tag("Music"), "Music")
 
     def test_does_not_fold_lead_vocals_into_vocals(self):
-        from core.model_stem_semantics import canonical_ensemble_stem_tag
+        from core.stems import canonical_ensemble_stem_tag
 
         self.assertNotEqual(
             canonical_ensemble_stem_tag(LEAD_VOCAL_STEM_LABEL),
@@ -268,7 +271,7 @@ class EnsembleStemCanonicalizationRegressionTests(unittest.TestCase):
     stay preserved, complement tags must stay ensemble-specific."""
 
     def test_specialty_names_pass_through_unchanged(self) -> None:
-        from core.model_stem_semantics import canonical_ensemble_stem_tag
+        from core.stems import canonical_ensemble_stem_tag
 
         self.assertEqual(canonical_ensemble_stem_tag("speech"), "speech")
         self.assertEqual(canonical_ensemble_stem_tag("sfx"), "sfx")
@@ -276,7 +279,7 @@ class EnsembleStemCanonicalizationRegressionTests(unittest.TestCase):
         self.assertEqual(canonical_ensemble_stem_tag("effects"), "effects")
 
     def test_complement_tags_still_resolve(self) -> None:
-        from core.model_stem_semantics import canonical_ensemble_stem_tag
+        from core.stems import canonical_ensemble_stem_tag
 
         self.assertEqual(canonical_ensemble_stem_tag("no other"), NO_OTHER_STEM)
         self.assertEqual(canonical_ensemble_stem_tag("no bass"), NO_BASS_STEM)
@@ -284,7 +287,7 @@ class EnsembleStemCanonicalizationRegressionTests(unittest.TestCase):
     def test_instrument_alias_now_recognized(self) -> None:
         """New: core/stems.py already recognized "instrument" for bucketing;
         ensemble tag canonicalization gains it too via the shared table."""
-        from core.model_stem_semantics import canonical_ensemble_stem_tag
+        from core.stems import canonical_ensemble_stem_tag
 
         self.assertEqual(canonical_ensemble_stem_tag("instrument"), INST_STEM)
 

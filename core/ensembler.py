@@ -24,9 +24,8 @@ from . import paths
 from .audio_io import resolve_wav_type_set
 from .debug_log import debug
 from .export_naming import format_stem_basename, sanitize_filename_component
-from .model_stem_semantics import canonical_ensemble_stem_tag
 from .settings import Settings
-from .stems import StemBucket, coerce_ensemble_pair, filename_tag
+from .stems import StemBucket, canonical_ensemble_stem_tag, coerce_ensemble_pair, filename_tag
 
 
 def _ensemble_stem_bucket(stem_tag: str) -> str:
@@ -79,8 +78,6 @@ def _capture_separator_stem_arrays(seperator: typing.Any) -> dict:
     Stem tags are passed through :func:`canonical_ensemble_stem_tag` so yaml
     lowercase labels and Demucs Title Case share one combine bucket.
     """
-    from core.model_stem_semantics import canonical_ensemble_stem_tag
-
     buffers = getattr(seperator, "_ensemble_stem_buffers", None) or {}
     if not buffers:
         return {}
@@ -100,8 +97,6 @@ def _capture_separator_stem_arrays(seperator: typing.Any) -> dict:
 
 def _capture_separator_stem_paths(seperator: typing.Any) -> dict:
     """Copy deferred stem export paths buffered alongside stem arrays."""
-    from core.model_stem_semantics import canonical_ensemble_stem_tag
-
     paths = getattr(seperator, "_ensemble_stem_paths", None) or {}
     return {
         canonical_ensemble_stem_tag(name): path for name, path in paths.items()
@@ -116,8 +111,6 @@ def _extract_stems(audio_file_base: str, export_path: str) -> List[str]:
     ensemble for a 4-/multi-stem run. Tags are canonicalized so ``vocals`` and
     ``Vocals`` count toward the same stem.
     """
-    from core.model_stem_semantics import canonical_ensemble_stem_tag
-
     if not os.path.isdir(export_path):
         return []
     filenames = [name for name in os.listdir(export_path) if name.startswith(audio_file_base)]
