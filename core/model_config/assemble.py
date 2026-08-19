@@ -32,21 +32,21 @@ def assemble_model(
     identities = ModelIdentityService(repo)
 
     def engine_value(
-        value: str, *, member: bool = False, family: str | None = None
+        value: str, *, family: str | None = None
     ) -> str:
         raw = str(value or "")
         if _qualified_family(raw) is None:
             return raw
         try:
-            return identities.engine_value(value, member=member, family=family)
+            return identities.engine_value(value, family=family)
         except ValueError:
-            # Unresolvable tags still belong to ModelConfig so ensemble
-            # members can be skipped via model_status instead of aborting.
+            # Unresolvable ids still belong to ModelConfig so the run can
+            # report model_status instead of aborting assemble.
             return raw
 
     if arch_type == ENSEMBLE_MODE:
         selected = settings.ensemble.selected_models or []
-        models = [ModelConfig(settings, repo, engine_value(name, member=True)) for name in selected]
+        models = [ModelConfig(settings, repo, name) for name in selected]
         valid = [item for item in models if item.model_status]
         skipped = len(models) - len(valid)
         if skipped:
