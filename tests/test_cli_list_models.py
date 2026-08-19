@@ -46,7 +46,7 @@ class ModelIdTests(unittest.TestCase):
                 service.resolve("mdx:shared", family="vr")
 
     def test_family_does_not_prefix_legacy_arch_member_tag(self) -> None:
-        """CLI canonicalize writes ``MDX-Net: Display``; family= must not make ``mdx:MDX-Net:…``."""
+        """Checklist/display tags stay ``Arch: Display``; family= must not make ``mdx:MDX-Net:…``."""
         from core.model_identity import canonical_member_tag
 
         record = ModelRecord(
