@@ -79,7 +79,7 @@ MULTI_STEM_ENSEMBLE = 'Multi-stem Ensemble'
 #: vocals, which is not the same quantity as a clean instrumental. They get
 #: their own pair so they ensemble with each other instead of contaminating
 #: Vocals/Instrumental. Display labels here; buckets come from
-#: ``ensemble_pair_buckets``.
+#: :meth:`core.stems.EnsemblePair.buckets`.
 KARAOKE_PAIR = f'{LEAD_VOCAL_STEM_LABEL}/{INST_WITH_BACKING_VOCALS_STEM}'
 
 # Display-label tuple only (legacy / docs). Persist EnsemblePair ids via

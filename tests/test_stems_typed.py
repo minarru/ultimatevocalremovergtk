@@ -205,12 +205,20 @@ class StemsModuleBoundaryTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertNotIn("def export_stem_label", source)
         self.assertNotIn("def resolve_stem_dict_key", source)
+        self.assertNotIn("def ensemble_stem_bucket", source)
+        self.assertNotIn("def model_stem_count", source)
+        self.assertNotIn("def ensemble_pair_buckets", source)
+        self.assertNotIn("BUCKET_VOCALS =", source)
 
     def test_semantics_module_has_no_stem_label_helpers(self) -> None:
         import core.model_stem_semantics as semantics
 
         self.assertFalse(hasattr(semantics, "export_stem_label"))
         self.assertFalse(hasattr(semantics, "resolve_stem_dict_key"))
+        self.assertFalse(hasattr(semantics, "ensemble_stem_bucket"))
+        self.assertFalse(hasattr(semantics, "model_stem_count"))
+        self.assertFalse(hasattr(semantics, "ensemble_pair_buckets"))
+        self.assertFalse(hasattr(semantics, "BUCKET_VOCALS"))
 
 
 def _route(name: str, concept: str) -> StemRoute:

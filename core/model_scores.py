@@ -221,25 +221,25 @@ def primary_sdr(
     """Return ``(stem, sdr)`` for the model's headline score.
 
     Both the model's target stem and the score-data keys go through
-    :func:`ensemble_stem_bucket` before comparison. The score data keys stems
-    lowercase (``vocals``, ``instrumental``, ``other``) while a model's target
-    is whatever its yaml said, so a raw casefold comparison still misses: a
-    2-stem model targeting ``other`` means *instrumental* and would find no
-    score at all. ``stem_count`` is what disambiguates that from a 4-stem
-    model's genuine ``other`` residual.
+    :func:`core.stems.bucket_for_model_stem` before comparison. The score data
+    keys stems lowercase (``vocals``, ``instrumental``, ``other``) while a
+    model's target is whatever its yaml said, so a raw casefold comparison
+    still misses: a 2-stem model targeting ``other`` means *instrumental* and
+    would find no score at all. ``stem_count`` is what disambiguates that from
+    a 4-stem model's genuine ``other`` residual.
 
     The returned stem is the **score-data key**, not the bucket, so callers
     render the name the benchmark actually used.
     """
-    from core.model_stem_semantics import BUCKET_UNKNOWN, ensemble_stem_bucket
+    from core.stems import StemBucket, bucket_for_model_stem
 
     if not stem_scores:
         return None
     if target_stem:
-        wanted = ensemble_stem_bucket(target_stem, stem_count=stem_count)
-        if wanted != BUCKET_UNKNOWN:
+        wanted = bucket_for_model_stem(target_stem, stem_count=stem_count)
+        if wanted is not StemBucket.UNKNOWN:
             for stem, value in stem_scores.items():
-                if ensemble_stem_bucket(stem, stem_count=stem_count) == wanted:
+                if bucket_for_model_stem(stem, stem_count=stem_count) is wanted:
                     return (stem, value)
     stem, value = max(stem_scores.items(), key=lambda item: item[1])
     return (stem, value)

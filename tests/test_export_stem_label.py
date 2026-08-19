@@ -3,14 +3,7 @@
 import typing
 import unittest
 
-from core.model_stem_semantics import (
-    BUCKET_INST_WITH_BV,
-    BUCKET_OTHER,
-    BUCKET_INSTRUMENTAL,
-    BUCKET_LEAD_VOCALS,
-    BUCKET_VOCALS,
-)
-from core.stems import canonical_ensemble_stem_tag, export_stem_label
+from core.stems import StemBucket, canonical_ensemble_stem_tag, export_stem_label
 
 
 class _FakeModel:
@@ -27,18 +20,18 @@ class _FakeModel:
 class EnsembleExportLabelTests(unittest.TestCase):
     def test_plain_model_folds_case(self) -> None:
         model = _FakeModel()
-        self.assertEqual(export_stem_label(model, "vocals", for_ensemble=True), BUCKET_VOCALS)
+        self.assertEqual(export_stem_label(model, "vocals", for_ensemble=True), StemBucket.VOCALS)
         self.assertEqual(
-            export_stem_label(model, "other", for_ensemble=True), BUCKET_INSTRUMENTAL
+            export_stem_label(model, "other", for_ensemble=True), StemBucket.INSTRUMENTAL
         )
 
     def test_karaoke_model_gets_its_own_tags(self) -> None:
         model = _FakeModel(is_karaoke=True)
         self.assertEqual(
-            export_stem_label(model, "Vocals", for_ensemble=True), BUCKET_LEAD_VOCALS
+            export_stem_label(model, "Vocals", for_ensemble=True), StemBucket.LEAD_VOCALS
         )
         self.assertEqual(
-            export_stem_label(model, "Instrumental", for_ensemble=True), BUCKET_INST_WITH_BV
+            export_stem_label(model, "Instrumental", for_ensemble=True), StemBucket.INST_WITH_BV
         )
 
     def test_karaoke_does_not_land_in_clean_instrumental(self) -> None:
@@ -57,31 +50,31 @@ class DemucsStemCountTests(unittest.TestCase):
     def test_four_stem_demucs_other_is_not_instrumental(self) -> None:
         model = _FakeModel(stem_count=1, demucs_stem_count=4,
                        demucs_source_list=["drums", "bass", "other", "vocals"])
-        self.assertEqual(export_stem_label(model, "other", for_ensemble=True), BUCKET_OTHER)
+        self.assertEqual(export_stem_label(model, "other", for_ensemble=True), StemBucket.OTHER)
 
     def test_four_stem_demucs_other_stems_unaffected(self) -> None:
         model = _FakeModel(stem_count=1, demucs_stem_count=4,
                        demucs_source_list=["drums", "bass", "other", "vocals"])
-        self.assertEqual(export_stem_label(model, "vocals", for_ensemble=True), BUCKET_VOCALS)
+        self.assertEqual(export_stem_label(model, "vocals", for_ensemble=True), StemBucket.VOCALS)
         self.assertEqual(export_stem_label(model, "drums", for_ensemble=True), "Drums")
 
     def test_two_stem_demucs_other_is_still_instrumental(self) -> None:
         model = _FakeModel(stem_count=1, demucs_stem_count=2,
                        demucs_source_list=["instrumental", "vocals"])
         self.assertEqual(
-            export_stem_label(model, "other", for_ensemble=True), BUCKET_INSTRUMENTAL
+            export_stem_label(model, "other", for_ensemble=True), StemBucket.INSTRUMENTAL
         )
 
     def test_mdx_four_stem_still_resolves(self) -> None:
         # SCNet 4-stem: the count is on mdx_stem_count and already worked.
         model = _FakeModel(stem_count=4)
-        self.assertEqual(export_stem_label(model, "other", for_ensemble=True), BUCKET_OTHER)
+        self.assertEqual(export_stem_label(model, "other", for_ensemble=True), StemBucket.OTHER)
 
     def test_unknown_stem_count_keeps_other_literal(self) -> None:
         # Engine objects used to omit mdx_stem_count; guessing 2 would label
         # a 4-stem residual as Instrumental. Unknown must not reinterpret.
         model = object()
-        self.assertEqual(export_stem_label(model, "other", for_ensemble=True), BUCKET_OTHER)
+        self.assertEqual(export_stem_label(model, "other", for_ensemble=True), StemBucket.OTHER)
 
     def test_specialty_stems_keep_literal_tags(self) -> None:
         model = _FakeModel(stem_count=3)
@@ -105,9 +98,9 @@ class BucketRoundTripTests(unittest.TestCase):
     """The combine stage re-reads tags from filenames; they must survive."""
 
     def test_new_tags_pass_through_canonical_ensemble_stem_tag(self) -> None:
-        for bucket in (BUCKET_INST_WITH_BV, BUCKET_LEAD_VOCALS):
+        for bucket in (StemBucket.INST_WITH_BV, StemBucket.LEAD_VOCALS):
             with self.subTest(bucket=bucket):
-                self.assertEqual(canonical_ensemble_stem_tag(bucket), bucket)
+                self.assertEqual(canonical_ensemble_stem_tag(bucket.value), bucket.value)
 
 
 if __name__ == "__main__":

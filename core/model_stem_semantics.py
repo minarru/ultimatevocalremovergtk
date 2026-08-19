@@ -11,26 +11,18 @@ from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from bundled.constants import (
     ALL_STEMS,
-    BACKING_VOCALS_TAG,
-    BASS_STEM,
     BV_VOCAL_STEM,
     BV_VOCAL_STEM_LABEL,
-    DRUM_STEM,
-    GUITAR_STEM,
     INST_STEM,
     INST_WITH_BACKING_VOCALS_STEM,
-    INST_WITH_BACKING_VOCALS_TAG,
     INST_WITH_LEAD_VOCALS_STEM,
-    INST_WITH_LEAD_VOCALS_TAG,
     LEAD_VOCAL_STEM,
     LEAD_VOCAL_STEM_LABEL,
-    LEAD_VOCALS_TAG,
     NO_BASS_STEM,
     NO_DRUM_STEM,
     NO_OTHER_STEM,
     NO_STEM,
     OTHER_STEM,
-    PIANO_STEM,
     VOCAL_STEM,
 )
 
@@ -758,45 +750,6 @@ def normalize_stem_label(stem: str) -> str:
     return stem
 
 
-# Compatibility aliases equal to :class:`core.stems.StemBucket` ``.value``.
-BUCKET_VOCALS = VOCAL_STEM
-BUCKET_INSTRUMENTAL = INST_STEM
-BUCKET_OTHER = OTHER_STEM
-BUCKET_DRUMS = DRUM_STEM
-BUCKET_BASS = BASS_STEM
-BUCKET_GUITAR = GUITAR_STEM
-BUCKET_PIANO = PIANO_STEM
-BUCKET_LEAD_VOCALS = LEAD_VOCALS_TAG
-BUCKET_BV_VOCALS = BACKING_VOCALS_TAG
-BUCKET_INST_WITH_BV = INST_WITH_BACKING_VOCALS_TAG
-BUCKET_INST_WITH_LEAD = INST_WITH_LEAD_VOCALS_TAG
-BUCKET_UNKNOWN = "Unknown"
-
-
-def ensemble_stem_bucket(
-    stem: str,
-    *,
-    stem_count: int,
-    is_karaoke: bool = False,
-    is_bv: bool = False,
-    is_vocal_split: bool = False,
-) -> str:
-    """Return the ensemble bucket string for a model's stem.
-
-    Delegates to :func:`core.stems.bucket_for_model_stem`; ``stem_count`` is
-    required for the same reason it is there.
-    """
-    from core.stems import bucket_for_model_stem
-
-    return bucket_for_model_stem(
-        stem,
-        stem_count=stem_count,
-        is_karaoke=is_karaoke,
-        is_bv=is_bv,
-        is_vocal_split=is_vocal_split,
-    ).value
-
-
 def confident_stem_bucket(
     stem: str,
     *,
@@ -805,46 +758,24 @@ def confident_stem_bucket(
     is_karaoke_curated: bool,
     is_bv: bool,
 ) -> str:
-    """``ensemble_stem_bucket``, but a guessed (non-curated) ``is_karaoke``
+    """``bucket_for_model_stem``, but a guessed (non-curated) ``is_karaoke``
     is never passed through as ``True``.
 
-    ``ensemble_stem_bucket(stem, is_karaoke=False, is_bv=False)`` already
+    ``bucket_for_model_stem(stem, is_karaoke=False, is_bv=False)`` already
     falls through to the plain alias-table lookup by default -- that *is*
     the safe fallback for an uncurated model's stems, so nothing else is
     needed here beyond gating the one boolean that isn't always reliable.
     ``is_bv`` needs no such gate: it is only ever set from curated
     metadata, never guessed.
     """
-    return ensemble_stem_bucket(
+    from core.stems import bucket_for_model_stem
+
+    return bucket_for_model_stem(
         stem,
         stem_count=stem_count,
         is_karaoke=is_karaoke and is_karaoke_curated,
         is_bv=is_bv,
-    )
-
-
-def model_stem_count(model: typing.Any) -> int:
-    """Return how many stems a model actually produces, across architectures."""
-    from core.stems import model_stem_count as _model_stem_count
-
-    return _model_stem_count(model)
-
-
-def ensemble_pair_buckets(main_stem: typing.Any) -> Tuple[str, str]:
-    """Return ``(primary, secondary)`` bucket strings for an ensemble pair.
-
-    Accepts :class:`core.stems.EnsemblePair` or its stable id string. Legacy
-    display pair strings are not recognized (hard cutover → CHOOSE).
-    """
-    from core.stems import EnsemblePair, coerce_ensemble_pair
-
-    pair = (
-        main_stem
-        if isinstance(main_stem, EnsemblePair)
-        else coerce_ensemble_pair(main_stem)
-    )
-    primary, secondary = pair.buckets()
-    return primary.value, secondary.value
+    ).value
 
 
 def backend_focus_label(

@@ -14,9 +14,6 @@ from bundled.constants import (
     VOCAL_STEM,
 )
 from core.model_stem_semantics import (
-    BUCKET_BV_VOCALS,
-    BUCKET_LEAD_VOCALS,
-    BUCKET_VOCALS,
     DUAL_STEM_WEIGHTS,
     INTENT_DRUM_BASS_SEP,
     INTENT_DUAL_VOC_INST,
@@ -45,6 +42,7 @@ from core.model_stem_semantics import (
     stem_display_overrides,
 )
 from core.stems import (
+    StemBucket,
     canonical_ensemble_stem_tag,
     canonical_stem_alias,
     export_stem_label,
@@ -177,20 +175,18 @@ class KaraokeBvExportLabelTests(unittest.TestCase):
         karaoke model's output be combined with clean vocal/instrumental
         members. Its instrumental is instrumental-plus-backing-vocals.
         """
-        from core.model_stem_semantics import BUCKET_INST_WITH_BV, BUCKET_LEAD_VOCALS
-
         model = _Model(is_karaoke=True)
         self.assertEqual(
             export_stem_label(model, VOCAL_STEM, for_ensemble=True),
-            BUCKET_LEAD_VOCALS,
+            StemBucket.LEAD_VOCALS,
         )
         self.assertEqual(
             export_stem_label(model, LEAD_VOCAL_STEM, for_ensemble=True),
-            BUCKET_LEAD_VOCALS,
+            StemBucket.LEAD_VOCALS,
         )
         self.assertEqual(
             export_stem_label(model, INST_STEM, for_ensemble=True),
-            BUCKET_INST_WITH_BV,
+            StemBucket.INST_WITH_BV,
         )
 
     def test_export_stem_label_ensemble_canonicalizes_yaml_casing(self):
@@ -561,15 +557,15 @@ class SpecialtyStemIntentTests(unittest.TestCase):
 
 class ConfidentStemBucketTests(unittest.TestCase):
     """A guessed (non-curated) is_karaoke must never reach
-    ensemble_stem_bucket as True -- only ever False, which is the same
-    fallback ensemble_stem_bucket already uses by default."""
+    bucket_for_model_stem as True -- only ever False, which is the same
+    fallback bucket_for_model_stem already uses by default."""
 
     def test_curated_karaoke_uses_the_karaoke_bucket(self) -> None:
         self.assertEqual(
             confident_stem_bucket(
                 "Vocals", stem_count=2, is_karaoke=True, is_karaoke_curated=True, is_bv=False
             ),
-            BUCKET_LEAD_VOCALS,
+            StemBucket.LEAD_VOCALS,
         )
 
     def test_guessed_karaoke_falls_back_to_the_plain_bucket(self) -> None:
@@ -577,7 +573,7 @@ class ConfidentStemBucketTests(unittest.TestCase):
             confident_stem_bucket(
                 "Vocals", stem_count=2, is_karaoke=True, is_karaoke_curated=False, is_bv=False
             ),
-            BUCKET_VOCALS,
+            StemBucket.VOCALS,
         )
 
     def test_is_bv_is_never_gated(self) -> None:
@@ -585,7 +581,7 @@ class ConfidentStemBucketTests(unittest.TestCase):
             confident_stem_bucket(
                 "Vocals", stem_count=2, is_karaoke=False, is_karaoke_curated=False, is_bv=True
             ),
-            BUCKET_BV_VOCALS,
+            StemBucket.BACKING_VOCALS,
         )
 
 
