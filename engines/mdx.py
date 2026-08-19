@@ -30,6 +30,7 @@ from .orchestration import process_secondary_model
 
 if TYPE_CHECKING:
     from core.model_config import ModelConfig
+    from engines.stem_writer import ExportPlan
 
 # onnxruntime reports CUDA OOM through its own exception types rather than
 # torch.cuda.OutOfMemoryError, so the ORT-backed classic MDX path (the
@@ -59,7 +60,7 @@ from ml.tfc_tdf_v3 import STFT
 
 class SeperateMDX(SeperateAttributes):        
 
-    def seperate(self) -> dict[str, Any] | None:
+    def seperate(self) -> ExportPlan:
         samplerate = 44100
         self.model_run: Any
     
@@ -174,14 +175,9 @@ class SeperateMDX(SeperateAttributes):
                 self.primary_source, self.secondary_source_primary
             )
 
-        from engines.stem_writer import export_source_map
+        from engines.stem_writer import ExportPlan
 
-        export_source_map(self, sources, samplerate)
-        self.process_vocal_split_chain(sources)
-
-        if self.is_secondary_model or self.is_pre_proc_model:
-            return sources
-
+        return ExportPlan(sources=sources, samplerate=samplerate)
     def initialize_model_settings(self):
         self.n_bins = self.n_fft//2+1
         self.trim = self.n_fft//2

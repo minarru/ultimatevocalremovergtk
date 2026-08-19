@@ -25,7 +25,8 @@ from core.model_stem_semantics import (
 )
 from core.stems import StemBucket, bucket_for_model_stem
 from engines.base import SeperateAttributes
-from engines.mdx_c import SeperateMDXC, mdx_vocal_split_chain_sources
+from engines.mdx_c import mdx_vocal_split_chain_sources
+from engines.mdx_c_engine import SeperateMDXC
 from engines.orchestration import process_chain_model
 
 
@@ -404,23 +405,27 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
             return {}
 
         fake._vocal_split_pair_sources = build_pair
+        from engines.stem_writer import ExportPlan
+
         with (
-            patch("engines.mdx_c.prepare_mix", return_value=np.ones((2, 441), dtype=np.float32)),
+            patch("engines.mdx_c_engine.prepare_mix", return_value=np.ones((2, 441), dtype=np.float32)),
             patch(
-                "engines.mdx_c.librosa.resample",
+                "engines.mdx_c_engine.librosa.resample",
                 side_effect=lambda audio, *, orig_sr, target_sr, axis: np.ones(
                     (2, 480 if target_sr == 48000 else 441), dtype=np.float32
                 ),
             ),
-            patch("engines.stem_writer.export_source_map") as export,
         ):
-            SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
+            plan = SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
 
         self.assertEqual(captured, {
             "source_length": 441,
             "mix_length": 441,
         })
-        export.assert_called_once_with(fake, {}, 44100)
+        self.assertIsInstance(plan, ExportPlan)
+        self.assertEqual(plan.sources, {})
+        self.assertEqual(plan.samplerate, 44100)
+        self.assertEqual(plan.split_sources, {})
 
     def test_three_stem_karaoke_skips_splitter_instrumental(self) -> None:
         self.assertEqual(

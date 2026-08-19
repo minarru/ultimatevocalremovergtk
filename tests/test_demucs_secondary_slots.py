@@ -323,11 +323,17 @@ class Demucs4StemExportLoopTests(unittest.TestCase):
         stub.is_secondary_model = True
         stub.is_sec_bv_rebalance = True  # avoid vocal-split side effects
 
+        from engines.stem_writer import ExportPlan
+
         # type: ignore[arg-type]
         result = SeperateDemucs.seperate(stub)  # type: ignore[arg-type]
-        self.assertIsInstance(result, dict)
-        result_dict = cast(dict[str, Any], result)
-        self.assertIn("Instrumental", result_dict)
+        self.assertIsInstance(result, ExportPlan)
+        payload = (
+            result.return_sources
+            if result.return_sources is not None
+            else result.sources
+        )
+        self.assertIn("Instrumental", payload)
 
 
 if __name__ == "__main__":

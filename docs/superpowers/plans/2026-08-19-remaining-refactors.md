@@ -51,6 +51,8 @@ and `.venv/bin/python -m basedpyright` on touched files.
 | Drop leftover stem-identity facades | [`StemBucket`](../../../core/stems.py), [`bucket_for_model_stem`](../../../core/stems.py) | #55 |
 | Add source-map export post-pass | [`export_source_map`](../../../engines/stem_writer.py) | #56 |
 | Invert VR and classic MDX export flow | [`vr.py`](../../../engines/vr.py), [`mdx.py`](../../../engines/mdx.py) | #57 |
+| Job-level export lift | [`ExportPlan`](../../../engines/stem_writer.py), [`finish_export`](../../../engines/stem_writer.py) | this series |
+| Split `SeperateMDXC` into engine module | [`mdx_c_engine.py`](../../../engines/mdx_c_engine.py) | this series |
 
 ---
 
@@ -58,21 +60,14 @@ and `.venv/bin/python -m basedpyright` on touched files.
 
 Suggested order. Skip an item rather than invent scope.
 
-### 1. Engine inversion (this series)
+### 1. Engine inversion (this series) — complete
 
-Spec: engines return stem arrays; [`write_audio`](../../../engines/stem_writer.py) stays the only writer as an **in-engine** post-pass (assemble dict, export, then vocal-split — preserve save-then-split order). Do not lift to [`run_separator_once`](../../../core/separator_run.py) until every engine has stopped calling `write_audio`. Do not fold [`_write_captured_stems`](../../../core/run_loop.py) by adding a third writer.
-
-**This PR:** MDX-C assembles native, derived complement, multi-stem, and
-vocal-splitter source maps before
-[`export_source_map`](../../../engines/stem_writer.py). Its recipe no longer
-calls `write_audio` or `final_process`.
-
-**This PR (continued):** Demucs is also inverted: it assembles native + derived
-complements (including pre-proc instrumental-mixture and 2-source secondary
-dict normalization), then exports via [`export_source_map`](../../../engines/stem_writer.py)
-followed by the vocal-split chain.
-
-Later PRs (do not stack): optional job-level lift.
+All four engines return [`ExportPlan`](../../../engines/stem_writer.py) from
+``seperate()``; [`finish_export`](../../../engines/stem_writer.py) runs from
+[`run_separator_once`](../../../core/separator_run.py) and
+[`_run_seperator`](../../../engines/orchestration.py). [`final_process`](../../../engines/base.py)
+is deleted. [`_write_captured_stems`](../../../core/run_loop.py) stays a separate
+deferred writer.
 
 ### 2. Optional later (do not start from this backlog)
 
@@ -85,7 +80,6 @@ touching them.
   store a choice” cycle.
 - **Multi-focus `select_stem_routes`.** One `stem_focus` string. Subset is
   `mdx.stems_selected` natives, not a comma list in `stem_focus`.
-- **Split `SeperateMDXC.seperate` / `demix_roformer`** into a third file.
 - **4-stem ensemble positional `--stems primary`.** Skip. Use concept names
   (`--stems vocals`) for 4-stem finals.
 - **Putting canonical ids in export filenames.**
@@ -99,4 +93,5 @@ touching them.
 
 ## Suggested next PR
 
-After MDX-C lands (now complete): optional job-level lift.
+Pick from **Optional later** below, or open a new spec — the engine inversion
+and job-level export lift series is complete.
