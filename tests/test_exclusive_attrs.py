@@ -8,7 +8,7 @@ from dataclasses import fields
 from pathlib import Path
 
 from core.model_config import ModelConfig, StemRouting
-from core.model_data import process_determine_secondary_model
+from core.model_config import process_determine_secondary_model
 
 _REPO = Path(__file__).resolve().parents[1]
 _EXCLUSIVE_ATTRS = (

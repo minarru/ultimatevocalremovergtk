@@ -53,8 +53,8 @@ class ModelConfig:
             _mdx_c_secondary_for_pair,
             _mdx_c_training,
             load_mdx_c_config,
-            process_determine_demucs_pre_proc_model,
         )
+        from .determine import process_determine_demucs_pre_proc_model
 
         process = settings.process
         vr = settings.vr
@@ -603,7 +603,7 @@ class ModelConfig:
         # flat settings keys instead of Tk variables.
 
     def vocal_splitter_model_data(self):
-        from ..model_data import process_determine_vocal_split_model
+        from .determine import process_determine_vocal_split_model
 
         self.vocal_split_model = None
         self.is_vocal_split_model_activated = False
@@ -614,7 +614,7 @@ class ModelConfig:
                 self.is_sec_bv_rebalance = True
 
     def secondary_model_data(self, primary_stem: typing.Any):
-        from ..model_data import process_determine_secondary_model
+        from .determine import process_determine_secondary_model
 
         secondary_model, secondary_model_scale = process_determine_secondary_model(
             self.settings,
