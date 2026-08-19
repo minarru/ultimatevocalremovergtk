@@ -309,7 +309,7 @@ class ProcessChainModelPathTests(unittest.TestCase):
         model.bv_model_rebalance = False
         process_data = MagicMock()
         with (
-            patch("engines.orchestration._build_seperator") as build,
+            patch("engines.separator_factory.build_seperator") as build,
             patch("engines.orchestration._run_seperator", return_value=None),
         ):
             process_chain_model(
@@ -329,7 +329,7 @@ class ProcessChainModelPathTests(unittest.TestCase):
         model.bv_model_rebalance = False
         process_data = MagicMock()
         with (
-            patch("engines.orchestration._build_seperator") as build,
+            patch("engines.separator_factory.build_seperator") as build,
             patch("engines.orchestration._run_seperator", return_value=None),
         ):
             process_chain_model(

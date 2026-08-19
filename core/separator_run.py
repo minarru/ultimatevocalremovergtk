@@ -91,28 +91,46 @@ def prepare_separator_vram(runner: Any, seperator: typing.Any) -> None:
     )
 
 
-def run_separator_once(runner: Any, seperator: typing.Any) -> dict:
-    """Run one separator once and return captured stem arrays."""
-    runner._active_separator = seperator
-    runner._last_backend_name = getattr(seperator, "_backend_name", None)
-    runner._last_captured_stem_paths = {}
+def run_separate_pass(seperator: typing.Any, *, runner: Any = None) -> dict:
+    """Run ``seperate()`` then ``finish_export``, always releasing the engine.
+
+    With ``runner``, also prepare VRAM and return captured stem arrays (job
+    path). Without it, return the ``finish_export`` sources dict (nested
+    secondary / vocal-split path).
+    """
+    if runner is not None:
+        runner._active_separator = seperator
+        runner._last_backend_name = getattr(seperator, "_backend_name", None)
+        runner._last_captured_stem_paths = {}
     try:
-        prepare_separator_vram(runner, seperator)
+        if runner is not None:
+            prepare_separator_vram(runner, seperator)
         from engines.stem_writer import ExportPlan, finish_export
 
         plan = seperator.seperate()
         if isinstance(plan, ExportPlan):
-            finish_export(seperator, plan)
-        elif plan is not None:
-            finish_export(seperator, ExportPlan(sources=dict(plan)))
-        stems = _capture_separator_stem_arrays(seperator)
-        runner._last_captured_stem_paths = _capture_separator_stem_paths(seperator)
-        return stems
+            sources = finish_export(seperator, plan)
+        elif plan is None:
+            sources = finish_export(seperator, ExportPlan())
+        else:
+            sources = finish_export(seperator, ExportPlan(sources=dict(plan)))
+        if runner is not None:
+            stems = _capture_separator_stem_arrays(seperator)
+            runner._last_captured_stem_paths = _capture_separator_stem_paths(
+                seperator
+            )
+            return stems
+        return sources
     finally:
         debug("cleanup", f"_run_seperator finally engine={type(seperator).__name__}")
         release_separator(seperator)
-        if runner._active_separator is seperator:
+        if runner is not None and runner._active_separator is seperator:
             runner._active_separator = None
+
+
+def run_separator_once(runner: Any, seperator: typing.Any) -> dict:
+    """Run one separator once and return captured stem arrays."""
+    return run_separate_pass(seperator, runner=runner)
 
 
 def run_separator(
@@ -325,4 +343,4 @@ def export_ensemble_salvage(runner: Any, callbacks: Any) -> None:
         )
 
 
-__all__ = ["run_separator"]
+__all__ = ["run_separator", "run_separate_pass"]

@@ -6,119 +6,19 @@ from typing import Any, TYPE_CHECKING
 
 from bundled.constants import *
 from core.debug_log import trace_phase
-from core.inference_cleanup import release_separator
 from ml import spec_utils
 
+from . import separator_factory
 from .mix import gather_sources
 
 if TYPE_CHECKING:
     from core.model_config import ModelConfig
 
 
-def _engine_classes():
-    from .demucs_engine import SeperateDemucs
-    from .mdx import SeperateMDX
-    from .mdx_c_engine import SeperateMDXC
-    from .vr import SeperateVR
-
-    return SeperateVR, SeperateMDX, SeperateMDXC, SeperateDemucs
-
-
-def _build_seperator(
-    model: Any,
-    process_data: typing.Any,
-    *,
-    main_model_primary_stem_4_stem: typing.Any=None,
-    main_process_method: typing.Any=None,
-    is_return_dual: typing.Any=True,
-    main_model_primary: typing.Any=None,
-    vocal_stem_path: typing.Any=None,
-    master_inst_source: typing.Any=None,
-    master_vocal_source: typing.Any=None,
-):
-    SeperateVR, SeperateMDX, SeperateMDXC, SeperateDemucs = _engine_classes()
-    method = model.process_method
-    if method == VR_ARCH_TYPE:
-        if vocal_stem_path is not None:
-            return SeperateVR(
-                model,
-                process_data,
-                vocal_stem_path=vocal_stem_path,
-                master_inst_source=master_inst_source,
-                master_vocal_source=master_vocal_source,
-            )
-        return SeperateVR(
-            model,
-            process_data,
-            main_model_primary_stem_4_stem=main_model_primary_stem_4_stem,
-            main_process_method=main_process_method,
-            main_model_primary=main_model_primary,
-        )
-    if method == MDX_ARCH_TYPE:
-        if vocal_stem_path is not None:
-            if model.is_mdx_c:
-                return SeperateMDXC(
-                    model,
-                    process_data,
-                    vocal_stem_path=vocal_stem_path,
-                    master_inst_source=master_inst_source,
-                    master_vocal_source=master_vocal_source,
-                )
-            return SeperateMDX(
-                model,
-                process_data,
-                vocal_stem_path=vocal_stem_path,
-                master_inst_source=master_inst_source,
-                master_vocal_source=master_vocal_source,
-            )
-        if model.is_mdx_c:
-            return SeperateMDXC(
-                model,
-                process_data,
-                main_model_primary_stem_4_stem=main_model_primary_stem_4_stem,
-                main_process_method=main_process_method,
-                is_return_dual=is_return_dual,
-                main_model_primary=main_model_primary,
-            )
-        return SeperateMDX(
-            model,
-            process_data,
-            main_model_primary_stem_4_stem=main_model_primary_stem_4_stem,
-            main_process_method=main_process_method,
-            main_model_primary=main_model_primary,
-        )
-    if method == DEMUCS_ARCH_TYPE:
-        if vocal_stem_path is not None:
-            return SeperateDemucs(
-                model,
-                process_data,
-                vocal_stem_path=vocal_stem_path,
-                master_inst_source=master_inst_source,
-                master_vocal_source=master_vocal_source,
-            )
-        return SeperateDemucs(
-            model,
-            process_data,
-            main_model_primary_stem_4_stem=main_model_primary_stem_4_stem,
-            main_process_method=main_process_method,
-            is_return_dual=is_return_dual,
-            main_model_primary=main_model_primary,
-        )
-    raise NotImplementedError(f"engine for '{method}' is not available")
-
-
 def _run_seperator(seperator: typing.Any) -> Any:
-    try:
-        from engines.stem_writer import ExportPlan, finish_export
+    from core.separator_run import run_separate_pass
 
-        plan = seperator.seperate()
-        if isinstance(plan, ExportPlan):
-            return finish_export(seperator, plan)
-        if plan is None:
-            return finish_export(seperator, ExportPlan())
-        return finish_export(seperator, ExportPlan(sources=dict(plan)))
-    finally:
-        release_separator(seperator)
+    return run_separate_pass(seperator)
 
 
 def process_secondary_model(
@@ -141,7 +41,7 @@ def process_secondary_model(
             process_iteration = process_data.process_iteration
             process_iteration()
 
-        seperator = _build_seperator(
+        seperator = separator_factory.build_seperator(
             secondary_model,
             process_data,
             main_model_primary_stem_4_stem=main_model_primary_stem_4_stem,
@@ -184,7 +84,7 @@ def process_chain_model(
         vocal_base = "audio"
     vocal_stem_path = [vocal_source, vocal_base]
 
-    seperator = _build_seperator(
+    seperator = separator_factory.build_seperator(
         secondary_model,
         process_data,
         vocal_stem_path=vocal_stem_path,

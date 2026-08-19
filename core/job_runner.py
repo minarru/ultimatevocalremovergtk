@@ -15,7 +15,7 @@ import typing
 import os
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any, List, Literal, Optional, Sequence
 
 from bundled.constants import (
     DEMUCS_ARCH_TYPE,
@@ -180,19 +180,14 @@ class JobRunner:
                 planned_output_root=planned_output_root,
             )
             return
-        from kthread import KThread
-
-        self._reset_run_state()
-        self._run_models = list(models) if models is not None else None
-        self._run_planned = tuple(planned) if planned is not None else None
-        self._run_output_root = planned_output_root
-        paths = list(input_paths)
-        self._thread = KThread(
-            target=self._run,
-            args=(paths, callbacks),
+        self._start_worker(
+            input_paths,
+            callbacks,
+            mode="single",
+            models=models,
+            planned=planned,
+            planned_output_root=planned_output_root,
         )
-        debug("worker", f"KThread start files={len(paths)}")
-        self._thread.start()
 
     def start_ensemble(
         self,
@@ -204,6 +199,26 @@ class JobRunner:
         planned_output_root: str | None = None,
     ) -> None:
         """Launch the ensemble worker thread explicitly. No-op if already running."""
+        self._start_worker(
+            input_paths,
+            callbacks,
+            mode="ensemble",
+            models=models,
+            planned=planned,
+            planned_output_root=planned_output_root,
+        )
+
+    def _start_worker(
+        self,
+        input_paths: Sequence[str],
+        callbacks: job_callbacks.JobCallbacks,
+        *,
+        mode: Literal["single", "ensemble"],
+        models: Sequence[Any] | None = None,
+        planned: Sequence[Any] | None = None,
+        planned_output_root: str | None = None,
+    ) -> None:
+        """Shared KThread launch for single-method and ensemble workers."""
         if self.is_running():
             return
         from kthread import KThread
@@ -214,10 +229,11 @@ class JobRunner:
         self._run_output_root = planned_output_root
         paths = list(input_paths)
         self._thread = KThread(
-            target=self._run_ensemble,
-            args=(paths, callbacks),
+            target=self._run_separation,
+            args=(paths, callbacks, mode),
         )
-        debug("worker", f"KThread ensemble start files={len(paths)}")
+        kind = "ensemble" if mode == "ensemble" else "single"
+        debug("worker", f"KThread {kind} start files={len(paths)}")
         self._thread.start()
 
     def start_resolved(
@@ -302,7 +318,7 @@ class JobRunner:
         planned: "PlannedInput",
         callbacks: job_callbacks.JobCallbacks,
     ) -> InputOutcome:
-        """Run a single planned input using the existing ``_run`` / ``_run_ensemble`` body."""
+        """Run a single planned input using :meth:`_run_separation`."""
         started = time.perf_counter()
         box: dict[str, Any] = {
             "status": "success",
@@ -337,10 +353,10 @@ class JobRunner:
             or self.settings.process.method == ProcessMethod.ENSEMBLE
         )
         try:
-            if use_ensemble:
-                self._run_ensemble([planned.path], item_callbacks)
-            else:
-                self._run([planned.path], item_callbacks)
+            mode: Literal["single", "ensemble"] = (
+                "ensemble" if use_ensemble else "single"
+            )
+            self._run_separation([planned.path], item_callbacks, mode)
         except Exception as exc:  # noqa: BLE001 - convert to outcome
             return InputOutcome(
                 path=planned.path,
@@ -611,94 +627,82 @@ class JobRunner:
         self,
         current_model: ModelConfig,
         process_data: ProcessData,
-        *,
-        SeperateVR: Any,
-        SeperateMDX: Any,
-        SeperateMDXC: Any,
-        SeperateDemucs: Any,
     ) -> Any:
-        """Construct the engine instance for ``current_model``."""
+        """Construct the engine instance for ``current_model``.
+
+        Dispatch lives in :func:`engines.separator_factory.build_seperator`.
+        Segment backoff stays on the job path only.
+        """
+        from engines.separator_factory import build_seperator
+
         apply_segment_override(self, current_model)
-        if current_model.process_method == VR_ARCH_TYPE:
-            return SeperateVR(current_model, process_data)
-        if current_model.process_method == MDX_ARCH_TYPE:
-            if current_model.is_mdx_c:
-                return SeperateMDXC(current_model, process_data)
-            return SeperateMDX(current_model, process_data)
-        if current_model.process_method == DEMUCS_ARCH_TYPE:
-            return SeperateDemucs(current_model, process_data)
-        raise NotImplementedError(
-            f"engine for '{current_model.process_method}' not available"
-        )
+        return build_seperator(current_model, process_data)
 
-    def _run(self, input_paths: List[str], callbacks: job_callbacks.JobCallbacks) -> None:
-        debug("worker", "_run entered")
-        import_started = time.perf_counter()
-        engines = import_separate_engines()
-        debug_elapsed("worker", "separate engines ready", import_started)
+    def _run_separation(
+        self,
+        input_paths: List[str],
+        callbacks: job_callbacks.JobCallbacks,
+        mode: Literal["single", "ensemble"],
+    ) -> None:
+        """Run single-method separation or an ensemble (member passes + combine).
 
-        def body() -> None:
-            paths = self._prepare_paths_for_run(input_paths, callbacks)
-            export_path = self.settings.process.export_path
-            if not export_path:
-                raise ValueError("export_path is required")
-            resolve_started = time.perf_counter()
-            if self._run_models is not None:
-                models = list(self._run_models)
-            else:
-                models = self.resolve_models()
-            debug_elapsed("worker", "resolve_models", resolve_started, count=len(models))
-            self.iteration = 0
-            self._build_all_models(models)
-            self._set_run_protect_identities(models)
-            self._ensure_vram_for_job(callbacks)
-            self.true_model_count = self._count_true_models(models)
-            try:
-                amp_threshold = float(
-                    self.settings.process.amplification_threshold or 0.0
-                )
-            except (TypeError, ValueError):
-                amp_threshold = 0.0
-            run_models_on_files(
-                self,
-                paths,
-                callbacks,
-                models,
-                engines=engines,
-                hooks=run_hooks._SingleRunHooks(export_path, amp_threshold),
-            )
-
-        with_worker_lifecycle(self, callbacks, "_run", body)
-
-    def _run_ensemble(self, input_paths: List[str], callbacks: job_callbacks.JobCallbacks) -> None:
-        """Run every selected ensemble member then combine their outputs.
-
-        Tk-free port of ``process_start``'s ``ENSEMBLE_MODE`` branch: each member
-        model is run with ``is_ensemble_master`` so the engines write per-member
+        Tk-free port of ``process_start``'s separation branches. Ensemble mode
+        runs each member with ``is_ensemble_master`` so engines write per-member
         stems into the ensemble temp folder, then :class:`Ensembler` combines
         those stems per the chosen algorithm into the final outputs.
         """
         import shutil
 
-        debug("worker", "_run_ensemble entered")
+        lifecycle_label = "_run_ensemble" if mode == "ensemble" else "_run"
+        debug("worker", f"{lifecycle_label} entered")
         import_started = time.perf_counter()
         engines = import_separate_engines()
         debug_elapsed("worker", "separate engines ready", import_started)
 
         def body() -> None:
             paths = self._prepare_paths_for_run(input_paths, callbacks)
+            single_export_path: str | None = None
+            if mode == "single":
+                single_export_path = self.settings.process.export_path
+                if not single_export_path:
+                    raise ValueError("export_path is required")
+
+            resolve_started = time.perf_counter()
             if self._run_models is not None:
                 models = list(self._run_models)
+            elif mode == "ensemble":
+                models = assemble_model(
+                    self.settings, self.repo, arch_type=ENSEMBLE_MODE
+                )
             else:
-                models = assemble_model(self.settings, self.repo, arch_type=ENSEMBLE_MODE)
-            if len(models) <= 1:
-                raise RuntimeError("Select at least two models to run an ensemble")
+                models = self.resolve_models()
+            debug_elapsed(
+                "worker", "resolve_models", resolve_started, count=len(models)
+            )
 
-            ensemble = Ensembler(self.settings)
-            export_path = ensemble.ensemble_folder_name
-            is_4_stem = coerce_ensemble_pair(
-                self.settings.ensemble.main_stem
-            ).is_multi_or_four()
+            ensemble_export_path: str | None = None
+            if mode == "ensemble":
+                if len(models) <= 1:
+                    raise RuntimeError(
+                        "Select at least two models to run an ensemble"
+                    )
+                ensemble = Ensembler(self.settings)
+                ensemble_export_path = ensemble.ensemble_folder_name
+                is_4_stem = coerce_ensemble_pair(
+                    self.settings.ensemble.main_stem
+                ).is_multi_or_four()
+                hooks: Any = run_hooks._EnsembleRunHooks(ensemble, is_4_stem)
+            else:
+                assert single_export_path is not None
+                try:
+                    amp_threshold = float(
+                        self.settings.process.amplification_threshold or 0.0
+                    )
+                except (TypeError, ValueError):
+                    amp_threshold = 0.0
+                hooks = run_hooks._SingleRunHooks(
+                    single_export_path, amp_threshold
+                )
 
             self.iteration = 0
             self._build_all_models(models)
@@ -711,12 +715,16 @@ class JobRunner:
                 callbacks,
                 models,
                 engines=engines,
-                hooks=run_hooks._EnsembleRunHooks(ensemble, is_4_stem),
+                hooks=hooks,
             )
-            try:
-                if os.path.isdir(export_path) and len(os.listdir(export_path)) == 0:
-                    shutil.rmtree(export_path)
-            except OSError:
-                pass
+            if mode == "ensemble" and ensemble_export_path is not None:
+                try:
+                    if (
+                        os.path.isdir(ensemble_export_path)
+                        and len(os.listdir(ensemble_export_path)) == 0
+                    ):
+                        shutil.rmtree(ensemble_export_path)
+                except OSError:
+                    pass
 
-        with_worker_lifecycle(self, callbacks, "_run_ensemble", body)
+        with_worker_lifecycle(self, callbacks, lifecycle_label, body)

@@ -84,8 +84,8 @@ class JobRunnerSeperatorTests(unittest.TestCase):
             with mock.patch("core.job_runner.prepare_input_paths", prepare):
                 with mock.patch.object(
                     runner,
-                    "_run",
-                    side_effect=lambda paths, callbacks: runner._prepare_paths_for_run(
+                    "_run_separation",
+                    side_effect=lambda paths, callbacks, mode: runner._prepare_paths_for_run(
                         paths, callbacks
                     ),
                 ):

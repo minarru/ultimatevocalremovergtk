@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from typing import Any
 from unittest.mock import Mock, patch
 
 from core.export_naming import OutputNamingContext
@@ -157,7 +158,7 @@ class JobRunnerPlannedTests(unittest.TestCase):
             {"/cache/song_clip.wav": "/in/song.wav"},
         )
 
-    def test_run_reuses_models_without_resolve(self) -> None:
+    def test_run_separation_single_reuses_models_without_resolve(self) -> None:
         settings = Settings.defaults()
         settings.process.export_path = "/tmp/out"
         runner = JobRunner(settings)
@@ -175,10 +176,36 @@ class JobRunnerPlannedTests(unittest.TestCase):
                                     with patch(
                                         "core.run_loop._release_inference_resources"
                                     ):
-                                        runner._run([], JobCallbacks())
+                                        runner._run_separation(
+                                            [], JobCallbacks(), "single"
+                                        )
         resolve.assert_not_called()
 
-    def test_run_ensemble_reuses_models_without_assemble(self) -> None:
+    def test_single_missing_export_path_fails_before_model_resolution(self) -> None:
+        settings = Settings.defaults()
+        settings.process.export_path = ""
+        runner = JobRunner(settings)
+        errors: list[BaseException] = []
+
+        with (
+            patch(
+                "core.job_runner.import_separate_engines",
+                return_value=(Mock(), Mock(), Mock(), Mock(), Mock()),
+            ),
+            patch.object(
+                runner,
+                "resolve_models",
+                side_effect=AssertionError("model resolution must not run"),
+            ),
+            patch("core.run_loop._release_inference_resources"),
+        ):
+            runner._run_separation([], JobCallbacks(on_error=errors.append), "single")
+
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], ValueError)
+        self.assertEqual(str(errors[0]), "export_path is required")
+
+    def test_run_separation_ensemble_reuses_models_without_assemble(self) -> None:
         settings = Settings.defaults()
         settings.process.export_path = "/tmp/out"
         runner = JobRunner(settings)
@@ -199,8 +226,50 @@ class JobRunnerPlannedTests(unittest.TestCase):
                                         with patch(
                                             "core.run_loop._release_inference_resources"
                                         ):
-                                            runner._run_ensemble([], JobCallbacks())
+                                            runner._run_separation(
+                                                [], JobCallbacks(), "ensemble"
+                                            )
         assemble.assert_not_called()
+
+    def test_run_separation_modes_pass_distinct_hooks(self) -> None:
+        settings = Settings.defaults()
+        settings.process.export_path = "/tmp/out"
+        runner = JobRunner(settings)
+        runner._run_models = [Mock(name="m1"), Mock(name="m2")]
+        engines = (Mock(), Mock(), Mock(), Mock(), Mock())
+        captured: list[str] = []
+
+        def capture_run(*_args: object, **kwargs: Any) -> None:
+            captured.append(kwargs["hooks"].process_kind)
+
+        fake_ensemble = Mock()
+        fake_ensemble.ensemble_folder_name = "/tmp/ens"
+        with patch("core.job_runner.import_separate_engines", return_value=engines):
+            with patch.object(runner, "_prepare_paths_for_run", return_value=[]):
+                with patch.object(runner, "_build_all_models"):
+                    with patch.object(runner, "_set_run_protect_identities"):
+                        with patch.object(runner, "_ensure_vram_for_job"):
+                            with patch.object(
+                                runner, "_count_true_models", return_value=2
+                            ):
+                                with patch(
+                                    "core.job_runner.run_models_on_files",
+                                    side_effect=capture_run,
+                                ):
+                                    with patch(
+                                        "core.run_loop._release_inference_resources"
+                                    ):
+                                        runner._run_separation(
+                                            [], JobCallbacks(), "single"
+                                        )
+                                        with patch(
+                                            "core.job_runner.Ensembler",
+                                            return_value=fake_ensemble,
+                                        ):
+                                            runner._run_separation(
+                                                [], JobCallbacks(), "ensemble"
+                                            )
+        self.assertEqual(captured, ["separation", "ensemble"])
 
 
 if __name__ == "__main__":
