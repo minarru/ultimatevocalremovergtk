@@ -8,7 +8,7 @@ from unittest import mock
 
 from bundled.constants import ENSEMBLE_PARTITION, MDX_ARCH_TYPE
 from core import model_display as md
-from core.model_data import ModelRepository
+from core.model_repository import ModelRepository
 
 
 class FormatTagTitleCacheTests(unittest.TestCase):

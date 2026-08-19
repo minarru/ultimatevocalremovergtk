@@ -14,7 +14,7 @@ from bundled.constants import (
 )
 
 if TYPE_CHECKING:
-    from ..model_data import ModelRepository
+    from ..model_repository import ModelRepository
     from ..settings import Settings
     from . import ModelConfig
 

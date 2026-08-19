@@ -10,7 +10,7 @@ from core import paths
 from core.downloads import DownloadManager
 from core.mdx_c_registry import compute_checkpoint_hash
 from core.model_config import ModelConfig
-from core.model_data import ModelRepository
+from core.model_repository import ModelRepository
 
 
 class ModelDataMergeTests(unittest.TestCase):

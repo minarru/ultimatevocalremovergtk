@@ -249,12 +249,12 @@ class ListModelTagsCanonicalTests(unittest.TestCase):
 
     def test_list_mdx_model_tags_are_canonical_ids_sorted_by_display(self) -> None:
         from bundled.constants import ENSEMBLE_PARTITION
-        from core.model_data import ModelRepository
+        from core.model_repository import ModelRepository
         from core.model_identity import ModelId
 
         repo = ModelRepository.__new__(ModelRepository)
         with patch.object(repo, "list_mdx_models", return_value=["zzz", "aaa"]), patch(
-            "core.model_data.map_basenames_to_display",
+            "core.model_repository.map_basenames_to_display",
             return_value=["Zebra", "Apple"],
         ):
             tags = repo.list_mdx_model_tags()
@@ -264,19 +264,19 @@ class ListModelTagsCanonicalTests(unittest.TestCase):
             self.assertNotIn(ENSEMBLE_PARTITION, tag)
 
     def test_list_vr_and_demucs_tags_use_family_prefix(self) -> None:
-        from core.model_data import ModelRepository
+        from core.model_repository import ModelRepository
         from core.model_identity import ModelId
 
         repo = ModelRepository.__new__(ModelRepository)
         with patch.object(repo, "list_vr_models", return_value=["hp"]), patch(
-            "core.model_data.map_basenames_to_display", return_value=["HP"]
+            "core.model_repository.map_basenames_to_display", return_value=["HP"]
         ):
             vr = repo.list_vr_model_tags()
         self.assertEqual(vr, ["vr:hp"])
         ModelId.parse(vr[0])
 
         with patch.object(repo, "list_demucs_models", return_value=["htdemucs"]), patch(
-            "core.model_data.map_basenames_to_display", return_value=["v4 | htdemucs"]
+            "core.model_repository.map_basenames_to_display", return_value=["v4 | htdemucs"]
         ):
             demucs = repo.list_demucs_model_tags()
         self.assertEqual(demucs, ["demucs:htdemucs"])
@@ -287,7 +287,7 @@ class NestedCanonicalModelConfigTests(unittest.TestCase):
     """Canonical settings IDs must not be treated as ensemble member tags."""
 
     def _capture_config(self):
-        from core.model_data import ModelConfig as RealConfig
+        from core.model_config import ModelConfig as RealConfig
 
         captured: dict[str, object] = {}
 

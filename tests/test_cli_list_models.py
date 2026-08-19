@@ -247,7 +247,7 @@ class DiscoveryTests(unittest.TestCase):
         out, err = io.StringIO(), io.StringIO()
         with patch(
             "core.model_catalogue.ModelCatalogueService", return_value=service
-        ), patch("core.model_data.ModelRepository"), patch(
+        ), patch("core.model_repository.ModelRepository"), patch(
             "signal.signal", side_effect=install
         ), patch(
             "signal.getsignal", return_value=object()

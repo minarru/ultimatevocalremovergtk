@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from core.model_data import ModelRepository
+from core.model_repository import ModelRepository
 from core.settings import Settings
 from core.settings.job_resolution import (
     SettingsLayer,

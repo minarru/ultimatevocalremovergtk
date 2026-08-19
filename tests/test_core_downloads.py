@@ -363,7 +363,7 @@ class UpdateModelSettingsTests(unittest.TestCase):
         from core import downloads as downloads_mod
         from core import paths
         from core.downloads import DownloadManager
-        from core.model_data import ModelRepository
+        from core.model_repository import ModelRepository
 
         payload = {"fresh-md5": {"primary_stem": "Vocals"}}
         with tempfile.TemporaryDirectory() as tmp:

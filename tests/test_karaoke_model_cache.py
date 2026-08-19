@@ -8,7 +8,8 @@ import unittest
 from typing import Any
 from unittest import mock
 
-from core.model_data import ModelConfig, ModelRepository
+from core.model_config import ModelConfig
+from core.model_repository import ModelRepository
 from core.settings import Settings
 
 

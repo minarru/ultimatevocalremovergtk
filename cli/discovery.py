@@ -225,7 +225,7 @@ def _model_info(record: Any, repo: Any, *, detailed: bool = False) -> dict[str, 
 
 
 def cmd_models_list(args: argparse.Namespace) -> int:
-    from core.model_data import ModelRepository
+    from core.model_repository import ModelRepository
 
     repo = ModelRepository()
     rows = [
@@ -237,7 +237,7 @@ def cmd_models_list(args: argparse.Namespace) -> int:
 
 
 def cmd_models_show(args: argparse.Namespace) -> int:
-    from core.model_data import ModelRepository
+    from core.model_repository import ModelRepository
 
     try:
         repo = ModelRepository()
@@ -303,7 +303,7 @@ def cmd_models_register(args: argparse.Namespace) -> int:
             "id": existing_id, "registered": False,
             "already_registered": True,
         }])
-    from core.model_data import ModelRepository
+    from core.model_repository import ModelRepository
     if os.path.exists(destination):
         return fail(args, f"model destination already exists: {destination}", exit_code=2)
     hash_file = None
@@ -363,7 +363,7 @@ def cmd_models_download(args: argparse.Namespace) -> int:
     import threading
 
     from core.model_catalogue import ModelCatalogueService
-    from core.model_data import ModelRepository
+    from core.model_repository import ModelRepository
 
     service = ModelCatalogueService()
     if not service.refresh(offline=args.offline):
@@ -452,7 +452,7 @@ def cmd_models_configure(args: argparse.Namespace) -> int:
     from bundled.constants import APOLLO_ARCH_TYPE
     from core.apollo import checkpoint_md5
     from core.model_identity import ModelIdentityService
-    from core.model_data import ModelRepository
+    from core.model_repository import ModelRepository
     from core.model_registry import ModelRegistryService
 
     repo = ModelRepository()
@@ -554,7 +554,7 @@ def add_ensembles_parser(sub: argparse._SubParsersAction) -> None:
 
 def _ensemble_rows() -> list[dict[str, Any]]:
     from core.ensemble_presets import curated_combo_label, list_curated_ensembles, load_curated_ensemble
-    from core.model_data import list_saved_ensembles, load_ensemble
+    from core.ensemble_service import list_saved_ensembles, load_ensemble
 
     rows = []
     for preset in list_curated_ensembles():
@@ -577,7 +577,7 @@ def cmd_ensembles_show(args: argparse.Namespace) -> int:
     row = matches[0]
     data = dict(row.get("data") or {})
     try:
-        from core.model_data import ModelRepository
+        from core.model_repository import ModelRepository
         repo = ModelRepository()
         members = [
             canonical_id_from_member_tag(tag, repo)
@@ -601,7 +601,7 @@ def cmd_ensembles_show(args: argparse.Namespace) -> int:
 
 def cmd_ensembles_create(args: argparse.Namespace) -> int:
     from core.ensemble_service import EnsembleService
-    from core.model_data import ModelRepository
+    from core.model_repository import ModelRepository
 
     try:
         preset = EnsembleService(ModelRepository()).create(
@@ -795,7 +795,7 @@ def cmd_profile_create(args: argparse.Namespace) -> int:
         members = list(args.member)
         reference_paths = MODEL_REFERENCE_SETTING_PATHS.intersection(values)
         if model or members or reference_paths:
-            from core.model_data import ModelRepository
+            from core.model_repository import ModelRepository
             repo = ModelRepository()
             model = resolve_model_id(model, repo).id if model else None
             members = [resolve_model_id(item, repo).id for item in members]
@@ -853,7 +853,7 @@ def cmd_completion(args: argparse.Namespace) -> int:
     commands = " ".join(subcommands.choices)
     dynamic: list[str] = ["defaults", "gui", *_setting_paths(), *list_profiles()]
     try:
-        from core.model_data import ModelRepository
+        from core.model_repository import ModelRepository
         dynamic.extend(record.id for record in iter_model_records(ModelRepository()))
         dynamic.extend(str(row["id"]) for row in _ensemble_rows())
         from core.gpu import list_gpu_devices

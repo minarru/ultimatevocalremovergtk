@@ -28,7 +28,7 @@ from bundled.constants import (
 from ..settings import Settings
 
 if TYPE_CHECKING:
-    from ..model_data import ModelRepository
+    from ..model_repository import ModelRepository
 
 _SECONDARY_PREFIX_BY_METHOD = {
     VR_ARCH_TYPE: "vr",

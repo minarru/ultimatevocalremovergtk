@@ -4,7 +4,7 @@ import unittest
 from bundled.constants import CKPT, ONNX
 from core import paths
 from core.model_config import ModelConfig
-from core.model_data import ModelRepository
+from core.model_repository import ModelRepository
 from core.settings import Settings
 
 

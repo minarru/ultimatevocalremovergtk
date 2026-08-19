@@ -12,7 +12,7 @@ import os
 import tempfile
 import unittest
 
-from core.model_data import ModelRepository
+from core.model_repository import ModelRepository
 
 
 class ModelsChangedSubscriberTests(unittest.TestCase):

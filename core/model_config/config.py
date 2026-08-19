@@ -20,7 +20,7 @@ from ..settings import Settings
 from ..settings.coerce import enum_value
 
 if TYPE_CHECKING:
-    from ..model_data import ModelRepository
+    from ..model_repository import ModelRepository
 
 
 class ModelConfig:

@@ -44,7 +44,7 @@ class VocalSplitRowTests(unittest.TestCase):
 
     def _row(self):
         from ui.widgets.vocal_split_row import VocalSplitRow
-        from core.model_data import ModelRepository
+        from core.model_repository import ModelRepository
 
         repo = ModelRepository()
 
@@ -159,7 +159,7 @@ class VocalSplitRowTests(unittest.TestCase):
 
     def test_persist_preserves_a_stored_tag_when_karaoke_model_list_raises(self):
         from ui.widgets.vocal_split_row import VocalSplitRow
-        from core.model_data import ModelRepository
+        from core.model_repository import ModelRepository
 
         repo = ModelRepository()
 

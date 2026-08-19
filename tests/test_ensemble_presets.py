@@ -168,7 +168,7 @@ class IneligibleMemberTests(unittest.TestCase):
 
     def test_classify_preset_members_reports_missing_without_raising(self) -> None:
         from core.ensemble_presets import classify_preset_members
-        from core.model_data import ModelRepository
+        from core.model_repository import ModelRepository
 
         # A real repository with nothing installed: resolve_member_tag reads
         # mapper attributes a hand-rolled fake would not have.

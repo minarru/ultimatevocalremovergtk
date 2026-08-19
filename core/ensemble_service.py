@@ -131,7 +131,7 @@ class ResolvedEnsemblePreset:
 
 class EnsembleService:
     def __init__(self, repo: Any | None = None):
-        from .model_data import ModelRepository
+        from .model_repository import ModelRepository
 
         self.repo = repo or ModelRepository()
         self.identities = ModelIdentityService(self.repo)

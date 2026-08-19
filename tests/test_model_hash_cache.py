@@ -141,7 +141,8 @@ class ModelHashWireTests(unittest.TestCase):
     def test_get_model_hash_remembers_into_settings(self) -> None:
         from unittest import mock
 
-        from core.model_data import ModelConfig, ModelRepository
+        from core.model_config import ModelConfig
+        from core.model_repository import ModelRepository
         from core.settings import Settings
 
         tmp = tempfile.TemporaryDirectory()
@@ -181,7 +182,8 @@ class ModelHashWireTests(unittest.TestCase):
         from unittest import mock
 
         from core import model_hash_cache as mhc
-        from core.model_data import ModelConfig, ModelRepository
+        from core.model_config import ModelConfig
+        from core.model_repository import ModelRepository
         from core.settings import Settings
 
         tmp = tempfile.TemporaryDirectory()
@@ -224,7 +226,8 @@ class ModelHashWireTests(unittest.TestCase):
         """
         from unittest import mock
 
-        from core.model_data import ModelConfig, ModelRepository
+        from core.model_config import ModelConfig
+        from core.model_repository import ModelRepository
         from core.settings import Settings
 
         tmp = tempfile.TemporaryDirectory()
