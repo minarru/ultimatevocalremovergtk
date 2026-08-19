@@ -12,6 +12,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parents[1]
 _WRITER = _REPO / "engines" / "stem_writer.py"
 _BASE = _REPO / "engines" / "base.py"
+_MDXC = _REPO / "engines" / "mdx_c.py"
 _INVERTED_ENGINES = (
     _REPO / "engines" / "vr.py",
     _REPO / "engines" / "mdx.py",
@@ -87,6 +88,15 @@ class EngineInversionBoundaryTests(unittest.TestCase):
                 source = path.read_text(encoding="utf-8")
                 self.assertIn("self.process_secondary_stem(", source)
                 self.assertIn("export_source_map(self, sources,", source)
+
+    def test_mdxc_does_not_call_legacy_writer_path(self) -> None:
+        source = _MDXC.read_text(encoding="utf-8")
+        self.assertNotIn("self.write_audio(", source)
+        self.assertNotIn("self.final_process(", source)
+
+    def test_mdxc_uses_source_map_post_pass(self) -> None:
+        source = _MDXC.read_text(encoding="utf-8")
+        self.assertIn("export_source_map(self, export_sources,", source)
 
     def test_final_process_remains_a_writer_for_other_engines(self) -> None:
         source = _BASE.read_text(encoding="utf-8")

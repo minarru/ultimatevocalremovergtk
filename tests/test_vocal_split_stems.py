@@ -342,42 +342,35 @@ class ProcessChainModelPathTests(unittest.TestCase):
         self.assertEqual(base, "01. Song")
 
 
-class _SplitSaveFake:
+class _SplitPairFake:
     def __init__(self, *, is_bv: bool = False) -> None:
         self.is_bv_model = is_bv
-        self.written: list[str | None] = []
-
-    def begin_save_phase(self, total: int) -> None:
-        return None
-
-    def stem_export_wav_path(self, stem: str) -> str:
-        return f"/tmp/{stem}.wav"
-
-    def write_audio(
-        self,
-        stem_path: str,
-        stem_source: Any,
-        samplerate: int,
-        stem_name: str | None = None,
-    ) -> None:
-        self.written.append(stem_name)
 
 
-class MdxcVocalSplitSaveTests(unittest.TestCase):
-    def _save(self, sources: dict[str, np.ndarray], *, is_bv: bool = False) -> list[str | None]:
-        fake = _SplitSaveFake(is_bv=is_bv)
-        SeperateMDXC._write_vocal_split_pair(fake, sources, _arr(3.0), 44100)  # type: ignore[arg-type]
-        return fake.written
+class MdxcVocalSplitSourceTests(unittest.TestCase):
+    def _build(
+        self, sources: dict[str, np.ndarray], *, is_bv: bool = False
+    ) -> dict[str, Any]:
+        fake = _SplitPairFake(is_bv=is_bv)
+        return SeperateMDXC._vocal_split_pair_sources(
+            fake,  # type: ignore[arg-type]
+            sources,
+            _arr(3.0),
+        )
 
-    def test_title_case_pair_writes_lead_then_backing(self) -> None:
+    def test_title_case_pair_builds_lead_then_backing(self) -> None:
         self.assertEqual(
-            self._save({"Vocals": _arr(1.0), "Instrumental": _arr(2.0)}),
+            list(
+                self._build(
+                    {"Vocals": _arr(1.0), "Instrumental": _arr(2.0)}
+                )
+            ),
             [LEAD_VOCAL_STEM_LABEL, BV_VOCAL_STEM_LABEL],
         )
 
     def test_lowercase_and_fusion_single_target_dict(self) -> None:
         self.assertEqual(
-            self._save({"vocals": _arr(1.0), INST_STEM: _arr(2.0)}),
+            list(self._build({"vocals": _arr(1.0), INST_STEM: _arr(2.0)})),
             [LEAD_VOCAL_STEM_LABEL, BV_VOCAL_STEM_LABEL],
         )
 
@@ -405,13 +398,12 @@ class MdxcVocalSplitSaveTests(unittest.TestCase):
         )
         captured: dict[str, Any] = {}
 
-        def write_pair(sources: dict[str, Any], mix: Any, samplerate: int) -> dict[str, Any]:
+        def build_pair(sources: dict[str, Any], mix: Any) -> dict[str, Any]:
             captured["source_length"] = sources["Vocals"].shape[1]
             captured["mix_length"] = mix.shape[1]
-            captured["samplerate"] = samplerate
             return {}
 
-        fake._write_vocal_split_pair = write_pair
+        fake._vocal_split_pair_sources = build_pair
         with (
             patch("engines.mdx_c.prepare_mix", return_value=np.ones((2, 441), dtype=np.float32)),
             patch(
@@ -420,32 +412,36 @@ class MdxcVocalSplitSaveTests(unittest.TestCase):
                     (2, 480 if target_sr == 48000 else 441), dtype=np.float32
                 ),
             ),
+            patch("engines.stem_writer.export_source_map") as export,
         ):
             SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
 
         self.assertEqual(captured, {
             "source_length": 441,
             "mix_length": 441,
-            "samplerate": 44100,
         })
+        export.assert_called_once_with(fake, {}, 44100)
 
     def test_three_stem_karaoke_skips_splitter_instrumental(self) -> None:
         self.assertEqual(
-            self._save(
-                {
-                    "vocals": _arr(1.0),
-                    "backing_vocal": _arr(2.0),
-                    "instrumental": _arr(9.0),
-                }
+            list(
+                self._build(
+                    {
+                        "vocals": _arr(1.0),
+                        "backing_vocal": _arr(2.0),
+                        "instrumental": _arr(9.0),
+                    }
+                )
             ),
             [LEAD_VOCAL_STEM_LABEL, BV_VOCAL_STEM_LABEL],
         )
 
-    def test_secondary_flag_does_not_change_logic_stems(self) -> None:
-        self.assertEqual(
-            self._save({"Vocals": _arr(1.0), "Instrumental": _arr(2.0)}),
-            [LEAD_VOCAL_STEM_LABEL, BV_VOCAL_STEM_LABEL],
+    def test_pair_sources_are_channel_last_for_export(self) -> None:
+        built = self._build(
+            {"Vocals": _arr(1.0), "Instrumental": _arr(2.0)}
         )
+        self.assertEqual(built[LEAD_VOCAL_STEM_LABEL].shape, (4, 2))
+        self.assertEqual(built[BV_VOCAL_STEM_LABEL].shape, (4, 2))
 
 
 if __name__ == "__main__":

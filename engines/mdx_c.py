@@ -421,6 +421,8 @@ class SeperateMDXC(SeperateAttributes):
 
         stem_list = [self.mdx_c_configs.training.target_instrument] if self.mdx_c_configs.training.target_instrument and not self.is_vocal_main_target else [i for i in self.mdx_c_configs.training.instruments]
 
+        from engines.stem_writer import export_source_map
+
         if self.is_vocal_split_model:
             if isinstance(sources, dict):
                 working_split = dict(sources)
@@ -431,9 +433,10 @@ class SeperateMDXC(SeperateAttributes):
                     or VOCAL_STEM
                 )
                 working_split = {native: sources}
-            written = self._write_vocal_split_pair(working_split, mix, samplerate)
+            export_sources = self._vocal_split_pair_sources(working_split, mix)
+            export_source_map(self, export_sources, samplerate)
             if self.is_secondary_model or self.is_pre_proc_model:
-                return written
+                return export_sources
             return None
 
         if self.is_secondary_model and not self.is_vocal_split_model:
@@ -467,22 +470,18 @@ class SeperateMDXC(SeperateAttributes):
             include_stem_complement=getattr(self, "is_mdx_include_stem_complement", False),
         )
         is_complement_export = routing["is_complement_export"]
+        export_sources: dict[str, Any] = {}
 
         if is_complement_export:
             stem = selected_stems[0]
             complement_stem = secondary_stem(stem)
-            self.begin_save_phase(2)
-            native_path = self.stem_export_wav_path(stem)
-            native_source = sources[stem].T
-            self.write_audio(native_path, native_source, samplerate, stem_name=stem)
-            complement_source = derive_mdx_complement(
+            export_sources[stem] = sources[stem].T
+            export_sources[complement_stem] = derive_mdx_complement(
                 sources[stem],
                 mix,
                 invert_spec=self.is_invert_spec,
                 match_frequency_pitch=self.match_frequency_pitch,
             )
-            complement_path = self.stem_export_wav_path(complement_stem)
-            self.write_audio(complement_path, complement_source, samplerate, stem_name=complement_stem)
         elif routing["multi_stem_export"]:
             export_stems = routing["export_stems"]
             if isinstance(sources, dict):
@@ -495,11 +494,9 @@ class SeperateMDXC(SeperateAttributes):
                     stem_keys=export_stems,
                     allow_match_mix=allow_match,
                 )
-            self.begin_save_phase(len(export_stems))
             for stem in export_stems:
-                primary_stem_path = self.stem_export_wav_path(stem)
                 self.primary_source = sources[stem].T
-                self.write_audio(primary_stem_path, self.primary_source, samplerate, stem_name=stem)
+                export_sources[stem] = self.primary_source
         else:
             working_sources: Any = dict(sources) if isinstance(sources, dict) else sources
             if len(stem_list) == 1:
@@ -533,9 +530,7 @@ class SeperateMDXC(SeperateAttributes):
                                                                                                          main_process_method=self.process_method, 
                                                                                                          main_model_primary=self.primary_stem)
 
-            self.begin_save_phase(len(run_export_routes(self)) or 1)
             if exports_named_stem(self, self.secondary_stem):
-                secondary_stem_path = self.stem_export_wav_path(self.secondary_stem)
                 if not isinstance(self.secondary_source, np.ndarray):
                     
                     if isinstance(working_sources, dict) and len(stem_list) > 2:
@@ -572,18 +567,21 @@ class SeperateMDXC(SeperateAttributes):
                             self.secondary_source = spec_utils.invert_stem(raw_mix, self.secondary_source)
                         else:
                             self.secondary_source = (-self.secondary_source.T+raw_mix.T)
-                            
-                self.secondary_source_map = self.final_process(secondary_stem_path, self.secondary_source, self.secondary_source_secondary, self.secondary_stem, samplerate)    
+                export_sources[self.secondary_stem] = self.process_secondary_stem(
+                    self.secondary_source, self.secondary_source_secondary
+                )
 
             if exports_named_stem(self, self.primary_stem):
-                primary_stem_path = self.stem_export_wav_path(self.primary_stem)
                 if not isinstance(self.primary_source, np.ndarray):
                     self.primary_source = source_primary.T
 
-                self.primary_source_map = self.final_process(primary_stem_path, self.primary_source, self.secondary_source_primary, self.primary_stem, samplerate)
+                export_sources[self.primary_stem] = self.process_secondary_stem(
+                    self.primary_source, self.secondary_source_primary
+                )
 
+        export_source_map(self, export_sources, samplerate)
         secondary_sources = mdx_vocal_split_chain_sources(
-            {**self.primary_source_map, **self.secondary_source_map},
+            export_sources,
             sources,
         )
         self.process_vocal_split_chain(secondary_sources)
@@ -592,10 +590,10 @@ class SeperateMDXC(SeperateAttributes):
             return secondary_sources
         return None
 
-    def _write_vocal_split_pair(
-        self, sources: dict[str, Any], mix: Any, samplerate: int
+    def _vocal_split_pair_sources(
+        self, sources: dict[str, Any], mix: Any
     ) -> dict[str, Any]:
-        """Save lead/backing from yaml-keyed demix output; never use lead_only as a dict key."""
+        """Build lead/backing from yaml-keyed demix output for export."""
         lead_key, backing_key = vocal_split_source_roles(
             sources, is_bv_model=bool(self.is_bv_model)
         )
@@ -606,21 +604,12 @@ class SeperateMDXC(SeperateAttributes):
             lead = mix_arr - spec_utils.to_shape(np.asarray(backing), mix_arr.shape)
         if backing is None and lead is not None and mix_arr is not None:
             backing = mix_arr - spec_utils.to_shape(np.asarray(lead), mix_arr.shape)
-        written: dict[str, Any] = {}
-        items: list[tuple[str, Any]] = []
+        export_sources: dict[str, Any] = {}
         if lead is not None:
-            items.append((LEAD_VOCAL_STEM_LABEL, lead))
+            export_sources[LEAD_VOCAL_STEM_LABEL] = _channel_last_for_write(lead)
         if backing is not None:
-            items.append((BV_VOCAL_STEM_LABEL, backing))
-        if not items:
-            return written
-        self.begin_save_phase(len(items))
-        for logic, audio in items:
-            path = self.stem_export_wav_path(logic)
-            arr = _channel_last_for_write(audio)
-            self.write_audio(path, arr, samplerate, stem_name=logic)
-            written[logic] = arr
-        return written
+            export_sources[BV_VOCAL_STEM_LABEL] = _channel_last_for_write(backing)
+        return export_sources
 
     def overlap_add(self, result: typing.Any, counter: typing.Any, x: typing.Any, l: typing.Any, j: typing.Any, start: typing.Any, window: typing.Any):
         if x.device != result.device:
