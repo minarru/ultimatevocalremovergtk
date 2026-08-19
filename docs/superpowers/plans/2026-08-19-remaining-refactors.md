@@ -50,6 +50,7 @@ and `.venv/bin/python -m basedpyright` on touched files.
 | Drop stem-label facades from semantics | [`core.stems.export_stem_label`](../../../core/stems.py), [`resolve_in_sources`](../../../core/stems.py) | #54 |
 | Drop leftover stem-identity facades | [`StemBucket`](../../../core/stems.py), [`bucket_for_model_stem`](../../../core/stems.py) | #55 |
 | Add source-map export post-pass | [`export_source_map`](../../../engines/stem_writer.py) | #56 |
+| Invert VR and classic MDX export flow | [`vr.py`](../../../engines/vr.py), [`mdx.py`](../../../engines/mdx.py) | #57 |
 
 ---
 
@@ -61,14 +62,13 @@ Suggested order. Skip an item rather than invent scope.
 
 Spec: engines return stem arrays; [`write_audio`](../../../engines/stem_writer.py) stays the only writer as an **in-engine** post-pass (assemble dict, export, then vocal-split — preserve save-then-split order). Do not lift to [`run_separator_once`](../../../core/separator_run.py) until every engine has stopped calling `write_audio`. Do not fold [`_write_captured_stems`](../../../core/run_loop.py) by adding a third writer.
 
-**This PR:** VR and classic MDX assemble only their computed stems, blend each
-with `process_secondary_stem`, then call
-[`export_source_map`](../../../engines/stem_writer.py) before the vocal-split
-chain. [`final_process`](../../../engines/base.py) remains a writer for MDX-C
-and Demucs.
+**This PR:** MDX-C assembles native, derived complement, multi-stem, and
+vocal-splitter source maps before
+[`export_source_map`](../../../engines/stem_writer.py). Its recipe no longer
+calls `write_audio` or `final_process`; Demucs remains the only engine using
+the legacy writer path.
 
-Later PRs (do not stack): invert MDX-C, then Demucs, then optional job-level
-lift.
+Later PRs (do not stack): invert Demucs, then optional job-level lift.
 
 ### 2. Optional later (do not start from this backlog)
 
@@ -95,5 +95,5 @@ touching them.
 
 ## Suggested next PR
 
-After VR + classic MDX land: invert MDX-C so it assembles arrays before the
-same `export_source_map` post-pass. Do not invert Demucs in the same PR.
+After MDX-C lands: invert Demucs, including pre-proc, 4-stem secondary slots,
+derived `secondary_save`, and its ndarray secondary return normalization.
