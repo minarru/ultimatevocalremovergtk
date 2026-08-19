@@ -13,9 +13,11 @@ _REPO = Path(__file__).resolve().parents[1]
 _WRITER = _REPO / "engines" / "stem_writer.py"
 _BASE = _REPO / "engines" / "base.py"
 _MDXC = _REPO / "engines" / "mdx_c.py"
+_DEMUCS = _REPO / "engines" / "demucs_engine.py"
 _INVERTED_ENGINES = (
     _REPO / "engines" / "vr.py",
     _REPO / "engines" / "mdx.py",
+    _DEMUCS,
 )
 
 
@@ -87,7 +89,9 @@ class EngineInversionBoundaryTests(unittest.TestCase):
             with self.subTest(engine=path.name):
                 source = path.read_text(encoding="utf-8")
                 self.assertIn("self.process_secondary_stem(", source)
-                self.assertIn("export_source_map(self, sources,", source)
+                # Variable name differs between engines (e.g. ``sources`` vs
+                # ``export_sources``) so only assert on the call shape.
+                self.assertIn("export_source_map(self,", source)
 
     def test_mdxc_does_not_call_legacy_writer_path(self) -> None:
         source = _MDXC.read_text(encoding="utf-8")
@@ -194,6 +198,47 @@ class ExportSourceMapTests(unittest.TestCase):
         export_source_map(sep, {"vocals": object()}, samplerate=44100)
         self.assertIsNone(sep.save_phase_total)
         self.assertEqual(sep.writes, [])
+
+    def test_extra_sources_write_after_routes(self) -> None:
+        """Non-route sidecars should share one save phase.
+
+        The current implementation has no ``extra_sources`` support, so this
+        test intentionally fails until Demucs adds the in-engine source-map
+        post-pass extension.
+        """
+        from core.stems import StemId, StemRoute, StemRouteKind
+        from engines.stem_writer import export_source_map
+
+        vocals = object()
+        inst = object()
+        routes = (
+            StemRoute(
+                native=StemId("vocals"),
+                concept="Vocals",
+                label="Vocals",
+                filename_tag="Vocals",
+                kind=StemRouteKind.NATIVE,
+            ),
+        )
+        sep = _FakeSep(routes)
+
+        export_source_map(
+            sep,
+            {"vocals": vocals},
+            samplerate=44100,
+            # Explicit sidecar: must write but must not depend on StemRoute.
+            extra_sources={"Instrumental": inst},
+        )
+
+        self.assertEqual(sep.save_phase_total, 2)
+        # Route is written first, then extra sources.
+        self.assertEqual(
+            sep.writes,
+            [
+                ("/tmp/vocals.wav", vocals, 44100, "vocals"),
+                ("/tmp/Instrumental.wav", inst, 44100, "Instrumental"),
+            ],
+        )
 
 
 if __name__ == "__main__":

@@ -65,10 +65,14 @@ Spec: engines return stem arrays; [`write_audio`](../../../engines/stem_writer.p
 **This PR:** MDX-C assembles native, derived complement, multi-stem, and
 vocal-splitter source maps before
 [`export_source_map`](../../../engines/stem_writer.py). Its recipe no longer
-calls `write_audio` or `final_process`; Demucs remains the only engine using
-the legacy writer path.
+calls `write_audio` or `final_process`.
 
-Later PRs (do not stack): invert Demucs, then optional job-level lift.
+**This PR (continued):** Demucs is also inverted: it assembles native + derived
+complements (including pre-proc instrumental-mixture and 2-source secondary
+dict normalization), then exports via [`export_source_map`](../../../engines/stem_writer.py)
+followed by the vocal-split chain.
+
+Later PRs (do not stack): optional job-level lift.
 
 ### 2. Optional later (do not start from this backlog)
 
@@ -95,5 +99,4 @@ touching them.
 
 ## Suggested next PR
 
-After MDX-C lands: invert Demucs, including pre-proc, 4-stem secondary slots,
-derived `secondary_save`, and its ndarray secondary return normalization.
+After MDX-C lands (now complete): optional job-level lift.
