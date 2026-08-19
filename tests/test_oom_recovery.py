@@ -9,7 +9,8 @@ from types import SimpleNamespace
 from typing import Any, Optional
 from unittest.mock import MagicMock, patch
 
-from core.job_runner import JobCallbacks, JobRunner
+from core.job_callbacks import JobCallbacks
+from core.job_runner import JobRunner
 from core.separator_run import run_separator
 from core.oom_choice import (
     OOM_CHOICE_AUTO,

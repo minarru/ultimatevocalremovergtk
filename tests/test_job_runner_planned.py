@@ -5,7 +5,8 @@ from unittest.mock import Mock, patch
 
 from core.export_naming import OutputNamingContext
 from core.job_plan import PlannedInput
-from core.job_runner import JobCallbacks, JobRunner
+from core.job_callbacks import JobCallbacks
+from core.job_runner import JobRunner
 from core.settings import Settings
 
 

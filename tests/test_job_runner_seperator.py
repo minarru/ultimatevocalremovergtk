@@ -48,7 +48,7 @@ class JobRunnerSeperatorTests(unittest.TestCase):
 
     def test_start_does_not_prepare_on_caller_thread(self) -> None:
         """``prepare_input_paths`` must not run before the worker starts."""
-        from core.job_runner import JobCallbacks
+        from core.job_callbacks import JobCallbacks
 
         runner = JobRunner(Settings.from_flat({"model_sample_mode": False}))
         prepare = mock.Mock(side_effect=lambda settings, paths, **kwargs: list(paths))

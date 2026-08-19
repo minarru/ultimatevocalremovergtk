@@ -91,7 +91,7 @@ class DemucsUnsplitProgressTests(unittest.TestCase):
 class AudioToolProgressTests(unittest.TestCase):
     def test_pitch_time_ticks_file_start(self) -> None:
         from core.audio_tools import AudioToolRunner
-        from core.job_runner import JobCallbacks
+        from core.job_callbacks import JobCallbacks
 
         seen: list[float] = []
         runner = AudioToolRunner.__new__(AudioToolRunner)
@@ -112,7 +112,7 @@ class AudioToolProgressTests(unittest.TestCase):
     def test_matchering_ticks_pair_start(self) -> None:
         from bundled.constants import MATCH_INPUTS
         from core.audio_tools import AudioToolRunner
-        from core.job_runner import JobCallbacks
+        from core.job_callbacks import JobCallbacks
 
         seen: list[float] = []
         runner = AudioToolRunner.__new__(AudioToolRunner)
@@ -134,7 +134,7 @@ class AudioToolProgressTests(unittest.TestCase):
 
     def test_manual_ensemble_forwards_on_progress(self) -> None:
         from core.audio_tools import AudioToolRunner
-        from core.job_runner import JobCallbacks
+        from core.job_callbacks import JobCallbacks
         from core.settings import Settings
         from core.types.settings_enums import ManualEnsembleOption
 

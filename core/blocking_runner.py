@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass, replace
 from typing import Callable, Protocol
 
-from .job_runner import JobCallbacks
+from .job_callbacks import JobCallbacks
 
 
 class BlockingRunner(Protocol):

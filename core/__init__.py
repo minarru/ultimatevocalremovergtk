@@ -30,7 +30,8 @@ from .model_config import ModelConfig, assemble_model
 from .audio_tools import AudioToolRunner
 from .gpu import available_cuda_devices, list_gpu_devices
 from .ensembler import Ensembler
-from .job_runner import JobCallbacks, JobRunner
+from .job_callbacks import JobCallbacks
+from .job_runner import JobRunner
 from .paths import DATA_DIR, ENSEMBLE_CACHE_DIR, ensure_data_dir
 from .process_data import ProcessData
 from .settings import Settings

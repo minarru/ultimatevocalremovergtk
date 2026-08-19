@@ -22,7 +22,8 @@ from cli.job import ResolvedJob, _device_override
 from cli.profiles import LoadedProfile, load_profile, save_profile
 from cli.replay import _flat_settings
 from core.blocking_runner import RunResult
-from core.job_runner import InputOutcome, JobCallbacks, JobRunner
+from core.job_callbacks import JobCallbacks
+from core.job_runner import InputOutcome, JobRunner
 from core.settings import Settings
 
 

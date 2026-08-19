@@ -514,7 +514,7 @@ class ProgressEtaTrackerTests(unittest.TestCase):
 
 class JobProgressCallbackTests(unittest.TestCase):
     def test_progress_forwards_pass_metadata(self):
-        from core.job_runner import JobCallbacks
+        from core.job_callbacks import JobCallbacks
 
         seen = {}
 
