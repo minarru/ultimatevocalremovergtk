@@ -3,7 +3,11 @@
 import unittest
 from unittest import mock
 
-from core.inference_cleanup import release_separator
+from pathlib import Path
+
+from core.inference_cleanup import release_inference_memory, release_separator
+
+_REPO = Path(__file__).resolve().parents[1]
 
 
 class _FakeSeparator:
@@ -32,6 +36,23 @@ class ReleaseSeparatorTests(unittest.TestCase):
 
     def test_release_separator_accepts_none(self) -> None:
         release_separator(None)
+
+
+class ReleaseInferenceMemoryTests(unittest.TestCase):
+    def test_inference_cleanup_source_imports_gpu_cache(self) -> None:
+        source = (_REPO / "core" / "inference_cleanup.py").read_text(encoding="utf-8")
+        self.assertNotIn("engines.separate", source)
+        self.assertIn("from engines.gpu_cache import clear_gpu_cache", source)
+
+    @mock.patch("engines.gpu_cache.clear_gpu_cache")
+    @mock.patch("engines.model_weight_cache.get_weight_cache")
+    def test_release_inference_memory_calls_gpu_cache_clear(
+        self, get_cache: mock.MagicMock, clear: mock.MagicMock
+    ) -> None:
+        cache = mock.MagicMock()
+        get_cache.return_value = cache
+        release_inference_memory(None)
+        clear.assert_called_once_with()
 
 
 if __name__ == "__main__":

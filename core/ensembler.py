@@ -200,7 +200,7 @@ class Ensembler:
         """
         debug("worker", f"ensemble_outputs stem={stem!r} is_4_stem={is_4_stem} is_inst_mix={is_inst_mix}")
         from ml import spec_utils
-        from engines.separate import save_format as _save_format
+        from core.audio_io import save_format as _save_format
 
         if is_4_stem:
             # Single-token algorithm (no slash); never use an empty secondary partition.

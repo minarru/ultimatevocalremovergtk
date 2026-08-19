@@ -176,10 +176,9 @@ def _write_captured_stems(
 ) -> None:
     """Write deferred stem arrays to their original export paths."""
     import soundfile as sf
-    from engines.separate import save_format as _save_format
     from ml import spec_utils
     from bundled.constants import FLAC
-    from core.audio_io import flac_subtype, replace_audio_suffix
+    from core.audio_io import save_format, flac_subtype, replace_audio_suffix
 
     for stem_name, source in stem_arrays.items():
         path = stem_paths.get(stem_name)
@@ -201,7 +200,7 @@ def _write_captured_stems(
             )
             continue
         sf.write(path, wave, 44100, subtype=wav_type_set)
-        _save_format(path, save_format_name, mp3_bit_set, flac_bit_set)
+        save_format(path, save_format_name, mp3_bit_set, flac_bit_set)
 
 
 @dataclass
@@ -302,11 +301,10 @@ def run_models_on_files(
     callbacks: Any,
     models: list,
     *,
-    engines: tuple,
     hooks: FilePassHooks,
 ) -> None:
     """Decode each mix as its file starts, then run every model/chunk via ``hooks``."""
-    *_, clear_gpu_cache = engines
+    from engines.gpu_cache import clear_gpu_cache
 
     chunk_seconds, overlap_seconds = _long_file_chunk_settings(runner.settings)
     total_files = len(input_paths)

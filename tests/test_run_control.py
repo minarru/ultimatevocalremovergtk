@@ -1,7 +1,7 @@
 import unittest
 from unittest import mock
 
-from ui.run_control import RunController, _format_mmss
+from ui.run_control import RunController, _format_mmss, _starting_progress_text
 
 
 class FormatMmssTests(unittest.TestCase):
@@ -317,6 +317,17 @@ class PlanRecheckTests(unittest.TestCase):
 
         controller._start_target.assert_not_called()
         controller._begin_preflight.assert_called_once_with(target)
+
+
+class StartingProgressTextTests(unittest.TestCase):
+    def test_starting_progress_text_uses_warmup_state(self) -> None:
+        with mock.patch("ui.run_control.engines_imported", return_value=True):
+            self.assertEqual(_starting_progress_text(), "Starting…")
+        with mock.patch("ui.run_control.engines_imported", return_value=False):
+            with mock.patch("ui.run_control.warm_status", return_value="in_progress"):
+                self.assertEqual(_starting_progress_text(), "Importing engines…")
+            with mock.patch("ui.run_control.warm_status", return_value="not_started"):
+                self.assertEqual(_starting_progress_text(), "Loading engines…")
 
 
 if __name__ == "__main__":

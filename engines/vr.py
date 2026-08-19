@@ -29,7 +29,6 @@ import ml.mdxnet as MdxnetSet
 
 from .base import SeperateAttributes
 from .mix import prepare_mix, gather_sources, rerun_mp3
-from .export import save_format
 from .vr_utils import (
     loading_mix,
     multiband_waves_to_spectrogram,

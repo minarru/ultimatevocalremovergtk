@@ -13,6 +13,7 @@ class RemovedHeadlessSurfaceTests(unittest.TestCase):
         for name in (
             "core." + "headless_run", "core." + "cli", "cli." + "blocking",
             "cli." + "inputs", "cli." + "model_ids",
+            "engines." + "separate", "engines." + "export",
         ):
             with self.subTest(name=name), self.assertRaises(ModuleNotFoundError):
                 importlib.import_module(name)
@@ -29,6 +30,7 @@ class RemovedHeadlessSurfaceTests(unittest.TestCase):
         forbidden = (
             "core." + "headless_run", "core." + "cli", "cli." + "blocking",
             "cli." + "inputs", "cli." + "model_ids",
+            "engines." + "separate", "engines." + "export",
         )
         offenders: list[str] = []
         for top in ("core", "cli", "ui", "scripts", "tests"):

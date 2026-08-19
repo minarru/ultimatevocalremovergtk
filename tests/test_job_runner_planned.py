@@ -178,8 +178,7 @@ class JobRunnerPlannedTests(unittest.TestCase):
         settings.process.export_path = "/tmp/out"
         runner = JobRunner(settings)
         runner._run_models = [Mock(name="assembled")]
-        engines = (Mock(), Mock(), Mock(), Mock(), Mock())
-        with patch("core.job_runner.import_separate_engines", return_value=engines):
+        with patch("core.job_runner.import_separate_engines"):
             with patch.object(runner, "_prepare_paths_for_run", return_value=[]):
                 with patch.object(runner, "resolve_models") as resolve:
                     with patch.object(runner, "_build_all_models"):
@@ -203,10 +202,7 @@ class JobRunnerPlannedTests(unittest.TestCase):
         errors: list[BaseException] = []
 
         with (
-            patch(
-                "core.job_runner.import_separate_engines",
-                return_value=(Mock(), Mock(), Mock(), Mock(), Mock()),
-            ),
+            patch("core.job_runner.import_separate_engines"),
             patch.object(
                 runner,
                 "resolve_models",
@@ -225,10 +221,9 @@ class JobRunnerPlannedTests(unittest.TestCase):
         settings.process.export_path = "/tmp/out"
         runner = JobRunner(settings)
         runner._run_models = [Mock(name="m1"), Mock(name="m2")]
-        engines = (Mock(), Mock(), Mock(), Mock(), Mock())
         fake_ensemble = Mock()
         fake_ensemble.ensemble_folder_name = "/tmp/ens"
-        with patch("core.job_runner.import_separate_engines", return_value=engines):
+        with patch("core.job_runner.import_separate_engines"):
             with patch.object(runner, "_prepare_paths_for_run", return_value=[]):
                 with patch("core.job_runner.assemble_model") as assemble:
                     with patch("core.job_runner.Ensembler", return_value=fake_ensemble):
@@ -251,15 +246,16 @@ class JobRunnerPlannedTests(unittest.TestCase):
         settings.process.export_path = "/tmp/out"
         runner = JobRunner(settings)
         runner._run_models = [Mock(name="m1"), Mock(name="m2")]
-        engines = (Mock(), Mock(), Mock(), Mock(), Mock())
         captured: list[str] = []
+        received_engines: list[bool] = []
 
         def capture_run(*_args: object, **kwargs: Any) -> None:
+            received_engines.append("engines" in kwargs)
             captured.append(kwargs["hooks"].process_kind)
 
         fake_ensemble = Mock()
         fake_ensemble.ensemble_folder_name = "/tmp/ens"
-        with patch("core.job_runner.import_separate_engines", return_value=engines):
+        with patch("core.job_runner.import_separate_engines"):
             with patch.object(runner, "_prepare_paths_for_run", return_value=[]):
                 with patch.object(runner, "_build_all_models"):
                     with patch.object(runner, "_set_run_protect_identities"):
@@ -285,6 +281,7 @@ class JobRunnerPlannedTests(unittest.TestCase):
                                                 [], JobCallbacks(), "ensemble"
                                             )
         self.assertEqual(captured, ["separation", "ensemble"])
+        self.assertEqual(received_engines, [False, False])
 
 
 if __name__ == "__main__":
