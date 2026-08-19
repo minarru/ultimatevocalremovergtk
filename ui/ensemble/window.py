@@ -155,9 +155,11 @@ class EnsemblePage:
     The page exposes the uniform "run target" interface the main window's shared
     Start/Stop dispatch expects: :attr:`widget` (the page surface), :attr:`columns_box`
     (registered with the responsive breakpoint), :meth:`start`, :meth:`stop`,
-    :meth:`on_activated`, :meth:`on_deactivated` and :meth:`load`. Every control
-    writes its settings key live on change, so there is no separate flush step;
-    the main window persists everything via ``AppContext.save_settings`` on close.
+    :meth:`on_activated`, :meth:`on_deactivated` and :meth:`load`. Most controls
+    persist live on change; :meth:`_flush_run_settings` still runs before plan
+    review and run start so Save Stems and the member checklist match the
+    widgets (mirroring separation preflight flush). Disk persist on close remains
+    via ``AppContext.save_settings``.
     """
 
     #: Label used when recording errors to the shared error log.
@@ -1303,13 +1305,18 @@ class EnsemblePage:
             return output_reason
         return self._config_blocked_reason()
 
+    def _flush_run_settings(self) -> None:
+        """Persist widget state plan/start reads (mirrors separation preflight flush)."""
+        self.settings.process.method = ProcessMethod.ENSEMBLE
+        self._persist_selected_models()
+        self.save_stems.persist_to_settings()
+
     def build_job_spec(self) -> typing.Any:
         import copy
 
         from core.job_plan import JobSpec
 
-        self.settings.process.method = ProcessMethod.ENSEMBLE
-        self._persist_selected_models()
+        self._flush_run_settings()
         return JobSpec(
             "ensemble",
             copy.deepcopy(self.settings),
@@ -1331,8 +1338,7 @@ class EnsemblePage:
 
     def start(self, callbacks: typing.Any) -> None:
         # Readiness is validated by ``MainWindow._on_start`` before dispatch.
-        self.settings.process.method = ProcessMethod.ENSEMBLE
-        self._persist_selected_models()
+        self._flush_run_settings()
 
         input_paths = list(self.input_row.paths)
         self.window.begin_run(self)

@@ -234,6 +234,11 @@ class RunController:
         except Exception as exc:  # noqa: BLE001 - presented through normal UI
             self._window.toast(f"Could not prepare processing plan: {exc}")
             return
+        focus = str(getattr(spec.settings.process, "stem_focus", "") or "")
+        debug(
+            "ui",
+            f"preflight stem_focus={focus!r} method={getattr(spec.settings.process.method, 'value', spec.settings.process.method)!r}",
+        )
         fingerprint = settings_fingerprint(spec.settings)
         self._set_preflight_busy(True)
 

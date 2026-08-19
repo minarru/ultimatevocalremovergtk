@@ -79,8 +79,6 @@ class DemucsView(MethodView):
 
     def save_options(self):
         super().save_options()
-        if self.save_stems.mode == "demucs":
-            self.save_stems.persist_to_settings()
 
     def build_advanced(self, group: typing.Any):
         self.add_advanced_scale(

@@ -403,6 +403,27 @@ def _ensemble_output_routes(
     return viable, union
 
 
+def _debug_planned_output_routes(
+    *,
+    focus: str,
+    positional: str,
+    reason: str,
+    routes: Sequence[StemRoute],
+) -> None:
+    """Opt-in trace when resolving planned export routes (``uvr-settings``)."""
+    try:
+        from core.debug_log import debug
+
+        labels = ",".join(route.label for route in routes) or "(none)"
+        debug(
+            "settings",
+            f"planned outputs focus={focus!r} positional={positional!r} "
+            f"reason={reason} routes=[{labels}] count={len(routes)}",
+        )
+    except Exception:
+        pass
+
+
 def planned_output_routes(
     settings: Settings,
     descriptors: Sequence[ModelDescriptor],
@@ -412,6 +433,9 @@ def planned_output_routes(
     """Canonical routes that this resolved job intends to write."""
     focus = str(settings.process.stem_focus or "")
     positional = positional_stem_focus(focus)
+    reason = "unknown"
+    selected: tuple[StemRoute, ...] = ()
+
     if command == "ensemble":
         routes, _union = _ensemble_output_routes(settings, descriptors)
         if positional:
@@ -419,48 +443,107 @@ def planned_output_routes(
             if not coerce_ensemble_pair(settings.ensemble.main_stem).is_multi_or_four():
                 if positional == FOCUS_PRIMARY:
                     selected = selected[:1]
+                    reason = "ensemble-positional-primary"
                 elif positional == FOCUS_SECONDARY:
                     selected = selected[1:2]
-            return selected
-        selection = select_ensemble_stem_routes(routes, _union, focus)
-        selected = selection.routes if selection.routes else routes
-        return tuple(selected)
+                    reason = "ensemble-positional-secondary"
+                else:
+                    reason = "ensemble-positional"
+            else:
+                reason = "ensemble-positional-multi"
+        else:
+            selection = select_ensemble_stem_routes(routes, _union, focus)
+            selected = tuple(
+                selection.routes if selection.routes else routes
+            )
+            reason = (
+                "ensemble-focus-matched"
+                if selection.routes
+                else "ensemble-focus-fallback-all"
+            )
+        _debug_planned_output_routes(
+            focus=focus,
+            positional=positional,
+            reason=reason,
+            routes=selected,
+        )
+        return selected
 
     routes = _fallback_descriptor_routes(descriptors[0]) if descriptors else ()
     if positional:
         if positional == FOCUS_PRIMARY:
             primary = descriptors[0].primary_stem if descriptors else None
-            selected = tuple(
+            matched = tuple(
                 route for route in routes
                 if route.native is not None and route.native.matches(primary or "")
             )
+            if matched:
+                selected = matched
+                reason = "positional-primary-native-match"
+            else:
+                selected = tuple(
+                    route for route in routes if route.selected_by_default
+                ) or tuple(routes)
+                reason = (
+                    f"positional-primary-fallback-defaults "
+                    f"primary_stem={primary!r}"
+                )
         else:
             secondary = descriptors[0].secondary_stem if descriptors else None
-            selected = tuple(
+            matched = tuple(
                 route for route in routes
                 if (
                     route.native is not None and route.native.matches(secondary or "")
                 ) or (route.native is None and route.label == secondary)
             )
-        return tuple(selected) if selected else tuple(
-            route for route in routes if route.selected_by_default
-        ) or tuple(routes)
+            if matched:
+                selected = matched
+                reason = "positional-secondary-match"
+            else:
+                selected = tuple(
+                    route for route in routes if route.selected_by_default
+                ) or tuple(routes)
+                reason = (
+                    f"positional-secondary-fallback-defaults "
+                    f"secondary_stem={secondary!r}"
+                )
+    else:
+        selection = select_stem_routes(routes, focus)
+        if selection.status is StemSelectionStatus.MATCHED and selection.routes:
+            selected = tuple(selection.routes)
+            reason = "focus-matched"
+        elif focus:
+            selected = tuple(
+                route for route in routes if route.selected_by_default
+            ) or tuple(routes)
+            reason = "focus-unmatched-fallback-defaults"
+        else:
+            selected = tuple(
+                selection.routes
+                if selection.routes
+                else tuple(route for route in routes if route.selected_by_default)
+                or tuple(routes)
+            )
+            reason = "empty-focus-defaults"
+        if (
+            focus
+            and not positional
+            and settings.mdx.is_mdx_include_stem_complement
+            and any(route.native is not None for route in selected)
+        ):
+            selected = tuple(dict.fromkeys((
+                *selected,
+                *(route for route in routes if route.native is None and route.conditional),
+            )))
+            reason = f"{reason}+complement"
 
-    selection = select_stem_routes(routes, focus)
-    selected = selection.routes if selection.routes else tuple(
-        route for route in routes if route.selected_by_default
+    _debug_planned_output_routes(
+        focus=focus,
+        positional=positional,
+        reason=reason,
+        routes=selected,
     )
-    if (
-        focus
-        and not positional
-        and settings.mdx.is_mdx_include_stem_complement
-        and any(route.native is not None for route in selected)
-    ):
-        selected = tuple(dict.fromkeys((
-            *selected,
-            *(route for route in routes if route.native is None and route.conditional),
-        )))
-    return tuple(selected)
+    return selected
 
 
 def planned_output_stems(
