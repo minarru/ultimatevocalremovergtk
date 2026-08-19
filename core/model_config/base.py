@@ -49,7 +49,7 @@ class EnsembleMemberFlags:
 
 @dataclass
 class StemRouting:
-    """Native yaml/hash stem keys and exclusive-export flags.
+    """Native yaml/hash stem keys and selected export routes.
 
     ``primary_stem`` / ``secondary_stem`` / ``primary_stem_native`` keep the
     checkpoint spelling. They are never rewritten to ``lead_only`` or UVR
@@ -60,8 +60,6 @@ class StemRouting:
     secondary_stem: Optional[str] = None
     primary_stem_native: Optional[str] = None
     primary_model_primary_stem: Optional[str] = None
-    is_primary_stem_only: bool = False
-    is_secondary_stem_only: bool = False
     mdx_model_stems: Tuple[str, ...] = ()
     demucs_source_list: Tuple[str, ...] = ()
     available_routes: Tuple[StemRoute, ...] = ()

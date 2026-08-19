@@ -443,7 +443,6 @@ class SeperateMDXC(SeperateAttributes):
                 self.mdxnet_stem_select = self.main_model_primary_stem_4_stem if self.main_model_primary_stem_4_stem else self.primary_model_primary_stem
             self.primary_stem = str(self.mdxnet_stem_select or "")
             self.secondary_stem = secondary_stem(str(self.mdxnet_stem_select or ""))
-            self.is_primary_stem_only, self.is_secondary_stem_only = False, False
 
         export_routes = run_export_routes(self)
         selected_stems = mdx_selected_stems(

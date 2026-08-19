@@ -127,8 +127,6 @@ class SeperateAttributes:
             getattr(model_data, "is_prevent_export_clipping", False)
         )
         self.amplification_threshold = float(getattr(model_data, "amplification_threshold", 0.0) or 0.0)
-        self.is_primary_stem_only = model_data.is_primary_stem_only if not self.is_secondary_model else model_data.is_primary_model_primary_stem_only
-        self.is_secondary_stem_only = model_data.is_secondary_stem_only if not self.is_secondary_model else model_data.is_primary_model_secondary_stem_only      
         self.is_ensemble_mode = model_data.is_ensemble_mode
         self.is_save_all_outputs_ensemble = bool(
             process_data.is_save_all_outputs_ensemble
@@ -207,11 +205,7 @@ class SeperateAttributes:
         # (non-roformer) MDX-C models keep their original single-stem behaviour.
         self.is_target_instrument = model_data.is_target_instrument and self.is_roformer
         self.roformer_config: Any = model_data.mdx_c_configs
-        
-        if self.is_inst_only_voc_splitter or self.is_sec_bv_rebalance:
-            self.is_primary_stem_only = False
-            self.is_secondary_stem_only = False
-        
+
         if main_model_primary and self.is_multi_stem_ensemble:
             self.primary_stem, self.secondary_stem = main_model_primary, secondary_stem(main_model_primary)
 
@@ -243,8 +237,7 @@ class SeperateAttributes:
                 if dim_t_set is None:
                     dim_t_set = 8
                 self.dim_f, self.dim_t = int(dim_f_set), 2 ** int(dim_t_set)
-                
-            self.check_label_secondary_stem_runs()
+
             self.n_fft: int = int(model_data.mdx_n_fft_scale_set or 0)
             self.chunks = model_data.chunks
             self.margin = model_data.margin
@@ -294,7 +287,6 @@ class SeperateAttributes:
             self.primary_model_name, self.primary_sources = self.cached_source_callback(DEMUCS_ARCH_TYPE, model_name=self.model_basename)
 
         if model_data.process_method == VR_ARCH_TYPE:
-            self.check_label_secondary_stem_runs()
             self.primary_model_name, self.primary_sources = self.cached_source_callback(VR_ARCH_TYPE, model_name=self.model_basename)
             self.mp = model_data.vr_model_param
             self.high_end_process = model_data.is_high_end_process
@@ -309,19 +301,6 @@ class SeperateAttributes:
             self.aggressiveness = {'value': model_data.aggression_setting, 
                                    'split_bin': self.mp.param['band'][1]['crop_stop'], 
                                    'aggr_correction': self.mp.param.get('aggr_correction')}
-            
-    def check_label_secondary_stem_runs(self) -> None:
-
-        # For ensemble master that's not a 4-stem ensemble, and not mdx_c
-        # (or a target-instrument model, e.g. a roformer, in an ensemble master).
-        if (self.process_data.is_ensemble_master and not self.is_4_stem_ensemble and not self.is_mdx_c) or (self.process_data.is_ensemble_master and self.is_target_instrument):
-            if self.ensemble_primary_stem != self.primary_stem:
-                self.is_primary_stem_only, self.is_secondary_stem_only = self.is_secondary_stem_only, self.is_primary_stem_only
-            
-        # For secondary models
-        if self.is_pre_proc_model or self.is_secondary_model:
-            self.is_primary_stem_only = False
-            self.is_secondary_stem_only = False
             
     def start_inference_console_write(self) -> None:
         if self.is_secondary_model and not self.is_pre_proc_model and not self.is_vocal_split_model:

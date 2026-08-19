@@ -953,8 +953,6 @@ def model_stem_routes(model: Any) -> Tuple[StemRoute, ...]:
         len(mdx_stems) > 2
         and len(selected_mdx) == 1
         and getattr(model, "is_mdx_include_stem_complement", False)
-        and not getattr(model, "is_primary_stem_only", False)
-        and not getattr(model, "is_secondary_stem_only", False)
     )
 
     # A one-target model's other side and a Demucs focus complement are

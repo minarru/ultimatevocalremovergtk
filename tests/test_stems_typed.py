@@ -118,6 +118,21 @@ class StemRouteTests(unittest.TestCase):
         self.assertEqual(bass.routes[0].native.raw, "bass")  # type: ignore[union-attr]
         self.assertIsNone(instrumental.routes[0].native)
 
+    def test_subset_complement_ignores_leftover_exclusive_flags(self) -> None:
+        """Inventory complement is not gated on dead ModelConfig exclusive attrs."""
+
+        class Model(self._MultiModel):
+            mdxnet_stems_selected = ["bass"]
+            is_mdx_include_stem_complement = True
+            is_primary_stem_only = True
+            is_secondary_stem_only = True
+
+        routes = model_stem_routes(Model())
+        derived = [route for route in routes if route.concept == INST_STEM]
+        self.assertEqual(len(derived), 1)
+        self.assertIsNone(derived[0].native)
+        self.assertTrue(derived[0].conditional)
+
     def test_non_pair_halves_empty(self) -> None:
         for pair in (
             EnsemblePair.CHOOSE,

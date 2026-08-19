@@ -40,8 +40,6 @@ class ModelConfig:
         selected_process_method: str = ENSEMBLE_MODE,
         is_secondary_model: bool = False,
         primary_model_primary_stem: Optional[str] = None,
-        is_primary_model_primary_stem_only: bool = False,
-        is_primary_model_secondary_stem_only: bool = False,
         is_pre_proc_model: bool = False,
         is_dry_check: bool = False,
         is_change_def: bool = False,
@@ -90,8 +88,6 @@ class ModelConfig:
         except (TypeError, ValueError):
             self.amplification_threshold = 0.0
         self.is_use_directml = bool(process.use_directml)
-        self.is_primary_stem_only = False
-        self.is_secondary_stem_only = False
         self.is_denoise = denoise_opt != DENOISE_NONE
         self.is_mdx_c_seg_def = mdx.is_mdx_c_seg_def
         self.mdx_batch_size = (
@@ -418,9 +414,6 @@ class ModelConfig:
 
         self.pre_proc_model_activated = self.pre_proc_model_activated if not self.is_secondary_model else False
 
-        self.is_primary_model_primary_stem_only = is_primary_model_primary_stem_only
-        self.is_primary_model_secondary_stem_only = is_primary_model_secondary_stem_only
-
         # -- Secondary model resolution (ported from UVR.py L686-L715) ----------
         is_secondary_activated_and_status = self.is_secondary_model_activated and self.model_status
         is_demucs = self.process_method == DEMUCS_ARCH_TYPE
@@ -601,14 +594,11 @@ class ModelConfig:
     def secondary_model_data(self, primary_stem: typing.Any):
         from ..model_data import process_determine_secondary_model
 
-        primary_only, secondary_only = self._exclusive_sides_from_routes()
         secondary_model, secondary_model_scale = process_determine_secondary_model(
             self.settings,
             self.repo,
             self.process_method,
             primary_stem,
-            primary_only,
-            secondary_only,
         )
         self.secondary_model = secondary_model
         self.secondary_model_scale = secondary_model_scale
@@ -950,8 +940,6 @@ class ModelConfig:
             secondary_stem=self.secondary_stem,
             primary_stem_native=self.primary_stem_native,
             primary_model_primary_stem=self.primary_model_primary_stem,
-            is_primary_stem_only=bool(self.is_primary_stem_only),
-            is_secondary_stem_only=bool(self.is_secondary_stem_only),
             mdx_model_stems=tuple(self.mdx_model_stems),
             demucs_source_list=tuple(self.demucs_source_list),
             available_routes=tuple(

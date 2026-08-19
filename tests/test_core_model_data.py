@@ -252,8 +252,6 @@ class _FocusStub:
         self.available_stem_routes: tuple[typing.Any, ...] = ()
         self.selected_stem_routes: tuple[typing.Any, ...] = ()
         self.demucs_source_list: list[str] = []
-        self.is_primary_stem_only = False
-        self.is_secondary_stem_only = False
         self.mdxnet_stem_select = None
         self.demucs_stems = None
         self.is_ensemble_mode = False
@@ -303,18 +301,10 @@ class StemIdentityAssembleTests(unittest.TestCase):
             [route.concept for route in vocals_primary.selected_stem_routes],
             [StemBucket.VOCALS.value],
         )
-        self.assertEqual(
-            (vocals_primary.is_primary_stem_only, vocals_primary.is_secondary_stem_only),
-            (False, False),
-        )
         self.assertEqual(vocals_primary.primary_stem, "vocals")
         self.assertEqual(
             [route.concept for route in inst_primary.selected_stem_routes],
             [StemBucket.VOCALS.value],
-        )
-        self.assertEqual(
-            (inst_primary.is_primary_stem_only, inst_primary.is_secondary_stem_only),
-            (False, False),
         )
         self.assertEqual(inst_primary.primary_stem, "other")
 
@@ -325,9 +315,6 @@ class StemIdentityAssembleTests(unittest.TestCase):
         settings.process.stem_focus = "Bass"
         stub = _FocusStub(settings, "vocals", "other")
         stub.apply()
-        self.assertEqual(
-            (stub.is_primary_stem_only, stub.is_secondary_stem_only), (False, False)
-        )
         self.assertEqual(stub.primary_stem, "vocals")
         self.assertEqual(
             {route.concept for route in stub.selected_stem_routes},
@@ -346,10 +333,6 @@ class StemIdentityAssembleTests(unittest.TestCase):
         stub.apply()
         self.assertEqual(stub.mdxnet_stems_selected, [])
         self.assertEqual(stub.primary_stem, "vocals")
-        self.assertEqual(
-            (stub.is_primary_stem_only, stub.is_secondary_stem_only),
-            (False, False),
-        )
         selected = stub.selected_stem_routes
         self.assertEqual(len(selected), 1)
         self.assertIsNotNone(selected[0].native)
@@ -389,10 +372,6 @@ class StemIdentityAssembleTests(unittest.TestCase):
         stub.apply()
         self.assertEqual(stub.mdxnet_stems_selected, [])
         self.assertEqual(stub.primary_stem, "vocals")
-        self.assertEqual(
-            (stub.is_primary_stem_only, stub.is_secondary_stem_only),
-            (False, False),
-        )
         selected = stub.selected_stem_routes
         self.assertEqual(len(selected), 1)
         self.assertIsNone(selected[0].native)
@@ -412,10 +391,6 @@ class StemIdentityAssembleTests(unittest.TestCase):
         stub.apply()
         self.assertEqual(stub.demucs_stems, None)
         self.assertEqual(stub.primary_stem, "Vocals")
-        self.assertEqual(
-            (stub.is_primary_stem_only, stub.is_secondary_stem_only),
-            (False, False),
-        )
         selected = stub.selected_stem_routes
         self.assertEqual(len(selected), 1)
         self.assertIsNotNone(selected[0].native)
@@ -532,7 +507,7 @@ class StemIdentityAssembleTests(unittest.TestCase):
         self.assertEqual(selected[0].concept, StemBucket.VOCALS.value)
         self.assertTrue(selected[0].native.matches("vocals"))
 
-    def test_concept_focus_ignores_instance_exclusive_flags(self) -> None:
+    def test_concept_focus_selects_native_bass(self) -> None:
         from bundled.constants import BASS_STEM
         from core.stems import StemBucket
 
@@ -541,7 +516,6 @@ class StemIdentityAssembleTests(unittest.TestCase):
         stub = _FocusStub(settings, "vocals", "Instrumental")
         stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
         stub.mdx_stem_count = 4
-        stub.is_primary_stem_only = True
         stub.apply()
         selected = stub.selected_stem_routes
         self.assertEqual(len(selected), 1)
@@ -574,7 +548,6 @@ class StemIdentityAssembleTests(unittest.TestCase):
         selected = stub.selected_stem_routes
         self.assertEqual(len(selected), 1)
         self.assertEqual(selected[0].concept, StemBucket.VOCALS.value)
-        self.assertFalse(stub.is_primary_stem_only)
 
     def test_positional_sentinel_picks_derived_secondary(self) -> None:
         from core.stems import FOCUS_SECONDARY, StemBucket, StemRouteKind
