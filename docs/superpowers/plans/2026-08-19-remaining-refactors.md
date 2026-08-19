@@ -1,11 +1,11 @@
 # Remaining refactors
 
 > Backlog after the ModelConfig / JobRunner / stem-identity / Save Stems series
-> (#30–#49). Each item is its own PR. Do not stack unrelated seams.
+> (#30–#50). Each item is its own PR. Do not stack unrelated seams.
 
 ## Quality bar (unchanged)
 
-Same as #30–#49:
+Same as #30–#50:
 
 - Canonical module owns the symbols; **no** facade re-export from the old home.
 - **No** second writer, **no** flag-translator shim.
@@ -43,6 +43,7 @@ and `.venv/bin/python -m basedpyright` on touched files.
 | Delete `_ModelConfigImplementation` alias | [`core/model_data.py`](../../../core/model_data.py) | #48 |
 | CLI persist canonical ids in Settings | [`cli/job.py`](../../../cli/job.py) | #49 |
 | CLI `MDX-Net:` identity / assemble filename | [`_qualified_family`](../../../core/model_identity.py), [`assemble.py`](../../../core/model_config/assemble.py) | with sentinels / #49 |
+| `ModelConfig` ensemble mode accepts canonical ids | [`config.py`](../../../core/model_config/config.py), [`assemble.py`](../../../core/model_config/assemble.py) | #50 |
 
 ---
 
@@ -50,24 +51,15 @@ and `.venv/bin/python -m basedpyright` on touched files.
 
 Suggested order. Skip an item rather than invent scope.
 
-### 1. `ModelConfig` ensemble mode accepts canonical ids (this PR)
+### 1. Fold `process_determine_*` into `model_config` (this PR)
 
-[`assemble_model`](../../../core/model_config/assemble.py) still translated
-ids with `engine_value(..., member=True)` because
-[`ModelConfig`](../../../core/model_config/config.py) partitioned on
-`ENSEMBLE_PARTITION` (`": "`). Teach the constructor to consume `mdx:basename`
-(and still accept `Arch: Display` for dry-check/checklist). Keep emitting
-`model_and_process_tag` as `Arch: Display`. Do **not** change
-`list_*_model_tags` / checklist row keys in this PR.
+Move nested secondary / vocal-split / Demucs pre-process factories from
+[`core/model_data.py`](../../../core/model_data.py) into
+[`core/model_config/determine.py`](../../../core/model_config/determine.py).
+No forwarding alias on `model_data`. Do **not** merge `_run` and
+`_run_ensemble`. Do **not** move `engines.orchestration._run_seperator`.
 
-### 2. Fold `process_determine_*` into `model_config`
-
-Still in [`core/model_data.py`](../../../core/model_data.py);
-`ModelConfig` lazy-imports them. Fold into `model_config` if you touch that
-cycle again. Do **not** merge `_run` and `_run_ensemble`. Do **not** move
-`engines.orchestration._run_seperator`.
-
-### 3. GTK checklist row keys
+### 2. GTK checklist row keys
 
 [`list_vr_model_tags`](../../../core/model_data.py) (and MDX/Demucs) still emit
 `Arch: Display`. [`format_tag_title`](../../../core/model_display.py),
@@ -76,7 +68,7 @@ and UI tests parse `ENSEMBLE_PARTITION`. Switching row identity to
 `mdx:basename` is a **large** display rewrite. Display names colliding across
 families is why the prefix exists on the widget, not why Settings persist it.
 
-### 4. Optional later (do not start from this backlog)
+### 3. Optional later (do not start from this backlog)
 
 These were repeatedly marked out of scope on purpose. Open a new spec before
 touching them.
@@ -101,7 +93,5 @@ touching them.
 
 ## Suggested next PR
 
-After this constructor seam lands: **item 2** (`process_determine_*`) if you
-are already in the `model_data` / `model_config` cycle, or **item 3**
-(checklist row keys) as its own large display rewrite. Do not start item 4
-without a new spec.
+After this fold lands: **item 2** (checklist row keys) as its own large
+display rewrite. Do not start item 3 without a new spec.

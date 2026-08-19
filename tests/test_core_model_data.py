@@ -261,7 +261,7 @@ class NestedCanonicalModelConfigTests(unittest.TestCase):
         return captured, wrapper
 
     def test_vocal_splitter_canonical_id_does_not_crash(self) -> None:
-        from core.model_data import process_determine_vocal_split_model
+        from core.model_config import process_determine_vocal_split_model
 
         settings = Settings.defaults()
         settings.process.vocal_splitter_enabled = True
@@ -269,7 +269,7 @@ class NestedCanonicalModelConfigTests(unittest.TestCase):
         repo = _repo_with_mdx("KaraokeFusion")
         captured, wrapper = self._capture_config()
 
-        with patch("core.model_data.ModelConfig", side_effect=wrapper), patch(
+        with patch("core.model_config.config.ModelConfig", side_effect=wrapper), patch(
             "core.model_display.map_basenames_to_display",
             side_effect=lambda names, *args, **kwargs: list(names),
         ), patch("core.apollo.list_apollo_models", return_value=[]):
@@ -280,14 +280,14 @@ class NestedCanonicalModelConfigTests(unittest.TestCase):
 
     def test_secondary_canonical_id_does_not_crash(self) -> None:
         from bundled.constants import VOCAL_STEM
-        from core.model_data import process_determine_secondary_model
+        from core.model_config import process_determine_secondary_model
 
         settings = Settings.defaults()
         settings.mdx.voc_inst_secondary_model = "mdx:KaraokeFusion"
         repo = _repo_with_mdx("KaraokeFusion")
         captured, wrapper = self._capture_config()
 
-        with patch("core.model_data.ModelConfig", side_effect=wrapper), patch(
+        with patch("core.model_config.config.ModelConfig", side_effect=wrapper), patch(
             "core.model_display.map_basenames_to_display",
             side_effect=lambda names, *args, **kwargs: list(names),
         ), patch("core.apollo.list_apollo_models", return_value=[]):
