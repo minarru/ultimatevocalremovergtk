@@ -166,14 +166,14 @@ class ExpanderSummaryTests(unittest.TestCase):
         # Seed a known option so the test doesn't depend on installed models.
         set_combo_tag_values(
             entry["row"],
-            ["No Model Selected", ("MDX-Net: 14_SP-UVR-4B-44100-2", "14_SP-UVR-4B-44100-2")],
+            ["No Model Selected", ("mdx:14_SP-UVR-4B-44100-2", "14_SP-UVR-4B-44100-2")],
         )
 
         entry["row"].set_selected(1)  # real widget signal, not a direct settings write
 
         self.assertEqual(
             window.settings.get("mdx_voc_inst_secondary_model"),
-            "MDX-Net: 14_SP-UVR-4B-44100-2",
+            "mdx:14_SP-UVR-4B-44100-2",
         )
         self.assertIn("14_SP-UVR-4B-44100-2", view.secondary_expander.get_subtitle())
 
@@ -186,7 +186,7 @@ class ExpanderSummaryTests(unittest.TestCase):
         window.settings.set("mdx_net_model", CHOOSE_MODEL)
         window.settings.set("mdx_is_secondary_model_activate", True)
         window.settings.set(
-            "mdx_voc_inst_secondary_model", "MDX-Net: 14_SP-UVR-4B-44100-2"
+            "mdx_voc_inst_secondary_model", "mdx:14_SP-UVR-4B-44100-2"
         )
         window.settings.set("mdx_voc_inst_secondary_model_scale", 0.9)
         view.load()
@@ -210,7 +210,7 @@ class ExpanderSummaryTests(unittest.TestCase):
         # irrelevant to this subtitle-wiring test, so keep it out of the way.
         window.settings.set("demucs_model", CHOOSE_MODEL)
         window.settings.set("is_demucs_pre_proc_model_activate", True)
-        window.settings.set("demucs_pre_proc_model", "Demucs: v4: hdemucs_mmi")
+        window.settings.set("demucs_pre_proc_model", "demucs:hdemucs_mmi")
         window.settings.set("is_demucs_pre_proc_model_inst_mix", False)
         view.load()
         self.assertNotIn(

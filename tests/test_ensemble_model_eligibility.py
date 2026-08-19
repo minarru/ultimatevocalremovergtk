@@ -4,6 +4,7 @@ import typing
 import unittest
 import unittest.mock
 
+from bundled.constants import ENSEMBLE_PARTITION
 from core.model_data import ModelRepository
 from core.stems import EnsemblePair
 
@@ -20,6 +21,9 @@ class _FakeModel:
                  demucs_sources: typing.Sequence[str] = (),
                  demucs_stem_count: int = 0) -> None:
         self.model_and_process_tag = tag
+        arch, _, name = tag.partition(ENSEMBLE_PARTITION)
+        self.process_method = arch
+        self.model_basename = name.strip()
         self.primary_stem = primary
         self.mdx_model_stems = list(stems)
         self.mdx_stem_count = len(stems) or 1
@@ -48,7 +52,7 @@ class PreviouslyExcludedModelTests(unittest.TestCase):
         # mel_band_roformer_kim_ft2_bleedless_unwa
         models = [_FakeModel("MDX-Net: kim_ft2", "vocals", ["vocals"])]
         self.assertEqual(
-            _eligible(models, EnsemblePair.VOCALS_INSTRUMENTAL), ["MDX-Net: kim_ft2"]
+            _eligible(models, EnsemblePair.VOCALS_INSTRUMENTAL), ["mdx:kim_ft2"]
         )
 
     def test_two_stem_other_becomes_eligible(self) -> None:
@@ -56,7 +60,7 @@ class PreviouslyExcludedModelTests(unittest.TestCase):
         models = [_FakeModel("MDX-Net: inst2_unwa", "other", ["other"])]
         self.assertEqual(
             _eligible(models, EnsemblePair.VOCALS_INSTRUMENTAL.value),
-            ["MDX-Net: inst2_unwa"],
+            ["mdx:inst2_unwa"],
         )
 
     def test_instrument_variant_becomes_eligible(self) -> None:
@@ -64,7 +68,7 @@ class PreviouslyExcludedModelTests(unittest.TestCase):
         models = [_FakeModel("MDX-Net: hyperace2", "instrument", ["instrument"])]
         self.assertEqual(
             _eligible(models, EnsemblePair.VOCALS_INSTRUMENTAL),
-            ["MDX-Net: hyperace2"],
+            ["mdx:hyperace2"],
         )
 
     def test_four_stem_lowercase_vocals_becomes_eligible(self) -> None:
@@ -72,7 +76,7 @@ class PreviouslyExcludedModelTests(unittest.TestCase):
         models = [_FakeModel("MDX-Net: scnet4", "vocals",
                              ["drums", "bass", "other", "vocals"])]
         self.assertEqual(
-            _eligible(models, EnsemblePair.VOCALS_INSTRUMENTAL), ["MDX-Net: scnet4"]
+            _eligible(models, EnsemblePair.VOCALS_INSTRUMENTAL), ["mdx:scnet4"]
         )
 
     def test_phantom_centre_stays_excluded(self) -> None:
@@ -87,7 +91,7 @@ class OtherPairTests(unittest.TestCase):
     def test_four_stem_other_matches_the_other_pair(self) -> None:
         models = [_FakeModel("MDX-Net: scnet4", "other",
                              ["drums", "bass", "other", "vocals"])]
-        self.assertEqual(_eligible(models, EnsemblePair.OTHER), ["MDX-Net: scnet4"])
+        self.assertEqual(_eligible(models, EnsemblePair.OTHER), ["mdx:scnet4"])
 
     def test_two_stem_other_does_not_match_the_other_pair(self) -> None:
         # This model's 'other' is an instrumental, not a MUSDB residual.
@@ -102,7 +106,7 @@ class KaraokeSeparationTests(unittest.TestCase):
 
     def test_karaoke_appears_under_its_own_pair(self) -> None:
         models = [_FakeModel("MDX-Net: kara", "Vocals", ["Vocals"], is_karaoke=True)]
-        self.assertEqual(_eligible(models, EnsemblePair.KARAOKE), ["MDX-Net: kara"])
+        self.assertEqual(_eligible(models, EnsemblePair.KARAOKE), ["mdx:kara"])
 
     def test_plain_model_does_not_appear_under_the_karaoke_pair(self) -> None:
         models = [_FakeModel("MDX-Net: inst_hq4", "Instrumental", ["Instrumental"])]
@@ -145,7 +149,7 @@ class SecondaryOtherWantedBucketsTests(unittest.TestCase):
         from core.model_stem_semantics import ensemble_pair_buckets
 
         wanted = set(ensemble_pair_buckets(EnsemblePair.OTHER))
-        self.assertEqual(self._model_list(wanted_buckets=wanted), {"MDX-Net: 4stem"})
+        self.assertEqual(self._model_list(wanted_buckets=wanted), {"mdx:4stem"})
 
     def test_ensemble_list_agrees_with_an_explicit_bucket_request(self) -> None:
         from core.model_stem_semantics import ensemble_pair_buckets
@@ -156,7 +160,7 @@ class SecondaryOtherWantedBucketsTests(unittest.TestCase):
     def test_raw_request_wrongly_admits_the_instrumental_complement(self) -> None:
         """Pre-fix path: stem_count=1 reads a 2-stem ``other`` as Instrumental."""
         raw = self._model_list()
-        self.assertIn("MDX-Net: inst2", raw)
+        self.assertIn("mdx:inst2", raw)
         self.assertNotEqual(raw, self._ensemble_list())
 
 
@@ -165,7 +169,7 @@ class UnchangedBehaviourTests(unittest.TestCase):
         models = [_FakeModel("Demucs: htdemucs", "Vocals", [],
                              demucs_sources=["drums", "bass", "other", "vocals"],
                              demucs_stem_count=4)]
-        self.assertEqual(_eligible(models, EnsemblePair.BASS), ["Demucs: htdemucs"])
+        self.assertEqual(_eligible(models, EnsemblePair.BASS), ["demucs:htdemucs"])
 
     def test_four_stem_ensemble_keeps_only_four_source_models(self) -> None:
         models = [
@@ -173,7 +177,7 @@ class UnchangedBehaviourTests(unittest.TestCase):
             _FakeModel("MDX-Net: two_stem", "Vocals", ["Vocals", "Instrumental"]),
         ]
         self.assertEqual(
-            _eligible(models, EnsemblePair.FOUR_STEM), ["MDX-Net: scnet4"]
+            _eligible(models, EnsemblePair.FOUR_STEM), ["mdx:scnet4"]
         )
 
     def test_multi_stem_ensemble_keeps_everything(self) -> None:

@@ -99,6 +99,16 @@ class SecondaryModelsSummaryTests(unittest.TestCase):
         self.assertIn("0.90", summary)
         self.assertNotIn("MDX-Net:", summary)
 
+    def test_canonical_id_strips_family_prefix(self):
+        settings = _Settings(
+            mdx_is_secondary_model_activate=True,
+            mdx_voc_inst_secondary_model="mdx:UVR-MDX-NET-Inst_HQ_3",
+            mdx_voc_inst_secondary_model_scale=0.9,
+        )
+        summary = secondary_models_summary(settings, "mdx", four_stem=False)
+        self.assertIn("UVR-MDX-NET-Inst_HQ_3", summary)
+        self.assertNotIn("mdx:", summary)
+
     def test_two_stem_ignores_other_bass_drums(self):
         settings = _Settings(
             demucs_is_secondary_model_activate=True,

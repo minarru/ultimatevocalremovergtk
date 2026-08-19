@@ -484,11 +484,22 @@ def resolve_model_basename(
 
 
 def parse_model_tag(tag: str) -> Tuple[str, str]:
-    """Split ``'<arch>: <model>'`` on the first ``': '`` only."""
-    if not tag or ENSEMBLE_PARTITION not in tag:
+    """Split a checklist tag into ``(arch, name)``.
+
+    Accepts leftover ``Arch: Display`` strings (``ENSEMBLE_PARTITION``) and
+    canonical ``family:basename`` ids.
+    """
+    if not tag:
         return "", tag
-    arch, _, model_name = tag.partition(ENSEMBLE_PARTITION)
-    return arch, model_name
+    from .model_identity import ARCH_BY_FAMILY, FAMILIES
+
+    prefix, separator, rest = str(tag).partition(":")
+    if separator and prefix.casefold() in FAMILIES:
+        return ARCH_BY_FAMILY[prefix.casefold()], rest
+    if ENSEMBLE_PARTITION in tag:
+        arch, _, model_name = tag.partition(ENSEMBLE_PARTITION)
+        return arch, model_name
+    return "", tag
 
 
 def format_tag_subtitle(tag: str) -> str:

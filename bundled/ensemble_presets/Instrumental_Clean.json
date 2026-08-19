@@ -3,7 +3,7 @@
     "ensemble_main_stem": "vocals_instrumental",
     "ensemble_type": "Max Spec/Max Spec",
     "selected_models": [
-        "MDX-Net: MelBand Roformer | Instrumental Bleedless v2 by Gabox",
-        "MDX-Net: BandSplit Roformer | Resurrection Instrumental by Unwa"
+        "mdx:mel_band_roformer_inst_bleedless_v2_gabox",
+        "mdx:model_BandSplit-Roformer_Resurrection_Instrumental_by-Unwa"
     ]
 }

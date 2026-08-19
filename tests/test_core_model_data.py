@@ -148,13 +148,13 @@ class EnsembleModeIdentityTests(unittest.TestCase):
 
     def test_canonical_id_sets_arch_display_and_member_tag(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE
-        from core.model_identity import ModelRecord, canonical_member_tag
+        from core.model_identity import ModelRecord
 
         record = ModelRecord("mdx:good", "mdx", "good", "Good", engine_name="good")
         model = self._build("mdx:good", records=(record,))
         self.assertEqual(model.process_method, MDX_ARCH_TYPE)
         self.assertEqual(model.model_name, "Good")
-        self.assertEqual(model.model_and_process_tag, canonical_member_tag(record))
+        self.assertEqual(model.model_and_process_tag, record.id)
 
     def test_legacy_member_tag_still_splits(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE
@@ -165,7 +165,7 @@ class EnsembleModeIdentityTests(unittest.TestCase):
         model = self._build(tag, records=(record,))
         self.assertEqual(model.process_method, MDX_ARCH_TYPE)
         self.assertEqual(model.model_name, "Good")
-        self.assertEqual(model.model_and_process_tag, tag)
+        self.assertEqual(model.model_and_process_tag, record.id)
 
 
 class ModelConfigKaraokeConfidenceTests(unittest.TestCase):
@@ -242,6 +242,45 @@ def _repo_with_mdx(*basenames: str) -> MagicMock:
     repo.vr_catalogue_display_index.return_value = {}
     repo.demucs_catalogue_display_index.return_value = {}
     return repo
+
+
+class ListModelTagsCanonicalTests(unittest.TestCase):
+    """list_*_model_tags emit family:basename, sorted by display label."""
+
+    def test_list_mdx_model_tags_are_canonical_ids_sorted_by_display(self) -> None:
+        from bundled.constants import ENSEMBLE_PARTITION
+        from core.model_data import ModelRepository
+        from core.model_identity import ModelId
+
+        repo = ModelRepository.__new__(ModelRepository)
+        with patch.object(repo, "list_mdx_models", return_value=["zzz", "aaa"]), patch(
+            "core.model_data.map_basenames_to_display",
+            return_value=["Zebra", "Apple"],
+        ):
+            tags = repo.list_mdx_model_tags()
+        self.assertEqual(tags, ["mdx:aaa", "mdx:zzz"])
+        for tag in tags:
+            ModelId.parse(tag)
+            self.assertNotIn(ENSEMBLE_PARTITION, tag)
+
+    def test_list_vr_and_demucs_tags_use_family_prefix(self) -> None:
+        from core.model_data import ModelRepository
+        from core.model_identity import ModelId
+
+        repo = ModelRepository.__new__(ModelRepository)
+        with patch.object(repo, "list_vr_models", return_value=["hp"]), patch(
+            "core.model_data.map_basenames_to_display", return_value=["HP"]
+        ):
+            vr = repo.list_vr_model_tags()
+        self.assertEqual(vr, ["vr:hp"])
+        ModelId.parse(vr[0])
+
+        with patch.object(repo, "list_demucs_models", return_value=["htdemucs"]), patch(
+            "core.model_data.map_basenames_to_display", return_value=["v4 | htdemucs"]
+        ):
+            demucs = repo.list_demucs_model_tags()
+        self.assertEqual(demucs, ["demucs:htdemucs"])
+        ModelId.parse(demucs[0])
 
 
 class NestedCanonicalModelConfigTests(unittest.TestCase):

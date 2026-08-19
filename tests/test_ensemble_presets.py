@@ -33,7 +33,11 @@ class CuratedPresetLoadTests(unittest.TestCase):
         self.assertEqual(data["ensemble_main_stem"], "vocals_instrumental")
         self.assertEqual(data["ensemble_type"], "Average/Average")
         self.assertGreaterEqual(len(data["selected_models"]), 2)
-        self.assertTrue(data["selected_models"][0].startswith("MDX-Net: "))
+        from core.model_identity import ModelId
+
+        for member in data["selected_models"]:
+            parsed = ModelId.parse(member)
+            self.assertEqual(parsed.family, "mdx")
 
     def test_karaoke_preset_uses_karaoke_id(self) -> None:
         data = load_curated_ensemble("Karaoke")
@@ -59,9 +63,6 @@ class ResolveAndDownloadTests(unittest.TestCase):
         with mock.patch(
             "core.ensemble_presets.resolve_model_basename",
             return_value="model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
-        ), mock.patch(
-            "core.ensemble_presets.display_name_for_model",
-            return_value="BandSplit Roformer | Resurrection Vocals by Unwa",
         ):
             tag = resolve_member_tag(
                 "MDX-Net: BandSplit Roformer | Resurrection Vocals by Unwa",
@@ -69,7 +70,7 @@ class ResolveAndDownloadTests(unittest.TestCase):
             )
         self.assertEqual(
             tag,
-            "MDX-Net: BandSplit Roformer | Resurrection Vocals by Unwa",
+            "mdx:model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
         )
 
     def test_classify_missing_members(self) -> None:

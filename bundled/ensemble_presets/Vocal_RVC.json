@@ -3,7 +3,7 @@
     "ensemble_main_stem": "vocals_instrumental",
     "ensemble_type": "Average/Average",
     "selected_models": [
-        "MDX-Net: MelBand Roformer Kim | Big Beta v6x FT by Unwa",
-        "MDX-Net: MelBand Roformer | Vocals Fullness v4 by Gabox"
+        "mdx:melband_roformer_big_beta6x",
+        "mdx:mel_band_roformer_voc_fullness_v4_gabox"
     ]
 }

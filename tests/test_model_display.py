@@ -119,6 +119,12 @@ class ParseModelTagTests(unittest.TestCase):
     def test_format_tag_subtitle_returns_arch(self) -> None:
         self.assertEqual(format_tag_subtitle("MDX-Net: Kim Vocal 2"), "MDX-Net")
 
+    def test_canonical_id_splits_to_arch_and_basename(self) -> None:
+        self.assertEqual(parse_model_tag("mdx:Kim_Vocal_2"), (MDX_ARCH_TYPE, "Kim_Vocal_2"))
+        self.assertEqual(format_tag_subtitle("mdx:Kim_Vocal_2"), MDX_ARCH_TYPE)
+        self.assertEqual(format_tag_subtitle("vr:1_HP-UVR"), VR_ARCH_TYPE)
+        self.assertEqual(format_tag_subtitle("demucs:htdemucs"), DEMUCS_ARCH_TYPE)
+
 
 class FormatTagTitleTests(unittest.TestCase):
     def test_uses_repo_display_helper(self) -> None:
@@ -127,6 +133,15 @@ class FormatTagTitleTests(unittest.TestCase):
         repo.mdx_catalogue_display_index.return_value = {}
         title = format_tag_title("MDX-Net: Kim Vocal 2", repo)
         self.assertEqual(title, "Kim Vocal 2")
+
+    def test_canonical_id_uses_same_display_as_legacy_tag(self) -> None:
+        repo = MagicMock()
+        repo.mdx_name_select_MAPPER = {"Kim_Vocal_2": "Kim Vocal 2"}
+        repo.mdx_catalogue_display_index.return_value = {}
+        legacy = format_tag_title("MDX-Net: Kim Vocal 2", repo)
+        canonical = format_tag_title("mdx:Kim_Vocal_2", repo)
+        self.assertEqual(legacy, "Kim Vocal 2")
+        self.assertEqual(canonical, "Kim Vocal 2")
 
 
 class ResolveVrModelBasenameTests(unittest.TestCase):

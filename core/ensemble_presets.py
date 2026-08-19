@@ -9,14 +9,12 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from bundled.constants import (
     DEMUCS_ARCH_TYPE,
-    ENSEMBLE_PARTITION,
     MDX_ARCH_TYPE,
     VR_ARCH_TYPE,
 )
 from core import paths
 from core.debug_log import debug
 from core.model_display import (
-    display_name_for_model,
     parse_model_tag,
     resolve_model_basename,
     sanitize_catalogue_label,
@@ -77,15 +75,18 @@ def load_curated_ensemble(preset_id: str) -> Optional[dict]:
 
 
 def resolve_member_tag(tag: str, repo: typing.Any) -> str:
-    """Rewrite an ensemble tag to the current installed display label when possible."""
+    """Rewrite an ensemble member reference to a canonical ``family:basename`` id."""
+    from core.model_identity import FAMILY_BY_ARCH, ModelId
+
     arch, model_name = parse_model_tag(tag)
     if not arch or not model_name:
         return tag
-    basename = resolve_model_basename(arch, model_name, repo)
-    display = display_name_for_model(arch, basename or model_name, repo)
-    if not display:
-        display = model_name
-    return f"{arch}{ENSEMBLE_PARTITION}{display}"
+    basename = resolve_model_basename(arch, model_name, repo) or model_name
+    stem = os.path.splitext(basename)[0]
+    family = FAMILY_BY_ARCH.get(arch)
+    if family and stem and ":" not in stem:
+        return str(ModelId(family, stem))
+    return tag
 
 
 def resolve_member_tags(tags: Sequence[str], repo: typing.Any) -> List[str]:

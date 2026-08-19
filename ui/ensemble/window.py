@@ -42,7 +42,6 @@ from bundled.constants import (
     ENSEMBLE_LISTBOX_HELP,
     ENSEMBLE_MAIN_STEM_HELP,
     ENSEMBLE_MODE,
-    ENSEMBLE_PARTITION,
     ENSEMBLE_TYPE_HELP,
     IS_APPEND_ENSEMBLE_NAME_HELP,
     IS_AUTOCAST_HELP,
@@ -583,15 +582,21 @@ class EnsemblePage:
 
     def _resolve_ensemble_semantics_model(self):
         """Best-effort model resolve for export-semantics hints (first member)."""
+        from core.model_display import parse_model_tag
+
         tags = self._selected_model_tags()
         if not tags:
             return None
         tag = tags[0]
-        if ENSEMBLE_PARTITION not in tag:
+        process_method, model_name = parse_model_tag(tag)
+        if not process_method:
             return None
-        process_method, _, model_name = tag.partition(ENSEMBLE_PARTITION)
+        from core.model_identity import FAMILIES
+
+        prefix = str(tag).partition(":")[0].casefold()
+        reference = tag if prefix in FAMILIES else model_name
         return self.window.context.repo.resolve_model_dry(
-            self.settings, process_method.strip(), model_name.strip()
+            self.settings, process_method, reference
         )
 
     def _rebuild_stem_only_toggles(self) -> None:
@@ -1014,15 +1019,7 @@ class EnsemblePage:
     # -- Model multi-select list ------------------------------------------------
 
     def _rebuild_model_list(self, preselected: List[str]) -> None:
-        from core.model_identity import ModelIdentityService
-
-        identities = ModelIdentityService(self.context.repo)
-        preselected_set: set[str] = set()
-        for reference in preselected:
-            try:
-                preselected_set.add(identities.legacy_member_tag(reference))
-            except ValueError:
-                preselected_set.add(reference)
+        preselected_set = set(preselected)
         child = self.models_listbox.get_first_child()
         while child is not None:
             nxt = child.get_next_sibling()
@@ -1106,16 +1103,7 @@ class EnsemblePage:
         return list(self.settings.ensemble.selected_models or [])
 
     def _persist_selected_models(self) -> None:
-        from core.model_identity import ModelIdentityService
-
-        identities = ModelIdentityService(self.context.repo)
-        selected: list[str] = []
-        for tag in self._selected_model_tags():
-            try:
-                selected.append(identities.canonical_id_from_member_tag(tag))
-            except ValueError:
-                continue
-        self.settings.ensemble.selected_models = selected
+        self.settings.ensemble.selected_models = list(self._selected_model_tags())
 
     def _models_summary(self) -> str:
         """Single-line description of the current member-model selection."""

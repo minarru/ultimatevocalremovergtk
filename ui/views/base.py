@@ -666,14 +666,8 @@ class MethodView:
                     values = entry["provider"]()
                 except Exception:
                     values = []
-                from core.model_identity import ModelIdentityService
-
-                identities = ModelIdentityService(self.context.repo)
                 tag_items = [
-                    (
-                        identities.canonical_id_from_member_tag(tag),
-                        format_tag_title(tag, self.context.repo),
-                    )
+                    (tag, format_tag_title(tag, self.context.repo))
                     for tag in values
                 ]
                 set_combo_tag_values(entry["row"], [NO_MODEL, *tag_items])

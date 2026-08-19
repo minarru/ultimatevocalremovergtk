@@ -3,7 +3,7 @@
     "ensemble_main_stem": "vocals_instrumental",
     "ensemble_type": "Average/Average",
     "selected_models": [
-        "MDX-Net: BandSplit Roformer | Resurrection Vocals by Unwa",
-        "MDX-Net: MelBand Roformer Kim | Big Beta v6x FT by Unwa"
+        "mdx:model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
+        "mdx:melband_roformer_big_beta6x"
     ]
 }

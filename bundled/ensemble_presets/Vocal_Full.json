@@ -3,7 +3,7 @@
     "ensemble_main_stem": "vocals_instrumental",
     "ensemble_type": "Max Spec/Max Spec",
     "selected_models": [
-        "MDX-Net: BandSplit Roformer | Revive v3 by Unwa",
-        "MDX-Net: MelBand Roformer | Vocals by becruily"
+        "mdx:bs_roformer_revive_v3_by_unwa",
+        "mdx:mel_band_roformer_vocals_becruily"
     ]
 }
