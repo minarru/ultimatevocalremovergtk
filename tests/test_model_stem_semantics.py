@@ -31,7 +31,6 @@ from core.model_stem_semantics import (
     confident_stem_bucket,
     export_intent_from_fields,
     export_intent_from_model,
-    export_stem_label,
     infer_is_karaoke_from_hints,
     infer_name_intent_from_label,
     is_special_fx_stem,
@@ -48,6 +47,7 @@ from core.model_stem_semantics import (
 from core.stems import (
     canonical_ensemble_stem_tag,
     canonical_stem_alias,
+    export_stem_label,
     karaoke_bv_export_labels,
 )
 

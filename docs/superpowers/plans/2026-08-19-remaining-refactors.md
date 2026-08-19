@@ -46,6 +46,7 @@ and `.venv/bin/python -m basedpyright` on touched files.
 | `ModelConfig` ensemble mode accepts canonical ids | [`config.py`](../../../core/model_config/config.py), [`assemble.py`](../../../core/model_config/assemble.py) | #50 |
 | Fold `process_determine_*` into `model_config` | [`core/model_config/determine.py`](../../../core/model_config/determine.py) | #51 |
 | GTK checklist row keys (`family:basename` lists) | [`list_*_model_tags`](../../../core/model_repository.py) | #52 |
+| Relocate `ModelRepository` | [`core/model_repository.py`](../../../core/model_repository.py) | #53 |
 
 ---
 
@@ -53,11 +54,12 @@ and `.venv/bin/python -m basedpyright` on touched files.
 
 Suggested order. Skip an item rather than invent scope.
 
-### 1. Relocate `ModelRepository` (this PR)
+### 1. Drop stem-label facades from semantics (this PR)
 
-Move [`ModelRepository`](../../../core/model_repository.py) out of
-[`model_data.py`](../../../core/model_data.py). YAML/hash JSON helpers stay in
-`model_data`. No re-export from the old home.
+Delete `export_stem_label` / `resolve_stem_dict_key` shims in
+[`model_stem_semantics.py`](../../../core/model_stem_semantics.py). Callers use
+[`core.stems.export_stem_label`](../../../core/stems.py) and
+[`resolve_in_sources`](../../../core/stems.py). No re-export from the old home.
 
 ### 2. Optional later (do not start from this backlog)
 
@@ -73,9 +75,6 @@ touching them.
 - **Engine inversion** (return arrays only; `write_audio` as a post-pass).
   `stem_writer` is already extracted; inverting all four engines is a rewrite.
 - **Split `SeperateMDXC.seperate` / `demix_roformer`** into a third file.
-- **Move `export_stem_label` / `resolve_stem_dict_key`** out of
-  `model_stem_semantics.py`. Semantics may import `stems`; `stems` must not
-  import semantics (already tested).
 - **4-stem ensemble positional `--stems primary`.** Skip. Use concept names
   (`--stems vocals`) for 4-stem finals.
 - **Putting canonical ids in export filenames.**
@@ -89,5 +88,5 @@ touching them.
 
 ## Suggested next PR
 
-After this repository relocation lands: only **item 2** (optional later). Do not
+After this facade drop lands: only **item 2** (optional later). Do not
 start it without a new spec.

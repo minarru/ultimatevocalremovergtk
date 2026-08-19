@@ -19,9 +19,8 @@ from core.model_stem_semantics import (
     BUCKET_INST_WITH_BV,
     BUCKET_LEAD_VOCALS,
     ensemble_pair_buckets,
-    export_stem_label,
 )
-from core.stems import EnsemblePair
+from core.stems import EnsemblePair, export_stem_label
 
 
 class _Model:
