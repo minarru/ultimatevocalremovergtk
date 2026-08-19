@@ -573,8 +573,6 @@ def process_determine_secondary_model(
     repo: ModelRepository,
     process_method: str,
     main_model_primary_stem: str,
-    is_primary_stem_only: bool = False,
-    is_secondary_stem_only: bool = False,
 ):
     """Tk-free port of ``MainWindow.process_determine_secondary_model``."""
     prefix = _SECONDARY_PREFIX_BY_METHOD.get(process_method)
@@ -600,8 +598,6 @@ def process_determine_secondary_model(
             secondary_model_name,
             is_secondary_model=True,
             primary_model_primary_stem=main_model_primary_stem,
-            is_primary_model_primary_stem_only=is_primary_stem_only,
-            is_primary_model_secondary_stem_only=is_secondary_stem_only,
         )
         if secondary_model is not None and not secondary_model.model_status:
             secondary_model = None
