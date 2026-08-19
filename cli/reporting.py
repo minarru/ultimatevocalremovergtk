@@ -80,14 +80,15 @@ def _emit_human_result(payload: dict[str, Any]) -> None:
     if payload.get("export_path"):
         print(f"export_path={payload['export_path']}")
     results = payload.get("inputs")
-    if isinstance(results, list) and len(results) > 1:
-        succeeded = sum(item.get("status") == "success" for item in results)
-        failed = sum(item.get("status") == "failed" for item in results)
-        skipped = sum(item.get("status") == "skipped" for item in results)
-        print(
-            f"inputs={len(results)} succeeded={succeeded} "
-            f"failed={failed} skipped={skipped}"
-        )
+    if isinstance(results, list):
+        if len(results) > 1:
+            succeeded = sum(item.get("status") == "success" for item in results)
+            failed = sum(item.get("status") == "failed" for item in results)
+            skipped = sum(item.get("status") == "skipped" for item in results)
+            print(
+                f"inputs={len(results)} succeeded={succeeded} "
+                f"failed={failed} skipped={skipped}"
+            )
         for item in results:
             if item.get("status") == "failed":
                 print(f"error[{item.get('input')}]={item.get('error')}", file=sys.stderr)

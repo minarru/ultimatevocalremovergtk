@@ -181,6 +181,88 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(settings.mdx.model, "MDX-Net: Good")
 
 
+class PlannedSettingsReturnTests(unittest.TestCase):
+    """CLI ResolvedJob.settings must be the JobResolver copy, not the pre-copy."""
+
+    def _planned_effective(self, settings: Settings) -> Mock:
+        effective = Mock()
+        effective.settings = settings
+        effective.diagnostics = ()
+        effective.to_dict.return_value = {}
+        return effective
+
+    def test_separate_job_returns_resolver_settings(self) -> None:
+        from cli.job import resolve_separate_job
+        from core.model_identity import ModelRecord
+
+        pre_settings = Settings.defaults()
+        pre_settings.mdx.model = "MDX-Net: Display"
+        planned = Settings.defaults()
+        planned.mdx.model = "mdx:planned-id"
+        record = ModelRecord("mdx:planned-id", "mdx", "planned-id", "Display")
+        profile = LoadedProfile("defaults", "built-in")
+        args = argparse.Namespace(
+            model="mdx:planned-id",
+            stems=None,
+            long_chunk_seconds=None,
+            long_chunk_overlap=None,
+            vocal_split=None,
+            device=None,
+            on_exists="fail",
+        )
+        with patch("cli.job._base_resolve", return_value=(pre_settings, profile, ["/a.wav"], "/out")), patch(
+            "cli.job.resolve_model_id", return_value=record
+        ), patch("cli.job.ModelRepository"), patch(
+            "cli.job._canonicalize_model_references", return_value={}
+        ), patch("cli.job._device_pairs", return_value=([], False)), patch(
+            "cli.job.SettingsResolver"
+        ) as resolver_cls, patch("core.job_plan.JobResolver") as job_resolver_cls:
+            resolver_cls.return_value.resolve.return_value = (pre_settings, {})
+            job_resolver_cls.return_value.resolve.return_value = self._planned_effective(planned)
+            job = resolve_separate_job(args)
+        self.assertIs(job.settings, planned)
+        self.assertEqual(job.settings.mdx.model, "mdx:planned-id")
+
+    def test_ensemble_job_returns_resolver_settings(self) -> None:
+        from cli.job import resolve_ensemble_job
+        from core.model_identity import ModelRecord
+        from core.stems import EnsemblePair
+
+        pre_settings = Settings.defaults()
+        pre_settings.ensemble.selected_models = ["MDX-Net: A", "MDX-Net: B"]
+        planned = Settings.defaults()
+        planned.ensemble.selected_models = ["mdx:a", "mdx:b"]
+        records = [
+            ModelRecord("mdx:a", "mdx", "a", "A"),
+            ModelRecord("mdx:b", "mdx", "b", "B"),
+        ]
+        profile = LoadedProfile("defaults", "built-in")
+        args = argparse.Namespace(
+            ensemble=None,
+            models=["mdx:a", "mdx:b"],
+            main_stem=EnsemblePair.VOCALS_INSTRUMENTAL.value,
+            stems=None,
+            long_chunk_seconds=None,
+            long_chunk_overlap=None,
+            algorithm=None,
+            wav_ensemble=None,
+            save_all_outputs=None,
+            device=None,
+            on_exists="fail",
+        )
+        with patch("cli.job._base_resolve", return_value=(pre_settings, profile, ["/a.wav"], "/out")), patch(
+            "cli.job.resolve_model_id", side_effect=records
+        ), patch("cli.job.ModelRepository"), patch(
+            "cli.job._canonicalize_model_references", return_value={}
+        ), patch("cli.job._device_pairs", return_value=([], False)), patch(
+            "cli.job.SettingsResolver"
+        ) as resolver_cls, patch("core.job_plan.JobResolver") as job_resolver_cls:
+            resolver_cls.return_value.resolve.return_value = (pre_settings, {})
+            job_resolver_cls.return_value.resolve.return_value = self._planned_effective(planned)
+            job = resolve_ensemble_job(args)
+        self.assertIs(job.settings, planned)
+        self.assertEqual(job.settings.ensemble.selected_models, ["mdx:a", "mdx:b"])
+
 
 class DeviceResolutionTests(unittest.TestCase):
     def test_directml_sets_the_backend_flag(self) -> None:
