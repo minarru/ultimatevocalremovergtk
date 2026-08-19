@@ -1,11 +1,12 @@
 """Stem export: ensemble buffers, vocal-split pairing, deverb, and disk write.
 
-:func:`write_audio` is duck-typed on the separator. This module must not import
-the engine attribute mixin at load time.
+:func:`write_audio` is duck-typed on the separator. :func:`export_source_map`
+is the in-engine post-pass: loop ``run_export_routes`` then ``write_audio``.
+This module must not import the engine attribute mixin at load time.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 import soundfile as sf
@@ -22,7 +23,15 @@ from bundled.constants import (
     SAVING_STEM,
 )
 from core.model_stem_semantics import is_vocal_target
-from core.stems import StemBucket, StemLiteral, export_stem_key, filename_tag, stem_concept
+from core.stems import (
+    StemBucket,
+    StemLiteral,
+    export_stem_key,
+    filename_tag,
+    resolve_in_sources,
+    run_export_routes,
+    stem_concept,
+)
 from ml import spec_utils
 
 from .export import save_format
@@ -365,4 +374,34 @@ def write_audio(
         sep.master_vocal_path = stem_path
 
 
-__all__ = ["write_audio"]
+def export_source_map(
+    sep: Any,
+    sources: Mapping[str, Any],
+    samplerate: int,
+) -> None:
+    """Write each ``run_export_routes`` stem from an in-memory map.
+
+    Recipe stays with the caller: ``sources`` must already hold derived
+    complements under the names ``write_audio`` expects. Missing keys are
+    skipped so unused stems are not computed here. ``write_audio`` remains
+    the only disk/buffer path.
+    """
+    routes = run_export_routes(sep)
+    if not routes:
+        return
+    sep.begin_save_phase(len(routes))
+    for route in routes:
+        lookup: Any = route.native if route.native is not None else route.label
+        key = resolve_in_sources(sources, lookup)
+        if key is None and route.label:
+            key = resolve_in_sources(sources, route.label)
+        if key is None:
+            continue
+        stem_name = (
+            route.native.raw if route.native is not None else str(route.label)
+        )
+        path = sep.stem_export_wav_path(stem_name)
+        sep.write_audio(path, sources[key], samplerate, stem_name=stem_name)
+
+
+__all__ = ["write_audio", "export_source_map"]
