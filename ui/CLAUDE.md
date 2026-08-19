@@ -15,3 +15,15 @@ Loaded when working under `ui/`. Layer rules, invariants and repo workflow live 
 ## Settings coupling
 
 - The Save-stems widget ([ui/widgets/stem_only.py](widgets/stem_only.py)) is a GTK adapter over [`core/stem_selection.py`](../core/stem_selection.py), which writes `process.stem_focus` (a concept, `raw:…` tag, or positional `primary`/`secondary` sentinel) in every branch — including the ones that clear it back to `""`. Miss a branch and the widget looks right while `--profile gui` and the plan-time diagnostics inherit a stale concept.
+
+### Flush / preflight contract
+
+Shared keys and where they may be written:
+
+- **`process.stem_focus`** — Save Stems on the active separation method only (`MethodView.save(include_stem_only=True)` → `_persist_stem_only`). Ensemble: `EnsemblePage._flush_run_settings()` before `build_job_spec` / `start`. Never from inactive VR/MDX/Demucs views.
+- **Format, GPU, autocast, sample mode, vocal splitter, separation I/O** — separation-page widgets; flushed in `MainWindow._flush_settings` only when the Separation tab is visible (stale-widget guard). Ensemble and Audio Tools keep their own live copies on their tabs.
+
+Rules for new UI:
+
+- If a widget writes a key used across tabs or methods, persist live on change **and** flush before `build_job_spec`, or gate writes on the active tab/method — never persist from a stale inactive surface.
+- **Anti-pattern:** calling `save_stems.persist_to_settings()` from `save_options()` or any path that runs when `include_stem_only=False` (Demucs/MDX regression: inactive Demucs `quick_all` cleared MDX Instrumental focus before plan review).

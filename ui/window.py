@@ -996,6 +996,12 @@ class MainWindow(Adw.ApplicationWindow):
         # Flushing the stale Separation widgets here would clobber whatever the
         # other tab's own widgets just wrote, so only do it when Separation is
         # actually the visible tab.
+        #
+        # Method views (VR → MDX → Demucs): ``include_stem_only=(view is active)``
+        # so only the active architecture may persist Save Stems
+        # (``process.stem_focus``). Inactive views still flush their own
+        # per-family options; view order only matters if something writes a
+        # shared key — another reason inactive views must not touch stem_focus.
         if self.content_stack.get_visible_child_name() == "separation":
             self.settings.process.input_paths = list(self.input_row.paths)
             self.settings.process.export_path = self.output_row.path

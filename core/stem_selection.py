@@ -226,6 +226,33 @@ class DemucsView:
     export_filter_visible: bool
 
 
+def _debug_stem_focus_persist(
+    mode: str,
+    view: ExclusiveView | SubsetView | DemucsView,
+    *,
+    focus: str,
+    detail: str = "",
+) -> None:
+    """Opt-in trace when Save Stems writes ``process.stem_focus`` (``uvr-settings``)."""
+    try:
+        from core.debug_log import debug
+
+        if isinstance(view, ExclusiveView):
+            choice = view.choice
+        elif isinstance(view, SubsetView):
+            choice = view.mode
+        else:
+            choice = view.active
+        suffix = f" {detail}" if detail else ""
+        debug(
+            "settings",
+            f"stem_focus persist mode={mode} choice={choice!r} "
+            f"focus={focus!r}{suffix}",
+        )
+    except Exception:
+        pass
+
+
 class StemSelectionState:
     """Configure context plus persist/sync for one Save Stems section."""
 
@@ -635,13 +662,19 @@ class StemSelectionState:
         settings: Any,
         view: ExclusiveView | SubsetView | DemucsView,
     ) -> None:
+        detail = ""
         if isinstance(view, ExclusiveView):
-            self._write_exclusive(settings, view)
-            return
-        if isinstance(view, SubsetView):
+            detail = self._write_exclusive(settings, view)
+        elif isinstance(view, SubsetView):
             self._write_subset(settings, view)
-            return
-        self._write_demucs(settings, view)
+        else:
+            self._write_demucs(settings, view)
+        _debug_stem_focus_persist(
+            self.mode,
+            view,
+            focus=str(getattr(settings.process, "stem_focus", "") or ""),
+            detail=detail,
+        )
 
     def write_cli_concept(self, settings: Settings, concept: str) -> None:
         """Persist a CLI concept pick into ``process.stem_focus``."""
@@ -679,18 +712,22 @@ class StemSelectionState:
         settings.mdx.stems = ALL_STEMS
         settings.mdx.stems_selected = []
 
-    def _write_exclusive(self, settings: Any, view: ExclusiveView) -> None:
+    def _write_exclusive(self, settings: Any, view: ExclusiveView) -> str:
         if view.choice == _TOGGLE_ALL:
             settings.process.stem_focus = ""
-            return
+            return "reason=all-stems"
         selection = select_stem_routes(self.routes, view.choice)
         if (
             selection.status is not StemSelectionStatus.MATCHED
             or len(selection.routes) != 1
         ):
             settings.process.stem_focus = ""
-            return
+            return (
+                f"reason=exclusive-unmatched status={selection.status.value} "
+                f"routes={len(selection.routes)}"
+            )
         settings.process.stem_focus = selection.routes[0].concept
+        return "reason=exclusive-matched"
 
     def _write_subset(self, settings: Any, view: SubsetView) -> None:
         if view.mode != _SUBSET_CUSTOM:

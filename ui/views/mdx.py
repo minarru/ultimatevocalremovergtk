@@ -280,8 +280,6 @@ class MDXView(MethodView):
 
     def save_options(self):
         super().save_options()
-        if self.save_stems.mode == "subset":
-            self.save_stems.persist_to_settings()
         self._persist_segment_value(get_scale_row_value(self.segment_row))
         overlap_value = get_scale_row_value(self.overlap_row)
         if overlap_value is not None:

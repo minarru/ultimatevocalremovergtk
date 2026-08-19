@@ -428,6 +428,24 @@ class MethodView:
         self.hints.refresh()
 
     def save(self, *, include_stem_only: bool = True) -> None:
+        """Write this method view's widget state into ``settings``.
+
+        Called from :meth:`~ui.window.MainWindow._flush_settings` for every
+        separation architecture on preflight/start/close. ``include_stem_only``
+        is ``True`` only for the **active** method (the one shown in the method
+        combo).
+
+        When ``False``, persisting method-local keys (``model_key``, option
+        combos, scales, switches in ``vr.*`` / ``mdx.*`` / ``demucs.*``) is
+        intentional — each architecture keeps its own snapshot in settings.
+
+        When ``False``, the view **must not** write **shared** keys — especially
+        ``process.stem_focus`` via Save Stems. Stem persist is owned by
+        :meth:`_persist_stem_only`, gated by this flag. ``save_options()``
+        overrides must **not** call ``save_stems.persist_to_settings()``; doing
+        so from an inactive view (e.g. Demucs ``quick_all`` while MDX is active)
+        clears the active view's export focus before plan review.
+        """
         set_flat(self.settings, self.model_key, self.selected_model())
         if include_stem_only:
             self._persist_stem_only()

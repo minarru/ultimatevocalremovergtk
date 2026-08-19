@@ -40,7 +40,7 @@ Standard XDG / platform paths (`XDG_DATA_HOME`, `XDG_CACHE_HOME`, `LOCALAPPDATA`
 **Suggested profiles:**
 
 ```bash
-# UI and settings
+# UI and settings (Save Stems persist + plan output resolution)
 G_MESSAGES_DEBUG=uvr-ui,uvr-settings,uvr-error python -m ui
 
 # Separation run
