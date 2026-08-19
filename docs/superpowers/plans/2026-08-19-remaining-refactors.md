@@ -53,6 +53,9 @@ and `.venv/bin/python -m basedpyright` on touched files.
 | Invert VR and classic MDX export flow | [`vr.py`](../../../engines/vr.py), [`mdx.py`](../../../engines/mdx.py) | #57 |
 | Job-level export lift | [`ExportPlan`](../../../engines/stem_writer.py), [`finish_export`](../../../engines/stem_writer.py) | this series |
 | Split `SeperateMDXC` into engine module | [`mdx_c_engine.py`](../../../engines/mdx_c_engine.py) | this series |
+| Unify `_run` / `_run_ensemble` | [`JobRunner._run_separation`](../../../core/job_runner.py) | this series |
+| Canonical `build_seperator` | [`engines/separator_factory.py`](../../../engines/separator_factory.py) | this series |
+| Single separate pass | [`run_separate_pass`](../../../core/separator_run.py) | this series |
 
 ---
 
@@ -64,10 +67,14 @@ Suggested order. Skip an item rather than invent scope.
 
 All four engines return [`ExportPlan`](../../../engines/stem_writer.py) from
 ``seperate()``; [`finish_export`](../../../engines/stem_writer.py) runs from
-[`run_separator_once`](../../../core/separator_run.py) and
-[`_run_seperator`](../../../engines/orchestration.py). [`final_process`](../../../engines/base.py)
+[`run_separate_pass`](../../../core/separator_run.py) (job path via
+[`run_separator_once`](../../../core/separator_run.py); nested path via
+[`_run_seperator`](../../../engines/orchestration.py)). [`final_process`](../../../engines/base.py)
 is deleted. [`_write_captured_stems`](../../../core/run_loop.py) stays a separate
 deferred writer.
+
+Single and ensemble workers share [`_run_separation`](../../../core/job_runner.py).
+Engine construction is [`build_seperator`](../../../engines/separator_factory.py).
 
 ### 2. Optional later (do not start from this backlog)
 
@@ -86,12 +93,10 @@ touching them.
   [`_model_output_label`](../../../core/run_hooks.py) stays a display name;
   [`sanitize_filename_component`](../../../core/export_naming.py) would turn
   `mdx:basename` into `mdx_basename`.
-- **Merging `_run` and `_run_ensemble`** / moving
-  `engines.orchestration._run_seperator`.
 
 ---
 
 ## Suggested next PR
 
-Pick from **Optional later** below, or open a new spec — the engine inversion
-and job-level export lift series is complete.
+Pick from **Optional later** below, or open a new spec — the engine inversion,
+job-level export lift, and runner-merge series is complete.

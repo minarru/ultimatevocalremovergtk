@@ -306,7 +306,7 @@ def run_models_on_files(
     hooks: FilePassHooks,
 ) -> None:
     """Decode each mix as its file starts, then run every model/chunk via ``hooks``."""
-    SeperateDemucs, SeperateMDX, SeperateMDXC, SeperateVR, clear_gpu_cache = engines
+    *_, clear_gpu_cache = engines
 
     chunk_seconds, overlap_seconds = _long_file_chunk_settings(runner.settings)
     total_files = len(input_paths)
@@ -441,14 +441,7 @@ def run_models_on_files(
                 def _rebuild(
                     model: Any = current_model, pdata: ProcessData = process_data
                 ) -> Any:
-                    return runner._build_separator(
-                        model,
-                        pdata,
-                        SeperateVR=SeperateVR,
-                        SeperateMDX=SeperateMDX,
-                        SeperateMDXC=SeperateMDXC,
-                        SeperateDemucs=SeperateDemucs,
-                    )
+                    return runner._build_separator(model, pdata)
 
                 seperator = _rebuild()
                 engine = type(seperator).__name__

@@ -1,22 +1,28 @@
 """Orchestration engine dispatch and nested cleanup."""
 
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest import mock
 
 from bundled.constants import VR_ARCH_TYPE
+import engines.orchestration as orchestration
 from engines.mix import gather_sources
-from engines.orchestration import _build_seperator, _run_seperator
+from engines.orchestration import _run_seperator, process_chain_model
+from engines.separator_factory import build_seperator
+
+_REPO = Path(__file__).resolve().parents[1]
 
 
 class OrchestrationDispatchTests(unittest.TestCase):
     def test_unknown_process_method_raises(self) -> None:
         model = SimpleNamespace(process_method="Unknown Engine", is_mdx_c=False)
         with self.assertRaises(NotImplementedError):
-            _build_seperator(model, {})
+            build_seperator(model, {})
 
     @mock.patch("engines.stem_writer.finish_export")
-    @mock.patch("engines.orchestration.release_separator")
+    @mock.patch("core.separator_run.release_separator")
     def test_run_seperator_always_releases(
         self, release_mock: mock.MagicMock, finish_mock: mock.MagicMock
     ) -> None:
@@ -32,8 +38,10 @@ class OrchestrationDispatchTests(unittest.TestCase):
         release_mock.assert_called_once_with(separator)
         self.assertEqual(result, {"Vocals": [1]})
 
-    @mock.patch("engines.orchestration.release_separator")
-    def test_run_seperator_releases_on_exception(self, release_mock: mock.MagicMock) -> None:
+    @mock.patch("core.separator_run.release_separator")
+    def test_run_seperator_releases_on_exception(
+        self, release_mock: mock.MagicMock
+    ) -> None:
         separator = mock.MagicMock()
         separator.seperate.side_effect = RuntimeError("boom")
         with self.assertRaises(RuntimeError):
@@ -42,12 +50,73 @@ class OrchestrationDispatchTests(unittest.TestCase):
 
     def test_build_seperator_returns_vr_for_vr_arch(self) -> None:
         model = SimpleNamespace(process_method=VR_ARCH_TYPE, is_mdx_c=False)
-        with mock.patch("engines.orchestration._engine_classes") as engine_classes:
+        with mock.patch("engines.separator_factory._engine_classes") as engine_classes:
             vr_cls = mock.MagicMock(name="SeperateVR")
-            engine_classes.return_value = (vr_cls, mock.MagicMock(), mock.MagicMock(), mock.MagicMock())
-            seperator = _build_seperator(model, {})
+            engine_classes.return_value = (
+                vr_cls,
+                mock.MagicMock(),
+                mock.MagicMock(),
+                mock.MagicMock(),
+            )
+            seperator = build_seperator(model, {})
             vr_cls.assert_called_once()
             self.assertIs(seperator, vr_cls.return_value)
+
+
+class SeparatorFactoryBoundaryTests(unittest.TestCase):
+    def test_chain_resolves_factory_from_canonical_module(self) -> None:
+        model: Any = SimpleNamespace(
+            bv_model_rebalance=False,
+            process_method=VR_ARCH_TYPE,
+        )
+        process_data = mock.MagicMock()
+        canonical_separator = mock.MagicMock()
+
+        with (
+            mock.patch(
+                "engines.separator_factory.build_seperator",
+                return_value=canonical_separator,
+            ) as canonical_build,
+            mock.patch(
+                "engines.separator_factory._engine_classes",
+                return_value=(
+                    mock.MagicMock(),
+                    mock.MagicMock(),
+                    mock.MagicMock(),
+                    mock.MagicMock(),
+                ),
+            ),
+            mock.patch("engines.orchestration._run_seperator", return_value=None),
+        ):
+            process_chain_model(
+                model,
+                process_data,
+                vocal_stem_path=None,
+                master_vocal_source=object(),
+            )
+
+        canonical_build.assert_called_once()
+
+    def test_job_runner_does_not_dispatch_engine_classes(self) -> None:
+        source = (_REPO / "core" / "job_runner.py").read_text(encoding="utf-8")
+        self.assertNotIn("SeperateVR", source)
+        self.assertNotIn("SeperateMDX", source)
+        self.assertNotIn("SeperateMDXC", source)
+        self.assertNotIn("SeperateDemucs", source)
+        self.assertIn("build_seperator", source)
+
+    def test_orchestration_does_not_expose_factory(self) -> None:
+        source = (_REPO / "engines" / "orchestration.py").read_text(encoding="utf-8")
+        self.assertFalse(hasattr(orchestration, "build_seperator"))
+        self.assertNotIn("def build_seperator", source)
+        self.assertNotIn("def _build_seperator", source)
+        self.assertNotIn("def _engine_classes", source)
+
+    def test_orchestration_does_not_define_separate_pass(self) -> None:
+        source = (_REPO / "engines" / "orchestration.py").read_text(encoding="utf-8")
+        self.assertNotIn("def finish_export", source)
+        self.assertNotIn("class ExportPlan", source)
+        self.assertIn("run_separate_pass", source)
 
 
 class GatherSourcesTests(unittest.TestCase):
