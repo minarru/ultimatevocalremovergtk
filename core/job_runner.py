@@ -160,49 +160,24 @@ class JobRunner:
     ) -> None:
         """Launch the worker thread. No-op if a run is already in flight.
 
-        Routes to the ensemble worker when ``chosen_process_method`` is
-        ``ENSEMBLE_MODE`` (mirroring ``process_start``'s branch), otherwise the
-        single-method worker.
-
-        When ``models`` is supplied, the worker reuses that assembly and does
-        not call :meth:`resolve_models`. When ``planned`` is supplied, per-file
+        Infers ensemble vs single from ``settings.process.method`` (set
+        ``ProcessMethod.ENSEMBLE`` before calling). When ``models`` is
+        supplied, the worker reuses that assembly and does not call
+        :meth:`resolve_models`. When ``planned`` is supplied, per-file
         basenames come from the matching :class:`~core.job_plan.PlannedInput`
         after rebasing onto the current export path.
         """
         if self.is_running():
             return
-        if self.settings.process.method == ProcessMethod.ENSEMBLE:
-            self.start_ensemble(
-                input_paths,
-                callbacks,
-                models=models,
-                planned=planned,
-                planned_output_root=planned_output_root,
-            )
-            return
-        self._start_worker(
-            input_paths,
-            callbacks,
-            mode="single",
-            models=models,
-            planned=planned,
-            planned_output_root=planned_output_root,
+        mode: Literal["single", "ensemble"] = (
+            "ensemble"
+            if self.settings.process.method == ProcessMethod.ENSEMBLE
+            else "single"
         )
-
-    def start_ensemble(
-        self,
-        input_paths: Sequence[str],
-        callbacks: job_callbacks.JobCallbacks,
-        *,
-        models: Sequence[Any] | None = None,
-        planned: Sequence[Any] | None = None,
-        planned_output_root: str | None = None,
-    ) -> None:
-        """Launch the ensemble worker thread explicitly. No-op if already running."""
         self._start_worker(
             input_paths,
             callbacks,
-            mode="ensemble",
+            mode=mode,
             models=models,
             planned=planned,
             planned_output_root=planned_output_root,

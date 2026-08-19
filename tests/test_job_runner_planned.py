@@ -9,6 +9,7 @@ from core.job_plan import PlannedInput
 from core.job_callbacks import JobCallbacks
 from core.job_runner import JobRunner
 from core.settings import Settings
+from core.types import ProcessMethod
 
 
 def _planned(path: str, track_base: str, export_directory: str = "/out") -> PlannedInput:
@@ -44,6 +45,20 @@ class JobRunnerPlannedTests(unittest.TestCase):
         self.assertEqual(runner._run_models, models)
         self.assertEqual(runner._run_output_root, "/out")
         thread.assert_called_once()
+        self.assertEqual(thread.call_args.kwargs["target"], runner._run_separation)
+        self.assertEqual(thread.call_args.kwargs["args"][2], "single")
+
+    def test_start_infers_ensemble_mode_from_settings(self) -> None:
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.ENSEMBLE
+        runner = JobRunner(settings)
+        with patch("kthread.KThread") as thread:
+            runner.start(["/in/a.wav"], Mock())
+        self.assertEqual(thread.call_args.kwargs["target"], runner._run_separation)
+        self.assertEqual(thread.call_args.kwargs["args"][2], "ensemble")
+
+    def test_job_runner_has_no_start_ensemble(self) -> None:
+        self.assertFalse(hasattr(JobRunner, "start_ensemble"))
 
     def test_reset_clears_run_models_and_planned(self) -> None:
         runner = JobRunner(Settings.defaults())

@@ -53,7 +53,7 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
         page.save_stems.persist_to_settings.assert_called_once()
         page._persist_selected_models.assert_called_once()
         page.window.begin_run.assert_called_once_with(page)
-        page.context.runner.start_ensemble.assert_called_once()
+        page.context.runner.start.assert_called_once()
 
     def test_flush_preserves_stem_focus_from_widget(self) -> None:
         settings = Settings.defaults()

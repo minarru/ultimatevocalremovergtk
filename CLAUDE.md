@@ -92,7 +92,7 @@ Layers, strictly one-directional (`ui` → `core` → `engines` → `ml`, and `c
 
 ### Separation run pipeline
 
-`JobRunner.start` (single) and `JobRunner.start_ensemble` (ensemble) both begin with `assemble_model(settings, repo, arch_type=...)`, which returns the list of `ModelConfig` objects for the run. Long inputs are sliced/rejoined by [core/audio_chunking.py](core/audio_chunking.py) (`slice_mix` → per-chunk inference → `concat_stems`).
+`JobRunner.start` begins with `assemble_model(settings, repo, arch_type=...)` (ensemble when `process.method` is Ensemble Mode), which returns the list of `ModelConfig` objects for the run. Long inputs are sliced/rejoined by [core/audio_chunking.py](core/audio_chunking.py) (`slice_mix` → per-chunk inference → `concat_stems`).
 
 **One `ModelConfig` can mean several inference passes.** Beyond the primary model, `ModelConfig.secondary_model_data` may attach a secondary model, a Demucs pre-process model, a vocal-splitter chain, and per-stem 4-stem secondaries. Engines invoke these through `process_secondary_model` / `process_chain_model` in [engines/orchestration.py](engines/orchestration.py). The progress denominator comes from `count_inference_passes_from_models` ([core/run_estimate.py](core/run_estimate.py)) via `true_model_count` — **if you add a pass, count it there or the progress bar silently lies.**
 

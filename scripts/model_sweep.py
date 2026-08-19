@@ -465,6 +465,10 @@ def run_child(spec_path: str) -> int:
 
             settings.process.method = ProcessMethod(record.method)
             setattr(getattr(settings, record.family), "model", record.id)
+        elif kind == KIND_ENSEMBLE:
+            from core.types import ProcessMethod
+
+            settings.process.method = ProcessMethod.ENSEMBLE
 
         timeout = float(spec.get("timeout") or DEFAULT_TIMEOUT)
         if kind == KIND_TOOL:
@@ -483,10 +487,9 @@ def run_child(spec_path: str) -> int:
                 raise ValueError(errors[0])
             os.makedirs(export_dir, exist_ok=True)
             runner = JobRunner(plan.settings)
-            if command == "ensemble":
-                start_runner = lambda callbacks: runner.start_ensemble([spec["input_path"]], callbacks)
-            else:
-                start_runner = lambda callbacks: runner.start([spec["input_path"]], callbacks)
+            start_runner = lambda callbacks: runner.start(
+                [spec["input_path"]], callbacks
+            )
             def write_console(text: str) -> None:
                 sys.stdout.write(text)
 

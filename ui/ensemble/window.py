@@ -1352,7 +1352,7 @@ class EnsemblePage:
             stem = self._ensemble_pair().value
             models = len(self._selected_model_tags())
             debug("ui", f"ensemble start files={len(input_paths)} models={models} stem={stem}")
-            self.context.runner.start_ensemble(input_paths, callbacks)
+            self.context.runner.start(input_paths, callbacks)
         except Exception as exc: # noqa: BLE001 - surfaced to the user
             self.window.fail_to_start(f"Unable to start ensemble: {exc}", exc)
 
