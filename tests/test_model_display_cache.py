@@ -117,7 +117,7 @@ class MergedForDisplayCacheTests(unittest.TestCase):
         self.assertIsNotNone(after)
 
     def test_reload_mappers_invalidates_display_cache(self) -> None:
-        from core.model_data import ModelRepository
+        from core.model_repository import ModelRepository
 
         first = md._merged_for_display()
         gen_before = md._display_generation

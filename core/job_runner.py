@@ -32,7 +32,7 @@ from .export_naming import (
     rebase_output_naming,
 )
 from .model_config import ModelConfig, assemble_model
-from .model_data import ModelRepository
+from .model_repository import ModelRepository
 from .process_data import ProcessData
 from .sample_mode import prepare_input_paths
 from .settings import Settings

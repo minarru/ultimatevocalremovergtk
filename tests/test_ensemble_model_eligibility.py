@@ -5,7 +5,7 @@ import unittest
 import unittest.mock
 
 from bundled.constants import ENSEMBLE_PARTITION
-from core.model_data import ModelRepository
+from core.model_repository import ModelRepository
 from core.stems import EnsemblePair
 
 

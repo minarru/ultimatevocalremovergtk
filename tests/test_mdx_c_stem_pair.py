@@ -7,7 +7,9 @@ import unittest
 import numpy as np
 
 from core import Settings
-from core.model_data import ModelConfig, ModelRepository, _mdx_c_secondary_for_pair
+from core.model_config import ModelConfig
+from core.model_data import _mdx_c_secondary_for_pair
+from core.model_repository import ModelRepository
 from engines.mdx_c import mdx_combined_secondary_key
 
 _MID_SIDE_TAG = "MDX-Net: MDX23C — Mid-Side v2e · Gilliaaan"

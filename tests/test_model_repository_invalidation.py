@@ -15,7 +15,8 @@ from unittest import mock
 
 from bundled.constants import ENSEMBLE_PARTITION, MDX_ARCH_TYPE, VR_ARCH_TYPE
 from core import model_display
-from core.model_data import ModelConfig, ModelRepository
+from core.model_config import ModelConfig
+from core.model_repository import ModelRepository
 from core.settings import Settings
 
 

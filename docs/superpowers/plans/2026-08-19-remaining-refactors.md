@@ -45,6 +45,7 @@ and `.venv/bin/python -m basedpyright` on touched files.
 | CLI `MDX-Net:` identity / assemble filename | [`_qualified_family`](../../../core/model_identity.py), [`assemble.py`](../../../core/model_config/assemble.py) | with sentinels / #49 |
 | `ModelConfig` ensemble mode accepts canonical ids | [`config.py`](../../../core/model_config/config.py), [`assemble.py`](../../../core/model_config/assemble.py) | #50 |
 | Fold `process_determine_*` into `model_config` | [`core/model_config/determine.py`](../../../core/model_config/determine.py) | #51 |
+| GTK checklist row keys (`family:basename` lists) | [`list_*_model_tags`](../../../core/model_repository.py) | #52 |
 
 ---
 
@@ -52,12 +53,11 @@ and `.venv/bin/python -m basedpyright` on touched files.
 
 Suggested order. Skip an item rather than invent scope.
 
-### 1. GTK checklist row keys (this PR)
+### 1. Relocate `ModelRepository` (this PR)
 
-[`list_vr_model_tags`](../../../core/model_data.py) (and MDX/Demucs) emit
-`family:basename`. Widgets store those ids as-is. `model_and_process_tag` is
-the canonical id. Export filenames stay friendly display names via
-[`_model_output_label`](../../../core/run_hooks.py).
+Move [`ModelRepository`](../../../core/model_repository.py) out of
+[`model_data.py`](../../../core/model_data.py). YAML/hash JSON helpers stay in
+`model_data`. No re-export from the old home.
 
 ### 2. Optional later (do not start from this backlog)
 
@@ -76,7 +76,6 @@ touching them.
 - **Move `export_stem_label` / `resolve_stem_dict_key`** out of
   `model_stem_semantics.py`. Semantics may import `stems`; `stems` must not
   import semantics (already tested).
-- **`ModelRepository` relocation** out of `model_data.py`.
 - **4-stem ensemble positional `--stems primary`.** Skip. Use concept names
   (`--stems vocals`) for 4-stem finals.
 - **Putting canonical ids in export filenames.**
@@ -90,5 +89,5 @@ touching them.
 
 ## Suggested next PR
 
-After this checklist rewrite lands: only **item 2** (optional later). Do not
+After this repository relocation lands: only **item 2** (optional later). Do not
 start it without a new spec.

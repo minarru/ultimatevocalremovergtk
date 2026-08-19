@@ -19,7 +19,7 @@ from core.audio_probe import probe_audio
 from core.audio_tools import AudioToolRunner
 from core.input_discovery import InputDiscoveryPolicy, InputDiscoveryService
 from core.job_plan import ValidationLevel
-from core.model_data import ModelRepository
+from core.model_repository import ModelRepository
 from core.model_identity import ModelIdentityService
 from core.settings.job_resolution import SettingsLayer, SettingsResolver
 

@@ -14,7 +14,7 @@ Importing this package must never import ``tkinter``; heavy ML dependencies
 (``torch``, ``engines``) are imported lazily inside the methods that use them.
 """
 
-from .model_data import (
+from .model_repository import (
     ModelRepository,
 )
 from .ensemble_service import (

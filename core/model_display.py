@@ -19,7 +19,7 @@ from . import paths
 
 if TYPE_CHECKING:
     from .catalog_sources import MergedCatalogues
-    from .model_data import ModelRepository
+    from .model_repository import ModelRepository
 
 _CHECKPOINT_EXTENSIONS = (".ckpt", ".pth", ".onnx")
 _MAPPER_EXTENSIONS = ("", ".ckpt", ".pth", ".onnx", ".yaml", ".th", ".gz")

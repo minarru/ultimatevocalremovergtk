@@ -16,7 +16,7 @@ from core.error_context import (
     set_run_error_context,
     update_run_error_context,
 )
-from core.model_data import ModelRepository
+from core.model_repository import ModelRepository
 from core.settings import Settings
 from ui.errorlog import log_error
 

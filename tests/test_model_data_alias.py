@@ -1,4 +1,4 @@
-"""Canonical homes: ModelConfig is not aliased; process_determine_* left model_data."""
+"""Canonical homes: ModelConfig / process_determine_* / ModelRepository left model_data."""
 
 from __future__ import annotations
 
@@ -45,3 +45,20 @@ class ProcessDetermineHomeTests(unittest.TestCase):
         for name in self._NAMES:
             with self.subTest(name=name):
                 self.assertTrue(hasattr(model_config, name))
+
+
+class ModelRepositoryHomeTests(unittest.TestCase):
+    def test_model_data_source_does_not_define_the_class(self) -> None:
+        source = (_REPO / "core" / "model_data.py").read_text(encoding="utf-8")
+        self.assertNotIn("class ModelRepository", source)
+
+    def test_model_data_module_has_no_repository(self) -> None:
+        import core.model_data as model_data
+
+        self.assertFalse(hasattr(model_data, "ModelRepository"))
+
+    def test_public_export_is_the_canonical_class(self) -> None:
+        import core
+        import core.model_repository as model_repository
+
+        self.assertIs(core.ModelRepository, model_repository.ModelRepository)
