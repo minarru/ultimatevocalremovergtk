@@ -42,6 +42,7 @@ from .vr_utils import vr_denoiser, loading_mix
 
 if TYPE_CHECKING:
     from core.model_config import ModelConfig
+    from engines.stem_writer import ExportPlan
 
 cpu = torch.device('cpu')
 warnings.filterwarnings("ignore")
@@ -84,7 +85,7 @@ def secondary_4_stem_slot(
 class SeperateDemucs(SeperateAttributes):
     def seperate(
         self,
-    ) -> dict[str, Any] | np.ndarray[Any, Any] | None:
+    ) -> ExportPlan:
         self.demucs: Any
         samplerate = 44100
 
@@ -344,20 +345,20 @@ class SeperateDemucs(SeperateAttributes):
                         instrumental += source[i]
                     export_sources[INST_STEM] = instrumental.T
 
-            from engines.stem_writer import export_source_map
-
-            export_source_map(self, export_sources, samplerate)
-
+            split_sources: dict[str, Any] = {}
             if not self.is_sec_bv_rebalance and VOCAL_STEM in export_sources:
-                # Legacy write-all path ran split immediately after vocals.
-                # Keep the same payload shape (vocals only).
-                self.process_vocal_split_chain(
-                    {VOCAL_STEM: export_sources[VOCAL_STEM]}
-                )
+                split_sources = {VOCAL_STEM: export_sources[VOCAL_STEM]}
 
+            from engines.stem_writer import ExportPlan
+
+            plan = ExportPlan(
+                sources=export_sources,
+                samplerate=samplerate,
+                split_sources=split_sources,
+            )
             if self.is_secondary_model or self.is_pre_proc_model:
-                return export_sources
-            return None
+                plan.return_sources = export_sources
+            return plan
 
         # ---------------------------------------------------------------------
         # Focused/dual mode: build native + derived maps, then export.
@@ -495,17 +496,17 @@ class SeperateDemucs(SeperateAttributes):
 
         secondary_sources = {**primary_source_map, **secondary_source_map}
 
-        from engines.stem_writer import export_source_map
+        from engines.stem_writer import ExportPlan
 
-        export_source_map(
-            self, dual_export_sources, samplerate, extra_sources=extra_sources
+        plan = ExportPlan(
+            sources=dual_export_sources,
+            samplerate=samplerate,
+            extra_sources=extra_sources,
+            split_sources=secondary_sources,
         )
-
-        self.process_vocal_split_chain(secondary_sources)
-
         if self.is_secondary_model or self.is_pre_proc_model:
-            return secondary_sources
-        return None
+            plan.return_sources = secondary_sources
+        return plan
     
     def demix_demucs(self, mix: typing.Any):
         with trace_phase("separate", "demix_demucs", engine="SeperateDemucs", model=self.model_basename):

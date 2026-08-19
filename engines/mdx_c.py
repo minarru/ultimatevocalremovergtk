@@ -38,6 +38,7 @@ from .orchestration import process_secondary_model
 
 if TYPE_CHECKING:
     from core.model_config import ModelConfig
+    from engines.stem_writer import ExportPlan
 
 warnings.filterwarnings("ignore")
 
@@ -382,7 +383,7 @@ def derive_mdx_multi_complement(
 
 class SeperateMDXC(SeperateAttributes):        
 
-    def seperate(self) -> dict[str, Any] | None:
+    def seperate(self) -> ExportPlan:
         # A *roformer* model whose single target_instrument is the vocal stem is
         # treated as a vocals+instrumental model: ``demix`` derives the
         # instrumental as ``mixture - vocals``. Classic (non-roformer) MDX-C
@@ -425,7 +426,7 @@ class SeperateMDXC(SeperateAttributes):
 
         stem_list = [self.mdx_c_configs.training.target_instrument] if self.mdx_c_configs.training.target_instrument and not self.is_vocal_main_target else [i for i in self.mdx_c_configs.training.instruments]
 
-        from engines.stem_writer import export_source_map
+        from engines.stem_writer import ExportPlan
 
         if self.is_vocal_split_model:
             if isinstance(sources, dict):
@@ -438,10 +439,11 @@ class SeperateMDXC(SeperateAttributes):
                 )
                 working_split = {native: sources}
             export_sources = self._vocal_split_pair_sources(working_split, mix)
-            export_source_map(self, export_sources, samplerate)
-            if self.is_secondary_model or self.is_pre_proc_model:
-                return export_sources
-            return None
+            return ExportPlan(
+                sources=export_sources,
+                samplerate=samplerate,
+                split_sources={},
+            )
 
         if self.is_secondary_model and not self.is_vocal_split_model:
             if self.is_pre_proc_model:
@@ -583,16 +585,18 @@ class SeperateMDXC(SeperateAttributes):
                     self.primary_source, self.secondary_source_primary
                 )
 
-        export_source_map(self, export_sources, samplerate)
         secondary_sources = mdx_vocal_split_chain_sources(
             export_sources,
             sources,
         )
-        self.process_vocal_split_chain(secondary_sources)
-        
+        plan = ExportPlan(
+            sources=export_sources,
+            samplerate=samplerate,
+            split_sources=secondary_sources,
+        )
         if self.is_secondary_model or self.is_pre_proc_model:
-            return secondary_sources
-        return None
+            plan.return_sources = secondary_sources
+        return plan
 
     def _vocal_split_pair_sources(
         self, sources: dict[str, Any], mix: Any

@@ -517,19 +517,6 @@ class SeperateAttributes:
             self.write_to_console(f"{message}\n")
         return sources
 
-    def final_process(
-        self,
-        stem_path: str,
-        source: Any,
-        secondary_source: Any,
-        stem_name: str,
-        samplerate: int,
-    ) -> dict[str, Any]:
-        with trace_phase("separate", "final_process", stem=stem_name, model=self.model_basename):
-            source = self.process_secondary_stem(source, secondary_source)
-            self.write_audio(stem_path, source, samplerate, stem_name=stem_name)
-            return {stem_name: source}
-    
     def write_audio(
         self,
         stem_path: str,

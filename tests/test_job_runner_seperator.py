@@ -10,12 +10,21 @@ from core.settings import Settings
 
 
 class JobRunnerSeperatorTests(unittest.TestCase):
+    @mock.patch("engines.stem_writer.finish_export")
     @mock.patch("core.separator_run.release_separator")
-    def test_run_seperator_releases_in_finally(self, release_mock: mock.MagicMock) -> None:
+    def test_run_seperator_releases_in_finally(
+        self, release_mock: mock.MagicMock, finish_mock: mock.MagicMock
+    ) -> None:
+        from engines.stem_writer import ExportPlan
+
         runner = JobRunner(Settings.defaults())
         separator = mock.MagicMock()
+        plan = ExportPlan()
+        separator.seperate.return_value = plan
+        finish_mock.return_value = {}
         run_separator(runner, separator)
         separator.seperate.assert_called_once_with()
+        finish_mock.assert_called_once_with(separator, plan)
         release_mock.assert_called_once_with(separator)
         self.assertIsNone(runner._active_separator)
 

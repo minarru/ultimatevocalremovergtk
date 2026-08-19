@@ -221,18 +221,14 @@ class TargetOtherNdarrayExportTests(unittest.TestCase):
             is_ensemble_mode=False,
             is_multi_stem_ensemble=False,
         )
-        captured: dict[str, typing.Any] = {}
+        from engines.stem_writer import ExportPlan
 
-        def capture(sep: typing.Any, sources: typing.Any, samplerate: int) -> None:
-            captured["sources"] = dict(sources)
-            captured["rate"] = samplerate
+        plan = SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
 
-        with mock.patch("engines.stem_writer.export_source_map", side_effect=capture):
-            SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
-
-        self.assertEqual(captured["rate"], 44100)
-        self.assertIn(INST_STEM, captured["sources"])
-        self.assertIn(VOCAL_STEM, captured["sources"])
+        self.assertIsInstance(plan, ExportPlan)
+        self.assertEqual(plan.samplerate, 44100)
+        self.assertIn(INST_STEM, plan.sources)
+        self.assertIn(VOCAL_STEM, plan.sources)
 
 
 class MdxSelectedStemsTests(unittest.TestCase):

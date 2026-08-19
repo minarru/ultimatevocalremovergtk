@@ -39,6 +39,7 @@ from .vr_utils import (
 
 if TYPE_CHECKING:
     from core.model_config import ModelConfig
+    from engines.stem_writer import ExportPlan
 
 cpu = torch.device('cpu')
 warnings.filterwarnings("ignore")
@@ -50,7 +51,7 @@ from .orchestration import process_secondary_model
 
 class SeperateVR(SeperateAttributes):        
 
-    def seperate(self) -> dict[str, Any] | None:
+    def seperate(self) -> ExportPlan:
         self.model_run: Any
         if self.primary_model_name == self.model_basename and isinstance(self.primary_sources, tuple):
             y_spec, v_spec = self.primary_sources
@@ -132,14 +133,9 @@ class SeperateVR(SeperateAttributes):
                 self.secondary_source, self.secondary_source_secondary
             )
 
-        from engines.stem_writer import export_source_map
+        from engines.stem_writer import ExportPlan
 
-        export_source_map(self, sources, 44100)
-        self.process_vocal_split_chain(sources)
-        
-        if self.is_secondary_model:
-            return sources
-            
+        return ExportPlan(sources=sources, samplerate=44100)
     def loading_mix(self):
 
         self.check_run_control()

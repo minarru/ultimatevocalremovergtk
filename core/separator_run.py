@@ -98,7 +98,13 @@ def run_separator_once(runner: Any, seperator: typing.Any) -> dict:
     runner._last_captured_stem_paths = {}
     try:
         prepare_separator_vram(runner, seperator)
-        seperator.seperate()
+        from engines.stem_writer import ExportPlan, finish_export
+
+        plan = seperator.seperate()
+        if isinstance(plan, ExportPlan):
+            finish_export(seperator, plan)
+        elif plan is not None:
+            finish_export(seperator, ExportPlan(sources=dict(plan)))
         stems = _capture_separator_stem_arrays(seperator)
         runner._last_captured_stem_paths = _capture_separator_stem_paths(seperator)
         return stems

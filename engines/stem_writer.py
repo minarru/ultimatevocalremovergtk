@@ -1,11 +1,13 @@
 """Stem export: ensemble buffers, vocal-split pairing, deverb, and disk write.
 
 :func:`write_audio` is duck-typed on the separator. :func:`export_source_map`
-is the in-engine post-pass: loop ``run_export_routes`` then ``write_audio``.
+loops ``run_export_routes`` then ``write_audio``. :func:`finish_export` is the
+job-level post-pass: export, then vocal-split chain.
 This module must not import the engine attribute mixin at load time.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 import numpy as np
@@ -413,4 +415,33 @@ def export_source_map(
         sep.write_audio(path, stem_source, samplerate, stem_name=stem_name)
 
 
-__all__ = ["write_audio", "export_source_map"]
+@dataclass
+class ExportPlan:
+    """In-memory stem export recipe assembled by ``seperate()``."""
+
+    sources: dict[str, Any] = field(default_factory=dict)
+    samplerate: int = 44100
+    extra_sources: dict[str, Any] = field(default_factory=dict)
+    split_sources: Mapping[str, Any] | None = None
+    return_sources: Mapping[str, Any] | None = None
+
+
+def finish_export(sep: Any, plan: ExportPlan) -> dict[str, Any]:
+    """Write ``plan`` then run the vocal-split chain; return the caller payload."""
+    export_source_map(
+        sep,
+        plan.sources,
+        plan.samplerate,
+        extra_sources=plan.extra_sources,
+    )
+    if plan.split_sources is None:
+        split_payload = plan.sources
+    else:
+        split_payload = plan.split_sources
+    if split_payload:
+        sep.process_vocal_split_chain(dict(split_payload))
+    payload = plan.return_sources if plan.return_sources is not None else plan.sources
+    return dict(payload)
+
+
+__all__ = ["ExportPlan", "finish_export", "write_audio", "export_source_map"]

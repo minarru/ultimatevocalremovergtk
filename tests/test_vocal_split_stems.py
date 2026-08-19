@@ -404,6 +404,8 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
             return {}
 
         fake._vocal_split_pair_sources = build_pair
+        from engines.stem_writer import ExportPlan
+
         with (
             patch("engines.mdx_c.prepare_mix", return_value=np.ones((2, 441), dtype=np.float32)),
             patch(
@@ -412,15 +414,17 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
                     (2, 480 if target_sr == 48000 else 441), dtype=np.float32
                 ),
             ),
-            patch("engines.stem_writer.export_source_map") as export,
         ):
-            SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
+            plan = SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
 
         self.assertEqual(captured, {
             "source_length": 441,
             "mix_length": 441,
         })
-        export.assert_called_once_with(fake, {}, 44100)
+        self.assertIsInstance(plan, ExportPlan)
+        self.assertEqual(plan.sources, {})
+        self.assertEqual(plan.samplerate, 44100)
+        self.assertEqual(plan.split_sources, {})
 
     def test_three_stem_karaoke_skips_splitter_instrumental(self) -> None:
         self.assertEqual(

@@ -109,7 +109,14 @@ def _build_seperator(
 
 def _run_seperator(seperator: typing.Any) -> Any:
     try:
-        return seperator.seperate()
+        from engines.stem_writer import ExportPlan, finish_export
+
+        plan = seperator.seperate()
+        if isinstance(plan, ExportPlan):
+            return finish_export(seperator, plan)
+        if plan is None:
+            return finish_export(seperator, ExportPlan())
+        return finish_export(seperator, ExportPlan(sources=dict(plan)))
     finally:
         release_separator(seperator)
 

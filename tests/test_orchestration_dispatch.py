@@ -15,12 +15,20 @@ class OrchestrationDispatchTests(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             _build_seperator(model, {})
 
+    @mock.patch("engines.stem_writer.finish_export")
     @mock.patch("engines.orchestration.release_separator")
-    def test_run_seperator_always_releases(self, release_mock: mock.MagicMock) -> None:
+    def test_run_seperator_always_releases(
+        self, release_mock: mock.MagicMock, finish_mock: mock.MagicMock
+    ) -> None:
+        from engines.stem_writer import ExportPlan
+
         separator = mock.MagicMock()
-        separator.seperate.return_value = {"Vocals": [1]}
+        plan = ExportPlan(sources={"Vocals": [1]})
+        separator.seperate.return_value = plan
+        finish_mock.return_value = {"Vocals": [1]}
         result = _run_seperator(separator)
         separator.seperate.assert_called_once_with()
+        finish_mock.assert_called_once_with(separator, plan)
         release_mock.assert_called_once_with(separator)
         self.assertEqual(result, {"Vocals": [1]})
 
