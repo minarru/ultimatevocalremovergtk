@@ -1,5 +1,6 @@
 import typing
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from bundled.constants import WAV
@@ -11,6 +12,22 @@ from core.audio_io import (
     save_format,
 )
 from core.settings import Settings
+
+_REPO = Path(__file__).resolve().parents[1]
+
+
+class SaveFormatHomeTests(unittest.TestCase):
+    def test_run_loop_imports_audio_io_save_format(self) -> None:
+        source = (_REPO / "core" / "run_loop.py").read_text(encoding="utf-8")
+        self.assertIn("from core.audio_io import save_format", source)
+        self.assertNotIn("engines.separate", source)
+        self.assertNotIn("engines.export", source)
+
+    def test_ensembler_imports_audio_io_save_format(self) -> None:
+        source = (_REPO / "core" / "ensembler.py").read_text(encoding="utf-8")
+        self.assertIn("from core.audio_io import save_format", source)
+        self.assertNotIn("engines.separate", source)
+        self.assertNotIn("engines.export", source)
 
 
 class FlacExportParametersTests(unittest.TestCase):

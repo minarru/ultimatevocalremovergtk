@@ -162,7 +162,7 @@ def release_inference_memory(
             cache.park_all()
     except Exception:  # noqa: BLE001
         pass
-    from engines.separate import clear_gpu_cache
+    from engines.gpu_cache import clear_gpu_cache
 
     gc.collect()
     clear_gpu_cache()

@@ -631,7 +631,7 @@ class JobRunner:
         lifecycle_label = "_run_ensemble" if mode == "ensemble" else "_run"
         debug("worker", f"{lifecycle_label} entered")
         import_started = time.perf_counter()
-        engines = import_separate_engines()
+        import_separate_engines()
         debug_elapsed("worker", "separate engines ready", import_started)
 
         def body() -> None:
@@ -689,7 +689,6 @@ class JobRunner:
                 paths,
                 callbacks,
                 models,
-                engines=engines,
                 hooks=hooks,
             )
             if mode == "ensemble" and ensemble_export_path is not None:

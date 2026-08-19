@@ -25,6 +25,19 @@ _INVERTED_ENGINES = (
 
 
 class StemWriterModuleBoundaryTests(unittest.TestCase):
+    def test_stem_writer_imports_save_format_from_audio_io(self) -> None:
+        source = _WRITER.read_text(encoding="utf-8")
+        self.assertIn("from core.audio_io import save_format", source)
+        self.assertNotIn("from .export import", source)
+        self.assertNotIn("engines.export", source)
+
+    def test_inverted_engines_do_not_import_export_facade(self) -> None:
+        for path in _INVERTED_ENGINES:
+            with self.subTest(engine=path.name):
+                source = path.read_text(encoding="utf-8")
+                self.assertNotIn("from .export import", source)
+                self.assertNotIn("engines.export", source)
+
     def test_stem_writer_source_does_not_mention_engines_base(self) -> None:
         source = _WRITER.read_text(encoding="utf-8")
         self.assertNotIn("engines.base", source)

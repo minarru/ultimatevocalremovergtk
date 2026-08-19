@@ -104,6 +104,24 @@ class SeparatorFactoryBoundaryTests(unittest.TestCase):
         self.assertNotIn("SeperateMDXC", source)
         self.assertNotIn("SeperateDemucs", source)
         self.assertIn("build_seperator", source)
+        self.assertNotIn("engines.separate", source)
+        self.assertNotIn("engines=", source)
+
+    def test_factory_exposes_preload_engine_modules(self) -> None:
+        import engines.separator_factory as factory
+
+        preload = getattr(factory, "preload_engine_modules", None)
+        self.assertTrue(callable(preload))
+        assert preload is not None
+        with mock.patch.object(factory, "_engine_classes") as engine_classes:
+            engine_classes.return_value = (
+                mock.MagicMock(),
+                mock.MagicMock(),
+                mock.MagicMock(),
+                mock.MagicMock(),
+            )
+            self.assertIsNone(preload())
+            engine_classes.assert_called_once()
 
     def test_orchestration_does_not_expose_factory(self) -> None:
         source = (_REPO / "engines" / "orchestration.py").read_text(encoding="utf-8")

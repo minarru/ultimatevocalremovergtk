@@ -16,6 +16,11 @@ def _engine_classes():
     return SeperateVR, SeperateMDX, SeperateMDXC, SeperateDemucs
 
 
+def preload_engine_modules() -> None:
+    """Import the four ``Seperate*`` engine modules for side-effect warmup."""
+    _engine_classes()
+
+
 def build_seperator(
     model: typing.Any,
     process_data: typing.Any,
@@ -100,4 +105,4 @@ def build_seperator(
     raise NotImplementedError(f"engine for '{method}' is not available")
 
 
-__all__ = ["build_seperator"]
+__all__ = ["build_seperator", "preload_engine_modules"]

@@ -1,9 +1,9 @@
-"""Lazy import of separation engines (:mod:`separate`).
+"""Lazy import of separation engines.
 
-Importing ``separate`` pulls in torch, onnxruntime, demucs, etc. and typically
-costs ~1–2s on the first load. :func:`warm_import_separate_engines` starts that
-work in a background thread during app startup so the first separation run can
-emit console output immediately.
+Importing the ``Seperate*`` engine modules pulls in torch, onnxruntime, demucs,
+etc. and typically costs ~1–2s on the first load. :func:`warm_import_separate_engines`
+starts that work in a background thread during app startup so the first
+separation run can emit console output immediately.
 
 Set ``UVR_SKIP_SEPARATE_WARMUP=1`` to skip that background import (engines load
 on the first separation run instead).
@@ -14,12 +14,12 @@ from __future__ import annotations
 import os
 import threading
 import time
-from typing import Any, Optional, Tuple
+from typing import Optional
 
 from .debug_log import debug
 
 _lock = threading.Lock()
-_engines: Optional[Tuple[Any, ...]] = None
+_imported: bool = False
 _warm_thread: Optional[threading.Thread] = None
 
 _SKIP_WARMUP_ENV = "UVR_SKIP_SEPARATE_WARMUP"
@@ -30,36 +30,30 @@ def skip_separate_warmup() -> bool:
     return os.environ.get(_SKIP_WARMUP_ENV, "").strip() == "1"
 
 
-def import_separate_engines() -> Tuple[Any, ...]:
-    """Import and cache engine classes; safe to call from any thread."""
-    global _engines
+def import_separate_engines() -> None:
+    """Import and cache heavy engine modules; safe to call from any thread.
+
+    Loads SeperateVR / SeperateMDX / SeperateMDXC / SeperateDemucs
+    (torch, onnxruntime, demucs) via engines.separator_factory.preload_engine_modules.
+    Returns nothing: JobRunner builds separators with build_seperator;
+    run_loop imports clear_gpu_cache from engines.gpu_cache at use.
+    """
+    global _imported
     with _lock:
-        if _engines is not None:
-            return _engines
+        if _imported:
+            return
         started = time.perf_counter()
         debug("worker", "importing separate engines (sync)")
-        from engines.separate import (  # noqa: WPS433 - intentional lazy import
-            SeperateDemucs,
-            SeperateMDX,
-            SeperateMDXC,
-            SeperateVR,
-            clear_gpu_cache,
-        )
+        from engines.separator_factory import preload_engine_modules
 
-        _engines = (
-            SeperateDemucs,
-            SeperateMDX,
-            SeperateMDXC,
-            SeperateVR,
-            clear_gpu_cache,
-        )
+        preload_engine_modules()
+        _imported = True
         debug(
             "worker",
             f"separate engines imported elapsed={time.perf_counter() - started:.3f}s",
         )
         global _warm_thread
         _warm_thread = None
-        return _engines
 
 
 def warm_import_separate_engines() -> None:
@@ -69,7 +63,7 @@ def warm_import_separate_engines() -> None:
         return
     global _warm_thread
     with _lock:
-        if _engines is not None or _warm_thread is not None:
+        if _imported or _warm_thread is not None:
             return
 
         def _run() -> None:
@@ -85,11 +79,11 @@ def warm_import_separate_engines() -> None:
 
 
 def engines_imported() -> bool:
-    return _engines is not None
+    return _imported
 
 
 def warm_status() -> str:
-    if _engines is not None:
+    if _imported:
         return "done"
     thread = _warm_thread
     if thread is not None and thread.is_alive():

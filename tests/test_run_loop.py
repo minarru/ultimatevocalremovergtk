@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import inspect
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -12,6 +14,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from core.run_loop import run_models_on_files
+
+_REPO = Path(__file__).resolve().parents[1]
 
 
 class _Hooks:
@@ -96,13 +100,11 @@ class RunLoopMissingFileTests(unittest.TestCase):
         runner = _runner()
         missing = os.path.join(tempfile.gettempdir(), "uvr-missing-no-such-file.wav")
         self.assertFalse(os.path.isfile(missing))
-        engines = (MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock())
         run_models_on_files(
             runner,
             [missing],
             callbacks,
             [_model("m")],
-            engines=engines,
             hooks=hooks,
         )
         self.assertEqual(hooks.before, [])
@@ -136,7 +138,6 @@ class RunLoopLazyDecodeTests(unittest.TestCase):
         hooks = _Hooks()
         callbacks, _console = _callbacks()
         runner = _runner(true_model_count=2)
-        engines = (MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock())
         with tempfile.TemporaryDirectory() as tmp:
             path_a = os.path.join(tmp, "a.wav")
             path_b = os.path.join(tmp, "b.wav")
@@ -151,7 +152,6 @@ class RunLoopLazyDecodeTests(unittest.TestCase):
                     _model("m1"),
                     _model("m2"),
                 ],
-                engines=engines,
                 hooks=hooks,
             )
 
@@ -170,6 +170,73 @@ class RunLoopLazyDecodeTests(unittest.TestCase):
         self.assertEqual(hooks.mix_present_at_after_file, [True, True])
         self.assertTrue(all(state.decoded_mix is None for state in hooks.states))
         self.assertTrue(all(state.chunks == [] for state in hooks.states))
+
+
+class RunLoopEngineTupleTests(unittest.TestCase):
+    def test_run_models_on_files_has_no_engines_parameter(self) -> None:
+        self.assertNotIn(
+            "engines", inspect.signature(run_models_on_files).parameters
+        )
+
+    def test_run_loop_imports_canonical_helpers(self) -> None:
+        source = (_REPO / "core" / "run_loop.py").read_text(encoding="utf-8")
+        self.assertNotIn("engines.separate", source)
+        self.assertIn("from engines.gpu_cache import clear_gpu_cache", source)
+        self.assertIn("from core.audio_io import save_format", source)
+
+    @patch("engines.gpu_cache.clear_gpu_cache")
+    @patch("core.run_loop.snapshot_worker_file")
+    @patch("core.run_loop.run_separator", return_value={})
+    @patch("core.run_loop._decoded_mix_for_process")
+    def test_clear_gpu_cache_called_after_file_with_backend_name(
+        self,
+        decode: MagicMock,
+        _run_sep: MagicMock,
+        _snapshot: MagicMock,
+        clear_gpu_cache: MagicMock,
+    ) -> None:
+        decode.return_value = np.zeros((2, 8), dtype=np.float32)
+        hooks = _Hooks()
+        callbacks, _console = _callbacks()
+        runner = _runner()
+        runner._last_backend_name = "cuda"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "a.wav")
+            with open(path, "wb") as handle:
+                handle.write(b"")
+            run_models_on_files(
+                runner,
+                [path],
+                callbacks,
+                [_model("m")],
+                hooks=hooks,
+            )
+        clear_gpu_cache.assert_called_once_with("cuda")
+
+    @patch("engines.gpu_cache.clear_gpu_cache")
+    @patch("core.run_loop._decoded_mix_for_process")
+    @patch("core.run_loop.run_separator")
+    def test_missing_file_does_not_call_clear_gpu_cache(
+        self,
+        run_sep: MagicMock,
+        decode: MagicMock,
+        clear_gpu_cache: MagicMock,
+    ) -> None:
+        hooks = _Hooks()
+        callbacks, _console = _callbacks()
+        runner = _runner()
+        missing = os.path.join(tempfile.gettempdir(), "uvr-missing-no-such-file.wav")
+        self.assertFalse(os.path.isfile(missing))
+        run_models_on_files(
+            runner,
+            [missing],
+            callbacks,
+            [_model("m")],
+            hooks=hooks,
+        )
+        run_sep.assert_not_called()
+        decode.assert_not_called()
+        clear_gpu_cache.assert_not_called()
 
 
 if __name__ == "__main__":
