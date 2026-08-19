@@ -635,8 +635,6 @@ def process_determine_vocal_split_model(settings: Settings, repo: ModelRepositor
 
 from .model_config.config import ModelConfig
 
-_ModelConfigImplementation = ModelConfig  # deprecated alias
-
 from .ensemble_service import (  # noqa: E402
     canonical_saved_ensemble_name,
     delete_ensemble,
