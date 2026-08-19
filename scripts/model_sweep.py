@@ -488,7 +488,10 @@ def run_child(spec_path: str) -> int:
             os.makedirs(export_dir, exist_ok=True)
             runner = JobRunner(plan.settings)
             start_runner = lambda callbacks: runner.start(
-                [spec["input_path"]], callbacks
+                [item.path for item in plan.inputs],
+                callbacks,
+                planned=plan.inputs,
+                planned_output_root=plan.output,
             )
             def write_console(text: str) -> None:
                 sys.stdout.write(text)

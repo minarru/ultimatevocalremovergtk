@@ -806,10 +806,12 @@ class AudioToolsPage:
             return _REASON_APOLLO_MODEL
         return None
 
-    def start(self, callbacks: typing.Any) -> None:
+    def start(self, callbacks: typing.Any, plan: typing.Any = None) -> None:
         # Input/output/tool readiness is validated by ``MainWindow._on_start``
         # before dispatch; the Apollo model resolution below still surfaces its
         # own dialog/toast for the deeper model-recognition cases.
+        # ``plan`` is accepted for the shared run-target signature and ignored:
+        # Audio Tools execute through AudioToolRunner, not PlannedInput.
         tool = self._current_tool()
 
         from core.audio_tools import DUAL_INPUT_TOOLS

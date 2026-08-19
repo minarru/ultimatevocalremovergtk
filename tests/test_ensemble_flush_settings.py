@@ -8,8 +8,37 @@ from unittest.mock import MagicMock, Mock
 
 from bundled.constants import INST_STEM, VOCAL_STEM
 from core import Settings
+from core.export_naming import OutputNamingContext
+from core.job_plan import PlannedInput, ResolvedJob, ValidationLevel, settings_fingerprint
 from core.stem_selection import ExclusiveView, StemSelectionState
 from core.types import ProcessMethod
+
+
+def _resolved_job(*, command: str, path: str, output: str, settings: Settings) -> ResolvedJob:
+    planned = PlannedInput(
+        path=path,
+        naming=OutputNamingContext(
+            input_path=path,
+            track="song",
+            track_base="song",
+            export_directory=output,
+            extension="wav",
+        ),
+        outputs=(),
+    )
+    return ResolvedJob(
+        command=command,
+        settings=settings,
+        inputs=(planned,),
+        models=(),
+        provenance={},
+        diagnostics=(),
+        validation_level=ValidationLevel.RUNTIME,
+        inventory_generation=0,
+        settings_fingerprint=settings_fingerprint(settings),
+        device="cpu",
+        output=output,
+    )
 
 
 def _minimal_page(*, settings: Settings | None = None) -> typing.Any:
@@ -55,6 +84,25 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
         page.window.begin_run.assert_called_once_with(page)
         page.context.runner.start.assert_called_once()
 
+    def test_start_uses_planned_inputs_not_widget_paths(self) -> None:
+        page = _minimal_page()
+        page.input_row.paths = ["/widget/changed.wav"]
+        page.output_row.path = "/widget/out"
+        plan = _resolved_job(
+            command="ensemble",
+            path="/in/song.wav",
+            output="/plan/out",
+            settings=page.settings,
+        )
+
+        page.start(MagicMock(), plan=plan)
+
+        args, kwargs = page.context.runner.start.call_args
+        self.assertEqual(list(args[0]), ["/in/song.wav"])
+        self.assertEqual(kwargs["planned"], plan.inputs)
+        self.assertEqual(kwargs["planned_output_root"], "/plan/out")
+        page.save_stems.persist_to_settings.assert_called_once()
+
     def test_flush_preserves_stem_focus_from_widget(self) -> None:
         settings = Settings.defaults()
         state = StemSelectionState()
@@ -76,6 +124,52 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
 
         self.assertEqual(settings.process.stem_focus, INST_STEM)
         self.assertEqual(settings.process.method, ProcessMethod.ENSEMBLE)
+
+
+def _minimal_separation_window() -> typing.Any:
+    import ui.window as window_mod
+
+    window = MagicMock()
+    window.input_row.paths = ["/widget/changed.wav"]
+    window.context.try_save_settings = MagicMock(return_value=None)
+    window._start_separation = lambda callbacks, plan=None: (
+        window_mod.MainWindow._start_separation(window, callbacks, plan=plan)
+    )
+    return window
+
+
+class SeparationPlannedStartTests(unittest.TestCase):
+    def test_start_uses_planned_inputs_not_widget_paths(self) -> None:
+        from ui.window import _SeparationTarget
+
+        window = _minimal_separation_window()
+        plan = _resolved_job(
+            command="separate",
+            path="/in/song.wav",
+            output="/plan/out",
+            settings=Settings.defaults(),
+        )
+        target = _SeparationTarget(window)
+
+        target.start(MagicMock(), plan=plan)
+
+        args, kwargs = window.context.runner.start.call_args
+        self.assertEqual(list(args[0]), ["/in/song.wav"])
+        self.assertEqual(kwargs["planned"], plan.inputs)
+        self.assertEqual(kwargs["planned_output_root"], "/plan/out")
+        window.begin_run.assert_called_once_with(window._separation_target)
+
+    def test_unplanned_start_still_reads_widget_paths(self) -> None:
+        from ui.window import _SeparationTarget
+
+        window = _minimal_separation_window()
+        target = _SeparationTarget(window)
+
+        target.start(MagicMock())
+
+        args, kwargs = window.context.runner.start.call_args
+        self.assertEqual(list(args[0]), ["/widget/changed.wav"])
+        self.assertFalse(kwargs.get("planned"))
 
 
 if __name__ == "__main__":

@@ -1,7 +1,45 @@
 import unittest
 from unittest import mock
 
+from core.job_plan import PlannedInput, ResolvedJob, ValidationLevel, settings_fingerprint
+from core.settings import Settings
 from ui.run_control import RunController, _format_mmss, _starting_progress_text
+
+
+def _resolved_job(
+    *,
+    command: str = "separate",
+    path: str = "/in/song.wav",
+    output: str = "/out",
+    settings: Settings | None = None,
+) -> ResolvedJob:
+    from core.export_naming import OutputNamingContext
+
+    settings = settings or Settings.defaults()
+    planned = PlannedInput(
+        path=path,
+        naming=OutputNamingContext(
+            input_path=path,
+            track="song",
+            track_base="song",
+            export_directory=output,
+            extension="wav",
+        ),
+        outputs=(),
+    )
+    return ResolvedJob(
+        command=command,
+        settings=settings,
+        inputs=(planned,),
+        models=(),
+        provenance={},
+        diagnostics=(),
+        validation_level=ValidationLevel.RUNTIME,
+        inventory_generation=0,
+        settings_fingerprint=settings_fingerprint(settings),
+        device="cpu",
+        output=output,
+    )
 
 
 class FormatMmssTests(unittest.TestCase):
@@ -233,6 +271,55 @@ class StartTargetSettingsCopyTests(unittest.TestCase):
         self.assertIsNone(window.settings.mdx.compensate)
         self.assertEqual(window.context.runner.settings.mdx.compensate, 1.055)
         target.start.assert_called_once()
+        self.assertNotIn("plan", target.start.call_args.kwargs)
+
+    def test_start_target_forwards_resolved_job_plan(self) -> None:
+        from core.settings import Settings
+
+        plan = _resolved_job()
+        runner = mock.Mock()
+        runner.settings = Settings.defaults()
+        window = mock.Mock()
+        window.settings = Settings.defaults()
+        window.context.runner = runner
+        window.context._runner = runner
+        target = mock.Mock()
+        callbacks = object()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._callbacks = mock.Mock(return_value=callbacks)
+
+        controller._start_target(target, plan)
+
+        target.start.assert_called_once_with(callbacks, plan=plan)
+
+    def test_start_target_does_not_forward_audio_plan(self) -> None:
+        from bundled.constants import TIME_STRETCH
+        from core.audio_plan import ResolvedAudioJob
+        from core.job_plan import ValidationLevel
+        from core.settings import Settings
+
+        settings = Settings.defaults()
+        plan = ResolvedAudioJob(
+            TIME_STRETCH, settings, "/tmp/out", (), {}, (),
+            ValidationLevel.RUNTIME, 0, "fingerprint", "cpu",
+        )
+        runner = mock.Mock()
+        runner.settings = Settings.defaults()
+        window = mock.Mock()
+        window.settings = Settings.defaults()
+        window.context.runner = runner
+        window.context._runner = runner
+        target = mock.Mock()
+        callbacks = object()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._callbacks = mock.Mock(return_value=callbacks)
+
+        controller._start_target(target, plan)
+
+        target.start.assert_called_once_with(callbacks)
+        self.assertNotIn("plan", target.start.call_args.kwargs)
 
     def test_start_target_applies_plan_to_audio_tools_page_runner(self) -> None:
         from core.settings import Settings
@@ -317,6 +404,123 @@ class PlanRecheckTests(unittest.TestCase):
 
         controller._start_target.assert_not_called()
         controller._begin_preflight.assert_called_once_with(target)
+
+    def test_accept_plan_rejects_stale_input_paths(self) -> None:
+        from core.job_plan import JobSpec, settings_fingerprint
+        from core.settings import Settings
+
+        settings = Settings.defaults()
+        plan = _resolved_job(path="/in/old.wav", output="/out", settings=settings)
+        target = mock.Mock()
+        target.build_job_spec.return_value = JobSpec(
+            "separate", settings, ("/in/new.wav",), "/out"
+        )
+        window = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._set_preflight_busy = mock.Mock()
+        controller._begin_preflight = mock.Mock()
+        with mock.patch("threading.Thread") as thread:
+            controller._accept_plan(target, settings_fingerprint(settings), plan)
+
+        window.toast.assert_called()
+        controller._begin_preflight.assert_called_once_with(target)
+        thread.assert_not_called()
+        controller._set_preflight_busy.assert_not_called()
+
+    def test_accept_plan_rejects_stale_output(self) -> None:
+        from core.job_plan import JobSpec, settings_fingerprint
+        from core.settings import Settings
+
+        settings = Settings.defaults()
+        plan = _resolved_job(path="/in/song.wav", output="/old", settings=settings)
+        target = mock.Mock()
+        target.build_job_spec.return_value = JobSpec(
+            "separate", settings, ("/in/song.wav",), "/new"
+        )
+        window = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._set_preflight_busy = mock.Mock()
+        controller._begin_preflight = mock.Mock()
+        with mock.patch("threading.Thread") as thread:
+            controller._accept_plan(target, settings_fingerprint(settings), plan)
+
+        controller._begin_preflight.assert_called_once_with(target)
+        thread.assert_not_called()
+
+    def test_finish_recheck_rejects_stale_input_paths(self) -> None:
+        from core.job_plan import JobSpec, settings_fingerprint
+        from core.settings import Settings
+
+        settings = Settings.defaults()
+        plan = _resolved_job(path="/in/old.wav", output="/out", settings=settings)
+        target = mock.Mock()
+        target.build_job_spec.return_value = JobSpec(
+            "separate", settings, ("/in/new.wav",), "/out"
+        )
+        window = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._set_preflight_busy = mock.Mock()
+        controller._start_target = mock.Mock()
+        controller._begin_preflight = mock.Mock()
+
+        controller._finish_plan_recheck(
+            target, settings_fingerprint(settings), plan, True, None
+        )
+
+        controller._start_target.assert_not_called()
+        controller._begin_preflight.assert_called_once_with(target)
+
+
+class BeginRunOutputTests(unittest.TestCase):
+    def test_begin_run_uses_runner_export_path(self) -> None:
+        from core.run_estimate import ProgressEtaTracker
+        from core.settings import Settings
+
+        window_settings = Settings.defaults()
+        window_settings.process.export_path = "/widget/out"
+        runner_settings = Settings.defaults()
+        runner_settings.process.export_path = "/plan/out"
+        runner = mock.Mock()
+        runner.settings = runner_settings
+
+        window = mock.Mock()
+        window.settings = window_settings
+        window.context.runner = runner
+        window.log_panel = mock.Mock()
+        window.console = mock.Mock()
+
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._eta_tracker = ProgressEtaTracker()
+        controller._snapshot_error_context = mock.Mock(return_value={})
+        controller._run_label_for = mock.Mock(return_value="Separation")
+        controller._set_running = mock.Mock()
+
+        with mock.patch("ui.run_control.mark_run_start"), \
+             mock.patch("ui.run_control.reset_progress_log"), \
+             mock.patch("core.error_context.clear_run_error_context"), \
+             mock.patch("core.error_context.set_run_error_context"):
+            controller.begin_run(object())
+
+        self.assertEqual(controller._run_output_dir, "/plan/out")
+
+    def test_fail_to_start_restores_runner_settings(self) -> None:
+        window = mock.Mock()
+        window.console = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._set_running = mock.Mock()
+        controller._report_error = mock.Mock()
+        controller._restore_runner_settings = mock.Mock()
+        controller._running_target = object()
+
+        controller.fail_to_start("Unable to start", RuntimeError("boom"))
+
+        controller._restore_runner_settings.assert_called_once()
+        self.assertIsNone(controller._running_target)
 
 
 class StartingProgressTextTests(unittest.TestCase):

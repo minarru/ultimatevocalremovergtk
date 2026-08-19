@@ -57,6 +57,56 @@ class JobRunnerPlannedTests(unittest.TestCase):
         self.assertEqual(thread.call_args.kwargs["target"], runner._run_separation)
         self.assertEqual(thread.call_args.kwargs["args"][2], "ensemble")
 
+    def test_start_planned_requires_output_root(self) -> None:
+        runner = JobRunner(Settings.defaults())
+        with patch("kthread.KThread") as thread:
+            with self.assertRaises(ValueError) as raised:
+                runner.start(
+                    ["/in/a.wav"],
+                    Mock(),
+                    planned=(_planned("/in/a.wav", "a"),),
+                )
+        self.assertIn("planned_output_root", str(raised.exception))
+        thread.assert_not_called()
+        self.assertIsNone(runner._run_planned)
+
+    def test_start_uses_planned_input_paths(self) -> None:
+        runner = JobRunner(Settings.defaults())
+        planned = (_planned("/in/song.wav", "1-song Model"),)
+        with patch("kthread.KThread") as thread:
+            runner.start(
+                ["/widget/changed.wav"],
+                Mock(),
+                planned=planned,
+                planned_output_root="/out",
+            )
+        self.assertEqual(thread.call_args.kwargs["args"][0], ["/in/song.wav"])
+        self.assertEqual(runner._run_planned, planned)
+        self.assertEqual(runner._run_output_root, "/out")
+
+    def test_naming_keeps_model_folder_when_root_is_plan_output(self) -> None:
+        settings = Settings.defaults()
+        settings.process.export_path = "/out"
+        runner = JobRunner(settings)
+        planned = PlannedInput(
+            path="/in/song.wav",
+            naming=OutputNamingContext(
+                input_path="/in/song.wav",
+                track="song",
+                track_base="song Model",
+                export_directory="/out/ModelName/song",
+                extension="wav",
+                file_index=1,
+                file_total=1,
+            ),
+            outputs=(),
+        )
+        runner._run_planned = (planned,)
+        runner._run_output_root = "/out"
+        naming = runner._naming_for_file("/in/song.wav", export_path="/out")
+        self.assertEqual(naming.track_base, "song Model")
+        self.assertEqual(naming.export_directory, "/out/ModelName/song")
+
     def test_job_runner_has_no_start_ensemble(self) -> None:
         self.assertFalse(hasattr(JobRunner, "start_ensemble"))
 
