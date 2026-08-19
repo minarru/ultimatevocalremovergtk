@@ -26,26 +26,32 @@ jobs:
           test "${TAG}" = "${BUNDLED_VERSION}"
 
       - name: Install system dependencies
-        timeout-minutes: 5
+        timeout-minutes: 4
         run: |
-          # GHA ubuntu-24.04 apt-mirrors.txt tries Azure first, then
-          # https://archive.ubuntu.com. A stalled InRelease fetch can sit
-          # for minutes with the default 120s timeouts and no step cap.
-          # python3/pip/venv are already on the image.
+          # Azure is often black-holed (Ign after connect timeout). The
+          # mirrorlist then fails over to https://archive.ubuntu.com, which
+          # connects but stalls mid-InRelease — apt's Timeout only covers
+          # connect, so the previous step sat until the 5m cap.
+          # Pin HTTP Canonical. Prefer the image's pre-populated lists so a
+          # healthy run never fetches InRelease. python3/pip/venv are already
+          # on the image.
           printf '%s\n' \
-            'Acquire::Retries "3";' \
-            'Acquire::http::Timeout "20";' \
-            'Acquire::https::Timeout "20";' \
+            'APT::Acquire::Retries "1";' \
+            'Acquire::http::Timeout "15";' \
             'Acquire::ForceIPv4 "true";' \
             | sudo tee /etc/apt/apt.conf.d/99ci-timeouts >/dev/null
-          sudo apt-get update \
-            -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" \
-            -o Dir::Etc::sourceparts="-" \
-            -o APT::Get::List-Cleanup="0"
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            python3-gi \
-            gir1.2-gtk-4.0 gir1.2-adw-1 \
-            ffmpeg rubberband-cli xvfb
+          printf '%s\n' 'http://archive.ubuntu.com/ubuntu/' \
+            | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          sudo sed -i 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|' \
+            /etc/apt/sources.list.d/ubuntu.sources
+          pkgs=(python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 ffmpeg rubberband-cli xvfb)
+          if ! sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}"; then
+            sudo apt-get update \
+              -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" \
+              -o Dir::Etc::sourceparts="-" \
+              -o APT::Get::List-Cleanup="0"
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}"
+          fi
 
       - name: Create virtual environment
         run: |
