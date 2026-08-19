@@ -17,7 +17,7 @@ from core.settings.job_resolution import (
 from core.stem_selection import apply_stem_selection
 
 from core.input_discovery import discover_inputs
-from core.model_identity import ModelIdentityService, ModelRecord, canonical_member_tag, resolve_model_id
+from core.model_identity import ModelIdentityService, ModelRecord, resolve_model_id
 from .process_flags import collect_overrides
 from .profiles import (
     IDENTITY_SETTING_PATHS,
@@ -235,7 +235,7 @@ def _canonicalize_model_references(
             if active:
                 raise
             continue
-        set_path(settings, path, canonical_member_tag(record))
+        set_path(settings, path, record.id)
         if active:
             identities[path] = record.to_dict()
     return identities
@@ -263,7 +263,7 @@ def resolve_separate_job(
     if getattr(args, "vocal_split", None):
         splitter_id = resolve_splitter_identity(args.vocal_split, settings, repo)
         split_record = resolve_model_id(splitter_id, repo)
-        resolved_splitter = canonical_member_tag(split_record)
+        resolved_splitter = split_record.id
     overrides = collect_overrides(args, resolved_vocal_splitter=resolved_splitter)
     _validate_job_overrides(overrides)
     device_pairs, device_explicit = _device_pairs(args, profile)
@@ -360,7 +360,7 @@ def resolve_ensemble_job(
         from bundled.constants import CHOOSE_ENSEMBLE_OPTION
 
         records = [resolve_model_id(token, repo) for token in member_tokens]
-        settings.ensemble.selected_models = [canonical_member_tag(item) for item in records]
+        settings.ensemble.selected_models = [item.id for item in records]
         settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         sources["ensemble.selected_models"] = (
             "cli" if args.models else profile.source
@@ -402,13 +402,7 @@ def resolve_ensemble_job(
     if not records:
         # Resolve preset tags back to canonical records for reports/manifests.
         for tag in settings.ensemble.selected_models:
-            arch, _sep, display = str(tag).partition(": ")
-            family = {
-                "VR Arc": "vr",
-                "MDX-Net": "mdx",
-                "Demucs": "demucs",
-            }.get(arch)
-            records.append(resolve_model_id(f"{family}:{display}" if family else display, repo))
+            records.append(resolve_model_id(tag, repo))
     if len(records) < 2:
         raise ValueError("an ensemble needs at least two members")
     if not explicit_identity and profile.members:

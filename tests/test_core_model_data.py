@@ -71,7 +71,7 @@ class AssembleEnsembleTests(unittest.TestCase):
 
 class AssembleMdxIdentityTests(unittest.TestCase):
     def test_legacy_member_tag_becomes_engine_name(self) -> None:
-        """CLI canonicalize stores ``MDX-Net: Display``; assemble must not use it as a filename."""
+        """Ensemble assemble still receives ``Arch: Display``; that must not become a filename."""
         from core.model_identity import ModelIdentityService, ModelRecord, canonical_member_tag
 
         record = ModelRecord(

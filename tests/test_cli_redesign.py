@@ -157,6 +157,7 @@ class ProfileTests(unittest.TestCase):
             service.resolve.return_value = record
             _canonicalize_model_references(settings, Mock())
         service.resolve.assert_any_call("Model A", family="mdx", fuzzy=False)
+        self.assertEqual(settings.mdx.model, "mdx:model_a")
 
     def test_canonicalize_ignores_stale_unused_family_primary(self) -> None:
         """GUI profile may keep a stale VR primary while --model selects MDX."""
@@ -179,7 +180,57 @@ class ProfileTests(unittest.TestCase):
             service = service_cls.return_value
             service.resolve.side_effect = resolve
             _canonicalize_model_references(settings, Mock())
-        self.assertEqual(settings.mdx.model, "MDX-Net: Good")
+        self.assertEqual(settings.mdx.model, "mdx:good")
+
+    def test_canonicalize_vocal_splitter_stores_record_id(self) -> None:
+        from cli.job import _canonicalize_model_references
+        from core.model_identity import ModelRecord
+        from core.types import ProcessMethod
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.MDX
+        settings.mdx.model = "mdx:good"
+        settings.process.vocal_splitter_enabled = True
+        settings.process.vocal_splitter = "Split Model"
+        mdx_record = ModelRecord("mdx:good", "mdx", "good", "Good")
+        split_record = ModelRecord("mdx:split", "mdx", "split", "Split Model")
+
+        def resolve(raw: str, **kwargs: Any) -> ModelRecord:
+            if "split" in str(raw).casefold():
+                return split_record
+            return mdx_record
+
+        with patch("cli.job.ModelIdentityService") as service_cls:
+            service = service_cls.return_value
+            service.resolve.side_effect = resolve
+            _canonicalize_model_references(settings, Mock())
+        self.assertEqual(settings.process.vocal_splitter, "mdx:split")
+        self.assertEqual(settings.mdx.model, "mdx:good")
+
+    def test_canonicalize_secondary_stores_record_id(self) -> None:
+        from cli.job import _canonicalize_model_references
+        from core.model_identity import ModelRecord
+        from core.types import ProcessMethod
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.MDX
+        settings.mdx.model = "mdx:good"
+        settings.mdx.is_secondary_model_activate = True
+        settings.mdx.voc_inst_secondary_model = "Secondary"
+        primary = ModelRecord("mdx:good", "mdx", "good", "Good")
+        secondary = ModelRecord("mdx:sec", "mdx", "sec", "Secondary")
+
+        def resolve(raw: str, **kwargs: Any) -> ModelRecord:
+            if str(raw) == "Secondary" or "sec" in str(raw).casefold():
+                return secondary
+            return primary
+
+        with patch("cli.job.ModelIdentityService") as service_cls:
+            service = service_cls.return_value
+            service.resolve.side_effect = resolve
+            _canonicalize_model_references(settings, Mock())
+        self.assertEqual(settings.mdx.voc_inst_secondary_model, "mdx:sec")
+        self.assertEqual(settings.mdx.model, "mdx:good")
 
 
 class PlannedSettingsReturnTests(unittest.TestCase):
@@ -263,6 +314,91 @@ class PlannedSettingsReturnTests(unittest.TestCase):
             job = resolve_ensemble_job(args)
         self.assertIs(job.settings, planned)
         self.assertEqual(job.settings.ensemble.selected_models, ["mdx:a", "mdx:b"])
+
+    def test_ensemble_job_persists_member_ids_before_planning(self) -> None:
+        """CLI persist must match GUI persist: ids, not Arch: Display tags."""
+        from cli.job import resolve_ensemble_job
+        from core.model_identity import ModelRecord
+        from core.stems import EnsemblePair
+
+        settings = Settings.defaults()
+        planned = Settings.defaults()
+        planned.ensemble.selected_models = ["mdx:a", "mdx:b"]
+        records = [
+            ModelRecord("mdx:a", "mdx", "a", "A"),
+            ModelRecord("mdx:b", "mdx", "b", "B"),
+        ]
+        profile = LoadedProfile("defaults", "built-in")
+        args = argparse.Namespace(
+            ensemble=None,
+            models=["mdx:a", "mdx:b"],
+            main_stem=EnsemblePair.VOCALS_INSTRUMENTAL.value,
+            stems=None,
+            long_chunk_seconds=None,
+            long_chunk_overlap=None,
+            algorithm=None,
+            wav_ensemble=None,
+            save_all_outputs=None,
+            device=None,
+            on_exists="fail",
+        )
+        captured: dict[str, list[str]] = {}
+
+        def capture_spec(spec: Any, _level: Any) -> Any:
+            captured["selected_models"] = list(spec.settings.ensemble.selected_models)
+            return self._planned_effective(planned)
+
+        with patch("cli.job._base_resolve", return_value=(settings, profile, ["/a.wav"], "/out")), patch(
+            "cli.job.resolve_model_id", side_effect=records
+        ), patch("cli.job.ModelRepository"), patch(
+            "cli.job._canonicalize_model_references", return_value={}
+        ), patch("cli.job._device_pairs", return_value=([], False)), patch(
+            "cli.job.SettingsResolver"
+        ) as resolver_cls, patch("core.job_plan.JobResolver") as job_resolver_cls:
+            resolver_cls.return_value.resolve.side_effect = (
+                lambda incoming, **_kwargs: (incoming, {})
+            )
+            job_resolver_cls.return_value.resolve.side_effect = capture_spec
+            resolve_ensemble_job(args)
+        self.assertEqual(captured["selected_models"], ["mdx:a", "mdx:b"])
+
+    def test_separate_vocal_split_override_uses_record_id(self) -> None:
+        from cli.job import resolve_separate_job
+        from core.model_identity import ModelRecord
+
+        settings = Settings.defaults()
+        planned = Settings.defaults()
+        model = ModelRecord("mdx:lead", "mdx", "lead", "Lead")
+        splitter = ModelRecord("mdx:split", "mdx", "split", "Split")
+        profile = LoadedProfile("defaults", "built-in")
+        args = argparse.Namespace(
+            model="mdx:lead",
+            stems=None,
+            long_chunk_seconds=None,
+            long_chunk_overlap=None,
+            vocal_split="Split",
+            device=None,
+            on_exists="fail",
+        )
+        captured: dict[str, str | None] = {}
+
+        def collect(_args: Any, resolved_vocal_splitter: str | None = None) -> list:
+            captured["splitter"] = resolved_vocal_splitter
+            return []
+
+        with patch("cli.job._base_resolve", return_value=(settings, profile, ["/a.wav"], "/out")), patch(
+            "cli.job.resolve_model_id", side_effect=[model, splitter]
+        ), patch("cli.job.resolve_splitter_identity", return_value="Split"), patch(
+            "cli.job.ModelRepository"
+        ), patch("cli.job._canonicalize_model_references", return_value={}), patch(
+            "cli.job._device_pairs", return_value=([], False)
+        ), patch("cli.job.collect_overrides", side_effect=collect), patch(
+            "cli.job.SettingsResolver"
+        ) as resolver_cls, patch("core.job_plan.JobResolver") as job_resolver_cls:
+            resolver_cls.return_value.resolve.return_value = (settings, {})
+            job_resolver_cls.return_value.resolve.return_value = self._planned_effective(planned)
+            resolve_separate_job(args)
+        self.assertEqual(captured["splitter"], "mdx:split")
 
 
 class DeviceResolutionTests(unittest.TestCase):
