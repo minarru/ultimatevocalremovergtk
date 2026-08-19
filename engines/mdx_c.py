@@ -238,7 +238,11 @@ def mdx_export_routing_flags(
         and not bool(include_stem_complement)
     )
     is_complement_export = (
-        len(natives) == 1
+        # 1-2 stem models (incl. target-instrument ``other``) demix to an
+        # ndarray, not a stem-keyed dict. Their derived pair complement is
+        # the pair-export path, not this multi-stem index-by-name branch.
+        is_not_single_stem
+        and len(natives) == 1
         and not has_derived_inst
         and (
             bool(include_stem_complement)

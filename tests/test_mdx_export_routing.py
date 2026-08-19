@@ -2,13 +2,15 @@
 import typing
 
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 import numpy as np
 
-from bundled.constants import ALL_STEMS, VOCAL_STEM
+from bundled.constants import ALL_STEMS, INST_STEM, VOCAL_STEM
 from core.stems import StemBucket, StemId, StemRoute, StemRouteKind
 from engines.mdx_c import (
+    SeperateMDXC,
     derive_mdx_complement,
     derive_mdx_multi_complement,
     mdx_export_routing_flags,
@@ -86,6 +88,26 @@ class MDXExportRoutingTests(unittest.TestCase):
         self.assertFalse(routing["is_native_pick"])
         self.assertFalse(routing["multi_stem_export"])
 
+    def test_one_stem_target_other_is_not_complement_export(self) -> None:
+        """Single-target ``other`` Roformers return an ndarray, not a stem map.
+
+        Their inventory is native ``other`` plus a derived vocals complement.
+        Complement-export indexes ``sources[stem]`` as a dict, so 1-2 stem
+        models must keep the pair-export path that already unwraps ndarrays.
+        """
+        routing = mdx_export_routing_flags(
+            **self._base_kwargs(
+                stem_list=["other"],
+                export_routes=(
+                    _native("other", StemBucket.INSTRUMENTAL.value),
+                    _derived(StemBucket.VOCALS.value, VOCAL_STEM),
+                ),
+                mdxnet_stem_select="other",
+            )
+        )
+        self.assertFalse(routing["is_complement_export"])
+        self.assertFalse(routing["multi_stem_export"])
+
     def test_vocals_native_matches_the_models_native_cased_stem_name(self) -> None:
         """Community MDX-C yamls commonly declare lowercase stem names
         (``training.instruments: [drums, bass, other, vocals]``). Route
@@ -147,6 +169,70 @@ class MDXExportRoutingTests(unittest.TestCase):
         working.pop("Vocals")
         self.assertIn("Vocals", cached)
         self.assertNotIn("Vocals", working)
+
+
+class TargetOtherNdarrayExportTests(unittest.TestCase):
+    def test_single_target_other_ndarray_exports_vocals_and_instrumental(self) -> None:
+        """Leap-XE-style ``target_instrument: other`` demix returns an ndarray.
+
+        Default inventory is native other (Instrumental) plus derived Vocals.
+        That used to take complement-export and IndexError on sources['other'].
+        """
+        mix = np.ones((2, 8), dtype=np.float32)
+        native = np.full((2, 8), 0.25, dtype=np.float32)
+        fake = SimpleNamespace(
+            mdx_c_configs=SimpleNamespace(
+                training=SimpleNamespace(
+                    target_instrument="other",
+                    instruments=["vocals", "other"],
+                ),
+            ),
+            is_roformer=True,
+            primary_model_name="bs_leap_xe_inst_unwa",
+            model_basename="bs_leap_xe_inst_unwa",
+            primary_sources=(mix, native),
+            load_cached_sources=lambda: None,
+            is_vocal_split_model=False,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_4_stem_ensemble=False,
+            is_mdx_include_stem_complement=False,
+            is_secondary_model_activated=False,
+            secondary_model=None,
+            mdxnet_stem_select="other",
+            primary_stem=INST_STEM,
+            primary_stem_native="other",
+            secondary_stem=VOCAL_STEM,
+            primary_source=None,
+            secondary_source=None,
+            secondary_source_primary=None,
+            secondary_source_secondary=None,
+            is_invert_spec=False,
+            is_mdx_combine_stems=False,
+            match_frequency_pitch=lambda audio: audio,
+            process_secondary_stem=lambda stem, secondary=None: stem,
+            process_vocal_split_chain=lambda sources: None,
+            process_data=SimpleNamespace(is_ensemble_master=False),
+            selected_stem_routes=(
+                _native("other", StemBucket.INSTRUMENTAL.value),
+                _derived(StemBucket.VOCALS.value, VOCAL_STEM),
+            ),
+            available_stem_routes=(),
+            is_ensemble_mode=False,
+            is_multi_stem_ensemble=False,
+        )
+        captured: dict[str, typing.Any] = {}
+
+        def capture(sep: typing.Any, sources: typing.Any, samplerate: int) -> None:
+            captured["sources"] = dict(sources)
+            captured["rate"] = samplerate
+
+        with mock.patch("engines.stem_writer.export_source_map", side_effect=capture):
+            SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
+
+        self.assertEqual(captured["rate"], 44100)
+        self.assertIn(INST_STEM, captured["sources"])
+        self.assertIn(VOCAL_STEM, captured["sources"])
 
 
 class MdxSelectedStemsTests(unittest.TestCase):
