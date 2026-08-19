@@ -71,7 +71,7 @@ class AssembleEnsembleTests(unittest.TestCase):
 
 class AssembleMdxIdentityTests(unittest.TestCase):
     def test_legacy_member_tag_becomes_engine_name(self) -> None:
-        """Ensemble assemble still receives ``Arch: Display``; that must not become a filename."""
+        """Non-ensemble assemble still feeds the engine basename, not a member tag."""
         from core.model_identity import ModelIdentityService, ModelRecord, canonical_member_tag
 
         record = ModelRecord(
@@ -98,6 +98,74 @@ class AssembleMdxIdentityTests(unittest.TestCase):
                 assemble_model(settings, MagicMock(), tag, MDX_ARCH_TYPE)
         self.assertEqual(captured, [record.engine_name])
         self.assertNotIn(":", captured[0])
+
+    def test_ensemble_assemble_passes_canonical_ids(self) -> None:
+        from core.model_identity import ModelIdentityService, ModelRecord
+
+        records = (
+            ModelRecord("mdx:a", "mdx", "a", "A", engine_name="a"),
+            ModelRecord("mdx:b", "mdx", "b", "B", engine_name="b"),
+        )
+        settings = Settings.defaults()
+        settings.ensemble.selected_models = ["mdx:a", "mdx:b"]
+        captured: list[str] = []
+
+        def fake_config(
+            _settings: object, _repo: object, model_name: str, *_args: object, **_kwargs: object
+        ) -> MagicMock:
+            captured.append(model_name)
+            model = MagicMock()
+            model.model_status = True
+            return model
+
+        with patch.object(ModelIdentityService, "records", return_value=records):
+            with patch("core.model_config.config.ModelConfig", side_effect=fake_config):
+                assemble_model(settings, MagicMock(), arch_type=ENSEMBLE_MODE)
+        self.assertEqual(captured, ["mdx:a", "mdx:b"])
+
+
+class EnsembleModeIdentityTests(unittest.TestCase):
+    def _build(self, token: str, *, records: tuple[object, ...] = ()) -> ModelConfig:
+        from core.model_identity import ModelIdentityService
+
+        settings = Settings.defaults()
+        repo = MagicMock()
+        repo.mdx_name_select_MAPPER = {}
+        repo.mdx_hash_MAPPER = {}
+        repo.vr_hash_MAPPER = {}
+        repo.model_hash_table = {}
+        repo.on_unrecognized_model = None
+        repo.mdx_catalogue_display_index.return_value = {}
+        repo.vr_catalogue_display_index.return_value = {}
+
+        def fake_get_model_hash(self: typing.Any) -> None:
+            self.model_hash = None
+            self.model_status = False
+
+        with patch.object(ModelIdentityService, "records", return_value=records):
+            with patch.object(ModelConfig, "get_model_hash", fake_get_model_hash):
+                return ModelConfig(settings, repo, token, is_dry_check=True)
+
+    def test_canonical_id_sets_arch_display_and_member_tag(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.model_identity import ModelRecord, canonical_member_tag
+
+        record = ModelRecord("mdx:good", "mdx", "good", "Good", engine_name="good")
+        model = self._build("mdx:good", records=(record,))
+        self.assertEqual(model.process_method, MDX_ARCH_TYPE)
+        self.assertEqual(model.model_name, "Good")
+        self.assertEqual(model.model_and_process_tag, canonical_member_tag(record))
+
+    def test_legacy_member_tag_still_splits(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.model_identity import ModelRecord, canonical_member_tag
+
+        record = ModelRecord("mdx:good", "mdx", "good", "Good", engine_name="good")
+        tag = canonical_member_tag(record)
+        model = self._build(tag, records=(record,))
+        self.assertEqual(model.process_method, MDX_ARCH_TYPE)
+        self.assertEqual(model.model_name, "Good")
+        self.assertEqual(model.model_and_process_tag, tag)
 
 
 class ModelConfigKaraokeConfidenceTests(unittest.TestCase):

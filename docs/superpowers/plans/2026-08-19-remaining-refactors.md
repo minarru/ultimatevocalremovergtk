@@ -1,17 +1,11 @@
 # Remaining refactors
 
 > Backlog after the ModelConfig / JobRunner / stem-identity / Save Stems series
-> (#30–#42) and the uncommitted `refactor/stem-focus-sentinels` work (positional
-> `stem_focus` sentinels, exclusive Settings keys deleted, CLI identity
-> round-trip). Each item is its own PR. Do not stack unrelated seams.
-
-**Land first:** the current branch (`refactor/stem-focus-sentinels`) — PR A/B
-sentinels + exclusive-key deletion, plus the CLI identity prefix / assemble
-member-tag path fixes. Later items assume that is on `origin/main`.
+> (#30–#49). Each item is its own PR. Do not stack unrelated seams.
 
 ## Quality bar (unchanged)
 
-Same as #30–#42:
+Same as #30–#49:
 
 - Canonical module owns the symbols; **no** facade re-export from the old home.
 - **No** second writer, **no** flag-translator shim.
@@ -42,8 +36,13 @@ and `.venv/bin/python -m basedpyright` on touched files.
 | Engines write `selected_stem_routes` | engines + assemble | #38 |
 | CLI / subset through `StemRoute` | CLI + Save Stems | #39–#41 |
 | Empty-focus exclusive flags at assemble | [`_apply_stem_focus`](../../../core/model_config/config.py) | #42 |
-| Positional sentinels; delete exclusive Settings keys | `stem_focus` `primary`/`secondary` | current branch (uncommitted) |
-| CLI `MDX-Net:` identity / assemble filename | [`_qualified_family`](../../../core/model_identity.py), [`assemble.py`](../../../core/model_config/assemble.py) | current branch (uncommitted) |
+| Positional sentinels; delete exclusive Settings keys | `stem_focus` `primary`/`secondary` | #44 |
+| CLI planned settings / human errors / `STEMS_HELP` | [`cli/job.py`](../../../cli/job.py) | #45 |
+| `JobCallbacks` out of `job_runner` | [`core/job_callbacks.py`](../../../core/job_callbacks.py) | #46 |
+| Run hooks | [`core/run_hooks.py`](../../../core/run_hooks.py) | #47 |
+| Delete `_ModelConfigImplementation` alias | [`core/model_data.py`](../../../core/model_data.py) | #48 |
+| CLI persist canonical ids in Settings | [`cli/job.py`](../../../cli/job.py) | #49 |
+| CLI `MDX-Net:` identity / assemble filename | [`_qualified_family`](../../../core/model_identity.py), [`assemble.py`](../../../core/model_config/assemble.py) | with sentinels / #49 |
 
 ---
 
@@ -51,107 +50,33 @@ and `.venv/bin/python -m basedpyright` on touched files.
 
 Suggested order. Skip an item rather than invent scope.
 
-### 1. Delete dead exclusive attributes on `ModelConfig` / engines
+### 1. `ModelConfig` ensemble mode accepts canonical ids (this PR)
 
-Settings no longer have `process.primary_stem_only` / `secondary_stem_only` or
-the Demucs twins. Assemble no longer copies those fields onto `ModelConfig`
-(instance attrs stay `False`). Engines still declare and shuffle them.
+[`assemble_model`](../../../core/model_config/assemble.py) still translated
+ids with `engine_value(..., member=True)` because
+[`ModelConfig`](../../../core/model_config/config.py) partitioned on
+`ENSEMBLE_PARTITION` (`": "`). Teach the constructor to consume `mdx:basename`
+(and still accept `Arch: Display` for dry-check/checklist). Keep emitting
+`model_and_process_tag` as `Arch: Display`. Do **not** change
+`list_*_model_tags` / checklist row keys in this PR.
 
-**Touch:**
+### 2. Fold `process_determine_*` into `model_config`
 
-- [`core/model_config/config.py`](../../../core/model_config/config.py) —
-  `is_primary_stem_only`, `is_secondary_stem_only`,
-  `is_primary_model_primary_stem_only` / `_secondary_…`, and the
-  `StemRouting` copies of the same flags.
-- [`engines/base.py`](../../../engines/base.py) — copy from `model_data`,
-  vocal-split / ensemble swaps at ~212 and ~319.
-- [`engines/mdx_c.py`](../../../engines/mdx_c.py) — still assigns the pair.
-- Secondary-model slots already use `_exclusive_sides_from_routes`; keep that.
+Still in [`core/model_data.py`](../../../core/model_data.py);
+`ModelConfig` lazy-imports them. Fold into `model_config` if you touch that
+cycle again. Do **not** merge `_run` and `_run_ensemble`. Do **not** move
+`engines.orchestration._run_seperator`.
 
-**Do not** put the flags back on Settings. Export must keep using
-`selected_stem_routes`. Prove with a grep that no engine branch still *reads*
-the bools for write policy before deleting.
+### 3. GTK checklist row keys
 
-### 2. CLI uses planned settings and reports the error
+[`list_vr_model_tags`](../../../core/model_data.py) (and MDX/Demucs) still emit
+`Arch: Display`. [`format_tag_title`](../../../core/model_display.py),
+[`option_summaries`](../../../ui/option_summaries.py), eligibility matching,
+and UI tests parse `ENSEMBLE_PARTITION`. Switching row identity to
+`mdx:basename` is a **large** display rewrite. Display names colliding across
+families is why the prefix exists on the widget, not why Settings persist it.
 
-Two execution bugs the identity fix papered over; they are still the wrong
-shape.
-
-**2a. `cli/job.py` returns the pre-`JobResolver` `settings`.**
-[`JobResolver.resolve`](../../../core/job_plan.py) deep-copies, writes
-`record.id` onto the copy, and applies model-native values.
-[`resolve_separate_job`](../../../cli/job.py) then builds `ResolvedJob` from
-the original object (still `canonical_member_tag`).
-[`run_batch`](../../../cli/execution.py) does `JobRunner(job.settings)` +
-`resolve_models()`, so execution re-assembles from member tags. Assemble now
-converts those tags; it should not have to. Return `effective.settings` (or
-assemble from `job.resolved` and stop calling `resolve_models` on the stale
-copy).
-
-**2b. Human `--report` hides the exception.**
-[`_emit_human_result`](../../../cli/reporting.py) prints `status=` /
-`elapsed_s=` / `export_path=` and only lists per-input errors when there is
-more than one input. Single-file failure is `Process failed` with no
-`ONNXRuntimeError`. Print `inputs[0].error` (or the payload error) in human
-mode.
-
-**2c. Stale `--stems` help.**
-[`STEMS_HELP`](../../../cli/separate.py) still says positional names “clear
-`process.stem_focus`”. After PR A they write sentinels. Fix that sentence
-when touching the CLI file.
-
-### 3. `JobCallbacks` out of `job_runner`
-
-Deferred from every JobRunner extract. [`JobCallbacks`](../../../core/job_runner.py)
-(~128–238) is the public callback surface; UI (`ui/dispatch.py`) and CLI
-(`cli/execution.py`) both depend on it. [`core/__init__.py`](../../../core/__init__.py)
-re-exports it next to `JobRunner`.
-
-Move to something like `core/job_callbacks.py`. `JobRunner` imports it.
-Retarget `core.__init__`, CLI, GTK dispatch, and tests that patch
-`core.job_runner.JobCallbacks`. Do **not** keep a forwarding alias on
-`job_runner`.
-
-Leave `JobRunner` itself: thread lifecycle (`start` / `start_ensemble` /
-`start_resolved`), naming, source cache, `resolve_models`. That file is still
-~1100 lines; callbacks are the named leftover seam, not “split the rest
-arbitrarily.”
-
-### 4. Remaining `job_runner` extracts (only if 3 is not enough)
-
-Only after `JobCallbacks` has a home. Candidates, each its own PR:
-
-- **Run hooks** — `_SingleRunHooks` / `_EnsembleRunHooks` (~240–480) already
-  implement `run_loop.FilePassHooks`. They can live next to
-  [`run_models_on_files`](../../../core/run_loop.py) if `job_runner` is still
-  the god object after callbacks move.
-- **`_write_captured_stems`** — already in `run_loop`; `job_runner` still
-  imports it for hooks. Do not re-export from `job_runner`.
-- **`process_determine_*`** — still in
-  [`core/model_data.py`](../../../core/model_data.py); `ModelConfig` lazy-imports
-  them. Fold into `model_config` if you touch that cycle again.
-- **Deprecated `_ModelConfigImplementation` alias** in `model_data.py` — delete
-  when nothing imports it (tests should already use `ModelConfig`).
-
-Do **not** merge `_run` and `_run_ensemble` into one flagged function. Do
-**not** move `engines.orchestration._run_seperator`.
-
-### 5. Model identity: stop persisting member tags as Settings values
-
-CLI [`_canonicalize_model_references`](../../../cli/job.py) writes
-`canonical_member_tag(record)` (`MDX-Net: Display`) into `settings.mdx.model`.
-Planning and assemble now both have to recognize legacy arch prefixes.
-
-Write **canonical ids** (`mdx:UVR-MDX-NET-Inst_HQ_4`) or engine basenames into
-Settings after resolve. Keep `canonical_member_tag` for ensemble member lists
-and display. Ensemble `selected_models` may stay as `Arch: Display` because
-`ModelConfig` still partitions on `ENSEMBLE_PARTITION` — do not change that
-in the same PR as separate/primary Settings.
-
-Related: [`cli/job.py`](../../../cli/job.py) `ResolvedJob.settings` vs
-`effective.settings` (item 2a) is the consumer; this item is the producer.
-
-### 6. Optional later (do not start from this backlog)
+### 4. Optional later (do not start from this backlog)
 
 These were repeatedly marked out of scope on purpose. Open a new spec before
 touching them.
@@ -176,7 +101,7 @@ touching them.
 
 ## Suggested next PR
 
-**Item 1** (dead exclusive attrs) if you want to finish the stem-focus
-migration, or **item 2** if you want the CLI to tell the truth after a failed
-run. Item 2 is smaller and user-visible. Item 3 is the leftover JobRunner
-split that every prior plan deferred.
+After this constructor seam lands: **item 2** (`process_determine_*`) if you
+are already in the `model_data` / `model_config` cycle, or **item 3**
+(checklist row keys) as its own large display rewrite. Do not start item 4
+without a new spec.

@@ -193,10 +193,32 @@ class ModelConfig:
         self._is_secondary_model_param = is_secondary_model
 
         if selected_process_method == ENSEMBLE_MODE:
-            # The ensemble member tag is ``"<arch>: <model name>"``; split it back
-            # into the member's real process method + model name (UVR L553-567).
-            self.process_method, _, self.model_name = model_name.partition(ENSEMBLE_PARTITION)
-            self.model_and_process_tag = model_name
+            # Checklist/dry-check still pass ``Arch: Display``. Settings persist
+            # canonical ids (``mdx:basename``); split those without treating the
+            # family colon as ``ENSEMBLE_PARTITION``.
+            if ENSEMBLE_PARTITION in model_name:
+                self.process_method, _, self.model_name = model_name.partition(ENSEMBLE_PARTITION)
+                self.model_and_process_tag = model_name
+            else:
+                from ..model_identity import FAMILIES, ModelIdentityService, canonical_member_tag
+
+                prefix, separator, _rest = str(model_name).partition(":")
+                if separator and prefix.casefold() in FAMILIES:
+                    try:
+                        record = ModelIdentityService(self.repo).resolve(
+                            model_name, fuzzy=False
+                        )
+                        self.process_method = record.arch
+                        self.model_name = record.display
+                        self.model_and_process_tag = canonical_member_tag(record)
+                    except ValueError:
+                        self.model_status = False
+                        self.model_and_process_tag = model_name
+                else:
+                    self.process_method, _, self.model_name = model_name.partition(
+                        ENSEMBLE_PARTITION
+                    )
+                    self.model_and_process_tag = model_name
             self.ensemble_primary_stem, self.ensemble_secondary_stem = self.return_ensemble_stems()
             is_not_secondary_or_pre_proc = not is_secondary_model and not is_pre_proc_model
             self.is_ensemble_mode = is_not_secondary_or_pre_proc
