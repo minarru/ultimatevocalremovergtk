@@ -301,7 +301,7 @@ def resolve_separate_job(
         raise ValueError(errors[0])
     return ResolvedJob(
         command="separate",
-        settings=settings,
+        settings=effective.settings,
         profile=profile,
         inputs=inputs,
         output=output,
@@ -437,7 +437,7 @@ def resolve_ensemble_job(
         raise ValueError(errors[0])
     return ResolvedJob(
         command="ensemble",
-        settings=settings,
+        settings=effective.settings,
         profile=profile,
         inputs=inputs,
         output=output,

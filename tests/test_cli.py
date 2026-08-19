@@ -40,6 +40,8 @@ class ParserSurfaceTests(unittest.TestCase):
         self.assertNotIn("--json ", help_text)
         self.assertIn("--report", help_text)
         self.assertIn("--accept-inherited", help_text)
+        self.assertNotIn("clear process.stem_focus", help_text)
+        self.assertIn("process.stem_focus", help_text)
 
     def test_apollo_registration_and_administration_commands_parse(self) -> None:
         parser = build_parser()
@@ -73,6 +75,70 @@ class ParserSurfaceTests(unittest.TestCase):
             code = main(["--report", "json", "settings", "show"])
         self.assertEqual(code, 0)
         self.assertTrue(json.loads(out.getvalue())["ok"])
+
+
+class HumanReportTests(unittest.TestCase):
+    def test_single_input_failure_prints_error_on_stderr(self) -> None:
+        from cli.reporting import emit_document
+
+        args = argparse.Namespace(report="human", job_id="j")
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            emit_document(
+                args,
+                {
+                    "status": "failed",
+                    "elapsed_s": 1.0,
+                    "export_path": "/tmp/out",
+                    "inputs": [
+                        {
+                            "input": "/a.wav",
+                            "status": "failed",
+                            "error": "ONNXRuntimeError: boom",
+                        }
+                    ],
+                },
+            )
+        self.assertIn("status=failed", out.getvalue())
+        self.assertNotIn("ONNXRuntimeError", out.getvalue())
+        self.assertIn("error[/a.wav]=ONNXRuntimeError: boom", err.getvalue())
+
+    def test_multi_input_failures_still_print_each_error(self) -> None:
+        from cli.reporting import emit_document
+
+        args = argparse.Namespace(report="human", job_id="j")
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            emit_document(
+                args,
+                {
+                    "status": "failed",
+                    "inputs": [
+                        {"input": "/a.wav", "status": "failed", "error": "bad-a"},
+                        {"input": "/b.wav", "status": "failed", "error": "bad-b"},
+                    ],
+                },
+            )
+        self.assertIn("inputs=2", out.getvalue())
+        self.assertIn("error[/a.wav]=bad-a", err.getvalue())
+        self.assertIn("error[/b.wav]=bad-b", err.getvalue())
+
+    def test_single_success_prints_no_error_line(self) -> None:
+        from cli.reporting import emit_document
+
+        args = argparse.Namespace(report="human", job_id="j")
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            emit_document(
+                args,
+                {
+                    "status": "success",
+                    "inputs": [{"input": "/a.wav", "status": "success", "outputs": []}],
+                },
+            )
+        self.assertIn("status=success", out.getvalue())
+        self.assertNotIn("error[", out.getvalue())
+        self.assertNotIn("error[", err.getvalue())
 
 
 def _job(*, inherited: bool = False) -> ResolvedJob:

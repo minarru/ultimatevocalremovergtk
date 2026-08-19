@@ -21,7 +21,7 @@ STEMS_HELP = (
     "Which stems to save. Concept names (vocals, instrumental, bass, drums, "
     "other) select that stem even when it is not the checkpoint primary. "
     "Positional names (primary, secondary, both) follow the model layout and "
-    "clear process.stem_focus."
+    "write primary / secondary (or empty for both) into process.stem_focus."
 )
 
 _REQUIRED_RUNTIME_MODULES = ("kthread", "soundfile")
