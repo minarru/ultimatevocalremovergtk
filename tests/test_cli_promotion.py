@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import tempfile
 import threading
 import time
@@ -34,7 +35,7 @@ class PromotionTests(unittest.TestCase):
             planned = "song Model"
             for stem in ("Vocals", "Instrumental"):
                 name = f"{format_stem_basename(planned, stem)}.wav"
-                open(os.path.join(stage, name), "wb").write(b"x")
+                Path(os.path.join(stage, name)).write_bytes(b"x")
             promoted = _promote(
                 stage, output, "fail",
                 destinations=[
@@ -52,9 +53,9 @@ class PromotionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             os.makedirs(stage)
             os.makedirs(output)
-            open(os.path.join(output, "song (Vocals).wav"), "wb").write(b"old")
+            Path(os.path.join(output, "song (Vocals).wav")).write_bytes(b"old")
             for stem in ("Vocals", "Instrumental"):
-                open(os.path.join(stage, f"song ({stem}).wav"), "wb").write(b"new")
+                Path(os.path.join(stage, f"song ({stem}).wav")).write_bytes(b"new")
             promoted = _promote(
                 stage, output, "rename",
                 destinations=[
@@ -69,7 +70,7 @@ class PromotionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             output = os.path.join(root, "out")
             os.makedirs(output)
-            open(os.path.join(output, "song_live (Vocals).wav"), "wb").write(b"x")
+            Path(os.path.join(output, "song_live (Vocals).wav")).write_bytes(b"x")
             job = SimpleNamespace(
                 inputs=[os.path.join(root, "song.wav")],
                 output=output,
@@ -88,10 +89,10 @@ class PromotionTests(unittest.TestCase):
             os.makedirs(output)
             # Seed collision on the first sorted name so the successful first
             # replace must be rolled back from a real backup, not only moved.
-            open(os.path.join(output, "song (Instrumental).wav"), "wb").write(b"old-i")
-            open(os.path.join(output, "song (Vocals).wav"), "wb").write(b"old-v")
-            open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new-v")
-            open(os.path.join(stage, "song (Instrumental).wav"), "wb").write(b"new-i")
+            Path(os.path.join(output, "song (Instrumental).wav")).write_bytes(b"old-i")
+            Path(os.path.join(output, "song (Vocals).wav")).write_bytes(b"old-v")
+            Path(os.path.join(stage, "song (Vocals).wav")).write_bytes(b"new-v")
+            Path(os.path.join(stage, "song (Instrumental).wav")).write_bytes(b"new-i")
             destinations = [
                 os.path.join(output, "song (Vocals).wav"),
                 os.path.join(output, "song (Instrumental).wav"),
@@ -124,10 +125,10 @@ class PromotionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             os.makedirs(stage)
             os.makedirs(output)
-            open(os.path.join(output, "song (Instrumental).wav"), "wb").write(b"old-i")
-            open(os.path.join(output, "song (Vocals).wav"), "wb").write(b"old-v")
-            open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new-v")
-            open(os.path.join(stage, "song (Instrumental).wav"), "wb").write(b"new-i")
+            Path(os.path.join(output, "song (Instrumental).wav")).write_bytes(b"old-i")
+            Path(os.path.join(output, "song (Vocals).wav")).write_bytes(b"old-v")
+            Path(os.path.join(stage, "song (Vocals).wav")).write_bytes(b"new-v")
+            Path(os.path.join(stage, "song (Instrumental).wav")).write_bytes(b"new-i")
             destinations = [
                 os.path.join(output, "song (Vocals).wav"),
                 os.path.join(output, "song (Instrumental).wav"),
@@ -162,8 +163,8 @@ class PromotionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             os.makedirs(stage)
             os.makedirs(output)
-            open(os.path.join(output, "song (Vocals).wav"), "wb").write(b"old-v")
-            open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new-v")
+            Path(os.path.join(output, "song (Vocals).wav")).write_bytes(b"old-v")
+            Path(os.path.join(stage, "song (Vocals).wav")).write_bytes(b"new-v")
             destinations = [os.path.join(output, "song (Vocals).wav")]
 
             with mock.patch("cli.execution.shutil.copy2") as copy2:
@@ -183,10 +184,10 @@ class PromotionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             os.makedirs(stage)
             os.makedirs(output)
-            open(os.path.join(output, "song (Instrumental).wav"), "wb").write(b"old-i")
-            open(os.path.join(output, "song (Vocals).wav"), "wb").write(b"old-v")
-            open(os.path.join(stage, "song (Instrumental).wav"), "wb").write(b"new-i")
-            open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new-v")
+            Path(os.path.join(output, "song (Instrumental).wav")).write_bytes(b"old-i")
+            Path(os.path.join(output, "song (Vocals).wav")).write_bytes(b"old-v")
+            Path(os.path.join(stage, "song (Instrumental).wav")).write_bytes(b"new-i")
+            Path(os.path.join(stage, "song (Vocals).wav")).write_bytes(b"new-v")
             destinations = [
                 os.path.join(output, "song (Vocals).wav"),
                 os.path.join(output, "song (Instrumental).wav"),
@@ -226,10 +227,10 @@ class PromotionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             os.makedirs(stage)
             os.makedirs(output)
-            open(os.path.join(output, "song (Vocals).wav"), "wb").write(b"old-v")
-            open(os.path.join(output, "song (Instrumental).wav"), "wb").write(b"old-i")
-            open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new-v")
-            open(os.path.join(stage, "song (Instrumental).wav"), "wb").write(b"new-i")
+            Path(os.path.join(output, "song (Vocals).wav")).write_bytes(b"old-v")
+            Path(os.path.join(output, "song (Instrumental).wav")).write_bytes(b"old-i")
+            Path(os.path.join(stage, "song (Vocals).wav")).write_bytes(b"new-v")
+            Path(os.path.join(stage, "song (Instrumental).wav")).write_bytes(b"new-i")
             destinations = [
                 os.path.join(output, "song (Vocals).wav"),
                 os.path.join(output, "song (Instrumental).wav"),
@@ -254,8 +255,8 @@ class PromotionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             os.makedirs(stage)
             os.makedirs(output)
-            open(os.path.join(output, "song (Vocals).wav"), "wb").write(b"old")
-            open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new")
+            Path(os.path.join(output, "song (Vocals).wav")).write_bytes(b"old")
+            Path(os.path.join(stage, "song (Vocals).wav")).write_bytes(b"new")
             destinations = [os.path.join(output, "song (Vocals).wav")]
             song_2 = os.path.join(output, "song_2 (Vocals).wav")
             real_makedirs = os.makedirs
@@ -266,7 +267,7 @@ class PromotionTests(unittest.TestCase):
                 real_makedirs(path, *args, **kwargs)  # type: ignore[arg-type]
                 if not raced["done"]:
                     raced["done"] = True
-                    open(song_2, "wb").write(b"raced")
+                    Path(song_2).write_bytes(b"raced")
 
             with mock.patch("cli.execution.os.makedirs", racing_makedirs):
                 promoted = _promote(
@@ -293,9 +294,9 @@ class PromotionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             os.makedirs(stage)
             os.makedirs(output)
-            open(os.path.join(output, "song (Vocals).wav"), "wb").write(b"old")
-            open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new-v")
-            open(os.path.join(stage, "song (Instrumental).wav"), "wb").write(b"new-i")
+            Path(os.path.join(output, "song (Vocals).wav")).write_bytes(b"old")
+            Path(os.path.join(stage, "song (Vocals).wav")).write_bytes(b"new-v")
+            Path(os.path.join(stage, "song (Instrumental).wav")).write_bytes(b"new-i")
             destinations = [
                 os.path.join(output, "song (Instrumental).wav"),
                 os.path.join(output, "song (Vocals).wav"),
@@ -308,7 +309,7 @@ class PromotionTests(unittest.TestCase):
                 real_replace(src, dst, *args, **kwargs)
                 if not raced["done"] and os.path.dirname(src) == stage:
                     raced["done"] = True
-                    open(song_2_vocals, "wb").write(b"raced")
+                    Path(song_2_vocals).write_bytes(b"raced")
 
             with mock.patch("cli.execution.os.replace", racing_replace):
                 promoted = _promote(
@@ -339,7 +340,7 @@ class PromotionTests(unittest.TestCase):
             for index in (1, 2):
                 stage = os.path.join(root, f"stage{index}")
                 os.makedirs(stage)
-                open(os.path.join(stage, f"song{index} (Vocals).wav"), "wb").write(b"x")
+                Path(os.path.join(stage, f"song{index} (Vocals).wav")).write_bytes(b"x")
                 stages.append(stage)
 
             guard = threading.Lock()
@@ -388,10 +389,10 @@ class PromotionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             os.makedirs(stage)
             os.makedirs(output)
-            open(os.path.join(output, "song (Vocals).wav"), "wb").write(b"old")
-            open(os.path.join(output, "song_2 (Bass).wav"), "wb").write(b"busy")
-            open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new-v")
-            open(os.path.join(stage, "song (Bass).wav"), "wb").write(b"new-b")
+            Path(os.path.join(output, "song (Vocals).wav")).write_bytes(b"old")
+            Path(os.path.join(output, "song_2 (Bass).wav")).write_bytes(b"busy")
+            Path(os.path.join(stage, "song (Vocals).wav")).write_bytes(b"new-v")
+            Path(os.path.join(stage, "song (Bass).wav")).write_bytes(b"new-b")
             destinations = [os.path.join(output, "song (Vocals).wav")]
 
             promoted = _promote(
@@ -410,9 +411,9 @@ class PromotionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             os.makedirs(stage)
             os.makedirs(output)
-            open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new-v")
-            open(os.path.join(stage, "song (Bass).wav"), "wb").write(b"new-b")
-            open(os.path.join(output, "song (Bass).wav"), "wb").write(b"old-b")
+            Path(os.path.join(stage, "song (Vocals).wav")).write_bytes(b"new-v")
+            Path(os.path.join(stage, "song (Bass).wav")).write_bytes(b"new-b")
+            Path(os.path.join(output, "song (Bass).wav")).write_bytes(b"old-b")
 
             with self.assertRaises(PromotionSkipped):
                 _promote(
@@ -431,7 +432,7 @@ class PromotionTests(unittest.TestCase):
             stage = os.path.join(root, "stage")
             output = os.path.join(root, "out")
             os.makedirs(stage)
-            open(os.path.join(stage, "sidecar.txt"), "wb").write(b"unexpected")
+            Path(os.path.join(stage, "sidecar.txt")).write_bytes(b"unexpected")
             with self.assertRaisesRegex(OSError, "unexpected staged separation output"):
                 _promote(
                     stage,
@@ -446,8 +447,8 @@ class PromotionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             members = os.path.join(stage, "Saved_Outputs")
             os.makedirs(members)
-            open(os.path.join(stage, "song Ensemble (Vocals).wav"), "wb").write(b"final")
-            open(os.path.join(members, "song Model A (Vocals).wav"), "wb").write(b"member")
+            Path(os.path.join(stage, "song Ensemble (Vocals).wav")).write_bytes(b"final")
+            Path(os.path.join(members, "song Model A (Vocals).wav")).write_bytes(b"member")
 
             promoted = _promote(
                 stage,
@@ -471,10 +472,10 @@ class PromotionTests(unittest.TestCase):
             os.makedirs(old_members)
             final_name = "song Ensemble (Vocals).wav"
             member_name = "song Model A (Vocals).wav"
-            open(os.path.join(stage, final_name), "wb").write(b"new-final")
-            open(os.path.join(members, member_name), "wb").write(b"new-member")
-            open(os.path.join(output, final_name), "wb").write(b"old-final")
-            open(os.path.join(old_members, member_name), "wb").write(b"old-member")
+            Path(os.path.join(stage, final_name)).write_bytes(b"new-final")
+            Path(os.path.join(members, member_name)).write_bytes(b"new-member")
+            Path(os.path.join(output, final_name)).write_bytes(b"old-final")
+            Path(os.path.join(old_members, member_name)).write_bytes(b"old-member")
 
             promoted = _promote(
                 stage,
@@ -494,8 +495,8 @@ class PromotionTests(unittest.TestCase):
             stage = os.path.join(root, "stage")
             output = os.path.join(root, "out")
             os.makedirs(stage)
-            open(os.path.join(stage, "2-song Ensemble (Vocals).wav"), "wb").write(b"final")
-            open(os.path.join(stage, "2-song Model A (Vocals).wav"), "wb").write(b"member")
+            Path(os.path.join(stage, "2-song Ensemble (Vocals).wav")).write_bytes(b"final")
+            Path(os.path.join(stage, "2-song Model A (Vocals).wav")).write_bytes(b"member")
 
             promoted = _promote(
                 stage,
@@ -515,10 +516,10 @@ class PromotionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             os.makedirs(stage)
             os.makedirs(output)
-            open(os.path.join(output, "song (Vocals).wav"), "wb").write(b"old")
-            open(os.path.join(output, "sidecar.txt"), "wb").write(b"busy")
-            open(os.path.join(stage, "song (Vocals).wav"), "wb").write(b"new-v")
-            open(os.path.join(stage, "sidecar.txt"), "wb").write(b"new-s")
+            Path(os.path.join(output, "song (Vocals).wav")).write_bytes(b"old")
+            Path(os.path.join(output, "sidecar.txt")).write_bytes(b"busy")
+            Path(os.path.join(stage, "song (Vocals).wav")).write_bytes(b"new-v")
+            Path(os.path.join(stage, "sidecar.txt")).write_bytes(b"new-s")
             destinations = [os.path.join(output, "song (Vocals).wav")]
 
             promoted = _promote(

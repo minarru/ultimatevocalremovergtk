@@ -72,8 +72,11 @@ def _fetch_url_to_file(url: str, dest: str) -> bool:
         with _urlopen(url) as response:
             data = response.read()
     except urllib.error.HTTPError as exc:
-        debug("download", f"mdx_c_config http {exc.code} url={url}")
-        return False
+        try:
+            debug("download", f"mdx_c_config http {exc.code} url={url}")
+            return False
+        finally:
+            exc.close()
     except Exception as exc:
         debug("download", f"mdx_c_config error url={url} err={type(exc).__name__}: {exc}")
         return False

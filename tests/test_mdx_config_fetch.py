@@ -98,12 +98,18 @@ class EnsureMdxCConfigTests(unittest.TestCase):
             self.assertEqual(fh.read(), body)
 
     def test_all_sources_fail(self) -> None:
+        errors: list[HTTPError] = []
+
         def fake_urlopen(url: str):
-            raise HTTPError(url, 404, "not found", cast(Any, None), None)
+            error = HTTPError(url, 404, "not found", cast(Any, None), None)
+            errors.append(error)
+            raise error
 
         with patch("core.mdx_config_fetch._urlopen", side_effect=fake_urlopen):
             self.assertFalse(ensure_mdx_c_config("missing_everywhere.yaml"))
 
+        self.assertTrue(errors)
+        self.assertTrue(all(error.closed for error in errors))
         self.assertFalse(os.path.isfile(os.path.join(self._config_dir, "missing_everywhere.yaml")))
 
 

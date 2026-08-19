@@ -378,6 +378,8 @@ def export_source_map(
     sep: Any,
     sources: Mapping[str, Any],
     samplerate: int,
+    *,
+    extra_sources: Mapping[str, Any] | None = None,
 ) -> None:
     """Write each ``run_export_routes`` stem from an in-memory map.
 
@@ -386,10 +388,11 @@ def export_source_map(
     skipped so unused stems are not computed here. ``write_audio`` remains
     the only disk/buffer path.
     """
+    extra_sources = extra_sources or {}
     routes = run_export_routes(sep)
-    if not routes:
+    if not routes and not extra_sources:
         return
-    sep.begin_save_phase(len(routes))
+    sep.begin_save_phase(len(routes) + len(extra_sources))
     for route in routes:
         lookup: Any = route.native if route.native is not None else route.label
         key = resolve_in_sources(sources, lookup)
@@ -402,6 +405,12 @@ def export_source_map(
         )
         path = sep.stem_export_wav_path(stem_name)
         sep.write_audio(path, sources[key], samplerate, stem_name=stem_name)
+
+    for stem_name, stem_source in extra_sources.items():
+        if stem_source is None:
+            continue
+        path = sep.stem_export_wav_path(stem_name)
+        sep.write_audio(path, stem_source, samplerate, stem_name=stem_name)
 
 
 __all__ = ["write_audio", "export_source_map"]

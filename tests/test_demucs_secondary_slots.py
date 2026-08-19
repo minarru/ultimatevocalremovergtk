@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unittest
-from typing import Any
+from typing import Any, cast
 
 from bundled.constants import (
     BASS_STEM,
@@ -20,6 +20,9 @@ class _Model:
 
     def __init__(self, name: str) -> None:
         self.name = name
+        # Default to a 4-stem Demucs-like identity so the Demucs inversion's
+        # 2-source special-case has a predictable false branch.
+        self.demucs_stem_count = 4
 
     def __repr__(self) -> str:  # pragma: no cover - failure output only
         return f"<{self.name}>"
@@ -100,6 +103,7 @@ class _StubSeperateDemucs:
         import numpy as np
 
         from bundled.constants import ALL_STEMS
+        from core.stems import StemId, StemRoute, StemRouteKind
 
         self.model_basename = "demucs-test"
         self.primary_model_name = "demucs-test"
@@ -116,12 +120,66 @@ class _StubSeperateDemucs:
         self.is_prevent_export_clipping = False
         self.is_secondary_model_activated = True
         self.is_secondary_model = False
+        self.is_pre_proc_model = False
         self.is_sec_bv_rebalance = True
         self.secondary_model_4_stem = secondary_models
         self.secondary_model_4_stem_scale = secondary_scales
         self.demucs_source_map = {}
+        # For inversion, the real implementation exports through
+        # ``export_source_map``, which depends on export routes.
+        # Seed a minimal native + derived inventory so export doesn't become
+        # a no-op.
+        self.available_stem_routes = (
+            StemRoute(
+                native=StemId("drums"),
+                concept="Drums",
+                label="Drums",
+                filename_tag="Drums",
+                kind=StemRouteKind.NATIVE,
+            ),
+            StemRoute(
+                native=StemId("bass"),
+                concept="Bass",
+                label="Bass",
+                filename_tag="Bass",
+                kind=StemRouteKind.NATIVE,
+            ),
+            StemRoute(
+                native=StemId("other"),
+                concept="Other",
+                label="Other",
+                filename_tag="Other",
+                kind=StemRouteKind.NATIVE,
+            ),
+            StemRoute(
+                native=StemId("vocals"),
+                concept="Vocals",
+                label="Vocals",
+                filename_tag="Vocals",
+                kind=StemRouteKind.NATIVE,
+            ),
+            # Derived complement needed by pair gathering / demucs pre-proc.
+            StemRoute(
+                native=None,
+                concept="Instrumental",
+                label="Instrumental",
+                filename_tag="Instrumental",
+                kind=StemRouteKind.DERIVED,
+            ),
+        )
+        self.selected_stem_routes = self.available_stem_routes
         self.process_data = type("PD", (), {"is_ensemble_master": False})()
         self.blend_calls: list[tuple[str, object, object]] = []
+        # In the legacy writer loop, ``stem_export_wav_path`` was called before
+        # ``process_secondary_stem`` so tests inferred which stem was blended
+        # from a side effect. The inversion moves export later, so record stem
+        # identity from the constant-valued stub audio instead.
+        self._stem_by_constant = {
+            1.0: BASS_STEM,
+            2.0: DRUM_STEM,
+            3.0: OTHER_STEM,
+            4.0: VOCAL_STEM,
+        }
         self._current_stem = ""
 
     # -- stubbed boundaries -------------------------------------------------
@@ -144,8 +202,13 @@ class _StubSeperateDemucs:
         secondary_model_source: Any = None,
         model_scale: Any = None,
     ) -> Any:
+        import numpy as np
+
+        # Both (2, N) and (N, 2) stub arrays start with the stem's constant.
+        first = float(np.asarray(stem_source).reshape(-1)[0])
+        stem_name = self._stem_by_constant.get(first, self._current_stem)
         self.blend_calls.append(
-            (self._current_stem, secondary_model_source, model_scale)
+            (stem_name, secondary_model_source, model_scale)
         )
         return stem_source
 
@@ -222,6 +285,49 @@ class Demucs4StemExportLoopTests(unittest.TestCase):
         self.assertEqual(
             [(src, scale) for _stem, src, scale in calls], [(None, None)] * 4
         )
+
+    def test_two_source_secondary_model_dict_uses_vocals_slot(self) -> None:
+        """Regression target: a 2-source demix should use its Vocals output.
+
+        The legacy ndarray path always selected index 1 (vocals) regardless
+        of which 4-stem slot was being blended. The inversion needs the same
+        behavior when the nested secondary returns a dict.
+        """
+
+        class _TwoSourceDemucs:
+            demucs_stem_count = 2
+
+        bass_2s = _TwoSourceDemucs()
+
+        from unittest import mock
+
+        from engines.demucs_engine import SeperateDemucs
+
+        stub = _StubSeperateDemucs([bass_2s, None, None, None], [0.5, None, None, None])
+
+        with mock.patch(
+            "engines.demucs_engine.process_secondary_model",
+            return_value={"Vocals": "sec-vocals", "Instrumental": "sec-instrumental"},
+        ):
+            # type: ignore[arg-type]
+            SeperateDemucs.seperate(stub)  # type: ignore[arg-type]
+
+        by_stem = {stem: (src, scale) for stem, src, scale in stub.blend_calls}
+        self.assertEqual(by_stem[BASS_STEM], ("sec-vocals", 0.5))
+
+    def test_secondary_return_contains_derived_instrumental(self) -> None:
+        """A nested 4-stem Demucs secondary should return a dict with Instrumental."""
+        from engines.demucs_engine import SeperateDemucs
+
+        stub = _StubSeperateDemucs([None, None, None, None], [None, None, None, None])
+        stub.is_secondary_model = True
+        stub.is_sec_bv_rebalance = True  # avoid vocal-split side effects
+
+        # type: ignore[arg-type]
+        result = SeperateDemucs.seperate(stub)  # type: ignore[arg-type]
+        self.assertIsInstance(result, dict)
+        result_dict = cast(dict[str, Any], result)
+        self.assertIn("Instrumental", result_dict)
 
 
 if __name__ == "__main__":
