@@ -14,12 +14,12 @@ _WRITER = _REPO / "engines" / "stem_writer.py"
 _BASE = _REPO / "engines" / "base.py"
 _SEPARATOR_RUN = _REPO / "core" / "separator_run.py"
 _ORCHESTRATION = _REPO / "engines" / "orchestration.py"
-_MDXC = _REPO / "engines" / "mdx_c.py"
+_MDX_C_ENGINE = _REPO / "engines" / "mdx_c_engine.py"
 _DEMUCS = _REPO / "engines" / "demucs_engine.py"
 _INVERTED_ENGINES = (
     _REPO / "engines" / "vr.py",
     _REPO / "engines" / "mdx.py",
-    _MDXC,
+    _MDX_C_ENGINE,
     _DEMUCS,
 )
 

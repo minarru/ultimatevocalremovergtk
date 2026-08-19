@@ -25,7 +25,8 @@ from core.model_stem_semantics import (
 )
 from core.stems import StemBucket, bucket_for_model_stem
 from engines.base import SeperateAttributes
-from engines.mdx_c import SeperateMDXC, mdx_vocal_split_chain_sources
+from engines.mdx_c import mdx_vocal_split_chain_sources
+from engines.mdx_c_engine import SeperateMDXC
 from engines.orchestration import process_chain_model
 
 
@@ -407,9 +408,9 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
         from engines.stem_writer import ExportPlan
 
         with (
-            patch("engines.mdx_c.prepare_mix", return_value=np.ones((2, 441), dtype=np.float32)),
+            patch("engines.mdx_c_engine.prepare_mix", return_value=np.ones((2, 441), dtype=np.float32)),
             patch(
-                "engines.mdx_c.librosa.resample",
+                "engines.mdx_c_engine.librosa.resample",
                 side_effect=lambda audio, *, orig_sr, target_sr, axis: np.ones(
                     (2, 480 if target_sr == 48000 else 441), dtype=np.float32
                 ),

@@ -10,12 +10,12 @@ import numpy as np
 from bundled.constants import ALL_STEMS, INST_STEM, VOCAL_STEM
 from core.stems import StemBucket, StemId, StemRoute, StemRouteKind
 from engines.mdx_c import (
-    SeperateMDXC,
     derive_mdx_complement,
     derive_mdx_multi_complement,
     mdx_export_routing_flags,
     mdx_selected_stems,
 )
+from engines.mdx_c_engine import SeperateMDXC
 
 
 def _native(name: str, concept: str | None = None) -> StemRoute:

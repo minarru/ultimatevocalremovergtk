@@ -52,6 +52,7 @@ and `.venv/bin/python -m basedpyright` on touched files.
 | Add source-map export post-pass | [`export_source_map`](../../../engines/stem_writer.py) | #56 |
 | Invert VR and classic MDX export flow | [`vr.py`](../../../engines/vr.py), [`mdx.py`](../../../engines/mdx.py) | #57 |
 | Job-level export lift | [`ExportPlan`](../../../engines/stem_writer.py), [`finish_export`](../../../engines/stem_writer.py) | this series |
+| Split `SeperateMDXC` into engine module | [`mdx_c_engine.py`](../../../engines/mdx_c_engine.py) | this series |
 
 ---
 
@@ -79,7 +80,6 @@ touching them.
   store a choice” cycle.
 - **Multi-focus `select_stem_routes`.** One `stem_focus` string. Subset is
   `mdx.stems_selected` natives, not a comma list in `stem_focus`.
-- **Split `SeperateMDXC.seperate` / `demix_roformer`** into a third file.
 - **4-stem ensemble positional `--stems primary`.** Skip. Use concept names
   (`--stems vocals`) for 4-stem finals.
 - **Putting canonical ids in export filenames.**
