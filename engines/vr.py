@@ -22,7 +22,7 @@ from onnx2pytorch import ConvertModel
 from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
-from core.stems import exports_named_stem, run_export_routes
+from core.stems import exports_named_stem
 from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
@@ -113,31 +113,32 @@ class SeperateVR(SeperateAttributes):
         if self.is_secondary_model_activated and self.secondary_model:
             self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, self.process_data, main_process_method=self.process_method, main_model_primary=self.primary_stem)
 
-        self.begin_save_phase(len(run_export_routes(self)) or 1)
+        sources: dict[str, Any] = {}
         if exports_named_stem(self, self.primary_stem):
-            primary_stem_path = self.stem_export_wav_path(self.primary_stem)
             if not isinstance(self.primary_source, np.ndarray):
                 self.primary_source = self.spec_to_wav(y_spec).T
                 if not self.model_samplerate == 44100:
                     self.primary_source = librosa.resample(self.primary_source.T, orig_sr=self.model_samplerate, target_sr=44100).T
-                
-            self.primary_source_map = self.final_process(primary_stem_path, self.primary_source, self.secondary_source_primary, self.primary_stem, 44100)  
+            sources[self.primary_stem] = self.process_secondary_stem(
+                self.primary_source, self.secondary_source_primary
+            )
 
         if exports_named_stem(self, self.secondary_stem):
-            secondary_stem_path = self.stem_export_wav_path(self.secondary_stem)
             if not isinstance(self.secondary_source, np.ndarray):
                 self.secondary_source = self.spec_to_wav(v_spec).T
                 if not self.model_samplerate == 44100:
                     self.secondary_source = librosa.resample(self.secondary_source.T, orig_sr=self.model_samplerate, target_sr=44100).T
-            
-            self.secondary_source_map = self.final_process(secondary_stem_path, self.secondary_source, self.secondary_source_secondary, self.secondary_stem, 44100)
-            
-        secondary_sources = {**self.primary_source_map, **self.secondary_source_map}
-        
-        self.process_vocal_split_chain(secondary_sources)
+            sources[self.secondary_stem] = self.process_secondary_stem(
+                self.secondary_source, self.secondary_source_secondary
+            )
+
+        from engines.stem_writer import export_source_map
+
+        export_source_map(self, sources, 44100)
+        self.process_vocal_split_chain(sources)
         
         if self.is_secondary_model:
-            return secondary_sources
+            return sources
             
     def loading_mix(self):
 
