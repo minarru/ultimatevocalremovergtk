@@ -13,10 +13,9 @@ vocal-splitter / Demucs pre-process machinery. Audio tools live in
 import typing
 
 import os
-import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any, List, Optional, Sequence
 
 from bundled.constants import (
     DEMUCS_ARCH_TYPE,
@@ -46,9 +45,9 @@ from .process_data import ProcessData
 from .sample_mode import prepare_input_paths
 from .settings import Settings
 from .stems import coerce_ensemble_pair, exclusive_flags_for_pair
-from .run_control import check_stopped
 from .run_estimate import combine_progress_local_step, count_inference_passes_from_models
-from .debug_log import debug, debug_elapsed, next_seq, preview_text, set_correlation_seq, verbose
+from .debug_log import debug, debug_elapsed
+from . import job_callbacks
 from .model_display import display_name_for_model
 from .run_loop import (
     FileState,
@@ -61,11 +60,6 @@ from .types import ProcessMethod
 from .inference_cleanup import (
     clear_source_mapper,
     release_inference_memory as _release_inference_resources,
-)
-from .oom_choice import (
-    OOM_CHOICE_AUTO,
-    OOM_CHOICE_STOP,
-    OomChoiceRequest,
 )
 from .separator_run import apply_segment_override
 
@@ -122,119 +116,6 @@ class InputOutcome:
     error: str | None = None
     elapsed_s: float = 0.0
     stopped: bool = False
-
-
-@dataclass
-class JobCallbacks:
-    """Callbacks invoked from the worker thread.
-
-    ``on_progress`` receives a float in ``[0.0, 1.0]`` plus optional keyword
-    metadata (``local_step``, ``pass_index``, ``pass_total``, ``detail``,
-    ``combine_index``, ``combine_total``). ``on_console`` receives text chunks;
-    ``on_complete`` fires once on success; ``on_error`` receives the raised
-    exception. ``on_oom_choice`` receives an :class:`OomChoiceRequest` on the
-    main loop; the worker blocks until ``request.respond`` is called. The GTK
-    layer marshals each of these onto the main loop.
-    """
-
-    on_progress: Optional[Callable[..., None]] = None
-    on_console: Optional[Callable[[str], None]] = None
-    on_complete: Optional[Callable[[], None]] = None
-    on_stopped: Optional[Callable[[], None]] = None
-    on_error: Optional[Callable[[BaseException], None]] = None
-    on_oom_choice: Optional[Callable[[OomChoiceRequest], None]] = None
-    on_input_start: Optional[Callable[[tuple[str, ...]], None]] = None
-    on_input_finished: Optional[
-        Callable[[tuple[str, ...], tuple[str, ...], BaseException | None], None]
-    ] = None
-
-    def progress(
-        self,
-        fraction: float,
-        *,
-        local_step: Optional[float] = None,
-        pass_index: Optional[int] = None,
-        pass_total: Optional[int] = None,
-        detail: Optional[str] = None,
-        combine_index: Optional[int] = None,
-        combine_total: Optional[int] = None,
-    ) -> None:
-        if not self.on_progress:
-            return
-        clamped = max(0.0, min(1.0, fraction))
-        self.on_progress(
-            clamped,
-            local_step=local_step,
-            pass_index=pass_index,
-            pass_total=pass_total,
-            detail=detail,
-            combine_index=combine_index,
-            combine_total=combine_total,
-        )
-
-    def input_started(self, paths: typing.Sequence[str]) -> None:
-        if self.on_input_start:
-            self.on_input_start(tuple(paths))
-
-    def input_finished(
-        self, paths: typing.Sequence[str], generated: typing.Sequence[str] = (),
-        error: BaseException | None = None,
-    ) -> None:
-        if self.on_input_finished:
-            self.on_input_finished(tuple(paths), tuple(generated), error)
-
-    def console(self, text: str) -> None:
-        seq = next_seq()
-        set_correlation_seq(seq)
-        if verbose():
-            debug("worker", f"console emit {preview_text(text)!r}", seq=seq)
-        if self.on_console:
-            self.on_console(text)
-
-    def complete(self) -> None:
-        debug("worker", "complete")
-        if self.on_complete:
-            self.on_complete()
-
-    def stopped(self) -> None:
-        debug("worker", "stopped")
-        if self.on_stopped:
-            self.on_stopped()
-
-    def error(self, exc: BaseException) -> None:
-        debug("worker", f"error {type(exc).__name__}: {exc}")
-        if self.on_error:
-            self.on_error(exc)
-
-    def request_oom_choice(
-        self,
-        request: OomChoiceRequest,
-        runner: "JobRunner",
-    ) -> str:
-        """Ask the UI for an OOM recovery choice, or return ``auto`` if unbound."""
-        if not self.on_oom_choice:
-            return OOM_CHOICE_AUTO
-
-        done = threading.Event()
-        box: dict[str, str] = {"choice": OOM_CHOICE_STOP}
-
-        def reply(choice: str) -> None:
-            box["choice"] = str(choice or OOM_CHOICE_STOP)
-            done.set()
-
-        request.reply = reply
-        debug(
-            "worker",
-            "oom choice requested "
-            f"kind={request.process_kind!r} export={request.can_export} "
-            f"retry={request.can_retry}",
-        )
-        self.on_oom_choice(request)
-        while not done.wait(timeout=0.05):
-            check_stopped(runner)
-        choice = box["choice"]
-        debug("worker", f"oom choice={choice!r}")
-        return choice
 
 
 class _SingleRunHooks:
@@ -533,7 +414,7 @@ class JobRunner:
     def start(
         self,
         input_paths: Sequence[str],
-        callbacks: JobCallbacks,
+        callbacks: job_callbacks.JobCallbacks,
         *,
         models: Sequence[Any] | None = None,
         planned: Sequence[Any] | None = None,
@@ -578,7 +459,7 @@ class JobRunner:
     def start_ensemble(
         self,
         input_paths: Sequence[str],
-        callbacks: JobCallbacks,
+        callbacks: job_callbacks.JobCallbacks,
         *,
         models: Sequence[Any] | None = None,
         planned: Sequence[Any] | None = None,
@@ -604,7 +485,7 @@ class JobRunner:
     def start_resolved(
         self,
         job: "ResolvedJob",
-        callbacks: JobCallbacks,
+        callbacks: job_callbacks.JobCallbacks,
         *,
         models: Sequence[Any] | None = None,
         fail_fast: bool = True,
@@ -634,7 +515,7 @@ class JobRunner:
     def _run_resolved(
         self,
         job: "ResolvedJob",
-        callbacks: JobCallbacks,
+        callbacks: job_callbacks.JobCallbacks,
         models: Sequence[Any] | None,
         fail_fast: bool,
         export_paths: Sequence[str] | None,
@@ -681,7 +562,7 @@ class JobRunner:
     def _run_one_planned(
         self,
         planned: "PlannedInput",
-        callbacks: JobCallbacks,
+        callbacks: job_callbacks.JobCallbacks,
     ) -> InputOutcome:
         """Run a single planned input using the existing ``_run`` / ``_run_ensemble`` body."""
         started = time.perf_counter()
@@ -701,7 +582,7 @@ class JobRunner:
             box["error"] = str(exc)
             box["outputs"] = ()
 
-        item_callbacks = JobCallbacks(
+        item_callbacks = job_callbacks.JobCallbacks(
             on_progress=callbacks.on_progress,
             on_console=callbacks.on_console,
             on_complete=None,
@@ -796,7 +677,7 @@ class JobRunner:
         )
 
     def _prepare_paths_for_run(
-        self, input_paths: List[str], callbacks: JobCallbacks
+        self, input_paths: List[str], callbacks: job_callbacks.JobCallbacks
     ) -> List[str]:
         """Build sample clips on the worker thread and report any fallbacks."""
         if self.settings.process.sample_mode:
@@ -963,7 +844,7 @@ class JobRunner:
 
     def _ensure_vram_for_job(
         self,
-        callbacks: JobCallbacks,
+        callbacks: job_callbacks.JobCallbacks,
         device: Any = None,
         *,
         prefer_gpu_identity: Any = None,
@@ -1012,7 +893,7 @@ class JobRunner:
             f"engine for '{current_model.process_method}' not available"
         )
 
-    def _run(self, input_paths: List[str], callbacks: JobCallbacks) -> None:
+    def _run(self, input_paths: List[str], callbacks: job_callbacks.JobCallbacks) -> None:
         debug("worker", "_run entered")
         import_started = time.perf_counter()
         engines = import_separate_engines()
@@ -1051,7 +932,7 @@ class JobRunner:
 
         with_worker_lifecycle(self, callbacks, "_run", body)
 
-    def _run_ensemble(self, input_paths: List[str], callbacks: JobCallbacks) -> None:
+    def _run_ensemble(self, input_paths: List[str], callbacks: job_callbacks.JobCallbacks) -> None:
         """Run every selected ensemble member then combine their outputs.
 
         Tk-free port of ``process_start``'s ``ENSEMBLE_MODE`` branch: each member

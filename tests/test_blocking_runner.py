@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from core.blocking_runner import RunResult, run_blocking
-from core.job_runner import JobCallbacks
+from core.job_callbacks import JobCallbacks
 
 
 class FakeRunner:

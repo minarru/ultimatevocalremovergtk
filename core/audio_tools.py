@@ -41,7 +41,7 @@ from bundled.constants import (
 from .audio_io import resolve_wav_type_set, save_format
 from .error_context import snapshot_worker_file
 from .export_naming import sanitize_filename_component
-from .job_runner import JobCallbacks
+from .job_callbacks import JobCallbacks
 from .run_control import ProcessStopped, check_stopped, pausable_callback
 from .inference_cleanup import release_inference_memory as _release_inference_resources
 from .settings import Settings

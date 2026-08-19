@@ -16,7 +16,7 @@ from typing import Any, Callable, Sequence, cast
 from core.blocking_runner import RunResult, run_blocking
 from core.export_naming import format_track_base
 from core.job_plan import ResolvedJob as CoreResolvedJob
-from core.job_runner import JobCallbacks
+from core.job_callbacks import JobCallbacks
 
 from .job import ResolvedJob
 from .reporting import emit_event, ensure_job_id, finish_progress, make_progress_printer
