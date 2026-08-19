@@ -197,6 +197,21 @@ class StemsModuleBoundaryTests(unittest.TestCase):
         )
         self.assertNotIn("model_stem_semantics", source)
 
+    def test_semantics_does_not_reexport_stem_labels(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "core"
+            / "model_stem_semantics.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("def export_stem_label", source)
+        self.assertNotIn("def resolve_stem_dict_key", source)
+
+    def test_semantics_module_has_no_stem_label_helpers(self) -> None:
+        import core.model_stem_semantics as semantics
+
+        self.assertFalse(hasattr(semantics, "export_stem_label"))
+        self.assertFalse(hasattr(semantics, "resolve_stem_dict_key"))
+
 
 def _route(name: str, concept: str) -> StemRoute:
     return StemRoute(

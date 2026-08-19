@@ -552,16 +552,6 @@ def export_intent_from_model(model: typing.Any) -> str:
     )
 
 
-def export_stem_label(model: typing.Any, stem: str, *, for_ensemble: bool = False) -> str:
-    """Map a logic stem to the filename/UI export label.
-
-    Delegates to :func:`core.stems.export_stem_label`.
-    """
-    from core.stems import export_stem_label as _export_stem_label
-
-    return _export_stem_label(model, stem, for_ensemble=for_ensemble)
-
-
 def stem_display_overrides(model: typing.Any) -> Optional[Dict[str, str]]:
     """Return per-stem display-label overrides for Save stems UI."""
     if model is None:
@@ -766,15 +756,6 @@ def normalize_stem_label(stem: str) -> str:
     if low == "other":
         return "Other"
     return stem
-
-
-def resolve_stem_dict_key(
-    sources: Optional[Mapping[str, typing.Any]], stem: str
-) -> Optional[str]:
-    """Return the key in ``sources`` that matches ``stem``, ignoring case/aliases."""
-    from core.stems import resolve_in_sources
-
-    return resolve_in_sources(sources, stem)
 
 
 # Compatibility aliases equal to :class:`core.stems.StemBucket` ``.value``.

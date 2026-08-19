@@ -80,10 +80,10 @@ def _mdx_c_primary_for_select(instruments: list, stem_select: Any) -> Any:
     if stem_select and stem_select != ALL_STEMS:
         if stem_select in instruments:
             return stem_select
-        from .model_stem_semantics import resolve_stem_dict_key
+        from .stems import resolve_in_sources
 
         # Treat instruments as a key set so Title Case UI picks match yaml case.
-        matched = resolve_stem_dict_key({str(s): s for s in instruments}, str(stem_select))
+        matched = resolve_in_sources({str(s): s for s in instruments}, str(stem_select))
         if matched is not None:
             return matched
     for stem in instruments:
@@ -105,9 +105,9 @@ def _mdx_c_secondary_for_pair(instruments: list, primary: Any, mapped: Any) -> A
     if not instruments or not str(mapped).startswith(NO_STEM):
         return mapped
 
-    from .model_stem_semantics import resolve_stem_dict_key
+    from .stems import resolve_in_sources
 
-    if resolve_stem_dict_key({str(s): s for s in instruments}, str(mapped)) is not None:
+    if resolve_in_sources({str(s): s for s in instruments}, str(mapped)) is not None:
         return mapped
     others = [stem for stem in instruments if str(stem) != str(primary)]
     return others[0] if others else mapped

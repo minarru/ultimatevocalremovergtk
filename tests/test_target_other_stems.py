@@ -8,8 +8,7 @@ from bundled.constants import INST_STEM, VOCAL_STEM
 from core import Settings
 from core.model_config import ModelConfig
 from core.model_repository import ModelRepository
-from core.model_stem_semantics import export_stem_label
-from core.stems import EnsemblePair
+from core.stems import EnsemblePair, export_stem_label
 
 
 _TARGET_OTHER_TAGS = (
