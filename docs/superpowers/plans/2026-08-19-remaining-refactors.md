@@ -48,6 +48,7 @@ and `.venv/bin/python -m basedpyright` on touched files.
 | GTK checklist row keys (`family:basename` lists) | [`list_*_model_tags`](../../../core/model_repository.py) | #52 |
 | Relocate `ModelRepository` | [`core/model_repository.py`](../../../core/model_repository.py) | #53 |
 | Drop stem-label facades from semantics | [`core.stems.export_stem_label`](../../../core/stems.py), [`resolve_in_sources`](../../../core/stems.py) | #54 |
+| Drop leftover stem-identity facades | [`StemBucket`](../../../core/stems.py), [`bucket_for_model_stem`](../../../core/stems.py) | #55 |
 
 ---
 
@@ -55,16 +56,13 @@ and `.venv/bin/python -m basedpyright` on touched files.
 
 Suggested order. Skip an item rather than invent scope.
 
-### 1. Drop leftover stem-identity facades (this PR)
+### 1. Engine inversion (this series)
 
-Delete `BUCKET_*` / `ensemble_stem_bucket` / `model_stem_count` /
-`ensemble_pair_buckets` from
-[`model_stem_semantics.py`](../../../core/model_stem_semantics.py). Callers use
-[`StemBucket`](../../../core/stems.py), [`bucket_for_model_stem`](../../../core/stems.py),
-[`model_stem_count`](../../../core/stems.py), and
-[`EnsemblePair.buckets`](../../../core/stems.py). No re-export from the old home.
-Keep [`confident_stem_bucket`](../../../core/model_stem_semantics.py) (karaoke
-confidence gate).
+Spec: engines return stem arrays; [`write_audio`](../../../engines/stem_writer.py) stays the only writer as an **in-engine** post-pass (assemble dict, export, then vocal-split — preserve save-then-split order). Do not lift to [`run_separator_once`](../../../core/separator_run.py) until every engine has stopped calling `write_audio`. Do not fold [`_write_captured_stems`](../../../core/run_loop.py) by adding a third writer.
+
+**This PR:** [`export_source_map`](../../../engines/stem_writer.py) loops `run_export_routes` → path → `sep.write_audio`. No engine call sites yet. No re-export from [`engines/base.py`](../../../engines/base.py).
+
+Later PRs (do not stack): invert VR+MDX (`final_process` blend-only), then MDX-C, then Demucs, then optional job-level lift.
 
 ### 2. Optional later (do not start from this backlog)
 
@@ -77,8 +75,6 @@ touching them.
   store a choice” cycle.
 - **Multi-focus `select_stem_routes`.** One `stem_focus` string. Subset is
   `mdx.stems_selected` natives, not a comma list in `stem_focus`.
-- **Engine inversion** (return arrays only; `write_audio` as a post-pass).
-  `stem_writer` is already extracted; inverting all four engines is a rewrite.
 - **Split `SeperateMDXC.seperate` / `demix_roformer`** into a third file.
 - **4-stem ensemble positional `--stems primary`.** Skip. Use concept names
   (`--stems vocals`) for 4-stem finals.
@@ -93,5 +89,6 @@ touching them.
 
 ## Suggested next PR
 
-After this identity-facade drop lands: only **item 2** (optional later). Do not
-start it without a new spec.
+After this helper lands: invert VR + MDX so `final_process` blends only and
+those engines call `export_source_map`. Do not invert MDX-C/Demucs in the
+same PR.
