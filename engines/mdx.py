@@ -12,7 +12,7 @@ from onnx2pytorch import ConvertModel
 from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import trace_phase
-from core.stems import exports_named_stem, run_export_routes
+from core.stems import exports_named_stem
 from core.torch_checkpoint import load_torch_checkpoint
 from ml import spec_utils
 import ml.mdxnet as MdxnetSet
@@ -149,10 +149,9 @@ class SeperateMDX(SeperateAttributes):
 
         if self.is_secondary_model_activated and self.secondary_model:
             self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, self.process_data, main_process_method=self.process_method, main_model_primary=self.primary_stem)
-        
-        self.begin_save_phase(len(run_export_routes(self)) or 1)
+
+        sources: dict[str, Any] = {}
         if exports_named_stem(self, self.secondary_stem):
-            secondary_stem_path = self.stem_export_wav_path(self.secondary_stem)
             if not isinstance(self.secondary_source, np.ndarray):
                 # Match-mix demix only affects invert-spec; defaults use mix-source subtraction.
                 if self.is_invert_spec:
@@ -164,23 +163,24 @@ class SeperateMDX(SeperateAttributes):
                     self.secondary_source = spec_utils.invert_stem(raw_mix, source)
                 else:
                     self.secondary_source = mix.T - source.T
-            
-            self.secondary_source_map = self.final_process(secondary_stem_path, self.secondary_source, self.secondary_source_secondary, self.secondary_stem, samplerate)
-        
-        if exports_named_stem(self, self.primary_stem):
-            primary_stem_path = self.stem_export_wav_path(self.primary_stem)
+            sources[self.secondary_stem] = self.process_secondary_stem(
+                self.secondary_source, self.secondary_source_secondary
+            )
 
+        if exports_named_stem(self, self.primary_stem):
             if not isinstance(self.primary_source, np.ndarray):
                 self.primary_source = source.T
-                
-            self.primary_source_map = self.final_process(primary_stem_path, self.primary_source, self.secondary_source_primary, self.primary_stem, samplerate)
-        
-        secondary_sources = {**self.primary_source_map, **self.secondary_source_map}
-        
-        self.process_vocal_split_chain(secondary_sources)
+            sources[self.primary_stem] = self.process_secondary_stem(
+                self.primary_source, self.secondary_source_primary
+            )
+
+        from engines.stem_writer import export_source_map
+
+        export_source_map(self, sources, samplerate)
+        self.process_vocal_split_chain(sources)
 
         if self.is_secondary_model or self.is_pre_proc_model:
-            return secondary_sources
+            return sources
 
     def initialize_model_settings(self):
         self.n_bins = self.n_fft//2+1

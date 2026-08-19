@@ -11,6 +11,11 @@ from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[1]
 _WRITER = _REPO / "engines" / "stem_writer.py"
+_BASE = _REPO / "engines" / "base.py"
+_INVERTED_ENGINES = (
+    _REPO / "engines" / "vr.py",
+    _REPO / "engines" / "mdx.py",
+)
 
 
 class StemWriterModuleBoundaryTests(unittest.TestCase):
@@ -66,6 +71,37 @@ print(callable(getattr(mod, "export_source_map", None)))
         self.assertEqual(lines[0], "False")
         self.assertEqual(lines[1], "True")
         self.assertEqual(lines[2], "True")
+
+
+class EngineInversionBoundaryTests(unittest.TestCase):
+    def test_vr_and_mdx_do_not_call_legacy_writer_path(self) -> None:
+        for path in _INVERTED_ENGINES:
+            with self.subTest(engine=path.name):
+                source = path.read_text(encoding="utf-8")
+                self.assertNotIn("self.write_audio(", source)
+                self.assertNotIn("self.final_process(", source)
+
+    def test_vr_and_mdx_use_source_map_post_pass(self) -> None:
+        for path in _INVERTED_ENGINES:
+            with self.subTest(engine=path.name):
+                source = path.read_text(encoding="utf-8")
+                self.assertIn("self.process_secondary_stem(", source)
+                self.assertIn("export_source_map(self, sources,", source)
+
+    def test_final_process_remains_a_writer_for_other_engines(self) -> None:
+        source = _BASE.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        final_process = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "final_process"
+        )
+        self.assertIn("self.write_audio(", ast.unparse(final_process))
+
+    def test_base_does_not_own_export_source_map(self) -> None:
+        source = _BASE.read_text(encoding="utf-8")
+        self.assertNotIn("export_source_map", source)
 
 
 class _FakeSep:
