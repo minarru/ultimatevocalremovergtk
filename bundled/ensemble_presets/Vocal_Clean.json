@@ -3,7 +3,7 @@
     "ensemble_main_stem": "vocals_instrumental",
     "ensemble_type": "Min Spec/Min Spec",
     "selected_models": [
-        "MDX-Net: BandSplit Roformer | Revive v2 by Unwa",
-        "MDX-Net: MelBand Roformer Kim | FT v2 Bleedless by Unwa"
+        "mdx:bs_roformer_revive_v2_by_unwa",
+        "mdx:mel_band_roformer_kim_ft2_bleedless_unwa"
     ]
 }

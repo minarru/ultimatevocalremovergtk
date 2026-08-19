@@ -12,9 +12,9 @@ from core.stems import EnsemblePair
 
 
 _TARGET_OTHER_TAGS = (
-    "MDX-Net: BandSplit Roformer — Resurrection Instrumental · Unwa",
-    "MDX-Net: MelBand Roformer — Instrumental v2 · Unwa",
-    "MDX-Net: MelBand Roformer — Kim Inst v1e Plus · Unwa",
+    "mdx:model_BandSplit-Roformer_Resurrection_Instrumental_by-Unwa",
+    "mdx:mbr_inst2_unwa",
+    "mdx:melband_roformer_inst_v1e_plus",
 )
 
 

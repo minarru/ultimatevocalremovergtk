@@ -256,16 +256,10 @@ class ModelRepository:
     # -- Model tags / stem filtering (ported from UVR's model menus) -----------
 
     def list_vr_model_tags(self) -> List[str]:
-        names = sorted(
-            map_basenames_to_display(self.list_vr_models(), VR_ARCH_TYPE, self)
-        )
-        return [f"{VR_ARCH_TYPE}{ENSEMBLE_PARTITION}{name}" for name in names]
+        return _canonical_model_tags("vr", self.list_vr_models(), VR_ARCH_TYPE, self)
 
     def list_mdx_model_tags(self) -> List[str]:
-        names = sorted(
-            map_basenames_to_display(self.list_mdx_models(), MDX_ARCH_TYPE, self)
-        )
-        return [f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}{name}" for name in names]
+        return _canonical_model_tags("mdx", self.list_mdx_models(), MDX_ARCH_TYPE, self)
 
     def mdx_catalogue_display_index(self, *, allow_network: bool = False) -> Dict[str, str]:
         from .model_display import load_mdx_catalog_display_index
@@ -283,10 +277,9 @@ class ModelRepository:
         return load_demucs_catalog_display_index(allow_network=allow_network)
 
     def list_demucs_model_tags(self) -> List[str]:
-        names = sorted(
-            map_basenames_to_display(self.list_demucs_models(), DEMUCS_ARCH_TYPE, self)
+        return _canonical_model_tags(
+            "demucs", self.list_demucs_models(), DEMUCS_ARCH_TYPE, self
         )
-        return [f"{DEMUCS_ARCH_TYPE}{ENSEMBLE_PARTITION}{name}" for name in names]
 
     def all_model_tags(self) -> List[str]:
         return self.list_vr_model_tags() + self.list_mdx_model_tags() + self.list_demucs_model_tags()
@@ -416,9 +409,9 @@ class ModelRepository:
         result: List[str] = []
         for model in stem_check:
             if is_4_stem_check and (model.demucs_stem_count == 4 or model.mdx_stem_count == 4):
-                result.append(model.model_and_process_tag)
+                result.append(_checklist_id(model))
             elif matches_stem(model) or (not is_no_demucs and demucs_match(model)):
-                result.append(model.model_and_process_tag)
+                result.append(_checklist_id(model))
         return result
 
     def karaoke_model_list(self, settings: Settings) -> List[str]:
@@ -430,7 +423,7 @@ class ModelRepository:
         for tag in tags:
             model = ModelConfig(settings, self, tag, is_dry_check=True)
             if model.model_status and (model.is_karaoke or model.is_bv_model):
-                model_list.append(model.model_and_process_tag)
+                model_list.append(_checklist_id(model))
         self._karaoke_cache = (tags, model_list)
         return list(model_list)
 
@@ -453,7 +446,7 @@ class ModelRepository:
         if pair is EnsemblePair.CHOOSE:
             return []
         if pair is EnsemblePair.MULTI_STEM:
-            return [model.model_and_process_tag for model in self.stem_check(settings)]
+            return [_checklist_id(model) for model in self.stem_check(settings)]
         if pair is EnsemblePair.FOUR_STEM:
             return self.model_list(
                 settings, PRIMARY_STEM, SECONDARY_STEM, is_4_stem_check=True
@@ -505,6 +498,31 @@ class ModelRepository:
         if model is None:
             return None, None
         return model.primary_stem, model.secondary_stem
+
+
+def _canonical_model_tags(
+    family: str, basenames: List[str], arch: str, repo: "ModelRepository"
+) -> List[str]:
+    """Installed basenames → ``family:basename``, sorted by display label."""
+    from .model_identity import ModelId
+
+    displays = map_basenames_to_display(basenames, arch, repo)
+    pairs = sorted(zip(displays, basenames), key=lambda item: str(item[0]).casefold())
+    return [str(ModelId(family, basename)) for _display, basename in pairs]
+
+
+def _checklist_id(model: Any) -> str:
+    """Canonical row key for a dry-check config (``family:basename``)."""
+    from .model_identity import FAMILY_BY_ARCH, ModelId
+
+    family = FAMILY_BY_ARCH.get(getattr(model, "process_method", None) or "")
+    basename = getattr(model, "model_basename", None)
+    if family and basename:
+        stem = os.path.splitext(str(basename))[0]
+        if stem and ":" not in stem:
+            return str(ModelId(family, stem))
+    tag = getattr(model, "model_and_process_tag", None)
+    return str(tag or "")
 
 
 def _list_models(directory: str, extensions: typing.Any) -> List[str]:

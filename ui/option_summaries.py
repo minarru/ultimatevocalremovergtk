@@ -20,9 +20,9 @@ from bundled.constants import (
     ALL_STEMS,
     DEMUCS_ARCH_TYPE,
     ENSEMBLE_MODE,
-    ENSEMBLE_PARTITION,
     NO_MODEL,
 )
+from core.model_display import parse_model_tag
 from core.stems import EnsemblePair, coerce_ensemble_pair, ui_label
 
 from .settings_bind import enum_value, get_flat
@@ -47,18 +47,16 @@ _SECONDARY_PAIRS: Tuple[Tuple[str, str], ...] = (
 
 
 def _model_label(tag: typing.Any) -> str:
-    """Strip the ``"<arch>: "`` prefix from a stored model tag.
+    """Return the display/basename half of a stored model reference.
 
-    Stored values come from ``ModelConfig.model_and_process_tag`` (e.g.
-    ``"MDX-Net: UVR-MDX-NET Inst HQ 3"``). Subtitles are tight on space and the
-    architecture is already implied by the tab, so only the model name is kept.
-    Returns ``""`` for an unset model, which callers treat as "not configured".
+    Accepts canonical ids (``mdx:basename``) and leftover ``Arch: Display``
+    tags. Subtitles are tight on space and the architecture is already implied
+    by the tab. Returns ``""`` for an unset model.
     """
     if not tag or tag == NO_MODEL:
         return ""
-    text = str(tag)
-    _, separator, name = text.partition(ENSEMBLE_PARTITION)
-    return name if separator else text
+    _arch, name = parse_model_tag(str(tag))
+    return name or str(tag)
 
 
 def four_stem_secondaries_apply(settings: typing.Any, process_method: str) -> bool:

@@ -50,7 +50,7 @@ class VocalSplitRowTests(unittest.TestCase):
 
         # Mutable so a test can install a model mid-session, the way a download
         # does, and count how often the (expensive) list is resolved.
-        self.karaoke_models = ["VR Arc: UVR-BVE-4B"]
+        self.karaoke_models = ["vr:UVR-BVE-4B"]
         self.karaoke_calls = 0
 
         def patched_karaoke(settings: typing.Any):
@@ -232,7 +232,7 @@ class VocalSplitRowTests(unittest.TestCase):
         row.set_expanded(True)
         self.assertNotIn("UVR-BVE-5B", " ".join(combo_values(row.splitter_row)))
 
-        self.karaoke_models.append("VR Arc: UVR-BVE-5B")
+        self.karaoke_models.append("vr:UVR-BVE-5B")
         row.refresh_models()
 
         self.assertIn("UVR-BVE-5B", " ".join(combo_values(row.splitter_row)))
@@ -246,7 +246,7 @@ class VocalSplitRowTests(unittest.TestCase):
         displayed = combo_values(row.splitter_row)
         row.splitter_row.set_selected(displayed.index("UVR-BVE-4B"))
 
-        self.karaoke_models.append("VR Arc: UVR-BVE-5B")
+        self.karaoke_models.append("vr:UVR-BVE-5B")
         row.refresh_models()
 
         self.assertEqual(get_combo_value(row.splitter_row), "vr:UVR-BVE-4B")
@@ -264,7 +264,7 @@ class VocalSplitRowTests(unittest.TestCase):
         self.assertFalse(row.get_expanded())
         calls_before = self.karaoke_calls
 
-        self.karaoke_models.append("VR Arc: UVR-BVE-5B")
+        self.karaoke_models.append("vr:UVR-BVE-5B")
         row.refresh_models()
 
         self.assertEqual(self.karaoke_calls, calls_before, "collapsed row must not resolve")
@@ -281,7 +281,7 @@ class VocalSplitRowTests(unittest.TestCase):
         row.splitter_row.set_selected(displayed.index("UVR-BVE-4B"))
 
         # The selected model is gone from the fresh list (deleted or renamed).
-        self.karaoke_models[:] = ["VR Arc: UVR-BVE-5B"]
+        self.karaoke_models[:] = ["vr:UVR-BVE-5B"]
         row.refresh_models()
 
         self.assertEqual(get_combo_value(row.splitter_row), "vr:UVR-BVE-4B")

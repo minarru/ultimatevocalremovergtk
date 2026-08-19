@@ -3,7 +3,7 @@
     "ensemble_main_stem": "vocals_instrumental",
     "ensemble_type": "Median Spec/Median Spec",
     "selected_models": [
-        "MDX-Net: BandSplit Roformer | Resurrection Instrumental by Unwa",
-        "MDX-Net: UVR-MDX-NET Inst HQ 5"
+        "mdx:model_BandSplit-Roformer_Resurrection_Instrumental_by-Unwa",
+        "mdx:UVR-MDX-NET-Inst_HQ_5"
     ]
 }

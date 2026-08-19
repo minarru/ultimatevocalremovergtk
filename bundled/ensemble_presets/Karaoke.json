@@ -3,8 +3,8 @@
     "ensemble_main_stem": "karaoke",
     "ensemble_type": "Average/Average",
     "selected_models": [
-        "MDX-Net: MelBand Roformer | Karaoke by Aufr33 & Viperx",
-        "MDX-Net: MelBand Roformer | Karaoke by Gabox",
-        "MDX-Net: MelBand Roformer | Karaoke by becruily"
+        "mdx:mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956",
+        "mdx:model_MelBand-Roformer_Karaoke_by-Gabox",
+        "mdx:melband_roformer_karaoke_becruily"
     ]
 }

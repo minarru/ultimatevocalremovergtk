@@ -8,7 +8,6 @@ import unittest
 from typing import Any
 from unittest import mock
 
-from bundled.constants import ENSEMBLE_PARTITION, MDX_ARCH_TYPE, VR_ARCH_TYPE
 from core.model_data import ModelConfig, ModelRepository
 from core.settings import Settings
 
@@ -25,8 +24,8 @@ class KaraokeModelCacheTests(unittest.TestCase):
 
     def test_second_call_reuses_cached_tags(self) -> None:
         tags = (
-            f"{VR_ARCH_TYPE}{ENSEMBLE_PARTITION}Fake VR",
-            f"{MDX_ARCH_TYPE}{ENSEMBLE_PARTITION}Fake MDX",
+            "vr:FakeVR",
+            "mdx:FakeMDX",
         )
         builds: list[str] = []
 
@@ -45,7 +44,7 @@ class KaraokeModelCacheTests(unittest.TestCase):
             builds.append(str(model_name))
             real_init(self, settings, repo, model_name, **kwargs)
             self.model_status = True
-            self.is_karaoke = str(model_name).endswith("Fake VR")
+            self.is_karaoke = str(model_name).endswith("FakeVR")
             self.is_bv_model = False
             self.model_and_process_tag = str(model_name)
 
@@ -59,7 +58,7 @@ class KaraokeModelCacheTests(unittest.TestCase):
         self.assertEqual(len(builds), 2, "warm hit must not construct ModelConfigs again")
 
     def test_invalidate_stem_check_clears_karaoke_cache(self) -> None:
-        tags = (f"{VR_ARCH_TYPE}{ENSEMBLE_PARTITION}Fake VR",)
+        tags = ("vr:FakeVR",)
         builds: list[str] = []
 
         def fake_tags(self: ModelRepository) -> list[str]:
