@@ -4,24 +4,12 @@ import re
 import unittest
 
 from core.export_naming import format_stem_basename
-from core.model_stem_semantics import (
-    BUCKET_BASS,
-    BUCKET_BV_VOCALS,
-    BUCKET_DRUMS,
-    BUCKET_INST_WITH_BV,
-    BUCKET_INST_WITH_LEAD,
-    BUCKET_INSTRUMENTAL,
-    BUCKET_LEAD_VOCALS,
-    BUCKET_OTHER,
-    BUCKET_UNKNOWN,
-    BUCKET_VOCALS,
-    ensemble_stem_bucket,
-)
-from core.stems import StemBucket, concept_is
+from core.stems import StemBucket, bucket_for_model_stem, concept_is, filename_tag
 
 _ALL_BUCKETS = (
-    BUCKET_VOCALS, BUCKET_INSTRUMENTAL, BUCKET_OTHER, BUCKET_DRUMS, BUCKET_BASS,
-    BUCKET_LEAD_VOCALS, BUCKET_BV_VOCALS, BUCKET_INST_WITH_BV, BUCKET_INST_WITH_LEAD,
+    StemBucket.VOCALS, StemBucket.INSTRUMENTAL, StemBucket.OTHER, StemBucket.DRUMS,
+    StemBucket.BASS, StemBucket.LEAD_VOCALS, StemBucket.BACKING_VOCALS,
+    StemBucket.INST_WITH_BV, StemBucket.INST_WITH_LEAD,
 )
 
 
@@ -29,35 +17,35 @@ class OtherOverloadTests(unittest.TestCase):
     """'other' means three different things depending on context."""
 
     def test_two_stem_other_is_instrumental(self) -> None:
-        self.assertEqual(ensemble_stem_bucket("other", stem_count=1), BUCKET_INSTRUMENTAL)
-        self.assertEqual(ensemble_stem_bucket("other", stem_count=2), BUCKET_INSTRUMENTAL)
+        self.assertEqual(bucket_for_model_stem("other", stem_count=1), StemBucket.INSTRUMENTAL)
+        self.assertEqual(bucket_for_model_stem("other", stem_count=2), StemBucket.INSTRUMENTAL)
 
     def test_four_stem_other_is_its_own_stem(self) -> None:
-        self.assertEqual(ensemble_stem_bucket("other", stem_count=4), BUCKET_OTHER)
+        self.assertEqual(bucket_for_model_stem("other", stem_count=4), StemBucket.OTHER)
 
     def test_karaoke_instrumental_is_its_own_bucket(self) -> None:
         self.assertEqual(
-            ensemble_stem_bucket("Instrumental", stem_count=2, is_karaoke=True),
-            BUCKET_INST_WITH_BV,
+            bucket_for_model_stem("Instrumental", stem_count=2, is_karaoke=True),
+            StemBucket.INST_WITH_BV,
         )
         self.assertEqual(
-            ensemble_stem_bucket("other", stem_count=2, is_karaoke=True),
-            BUCKET_INST_WITH_BV,
+            bucket_for_model_stem("other", stem_count=2, is_karaoke=True),
+            StemBucket.INST_WITH_BV,
         )
 
 
 class KaraokeAndBvTests(unittest.TestCase):
     def test_karaoke_vocals_is_lead_vocals(self) -> None:
         self.assertEqual(
-            ensemble_stem_bucket("Vocals", stem_count=1, is_karaoke=True), BUCKET_LEAD_VOCALS
+            bucket_for_model_stem("Vocals", stem_count=1, is_karaoke=True), StemBucket.LEAD_VOCALS
         )
 
     def test_bv_model_mirrors_karaoke(self) -> None:
         self.assertEqual(
-            ensemble_stem_bucket("Vocals", stem_count=1, is_bv=True), BUCKET_BV_VOCALS
+            bucket_for_model_stem("Vocals", stem_count=1, is_bv=True), StemBucket.BACKING_VOCALS
         )
         self.assertEqual(
-            ensemble_stem_bucket("Instrumental", stem_count=2, is_bv=True), BUCKET_INST_WITH_LEAD
+            bucket_for_model_stem("Instrumental", stem_count=2, is_bv=True), StemBucket.INST_WITH_LEAD
         )
 
 
@@ -65,24 +53,24 @@ class CaseAndAliasTests(unittest.TestCase):
     def test_case_variants_fold(self) -> None:
         for raw in ("vocals", "Vocals", "VOCALS", "Vocal", "voc"):
             with self.subTest(raw=raw):
-                self.assertEqual(ensemble_stem_bucket(raw, stem_count=1), BUCKET_VOCALS)
+                self.assertEqual(bucket_for_model_stem(raw, stem_count=1), StemBucket.VOCALS)
 
     def test_instrument_alias_is_admitted(self) -> None:
         # bs_inst_hyperace2_unwa declares its stem as 'instrument'.
-        self.assertEqual(ensemble_stem_bucket("instrument", stem_count=1), BUCKET_INSTRUMENTAL)
+        self.assertEqual(bucket_for_model_stem("instrument", stem_count=1), StemBucket.INSTRUMENTAL)
 
     def test_four_stem_musdb_names(self) -> None:
-        self.assertEqual(ensemble_stem_bucket("drums", stem_count=4), BUCKET_DRUMS)
-        self.assertEqual(ensemble_stem_bucket("bass", stem_count=4), BUCKET_BASS)
-        self.assertEqual(ensemble_stem_bucket("vocals", stem_count=4), BUCKET_VOCALS)
+        self.assertEqual(bucket_for_model_stem("drums", stem_count=4), StemBucket.DRUMS)
+        self.assertEqual(bucket_for_model_stem("bass", stem_count=4), StemBucket.BASS)
+        self.assertEqual(bucket_for_model_stem("vocals", stem_count=4), StemBucket.VOCALS)
 
     def test_unknown_vocabulary_is_unknown(self) -> None:
         # Phantom Centre. Must never land in Vocals/Instrumental.
-        self.assertEqual(ensemble_stem_bucket("Similarity", stem_count=1), BUCKET_UNKNOWN)
-        self.assertEqual(ensemble_stem_bucket("Sfx", stem_count=1), BUCKET_UNKNOWN)
+        self.assertEqual(bucket_for_model_stem("Similarity", stem_count=1), StemBucket.UNKNOWN)
+        self.assertEqual(bucket_for_model_stem("Sfx", stem_count=1), StemBucket.UNKNOWN)
 
     def test_empty_is_unknown(self) -> None:
-        self.assertEqual(ensemble_stem_bucket("", stem_count=1), BUCKET_UNKNOWN)
+        self.assertEqual(bucket_for_model_stem("", stem_count=1), StemBucket.UNKNOWN)
 
 
 class IdentityCodeTests(unittest.TestCase):
@@ -91,17 +79,17 @@ class IdentityCodeTests(unittest.TestCase):
     def test_lead_only_resolves_without_the_karaoke_flag(self) -> None:
         # A vocal splitter writes 'lead_only' regardless of the parent model's
         # own flags — the flags describe the model, the code describes the stem.
-        self.assertEqual(ensemble_stem_bucket("lead_only", stem_count=2), BUCKET_LEAD_VOCALS)
-        self.assertEqual(ensemble_stem_bucket("Lead Vocals", stem_count=2), BUCKET_LEAD_VOCALS)
+        self.assertEqual(bucket_for_model_stem("lead_only", stem_count=2), StemBucket.LEAD_VOCALS)
+        self.assertEqual(bucket_for_model_stem("Lead Vocals", stem_count=2), StemBucket.LEAD_VOCALS)
 
     def test_backing_only_resolves_without_the_bv_flag(self) -> None:
-        self.assertEqual(ensemble_stem_bucket("backing_only", stem_count=2), BUCKET_BV_VOCALS)
-        self.assertEqual(ensemble_stem_bucket("Backing Vocals", stem_count=2), BUCKET_BV_VOCALS)
-        self.assertEqual(ensemble_stem_bucket("backing_vocal", stem_count=3), BUCKET_BV_VOCALS)
-        self.assertEqual(ensemble_stem_bucket("backing_vocals", stem_count=3), BUCKET_BV_VOCALS)
+        self.assertEqual(bucket_for_model_stem("backing_only", stem_count=2), StemBucket.BACKING_VOCALS)
+        self.assertEqual(bucket_for_model_stem("Backing Vocals", stem_count=2), StemBucket.BACKING_VOCALS)
+        self.assertEqual(bucket_for_model_stem("backing_vocal", stem_count=3), StemBucket.BACKING_VOCALS)
+        self.assertEqual(bucket_for_model_stem("backing_vocals", stem_count=3), StemBucket.BACKING_VOCALS)
 
     def test_identity_code_is_not_folded_into_plain_vocals(self) -> None:
-        self.assertNotEqual(ensemble_stem_bucket("lead_only", stem_count=2), BUCKET_VOCALS)
+        self.assertNotEqual(bucket_for_model_stem("lead_only", stem_count=2), StemBucket.VOCALS)
 
 
 class FilenameSafetyTests(unittest.TestCase):
@@ -113,17 +101,19 @@ class FilenameSafetyTests(unittest.TestCase):
     def test_no_bucket_contains_parentheses(self) -> None:
         for bucket in _ALL_BUCKETS:
             with self.subTest(bucket=bucket):
-                self.assertNotIn("(", bucket)
-                self.assertNotIn(")", bucket)
+                tag = filename_tag(bucket)
+                self.assertNotIn("(", tag)
+                self.assertNotIn(")", tag)
 
     def test_every_bucket_round_trips_through_the_collection_regex(self) -> None:
         for bucket in _ALL_BUCKETS:
             with self.subTest(bucket=bucket):
-                name = format_stem_basename("Song Model", bucket) + ".wav"
+                tag = filename_tag(bucket)
+                name = format_stem_basename("Song Model", tag) + ".wav"
                 match = self.COLLECT_RE.search(name)
                 self.assertIsNotNone(match, f"{name!r} would not be collected")
                 assert match is not None
-                self.assertEqual(match.group(1), bucket)
+                self.assertEqual(match.group(1), tag)
 
 
 class ThirdVocabularyConsolidationTests(unittest.TestCase):
@@ -135,11 +125,11 @@ class ThirdVocabularyConsolidationTests(unittest.TestCase):
 
     def test_instrument_alias_resolves_to_instrumental_bucket(self) -> None:
         self.assertEqual(
-            ensemble_stem_bucket("instrument", stem_count=1), BUCKET_INSTRUMENTAL
+            bucket_for_model_stem("instrument", stem_count=1), StemBucket.INSTRUMENTAL
         )
 
     def test_voc_alias_resolves_to_vocals_bucket(self) -> None:
-        self.assertEqual(ensemble_stem_bucket("voc", stem_count=2), BUCKET_VOCALS)
+        self.assertEqual(bucket_for_model_stem("voc", stem_count=2), StemBucket.VOCALS)
 
 
 class VocalSplitRoleTests(unittest.TestCase):
@@ -149,52 +139,52 @@ class VocalSplitRoleTests(unittest.TestCase):
         for raw in ("Vocals", "vocals"):
             with self.subTest(raw=raw):
                 self.assertEqual(
-                    ensemble_stem_bucket(raw, stem_count=2, is_vocal_split=True),
-                    BUCKET_LEAD_VOCALS,
+                    bucket_for_model_stem(raw, stem_count=2, is_vocal_split=True),
+                    StemBucket.LEAD_VOCALS,
                 )
 
     def test_karaoke_splitter_inst_is_backing_not_inst_with_bv(self) -> None:
         for raw in ("Instrumental", "other", "instrument"):
             with self.subTest(raw=raw):
                 self.assertEqual(
-                    ensemble_stem_bucket(
+                    bucket_for_model_stem(
                         raw, stem_count=2, is_karaoke=True, is_vocal_split=True
                     ),
-                    BUCKET_BV_VOCALS,
+                    StemBucket.BACKING_VOCALS,
                 )
                 self.assertNotEqual(
-                    ensemble_stem_bucket(
+                    bucket_for_model_stem(
                         raw, stem_count=2, is_karaoke=True, is_vocal_split=True
                     ),
-                    BUCKET_INST_WITH_BV,
+                    StemBucket.INST_WITH_BV,
                 )
 
     def test_karaoke_primary_inst_stays_inst_with_bv(self) -> None:
         self.assertEqual(
-            ensemble_stem_bucket("Instrumental", stem_count=2, is_karaoke=True),
-            BUCKET_INST_WITH_BV,
+            bucket_for_model_stem("Instrumental", stem_count=2, is_karaoke=True),
+            StemBucket.INST_WITH_BV,
         )
 
     def test_bv_splitter_inverts(self) -> None:
         self.assertEqual(
-            ensemble_stem_bucket("vocals", stem_count=2, is_bv=True, is_vocal_split=True),
-            BUCKET_BV_VOCALS,
+            bucket_for_model_stem("vocals", stem_count=2, is_bv=True, is_vocal_split=True),
+            StemBucket.BACKING_VOCALS,
         )
         self.assertEqual(
-            ensemble_stem_bucket("other", stem_count=2, is_bv=True, is_vocal_split=True),
-            BUCKET_LEAD_VOCALS,
+            bucket_for_model_stem("other", stem_count=2, is_bv=True, is_vocal_split=True),
+            StemBucket.LEAD_VOCALS,
         )
 
     def test_four_stem_other_is_not_backing_under_vocal_split(self) -> None:
         self.assertEqual(
-            ensemble_stem_bucket("other", stem_count=4, is_vocal_split=True),
-            BUCKET_OTHER,
+            bucket_for_model_stem("other", stem_count=4, is_vocal_split=True),
+            StemBucket.OTHER,
         )
 
     def test_center_stays_unknown(self) -> None:
         self.assertEqual(
-            ensemble_stem_bucket("center", stem_count=2, is_vocal_split=True),
-            BUCKET_UNKNOWN,
+            bucket_for_model_stem("center", stem_count=2, is_vocal_split=True),
+            StemBucket.UNKNOWN,
         )
 
     def test_concept_is_matches_yaml_vocals_to_vocals_bucket(self) -> None:

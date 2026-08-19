@@ -47,6 +47,7 @@ and `.venv/bin/python -m basedpyright` on touched files.
 | Fold `process_determine_*` into `model_config` | [`core/model_config/determine.py`](../../../core/model_config/determine.py) | #51 |
 | GTK checklist row keys (`family:basename` lists) | [`list_*_model_tags`](../../../core/model_repository.py) | #52 |
 | Relocate `ModelRepository` | [`core/model_repository.py`](../../../core/model_repository.py) | #53 |
+| Drop stem-label facades from semantics | [`core.stems.export_stem_label`](../../../core/stems.py), [`resolve_in_sources`](../../../core/stems.py) | #54 |
 
 ---
 
@@ -54,12 +55,16 @@ and `.venv/bin/python -m basedpyright` on touched files.
 
 Suggested order. Skip an item rather than invent scope.
 
-### 1. Drop stem-label facades from semantics (this PR)
+### 1. Drop leftover stem-identity facades (this PR)
 
-Delete `export_stem_label` / `resolve_stem_dict_key` shims in
+Delete `BUCKET_*` / `ensemble_stem_bucket` / `model_stem_count` /
+`ensemble_pair_buckets` from
 [`model_stem_semantics.py`](../../../core/model_stem_semantics.py). Callers use
-[`core.stems.export_stem_label`](../../../core/stems.py) and
-[`resolve_in_sources`](../../../core/stems.py). No re-export from the old home.
+[`StemBucket`](../../../core/stems.py), [`bucket_for_model_stem`](../../../core/stems.py),
+[`model_stem_count`](../../../core/stems.py), and
+[`EnsemblePair.buckets`](../../../core/stems.py). No re-export from the old home.
+Keep [`confident_stem_bucket`](../../../core/model_stem_semantics.py) (karaoke
+confidence gate).
 
 ### 2. Optional later (do not start from this backlog)
 
@@ -88,5 +93,5 @@ touching them.
 
 ## Suggested next PR
 
-After this facade drop lands: only **item 2** (optional later). Do not
+After this identity-facade drop lands: only **item 2** (optional later). Do not
 start it without a new spec.

@@ -146,15 +146,11 @@ class SecondaryOtherWantedBucketsTests(unittest.TestCase):
         return set(_eligible([self.RESIDUAL, self.COMPLEMENT], EnsemblePair.OTHER))
 
     def test_pair_buckets_select_the_musdb_residual_only(self) -> None:
-        from core.model_stem_semantics import ensemble_pair_buckets
-
-        wanted = set(ensemble_pair_buckets(EnsemblePair.OTHER))
+        wanted = set(EnsemblePair.OTHER.buckets())
         self.assertEqual(self._model_list(wanted_buckets=wanted), {"mdx:4stem"})
 
     def test_ensemble_list_agrees_with_an_explicit_bucket_request(self) -> None:
-        from core.model_stem_semantics import ensemble_pair_buckets
-
-        wanted = set(ensemble_pair_buckets(EnsemblePair.OTHER))
+        wanted = set(EnsemblePair.OTHER.buckets())
         self.assertEqual(self._model_list(wanted_buckets=wanted), self._ensemble_list())
 
     def test_raw_request_wrongly_admits_the_instrumental_complement(self) -> None:

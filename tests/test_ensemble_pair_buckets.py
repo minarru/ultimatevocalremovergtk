@@ -2,59 +2,57 @@
 
 import unittest
 
-from core.model_stem_semantics import (
-    BUCKET_BASS,
-    BUCKET_INST_WITH_BV,
-    BUCKET_INSTRUMENTAL,
-    BUCKET_LEAD_VOCALS,
-    BUCKET_OTHER,
-    BUCKET_UNKNOWN,
-    BUCKET_VOCALS,
-    ensemble_pair_buckets,
+from core.stems import (
+    EnsemblePair,
+    StemBucket,
+    coerce_ensemble_pair,
+    ensemble_pair_choices,
+    ui_label,
 )
-from core.stems import EnsemblePair, coerce_ensemble_pair, ensemble_pair_choices, ui_label
 
 
 class PairBucketTests(unittest.TestCase):
     def test_vocal_pair(self) -> None:
         self.assertEqual(
-            ensemble_pair_buckets(EnsemblePair.VOCALS_INSTRUMENTAL),
-            (BUCKET_VOCALS, BUCKET_INSTRUMENTAL),
+            coerce_ensemble_pair(EnsemblePair.VOCALS_INSTRUMENTAL).buckets(),
+            (StemBucket.VOCALS, StemBucket.INSTRUMENTAL),
         )
         self.assertEqual(
-            ensemble_pair_buckets("vocals_instrumental"),
-            (BUCKET_VOCALS, BUCKET_INSTRUMENTAL),
+            coerce_ensemble_pair("vocals_instrumental").buckets(),
+            (StemBucket.VOCALS, StemBucket.INSTRUMENTAL),
         )
 
     def test_karaoke_pair(self) -> None:
         self.assertEqual(
-            ensemble_pair_buckets(EnsemblePair.KARAOKE),
-            (BUCKET_LEAD_VOCALS, BUCKET_INST_WITH_BV),
+            coerce_ensemble_pair(EnsemblePair.KARAOKE).buckets(),
+            (StemBucket.LEAD_VOCALS, StemBucket.INST_WITH_BV),
         )
         self.assertEqual(
-            ensemble_pair_buckets("karaoke"),
-            (BUCKET_LEAD_VOCALS, BUCKET_INST_WITH_BV),
+            coerce_ensemble_pair("karaoke").buckets(),
+            (StemBucket.LEAD_VOCALS, StemBucket.INST_WITH_BV),
         )
 
     def test_other_pair_keeps_other_as_a_real_stem(self) -> None:
-        # Regression: resolving this through ensemble_stem_bucket would give
-        # BUCKET_INSTRUMENTAL, because a 1-stem 'other' is the instrumental
+        # Regression: resolving this through bucket_for_model_stem would give
+        # StemBucket.INSTRUMENTAL, because a 1-stem 'other' is the instrumental
         # complement. A pair is a request, not a model description.
         self.assertEqual(
-            ensemble_pair_buckets(EnsemblePair.OTHER),
-            (BUCKET_OTHER, BUCKET_UNKNOWN),
+            coerce_ensemble_pair(EnsemblePair.OTHER).buckets(),
+            (StemBucket.OTHER, StemBucket.UNKNOWN),
         )
 
     def test_bass_pair(self) -> None:
-        primary, _secondary = ensemble_pair_buckets(EnsemblePair.BASS)
-        self.assertEqual(primary, BUCKET_BASS)
+        primary, _secondary = coerce_ensemble_pair(EnsemblePair.BASS).buckets()
+        self.assertEqual(primary, StemBucket.BASS)
 
     def test_complement_half_is_unknown_not_a_bucket(self) -> None:
         # 'No Other' / 'No Bass' are derived by inversion, never trained, so
         # they are not a bucket any model can match. Callers discard UNKNOWN.
         for pair in (EnsemblePair.OTHER, EnsemblePair.BASS, EnsemblePair.DRUMS):
             with self.subTest(pair=pair):
-                self.assertEqual(ensemble_pair_buckets(pair)[1], BUCKET_UNKNOWN)
+                self.assertEqual(
+                    coerce_ensemble_pair(pair).buckets()[1], StemBucket.UNKNOWN
+                )
 
     def test_non_pair_values_are_unknown(self) -> None:
         for value in (
@@ -66,7 +64,8 @@ class PairBucketTests(unittest.TestCase):
         ):
             with self.subTest(value=value):
                 self.assertEqual(
-                    ensemble_pair_buckets(value), (BUCKET_UNKNOWN, BUCKET_UNKNOWN)
+                    coerce_ensemble_pair(value).buckets(),
+                    (StemBucket.UNKNOWN, StemBucket.UNKNOWN),
                 )
 
 
