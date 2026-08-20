@@ -17,6 +17,9 @@ model_probe = importlib.util.module_from_spec(_SPEC)
 sys.modules["model_probe"] = model_probe
 _SPEC.loader.exec_module(model_probe)
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from scripts import model_tool_support  # noqa: E402
+
 
 def _safetensors_bytes(names: dict) -> bytes:
     """Build a minimal .safetensors prefix: u64 header length + JSON header."""
@@ -27,7 +30,7 @@ def _safetensors_bytes(names: dict) -> bytes:
 class SafetensorsHeaderTests(unittest.TestCase):
     def test_reports_the_byte_span_the_header_occupies(self) -> None:
         blob = _safetensors_bytes({"a.weight": {"shape": [2]}})
-        span = model_probe.safetensors_header_span(blob[:8])
+        span = model_tool_support.safetensors_header_span(blob[:8])
         self.assertEqual(span, (8, 8 + len(blob) - 8))
 
     def test_lists_tensor_names_from_the_header(self) -> None:
@@ -36,7 +39,7 @@ class SafetensorsHeaderTests(unittest.TestCase):
             "enc.bias": {"dtype": "F32", "shape": [4], "data_offsets": [64, 80]},
         })
         self.assertEqual(
-            sorted(model_probe.parse_safetensors_header(blob)),
+            sorted(model_tool_support.parse_safetensors_header(blob)),
             ["enc.bias", "enc.weight"],
         )
 
@@ -45,12 +48,12 @@ class SafetensorsHeaderTests(unittest.TestCase):
             "__metadata__": {"format": "pt"},
             "w": {"dtype": "F32", "shape": [1], "data_offsets": [0, 4]},
         })
-        self.assertEqual(model_probe.parse_safetensors_header(blob), ["w"])
+        self.assertEqual(model_tool_support.parse_safetensors_header(blob), ["w"])
 
     def test_rejects_a_header_that_is_not_json(self) -> None:
         blob = struct.pack("<Q", 4) + b"nope"
         with self.assertRaises(ValueError):
-            model_probe.parse_safetensors_header(blob)
+            model_tool_support.parse_safetensors_header(blob)
 
 
 def _file_reader(path: str):
@@ -86,7 +89,7 @@ class TorchCheckpointKeyTests(unittest.TestCase):
         path = self._save({"enc.weight": torch.zeros(2, 2), "enc.bias": torch.zeros(2)})
         read, size = _file_reader(path)
         self.assertEqual(
-            sorted(model_probe.torch_checkpoint_keys(read, size)),
+            sorted(model_tool_support.torch_checkpoint_keys(read, size)),
             ["enc.bias", "enc.weight"],
         )
 
@@ -100,7 +103,7 @@ class TorchCheckpointKeyTests(unittest.TestCase):
         })
         read, size = _file_reader(path)
         self.assertEqual(
-            sorted(model_probe.torch_checkpoint_keys(read, size)),
+            sorted(model_tool_support.torch_checkpoint_keys(read, size)),
             ["net.0.bias", "net.0.weight"],
         )
 
@@ -116,7 +119,7 @@ class TorchCheckpointKeyTests(unittest.TestCase):
             billed.append(end - start)
             return read(start, end)
 
-        keys = model_probe.torch_checkpoint_keys(counting_read, size)
+        keys = model_tool_support.torch_checkpoint_keys(counting_read, size)
         self.assertEqual(len(keys), 8)
         self.assertLess(sum(billed), size // 4, f"read {sum(billed)} of {size} bytes")
 
@@ -134,7 +137,7 @@ class TorchCheckpointKeyTests(unittest.TestCase):
         path = self._save(state, "with_metadata.pt")
         read, size = _file_reader(path)
         self.assertEqual(
-            sorted(model_probe.torch_checkpoint_keys(read, size)),
+            sorted(model_tool_support.torch_checkpoint_keys(read, size)),
             ["conv.bias", "conv.weight"],
         )
 
@@ -144,7 +147,7 @@ class TorchCheckpointKeyTests(unittest.TestCase):
             handle.write(b"\x80\x02}q\x00.")  # a bare pickle, pre-zip torch format
         read, size = _file_reader(path)
         with self.assertRaises(ValueError):
-            model_probe.torch_checkpoint_keys(read, size)
+            model_tool_support.torch_checkpoint_keys(read, size)
 
 
 class KeyDiffTests(unittest.TestCase):
@@ -530,34 +533,34 @@ _CATALOGUE = {
 
 class ResolveTargetTests(unittest.TestCase):
     def test_resolves_an_entry_to_its_config_and_checkpoint_urls(self) -> None:
-        target = model_probe.resolve_target("mbr_syhft_4stem", catalogue=_CATALOGUE)
+        target = model_tool_support.resolve_target("mbr_syhft_4stem", catalogue=_CATALOGUE)
         self.assertEqual(target.config_url, "https://example.invalid/c.yaml")
         self.assertEqual(target.checkpoint_url, "https://example.invalid/w.ckpt")
         self.assertEqual(target.label, "MelBand Roformer 4stem SYHFT")
 
     def test_carries_the_catalogue_unsupported_reason(self) -> None:
         """Why the entry is listed unsupported is the context for the verdict."""
-        target = model_probe.resolve_target("mbr_syhft_4stem", catalogue=_CATALOGUE)
+        target = model_tool_support.resolve_target("mbr_syhft_4stem", catalogue=_CATALOGUE)
         self.assertEqual(target.reason, "")
-        other = model_probe.resolve_target("medley_thing", catalogue=_CATALOGUE)
+        other = model_tool_support.resolve_target("medley_thing", catalogue=_CATALOGUE)
         self.assertEqual(other.reason, "Medley-Vox engine not ported")
 
     def test_unknown_entry_id_is_an_error(self) -> None:
         with self.assertRaises(KeyError):
-            model_probe.resolve_target("nope", catalogue=_CATALOGUE)
+            model_tool_support.resolve_target("nope", catalogue=_CATALOGUE)
 
     def test_default_catalogue_comes_from_the_coordinator_helper(self) -> None:
         from unittest.mock import patch
 
         with patch(
-            "model_probe._default_mvsepless_catalogue", return_value=_CATALOGUE
+            "scripts.model_tool_support._default_mvsepless_catalogue", return_value=_CATALOGUE
         ) as loader:
-            target = model_probe.resolve_target("medley_thing")
+            target = model_tool_support.resolve_target("medley_thing")
         loader.assert_called_once()
         self.assertEqual(target.entry_id, "medley_thing")
 
     def test_config_filename_comes_from_the_url(self) -> None:
-        target = model_probe.resolve_target("mbr_syhft_4stem", catalogue=_CATALOGUE)
+        target = model_tool_support.resolve_target("mbr_syhft_4stem", catalogue=_CATALOGUE)
         self.assertEqual(target.config_name, "c.yaml")
 
 
@@ -565,12 +568,12 @@ class IterCatalogueTargetsTests(unittest.TestCase):
     """The triage workload: sweep the whole catalogue, not one entry."""
 
     def test_defaults_to_unsupported_entries_only(self) -> None:
-        targets = list(model_probe.iter_catalogue_targets(_CATALOGUE))
+        targets = list(model_tool_support.iter_catalogue_targets(_CATALOGUE))
         self.assertEqual([t.entry_id for t in targets], ["medley_thing"])
 
     def test_include_supported_widens_it_to_the_whole_catalogue(self) -> None:
         targets = list(
-            model_probe.iter_catalogue_targets(_CATALOGUE, unsupported_only=False)
+            model_tool_support.iter_catalogue_targets(_CATALOGUE, unsupported_only=False)
         )
         self.assertEqual(
             sorted(t.entry_id for t in targets), ["mbr_syhft_4stem", "medley_thing"]
@@ -587,12 +590,12 @@ class SweepCatalogueTests(unittest.TestCase):
         import contextlib
 
         targets = [
-            model_probe.ProbeTarget(
+            model_tool_support.CatalogueTarget(
                 entry_id="ok", label="OK", config_url="https://example.invalid/ok.yaml"
             ),
-            model_probe.ProbeTarget(entry_id="bad", label="Bad", config_url=""),
+            model_tool_support.CatalogueTarget(entry_id="bad", label="Bad", config_url=""),
         ]
-        with patch("model_probe._fetch_config", return_value=_SCNET_CONFIG):
+        with patch("model_probe.fetch_config", return_value=_SCNET_CONFIG):
             with contextlib.redirect_stdout(_io.StringIO()):
                 results = model_probe.sweep_catalogue(targets)
 
@@ -614,11 +617,11 @@ class SweepCatalogueTests(unittest.TestCase):
         import contextlib
 
         targets = [
-            model_probe.ProbeTarget(
+            model_tool_support.CatalogueTarget(
                 entry_id="ok", label="OK", config_url="https://example.invalid/ok.yaml"
             )
         ]
-        with patch("model_probe._fetch_config", return_value=_SCNET_CONFIG):
+        with patch("model_probe.fetch_config", return_value=_SCNET_CONFIG):
             with contextlib.redirect_stdout(_io.StringIO()):
                 results = model_probe.sweep_catalogue(targets)
 
@@ -742,7 +745,7 @@ class HttpRangeReaderTests(unittest.TestCase):
             seen.append(request.get_header("Range"))
             return self._partial(b"a" * 40, 100, 140)
 
-        read = model_probe.http_range_reader("https://example.invalid/f", opener=opener)
+        read = model_tool_support.http_range_reader("https://example.invalid/f", opener=opener)
         self.assertEqual(read(100, 140), b"a" * 40)
         self.assertEqual(seen, ["bytes=100-139"])
 
@@ -752,8 +755,8 @@ class HttpRangeReaderTests(unittest.TestCase):
         def opener(request: Any) -> Any:
             return self._FakeResponse(b"z" * 5000, {}, status=200)
 
-        read = model_probe.http_range_reader("https://example.invalid/f", opener=opener)
-        with self.assertRaises(model_probe.RangeError):
+        read = model_tool_support.http_range_reader("https://example.invalid/f", opener=opener)
+        with self.assertRaises(model_tool_support.RangeError):
             read(100, 140)
 
     def test_mismatched_content_range_is_rejected(self) -> None:
@@ -762,8 +765,8 @@ class HttpRangeReaderTests(unittest.TestCase):
         def opener(request: Any) -> Any:
             return self._partial(b"a" * 40, 0, 40)
 
-        read = model_probe.http_range_reader("https://example.invalid/f", opener=opener)
-        with self.assertRaises(model_probe.RangeError):
+        read = model_tool_support.http_range_reader("https://example.invalid/f", opener=opener)
+        with self.assertRaises(model_tool_support.RangeError):
             read(100, 140)
 
     def test_truncated_body_is_rejected(self) -> None:
@@ -774,8 +777,8 @@ class HttpRangeReaderTests(unittest.TestCase):
                 b"a" * 12, {"Content-Range": "bytes 100-139/1000000"}, status=206
             )
 
-        read = model_probe.http_range_reader("https://example.invalid/f", opener=opener)
-        with self.assertRaises(model_probe.RangeError):
+        read = model_tool_support.http_range_reader("https://example.invalid/f", opener=opener)
+        with self.assertRaises(model_tool_support.RangeError):
             read(100, 140)
 
     def test_range_clamped_at_end_of_file_is_accepted(self) -> None:
@@ -786,14 +789,14 @@ class HttpRangeReaderTests(unittest.TestCase):
                 b"a" * 20, {"Content-Range": "bytes 100-119/120"}, status=206
             )
 
-        read = model_probe.http_range_reader("https://example.invalid/f", opener=opener)
+        read = model_tool_support.http_range_reader("https://example.invalid/f", opener=opener)
         self.assertEqual(read(100, 140), b"a" * 20)
 
     def test_reads_the_length_from_a_content_range_header(self) -> None:
         def opener(request: Any) -> Any:
             return self._FakeResponse(b"x", {"Content-Range": "bytes 0-0/123456"})
 
-        size = model_probe.remote_size("https://example.invalid/f", opener=opener)
+        size = model_tool_support.remote_size("https://example.invalid/f", opener=opener)
         self.assertEqual(size, 123456)
 
 
@@ -815,7 +818,7 @@ class FetchConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch(
             "core.mdx_config_fetch._urlopen", return_value=_Resp()
         ):
-            path = model_probe._fetch_config("https://example.invalid/config.yaml", tmp)
+            path = model_tool_support.fetch_config("https://example.invalid/config.yaml", tmp)
             with open(path, "rb") as handle:
                 self.assertEqual(handle.read(), b"yaml")
             self.assertFalse(os.path.exists(f"{path}.part"))
@@ -828,7 +831,7 @@ class FetchConfigTests(unittest.TestCase):
             "core.mdx_config_fetch._urlopen", side_effect=KeyboardInterrupt
         ):
             with self.assertRaises(KeyboardInterrupt):
-                model_probe._fetch_config("https://example.invalid/config.yaml", tmp)
+                model_tool_support.fetch_config("https://example.invalid/config.yaml", tmp)
             self.assertFalse(os.path.exists(os.path.join(tmp, "config.yaml")))
             self.assertFalse(os.path.exists(os.path.join(tmp, "config.yaml.part")))
 
@@ -843,13 +846,13 @@ class CachedCheckpointKeysTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             url = "https://example.invalid/ckpt.safetensors"
             with patch(
-                "model_probe.remote_checkpoint_keys", return_value=["a.weight"]
+                "scripts.model_tool_support.remote_checkpoint_keys", return_value=["a.weight"]
             ) as fake:
-                first = model_probe.cached_remote_checkpoint_keys(url, tmp)
+                first = model_tool_support.cached_remote_checkpoint_keys(url, tmp)
                 self.assertEqual(fake.call_count, 1)
             # No patch active: a real fetch here would hit net_guard and raise,
             # so this only passes if the cache, not the network, served it.
-            second = model_probe.cached_remote_checkpoint_keys(url, tmp)
+            second = model_tool_support.cached_remote_checkpoint_keys(url, tmp)
         self.assertEqual(first, ["a.weight"])
         self.assertEqual(second, ["a.weight"])
 
@@ -861,11 +864,11 @@ class CachedCheckpointKeysTests(unittest.TestCase):
             return [f"{url}-key"]
 
         with tempfile.TemporaryDirectory() as tmp:
-            with patch("model_probe.remote_checkpoint_keys", side_effect=fake):
-                a = model_probe.cached_remote_checkpoint_keys(
+            with patch("scripts.model_tool_support.remote_checkpoint_keys", side_effect=fake):
+                a = model_tool_support.cached_remote_checkpoint_keys(
                     "https://example.invalid/a.safetensors", tmp
                 )
-                b = model_probe.cached_remote_checkpoint_keys(
+                b = model_tool_support.cached_remote_checkpoint_keys(
                     "https://example.invalid/b.safetensors", tmp
                 )
         self.assertEqual(a, ["https://example.invalid/a.safetensors-key"])
@@ -949,8 +952,8 @@ class CliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "sweep.json")
             with patch(
-                "model_probe._default_mvsepless_catalogue", return_value=_CATALOGUE
-            ), patch("model_probe._fetch_config", return_value=_SCNET_CONFIG):
+                "scripts.model_tool_support._default_mvsepless_catalogue", return_value=_CATALOGUE
+            ), patch("model_probe.fetch_config", return_value=_SCNET_CONFIG):
                 with contextlib.redirect_stdout(buf):
                     code = model_probe.main(["--sweep", "--json", out])
             with open(out, encoding="utf-8") as handle:

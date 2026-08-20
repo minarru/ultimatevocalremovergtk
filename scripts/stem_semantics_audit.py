@@ -80,13 +80,10 @@ def _remote_checkpoint_hash(checkpoint_url: str) -> HashLookup:
     """
     if not checkpoint_url:
         return HashLookup(status="no_url")
-    from scripts.model_probe import http_range_reader, remote_size
+    from scripts.model_tool_support import checkpoint_tail_hash
 
     try:
-        size = remote_size(checkpoint_url)
-        read = http_range_reader(checkpoint_url)
-        start = max(0, size - _HASH_TAIL_BYTES)
-        digest = hashlib.md5(read(start, size)).hexdigest()
+        digest = checkpoint_tail_hash(checkpoint_url)
     except Exception as exc:  # noqa: BLE001 - one unreachable checkpoint must not abort the audit
         return HashLookup(status="fetch_failed", error=f"{type(exc).__name__}: {exc}")
     return HashLookup(digest=digest, status="ok")
@@ -111,10 +108,10 @@ def _entry_for_target(
 ) -> StemSemanticsEntry:
     from core.model_data import load_mdx_c_config
     from core.model_stem_semantics import confident_stem_bucket, resolve_karaoke_confidence
-    from scripts.model_probe import _cache_dir, _fetch_config
+    from scripts.model_tool_support import cache_dir, fetch_config
 
     try:
-        config_path = _fetch_config(target.config_url, _cache_dir())
+        config_path = fetch_config(target.config_url, cache_dir())
         config = load_mdx_c_config(config_path)
     except Exception as exc:  # noqa: BLE001 - one bad entry must not abort the audit
         return StemSemanticsEntry(entry_id=target.entry_id, label=target.label, error=str(exc))
@@ -163,7 +160,7 @@ def _entry_for_target(
 def _iter_entries(
     *, guessed_only: bool = False, show_progress: bool = False
 ) -> Iterator[StemSemanticsEntry]:
-    from scripts.model_probe import iter_catalogue_targets
+    from scripts.model_tool_support import iter_catalogue_targets
 
     curated_table = _curated_hash_table()
     targets = list(iter_catalogue_targets(unsupported_only=False))

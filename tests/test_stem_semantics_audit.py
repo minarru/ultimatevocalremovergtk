@@ -60,7 +60,7 @@ class IterEntriesProgressTests(unittest.TestCase):
             SimpleNamespace(entry_id="second", label="Second Model"),
         ]
         with patch(
-            "scripts.model_probe.iter_catalogue_targets", return_value=iter(targets)
+            "scripts.model_tool_support.iter_catalogue_targets", return_value=iter(targets)
         ), patch.object(
             stem_semantics_audit, "_curated_hash_table", return_value={}
         ), patch.object(
@@ -148,8 +148,8 @@ class RemoteCheckpointHashTests(unittest.TestCase):
         import hashlib
 
         tail = b"x" * (10000 * 1024)
-        with patch("scripts.model_probe.remote_size", return_value=len(tail)), patch(
-            "scripts.model_probe.http_range_reader",
+        with patch("scripts.model_tool_support.remote_size", return_value=len(tail)), patch(
+            "scripts.model_tool_support.http_range_reader",
             return_value=lambda start, end: tail[start:end],
         ):
             result = stem_semantics_audit._remote_checkpoint_hash("https://example.test/model.ckpt")
@@ -160,8 +160,8 @@ class RemoteCheckpointHashTests(unittest.TestCase):
         import hashlib
 
         whole = b"y" * 512
-        with patch("scripts.model_probe.remote_size", return_value=len(whole)), patch(
-            "scripts.model_probe.http_range_reader",
+        with patch("scripts.model_tool_support.remote_size", return_value=len(whole)), patch(
+            "scripts.model_tool_support.http_range_reader",
             return_value=lambda start, end: whole[start:end],
         ):
             result = stem_semantics_audit._remote_checkpoint_hash("https://example.test/small.ckpt")
@@ -169,7 +169,7 @@ class RemoteCheckpointHashTests(unittest.TestCase):
         self.assertEqual(result.status, "ok")
 
     def test_fetch_failure_is_reported_not_silently_dropped(self) -> None:
-        with patch("scripts.model_probe.remote_size", side_effect=OSError("boom")):
+        with patch("scripts.model_tool_support.remote_size", side_effect=OSError("boom")):
             result = stem_semantics_audit._remote_checkpoint_hash("https://example.test/model.ckpt")
         self.assertEqual(result.digest, "")
         self.assertEqual(result.status, "fetch_failed")
@@ -194,8 +194,8 @@ class HashStatusTests(unittest.TestCase):
     def _entry(self, lookup: Any, curated_table: Optional[dict] = None):
         with patch.object(
             stem_semantics_audit, "_remote_checkpoint_hash", return_value=lookup
-        ), patch("scripts.model_probe._fetch_config", return_value="/tmp/c.yaml"), patch(
-            "scripts.model_probe._cache_dir", return_value="/tmp"
+        ), patch("scripts.model_tool_support.fetch_config", return_value="/tmp/c.yaml"), patch(
+            "scripts.model_tool_support.cache_dir", return_value="/tmp"
         ), patch(
             "core.model_data.load_mdx_c_config",
             return_value={"training": {"instruments": ["vocals", "other"]}},
@@ -269,7 +269,7 @@ class EntryForTargetCuratedLookupTests(unittest.TestCase):
     def test_matched_checkpoint_hash_reports_curated(self) -> None:
         target = self._target(label="Some Model")
         with patch(
-            "scripts.model_probe._fetch_config", return_value="/tmp/fake.yaml"
+            "scripts.model_tool_support.fetch_config", return_value="/tmp/fake.yaml"
         ), patch(
             "core.model_data.load_mdx_c_config",
             return_value={"training": {"instruments": ["vocals", "other"]}},
@@ -287,7 +287,7 @@ class EntryForTargetCuratedLookupTests(unittest.TestCase):
     def test_unmatched_checkpoint_hash_falls_back_to_name_guess(self) -> None:
         target = self._target(label="Karaoke Extractor")
         with patch(
-            "scripts.model_probe._fetch_config", return_value="/tmp/fake.yaml"
+            "scripts.model_tool_support.fetch_config", return_value="/tmp/fake.yaml"
         ), patch(
             "core.model_data.load_mdx_c_config",
             return_value={"training": {"instruments": ["vocals", "other"]}},
