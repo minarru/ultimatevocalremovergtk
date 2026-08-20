@@ -159,8 +159,8 @@ class _SeparationTarget:
     def on_deactivated(self) -> None:
         pass
 
-    def start(self, callbacks: typing.Any) -> None:
-        self.window._start_separation(callbacks)
+    def start(self, callbacks: typing.Any, plan: typing.Any = None) -> None:
+        self.window._start_separation(callbacks, plan=plan)
 
     def start_blocked_reason(self) -> Optional[str]:
         return self.window._separation_blocked_reason()
@@ -1036,11 +1036,20 @@ class MainWindow(Adw.ApplicationWindow):
             return None
         return controller.refresh_start_readiness()
 
-    def _start_separation(self, callbacks: typing.Any) -> None:
+    def _start_separation(self, callbacks: typing.Any, plan: typing.Any = None) -> None:
         """Separation run-target body (launch on the shared widgets)."""
+        from core.job_plan import ResolvedJob
+
         self._flush_settings()
 
-        input_paths = list(self.input_row.paths)
+        if isinstance(plan, ResolvedJob):
+            input_paths = [item.path for item in plan.inputs]
+            planned = plan.inputs
+            planned_output_root = plan.output
+        else:
+            input_paths = list(self.input_row.paths)
+            planned = None
+            planned_output_root = None
         self.begin_run(self._separation_target)
 
         try:
@@ -1048,7 +1057,12 @@ class MainWindow(Adw.ApplicationWindow):
                 self.context.try_save_settings(trigger="start")
             )
             debug("ui", f"runner.start files={len(input_paths)}")
-            self.context.runner.start(input_paths, callbacks)
+            self.context.runner.start(
+                input_paths,
+                callbacks,
+                planned=planned,
+                planned_output_root=planned_output_root,
+            )
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
             self.fail_to_start(f"Unable to start separation: {exc}", exc)
 

@@ -1336,11 +1336,20 @@ class EnsemblePage:
         banner.set_revealed(reason is not None)
         self.window._refresh_start_readiness()
 
-    def start(self, callbacks: typing.Any) -> None:
+    def start(self, callbacks: typing.Any, plan: typing.Any = None) -> None:
         # Readiness is validated by ``MainWindow._on_start`` before dispatch.
+        from core.job_plan import ResolvedJob
+
         self._flush_run_settings()
 
-        input_paths = list(self.input_row.paths)
+        if isinstance(plan, ResolvedJob):
+            input_paths = [item.path for item in plan.inputs]
+            planned = plan.inputs
+            planned_output_root = plan.output
+        else:
+            input_paths = list(self.input_row.paths)
+            planned = None
+            planned_output_root = None
         self.window.begin_run(self)
 
         try:
@@ -1352,7 +1361,12 @@ class EnsemblePage:
             stem = self._ensemble_pair().value
             models = len(self._selected_model_tags())
             debug("ui", f"ensemble start files={len(input_paths)} models={models} stem={stem}")
-            self.context.runner.start(input_paths, callbacks)
+            self.context.runner.start(
+                input_paths,
+                callbacks,
+                planned=planned,
+                planned_output_root=planned_output_root,
+            )
         except Exception as exc: # noqa: BLE001 - surfaced to the user
             self.window.fail_to_start(f"Unable to start ensemble: {exc}", exc)
 

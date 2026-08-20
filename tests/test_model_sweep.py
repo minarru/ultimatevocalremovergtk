@@ -513,6 +513,159 @@ class RunChildTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(len(result["outputs"]), 1)
 
+    def test_run_child_starts_from_planned_inputs(self) -> None:
+        import json
+        import tempfile
+        from unittest import mock
+        from core.blocking_runner import RunResult
+        from core.export_naming import OutputNamingContext
+        from core.job_plan import PlannedInput
+        from core.settings import Settings
+
+        with tempfile.TemporaryDirectory() as tmp:
+            export_dir = os.path.join(tmp, "out")
+            spec = {
+                "kind": model_sweep.KIND_SINGLE,
+                "method": "mdx",
+                "model": "test.onnx",
+                "overrides": {},
+                "settings_path": os.path.join(tmp, "settings.json"),
+                "input_path": os.path.join(tmp, "in.wav"),
+                "export_dir": export_dir,
+                "cpu": True,
+                "timeout": 5,
+            }
+            spec_path = os.path.join(tmp, "spec.json")
+            with open(spec_path, "w") as handle:
+                json.dump(spec, handle)
+
+            settings = Settings.defaults()
+            settings.process.export_path = export_dir
+            planned = PlannedInput(
+                path="/plan/clip.wav",
+                naming=OutputNamingContext(
+                    input_path="/plan/clip.wav",
+                    track="clip",
+                    track_base="clip",
+                    export_directory=export_dir,
+                    extension="wav",
+                ),
+                outputs=(),
+            )
+            plan = mock.Mock(
+                diagnostics=[],
+                settings=settings,
+                inputs=(planned,),
+                output="/plan/out",
+            )
+            record = mock.Mock(id="mdx:test.onnx", family="mdx", method="MDX-Net")
+            captured: dict[str, object] = {}
+            fake_runner = mock.Mock()
+
+            def capture_start(paths: object, callbacks: object, **kwargs: object) -> None:
+                captured["paths"] = paths
+                captured["kwargs"] = kwargs
+
+            fake_runner.start.side_effect = capture_start
+
+            def fake_run_blocking(runner: object, start_runner: Any, **_kwargs: object) -> RunResult:
+                start_runner(mock.Mock())
+                os.makedirs(export_dir, exist_ok=True)
+                with open(os.path.join(export_dir, "out (Vocals).wav"), "wb") as handle:
+                    handle.write(b"RIFFdata")
+                return RunResult(0.1, completed=True)
+
+            with mock.patch("core.settings.Settings.load", return_value=settings), \
+                 mock.patch("core.model_identity.ModelIdentityService.resolve", return_value=record), \
+                 mock.patch("core.job_plan.JobResolver.resolve", return_value=plan), \
+                 mock.patch("core.job_runner.JobRunner", return_value=fake_runner), \
+                 mock.patch("core.blocking_runner.run_blocking", side_effect=fake_run_blocking):
+                rc = model_sweep.run_child(spec_path)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(captured["paths"], ["/plan/clip.wav"])
+        kwargs = captured["kwargs"]
+        assert isinstance(kwargs, dict)
+        self.assertEqual(kwargs["planned"], (planned,))
+        self.assertEqual(kwargs["planned_output_root"], "/plan/out")
+        fake_runner.start_resolved.assert_not_called()
+
+    def test_run_child_ensemble_starts_from_planned_inputs(self) -> None:
+        import json
+        import tempfile
+        from unittest import mock
+        from core.blocking_runner import RunResult
+        from core.export_naming import OutputNamingContext
+        from core.job_plan import PlannedInput
+        from core.settings import Settings
+        from core.types import ProcessMethod
+
+        with tempfile.TemporaryDirectory() as tmp:
+            export_dir = os.path.join(tmp, "out")
+            spec = {
+                "kind": model_sweep.KIND_ENSEMBLE,
+                "method": "ensemble",
+                "overrides": {},
+                "settings_path": os.path.join(tmp, "settings.json"),
+                "input_path": os.path.join(tmp, "in.wav"),
+                "export_dir": export_dir,
+                "cpu": True,
+                "timeout": 5,
+            }
+            spec_path = os.path.join(tmp, "spec.json")
+            with open(spec_path, "w") as handle:
+                json.dump(spec, handle)
+
+            settings = Settings.defaults()
+            settings.process.method = ProcessMethod.ENSEMBLE
+            settings.process.export_path = export_dir
+            planned = PlannedInput(
+                path="/plan/mix.wav",
+                naming=OutputNamingContext(
+                    input_path="/plan/mix.wav",
+                    track="mix",
+                    track_base="mix",
+                    export_directory=export_dir,
+                    extension="wav",
+                ),
+                outputs=(),
+            )
+            plan = mock.Mock(
+                diagnostics=[],
+                settings=settings,
+                inputs=(planned,),
+                output=export_dir,
+            )
+            captured: dict[str, object] = {}
+            fake_runner = mock.Mock()
+
+            def capture_start(paths: object, callbacks: object, **kwargs: object) -> None:
+                captured["paths"] = paths
+                captured["kwargs"] = kwargs
+
+            fake_runner.start.side_effect = capture_start
+
+            def fake_run_blocking(runner: object, start_runner: Any, **_kwargs: object) -> RunResult:
+                start_runner(mock.Mock())
+                os.makedirs(export_dir, exist_ok=True)
+                with open(os.path.join(export_dir, "out (Vocals).wav"), "wb") as handle:
+                    handle.write(b"RIFFdata")
+                return RunResult(0.1, completed=True)
+
+            with mock.patch("core.settings.Settings.load", return_value=settings), \
+                 mock.patch("core.job_plan.JobResolver.resolve", return_value=plan), \
+                 mock.patch("core.job_runner.JobRunner", return_value=fake_runner), \
+                 mock.patch("core.blocking_runner.run_blocking", side_effect=fake_run_blocking):
+                rc = model_sweep.run_child(spec_path)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(captured["paths"], ["/plan/mix.wav"])
+        kwargs = captured["kwargs"]
+        assert isinstance(kwargs, dict)
+        self.assertEqual(kwargs["planned"], (planned,))
+        self.assertEqual(kwargs["planned_output_root"], export_dir)
+        fake_runner.start_resolved.assert_not_called()
+
     def test_run_tool_uses_resolved_audio_plan_and_generic_blocker(self) -> None:
         from unittest import mock
         from core.blocking_runner import RunResult
@@ -527,6 +680,10 @@ class RunChildTests(unittest.TestCase):
         plan = mock.Mock(diagnostics=[], settings=settings, output="/tmp/out")
         outcome = RunResult(0.01, stopped=True, error=TimeoutError("timeout"))
 
+        def fake_run_blocking(runner: object, start_runner: Any, **_kwargs: object) -> RunResult:
+            start_runner(mock.Mock())
+            return outcome
+
         with mock.patch(
             "core.apollo.ApolloModelData", return_value=fake_model_data
         ), mock.patch(
@@ -534,12 +691,16 @@ class RunChildTests(unittest.TestCase):
         ), mock.patch(
             "core.audio_plan.AudioJobResolver.resolve", return_value=plan
         ), mock.patch(
-            "core.blocking_runner.run_blocking", return_value=outcome
+            "core.blocking_runner.run_blocking", side_effect=fake_run_blocking
         ), mock.patch(
             "os.makedirs"
         ):
             result = model_sweep._run_tool(settings, "/tmp/in.wav", 0.01, repo=fake_repo)
         self.assertIs(result, outcome)
+        fake_runner.start.assert_called_once()
+        self.assertEqual(fake_runner.start.call_args.args[0], model_sweep.APOLLO_RESTORE)
+        self.assertNotIn("planned", fake_runner.start.call_args.kwargs)
+        fake_runner.start_resolved.assert_not_called()
 
 
 class SpawnChildProcessGroupTests(unittest.TestCase):

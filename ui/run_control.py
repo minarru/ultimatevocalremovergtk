@@ -179,6 +179,8 @@ class RunController:
         )
 
     def _start_target(self, target: typing.Any, plan: typing.Any=None) -> None:
+        from core.job_plan import ResolvedJob
+
         runner = self._window.context.runner
         if plan is not None:
             import copy
@@ -189,7 +191,10 @@ class RunController:
             runner.settings = self._window.settings
         callbacks = self._callbacks()
         debug("ui", f"handle_start -> {type(target).__name__}.start()")
-        target.start(callbacks)
+        if isinstance(plan, ResolvedJob):
+            target.start(callbacks, plan=plan)
+        else:
+            target.start(callbacks)
 
     def _apply_page_runner_settings(
         self, target: typing.Any, settings: typing.Any
@@ -328,6 +333,12 @@ class RunController:
             self._window.toast("Processing settings or models changed; reviewing the updated plan")
             self._begin_preflight(target)
             return
+        if not _resolved_job_matches_spec(plan, current):
+            self._window.toast(
+                "Input files or output folder changed; reviewing the updated plan"
+            )
+            self._begin_preflight(target)
+            return
         self._set_preflight_busy(True)
 
         def worker() -> None:
@@ -376,6 +387,12 @@ class RunController:
             )
             self._begin_preflight(target)
             return
+        if not _resolved_job_matches_spec(plan, current):
+            self._window.toast(
+                "Input files or output folder changed; reviewing the updated plan"
+            )
+            self._begin_preflight(target)
+            return
         self._start_target(target, plan)
 
     def begin_run(self, target: typing.Any) -> None:
@@ -388,7 +405,11 @@ class RunController:
         set_run_error_context(**self._snapshot_error_context(target))
         debug("ui", f"begin_run target={type(target).__name__} engines_imported={engines_imported()} warm={warm_status()}")
         self._running_target = target
-        self._run_output_dir = self._window.settings.process.export_path or ""
+        runner = getattr(self._window.context, "runner", None)
+        runner_export = ""
+        if runner is not None:
+            runner_export = runner.settings.process.export_path or ""
+        self._run_output_dir = runner_export or self._window.settings.process.export_path or ""
         self._run_label = self._run_label_for(target)
         self._window.log_panel.set_run_label(self._run_label)
         self._run_started_at = time.monotonic()
@@ -415,6 +436,7 @@ class RunController:
         self._window.console.append(f"\n{message}\n")
         self._report_error(message, exc)
         self._running_target = None
+        self._restore_runner_settings()
 
     def handle_start_action(self) -> None:
         if self._window.start_button.get_sensitive():
@@ -1135,6 +1157,25 @@ class RunController:
                 clear_weight_cache=clear_weight_cache,
                 park_weights=park_weights,
             )
+
+
+def _resolved_job_matches_spec(plan: typing.Any, spec: typing.Any) -> bool:
+    """True when a core ResolvedJob still matches the live JobSpec I/O contract."""
+    from core.job_plan import ResolvedJob
+
+    if not isinstance(plan, ResolvedJob):
+        return True
+    if getattr(spec, "command", None) != plan.command:
+        return False
+    planned_paths = tuple(os.path.normpath(item.path) for item in plan.inputs)
+    spec_paths = tuple(
+        os.path.normpath(path) for path in getattr(spec, "inputs", ())
+    )
+    if planned_paths != spec_paths:
+        return False
+    return os.path.normpath(plan.output or "") == os.path.normpath(
+        getattr(spec, "output", "") or ""
+    )
 
 
 def _format_mmss(seconds: float) -> str:

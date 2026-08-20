@@ -25,6 +25,7 @@ from bundled.constants import (
     VR_ARCH_TYPE,
 )
 
+from .job_plan import PlannedInput, ResolvedJob
 from .ensembler import Ensembler
 from .export_naming import (
     OutputNamingContext,
@@ -56,7 +57,6 @@ from .separator_run import apply_segment_override
 if TYPE_CHECKING:
     from engines.model_weight_cache import FileIdentity
     from kthread import KThread
-    from .job_plan import PlannedInput, ResolvedJob
 
 
 def collect_run_model_paths(models: Sequence[ModelConfig]) -> set[str]:
@@ -125,7 +125,7 @@ class JobRunner:
         self._ensemble_salvage_members: list[dict[str, Any]] = []
         self._last_oom_exported = False
         self._run_models: Sequence[Any] | None = None
-        self._run_planned: Sequence[Any] | None = None
+        self._run_planned: Sequence[PlannedInput] | None = None
         self._run_output_root: str | None = None
         self._run_path_map: dict[str, str] | None = None
         self._resolved_command: str | None = None
@@ -155,7 +155,7 @@ class JobRunner:
         callbacks: job_callbacks.JobCallbacks,
         *,
         models: Sequence[Any] | None = None,
-        planned: Sequence[Any] | None = None,
+        planned: Sequence[PlannedInput] | None = None,
         planned_output_root: str | None = None,
     ) -> None:
         """Launch the worker thread. No-op if a run is already in flight.
@@ -165,7 +165,8 @@ class JobRunner:
         supplied, the worker reuses that assembly and does not call
         :meth:`resolve_models`. When ``planned`` is supplied, per-file
         basenames come from the matching :class:`~core.job_plan.PlannedInput`
-        after rebasing onto the current export path.
+        after rebasing onto the current export path. ``planned_output_root``
+        is required in that case so model-folder rebasing cannot flatten.
         """
         if self.is_running():
             return
@@ -190,19 +191,25 @@ class JobRunner:
         *,
         mode: Literal["single", "ensemble"],
         models: Sequence[Any] | None = None,
-        planned: Sequence[Any] | None = None,
+        planned: Sequence[PlannedInput] | None = None,
         planned_output_root: str | None = None,
     ) -> None:
         """Shared KThread launch for single-method and ensemble workers."""
         if self.is_running():
             return
+        if planned is not None and not planned_output_root:
+            raise ValueError("planned_output_root is required when planned inputs are supplied")
         from kthread import KThread
 
         self._reset_run_state()
         self._run_models = list(models) if models is not None else None
         self._run_planned = tuple(planned) if planned is not None else None
         self._run_output_root = planned_output_root
-        paths = list(input_paths)
+        paths = (
+            [item.path for item in planned]
+            if planned is not None
+            else list(input_paths)
+        )
         self._thread = KThread(
             target=self._run_separation,
             args=(paths, callbacks, mode),
