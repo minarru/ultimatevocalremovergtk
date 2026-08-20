@@ -113,7 +113,7 @@ class DownloadManagerPolitreesTests(unittest.TestCase):
                 }
             }
         }
-        self.manager._merge_politrees_supplement()
+        self.manager._merge_politrees_supplement(allow_network=False)
         self.assertIn("Extra Roformer", self.manager.mdx_download_list)
         self.assertIn("TR Roformer", self.manager.mdx_download_list)
 

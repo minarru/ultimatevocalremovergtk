@@ -337,7 +337,7 @@ class DownloadManagerMergeTests(unittest.TestCase):
             MDX_ARCH_TYPE: [("Broken", "not ported")]
         }
         self.manager.mdx_download_list = {}
-        self.manager._merge_politrees_supplement()
+        self.manager._merge_politrees_supplement(allow_network=False)
         mock_merge.assert_called_once()
         self.assertIn("Mvsepless Mel", self.manager.mdx_download_list)
         self.assertEqual(

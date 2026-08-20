@@ -262,7 +262,7 @@ class DownloadManagerDedupeTests(unittest.TestCase):
         )
         manager = DownloadManager()
         manager.mdx_download_list = {}
-        manager._merge_politrees_supplement()
+        manager._merge_politrees_supplement(allow_network=False)
         self.assertIn("First", manager.mdx_download_list)
         self.assertNotIn("Second", manager.mdx_download_list)
         # First normalized label wins (dict order from mock_mv).

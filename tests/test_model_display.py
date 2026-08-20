@@ -215,13 +215,19 @@ class MvseplessAndExtrasDisplayTests(unittest.TestCase):
     ``load_mdx_catalog_display_index`` read only the upstream cache and
     Politrees, so anything added by the two newest catalogue sources fell back
     to its on-disk basename in the method pickers.
+
+    CI has no live catalogues. Extras are bundled, so those names are asserted
+    offline. Mvsepless names skip unless a disk cache is already present —
+    ``load_converted_mvsepless()`` FORCE-fetches on an empty cache, and
+    ``BlockedNetworkAccess`` is a ``BaseException``, which aborts ``setUpClass``.
     """
 
-    #: Basenames observed rendering raw before the catalog_sources unification.
-    RAW_BEFORE = (
-        "bs_inst_hyperace2_unwa",
+    EXTRAS_BEFORE = (
         "huge_scnet_4stems_bleedless",
         "huge_scnet_4stems_fullness",
+    )
+    MVSEPLESS_BEFORE = (
+        "bs_inst_hyperace2_unwa",
         "mbr_inst2_unwa",
         "mbr_instfvx_gabox",
     )
@@ -230,33 +236,34 @@ class MvseplessAndExtrasDisplayTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         from core.extra_catalog import clear_extra_catalog_cache
         from core.model_display import clear_display_cache
-        from core.mvsepless_catalog import clear_mvsepless_cache, load_converted_mvsepless
 
-        os.environ.pop("UVR_DISABLE_MVSEPLESS", None)
-        os.environ.pop("UVR_DISABLE_POLITREES", None)
         os.environ.pop("UVR_DISABLE_EXTRA_MODELS", None)
-        clear_mvsepless_cache()
         clear_extra_catalog_cache()
         clear_display_cache()
-        converted = load_converted_mvsepless() or {}
-        blob = str(converted)
-        needed = ("bs_inst_hyperace2_unwa", "mbr_inst2_unwa", "mbr_instfvx_gabox")
-        if not all(name in blob for name in needed):
-            raise unittest.SkipTest(
-                "mvsepless live cache does not include the pre-unification names"
-            )
 
-    def test_previously_raw_basenames_now_resolve(self) -> None:
+    def test_previously_raw_extras_basenames_now_resolve(self) -> None:
         from core.model_display import load_mdx_catalog_display_index
 
-        index = load_mdx_catalog_display_index()
-        missing = [name for name in self.RAW_BEFORE if name not in index]
+        index = load_mdx_catalog_display_index(allow_network=False)
+        missing = [name for name in self.EXTRAS_BEFORE if name not in index]
         self.assertEqual(missing, [], f"still unnamed: {missing}")
+        display = index["huge_scnet_4stems_bleedless"]
+        self.assertNotEqual(display, "huge_scnet_4stems_bleedless")
+        self.assertNotIn("SCnet:", display)
 
-    def test_resolved_names_are_canonical(self) -> None:
+    def test_previously_raw_mvsepless_basenames_now_resolve(self) -> None:
         from core.model_display import load_mdx_catalog_display_index
+        from core.mvsepless_catalog import load_converted_mvsepless
 
-        index = load_mdx_catalog_display_index()
+        converted = load_converted_mvsepless(allow_network=False) or {}
+        blob = str(converted)
+        if not all(name in blob for name in self.MVSEPLESS_BEFORE):
+            raise unittest.SkipTest(
+                "mvsepless disk cache does not include the pre-unification names"
+            )
+        index = load_mdx_catalog_display_index(allow_network=False)
+        missing = [name for name in self.MVSEPLESS_BEFORE if name not in index]
+        self.assertEqual(missing, [], f"still unnamed: {missing}")
         display = index["mbr_inst2_unwa"]
         self.assertNotEqual(display, "mbr_inst2_unwa")
         self.assertNotIn("Roformer Model:", display)

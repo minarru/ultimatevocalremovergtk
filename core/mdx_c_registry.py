@@ -20,7 +20,6 @@ from .model_display import (
     resolve_mdx_model_basename,
     sanitize_catalogue_label,
 )
-from .politrees_catalog import load_politrees_links
 
 _MDX_CATALOG_SOURCE_KEYS = (
     "mdx_download_list",
@@ -152,7 +151,11 @@ def _register_display_name_for_checkpoint(
     display_index: Optional[Dict[str, str]] = None,
 ) -> bool:
     basename = os.path.splitext(os.path.basename(checkpoint_path))[0]
-    lookup = display_index if display_index is not None else load_mdx_catalog_display_index()
+    lookup = (
+        display_index
+        if display_index is not None
+        else load_mdx_catalog_display_index(allow_network=False)
+    )
     display_name = lookup.get(basename)
     if not display_name:
         return False
@@ -234,11 +237,10 @@ def load_mdx_catalog_index(*, allow_network: bool | None = None, coordinator: An
     }
     if catalogue:
         return build_checkpoint_yaml_index([catalogue])
-    catalogues = list(_catalogues_from_source(payload))
-    politrees = load_politrees_links(allow_network=network)
-    if isinstance(politrees, dict):
-        catalogues.extend(_catalogues_from_source(politrees))
-    return build_checkpoint_yaml_index(catalogues)
+    # ``merged_catalogues`` already folded Politrees/extras/mvsepless. An empty
+    # MDX projection means those sources had nothing usable; do not FORCE-fetch
+    # Politrees again on the caller thread (tests and offline planning).
+    return build_checkpoint_yaml_index(_catalogues_from_source(payload))
 
 
 def yaml_for_checkpoint(filename: str, index: Optional[Dict[str, str]] = None) -> Optional[str]:
@@ -340,9 +342,13 @@ def register_mdx_c_from_download_jobs(
     jobs: List[Tuple[str, str]],
 ) -> bool:
     """Auto-register MDX-C checkpoints downloaded alongside a config yaml."""
+    pairs = pair_checkpoint_yaml_jobs(jobs)
+    if not pairs:
+        return False
     registered = False
-    display_index = load_mdx_catalog_display_index()
-    for checkpoint_path, yaml_name in pair_checkpoint_yaml_jobs(jobs):
+    # Naming a file that just landed on disk must not FORCE-fetch catalogues.
+    display_index = load_mdx_catalog_display_index(allow_network=False)
+    for checkpoint_path, yaml_name in pairs:
         if register_mdx_c_checkpoint(checkpoint_path, yaml_name):
             registered = True
         if _register_display_name_for_checkpoint(checkpoint_path, display_index=display_index):

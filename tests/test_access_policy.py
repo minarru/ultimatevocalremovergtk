@@ -42,8 +42,7 @@ class AccessPolicyTests(unittest.TestCase):
         from core.mdx_c_registry import load_mdx_catalog_index
         with patch("core.catalog_sources.merged_catalogues") as merged:
             merged.return_value = SimpleNamespace(meta={})
-            with patch("core.politrees_catalog.load_politrees_links", return_value={}):
-                load_mdx_catalog_index()
+            load_mdx_catalog_index()
         self.assertNotEqual(merged.call_args.kwargs.get("allow_network"), False)
 
     def test_load_mdx_catalog_index_honors_offline_policy(self) -> None:
@@ -53,6 +52,5 @@ class AccessPolicyTests(unittest.TestCase):
         with access_policy(allow_network=False, allow_metadata_writes=False):
             with patch("core.catalog_sources.merged_catalogues") as merged:
                 merged.return_value = SimpleNamespace(meta={})
-                with patch("core.politrees_catalog.load_politrees_links", return_value={}):
-                    load_mdx_catalog_index()
+                load_mdx_catalog_index()
         self.assertEqual(merged.call_args.kwargs.get("allow_network"), False)

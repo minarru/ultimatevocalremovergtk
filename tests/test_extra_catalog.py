@@ -107,10 +107,9 @@ class ApolloDownloadWiringTests(unittest.TestCase):
     def setUp(self) -> None:
         extra_catalog.clear_extra_catalog_cache()
         self.manager = DownloadManager()
-        # Politrees would need network; the curated list is bundled locally.
-        # Patched where it is now looked up: the merge moved to catalog_sources.
-        with mock.patch("core.catalog_sources.load_politrees_links", return_value=None):
-            self.manager._merge_politrees_supplement()
+        # Curated extras are bundled locally. Keep both remote catalogues
+        # offline: ``merged_catalogues`` still loads mvsepless unless told not to.
+        self.manager._merge_politrees_supplement(allow_network=False)
 
     def test_apollo_catalogue_is_populated_without_network(self) -> None:
         self.assertTrue(self.manager.apollo_download_list)
