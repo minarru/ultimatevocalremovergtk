@@ -836,6 +836,46 @@ class FetchConfigTests(unittest.TestCase):
             self.assertFalse(os.path.exists(os.path.join(tmp, "config.yaml.part")))
 
 
+class FetchConfigIdentityTests(unittest.TestCase):
+    """Config cache identity must key on the URL, not the basename."""
+
+    def test_two_urls_sharing_a_basename_do_not_alias(self) -> None:
+        import tempfile
+        from unittest.mock import patch
+
+        bodies = {
+            "https://a.invalid/one/config.yaml": b"first: 1\n",
+            "https://b.invalid/two/config.yaml": b"second: 2\n",
+        }
+
+        def opener(request: Any) -> Any:
+            url = getattr(request, "full_url", request)
+
+            class _R:
+                def read(self) -> bytes:
+                    return bodies[url]
+
+                def __enter__(self) -> "_R":
+                    return self
+
+                def __exit__(self, *exc: Any) -> bool:
+                    return False
+
+            return _R()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("core.mdx_config_fetch._urlopen", opener):
+                a = model_tool_support.fetch_config(
+                    "https://a.invalid/one/config.yaml", tmp
+                )
+                b = model_tool_support.fetch_config(
+                    "https://b.invalid/two/config.yaml", tmp
+                )
+            self.assertNotEqual(a, b)
+            self.assertEqual(open(a, "rb").read(), b"first: 1\n")
+            self.assertEqual(open(b, "rb").read(), b"second: 2\n")
+
+
 class CachedCheckpointKeysTests(unittest.TestCase):
     """The point: a repeat ``--check-keys`` run must not re-do the range-fetch."""
 

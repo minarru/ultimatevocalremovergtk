@@ -452,6 +452,18 @@ def local_checkpoint_keys(path: str) -> List[str]:
     return torch_checkpoint_keys(read, os.path.getsize(path))
 
 
+def cache_name(url: str, filename: str) -> str:
+    """Cache filename keyed by URL, not by basename alone.
+
+    Two models can both ship a ``config.yaml``; keying on the basename made
+    the second one silently read the first one's bytes. The readable stem is
+    kept so the cache directory stays browsable.
+    """
+    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
+    stem, ext = os.path.splitext(filename)
+    return f"{stem}-{digest}{ext}"
+
+
 def fetch_config(url: str, dest_dir: str) -> str:
     """Download a yaml config (a few KB) into ``dest_dir`` and return the path."""
     from urllib.parse import unquote, urlparse
@@ -460,7 +472,7 @@ def fetch_config(url: str, dest_dir: str) -> str:
 
     name = os.path.basename(unquote(urlparse(url).path)) or "config.yaml"
     os.makedirs(dest_dir, exist_ok=True)
-    dest = os.path.join(dest_dir, name)
+    dest = os.path.join(dest_dir, cache_name(url, name))
     if os.path.isfile(dest):
         return dest
     tmp_dest = f"{dest}.part"

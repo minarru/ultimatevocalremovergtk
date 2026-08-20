@@ -396,7 +396,8 @@ class DemucsFinalizationTests(unittest.TestCase):
     def _entry(self, label: str, weight: str):
         snapshot = self._Snapshot({label: weight})
         entries = catalogue._entries_from_snapshot(
-            snapshot, ({}, {}, {}, {}), catalogue.CatalogueContext(), allow_network=False
+            snapshot, ({}, {}, {}, {}), catalogue.CatalogueContext(),
+            policy=catalogue.OFFLINE_FETCH_POLICY
         )
         self.assertEqual(len(entries), 1)
         return entries[0]
@@ -429,6 +430,103 @@ class DemucsFinalizationTests(unittest.TestCase):
         self.assertEqual(
             self._entry("Demucs v4: htdemucs", "b.th").metadata_source, "demucs_heuristic"
         )
+
+
+class CacheIdentityTests(unittest.TestCase):
+    """Ephemeral downloads: keyed by URL, TTL'd, and out of the docs tree."""
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        self.tmp = tempfile.mkdtemp(prefix="uvr-cache-id-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.fetched: list = []
+
+    def _opener(self, body: bytes = b'{"ok": 1}'):
+        from unittest import mock
+
+        def record(request: Any, *args: Any, **kwargs: Any):
+            url = getattr(request, "full_url", request)
+            self.fetched.append(url)
+
+            class _R:
+                def read(self) -> bytes:
+                    return body
+
+                def __enter__(self) -> "_R":
+                    return self
+
+                def __exit__(self, *exc: Any) -> bool:
+                    return False
+
+            return _R()
+
+        return mock.patch("core.mdx_config_fetch._urlopen", record)
+
+    def test_caches_live_under_cache_dir_not_the_docs_tree(self) -> None:
+        from core import paths
+
+        for cache_dir in (
+            catalogue.YAML_CACHE_DIR,
+            catalogue.POLITREES_CACHE_DIR,
+            catalogue.COMMUNITY_CACHE_DIR,
+        ):
+            self.assertTrue(
+                cache_dir.startswith(paths.CACHE_DIR),
+                f"{cache_dir} is not under CACHE_DIR",
+            )
+            self.assertNotIn("docs", os.path.relpath(cache_dir, paths.CACHE_DIR))
+
+    def test_same_basename_from_different_urls_does_not_alias(self) -> None:
+        """Two models can both ship a 'config.yaml'."""
+        with self._opener(b"first"):
+            a = catalogue._fetch_cached("https://a.invalid/x/config.yaml", self.tmp, "config.yaml")
+        with self._opener(b"second"):
+            b = catalogue._fetch_cached("https://b.invalid/y/config.yaml", self.tmp, "config.yaml")
+        self.assertNotEqual(a, b)
+        assert a is not None and b is not None
+        self.assertEqual(open(a, "rb").read(), b"first")
+        self.assertEqual(open(b, "rb").read(), b"second")
+
+    def test_a_fresh_cache_entry_is_not_refetched(self) -> None:
+        url = "https://a.invalid/data.json"
+        with self._opener():
+            catalogue._fetch_cached(url, self.tmp, "data.json")
+            catalogue._fetch_cached(url, self.tmp, "data.json")
+        self.assertEqual(len(self.fetched), 1)
+
+    def test_a_stale_cache_entry_is_refetched(self) -> None:
+        """A normal online run must not reuse an arbitrarily old supplement."""
+        url = "https://a.invalid/data.json"
+        with self._opener():
+            path = catalogue._fetch_cached(url, self.tmp, "data.json")
+            assert path
+            os.utime(path, (0, 0))  # epoch: far older than any TTL
+            catalogue._fetch_cached(url, self.tmp, "data.json")
+        self.assertEqual(len(self.fetched), 2)
+
+    def test_stale_entry_is_still_served_when_offline(self) -> None:
+        url = "https://a.invalid/data.json"
+        with self._opener():
+            path = catalogue._fetch_cached(url, self.tmp, "data.json")
+            assert path
+            os.utime(path, (0, 0))
+        with self._opener():
+            served = catalogue._fetch_cached(url, self.tmp, "data.json", allow_network=False)
+        self.assertEqual(served, path)
+        self.assertEqual(len(self.fetched), 1)
+
+    def test_refresh_refetches_even_a_fresh_entry(self) -> None:
+        url = "https://a.invalid/data.json"
+        with self._opener():
+            catalogue._fetch_cached(url, self.tmp, "data.json")
+            catalogue._fetch_cached(url, self.tmp, "data.json", refresh=True)
+        self.assertEqual(len(self.fetched), 2)
+
+    def test_refresh_flag_is_exposed_on_the_cli(self) -> None:
+        self.assertTrue(catalogue._parse_args(["--refresh"]).refresh)
+        self.assertFalse(catalogue._parse_args([]).refresh)
 
 
 class EntryMetaOverlayTests(unittest.TestCase):

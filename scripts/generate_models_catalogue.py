@@ -9,10 +9,12 @@ naming intent so mislabeled vocal vs instrumental models can be spotted.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import sys
+import time
 import urllib.error
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -55,9 +57,17 @@ from core.model_stem_semantics import (  # noqa: E402
 )
 OUTPUT_PATH = os.path.join(ROOT, "docs", "models-catalogue.md")
 REFERENCE_TSV_PATH = os.path.join(ROOT, "docs", "model_intent_reference.tsv")
-YAML_CACHE_DIR = os.path.join(ROOT, "docs", ".yaml_cache")
-POLITREES_CACHE_DIR = os.path.join(ROOT, "docs", ".politrees_cache")
-COMMUNITY_CACHE_DIR = os.path.join(ROOT, "docs", ".community_cache")
+
+#: Ephemeral supplements live under CACHE_DIR, not in the documentation tree:
+#: docs/ holds deliberate, reviewable output only.
+_CACHE_ROOT = os.path.join(paths.CACHE_DIR, "models_catalogue")
+YAML_CACHE_DIR = os.path.join(_CACHE_ROOT, "yaml")
+POLITREES_CACHE_DIR = os.path.join(_CACHE_ROOT, "politrees")
+COMMUNITY_CACHE_DIR = os.path.join(_CACHE_ROOT, "community")
+
+#: How long a supplemental download stays good. Without a TTL, "regenerate
+#: after catalogue updates" silently reused whatever was fetched first.
+CACHE_MAX_AGE_SECONDS = 24 * 60 * 60
 
 _POLITREES_VR_DATA_URL = (
     "https://raw.githubusercontent.com/Politrees/UVR_resources/main/UVR_resources/model_data/vr_model_data.json"
@@ -186,19 +196,74 @@ def _display_label(entry: ModelEntry) -> str:
     return canonical_display_name(entry.catalogue_label) or entry.catalogue_label
 
 
-def _fetch_cached(
-    url: str, cache_dir: str, filename: str, *, allow_network: bool = True
-) -> Optional[str]:
-    """Return a cached copy of ``url``, fetching it when the cache is cold.
+@dataclass(frozen=True)
+class FetchPolicy:
+    """How this run is allowed to reach the network and reuse caches.
 
-    Under ``allow_network=False`` a cache miss stays a miss: the caller gets
-    ``None`` rather than a silent download.
+    One object rather than a pair of booleans threaded through every layer:
+    the generator has several fetch points and they must all agree, which is
+    exactly what went wrong when only the snapshot honoured ``--offline``.
     """
-    cache_path = os.path.join(cache_dir, filename)
-    if os.path.isfile(cache_path):
-        return cache_path
-    if not allow_network:
-        return None
+
+    allow_network: bool = True
+    refresh: bool = False
+    max_age: float = CACHE_MAX_AGE_SECONDS
+
+
+#: Used by callers that do not care -- online, cache-respecting, TTL'd.
+DEFAULT_FETCH_POLICY = FetchPolicy()
+
+#: Cache-only: never fetch, serve whatever is on disk however old.
+OFFLINE_FETCH_POLICY = FetchPolicy(allow_network=False)
+
+
+def _cache_path(cache_dir: str, url: str, filename: str) -> str:
+    """Cache identity keyed by URL, not by basename alone.
+
+    Two different models can both ship a ``config.yaml``; keying on the
+    basename made the second one silently read the first one's bytes. The
+    readable stem is kept so the directory stays browsable.
+    """
+    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
+    stem, ext = os.path.splitext(filename)
+    return os.path.join(cache_dir, f"{stem}-{digest}{ext}")
+
+
+def _fetch_cached(
+    url: str,
+    cache_dir: str,
+    filename: str,
+    *,
+    policy: FetchPolicy = DEFAULT_FETCH_POLICY,
+    allow_network: Optional[bool] = None,
+    refresh: bool = False,
+) -> Optional[str]:
+    """Return a cached copy of ``url``, refetching when stale or asked to.
+
+    Offline is strictly cache-only: a miss stays a miss and a stale entry is
+    still served, because the alternative is a silent download. Online, an
+    entry older than ``policy.max_age`` is refreshed.
+    """
+    if allow_network is not None or refresh:
+        policy = FetchPolicy(
+            allow_network=policy.allow_network if allow_network is None else allow_network,
+            refresh=refresh or policy.refresh,
+            max_age=policy.max_age,
+        )
+
+    cache_path = _cache_path(cache_dir, url, filename)
+    cached = os.path.isfile(cache_path)
+
+    if not policy.allow_network:
+        # However old: offline must never turn a cache hit into a fetch.
+        return cache_path if cached else None
+    if cached and not policy.refresh:
+        try:
+            if time.time() - os.path.getmtime(cache_path) < policy.max_age:
+                return cache_path
+        except OSError:
+            pass
+
     os.makedirs(cache_dir, exist_ok=True)
     try:
         from core.mdx_config_fetch import _urlopen
@@ -209,13 +274,13 @@ def _fetch_cached(
             handle.write(data)
         return cache_path
     except (urllib.error.URLError, OSError, TimeoutError):
-        return cache_path if os.path.isfile(cache_path) else None
+        return cache_path if cached else None
 
 
 def _load_json_cache(
-    url: str, cache_dir: str, filename: str, *, allow_network: bool = True
+    url: str, cache_dir: str, filename: str, *, policy: FetchPolicy = DEFAULT_FETCH_POLICY
 ) -> dict:
-    path = _fetch_cached(url, cache_dir, filename, allow_network=allow_network)
+    path = _fetch_cached(url, cache_dir, filename, policy=policy)
     if not path:
         return {}
     try:
@@ -327,21 +392,23 @@ def _write_reference_tsv(refs: Dict[str, CommunityRef]) -> None:
     write_text_atomic(REFERENCE_TSV_PATH, "\n".join(lines) + "\n")
 
 
-def _build_catalogue_context(*, allow_network: bool = True) -> CatalogueContext:
+def _build_catalogue_context(
+    *,
+    policy: FetchPolicy = DEFAULT_FETCH_POLICY,
+    allow_network: Optional[bool] = None,
+) -> CatalogueContext:
+    if allow_network is not None:
+        policy = FetchPolicy(
+            allow_network=allow_network, refresh=policy.refresh, max_age=policy.max_age
+        )
     remote_vr = _load_json_cache(
-        _POLITREES_VR_DATA_URL,
-        POLITREES_CACHE_DIR,
-        "vr_model_data.json",
-        allow_network=allow_network,
+        _POLITREES_VR_DATA_URL, POLITREES_CACHE_DIR, "vr_model_data.json", policy=policy
     )
     remote_mdx = _load_json_cache(
-        _POLITREES_MDX_DATA_URL,
-        POLITREES_CACHE_DIR,
-        "mdx_model_data.json",
-        allow_network=allow_network,
+        _POLITREES_MDX_DATA_URL, POLITREES_CACHE_DIR, "mdx_model_data.json", policy=policy
     )
     community_path = _fetch_cached(
-        _COMMUNITY_MODELS_URL, COMMUNITY_CACHE_DIR, "models.txt", allow_network=allow_network
+        _COMMUNITY_MODELS_URL, COMMUNITY_CACHE_DIR, "models.txt", policy=policy
     )
     community = _parse_community_models_txt(community_path or "")
     if community:
@@ -532,10 +599,12 @@ def _yaml_paths(yaml_name: str) -> List[str]:
     ]
 
 
-def _fetch_yaml(url: str, yaml_name: str, *, allow_network: bool = True) -> Optional[str]:
+def _fetch_yaml(
+    url: str, yaml_name: str, *, policy: FetchPolicy = DEFAULT_FETCH_POLICY
+) -> Optional[str]:
     if not url or not yaml_name.endswith(".yaml"):
         return None
-    return _fetch_cached(url, YAML_CACHE_DIR, yaml_name, allow_network=allow_network)
+    return _fetch_cached(url, YAML_CACHE_DIR, yaml_name, policy=policy)
 
 
 def _training_fields(training: Any) -> Tuple[List[str], str]:
@@ -551,8 +620,16 @@ def _training_fields(training: Any) -> Tuple[List[str], str]:
 
 
 def _load_yaml_meta(
-    yaml_name: str, yaml_url: str = "", *, allow_network: bool = True
+    yaml_name: str,
+    yaml_url: str = "",
+    *,
+    policy: FetchPolicy = DEFAULT_FETCH_POLICY,
+    allow_network: Optional[bool] = None,
 ) -> Tuple[List[str], str, str, str]:
+    if allow_network is not None:
+        policy = FetchPolicy(
+            allow_network=allow_network, refresh=policy.refresh, max_age=policy.max_age
+        )
     if not yaml_name:
         return [], "", "", ""
     config_path = ""
@@ -561,7 +638,7 @@ def _load_yaml_meta(
             config_path = candidate
             break
     source = ""
-    if not config_path and yaml_url and allow_network:
+    if not config_path and yaml_url and policy.allow_network:
         # fetch_mdx_config_url writes into runtime model config storage, so it
         # must never run for a read-only offline report.
         from core.mdx_config_fetch import fetch_mdx_config_url
@@ -572,7 +649,7 @@ def _load_yaml_meta(
                 config_path = dest
                 source = f"remote_yaml:{yaml_name}"
         if not config_path:
-            fetched = _fetch_yaml(yaml_url, yaml_name, allow_network=allow_network)
+            fetched = _fetch_yaml(yaml_url, yaml_name, policy=policy)
             if fetched:
                 config_path = fetched
                 source = f"remote_yaml:{yaml_name}"
@@ -789,7 +866,7 @@ def _parse_catalogue_entry(
     hash_json: str = "",
     weight_dir: str = "",
     entry_meta: Any = None,
-    allow_network: bool = True,
+    policy: FetchPolicy = DEFAULT_FETCH_POLICY,
 ) -> List[ModelEntry]:
     yaml_name = ""
     yaml_url = ""
@@ -817,7 +894,7 @@ def _parse_catalogue_entry(
 
     if yaml_name:
         instruments, target, arch, yaml_source = _load_yaml_meta(
-            yaml_name, yaml_url, allow_network=allow_network
+            yaml_name, yaml_url, policy=policy
         )
         meta.instruments = instruments
         meta.target_instrument = target
@@ -944,7 +1021,7 @@ def _entries_from_snapshot(
     payloads: Tuple[dict, dict, dict, dict],
     ctx: CatalogueContext,
     *,
-    allow_network: bool = True,
+    policy: FetchPolicy = DEFAULT_FETCH_POLICY,
 ) -> List[ModelEntry]:
     trvlvr, politrees, extras, mvsepless = payloads
     meta_index = getattr(snapshot, "meta", {}) or {}
@@ -966,7 +1043,7 @@ def _entries_from_snapshot(
                 hash_json=paths.VR_HASH_JSON,
                 weight_dir=paths.VR_MODELS_DIR,
                 entry_meta=meta_index.get(label),
-                allow_network=allow_network,
+                policy=policy,
             )
         )
 
@@ -982,7 +1059,7 @@ def _entries_from_snapshot(
                 hash_json=paths.MDX_HASH_JSON if family == "MDX-Net ONNX" else "",
                 weight_dir=paths.MDX_MODELS_DIR,
                 entry_meta=meta_index.get(label),
-                allow_network=allow_network,
+                policy=policy,
             )
         )
 
@@ -995,7 +1072,7 @@ def _entries_from_snapshot(
                 payload=payload,
                 ctx=ctx,
                 entry_meta=meta_index.get(label),
-                allow_network=allow_network,
+                policy=policy,
             )
         )
 
@@ -1008,7 +1085,7 @@ def _entries_from_snapshot(
                 payload=payload,
                 ctx=ctx,
                 entry_meta=meta_index.get(label),
-                allow_network=allow_network,
+                policy=policy,
             )
         )
 
@@ -1024,7 +1101,9 @@ def _collect_entries(
     snapshot, payloads = _snapshot_and_payloads(
         allow_network=allow_network, coordinator=coordinator
     )
-    return _entries_from_snapshot(snapshot, payloads, ctx, allow_network=allow_network)
+    return _entries_from_snapshot(
+        snapshot, payloads, ctx, policy=FetchPolicy(allow_network=allow_network)
+    )
 
 
 def _md_table(headers: List[str], rows: List[List[str]]) -> str:
@@ -1253,15 +1332,20 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Read catalogue caches only (no remote refresh).",
     )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Refetch supplemental catalogue downloads even if cached and fresh.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_args(argv)
-    allow_network = not args.offline
-    ctx = _build_catalogue_context(allow_network=allow_network)
-    snapshot, payloads = _snapshot_and_payloads(allow_network=allow_network)
-    entries = _entries_from_snapshot(snapshot, payloads, ctx, allow_network=allow_network)
+    policy = FetchPolicy(allow_network=not args.offline, refresh=args.refresh)
+    ctx = _build_catalogue_context(policy=policy)
+    snapshot, payloads = _snapshot_and_payloads(allow_network=policy.allow_network)
+    entries = _entries_from_snapshot(snapshot, payloads, ctx, policy=policy)
     unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))
     from core.json_store import write_text_atomic
 
