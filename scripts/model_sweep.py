@@ -238,6 +238,9 @@ def classify(
         return TIMEOUT, ""
     if result is None:
         return f"CRASH(exit {exit_code})", ""
+    protocol_error = result.get("protocol_error")
+    if protocol_error:
+        return "FAIL(protocol)", str(protocol_error)
     if result.get("unrecognized"):
         return UNRECOGNIZED, "model hash not in the metadata tables"
 
@@ -494,10 +497,34 @@ def run_child(spec_path: str) -> int:
 
 
 def _write_result(job_dir: str, result: Dict[str, Any]) -> None:
+    """Publish the child's result atomically.
+
+    The parent reads this file as soon as the child exits, so a partial write
+    from a child killed mid-flush must never be observable.
+    """
+    from core.json_store import write_json_atomic
+
+    write_json_atomic(os.path.join(job_dir, "result.json"), result)
+
+
+def _read_result(result_path: str) -> Optional[Dict[str, Any]]:
+    """Read a child's result.json, or None when the child never wrote one.
+
+    Malformed JSON becomes a protocol error rather than an exception: a child
+    killed mid-write must fail its own job, not abort the whole sweep.
+    """
     import json
 
-    with open(os.path.join(job_dir, "result.json"), "w") as handle:
-        json.dump(result, handle)
+    if not os.path.isfile(result_path):
+        return None
+    try:
+        with open(result_path) as handle:
+            payload = json.load(handle)
+    except (ValueError, OSError) as exc:
+        return {"protocol_error": f"unreadable result.json: {exc}"}
+    if not isinstance(payload, dict):
+        return {"protocol_error": f"result.json root is {type(payload).__name__}, not an object"}
+    return payload
 
 
 def _run_tool(settings: Any, input_path: str, timeout: float, *, repo: Any):
@@ -561,8 +588,9 @@ def spawn_child(*, spec: Dict[str, Any], job_dir: str, env: Dict[str, str], time
 
     os.makedirs(job_dir, exist_ok=True)
     spec_path = os.path.join(job_dir, "spec.json")
-    with open(spec_path, "w") as handle:
-        json.dump(spec, handle)
+    from core.json_store import write_json_atomic
+
+    write_json_atomic(spec_path, spec)
 
     result_path = os.path.join(job_dir, "result.json")
     if os.path.exists(result_path):
@@ -580,11 +608,7 @@ def spawn_child(*, spec: Dict[str, Any], job_dir: str, env: Dict[str, str], time
         proc.wait()  # reap the now-dead process so it doesn't linger as a zombie
         return None, None, True
 
-    result = None
-    if os.path.isfile(result_path):
-        with open(result_path) as handle:
-            result = json.load(handle)
-    return exit_code, result, False
+    return exit_code, _read_result(result_path), False
 
 
 SpawnFn = Callable[..., Tuple[Optional[int], Optional[Dict[str, Any]], bool]]
@@ -686,8 +710,9 @@ def sweep(
     print("-" * 96)
     print(render_summary(verdicts))
     if json_path:
-        with open(json_path, "w") as handle:
-            json.dump({"results": rows}, handle, indent=2)
+        from core.json_store import write_json_atomic
+
+        write_json_atomic(json_path, {"results": rows})
         print(f"json={json_path}")
     return 1 if any(is_failure(v, strict=strict) for v in verdicts) else 0
 

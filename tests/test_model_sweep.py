@@ -682,6 +682,60 @@ class RunChildTests(unittest.TestCase):
         fake_runner.start_resolved.assert_not_called()
 
 
+class ResultProtocolTests(unittest.TestCase):
+    """A malformed child result must be classified, not crash the parent."""
+
+    def test_reads_a_well_formed_result(self) -> None:
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "result.json")
+            with open(path, "w") as handle:
+                json.dump({"ok": True, "outputs": [["a.wav", 10]]}, handle)
+            self.assertEqual(model_sweep._read_result(path)["ok"], True)
+
+    def test_missing_result_is_none(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(model_sweep._read_result(os.path.join(tmp, "nope.json")))
+
+    def test_truncated_result_is_a_protocol_error_not_an_exception(self) -> None:
+        """A child killed mid-write used to take the whole sweep down."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "result.json")
+            with open(path, "w") as handle:
+                handle.write('{"ok": true, "outputs": [["a.wa')
+            result = model_sweep._read_result(path)
+        self.assertIsNotNone(result)
+        self.assertIn("protocol_error", result)
+
+    def test_protocol_error_classifies_as_a_failure(self) -> None:
+        verdict, detail = model_sweep.classify(
+            exit_code=0, result={"protocol_error": "bad json"}, timed_out=False
+        )
+        self.assertEqual(verdict, "FAIL(protocol)")
+        self.assertIn("bad json", detail)
+        self.assertTrue(model_sweep.is_failure(verdict, strict=False))
+
+    def test_result_is_written_atomically(self) -> None:
+        """No reader may observe a half-written result.json."""
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            model_sweep._write_result(tmp, {"ok": True, "outputs": []})
+            path = os.path.join(tmp, "result.json")
+            with open(path) as handle:
+                self.assertEqual(json.load(handle)["ok"], True)
+            # The temp file used for the swap must not be left behind.
+            leftovers = [n for n in os.listdir(tmp) if n != "result.json"]
+            self.assertEqual(leftovers, [])
+
+
 class SpawnChildProcessGroupTests(unittest.TestCase):
     """Fix round 1: a timed-out child must have its whole process group
     killed, not just the immediate process, since it can shell out to

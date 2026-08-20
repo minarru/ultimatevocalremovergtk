@@ -905,10 +905,11 @@ def _read_checkpoint_keys_cache(dest_dir: str) -> Dict[str, List[str]]:
 
 
 def _write_checkpoint_keys_cache(dest_dir: str, payload: Dict[str, List[str]]) -> None:
+    _add_repo_to_path()
+    from core.json_store import write_json_atomic
+
     try:
-        os.makedirs(dest_dir, exist_ok=True)
-        with open(_checkpoint_keys_cache_path(dest_dir), "w", encoding="utf-8") as handle:
-            json.dump(payload, handle)
+        write_json_atomic(_checkpoint_keys_cache_path(dest_dir), payload)
     except OSError:
         pass
 

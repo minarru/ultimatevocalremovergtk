@@ -322,9 +322,9 @@ def _write_reference_tsv(refs: Dict[str, CommunityRef]) -> None:
                 ]
             )
         )
-    os.makedirs(os.path.dirname(REFERENCE_TSV_PATH), exist_ok=True)
-    with open(REFERENCE_TSV_PATH, "w", encoding="utf-8") as handle:
-        handle.write("\n".join(lines) + "\n")
+    from core.json_store import write_text_atomic
+
+    write_text_atomic(REFERENCE_TSV_PATH, "\n".join(lines) + "\n")
 
 
 def _build_catalogue_context(*, allow_network: bool = True) -> CatalogueContext:
@@ -1263,9 +1263,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     snapshot, payloads = _snapshot_and_payloads(allow_network=allow_network)
     entries = _entries_from_snapshot(snapshot, payloads, ctx, allow_network=allow_network)
     unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))
-    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as handle:
-        handle.write(_render(entries, unsupported_count=unsupported))
+    from core.json_store import write_text_atomic
+
+    # A failed write must not truncate the checked-in catalogue document.
+    write_text_atomic(OUTPUT_PATH, _render(entries, unsupported_count=unsupported))
     flagged = sum(1 for e in entries if e.flags)
     unknown = sum(1 for e in entries if e.name_intent == "unknown")
     with_meta = sum(1 for e in entries if e.metadata_source not in ("unavailable", ""))

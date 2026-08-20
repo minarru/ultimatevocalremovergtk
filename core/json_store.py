@@ -58,6 +58,34 @@ def read_json_object(path: str) -> dict[str, Any]:
     return value
 
 
+def write_text_atomic(path: str, text: str) -> None:
+    """Replace ``path`` with ``text`` in one step, or leave it untouched.
+
+    Same guarantee as :func:`write_json_atomic` for generated documents: a
+    failed or interrupted write must not truncate a file that other people
+    read, so the content lands in a sibling temporary file and is moved into
+    place with a single rename.
+    """
+    with _path_lock(path):
+        directory = os.path.dirname(os.path.abspath(path)) or "."
+        os.makedirs(directory, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=f".{os.path.basename(path)}.", suffix=".tmp", dir=directory
+        )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(text)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+        except Exception:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
+            raise
+
+
 def write_json_atomic(path: str, payload: dict[str, Any]) -> None:
     with _path_lock(path):
         directory = os.path.dirname(os.path.abspath(path)) or "."
