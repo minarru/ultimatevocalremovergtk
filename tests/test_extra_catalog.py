@@ -130,8 +130,10 @@ class ApolloDownloadWiringTests(unittest.TestCase):
         self.assertEqual(os.path.dirname(yamls[0]), paths.APOLLO_CONFIG_PATH)
 
     def test_resolve_rejects_unknown_selection(self) -> None:
-        self.assertEqual(self.manager.resolve("nope", APOLLO_ARCH_TYPE), [])
-        self.assertEqual(self.manager.resolve(NO_NEW_MODELS, APOLLO_ARCH_TYPE), [])
+        with mock.patch("core.mvsepless_catalog._urlopen") as opener:
+            self.assertEqual(self.manager.resolve("nope", APOLLO_ARCH_TYPE), [])
+            self.assertEqual(self.manager.resolve(NO_NEW_MODELS, APOLLO_ARCH_TYPE), [])
+        opener.assert_not_called()
 
     def test_available_downloads_includes_apollo_bucket(self) -> None:
         available = self.manager.available_downloads()

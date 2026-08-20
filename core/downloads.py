@@ -794,10 +794,25 @@ class DownloadManager:
         else:
             return []
 
-        reason = unsupported_reason_for_label(selection)
+        reason = self._unsupported_reason(selection)
         if reason:
             raise ValueError(f"model is listed but not downloadable yet: {reason}")
         return []
+
+    def _unsupported_reason(self, selection: str) -> Optional[str]:
+        """Classify a catalogue miss from already-merged state.
+
+        Resolving an unknown label must not FORCE-fetch mvsepless just to
+        decide between ``[]`` and ``ValueError``. After ``ensure_catalogues``
+        / ``_merge_politrees_supplement`` the manager already has
+        ``unsupported_download_list``; the helper only consults the in-memory
+        or disk snapshot.
+        """
+        for rows in self.unsupported_download_list.values():
+            for label, why in rows:
+                if label == selection:
+                    return why
+        return unsupported_reason_for_label(selection, allow_network=False)
 
     def describe_selection_download_size(self, selection: str, arch_type: str) -> str:
         """Human-readable size estimate for a catalogue selection."""

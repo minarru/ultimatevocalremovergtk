@@ -643,9 +643,16 @@ def mvsepless_metadata(
 
 
 def unsupported_reason_for_label(
-    label: str, converted: Optional[Mapping[str, Any]] = None
+    label: str,
+    converted: Optional[Mapping[str, Any]] = None,
+    *,
+    allow_network: bool = True,
 ) -> Optional[str]:
-    data = load_converted_mvsepless() if converted is None else converted
+    data = (
+        load_converted_mvsepless(allow_network=allow_network)
+        if converted is None
+        else converted
+    )
     if not data:
         return None
     reasons = data.get("unsupported_labels") or {}

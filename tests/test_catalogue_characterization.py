@@ -124,6 +124,15 @@ class UnsupportedPolicyTests(unittest.TestCase):
             unsupported_mvsepless_downloads(allow_network=False)
         self.assertEqual(load.call_args.kwargs.get("allow_network"), False)
 
+    def test_unsupported_reason_for_label_honors_allow_network(self) -> None:
+        from core.mvsepless_catalog import unsupported_reason_for_label
+
+        with mock.patch(
+            "core.mvsepless_catalog.load_converted_mvsepless", return_value=None
+        ) as load:
+            unsupported_reason_for_label("nope", allow_network=False)
+        self.assertEqual(load.call_args.kwargs.get("allow_network"), False)
+
 
 class InventoryVsAliasTests(unittest.TestCase):
     def test_custom_file_stays_in_default_list_contract(self) -> None:
