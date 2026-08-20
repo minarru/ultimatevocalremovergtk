@@ -405,8 +405,7 @@ class SeperateAttributes:
                 self.cached_model_source_holder(DEMUCS_ARCH_TYPE, secondary_sources, self.model_basename)
            
     def process_vocal_split_chain(self, sources: dict[str, Any]) -> Any:
-        with trace_phase("separate", "vocal_split_chain", model=self.model_basename):
-            return self._process_vocal_split_chain(sources)
+        return self._process_vocal_split_chain(sources)
 
     def _process_vocal_split_chain(self, sources: dict[str, Any]) -> Any:
         
@@ -434,18 +433,20 @@ class SeperateAttributes:
         if self.vocal_split_model is not None and is_valid_vocal_split_condition(
             master_vocal_source
         ):
-            process_chain_model(
-                self.vocal_split_model,
-                self.process_data,
-                vocal_stem_path=self.master_vocal_path,
-                vocal_stem_base=(
-                    getattr(self, "audio_file_base", None)
-                    if not self.master_vocal_path
-                    else None
-                ),
-                master_vocal_source=master_vocal_source,
-                master_inst_source=master_inst_source
-            )
+            splitter = getattr(self.vocal_split_model, "model_basename", None) or "vocal-split"
+            with trace_phase("separate", "vocal_split_chain", model=splitter):
+                process_chain_model(
+                    self.vocal_split_model,
+                    self.process_data,
+                    vocal_stem_path=self.master_vocal_path,
+                    vocal_stem_base=(
+                        getattr(self, "audio_file_base", None)
+                        if not self.master_vocal_path
+                        else None
+                    ),
+                    master_vocal_source=master_vocal_source,
+                    master_inst_source=master_inst_source
+                )
   
     def process_secondary_stem(
         self,

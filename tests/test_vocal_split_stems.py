@@ -293,6 +293,31 @@ class VocalSplitChainHandoffTests(unittest.TestCase):
             sep._process_vocal_split_chain({VOCAL_STEM: _arr(1.0).T})
         chain.assert_not_called()
 
+    def test_instrumental_only_does_not_trace_vocal_split_phase(self) -> None:
+        sep = self._sep(model_basename="bs_leap_xe_inst_unwa", vocal_split_model=None)
+        with (
+            patch("engines.base.process_chain_model") as chain,
+            patch("engines.base.trace_phase") as trace,
+        ):
+            sep.process_vocal_split_chain({"other": _arr(2.0).T})
+        chain.assert_not_called()
+        trace.assert_not_called()
+
+    def test_chain_traces_splitter_model_not_primary(self) -> None:
+        splitter = MagicMock()
+        splitter.model_basename = "UVR-BVE-4B_SN-44100-1"
+        sep = self._sep(model_basename="bs_leap_xe_inst_unwa", vocal_split_model=splitter)
+        voc = _arr(1.0).T
+        with (
+            patch("engines.base.process_chain_model") as chain,
+            patch("engines.base.trace_phase") as trace,
+        ):
+            sep.process_vocal_split_chain({VOCAL_STEM: voc})
+        chain.assert_called_once()
+        trace.assert_called_once_with(
+            "separate", "vocal_split_chain", model="UVR-BVE-4B_SN-44100-1"
+        )
+
     def test_missing_vocal_path_still_passes_a_basename(self) -> None:
         sep = self._sep(master_vocal_path=None, audio_file_base="01. Song")
         voc = _arr(1.0).T
