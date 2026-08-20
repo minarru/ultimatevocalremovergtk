@@ -512,9 +512,12 @@ class DownloadCenterWindow:
         set_row_subtitle(action, "Looking up size…")
         lookup_id = self._size_lookup_ids.get(key, 0) + 1
         self._size_lookup_ids[key] = lookup_id
-        jobs = self._resolve_pinned(name, arch)
-        if not isinstance(jobs, (list, tuple)):
-            jobs = []
+        jobs_obj = self._resolve_pinned(name, arch)
+        jobs: list[tuple[str, str]] = (
+            [(str(url), str(path)) for url, path in jobs_obj]
+            if isinstance(jobs_obj, (list, tuple))
+            else []
+        )
         pending = [
             url for url, path in jobs if url and not os.path.isfile(path)
         ]
@@ -760,7 +763,7 @@ class DownloadCenterWindow:
         catalogue = mapping.get(arch)
         return dict(catalogue) if catalogue is not None else None
 
-    def _resolve_pinned(self, selection: str, arch: str) -> list:
+    def _resolve_pinned(self, selection: str, arch: str) -> typing.Any:
         catalogue = self._pinned_catalogue(arch)
         return self.manager.resolve(selection, arch, catalogue=catalogue)
 
