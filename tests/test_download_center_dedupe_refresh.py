@@ -11,7 +11,7 @@ import unittest
 from typing import Any
 from unittest import mock
 
-from bundled.constants import MDX_ARCH_TYPE, VR_ARCH_TYPE
+from bundled.constants import MDX_ARCH_TYPE, NO_CODE, VR_ARCH_TYPE
 
 
 def _bare_window() -> Any:
@@ -259,6 +259,33 @@ class PinnedSnapshotDeltaTests(unittest.TestCase):
         )
         DownloadCenterWindow._on_catalogue_delta(win, delta)
         win._schedule_catalogue_row_refresh.assert_called_once_with()
+
+    def test_pin_prefers_unlocked_snapshot_when_vip(self) -> None:
+        from bundled.constants import NO_CODE
+        from ui.download_center import DownloadCenterWindow
+
+        locked = mock.MagicMock(name="locked")
+        locked.revision.digest.return_value = "locked"
+        locked.mdx = {"Public": {"p.ckpt": "https://u/p.ckpt"}}
+        unlocked = mock.MagicMock(name="unlocked")
+        unlocked.revision.digest.return_value = "unlocked"
+        unlocked.mdx = {
+            "Public": {"p.ckpt": "https://u/p.ckpt"},
+            "VIP": {"v.ckpt": "https://u/v.ckpt"},
+        }
+        coordinator = mock.MagicMock()
+        coordinator._latest = locked
+        coordinator._latest_unlocked = unlocked
+
+        win = _bare_window()
+        win.manager._coordinator = coordinator
+        win.manager.decoded_vip_link = "valid-code"
+        DownloadCenterWindow._pin_current_snapshot(win)
+        self.assertIs(win._pinned_snapshot, unlocked)
+
+        win.manager.decoded_vip_link = NO_CODE
+        DownloadCenterWindow._pin_current_snapshot(win)
+        self.assertIs(win._pinned_snapshot, locked)
 
     def test_queue_resolve_uses_pinned_snapshot_not_live_manager(self) -> None:
         from ui.download_center import DownloadCenterWindow

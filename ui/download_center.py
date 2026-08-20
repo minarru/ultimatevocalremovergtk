@@ -742,9 +742,19 @@ class DownloadCenterWindow:
     def _pin_current_snapshot(self) -> None:
         manager = getattr(self, "manager", None)
         coordinator = getattr(manager, "_coordinator", None) if manager is not None else None
-        snapshot = getattr(coordinator, "_latest", None)
-        if snapshot is None:
-            snapshot = getattr(coordinator, "_latest_unlocked", None)
+        vip = False
+        if manager is not None:
+            from bundled.constants import NO_CODE
+
+            decoded = getattr(manager, "decoded_vip_link", NO_CODE)
+            vip = bool(decoded) and decoded != NO_CODE
+        snapshot = None
+        if coordinator is not None:
+            snapshot = getattr(
+                coordinator, "_latest_unlocked" if vip else "_latest", None
+            )
+            if snapshot is None:
+                snapshot = getattr(coordinator, "_latest", None)
         self._pinned_snapshot = snapshot
         revision = getattr(snapshot, "revision", None)
         digest = getattr(revision, "digest", None)

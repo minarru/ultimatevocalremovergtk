@@ -102,9 +102,14 @@ class RemoteJsonSource:
         self._flight: threading.Event | None = None
         self._flight_force = False
         self._closed = False
+        self._on_update: Callable[[], None] | None = None
 
     def close(self) -> None:
         self._closed = True
+        with self._lock:
+            inflight = self._flight
+        if inflight is not None:
+            inflight.wait(timeout=2)
 
     def reset(self) -> None:
         with self._lock:
@@ -281,6 +286,7 @@ class RemoteJsonSource:
         def run() -> None:
             try:
                 self._fetch(captured, force=False)
+                self._notify_update()
             except Exception as exc:
                 debug(
                     "download",
@@ -480,7 +486,7 @@ class RemoteJsonSource:
         elif previous is not None and previous.semantic_digest == content.semantic_digest:
             self._state.content = SourceContent(
                 source_id=content.source_id,
-                payload=previous.payload,
+                payload=content.payload,
                 semantic_digest=previous.semantic_digest,
                 adapter_schema=previous.adapter_schema,
                 fetched_at=content.fetched_at if from_network else previous.fetched_at,
@@ -498,6 +504,18 @@ class RemoteJsonSource:
         self._state.status.backoff_until = 0.0
         self._state.status.etag = content.etag
         self._state.status.last_modified = content.last_modified
+
+    def _notify_update(self) -> None:
+        callback = self._on_update
+        if callback is None or self._closed:
+            return
+        try:
+            callback()
+        except Exception as exc:
+            debug(
+                "download",
+                f"{self.source_id.value} update callback failed err={exc}",
+            )
 
     def _mark_failure(self, now: float, message: str) -> None:
         with self._lock:
