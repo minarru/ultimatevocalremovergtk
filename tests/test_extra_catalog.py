@@ -106,6 +106,9 @@ class ExtraCatalogMergeTests(unittest.TestCase):
 class ApolloDownloadWiringTests(unittest.TestCase):
     def setUp(self) -> None:
         extra_catalog.clear_extra_catalog_cache()
+        from core.catalog_sources import invalidate_catalogue_merge
+
+        invalidate_catalogue_merge()
         self.manager = DownloadManager()
         # Curated extras are bundled locally. Keep both remote catalogues
         # offline: ``merged_catalogues`` still loads mvsepless unless told not to.

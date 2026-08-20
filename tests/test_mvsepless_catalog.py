@@ -336,6 +336,9 @@ class DownloadManagerMergeTests(unittest.TestCase):
         mock_unsupported.return_value = {
             MDX_ARCH_TYPE: [("Broken", "not ported")]
         }
+        from core.catalog_sources import invalidate_catalogue_merge
+
+        invalidate_catalogue_merge()
         self.manager.mdx_download_list = {}
         self.manager._merge_politrees_supplement(allow_network=False)
         mock_merge.assert_called_once()

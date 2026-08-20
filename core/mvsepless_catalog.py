@@ -268,6 +268,9 @@ def _start_background_refresh() -> None:
             load_mvsepless_models(force=True)
         except Exception as exc:  # noqa: BLE001 - background best-effort
             debug("download", f"mvsepless background refresh failed err={exc}")
+        except BaseException:
+            # Test network guard is a BaseException; never kill the daemon thread.
+            debug("download", "mvsepless background refresh aborted")
         finally:
             with _refresh_lock:
                 _refresh_in_flight = False

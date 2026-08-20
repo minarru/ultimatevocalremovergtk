@@ -236,9 +236,11 @@ class MvseplessAndExtrasDisplayTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         from core.extra_catalog import clear_extra_catalog_cache
         from core.model_display import clear_display_cache
+        from core.catalog_sources import invalidate_catalogue_merge
 
         os.environ.pop("UVR_DISABLE_EXTRA_MODELS", None)
         clear_extra_catalog_cache()
+        invalidate_catalogue_merge()
         clear_display_cache()
 
     def test_previously_raw_extras_basenames_now_resolve(self) -> None:
