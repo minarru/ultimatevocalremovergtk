@@ -288,6 +288,215 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         self.assertNotIn("Old", latest.mdx)
         self.assertTrue(deltas)
 
+    def test_swr_multi_source_completion_order(self) -> None:
+        for first in ("upstream", "politrees"):
+            with self.subTest(first=first):
+                self._assert_multi_source_swr(first)
+
+    def _assert_multi_source_swr(self, first: str) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        up_path = os.path.join(tmp.name, "upstream.json")
+        po_path = os.path.join(tmp.name, "politrees.json")
+        clock = _Clock()
+        _write_envelope(
+            up_path,
+            clock.now - 120,
+            {
+                "mdx_download_list": {"Old": {"o.ckpt": "https://u/o.ckpt"}},
+                "vr_download_list": {},
+                "demucs_download_list": {},
+            },
+        )
+        _write_envelope(
+            po_path,
+            clock.now - 120,
+            {"mdx_download_list": {"P-old": {"po.ckpt": "https://p/po.ckpt"}}},
+        )
+        up_fetched, up_release = threading.Event(), threading.Event()
+        po_fetched, po_release = threading.Event(), threading.Event()
+        coordinator = self._swr_coordinator(
+            {
+                SourceId.UPSTREAM: self._swr_source(
+                    SourceId.UPSTREAM,
+                    path=up_path,
+                    clock=clock,
+                    opener=_gated_opener(
+                        {
+                            "mdx_download_list": {
+                                "New": {"n.ckpt": "https://u/n.ckpt"}
+                            },
+                            "vr_download_list": {},
+                            "demucs_download_list": {},
+                        },
+                        up_fetched,
+                        up_release,
+                    ),
+                    url="https://example.test/upstream.json",
+                ),
+                SourceId.POLITREES: self._swr_source(
+                    SourceId.POLITREES,
+                    path=po_path,
+                    clock=clock,
+                    opener=_gated_opener(
+                        {
+                            "mdx_download_list": {
+                                "P-new": {"pn.ckpt": "https://p/pn.ckpt"}
+                            }
+                        },
+                        po_fetched,
+                        po_release,
+                    ),
+                    url="https://example.test/politrees.json",
+                ),
+            }
+        )
+        policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
+        stale = coordinator.refresh(
+            mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy
+        )
+        self.assertTrue(stale.usable)
+        latest = coordinator._latest
+        self.assertIsNotNone(latest)
+        assert latest is not None
+        self.assertIn("Old", latest.mdx)
+        self.assertIn("P-old", latest.mdx)
+        self.assertTrue(latest.mdx)
+        self.assertTrue(up_fetched.wait(timeout=2))
+        self.assertTrue(po_fetched.wait(timeout=2))
+        if first == "upstream":
+            up_release.set()
+            time.sleep(0.02)
+            po_release.set()
+        else:
+            po_release.set()
+            time.sleep(0.02)
+            up_release.set()
+        self.assertTrue(
+            _wait_until(
+                lambda: coordinator._latest is not None
+                and "New" in coordinator._latest.mdx
+                and "P-new" in coordinator._latest.mdx
+            )
+        )
+        final = coordinator._latest
+        self.assertIsNotNone(final)
+        assert final is not None
+        self.assertIn("New", final.mdx)
+        self.assertIn("P-new", final.mdx)
+        self.assertNotIn("Old", final.mdx)
+        self.assertNotIn("P-old", final.mdx)
+
+    def test_swr_background_fetch_failure_keeps_stale(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "upstream.json")
+        clock = _Clock()
+        _write_envelope(
+            path,
+            clock.now - 120,
+            {
+                "mdx_download_list": {"Old": {"o.ckpt": "https://u/o.ckpt"}},
+                "vr_download_list": {},
+                "demucs_download_list": {},
+            },
+        )
+        fetched = threading.Event()
+
+        def opener(_url: object) -> _Response:
+            fetched.set()
+            raise OSError("offline")
+
+        coordinator = self._swr_coordinator(
+            {
+                SourceId.UPSTREAM: self._swr_source(
+                    SourceId.UPSTREAM,
+                    path=path,
+                    clock=clock,
+                    opener=opener,
+                    url="https://example.test/upstream.json",
+                )
+            }
+        )
+        policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
+        stale = coordinator.refresh(
+            mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy
+        )
+        self.assertTrue(stale.usable)
+        self.assertTrue(fetched.wait(timeout=2))
+        self.assertTrue(
+            _wait_until(
+                lambda: coordinator.source(SourceId.UPSTREAM).state.status.error
+                is not None
+            )
+        )
+        latest = coordinator._latest
+        self.assertIsNotNone(latest)
+        assert latest is not None
+        self.assertIn("Old", latest.mdx)
+        self.assertTrue(stale.usable)
+
+    def test_swr_metadata_only_updates_source_payload(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "upstream.json")
+        clock = _Clock()
+        models = {"A": {"a.ckpt": "https://u/a.ckpt"}}
+        _write_envelope(
+            path,
+            clock.now - 120,
+            {
+                "mdx_download_list": models,
+                "current_version_linux": "1",
+                "vr_download_list": {},
+                "demucs_download_list": {},
+            },
+        )
+        fetched = threading.Event()
+        release = threading.Event()
+        opener = _gated_opener(
+            {
+                "mdx_download_list": models,
+                "current_version_linux": "2",
+                "vr_download_list": {},
+                "demucs_download_list": {},
+            },
+            fetched,
+            release,
+        )
+        coordinator = self._swr_coordinator(
+            {
+                SourceId.UPSTREAM: self._swr_source(
+                    SourceId.UPSTREAM,
+                    path=path,
+                    clock=clock,
+                    opener=opener,
+                    url="https://example.test/upstream.json",
+                )
+            }
+        )
+        policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
+        stale = coordinator.refresh(
+            mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy
+        )
+        self.assertTrue(stale.usable)
+        disk_payload = coordinator.source(SourceId.UPSTREAM).state.content
+        self.assertIsNotNone(disk_payload)
+        assert disk_payload is not None
+        self.assertEqual(disk_payload.payload["current_version_linux"], "1")
+        self.assertTrue(fetched.wait(timeout=2))
+        release.set()
+
+        def version_is_two() -> bool:
+            content = coordinator.source(SourceId.UPSTREAM).state.content
+            return content is not None and content.payload.get("current_version_linux") == "2"
+
+        self.assertTrue(_wait_until(version_is_two))
+        content = coordinator.source(SourceId.UPSTREAM).state.content
+        self.assertIsNotNone(content)
+        assert content is not None
+        self.assertEqual(content.payload["current_version_linux"], "2")
+
 
 if __name__ == "__main__":
     unittest.main()

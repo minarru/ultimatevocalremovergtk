@@ -542,5 +542,87 @@ class CatalogueChangedSubscriberTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
 
 
+class DownloadManagerSwrFreshnessTests(unittest.TestCase):
+    """SWR completion must refresh manager lists without ``refresh()`` (bulletin HTTP)."""
+
+    def test_ensure_catalogues_applies_swr_update(self) -> None:
+        from core.access_policy import AccessPolicy
+        from core.catalogue_coordinator import CatalogueCoordinator
+        from core.catalogue_types import RefreshMode, SourceId
+        from core.remote_catalog_cache import RemoteJsonSource
+        from tests.test_catalogue_coordinator import (
+            _Clock,
+            _disabled,
+            _gated_opener,
+            _wait_until,
+            _write_envelope,
+        )
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "upstream.json")
+        clock = _Clock()
+        _write_envelope(
+            path,
+            clock.now - 120,
+            {
+                "mdx_download_list": {"Old": {"o.ckpt": "https://u/o.ckpt"}},
+                "vr_download_list": {},
+                "demucs_download_list": {},
+            },
+        )
+        fetched = threading.Event()
+        release = threading.Event()
+        opener = _gated_opener(
+            {
+                "mdx_download_list": {"New": {"n.ckpt": "https://u/n.ckpt"}},
+                "vr_download_list": {},
+                "demucs_download_list": {},
+            },
+            fetched,
+            release,
+        )
+        coordinator = CatalogueCoordinator(
+            sources={
+                SourceId.UPSTREAM: RemoteJsonSource(
+                    source_id=SourceId.UPSTREAM,
+                    url="https://example.test/upstream.json",
+                    cache_filename="upstream.json",
+                    cache_path=path,
+                    ttl_seconds=60,
+                    opener=opener,
+                    clock=clock,
+                ),
+                SourceId.POLITREES: _disabled(SourceId.POLITREES),
+                SourceId.EXTRAS: _disabled(SourceId.EXTRAS),
+                SourceId.MVSEPLESS: _disabled(SourceId.MVSEPLESS),
+            }
+        )
+        self.addCleanup(coordinator.close)
+        manager = DownloadManager(coordinator)
+        self.assertTrue(manager.ensure_catalogues(allow_network=True))
+        self.assertIn("Old", manager.mdx_download_list)
+        self.assertNotIn("New", manager.mdx_download_list)
+        self.assertTrue(fetched.wait(timeout=2))
+        release.set()
+        self.assertTrue(
+            _wait_until(
+                lambda: coordinator._latest is not None
+                and "New" in coordinator._latest.mdx
+            )
+        )
+        self.assertTrue(
+            _wait_until(lambda: "New" in manager.mdx_download_list),
+            "manager lists must pick up the SWR snapshot without calling refresh()",
+        )
+        self.assertNotIn("Old", manager.mdx_download_list)
+        self.assertIn("New", coordinator.snapshot(
+            vip=False,
+            mode=RefreshMode.OFFLINE,
+            policy=AccessPolicy(allow_network=False, allow_metadata_writes=False),
+        ).mdx)
+        self.assertTrue(manager.ensure_catalogues(allow_network=True))
+
+
 if __name__ == "__main__":
     unittest.main()
