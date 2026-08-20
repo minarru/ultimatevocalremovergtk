@@ -563,12 +563,30 @@ class ProbeTarget:
     config_url: str = ""
     checkpoint_url: str = ""
     reason: str = ""
+    is_bv_model: bool = False
 
     @property
     def config_name(self) -> str:
         from urllib.parse import unquote, urlparse
 
         return os.path.basename(unquote(urlparse(self.config_url).path))
+
+
+def _default_mvsepless_catalogue(*, allow_network: bool = True) -> Dict[str, Any]:
+    """Raw mvsepless ``models.json`` via the same coordinator Download Center uses."""
+    _add_repo_to_path()
+    from core.catalogue_coordinator import CatalogueCoordinator
+    from core.catalogue_types import SourceId
+
+    coordinator = CatalogueCoordinator()
+    try:
+        coordinator.ensure(vip=False, allow_network=allow_network)
+        content = coordinator.source(SourceId.MVSEPLESS).state.content
+        if content is None:
+            return {}
+        return dict(content.payload)
+    finally:
+        coordinator.close()
 
 
 def resolve_target(entry_id: str, catalogue: Optional[Dict[str, Any]] = None) -> ProbeTarget:
@@ -579,9 +597,7 @@ def resolve_target(entry_id: str, catalogue: Optional[Dict[str, Any]] = None) ->
     _add_repo_to_path()
 
     if catalogue is None:
-        from core.mvsepless_catalog import load_mvsepless_models
-
-        catalogue = load_mvsepless_models() or {}
+        catalogue = _default_mvsepless_catalogue()
 
     entry = catalogue.get(entry_id)
     if not isinstance(entry, dict):
@@ -601,6 +617,7 @@ def _target_from_entry(entry_id: str, entry: Dict[str, Any]) -> ProbeTarget:
         config_url=str(entry.get("config_url") or ""),
         checkpoint_url=str(entry.get("checkpoint_url") or ""),
         reason=reason,
+        is_bv_model=bool(entry.get("is_bv_model")),
     )
 
 
@@ -617,9 +634,7 @@ def iter_catalogue_targets(
     from core.mvsepless_catalog import classify_entry
 
     if catalogue is None:
-        from core.mvsepless_catalog import load_mvsepless_models
-
-        catalogue = load_mvsepless_models() or {}
+        catalogue = _default_mvsepless_catalogue()
 
     for entry_id, entry in catalogue.items():
         if not isinstance(entry, dict):
@@ -754,13 +769,10 @@ def render_report(result: ProbeResult) -> str:
     return "\n".join(lines)
 
 
-_HTTP_TIMEOUT_SECONDS = 30
-
-
 def _default_opener(request: Any) -> Any:
-    import urllib.request
+    from core.mdx_config_fetch import _urlopen
 
-    return urllib.request.urlopen(request, timeout=_HTTP_TIMEOUT_SECONDS)
+    return _urlopen(request)
 
 
 def _request(url: str, headers: Dict[str, str]) -> Any:
@@ -869,16 +881,19 @@ def _fetch_config(url: str, dest_dir: str) -> str:
     """Download a yaml config (a few KB) into ``dest_dir`` and return the path."""
     from urllib.parse import unquote, urlparse
 
+    from core.mdx_config_fetch import _urlopen
+
     name = os.path.basename(unquote(urlparse(url).path)) or "config.yaml"
     os.makedirs(dest_dir, exist_ok=True)
     dest = os.path.join(dest_dir, name)
     if os.path.isfile(dest):
         return dest
-    read = http_range_reader(url)
     tmp_dest = f"{dest}.part"
     try:
+        with _urlopen(url) as response:
+            data = response.read()
         with open(tmp_dest, "wb") as handle:
-            handle.write(read(0, remote_size(url)))
+            handle.write(data)
         os.replace(tmp_dest, dest)
     finally:
         try:

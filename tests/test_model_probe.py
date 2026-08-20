@@ -546,6 +546,16 @@ class ResolveTargetTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             model_probe.resolve_target("nope", catalogue=_CATALOGUE)
 
+    def test_default_catalogue_comes_from_the_coordinator_helper(self) -> None:
+        from unittest.mock import patch
+
+        with patch(
+            "model_probe._default_mvsepless_catalogue", return_value=_CATALOGUE
+        ) as loader:
+            target = model_probe.resolve_target("medley_thing")
+        loader.assert_called_once()
+        self.assertEqual(target.entry_id, "medley_thing")
+
     def test_config_filename_comes_from_the_url(self) -> None:
         target = model_probe.resolve_target("mbr_syhft_4stem", catalogue=_CATALOGUE)
         self.assertEqual(target.config_name, "c.yaml")
@@ -742,10 +752,18 @@ class FetchConfigTests(unittest.TestCase):
         import tempfile
         from unittest.mock import patch
 
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            model_probe, "remote_size", return_value=4
-        ), patch.object(
-            model_probe, "http_range_reader", return_value=lambda start, end: b"yaml"
+        class _Resp:
+            def read(self) -> bytes:
+                return b"yaml"
+
+            def __enter__(self) -> "_Resp":
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "core.mdx_config_fetch._urlopen", return_value=_Resp()
         ):
             path = model_probe._fetch_config("https://example.invalid/config.yaml", tmp)
             with open(path, "rb") as handle:
@@ -756,10 +774,8 @@ class FetchConfigTests(unittest.TestCase):
         import tempfile
         from unittest.mock import patch
 
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            model_probe, "remote_size", return_value=4
-        ), patch.object(
-            model_probe, "http_range_reader", return_value=lambda start, end: (_ for _ in ()).throw(KeyboardInterrupt())
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "core.mdx_config_fetch._urlopen", side_effect=KeyboardInterrupt
         ):
             with self.assertRaises(KeyboardInterrupt):
                 model_probe._fetch_config("https://example.invalid/config.yaml", tmp)
@@ -883,7 +899,7 @@ class CliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "sweep.json")
             with patch(
-                "core.mvsepless_catalog.load_mvsepless_models", return_value=_CATALOGUE
+                "model_probe._default_mvsepless_catalogue", return_value=_CATALOGUE
             ), patch("model_probe._fetch_config", return_value=_SCNET_CONFIG):
                 with contextlib.redirect_stdout(buf):
                     code = model_probe.main(["--sweep", "--json", out])

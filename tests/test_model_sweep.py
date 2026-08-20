@@ -321,6 +321,7 @@ class ScratchEnvTests(unittest.TestCase):
         self.assertEqual(env["UVR_DATA_DIR"], "/scratch/data")
         self.assertEqual(env["UVR_SKIP_SEPARATE_WARMUP"], "1")
         self.assertEqual(env["UVR_DISABLE_POLITREES"], "1")
+        self.assertEqual(env["UVR_DISABLE_MVSEPLESS"], "1")
 
 
 class ChildHelperTests(unittest.TestCase):

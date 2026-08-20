@@ -345,6 +345,7 @@ def child_env(data_dir: str) -> Dict[str, str]:
     env["UVR_DATA_DIR"] = data_dir
     env["UVR_SKIP_SEPARATE_WARMUP"] = "1"
     env["UVR_DISABLE_POLITREES"] = "1"
+    env["UVR_DISABLE_MVSEPLESS"] = "1"
     return env
 
 

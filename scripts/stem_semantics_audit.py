@@ -103,7 +103,11 @@ def _entry_for_target(
     stems = [str(s) for s in (training.get("instruments") or [])]
     checkpoint_hash = _remote_checkpoint_hash(target.checkpoint_url)
     curated_data = curated_table.get(checkpoint_hash) if checkpoint_hash else None
-    is_bv = bool((curated_data or {}).get("is_bv_model") or catalogue_entry.get("is_bv_model"))
+    is_bv = bool(
+        (curated_data or {}).get("is_bv_model")
+        or catalogue_entry.get("is_bv_model")
+        or getattr(target, "is_bv_model", False)
+    )
     is_karaoke, is_curated = resolve_karaoke_confidence(
         model_data=curated_data,
         model_name=target.label,
@@ -134,12 +138,10 @@ def _entry_for_target(
 def _iter_entries(
     *, guessed_only: bool = False, show_progress: bool = False
 ) -> Iterator[StemSemanticsEntry]:
-    from core.mvsepless_catalog import load_mvsepless_models
     from scripts.model_probe import iter_catalogue_targets
 
-    catalogue = load_mvsepless_models() or {}
     curated_table = _curated_hash_table()
-    targets = list(iter_catalogue_targets(catalogue, unsupported_only=False))
+    targets = list(iter_catalogue_targets(unsupported_only=False))
     total = len(targets)
     for index, target in enumerate(targets, 1):
         if show_progress:
@@ -148,8 +150,7 @@ def _iter_entries(
                 file=sys.stderr,
                 flush=True,
             )
-        entry = catalogue.get(target.entry_id) or {}
-        result = _entry_for_target(target, entry, curated_table)
+        result = _entry_for_target(target, {}, curated_table)
         if guessed_only and result.is_karaoke_curated:
             continue
         yield result

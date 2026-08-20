@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""Generate docs/models-catalogue.md from TRvlvr + Politrees download catalogues.
+"""Generate docs/models-catalogue.md from the Download Center catalogue snapshot.
 
-Audits stem metadata (primary_stem / target_instrument) against catalogue naming
-intent so mislabeled vocal vs instrumental models can be spotted.
+Membership comes from ``CatalogueCoordinator`` (TRvlvr → Politrees → extras →
+mvsepless, plus Apollo). This script audits stem metadata against catalogue
+naming intent so mislabeled vocal vs instrumental models can be spotted.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
 import sys
 import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -22,10 +23,18 @@ sys.path.insert(0, ROOT)
 
 from bundled.constants import INST_STEM, VOCAL_STEM  # noqa: E402
 from core import paths  # noqa: E402
-from core.mdx_c_registry import compute_checkpoint_hash, infer_mdx_c_architecture, sanitize_catalogue_label  # noqa: E402
+from core.catalogue_coordinator import CatalogueCoordinator, flatten_upstream_lists  # noqa: E402
+from core.catalogue_types import (  # noqa: E402
+    SourceId,
+    UPSTREAM_DEMUCS_KEYS,
+    UPSTREAM_MDX_KEYS,
+    UPSTREAM_VR_KEYS,
+)
+from core.extra_catalog import APOLLO_LIST_KEY  # noqa: E402
+from core.mdx_c_registry import compute_checkpoint_hash, infer_mdx_c_architecture  # noqa: E402
 from core.model_data import load_mdx_c_config, load_model_hash_data, _mdx_c_training  # noqa: E402
+from core.model_naming import canonical_display_name  # noqa: E402
 from core.model_stem_semantics import (  # noqa: E402
-    INTENT_INSTRUMENTAL,
     INTENT_MULTI_STEM,
     INTENT_SPECIALTY_STEM,
     INTENT_UNKNOWN,
@@ -44,8 +53,6 @@ from core.model_stem_semantics import (  # noqa: E402
     special_fx_ui_note,
     specialty_ui_note,
 )
-from core.politrees_catalog import merge_politrees_catalogues  # noqa: E402
-
 OUTPUT_PATH = os.path.join(ROOT, "docs", "models-catalogue.md")
 REFERENCE_TSV_PATH = os.path.join(ROOT, "docs", "model_intent_reference.tsv")
 YAML_CACHE_DIR = os.path.join(ROOT, "docs", ".yaml_cache")
@@ -63,12 +70,11 @@ _COMMUNITY_MODELS_URL = (
 )
 
 _POLITREES_KEYS = (
-    "mdx_download_list",
-    "mdx23c_download_list",
-    "roformer_download_list",
-    "scnet_download_list",
-    "bandit_download_list",
+    *UPSTREAM_VR_KEYS,
+    *UPSTREAM_MDX_KEYS,
+    *UPSTREAM_DEMUCS_KEYS,
 )
+_SUPPLEMENT_LIST_KEYS = (*_POLITREES_KEYS, APOLLO_LIST_KEY)
 
 
 @dataclass
@@ -113,35 +119,68 @@ class ModelEntry:
     notes: List[str] = field(default_factory=list)
 
 
-def _load_trvlvr_catalogue() -> dict:
-    with open(paths.DOWNLOAD_MODEL_CACHE_PATH, encoding="utf-8") as handle:
-        return json.load(handle)
+def _source_payload(coordinator: CatalogueCoordinator, source_id: SourceId) -> dict:
+    content = coordinator.source(source_id).state.content
+    if content is None:
+        return {}
+    return dict(content.payload)
 
 
-def _load_politrees_catalogue() -> Optional[dict]:
-    path = os.path.join(ROOT, "politrees_model_links.json")
-    if not os.path.isfile(path):
-        return None
-    with open(path, encoding="utf-8") as handle:
-        payload = json.load(handle)
-    return payload.get("data") if isinstance(payload, dict) else payload
+def _source_payloads(coordinator: CatalogueCoordinator) -> Tuple[dict, dict, dict, dict]:
+    return (
+        _source_payload(coordinator, SourceId.UPSTREAM),
+        _source_payload(coordinator, SourceId.POLITREES),
+        _source_payload(coordinator, SourceId.EXTRAS),
+        _source_payload(coordinator, SourceId.MVSEPLESS),
+    )
 
 
-def _merged_catalogues() -> Tuple[dict, dict, dict]:
-    trvlvr = _load_trvlvr_catalogue()
-    politrees = _load_politrees_catalogue()
-    vr = dict(trvlvr.get("vr_download_list", {}))
-    mdx = dict(trvlvr.get("mdx_download_list", {}))
-    mdx.update(trvlvr.get("mdx23_download_list", {}))
-    mdx.update(trvlvr.get("mdx23c_download_list", {}))
-    demucs = dict(trvlvr.get("demucs_download_list", {}))
-    vr, mdx, demucs = merge_politrees_catalogues(vr, mdx, demucs, politrees)
-    for key in _POLITREES_KEYS:
-        if politrees and key in politrees:
-            for label, entry in politrees[key].items():
-                if label not in mdx:
-                    mdx[label] = entry
-    return vr, mdx, demucs
+def _unsupported_count(unsupported: Any) -> int:
+    if not isinstance(unsupported, dict):
+        return 0
+    total = 0
+    for rows in unsupported.values():
+        if isinstance(rows, list):
+            total += len(rows)
+    return total
+
+
+def _snapshot_and_payloads(
+    *,
+    allow_network: bool,
+    coordinator: Optional[CatalogueCoordinator] = None,
+) -> Tuple[Any, Tuple[dict, dict, dict, dict]]:
+    owned = coordinator is None
+    if owned:
+        coordinator = CatalogueCoordinator()
+    try:
+        snapshot = coordinator.ensure(vip=False, allow_network=allow_network)
+        payloads = _source_payloads(coordinator)
+        return snapshot, payloads
+    finally:
+        if owned:
+            coordinator.close()
+
+
+def _apply_entry_meta(entry: ModelEntry, meta: Any) -> None:
+    if meta is None:
+        return
+    stems = list(getattr(meta, "stems", None) or [])
+    if stems and not entry.instruments:
+        entry.instruments = stems
+        entry.stem_count = max(entry.stem_count, len(stems))
+    target = getattr(meta, "target_instrument", None) or ""
+    if target and not entry.target_instrument:
+        entry.target_instrument = str(target)
+        if not entry.primary_stem:
+            entry.primary_stem = str(target)
+    intent = str(getattr(meta, "intent", "") or "")
+    if intent and intent != INTENT_UNKNOWN and entry.name_intent == "unknown":
+        entry.name_intent = intent
+
+
+def _display_label(entry: ModelEntry) -> str:
+    return canonical_display_name(entry.catalogue_label) or entry.catalogue_label
 
 
 def _fetch_cached(url: str, cache_dir: str, filename: str) -> Optional[str]:
@@ -150,7 +189,9 @@ def _fetch_cached(url: str, cache_dir: str, filename: str) -> Optional[str]:
     if os.path.isfile(cache_path):
         return cache_path
     try:
-        with urllib.request.urlopen(url, timeout=30) as response:
+        from core.mdx_config_fetch import _urlopen
+
+        with _urlopen(url) as response:
             data = response.read()
         with open(cache_path, "wb") as handle:
             handle.write(data)
@@ -493,10 +534,18 @@ def _load_yaml_meta(yaml_name: str, yaml_url: str = "") -> Tuple[List[str], str,
             break
     source = ""
     if not config_path and yaml_url:
-        fetched = _fetch_yaml(yaml_url, yaml_name)
-        if fetched:
-            config_path = fetched
-            source = f"remote_yaml:{yaml_name}"
+        from core.mdx_config_fetch import fetch_mdx_config_url
+
+        if fetch_mdx_config_url(yaml_name, yaml_url):
+            dest = os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name)
+            if os.path.isfile(dest):
+                config_path = dest
+                source = f"remote_yaml:{yaml_name}"
+        if not config_path:
+            fetched = _fetch_yaml(yaml_url, yaml_name)
+            if fetched:
+                config_path = fetched
+                source = f"remote_yaml:{yaml_name}"
     elif config_path:
         if YAML_CACHE_DIR in config_path:
             source = f"remote_yaml:{yaml_name}"
@@ -681,6 +730,7 @@ def _parse_catalogue_entry(
     ctx: CatalogueContext,
     hash_json: str = "",
     weight_dir: str = "",
+    entry_meta: Any = None,
 ) -> List[ModelEntry]:
     yaml_name = ""
     yaml_url = ""
@@ -759,55 +809,57 @@ def _parse_catalogue_entry(
     if not meta.metadata_source:
         meta.metadata_source = "unavailable"
 
+    _apply_entry_meta(meta, entry_meta)
     _finalize_entry(meta)
     return [meta]
 
 
-_TRVLVR_KEYS = (
-    "vr_download_list",
-    "mdx_download_list",
-    "mdx23_download_list",
-    "mdx23c_download_list",
-    "demucs_download_list",
-)
+def _label_in_lists(label: str, payload: Optional[dict], keys: Tuple[str, ...]) -> bool:
+    if not payload:
+        return False
+    return any(label in (payload.get(key) or {}) for key in keys)
 
 
-def _source_for(label: str, politrees: Optional[dict], trvlvr: dict) -> str:
-    """Attribute ``label`` to TRvlvr, Politrees, or both, by catalogue membership."""
-    in_pt = False
-    if politrees:
-        for key in ("vr_download_list", *_POLITREES_KEYS, "demucs_download_list"):
-            if label in (politrees.get(key) or {}):
-                in_pt = True
-                break
-    in_tr = any(label in trvlvr.get(key, {}) for key in _TRVLVR_KEYS)
-    if in_pt and not in_tr:
-        return "Politrees"
-    if in_pt and in_tr:
-        return "TRvlvr+Politrees"
-    return "TRvlvr"
+def _mvsepless_lists(payload: Optional[dict]) -> Optional[dict]:
+    if not payload:
+        return None
+    if "unsupported" in payload or "mdx_download_list" in payload:
+        return payload
+    from core.mvsepless_catalog import convert_mvsepless_catalog
+
+    return convert_mvsepless_catalog(payload)
 
 
-def _collect_entries(ctx: CatalogueContext) -> List[ModelEntry]:
-    vr_cat, mdx_cat, demucs_cat = _merged_catalogues()
-    politrees = _load_politrees_catalogue()
-    trvlvr = _load_trvlvr_catalogue()
-    all_entries: List[ModelEntry] = []
+def _source_for(
+    label: str,
+    politrees: Optional[dict] = None,
+    trvlvr: Optional[dict] = None,
+    extras: Optional[dict] = None,
+    mvsepless: Optional[dict] = None,
+) -> str:
+    """Attribute ``label`` to catalogue sources by membership, in merge order."""
+    in_tr = False
+    if trvlvr:
+        vr, mdx, demucs = flatten_upstream_lists(trvlvr, vip=False)
+        in_tr = label in vr or label in mdx or label in demucs
+    in_pt = _label_in_lists(label, politrees, _POLITREES_KEYS)
+    in_ex = _label_in_lists(label, extras, _SUPPLEMENT_LIST_KEYS)
+    in_mv = _label_in_lists(label, _mvsepless_lists(mvsepless), _POLITREES_KEYS)
+    parts: List[str] = []
+    if in_tr:
+        parts.append("TRvlvr")
+    if in_pt:
+        parts.append("Politrees")
+    if in_ex:
+        parts.append("extras")
+    if in_mv:
+        parts.append("mvsepless")
+    return "+".join(parts) if parts else "TRvlvr"
 
-    for label, payload in sorted(vr_cat.items()):
-        all_entries.extend(
-            _parse_catalogue_entry(
-                source=_source_for(label, politrees, trvlvr),
-                family="VR Architecture",
-                label=label,
-                payload=payload,
-                ctx=ctx,
-                hash_json=paths.VR_HASH_JSON,
-                weight_dir=paths.VR_MODELS_DIR,
-            )
-        )
 
+def _mdx_family(label: str) -> str:
     family_map = [
+        ("Apollo Model", "Apollo"),
         ("MDX-Net Model", "MDX-Net ONNX"),
         ("MDX23 Model", "MDX23C"),
         ("MDX23C Model", "MDX23C"),
@@ -815,33 +867,64 @@ def _collect_entries(ctx: CatalogueContext) -> List[ModelEntry]:
         ("SCnet:", "SCNet"),
         ("Bandit", "Bandit"),
     ]
+    for prefix, fam in family_map:
+        if label.startswith(prefix):
+            return fam
+    return "MDX-Net"
 
-    for label, payload in sorted(mdx_cat.items()):
-        family = "MDX-Net"
-        for prefix, fam in family_map:
-            if label.startswith(prefix):
-                family = fam
-                break
+
+def _entries_from_snapshot(
+    snapshot: Any,
+    payloads: Tuple[dict, dict, dict, dict],
+    ctx: CatalogueContext,
+) -> List[ModelEntry]:
+    trvlvr, politrees, extras, mvsepless = payloads
+    meta_index = getattr(snapshot, "meta", {}) or {}
+    all_entries: List[ModelEntry] = []
+
+    def source_for(label: str) -> str:
+        return _source_for(
+            label, politrees, trvlvr, extras=extras, mvsepless=mvsepless
+        )
+
+    for label, payload in sorted(dict(snapshot.vr).items()):
         all_entries.extend(
             _parse_catalogue_entry(
-                source=_source_for(label, politrees, trvlvr),
+                source=source_for(label),
+                family="VR Architecture",
+                label=label,
+                payload=payload,
+                ctx=ctx,
+                hash_json=paths.VR_HASH_JSON,
+                weight_dir=paths.VR_MODELS_DIR,
+                entry_meta=meta_index.get(label),
+            )
+        )
+
+    for label, payload in sorted(dict(snapshot.mdx).items()):
+        family = _mdx_family(label)
+        all_entries.extend(
+            _parse_catalogue_entry(
+                source=source_for(label),
                 family=family,
                 label=label,
                 payload=payload,
                 ctx=ctx,
                 hash_json=paths.MDX_HASH_JSON if family == "MDX-Net ONNX" else "",
                 weight_dir=paths.MDX_MODELS_DIR,
+                entry_meta=meta_index.get(label),
             )
         )
 
-    for label, payload in sorted(demucs_cat.items()):
+    for label, payload in sorted(dict(snapshot.demucs).items()):
         all_entries.extend(
             _parse_catalogue_entry(
-                source=_source_for(label, politrees, trvlvr),
+                source=source_for(label),
                 family="Demucs",
                 label=label,
                 payload=payload,
                 ctx=ctx,
+                entry_meta=meta_index.get(label),
             )
         )
         entry = all_entries[-1]
@@ -863,7 +946,31 @@ def _collect_entries(ctx: CatalogueContext) -> List[ModelEntry]:
         entry.metadata_source = "demucs_heuristic"
         entry.backend_focus = "multi_stem"
 
+    for label, payload in sorted(dict(snapshot.apollo).items()):
+        all_entries.extend(
+            _parse_catalogue_entry(
+                source=source_for(label),
+                family="Apollo",
+                label=label,
+                payload=payload,
+                ctx=ctx,
+                entry_meta=meta_index.get(label),
+            )
+        )
+
     return all_entries
+
+
+def _collect_entries(
+    ctx: CatalogueContext,
+    *,
+    allow_network: bool = True,
+    coordinator: Optional[CatalogueCoordinator] = None,
+) -> List[ModelEntry]:
+    snapshot, payloads = _snapshot_and_payloads(
+        allow_network=allow_network, coordinator=coordinator
+    )
+    return _entries_from_snapshot(snapshot, payloads, ctx)
 
 
 def _md_table(headers: List[str], rows: List[List[str]]) -> str:
@@ -877,14 +984,14 @@ def _md_table(headers: List[str], rows: List[List[str]]) -> str:
     return "\n".join(lines)
 
 
-def _render(entries: List[ModelEntry]) -> str:
+def _render(entries: List[ModelEntry], *, unsupported_count: int = 0) -> str:
     flagged = [e for e in entries if e.flags]
     unknown = [e for e in entries if e.name_intent == "unknown"]
     with_meta = [e for e in entries if e.metadata_source not in ("unavailable", "")]
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     lines = [
-        "# UVR Model Catalogue (TRvlvr + Politrees)",
+        "# UVR Model Catalogue (TRvlvr + Politrees + extras + mvsepless)",
         "",
         f"Generated: {now} by `scripts/generate_models_catalogue.py`.",
         "",
@@ -901,7 +1008,7 @@ def _render(entries: List[ModelEntry]) -> str:
         "## How to read this",
         "",
         "- **Name intent** — from label, metadata, or community reference.",
-        "- **Backend focus** — what `ModelConfig` uses as `primary_stem` at runtime.",
+        "- **Backend focus** — catalogue helper summarizing primary/target; export is concept/route based.",
         "- **Best result** — the stem users typically want from that model name.",
         "- **Flags** — vocal/instrumental labelling mismatches (only when metadata resolved).",
         "",
@@ -917,6 +1024,7 @@ def _render(entries: List[ModelEntry]) -> str:
         f"- Entries with resolved metadata: **{len(with_meta)}**",
         f"- Unknown intent remaining: **{len(unknown)}**",
         f"- Flagged mismatches: **{len(flagged)}**",
+        f"- Unsupported mvsepless entries (omitted): **{unsupported_count}**",
         "",
     ]
 
@@ -930,7 +1038,7 @@ def _render(entries: List[ModelEntry]) -> str:
                     [
                         [
                             e.family,
-                            sanitize_catalogue_label(e.catalogue_label),
+                            _display_label(e),
                             e.metadata_source,
                             e.target_instrument or e.primary_stem or "—",
                         ]
@@ -950,7 +1058,7 @@ def _render(entries: List[ModelEntry]) -> str:
                 [
                     [
                         e.family,
-                        sanitize_catalogue_label(e.catalogue_label)[:60],
+                        _display_label(e)[:60],
                         e.name_intent,
                         (e.best_result[:50] + "…") if len(e.best_result) > 50 else e.best_result,
                         e.backend_focus,
@@ -978,7 +1086,7 @@ def _render(entries: List[ModelEntry]) -> str:
                     ["Model", "Primary", "Karaoke flag", "Best result"],
                     [
                         [
-                            sanitize_catalogue_label(e.catalogue_label),
+                            _display_label(e),
                             e.primary_stem or e.target_instrument,
                             "yes" if e.is_karaoke else "—",
                             e.best_result,
@@ -1010,7 +1118,7 @@ def _render(entries: List[ModelEntry]) -> str:
                     ["Model", "Config", "Instruments", "Best result"],
                     [
                         [
-                            sanitize_catalogue_label(e.catalogue_label),
+                            _display_label(e),
                             e.config_yaml,
                             ", ".join(e.instruments),
                             e.best_result,
@@ -1031,7 +1139,7 @@ def _render(entries: List[ModelEntry]) -> str:
                     ["Label", "Intent", "Backend", "Target/Primary", "Best result", "Flags"],
                     [
                         [
-                            sanitize_catalogue_label(e.catalogue_label),
+                            _display_label(e),
                             e.name_intent,
                             e.backend_focus,
                             e.target_instrument or e.primary_stem,
@@ -1050,7 +1158,7 @@ def _render(entries: List[ModelEntry]) -> str:
         if entry.family != current_family:
             current_family = entry.family
             lines.extend([f"## {current_family} (detail)", ""])
-        short = sanitize_catalogue_label(entry.catalogue_label)
+        short = _display_label(entry)
         lines.append(f"### {short}")
         lines.append("")
         lines.append(f"- **Source:** {entry.source}")
@@ -1082,18 +1190,33 @@ def _render(entries: List[ModelEntry]) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
+def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate docs/models-catalogue.md from the Download Center snapshot."
+    )
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Read catalogue caches only (no remote refresh).",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = _parse_args(argv)
     ctx = _build_catalogue_context()
-    entries = _collect_entries(ctx)
+    snapshot, payloads = _snapshot_and_payloads(allow_network=not args.offline)
+    entries = _entries_from_snapshot(snapshot, payloads, ctx)
+    unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     with open(OUTPUT_PATH, "w", encoding="utf-8") as handle:
-        handle.write(_render(entries))
+        handle.write(_render(entries, unsupported_count=unsupported))
     flagged = sum(1 for e in entries if e.flags)
     unknown = sum(1 for e in entries if e.name_intent == "unknown")
     with_meta = sum(1 for e in entries if e.metadata_source not in ("unavailable", ""))
     print(
         f"Wrote {OUTPUT_PATH} ({len(entries)} models, {with_meta} with metadata, "
-        f"{unknown} unknown, {flagged} flagged)"
+        f"{unknown} unknown, {flagged} flagged, {unsupported} unsupported omitted)"
     )
     if os.path.isfile(REFERENCE_TSV_PATH):
         print(f"Wrote {REFERENCE_TSV_PATH}")

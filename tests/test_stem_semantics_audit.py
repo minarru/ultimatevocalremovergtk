@@ -55,14 +55,11 @@ class IterEntriesProgressTests(unittest.TestCase):
     def test_reports_each_target_to_stderr(self) -> None:
         from types import SimpleNamespace
 
-        catalogue = {"first": {}, "second": {}}
         targets = [
             SimpleNamespace(entry_id="first", label="First Model"),
             SimpleNamespace(entry_id="second", label="Second Model"),
         ]
         with patch(
-            "core.mvsepless_catalog.load_mvsepless_models", return_value=catalogue
-        ), patch(
             "scripts.model_probe.iter_catalogue_targets", return_value=iter(targets)
         ), patch.object(
             stem_semantics_audit, "_curated_hash_table", return_value={}
