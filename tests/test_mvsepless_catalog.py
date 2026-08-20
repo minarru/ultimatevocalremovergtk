@@ -336,8 +336,11 @@ class DownloadManagerMergeTests(unittest.TestCase):
         mock_unsupported.return_value = {
             MDX_ARCH_TYPE: [("Broken", "not ported")]
         }
+        from core.catalog_sources import invalidate_catalogue_merge
+
+        invalidate_catalogue_merge()
         self.manager.mdx_download_list = {}
-        self.manager._merge_politrees_supplement()
+        self.manager._merge_politrees_supplement(allow_network=False)
         mock_merge.assert_called_once()
         self.assertIn("Mvsepless Mel", self.manager.mdx_download_list)
         self.assertEqual(
@@ -353,6 +356,18 @@ class DownloadManagerMergeTests(unittest.TestCase):
             with self.assertRaises(ValueError) as ctx:
                 self.manager.resolve("Medley Sample", MDX_ARCH_TYPE)
         self.assertIn("not downloadable", str(ctx.exception))
+
+    def test_resolve_blocks_from_merged_unsupported_list(self) -> None:
+        self.manager.mdx_download_list = {}
+        self.manager.unsupported_download_list = {
+            MDX_ARCH_TYPE: [("Medley Sample", "Medley-Vox engine not ported")]
+        }
+        with mock.patch(
+            "core.mvsepless_catalog._urlopen"
+        ) as opener, self.assertRaises(ValueError) as ctx:
+            self.manager.resolve("Medley Sample", MDX_ARCH_TYPE)
+        self.assertIn("not downloadable", str(ctx.exception))
+        opener.assert_not_called()
 
     def test_resolve_prefers_real_catalogue_entry(self) -> None:
         self.manager.mdx_download_list = {

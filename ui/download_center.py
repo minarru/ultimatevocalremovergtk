@@ -124,6 +124,9 @@ class DownloadCenterWindow:
         self._stem_fetch_armed = False
         self._catalogue_refresh_armed = False
         self._downloads_dirty = False
+        self._pinned_revision = None
+        self._pinned_snapshot = None
+        self._pending_source_delta = False
 
         saved_code = self.settings.process.user_code
         if saved_code:
@@ -153,6 +156,10 @@ class DownloadCenterWindow:
 
     def present(self) -> None:
         self.window.present()
+        if self._pending_source_delta:
+            self._pending_source_delta = False
+            self.start_refresh()
+            return
         if self._downloads_dirty and self._available:
             self._apply_download_completion_refresh()
         if not self._available:
@@ -505,12 +512,38 @@ class DownloadCenterWindow:
         set_row_subtitle(action, "Looking up size…")
         lookup_id = self._size_lookup_ids.get(key, 0) + 1
         self._size_lookup_ids[key] = lookup_id
+        jobs_obj = self._resolve_pinned(name, arch)
+        jobs: list[tuple[str, str]] = (
+            [(str(url), str(path)) for url, path in jobs_obj]
+            if isinstance(jobs_obj, (list, tuple))
+            else []
+        )
+        pending = [
+            url for url, path in jobs if url and not os.path.isfile(path)
+        ]
+        if not pending:
+            def worker() -> None:
+                text = self.manager.describe_selection_download_size(name, arch)
+                idle_on_main(self._apply_row_size, lookup_id, key, text)
 
-        def worker() -> None:
-            text = self.manager.describe_selection_download_size(name, arch)
-            idle_on_main(self._apply_row_size, lookup_id, key, text)
+            threading.Thread(target=worker, name="uvr-size-lookup", daemon=True).start()
+            return
 
-        threading.Thread(target=worker, daemon=True).start()
+        from core.download_sizes import describe_cached_download_size, request_url_size
+
+        remaining = {"n": len(pending)}
+        lock = threading.Lock()
+
+        def on_url(_url: str, _size: int | None) -> None:
+            with lock:
+                remaining["n"] -= 1
+                done = remaining["n"] <= 0
+            if done:
+                text = describe_cached_download_size(jobs)
+                idle_on_main(self._apply_row_size, lookup_id, key, text)
+
+        for url in pending:
+            request_url_size(url, on_url)
 
     def _apply_row_size(self, lookup_id: int, key: tuple[str, str], text: str) -> None:
         # Guard is keyed per-row: checking another model must not discard this
@@ -703,7 +736,46 @@ class DownloadCenterWindow:
         self._update_status_from_catalogue()
         self._update_download_button()
         self._ensure_background_listeners()
+        self._pin_current_snapshot()
         self._schedule_stem_yaml_fetches()
+
+    def _pin_current_snapshot(self) -> None:
+        manager = getattr(self, "manager", None)
+        coordinator = getattr(manager, "_coordinator", None) if manager is not None else None
+        vip = False
+        if manager is not None:
+            from bundled.constants import NO_CODE
+
+            decoded = getattr(manager, "decoded_vip_link", NO_CODE)
+            vip = bool(decoded) and decoded != NO_CODE
+        snapshot = None
+        if coordinator is not None:
+            snapshot = getattr(
+                coordinator, "_latest_unlocked" if vip else "_latest", None
+            )
+            if snapshot is None:
+                snapshot = getattr(coordinator, "_latest", None)
+        self._pinned_snapshot = snapshot
+        revision = getattr(snapshot, "revision", None)
+        digest = getattr(revision, "digest", None)
+        self._pinned_revision = digest() if callable(digest) else None
+
+    def _pinned_catalogue(self, arch: str) -> dict | None:
+        snapshot = getattr(self, "_pinned_snapshot", None)
+        if snapshot is None:
+            return None
+        mapping = {
+            VR_ARCH_TYPE: snapshot.vr,
+            MDX_ARCH_TYPE: snapshot.mdx,
+            DEMUCS_ARCH_TYPE: snapshot.demucs,
+            APOLLO_ARCH_TYPE: snapshot.apollo,
+        }
+        catalogue = mapping.get(arch)
+        return dict(catalogue) if catalogue is not None else None
+
+    def _resolve_pinned(self, selection: str, arch: str) -> typing.Any:
+        catalogue = self._pinned_catalogue(arch)
+        return self.manager.resolve(selection, arch, catalogue=catalogue)
 
     def _ensure_background_listeners(self) -> None:
         """Listen for both background catalogue refinements.
@@ -717,6 +789,20 @@ class DownloadCenterWindow:
         subscribe(self._schedule_stem_subtitle_refresh)
         ensure_worker_started()
         self.manager.subscribe_catalogue_changed(self._schedule_catalogue_row_refresh)
+        subscribe_delta = getattr(self.manager, "subscribe_delta", None)
+        if callable(subscribe_delta):
+            subscribe_delta(self._on_catalogue_delta)
+
+    def _on_catalogue_delta(self, delta: object) -> None:
+        kind = getattr(delta, "kind", None)
+        value = getattr(kind, "value", kind)
+        if value == "identity_refined" or getattr(delta, "removal_only", False):
+            self._schedule_catalogue_row_refresh()
+            return
+        if value == "metadata_changed":
+            self._schedule_stem_subtitle_refresh()
+            return
+        self._pending_source_delta = True
 
     def _schedule_catalogue_row_refresh(self) -> None:
         idle_on_main(self._arm_catalogue_row_refresh)
@@ -1085,6 +1171,7 @@ class DownloadCenterWindow:
 
     def _rebuild_catalogue(self) -> None:
         previously_selected = {(arch, name) for name, arch in self._selected_entries()}
+        self._pin_current_snapshot()
         self._clear_catalogue()
         for _label, arch in _NETWORKS:
             models = [
@@ -1118,7 +1205,12 @@ class DownloadCenterWindow:
         entries = self._selected_entries()
         if not entries:
             return
-        ids = self.queue.enqueue_many(entries)
+        ids: list[str] = []
+        for name, arch in entries:
+            jobs = self._resolve_pinned(name, arch)
+            item_id = self.queue.enqueue(name, arch, jobs=jobs)
+            if item_id:
+                ids.append(item_id)
         if not ids:
             self._toast("Nothing to download for the current selection")
             return

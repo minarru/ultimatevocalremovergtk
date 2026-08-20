@@ -34,13 +34,17 @@ class InvalidateModelsTests(unittest.TestCase):
         self.repo._karaoke_cache = (("tag",), ["tag"])
         self.repo.model_hash_table["/some/model.ckpt"] = "abc123"
         generation_before = model_display._display_generation
+        inventory_before = self.repo.inventory_generation
+        naming_before = self.repo.naming_revision
 
         self.repo.invalidate_models()
 
         self.assertIsNone(self.repo._stem_check_cache)
         self.assertIsNone(self.repo._karaoke_cache)
         self.assertEqual(self.repo.model_hash_table, {})
-        self.assertGreater(model_display._display_generation, generation_before)
+        self.assertEqual(model_display._display_generation, generation_before)
+        self.assertGreater(self.repo.inventory_generation, inventory_before)
+        self.assertGreater(self.repo.naming_revision, naming_before)
 
     def test_reloads_the_mappers(self) -> None:
         """`invalidate_stem_check` alone leaves the mappers stale on disk."""

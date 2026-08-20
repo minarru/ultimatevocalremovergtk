@@ -16,9 +16,30 @@ from .mdx_config_fetch import _urlopen, fetch_mdx_config_url
 
 _POLITREES_CACHE_TTL_SECONDS = 24 * 60 * 60
 
+_source: Any = None
+
 
 def _politrees_cache_path() -> str:
-    return paths.migrate_cache_file("politrees_model_links.json", paths.POLITREES_CACHE_FILE)
+    return paths.POLITREES_CACHE_FILE
+
+
+def _politrees_source() -> Any:
+    """Module-level source store; tests patch ``_politrees_cache_path`` / ``_urlopen``."""
+    global _source
+    from .catalogue_types import SourceId
+    from .remote_catalog_cache import RemoteJsonSource
+
+    if _source is None:
+        _source = RemoteJsonSource(
+            source_id=SourceId.POLITREES,
+            url=POLITREES_MODEL_LINKS_URL,
+            cache_filename="politrees_model_links.json",
+            cache_path=lambda: _politrees_cache_path(),
+            ttl_seconds=_POLITREES_CACHE_TTL_SECONDS,
+            opener=lambda target: _urlopen(target),
+            enabled=politrees_enabled,
+        )
+    return _source
 
 _POLITREES_MDX_SOURCE_KEYS = (
     "mdx_download_list",
@@ -49,10 +70,13 @@ def is_remote_ref(value: object) -> bool:
 
 
 def clear_politrees_cache() -> None:
-    global _cached_links, _cached_weight_index, _cached_loaded_at
+    global _cached_links, _cached_weight_index, _cached_loaded_at, _source
     _cached_links = None
     _cached_weight_index = None
     _cached_loaded_at = 0.0
+    if _source is not None:
+        _source.reset()
+        _source = None
     # Local import: core.model_display imports this module for _display_base.
     from .model_display import clear_display_cache
 
@@ -99,6 +123,9 @@ def _start_background_refresh() -> None:
             load_politrees_links(force=True)
         except Exception as exc:  # noqa: BLE001 - background best-effort
             debug("download", f"politrees background refresh failed err={exc}")
+        except BaseException:
+            # Test network guard is a BaseException; never kill the daemon thread.
+            debug("download", "politrees background refresh aborted")
         finally:
             with _refresh_lock:
                 _refresh_in_flight = False
@@ -114,6 +141,20 @@ def _write_disk_cache(data: Dict) -> None:
             json.dump({"fetched_at": time.time(), "data": data}, handle)
     except OSError as exc:
         debug("download", f"politrees cache write failed err={exc}")
+
+
+def _apply_politrees_content(content: Any) -> Optional[Dict]:
+    global _cached_links, _cached_weight_index, _cached_loaded_at
+    data = dict(content.payload)
+    previous = _cached_links
+    _cached_links = data
+    _cached_weight_index = None
+    _cached_loaded_at = float(content.fetched_at)
+    if data != previous:
+        from .model_display import clear_display_cache
+
+        clear_display_cache()
+    return data
 
 
 def load_politrees_links(
@@ -133,63 +174,36 @@ def load_politrees_links(
     ):
         return _cached_links
 
-    if not force:
-        entry = _read_disk_cache_entry()
-        if entry is not None:
-            # Any readable disk entry is served immediately (stale-while-
-            # revalidate). TTL only decides whether to refresh in the
-            # background — it never blocks the caller on HTTP.
-            data, fetched_at = entry
-            previous = _cached_links
-            _cached_links = data
-            _cached_weight_index = None
-            _cached_loaded_at = now
-            if data != previous:
-                from .model_display import clear_display_cache
+    from .access_policy import AccessPolicy, current_access_policy
+    from .catalogue_types import RefreshMode
 
-                clear_display_cache()
-            if allow_network and (now - fetched_at) >= _POLITREES_CACHE_TTL_SECONDS:
+    source = _politrees_source()
+    policy = current_access_policy()
+    if not force:
+        if _cached_links is None:
+            source.reset()
+        offline = AccessPolicy(allow_network=False, allow_metadata_writes=False)
+        state = source.load(mode=RefreshMode.OFFLINE, policy=offline)
+        content = state.content
+        if content is not None:
+            _apply_politrees_content(content)
+            if allow_network and source._stale(content.fetched_at, source._now()):
                 _start_background_refresh()
             return _cached_links
+        if not allow_network:
+            return None
 
     if not allow_network:
-        data = _read_disk_cache()
-        if isinstance(data, dict):
-            _cached_links = data
-            _cached_weight_index = None
-            _cached_loaded_at = now
-            return data
         return None
 
-    data: Optional[Dict] = None
-    from_disk = False
-    try:
-        with _urlopen(POLITREES_MODEL_LINKS_URL) as response:
-            data = json.load(response)
-    except Exception as exc:
-        debug("download", f"politrees fetch failed err={type(exc).__name__}: {exc}")
-        data = _read_disk_cache()
-        from_disk = True
-
-    if not isinstance(data, dict):
-        return None
-
-    previous = _cached_links
-    _cached_links = data
-    _cached_weight_index = None
-    _cached_loaded_at = now
-    if not from_disk:
-        # Rewriting here would stamp fetched_at=now onto the copy we just read
-        # back from disk, so an offline session makes month-old data look
-        # freshly fetched and the TTL never expires.
-        _write_disk_cache(data)
-    # Invalidate only when the payload actually changed — identical refetches
-    # (typical background refresh) must not discard a still-valid merge.
-    if data != previous:
-        from .model_display import clear_display_cache
-
-        clear_display_cache()
-    return data
+    net_policy = AccessPolicy(
+        allow_network=True,
+        allow_metadata_writes=policy.allow_metadata_writes,
+    )
+    state = source.load(mode=RefreshMode.FORCE, policy=net_policy)
+    if state.content is not None:
+        return _apply_politrees_content(state.content)
+    return _cached_links
 
 
 def merge_supplemental_list(
@@ -296,7 +310,9 @@ def resolve_vr_jobs(model: object, model_repo: str) -> List[Tuple[str, str]]:
     return [(f"{model_repo}{filename}", os.path.join(paths.VR_MODELS_DIR, filename))]
 
 
-def resolve_mdx_jobs(model: object, model_repo: str) -> List[Tuple[str, str]]:
+def resolve_mdx_jobs(
+    model: object, model_repo: str, *, fetch_config: bool = True
+) -> List[Tuple[str, str]]:
     if isinstance(model, dict):
         jobs: List[Tuple[str, str]] = []
         for name, ref in model.items():
@@ -312,9 +328,10 @@ def resolve_mdx_jobs(model: object, model_repo: str) -> List[Tuple[str, str]]:
                 jobs.append((ref, os.path.join(paths.MDX_MODELS_DIR, name)))
             else:
                 jobs.append((f"{model_repo}{name}", os.path.join(paths.MDX_MODELS_DIR, name)))
-                from .mdx_config_fetch import ensure_mdx_c_config
+                if fetch_config:
+                    from .mdx_config_fetch import ensure_mdx_c_config
 
-                ensure_mdx_c_config(ref)
+                    ensure_mdx_c_config(ref)
         return jobs
     filename = str(model)
     return [(f"{model_repo}{filename}", os.path.join(paths.MDX_MODELS_DIR, filename))]

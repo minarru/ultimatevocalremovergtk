@@ -7,7 +7,7 @@ import json
 import os
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
-from bundled.constants import CKPT
+from bundled.constants import CKPT, MDX_ARCH_TYPE
 
 from . import paths
 from .access_policy import current_access_policy
@@ -20,7 +20,6 @@ from .model_display import (
     resolve_mdx_model_basename,
     sanitize_catalogue_label,
 )
-from .politrees_catalog import load_politrees_links
 
 _MDX_CATALOG_SOURCE_KEYS = (
     "mdx_download_list",
@@ -152,7 +151,11 @@ def _register_display_name_for_checkpoint(
     display_index: Optional[Dict[str, str]] = None,
 ) -> bool:
     basename = os.path.splitext(os.path.basename(checkpoint_path))[0]
-    lookup = display_index if display_index is not None else load_mdx_catalog_display_index()
+    lookup = (
+        display_index
+        if display_index is not None
+        else load_mdx_catalog_display_index(allow_network=False)
+    )
     display_name = lookup.get(basename)
     if not display_name:
         return False
@@ -209,21 +212,35 @@ def _catalogues_from_source(source: Dict) -> List[Dict[str, object]]:
     return catalogues
 
 
-def load_mdx_catalog_index(*, allow_network: bool | None = None) -> Dict[str, str]:
+def load_mdx_catalog_index(*, allow_network: bool | None = None, coordinator: Any = None) -> Dict[str, str]:
     """Build checkpoint→yaml index from bundled and cached download catalogues."""
-    catalogues: List[Dict[str, object]] = []
-    catalogues.extend(_catalogues_from_source(_load_manual_download_cache()))
+    from .catalog_sources import merged_catalogues
+    from .catalogue_coordinator import flatten_upstream_lists
 
     network = (
         current_access_policy().allow_network
         if allow_network is None
         else allow_network
     )
-    politrees = load_politrees_links(allow_network=network)
-    if isinstance(politrees, dict):
-        catalogues.extend(_catalogues_from_source(politrees))
-
-    return build_checkpoint_yaml_index(catalogues)
+    if coordinator is not None:
+        snapshot = coordinator.ensure(vip=True, allow_network=network)
+        return dict(snapshot.checkpoint_yaml_index)
+    payload = _load_manual_download_cache()
+    _vr, mdx, _demucs = flatten_upstream_lists(payload, vip=True)
+    merged = merged_catalogues(
+        vr=_vr, mdx=mdx, demucs=_demucs, allow_network=network
+    )
+    catalogue = {
+        meta.label: meta.files
+        for meta in merged.meta.values()
+        if getattr(meta, "arch", None) == MDX_ARCH_TYPE and getattr(meta, "files", None)
+    }
+    if catalogue:
+        return build_checkpoint_yaml_index([catalogue])
+    # ``merged_catalogues`` already folded Politrees/extras/mvsepless. An empty
+    # MDX projection means those sources had nothing usable; do not FORCE-fetch
+    # Politrees again on the caller thread (tests and offline planning).
+    return build_checkpoint_yaml_index(_catalogues_from_source(payload))
 
 
 def yaml_for_checkpoint(filename: str, index: Optional[Dict[str, str]] = None) -> Optional[str]:
@@ -325,9 +342,13 @@ def register_mdx_c_from_download_jobs(
     jobs: List[Tuple[str, str]],
 ) -> bool:
     """Auto-register MDX-C checkpoints downloaded alongside a config yaml."""
+    pairs = pair_checkpoint_yaml_jobs(jobs)
+    if not pairs:
+        return False
     registered = False
-    display_index = load_mdx_catalog_display_index()
-    for checkpoint_path, yaml_name in pair_checkpoint_yaml_jobs(jobs):
+    # Naming a file that just landed on disk must not FORCE-fetch catalogues.
+    display_index = load_mdx_catalog_display_index(allow_network=False)
+    for checkpoint_path, yaml_name in pairs:
         if register_mdx_c_checkpoint(checkpoint_path, yaml_name):
             registered = True
         if _register_display_name_for_checkpoint(checkpoint_path, display_index=display_index):

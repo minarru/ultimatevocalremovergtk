@@ -2,12 +2,16 @@
 
 ## Download catalogues
 
+Catalogue state is owned by `CatalogueCoordinator` (`core/catalogue_coordinator.py`): source snapshots, merge, projections, and typed deltas. Filesystem inventory (`ModelRepository.list_*_models`) remains the only installed-membership source for GUI pickers and default `uvr models list`.
+
 The Download Center merges catalogues in this order (earlier labels win):
 
-1. Official TRvlvr `download_checks.json`
+1. Official TRvlvr `download_checks.json` (live refresh persisted under the cache dir; bundled `model_manual_download.json` is fallback only and is never written)
 2. Politrees `UVR_resources` community list
 3. Fork-curated [`bundled/extra_models.json`](../bundled/extra_models.json)
 4. [noblebarkrr/mvsepless_resources](https://huggingface.co/noblebarkrr/mvsepless_resources) `models.json` (live fetch, 24h disk cache)
+
+Upstream MDX-family flattening includes `scnet_download_list` and `bandit_download_list` before supplements, so a live TRvlvr row for the same selectable wins over extras. Labels that previously showed extras files when those keys were omitted are listed in `PRIOR_EXTRAS_SCNET_BANDIT_WINNERS`.
 
 The mvsepless feed has **no declared Hugging Face license tag**; this app only indexes remote URLs and downloads into the local models dirs (it does not rehost weights). Disable with `UVR_DISABLE_MVSEPLESS=1`.
 
@@ -16,9 +20,16 @@ After merging, a **dedupe pass** keeps the first selectable for each of:
 - checkpoint basename
 - normalized label (cosmetic renames like `Roformer Model: MelBand …` vs `Mel-Band Roformer …`, or `Inst V1` vs `Inst v1`)
 - normalized checkpoint URL (strips `?download=true`)
-- content identity (`x-linked-etag` / `ETag`) when the download size cache knows it
+- trusted content identity (Hugging Face `X-Linked-Etag` only). Ordinary/weak HTTP ETags and `Last-Modified` are URL-scoped validators and never cross-URL-dedupe.
 
 Earlier catalogues always win (upstream → Politrees → extras → mvsepless). Demucs bags only collide on identical file→URL maps or normalized labels — shared bag members are not treated as duplicates.
+
+**Refresh and policy:**
+
+- Explicit Download Center Refresh and online `uvr models catalog/download` force-revalidate every remote source, then publish one mixed-age snapshot. Failed sources keep their last good payload. Online CLI continues with that saved snapshot and emits a stale/partial warning; it fails only when no usable snapshot exists.
+- `allow_network=False` performs no HTTP and starts no catalogue workers. `allow_metadata_writes=False` also forbids cache migration and envelope writes; offline reads inspect canonical and legacy paths in place.
+- Stale-while-revalidate remains demand-driven (opening a list, not GTK startup). Size/identity warmup still runs only for Download Center or an explicit online CLI operation.
+- Identity-removal deltas incrementally delete Download Center rows (250 ms). Source additions/changes mark the window pending and rebuild on the next explicit refresh or `present()`.
 
 **Network behaviour (Download Center):**
 

@@ -124,7 +124,7 @@ class PrefetchRemoteSizesTests(unittest.TestCase):
             self.assertEqual(stats, {"total": 1, "fresh": 1, "fetched": 0, "failed": 0})
             head.assert_not_called()
 
-    def test_content_ids_from_cache(self) -> None:
+    def test_content_ids_from_cache_require_trusted_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             cache_path = os.path.join(tmp, "download_size_cache.json")
             url = "https://example.com/a.ckpt?download=true"
@@ -134,6 +134,7 @@ class PrefetchRemoteSizesTests(unittest.TestCase):
                         "https://example.com/a.ckpt": {
                             "size": 10,
                             "etag": "e1",
+                            "content_id": "hf-oid",
                             "fetched_at": time.time(),
                         }
                     },
@@ -141,7 +142,19 @@ class PrefetchRemoteSizesTests(unittest.TestCase):
                 )
             with patch("core.download_sizes._cache_path", return_value=cache_path):
                 ids = content_ids_from_cache([url])
-            self.assertEqual(ids.get("https://example.com/a.ckpt"), "e1")
+            self.assertEqual(ids.get("https://example.com/a.ckpt"), "hf-oid")
+
+    def test_ordinary_etag_is_not_a_content_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "download_size_cache.json")
+            url = "https://example.com/a.ckpt"
+            with open(cache_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {url: {"size": 10, "etag": "weak-or-ordinary", "fetched_at": time.time()}},
+                    handle,
+                )
+            with patch("core.download_sizes._cache_path", return_value=cache_path):
+                self.assertEqual(content_ids_from_cache([url]), {})
 
     def test_same_size_identity_heads_only_cohort_missing_etag(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -162,14 +175,14 @@ class PrefetchRemoteSizesTests(unittest.TestCase):
             with patch("core.download_sizes._cache_path", return_value=cache_path):
                 with patch(
                     "core.download_sizes._head_remote_meta",
-                    side_effect=[(100, "etag-a"), (100, "etag-a")],
+                    side_effect=[(100, "etag-a", "oid-a"), (100, "etag-a", "oid-a")],
                 ) as head:
                     stats = prefetch_same_size_identity([a, b, c])
                 self.assertEqual(stats["fetched"], 2)
                 self.assertEqual(head.call_count, 2)
                 ids = content_ids_from_cache([a, b, c])
-                self.assertEqual(ids[a], "etag-a")
-                self.assertEqual(ids[b], "etag-a")
+                self.assertEqual(ids[a], "oid-a")
+                self.assertEqual(ids[b], "oid-a")
 
     def test_prefetch_fetches_multiple_stale_urls(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -334,6 +347,37 @@ class PrefetchRemoteSizesTests(unittest.TestCase):
                     stats = prefetch_same_size_identity(list(payload))
             self.assertEqual(stats["total"], _IDENTITY_HEAD_CAP)
             self.assertEqual(head.call_count, _IDENTITY_HEAD_CAP)
+
+
+class RequestUrlSizeCoalesceTests(unittest.TestCase):
+    def test_duplicate_urls_share_one_fetch(self) -> None:
+        import threading
+
+        from core.download_sizes import request_url_size
+
+        started = threading.Event()
+        release = threading.Event()
+        calls = {"n": 0}
+
+        def fetch(url: str) -> int:
+            calls["n"] += 1
+            started.set()
+            release.wait(timeout=2)
+            return 123
+
+        seen: list[int | None] = []
+        with patch("core.download_sizes.fetch_remote_size", side_effect=fetch), patch(
+            "core.download_sizes._cache_get", return_value=None
+        ):
+            request_url_size("https://example.com/a.ckpt", lambda _u, size: seen.append(size))
+            self.assertTrue(started.wait(timeout=2))
+            request_url_size("https://example.com/a.ckpt", lambda _u, size: seen.append(size))
+            release.set()
+            deadline = time.time() + 2
+            while len(seen) < 2 and time.time() < deadline:
+                time.sleep(0.01)
+        self.assertEqual(calls["n"], 1)
+        self.assertEqual(seen, [123, 123])
 
 
 if __name__ == "__main__":

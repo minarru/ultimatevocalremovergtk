@@ -65,16 +65,16 @@ class DownloadQueue:
         with self._lock:
             return sum(1 for item in self._items if item.status in ACTIVE_STATUSES)
 
-    def enqueue(self, selection: str, arch_type: str) -> Optional[str]:
-        jobs = self.manager.resolve(selection, arch_type)
-        if not jobs:
+    def enqueue(self, selection: str, arch_type: str, jobs: Optional[list] = None) -> Optional[str]:
+        resolved = jobs if jobs is not None else self.manager.resolve(selection, arch_type)
+        if not resolved:
             return None
         item = DownloadQueueItem(
             item_id=uuid.uuid4().hex,
             selection=selection,
             arch_type=arch_type,
             label=selection,
-            jobs=jobs,
+            jobs=list(resolved),
         )
         with self._lock:
             self._items.append(item)

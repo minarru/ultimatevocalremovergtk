@@ -271,6 +271,12 @@ class PairCheckpointYamlJobsTests(unittest.TestCase):
 
 
 class RegisterFromDownloadJobsTests(unittest.TestCase):
+    def test_unrelated_jobs_do_not_load_the_display_index(self) -> None:
+        jobs = [("https://example.com/a.onnx", "/tmp/a.onnx")]
+        with patch("core.mdx_c_registry.load_mdx_catalog_display_index") as load:
+            self.assertFalse(register_mdx_c_from_download_jobs(jobs))
+        load.assert_not_called()
+
     def test_registers_existing_download_batch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             hash_dir = os.path.join(tmp, "model_data")
@@ -362,9 +368,27 @@ class LoadMdxCatalogIndexTests(unittest.TestCase):
                 }
             }
         }
-        with patch("core.politrees_catalog.load_politrees_links", return_value=None):
+        with patch(
+            "core.catalog_sources._supplemental_sources", return_value=({}, {}, {}, {})
+        ):
             index = load_mdx_catalog_index()
         self.assertEqual(index["sample.ckpt"], "sample.yaml")
+
+    def test_fallback_index_includes_extras_via_merge(self) -> None:
+        extras = {
+            "Extras Model": {
+                "extra.ckpt": "https://ex/extra.ckpt",
+                "extra.yaml": "https://ex/extra.yaml",
+            }
+        }
+        with patch(
+            "core.mdx_c_registry._load_manual_download_cache", return_value={}
+        ), patch(
+            "core.catalog_sources._supplemental_sources",
+            return_value=({}, extras, {}, {}),
+        ):
+            index = load_mdx_catalog_index()
+        self.assertEqual(index["extra.ckpt"], "extra.yaml")
 
 
 if __name__ == "__main__":

@@ -178,8 +178,10 @@ def translate_category(category: str) -> Tuple[str, str]:
 _cached_models: Optional[Dict[str, Any]] = None
 _cached_loaded_at: float = 0.0
 _cached_converted: Optional[Dict[str, Any]] = None
+_cached_converted_digest: str = ""
 _refresh_lock = threading.Lock()
 _refresh_in_flight = False
+_source: Any = None
 
 
 def mvsepless_enabled() -> bool:
@@ -191,17 +193,39 @@ def mvsepless_enabled() -> bool:
 
 
 def clear_mvsepless_cache() -> None:
-    global _cached_models, _cached_loaded_at, _cached_converted
+    global _cached_models, _cached_loaded_at, _cached_converted, _cached_converted_digest, _source
     _cached_models = None
     _cached_loaded_at = 0.0
     _cached_converted = None
+    _cached_converted_digest = ""
+    if _source is not None:
+        _source.reset()
+        _source = None
     from .model_display import clear_display_cache
 
     clear_display_cache()
 
 
 def _cache_path() -> str:
-    return paths.migrate_cache_file("mvsepless_models.json", paths.MVSEPLESS_CACHE_FILE)
+    return paths.MVSEPLESS_CACHE_FILE
+
+
+def _mvsepless_source() -> Any:
+    global _source
+    from .catalogue_types import SourceId
+    from .remote_catalog_cache import RemoteJsonSource
+
+    if _source is None:
+        _source = RemoteJsonSource(
+            source_id=SourceId.MVSEPLESS,
+            url=MVSEPLESS_MODELS_JSON_URL,
+            cache_filename="mvsepless_models.json",
+            cache_path=lambda: _cache_path(),
+            ttl_seconds=_MVSEPLESS_CACHE_TTL_SECONDS,
+            opener=lambda target: _urlopen(target),
+            enabled=mvsepless_enabled,
+        )
+    return _source
 
 
 def _read_disk_cache() -> Optional[Dict[str, Any]]:
@@ -244,6 +268,9 @@ def _start_background_refresh() -> None:
             load_mvsepless_models(force=True)
         except Exception as exc:  # noqa: BLE001 - background best-effort
             debug("download", f"mvsepless background refresh failed err={exc}")
+        except BaseException:
+            # Test network guard is a BaseException; never kill the daemon thread.
+            debug("download", "mvsepless background refresh aborted")
         finally:
             with _refresh_lock:
                 _refresh_in_flight = False
@@ -259,6 +286,20 @@ def _write_disk_cache(data: Dict[str, Any]) -> None:
             json.dump({"fetched_at": time.time(), "data": data}, handle)
     except OSError as exc:
         debug("download", f"mvsepless cache write failed err={exc}")
+
+
+def _apply_mvsepless_content(content: Any) -> Optional[Dict[str, Any]]:
+    global _cached_models, _cached_loaded_at, _cached_converted
+    data = dict(content.payload)
+    previous = _cached_models
+    _cached_models = data
+    _cached_loaded_at = float(content.fetched_at)
+    if data != previous:
+        _cached_converted = None
+        from .model_display import clear_display_cache
+
+        clear_display_cache()
+    return data
 
 
 def load_mvsepless_models(
@@ -278,63 +319,36 @@ def load_mvsepless_models(
     ):
         return _cached_models
 
-    if not force:
-        entry = _read_disk_cache_entry()
-        if entry is not None:
-            # Any readable disk entry is served immediately (stale-while-
-            # revalidate). TTL only decides whether to refresh in the
-            # background — it never blocks the caller on HTTP.
-            data, fetched_at = entry
-            previous = _cached_models
-            _cached_models = data
-            _cached_loaded_at = now
-            _cached_converted = None
-            if data != previous:
-                from .model_display import clear_display_cache
+    from .access_policy import AccessPolicy, current_access_policy
+    from .catalogue_types import RefreshMode
 
-                clear_display_cache()
-            if allow_network and (now - fetched_at) >= _MVSEPLESS_CACHE_TTL_SECONDS:
+    source = _mvsepless_source()
+    policy = current_access_policy()
+    if not force:
+        if _cached_models is None:
+            source.reset()
+        offline = AccessPolicy(allow_network=False, allow_metadata_writes=False)
+        state = source.load(mode=RefreshMode.OFFLINE, policy=offline)
+        content = state.content
+        if content is not None:
+            _apply_mvsepless_content(content)
+            if allow_network and source._stale(content.fetched_at, source._now()):
                 _start_background_refresh()
             return _cached_models
+        if not allow_network:
+            return None
 
     if not allow_network:
-        data = _read_disk_cache()
-        if isinstance(data, dict):
-            _cached_models = data
-            _cached_loaded_at = now
-            _cached_converted = None
-            return data
         return None
 
-    data: Optional[Dict[str, Any]] = None
-    from_disk = False
-    try:
-        with _urlopen(MVSEPLESS_MODELS_JSON_URL) as response:
-            data = json.load(response)
-    except Exception as exc:
-        debug("download", f"mvsepless fetch failed err={type(exc).__name__}: {exc}")
-        data = _read_disk_cache()
-        from_disk = True
-
-    if not isinstance(data, dict):
-        return None
-
-    previous = _cached_models
-    _cached_models = data
-    _cached_loaded_at = now
-    _cached_converted = None
-    if not from_disk:
-        # Rewriting here would stamp fetched_at=now onto the copy we just read
-        # back from disk, so an offline session makes month-old data look
-        # freshly fetched and the TTL never expires.
-        _write_disk_cache(data)
-    # Invalidate only when the payload actually changed — identical refetches
-    # (typical background refresh) must not discard a still-valid merge.
-    if data != previous:
-        from .model_display import clear_display_cache
-
-        clear_display_cache()
-    return data
+    net_policy = AccessPolicy(
+        allow_network=True,
+        allow_metadata_writes=policy.allow_metadata_writes,
+    )
+    state = source.load(mode=RefreshMode.FORCE, policy=net_policy)
+    if state.content is not None:
+        return _apply_mvsepless_content(state.content)
+    return _cached_models
 
 
 def url_basename(url: str) -> str:
@@ -516,17 +530,26 @@ def load_converted_mvsepless(
     *, force: bool = False, allow_network: bool = True
 ) -> Optional[Dict[str, Any]]:
     """Fetch/convert with in-memory cache of the converted shape."""
-    global _cached_converted
+    global _cached_converted, _cached_converted_digest
 
     if not mvsepless_enabled():
         return None
-    if not force and _cached_converted is not None:
-        return _cached_converted
-
     models = load_mvsepless_models(force=force, allow_network=allow_network)
     if not models:
         return None
-    _cached_converted = convert_mvsepless_catalog(models)
+    from .catalogue_types import semantic_digest
+
+    digest = semantic_digest(models)
+    if not force and _cached_converted is not None and _cached_converted_digest == digest:
+        return _cached_converted
+    if "unsupported" in models or (
+        "mdx_download_list" in models and "checkpoint_url" not in next(iter(models.values()), {})
+    ):
+        # Already converted (coordinator snapshot / test fixture).
+        _cached_converted = dict(models)
+    else:
+        _cached_converted = convert_mvsepless_catalog(models)
+    _cached_converted_digest = digest
     return _cached_converted
 
 
@@ -556,6 +579,7 @@ def unsupported_mvsepless_downloads(
     converted: Optional[Mapping[str, Any]] = None,
     *,
     existing_labels: Optional[Mapping[str, Any]] = None,
+    allow_network: bool = True,
 ) -> Dict[str, List[Tuple[str, str]]]:
     """Return ``{arch: [(label, reason), ...]}`` for unsupported entries.
 
@@ -563,7 +587,11 @@ def unsupported_mvsepless_downloads(
     omitted so upstream-supported duplicates are not shown as broken. Matching
     is exact or via :func:`normalize_catalogue_label`.
     """
-    data = load_converted_mvsepless() if converted is None else converted
+    data = (
+        load_converted_mvsepless(allow_network=allow_network)
+        if converted is None
+        else converted
+    )
     if not data:
         return {}
 
@@ -615,9 +643,16 @@ def mvsepless_metadata(
 
 
 def unsupported_reason_for_label(
-    label: str, converted: Optional[Mapping[str, Any]] = None
+    label: str,
+    converted: Optional[Mapping[str, Any]] = None,
+    *,
+    allow_network: bool = True,
 ) -> Optional[str]:
-    data = load_converted_mvsepless() if converted is None else converted
+    data = (
+        load_converted_mvsepless(allow_network=allow_network)
+        if converted is None
+        else converted
+    )
     if not data:
         return None
     reasons = data.get("unsupported_labels") or {}

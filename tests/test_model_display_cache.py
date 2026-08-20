@@ -116,17 +116,18 @@ class MergedForDisplayCacheTests(unittest.TestCase):
         self.assertIsNotNone(mid_flight)
         self.assertIsNotNone(after)
 
-    def test_reload_mappers_invalidates_display_cache(self) -> None:
+    def test_reload_mappers_bumps_naming_revision_not_catalogue_merge(self) -> None:
         from core.model_repository import ModelRepository
 
         first = md._merged_for_display()
         gen_before = md._display_generation
-        # Avoid constructing a full repo: call the method unbound with a stub.
         stub = mock.MagicMock()
+        stub._naming_revision = 0
         ModelRepository.reload_mappers(stub)
         second = md._merged_for_display()
-        self.assertGreater(md._display_generation, gen_before)
-        self.assertIsNot(first, second)
+        self.assertEqual(md._display_generation, gen_before)
+        self.assertIs(first, second)
+        self.assertEqual(stub._naming_revision, 1)
 
 
 @mock.patch.dict(os.environ, {"UVR_DISABLE_CATALOGUE_STEMS": "1"}, clear=False)

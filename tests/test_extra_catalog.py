@@ -106,11 +106,13 @@ class ExtraCatalogMergeTests(unittest.TestCase):
 class ApolloDownloadWiringTests(unittest.TestCase):
     def setUp(self) -> None:
         extra_catalog.clear_extra_catalog_cache()
+        from core.catalog_sources import invalidate_catalogue_merge
+
+        invalidate_catalogue_merge()
         self.manager = DownloadManager()
-        # Politrees would need network; the curated list is bundled locally.
-        # Patched where it is now looked up: the merge moved to catalog_sources.
-        with mock.patch("core.catalog_sources.load_politrees_links", return_value=None):
-            self.manager._merge_politrees_supplement()
+        # Curated extras are bundled locally. Keep both remote catalogues
+        # offline: ``merged_catalogues`` still loads mvsepless unless told not to.
+        self.manager._merge_politrees_supplement(allow_network=False)
 
     def test_apollo_catalogue_is_populated_without_network(self) -> None:
         self.assertTrue(self.manager.apollo_download_list)
@@ -128,8 +130,10 @@ class ApolloDownloadWiringTests(unittest.TestCase):
         self.assertEqual(os.path.dirname(yamls[0]), paths.APOLLO_CONFIG_PATH)
 
     def test_resolve_rejects_unknown_selection(self) -> None:
-        self.assertEqual(self.manager.resolve("nope", APOLLO_ARCH_TYPE), [])
-        self.assertEqual(self.manager.resolve(NO_NEW_MODELS, APOLLO_ARCH_TYPE), [])
+        with mock.patch("core.mvsepless_catalog._urlopen") as opener:
+            self.assertEqual(self.manager.resolve("nope", APOLLO_ARCH_TYPE), [])
+            self.assertEqual(self.manager.resolve(NO_NEW_MODELS, APOLLO_ARCH_TYPE), [])
+        opener.assert_not_called()
 
     def test_available_downloads_includes_apollo_bucket(self) -> None:
         available = self.manager.available_downloads()

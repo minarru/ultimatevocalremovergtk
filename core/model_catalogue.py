@@ -81,14 +81,40 @@ def filter_catalogue_labels(
 class ModelCatalogueService:
     def __init__(self, manager: DownloadManager | None = None):
         self.manager = manager or DownloadManager()
+        self._records: tuple[ModelCatalogueRecord, ...] | None = None
+        self._records_key: object = None
 
     def refresh(self, *, offline: bool = False) -> bool:
+        self._records = None
+        self._records_key = None
+        if offline:
+            return self.manager.ensure_catalogues(allow_network=False)
+        live = self.manager.refresh()
+        if live:
+            return True
+        return self.manager.ensure_catalogues(allow_network=False)
+
+    def _snapshot_key(self) -> object:
+        coordinator = getattr(self.manager, "_coordinator", None)
+        snapshot = getattr(coordinator, "_latest", None) if coordinator is not None else None
+        revision = getattr(snapshot, "revision", None)
+        digest = revision.digest() if revision is not None and hasattr(revision, "digest") else None
         return (
-            self.manager.ensure_catalogues(allow_network=False)
-            if offline else self.manager.refresh()
+            digest,
+            self.manager.decoded_vip_link,
+            len(self.manager.vr_download_list),
+            len(self.manager.mdx_download_list),
+            len(self.manager.demucs_download_list),
+            len(self.manager.apollo_download_list),
         )
 
     def records(self) -> tuple[ModelCatalogueRecord, ...]:
+        from core.download_sizes import describe_cached_download_size
+
+        key = self._snapshot_key()
+        if self._records is not None and self._records_key == key:
+            return self._records
+
         rows: list[ModelCatalogueRecord] = []
         catalogues = {
             "vr": self.manager.vr_download_list,
@@ -103,11 +129,11 @@ class ModelCatalogueService:
         }
         for family, values in catalogues.items():
             arch = FAMILY_ARCH[family]
-            for selection in values:
+            for selection, _model in values.items():
                 meta = self.manager.catalogue_meta.get(selection)
                 intent = str(getattr(meta, "intent", "") or "") or None
                 reason = unsupported.get((arch, selection))
-                jobs = self.manager.resolve(selection, arch)
+                jobs = self.manager.resolve(selection, arch, fetch_config=False)
                 installed = bool(jobs) and all(os.path.isfile(path) for _url, path in jobs)
                 scored = (
                     primary_sdr(
@@ -123,10 +149,12 @@ class ModelCatalogueService:
                     canonical_display_name(selection),
                     purpose_for_label(selection, intent=intent), reason is None,
                     installed, reason, score,
-                    self.manager.describe_selection_download_size(selection, arch),
+                    describe_cached_download_size(jobs) if jobs else "—",
                     intent,
                 ))
-        return tuple(rows)
+        self._records = tuple(rows)
+        self._records_key = key
+        return self._records
 
     def filter(
         self, *, family: str | None = None, query: str = "",

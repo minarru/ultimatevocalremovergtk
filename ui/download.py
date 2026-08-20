@@ -70,11 +70,14 @@ def download_batch_message(items: typing.Any) -> tuple[str, bool]:
 
 
 def _get_manager(app_context: typing.Any) -> DownloadManager:
-    manager = getattr(app_context, "_download_manager", None)
-    if manager is None:
-        manager = DownloadManager()
-        setattr(app_context, "_download_manager", manager)
-    return manager
+    manager = getattr(app_context, "download_manager", None)
+    if isinstance(manager, DownloadManager):
+        return manager
+    existing = getattr(app_context, "_download_manager", None)
+    if existing is None:
+        existing = DownloadManager()
+        setattr(app_context, "_download_manager", existing)
+    return existing
 
 
 def _get_queue(app_context: typing.Any, manager: DownloadManager) -> DownloadQueue:

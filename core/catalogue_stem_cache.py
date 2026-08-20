@@ -40,6 +40,7 @@ _worker_thread: Optional[threading.Thread] = None
 _worker_lock = threading.Lock()
 _worker_idle = threading.Event()
 _worker_idle.set()
+_shutdown = threading.Event()
 
 
 @dataclass(frozen=True)
@@ -149,6 +150,10 @@ def remember_stems(
     with _entries_lock:
         entries = _ensure_loaded()
         entries[key] = entry
+        from .access_policy import current_access_policy
+
+        if not current_access_policy().allow_metadata_writes:
+            return
         try:
             cache_path = _cache_path()
             os.makedirs(os.path.dirname(cache_path) or ".", exist_ok=True)
@@ -228,7 +233,7 @@ def enqueue_missing(urls: Iterable[str], *, priority: bool = False) -> None:
     skipped; one queued at a worse priority is re-queued at the better one and
     the worker drops the superseded copy.
     """
-    if not catalogue_stems_enabled():
+    if not catalogue_stems_enabled() or _shutdown.is_set():
         return
     prio = 0 if priority else 1
     with _queue_lock:
@@ -246,7 +251,17 @@ def enqueue_missing(urls: Iterable[str], *, priority: bool = False) -> None:
             _url_queue.put((prio, next(_queue_seq), key))
 
 
+def request_shutdown() -> None:
+    """Stop accepting new stem fetches (idempotent)."""
+    _shutdown.set()
+
+
 def ensure_worker_started() -> None:
+    from .access_policy import current_access_policy
+
+    policy = current_access_policy()
+    if not policy.allow_network or _shutdown.is_set():
+        return
     global _worker_thread
     with _worker_lock:
         if _worker_thread is not None and _worker_thread.is_alive():

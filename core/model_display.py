@@ -35,6 +35,8 @@ _MDX_CATALOG_SOURCE_KEYS = (
     "mdx23_download_vip_list",
     "mdx23c_download_vip_list",
     "roformer_download_vip_list",
+    "scnet_download_vip_list",
+    "bandit_download_vip_list",
 )
 
 _VR_CATALOG_SOURCE_KEYS = ("vr_download_list",)
@@ -236,7 +238,7 @@ def _display_base(keys: Tuple[str, ...], *, allow_network: bool) -> Dict[str, An
 #: Bumped by :func:`clear_display_cache` so an in-flight ``lru_cache`` miss
 #: that finishes *after* a clear cannot re-pin a stale merge under the live key.
 _display_generation: int = 0
-_format_tag_title_cache: dict[tuple[str, int], str] = {}
+_format_tag_title_cache: dict[tuple[Any, ...], str] = {}
 
 
 @functools.lru_cache(maxsize=8)
@@ -511,13 +513,19 @@ def format_tag_subtitle(tag: str) -> str:
 def format_tag_title(tag: str, repo: "ModelRepository") -> str:
     """Return the friendly model label for a full arch tag.
 
-    Memoized process-globally (keyed on ``tag`` plus :data:`_display_generation`,
-    not on ``repo``), so a different/refreshed ``repo`` won't recompute a label
-    already cached under the current generation. Call :func:`clear_display_cache`
-    (also invoked by :class:`ModelRepository` construction) after anything that
-    could change how a tag resolves.
+    Memoized on ``(tag, catalogue revision, naming revision, display generation)``.
+    Catalogue/identity refinements must not require remeshing sources; mapper
+    overlay reloads bump the naming revision only.
     """
-    key = (tag, _display_generation)
+    raw_naming = getattr(repo, "naming_revision", 0)
+    naming = (
+        raw_naming
+        if isinstance(raw_naming, int) and not isinstance(raw_naming, bool)
+        else 0
+    )
+    raw_rev = getattr(repo, "catalogue_revision", "")
+    catalogue_rev = raw_rev if isinstance(raw_rev, str) else ""
+    key = (tag, catalogue_rev, naming, _display_generation)
     cached = _format_tag_title_cache.get(key)
     if cached is not None:
         return cached

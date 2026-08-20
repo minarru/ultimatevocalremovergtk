@@ -23,11 +23,14 @@ from .files import open_uri_in_browser
 def _get_manager(app_context: typing.Any) -> DownloadManager:
     if app_context is None:
         return DownloadManager()
-    manager = getattr(app_context, "_download_manager", None)
-    if manager is None:
-        manager = DownloadManager()
-        setattr(app_context, "_download_manager", manager)
-    return manager
+    manager = getattr(app_context, "download_manager", None)
+    if isinstance(manager, DownloadManager):
+        return manager
+    existing = getattr(app_context, "_download_manager", None)
+    if existing is None:
+        existing = DownloadManager()
+        setattr(app_context, "_download_manager", existing)
+    return existing
 
 
 class UpdateView:

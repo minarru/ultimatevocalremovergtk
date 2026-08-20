@@ -37,7 +37,7 @@ def _ssl_context() -> ssl.SSLContext:
     return ssl.create_default_context()
 
 
-def _urlopen(url: str):
+def _urlopen(url: str | urllib.request.Request):
     return urllib.request.urlopen(
         url, context=_ssl_context(), timeout=_DOWNLOAD_TIMEOUT_SECONDS
     )

@@ -11,7 +11,12 @@ import unittest
 from typing import Any
 from unittest import mock
 
-from bundled.constants import MDX_ARCH_TYPE, VR_ARCH_TYPE
+from bundled.constants import MDX_ARCH_TYPE, NO_CODE, VR_ARCH_TYPE
+from core.access_policy import AccessPolicy
+from core.catalogue_coordinator import CatalogueCoordinator
+from core.catalogue_types import RefreshMode, SourceId
+from core.downloads import DownloadManager
+from core.remote_catalog_cache import RemoteJsonSource
 
 
 def _bare_window() -> Any:
@@ -27,7 +32,26 @@ def _bare_window() -> Any:
     win._available = {}
     win._unsupported = {}
     win._downloads_dirty = False
+    win._pinned_snapshot = None
+    win._pending_source_delta = False
     return win
+
+
+def _disabled_source(source_id: SourceId) -> RemoteJsonSource:
+    return RemoteJsonSource(source_id=source_id, enabled=lambda: False)
+
+
+def _injected_coordinator(payload: dict[str, Any]) -> CatalogueCoordinator:
+    return CatalogueCoordinator(
+        sources={
+            SourceId.UPSTREAM: RemoteJsonSource(
+                source_id=SourceId.UPSTREAM, local_loader=lambda: payload
+            ),
+            SourceId.POLITREES: _disabled_source(SourceId.POLITREES),
+            SourceId.EXTRAS: _disabled_source(SourceId.EXTRAS),
+            SourceId.MVSEPLESS: _disabled_source(SourceId.MVSEPLESS),
+        }
+    )
 
 
 def _seed_row(win: Any, arch: str, name: str, *, checked: bool = False) -> Any:
@@ -227,6 +251,165 @@ class CatalogueListenerWiringTests(unittest.TestCase):
         win.manager.subscribe_catalogue_changed.assert_called_once_with(
             win._schedule_catalogue_row_refresh
         )
+
+
+class PinnedSnapshotDeltaTests(unittest.TestCase):
+    def test_source_delta_marks_pending_without_rebuild(self) -> None:
+        from core.catalogue_types import CatalogueDelta, DeltaKind
+        from ui.download_center import DownloadCenterWindow
+
+        win = _bare_window()
+        win._pending_source_delta = False
+        win._rebuild_catalogue = mock.MagicMock()
+        win._schedule_catalogue_row_refresh = mock.MagicMock()
+
+        delta = CatalogueDelta(kind=DeltaKind.SOURCES_CHANGED, added={"mdx": ("New",)})
+        DownloadCenterWindow._on_catalogue_delta(win, delta)
+
+        self.assertTrue(win._pending_source_delta)
+        win._rebuild_catalogue.assert_not_called()
+        win._schedule_catalogue_row_refresh.assert_not_called()
+
+    def test_identity_delta_uses_incremental_removal(self) -> None:
+        from core.catalogue_types import CatalogueDelta, DeltaKind
+        from ui.download_center import DownloadCenterWindow
+
+        win = _bare_window()
+        win._schedule_catalogue_row_refresh = mock.MagicMock()
+        delta = CatalogueDelta(
+            kind=DeltaKind.IDENTITY_REFINED, removed={"mdx": ("Rehosted Copy",)}
+        )
+        DownloadCenterWindow._on_catalogue_delta(win, delta)
+        win._schedule_catalogue_row_refresh.assert_called_once_with()
+
+    def test_pin_prefers_unlocked_snapshot_when_vip(self) -> None:
+        from bundled.constants import NO_CODE
+        from ui.download_center import DownloadCenterWindow
+
+        locked = mock.MagicMock(name="locked")
+        locked.revision.digest.return_value = "locked"
+        locked.mdx = {"Public": {"p.ckpt": "https://u/p.ckpt"}}
+        unlocked = mock.MagicMock(name="unlocked")
+        unlocked.revision.digest.return_value = "unlocked"
+        unlocked.mdx = {
+            "Public": {"p.ckpt": "https://u/p.ckpt"},
+            "VIP": {"v.ckpt": "https://u/v.ckpt"},
+        }
+        coordinator = mock.MagicMock()
+        coordinator._latest = locked
+        coordinator._latest_unlocked = unlocked
+
+        win = _bare_window()
+        win.manager._coordinator = coordinator
+        win.manager.decoded_vip_link = "valid-code"
+        DownloadCenterWindow._pin_current_snapshot(win)
+        self.assertIs(win._pinned_snapshot, unlocked)
+
+        win.manager.decoded_vip_link = NO_CODE
+        DownloadCenterWindow._pin_current_snapshot(win)
+        self.assertIs(win._pinned_snapshot, locked)
+
+    def test_queue_resolve_uses_pinned_snapshot_not_live_manager(self) -> None:
+        from ui.download_center import DownloadCenterWindow
+
+        win = _bare_window()
+        win._pinned_snapshot = mock.MagicMock()
+        win._pinned_snapshot.vr = {}
+        win._pinned_snapshot.mdx = {"Pinned": {"p.ckpt": "https://pin/p.ckpt"}}
+        win._pinned_snapshot.demucs = {}
+        win._pinned_snapshot.apollo = {}
+        win.manager.mdx_download_list = {"Live": {"l.ckpt": "https://live/l.ckpt"}}
+        win.manager.resolve.return_value = [("https://pin/p.ckpt", "/tmp/p.ckpt")]
+        jobs = DownloadCenterWindow._resolve_pinned(win, "Pinned", MDX_ARCH_TYPE)
+        win.manager.resolve.assert_called_once()
+        kwargs = win.manager.resolve.call_args
+        self.assertEqual(kwargs.kwargs.get("catalogue") or kwargs[1].get("catalogue"), {"Pinned": {"p.ckpt": "https://pin/p.ckpt"}})
+        self.assertEqual(jobs, [("https://pin/p.ckpt", "/tmp/p.ckpt")])
+
+    def test_present_adopts_pending_source_delta(self) -> None:
+        from ui.download_center import DownloadCenterWindow
+
+        win = _bare_window()
+        win.window = mock.MagicMock()
+        win._available = {MDX_ARCH_TYPE: ["Still available"]}
+        win._pending_source_delta = True
+        win.start_refresh = mock.MagicMock()
+        win._apply_download_completion_refresh = mock.MagicMock()
+        DownloadCenterWindow.present(win)
+        win.start_refresh.assert_called_once_with()
+        win._apply_download_completion_refresh.assert_not_called()
+
+
+class ComposedVipJourneyTests(unittest.TestCase):
+    """Pin and resolve against a real coordinator, not mocked snapshots."""
+
+    _PAYLOAD = {
+        "mdx_download_list": {"Public": {"p.ckpt": "https://u/p.ckpt"}},
+        "mdx_download_vip_list": {"VIP": {"v.ckpt": "https://u/v.ckpt"}},
+        "vr_download_list": {},
+        "demucs_download_list": {},
+    }
+
+    def setUp(self) -> None:
+        self.coordinator = _injected_coordinator(self._PAYLOAD)
+        self.addCleanup(self.coordinator.close)
+        self.policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
+        self.locked = self.coordinator.snapshot(
+            vip=False, mode=RefreshMode.OFFLINE, policy=self.policy
+        )
+        self.unlocked = self.coordinator.snapshot(
+            vip=True, mode=RefreshMode.OFFLINE, policy=self.policy
+        )
+        self.manager = DownloadManager(self.coordinator)
+        self.manager.decoded_vip_link = "valid-code"
+        self.manager._apply_snapshot(self.unlocked)
+
+    def test_pin_and_resolve_uses_unlocked_snapshot_for_vip(self) -> None:
+        from ui.download_center import DownloadCenterWindow
+
+        self.assertIn("Public", self.locked.mdx)
+        self.assertNotIn("VIP", self.locked.mdx)
+        self.assertIn("VIP", self.unlocked.mdx)
+        self.assertIn("VIP", self.manager.mdx_download_list)
+
+        win = _bare_window()
+        win.manager = self.manager
+        DownloadCenterWindow._pin_current_snapshot(win)
+        self.assertIs(win._pinned_snapshot, self.unlocked)
+
+        jobs = DownloadCenterWindow._resolve_pinned(win, "VIP", MDX_ARCH_TYPE)
+        self.assertEqual(jobs[0][0], "https://u/v.ckpt")
+
+        self.manager.decoded_vip_link = NO_CODE
+        DownloadCenterWindow._pin_current_snapshot(win)
+        self.assertIs(win._pinned_snapshot, self.locked)
+        self.assertEqual(
+            DownloadCenterWindow._resolve_pinned(win, "VIP", MDX_ARCH_TYPE), []
+        )
+
+    def test_enqueue_selected_queues_vip_jobs_from_pinned_snapshot(self) -> None:
+        from ui.download_center import DownloadCenterWindow
+
+        win = _bare_window()
+        win.manager = self.manager
+        _seed_row(win, MDX_ARCH_TYPE, "VIP", checked=True)
+        win.queue = mock.MagicMock()
+        win.queue.enqueue.return_value = "item-1"
+        win._toast = mock.MagicMock()
+        win._update_download_button = mock.MagicMock()
+        DownloadCenterWindow._pin_current_snapshot(win)
+        DownloadCenterWindow._enqueue_selected(win)
+
+        win.queue.enqueue.assert_called_once()
+        args, kwargs = win.queue.enqueue.call_args
+        self.assertEqual(args[0], "VIP")
+        self.assertEqual(args[1], MDX_ARCH_TYPE)
+        jobs = kwargs.get("jobs") or (args[2] if len(args) > 2 else None)
+        self.assertIsNotNone(jobs)
+        assert jobs is not None
+        self.assertEqual(jobs[0][0], "https://u/v.ckpt")
+        win._toast.assert_called_once()
+        win._update_download_button.assert_called_once_with()
 
 
 if __name__ == "__main__":

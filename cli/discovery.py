@@ -77,6 +77,11 @@ def add_models_parser(sub: argparse._SubParsersAction) -> None:
     children = root.add_subparsers(dest="models_command", required=True)
     listing = children.add_parser("list", help="List installed models")
     listing.add_argument("--family", choices=FAMILIES)
+    listing.add_argument(
+        "--all-known",
+        action="store_true",
+        help="Include catalogue-only aliases that are not installed",
+    )
     add_reporting_args(listing)
     listing.set_defaults(func=cmd_models_list)
     show = children.add_parser("show", help="Show model metadata")
@@ -170,7 +175,7 @@ def _model_info(record: Any, repo: Any, *, detailed: bool = False) -> dict[str, 
         model = None
     info: dict[str, Any] = {
         **record.to_dict(),
-        "installed": True,
+        "installed": bool(record.installed),
         "configured": bool(model and model.model_status),
     }
     if model is not None:
@@ -228,11 +233,17 @@ def cmd_models_list(args: argparse.Namespace) -> int:
     from core.model_repository import ModelRepository
 
     repo = ModelRepository()
-    rows = [
-        _model_info(record, repo)
-        for record in iter_model_records(repo)
-        if args.family is None or record.family == args.family
-    ]
+    records = iter_model_records(repo)
+    if not getattr(args, "all_known", False):
+        records = (record for record in records if record.installed)
+    rows = []
+    for record in records:
+        if args.family is not None and record.family != args.family:
+            continue
+        if not record.installed:
+            rows.append({**record.to_dict(), "configured": False})
+            continue
+        rows.append(_model_info(record, repo))
     return _print_rows(args, rows)
 
 
@@ -343,32 +354,80 @@ def cmd_models_register(args: argparse.Namespace) -> int:
 
 
 def cmd_models_catalog(args: argparse.Namespace) -> int:
+    from core.catalogue_coordinator import CatalogueCoordinator
+    from core.downloads import DownloadManager
     from core.model_catalogue import ModelCatalogueService
 
-    service = ModelCatalogueService()
-    if not service.refresh(offline=args.offline):
-        return fail(args, "could not refresh the model catalogue", exit_code=1, kind="runtime")
-    rows = [
-        dataclasses.asdict(row)
-        for row in service.filter(
-            family=args.family, query=args.query, purpose=args.purpose,
-            supported=args.supported, installed=args.installed,
-        )
-    ]
-    return _print_rows(args, rows)
+    coordinator = CatalogueCoordinator()
+    try:
+        service = ModelCatalogueService(DownloadManager(coordinator=coordinator))
+        usable = service.refresh(offline=args.offline)
+        if not usable:
+            return fail(args, "could not refresh the model catalogue", exit_code=1, kind="runtime")
+        if not args.offline:
+            _emit_catalogue_status(args, getattr(service.manager, "_last_refresh_report", None))
+            from core.download_sizes import prefetch_remote_sizes
+
+            prefetch_remote_sizes(service.manager.catalogue_checkpoint_urls())
+            service._records = None
+        rows = [
+            dataclasses.asdict(row)
+            for row in service.filter(
+                family=args.family, query=args.query, purpose=args.purpose,
+                supported=args.supported, installed=args.installed,
+            )
+        ]
+        return _print_rows(args, rows)
+    finally:
+        coordinator.close()
+
+
+def _emit_catalogue_status(args: argparse.Namespace, report: Any) -> None:
+    from core.catalogue_types import RefreshReport
+
+    if not isinstance(report, RefreshReport):
+        return
+    if report.upstream_live and not report.failed:
+        return
+    payload = report.as_dict()
+    emit_event(args, "catalogue_status", **payload)
+    if report_mode(args) == "human":
+        bits = []
+        if not payload.get("upstream_live"):
+            bits.append("saved catalogue")
+        if payload.get("partial") or payload.get("failed"):
+            bits.append("partial refresh")
+        if payload.get("stale"):
+            bits.append("stale sources")
+        detail = ", ".join(bits) or "mixed-age snapshot"
+        print(f"warning: using {detail}", file=sys.stderr)
 
 
 def cmd_models_download(args: argparse.Namespace) -> int:
+    from core.catalogue_coordinator import CatalogueCoordinator
+
+    coordinator = CatalogueCoordinator()
+    try:
+        return _cmd_models_download_body(args, coordinator)
+    finally:
+        coordinator.close()
+
+
+def _cmd_models_download_body(args: argparse.Namespace, coordinator: Any) -> int:
     import signal
     import threading
 
+    from core.downloads import DownloadManager
     from core.model_catalogue import ModelCatalogueService
     from core.model_repository import ModelRepository
 
-    service = ModelCatalogueService()
-    if not service.refresh(offline=args.offline):
-        return fail(args, "could not refresh the model catalogue", exit_code=1, kind="runtime")
+    service = ModelCatalogueService(DownloadManager(coordinator=coordinator))
     try:
+        usable = service.refresh(offline=args.offline)
+        if not usable:
+            return fail(args, "could not refresh the model catalogue", exit_code=1, kind="runtime")
+        if not args.offline:
+            _emit_catalogue_status(args, getattr(service.manager, "_last_refresh_report", None))
         records = [service.resolve(value) for value in args.entries]
         resolved = service.jobs(records)
         unsupported = [record.id for record, _jobs in resolved if not record.supported]

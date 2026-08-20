@@ -221,6 +221,9 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win._update_download_button = mock.MagicMock()
         win._ensure_background_listeners = mock.MagicMock()
         win._schedule_stem_yaml_fetches = mock.MagicMock()
+        win.manager = mock.MagicMock()
+        win._pinned_snapshot = None
+        win._pending_source_delta = False
 
         DownloadCenterWindow._refresh_done(win, True, {MDX_ARCH_TYPE: ["M"]}, {})
 

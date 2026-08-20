@@ -432,6 +432,17 @@ training:
         self.assertLessEqual(max_seen, 2)
         self.assertGreaterEqual(max_seen, 2)
 
+    def test_changed_config_url_does_not_inherit_stems(self) -> None:
+        csc.remember_stems("https://example.test/old.yaml", ["Vocals"], "Vocals", ok=True)
+        self.assertIsNone(csc.lookup_stems("https://example.test/new.yaml"))
+
+    def test_offline_policy_does_not_start_worker(self) -> None:
+        from core.access_policy import access_policy
+
+        with access_policy(allow_network=False, allow_metadata_writes=False):
+            with mock.patch("threading.Thread.start", side_effect=AssertionError("thread")):
+                csc.ensure_worker_started()
+
 
 if __name__ == "__main__":
     unittest.main()

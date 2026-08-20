@@ -12,11 +12,13 @@ import urllib.error
 import urllib.request
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from . import paths
+from .access_policy import current_access_policy
 from .catalog_dedupe import normalize_checkpoint_url
 from .debug_log import debug
+from .json_store import write_json_atomic
 
 _CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 _TIMEOUT_SECONDS = 20
@@ -38,6 +40,11 @@ _DEFAULT_HEAD_WORKERS = 8
 #: ``submit`` ("cannot schedule new futures after interpreter shutdown") as a
 #: stop signal rather than letting it escape a background thread.
 _shutdown = threading.Event()
+_memory_lock = threading.RLock()
+_memory_payload: Optional[Dict[str, object]] = None
+_memory_path: Optional[str] = None
+_size_inflight: Dict[str, List[Callable[[str, Optional[int]], None]]] = {}
+_size_inflight_lock = threading.Lock()
 
 
 def request_shutdown() -> None:
@@ -50,7 +57,7 @@ atexit.register(request_shutdown)
 
 def _submit_wave(
     pool: ThreadPoolExecutor, wave: List[str]
-) -> Optional[Dict["Future[Tuple[Optional[int], Optional[str]]]", str]]:
+) -> Optional[Dict["Future[Tuple[Optional[int], Optional[str], Optional[str]]]", str]]:
     """Submit one wave, or ``None`` once no more work can be scheduled."""
     try:
         return {pool.submit(_fetch_size_meta, url): url for url in wave}
@@ -89,9 +96,9 @@ def format_download_size(num_bytes: Optional[int]) -> str:
     return f"{value:.1f} TB"
 
 
-def _read_cache() -> Dict[str, object]:
+def _read_cache_from_disk(path: str) -> Dict[str, object]:
     try:
-        with open(_cache_path(), "r", encoding="utf-8") as handle:
+        with open(path, "r", encoding="utf-8") as handle:
             payload = json.load(handle)
         if isinstance(payload, dict):
             return payload
@@ -100,14 +107,28 @@ def _read_cache() -> Dict[str, object]:
     return {}
 
 
+def _read_cache() -> Dict[str, object]:
+    global _memory_payload, _memory_path
+    path = _cache_path()
+    with _memory_lock:
+        if _memory_payload is None or _memory_path != path:
+            _memory_payload = _read_cache_from_disk(path)
+            _memory_path = path
+        return _memory_payload
+
+
 def _write_cache(payload: Dict[str, object]) -> None:
-    try:
-        cache_path = _cache_path()
-        os.makedirs(os.path.dirname(cache_path) or ".", exist_ok=True)
-        with open(cache_path, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle)
-    except OSError as exc:
-        debug("download", f"size cache write failed err={exc}")
+    global _memory_payload, _memory_path
+    path = _cache_path()
+    with _memory_lock:
+        _memory_payload = payload
+        _memory_path = path
+        if not current_access_policy().allow_metadata_writes:
+            return
+        try:
+            write_json_atomic(path, payload)
+        except OSError as exc:
+            debug("download", f"size cache write failed err={exc}")
 
 
 def _cache_entry_fresh(entry: object, *, now: Optional[float] = None) -> bool:
@@ -150,27 +171,45 @@ def _store_entry(
     size: Optional[int],
     etag: Optional[str],
     now: float,
+    content_id: Optional[str] = None,
 ) -> None:
     key = normalize_checkpoint_url(url) or url
     stored: Dict[str, object] = {"size": size, "fetched_at": now}
     if etag:
         stored["etag"] = etag
+    if content_id:
+        stored["content_id"] = content_id
     payload[key] = stored
     if key != url:
         payload[url] = dict(stored)
 
 
-def _cache_put(url: str, size: Optional[int], etag: Optional[str] = None) -> None:
+def _cache_put(
+    url: str,
+    size: Optional[int],
+    etag: Optional[str] = None,
+    content_id: Optional[str] = None,
+) -> None:
     payload = _read_cache()
-    _store_entry(payload, url, size=size, etag=etag, now=time.time())
+    _store_entry(
+        payload, url, size=size, etag=etag, now=time.time(), content_id=content_id
+    )
     _write_cache(payload)
 
 
-def _fetch_size_meta(url: str) -> Tuple[Optional[int], Optional[str]]:
-    size, etag = _head_remote_meta(url)
+def _fetch_size_meta(url: str) -> Tuple[Optional[int], Optional[str], Optional[str]]:
+    size, validator, content_id = _unpack_head_meta(_head_remote_meta(url))
     if size is None:
         size = _get_content_length(url)
-    return size, etag
+    return size, validator, content_id
+
+
+def _unpack_head_meta(
+    meta: Tuple[Optional[int], Optional[str]] | Tuple[Optional[int], Optional[str], Optional[str]],
+) -> Tuple[Optional[int], Optional[str], Optional[str]]:
+    if len(meta) >= 3:
+        return meta[0], meta[1], meta[2]
+    return meta[0], meta[1], None
 
 
 def fetch_remote_size(url: str) -> Optional[int]:
@@ -178,10 +217,44 @@ def fetch_remote_size(url: str) -> Optional[int]:
     cached = _cache_get(url)
     if cached is not None:
         return cached
+    if not current_access_policy().allow_network:
+        return None
 
-    size, etag = _fetch_size_meta(url)
-    _cache_put(url, size, etag)
+    size, etag, content_id = _fetch_size_meta(url)
+    _cache_put(url, size, etag, content_id)
     return size
+
+
+def request_url_size(
+    url: str, callback: Callable[[str, Optional[int]], None]
+) -> None:
+    """Coalesce HEAD lookups for ``url``; invoke ``callback`` when known.
+
+    Duplicate callers share one in-flight fetch. Cached hits invoke the
+    callback synchronously.
+    """
+    cached = _cache_get(url)
+    if cached is not None:
+        callback(url, cached)
+        return
+    with _size_inflight_lock:
+        waiters = _size_inflight.get(url)
+        if waiters is not None:
+            waiters.append(callback)
+            return
+        _size_inflight[url] = [callback]
+
+    def run() -> None:
+        size = fetch_remote_size(url) if not _shutdown.is_set() else None
+        with _size_inflight_lock:
+            cbs = _size_inflight.pop(url, [])
+        for waiter in cbs:
+            try:
+                waiter(url, size)
+            except Exception:
+                debug("download", "size lookup waiter raised")
+
+    threading.Thread(target=run, name="uvr-size-lookup", daemon=True).start()
 
 
 def prefetch_remote_sizes(urls: Iterable[str]) -> Dict[str, int]:
@@ -231,10 +304,17 @@ def prefetch_remote_sizes(urls: Iterable[str]) -> Dict[str, int]:
                 for future in as_completed(futures):
                     url = futures[future]
                     try:
-                        size, etag = future.result()
+                        size, etag, content_id = _unpack_head_meta(future.result())
                     except Exception:
-                        size, etag = None, None
-                    _store_entry(payload, url, size=size, etag=etag, now=now)
+                        size, etag, content_id = None, None, None
+                    _store_entry(
+                        payload,
+                        url,
+                        size=size,
+                        etag=etag,
+                        now=now,
+                        content_id=content_id,
+                    )
                     if size is not None:
                         fetched += 1
                     else:
@@ -250,7 +330,16 @@ def prefetch_remote_sizes(urls: Iterable[str]) -> Dict[str, int]:
 
 
 def content_ids_from_cache(urls: Iterable[str]) -> Dict[str, str]:
-    """Map normalized checkpoint URLs to cached content ids (etags)."""
+    """Map normalized checkpoint URLs to trusted content identities.
+
+    Ordinary/weak HTTP ETags and Last-Modified are validators only and never
+    cross-URL-dedupe. Hugging Face ``X-Linked-Etag`` values are stored as
+    ``content_id`` and are the only ids returned here.
+    """
+    return trusted_content_ids_from_cache(urls)
+
+
+def trusted_content_ids_from_cache(urls: Iterable[str]) -> Dict[str, str]:
     payload = _read_cache()
     out: Dict[str, str] = {}
     for url in urls:
@@ -262,9 +351,9 @@ def content_ids_from_cache(urls: Iterable[str]) -> Dict[str, str]:
             entry = payload.get(url)
         if not isinstance(entry, dict):
             continue
-        etag = entry.get("etag")
-        if isinstance(etag, str) and etag:
-            out[key] = etag
+        content_id = entry.get("content_id")
+        if isinstance(content_id, str) and content_id:
+            out[key] = content_id
     return out
 
 
@@ -295,10 +384,10 @@ def prefetch_same_size_identity(urls: Iterable[str]) -> Dict[str, int]:
         if not _cache_entry_fresh(entry, now=now) or not isinstance(entry, dict):
             continue
         size = entry.get("size")
-        etag = entry.get("etag")
         if not isinstance(size, int) or size <= 0:
             continue
-        if isinstance(etag, str) and etag:
+        content_id = entry.get("content_id")
+        if isinstance(content_id, str) and content_id:
             continue
         stamp = entry.get("fetched_at")
         fetched_at_by_url[url] = float(stamp) if isinstance(stamp, (int, float)) else 0.0
@@ -335,11 +424,18 @@ def prefetch_same_size_identity(urls: Iterable[str]) -> Dict[str, int]:
             for future in as_completed(futures):
                 url = futures[future]
                 try:
-                    size, etag = future.result()
+                    size, etag, content_id = _unpack_head_meta(future.result())
                 except Exception:
-                    size, etag = None, None
-                _store_entry(payload, url, size=size, etag=etag, now=now)
-                if etag:
+                    size, etag, content_id = None, None, None
+                _store_entry(
+                    payload,
+                    url,
+                    size=size,
+                    etag=etag,
+                    now=now,
+                    content_id=content_id,
+                )
+                if content_id or etag:
                     fetched += 1
                 else:
                     failed += 1
@@ -361,8 +457,14 @@ def prefetch_same_size_identity(urls: Iterable[str]) -> Dict[str, int]:
     }
 
 
-def _head_remote_meta(url: str) -> Tuple[Optional[int], Optional[str]]:
-    """Return ``(content_length, etag)`` from a HEAD request."""
+def _head_remote_meta(
+    url: str,
+) -> Tuple[Optional[int], Optional[str], Optional[str]]:
+    """Return ``(content_length, validator, content_id)`` from a HEAD request.
+
+    ``content_id`` is set only for Hugging Face ``X-Linked-Etag``. Ordinary
+    and weak ETags remain URL-scoped validators.
+    """
     request = urllib.request.Request(url, method="HEAD")
     try:
         with urllib.request.urlopen(
@@ -372,16 +474,19 @@ def _head_remote_meta(url: str) -> Tuple[Optional[int], Optional[str]]:
                 response.getheader("X-Linked-Size")
                 or response.getheader("Content-Length")
             )
-            etag = _parse_etag(
-                response.getheader("X-Linked-Etag") or response.getheader("ETag")
-            )
-            return size, etag
+            linked = response.getheader("X-Linked-Etag")
+            raw_etag = response.getheader("ETag")
+            validator = _parse_etag(raw_etag) or (str(raw_etag).strip() if raw_etag else None)
+            content_id = _parse_etag(linked) if linked else None
+            if content_id and str(linked).strip().startswith("W/"):
+                content_id = None
+            return size, validator, content_id
     except Exception:
-        return None, None
+        return None, None, None
 
 
 def _head_content_length(url: str) -> Optional[int]:
-    size, _etag = _head_remote_meta(url)
+    size, _validator, _content_id = _unpack_head_meta(_head_remote_meta(url))
     return size
 
 
@@ -445,6 +550,25 @@ def describe_download_size(
     total, _file_count, known = estimate_jobs_size(pending)
 
     if total is None:
+        return "Size unknown"
+    if known < len(pending):
+        return f"At least {format_download_size(total)}"
+    return format_download_size(total)
+
+
+def describe_cached_download_size(jobs: List[Tuple[str, str]]) -> str:
+    """Size label from the in-memory cache only — no HEAD or writes."""
+    pending = [(url, path) for url, path in jobs if not os.path.isfile(path)]
+    if not pending:
+        return "Already downloaded"
+    total = 0
+    known = 0
+    for url, _path in pending:
+        size = _cache_get(url)
+        if size is not None:
+            total += size
+            known += 1
+    if known == 0:
         return "Size unknown"
     if known < len(pending):
         return f"At least {format_download_size(total)}"
