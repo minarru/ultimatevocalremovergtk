@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from typing import Any
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -225,6 +226,143 @@ class CollectEntriesTests(unittest.TestCase):
         self.assertEqual(apollo.family, "Apollo")
         karaoke = by_label["MelBand Roformer Karaoke"]
         self.assertEqual(karaoke.source, "mvsepless")
+
+
+class OfflinePolicyTests(unittest.TestCase):
+    """--offline must be cache-only: no fetch, no writes into model config storage."""
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        os.environ["UVR_DISABLE_CATALOGUE_STEMS"] = "1"
+        self.addCleanup(lambda: os.environ.pop("UVR_DISABLE_CATALOGUE_STEMS", None))
+        self.tmp = tempfile.mkdtemp(prefix="uvr-offline-test-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.calls: list = []
+
+    def _coordinator(self):
+        from core.catalogue_coordinator import CatalogueCoordinator
+
+        # An MDX-C entry with a remote yaml: the path that reaches _load_yaml_meta.
+        upstream = {
+            "vr_download_list": {},
+            "mdx_download_list": {
+                "MDX23C Model: Test": {
+                    "model_test.ckpt": "https://example.invalid/model_test.ckpt",
+                    "model_test.yaml": "https://example.invalid/model_test.yaml",
+                }
+            },
+            "demucs_download_list": {},
+        }
+        coordinator = CatalogueCoordinator(
+            sources={
+                SourceId.UPSTREAM: _local(SourceId.UPSTREAM, upstream),
+                SourceId.POLITREES: _disabled(SourceId.POLITREES),
+                SourceId.EXTRAS: _disabled(SourceId.EXTRAS),
+                SourceId.MVSEPLESS: _disabled(SourceId.MVSEPLESS),
+            }
+        )
+        self.addCleanup(coordinator.close)
+        return coordinator
+
+    def _patches(self):
+        """Record every network entry point instead of raising.
+
+        _fetch_cached swallows URLError/OSError, so a raising stub could be
+        silently absorbed and the test would pass while the socket was opened.
+        """
+        from unittest import mock
+
+        def record_urlopen(request: Any, *args: Any, **kwargs: Any):
+            import urllib.error
+
+            url = getattr(request, "full_url", request)
+            self.calls.append(f"_urlopen({url})")
+            # A URLError is what a real offline machine raises, and _fetch_cached
+            # handles it; the recorded call list is what the assertions read.
+            raise urllib.error.URLError("blocked by test")
+
+        def record_fetch_config(name: Any, url: Any, *args: Any, **kwargs: Any) -> bool:
+            self.calls.append(f"fetch_mdx_config_url({name}, {url})")
+            return False
+
+        return [
+            mock.patch("core.mdx_config_fetch._urlopen", record_urlopen),
+            mock.patch("core.mdx_config_fetch.fetch_mdx_config_url", record_fetch_config),
+            mock.patch.object(catalogue, "_scan_weight_hashes", lambda *a: {}),
+            mock.patch.object(catalogue, "POLITREES_CACHE_DIR", os.path.join(self.tmp, "pt")),
+            mock.patch.object(catalogue, "COMMUNITY_CACHE_DIR", os.path.join(self.tmp, "cm")),
+            mock.patch.object(catalogue, "YAML_CACHE_DIR", os.path.join(self.tmp, "yaml")),
+            mock.patch.object(catalogue, "REFERENCE_TSV_PATH", os.path.join(self.tmp, "ref.tsv")),
+            mock.patch.object(catalogue, "OUTPUT_PATH", os.path.join(self.tmp, "out.md")),
+        ]
+
+    def test_build_catalogue_context_offline_makes_no_network_calls(self) -> None:
+        import contextlib
+
+        with contextlib.ExitStack() as stack:
+            for patch in self._patches():
+                stack.enter_context(patch)
+            catalogue._build_catalogue_context(allow_network=False)
+        self.assertEqual(self.calls, [])
+
+    def test_offline_cache_miss_does_not_create_the_cache_dir(self) -> None:
+        """Offline is read-only: a miss must not leave an empty cache dir behind."""
+        cache_dir = os.path.join(self.tmp, "cold")
+        path = catalogue._fetch_cached(
+            "https://example.invalid/x.json", cache_dir, "x.json", allow_network=False
+        )
+        self.assertIsNone(path)
+        self.assertFalse(os.path.exists(cache_dir), "offline miss created a cache dir")
+
+    def test_load_yaml_meta_offline_does_not_fetch_or_write_config(self) -> None:
+        import contextlib
+
+        with contextlib.ExitStack() as stack:
+            for patch in self._patches():
+                stack.enter_context(patch)
+            result = catalogue._load_yaml_meta(
+                "model_test.yaml",
+                "https://example.invalid/model_test.yaml",
+                allow_network=False,
+            )
+        self.assertEqual(self.calls, [])
+        # Falls back to the name heuristic rather than fetching.
+        self.assertIsInstance(result, tuple)
+
+    def test_main_offline_makes_no_network_calls(self) -> None:
+        import contextlib
+        from unittest import mock
+
+        coordinator = self._coordinator()
+        with contextlib.ExitStack() as stack:
+            for patch in self._patches():
+                stack.enter_context(patch)
+            real = catalogue._snapshot_and_payloads
+            seen = {}
+
+            def spy(*, allow_network: bool, coordinator: Any = None):
+                seen["allow_network"] = allow_network
+                return real(allow_network=allow_network, coordinator=self._co)
+
+            self._co = coordinator
+            stack.enter_context(mock.patch.object(catalogue, "_snapshot_and_payloads", spy))
+            rc = catalogue.main(["--offline"])
+
+        self.assertEqual(rc, 0)
+        self.assertIs(seen["allow_network"], False)
+        self.assertEqual(self.calls, [])
+
+    def test_online_still_fetches(self) -> None:
+        """The offline guard must not disable networking for normal runs."""
+        import contextlib
+
+        with contextlib.ExitStack() as stack:
+            for patch in self._patches():
+                stack.enter_context(patch)
+            catalogue._build_catalogue_context(allow_network=True)
+        self.assertTrue(self.calls, "online mode should still attempt fetches")
 
 
 class EntryMetaOverlayTests(unittest.TestCase):

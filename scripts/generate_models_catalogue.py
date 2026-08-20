@@ -183,11 +183,20 @@ def _display_label(entry: ModelEntry) -> str:
     return canonical_display_name(entry.catalogue_label) or entry.catalogue_label
 
 
-def _fetch_cached(url: str, cache_dir: str, filename: str) -> Optional[str]:
-    os.makedirs(cache_dir, exist_ok=True)
+def _fetch_cached(
+    url: str, cache_dir: str, filename: str, *, allow_network: bool = True
+) -> Optional[str]:
+    """Return a cached copy of ``url``, fetching it when the cache is cold.
+
+    Under ``allow_network=False`` a cache miss stays a miss: the caller gets
+    ``None`` rather than a silent download.
+    """
     cache_path = os.path.join(cache_dir, filename)
     if os.path.isfile(cache_path):
         return cache_path
+    if not allow_network:
+        return None
+    os.makedirs(cache_dir, exist_ok=True)
     try:
         from core.mdx_config_fetch import _urlopen
 
@@ -200,8 +209,10 @@ def _fetch_cached(url: str, cache_dir: str, filename: str) -> Optional[str]:
         return cache_path if os.path.isfile(cache_path) else None
 
 
-def _load_json_cache(url: str, cache_dir: str, filename: str) -> dict:
-    path = _fetch_cached(url, cache_dir, filename)
+def _load_json_cache(
+    url: str, cache_dir: str, filename: str, *, allow_network: bool = True
+) -> dict:
+    path = _fetch_cached(url, cache_dir, filename, allow_network=allow_network)
     if not path:
         return {}
     try:
@@ -313,10 +324,22 @@ def _write_reference_tsv(refs: Dict[str, CommunityRef]) -> None:
         handle.write("\n".join(lines) + "\n")
 
 
-def _build_catalogue_context() -> CatalogueContext:
-    remote_vr = _load_json_cache(_POLITREES_VR_DATA_URL, POLITREES_CACHE_DIR, "vr_model_data.json")
-    remote_mdx = _load_json_cache(_POLITREES_MDX_DATA_URL, POLITREES_CACHE_DIR, "mdx_model_data.json")
-    community_path = _fetch_cached(_COMMUNITY_MODELS_URL, COMMUNITY_CACHE_DIR, "models.txt")
+def _build_catalogue_context(*, allow_network: bool = True) -> CatalogueContext:
+    remote_vr = _load_json_cache(
+        _POLITREES_VR_DATA_URL,
+        POLITREES_CACHE_DIR,
+        "vr_model_data.json",
+        allow_network=allow_network,
+    )
+    remote_mdx = _load_json_cache(
+        _POLITREES_MDX_DATA_URL,
+        POLITREES_CACHE_DIR,
+        "mdx_model_data.json",
+        allow_network=allow_network,
+    )
+    community_path = _fetch_cached(
+        _COMMUNITY_MODELS_URL, COMMUNITY_CACHE_DIR, "models.txt", allow_network=allow_network
+    )
     community = _parse_community_models_txt(community_path or "")
     if community:
         _write_reference_tsv(community)
@@ -506,10 +529,10 @@ def _yaml_paths(yaml_name: str) -> List[str]:
     ]
 
 
-def _fetch_yaml(url: str, yaml_name: str) -> Optional[str]:
+def _fetch_yaml(url: str, yaml_name: str, *, allow_network: bool = True) -> Optional[str]:
     if not url or not yaml_name.endswith(".yaml"):
         return None
-    return _fetch_cached(url, YAML_CACHE_DIR, yaml_name)
+    return _fetch_cached(url, YAML_CACHE_DIR, yaml_name, allow_network=allow_network)
 
 
 def _training_fields(training: Any) -> Tuple[List[str], str]:
@@ -524,7 +547,9 @@ def _training_fields(training: Any) -> Tuple[List[str], str]:
     return instruments, str(target) if target else ""
 
 
-def _load_yaml_meta(yaml_name: str, yaml_url: str = "") -> Tuple[List[str], str, str, str]:
+def _load_yaml_meta(
+    yaml_name: str, yaml_url: str = "", *, allow_network: bool = True
+) -> Tuple[List[str], str, str, str]:
     if not yaml_name:
         return [], "", "", ""
     config_path = ""
@@ -533,7 +558,9 @@ def _load_yaml_meta(yaml_name: str, yaml_url: str = "") -> Tuple[List[str], str,
             config_path = candidate
             break
     source = ""
-    if not config_path and yaml_url:
+    if not config_path and yaml_url and allow_network:
+        # fetch_mdx_config_url writes into runtime model config storage, so it
+        # must never run for a read-only offline report.
         from core.mdx_config_fetch import fetch_mdx_config_url
 
         if fetch_mdx_config_url(yaml_name, yaml_url):
@@ -542,7 +569,7 @@ def _load_yaml_meta(yaml_name: str, yaml_url: str = "") -> Tuple[List[str], str,
                 config_path = dest
                 source = f"remote_yaml:{yaml_name}"
         if not config_path:
-            fetched = _fetch_yaml(yaml_url, yaml_name)
+            fetched = _fetch_yaml(yaml_url, yaml_name, allow_network=allow_network)
             if fetched:
                 config_path = fetched
                 source = f"remote_yaml:{yaml_name}"
@@ -731,6 +758,7 @@ def _parse_catalogue_entry(
     hash_json: str = "",
     weight_dir: str = "",
     entry_meta: Any = None,
+    allow_network: bool = True,
 ) -> List[ModelEntry]:
     yaml_name = ""
     yaml_url = ""
@@ -757,7 +785,9 @@ def _parse_catalogue_entry(
     meta.name_intent = _infer_name_intent(label)
 
     if yaml_name:
-        instruments, target, arch, yaml_source = _load_yaml_meta(yaml_name, yaml_url)
+        instruments, target, arch, yaml_source = _load_yaml_meta(
+            yaml_name, yaml_url, allow_network=allow_network
+        )
         meta.instruments = instruments
         meta.target_instrument = target
         meta.arch = arch
@@ -877,6 +907,8 @@ def _entries_from_snapshot(
     snapshot: Any,
     payloads: Tuple[dict, dict, dict, dict],
     ctx: CatalogueContext,
+    *,
+    allow_network: bool = True,
 ) -> List[ModelEntry]:
     trvlvr, politrees, extras, mvsepless = payloads
     meta_index = getattr(snapshot, "meta", {}) or {}
@@ -898,6 +930,7 @@ def _entries_from_snapshot(
                 hash_json=paths.VR_HASH_JSON,
                 weight_dir=paths.VR_MODELS_DIR,
                 entry_meta=meta_index.get(label),
+                allow_network=allow_network,
             )
         )
 
@@ -913,6 +946,7 @@ def _entries_from_snapshot(
                 hash_json=paths.MDX_HASH_JSON if family == "MDX-Net ONNX" else "",
                 weight_dir=paths.MDX_MODELS_DIR,
                 entry_meta=meta_index.get(label),
+                allow_network=allow_network,
             )
         )
 
@@ -925,6 +959,7 @@ def _entries_from_snapshot(
                 payload=payload,
                 ctx=ctx,
                 entry_meta=meta_index.get(label),
+                allow_network=allow_network,
             )
         )
         entry = all_entries[-1]
@@ -955,6 +990,7 @@ def _entries_from_snapshot(
                 payload=payload,
                 ctx=ctx,
                 entry_meta=meta_index.get(label),
+                allow_network=allow_network,
             )
         )
 
@@ -970,7 +1006,7 @@ def _collect_entries(
     snapshot, payloads = _snapshot_and_payloads(
         allow_network=allow_network, coordinator=coordinator
     )
-    return _entries_from_snapshot(snapshot, payloads, ctx)
+    return _entries_from_snapshot(snapshot, payloads, ctx, allow_network=allow_network)
 
 
 def _md_table(headers: List[str], rows: List[List[str]]) -> str:
@@ -1204,9 +1240,10 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_args(argv)
-    ctx = _build_catalogue_context()
-    snapshot, payloads = _snapshot_and_payloads(allow_network=not args.offline)
-    entries = _entries_from_snapshot(snapshot, payloads, ctx)
+    allow_network = not args.offline
+    ctx = _build_catalogue_context(allow_network=allow_network)
+    snapshot, payloads = _snapshot_and_payloads(allow_network=allow_network)
+    entries = _entries_from_snapshot(snapshot, payloads, ctx, allow_network=allow_network)
     unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     with open(OUTPUT_PATH, "w", encoding="utf-8") as handle:
