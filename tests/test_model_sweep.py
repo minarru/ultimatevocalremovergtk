@@ -325,28 +325,6 @@ class ScratchEnvTests(unittest.TestCase):
 
 
 class ChildHelperTests(unittest.TestCase):
-    def test_apply_overrides_handles_flat_and_dotted_keys(self) -> None:
-        from core.settings import Settings
-
-        settings = Settings()
-        model_sweep.apply_overrides(
-            settings,
-            {
-                "is_gpu_conversion": False,
-                "mdx_segment_size": 256,
-                "audio_tools.apollo_model": "apollo_universal_model.ckpt",
-            },
-        )
-        self.assertFalse(settings.process.use_gpu)
-        self.assertEqual(settings.mdx.segment_size, 256)
-        self.assertEqual(settings.audio_tools.apollo_model, "apollo_universal_model.ckpt")
-
-    def test_apply_overrides_raises_on_unmapped_flat_key(self) -> None:
-        from core.settings import Settings
-
-        with self.assertRaises(KeyError):
-            model_sweep.apply_overrides(Settings(), {"totally_made_up_key": 1})
-
     def test_collect_outputs_lists_audio_only(self) -> None:
         import tempfile
 
@@ -909,6 +887,75 @@ class CliTests(unittest.TestCase):
     def test_no_cpu_retry_flag(self) -> None:
         args = model_sweep.build_parser().parse_args(["--no-cpu-retry"])
         self.assertFalse(args.cpu_retry)
+
+
+class ScratchCleanupTests(unittest.TestCase):
+    """main() must not leak its top-level uvr-sweep-* scratch directory."""
+
+    # main() asserts the sweep parent is torch-free. Another test module in the
+    # same process may already have imported torch, so the main() calls below
+    # hide it for the duration rather than weakening the production assert.
+
+    def _run_main(self, argv: List[str]) -> Tuple[int, str]:
+        from unittest import mock
+
+        captured: Dict[str, Any] = {}
+
+        def fake_sweep(jobs: Any, **kwargs: Any) -> int:
+            root = kwargs["root"]
+            captured["root"] = root
+            # The scratch tree really exists while the sweep is running.
+            self.assertTrue(os.path.isdir(root))
+            self.assertTrue(os.path.isfile(kwargs["settings_path"]))
+            self.assertTrue(os.path.isfile(kwargs["input_path"]))
+            return 0
+
+        job = model_sweep.SweepJob(id="fake", kind="mdx", method="mdx", model="Fake")
+        with mock.patch.object(model_sweep, "collect_installed", return_value=_installed()), \
+             mock.patch.object(model_sweep, "discover_jobs", return_value=[job]), \
+             mock.patch.object(model_sweep, "sweep", fake_sweep), \
+             mock.patch("core.ModelRepository"), \
+             mock.patch("core.settings.Settings.load"), \
+             mock.patch.dict(sys.modules):
+            sys.modules.pop("torch", None)
+            rc = model_sweep.main(argv)
+        return rc, captured["root"]
+
+    def test_main_removes_scratch_root_on_success(self) -> None:
+        rc, root = self._run_main([])
+        self.assertEqual(rc, 0)
+        self.assertFalse(os.path.exists(root), f"scratch dir leaked: {root}")
+
+    def test_keep_outputs_preserves_scratch_root(self) -> None:
+        rc, root = self._run_main(["--keep-outputs"])
+        self.assertEqual(rc, 0)
+        self.assertTrue(os.path.isdir(root), "--keep-outputs must preserve the scratch dir")
+        import shutil
+
+        shutil.rmtree(root, ignore_errors=True)
+
+    def test_scratch_root_removed_when_sweep_raises(self) -> None:
+        from unittest import mock
+
+        captured: Dict[str, Any] = {}
+
+        def boom(jobs: Any, **kwargs: Any) -> int:
+            captured["root"] = kwargs["root"]
+            raise RuntimeError("sweep exploded")
+
+        job = model_sweep.SweepJob(id="fake", kind="mdx", method="mdx", model="Fake")
+        with mock.patch.object(model_sweep, "collect_installed", return_value=_installed()), \
+             mock.patch.object(model_sweep, "discover_jobs", return_value=[job]), \
+             mock.patch.object(model_sweep, "sweep", boom), \
+             mock.patch("core.ModelRepository"), \
+             mock.patch("core.settings.Settings.load"), \
+             mock.patch.dict(sys.modules):
+            sys.modules.pop("torch", None)
+            with self.assertRaises(RuntimeError):
+                model_sweep.main([])
+        self.assertFalse(
+            os.path.exists(captured["root"]), "scratch dir leaked on exception"
+        )
 
 
 @unittest.skipUnless(

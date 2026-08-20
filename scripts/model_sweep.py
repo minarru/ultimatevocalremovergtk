@@ -352,24 +352,6 @@ def child_env(data_dir: str) -> Dict[str, str]:
 AUDIO_SUFFIXES = (".wav", ".flac", ".mp3", ".aiff", ".ogg", ".opus")
 
 
-def apply_overrides(settings: Any, overrides: Dict[str, Any]) -> None:
-    """Apply job overrides. Dotted keys are nested paths; bare keys are flat keys.
-
-    ``set_flat`` silently no-ops on an unmapped key, which would make a job
-    quietly test the wrong configuration — so unmapped keys raise here instead.
-    """
-    from core.settings.access import set_flat, set_path
-    from core.settings.flat_map import FLAT_TO_PATH
-
-    for key, value in overrides.items():
-        if "." in key:
-            set_path(settings, key, value)
-            continue
-        if key not in FLAT_TO_PATH:
-            raise KeyError(f"flat key {key!r} is not in FLAT_TO_PATH; add the mapping first")
-        set_flat(settings, key, value)
-
-
 def collect_outputs(export_dir: str) -> List[List[Any]]:
     """Non-empty audio files written into ``export_dir``."""
     found: List[List[Any]] = []
@@ -382,19 +364,6 @@ def collect_outputs(export_dir: str) -> List[List[Any]]:
             if size > 0:
                 found.append([path, size])
     return found
-
-
-def _model_is_recognized(settings: Any, method: Optional[str], model: Optional[str]) -> bool:
-    """Whether the weight resolves to known metadata (MD5 → model_data)."""
-    if not model or method is None:
-        return True
-    from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
-    from core import ModelConfig, ModelRepository
-
-    arch = {"mdx": MDX_ARCH_TYPE, "vr": VR_ARCH_TYPE, "demucs": DEMUCS_ARCH_TYPE}[method]
-    repo = ModelRepository()
-    config = ModelConfig(settings, repo, model, arch, is_dry_check=True)
-    return bool(config.model_status)
 
 
 def run_child(spec_path: str) -> int:
@@ -763,6 +732,7 @@ def build_parser():
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import shutil
     import tempfile
 
     args = build_parser().parse_args(argv)
@@ -796,27 +766,36 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     root = tempfile.mkdtemp(prefix="uvr-sweep-")
     print(f"scratch={root}")
-    data_dir, settings_path = prepare_scratch(
-        os.path.join(root, "data"),
-        models_dir=core_paths.MODELS_DIR,
-        settings_src=None if args.stock_settings else core_paths.SETTINGS_DATA_FILE,
-    )
-    input_path = make_input_clip(os.path.join(root, "sweep-input.wav"))
+    try:
+        data_dir, settings_path = prepare_scratch(
+            os.path.join(root, "data"),
+            models_dir=core_paths.MODELS_DIR,
+            settings_src=None if args.stock_settings else core_paths.SETTINGS_DATA_FILE,
+        )
+        input_path = make_input_clip(os.path.join(root, "sweep-input.wav"))
 
-    return sweep(
-        jobs,
-        spawn=spawn_child,
-        root=root,
-        settings_path=settings_path,
-        input_path=input_path,
-        data_dir=data_dir,
-        cpu=args.cpu,
-        cpu_retry=args.cpu_retry,
-        strict=args.strict,
-        fail_fast=args.fail_fast,
-        json_path=args.json_path,
-        keep_outputs=args.keep_outputs,
-    )
+        return sweep(
+            jobs,
+            spawn=spawn_child,
+            root=root,
+            settings_path=settings_path,
+            input_path=input_path,
+            data_dir=data_dir,
+            cpu=args.cpu,
+            cpu_retry=args.cpu_retry,
+            strict=args.strict,
+            fail_fast=args.fail_fast,
+            json_path=args.json_path,
+            keep_outputs=args.keep_outputs,
+        )
+    finally:
+        # sweep() already drops each job dir unless --keep-outputs; the copied
+        # settings, models symlink and input clip live at the top level and are
+        # nobody else's to remove.
+        if args.keep_outputs:
+            print(f"scratch preserved (--keep-outputs): {root}")
+        else:
+            shutil.rmtree(root, ignore_errors=True)
 
 
 if __name__ == "__main__":
