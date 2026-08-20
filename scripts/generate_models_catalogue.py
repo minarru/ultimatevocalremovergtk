@@ -117,6 +117,9 @@ class ModelEntry:
     metadata_source: str = ""
     flags: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
+    # Family-specific prose that should win over the generic derivation in
+    # _best_result. Set by a family overlay *before* _finalize_entry runs.
+    best_result_override: str = ""
 
 
 def _source_payload(coordinator: CatalogueCoordinator, source_id: SourceId) -> dict:
@@ -741,11 +744,39 @@ def _finalize_entry(meta: ModelEntry) -> None:
     meta.backend_focus = _backend_focus(
         meta.primary_stem, meta.target_instrument, meta.instruments, is_karaoke=meta.is_karaoke
     )
-    meta.best_result = _best_result(meta)
+    meta.best_result = meta.best_result_override or _best_result(meta)
     meta.ui_export_note = _ui_note(meta)
     meta.flags = _flag_mismatches(meta)
     if meta.target_instrument.lower() == "other" and meta.name_intent == "instrumental":
         meta.notes.append("Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)")
+
+
+def _demucs_overlay(meta: ModelEntry) -> None:
+    """Demucs family facts, inferred from the label.
+
+    Demucs entries carry no yaml and no hash metadata, so their stem set comes
+    from the label alone. This must run *before* _finalize_entry: the derived
+    fields (backend_focus, ui_export_note, flags) are computed from
+    instruments/stem_count/name_intent, and deriving them from an empty entry
+    left every Demucs model with a blank export note.
+    """
+    label = meta.catalogue_label
+    if "UVR Model" in label or "uvr" in label.lower():
+        meta.instruments = ["instrumental", "vocals"]
+        meta.stem_count = 2
+        meta.name_intent = "dual_voc_inst"
+        meta.best_result_override = "2-stem: instrumental + vocals (user picks focus)"
+    elif "6s" in label:
+        meta.instruments = ["drums", "bass", "other", "vocals", "guitar", "piano"]
+        meta.stem_count = 6
+        meta.name_intent = "multi_stem"
+        meta.best_result_override = "6-stem Demucs"
+    else:
+        meta.instruments = ["drums", "bass", "other", "vocals"]
+        meta.stem_count = 4
+        meta.name_intent = "multi_stem"
+        meta.best_result_override = "4-stem Demucs"
+    meta.metadata_source = "demucs_heuristic"
 
 
 def _parse_catalogue_entry(
@@ -840,6 +871,8 @@ def _parse_catalogue_entry(
         meta.metadata_source = "unavailable"
 
     _apply_entry_meta(meta, entry_meta)
+    if family == "Demucs":
+        _demucs_overlay(meta)
     _finalize_entry(meta)
     return [meta]
 
@@ -884,7 +917,10 @@ def _source_for(
         parts.append("extras")
     if in_mv:
         parts.append("mvsepless")
-    return "+".join(parts) if parts else "TRvlvr"
+    # No membership in any payload means the label was not attributable, which
+    # is not the same as "it came from TRvlvr" -- a source that failed to load
+    # is an empty payload, so a failed membership check proves nothing.
+    return "+".join(parts) if parts else "unknown"
 
 
 def _mdx_family(label: str) -> str:
@@ -962,24 +998,6 @@ def _entries_from_snapshot(
                 allow_network=allow_network,
             )
         )
-        entry = all_entries[-1]
-        if "UVR Model" in label or "uvr" in label.lower():
-            entry.instruments = ["instrumental", "vocals"]
-            entry.stem_count = 2
-            entry.best_result = "2-stem: instrumental + vocals (user picks focus)"
-            entry.name_intent = "dual_voc_inst"
-        elif "6s" in label:
-            entry.instruments = ["drums", "bass", "other", "vocals", "guitar", "piano"]
-            entry.stem_count = 6
-            entry.best_result = "6-stem Demucs"
-            entry.name_intent = "multi_stem"
-        else:
-            entry.instruments = ["drums", "bass", "other", "vocals"]
-            entry.stem_count = 4
-            entry.best_result = "4-stem Demucs"
-            entry.name_intent = "multi_stem"
-        entry.metadata_source = "demucs_heuristic"
-        entry.backend_focus = "multi_stem"
 
     for label, payload in sorted(dict(snapshot.apollo).items()):
         all_entries.extend(

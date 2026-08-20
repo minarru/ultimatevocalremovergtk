@@ -96,8 +96,20 @@ class SourceForTests(unittest.TestCase):
             catalogue._source_for("Some Model", politrees, trvlvr), "TRvlvr+Politrees"
         )
 
-    def test_unknown_label_defaults_to_trvlvr(self) -> None:
-        self.assertEqual(catalogue._source_for("Unknown Model", None, {}), "TRvlvr")
+    def test_unattributed_label_is_unknown_not_trvlvr(self) -> None:
+        """No membership anywhere is 'not proven', not positive provenance."""
+        self.assertEqual(catalogue._source_for("Unknown Model", None, {}), "unknown")
+
+    def test_failed_upstream_payload_does_not_attribute_everything_to_trvlvr(self) -> None:
+        """A source that failed to load yields {}, which must not read as TRvlvr.
+
+        _source_payload returns {} when a source has no content, so under a cold
+        cache every label would otherwise be stamped with positive TRvlvr
+        provenance on the strength of a failed membership check.
+        """
+        politrees = {"mdx23c_download_list": {"In Politrees": "a.ckpt"}}
+        self.assertEqual(catalogue._source_for("In Politrees", politrees, {}), "Politrees")
+        self.assertEqual(catalogue._source_for("In Nothing", politrees, {}), "unknown")
 
     def test_mdx23_download_list_only_in_politrees_is_politrees(self) -> None:
         politrees = {"mdx23_download_list": {"Some Model": "some_model.ckpt"}}
@@ -363,6 +375,60 @@ class OfflinePolicyTests(unittest.TestCase):
                 stack.enter_context(patch)
             catalogue._build_catalogue_context(allow_network=True)
         self.assertTrue(self.calls, "online mode should still attempt fetches")
+
+
+class DemucsFinalizationTests(unittest.TestCase):
+    """Demucs family facts must land before the single finalization pass.
+
+    The overlay used to run *after* _finalize_entry, so ui_export_note and
+    flags were derived from an entry with no instruments and no stem count.
+    """
+
+    class _Snapshot:
+        def __init__(self, demucs: dict) -> None:
+            self.vr: dict = {}
+            self.mdx: dict = {}
+            self.demucs = demucs
+            self.apollo: dict = {}
+            self.meta: dict = {}
+            self.unsupported: dict = {}
+
+    def _entry(self, label: str, weight: str):
+        snapshot = self._Snapshot({label: weight})
+        entries = catalogue._entries_from_snapshot(
+            snapshot, ({}, {}, {}, {}), catalogue.CatalogueContext(), allow_network=False
+        )
+        self.assertEqual(len(entries), 1)
+        return entries[0]
+
+    def test_six_stem_demucs_gets_its_export_note(self) -> None:
+        entry = self._entry("Demucs v4: htdemucs_6s", "htdemucs_6s.th")
+        self.assertEqual(entry.stem_count, 6)
+        self.assertEqual(entry.ui_export_note, "UI: per-stem subset or focus row")
+
+    def test_four_stem_demucs_gets_its_export_note(self) -> None:
+        entry = self._entry("Demucs v4: htdemucs", "htdemucs.th")
+        self.assertEqual(entry.stem_count, 4)
+        self.assertEqual(entry.ui_export_note, "UI: per-stem subset or focus row")
+
+    def test_two_stem_uvr_demucs_is_not_labelled_multi_stem(self) -> None:
+        """The UVR Demucs model emits vocals+instrumental, not a multi-stem set."""
+        entry = self._entry("Demucs v3: UVR Model", "UVR_Demucs_Model_1.th")
+        self.assertEqual(entry.stem_count, 2)
+        self.assertEqual(entry.backend_focus, "two_stem")
+
+    def test_family_specific_best_result_prose_is_preserved(self) -> None:
+        self.assertEqual(self._entry("Demucs v4: htdemucs_6s", "a.th").best_result, "6-stem Demucs")
+        self.assertEqual(self._entry("Demucs v4: htdemucs", "b.th").best_result, "4-stem Demucs")
+        self.assertEqual(
+            self._entry("Demucs v3: UVR Model", "c.th").best_result,
+            "2-stem: instrumental + vocals (user picks focus)",
+        )
+
+    def test_metadata_source_records_the_heuristic(self) -> None:
+        self.assertEqual(
+            self._entry("Demucs v4: htdemucs", "b.th").metadata_source, "demucs_heuristic"
+        )
 
 
 class EntryMetaOverlayTests(unittest.TestCase):
