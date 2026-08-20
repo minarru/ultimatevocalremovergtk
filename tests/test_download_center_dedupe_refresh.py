@@ -27,6 +27,8 @@ def _bare_window() -> Any:
     win._available = {}
     win._unsupported = {}
     win._downloads_dirty = False
+    win._pinned_snapshot = None
+    win._pending_source_delta = False
     return win
 
 
