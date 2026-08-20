@@ -176,9 +176,10 @@ class RemoteJsonSource:
             memory = self._state.content
             if mode != RefreshMode.FORCE and memory is not None:
                 stale = self._stale(memory.fetched_at, now)
+                snapshot = self.state
                 if stale and mode is RefreshMode.STALE_WHILE_REVALIDATE:
                     self._schedule_refresh(policy)
-                return self.state
+                return snapshot
 
         if self._local_loader is not None and mode != RefreshMode.FORCE:
             local = self._read_local(now)
@@ -189,9 +190,10 @@ class RemoteJsonSource:
             disk = self._read_disk(policy, now)
             if disk is not None:
                 stale = self._stale(disk.fetched_at, now)
+                snapshot = self.state
                 if stale and mode is RefreshMode.STALE_WHILE_REVALIDATE:
                     self._schedule_refresh(policy)
-                return self.state
+                return snapshot
 
         if mode is RefreshMode.OFFLINE or not policy.allow_network:
             fallback = self._load_bundled(now)

@@ -37,18 +37,22 @@ class AccessPolicyTests(unittest.TestCase):
             self.assertFalse(policy.allow_metadata_writes)
 
     def test_load_mdx_catalog_index_default_may_use_network(self) -> None:
+        from types import SimpleNamespace
+
         from core.mdx_c_registry import load_mdx_catalog_index
-        with patch("core.politrees_catalog.load_politrees_links") as load:
-            load.return_value = {}
-            load_mdx_catalog_index()
-        load.assert_called()
-        kwargs = load.call_args.kwargs
-        self.assertNotEqual(kwargs.get("allow_network"), False)
+        with patch("core.catalog_sources.merged_catalogues") as merged:
+            merged.return_value = SimpleNamespace(meta={})
+            with patch("core.politrees_catalog.load_politrees_links", return_value={}):
+                load_mdx_catalog_index()
+        self.assertNotEqual(merged.call_args.kwargs.get("allow_network"), False)
 
     def test_load_mdx_catalog_index_honors_offline_policy(self) -> None:
+        from types import SimpleNamespace
+
         from core.mdx_c_registry import load_mdx_catalog_index
         with access_policy(allow_network=False, allow_metadata_writes=False):
-            with patch("core.politrees_catalog.load_politrees_links") as load:
-                load.return_value = {}
-                load_mdx_catalog_index()
-        self.assertEqual(load.call_args.kwargs.get("allow_network"), False)
+            with patch("core.catalog_sources.merged_catalogues") as merged:
+                merged.return_value = SimpleNamespace(meta={})
+                with patch("core.politrees_catalog.load_politrees_links", return_value={}):
+                    load_mdx_catalog_index()
+        self.assertEqual(merged.call_args.kwargs.get("allow_network"), False)

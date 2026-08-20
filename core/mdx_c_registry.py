@@ -7,7 +7,7 @@ import json
 import os
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
-from bundled.constants import CKPT
+from bundled.constants import CKPT, MDX_ARCH_TYPE
 
 from . import paths
 from .access_policy import current_access_policy
@@ -213,7 +213,6 @@ def load_mdx_catalog_index(*, allow_network: bool | None = None, coordinator: An
     """Build checkpoint→yaml index from bundled and cached download catalogues."""
     from .catalog_sources import merged_catalogues
     from .catalogue_coordinator import flatten_upstream_lists
-    from .downloads import DownloadManager
 
     network = (
         current_access_policy().allow_network
@@ -223,7 +222,7 @@ def load_mdx_catalog_index(*, allow_network: bool | None = None, coordinator: An
     if coordinator is not None:
         snapshot = coordinator.ensure(vip=True, allow_network=network)
         return dict(snapshot.checkpoint_yaml_index)
-    payload = DownloadManager._load_cache()
+    payload = _load_manual_download_cache()
     _vr, mdx, _demucs = flatten_upstream_lists(payload, vip=True)
     merged = merged_catalogues(
         vr=_vr, mdx=mdx, demucs=_demucs, allow_network=network
@@ -235,7 +234,7 @@ def load_mdx_catalog_index(*, allow_network: bool | None = None, coordinator: An
     }
     if catalogue:
         return build_checkpoint_yaml_index([catalogue])
-    catalogues = list(_catalogues_from_source(_load_manual_download_cache()))
+    catalogues = list(_catalogues_from_source(payload))
     politrees = load_politrees_links(allow_network=network)
     if isinstance(politrees, dict):
         catalogues.extend(_catalogues_from_source(politrees))

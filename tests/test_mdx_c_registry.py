@@ -362,9 +362,27 @@ class LoadMdxCatalogIndexTests(unittest.TestCase):
                 }
             }
         }
-        with patch("core.politrees_catalog.load_politrees_links", return_value=None):
+        with patch(
+            "core.catalog_sources._supplemental_sources", return_value=({}, {}, {}, {})
+        ), patch("core.politrees_catalog.load_politrees_links", return_value=None):
             index = load_mdx_catalog_index()
         self.assertEqual(index["sample.ckpt"], "sample.yaml")
+
+    def test_fallback_index_includes_extras_via_merge(self) -> None:
+        extras = {
+            "Extras Model": {
+                "extra.ckpt": "https://ex/extra.ckpt",
+                "extra.yaml": "https://ex/extra.yaml",
+            }
+        }
+        with patch(
+            "core.mdx_c_registry._load_manual_download_cache", return_value={}
+        ), patch(
+            "core.catalog_sources._supplemental_sources",
+            return_value=({}, extras, {}, {}),
+        ), patch("core.politrees_catalog.load_politrees_links", return_value=None):
+            index = load_mdx_catalog_index()
+        self.assertEqual(index["extra.ckpt"], "extra.yaml")
 
 
 if __name__ == "__main__":

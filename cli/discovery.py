@@ -364,14 +364,8 @@ def cmd_models_catalog(args: argparse.Namespace) -> int:
         usable = service.refresh(offline=args.offline)
         if not usable:
             return fail(args, "could not refresh the model catalogue", exit_code=1, kind="runtime")
-        report = getattr(service.manager, "_last_refresh_report", None)
-        if (
-            not args.offline
-            and report is not None
-            and (not report.upstream_live or report.failed)
-        ):
-            _emit_catalogue_status(args, report)
         if not args.offline:
+            _emit_catalogue_status(args, getattr(service.manager, "_last_refresh_report", None))
             from core.download_sizes import prefetch_remote_sizes
 
             prefetch_remote_sizes(service.manager.catalogue_checkpoint_urls())
@@ -389,7 +383,13 @@ def cmd_models_catalog(args: argparse.Namespace) -> int:
 
 
 def _emit_catalogue_status(args: argparse.Namespace, report: Any) -> None:
-    payload = report.as_dict() if hasattr(report, "as_dict") else {"stale": True}
+    from core.catalogue_types import RefreshReport
+
+    if not isinstance(report, RefreshReport):
+        return
+    if report.upstream_live and not report.failed:
+        return
+    payload = report.as_dict()
     emit_event(args, "catalogue_status", **payload)
     if report_mode(args) == "human":
         bits = []
@@ -426,13 +426,8 @@ def _cmd_models_download_body(args: argparse.Namespace, coordinator: Any) -> int
         usable = service.refresh(offline=args.offline)
         if not usable:
             return fail(args, "could not refresh the model catalogue", exit_code=1, kind="runtime")
-        report = getattr(service.manager, "_last_refresh_report", None)
-        if (
-            not args.offline
-            and report is not None
-            and (not report.upstream_live or report.failed)
-        ):
-            _emit_catalogue_status(args, report)
+        if not args.offline:
+            _emit_catalogue_status(args, getattr(service.manager, "_last_refresh_report", None))
         records = [service.resolve(value) for value in args.entries]
         resolved = service.jobs(records)
         unsupported = [record.id for record, _jobs in resolved if not record.supported]

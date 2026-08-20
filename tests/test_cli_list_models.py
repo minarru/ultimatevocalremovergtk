@@ -155,10 +155,9 @@ class AdministrationCoreTests(unittest.TestCase):
     def test_cached_politrees_access_never_calls_network(self) -> None:
         from core import politrees_catalog
 
-        with patch.object(politrees_catalog, "_cached_links", None), patch.object(
-            politrees_catalog, "_read_disk_cache_entry", return_value=None
-        ), patch.object(
-            politrees_catalog, "_read_disk_cache", return_value=None
+        politrees_catalog.clear_politrees_cache()
+        with patch.object(
+            politrees_catalog, "_politrees_cache_path", return_value="/tmp/does-not-exist-uvr-politrees.json"
         ), patch.object(politrees_catalog, "_urlopen") as network:
             self.assertIsNone(
                 politrees_catalog.load_politrees_links(allow_network=False)
