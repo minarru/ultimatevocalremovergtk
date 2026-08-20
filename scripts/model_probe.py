@@ -781,18 +781,85 @@ def _request(url: str, headers: Dict[str, str]) -> Any:
     return urllib.request.Request(url, headers=headers)
 
 
+class RangeError(RuntimeError):
+    """A range request returned something other than the bytes that were asked for.
+
+    Worth its own type because the failure is silent otherwise: a server that
+    ignores ``Range`` streams the entire checkpoint, and a short or misaligned
+    body gets hashed as though it were the requested span.
+    """
+
+
+def _parse_content_range(value: str) -> Tuple[int, int, Optional[int]]:
+    """``bytes 100-139/1000`` -> ``(100, 139, 1000)``. ``*`` total becomes None."""
+    unit, _, spec = value.strip().partition(" ")
+    if unit.lower() != "bytes":
+        raise RangeError(f"unsupported Content-Range unit: {value!r}")
+    span, _, total_text = spec.partition("/")
+    first, _, last = span.partition("-")
+    try:
+        start, end = int(first), int(last)
+    except ValueError:
+        raise RangeError(f"unparsable Content-Range: {value!r}") from None
+    total = int(total_text) if total_text.strip().isdigit() else None
+    return start, end, total
+
+
+def _response_status(response: Any) -> Optional[int]:
+    status: Any = getattr(response, "status", None)
+    if status is None:
+        getcode = getattr(response, "getcode", None)
+        status = getcode() if callable(getcode) else None
+    try:
+        return int(status) if status is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def http_range_reader(url: str, *, opener: Optional[Callable[[Any], Any]] = None) -> RangeReader:
-    """A :data:`RangeReader` backed by HTTP range requests.
+    """A :data:`RangeReader` backed by validated HTTP range requests.
 
     ``start``/``end`` are half-open like every other reader here; HTTP ranges
     are inclusive, hence the ``end - 1``.
+
+    The response is checked rather than trusted: it must be a 206 whose
+    ``Content-Range`` matches the span requested, carrying exactly that many
+    bytes. Anything else raises :class:`RangeError` instead of being returned
+    as though it were the requested bytes. A server may legitimately clamp the
+    final range to the last byte of the file, which is accepted.
     """
     fetch = opener or _default_opener
 
     def read(start: int, end: int) -> bytes:
         request = _request(url, {"Range": f"bytes={start}-{end - 1}"})
         with fetch(request) as response:
-            return response.read()
+            status = _response_status(response)
+            if status != 206:
+                raise RangeError(
+                    f"{url}: expected 206 Partial Content, got {status} "
+                    f"(the server may be ignoring Range)"
+                )
+            header = (response.headers or {}).get("Content-Range") or ""
+            if not header:
+                raise RangeError(f"{url}: 206 response carried no Content-Range")
+            data = response.read()
+
+        got_start, got_end, total = _parse_content_range(header)
+        if got_start != start:
+            raise RangeError(
+                f"{url}: asked for bytes {start}-{end - 1}, server sent {got_start}-{got_end}"
+            )
+        at_eof = total is not None and got_end == total - 1
+        if got_end != end - 1 and not at_eof:
+            raise RangeError(
+                f"{url}: asked for bytes {start}-{end - 1}, server sent {got_start}-{got_end}"
+            )
+        expected = got_end - got_start + 1
+        if len(data) != expected:
+            raise RangeError(
+                f"{url}: Content-Range promised {expected} bytes, body carried {len(data)}"
+            )
+        return data
 
     return read
 

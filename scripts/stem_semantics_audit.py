@@ -38,6 +38,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _HASH_TAIL_BYTES = 10000 * 1024
 
 
+@dataclass(frozen=True)
+class HashLookup:
+    """Outcome of a remote checkpoint fingerprint attempt.
+
+    ``status`` is about the *fetch*, not the match: ``ok`` (digest obtained),
+    ``no_url`` (nothing to fetch) or ``fetch_failed`` (unreachable, range
+    request refused, timeout...). Keeping these apart is what stops an entry
+    that was never checked from being reported as a name-based guess.
+    """
+
+    digest: str = ""
+    status: str = "no_url"
+    error: str = ""
+
+
 @dataclass
 class StemSemanticsEntry:
     entry_id: str
@@ -48,28 +63,33 @@ class StemSemanticsEntry:
     is_bv: bool = False
     buckets: List[str] = field(default_factory=list)
     error: str = ""
+    #: matched | unmatched | no_url | fetch_failed -- see :class:`HashLookup`.
+    hash_status: str = ""
+    hash_error: str = ""
 
 
-def _remote_checkpoint_hash(checkpoint_url: str) -> Optional[str]:
+def _remote_checkpoint_hash(checkpoint_url: str) -> HashLookup:
     """UVR-style MD5 fingerprint of a remote checkpoint, range-fetched.
 
     Mirrors core.mdx_c_registry.compute_checkpoint_hash's local-file logic
     (hash the last _HASH_TAIL_BYTES, or the whole file when smaller) but
     reads over HTTP so auditing the catalogue doesn't require downloading
-    full checkpoints. Returns None on any fetch failure -- one unreachable
-    checkpoint must not abort the audit.
+    full checkpoints. A failure is reported rather than raised -- one
+    unreachable checkpoint must not abort the audit -- but it is reported
+    *as a failure*, not as an absent fingerprint.
     """
     if not checkpoint_url:
-        return None
+        return HashLookup(status="no_url")
     from scripts.model_probe import http_range_reader, remote_size
 
     try:
         size = remote_size(checkpoint_url)
         read = http_range_reader(checkpoint_url)
         start = max(0, size - _HASH_TAIL_BYTES)
-        return hashlib.md5(read(start, size)).hexdigest()
-    except Exception:  # noqa: BLE001 - one unreachable checkpoint must not abort the audit
-        return None
+        digest = hashlib.md5(read(start, size)).hexdigest()
+    except Exception as exc:  # noqa: BLE001 - one unreachable checkpoint must not abort the audit
+        return HashLookup(status="fetch_failed", error=f"{type(exc).__name__}: {exc}")
+    return HashLookup(digest=digest, status="ok")
 
 
 def _curated_hash_table() -> Dict[str, dict]:
@@ -87,7 +107,7 @@ def _curated_hash_table() -> Dict[str, dict]:
 
 
 def _entry_for_target(
-    target: Any, catalogue_entry: dict, curated_table: Dict[str, dict]
+    target: Any, curated_table: Dict[str, dict]
 ) -> StemSemanticsEntry:
     from core.model_data import load_mdx_c_config
     from core.model_stem_semantics import confident_stem_bucket, resolve_karaoke_confidence
@@ -101,11 +121,14 @@ def _entry_for_target(
 
     training = config.get("training") or {}
     stems = [str(s) for s in (training.get("instruments") or [])]
-    checkpoint_hash = _remote_checkpoint_hash(target.checkpoint_url)
-    curated_data = curated_table.get(checkpoint_hash) if checkpoint_hash else None
+    lookup = _remote_checkpoint_hash(target.checkpoint_url)
+    curated_data = curated_table.get(lookup.digest) if lookup.status == "ok" else None
+    if lookup.status != "ok":
+        hash_status = lookup.status
+    else:
+        hash_status = "matched" if curated_data else "unmatched"
     is_bv = bool(
         (curated_data or {}).get("is_bv_model")
-        or catalogue_entry.get("is_bv_model")
         or getattr(target, "is_bv_model", False)
     )
     is_karaoke, is_curated = resolve_karaoke_confidence(
@@ -132,6 +155,8 @@ def _entry_for_target(
         is_karaoke_curated=is_curated,
         is_bv=is_bv,
         buckets=buckets,
+        hash_status=hash_status,
+        hash_error=lookup.error,
     )
 
 
@@ -150,7 +175,7 @@ def _iter_entries(
                 file=sys.stderr,
                 flush=True,
             )
-        result = _entry_for_target(target, {}, curated_table)
+        result = _entry_for_target(target, curated_table)
         if guessed_only and result.is_karaoke_curated:
             continue
         yield result
@@ -165,7 +190,8 @@ def render_table(entries: List[StemSemanticsEntry]) -> str:
         confidence = "curated" if e.is_karaoke_curated else "guessed"
         lines.append(
             f"{e.entry_id:40s} karaoke={e.is_karaoke!s:5s} ({confidence:7s}) "
-            f"bv={e.is_bv!s:5s} stems={e.stems} buckets={e.buckets}"
+            f"hash={e.hash_status:12s} bv={e.is_bv!s:5s} "
+            f"stems={e.stems} buckets={e.buckets}"
         )
     return "\n".join(lines)
 

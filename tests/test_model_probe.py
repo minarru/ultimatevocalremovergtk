@@ -715,9 +715,10 @@ class HttpRangeReaderTests(unittest.TestCase):
     """The range request is the whole trick — assert the header, not the network."""
 
     class _FakeResponse:
-        def __init__(self, payload: bytes, headers: dict) -> None:
+        def __init__(self, payload: bytes, headers: dict, status: int = 206) -> None:
             self._payload = payload
             self.headers = headers
+            self.status = status
 
         def read(self) -> bytes:
             return self._payload
@@ -728,16 +729,65 @@ class HttpRangeReaderTests(unittest.TestCase):
         def __exit__(self, *exc: Any) -> bool:
             return False
 
+    def _partial(self, payload: bytes, start: int, end: int, total: int = 1_000_000):
+        """A well-formed 206 for the half-open span ``[start, end)``."""
+        return self._FakeResponse(
+            payload, {"Content-Range": f"bytes {start}-{end - 1}/{total}"}, status=206
+        )
+
     def test_requests_exactly_the_half_open_span_as_an_inclusive_range(self) -> None:
         seen = []
 
         def opener(request: Any) -> Any:
             seen.append(request.get_header("Range"))
-            return self._FakeResponse(b"abcd", {})
+            return self._partial(b"a" * 40, 100, 140)
 
         read = model_probe.http_range_reader("https://example.invalid/f", opener=opener)
-        self.assertEqual(read(100, 140), b"abcd")
+        self.assertEqual(read(100, 140), b"a" * 40)
         self.assertEqual(seen, ["bytes=100-139"])
+
+    def test_full_body_200_response_is_rejected(self) -> None:
+        """A server ignoring Range would otherwise stream the whole checkpoint."""
+
+        def opener(request: Any) -> Any:
+            return self._FakeResponse(b"z" * 5000, {}, status=200)
+
+        read = model_probe.http_range_reader("https://example.invalid/f", opener=opener)
+        with self.assertRaises(model_probe.RangeError):
+            read(100, 140)
+
+    def test_mismatched_content_range_is_rejected(self) -> None:
+        """Bytes from a different offset must not be hashed as the tail."""
+
+        def opener(request: Any) -> Any:
+            return self._partial(b"a" * 40, 0, 40)
+
+        read = model_probe.http_range_reader("https://example.invalid/f", opener=opener)
+        with self.assertRaises(model_probe.RangeError):
+            read(100, 140)
+
+    def test_truncated_body_is_rejected(self) -> None:
+        """A short read would silently produce the wrong MD5."""
+
+        def opener(request: Any) -> Any:
+            return self._FakeResponse(
+                b"a" * 12, {"Content-Range": "bytes 100-139/1000000"}, status=206
+            )
+
+        read = model_probe.http_range_reader("https://example.invalid/f", opener=opener)
+        with self.assertRaises(model_probe.RangeError):
+            read(100, 140)
+
+    def test_range_clamped_at_end_of_file_is_accepted(self) -> None:
+        """A server may legitimately clamp the final range to the last byte."""
+
+        def opener(request: Any) -> Any:
+            return self._FakeResponse(
+                b"a" * 20, {"Content-Range": "bytes 100-119/120"}, status=206
+            )
+
+        read = model_probe.http_range_reader("https://example.invalid/f", opener=opener)
+        self.assertEqual(read(100, 140), b"a" * 20)
 
     def test_reads_the_length_from_a_content_range_header(self) -> None:
         def opener(request: Any) -> Any:

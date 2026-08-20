@@ -10,7 +10,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr
-from typing import Any
+from typing import Any, Optional
 from unittest.mock import patch
 
 _SPEC = importlib.util.spec_from_file_location(
@@ -153,7 +153,8 @@ class RemoteCheckpointHashTests(unittest.TestCase):
             return_value=lambda start, end: tail[start:end],
         ):
             result = stem_semantics_audit._remote_checkpoint_hash("https://example.test/model.ckpt")
-        self.assertEqual(result, hashlib.md5(tail).hexdigest())
+        self.assertEqual(result.digest, hashlib.md5(tail).hexdigest())
+        self.assertEqual(result.status, "ok")
 
     def test_hashes_the_whole_file_when_smaller_than_the_tail_span(self) -> None:
         import hashlib
@@ -164,16 +165,72 @@ class RemoteCheckpointHashTests(unittest.TestCase):
             return_value=lambda start, end: whole[start:end],
         ):
             result = stem_semantics_audit._remote_checkpoint_hash("https://example.test/small.ckpt")
-        self.assertEqual(result, hashlib.md5(whole).hexdigest())
+        self.assertEqual(result.digest, hashlib.md5(whole).hexdigest())
+        self.assertEqual(result.status, "ok")
 
-    def test_returns_none_on_fetch_failure(self) -> None:
+    def test_fetch_failure_is_reported_not_silently_dropped(self) -> None:
         with patch("scripts.model_probe.remote_size", side_effect=OSError("boom")):
-            self.assertIsNone(
-                stem_semantics_audit._remote_checkpoint_hash("https://example.test/model.ckpt")
+            result = stem_semantics_audit._remote_checkpoint_hash("https://example.test/model.ckpt")
+        self.assertEqual(result.digest, "")
+        self.assertEqual(result.status, "fetch_failed")
+        self.assertIn("boom", result.error)
+
+    def test_missing_url_is_distinct_from_a_failed_fetch(self) -> None:
+        result = stem_semantics_audit._remote_checkpoint_hash("")
+        self.assertEqual(result.digest, "")
+        self.assertEqual(result.status, "no_url")
+
+
+class HashStatusTests(unittest.TestCase):
+    """A guess made without evidence must not look like a guess made against it."""
+
+    class _Target:
+        entry_id = "e1"
+        label = "Some Model"
+        config_url = "https://example.test/c.yaml"
+        checkpoint_url = "https://example.test/m.ckpt"
+        is_bv_model = False
+
+    def _entry(self, lookup: Any, curated_table: Optional[dict] = None):
+        with patch.object(
+            stem_semantics_audit, "_remote_checkpoint_hash", return_value=lookup
+        ), patch("scripts.model_probe._fetch_config", return_value="/tmp/c.yaml"), patch(
+            "scripts.model_probe._cache_dir", return_value="/tmp"
+        ), patch(
+            "core.model_data.load_mdx_c_config",
+            return_value={"training": {"instruments": ["vocals", "other"]}},
+        ):
+            return stem_semantics_audit._entry_for_target(
+                self._Target(), curated_table or {}
             )
 
-    def test_returns_none_for_empty_url(self) -> None:
-        self.assertIsNone(stem_semantics_audit._remote_checkpoint_hash(""))
+    def test_fetched_hash_absent_from_curated_metadata_is_unmatched(self) -> None:
+        entry = self._entry(stem_semantics_audit.HashLookup(digest="abc", status="ok"))
+        self.assertEqual(entry.hash_status, "unmatched")
+
+    def test_fetched_hash_present_in_curated_metadata_is_matched(self) -> None:
+        entry = self._entry(
+            stem_semantics_audit.HashLookup(digest="abc", status="ok"),
+            curated_table={"abc": {"is_karaoke": True}},
+        )
+        self.assertEqual(entry.hash_status, "matched")
+
+    def test_failed_fetch_is_not_reported_as_unmatched(self) -> None:
+        entry = self._entry(
+            stem_semantics_audit.HashLookup(status="fetch_failed", error="timed out")
+        )
+        self.assertEqual(entry.hash_status, "fetch_failed")
+        self.assertIn("timed out", entry.hash_error)
+
+    def test_missing_checkpoint_url_is_its_own_status(self) -> None:
+        entry = self._entry(stem_semantics_audit.HashLookup(status="no_url"))
+        self.assertEqual(entry.hash_status, "no_url")
+
+    def test_table_shows_hash_status_so_evidence_is_visible(self) -> None:
+        entry = stem_semantics_audit.StemSemanticsEntry(
+            entry_id="e1", label="M", stems=["vocals"], hash_status="fetch_failed"
+        )
+        self.assertIn("fetch_failed", stem_semantics_audit.render_table([entry]))
 
 
 class CuratedHashTableTests(unittest.TestCase):
@@ -217,10 +274,12 @@ class EntryForTargetCuratedLookupTests(unittest.TestCase):
             "core.model_data.load_mdx_c_config",
             return_value={"training": {"instruments": ["vocals", "other"]}},
         ), patch.object(
-            stem_semantics_audit, "_remote_checkpoint_hash", return_value="curatedhash"
+            stem_semantics_audit,
+            "_remote_checkpoint_hash",
+            return_value=stem_semantics_audit.HashLookup(digest="curatedhash", status="ok"),
         ):
             entry = stem_semantics_audit._entry_for_target(
-                target, {}, curated_table={"curatedhash": {"is_karaoke": True}}
+                target, curated_table={"curatedhash": {"is_karaoke": True}}
             )
         self.assertTrue(entry.is_karaoke)
         self.assertTrue(entry.is_karaoke_curated)
@@ -233,9 +292,11 @@ class EntryForTargetCuratedLookupTests(unittest.TestCase):
             "core.model_data.load_mdx_c_config",
             return_value={"training": {"instruments": ["vocals", "other"]}},
         ), patch.object(
-            stem_semantics_audit, "_remote_checkpoint_hash", return_value="unknownhash"
+            stem_semantics_audit,
+            "_remote_checkpoint_hash",
+            return_value=stem_semantics_audit.HashLookup(digest="unknownhash", status="ok"),
         ):
-            entry = stem_semantics_audit._entry_for_target(target, {}, curated_table={})
+            entry = stem_semantics_audit._entry_for_target(target, curated_table={})
         self.assertTrue(entry.is_karaoke)
         self.assertFalse(entry.is_karaoke_curated)
 
