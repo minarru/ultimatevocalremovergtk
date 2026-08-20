@@ -35,6 +35,8 @@ _MDX_CATALOG_SOURCE_KEYS = (
     "mdx23_download_vip_list",
     "mdx23c_download_vip_list",
     "roformer_download_vip_list",
+    "scnet_download_vip_list",
+    "bandit_download_vip_list",
 )
 
 _VR_CATALOG_SOURCE_KEYS = ("vr_download_list",)
@@ -515,9 +517,15 @@ def format_tag_title(tag: str, repo: "ModelRepository") -> str:
     Catalogue/identity refinements must not require remeshing sources; mapper
     overlay reloads bump the naming revision only.
     """
-    naming = int(getattr(repo, "naming_revision", 0) or 0)
-    catalogue_rev = getattr(repo, "catalogue_revision", "") or ""
-    key = (tag, str(catalogue_rev), naming, _display_generation)
+    raw_naming = getattr(repo, "naming_revision", 0)
+    naming = (
+        raw_naming
+        if isinstance(raw_naming, int) and not isinstance(raw_naming, bool)
+        else 0
+    )
+    raw_rev = getattr(repo, "catalogue_revision", "")
+    catalogue_rev = raw_rev if isinstance(raw_rev, str) else ""
+    key = (tag, catalogue_rev, naming, _display_generation)
     cached = _format_tag_title_cache.get(key)
     if cached is not None:
         return cached

@@ -256,11 +256,13 @@ class IdentityServiceTests(unittest.TestCase):
         context.settings = Settings.defaults()
         context._repo = None
         context._repo_lock = threading.Lock()
+        context._catalogue = Mock()
+        context._catalogue_lock = threading.Lock()
         context._get_dialog_parent = None
         context._unrecognized_hook_installed = False
         created: list[object] = []
 
-        def make_repo() -> object:
+        def make_repo(*_args: object, **_kwargs: object) -> object:
             repo = Mock()
             created.append(repo)
             return repo

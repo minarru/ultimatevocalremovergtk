@@ -1103,23 +1103,19 @@ class DownloadManager:
         """
         from .model_naming import canonical_display_name
 
-        source = self.online_data if self.online_data else self._load_cache()
-        if not (self.vr_download_list or self.mdx_download_list or self.demucs_download_list):
+        if self.online_data:
+            # Compatibility overlay: tests and callers may assign ``online_data``
+            # as the upstream payload. Rebuild from that rather than a coordinator
+            # snapshot that may predate the assignment.
+            self._rebuild_catalogues()
+            self._merge_politrees_supplement(allow_network=False)
+        elif not self._has_any_catalogue():
             self.ensure_catalogues(allow_network=False)
         vr, mdx, demucs = (
             dict(self.vr_download_list),
             dict(self.mdx_download_list),
             dict(self.demucs_download_list),
         )
-        if not (vr or mdx or demucs):
-            from .catalog_sources import merged_catalogues
-            from .catalogue_coordinator import flatten_upstream_lists
-
-            vr, mdx, demucs = flatten_upstream_lists(
-                source, vip=self.decoded_vip_link != NO_CODE
-            )
-            merged = merged_catalogues(vr=vr, mdx=mdx, demucs=demucs)
-            vr, mdx, demucs = merged.vr, merged.mdx, merged.demucs
 
         def by_display(catalogue: Dict[str, Any]) -> Dict[str, Any]:
             return {

@@ -1,5 +1,6 @@
 """Tests for unified model display naming."""
 
+import os
 import unittest
 from unittest.mock import MagicMock
 
@@ -227,10 +228,23 @@ class MvseplessAndExtrasDisplayTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        from core.mvsepless_catalog import load_converted_mvsepless
+        from core.extra_catalog import clear_extra_catalog_cache
+        from core.model_display import clear_display_cache
+        from core.mvsepless_catalog import clear_mvsepless_cache, load_converted_mvsepless
 
-        if not load_converted_mvsepless():
-            raise unittest.SkipTest("mvsepless catalogue unavailable (no cache, no network)")
+        os.environ.pop("UVR_DISABLE_MVSEPLESS", None)
+        os.environ.pop("UVR_DISABLE_POLITREES", None)
+        os.environ.pop("UVR_DISABLE_EXTRA_MODELS", None)
+        clear_mvsepless_cache()
+        clear_extra_catalog_cache()
+        clear_display_cache()
+        converted = load_converted_mvsepless() or {}
+        blob = str(converted)
+        needed = ("bs_inst_hyperace2_unwa", "mbr_inst2_unwa", "mbr_instfvx_gabox")
+        if not all(name in blob for name in needed):
+            raise unittest.SkipTest(
+                "mvsepless live cache does not include the pre-unification names"
+            )
 
     def test_previously_raw_basenames_now_resolve(self) -> None:
         from core.model_display import load_mdx_catalog_display_index

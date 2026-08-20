@@ -9,6 +9,7 @@ import threading
 import time
 import unittest
 from io import BytesIO
+from typing import Any
 from unittest import mock
 
 from core.access_policy import AccessPolicy
@@ -41,7 +42,13 @@ class RemoteJsonSourceTests(unittest.TestCase):
         self.clock = _Clock()
         self.addCleanup(self.tmp.cleanup)
 
-    def _source(self, opener=None, **kwargs) -> RemoteJsonSource:
+    def _content(self, state: Any) -> Any:
+        content = state.content
+        self.assertIsNotNone(content)
+        assert content is not None
+        return content
+
+    def _source(self, opener: Any = None, **kwargs: Any) -> RemoteJsonSource:
         return RemoteJsonSource(
             source_id=SourceId.POLITREES,
             url="https://example.test/catalog.json",
@@ -64,7 +71,7 @@ class RemoteJsonSourceTests(unittest.TestCase):
         self.assertFalse(os.path.exists(self.path))
 
     def test_memory_hit_skips_disk_and_network(self) -> None:
-        opener = mock.Mock(side_effect=lambda _url: _Response({"vr_download_list": {"V": "v.pth"}}))
+        opener = mock.Mock(return_value=_Response({"vr_download_list": {"V": "v.pth"}}))
         source = self._source(opener=opener)
         policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
         first = source.load(mode=RefreshMode.FORCE, policy=policy)
@@ -73,7 +80,9 @@ class RemoteJsonSourceTests(unittest.TestCase):
             mode=RefreshMode.STALE_WHILE_REVALIDATE, policy=policy
         )
         opener.assert_not_called()
-        self.assertEqual(first.content.semantic_digest, second.content.semantic_digest)
+        self.assertEqual(
+            self._content(first).semantic_digest, self._content(second).semantic_digest
+        )
 
     def test_stale_disk_returns_immediately_and_schedules_refresh(self) -> None:
         with open(self.path, "w", encoding="utf-8") as handle:
@@ -86,7 +95,7 @@ class RemoteJsonSourceTests(unittest.TestCase):
             )
         started = threading.Event()
 
-        def opener(_url):
+        def opener(_url: object) -> _Response:
             started.set()
             return _Response({"mdx_download_list": {"New": {"n.ckpt": "u"}}})
 
@@ -95,7 +104,7 @@ class RemoteJsonSourceTests(unittest.TestCase):
             mode=RefreshMode.STALE_WHILE_REVALIDATE,
             policy=AccessPolicy(allow_network=True, allow_metadata_writes=True),
         )
-        self.assertIn("Old", state.content.payload["mdx_download_list"])
+        self.assertIn("Old", self._content(state).payload["mdx_download_list"])
         started.wait(timeout=2)
         self.assertTrue(started.is_set())
 
@@ -103,7 +112,7 @@ class RemoteJsonSourceTests(unittest.TestCase):
         calls = {"n": 0}
         release = threading.Event()
 
-        def opener(_url):
+        def opener(_url: object) -> _Response:
             calls["n"] += 1
             release.wait(timeout=2)
             return _Response({"mdx_download_list": {"A": {"a.ckpt": "u"}}})
@@ -139,13 +148,13 @@ class RemoteJsonSourceTests(unittest.TestCase):
             mode=RefreshMode.OFFLINE,
             policy=AccessPolicy(allow_network=False, allow_metadata_writes=False),
         )
-        before = source.state.content.fetched_at
+        before = self._content(source.state).fetched_at
         self.clock.now = 1_500.0
         source.load(
             mode=RefreshMode.FORCE,
             policy=AccessPolicy(allow_network=True, allow_metadata_writes=True),
         )
-        self.assertEqual(source.state.content.fetched_at, before)
+        self.assertEqual(self._content(source.state).fetched_at, before)
         self.assertIsNotNone(source.state.status.error)
 
     def test_write_denied_updates_memory_not_disk(self) -> None:
@@ -164,33 +173,34 @@ class RemoteJsonSourceTests(unittest.TestCase):
 
     def test_identical_payload_keeps_semantic_revision(self) -> None:
         payload = {"mdx_download_list": {"A": {"a.ckpt": "u"}}}
-        opener = mock.Mock(side_effect=lambda _url: _Response(payload))
+        opener = mock.Mock(return_value=_Response(payload))
         source = self._source(opener=opener)
         policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
         first = source.load(mode=RefreshMode.FORCE, policy=policy)
         self.clock.now += 5
         second = source.load(mode=RefreshMode.FORCE, policy=policy)
-        self.assertEqual(first.content.semantic_digest, second.content.semantic_digest)
+        self.assertEqual(
+            self._content(first).semantic_digest, self._content(second).semantic_digest
+        )
 
     def test_304_refreshes_status_without_new_body(self) -> None:
         payload = {"mdx_download_list": {"A": {"a.ckpt": "u"}}}
         headers = {"ETag": '"abc"'}
         calls = {"n": 0}
 
-        def opener(target):
+        def opener(_target: object) -> _Response:
             calls["n"] += 1
             if calls["n"] == 1:
                 return _Response(payload, headers=headers)
-            response = _Response(payload, status=304, headers=headers)
-            return response
+            return _Response(payload, status=304, headers=headers)
 
         source = self._source(opener=opener)
         policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
         first = source.load(mode=RefreshMode.FORCE, policy=policy)
-        digest = first.content.semantic_digest
+        digest = self._content(first).semantic_digest
         self.clock.now += 5
         second = source.load(mode=RefreshMode.FORCE, policy=policy)
-        self.assertEqual(second.content.semantic_digest, digest)
+        self.assertEqual(self._content(second).semantic_digest, digest)
         self.assertGreaterEqual(calls["n"], 2)
 
 

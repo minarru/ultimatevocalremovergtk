@@ -57,7 +57,7 @@ atexit.register(request_shutdown)
 
 def _submit_wave(
     pool: ThreadPoolExecutor, wave: List[str]
-) -> Optional[Dict["Future[Tuple[Optional[int], Optional[str]]]", str]]:
+) -> Optional[Dict["Future[Tuple[Optional[int], Optional[str], Optional[str]]]", str]]:
     """Submit one wave, or ``None`` once no more work can be scheduled."""
     try:
         return {pool.submit(_fetch_size_meta, url): url for url in wave}

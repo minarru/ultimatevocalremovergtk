@@ -11,7 +11,7 @@ from tests.net_guard import BlockedNetworkAccess
 class NetGuardArmedTests(unittest.TestCase):
     def test_blocked_access_is_not_exception(self) -> None:
         self.assertFalse(issubclass(BlockedNetworkAccess, Exception))
-        self.assertTrue(issubclass(BlockedNetworkAccess, BaseException))
+        self.assertIs(BlockedNetworkAccess.__bases__[0], BaseException)
 
     def test_guard_escapes_politrees_except_exception(self) -> None:
         import core.politrees_catalog as pc
@@ -23,7 +23,6 @@ class NetGuardArmedTests(unittest.TestCase):
             pc.load_politrees_links(force=True)
 
     def test_guard_message_includes_armed_sentinel(self) -> None:
-        exc = BlockedNetworkAccess("probe")
         self.assertIn("UVR_NET_GUARD_ARMED=1", str(_blocked_message()))
 
 

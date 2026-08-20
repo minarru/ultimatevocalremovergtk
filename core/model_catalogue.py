@@ -129,7 +129,7 @@ class ModelCatalogueService:
         }
         for family, values in catalogues.items():
             arch = FAMILY_ARCH[family]
-            for selection, model in values.items():
+            for selection, _model in values.items():
                 meta = self.manager.catalogue_meta.get(selection)
                 intent = str(getattr(meta, "intent", "") or "") or None
                 reason = unsupported.get((arch, selection))

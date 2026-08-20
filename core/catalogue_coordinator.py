@@ -274,7 +274,6 @@ class CatalogueCoordinator:
         def run_source(source_id: SourceId) -> None:
             nonlocal upstream_live
             source = self._sources[source_id]
-            before = source.state.content
             state = source.load(mode=RefreshMode.FORCE, policy=policy)
             after = state.content
             with result_lock:

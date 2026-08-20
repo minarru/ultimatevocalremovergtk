@@ -78,7 +78,10 @@ class ModelRepository:
         snapshot = getattr(coordinator, "_latest", None)
         revision = getattr(snapshot, "revision", None)
         digest = getattr(revision, "digest", None)
-        return digest() if callable(digest) else ""
+        if not callable(digest):
+            return ""
+        value = digest()
+        return value if isinstance(value, str) else ""
 
     # -- Change notification ----------------------------------------------------
 

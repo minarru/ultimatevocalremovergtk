@@ -45,6 +45,8 @@ class DownloadCenterStateTests(unittest.TestCase):
 
         win = object.__new__(DownloadCenterWindow)
         win.manager = MagicMock()
+        win.manager.catalogue_meta = {}
+        win.manager.resolve.return_value = []
         win._available = {}
         win._unsupported = {}
         win._hide_unsupported = False
@@ -62,6 +64,8 @@ class DownloadCenterStateTests(unittest.TestCase):
         win.status_label = Gtk.Label()
         win.stack = Gtk.Stack()
         win._stack_pages = {}
+        win._pinned_snapshot = None
+        win._pending_source_delta = False
         return win
 
     def test_rebuild_catalogue_preserves_checked_selection(self) -> None:

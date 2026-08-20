@@ -31,6 +31,9 @@ def _bare_refresh_window() -> DownloadCenterWindow:
     win._schedule_stem_yaml_fetches = mock.MagicMock()
     win._set_catalogue_page_message = mock.MagicMock()
     win._toast = mock.MagicMock()
+    win.manager = mock.MagicMock()
+    win._pinned_snapshot = None
+    win._pending_source_delta = False
     return win
 
 

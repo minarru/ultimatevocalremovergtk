@@ -513,12 +513,17 @@ class DownloadCenterWindow:
         lookup_id = self._size_lookup_ids.get(key, 0) + 1
         self._size_lookup_ids[key] = lookup_id
         jobs = self._resolve_pinned(name, arch)
+        if not isinstance(jobs, (list, tuple)):
+            jobs = []
         pending = [
             url for url, path in jobs if url and not os.path.isfile(path)
         ]
         if not pending:
-            text = self.manager.describe_selection_download_size(name, arch)
-            self._apply_row_size(lookup_id, key, text)
+            def worker() -> None:
+                text = self.manager.describe_selection_download_size(name, arch)
+                idle_on_main(self._apply_row_size, lookup_id, key, text)
+
+            threading.Thread(target=worker, name="uvr-size-lookup", daemon=True).start()
             return
 
         from core.download_sizes import describe_cached_download_size, request_url_size
@@ -732,7 +737,8 @@ class DownloadCenterWindow:
         self._schedule_stem_yaml_fetches()
 
     def _pin_current_snapshot(self) -> None:
-        coordinator = getattr(self.manager, "_coordinator", None)
+        manager = getattr(self, "manager", None)
+        coordinator = getattr(manager, "_coordinator", None) if manager is not None else None
         snapshot = getattr(coordinator, "_latest", None)
         if snapshot is None:
             snapshot = getattr(coordinator, "_latest_unlocked", None)
