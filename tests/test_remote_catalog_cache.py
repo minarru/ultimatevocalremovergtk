@@ -49,7 +49,7 @@ class RemoteJsonSourceTests(unittest.TestCase):
         return content
 
     def _source(self, opener: Any = None, **kwargs: Any) -> RemoteJsonSource:
-        return RemoteJsonSource(
+        source = RemoteJsonSource(
             source_id=SourceId.POLITREES,
             url="https://example.test/catalog.json",
             cache_filename="catalog.json",
@@ -59,6 +59,8 @@ class RemoteJsonSourceTests(unittest.TestCase):
             clock=self.clock,
             **kwargs,
         )
+        self.addCleanup(source.close)
+        return source
 
     def test_disabled_before_io(self) -> None:
         opener = mock.Mock()
@@ -170,6 +172,26 @@ class RemoteJsonSourceTests(unittest.TestCase):
         left = {"mdx_download_list": {"A": {"a.ckpt": "u"}, "B": {"b.ckpt": "u"}}}
         right = {"mdx_download_list": {"B": {"b.ckpt": "u"}, "A": {"a.ckpt": "u"}}}
         self.assertNotEqual(semantic_digest(left), semantic_digest(right))
+
+    def test_network_refresh_keeps_scalar_metadata_when_digest_unchanged(self) -> None:
+        first = {
+            "mdx_download_list": {"A": {"a.ckpt": "u"}},
+            "current_version_linux": "1",
+        }
+        second = {
+            "mdx_download_list": {"A": {"a.ckpt": "u"}},
+            "current_version_linux": "2",
+        }
+        self.assertEqual(semantic_digest(first), semantic_digest(second))
+        payloads = [first, second]
+        opener = mock.Mock(side_effect=lambda _url: _Response(payloads.pop(0)))
+        source = self._source(opener=opener)
+        policy = AccessPolicy(allow_network=True, allow_metadata_writes=True)
+        loaded = source.load(mode=RefreshMode.FORCE, policy=policy)
+        self.assertEqual(self._content(loaded).payload["current_version_linux"], "1")
+        self.clock.now += 5
+        refreshed = source.load(mode=RefreshMode.FORCE, policy=policy)
+        self.assertEqual(self._content(refreshed).payload["current_version_linux"], "2")
 
     def test_identical_payload_keeps_semantic_revision(self) -> None:
         payload = {"mdx_download_list": {"A": {"a.ckpt": "u"}}}

@@ -114,6 +114,8 @@ class CatalogueCoordinator:
         self._closed = False
         self._policy = policy
         self._sources = dict(sources) if sources is not None else _default_sources()
+        for source in self._sources.values():
+            source._on_update = self._on_source_updated
         self._snapshots: dict[tuple[str, bool], CatalogueSnapshot] = {}
         self._latest: CatalogueSnapshot | None = None
         self._latest_unlocked: CatalogueSnapshot | None = None
@@ -240,6 +242,13 @@ class CatalogueCoordinator:
             )
 
         return self._coalesced_force(captured)
+
+    def _on_source_updated(self) -> None:
+        if self._closed:
+            return
+        report = self._last_report
+        self._publish(vip=False, report=report)
+        self._publish(vip=True, report=report)
 
     def _coalesced_force(self, policy: AccessPolicy) -> RefreshReport:
         owner = False

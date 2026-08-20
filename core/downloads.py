@@ -263,8 +263,31 @@ class DownloadManager:
         self._size_warmup_done_for: Optional[frozenset[str]] = None
         self._catalogue_changed_subscribers: List[Callable[[], None]] = []
         self._catalogue_changed_lock = threading.Lock()
-        self._coordinator = coordinator
+        self._coordinator = None
         self._last_refresh_report: Any = None
+        if coordinator is not None:
+            self._bind_coordinator(coordinator)
+
+    def _bind_coordinator(self, coordinator: Any) -> None:
+        self._coordinator = coordinator
+        coordinator.subscribe_identity_removal(self._notify_catalogue_changed)
+        coordinator.subscribe_delta(self._on_source_delta)
+
+    def _on_source_delta(self, delta: Any) -> None:
+        from .catalogue_types import DeltaKind
+
+        if getattr(delta, "kind", None) is not DeltaKind.SOURCES_CHANGED:
+            return
+        coordinator = getattr(self, "_coordinator", None)
+        if coordinator is None:
+            return
+        snapshot = getattr(
+            coordinator,
+            "_latest_unlocked" if self.decoded_vip_link != NO_CODE else "_latest",
+            None,
+        )
+        if snapshot is not None:
+            self._apply_snapshot(snapshot)
 
     # -- Catalogue change notification ------------------------------------------
 
@@ -322,9 +345,8 @@ class DownloadManager:
         if coordinator is None:
             from .catalogue_coordinator import CatalogueCoordinator
 
-            coordinator = CatalogueCoordinator()
-            self._coordinator = coordinator
-            coordinator.subscribe_identity_removal(self._notify_catalogue_changed)
+            self._bind_coordinator(CatalogueCoordinator())
+            coordinator = self._coordinator
         return coordinator
 
     def _apply_snapshot(self, snapshot: Any) -> None:
