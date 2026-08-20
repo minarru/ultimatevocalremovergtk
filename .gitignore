@@ -100,7 +100,10 @@ docs/.community_cache/
 
 # Generated GResource manifest (rebuilt by resources/compile_resources.sh)
 resources/uvr.gresource.xml
-.cursor/
+# Ignore local .cursor contents but keep the committed Cloud Agent environment.
+.cursor/*
+!.cursor/environment.json
+!.cursor/install.sh
 resources/icons/scalable/actions/bug-symbolic.svg
 resources/icons/scalable/actions/cross-small-symbolic.svg
 
