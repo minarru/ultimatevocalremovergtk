@@ -258,3 +258,78 @@ class DiscoveryTests(unittest.TestCase):
         self.assertTrue(payload["stopped"])
         self.assertEqual(payload["inputs"][0]["status"], "failed")
         self.assertEqual(payload["inputs"][0]["error"], "interrupted")
+
+
+class ModelsListInstalledDefaultTests(unittest.TestCase):
+    def test_parser_has_all_known_flag(self) -> None:
+        from cli.main import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["models", "list", "--all-known"])
+        self.assertTrue(args.all_known)
+
+    def test_default_list_skips_uninstalled_aliases(self) -> None:
+        from cli.discovery import cmd_models_list
+
+        installed = ModelRecord("mdx:on_disk", "mdx", "on_disk", "On Disk", True)
+        alias = ModelRecord("mdx:alias", "mdx", "alias", "Alias", False)
+        args = argparse.Namespace(family=None, all_known=False, report="json", quiet=True, verbose=False, job_id="list")
+        out = io.StringIO()
+        with patch("cli.discovery.iter_model_records", return_value=(installed, alias)), patch(
+            "core.model_repository.ModelRepository"
+        ), patch("cli.discovery._model_info", side_effect=lambda record, repo: record.to_dict()), redirect_stdout(out):
+            code = cmd_models_list(args)
+        self.assertEqual(code, 0)
+        payload = json.loads(out.getvalue())
+        ids = [item["id"] for item in payload["items"]]
+        self.assertEqual(ids, ["mdx:on_disk"])
+
+
+class ModelsCatalogSizeBatchTests(unittest.TestCase):
+    def test_online_catalog_prefetches_sizes_once(self) -> None:
+        from cli.discovery import cmd_models_catalog
+
+        service = Mock()
+        service.refresh.return_value = True
+        service.filter.return_value = ()
+        service.manager = Mock()
+        service.manager.catalogue_checkpoint_urls.return_value = [
+            "https://a/x.ckpt",
+            "https://b/y.ckpt",
+        ]
+        service.manager._last_refresh_report = None
+        args = argparse.Namespace(
+            family=None, query="", purpose="all", supported=None, installed=None,
+            offline=False, report="json", quiet=True, verbose=False, job_id="catalog",
+        )
+        out = io.StringIO()
+        with patch("core.model_catalogue.ModelCatalogueService", return_value=service), patch(
+            "core.catalogue_coordinator.CatalogueCoordinator"
+        ), patch(
+            "core.download_sizes.prefetch_remote_sizes", return_value={}
+        ) as prefetch, redirect_stdout(out):
+            code = cmd_models_catalog(args)
+        self.assertEqual(code, 0)
+        prefetch.assert_called_once()
+
+    def test_offline_catalog_skips_size_prefetch(self) -> None:
+        from cli.discovery import cmd_models_catalog
+
+        service = Mock()
+        service.refresh.return_value = True
+        service.filter.return_value = ()
+        service.manager = Mock()
+        service.manager._last_refresh_report = None
+        args = argparse.Namespace(
+            family=None, query="", purpose="all", supported=None, installed=None,
+            offline=True, report="json", quiet=True, verbose=False, job_id="catalog",
+        )
+        out = io.StringIO()
+        with patch("core.model_catalogue.ModelCatalogueService", return_value=service), patch(
+            "core.catalogue_coordinator.CatalogueCoordinator"
+        ), patch(
+            "core.download_sizes.prefetch_remote_sizes"
+        ) as prefetch, redirect_stdout(out):
+            code = cmd_models_catalog(args)
+        self.assertEqual(code, 0)
+        prefetch.assert_not_called()

@@ -209,20 +209,36 @@ def _catalogues_from_source(source: Dict) -> List[Dict[str, object]]:
     return catalogues
 
 
-def load_mdx_catalog_index(*, allow_network: bool | None = None) -> Dict[str, str]:
+def load_mdx_catalog_index(*, allow_network: bool | None = None, coordinator: Any = None) -> Dict[str, str]:
     """Build checkpoint→yaml index from bundled and cached download catalogues."""
-    catalogues: List[Dict[str, object]] = []
-    catalogues.extend(_catalogues_from_source(_load_manual_download_cache()))
+    from .catalog_sources import merged_catalogues
+    from .catalogue_coordinator import flatten_upstream_lists
+    from .downloads import DownloadManager
 
     network = (
         current_access_policy().allow_network
         if allow_network is None
         else allow_network
     )
+    if coordinator is not None:
+        snapshot = coordinator.ensure(vip=True, allow_network=network)
+        return dict(snapshot.checkpoint_yaml_index)
+    payload = DownloadManager._load_cache()
+    _vr, mdx, _demucs = flatten_upstream_lists(payload, vip=True)
+    merged = merged_catalogues(
+        vr=_vr, mdx=mdx, demucs=_demucs, allow_network=network
+    )
+    catalogue = {
+        meta.label: meta.files
+        for meta in merged.meta.values()
+        if getattr(meta, "arch", None) == MDX_ARCH_TYPE and getattr(meta, "files", None)
+    }
+    if catalogue:
+        return build_checkpoint_yaml_index([catalogue])
+    catalogues = list(_catalogues_from_source(_load_manual_download_cache()))
     politrees = load_politrees_links(allow_network=network)
     if isinstance(politrees, dict):
         catalogues.extend(_catalogues_from_source(politrees))
-
     return build_checkpoint_yaml_index(catalogues)
 
 

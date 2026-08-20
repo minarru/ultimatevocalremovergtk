@@ -116,7 +116,7 @@ def _ssl_context() -> ssl.SSLContext:
     return ssl.create_default_context()
 
 
-def _urlopen(url: str):
+def _urlopen(url: str | urllib.request.Request):
     return urllib.request.urlopen(url, context=_ssl_context(), timeout=_DOWNLOAD_TIMEOUT_SECONDS)
 
 
@@ -241,7 +241,7 @@ class DownloadManager:
     callers marshal the supplied callbacks onto the GTK main loop.
     """
 
-    def __init__(self):
+    def __init__(self, coordinator: Any = None):
         self.online_data: Dict = {}
         self.bulletin_data: str = INFO_UNAVAILABLE_TEXT
         self.is_online: bool = False
@@ -263,6 +263,8 @@ class DownloadManager:
         self._size_warmup_done_for: Optional[frozenset[str]] = None
         self._catalogue_changed_subscribers: List[Callable[[], None]] = []
         self._catalogue_changed_lock = threading.Lock()
+        self._coordinator = coordinator
+        self._last_refresh_report: Any = None
 
     # -- Catalogue change notification ------------------------------------------
 
@@ -276,6 +278,16 @@ class DownloadManager:
         with self._catalogue_changed_lock:
             if callback not in self._catalogue_changed_subscribers:
                 self._catalogue_changed_subscribers.append(callback)
+
+    def subscribe_delta(self, callback: Callable[[Any], None]) -> None:
+        coordinator = getattr(self, "_coordinator", None)
+        if coordinator is not None:
+            coordinator.subscribe_delta(callback)
+
+    def unsubscribe_delta(self, callback: Callable[[Any], None]) -> None:
+        coordinator = getattr(self, "_coordinator", None)
+        if coordinator is not None:
+            coordinator.unsubscribe_delta(callback)
 
     def unsubscribe_catalogue_changed(self, callback: Callable[[], None]) -> None:
         with self._catalogue_changed_lock:
@@ -305,32 +317,58 @@ class DownloadManager:
             or self.apollo_download_list
         )
 
+    def _ensure_coordinator(self) -> Any:
+        coordinator = getattr(self, "_coordinator", None)
+        if coordinator is None:
+            from .catalogue_coordinator import CatalogueCoordinator
+
+            coordinator = CatalogueCoordinator()
+            self._coordinator = coordinator
+            coordinator.subscribe_identity_removal(self._notify_catalogue_changed)
+        return coordinator
+
+    def _apply_snapshot(self, snapshot: Any) -> None:
+        self.vr_download_list = dict(snapshot.vr)
+        self.mdx_download_list = dict(snapshot.mdx)
+        self.demucs_download_list = dict(snapshot.demucs)
+        self.apollo_download_list = dict(snapshot.apollo)
+        self.catalogue_meta = dict(snapshot.meta)
+        self.unsupported_download_list = dict(snapshot.unsupported)
+        from .catalogue_types import SourceId
+
+        coordinator = getattr(self, "_coordinator", None)
+        if coordinator is None:
+            return
+        content = coordinator.source(SourceId.UPSTREAM).state.content
+        if content is not None:
+            self.online_data = dict(content.payload)
+
     def ensure_catalogues(self, *, allow_network: bool = True) -> bool:
         """Populate download catalogues from in-memory, bundled, or Politrees data."""
         if self._has_any_catalogue():
             return True
+        from .access_policy import AccessPolicy, current_access_policy
+        from .catalogue_types import RefreshMode
+
+        policy = current_access_policy()
+        if not allow_network:
+            policy = AccessPolicy(
+                allow_network=False,
+                allow_metadata_writes=policy.allow_metadata_writes,
+            )
+        coordinator = self._ensure_coordinator()
+        vip = self.decoded_vip_link != NO_CODE
+        snapshot = coordinator.ensure(vip=vip, allow_network=policy.allow_network, policy=policy)
+        self._apply_snapshot(snapshot)
+        if self._has_any_catalogue():
+            return True
+        # Compatibility fallback when the coordinator has nothing usable.
+        self.online_data = self._load_cache()
         if self.online_data:
             self._rebuild_catalogues()
             self._merge_politrees_supplement(allow_network=allow_network)
-            if self._has_any_catalogue():
-                return True
-        self.online_data = self._load_cache()
-        if not self.online_data:
-            debug("download", "ensure_catalogues no bundled cache")
-            # Apollo (and any other fork-curated list) is bundled locally, so it
-            # is still available with no upstream cache at all.
+        else:
             self._merge_politrees_supplement(allow_network=allow_network)
-            return self._has_any_catalogue()
-        self._rebuild_catalogues()
-        self._merge_politrees_supplement(allow_network=allow_network)
-        debug(
-            "download",
-            "ensure_catalogues bundled fallback "
-            f"vr={len(self.vr_download_list)} "
-            f"mdx={len(self.mdx_download_list)} "
-            f"demucs={len(self.demucs_download_list)} "
-            f"apollo={len(self.apollo_download_list)}",
-        )
         return self._has_any_catalogue()
 
     def catalogue_urls(self) -> List[str]:
@@ -438,7 +476,22 @@ class DownloadManager:
             started = time.perf_counter()
             stats = prefetch_remote_sizes(urls)
             identity = prefetch_same_size_identity(urls)
-            self._reapply_content_dedupe()
+            coordinator = getattr(self, "_coordinator", None)
+            if coordinator is not None:
+                from .download_sizes import trusted_content_ids_from_cache
+
+                coordinator.apply_trusted_identities(trusted_content_ids_from_cache(urls))
+                from .catalogue_types import RefreshMode
+                from .access_policy import current_access_policy
+
+                snapshot = coordinator.snapshot(
+                    vip=self.decoded_vip_link != NO_CODE,
+                    mode=RefreshMode.OFFLINE,
+                    policy=current_access_policy(),
+                )
+                self._apply_snapshot(snapshot)
+            else:
+                self._reapply_content_dedupe()
             # Only mark the URL set warm once the identity pass has nothing
             # left; it HEADs at most _IDENTITY_HEAD_CAP per call, and latching
             # here would strand the remainder for the rest of the session.
@@ -466,22 +519,23 @@ class DownloadManager:
     # -- Online refresh ---------------------------------------------------------
 
     def refresh(self) -> bool:
-        """Fetch the catalogue + bulletin. Returns ``True`` when online.
+        """Fetch the catalogue + bulletin. Returns ``True`` when live upstream succeeded.
 
-        Mirrors the network half of ``online_data_refresh``: on success the
-        download lists and the latest-version string are populated; on any
-        failure the manager flips to the offline state.
+        Partial remote failures keep the last good snapshot. Bulletin/release
+        stay outside catalogue projections.
         """
-        debug("download", "refresh start")
-        try:
-            with _urlopen(DOWNLOAD_CHECKS) as response:
-                self.online_data = json.load(response)
-            self.is_online = True
-        except Exception as exc:
-            self.is_online = False
-            debug("download", f"refresh offline error={type(exc).__name__}: {exc}")
-            return False
+        from .access_policy import current_access_policy
+        from .catalogue_types import RefreshMode
 
+        debug("download", "refresh start")
+        policy = current_access_policy()
+        coordinator = self._ensure_coordinator()
+        report = coordinator.refresh(mode=RefreshMode.FORCE, policy=policy)
+        self._last_refresh_report = report
+        vip = self.decoded_vip_link != NO_CODE
+        snapshot = coordinator.snapshot(vip=vip, mode=RefreshMode.OFFLINE, policy=policy)
+        self._apply_snapshot(snapshot)
+        self.is_online = bool(report.upstream_live)
         try:
             with _urlopen(BULLETIN_CHECK) as response:
                 bulletin = response.read().decode("utf-8")
@@ -490,39 +544,29 @@ class DownloadManager:
             self.bulletin_data = INFO_UNAVAILABLE_TEXT
 
         self.latest_version = self.online_data.get(_latest_version_key(), "")
-        self._rebuild_catalogues()
-        self._merge_politrees_supplement()
         debug(
             "download",
-            "refresh online "
+            "refresh "
+            f"online={self.is_online} "
             f"vr={len(self.vr_download_list)} "
             f"mdx={len(self.mdx_download_list)} "
             f"demucs={len(self.demucs_download_list)} "
             f"latest={self.latest_version!r}",
         )
-        self.schedule_size_cache_warmup()
-        return True
+        if report.usable:
+            self.schedule_size_cache_warmup()
+        return bool(report.upstream_live)
 
     def _rebuild_catalogues(self) -> None:
         """Build the VIP-merged catalogues from ``online_data`` (no disk filter)."""
-        self.vr_download_list = dict(self.online_data.get("vr_download_list", {}))
-        self.mdx_download_list = dict(self.online_data.get("mdx_download_list", {}))
-        self.mdx_download_list.update(self.online_data.get("mdx23_download_list", {}))
-        self.mdx_download_list.update(self.online_data.get("mdx23c_download_list", {}))
-        # Roformer models (BS-Roformer / Mel-Band Roformer) ship in their own
-        # ``roformer_download_list`` but use the same compact
-        # ``{selectable: {checkpoint: config_yaml}}`` schema as MDX23-C, so they
-        # resolve through the MDX download path. Merge them into the MDX list so
-        # they show up under the MDX-Net network in the Download Center.
-        self.mdx_download_list.update(self.online_data.get("roformer_download_list", {}))
-        self.demucs_download_list = dict(self.online_data.get("demucs_download_list", {}))
+        from .catalogue_coordinator import flatten_upstream_lists
 
-        if self.decoded_vip_link != NO_CODE:
-            self.vr_download_list.update(self.online_data.get("vr_download_vip_list", {}))
-            self.mdx_download_list.update(self.online_data.get("mdx_download_vip_list", {}))
-            self.mdx_download_list.update(self.online_data.get("mdx23_download_vip_list", {}))
-            self.mdx_download_list.update(self.online_data.get("mdx23c_download_vip_list", {}))
-            self.mdx_download_list.update(self.online_data.get("roformer_download_vip_list", {}))
+        vr, mdx, demucs = flatten_upstream_lists(
+            self.online_data, vip=self.decoded_vip_link != NO_CODE
+        )
+        self.vr_download_list = vr
+        self.mdx_download_list = mdx
+        self.demucs_download_list = demucs
 
     # -- VIP code ---------------------------------------------------------------
 
@@ -531,9 +575,20 @@ class DownloadManager:
         ``download_validate_code``."""
         self.decoded_vip_link = vip_downloads(code or "")
         unlocked = self.decoded_vip_link != NO_CODE
-        if unlocked and self.online_data:
-            self._rebuild_catalogues()
-            self._merge_politrees_supplement()
+        if unlocked:
+            from .access_policy import current_access_policy
+
+            coordinator = getattr(self, "_coordinator", None)
+            if coordinator is not None:
+                from .catalogue_types import RefreshMode
+
+                snapshot = coordinator.snapshot(
+                    vip=True, mode=RefreshMode.OFFLINE, policy=current_access_policy()
+                )
+                self._apply_snapshot(snapshot)
+            elif self.online_data:
+                self._rebuild_catalogues()
+                self._merge_politrees_supplement()
         debug("download", f"vip_validate unlocked={unlocked}")
         return unlocked
 
@@ -565,7 +620,8 @@ class DownloadManager:
             **self.apollo_download_list,
         }
         self.unsupported_download_list = unsupported_mvsepless_downloads(
-            existing_labels=existing_labels
+            existing_labels=existing_labels,
+            allow_network=allow_network,
         )
 
     def apply_catalogue_stem_cache(self) -> set[str]:
@@ -589,6 +645,11 @@ class DownloadManager:
                 target_instrument=meta.target_instrument or hit.target_instrument,
             )
             updated.add(label)
+        if updated:
+            coordinator = getattr(self, "_coordinator", None)
+            notify = getattr(coordinator, "notify_metadata", None)
+            if callable(notify):
+                notify({"mdx": tuple(sorted(updated))})
         return updated
 
     # -- Download lists ---------------------------------------------------------
@@ -695,7 +756,14 @@ class DownloadManager:
 
     # -- Resolve a selection to concrete download jobs --------------------------
 
-    def resolve(self, selection: str, arch_type: str) -> List[Tuple[str, str]]:
+    def resolve(
+        self,
+        selection: str,
+        arch_type: str,
+        *,
+        fetch_config: bool = True,
+        catalogue: Mapping[str, Any] | None = None,
+    ) -> List[Tuple[str, str]]:
         """Return ``[(url, save_path), ...]`` for ``selection``.
 
         Port of ``download_model_select`` + the per-arch branches of
@@ -708,19 +776,19 @@ class DownloadManager:
         model_repo = self.decoded_vip_link if VIP_SELECTION in selection else NORMAL_REPO
 
         if arch_type == VR_ARCH_TYPE:
-            model = self.vr_download_list.get(selection)
+            model = (catalogue or self.vr_download_list).get(selection)
             if model:
                 return resolve_vr_jobs(model, model_repo)
         elif arch_type == MDX_ARCH_TYPE:
-            model = self.mdx_download_list.get(selection)
+            model = (catalogue or self.mdx_download_list).get(selection)
             if model is not None:
-                return resolve_mdx_jobs(model, model_repo)
+                return resolve_mdx_jobs(model, model_repo, fetch_config=fetch_config)
         elif arch_type == DEMUCS_ARCH_TYPE:
-            model = self.demucs_download_list.get(selection)
+            model = (catalogue or self.demucs_download_list).get(selection)
             if model:
                 return resolve_demucs_jobs(model, selection)
         elif arch_type == APOLLO_ARCH_TYPE:
-            model = self.apollo_download_list.get(selection)
+            model = (catalogue or self.apollo_download_list).get(selection)
             if model:
                 return resolve_apollo_jobs(model)
         else:
@@ -1033,26 +1101,25 @@ class DownloadManager:
         Keys stay raw catalogue labels — ``manual_links`` resolves against them.
         The dialog renders :func:`canonical_display_name` for the row title.
         """
-        from .catalog_sources import merged_catalogues
         from .model_naming import canonical_display_name
 
         source = self.online_data if self.online_data else self._load_cache()
+        if not (self.vr_download_list or self.mdx_download_list or self.demucs_download_list):
+            self.ensure_catalogues(allow_network=False)
+        vr, mdx, demucs = (
+            dict(self.vr_download_list),
+            dict(self.mdx_download_list),
+            dict(self.demucs_download_list),
+        )
+        if not (vr or mdx or demucs):
+            from .catalog_sources import merged_catalogues
+            from .catalogue_coordinator import flatten_upstream_lists
 
-        vr = dict(source.get("vr_download_list", {}))
-        mdx = dict(source.get("mdx_download_list", {}))
-        mdx.update(source.get("mdx23_download_list", {}))
-        mdx.update(source.get("mdx23c_download_list", {}))
-        mdx.update(source.get("roformer_download_list", {}))
-        demucs = dict(source.get("demucs_download_list", {}))
-
-        if self.decoded_vip_link != NO_CODE:
-            vr.update(source.get("vr_download_vip_list", {}))
-            mdx.update(source.get("mdx_download_vip_list", {}))
-            mdx.update(source.get("mdx23_download_vip_list", {}))
-            mdx.update(source.get("mdx23c_download_vip_list", {}))
-            mdx.update(source.get("roformer_download_vip_list", {}))
-
-        merged = merged_catalogues(vr=vr, mdx=mdx, demucs=demucs)
+            vr, mdx, demucs = flatten_upstream_lists(
+                source, vip=self.decoded_vip_link != NO_CODE
+            )
+            merged = merged_catalogues(vr=vr, mdx=mdx, demucs=demucs)
+            vr, mdx, demucs = merged.vr, merged.mdx, merged.demucs
 
         def by_display(catalogue: Dict[str, Any]) -> Dict[str, Any]:
             return {
@@ -1063,9 +1130,9 @@ class DownloadManager:
             }
 
         return {
-            "vr": by_display(merged.vr),
-            "mdx": by_display(merged.mdx),
-            "demucs": by_display(merged.demucs),
+            "vr": by_display(vr),
+            "mdx": by_display(mdx),
+            "demucs": by_display(demucs),
         }
 
     @staticmethod

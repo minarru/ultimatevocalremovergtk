@@ -90,8 +90,13 @@ def _upstream_fingerprint(
     vr: Mapping[str, Any],
     mdx: Mapping[str, Any],
     demucs: Mapping[str, Any],
-) -> Tuple[frozenset[str], frozenset[str], frozenset[str]]:
-    return (frozenset(vr), frozenset(mdx), frozenset(demucs))
+) -> Tuple[Any, ...]:
+    from .catalogue_types import freeze_files
+
+    def one(catalogue: Mapping[str, Any]) -> Tuple[Tuple[str, Tuple[Tuple[str, str], ...]], ...]:
+        return tuple((str(label), freeze_files(model)) for label, model in catalogue.items())
+
+    return (one(vr), one(mdx), one(demucs))
 
 
 def _collect_supplemental_sources(*, allow_network: bool) -> Tuple[

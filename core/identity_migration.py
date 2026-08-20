@@ -87,7 +87,8 @@ class IdentityMigrator:
         try:
             from .downloads import DownloadManager
 
-            manager = DownloadManager()
+            coordinator = getattr(self.repo, "catalogue", None)
+            manager = DownloadManager(coordinator=coordinator) if coordinator is not None else DownloadManager()
             manager.ensure_catalogues(allow_network=False)
             for display, payload in manager.apollo_download_list.items():
                 filenames = list(payload) if isinstance(payload, dict) else [payload]

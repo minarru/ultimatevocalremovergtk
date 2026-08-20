@@ -26,8 +26,12 @@ _real_socket_connect = socket.socket.connect
 _real_create_connection = socket.create_connection
 
 
-class BlockedNetworkAccess(AssertionError):
-    """Raised when a test attempts live outbound network access."""
+class BlockedNetworkAccess(BaseException):
+    """Raised when a test attempts live outbound network access.
+
+    Subclasses :class:`BaseException` so ``except Exception`` in fetch
+    fallbacks cannot swallow a live-network violation.
+    """
 
 
 def _is_loopback(host: object) -> bool:
@@ -62,7 +66,7 @@ def _blocked(address: object) -> BlockedNetworkAccess:
         "Tests must not do real HTTP. Patch the importing module's own name "
         "(e.g. core.politrees_catalog._urlopen), not core.mdx_config_fetch._urlopen "
         "— modules bind these helpers by value. Set UVR_TESTS_ALLOW_NETWORK=1 to "
-        "bypass this guard while debugging."
+        "bypass this guard while debugging. UVR_NET_GUARD_ARMED=1"
     )
 
 

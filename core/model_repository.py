@@ -36,7 +36,7 @@ class ModelRepository:
     once and shared by every :class:`ModelConfig` built for a run.
     """
 
-    def __init__(self):
+    def __init__(self, *, catalogue: Any = None):
         self.vr_hash_MAPPER: dict = {}
         self.mdx_hash_MAPPER: dict = {}
         self.mdx_name_select_MAPPER: dict = {}
@@ -53,12 +53,32 @@ class ModelRepository:
         self._models_changed_lock = threading.Lock()
         self._notifying_models_changed = False
         self._inventory_generation = 0
+        self._naming_revision = 0
+        self._catalogue = catalogue
         self.reload_mappers()
 
     @property
     def inventory_generation(self) -> int:
         """Monotonic token invalidating previously resolved effective plans."""
         return self._inventory_generation
+
+    @property
+    def naming_revision(self) -> int:
+        return self._naming_revision
+
+    @property
+    def catalogue(self) -> Any:
+        return self._catalogue
+
+    @property
+    def catalogue_revision(self) -> str:
+        coordinator = self._catalogue
+        if coordinator is None:
+            return ""
+        snapshot = getattr(coordinator, "_latest", None)
+        revision = getattr(snapshot, "revision", None)
+        digest = getattr(revision, "digest", None)
+        return digest() if callable(digest) else ""
 
     # -- Change notification ----------------------------------------------------
 
@@ -102,10 +122,9 @@ class ModelRepository:
 
     def reload_mappers(self) -> None:
         from .debug_log import debug
-        from .model_display import clear_display_cache
 
         debug("model", "reload_mappers")
-        clear_display_cache()
+        self._naming_revision += 1
         for attr, path in (
             ("vr_hash_MAPPER", paths.VR_HASH_JSON),
             ("mdx_hash_MAPPER", paths.MDX_HASH_JSON),
@@ -157,16 +176,28 @@ class ModelRepository:
         return _canonical_model_tags("mdx", self.list_mdx_models(), MDX_ARCH_TYPE, self)
 
     def mdx_catalogue_display_index(self, *, allow_network: bool = False) -> Dict[str, str]:
+        coordinator = self._catalogue
+        if coordinator is not None:
+            snapshot = coordinator.ensure(vip=True, allow_network=allow_network)
+            return dict(snapshot.display_index_mdx)
         from .model_display import load_mdx_catalog_display_index
 
         return load_mdx_catalog_display_index(allow_network=allow_network)
 
     def vr_catalogue_display_index(self, *, allow_network: bool = False) -> Dict[str, str]:
+        coordinator = self._catalogue
+        if coordinator is not None:
+            snapshot = coordinator.ensure(vip=True, allow_network=allow_network)
+            return dict(snapshot.display_index_vr)
         from .model_display import load_vr_catalog_display_index
 
         return load_vr_catalog_display_index(allow_network=allow_network)
 
     def demucs_catalogue_display_index(self, *, allow_network: bool = False) -> Dict[str, str]:
+        coordinator = self._catalogue
+        if coordinator is not None:
+            snapshot = coordinator.ensure(vip=True, allow_network=allow_network)
+            return dict(snapshot.display_index_demucs)
         from .model_display import load_demucs_catalog_display_index
 
         return load_demucs_catalog_display_index(allow_network=allow_network)
@@ -224,10 +255,9 @@ class ModelRepository:
     def invalidate_models(self) -> None:
         """The set of model files on disk changed: drop every derived cache.
 
-        The single entry point for that event. ``reload_mappers`` already
-        chains ``clear_display_cache`` -> ``invalidate_catalogue_merge``, so
-        this covers the dry-check pools, the ephemeral hash cache, the hash and
-        name mappers, and the display/catalogue merges together.
+        The single entry point for that event. ``reload_mappers`` increments
+        the naming revision without remeshing catalogue sources. Display
+        indexes come from the coordinator snapshot when one is injected.
 
         Clearing ``model_hash_table`` is cheap despite appearances: every entry
         it holds is also in the persistent stat-guarded table, so refilling

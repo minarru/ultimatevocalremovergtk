@@ -229,5 +229,65 @@ class CatalogueListenerWiringTests(unittest.TestCase):
         )
 
 
+class PinnedSnapshotDeltaTests(unittest.TestCase):
+    def test_source_delta_marks_pending_without_rebuild(self) -> None:
+        from core.catalogue_types import CatalogueDelta, DeltaKind
+        from ui.download_center import DownloadCenterWindow
+
+        win = _bare_window()
+        win._pending_source_delta = False
+        win._rebuild_catalogue = mock.MagicMock()
+        win._schedule_catalogue_row_refresh = mock.MagicMock()
+
+        delta = CatalogueDelta(kind=DeltaKind.SOURCES_CHANGED, added={"mdx": ("New",)})
+        DownloadCenterWindow._on_catalogue_delta(win, delta)
+
+        self.assertTrue(win._pending_source_delta)
+        win._rebuild_catalogue.assert_not_called()
+        win._schedule_catalogue_row_refresh.assert_not_called()
+
+    def test_identity_delta_uses_incremental_removal(self) -> None:
+        from core.catalogue_types import CatalogueDelta, DeltaKind
+        from ui.download_center import DownloadCenterWindow
+
+        win = _bare_window()
+        win._schedule_catalogue_row_refresh = mock.MagicMock()
+        delta = CatalogueDelta(
+            kind=DeltaKind.IDENTITY_REFINED, removed={"mdx": ("Rehosted Copy",)}
+        )
+        DownloadCenterWindow._on_catalogue_delta(win, delta)
+        win._schedule_catalogue_row_refresh.assert_called_once_with()
+
+    def test_queue_resolve_uses_pinned_snapshot_not_live_manager(self) -> None:
+        from ui.download_center import DownloadCenterWindow
+
+        win = _bare_window()
+        win._pinned_snapshot = mock.MagicMock()
+        win._pinned_snapshot.vr = {}
+        win._pinned_snapshot.mdx = {"Pinned": {"p.ckpt": "https://pin/p.ckpt"}}
+        win._pinned_snapshot.demucs = {}
+        win._pinned_snapshot.apollo = {}
+        win.manager.mdx_download_list = {"Live": {"l.ckpt": "https://live/l.ckpt"}}
+        win.manager.resolve.return_value = [("https://pin/p.ckpt", "/tmp/p.ckpt")]
+        jobs = DownloadCenterWindow._resolve_pinned(win, "Pinned", MDX_ARCH_TYPE)
+        win.manager.resolve.assert_called_once()
+        kwargs = win.manager.resolve.call_args
+        self.assertEqual(kwargs.kwargs.get("catalogue") or kwargs[1].get("catalogue"), {"Pinned": {"p.ckpt": "https://pin/p.ckpt"}})
+        self.assertEqual(jobs, [("https://pin/p.ckpt", "/tmp/p.ckpt")])
+
+    def test_present_adopts_pending_source_delta(self) -> None:
+        from ui.download_center import DownloadCenterWindow
+
+        win = _bare_window()
+        win.window = mock.MagicMock()
+        win._available = {MDX_ARCH_TYPE: ["Still available"]}
+        win._pending_source_delta = True
+        win.start_refresh = mock.MagicMock()
+        win._apply_download_completion_refresh = mock.MagicMock()
+        DownloadCenterWindow.present(win)
+        win.start_refresh.assert_called_once_with()
+        win._apply_download_completion_refresh.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

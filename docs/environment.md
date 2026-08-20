@@ -116,6 +116,7 @@ resolved-job and blocking-runner APIs in `core`; no import trampoline remains.
 
 ```bash
 uvr models list --family mdx
+uvr models list --all-known
 uvr models show mdx:UVR-MDX-NET-Inst_HQ_4
 uvr devices list
 

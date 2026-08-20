@@ -38,4 +38,10 @@ GTK Save stems persist the same `process.stem_focus` field. `--profile gui` inhe
 
 `--vocal-split` is still a model id. Splitter filenames stay Lead / Backing Vocals. `--main-stem` is still an ensemble pair id (`vocals_instrumental`, `karaoke`, …).
 
+## Models
+
+`uvr models list` prints **installed** checkpoints (filesystem inventory). Catalogue-only aliases used for saved-reference resolution are omitted unless you pass `--all-known`.
+
+`uvr models catalog` / `download` share one command-scoped catalogue coordinator and close it on exit. If a live refresh fails, they continue with the last good mixed-age snapshot and print a stale/partial warning (human stderr, `catalogue_status` in JSONL). They fail only when no usable snapshot or requested entry exists.
+
 `uvr models list` / `show` JSON keeps native yaml/hash `primary_stem` keys. The human table pretty-prints known aliases.

@@ -38,7 +38,7 @@ class AccessPolicyTests(unittest.TestCase):
 
     def test_load_mdx_catalog_index_default_may_use_network(self) -> None:
         from core.mdx_c_registry import load_mdx_catalog_index
-        with patch("core.mdx_c_registry.load_politrees_links") as load:
+        with patch("core.politrees_catalog.load_politrees_links") as load:
             load.return_value = {}
             load_mdx_catalog_index()
         load.assert_called()
@@ -48,7 +48,7 @@ class AccessPolicyTests(unittest.TestCase):
     def test_load_mdx_catalog_index_honors_offline_policy(self) -> None:
         from core.mdx_c_registry import load_mdx_catalog_index
         with access_policy(allow_network=False, allow_metadata_writes=False):
-            with patch("core.mdx_c_registry.load_politrees_links") as load:
+            with patch("core.politrees_catalog.load_politrees_links") as load:
                 load.return_value = {}
                 load_mdx_catalog_index()
         self.assertEqual(load.call_args.kwargs.get("allow_network"), False)
