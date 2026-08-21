@@ -200,7 +200,9 @@ def _apply_entry_meta(entry: ModelEntry, meta: Any) -> None:
     intent = str(getattr(meta, "intent", "") or "")
     if intent and intent != INTENT_UNKNOWN and entry.name_intent == "unknown":
         entry.name_intent = intent
-        supplied = True
+        # Deliberately not `supplied`: intent alone cannot resolve a backend
+        # focus, so claiming provenance for it would let _flag_mismatches
+        # compare a real intent against an unknown backend and invent a flag.
     if supplied and entry.metadata_source in ("", "unavailable"):
         entry.metadata_source = "catalogue_meta"
 
@@ -221,6 +223,10 @@ class FetchPolicy:
     allow_network: bool = True
     refresh: bool = False
     max_age: float = CACHE_MAX_AGE_SECONDS
+    #: Whether this run may write into runtime model config storage. --check
+    #: promises to write nothing, and fetch_mdx_config_url writes a yaml into
+    #: paths.MDX_C_CONFIG_PATH -- inside the repo in the portable dev layout.
+    allow_metadata_writes: bool = True
 
 
 #: Used by callers that do not care -- online, cache-respecting, TTL'd.
@@ -262,6 +268,7 @@ def _fetch_cached(
             allow_network=policy.allow_network if allow_network is None else allow_network,
             refresh=refresh or policy.refresh,
             max_age=policy.max_age,
+            allow_metadata_writes=policy.allow_metadata_writes,
         )
 
     cache_path = _cache_path(cache_dir, url, filename)
@@ -420,7 +427,10 @@ def _build_catalogue_context(
 ) -> CatalogueContext:
     if allow_network is not None:
         policy = FetchPolicy(
-            allow_network=allow_network, refresh=policy.refresh, max_age=policy.max_age
+            allow_network=allow_network,
+            refresh=policy.refresh,
+            max_age=policy.max_age,
+            allow_metadata_writes=policy.allow_metadata_writes,
         )
     remote_vr = _load_json_cache(
         _POLITREES_VR_DATA_URL, POLITREES_CACHE_DIR, "vr_model_data.json", policy=policy
@@ -582,6 +592,9 @@ def _is_vocals_instrumental_pair(instruments: List[str]) -> bool:
 def _flag_mismatches(entry: ModelEntry) -> List[str]:
     if not entry.metadata_source or entry.metadata_source == "unavailable":
         return []
+    if not entry.backend_focus or entry.backend_focus == "unknown":
+        # No backend to disagree with; every comparison below would be noise.
+        return []
     flags: List[str] = []
     intent = entry.name_intent
     focus = entry.backend_focus
@@ -626,6 +639,22 @@ def _yaml_paths(yaml_name: str, yaml_url: str = "") -> List[str]:
     return candidates
 
 
+def _yaml_source_label(yaml_name: str, config_path: str) -> str:
+    """Provenance label for a resolved config, keyed on where it now lives.
+
+    Must be a pure function of the final location: anything that depends on
+    whether *this* run downloaded it changes between runs and shows up as
+    catalogue drift.
+
+    "bundled_yaml" means "resolved from the local config store", which holds
+    both shipped configs and ones core downloaded earlier; the two are not
+    distinguishable after the fact. "remote_yaml" means this script fetched it
+    into its own cache.
+    """
+    where = "remote_yaml" if YAML_CACHE_DIR in config_path else "bundled_yaml"
+    return f"{where}:{yaml_name}"
+
+
 def _fetch_yaml(
     url: str, yaml_name: str, *, policy: FetchPolicy = DEFAULT_FETCH_POLICY
 ) -> Optional[str]:
@@ -655,7 +684,10 @@ def _load_yaml_meta(
 ) -> Tuple[List[str], str, str, str]:
     if allow_network is not None:
         policy = FetchPolicy(
-            allow_network=allow_network, refresh=policy.refresh, max_age=policy.max_age
+            allow_network=allow_network,
+            refresh=policy.refresh,
+            max_age=policy.max_age,
+            allow_metadata_writes=policy.allow_metadata_writes,
         )
     if not yaml_name:
         return [], "", "", ""
@@ -667,22 +699,22 @@ def _load_yaml_meta(
 
     source = ""
     if config_path:
-        source = (
-            f"remote_yaml:{yaml_name}"
-            if YAML_CACHE_DIR in config_path
-            else f"bundled_yaml:{yaml_name}"
-        )
+        source = _yaml_source_label(yaml_name, config_path)
     elif yaml_url:
-        if policy.allow_network:
+        if policy.allow_network and policy.allow_metadata_writes:
             # fetch_mdx_config_url writes into runtime model config storage, so
-            # it must never run for a read-only offline report.
+            # it must never run for a read-only offline or --check report.
             from core.mdx_config_fetch import fetch_mdx_config_url
 
             if fetch_mdx_config_url(yaml_name, yaml_url):
                 dest = os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name)
                 if os.path.isfile(dest):
                     config_path = dest
-                    source = f"remote_yaml:{yaml_name}"
+                    # Same rule as the on-disk lookup above. Labelling this
+                    # "remote_yaml" made the value flip to "bundled_yaml" on the
+                    # next run, once the file was found in place -- which reads
+                    # as drift to --check.
+                    source = _yaml_source_label(yaml_name, config_path)
         if not config_path:
             # Not gated on allow_network: _fetch_cached honours the policy
             # itself, and offline it is the only thing that reads the cache.
@@ -1582,9 +1614,19 @@ def _publication_verdict(
     return PublicationVerdict(ok=True)
 
 
+def _policy_for(args: argparse.Namespace) -> FetchPolicy:
+    """Fetch policy implied by the CLI flags."""
+    return FetchPolicy(
+        allow_network=not args.offline,
+        refresh=args.refresh,
+        # --check must leave the tree exactly as it found it.
+        allow_metadata_writes=not args.check,
+    )
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_args(argv)
-    policy = FetchPolicy(allow_network=not args.offline, refresh=args.refresh)
+    policy = _policy_for(args)
     ctx = _build_catalogue_context(policy=policy)
     snapshot, payloads = _snapshot_and_payloads(allow_network=policy.allow_network)
     entries = _entries_from_snapshot(snapshot, payloads, ctx, policy=policy)
@@ -1597,21 +1639,33 @@ def main(argv: Optional[List[str]] = None) -> int:
         allow_degraded=args.allow_degraded,
     )
     if not verdict.ok:
-        print(
-            f"Refusing to write {OUTPUT_PATH}: {verdict.reason}.\n"
-            "Pass --allow-degraded if the catalogue really did shrink.",
-            file=sys.stderr,
-        )
+        if args.check:
+            print(
+                f"Cannot judge {OUTPUT_PATH}: {verdict.reason}.\n"
+                "This run's data is too degraded to tell drift from a bad fetch.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"Refusing to write {OUTPUT_PATH}: {verdict.reason}.\n"
+                "Pass --allow-degraded if the catalogue really did shrink.",
+                file=sys.stderr,
+            )
         return 2
 
     rendered = _render(
         entries, unsupported_count=unsupported, report=getattr(snapshot, "report", None)
     )
-    tsv_text = (
-        _reference_tsv_text(ctx.community_by_file)
-        if args.write_tsv and ctx.community_by_file
-        else ""
-    )
+    tsv_text = ""
+    if args.write_tsv:
+        if ctx.community_by_file:
+            tsv_text = _reference_tsv_text(ctx.community_by_file)
+        else:
+            print(
+                f"--write-tsv had no community data; leaving {REFERENCE_TSV_PATH} alone "
+                "(the models.txt fetch produced nothing).",
+                file=sys.stderr,
+            )
 
     if args.check:
         drift = []
@@ -1622,7 +1676,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         if drift:
             for path in drift:
                 print(f"Out of date: {path}", file=sys.stderr)
-            print("Regenerate with: python scripts/generate_models_catalogue.py", file=sys.stderr)
+            regenerate = "python scripts/generate_models_catalogue.py"
+            if REFERENCE_TSV_PATH in drift:
+                regenerate += " --write-tsv"
+            print(f"Regenerate with: {regenerate}", file=sys.stderr)
             return 1
         print(f"Up to date: {OUTPUT_PATH}")
         return 0

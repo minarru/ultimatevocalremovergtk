@@ -1033,6 +1033,200 @@ class ProvenanceBlockTests(unittest.TestCase):
         self.assertIn("Total catalogue entries", text)
 
 
+class FabricatedFlagTests(unittest.TestCase):
+    """Metadata that cannot resolve a backend must not produce mismatch flags."""
+
+    def test_intent_alone_is_not_resolved_metadata(self) -> None:
+        from core.catalog_sources import EntryMeta
+
+        entry = catalogue.ModelEntry(
+            source="mvsepless", family="Roformer",
+            catalogue_label="Some Model", weight_file="m.ckpt", name_intent="unknown",
+        )
+        entry.metadata_source = "unavailable"
+        catalogue._apply_entry_meta(
+            entry, EntryMeta(label="L", display="L", arch="Roformer", intent="vocals")
+        )
+        self.assertEqual(entry.metadata_source, "unavailable")
+
+    def test_stems_still_count_as_resolved_metadata(self) -> None:
+        from core.catalog_sources import EntryMeta
+
+        entry = catalogue.ModelEntry(
+            source="mvsepless", family="Roformer",
+            catalogue_label="Some Model", weight_file="m.ckpt",
+        )
+        entry.metadata_source = "unavailable"
+        catalogue._apply_entry_meta(
+            entry,
+            EntryMeta(label="L", display="L", arch="Roformer", stems=["vocals", "other"]),
+        )
+        self.assertEqual(entry.metadata_source, "catalogue_meta")
+
+    def test_unknown_backend_focus_produces_no_mismatch_flags(self) -> None:
+        """You cannot detect a mismatch against a backend you could not determine."""
+        entry = catalogue.ModelEntry(
+            source="mvsepless", family="Roformer",
+            catalogue_label="Some Model", weight_file="m.ckpt", name_intent="vocals",
+        )
+        entry.metadata_source = "catalogue_meta"
+        entry.backend_focus = "unknown"
+        self.assertEqual(catalogue._flag_mismatches(entry), [])
+
+    def test_intent_only_entry_ends_up_unflagged(self) -> None:
+        from core.catalog_sources import EntryMeta
+
+        entry = catalogue.ModelEntry(
+            source="mvsepless", family="Roformer",
+            catalogue_label="Some Model", weight_file="m.ckpt", name_intent="unknown",
+        )
+        entry.metadata_source = "unavailable"
+        catalogue._apply_entry_meta(
+            entry, EntryMeta(label="L", display="L", arch="Roformer", intent="vocals")
+        )
+        catalogue._finalize_entry(entry)
+        self.assertEqual(entry.flags, [])
+
+
+class YamlProvenanceStabilityTests(unittest.TestCase):
+    """The metadata label must not flip between runs, or --check sees drift."""
+
+    def test_a_downloaded_config_reports_the_same_source_on_the_next_run(self) -> None:
+        import shutil
+        import tempfile
+        from unittest import mock
+
+        store = tempfile.mkdtemp(prefix="uvr-cfgstore-")
+        self.addCleanup(shutil.rmtree, store, ignore_errors=True)
+        url = "https://example.invalid/c/m.yaml"
+        body = "training:\n  instruments: [vocals, other]\n  target_instrument: other\n"
+
+        def fake_fetch(name: str, _url: str) -> bool:
+            with open(os.path.join(store, name), "w", encoding="utf-8") as handle:
+                handle.write(body)
+            return True
+
+        with mock.patch("core.paths.MDX_C_CONFIG_PATH", store), mock.patch(
+            "core.mdx_config_fetch.fetch_mdx_config_url", fake_fetch
+        ):
+            first = catalogue._load_yaml_meta("m.yaml", url)[3]
+            second = catalogue._load_yaml_meta("m.yaml", url)[3]
+
+        self.assertEqual(first, second, "provenance label flipped between runs")
+
+
+class CheckContractTests(unittest.TestCase):
+    """--check must be genuinely read-only and must not lie about coverage."""
+
+    def test_check_forbids_metadata_writes(self) -> None:
+        """fetch_mdx_config_url writes yaml into the repo in the dev layout."""
+        policy = catalogue._policy_for(
+            catalogue._parse_args(["--check"])
+        )
+        self.assertFalse(policy.allow_metadata_writes)
+
+    def test_a_normal_run_still_allows_metadata_writes(self) -> None:
+        policy = catalogue._policy_for(catalogue._parse_args([]))
+        self.assertTrue(policy.allow_metadata_writes)
+
+    def test_load_yaml_meta_does_not_fetch_configs_when_writes_are_denied(self) -> None:
+        from unittest import mock
+
+        called = []
+
+        def spy(name: str, url: str) -> bool:
+            called.append(name)
+            return False
+
+        policy = catalogue.FetchPolicy(allow_network=True, allow_metadata_writes=False)
+        with mock.patch("core.mdx_config_fetch.fetch_mdx_config_url", spy), mock.patch(
+            "core.mdx_config_fetch._urlopen",
+            side_effect=urllib.error.URLError("blocked"),
+        ):
+            catalogue._load_yaml_meta(
+                "nope.yaml", "https://example.invalid/nope.yaml", policy=policy
+            )
+        self.assertEqual(called, [], "--check wrote a config into the model store")
+
+    def test_check_does_not_claim_to_refuse_a_write_it_never_makes(self) -> None:
+        import contextlib
+        import io
+        from unittest import mock
+
+        class _Snapshot:
+            vr: dict = {}
+            mdx: dict = {}
+            demucs: dict = {}
+            apollo: dict = {}
+            meta: dict = {}
+            unsupported: dict = {}
+            report = None
+
+        import tempfile
+
+        tmp = tempfile.mkdtemp(prefix="uvr-checkmsg-")
+        out = os.path.join(tmp, "models-catalogue.md")
+        with open(out, "w", encoding="utf-8") as handle:
+            handle.write("## Summary\n\n- Total catalogue entries: **400**\n")
+
+        stderr = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(catalogue, "OUTPUT_PATH", out))
+            stack.enter_context(
+                mock.patch.object(catalogue, "_build_catalogue_context",
+                                  lambda **k: catalogue.CatalogueContext())
+            )
+            stack.enter_context(
+                mock.patch.object(catalogue, "_snapshot_and_payloads",
+                                  lambda **k: (_Snapshot(), ({}, {}, {}, {})))
+            )
+            stack.enter_context(contextlib.redirect_stderr(stderr))
+            rc = catalogue.main(["--check"])
+
+        self.assertEqual(rc, 2)
+        message = stderr.getvalue()
+        self.assertNotIn("Refusing to write", message)
+        self.assertIn("cannot judge", message.lower())
+
+    def test_write_tsv_without_community_data_is_reported_not_silent(self) -> None:
+        import contextlib
+        import io
+        import tempfile
+        from unittest import mock
+
+        class _Snapshot:
+            vr = {"M": "m.pth"}
+            mdx: dict = {}
+            demucs: dict = {}
+            apollo: dict = {}
+            meta: dict = {}
+            unsupported: dict = {}
+            report = None
+
+        tmp = tempfile.mkdtemp(prefix="uvr-tsvwarn-")
+        stderr = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch.object(catalogue, "OUTPUT_PATH", os.path.join(tmp, "c.md"))
+            )
+            stack.enter_context(
+                mock.patch.object(catalogue, "REFERENCE_TSV_PATH", os.path.join(tmp, "r.tsv"))
+            )
+            stack.enter_context(
+                mock.patch.object(catalogue, "_build_catalogue_context",
+                                  lambda **k: catalogue.CatalogueContext())
+            )
+            stack.enter_context(
+                mock.patch.object(catalogue, "_snapshot_and_payloads",
+                                  lambda **k: (_Snapshot(), ({}, {}, {}, {})))
+            )
+            stack.enter_context(contextlib.redirect_stderr(stderr))
+            rc = catalogue.main(["--write-tsv"])
+
+        self.assertEqual(rc, 0)
+        self.assertIn("tsv", stderr.getvalue().lower())
+
+
 class EntryMetaOverlayTests(unittest.TestCase):
     def test_fills_blank_stems_target_and_unknown_intent(self) -> None:
         from core.catalog_sources import EntryMeta
@@ -1175,7 +1369,10 @@ class FetchHelperTests(unittest.TestCase):
             )
         self.assertEqual(instruments, ["vocals", "other"])
         self.assertEqual(target, "vocals")
-        self.assertEqual(source, f"remote_yaml:{yaml_name}")
+        # Labelled by where it now lives, not by whether this run fetched it:
+        # the config store label has to match what the next run will report,
+        # or the difference reads as catalogue drift.
+        self.assertEqual(source, f"bundled_yaml:{yaml_name}")
 
 
 if __name__ == "__main__":
