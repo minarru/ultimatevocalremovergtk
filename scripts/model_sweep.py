@@ -847,6 +847,47 @@ def sweep(
     return 1 if any(is_failure(v, strict=strict) for v in verdicts) else 0
 
 
+def venv_python() -> Optional[str]:
+    """Project venv interpreter, if it exists on disk."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    venv_dir = os.environ.get("UVR_VENV_DIR") or os.path.join(root, ".venv")
+    candidate = os.path.join(venv_dir, "bin", "python")
+    return candidate if os.path.isfile(candidate) else None
+
+
+def ensure_sweep_interpreter(*, allow_reexec: bool) -> None:
+    """Refuse to keep a system Python that cannot import pip deps.
+
+    ``python scripts/model_sweep.py`` often resolves to distro Python, which
+    may have numpy but not ``soundfile``. Children inherit ``sys.executable``,
+    so the clip-writer crash is only the first failure. Re-exec into ``.venv``
+    when this is a real CLI invocation; in-process tests pass ``argv`` and
+    must not be replaced.
+    """
+    import importlib.util
+
+    if importlib.util.find_spec("soundfile") is not None:
+        return
+    if not allow_reexec:
+        return
+    venv = venv_python()
+    # Do not realpath(): .venv/bin/python is a symlink to the system
+    # interpreter, so realpath would look like we are already there.
+    if venv:
+        venv_bin = os.path.dirname(os.path.abspath(venv))
+        here_bin = os.path.dirname(os.path.abspath(sys.executable))
+        if here_bin != venv_bin:
+            os.execv(venv, [venv, os.path.abspath(__file__), *sys.argv[1:]])
+    print(
+        "soundfile is not importable in this interpreter.\n"
+        "The sweep needs the project venv (pip deps live there, not on system Python).\n"
+        "Run:  ./install_packages.sh\n"
+        "      .venv/bin/python scripts/model_sweep.py ...",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+
+
 def build_parser():
     import argparse
 
@@ -855,7 +896,9 @@ def build_parser():
         description=(
             "Local-only: start a real separation for every model installed on "
             "this machine. Weights are gitignored, so this is not part of CI. "
-            "The parent stays torch-free; each job runs in its own subprocess."
+            "The parent stays torch-free; each job runs in its own subprocess. "
+            "If this interpreter cannot import soundfile, the CLI re-execs "
+            "into .venv/bin/python."
         ),
         epilog=(
             "Settings and GPU:\n"
@@ -1005,6 +1048,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     if args.run_job:
         return run_child(args.run_job)
+    ensure_sweep_interpreter(allow_reexec=argv is None)
 
     from core import ModelRepository
     from core.settings import Settings
