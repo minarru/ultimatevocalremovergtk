@@ -16,18 +16,11 @@ See docs/models.md for the unsupported-model classes this exists to triage.
 from __future__ import annotations
 
 import gc
-import io
 import json
 import os
-import pickle
-import struct
 import sys
-import zipfile
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
-
-#: ``read(start, end) -> bytes`` over a local file or an HTTP range request.
-RangeReader = Callable[[int, int], bytes]
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -37,146 +30,27 @@ def _add_repo_to_path() -> None:
     if _REPO_ROOT not in sys.path:
         sys.path.insert(0, _REPO_ROOT)
 
-_SAFETENSORS_LEN_BYTES = 8
 
-#: Enough to cover a zip end-of-central-directory record plus the directory of
-#: a checkpoint with a few thousand tensors.
-_ZIP_TAIL_BYTES = 256 * 1024
+_add_repo_to_path()
 
-#: Keys a training checkpoint wraps its weights in.
-_STATE_DICT_WRAPPERS = ("state_dict", "model_state_dict", "model", "weights")
+# Checkpoint and catalogue plumbing shared with scripts/stem_semantics_audit.py.
+# It lives in a neutral module so neither CLI has to import the other's
+# internals; this file keeps architecture construction, forward probing,
+# verdicts and reporting.
+from scripts.model_tool_support import (  # noqa: E402
+    CatalogueTarget,
+    cache_dir,
+    cached_remote_checkpoint_keys,
+    fetch_config,
+    iter_catalogue_targets,
+    local_checkpoint_keys,
+    remote_checkpoint_keys,
+    remote_size,
+    resolve_target,
+)
 
-
-def safetensors_header_span(head: bytes) -> Tuple[int, int]:
-    """Return ``(start, end)`` byte offsets of a ``.safetensors`` JSON header.
-
-    The first 8 bytes are a little-endian u64 header length, so this needs only
-    that prefix to say which range to fetch next.
-    """
-    if len(head) < _SAFETENSORS_LEN_BYTES:
-        raise ValueError("need at least 8 bytes to read a safetensors header length")
-    (length,) = struct.unpack("<Q", head[:_SAFETENSORS_LEN_BYTES])
-    return _SAFETENSORS_LEN_BYTES, _SAFETENSORS_LEN_BYTES + int(length)
-
-
-def parse_safetensors_header(blob: bytes) -> List[str]:
-    """Return the tensor names declared in a ``.safetensors`` header."""
-    start, end = safetensors_header_span(blob)
-    raw = blob[start:end]
-    if len(raw) < end - start:
-        raise ValueError("safetensors header truncated")
-    try:
-        header = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"safetensors header is not JSON: {exc}") from exc
-    if not isinstance(header, dict):
-        raise ValueError("safetensors header is not a JSON object")
-    return [key for key in header if key != "__metadata__"]
-
-
-class _AttrDict(dict):
-    """A dict that tolerates attribute assignment.
-
-    ``Module.state_dict()`` hangs ``_metadata`` off the OrderedDict instance, so
-    the pickle carries a BUILD opcode that sets ``__dict__`` — which a plain
-    ``dict`` rejects. Every real checkpoint hits this.
-    """
-
-
-class _StubUnpickler(pickle.Unpickler):
-    """Rebuild a checkpoint's key structure without importing or executing anything.
-
-    ``find_class`` never resolves a real symbol and ``persistent_load`` never
-    touches storage, so the pickle's dict keys survive while every value
-    collapses to an inert placeholder. That is all a key diff needs.
-    """
-
-    def find_class(self, module: str, name: str) -> Any:  # noqa: D102
-        if (module, name) == ("collections", "OrderedDict"):
-            return _AttrDict
-        return lambda *args, **kwargs: None
-
-    def persistent_load(self, pid: Any) -> Any:  # noqa: D102
-        return None
-
-
-def parse_torch_pickle_keys(data: bytes) -> List[str]:
-    """Return the ``state_dict`` keys held in a torch ``data.pkl`` payload."""
-    try:
-        obj = _StubUnpickler(io.BytesIO(data)).load()
-    except Exception as exc:  # noqa: BLE001 - any malformed pickle is a probe failure
-        raise ValueError(f"could not read checkpoint pickle: {exc}") from exc
-    return _keys_of_state_dict(obj)
-
-
-def _keys_of_state_dict(obj: Any) -> List[str]:
-    """Pull the weight keys out of a checkpoint object, unwrapping if needed."""
-    if not isinstance(obj, dict):
-        raise ValueError(f"checkpoint root is {type(obj).__name__}, not a dict")
-    for wrapper in _STATE_DICT_WRAPPERS:
-        inner = obj.get(wrapper)
-        if isinstance(inner, dict) and inner:
-            return [str(key) for key in inner]
-    return [str(key) for key in obj]
-
-
-def _data_pkl_name(archive: zipfile.ZipFile) -> str:
-    """Name of the ``data.pkl`` member holding the checkpoint's key structure."""
-    names = [name for name in archive.namelist() if name.endswith("data.pkl")]
-    if not names:
-        raise ValueError("zip has no data.pkl entry")
-    return names[0]
-
-
-class _TailFile(io.RawIOBase):
-    """Seekable file-like view that pulls byte ranges on demand."""
-
-    def __init__(self, read: RangeReader, size: int) -> None:
-        self._read = read
-        self._size = size
-        self._pos = 0
-
-    def readable(self) -> bool:
-        return True
-
-    def seekable(self) -> bool:
-        return True
-
-    def seek(self, offset: int, whence: int = io.SEEK_SET) -> int:
-        if whence == io.SEEK_SET:
-            self._pos = offset
-        elif whence == io.SEEK_CUR:
-            self._pos += offset
-        else:
-            self._pos = self._size + offset
-        return self._pos
-
-    def tell(self) -> int:
-        return self._pos
-
-    def read(self, n: Optional[int] = -1) -> bytes:
-        # ``None`` and a negative size both mean "to EOF" per RawIOBase.
-        end = self._size if n is None or n < 0 else min(self._size, self._pos + n)
-        if end <= self._pos:
-            return b""
-        chunk = self._read(self._pos, end)
-        self._pos += len(chunk)
-        return chunk
-
-
-def torch_checkpoint_keys(read: RangeReader, size: int) -> List[str]:
-    """Return a torch checkpoint's ``state_dict`` keys, reading only its header.
-
-    ``read`` is a range reader over the checkpoint; zipfile seeks to the central
-    directory and the ``data.pkl`` entry, so the tensor payload is never fetched.
-    """
-    try:
-        with zipfile.ZipFile(_TailFile(read, size)) as archive:
-            return parse_torch_pickle_keys(archive.read(_data_pkl_name(archive)))
-    except zipfile.BadZipFile as exc:
-        raise ValueError(
-            f"not a zip archive (legacy torch pickle format?): {exc}"
-        ) from exc
+#: The probe's own name for a resolved catalogue entry.
+ProbeTarget = CatalogueTarget
 
 
 @dataclass(frozen=True)
@@ -553,84 +427,6 @@ def forward_probe(
     )
 
 
-@dataclass
-class ProbeTarget:
-    """A catalogue entry resolved to the URLs and metadata the probe needs."""
-
-    entry_id: str
-    label: str
-    model_type: str = ""
-    config_url: str = ""
-    checkpoint_url: str = ""
-    reason: str = ""
-
-    @property
-    def config_name(self) -> str:
-        from urllib.parse import unquote, urlparse
-
-        return os.path.basename(unquote(urlparse(self.config_url).path))
-
-
-def resolve_target(entry_id: str, catalogue: Optional[Dict[str, Any]] = None) -> ProbeTarget:
-    """Look up ``entry_id`` in the mvsepless catalogue.
-
-    ``catalogue`` is injectable so callers (and tests) can work offline.
-    """
-    _add_repo_to_path()
-
-    if catalogue is None:
-        from core.mvsepless_catalog import load_mvsepless_models
-
-        catalogue = load_mvsepless_models() or {}
-
-    entry = catalogue.get(entry_id)
-    if not isinstance(entry, dict):
-        raise KeyError(f"no catalogue entry {entry_id!r}")
-
-    return _target_from_entry(entry_id, entry)
-
-
-def _target_from_entry(entry_id: str, entry: Dict[str, Any]) -> ProbeTarget:
-    from core.mvsepless_catalog import classify_entry, entry_label
-
-    _supported, reason = classify_entry(entry_id, entry)
-    return ProbeTarget(
-        entry_id=entry_id,
-        label=entry_label(entry_id, entry),
-        model_type=str(entry.get("model_type") or ""),
-        config_url=str(entry.get("config_url") or ""),
-        checkpoint_url=str(entry.get("checkpoint_url") or ""),
-        reason=reason,
-    )
-
-
-def iter_catalogue_targets(
-    catalogue: Optional[Dict[str, Any]] = None, *, unsupported_only: bool = True
-) -> Iterator[ProbeTarget]:
-    """Yield a :class:`ProbeTarget` per mvsepless catalogue entry.
-
-    Defaults to the entries ``classify_entry`` marks unsupported — the actual
-    triage workload this script exists for. ``catalogue`` is injectable so
-    callers (and tests) can work offline, same as :func:`resolve_target`.
-    """
-    _add_repo_to_path()
-    from core.mvsepless_catalog import classify_entry
-
-    if catalogue is None:
-        from core.mvsepless_catalog import load_mvsepless_models
-
-        catalogue = load_mvsepless_models() or {}
-
-    for entry_id, entry in catalogue.items():
-        if not isinstance(entry, dict):
-            continue
-        if unsupported_only:
-            supported, _reason = classify_entry(entry_id, entry)
-            if supported:
-                continue
-        yield _target_from_entry(entry_id, entry)
-
-
 VERDICT_BUILDABLE = "buildable"
 VERDICT_BUILD_FAILED = "build-failed"
 VERDICT_FORWARD_FAILED = "forward-failed"
@@ -754,147 +550,6 @@ def render_report(result: ProbeResult) -> str:
     return "\n".join(lines)
 
 
-_HTTP_TIMEOUT_SECONDS = 30
-
-
-def _default_opener(request: Any) -> Any:
-    import urllib.request
-
-    return urllib.request.urlopen(request, timeout=_HTTP_TIMEOUT_SECONDS)
-
-
-def _request(url: str, headers: Dict[str, str]) -> Any:
-    import urllib.request
-
-    return urllib.request.Request(url, headers=headers)
-
-
-def http_range_reader(url: str, *, opener: Optional[Callable[[Any], Any]] = None) -> RangeReader:
-    """A :data:`RangeReader` backed by HTTP range requests.
-
-    ``start``/``end`` are half-open like every other reader here; HTTP ranges
-    are inclusive, hence the ``end - 1``.
-    """
-    fetch = opener or _default_opener
-
-    def read(start: int, end: int) -> bytes:
-        request = _request(url, {"Range": f"bytes={start}-{end - 1}"})
-        with fetch(request) as response:
-            return response.read()
-
-    return read
-
-
-def remote_size(url: str, *, opener: Optional[Callable[[Any], Any]] = None) -> int:
-    """Total size of a remote file, learned from a one-byte range request.
-
-    A range request rather than HEAD: redirect-heavy hosts answer it more
-    reliably, and ``Content-Range`` carries the total either way.
-    """
-    fetch = opener or _default_opener
-    request = _request(url, {"Range": "bytes=0-0"})
-    with fetch(request) as response:
-        content_range = response.headers.get("Content-Range") or ""
-    total = content_range.rpartition("/")[2].strip()
-    if not total.isdigit():
-        raise ValueError(f"server did not report a size for {url}")
-    return int(total)
-
-
-def remote_checkpoint_keys(url: str) -> List[str]:
-    """Fetch only a remote checkpoint's header and return its ``state_dict`` keys."""
-    read = http_range_reader(url)
-    if url.endswith(".safetensors"):
-        span = safetensors_header_span(read(0, _SAFETENSORS_LEN_BYTES))
-        return parse_safetensors_header(read(0, span[1]))
-    return torch_checkpoint_keys(read, remote_size(url))
-
-
-def _checkpoint_keys_cache_path(dest_dir: str) -> str:
-    return os.path.join(dest_dir, "checkpoint_keys.json")
-
-
-def _read_checkpoint_keys_cache(dest_dir: str) -> Dict[str, List[str]]:
-    try:
-        with open(_checkpoint_keys_cache_path(dest_dir), "r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-        if isinstance(payload, dict):
-            return payload
-    except (OSError, ValueError, TypeError):
-        pass
-    return {}
-
-
-def _write_checkpoint_keys_cache(dest_dir: str, payload: Dict[str, List[str]]) -> None:
-    try:
-        os.makedirs(dest_dir, exist_ok=True)
-        with open(_checkpoint_keys_cache_path(dest_dir), "w", encoding="utf-8") as handle:
-            json.dump(payload, handle)
-    except OSError:
-        pass
-
-
-def cached_remote_checkpoint_keys(url: str, dest_dir: str) -> List[str]:
-    """``remote_checkpoint_keys``, skipping the range-fetch on a repeat URL.
-
-    Checkpoint headers are presumed immutable once fetched — same assumption
-    ``_fetch_config`` makes for config yamls — so this caches with no TTL,
-    keyed by URL, in one JSON file under ``dest_dir``.
-    """
-    cache = _read_checkpoint_keys_cache(dest_dir)
-    cached = cache.get(url)
-    if cached is not None:
-        return cached
-    keys = remote_checkpoint_keys(url)
-    cache[url] = keys
-    _write_checkpoint_keys_cache(dest_dir, cache)
-    return keys
-
-
-def local_checkpoint_keys(path: str) -> List[str]:
-    """``state_dict`` keys of a checkpoint on disk, reading only its header."""
-
-    def read(start: int, end: int) -> bytes:
-        with open(path, "rb") as handle:
-            handle.seek(start)
-            return handle.read(end - start)
-
-    if path.endswith(".safetensors"):
-        span = safetensors_header_span(read(0, _SAFETENSORS_LEN_BYTES))
-        return parse_safetensors_header(read(0, span[1]))
-    return torch_checkpoint_keys(read, os.path.getsize(path))
-
-
-def _fetch_config(url: str, dest_dir: str) -> str:
-    """Download a yaml config (a few KB) into ``dest_dir`` and return the path."""
-    from urllib.parse import unquote, urlparse
-
-    name = os.path.basename(unquote(urlparse(url).path)) or "config.yaml"
-    os.makedirs(dest_dir, exist_ok=True)
-    dest = os.path.join(dest_dir, name)
-    if os.path.isfile(dest):
-        return dest
-    read = http_range_reader(url)
-    tmp_dest = f"{dest}.part"
-    try:
-        with open(tmp_dest, "wb") as handle:
-            handle.write(read(0, remote_size(url)))
-        os.replace(tmp_dest, dest)
-    finally:
-        try:
-            os.unlink(tmp_dest)
-        except FileNotFoundError:
-            pass
-    return dest
-
-
-def _cache_dir() -> str:
-    _add_repo_to_path()
-    from core import paths
-
-    return os.path.join(paths.CACHE_DIR, "model_probe")
-
-
 def probe(
     config_path: str,
     *,
@@ -975,7 +630,7 @@ def sweep_catalogue(
     :data:`VERDICT_PROBE_ERROR` result rather than aborting the whole sweep —
     the point of a sweep is a full verdict tally, not fail-fast.
     """
-    config_cache_dir = config_cache_dir or _cache_dir()
+    config_cache_dir = config_cache_dir or cache_dir()
     results: List[ProbeResult] = []
     total = len(targets)
     for index, target in enumerate(targets, 1):
@@ -983,7 +638,7 @@ def sweep_catalogue(
         try:
             if not target.config_url:
                 raise ValueError("catalogue entry has no config_url")
-            config_path = _fetch_config(target.config_url, config_cache_dir)
+            config_path = fetch_config(target.config_url, config_cache_dir)
             result = probe(
                 config_path,
                 entry_id=target.entry_id,
@@ -1097,7 +752,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             targets,
             check_keys=args.check_keys,
             seconds=args.seconds,
-            checkpoint_keys_cache_dir=_cache_dir(),
+            checkpoint_keys_cache_dir=cache_dir(),
         )
         print(render_summary(results))
         if args.json_path:
@@ -1115,7 +770,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not target.config_url:
             print(f"{target.label}: catalogue entry has no config_url")
             return 2
-        config_path = _fetch_config(target.config_url, _cache_dir())
+        config_path = fetch_config(target.config_url, cache_dir())
         result = probe(
             config_path,
             entry_id=target.entry_id,
@@ -1125,7 +780,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             checkpoint_path=args.checkpoint,
             seconds=args.seconds,
             model_type_hint=target.model_type,
-            checkpoint_keys_cache_dir=_cache_dir(),
+            checkpoint_keys_cache_dir=cache_dir(),
         )
 
     print(render_report(result))

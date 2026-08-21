@@ -91,12 +91,16 @@ scripts/*
 !scripts/generate_models_catalogue.py
 !scripts/model_sweep.py
 !scripts/model_probe.py
+!scripts/model_tool_support.py
 !scripts/stem_semantics_audit.py
 
-# Fetched Politrees yaml cache for catalogue regeneration
+# Legacy catalogue caches. These moved under CACHE_DIR; the entries stay so a
+# checkout that still has the old directories does not show them as untracked.
+# Safe to delete: nothing reads them any more.
 docs/.yaml_cache/
 docs/.politrees_cache/
 docs/.community_cache/
+
 
 # Generated GResource manifest (rebuilt by resources/compile_resources.sh)
 resources/uvr.gresource.xml

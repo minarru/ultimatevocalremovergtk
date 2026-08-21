@@ -321,31 +321,10 @@ class ScratchEnvTests(unittest.TestCase):
         self.assertEqual(env["UVR_DATA_DIR"], "/scratch/data")
         self.assertEqual(env["UVR_SKIP_SEPARATE_WARMUP"], "1")
         self.assertEqual(env["UVR_DISABLE_POLITREES"], "1")
+        self.assertEqual(env["UVR_DISABLE_MVSEPLESS"], "1")
 
 
 class ChildHelperTests(unittest.TestCase):
-    def test_apply_overrides_handles_flat_and_dotted_keys(self) -> None:
-        from core.settings import Settings
-
-        settings = Settings()
-        model_sweep.apply_overrides(
-            settings,
-            {
-                "is_gpu_conversion": False,
-                "mdx_segment_size": 256,
-                "audio_tools.apollo_model": "apollo_universal_model.ckpt",
-            },
-        )
-        self.assertFalse(settings.process.use_gpu)
-        self.assertEqual(settings.mdx.segment_size, 256)
-        self.assertEqual(settings.audio_tools.apollo_model, "apollo_universal_model.ckpt")
-
-    def test_apply_overrides_raises_on_unmapped_flat_key(self) -> None:
-        from core.settings import Settings
-
-        with self.assertRaises(KeyError):
-            model_sweep.apply_overrides(Settings(), {"totally_made_up_key": 1})
-
     def test_collect_outputs_lists_audio_only(self) -> None:
         import tempfile
 
@@ -703,6 +682,60 @@ class RunChildTests(unittest.TestCase):
         fake_runner.start_resolved.assert_not_called()
 
 
+class ResultProtocolTests(unittest.TestCase):
+    """A malformed child result must be classified, not crash the parent."""
+
+    def test_reads_a_well_formed_result(self) -> None:
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "result.json")
+            with open(path, "w") as handle:
+                json.dump({"ok": True, "outputs": [["a.wav", 10]]}, handle)
+            self.assertEqual(model_sweep._read_result(path)["ok"], True)
+
+    def test_missing_result_is_none(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(model_sweep._read_result(os.path.join(tmp, "nope.json")))
+
+    def test_truncated_result_is_a_protocol_error_not_an_exception(self) -> None:
+        """A child killed mid-write used to take the whole sweep down."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "result.json")
+            with open(path, "w") as handle:
+                handle.write('{"ok": true, "outputs": [["a.wa')
+            result = model_sweep._read_result(path)
+        self.assertIsNotNone(result)
+        self.assertIn("protocol_error", result)
+
+    def test_protocol_error_classifies_as_a_failure(self) -> None:
+        verdict, detail = model_sweep.classify(
+            exit_code=0, result={"protocol_error": "bad json"}, timed_out=False
+        )
+        self.assertEqual(verdict, "FAIL(protocol)")
+        self.assertIn("bad json", detail)
+        self.assertTrue(model_sweep.is_failure(verdict, strict=False))
+
+    def test_result_is_written_atomically(self) -> None:
+        """No reader may observe a half-written result.json."""
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            model_sweep._write_result(tmp, {"ok": True, "outputs": []})
+            path = os.path.join(tmp, "result.json")
+            with open(path) as handle:
+                self.assertEqual(json.load(handle)["ok"], True)
+            # The temp file used for the swap must not be left behind.
+            leftovers = [n for n in os.listdir(tmp) if n != "result.json"]
+            self.assertEqual(leftovers, [])
+
+
 class SpawnChildProcessGroupTests(unittest.TestCase):
     """Fix round 1: a timed-out child must have its whole process group
     killed, not just the immediate process, since it can shell out to
@@ -908,6 +941,75 @@ class CliTests(unittest.TestCase):
     def test_no_cpu_retry_flag(self) -> None:
         args = model_sweep.build_parser().parse_args(["--no-cpu-retry"])
         self.assertFalse(args.cpu_retry)
+
+
+class ScratchCleanupTests(unittest.TestCase):
+    """main() must not leak its top-level uvr-sweep-* scratch directory."""
+
+    # main() asserts the sweep parent is torch-free. Another test module in the
+    # same process may already have imported torch, so the main() calls below
+    # hide it for the duration rather than weakening the production assert.
+
+    def _run_main(self, argv: List[str]) -> Tuple[int, str]:
+        from unittest import mock
+
+        captured: Dict[str, Any] = {}
+
+        def fake_sweep(jobs: Any, **kwargs: Any) -> int:
+            root = kwargs["root"]
+            captured["root"] = root
+            # The scratch tree really exists while the sweep is running.
+            self.assertTrue(os.path.isdir(root))
+            self.assertTrue(os.path.isfile(kwargs["settings_path"]))
+            self.assertTrue(os.path.isfile(kwargs["input_path"]))
+            return 0
+
+        job = model_sweep.SweepJob(id="fake", kind="mdx", method="mdx", model="Fake")
+        with mock.patch.object(model_sweep, "collect_installed", return_value=_installed()), \
+             mock.patch.object(model_sweep, "discover_jobs", return_value=[job]), \
+             mock.patch.object(model_sweep, "sweep", fake_sweep), \
+             mock.patch("core.ModelRepository"), \
+             mock.patch("core.settings.Settings.load"), \
+             mock.patch.dict(sys.modules):
+            sys.modules.pop("torch", None)
+            rc = model_sweep.main(argv)
+        return rc, captured["root"]
+
+    def test_main_removes_scratch_root_on_success(self) -> None:
+        rc, root = self._run_main([])
+        self.assertEqual(rc, 0)
+        self.assertFalse(os.path.exists(root), f"scratch dir leaked: {root}")
+
+    def test_keep_outputs_preserves_scratch_root(self) -> None:
+        rc, root = self._run_main(["--keep-outputs"])
+        self.assertEqual(rc, 0)
+        self.assertTrue(os.path.isdir(root), "--keep-outputs must preserve the scratch dir")
+        import shutil
+
+        shutil.rmtree(root, ignore_errors=True)
+
+    def test_scratch_root_removed_when_sweep_raises(self) -> None:
+        from unittest import mock
+
+        captured: Dict[str, Any] = {}
+
+        def boom(jobs: Any, **kwargs: Any) -> int:
+            captured["root"] = kwargs["root"]
+            raise RuntimeError("sweep exploded")
+
+        job = model_sweep.SweepJob(id="fake", kind="mdx", method="mdx", model="Fake")
+        with mock.patch.object(model_sweep, "collect_installed", return_value=_installed()), \
+             mock.patch.object(model_sweep, "discover_jobs", return_value=[job]), \
+             mock.patch.object(model_sweep, "sweep", boom), \
+             mock.patch("core.ModelRepository"), \
+             mock.patch("core.settings.Settings.load"), \
+             mock.patch.dict(sys.modules):
+            sys.modules.pop("torch", None)
+            with self.assertRaises(RuntimeError):
+                model_sweep.main([])
+        self.assertFalse(
+            os.path.exists(captured["root"]), "scratch dir leaked on exception"
+        )
 
 
 @unittest.skipUnless(

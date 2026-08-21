@@ -238,6 +238,9 @@ def classify(
         return TIMEOUT, ""
     if result is None:
         return f"CRASH(exit {exit_code})", ""
+    protocol_error = result.get("protocol_error")
+    if protocol_error:
+        return "FAIL(protocol)", str(protocol_error)
     if result.get("unrecognized"):
         return UNRECOGNIZED, "model hash not in the metadata tables"
 
@@ -345,28 +348,11 @@ def child_env(data_dir: str) -> Dict[str, str]:
     env["UVR_DATA_DIR"] = data_dir
     env["UVR_SKIP_SEPARATE_WARMUP"] = "1"
     env["UVR_DISABLE_POLITREES"] = "1"
+    env["UVR_DISABLE_MVSEPLESS"] = "1"
     return env
 
 
 AUDIO_SUFFIXES = (".wav", ".flac", ".mp3", ".aiff", ".ogg", ".opus")
-
-
-def apply_overrides(settings: Any, overrides: Dict[str, Any]) -> None:
-    """Apply job overrides. Dotted keys are nested paths; bare keys are flat keys.
-
-    ``set_flat`` silently no-ops on an unmapped key, which would make a job
-    quietly test the wrong configuration — so unmapped keys raise here instead.
-    """
-    from core.settings.access import set_flat, set_path
-    from core.settings.flat_map import FLAT_TO_PATH
-
-    for key, value in overrides.items():
-        if "." in key:
-            set_path(settings, key, value)
-            continue
-        if key not in FLAT_TO_PATH:
-            raise KeyError(f"flat key {key!r} is not in FLAT_TO_PATH; add the mapping first")
-        set_flat(settings, key, value)
 
 
 def collect_outputs(export_dir: str) -> List[List[Any]]:
@@ -381,19 +367,6 @@ def collect_outputs(export_dir: str) -> List[List[Any]]:
             if size > 0:
                 found.append([path, size])
     return found
-
-
-def _model_is_recognized(settings: Any, method: Optional[str], model: Optional[str]) -> bool:
-    """Whether the weight resolves to known metadata (MD5 → model_data)."""
-    if not model or method is None:
-        return True
-    from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
-    from core import ModelConfig, ModelRepository
-
-    arch = {"mdx": MDX_ARCH_TYPE, "vr": VR_ARCH_TYPE, "demucs": DEMUCS_ARCH_TYPE}[method]
-    repo = ModelRepository()
-    config = ModelConfig(settings, repo, model, arch, is_dry_check=True)
-    return bool(config.model_status)
 
 
 def run_child(spec_path: str) -> int:
@@ -524,10 +497,34 @@ def run_child(spec_path: str) -> int:
 
 
 def _write_result(job_dir: str, result: Dict[str, Any]) -> None:
+    """Publish the child's result atomically.
+
+    The parent reads this file as soon as the child exits, so a partial write
+    from a child killed mid-flush must never be observable.
+    """
+    from core.json_store import write_json_atomic
+
+    write_json_atomic(os.path.join(job_dir, "result.json"), result)
+
+
+def _read_result(result_path: str) -> Optional[Dict[str, Any]]:
+    """Read a child's result.json, or None when the child never wrote one.
+
+    Malformed JSON becomes a protocol error rather than an exception: a child
+    killed mid-write must fail its own job, not abort the whole sweep.
+    """
     import json
 
-    with open(os.path.join(job_dir, "result.json"), "w") as handle:
-        json.dump(result, handle)
+    if not os.path.isfile(result_path):
+        return None
+    try:
+        with open(result_path) as handle:
+            payload = json.load(handle)
+    except (ValueError, OSError) as exc:
+        return {"protocol_error": f"unreadable result.json: {exc}"}
+    if not isinstance(payload, dict):
+        return {"protocol_error": f"result.json root is {type(payload).__name__}, not an object"}
+    return payload
 
 
 def _run_tool(settings: Any, input_path: str, timeout: float, *, repo: Any):
@@ -591,8 +588,9 @@ def spawn_child(*, spec: Dict[str, Any], job_dir: str, env: Dict[str, str], time
 
     os.makedirs(job_dir, exist_ok=True)
     spec_path = os.path.join(job_dir, "spec.json")
-    with open(spec_path, "w") as handle:
-        json.dump(spec, handle)
+    from core.json_store import write_json_atomic
+
+    write_json_atomic(spec_path, spec)
 
     result_path = os.path.join(job_dir, "result.json")
     if os.path.exists(result_path):
@@ -610,11 +608,7 @@ def spawn_child(*, spec: Dict[str, Any], job_dir: str, env: Dict[str, str], time
         proc.wait()  # reap the now-dead process so it doesn't linger as a zombie
         return None, None, True
 
-    result = None
-    if os.path.isfile(result_path):
-        with open(result_path) as handle:
-            result = json.load(handle)
-    return exit_code, result, False
+    return exit_code, _read_result(result_path), False
 
 
 SpawnFn = Callable[..., Tuple[Optional[int], Optional[Dict[str, Any]], bool]]
@@ -716,8 +710,9 @@ def sweep(
     print("-" * 96)
     print(render_summary(verdicts))
     if json_path:
-        with open(json_path, "w") as handle:
-            json.dump({"results": rows}, handle, indent=2)
+        from core.json_store import write_json_atomic
+
+        write_json_atomic(json_path, {"results": rows})
         print(f"json={json_path}")
     return 1 if any(is_failure(v, strict=strict) for v in verdicts) else 0
 
@@ -762,6 +757,7 @@ def build_parser():
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    import shutil
     import tempfile
 
     args = build_parser().parse_args(argv)
@@ -795,27 +791,36 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     root = tempfile.mkdtemp(prefix="uvr-sweep-")
     print(f"scratch={root}")
-    data_dir, settings_path = prepare_scratch(
-        os.path.join(root, "data"),
-        models_dir=core_paths.MODELS_DIR,
-        settings_src=None if args.stock_settings else core_paths.SETTINGS_DATA_FILE,
-    )
-    input_path = make_input_clip(os.path.join(root, "sweep-input.wav"))
+    try:
+        data_dir, settings_path = prepare_scratch(
+            os.path.join(root, "data"),
+            models_dir=core_paths.MODELS_DIR,
+            settings_src=None if args.stock_settings else core_paths.SETTINGS_DATA_FILE,
+        )
+        input_path = make_input_clip(os.path.join(root, "sweep-input.wav"))
 
-    return sweep(
-        jobs,
-        spawn=spawn_child,
-        root=root,
-        settings_path=settings_path,
-        input_path=input_path,
-        data_dir=data_dir,
-        cpu=args.cpu,
-        cpu_retry=args.cpu_retry,
-        strict=args.strict,
-        fail_fast=args.fail_fast,
-        json_path=args.json_path,
-        keep_outputs=args.keep_outputs,
-    )
+        return sweep(
+            jobs,
+            spawn=spawn_child,
+            root=root,
+            settings_path=settings_path,
+            input_path=input_path,
+            data_dir=data_dir,
+            cpu=args.cpu,
+            cpu_retry=args.cpu_retry,
+            strict=args.strict,
+            fail_fast=args.fail_fast,
+            json_path=args.json_path,
+            keep_outputs=args.keep_outputs,
+        )
+    finally:
+        # sweep() already drops each job dir unless --keep-outputs; the copied
+        # settings, models symlink and input clip live at the top level and are
+        # nobody else's to remove.
+        if args.keep_outputs:
+            print(f"scratch preserved (--keep-outputs): {root}")
+        else:
+            shutil.rmtree(root, ignore_errors=True)
 
 
 if __name__ == "__main__":
