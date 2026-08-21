@@ -836,49 +836,6 @@ class RunMetadataTests(unittest.TestCase):
         self.assertEqual(meta["commit"], "")
 
 
-class CompositeTimeoutTests(unittest.TestCase):
-    """--timeout used to silently not apply to composite jobs."""
-
-    def _jobs(self):
-        return [
-            model_sweep.SweepJob(
-                id="mdx:a", kind=model_sweep.KIND_SINGLE, method="mdx", model="a.ckpt"
-            ),
-            model_sweep.SweepJob(
-                id="ens:x", kind=model_sweep.KIND_ENSEMBLE,
-                timeout=model_sweep.ENSEMBLE_TIMEOUT,
-            ),
-        ]
-
-    def test_timeout_applies_to_per_model_jobs_only(self) -> None:
-        single, composite = model_sweep.apply_timeouts(
-            self._jobs(), timeout=42.0, composite_timeout=model_sweep.ENSEMBLE_TIMEOUT
-        )
-        self.assertEqual(single.timeout, 42.0)
-        self.assertEqual(composite.timeout, model_sweep.ENSEMBLE_TIMEOUT)
-
-    def test_composite_timeout_applies_to_composite_jobs(self) -> None:
-        single, composite = model_sweep.apply_timeouts(
-            self._jobs(), timeout=42.0, composite_timeout=99.0
-        )
-        self.assertEqual(single.timeout, 42.0)
-        self.assertEqual(composite.timeout, 99.0)
-
-    def test_a_bespoke_timeout_is_left_alone(self) -> None:
-        job = model_sweep.SweepJob(
-            id="odd", kind=model_sweep.KIND_SINGLE, method="mdx", model="a.ckpt",
-            timeout=7.0,
-        )
-        (only,) = model_sweep.apply_timeouts(
-            [job], timeout=42.0, composite_timeout=99.0
-        )
-        self.assertEqual(only.timeout, 7.0)
-
-    def test_flag_defaults_to_the_ensemble_timeout(self) -> None:
-        args = model_sweep.build_parser().parse_args([])
-        self.assertEqual(args.composite_timeout, model_sweep.ENSEMBLE_TIMEOUT)
-
-
 class ManifestTests(unittest.TestCase):
     def test_manifest_records_the_resolved_job_list(self) -> None:
         import json
@@ -907,6 +864,91 @@ class ManifestTests(unittest.TestCase):
     def test_manifest_flag_exists(self) -> None:
         args = model_sweep.build_parser().parse_args(["--manifest", "/tmp/m.json"])
         self.assertEqual(args.manifest, "/tmp/m.json")
+
+
+class CompositeTimeoutGroupTests(unittest.TestCase):
+    """--composite-timeout must cover the group --method composite selects."""
+
+    def _jobs(self):
+        return [
+            model_sweep.SweepJob(
+                id="mdx:a", kind=model_sweep.KIND_SINGLE, method="mdx", model="a.ckpt"
+            ),
+            # A composite job that happens to carry the per-model default.
+            model_sweep.SweepJob(
+                id="composite:4-stem", kind=model_sweep.KIND_SINGLE,
+                method="demucs", model="h.th", composite=True,
+            ),
+            model_sweep.SweepJob(
+                id="composite:ensemble", kind=model_sweep.KIND_ENSEMBLE,
+                timeout=model_sweep.ENSEMBLE_TIMEOUT, composite=True,
+            ),
+        ]
+
+    def test_composite_timeout_reaches_every_composite_job(self) -> None:
+        single, four_stem, ensemble = model_sweep.apply_timeouts(
+            self._jobs(), timeout=None, composite_timeout=1800.0
+        )
+        self.assertEqual(four_stem.timeout, 1800.0, "composite:4-stem was skipped")
+        self.assertEqual(ensemble.timeout, 1800.0)
+        self.assertEqual(single.timeout, model_sweep.DEFAULT_TIMEOUT)
+
+    def test_unset_flags_leave_each_job_default_alone(self) -> None:
+        single, four_stem, ensemble = model_sweep.apply_timeouts(
+            self._jobs(), timeout=None, composite_timeout=None
+        )
+        self.assertEqual(single.timeout, model_sweep.DEFAULT_TIMEOUT)
+        self.assertEqual(four_stem.timeout, model_sweep.DEFAULT_TIMEOUT)
+        self.assertEqual(ensemble.timeout, model_sweep.ENSEMBLE_TIMEOUT)
+
+    def test_timeout_does_not_touch_composite_jobs(self) -> None:
+        single, four_stem, ensemble = model_sweep.apply_timeouts(
+            self._jobs(), timeout=42.0, composite_timeout=None
+        )
+        self.assertEqual(single.timeout, 42.0)
+        self.assertEqual(four_stem.timeout, model_sweep.DEFAULT_TIMEOUT)
+        self.assertEqual(ensemble.timeout, model_sweep.ENSEMBLE_TIMEOUT)
+
+    def test_discovered_composite_jobs_are_marked(self) -> None:
+        installed = _installed(
+            demucs=["hdemucs_mmi.th"], mdx=["a.ckpt", "b.ckpt"], vr=["v.pth"],
+        )
+        jobs = model_sweep.discover_jobs(installed, methods={"composite"})
+        self.assertTrue(jobs, "no composite jobs discovered")
+        self.assertTrue(all(j.composite for j in jobs), [j.id for j in jobs])
+
+    def test_flags_default_to_none(self) -> None:
+        args = model_sweep.build_parser().parse_args([])
+        self.assertIsNone(args.timeout)
+        self.assertIsNone(args.composite_timeout)
+
+
+class CommitProvenanceTests(unittest.TestCase):
+    def test_a_dirty_tree_is_marked(self) -> None:
+        """This tree normally carries uncommitted edits; HEAD alone would lie."""
+        from unittest import mock
+
+        with mock.patch.object(model_sweep, "_git_output") as out:
+            out.side_effect = ["abc1234", " M scripts/model_sweep.py"]
+            self.assertEqual(model_sweep._git_commit(), "abc1234-dirty")
+
+    def test_a_clean_tree_is_not_marked(self) -> None:
+        from unittest import mock
+
+        with mock.patch.object(model_sweep, "_git_output") as out:
+            out.side_effect = ["abc1234", ""]
+            self.assertEqual(model_sweep._git_commit(), "abc1234")
+
+
+class ResolvedMethodsTests(unittest.TestCase):
+    def test_a_default_sweep_records_every_method_not_an_empty_list(self) -> None:
+        args = model_sweep.build_parser().parse_args([])
+        meta = model_sweep.run_metadata(args, methods={"mdx", "vr", "demucs"})
+        self.assertEqual(meta["methods"], ["demucs", "mdx", "vr"])
+
+    def test_an_explicit_selection_is_recorded_as_given(self) -> None:
+        args = model_sweep.build_parser().parse_args(["--method", "mdx"])
+        self.assertEqual(model_sweep.run_metadata(args, methods={"mdx"})["methods"], ["mdx"])
 
 
 class SpawnChildProcessGroupTests(unittest.TestCase):
@@ -1102,7 +1144,10 @@ class ParentControlFlowTests(unittest.TestCase):
 class CliTests(unittest.TestCase):
     def test_parser_defaults(self) -> None:
         args = model_sweep.build_parser().parse_args([])
-        self.assertEqual(args.timeout, 300.0)
+        # None means "not given", so each job keeps its own default; the
+        # effective per-model value is still DEFAULT_TIMEOUT.
+        self.assertIsNone(args.timeout)
+        self.assertEqual(model_sweep.DEFAULT_TIMEOUT, 300.0)
         self.assertFalse(args.cpu)
         self.assertFalse(args.strict)
         self.assertTrue(args.cpu_retry)

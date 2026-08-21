@@ -40,6 +40,11 @@ class SweepJob:
     model: Optional[str] = None
     overrides: Dict[str, Any] = field(default_factory=dict)
     timeout: float = DEFAULT_TIMEOUT
+    #: Part of the group `--method composite` selects. Tracked explicitly: the
+    #: group is not identifiable from `kind` (two composite jobs are
+    #: KIND_SINGLE) nor from the timeout (composite:4-stem uses the per-model
+    #: default), so inferring it silently missed jobs.
+    composite: bool = False
     detail: str = ""
 
 
@@ -121,8 +126,8 @@ def discover_jobs(
     return jobs
 
 
-def _skip(job_id: str, reason: str) -> SweepJob:
-    return SweepJob(id=job_id, kind=KIND_SKIP, detail=reason)
+def _skip(job_id: str, reason: str, *, composite: bool = False) -> SweepJob:
+    return SweepJob(id=job_id, kind=KIND_SKIP, detail=reason, composite=composite)
 
 
 def _composite_jobs(installed: Installed) -> List[SweepJob]:
@@ -139,6 +144,7 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
                 method="demucs",
                 model=four_stem,
                 overrides={"demucs_stems": ALL_STEMS},
+                composite=True,
             )
         )
     else:
@@ -151,10 +157,11 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
                     method="mdx",
                     model=scnet,
                     overrides={"mdx_stems": ALL_STEMS},
+                    composite=True,
                 )
             )
         else:
-            jobs.append(_skip("composite:4-stem", "no 4-stem model installed"))
+            jobs.append(_skip("composite:4-stem", "no 4-stem model installed", composite=True))
 
     # 2. Two-member ensemble.
     if len(installed.ensemble_tags) >= 2:
@@ -169,10 +176,11 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
                     "is_save_all_outputs_ensemble": False,
                 },
                 timeout=ENSEMBLE_TIMEOUT,
+                composite=True,
             )
         )
     else:
-        jobs.append(_skip("composite:ensemble", "needs two ensemble-capable models"))
+        jobs.append(_skip("composite:ensemble", "needs two ensemble-capable models", composite=True))
 
     # 3. Primary + secondary chain.
     mdx_tag = next((t for t in installed.ensemble_tags if t.startswith("MDX-Net")), None)
@@ -189,10 +197,11 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
                     "vr_voc_inst_secondary_model_scale": 0.5,
                 },
                 timeout=ENSEMBLE_TIMEOUT,
+                composite=True,
             )
         )
     else:
-        jobs.append(_skip("composite:secondary-chain", "needs a VR and an MDX model"))
+        jobs.append(_skip("composite:secondary-chain", "needs a VR and an MDX model", composite=True))
 
     # 4. Vocal splitter chain.
     if installed.mdx and installed.karaoke_tags:
@@ -208,10 +217,11 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
                     "is_save_inst_set_vocal_splitter": True,
                 },
                 timeout=ENSEMBLE_TIMEOUT,
+                composite=True,
             )
         )
     else:
-        jobs.append(_skip("composite:vocal-splitter", "needs an MDX and a karaoke model"))
+        jobs.append(_skip("composite:vocal-splitter", "needs an MDX and a karaoke model", composite=True))
 
     return jobs
 
@@ -273,22 +283,24 @@ def render_row(job_id: str, verdict: str, elapsed_s: float, detail: str) -> str:
 
 
 def apply_timeouts(
-    jobs: Sequence[SweepJob], *, timeout: float, composite_timeout: float
+    jobs: Sequence[SweepJob],
+    *,
+    timeout: Optional[float] = None,
+    composite_timeout: Optional[float] = None,
 ) -> List[SweepJob]:
-    """Replace the two default timeouts with the values the CLI asked for.
+    """Override job timeouts with whatever the CLI asked for.
 
-    Composite jobs carry ENSEMBLE_TIMEOUT rather than DEFAULT_TIMEOUT, so a
-    single --timeout could never reach them; they get their own flag. A job
-    with any other timeout was set deliberately and is left alone.
+    Routing is by group membership, not by the timeout a job currently holds:
+    composite jobs do not share one default (composite:4-stem runs on the
+    per-model default while the rest use ENSEMBLE_TIMEOUT), so keying on the
+    value let --composite-timeout silently miss the group's slowest member.
+
+    ``None`` means the flag was not given, leaving each job's own default.
     """
     resolved: List[SweepJob] = []
     for job in jobs:
-        if job.timeout == DEFAULT_TIMEOUT:
-            wanted = timeout
-        elif job.timeout == ENSEMBLE_TIMEOUT:
-            wanted = composite_timeout
-        else:
-            wanted = job.timeout
+        chosen = composite_timeout if job.composite else timeout
+        wanted = job.timeout if chosen is None else chosen
         resolved.append(
             job if wanted == job.timeout
             else SweepJob(**{**job.__dict__, "timeout": wanted})
@@ -312,12 +324,12 @@ def write_manifest(
     )
 
 
-def _git_commit() -> str:
-    """Short commit of the working tree, or "" outside a checkout."""
+def _git_output(*args: str) -> str:
+    """stdout of a git command run at the repo root, or "" if it fails."""
     import subprocess
 
     result = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],
+        ["git", *args],
         capture_output=True,
         text=True,
         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -325,7 +337,19 @@ def _git_commit() -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def run_metadata(args: Any) -> Dict[str, Any]:
+def _git_commit() -> str:
+    """Short commit, suffixed ``-dirty`` when the tree has uncommitted changes.
+
+    This tree normally carries long-lived local edits, so a bare HEAD would
+    attribute the run to code that never actually ran.
+    """
+    commit = _git_output("rev-parse", "--short", "HEAD")
+    if not commit:
+        return ""
+    return f"{commit}-dirty" if _git_output("status", "--porcelain") else commit
+
+
+def run_metadata(args: Any, *, methods: Optional[Sequence[str]] = None) -> Dict[str, Any]:
     """What produced this report, so a result can be tied back to a build.
 
     A bare list of verdicts cannot be compared against another run without
@@ -352,12 +376,14 @@ def run_metadata(args: Any) -> Dict[str, Any]:
         "platform": platform.platform(),
         "cpu": bool(getattr(args, "cpu", False)),
         "cpu_retry": bool(getattr(args, "cpu_retry", True)),
-        "methods": sorted(getattr(args, "method", None) or []),
+        # The resolved set, not the raw flag: a default sweep runs every group
+        # and would otherwise report [], which reads as "nothing selected".
+        "methods": sorted(methods if methods is not None else (getattr(args, "method", None) or [])),
         "only": getattr(args, "only", None) or "",
         "skip": getattr(args, "skip", None) or "",
-        "timeout_s": float(getattr(args, "timeout", DEFAULT_TIMEOUT)),
+        "timeout_s": float(getattr(args, "timeout", None) or DEFAULT_TIMEOUT),
         "composite_timeout_s": float(
-            getattr(args, "composite_timeout", ENSEMBLE_TIMEOUT)
+            getattr(args, "composite_timeout", None) or ENSEMBLE_TIMEOUT
         ),
         "strict": bool(getattr(args, "strict", False)),
         "settings": "stock" if getattr(args, "stock_settings", False) else "copied",
@@ -852,15 +878,16 @@ def build_parser():
     parser.add_argument(
         "--timeout",
         type=float,
-        default=DEFAULT_TIMEOUT,
+        default=None,
         help=f"Per-model job timeout in seconds (default {DEFAULT_TIMEOUT:.0f}). "
         "Does not apply to composite jobs; see --composite-timeout.",
     )
     parser.add_argument(
         "--composite-timeout",
         type=float,
-        default=ENSEMBLE_TIMEOUT,
-        help=f"Ensemble/composite job timeout in seconds (default {ENSEMBLE_TIMEOUT:.0f}).",
+        default=None,
+        help="Timeout in seconds for every job --method composite selects "
+        f"(defaults: {DEFAULT_TIMEOUT:.0f} for 4-stem, {ENSEMBLE_TIMEOUT:.0f} for the rest).",
     )
     parser.add_argument("--json", dest="json_path", default=None)
     parser.add_argument("--list", action="store_true", help="Print the job list and exit")
@@ -900,7 +927,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     jobs = apply_timeouts(
         jobs, timeout=args.timeout, composite_timeout=args.composite_timeout
     )
-    meta = run_metadata(args)
+    meta = run_metadata(args, methods=sorted(methods))
 
     if args.manifest:
         write_manifest(args.manifest, jobs, run_meta=meta)
