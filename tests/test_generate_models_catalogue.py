@@ -529,6 +529,88 @@ class CacheIdentityTests(unittest.TestCase):
         self.assertFalse(catalogue._parse_args([]).refresh)
 
 
+class PublicationGuardTests(unittest.TestCase):
+    """A degraded snapshot must not replace a good catalogue document."""
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        os.environ["UVR_DISABLE_CATALOGUE_STEMS"] = "1"
+        self.addCleanup(lambda: os.environ.pop("UVR_DISABLE_CATALOGUE_STEMS", None))
+        self.tmp = tempfile.mkdtemp(prefix="uvr-guard-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.out = os.path.join(self.tmp, "models-catalogue.md")
+
+    def _report(self, *, usable: bool = True, failed: tuple = ()):
+        from core.catalogue_types import RefreshMode, RefreshReport
+
+        return RefreshReport(mode=RefreshMode.OFFLINE, usable=usable, failed=failed)
+
+    def test_previous_entry_count_is_read_from_an_existing_document(self) -> None:
+        with open(self.out, "w", encoding="utf-8") as handle:
+            handle.write("## Summary\n\n- Total catalogue entries: **412**\n")
+        self.assertEqual(catalogue._previous_entry_count(self.out), 412)
+
+    def test_missing_document_has_no_previous_count(self) -> None:
+        self.assertIsNone(catalogue._previous_entry_count(self.out))
+
+    def test_unusable_snapshot_is_refused(self) -> None:
+        verdict = catalogue._publication_verdict(
+            entries=[], report=self._report(usable=False), previous_count=None
+        )
+        self.assertFalse(verdict.ok)
+        self.assertIn("unusable", verdict.reason.lower())
+
+    def test_a_large_drop_is_refused_even_when_no_source_reported_failure(self) -> None:
+        """The real cold-cache case: offline sources are not refreshed, not failed.
+
+        A run against an empty supplemental cache produced 88 entries where the
+        published document had 474, with report.usable True and report.failed
+        empty -- so failure state cannot be the trigger. The count is.
+        """
+        verdict = catalogue._publication_verdict(
+            entries=[object()] * 88, report=self._report(), previous_count=474
+        )
+        self.assertFalse(verdict.ok)
+        self.assertIn("474", verdict.reason)
+
+    def test_a_small_drop_still_publishes(self) -> None:
+        """Ordinary regeneration jitter must not need an override flag."""
+        verdict = catalogue._publication_verdict(
+            entries=[object()] * 398, report=self._report(), previous_count=400
+        )
+        self.assertTrue(verdict.ok, verdict.reason)
+
+    def test_failed_sources_are_named_in_the_refusal(self) -> None:
+        from core.catalogue_types import SourceId
+
+        verdict = catalogue._publication_verdict(
+            entries=[object()] * 10,
+            report=self._report(failed=((SourceId.UPSTREAM, "boom"),)),
+            previous_count=400,
+        )
+        self.assertFalse(verdict.ok)
+        self.assertIn("upstream", verdict.reason)
+
+    def test_a_healthy_snapshot_publishes(self) -> None:
+        verdict = catalogue._publication_verdict(
+            entries=[object()] * 400, report=self._report(), previous_count=400
+        )
+        self.assertTrue(verdict.ok, verdict.reason)
+
+    def test_allow_degraded_overrides_a_refusal(self) -> None:
+        verdict = catalogue._publication_verdict(
+            entries=[], report=self._report(usable=False), previous_count=400,
+            allow_degraded=True,
+        )
+        self.assertTrue(verdict.ok, verdict.reason)
+
+    def test_allow_degraded_flag_is_exposed_on_the_cli(self) -> None:
+        self.assertTrue(catalogue._parse_args(["--allow-degraded"]).allow_degraded)
+        self.assertFalse(catalogue._parse_args([]).allow_degraded)
+
+
 class EntryMetaOverlayTests(unittest.TestCase):
     def test_fills_blank_stems_target_and_unknown_intent(self) -> None:
         from core.catalog_sources import EntryMeta

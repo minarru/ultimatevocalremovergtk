@@ -1337,7 +1337,87 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Refetch supplemental catalogue downloads even if cached and fresh.",
     )
+    parser.add_argument(
+        "--allow-degraded",
+        action="store_true",
+        help="Publish even when sources failed and the catalogue shrank sharply.",
+    )
     return parser.parse_args(argv)
+
+
+#: A drop larger than this fraction of the previously published catalogue is
+#: treated as evidence the run is broken rather than as real shrinkage.
+_DEGRADED_DROP_RATIO = 0.10
+
+
+@dataclass(frozen=True)
+class PublicationVerdict:
+    """Whether this run's entries may replace the published document."""
+
+    ok: bool
+    reason: str = ""
+
+
+def _previous_entry_count(path: str) -> Optional[int]:
+    """Entry count recorded in an existing catalogue document, if there is one.
+
+    Read back from the summary line the renderer emits. This is a stopgap for
+    the machine-readable sidecar; it only has to be good enough to notice that
+    a 400-entry catalogue just became a 3-entry one.
+    """
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                match = re.search(r"Total catalogue entries: \*\*(\d+)\*\*", line)
+                if match:
+                    return int(match.group(1))
+    except OSError:
+        return None
+    return None
+
+
+def _publication_verdict(
+    *,
+    entries: List[Any],
+    report: Any,
+    previous_count: Optional[int],
+    allow_degraded: bool = False,
+) -> PublicationVerdict:
+    """Decide whether these entries may overwrite the published catalogue.
+
+    The entry count is the trigger, not source health. Offline sources are
+    simply not refreshed rather than reported as failed, so a cold cache
+    yields report.usable True and report.failed empty while producing a
+    fraction of the entries -- measured, an empty supplemental cache gave 88
+    entries where the published document had 474. Failed and stale sources
+    are still reported, as context for diagnosing the refusal.
+
+    Legitimate shrinkage goes through --allow-degraded, which is the only
+    thing that can distinguish it from a broken run.
+    """
+    if allow_degraded:
+        return PublicationVerdict(ok=True, reason="--allow-degraded")
+
+    if not getattr(report, "usable", True):
+        return PublicationVerdict(
+            ok=False,
+            reason="catalogue snapshot is unusable (no source produced entries)",
+        )
+
+    if previous_count:
+        floor = previous_count * (1 - _DEGRADED_DROP_RATIO)
+        if len(entries) < floor:
+            reason = f"{len(entries)} entries against {previous_count} previously"
+            failed: Tuple[Any, ...] = tuple(getattr(report, "failed", ()) or ())
+            stale: Tuple[Any, ...] = tuple(getattr(report, "stale", ()) or ())
+            if failed:
+                names = ", ".join(str(getattr(i[0], "value", i[0])) for i in failed)
+                reason += f"; failed sources: {names}"
+            if stale:
+                names = ", ".join(str(getattr(i, "value", i)) for i in stale)
+                reason += f"; stale sources: {names}"
+            return PublicationVerdict(ok=False, reason=reason)
+    return PublicationVerdict(ok=True)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -1347,6 +1427,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     snapshot, payloads = _snapshot_and_payloads(allow_network=policy.allow_network)
     entries = _entries_from_snapshot(snapshot, payloads, ctx, policy=policy)
     unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))
+
+    verdict = _publication_verdict(
+        entries=list(entries),
+        report=getattr(snapshot, "report", None),
+        previous_count=_previous_entry_count(OUTPUT_PATH),
+        allow_degraded=args.allow_degraded,
+    )
+    if not verdict.ok:
+        print(
+            f"Refusing to write {OUTPUT_PATH}: {verdict.reason}.\n"
+            "Pass --allow-degraded if the catalogue really did shrink.",
+            file=sys.stderr,
+        )
+        return 2
+
     from core.json_store import write_text_atomic
 
     # A failed write must not truncate the checked-in catalogue document.
