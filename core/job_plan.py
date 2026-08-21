@@ -566,7 +566,16 @@ def _apply_model_native_values(
     settings: Settings, records: Sequence[ModelRecord], models: Sequence[Any],
     provenance: dict[str, str],
 ) -> None:
-    """Materialize model-native values only for settings whose value is auto."""
+    """Materialize model-native values only for settings whose value is auto.
+
+    Only ``mdx.compensate`` qualifies. There is deliberately no demucs.segment
+    branch: ``ModelConfig.segment`` is the *setting* rendered into the legacy
+    ``Default``/numeric label ``vendor.demucs.apply.demucs_segments`` branches
+    on, not model metadata -- ``get_demucs_model_data`` sets no segment and no
+    Demucs model_data carries one. Reading it back crashed every Demucs run at
+    plan time, because whenever the setting was unset the value was the
+    unparseable string ``Default``.
+    """
     for record, model in zip(records, models):
         source = (
             Provenance.MODEL_LOCAL.value
@@ -578,11 +587,6 @@ def _apply_model_native_values(
             if value is not None:
                 settings.mdx.compensate = float(value)
                 provenance["mdx.compensate"] = source
-        if record.family == "demucs" and settings.demucs.segment is None:
-            value = getattr(model, "segment", None)
-            if value is not None:
-                settings.demucs.segment = int(value)
-                provenance["demucs.segment"] = source
 
 
 def device_runtime_diagnostics(settings: Settings) -> list[Diagnostic]:
