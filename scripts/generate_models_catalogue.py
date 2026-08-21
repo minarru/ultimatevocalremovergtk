@@ -16,7 +16,7 @@ import re
 import sys
 import time
 import urllib.error
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -1182,15 +1182,104 @@ def _entries_from_snapshot(
 def _collect_entries(
     ctx: CatalogueContext,
     *,
-    allow_network: bool = True,
+    policy: Optional[FetchPolicy] = None,
+    allow_network: Optional[bool] = None,
     coordinator: Optional[CatalogueCoordinator] = None,
-) -> List[ModelEntry]:
+) -> Tuple[Any, List[ModelEntry]]:
+    """Acquire a snapshot and turn it into entries. The one collection path.
+
+    ``main`` goes through this too: a second entry path exercised only by
+    tests is how the tested behaviour and the real behaviour drift apart.
+    """
+    if policy is None:
+        policy = FetchPolicy(allow_network=True if allow_network is None else allow_network)
+    elif allow_network is not None:
+        policy = FetchPolicy(
+            allow_network=allow_network,
+            refresh=policy.refresh,
+            max_age=policy.max_age,
+            allow_metadata_writes=policy.allow_metadata_writes,
+        )
     snapshot, payloads = _snapshot_and_payloads(
-        allow_network=allow_network, coordinator=coordinator
+        allow_network=policy.allow_network, coordinator=coordinator
     )
-    return _entries_from_snapshot(
-        snapshot, payloads, ctx, policy=FetchPolicy(allow_network=allow_network)
-    )
+    return snapshot, _entries_from_snapshot(snapshot, payloads, ctx, policy=policy)
+
+
+def render_summary_report(
+    entries: List[ModelEntry], *, unsupported_count: int = 0, report: Any = None
+) -> str:
+    """Just the exceptions: what a maintainer is usually looking for.
+
+    The full document is 7,000+ lines of per-model detail. During catalogue,
+    stem-routing or metadata changes the question is almost always "what looks
+    wrong now?", which is the flagged and unknown-intent sets plus counts.
+    """
+    flagged = [e for e in entries if e.flags]
+    unknown = [e for e in entries if e.name_intent == "unknown"]
+    with_meta = [e for e in entries if e.metadata_source not in ("unavailable", "")]
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    lines = [
+        "# UVR Model Catalogue — summary",
+        "",
+        f"Generated: {now} by `scripts/generate_models_catalogue.py --summary`.",
+        "",
+        *_provenance_lines(report),
+        "## Counts",
+        "",
+        f"- Total catalogue entries: **{len(entries)}**",
+        f"- Entries with resolved metadata: **{len(with_meta)}**",
+        f"- Unknown intent remaining: **{len(unknown)}**",
+        f"- Flagged mismatches: **{len(flagged)}**",
+        f"- Unsupported mvsepless entries (omitted): **{unsupported_count}**",
+        "",
+    ]
+
+    if flagged:
+        lines += ["## Flagged mismatches", ""]
+        for entry in flagged:
+            lines.append(f"- **{_display_label(entry)}** ({entry.family}) — "
+                         + "; ".join(entry.flags))
+        lines.append("")
+    if unknown:
+        lines += ["## Unknown intent", ""]
+        for entry in unknown:
+            lines.append(f"- **{_display_label(entry)}** ({entry.family}, {entry.source})")
+        lines.append("")
+    if not flagged and not unknown:
+        lines += ["Nothing flagged, and every entry resolved an intent.", ""]
+    return "\n".join(lines)
+
+
+#: Bumped when the IR's shape changes in a way a consumer would notice.
+IR_SCHEMA_VERSION = 1
+
+
+def _ir_path_for(output_path: str) -> str:
+    """Sidecar path for a rendered document."""
+    stem, _ext = os.path.splitext(output_path)
+    return f"{stem}.ir.json"
+
+
+def build_ir(
+    entries: List[ModelEntry], *, report: Any, unsupported_count: int
+) -> Dict[str, Any]:
+    """The catalogue as data, from which Markdown and TSV are rendered.
+
+    Rendered output is lossy and awkward to diff; this is the form a consumer
+    can read without parsing prose. It is also what lets the publication guard
+    know how many entries the last good run produced, rather than recovering
+    that by re-parsing a summary line.
+    """
+    return {
+        "schema_version": IR_SCHEMA_VERSION,
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "entry_count": len(entries),
+        "unsupported_omitted": unsupported_count,
+        "provenance": report.as_dict() if hasattr(report, "as_dict") else {},
+        "entries": [asdict(entry) for entry in entries],
+    }
 
 
 def _md_table(headers: List[str], rows: List[List[str]]) -> str:
@@ -1433,6 +1522,11 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Publish even when sources failed and the catalogue shrank sharply.",
     )
     parser.add_argument(
+        "--no-ir",
+        action="store_true",
+        help="Do not write the machine-readable sidecar next to the document.",
+    )
+    parser.add_argument(
         "--write-tsv",
         action="store_true",
         help=f"Also write {os.path.basename(REFERENCE_TSV_PATH)} (off by default).",
@@ -1442,6 +1536,12 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--write",
         action="store_true",
         help="Write the generated artifacts (the default).",
+    )
+    mode.add_argument(
+        "--summary",
+        action="store_true",
+        help="Print counts, flagged mismatches and unknown intent to stdout. "
+        "Writes nothing.",
     )
     mode.add_argument(
         "--check",
@@ -1553,12 +1653,20 @@ class PublicationVerdict:
 
 
 def _previous_entry_count(path: str) -> Optional[int]:
-    """Entry count recorded in an existing catalogue document, if there is one.
+    """Entry count from the last published run, if it can be recovered.
 
-    Read back from the summary line the renderer emits. This is a stopgap for
-    the machine-readable sidecar; it only has to be good enough to notice that
-    a 400-entry catalogue just became a 3-entry one.
+    Prefers the IR sidecar, which records the count as data. Falls back to
+    re-parsing the rendered summary line for a document published before the
+    sidecar existed, or when it is missing or unreadable.
     """
+    try:
+        with open(_ir_path_for(path), encoding="utf-8") as handle:
+            payload = json.load(handle)
+        count = payload.get("entry_count")
+        if isinstance(count, int):
+            return count
+    except (OSError, ValueError, AttributeError):
+        pass
     try:
         with open(path, encoding="utf-8") as handle:
             for line in handle:
@@ -1619,8 +1727,8 @@ def _policy_for(args: argparse.Namespace) -> FetchPolicy:
     return FetchPolicy(
         allow_network=not args.offline,
         refresh=args.refresh,
-        # --check must leave the tree exactly as it found it.
-        allow_metadata_writes=not args.check,
+        # --check and --summary must leave the tree exactly as they found it.
+        allow_metadata_writes=not (args.check or args.summary),
     )
 
 
@@ -1628,13 +1736,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_args(argv)
     policy = _policy_for(args)
     ctx = _build_catalogue_context(policy=policy)
-    snapshot, payloads = _snapshot_and_payloads(allow_network=policy.allow_network)
-    entries = _entries_from_snapshot(snapshot, payloads, ctx, policy=policy)
+    snapshot, entries = _collect_entries(ctx, policy=policy)
     unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))
+    report = getattr(snapshot, "report", None)
+
+    if args.summary:
+        # Ahead of the publication guard on purpose: a summary writes nothing,
+        # so there is no artifact to protect, and a degraded run is exactly
+        # when a maintainer wants to see what the catalogue currently looks
+        # like. The provenance block reports the degradation.
+        print(render_summary_report(entries, unsupported_count=unsupported, report=report))
+        return 0
 
     verdict = _publication_verdict(
         entries=list(entries),
-        report=getattr(snapshot, "report", None),
+        report=report,
         previous_count=_previous_entry_count(OUTPUT_PATH),
         allow_degraded=args.allow_degraded,
     )
@@ -1653,9 +1769,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         return 2
 
-    rendered = _render(
-        entries, unsupported_count=unsupported, report=getattr(snapshot, "report", None)
-    )
+    rendered = _render(entries, unsupported_count=unsupported, report=report)
     tsv_text = ""
     if args.write_tsv:
         if ctx.community_by_file:
@@ -1684,10 +1798,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"Up to date: {OUTPUT_PATH}")
         return 0
 
-    from core.json_store import write_text_atomic
+    from core.json_store import write_json_atomic, write_text_atomic
 
     # A failed write must not truncate the checked-in catalogue document.
     write_text_atomic(OUTPUT_PATH, rendered)
+    if not args.no_ir:
+        # After the document, so the sidecar never describes a run whose
+        # document failed to land.
+        write_json_atomic(
+            _ir_path_for(OUTPUT_PATH),
+            build_ir(entries, report=report, unsupported_count=unsupported),
+        )
     flagged = sum(1 for e in entries if e.flags)
     unknown = sum(1 for e in entries if e.name_intent == "unknown")
     with_meta = sum(1 for e in entries if e.metadata_source not in ("unavailable", ""))

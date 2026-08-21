@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import unittest
@@ -227,7 +228,7 @@ class CollectEntriesTests(unittest.TestCase):
 
     def test_collect_entries_uses_coordinator_sources(self) -> None:
         ctx = catalogue.CatalogueContext()
-        entries = catalogue._collect_entries(
+        _snapshot, entries = catalogue._collect_entries(
             ctx, allow_network=False, coordinator=self._coordinator()
         )
         by_label = {entry.catalogue_label: entry for entry in entries}
@@ -1225,6 +1226,203 @@ class CheckContractTests(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         self.assertIn("tsv", stderr.getvalue().lower())
+
+
+class IntermediateRepresentationTests(unittest.TestCase):
+    """A stable machine-readable form that Markdown and TSV render from."""
+
+    def _entry(self, label: str = "Some Model"):
+        return catalogue.ModelEntry(
+            source="mvsepless", family="Roformer", catalogue_label=label,
+            weight_file="m.ckpt", instruments=["vocals", "other"], stem_count=2,
+            name_intent="vocals", metadata_source="catalogue_meta",
+        )
+
+    def test_carries_a_schema_version(self) -> None:
+        ir = catalogue.build_ir([self._entry()], report=None, unsupported_count=0)
+        self.assertEqual(ir["schema_version"], catalogue.IR_SCHEMA_VERSION)
+
+    def test_round_trips_through_json(self) -> None:
+        ir = catalogue.build_ir([self._entry()], report=None, unsupported_count=3)
+        restored = json.loads(json.dumps(ir))
+        self.assertEqual(restored["unsupported_omitted"], 3)
+        self.assertEqual(restored["entries"][0]["catalogue_label"], "Some Model")
+        self.assertEqual(restored["entries"][0]["instruments"], ["vocals", "other"])
+
+    def test_entry_count_is_recorded_for_the_publication_guard(self) -> None:
+        ir = catalogue.build_ir([self._entry("a"), self._entry("b")], report=None, unsupported_count=0)
+        self.assertEqual(ir["entry_count"], 2)
+
+    def test_provenance_is_included_when_a_report_exists(self) -> None:
+        from core.catalogue_types import RefreshMode, RefreshReport, SourceId
+
+        report = RefreshReport(
+            mode=RefreshMode.OFFLINE, usable=True, failed=((SourceId.POLITREES, "boom"),)
+        )
+        ir = catalogue.build_ir([self._entry()], report=report, unsupported_count=0)
+        self.assertEqual(ir["provenance"]["mode"], "offline")
+        self.assertTrue(ir["provenance"]["failed"])
+
+    def test_no_report_still_produces_valid_ir(self) -> None:
+        ir = catalogue.build_ir([self._entry()], report=None, unsupported_count=0)
+        self.assertEqual(ir["provenance"], {})
+
+    def test_previous_entry_count_prefers_the_sidecar(self) -> None:
+        """More reliable than re-parsing a rendered summary line."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            doc = os.path.join(tmp, "models-catalogue.md")
+            with open(doc, "w", encoding="utf-8") as handle:
+                handle.write("- Total catalogue entries: **7**\n")
+            sidecar = catalogue._ir_path_for(doc)
+            with open(sidecar, "w", encoding="utf-8") as handle:
+                json.dump({"schema_version": 1, "entry_count": 412}, handle)
+            self.assertEqual(catalogue._previous_entry_count(doc), 412)
+
+    def test_previous_entry_count_falls_back_to_the_document(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            doc = os.path.join(tmp, "models-catalogue.md")
+            with open(doc, "w", encoding="utf-8") as handle:
+                handle.write("- Total catalogue entries: **7**\n")
+            self.assertEqual(catalogue._previous_entry_count(doc), 7)
+
+    def test_a_corrupt_sidecar_falls_back_rather_than_failing(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            doc = os.path.join(tmp, "models-catalogue.md")
+            with open(doc, "w", encoding="utf-8") as handle:
+                handle.write("- Total catalogue entries: **7**\n")
+            with open(catalogue._ir_path_for(doc), "w", encoding="utf-8") as handle:
+                handle.write("{not json")
+            self.assertEqual(catalogue._previous_entry_count(doc), 7)
+
+
+class SummaryModeTests(unittest.TestCase):
+    """--summary answers the maintainer's likely question without 7,000 lines."""
+
+    def _entries(self):
+        flagged = catalogue.ModelEntry(
+            source="TRvlvr", family="Roformer", catalogue_label="Bad Model",
+            weight_file="bad.ckpt", name_intent="vocals",
+            metadata_source="bundled_yaml:x.yaml",
+        )
+        flagged.flags = ["NAME says vocal but backend is instrumental-focused"]
+        unknown = catalogue.ModelEntry(
+            source="extras", family="MDX23C", catalogue_label="Mystery",
+            weight_file="m.ckpt", name_intent="unknown",
+        )
+        fine = catalogue.ModelEntry(
+            source="TRvlvr", family="VR Architecture", catalogue_label="Good Model",
+            weight_file="g.pth", name_intent="vocals",
+            metadata_source="bundled_yaml:y.yaml",
+        )
+        return [flagged, unknown, fine]
+
+    def test_reports_counts(self) -> None:
+        text = catalogue.render_summary_report(self._entries(), unsupported_count=4)
+        self.assertIn("**3**", text)
+        self.assertIn("4", text)
+
+    def test_lists_flagged_entries(self) -> None:
+        text = catalogue.render_summary_report(self._entries(), unsupported_count=0)
+        self.assertIn("Bad Model", text)
+        self.assertIn("backend is instrumental-focused", text)
+
+    def test_lists_unknown_intent_entries(self) -> None:
+        text = catalogue.render_summary_report(self._entries(), unsupported_count=0)
+        self.assertIn("Mystery", text)
+
+    def test_omits_the_clean_entries(self) -> None:
+        """The point is the exception list, not the full inventory."""
+        text = catalogue.render_summary_report(self._entries(), unsupported_count=0)
+        self.assertNotIn("Good Model", text)
+
+    def test_is_much_shorter_than_the_full_render(self) -> None:
+        entries = self._entries()
+        full = catalogue._render(entries, unsupported_count=0)
+        summary = catalogue.render_summary_report(entries, unsupported_count=0)
+        self.assertLess(len(summary), len(full))
+
+    def test_summary_does_not_overwrite_the_document(self) -> None:
+        """A summary is an ad-hoc query, not a replacement for the catalogue."""
+        import contextlib
+        import io
+        import tempfile
+        from unittest import mock
+
+        class _Snapshot:
+            vr = {"M": "m.pth"}
+            mdx: dict = {}
+            demucs: dict = {}
+            apollo: dict = {}
+            meta: dict = {}
+            unsupported: dict = {}
+            report = None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "models-catalogue.md")
+            with open(out, "w", encoding="utf-8") as handle:
+                handle.write("THE REAL CATALOGUE\n- Total catalogue entries: **400**\n")
+            stdout = io.StringIO()
+            with mock.patch.object(catalogue, "OUTPUT_PATH", out), \
+                 mock.patch.object(
+                     catalogue, "_build_catalogue_context",
+                     lambda **k: catalogue.CatalogueContext()
+                 ), \
+                 mock.patch.object(
+                     catalogue, "_snapshot_and_payloads",
+                     lambda **k: (_Snapshot(), ({}, {}, {}, {}))
+                 ), \
+                 contextlib.redirect_stdout(stdout):
+                rc = catalogue.main(["--summary"])
+
+            self.assertEqual(rc, 0)
+            with open(out, encoding="utf-8") as handle:
+                self.assertIn("THE REAL CATALOGUE", handle.read())
+            self.assertFalse(os.path.exists(catalogue._ir_path_for(out)))
+        self.assertIn("Counts", stdout.getvalue())
+
+    def test_summary_flag_exists(self) -> None:
+        self.assertTrue(catalogue._parse_args(["--summary"]).summary)
+        self.assertFalse(catalogue._parse_args([]).summary)
+
+
+class CollectEntriesIsTheRealPathTests(unittest.TestCase):
+    """A second entry path exercised only by tests is how main and tests drift."""
+
+    def test_main_collects_through_collect_entries(self) -> None:
+        from unittest import mock
+
+        class _Snapshot:
+            vr = {"M": "m.pth"}
+            mdx: dict = {}
+            demucs: dict = {}
+            apollo: dict = {}
+            meta: dict = {}
+            unsupported: dict = {}
+            report = None
+
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(catalogue, "OUTPUT_PATH", os.path.join(tmp, "c.md")), \
+                 mock.patch.object(
+                     catalogue, "_build_catalogue_context",
+                     lambda **k: catalogue.CatalogueContext()
+                 ), \
+                 mock.patch.object(
+                     catalogue, "_snapshot_and_payloads",
+                     lambda **k: (_Snapshot(), ({}, {}, {}, {}))
+                 ), \
+                 mock.patch.object(
+                     catalogue, "_collect_entries", wraps=catalogue._collect_entries
+                 ) as collect:
+                catalogue.main([])
+        self.assertEqual(collect.call_count, 1, "main did not go through _collect_entries")
 
 
 class EntryMetaOverlayTests(unittest.TestCase):
