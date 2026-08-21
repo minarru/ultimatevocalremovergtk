@@ -953,6 +953,86 @@ class CheckModeTests(unittest.TestCase):
         self.assertFalse(catalogue._parse_args([]).check)
 
 
+class VolatileHeaderTests(unittest.TestCase):
+    """Drift means the catalogue changed, not that time passed."""
+
+    def test_a_changed_generation_timestamp_is_not_drift(self) -> None:
+        rendered = catalogue._render([], unsupported_count=0)
+        aged = rendered.replace(
+            "Generated: ", "Generated: 1999-01-01 00:00 UTC ignored ", 1
+        )
+        self.assertNotEqual(rendered, aged)
+        self.assertEqual(
+            catalogue._canonical_for_diff(rendered),
+            catalogue._canonical_for_diff(aged),
+        )
+
+    def test_a_changed_entry_is_drift(self) -> None:
+        rendered = catalogue._render([], unsupported_count=0)
+        changed = rendered.replace("Total catalogue entries: **0**", "**9**", 1)
+        self.assertNotEqual(
+            catalogue._canonical_for_diff(rendered),
+            catalogue._canonical_for_diff(changed),
+        )
+
+
+class ProvenanceBlockTests(unittest.TestCase):
+    """The document should say whether it was generated from good data."""
+
+    def _report(
+        self,
+        *,
+        succeeded: tuple = (),
+        failed: tuple = (),
+        stale: tuple = (),
+        usable: bool = True,
+    ):
+        from core.catalogue_types import RefreshMode, RefreshReport
+
+        return RefreshReport(
+            mode=RefreshMode.STALE_WHILE_REVALIDATE,
+            succeeded=succeeded,
+            failed=failed,
+            stale=stale,
+            usable=usable,
+        )
+
+    def test_names_succeeded_and_failed_sources(self) -> None:
+        from core.catalogue_types import SourceId
+
+        text = catalogue._render(
+            [],
+            unsupported_count=0,
+            report=self._report(
+                succeeded=(SourceId.UPSTREAM,),
+                failed=((SourceId.POLITREES, "timeout"),),
+                stale=(SourceId.MVSEPLESS,),
+            ),
+        )
+        self.assertIn("upstream", text)
+        self.assertIn("politrees", text)
+        self.assertIn("timeout", text)
+        self.assertIn("mvsepless", text)
+
+    def test_provenance_lines_do_not_count_as_drift(self) -> None:
+        from core.catalogue_types import SourceId
+
+        a = catalogue._render([], unsupported_count=0, report=self._report())
+        b = catalogue._render(
+            [],
+            unsupported_count=0,
+            report=self._report(failed=((SourceId.POLITREES, "timeout"),)),
+        )
+        self.assertNotEqual(a, b)
+        self.assertEqual(
+            catalogue._canonical_for_diff(a), catalogue._canonical_for_diff(b)
+        )
+
+    def test_renders_without_a_report(self) -> None:
+        text = catalogue._render([], unsupported_count=0, report=None)
+        self.assertIn("Total catalogue entries", text)
+
+
 class EntryMetaOverlayTests(unittest.TestCase):
     def test_fills_blank_stems_target_and_unknown_intent(self) -> None:
         from core.catalog_sources import EntryMeta

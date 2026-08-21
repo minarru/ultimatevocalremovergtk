@@ -1172,7 +1172,9 @@ def _md_table(headers: List[str], rows: List[List[str]]) -> str:
     return "\n".join(lines)
 
 
-def _render(entries: List[ModelEntry], *, unsupported_count: int = 0) -> str:
+def _render(
+    entries: List[ModelEntry], *, unsupported_count: int = 0, report: Any = None
+) -> str:
     flagged = [e for e in entries if e.flags]
     unknown = [e for e in entries if e.name_intent == "unknown"]
     with_meta = [e for e in entries if e.metadata_source not in ("unavailable", "")]
@@ -1206,6 +1208,7 @@ def _render(entries: List[ModelEntry], *, unsupported_count: int = 0) -> str:
         "`instruments: [other, vocals]`. That is a **2-stem vocal/instrumental** split.",
         "The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Demucs Other.",
         "",
+        *_provenance_lines(report),
         "## Summary",
         "",
         f"- Total catalogue entries: **{len(entries)}**",
@@ -1417,11 +1420,91 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _text_matches(path: str, text: str) -> bool:
-    """Whether ``path`` already holds exactly ``text``."""
-    from core.json_store import content_digest
+#: Line prefixes that change on every run regardless of the catalogue. Drift
+#: means the catalogue changed, not that time passed or a cache aged, so these
+#: are excluded from the --check comparison.
+_VOLATILE_PREFIXES = ("Generated: ", "- Snapshot ", "- Source ", "- Cache ")
 
-    return content_digest(path) == hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+def _canonical_for_diff(text: str) -> str:
+    """``text`` with the volatile header lines removed, for drift comparison."""
+    return "\n".join(
+        line
+        for line in text.splitlines()
+        if not line.startswith(_VOLATILE_PREFIXES)
+    )
+
+
+def _text_matches(path: str, text: str) -> bool:
+    """Whether ``path`` already holds ``text``, ignoring volatile header lines."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            existing = handle.read()
+    except OSError:
+        return False
+    return _canonical_for_diff(existing) == _canonical_for_diff(text)
+
+
+def _provenance_lines(report: Any) -> List[str]:
+    """Where this document's data came from, and how healthy it was.
+
+    Answers "was this generated from good data?" at review time -- a document
+    regenerated from a half-stale snapshot otherwise looks identical to one
+    built from a clean fetch.
+    """
+    if report is None:
+        return []
+
+    def names(items: Any) -> str:
+        collected: List[str] = [
+            str(getattr(item, "value", item)) for item in (tuple(items or ()))
+        ]
+        return ", ".join(collected) if collected else "none"
+
+    lines = [
+        "## Source provenance",
+        "",
+        f"- Snapshot mode: `{getattr(getattr(report, 'mode', None), 'value', 'unknown')}`",
+        f"- Source refreshed: {names(getattr(report, 'succeeded', ()))}",
+        f"- Source stale: {names(getattr(report, 'stale', ()))}",
+    ]
+    failed: Tuple[Any, ...] = tuple(getattr(report, "failed", ()) or ())
+    if failed:
+        detail = "; ".join(
+            f"{getattr(item[0], 'value', item[0])} ({item[1]})" for item in failed
+        )
+        lines.append(f"- Source failed: {detail}")
+    else:
+        lines.append("- Source failed: none")
+    lines.append(f"- Source upstream live: {bool(getattr(report, 'upstream_live', False))}")
+
+    for label, cache_dir in (
+        ("politrees", POLITREES_CACHE_DIR),
+        ("community", COMMUNITY_CACHE_DIR),
+        ("yaml", YAML_CACHE_DIR),
+    ):
+        lines.append(f"- Cache {label}: {_cache_age_text(cache_dir)}")
+    lines.append("")
+    return lines
+
+
+def _cache_age_text(cache_dir: str) -> str:
+    """Newest entry age in a supplemental cache directory, in human terms."""
+    try:
+        stamps = [
+            os.path.getmtime(os.path.join(cache_dir, name))
+            for name in os.listdir(cache_dir)
+        ]
+    except OSError:
+        return "absent"
+    if not stamps:
+        return "empty"
+    age = time.time() - max(stamps)
+    if age < 3600:
+        return f"{age / 60:.0f}m old"
+    if age < 86400:
+        return f"{age / 3600:.0f}h old"
+    return f"{age / 86400:.0f}d old"
 
 
 #: A drop larger than this fraction of the previously published catalogue is
@@ -1521,7 +1604,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
         return 2
 
-    rendered = _render(entries, unsupported_count=unsupported)
+    rendered = _render(
+        entries, unsupported_count=unsupported, report=getattr(snapshot, "report", None)
+    )
     tsv_text = (
         _reference_tsv_text(ctx.community_by_file)
         if args.write_tsv and ctx.community_by_file
