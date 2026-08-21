@@ -141,7 +141,9 @@ Four commands under `scripts/`, plus the module they share. None are part of the
   forms with the volatile header lines (`Generated:`, provenance, cache ages) stripped.
 - **Ephemeral catalogue caches live under `CACHE_DIR`**, keyed by a URL digest rather than
   basename (two models can both ship a `config.yaml`), with a TTL. `--refresh` forces a
-  refetch; `--offline` is strictly cache-only and serves a stale entry rather than fetching.
+  refetch of Download Center coordinator sources (upstream, Politrees, extras, mvsepless)
+  and of those supplements; `--offline` is strictly cache-only and serves a stale entry
+  rather than fetching.
 - **The `.ir.json` sidecar is tied to its document by SHA-256** and is gitignored. The
   publication guard reads its previous entry count from it only when that digest matches,
   falling back to the document — a stale sidecar must not lower the guard's floor.

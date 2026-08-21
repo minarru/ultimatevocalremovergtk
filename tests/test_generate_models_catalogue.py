@@ -356,9 +356,9 @@ class OfflinePolicyTests(unittest.TestCase):
             real = catalogue._snapshot_and_payloads
             seen = {}
 
-            def spy(*, allow_network: bool, coordinator: Any = None):
+            def spy(*, allow_network: bool, coordinator: Any = None, **kwargs: Any):
                 seen["allow_network"] = allow_network
-                return real(allow_network=allow_network, coordinator=self._co)
+                return real(allow_network=allow_network, coordinator=self._co, **kwargs)
 
             self._co = coordinator
             stack.enter_context(mock.patch.object(catalogue, "_snapshot_and_payloads", spy))
@@ -529,6 +529,110 @@ class CacheIdentityTests(unittest.TestCase):
     def test_refresh_flag_is_exposed_on_the_cli(self) -> None:
         self.assertTrue(catalogue._parse_args(["--refresh"]).refresh)
         self.assertFalse(catalogue._parse_args([]).refresh)
+
+
+class CoordinatorRefreshTests(unittest.TestCase):
+    """--refresh must FORCE-reload membership, not only yaml / models.txt."""
+
+    def _coordinator(self) -> Any:
+        from unittest.mock import MagicMock
+
+        coordinator = MagicMock()
+        empty = MagicMock()
+        empty.state.content = None
+        coordinator.source.return_value = empty
+        snapshot = MagicMock(name="snapshot")
+        coordinator.ensure.return_value = snapshot
+        coordinator.snapshot.return_value = snapshot
+        return coordinator
+
+    def test_refresh_force_loads_coordinator_sources(self) -> None:
+        from core.catalogue_types import RefreshMode
+
+        coordinator = self._coordinator()
+        catalogue._snapshot_and_payloads(
+            allow_network=True, refresh=True, coordinator=coordinator
+        )
+        coordinator.snapshot.assert_called_once_with(
+            vip=False, mode=RefreshMode.FORCE
+        )
+        coordinator.ensure.assert_not_called()
+        coordinator.refresh.assert_not_called()
+
+    def test_default_snapshot_does_not_force_refresh(self) -> None:
+        coordinator = self._coordinator()
+        catalogue._snapshot_and_payloads(
+            allow_network=True, refresh=False, coordinator=coordinator
+        )
+        coordinator.refresh.assert_not_called()
+        coordinator.snapshot.assert_not_called()
+        coordinator.ensure.assert_called_once_with(vip=False, allow_network=True)
+
+    def test_offline_never_force_refreshes_even_when_asked(self) -> None:
+        coordinator = self._coordinator()
+        catalogue._snapshot_and_payloads(
+            allow_network=False, refresh=True, coordinator=coordinator
+        )
+        coordinator.refresh.assert_not_called()
+        coordinator.snapshot.assert_not_called()
+        coordinator.ensure.assert_called_once_with(vip=False, allow_network=False)
+
+    def test_collect_entries_forwards_refresh(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        seen: dict = {}
+
+        def spy(
+            *,
+            allow_network: bool,
+            coordinator: Any = None,
+            refresh: bool = False,
+        ) -> Any:
+            seen["refresh"] = refresh
+            seen["allow_network"] = allow_network
+            return MagicMock(), ({}, {}, {}, {})
+
+        with patch.object(catalogue, "_snapshot_and_payloads", spy), patch.object(
+            catalogue, "_entries_from_snapshot", return_value=[]
+        ):
+            catalogue._collect_entries(
+                catalogue.CatalogueContext(),
+                policy=catalogue.FetchPolicy(refresh=True),
+            )
+        self.assertTrue(seen["refresh"])
+        self.assertTrue(seen["allow_network"])
+
+    def test_main_refresh_forwards_to_snapshot(self) -> None:
+        import contextlib
+        import tempfile
+        from unittest import mock
+
+        seen: dict = {}
+
+        def spy(
+            *,
+            allow_network: bool,
+            coordinator: Any = None,
+            refresh: bool = False,
+        ) -> Any:
+            seen["refresh"] = refresh
+            return mock.MagicMock(unsupported=None, report=None), ({}, {}, {}, {})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "out.md")
+            with mock.patch.object(catalogue, "OUTPUT_PATH", out), mock.patch.object(
+                catalogue,
+                "_build_catalogue_context",
+                lambda **k: catalogue.CatalogueContext(),
+            ), mock.patch.object(
+                catalogue, "_snapshot_and_payloads", spy
+            ), mock.patch.object(
+                catalogue,
+                "_publication_verdict",
+                return_value=catalogue.PublicationVerdict(ok=True),
+            ), contextlib.redirect_stdout(mock.MagicMock()):
+                catalogue.main(["--refresh"])
+        self.assertTrue(seen.get("refresh"))
 
 
 class PublicationGuardTests(unittest.TestCase):

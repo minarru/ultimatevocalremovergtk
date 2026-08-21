@@ -196,6 +196,25 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         self.assertTrue(report.usable or "Bundled" in snap.mdx)
         coordinator.close()
 
+    def test_force_then_ensure_keeps_usable_report_on_snapshot(self) -> None:
+        """The catalogue writer does refresh(FORCE) then ensure(SWR).
+
+        FORCE used to cache a placeholder RefreshReport(usable=False) under
+        the revision digest, so the SWR republish returned that snapshot and
+        generate_models_catalogue refused as unusable even with full lists.
+        """
+        coordinator = self._coordinator()
+        policy = AccessPolicy(allow_network=True, allow_metadata_writes=False)
+        returned = coordinator.refresh(mode=RefreshMode.FORCE, policy=policy)
+        snap = coordinator.ensure(vip=False, policy=policy)
+        self.assertTrue(snap.mdx)
+        self.assertTrue(returned.usable)
+        report = snap.report
+        self.assertIsNotNone(report)
+        assert report is not None
+        self.assertTrue(report.usable)
+        coordinator.close()
+
     def _swr_source(
         self,
         source_id: SourceId,

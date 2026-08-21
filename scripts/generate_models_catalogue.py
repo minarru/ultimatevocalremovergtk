@@ -27,6 +27,7 @@ from bundled.constants import INST_STEM, VOCAL_STEM  # noqa: E402
 from core import paths  # noqa: E402
 from core.catalogue_coordinator import CatalogueCoordinator, flatten_upstream_lists  # noqa: E402
 from core.catalogue_types import (  # noqa: E402
+    RefreshMode,
     SourceId,
     UPSTREAM_DEMUCS_KEYS,
     UPSTREAM_MDX_KEYS,
@@ -161,13 +162,20 @@ def _unsupported_count(unsupported: Any) -> int:
 def _snapshot_and_payloads(
     *,
     allow_network: bool,
+    refresh: bool = False,
     coordinator: Optional[CatalogueCoordinator] = None,
 ) -> Tuple[Any, Tuple[dict, dict, dict, dict]]:
     owned = coordinator is None
     if owned:
         coordinator = CatalogueCoordinator()
     try:
-        snapshot = coordinator.ensure(vip=False, allow_network=allow_network)
+        # One blocking snapshot, not refresh() then ensure(). ensure() is
+        # stale-while-revalidate and used to republish the FORCE snapshot from
+        # cache, including a placeholder RefreshReport(usable=False).
+        if refresh and allow_network:
+            snapshot = coordinator.snapshot(vip=False, mode=RefreshMode.FORCE)
+        else:
+            snapshot = coordinator.ensure(vip=False, allow_network=allow_network)
         payloads = _source_payloads(coordinator)
         return snapshot, payloads
     finally:
@@ -1201,7 +1209,9 @@ def _collect_entries(
             allow_metadata_writes=policy.allow_metadata_writes,
         )
     snapshot, payloads = _snapshot_and_payloads(
-        allow_network=policy.allow_network, coordinator=coordinator
+        allow_network=policy.allow_network,
+        refresh=policy.refresh,
+        coordinator=coordinator,
     )
     return snapshot, _entries_from_snapshot(snapshot, payloads, ctx, policy=policy)
 
@@ -1552,7 +1562,7 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--refresh",
         action="store_true",
-        help="Refetch supplemental catalogue downloads even if cached and fresh.",
+        help="Refetch Download Center sources and supplements even if the TTL says they are fresh.",
     )
     parser.add_argument(
         "--allow-degraded",
