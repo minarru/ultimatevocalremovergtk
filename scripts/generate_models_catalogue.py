@@ -1552,50 +1552,106 @@ def _render(
 
 def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate docs/models-catalogue.md from the Download Center snapshot."
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Generate docs/models-catalogue.md from the Download Center snapshot "
+            "(upstream, Politrees, extras, mvsepless, plus Apollo)."
+        ),
+        epilog=(
+            "Fetch behaviour:\n"
+            "  Default uses cache TTL (24h) and stale-while-revalidate, so a warm\n"
+            "  cache can republish yesterday's membership. --refresh FORCE-reloads\n"
+            "  coordinator sources and yaml/models.txt supplements. --offline never\n"
+            "  fetches and will serve a stale (or empty) cache rather than going\n"
+            "  to the network. A cold cache without --refresh is a fraction of the\n"
+            "  live catalogue; the publication guard refuses to replace a good\n"
+            "  document with that (exit 2) unless you pass --allow-degraded.\n"
+            "\n"
+            "Exit status:\n"
+            "  0  wrote, or --check found no drift, or --summary printed\n"
+            "  1  --check found drift (canonical text changed; header dates ignored)\n"
+            "  2  this run's data is too degraded to publish or to judge drift\n"
+            "\n"
+            "Examples:\n"
+            "  python scripts/generate_models_catalogue.py\n"
+            "  python scripts/generate_models_catalogue.py --refresh\n"
+            "  python scripts/generate_models_catalogue.py --check\n"
+            "  python scripts/generate_models_catalogue.py --summary --offline\n"
+        ),
     )
     parser.add_argument(
         "--offline",
         action="store_true",
-        help="Read catalogue caches only (no remote refresh).",
+        help=(
+            "Read catalogue caches only. Never hits the network; a missing or "
+            "stale cache is used as-is (possibly empty). Takes precedence over "
+            "--refresh."
+        ),
     )
     parser.add_argument(
         "--refresh",
         action="store_true",
-        help="Refetch Download Center sources and supplements even if the TTL says they are fresh.",
+        help=(
+            "Ignore TTL and FORCE-reload Download Center membership "
+            "(upstream, Politrees, extras, mvsepless) plus yaml/models.txt "
+            "supplements. Without this, a warm cache can keep yesterday's "
+            "membership. No effect with --offline."
+        ),
     )
     parser.add_argument(
         "--allow-degraded",
         action="store_true",
-        help="Publish even when sources failed and the catalogue shrank sharply.",
+        help=(
+            "Write even when sources failed or the catalogue shrank by more "
+            "than 10%% versus the last published document. Use only when the "
+            "shrinkage is real. Does not fix an empty or poisoned cache — "
+            "use --refresh for that. Ignored by --summary, which always prints."
+        ),
     )
     parser.add_argument(
         "--no-ir",
         action="store_true",
-        help="Do not write the machine-readable sidecar next to the document.",
+        help=(
+            "Skip the gitignored .ir.json sidecar next to the document "
+            "(SHA-256-tied entry count used by the publication guard)."
+        ),
     )
     parser.add_argument(
         "--write-tsv",
         action="store_true",
-        help=f"Also write {os.path.basename(REFERENCE_TSV_PATH)} (off by default).",
+        help=(
+            f"Also write {os.path.basename(REFERENCE_TSV_PATH)} from community "
+            "models.txt. Off by default; --check then compares it too."
+        ),
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--write",
         action="store_true",
-        help="Write the generated artifacts (the default).",
+        help=(
+            "Write docs/models-catalogue.md (and optional TSV/sidecar). "
+            "This is the default when neither --check nor --summary is passed."
+        ),
     )
     mode.add_argument(
         "--summary",
         action="store_true",
-        help="Print counts, flagged mismatches and unknown intent to stdout. "
-        "Writes nothing.",
+        help=(
+            "Print entry counts, flagged mismatches and unknown intent to "
+            "stdout. Writes nothing: no document, sidecar, TSV, or yaml "
+            "download into the tree. Prints even when the run is degraded."
+        ),
     )
     mode.add_argument(
         "--check",
         action="store_true",
-        help="Report whether the artifacts are up to date; write nothing. "
-        "Exits 1 on drift, for CI.",
+        help=(
+            "Compare the generated catalogue to the on-disk document and "
+            "write nothing. Volatile header lines (Generated, provenance, "
+            "cache ages) are ignored, so drift means the catalogue changed, "
+            "not that time passed. Exit 1 on drift, 2 if this run is too "
+            "degraded to judge. Also read-only for yaml downloads."
+        ),
     )
     return parser.parse_args(argv)
 

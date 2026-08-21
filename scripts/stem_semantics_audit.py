@@ -337,12 +337,28 @@ def _write_json(path: str, entries: List[StemSemanticsEntry]) -> None:
 def build_parser():
     import argparse
 
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--json", dest="json_path", default=None)
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=__doc__,
+    )
+    parser.add_argument(
+        "--json",
+        dest="json_path",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Write the full per-entry report JSON here. The human table is "
+            "still printed to stdout."
+        ),
+    )
     parser.add_argument(
         "--guessed-only",
         action="store_true",
-        help="Only show entries whose is_karaoke came from a name guess, not curated metadata.",
+        help=(
+            "Only entries whose is_karaoke came from a filename guess, not "
+            "from curated hash-table metadata in models/*/model_data/. That "
+            "is the review surface: curated rows are already trusted."
+        ),
     )
     parser.add_argument(
         "--quiet",
@@ -352,18 +368,24 @@ def build_parser():
     parser.add_argument(
         "--only",
         default="",
+        metavar="SUBSTR",
         help="Audit only entries whose id or label contains this substring.",
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=None,
-        help="Audit at most this many entries.",
+        metavar="N",
+        help="Audit at most this many entries (after --only).",
     )
     parser.add_argument(
         "--no-cache",
         action="store_true",
-        help="Ignore the remembered checkpoint hashes and re-fetch every one.",
+        help=(
+            "Ignore remembered successful checkpoint-tail hashes and re-fetch "
+            "every one. Failures are never cached, so a bad network day cannot "
+            "poison later reports even without this flag."
+        ),
     )
     return parser
 
