@@ -38,7 +38,11 @@ from .catalog_dedupe import (
 from .debug_log import debug
 from .extra_catalog import apollo_download_list, merge_extra_catalogues
 from .model_naming import canonical_display_name
-from .model_stem_semantics import INTENT_UNKNOWN
+from .model_stem_semantics import (
+    INTENT_UNKNOWN,
+    resolve_catalogue_intent,
+    resolve_is_karaoke,
+)
 from .mvsepless_catalog import merge_mvsepless_catalogues, mvsepless_metadata
 from .politrees_catalog import (
     load_politrees_links,
@@ -197,7 +201,14 @@ def _build_meta(
             checkpoint=_primary_checkpoint(files),
             stems=stems,
             target_instrument=target,
-            intent=str(source_meta.get("intent") or INTENT_UNKNOWN),
+            intent=resolve_catalogue_intent(
+                target=str(target or ""),
+                instruments=stems,
+                is_karaoke=resolve_is_karaoke(model_name=label),
+                weight_basename=str(_primary_checkpoint(files) or ""),
+                catalogue_label=label,
+                category_intent=str(source_meta.get("intent") or INTENT_UNKNOWN),
+            ),
         )
     return out
 

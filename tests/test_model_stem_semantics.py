@@ -22,20 +22,25 @@ from core.model_stem_semantics import (
     INTENT_MULTI_STEM,
     INTENT_SPECIALTY_STEM,
     INTENT_SPECIAL_FX,
+    INTENT_UNKNOWN,
     INTENT_VOCALS,
     VOCALS_OTHER_DISPLAY_OVERRIDES,
     apply_karaoke_quick_export_default,
+    backend_focus_label,
     confident_stem_bucket,
     export_intent_from_fields,
     export_intent_from_model,
     infer_is_karaoke_from_hints,
     infer_name_intent_from_label,
+    is_drum_bass_pair,
     is_special_fx_stem,
     is_specialty_instrument_pair,
+    is_vocal_family_stem,
     is_vocal_target,
     is_vocals_other_pair,
     preferred_quick_export_mode,
     recommended_export_note,
+    resolve_catalogue_intent,
     resolve_is_karaoke,
     resolve_karaoke_confidence,
     shows_voc_inst_quick_export,
@@ -582,6 +587,192 @@ class ConfidentStemBucketTests(unittest.TestCase):
                 "Vocals", stem_count=2, is_karaoke=False, is_karaoke_curated=False, is_bv=True
             ),
             StemBucket.BACKING_VOCALS,
+        )
+
+
+class VocalFamilyStemTests(unittest.TestCase):
+    """Intent/focus may treat voices/vox/lead-vocal as vocals; engines may not."""
+
+    def test_is_vocal_target_stays_closed(self) -> None:
+        self.assertTrue(is_vocal_target("vocals"))
+        self.assertTrue(is_vocal_target("vocal"))
+        self.assertTrue(is_vocal_target("voc"))
+        self.assertFalse(is_vocal_target("lead-vocal"))
+        self.assertFalse(is_vocal_target("voices"))
+        self.assertFalse(is_vocal_target("vox"))
+        self.assertFalse(is_vocal_target("lead"))
+        self.assertFalse(is_vocal_target("singer_1"))
+
+    def test_is_vocal_family_stem_covers_catalogue_spellings(self) -> None:
+        self.assertTrue(is_vocal_family_stem("Vocals"))
+        self.assertTrue(is_vocal_family_stem("lead-vocal"))
+        self.assertTrue(is_vocal_family_stem("lead_vocal"))
+        self.assertTrue(is_vocal_family_stem("voices"))
+        self.assertTrue(is_vocal_family_stem("vox"))
+        self.assertFalse(is_vocal_family_stem("lead"))
+        self.assertFalse(is_vocal_family_stem("singer_1"))
+        self.assertFalse(is_vocal_family_stem("singer_2"))
+
+
+class OtherTargetIntentTests(unittest.TestCase):
+    def test_vocals_other_yaml_is_still_instrumental_when_target_other(self) -> None:
+        self.assertEqual(
+            export_intent_from_fields(
+                target="other",
+                instruments=["other", "vocals"],
+            ),
+            INTENT_INSTRUMENTAL,
+        )
+
+    def test_other_with_fx_sibling_is_special_fx(self) -> None:
+        self.assertEqual(
+            export_intent_from_fields(
+                target="other",
+                instruments=["dry", "other"],
+            ),
+            INTENT_SPECIAL_FX,
+        )
+
+    def test_four_stem_other_is_multi_stem(self) -> None:
+        self.assertEqual(
+            export_intent_from_fields(
+                target="other",
+                instruments=["vocals", "drums", "bass", "other"],
+            ),
+            INTENT_MULTI_STEM,
+        )
+
+    def test_named_source_plus_other_is_specialty(self) -> None:
+        self.assertEqual(
+            export_intent_from_fields(
+                target="wind-chimes",
+                instruments=["wind-chimes", "other"],
+            ),
+            INTENT_SPECIALTY_STEM,
+        )
+
+    def test_wind_chimes_focus_stays_single_target(self) -> None:
+        self.assertEqual(
+            backend_focus_label(
+                "",
+                "wind-chimes",
+                ["wind-chimes", "other"],
+            ),
+            "single_target:wind-chimes",
+        )
+
+    def test_special_fx_other_note_describes_the_fx_sibling(self) -> None:
+        model = _Model(
+            mdx_c_configs=_Config(["dry", "other"], "other"),
+            model_name="MelBand Roformer | DeNoise by Yuluoye",
+        )
+        self.assertEqual(export_intent_from_model(model), INTENT_SPECIAL_FX)
+        self.assertIn("dry", recommended_export_note(model).lower())
+
+
+class NamedTargetAndDrumBassTests(unittest.TestCase):
+    def test_unknown_named_target_is_specialty(self) -> None:
+        self.assertEqual(
+            export_intent_from_fields(target="wind-chimes"),
+            INTENT_SPECIALTY_STEM,
+        )
+
+    def test_drum_bass_pair_requires_exactly_those_two_stems(self) -> None:
+        self.assertTrue(is_drum_bass_pair(["No Drum-Bass", "Drum-Bass"]))
+        self.assertFalse(
+            is_drum_bass_pair(
+                ["vocals", "drums", "bass", "other", "drum-bass"]
+            )
+        )
+
+    def test_substring_drum_and_bass_is_not_drum_bass_sep(self) -> None:
+        self.assertEqual(
+            export_intent_from_fields(target="wind-chimes"),
+            INTENT_SPECIALTY_STEM,
+        )
+        self.assertNotEqual(
+            backend_focus_label("", "wind-chimes", ["wind-chimes", "other"]),
+            "drum_bass_target",
+        )
+
+
+class KaraokeFocusTests(unittest.TestCase):
+    def test_polarformer_karaoke_lead_is_vocal_primary(self) -> None:
+        self.assertEqual(
+            export_intent_from_fields(
+                target="lead",
+                instruments=["lead", "back_instrum"],
+                is_karaoke=True,
+            ),
+            INTENT_KARAOKE,
+        )
+        self.assertEqual(
+            backend_focus_label(
+                "lead",
+                "lead",
+                ["lead", "back_instrum"],
+                is_karaoke=True,
+            ),
+            "karaoke_vocal_primary",
+        )
+
+    def test_karaoke_backing_tokens_are_instrumental_primary(self) -> None:
+        self.assertEqual(
+            backend_focus_label(
+                "back_instrum",
+                "back_instrum",
+                ["lead", "back_instrum"],
+                is_karaoke=True,
+            ),
+            "karaoke_instrumental_primary",
+        )
+
+    def test_karaoke_unknown_primary_is_not_a_silent_inst_default(self) -> None:
+        self.assertEqual(
+            backend_focus_label(
+                "similarity",
+                "similarity",
+                ["similarity", "other"],
+                is_karaoke=True,
+            ),
+            "karaoke_unknown_primary",
+        )
+
+    def test_karaoke_lead_note_is_vocal_side_not_backing_fallback(self) -> None:
+        model = _Model(
+            is_karaoke=True,
+            primary_stem="lead",
+            mdx_c_configs=_Config(["lead", "back_instrum"], "lead"),
+            model_name="BS PolarFormer Karaoke by Aname",
+        )
+        note = recommended_export_note(model)
+        self.assertIn("vocal", note.lower())
+        self.assertNotIn("typically the desired export", note.lower())
+
+
+class CatalogueIntentOverlayTests(unittest.TestCase):
+    def test_yaml_vocals_beats_specialty_category(self) -> None:
+        self.assertEqual(
+            resolve_catalogue_intent(
+                target="vocals",
+                instruments=["vocals", "other"],
+                category_intent=INTENT_SPECIALTY_STEM,
+            ),
+            INTENT_VOCALS,
+        )
+
+    def test_unknown_fields_keep_category_specialty(self) -> None:
+        self.assertEqual(
+            resolve_catalogue_intent(
+                category_intent=INTENT_SPECIALTY_STEM,
+            ),
+            INTENT_SPECIALTY_STEM,
+        )
+
+    def test_unknown_fields_and_unknown_category_stay_unknown(self) -> None:
+        self.assertEqual(
+            resolve_catalogue_intent(),
+            INTENT_UNKNOWN,
         )
 
 

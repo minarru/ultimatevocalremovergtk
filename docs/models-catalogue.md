@@ -1,6 +1,6 @@
 # UVR Model Catalogue (TRvlvr + Politrees + extras + mvsepless)
 
-Generated: 2026-08-21 12:42 UTC by `scripts/generate_models_catalogue.py`.
+Generated: 2026-08-21 12:53 UTC by `scripts/generate_models_catalogue.py`.
 
 Regenerate after catalogue updates:
 
@@ -41,7 +41,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 - Total catalogue entries: **474**
 - Entries with resolved metadata: **474**
 - Unknown intent remaining: **2**
-- Flagged mismatches: **12**
+- Flagged mismatches: **5**
 - Unsupported mvsepless entries (omitted): **0**
 
 ## Models with unknown intent
@@ -87,7 +87,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | BS PolarFormer 4 stems 09-07-2026 · Aname | multi_stem | Multi-stem: vocals, other, drums, bass | multi_stem | vocals | — |
 | MDX-Net | BS PolarFormer 4 stems Lazy Bat · Aname | multi_stem | Multi-stem: vocals, other, drums, bass | multi_stem | vocals | — |
 | MDX-Net | BS PolarFormer InstVoc Duality Lazy Bat · Aname | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | two_stem | vocals | — |
-| MDX-Net | BS PolarFormer Karaoke · Lambda001 (sdr lead 9.74, sdr back  | karaoke | Karaoke backing (Instrumental primary; complement … | karaoke_instrumental_primary | lead | — |
+| MDX-Net | BS PolarFormer Karaoke · Lambda001 (sdr lead 9.74, sdr back  | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | lead | — |
 | MDX-Net | BS PolarFormer Vocals · ZFTurbo | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | BandSplit Roformer — 4 Stems · ZFTurbo | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
 | MDX-Net | BandSplit Roformer — 4 stems · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
@@ -102,8 +102,8 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | BandSplit Roformer — Drums Experimental · BeatLoo Labs | multi_stem | Multi-stem: drums, other | single_target:drums | drums | — |
 | MDX-Net | BandSplit Roformer — Drums v1 · Xlance | multi_stem | Multi-stem: drums, other | single_target:drums | drums | — |
 | MDX-Net | BandSplit Roformer — Drums v2 · Xlance | multi_stem | Multi-stem: drums, other | single_target:drums | drums | — |
-| MDX-Net | BandSplit Roformer — FNF (Friday Night Funkin) Voices · MrDe | vocals | Voices (single native output) | single_target:Voices | Voices | NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is Voices |
-| MDX-Net | BandSplit Roformer — FNF (Friday Night Funkin) Voices v2 · M | vocals | Voices (single native output) | single_target:Voices | Voices | NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is Voices |
+| MDX-Net | BandSplit Roformer — FNF (Friday Night Funkin) Voices · MrDe | vocals | Voices (single native output) | vocal_target | Voices | — |
+| MDX-Net | BandSplit Roformer — FNF (Friday Night Funkin) Voices v2 · M | vocals | Voices (single native output) | vocal_target | Voices | — |
 | MDX-Net | BandSplit Roformer — Inst Beta · neoculture | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
 | MDX-Net | BandSplit Roformer — Instrumental EXP Value Residual · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
 | MDX-Net | BandSplit Roformer — Instrumental FNO · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
@@ -130,7 +130,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | BandSplit Roformer — Mega 53 stems (FULL) · MVSep | multi_stem | Multi-stem: accordion, acoustic-guitar, back-vocal… | multi_stem | accordion | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Accordion) · MVSep | specialty_stem | accordion, other | single_target:accordion | accordion | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Acoustic-Guitar) ·  | specialty_stem | acoustic-guitar, other | single_target:acoustic-guitar | acoustic-guitar | — |
-| MDX-Net | BandSplit Roformer — Mega 53 stems (only Back-Vocal) · MVSep | vocals | back-vocal (single native output) | single_target:back-vocal | back-vocal | NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is back-vocal |
+| MDX-Net | BandSplit Roformer — Mega 53 stems (only Back-Vocal) · MVSep | specialty_stem | back-vocal, other | single_target:back-vocal | back-vocal | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Banjo) · MVSep | specialty_stem | banjo, other | single_target:banjo | banjo | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Bass) · MVSep | multi_stem | Multi-stem: bass, other | single_target:bass | bass | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Bassoon) · MVSep | multi_stem | Multi-stem: bassoon, other | single_target:bassoon | bassoon | — |
@@ -152,24 +152,24 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Harmonica) · MVSep | specialty_stem | harmonica, other | single_target:harmonica | harmonica | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Harp) · MVSep | specialty_stem | harp, other | single_target:harp | harp | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Harpsichord) · MVSe | specialty_stem | harpsichord, other | single_target:harpsichord | harpsichord | — |
-| MDX-Net | BandSplit Roformer — Mega 53 stems (only Hh) · MVSep | drum_bass_sep | hh (drum/bass separation; complement = Drum-Bass) | single_target:hh | hh | — |
+| MDX-Net | BandSplit Roformer — Mega 53 stems (only Hh) · MVSep | specialty_stem | hh, other | single_target:hh | hh | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Keys) · MVSep | specialty_stem | keys, other | single_target:keys | keys | — |
-| MDX-Net | BandSplit Roformer — Mega 53 stems (only Kick) · MVSep | drum_bass_sep | kick (drum/bass separation; complement = Drum-Bass… | single_target:kick | kick | — |
-| MDX-Net | BandSplit Roformer — Mega 53 stems (only Lead-Vocal) · MVSep | vocals | lead-vocal (single native output) | single_target:lead-vocal | lead-vocal | NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is lead-vocal |
+| MDX-Net | BandSplit Roformer — Mega 53 stems (only Kick) · MVSep | specialty_stem | kick, other | single_target:kick | kick | — |
+| MDX-Net | BandSplit Roformer — Mega 53 stems (only Lead-Vocal) · MVSep | vocals | lead-vocal (single native output) | vocal_target | lead-vocal | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Mandolin) · MVSep | specialty_stem | mandolin, other | single_target:mandolin | mandolin | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Marimba) · MVSep | specialty_stem | marimba, other | single_target:marimba | marimba | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Oboe) · MVSep | specialty_stem | oboe, other | single_target:oboe | oboe | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Organ) · MVSep | specialty_stem | organ, other | single_target:organ | organ | — |
-| MDX-Net | BandSplit Roformer — Mega 53 stems (only Percussion) · MVSep | drum_bass_sep | percussion (drum/bass separation; complement = Dru… | single_target:percussion | percussion | — |
-| MDX-Net | BandSplit Roformer — Mega 53 stems (only Piano) · MVSep | specialty_stem | piano, other | single_target:piano | piano | — |
+| MDX-Net | BandSplit Roformer — Mega 53 stems (only Percussion) · MVSep | specialty_stem | percussion, other | single_target:percussion | percussion | — |
+| MDX-Net | BandSplit Roformer — Mega 53 stems (only Piano) · MVSep | multi_stem | Multi-stem: piano, other | single_target:piano | piano | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Saxophone) · MVSep | specialty_stem | saxophone, other | single_target:saxophone | saxophone | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Sitar) · MVSep | specialty_stem | sitar, other | single_target:sitar | sitar | — |
-| MDX-Net | BandSplit Roformer — Mega 53 stems (only Snare) · MVSep | drum_bass_sep | snare (drum/bass separation; complement = Drum-Bas… | single_target:snare | snare | — |
+| MDX-Net | BandSplit Roformer — Mega 53 stems (only Snare) · MVSep | specialty_stem | snare, other | single_target:snare | snare | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Strings) · MVSep | specialty_stem | strings, other | single_target:strings | strings | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Synth) · MVSep | specialty_stem | synth, other | single_target:synth | synth | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Tambourine) · MVSep | specialty_stem | tambourine, other | single_target:tambourine | tambourine | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Timpani) · MVSep | specialty_stem | timpani, other | single_target:timpani | timpani | — |
-| MDX-Net | BandSplit Roformer — Mega 53 stems (only Toms) · MVSep | drum_bass_sep | toms (drum/bass separation; complement = Drum-Bass… | single_target:toms | toms | — |
+| MDX-Net | BandSplit Roformer — Mega 53 stems (only Toms) · MVSep | specialty_stem | toms, other | single_target:toms | toms | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Triangle) · MVSep | specialty_stem | triangle, other | single_target:triangle | triangle | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Trombone) · MVSep | specialty_stem | trombone, other | single_target:trombone | trombone | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Trumpet) · MVSep | specialty_stem | trumpet, other | single_target:trumpet | trumpet | — |
@@ -179,7 +179,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Violin) · MVSep | specialty_stem | violin, other | single_target:violin | violin | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Vocal) · MVSep | vocals | Vocals (complement = Instrumental) | vocal_target | vocal | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Wind) · MVSep | specialty_stem | wind, other | single_target:wind | wind | — |
-| MDX-Net | BandSplit Roformer — Mega 53 stems (only Wind-Chimes) · MVSe | drum_bass_sep | wind-chimes (drum/bass separation; complement = Dr… | single_target:wind-chimes | wind-chimes | — |
+| MDX-Net | BandSplit Roformer — Mega 53 stems (only Wind-Chimes) · MVSe | specialty_stem | wind-chimes, other | single_target:wind-chimes | wind-chimes | — |
 | MDX-Net | BandSplit Roformer — Mega 53 stems (only Woodwind) · MVSep | specialty_stem | woodwind, other | single_target:woodwind | woodwind | — |
 | MDX-Net | BandSplit Roformer — Mid-Side v1 · Gilliaaan | specialty_stem | center, wide | single_target:center | center | — |
 | MDX-Net | BandSplit Roformer — Mid-Side v2 · Gilliaaan | specialty_stem | center, wide | single_target:center | center | — |
@@ -207,7 +207,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | BandSplit Roformer — Vocals · GaboxR67 | vocals | Vocals (complement = Instrumental) | vocal_target | Vocals | — |
 | MDX-Net | BandSplit Roformer — Vocals v1 · Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | BandSplit Roformer — Vocals v2 · Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| MDX-Net | BandSplit Roformer — Vox · Xlance | vocals | vox (single native output) | single_target:vox | vox | NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is vox |
+| MDX-Net | BandSplit Roformer — Vox · Xlance | vocals | vox (single native output) | vocal_target | vox | — |
 | MDX-Net | BS Siamese Roformer Vocals · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Bandit | Bandit — Last Checkpoint · ZFTurbo | multi_stem | Multi-stem: speech, music, effects | multi_stem | speech | — |
 | Bandit | Bandit — Plus (ep 30) · ZFTurbo | multi_stem | Multi-stem: speech, music, effects | multi_stem | speech | — |
@@ -268,8 +268,8 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — 4 Stems Large · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
 | MDX-Net | MelBand Roformer — 4 Stems XL · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
 | MDX-Net | MelBand Roformer — 4 Stems v2 Large · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| MDX-Net | MelBand Roformer — Ambiance · jazzpear | special_fx | ambience (post-processing stem) | single_target:ambience | ambience | — |
-| MDX-Net | MelBand Roformer — BGM · Jasper | specialty_stem | vocals, other | vocal_target | vocals | NAME says specialty stem but backend focus differs |
+| MDX-Net | MelBand Roformer — Ambiance · jazzpear | specialty_stem | ambience, other | single_target:ambience | ambience | — |
+| MDX-Net | MelBand Roformer — BGM · Jasper | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — BVE · Gonzaluigi | specialty_stem | Lead, Back | specialty_target:Lead | Lead | — |
 | MDX-Net | MelBand Roformer — Big Beta v1 · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — Big Beta v2 · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
@@ -281,15 +281,15 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — Big SYHFT v1 Fast · SYH99999 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — DeBigReverb · Sucial | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
 | MDX-Net | MelBand Roformer — DeNoise Aggressive · Aufr33 | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
-| MDX-Net | MelBand Roformer — DeNoise · Yuluoye | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
+| MDX-Net | MelBand Roformer — DeNoise · Yuluoye | special_fx | other (post-processing stem) | special_fx_target:dry | other | — |
 | MDX-Net | MelBand Roformer — DeNoiser Children 16k · Phaedrus33 | special_fx | speech (post-processing stem) | single_target:speech | speech | — |
 | MDX-Net | MelBand Roformer — DeUX · Becruily | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | two_stem | Vocals | — |
 | MDX-Net | MelBand Roformer — Denoise DeBleed · GaboxR67 | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Duet · Dry Paint Dealer Undr | vocals | singer_1, singer_2 | two_stem | singer_1 | NAME says vocals but backend is not vocal-focused; NAME says vocals but backend is specialty 2-stem |
-| MDX-Net | MelBand Roformer — Explosions · jazzpear | special_fx | explosions (post-processing stem) | single_target:explosions | explosions | — |
-| MDX-Net | MelBand Roformer — Fighting · jazzpear | special_fx | fighting (post-processing stem) | single_target:fighting | fighting | — |
-| MDX-Net | MelBand Roformer — Foley · jazzpear | special_fx | foley (post-processing stem) | single_target:foley | foley | — |
-| MDX-Net | MelBand Roformer — Footsteps · jazzpear | special_fx | footsteps (post-processing stem) | single_target:footsteps | footsteps | — |
+| MDX-Net | MelBand Roformer — Explosions · jazzpear | specialty_stem | explosions, other | single_target:explosions | explosions | — |
+| MDX-Net | MelBand Roformer — Fighting · jazzpear | specialty_stem | fighting, other | single_target:fighting | fighting | — |
+| MDX-Net | MelBand Roformer — Foley · jazzpear | specialty_stem | foley, other | single_target:foley | foley | — |
+| MDX-Net | MelBand Roformer — Footsteps · jazzpear | specialty_stem | footsteps, other | single_target:footsteps | footsteps | — |
 | MDX-Net | MelBand Roformer — General · jazzpear | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — Guitar · chenCFD | specialty_stem | guitar, others | specialty_target:guitar | guitar | — |
 | MDX-Net | MelBand Roformer — Hybrid Arch · Aname | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | two_stem | vocals | — |
@@ -328,8 +328,8 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — Instrumental v1e Plus · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
 | MDX-Net | MelBand Roformer — Instrumental v1e · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
 | MDX-Net | MelBand Roformer — Instrumental v2 · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
-| MDX-Net | MelBand Roformer — Karaoke 25-02-2025 · GaboxR67 | karaoke | Karaoke backing (Instrumental primary; complement … | karaoke_instrumental_primary | karaoke | — |
-| MDX-Net | MelBand Roformer — Karaoke 28-02-2025 · GaboxR67 | karaoke | Karaoke backing (Instrumental primary; complement … | karaoke_instrumental_primary | karaoke | — |
+| MDX-Net | MelBand Roformer — Karaoke 25-02-2025 · GaboxR67 | karaoke | Karaoke backing (Instrumental primary; complement … | karaoke_unknown_primary | karaoke | — |
+| MDX-Net | MelBand Roformer — Karaoke 28-02-2025 · GaboxR67 | karaoke | Karaoke backing (Instrumental primary; complement … | karaoke_unknown_primary | karaoke | — |
 | MDX-Net | MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | MDX-Net | MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi [m | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | MDX-Net | MelBand Roformer — Karaoke Fusion Total · Gonzaluigi | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
@@ -357,11 +357,11 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — SYHFT v2 · SYH99999 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — SYHFT v2.5 · SYH99999 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — SYHFT v3 · SYH99999 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| MDX-Net | MelBand Roformer — Scratch Large · Aname | specialty_stem | vocals, other | vocal_target | vocals | NAME says specialty stem but backend focus differs |
+| MDX-Net | MelBand Roformer — Scratch Large · Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — Small v1 · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — SpeechSep · AliceN | multi_stem | Multi-stem: vocals, other | two_stem | vocals | — |
 | MDX-Net | MelBand Roformer — Super Big DeReverb · Sucial | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
-| MDX-Net | MelBand Roformer — Toon · jazzpear | special_fx | anime (post-processing stem) | single_target:anime | anime | — |
+| MDX-Net | MelBand Roformer — Toon · jazzpear | specialty_stem | anime, other | single_target:anime | anime | — |
 | MDX-Net | MelBand Roformer — Vocals Big Beta v5e · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — Vocals Fv1 · GaboxR67 | vocals | Vocals (complement = Instrumental) | vocal_target | Vocals | — |
 | MDX-Net | MelBand Roformer — Vocals Fv2 · GaboxR67 | vocals | Vocals (complement = Instrumental) | vocal_target | Vocals | — |
@@ -540,7 +540,7 @@ Roformer karaoke yamls typically target **vocals** (lead) with instrumental comp
 | --- | --- | --- | --- |
 | 5_HP-Karaoke-UVR | Instrumental | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
 | 6_HP-Karaoke-UVR | Instrumental | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
-| BS PolarFormer Karaoke · Lambda001 (sdr lead 9.74, sdr back instrum 15.13) | lead | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
+| BS PolarFormer Karaoke · Lambda001 (sdr lead 9.74, sdr back instrum 15.13) | lead | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | BandSplit Roformer — Karaoke Inverted · GaboxR67 | other | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
 | BandSplit Roformer — Karaoke · Anvuew | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | BandSplit Roformer — Karaoke · Becrily & Frazer | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
@@ -584,7 +584,6 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 | BandSplit Roformer — Leap Instrumental · Unwa | bs_leap_inst_unwa_config.yaml | vocals, other | Instrumental (yaml `other`; complement = vocals) |
 | BandSplit Roformer — Leap XE (90 bands) Instrumental · Unwa | bs_leap_xe_inst_unwa_config.yaml | vocals, other | Instrumental (yaml `other`; complement = vocals) |
 | BandSplit Roformer — Other · ViperX | bs_other_viperx_config.yaml | vocals, other | Instrumental (yaml `other`; complement = vocals) |
-| MelBand Roformer — DeNoise · Yuluoye | mbr_denoise_yuluoye_config.yaml | dry, other | Instrumental (yaml `other`; complement = vocals) |
 | MelBand Roformer — Inst Rifforge · Mesk | mbr_inst_rifforge_meskvlla33_config.yaml | vocals, other | Instrumental (yaml `other`; complement = vocals) |
 | MelBand Roformer — Instrumental Flowers v10 · GaboxR67 | mbr_instflowersv10_gabox_config.yaml | other, vocals | Instrumental (yaml `other`; complement = vocals) |
 | MelBand Roformer — Instrumental v1 · Unwa | mbr_inst1_unwa_config.yaml | other, vocals | Instrumental (yaml `other`; complement = vocals) |
@@ -605,15 +604,8 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 | --- | --- | --- | --- | --- | --- |
 | 3_HP-Vocal-UVR | vocals | two_stem | Vocals | Vocals (+ Instrumental complement) | NAME says vocals but backend is not vocal-focused |
 | 4_HP-Vocal-UVR | vocals | two_stem | Vocals | Vocals (+ Instrumental complement) | NAME says vocals but backend is not vocal-focused |
-| BandSplit Roformer — FNF (Friday Night Funkin) Voices · MrDense67 | vocals | single_target:Voices | Voices | Voices (single native output) | NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is Voices |
-| BandSplit Roformer — FNF (Friday Night Funkin) Voices v2 · MrDense67 | vocals | single_target:Voices | Voices | Voices (single native output) | NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is Voices |
-| BandSplit Roformer — Mega 53 stems (only Back-Vocal) · MVSep | vocals | single_target:back-vocal | back-vocal | back-vocal (single native output) | NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is back-vocal |
-| BandSplit Roformer — Mega 53 stems (only Lead-Vocal) · MVSep | vocals | single_target:lead-vocal | lead-vocal | lead-vocal (single native output) | NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is lead-vocal |
-| BandSplit Roformer — Vox · Xlance | vocals | single_target:vox | vox | vox (single native output) | NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is vox |
 | MDX23C — D1581 | vocals | two_stem | Vocals | Vocals (+ Instrumental complement) | NAME says vocals but backend is not vocal-focused |
-| MelBand Roformer — BGM · Jasper | specialty_stem | vocal_target | vocals | vocals, other | NAME says specialty stem but backend focus differs |
 | MelBand Roformer — Duet · Dry Paint Dealer Undr | vocals | two_stem | singer_1 | singer_1, singer_2 | NAME says vocals but backend is not vocal-focused; NAME says vocals but backend is specialty 2-stem |
-| MelBand Roformer — Scratch Large · Aname | specialty_stem | vocal_target | vocals | vocals, other | NAME says specialty stem but backend focus differs |
 | MelBand Roformer — Small · Aname | vocals | two_stem | Instrumental | Instrumental (+ Vocals complement) | NAME says vocals but backend is not vocal-focused |
 
 ## VR Architecture (detail)
@@ -1051,12 +1043,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `bs_pope_karaoke_974_lambda_config.yaml`
 - **Architecture:** BS Roformer
 - **Name intent:** karaoke
-- **Backend focus:** karaoke_instrumental_primary
+- **Backend focus:** karaoke_vocal_primary
 - **Primary stem (backend):** `lead`
 - **Instruments:** lead, back_instrum
 - **Target instrument:** `lead`
 - **Karaoke model:** yes
-- **Best result:** Karaoke backing (Instrumental primary; complement = lead vocals)
+- **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
 - **Metadata:** bundled_yaml:bs_pope_karaoke_974_lambda_config.yaml
 
 ### BS PolarFormer Vocals · ZFTurbo
@@ -1267,13 +1259,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `bs_fnf_mrdense67_config.yaml`
 - **Architecture:** BS Roformer
 - **Name intent:** vocals
-- **Backend focus:** single_target:Voices
+- **Backend focus:** vocal_target
 - **Primary stem (backend):** `Voices`
 - **Instruments:** Voices, Inst
 - **Target instrument:** `Voices`
 - **Best result:** Voices (single native output)
 - **Metadata:** bundled_yaml:bs_fnf_mrdense67_config.yaml
-- **⚠ Flags:** NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is Voices
 
 ### BandSplit Roformer — FNF (Friday Night Funkin) Voices v2 · MrDense67
 
@@ -1282,13 +1273,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `bs_fnf2_mrdense67_config.yaml`
 - **Architecture:** BS Roformer
 - **Name intent:** vocals
-- **Backend focus:** single_target:Voices
+- **Backend focus:** vocal_target
 - **Primary stem (backend):** `Voices`
 - **Instruments:** Voices, Inst
 - **Target instrument:** `Voices`
 - **Best result:** Voices (single native output)
 - **Metadata:** bundled_yaml:bs_fnf2_mrdense67_config.yaml
-- **⚠ Flags:** NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is Voices
 
 ### BandSplit Roformer — Inst Beta · neoculture
 
@@ -1692,14 +1682,15 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `bs_mega_53stem_back-vocal_mvsep.ckpt`
 - **Config:** `bs_mega_53stem_back-vocal_mvsep_config.yaml`
 - **Architecture:** BS Roformer
-- **Name intent:** vocals
+- **Name intent:** specialty_stem
 - **Backend focus:** single_target:back-vocal
 - **Primary stem (backend):** `back-vocal`
 - **Instruments:** back-vocal, other
 - **Target instrument:** `back-vocal`
-- **Best result:** back-vocal (single native output)
+- **Best result:** back-vocal, other
+- **Save stems UI:** UI: back-vocal / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_back-vocal_mvsep_config.yaml
-- **⚠ Flags:** NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is back-vocal
+- **Note:** Name intent corrected from metadata (specialty_stem)
 
 ### BandSplit Roformer — Mega 53 stems (only Banjo) · MVSep
 
@@ -2018,13 +2009,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `bs_mega_53stem_hh_mvsep.ckpt`
 - **Config:** `bs_mega_53stem_hh_mvsep_config.yaml`
 - **Architecture:** BS Roformer
-- **Name intent:** drum_bass_sep
+- **Name intent:** specialty_stem
 - **Backend focus:** single_target:hh
 - **Primary stem (backend):** `hh`
 - **Instruments:** hh, other
 - **Target instrument:** `hh`
-- **Best result:** hh (drum/bass separation; complement = Drum-Bass)
-- **Save stems UI:** UI: No Drum-Bass / Drum-Bass subset
+- **Best result:** hh, other
+- **Save stems UI:** UI: hh / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_hh_mvsep_config.yaml
 
 ### BandSplit Roformer — Mega 53 stems (only Keys) · MVSep
@@ -2048,13 +2039,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `bs_mega_53stem_kick_mvsep.ckpt`
 - **Config:** `bs_mega_53stem_kick_mvsep_config.yaml`
 - **Architecture:** BS Roformer
-- **Name intent:** drum_bass_sep
+- **Name intent:** specialty_stem
 - **Backend focus:** single_target:kick
 - **Primary stem (backend):** `kick`
 - **Instruments:** kick, other
 - **Target instrument:** `kick`
-- **Best result:** kick (drum/bass separation; complement = Drum-Bass)
-- **Save stems UI:** UI: No Drum-Bass / Drum-Bass subset
+- **Best result:** kick, other
+- **Save stems UI:** UI: kick / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_kick_mvsep_config.yaml
 
 ### BandSplit Roformer — Mega 53 stems (only Lead-Vocal) · MVSep
@@ -2064,13 +2055,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `bs_mega_53stem_lead-vocal_mvsep_config.yaml`
 - **Architecture:** BS Roformer
 - **Name intent:** vocals
-- **Backend focus:** single_target:lead-vocal
+- **Backend focus:** vocal_target
 - **Primary stem (backend):** `lead-vocal`
 - **Instruments:** lead-vocal, other
 - **Target instrument:** `lead-vocal`
 - **Best result:** lead-vocal (single native output)
 - **Metadata:** bundled_yaml:bs_mega_53stem_lead-vocal_mvsep_config.yaml
-- **⚠ Flags:** NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is lead-vocal
 
 ### BandSplit Roformer — Mega 53 stems (only Mandolin) · MVSep
 
@@ -2138,13 +2128,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `bs_mega_53stem_percussion_mvsep.ckpt`
 - **Config:** `bs_mega_53stem_percussion_mvsep_config.yaml`
 - **Architecture:** BS Roformer
-- **Name intent:** drum_bass_sep
+- **Name intent:** specialty_stem
 - **Backend focus:** single_target:percussion
 - **Primary stem (backend):** `percussion`
 - **Instruments:** percussion, other
 - **Target instrument:** `percussion`
-- **Best result:** percussion (drum/bass separation; complement = Drum-Bass)
-- **Save stems UI:** UI: No Drum-Bass / Drum-Bass subset
+- **Best result:** percussion, other
+- **Save stems UI:** UI: percussion / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_percussion_mvsep_config.yaml
 
 ### BandSplit Roformer — Mega 53 stems (only Piano) · MVSep
@@ -2153,13 +2143,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `bs_mega_53stem_piano_mvsep.ckpt`
 - **Config:** `bs_mega_53stem_piano_mvsep_config.yaml`
 - **Architecture:** BS Roformer
-- **Name intent:** specialty_stem
+- **Name intent:** multi_stem
 - **Backend focus:** single_target:piano
 - **Primary stem (backend):** `piano`
 - **Instruments:** piano, other
 - **Target instrument:** `piano`
-- **Best result:** piano, other
-- **Save stems UI:** UI: piano / other subset
+- **Best result:** Multi-stem: piano, other
 - **Metadata:** bundled_yaml:bs_mega_53stem_piano_mvsep_config.yaml
 
 ### BandSplit Roformer — Mega 53 stems (only Saxophone) · MVSep
@@ -2198,13 +2187,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `bs_mega_53stem_snare_mvsep.ckpt`
 - **Config:** `bs_mega_53stem_snare_mvsep_config.yaml`
 - **Architecture:** BS Roformer
-- **Name intent:** drum_bass_sep
+- **Name intent:** specialty_stem
 - **Backend focus:** single_target:snare
 - **Primary stem (backend):** `snare`
 - **Instruments:** snare, other
 - **Target instrument:** `snare`
-- **Best result:** snare (drum/bass separation; complement = Drum-Bass)
-- **Save stems UI:** UI: No Drum-Bass / Drum-Bass subset
+- **Best result:** snare, other
+- **Save stems UI:** UI: snare / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_snare_mvsep_config.yaml
 
 ### BandSplit Roformer — Mega 53 stems (only Strings) · MVSep
@@ -2273,13 +2262,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `bs_mega_53stem_toms_mvsep.ckpt`
 - **Config:** `bs_mega_53stem_toms_mvsep_config.yaml`
 - **Architecture:** BS Roformer
-- **Name intent:** drum_bass_sep
+- **Name intent:** specialty_stem
 - **Backend focus:** single_target:toms
 - **Primary stem (backend):** `toms`
 - **Instruments:** toms, other
 - **Target instrument:** `toms`
-- **Best result:** toms (drum/bass separation; complement = Drum-Bass)
-- **Save stems UI:** UI: No Drum-Bass / Drum-Bass subset
+- **Best result:** toms, other
+- **Save stems UI:** UI: toms / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_toms_mvsep_config.yaml
 
 ### BandSplit Roformer — Mega 53 stems (only Triangle) · MVSep
@@ -2423,13 +2412,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `bs_mega_53stem_wind-chimes_mvsep.ckpt`
 - **Config:** `bs_mega_53stem_wind-chimes_mvsep_config.yaml`
 - **Architecture:** BS Roformer
-- **Name intent:** drum_bass_sep
+- **Name intent:** specialty_stem
 - **Backend focus:** single_target:wind-chimes
 - **Primary stem (backend):** `wind-chimes`
 - **Instruments:** wind-chimes, other
 - **Target instrument:** `wind-chimes`
-- **Best result:** wind-chimes (drum/bass separation; complement = Drum-Bass)
-- **Save stems UI:** UI: No Drum-Bass / Drum-Bass subset
+- **Best result:** wind-chimes, other
+- **Save stems UI:** UI: wind-chimes / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_wind-chimes_mvsep_config.yaml
 
 ### BandSplit Roformer — Mega 53 stems (only Woodwind) · MVSep
@@ -2521,7 +2510,6 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** Instrumental (yaml `other`; complement = vocals)
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:bs_other_viperx_config.yaml
-- **Note:** Intent inferred from metadata (instrumental)
 - **Note:** Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)
 
 ### BandSplit Roformer — Percussion v1 · Xlance
@@ -2574,6 +2562,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `bs_6stem.ckpt`
 - **Config:** `bs_6stem_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `bass`
@@ -2843,13 +2832,12 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `bs_vox_xlancer_config.yaml`
 - **Architecture:** BS Roformer
 - **Name intent:** vocals
-- **Backend focus:** single_target:vox
+- **Backend focus:** vocal_target
 - **Primary stem (backend):** `vox`
 - **Instruments:** vox, other
 - **Target instrument:** `vox`
 - **Best result:** vox (single native output)
 - **Metadata:** bundled_yaml:bs_vox_xlancer_config.yaml
-- **⚠ Flags:** NAME says vocals but backend is not vocal-focused; NAME says vocals but native target is vox
 
 ### BS Siamese Roformer Vocals · Unwa
 
@@ -2873,6 +2861,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `bandit_last.ckpt`
 - **Config:** `bandit_last_config.yaml`
+- **Architecture:** Bandit
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `speech`
@@ -2886,6 +2875,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `bandit_30_zfturbo.ckpt`
 - **Config:** `bandit_30_zfturbo_config.yaml`
+- **Architecture:** Bandit
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `speech`
@@ -2899,6 +2889,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `bandit_57_zfturbo.ckpt`
 - **Config:** `bandit_57_zfturbo_config.yaml`
+- **Architecture:** Bandit
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `speech`
@@ -2912,6 +2903,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `bandit_63_zfturbo.ckpt`
 - **Config:** `bandit_63_zfturbo_config.yaml`
+- **Architecture:** Bandit
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `speech`
@@ -2925,6 +2917,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `model_bandit_plus_dnr_sdr_11.47.ckpt`
 - **Config:** `config_dnr_bandit_bsrnn_multi_mus64.yaml`
+- **Architecture:** Bandit
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `Speech`
@@ -2938,6 +2931,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `checkpoint-multi_fixed.ckpt`
 - **Config:** `config_dnr_bandit_v2_mus64.yaml`
+- **Architecture:** Bandit
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `Speech`
@@ -3336,6 +3330,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_4stem_small_kuielab.ckpt`
 - **Config:** `mdx23c_4stem_small_kuielab_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `vocals`
@@ -3349,6 +3344,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_4stem_kuielab.ckpt`
 - **Config:** `mdx23c_4stem_kuielab_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `vocals`
@@ -3362,6 +3358,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_4stem_zfturbo.ckpt`
 - **Config:** `mdx23c_4stem_zfturbo_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `vocals`
@@ -3375,6 +3372,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_instvoc_hq1.ckpt`
 - **Config:** `mdx23c_instvoc_hq1_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** dual_voc_inst
 - **Backend focus:** two_stem
 - **Primary stem (backend):** `Vocals`
@@ -3388,6 +3386,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_instvoc_hq2.ckpt`
 - **Config:** `mdx23c_instvoc_hq2_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** dual_voc_inst
 - **Backend focus:** two_stem
 - **Primary stem (backend):** `Vocals`
@@ -3401,6 +3400,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_drumsep_5stem_aufr33_jarredou.ckpt`
 - **Config:** `mdx23c_drumsep_5stem_aufr33_jarredou_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `kick`
@@ -3414,6 +3414,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_drumsep_6stem_aufr33_jarredou.ckpt`
 - **Config:** `mdx23c_drumsep_6stem_aufr33_jarredou_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `kick`
@@ -3427,6 +3428,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_instvoc_zfturbo.ckpt`
 - **Config:** `mdx23c_instvoc_zfturbo_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** dual_voc_inst
 - **Backend focus:** two_stem
 - **Primary stem (backend):** `vocals`
@@ -3440,6 +3442,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_mid_side_wesleyr36.ckpt`
 - **Config:** `mdx23c_mid_side_wesleyr36_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** specialty_stem
 - **Backend focus:** specialty_target:similarity
 - **Primary stem (backend):** `similarity`
@@ -3454,6 +3457,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_mid_side_gilliaaan.ckpt`
 - **Config:** `mdx23c_mid_side_gilliaaan_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** specialty_stem
 - **Backend focus:** single_target:wide
 - **Primary stem (backend):** `wide`
@@ -3468,6 +3472,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_mid_side2e_gilliaaan.ckpt`
 - **Config:** `mdx23c_mid_side2e_gilliaaan_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** specialty_stem
 - **Backend focus:** two_stem
 - **Primary stem (backend):** `center`
@@ -3483,6 +3488,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `MDX23C-De-Reverb-aufr33-jarredou.ckpt`
 - **Config:** `config_dereverb_mdx23c.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** special_fx
 - **Backend focus:** special_fx_target:dry
 - **Primary stem (backend):** `dry`
@@ -3498,6 +3504,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `MDX23C-DrumSep-aufr33-jarredou.ckpt`
 - **Config:** `config_drumsep_mdx23c.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `kick`
@@ -3512,6 +3519,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `model_mdx23c_ep_271_l1_freq_72.2383.ckpt`
 - **Config:** `config_mdx23c_similarity.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** specialty_stem
 - **Backend focus:** specialty_target:Similarity
 - **Primary stem (backend):** `Similarity`
@@ -3556,6 +3564,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_orch_verosment.ckpt`
 - **Config:** `mdx23c_orch_verosment_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** specialty_stem
 - **Backend focus:** single_target:orch
 - **Primary stem (backend):** `orch`
@@ -3570,6 +3579,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_sfxsplitter_jasper.ckpt`
 - **Config:** `mdx23c_sfxsplitter_jasper_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** two_stem
 - **Primary stem (backend):** `foreground`
@@ -3582,6 +3592,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_sfx_jasper.ckpt`
 - **Config:** `mdx23c_sfx_jasper_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** two_stem
 - **Primary stem (backend):** `foreground`
@@ -3594,6 +3605,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `mdx23c_vocals_kuielab.ckpt`
 - **Config:** `mdx23c_vocals_kuielab_config.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** vocal_target
 - **Primary stem (backend):** `vocals`
@@ -3651,13 +3663,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mbr_amb_jazzpear.ckpt`
 - **Config:** `mbr_amb_jazzpear_config.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** specialty_stem
 - **Backend focus:** single_target:ambience
 - **Primary stem (backend):** `ambience`
 - **Instruments:** ambience, other
 - **Target instrument:** `ambience`
-- **Best result:** ambience (post-processing stem)
-- **Save stems UI:** UI: ambience / complement stem
+- **Best result:** ambience, other
+- **Save stems UI:** UI: ambience / other subset
 - **Metadata:** bundled_yaml:mbr_amb_jazzpear_config.yaml
 
 ### MelBand Roformer — BGM · Jasper
@@ -3666,15 +3678,14 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mbr_bgm_jasper.ckpt`
 - **Config:** `mbr_bgm_jasper_config.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** specialty_stem
+- **Name intent:** vocals
 - **Backend focus:** vocal_target
 - **Primary stem (backend):** `vocals`
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
-- **Best result:** vocals, other
+- **Best result:** Vocals (complement = Instrumental)
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:mbr_bgm_jasper_config.yaml
-- **⚠ Flags:** NAME says specialty stem but backend focus differs
 
 ### MelBand Roformer — BVE · Gonzaluigi
 
@@ -3847,16 +3858,14 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mbr_denoise_yuluoye.ckpt`
 - **Config:** `mbr_denoise_yuluoye_config.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** instrumental
-- **Backend focus:** instrumental_target_other_yaml
+- **Name intent:** special_fx
+- **Backend focus:** special_fx_target:dry
 - **Primary stem (backend):** `other`
 - **Instruments:** dry, other
 - **Target instrument:** `other`
-- **Best result:** Instrumental (yaml `other`; complement = vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
+- **Best result:** other (post-processing stem)
+- **Save stems UI:** UI: other / complement stem
 - **Metadata:** bundled_yaml:mbr_denoise_yuluoye_config.yaml
-- **Note:** Name intent corrected from metadata (instrumental)
-- **Note:** Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)
 
 ### MelBand Roformer — DeNoiser Children 16k · Phaedrus33
 
@@ -3923,13 +3932,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mbr_expl_jazzpear.ckpt`
 - **Config:** `mbr_expl_jazzpear_config.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** specialty_stem
 - **Backend focus:** single_target:explosions
 - **Primary stem (backend):** `explosions`
 - **Instruments:** explosions, other
 - **Target instrument:** `explosions`
-- **Best result:** explosions (post-processing stem)
-- **Save stems UI:** UI: explosions / complement stem
+- **Best result:** explosions, other
+- **Save stems UI:** UI: explosions / other subset
 - **Metadata:** bundled_yaml:mbr_expl_jazzpear_config.yaml
 
 ### MelBand Roformer — Fighting · jazzpear
@@ -3938,13 +3947,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mbr_fight_jazzpear.ckpt`
 - **Config:** `mbr_fight_jazzpear_config.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** specialty_stem
 - **Backend focus:** single_target:fighting
 - **Primary stem (backend):** `fighting`
 - **Instruments:** fighting, other
 - **Target instrument:** `fighting`
-- **Best result:** fighting (post-processing stem)
-- **Save stems UI:** UI: fighting / complement stem
+- **Best result:** fighting, other
+- **Save stems UI:** UI: fighting / other subset
 - **Metadata:** bundled_yaml:mbr_fight_jazzpear_config.yaml
 
 ### MelBand Roformer — Foley · jazzpear
@@ -3953,13 +3962,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mbr_misc_jazzpear.ckpt`
 - **Config:** `mbr_misc_jazzpear_config.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** specialty_stem
 - **Backend focus:** single_target:foley
 - **Primary stem (backend):** `foley`
 - **Instruments:** foley, other
 - **Target instrument:** `foley`
-- **Best result:** foley (post-processing stem)
-- **Save stems UI:** UI: foley / complement stem
+- **Best result:** foley, other
+- **Save stems UI:** UI: foley / other subset
 - **Metadata:** bundled_yaml:mbr_misc_jazzpear_config.yaml
 
 ### MelBand Roformer — Footsteps · jazzpear
@@ -3968,13 +3977,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mbr_foot_jazzpear.ckpt`
 - **Config:** `mbr_foot_jazzpear_config.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** specialty_stem
 - **Backend focus:** single_target:footsteps
 - **Primary stem (backend):** `footsteps`
 - **Instruments:** footsteps, other
 - **Target instrument:** `footsteps`
-- **Best result:** footsteps (post-processing stem)
-- **Save stems UI:** UI: footsteps / complement stem
+- **Best result:** footsteps, other
+- **Save stems UI:** UI: footsteps / other subset
 - **Metadata:** bundled_yaml:mbr_foot_jazzpear_config.yaml
 
 ### MelBand Roformer — General · jazzpear
@@ -4557,7 +4566,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `mbr_karaoke25022025_gabox_config.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** karaoke
-- **Backend focus:** karaoke_instrumental_primary
+- **Backend focus:** karaoke_unknown_primary
 - **Primary stem (backend):** `karaoke`
 - **Instruments:** karaoke, other
 - **Target instrument:** `karaoke`
@@ -4572,7 +4581,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Config:** `mbr_karaoke28022025_gabox_config.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** karaoke
-- **Backend focus:** karaoke_instrumental_primary
+- **Backend focus:** karaoke_unknown_primary
 - **Primary stem (backend):** `karaoke`
 - **Instruments:** karaoke, other
 - **Target instrument:** `karaoke`
@@ -4997,15 +5006,14 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mbr_scratch_aname.ckpt`
 - **Config:** `mbr_scratch_aname_config.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** specialty_stem
+- **Name intent:** vocals
 - **Backend focus:** vocal_target
 - **Primary stem (backend):** `vocals`
 - **Instruments:** vocals, other
 - **Target instrument:** `vocals`
-- **Best result:** vocals, other
+- **Best result:** Vocals (complement = Instrumental)
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:mbr_scratch_aname_config.yaml
-- **⚠ Flags:** NAME says specialty stem but backend focus differs
 
 ### MelBand Roformer — Small v1 · Unwa
 
@@ -5057,13 +5065,13 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Weight:** `mbr_toon_jazzpear.ckpt`
 - **Config:** `mbr_toon_jazzpear_config.yaml`
 - **Architecture:** Mel-Band Roformer
-- **Name intent:** special_fx
+- **Name intent:** specialty_stem
 - **Backend focus:** single_target:anime
 - **Primary stem (backend):** `anime`
 - **Instruments:** anime, other
 - **Target instrument:** `anime`
-- **Best result:** anime (post-processing stem)
-- **Save stems UI:** UI: anime / complement stem
+- **Best result:** anime, other
+- **Save stems UI:** UI: anime / other subset
 - **Metadata:** bundled_yaml:mbr_toon_jazzpear_config.yaml
 
 ### MelBand Roformer — Vocals Big Beta v5e · Unwa
@@ -6865,6 +6873,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `scnet_huge_4stem_aname.ckpt`
 - **Config:** `scnet_huge_4stem_aname_config.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `drums`
@@ -6878,6 +6887,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `scnet_xl_4stem_starrytong.ckpt`
 - **Config:** `scnet_xl_4stem_starrytong_config.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `drums`
@@ -6891,6 +6901,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `scnet_xl_4stem_zftrubo.ckpt`
 - **Config:** `scnet_xl_4stem_zftrubo_config.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `drums`
@@ -6904,6 +6915,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `scnet_4stem_zfturbo.ckpt`
 - **Config:** `scnet_4stem_zfturbo_config.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `drums`
@@ -6917,6 +6929,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `scnet_choirsep_exp.ckpt`
 - **Config:** `scnet_choirsep_exp_config.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `alto`
@@ -6930,6 +6943,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `scnet_jazz_4stem_jorisvaneyghen.ckpt`
 - **Config:** `scnet_jazz_4stem_jorisvaneyghen_config.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `drums`
@@ -6943,6 +6957,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `scnet_masked_small_4stem_zftrubo.ckpt`
 - **Config:** `scnet_masked_small_4stem_zftrubo_config.yaml`
+- **Architecture:** SCNet Masked
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `drums`
@@ -6956,6 +6971,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `scnet_masked_xl_ihf_4stem_zftrubo.ckpt`
 - **Config:** `scnet_masked_xl_ihf_4stem_zftrubo_config.yaml`
+- **Architecture:** SCNet Masked
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `drums`
@@ -6969,6 +6985,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `scnet_masked_choirsep_exp.ckpt`
 - **Config:** `scnet_masked_choirsep_exp_config.yaml`
+- **Architecture:** SCNet Masked
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `soprano`
@@ -6982,6 +6999,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `scnet_mid_side2_gilliaaan.ckpt`
 - **Config:** `scnet_mid_side2_gilliaaan_config.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** two_stem
 - **Primary stem (backend):** `center`
@@ -6994,6 +7012,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `scnet_surround_jasper.ckpt`
 - **Config:** `scnet_surround_jasper_config.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `LRF`
@@ -7007,6 +7026,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `scnet_tran_4stem_zftrubo.ckpt`
 - **Config:** `scnet_tran_4stem_zftrubo_config.yaml`
+- **Architecture:** SCNet Tran
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `drums`
@@ -7020,6 +7040,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `scnet_xl_ihf_4stem_zfturbo.ckpt`
 - **Config:** `scnet_xl_ihf_4stem_zfturbo_config.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `drums`
@@ -7033,6 +7054,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** mvsepless
 - **Weight:** `scnet_xl_jazz_4stem_jorisvaneyghen.ckpt`
 - **Config:** `scnet_xl_jazz_4stem_jorisvaneyghen_config.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `drums`
@@ -7048,6 +7070,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** extras
 - **Weight:** `huge_scnet_4stems_bleedless.ckpt`
 - **Config:** `config_huge_scnet_4stems.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `drums`
@@ -7061,6 +7084,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** extras
 - **Weight:** `huge_scnet_4stems_fullness.ckpt`
 - **Config:** `config_huge_scnet_4stems.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `drums`
@@ -7074,6 +7098,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** extras
 - **Weight:** `huge_scnet_4stems_strong_fullness.ckpt`
 - **Config:** `config_huge_scnet_4stems.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `drums`
@@ -7087,6 +7112,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** extras
 - **Weight:** `huge_scnet_4stems_v1.2.ckpt`
 - **Config:** `config_huge_scnet_4stems.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `drums`
@@ -7100,6 +7126,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `model_scnet_sdr_9.3244.ckpt`
 - **Config:** `config_musdb18_scnet_large.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `Drums`
@@ -7113,6 +7140,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `SCNet-large_starrytong_fixed.ckpt`
 - **Config:** `config_musdb18_scnet_large_starrytong.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `Drums`
@@ -7126,6 +7154,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `scnet_checkpoint_musdb18.ckpt`
 - **Config:** `config_musdb18_scnet.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `Drums`
@@ -7139,6 +7168,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `model_scnet_ep_54_sdr_9.8051.ckpt`
 - **Config:** `config_musdb18_scnet_xl.yaml`
+- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `Drums`
@@ -7286,6 +7316,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `ebf34a2db.th`
 - **Config:** `UVR_Demucs_Model_1.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** dual_voc_inst
 - **Backend focus:** two_stem
 - **Instruments:** instrumental, vocals
@@ -7298,6 +7329,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `7d865c68-3d5dd56b.th`
 - **Config:** `mdx.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Instruments:** drums, bass, other, vocals
@@ -7310,6 +7342,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `cfa93e08-61801ae1.th`
 - **Config:** `mdx_extra.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Instruments:** drums, bass, other, vocals
@@ -7322,6 +7355,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `7fd6ef75-a905dd85.th`
 - **Config:** `mdx_extra_q.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Instruments:** drums, bass, other, vocals
@@ -7334,6 +7368,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `305bc58f-18378783.th`
 - **Config:** `mdx_q.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Instruments:** drums, bass, other, vocals
@@ -7346,6 +7381,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `902315c2-b39ce9c9.th`
 - **Config:** `repro_mdx_a.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Instruments:** drums, bass, other, vocals
@@ -7358,6 +7394,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `902315c2-b39ce9c9.th`
 - **Config:** `repro_mdx_a_hybrid_only.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Instruments:** drums, bass, other, vocals
@@ -7370,6 +7407,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `1ef250f1-592467ce.th`
 - **Config:** `repro_mdx_a_time_only.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Instruments:** drums, bass, other, vocals
@@ -7382,6 +7420,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `75fc33f5-1941ce65.th`
 - **Config:** `hdemucs_mmi.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Instruments:** drums, bass, other, vocals
@@ -7394,6 +7433,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `955717e8-8726e21a.th`
 - **Config:** `htdemucs.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Instruments:** drums, bass, other, vocals
@@ -7406,6 +7446,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `5c90dfd2-34c22ccb.th`
 - **Config:** `htdemucs_6s.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Instruments:** drums, bass, other, vocals, guitar, piano
@@ -7418,6 +7459,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** TRvlvr+Politrees
 - **Weight:** `04573f0d-f3cf25b2.th`
 - **Config:** `htdemucs_ft.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Instruments:** drums, bass, other, vocals
@@ -7432,6 +7474,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** extras
 - **Weight:** `apollo_edm_big_by_essid.ckpt`
 - **Config:** `apollo_edm_big_by_essid.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** unknown
 - **Backend focus:** unknown
 - **Best result:** unknown
@@ -7442,6 +7485,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** extras
 - **Weight:** `apollo_edm_by_essid.ckpt`
 - **Config:** `apollo_edm_by_essid.yaml`
+- **Architecture:** MDX23C
 - **Name intent:** unknown
 - **Backend focus:** unknown
 - **Best result:** unknown

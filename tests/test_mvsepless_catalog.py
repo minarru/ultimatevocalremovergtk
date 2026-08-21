@@ -435,12 +435,18 @@ class CategoryTranslationTests(unittest.TestCase):
             translate_category("4 \u0441\u0442\u0435\u043c\u0430"), ("4 stems", INTENT_MULTI_STEM)
         )
 
-    def test_unknown_category_passes_through(self) -> None:
+    def test_drums_and_bass_categories_are_specialty_extractors(self) -> None:
+        from core.model_stem_semantics import INTENT_DRUM_BASS_SEP, INTENT_SPECIALTY_STEM
         from core.mvsepless_catalog import translate_category
 
-        label, intent = translate_category("Nonexistent")
-        self.assertEqual(label, "Nonexistent")
-        self.assertTrue(intent)
+        self.assertEqual(
+            translate_category("Ударные"), ("Drums", INTENT_SPECIALTY_STEM)
+        )
+        self.assertEqual(translate_category("Бас"), ("Bass", INTENT_SPECIALTY_STEM))
+        self.assertEqual(translate_category("Басс"), ("Bass", INTENT_SPECIALTY_STEM))
+        self.assertEqual(
+            translate_category("DrumSep"), ("DrumSep", INTENT_DRUM_BASS_SEP)
+        )
 
 
 class MetadataSidecarTests(unittest.TestCase):
