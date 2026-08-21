@@ -107,9 +107,33 @@ def validate_setting_path(
     return section_name, field_name
 
 
+def _container_mismatch(current: Any, value: Any) -> bool:
+    """Whether ``value`` is the wrong shape for a container field.
+
+    The container guard exists to stop a scalar -- ``--set foo=bar`` always
+    yields a string -- from silently landing in a list or dict. A value that is
+    itself the right kind of container is exactly what the field wants, so
+    rejecting it made list settings unreachable from any programmatic caller.
+    """
+    if isinstance(current, list):
+        return not isinstance(value, (list, tuple))
+    if isinstance(current, dict):
+        return not isinstance(value, dict)
+    return False
+
+
 def validate_setting_value(settings: Settings, path: str, value: Any) -> None:
     """Reject scalar values that permissive GUI migration coercion would hide."""
-    section_name, field_name = validate_setting_path(settings, path)
+    section_name, field_name = validate_setting_path(
+        settings, path, allow_containers=True
+    )
+    current_field = getattr(getattr(settings, section_name), field_name)
+    if isinstance(current_field, (list, dict)):
+        if _container_mismatch(current_field, value):
+            raise ValueError(
+                f"setting {path!r} is a container and cannot be set from a single value"
+            )
+        return
     if path == "ensemble.type":
         from bundled.constants import ENSEMBLE_ALGORITHMS
 
@@ -176,7 +200,9 @@ def apply_settings_overrides(
     """
     pairs = list(overrides)
     for path, value in pairs:
-        validate_setting_path(settings, path)
+        # Containers are gated on the value's shape by validate_setting_value,
+        # not refused outright: a caller supplying a real list is legitimate.
+        validate_setting_path(settings, path, allow_containers=True)
         validate_setting_value(settings, path, value)
     for path, value in pairs:
         set_path(settings, path, value)
