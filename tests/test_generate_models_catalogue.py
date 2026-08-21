@@ -865,6 +865,94 @@ class ReferenceTsvOptInTests(unittest.TestCase):
         self.assertFalse(catalogue._parse_args([]).write_tsv)
 
 
+class CheckModeTests(unittest.TestCase):
+    """--check reports drift without touching the tree."""
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        os.environ["UVR_DISABLE_CATALOGUE_STEMS"] = "1"
+        self.addCleanup(lambda: os.environ.pop("UVR_DISABLE_CATALOGUE_STEMS", None))
+        self.tmp = tempfile.mkdtemp(prefix="uvr-check-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.out = os.path.join(self.tmp, "models-catalogue.md")
+        self.tsv = os.path.join(self.tmp, "model_intent_reference.tsv")
+
+    def _run(self, argv: list) -> int:
+        import contextlib
+        from unittest import mock
+
+        class _Snapshot:
+            vr = {f"Model {i}": f"m{i}.pth" for i in range(3)}
+            mdx: dict = {}
+            demucs: dict = {}
+            apollo: dict = {}
+            meta: dict = {}
+            unsupported: dict = {}
+            report = None
+
+        ctx = catalogue.CatalogueContext(
+            community_by_file={
+                "model.ckpt": catalogue.CommunityRef(
+                    filename="model.ckpt",
+                    arch="Roformer",
+                    primary_stem="Vocals",
+                    stems_text="vocals, other",
+                    friendly_name="Some Model",
+                    intent="vocals",
+                )
+            }
+        )
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(catalogue, "OUTPUT_PATH", self.out))
+            stack.enter_context(mock.patch.object(catalogue, "REFERENCE_TSV_PATH", self.tsv))
+            stack.enter_context(
+                mock.patch.object(catalogue, "_build_catalogue_context", lambda **k: ctx)
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    catalogue, "_snapshot_and_payloads",
+                    lambda **k: (_Snapshot(), ({}, {}, {}, {})),
+                )
+            )
+            return catalogue.main(argv)
+
+    def test_check_on_an_up_to_date_document_exits_zero(self) -> None:
+        self.assertEqual(self._run([]), 0)
+        before = open(self.out, "rb").read()
+        mtime = os.path.getmtime(self.out)
+        self.assertEqual(self._run(["--check"]), 0)
+        self.assertEqual(open(self.out, "rb").read(), before)
+        self.assertEqual(os.path.getmtime(self.out), mtime, "--check rewrote the file")
+
+    def test_check_reports_drift_without_writing(self) -> None:
+        self.assertEqual(self._run([]), 0)
+        with open(self.out, "a", encoding="utf-8") as handle:
+            handle.write("\ndrifted\n")
+        drifted = open(self.out, "rb").read()
+        self.assertEqual(self._run(["--check"]), 1)
+        self.assertEqual(open(self.out, "rb").read(), drifted, "--check wrote anyway")
+
+    def test_check_on_a_missing_document_is_drift(self) -> None:
+        self.assertEqual(self._run(["--check"]), 1)
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_check_also_covers_the_tsv_when_requested(self) -> None:
+        self.assertEqual(self._run(["--write-tsv"]), 0)
+        self.assertEqual(self._run(["--check", "--write-tsv"]), 0)
+        os.unlink(self.tsv)
+        self.assertEqual(self._run(["--check", "--write-tsv"]), 1)
+        self.assertFalse(os.path.exists(self.tsv))
+
+    def test_check_and_write_are_mutually_exclusive(self) -> None:
+        with self.assertRaises(SystemExit):
+            catalogue._parse_args(["--check", "--write"])
+
+    def test_write_is_the_default(self) -> None:
+        self.assertFalse(catalogue._parse_args([]).check)
+
+
 class EntryMetaOverlayTests(unittest.TestCase):
     def test_fills_blank_stems_target_and_unknown_intent(self) -> None:
         from core.catalog_sources import EntryMeta

@@ -394,7 +394,7 @@ def _parse_community_models_txt(path: str) -> Dict[str, CommunityRef]:
     return refs
 
 
-def _write_reference_tsv(refs: Dict[str, CommunityRef]) -> None:
+def _reference_tsv_text(refs: Dict[str, CommunityRef]) -> str:
     rows = sorted(refs.values(), key=lambda item: item.filename.lower())
     lines = ["filename\tarch\tprimary_stem\tintent\tstems\tfriendly_name"]
     for ref in rows:
@@ -410,9 +410,7 @@ def _write_reference_tsv(refs: Dict[str, CommunityRef]) -> None:
                 ]
             )
         )
-    from core.json_store import write_text_atomic
-
-    write_text_atomic(REFERENCE_TSV_PATH, "\n".join(lines) + "\n")
+    return "\n".join(lines) + "\n"
 
 
 def _build_catalogue_context(
@@ -1404,7 +1402,26 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help=f"Also write {os.path.basename(REFERENCE_TSV_PATH)} (off by default).",
     )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--write",
+        action="store_true",
+        help="Write the generated artifacts (the default).",
+    )
+    mode.add_argument(
+        "--check",
+        action="store_true",
+        help="Report whether the artifacts are up to date; write nothing. "
+        "Exits 1 on drift, for CI.",
+    )
     return parser.parse_args(argv)
+
+
+def _text_matches(path: str, text: str) -> bool:
+    """Whether ``path`` already holds exactly ``text``."""
+    from core.json_store import content_digest
+
+    return content_digest(path) == hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 #: A drop larger than this fraction of the previously published catalogue is
@@ -1504,10 +1521,31 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
         return 2
 
+    rendered = _render(entries, unsupported_count=unsupported)
+    tsv_text = (
+        _reference_tsv_text(ctx.community_by_file)
+        if args.write_tsv and ctx.community_by_file
+        else ""
+    )
+
+    if args.check:
+        drift = []
+        if not _text_matches(OUTPUT_PATH, rendered):
+            drift.append(OUTPUT_PATH)
+        if tsv_text and not _text_matches(REFERENCE_TSV_PATH, tsv_text):
+            drift.append(REFERENCE_TSV_PATH)
+        if drift:
+            for path in drift:
+                print(f"Out of date: {path}", file=sys.stderr)
+            print("Regenerate with: python scripts/generate_models_catalogue.py", file=sys.stderr)
+            return 1
+        print(f"Up to date: {OUTPUT_PATH}")
+        return 0
+
     from core.json_store import write_text_atomic
 
     # A failed write must not truncate the checked-in catalogue document.
-    write_text_atomic(OUTPUT_PATH, _render(entries, unsupported_count=unsupported))
+    write_text_atomic(OUTPUT_PATH, rendered)
     flagged = sum(1 for e in entries if e.flags)
     unknown = sum(1 for e in entries if e.name_intent == "unknown")
     with_meta = sum(1 for e in entries if e.metadata_source not in ("unavailable", ""))
@@ -1516,8 +1554,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         f"{unknown} unknown, {flagged} flagged, {unsupported} unsupported omitted)"
     )
     # Only after the guard: a refused run must not mutate this artifact either.
-    if args.write_tsv and ctx.community_by_file:
-        _write_reference_tsv(ctx.community_by_file)
+    if tsv_text:
+        write_text_atomic(REFERENCE_TSV_PATH, tsv_text)
         print(f"Wrote {REFERENCE_TSV_PATH}")
     return 0
 
