@@ -3,7 +3,7 @@ import os
 import sys
 import unittest
 import urllib.error
-from typing import Any
+from typing import Any, Optional
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -1277,7 +1277,16 @@ class IntermediateRepresentationTests(unittest.TestCase):
                 handle.write("- Total catalogue entries: **7**\n")
             sidecar = catalogue._ir_path_for(doc)
             with open(sidecar, "w", encoding="utf-8") as handle:
-                json.dump({"schema_version": 1, "entry_count": 412}, handle)
+                json.dump(
+                    {
+                        "schema_version": 1,
+                        "entry_count": 412,
+                        # Must prove it describes this document; see
+                        # SidecarTrustTests for the stale case.
+                        "document_sha256": catalogue._document_digest(doc),
+                    },
+                    handle,
+                )
             self.assertEqual(catalogue._previous_entry_count(doc), 412)
 
     def test_previous_entry_count_falls_back_to_the_document(self) -> None:
@@ -1423,6 +1432,109 @@ class CollectEntriesIsTheRealPathTests(unittest.TestCase):
                  ) as collect:
                 catalogue.main([])
         self.assertEqual(collect.call_count, 1, "main did not go through _collect_entries")
+
+
+class SidecarTrustTests(unittest.TestCase):
+    """The sidecar may only speak for the document it was written with."""
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        self.tmp = tempfile.mkdtemp(prefix="uvr-sidecar-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.doc = os.path.join(self.tmp, "models-catalogue.md")
+
+    def _write_doc(self, count: int) -> None:
+        with open(self.doc, "w", encoding="utf-8") as handle:
+            handle.write(f"- Total catalogue entries: **{count}**\n")
+
+    def _write_sidecar(self, count: int, *, digest: Optional[str] = None) -> None:
+        payload: dict = {"schema_version": 1, "entry_count": count}
+        if digest is not None:
+            payload["document_sha256"] = digest
+        with open(catalogue._ir_path_for(self.doc), "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+
+    def test_a_sidecar_written_with_this_document_is_trusted(self) -> None:
+        self._write_doc(474)
+        self._write_sidecar(474, digest=catalogue._document_digest(self.doc))
+        self.assertEqual(catalogue._previous_entry_count(self.doc), 474)
+
+    def test_a_stale_sidecar_cannot_lower_the_guard_floor(self) -> None:
+        """The exact hazard: a degraded run's sidecar outliving its document."""
+        self._write_doc(474)
+        self._write_sidecar(88, digest="sha-of-some-other-document")
+        self.assertEqual(catalogue._previous_entry_count(self.doc), 474)
+
+    def test_a_sidecar_with_no_digest_is_not_trusted(self) -> None:
+        """Written before the cross-check existed; the document is authoritative."""
+        self._write_doc(474)
+        self._write_sidecar(88)
+        self.assertEqual(catalogue._previous_entry_count(self.doc), 474)
+
+    def test_the_sidecar_is_used_when_the_document_has_no_count(self) -> None:
+        with open(self.doc, "w", encoding="utf-8") as handle:
+            handle.write("a document with no summary line\n")
+        self._write_sidecar(412, digest=catalogue._document_digest(self.doc))
+        self.assertEqual(catalogue._previous_entry_count(self.doc), 412)
+
+    def test_a_published_run_writes_a_matching_digest(self) -> None:
+        import contextlib
+        from unittest import mock
+
+        class _Snapshot:
+            vr = {"M": "m.pth"}
+            mdx: dict = {}
+            demucs: dict = {}
+            apollo: dict = {}
+            meta: dict = {}
+            unsupported: dict = {}
+            report = None
+
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(catalogue, "OUTPUT_PATH", self.doc))
+            stack.enter_context(
+                mock.patch.object(catalogue, "_build_catalogue_context",
+                                  lambda **k: catalogue.CatalogueContext())
+            )
+            stack.enter_context(
+                mock.patch.object(catalogue, "_snapshot_and_payloads",
+                                  lambda **k: (_Snapshot(), ({}, {}, {}, {})))
+            )
+            self.assertEqual(catalogue.main([]), 0)
+
+        with open(catalogue._ir_path_for(self.doc), encoding="utf-8") as handle:
+            payload = json.load(handle)
+        self.assertEqual(payload["document_sha256"], catalogue._document_digest(self.doc))
+
+
+class SummaryHonestyTests(unittest.TestCase):
+    """A summary of a failed fetch must not read as a clean bill of health."""
+
+    def _dead_report(self):
+        from core.catalogue_types import RefreshMode, RefreshReport
+
+        return RefreshReport(mode=RefreshMode.OFFLINE, usable=False)
+
+    def test_an_unusable_snapshot_is_called_out(self) -> None:
+        text = catalogue.render_summary_report([], unsupported_count=0, report=self._dead_report())
+        self.assertNotIn("Nothing flagged", text)
+        self.assertIn("unusable", text.lower())
+
+    def test_an_empty_catalogue_is_called_out_even_without_a_report(self) -> None:
+        text = catalogue.render_summary_report([], unsupported_count=0, report=None)
+        self.assertNotIn("Nothing flagged", text)
+        self.assertIn("no entries", text.lower())
+
+    def test_a_healthy_empty_of_problems_run_still_reads_clean(self) -> None:
+        entry = catalogue.ModelEntry(
+            source="TRvlvr", family="VR Architecture", catalogue_label="Good",
+            weight_file="g.pth", name_intent="vocals",
+            metadata_source="bundled_yaml:y.yaml",
+        )
+        text = catalogue.render_summary_report([entry], unsupported_count=0)
+        self.assertIn("Nothing flagged", text)
 
 
 class EntryMetaOverlayTests(unittest.TestCase):

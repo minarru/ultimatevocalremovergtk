@@ -94,6 +94,11 @@ scripts/*
 !scripts/model_tool_support.py
 !scripts/stem_semantics_audit.py
 
+# Machine-readable sidecar for docs/models-catalogue.md. Regenerated with the
+# document and tied to it by digest, so a checked-in copy would only ever go
+# stale; the publication guard falls back to the document when it is absent.
+docs/models-catalogue.ir.json
+
 # Legacy catalogue caches. These moved under CACHE_DIR; the entries stay so a
 # checkout that still has the old directories does not show them as untracked.
 # Safe to delete: nothing reads them any more.

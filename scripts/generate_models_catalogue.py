@@ -1247,9 +1247,32 @@ def render_summary_report(
         for entry in unknown:
             lines.append(f"- **{_display_label(entry)}** ({entry.family}, {entry.source})")
         lines.append("")
-    if not flagged and not unknown:
+    degraded = _summary_health_warning(entries, report)
+    if degraded:
+        lines += [degraded, ""]
+    elif not flagged and not unknown:
         lines += ["Nothing flagged, and every entry resolved an intent.", ""]
     return "\n".join(lines)
+
+
+def _summary_health_warning(entries: List[ModelEntry], report: Any) -> str:
+    """Why an empty exception list may mean a failed run, not a clean one.
+
+    --summary deliberately runs ahead of the publication guard, so nothing
+    else tells the reader the fetch collapsed; "nothing flagged" over zero
+    entries would read as a clean bill of health for a total failure.
+    """
+    if report is not None and not getattr(report, "usable", True):
+        return (
+            "> **Snapshot unusable** — no source produced entries. These counts "
+            "describe a failed fetch, not the catalogue."
+        )
+    if not entries:
+        return (
+            "> **No entries collected** — nothing was found to report on. "
+            "Check the source provenance above before reading anything into this."
+        )
+    return ""
 
 
 #: Bumped when the IR's shape changes in a way a consumer would notice.
@@ -1262,8 +1285,19 @@ def _ir_path_for(output_path: str) -> str:
     return f"{stem}.ir.json"
 
 
+def _document_digest(path: str) -> str:
+    """SHA-256 of a rendered document, used to tie a sidecar to it."""
+    from core.json_store import content_digest
+
+    return content_digest(path)
+
+
 def build_ir(
-    entries: List[ModelEntry], *, report: Any, unsupported_count: int
+    entries: List[ModelEntry],
+    *,
+    report: Any,
+    unsupported_count: int,
+    document_sha256: str = "",
 ) -> Dict[str, Any]:
     """The catalogue as data, from which Markdown and TSV are rendered.
 
@@ -1278,6 +1312,10 @@ def build_ir(
         "entry_count": len(entries),
         "unsupported_omitted": unsupported_count,
         "provenance": report.as_dict() if hasattr(report, "as_dict") else {},
+        # Ties this sidecar to the document it was written beside. Without it
+        # a sidecar left behind by a degraded run silently lowers the
+        # publication guard's floor for a document it does not describe.
+        "document_sha256": document_sha256,
         "entries": [asdict(entry) for entry in entries],
     }
 
@@ -1663,7 +1701,11 @@ def _previous_entry_count(path: str) -> Optional[int]:
         with open(_ir_path_for(path), encoding="utf-8") as handle:
             payload = json.load(handle)
         count = payload.get("entry_count")
-        if isinstance(count, int):
+        recorded = payload.get("document_sha256") or ""
+        # Only when the sidecar demonstrably describes *this* document. A
+        # sidecar from a run whose document was replaced or restored is stale,
+        # and trusting it would let a broken run clear a floor set by a good one.
+        if isinstance(count, int) and recorded and recorded == _document_digest(path):
             return count
     except (OSError, ValueError, AttributeError):
         pass
@@ -1807,7 +1849,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         # document failed to land.
         write_json_atomic(
             _ir_path_for(OUTPUT_PATH),
-            build_ir(entries, report=report, unsupported_count=unsupported),
+            build_ir(
+                entries,
+                report=report,
+                unsupported_count=unsupported,
+                document_sha256=_document_digest(OUTPUT_PATH),
+            ),
         )
     flagged = sum(1 for e in entries if e.flags)
     unknown = sum(1 for e in entries if e.name_intent == "unknown")
