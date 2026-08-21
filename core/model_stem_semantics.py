@@ -197,6 +197,21 @@ def is_vocal_target(stem: str) -> bool:
     return str(stem).lower() in ("vocals", "vocal", "voc")
 
 
+def is_vocal_family_stem(stem: str) -> bool:
+    """Catalogue/intent vocal-side spellings. Broader than :func:`is_vocal_target`.
+
+    Engines invert through ``is_vocal_target`` only. Intent and focus may treat
+    ``voices`` / ``vox`` / ``lead-vocal`` as vocal-family without opening that
+    invert path. Bare ``lead`` and ``singer_1`` stay specialty.
+    """
+    if not stem:
+        return False
+    if is_vocal_target(stem):
+        return True
+    token = str(stem).lower().strip().replace(" ", "-").replace("_", "-")
+    return token in ("voices", "vox", "lead-vocal")
+
+
 def is_instrumental_target(stem: str) -> bool:
     if not stem:
         return False
@@ -368,13 +383,18 @@ def resolve_is_karaoke(
 
 
 def is_vocals_other_pair(instruments: Sequence[str]) -> bool:
+    if len(instruments) != 2:
+        return False
     lowered = {str(name).lower() for name in instruments}
-    return {"vocals", "other"} <= lowered
+    vocal_side = lowered & {"vocals", "vocal", "voc"}
+    return bool(vocal_side) and "other" in lowered
 
 
 def is_drum_bass_pair(instruments: Sequence[str]) -> bool:
+    if len(instruments) != 2:
+        return False
     lowered = {str(name).lower() for name in instruments}
-    return bool({"no drum-bass", "drum-bass"} & lowered)
+    return lowered == {"no drum-bass", "drum-bass"}
 
 
 def is_special_fx_stem(stem: str) -> bool:
@@ -448,11 +468,11 @@ def intent_from_primary_stem(primary: str, *, is_karaoke: bool = False) -> str:
     if is_karaoke:
         return INTENT_KARAOKE
     low = primary.lower()
-    if low in ("vocals", "vocal"):
+    if is_vocal_family_stem(primary):
         return INTENT_VOCALS
     if low in ("instrumental", "inst"):
         return INTENT_INSTRUMENTAL
-    if "drum" in low and "bass" in low:
+    if low in ("drum-bass", "no drum-bass"):
         return INTENT_DRUM_BASS_SEP
     if low in ("drums", "bass", "piano", "other"):
         return INTENT_MULTI_STEM
@@ -483,20 +503,25 @@ def export_intent_from_fields(
         return INTENT_SPECIALTY_STEM
     if target:
         t = target.lower()
-        if t in ("vocals", "vocal"):
+        if is_vocal_family_stem(target):
             return INTENT_VOCALS
-        if t in ("instrumental", "inst", "other"):
+        if t in ("instrumental", "inst"):
             return INTENT_INSTRUMENTAL
-        if "drum" in t and "bass" in t:
+        if t == "other":
+            if len(instruments) >= 3:
+                return INTENT_MULTI_STEM
+            if is_vocals_other_pair(instruments):
+                return INTENT_INSTRUMENTAL
+            if any(is_special_fx_stem(name) for name in instruments):
+                return INTENT_SPECIAL_FX
+            return INTENT_SPECIALTY_STEM
+        if t in ("drum-bass", "no drum-bass"):
             return INTENT_DRUM_BASS_SEP
         if t in ("drums", "bass", "piano"):
             return INTENT_MULTI_STEM
-        if t == "guitar":
-            return INTENT_SPECIALTY_STEM
-        if is_specialty_stem(target):
-            return INTENT_SPECIALTY_STEM
         if is_special_fx_stem(target):
             return INTENT_SPECIAL_FX
+        return INTENT_SPECIALTY_STEM
     if is_drum_bass_pair(instruments):
         return INTENT_DRUM_BASS_SEP
     if len(instruments) >= 3:
@@ -517,6 +542,32 @@ def export_intent_from_fields(
         label_intent = infer_name_intent_from_label(catalogue_label)
         if label_intent != INTENT_UNKNOWN:
             return label_intent
+    return INTENT_UNKNOWN
+
+
+def resolve_catalogue_intent(
+    *,
+    primary_stem: str = "",
+    target: str = "",
+    instruments: Optional[Sequence[str]] = None,
+    is_karaoke: bool = False,
+    weight_basename: str = "",
+    catalogue_label: str = "",
+    category_intent: str = INTENT_UNKNOWN,
+) -> str:
+    """Yaml/hash fields win; the mvsepless shop category only fills ``unknown``."""
+    from_fields = export_intent_from_fields(
+        primary_stem=primary_stem,
+        target=target,
+        instruments=instruments,
+        is_karaoke=is_karaoke,
+        weight_basename=weight_basename,
+        catalogue_label=catalogue_label,
+    )
+    if from_fields != INTENT_UNKNOWN:
+        return from_fields
+    if category_intent and category_intent != INTENT_UNKNOWN:
+        return category_intent
     return INTENT_UNKNOWN
 
 
@@ -645,20 +696,29 @@ def recommended_export_note(model: typing.Any) -> str:
     if intent == INTENT_KARAOKE:
         primary = str(getattr(model, "primary_stem", "") or "")
         target = target_instrument(model)
-        if is_vocal_target(primary) or is_vocal_target(target):
+        instruments = training_instruments(model)
+        side = karaoke_focus_side(primary, target, instruments)
+        if side == "vocal":
             return (
                 "Karaoke model: Instrumental (backing) is usually the desired export; "
                 "Vocals is the isolated vocal stem"
             )
-        if is_instrumental_target(primary) or is_instrumental_target(target):
+        if side == "inst":
             return "Karaoke model: Instrumental primary; Vocals is the complement stem"
-        return "Karaoke model: instrumental backing is typically the desired export"
+        return "Karaoke model: vocal-side vs backing primary is not classified"
     if intent == INTENT_DRUM_BASS_SEP:
         return "Drum/bass separation model — pick No Drum-Bass or Drum-Bass"
     if intent == INTENT_INSTRUMENTAL and target_instrument(model).lower() == "other":
         return "Instrumental model: Vocals + Instrumental (Instrumental is the backing track)"
     if intent == INTENT_SPECIAL_FX:
         stem = target_instrument(model) or str(getattr(model, "primary_stem", "") or "")
+        if str(stem).lower() == "other":
+            sibling = next(
+                (name for name in training_instruments(model) if is_special_fx_stem(name)),
+                "",
+            )
+            if sibling:
+                return describe_special_fx_stem(sibling)
         if stem:
             return describe_special_fx_stem(stem)
         return "Post-processing stem export"
@@ -740,9 +800,9 @@ def infer_name_intent_from_label(label: str) -> str:
 def normalize_stem_label(stem: str) -> str:
     if not stem:
         return ""
-    low = stem.lower()
-    if low in ("vocals", "vocal", "voc"):
+    if is_vocal_family_stem(stem):
         return VOCAL_STEM
+    low = stem.lower()
     if low in ("instrumental", "inst"):
         return INST_STEM
     if low == "other":
@@ -778,6 +838,40 @@ def confident_stem_bucket(
     ).value
 
 
+def _karaoke_stem_token(stem: str) -> str:
+    return str(stem).lower().strip().replace(" ", "_").replace("-", "_")
+
+
+_KARAOKE_BACKING_TOKENS = frozenset(
+    {
+        "back_instrum",
+        "backing",
+        "backing_instrumental",
+        "instrumental_backing",
+        "backing_track",
+    }
+)
+
+
+def karaoke_focus_side(
+    primary: str,
+    target: str,
+    instruments: Sequence[str] = (),
+) -> str:
+    """``vocal``, ``inst``, or ``unknown`` for a karaoke model's named primary."""
+    stem = target or primary
+    token = _karaoke_stem_token(stem)
+    if is_vocal_family_stem(stem) or token == "lead":
+        return "vocal"
+    if token in _KARAOKE_BACKING_TOKENS:
+        return "inst"
+    if token in ("instrumental", "inst", "instrument"):
+        return "inst"
+    if token == "other" and is_vocals_other_pair(instruments):
+        return "inst"
+    return "unknown"
+
+
 def backend_focus_label(
     primary: str,
     target: str,
@@ -787,20 +881,31 @@ def backend_focus_label(
 ) -> str:
     """Catalogue helper: summarize backend primary/target focus."""
     if is_karaoke:
-        if normalize_stem_label(primary) == VOCAL_STEM or normalize_stem_label(target) == VOCAL_STEM:
+        side = karaoke_focus_side(primary, target, instruments)
+        if side == "vocal":
             return "karaoke_vocal_primary"
-        if normalize_stem_label(primary) == INST_STEM or normalize_stem_label(target) == INST_STEM:
+        if side == "inst":
             return "karaoke_instrumental_primary"
-        return "karaoke_instrumental_primary"
+        return "karaoke_unknown_primary"
     if target:
         norm = normalize_stem_label(target)
-        if norm == VOCAL_STEM:
+        if is_vocal_family_stem(target) or norm == VOCAL_STEM:
             return "vocal_target"
         if norm == INST_STEM:
             return "instrumental_target"
         if target.lower() == "other":
-            return "instrumental_target_other_yaml"
-        if "drum" in target.lower() and "bass" in target.lower():
+            if is_vocals_other_pair(instruments):
+                return "instrumental_target_other_yaml"
+            sibling = next(
+                (name for name in instruments if is_special_fx_stem(name)),
+                "",
+            )
+            if sibling:
+                return f"special_fx_target:{sibling}"
+            if len(instruments) >= 3:
+                return INTENT_MULTI_STEM
+            return f"single_target:{target}"
+        if target.lower() in ("drum-bass", "no drum-bass"):
             return "drum_bass_target"
         if is_special_fx_stem(target):
             return f"special_fx_target:{target}"

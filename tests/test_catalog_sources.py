@@ -142,6 +142,42 @@ class EntryMetaTests(unittest.TestCase):
 
 
 @_STEM_CACHE_OFF
+class CatalogueIntentOverlayTests(unittest.TestCase):
+    def setUp(self) -> None:
+        catalog_sources.invalidate_catalogue_merge()
+
+    def test_yaml_fields_beat_scratch_category(self) -> None:
+        with _with_supplements(
+            (
+                {},
+                {"BGM": {"m.ckpt": "u"}},
+                {},
+                {
+                    "BGM": {
+                        "stems": ["vocals", "other"],
+                        "target_instrument": "vocals",
+                        "intent": "specialty_stem",
+                    }
+                },
+            )
+        ):
+            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+        self.assertEqual(merged.meta["BGM"].intent, "vocals")
+
+    def test_category_fills_when_fields_are_unknown(self) -> None:
+        with _with_supplements(
+            (
+                {},
+                {"Wind": {"w.ckpt": "u"}},
+                {},
+                {"Wind": {"stems": [], "intent": "specialty_stem"}},
+            )
+        ):
+            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+        self.assertEqual(merged.meta["Wind"].intent, "specialty_stem")
+
+
+@_STEM_CACHE_OFF
 class MergeCacheTests(unittest.TestCase):
     def setUp(self) -> None:
         catalog_sources.invalidate_catalogue_merge()
