@@ -148,12 +148,21 @@ class _ModelInventory:
             result[model_id] = ModelRecord(
                 model_id, "apollo", basename, basename, True, filename
             )
+        # Installed basenames, casefolded per family. The setdefault below only
+        # defers to an installed model on an exact-case key, so a catalogue
+        # label differing only in case became a second, uninstallable record
+        # for the same checkpoint -- and made the real one unresolvable.
+        installed_folded = {
+            (record.family, record.basename.casefold()) for record in result.values()
+        }
         for family, index in (
             ("vr", self._cached_index("vr_catalogue_display_index")),
             ("mdx", self._cached_index("mdx_catalogue_display_index")),
             ("demucs", self._cached_index("demucs_catalogue_display_index")),
         ):
             for basename, display in index.items():
+                if (family, str(basename).casefold()) in installed_folded:
+                    continue
                 model_id = str(ModelId(family, str(basename)))
                 result.setdefault(
                     model_id,
@@ -212,11 +221,17 @@ def resolve_model_record(
     candidates = tuple(
         record for record in records if family is None or record.family == family
     )
+    # An exact id is unambiguous by construction, so it must be tried on its
+    # own. Folding it in with the casefold comparisons below let a
+    # case-variant sibling (two records for one checkpoint) dilute a
+    # character-for-character match into "ambiguous".
+    by_id = tuple(record for record in candidates if raw == record.id)
+    if len(by_id) == 1:
+        return by_id[0]
     exact = tuple(
         record
         for record in candidates
-        if raw == record.id
-        or term.casefold() == record.basename.casefold()
+        if term.casefold() == record.basename.casefold()
         or term.casefold() == record.display.casefold()
         or term.casefold() == str(record.engine_name or "").casefold()
     )
