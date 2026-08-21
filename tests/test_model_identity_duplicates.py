@@ -44,11 +44,10 @@ class ExactIdPrecedenceTests(unittest.TestCase):
             resolve_model_record("mdx23c_d1581", self._records())
         self.assertIn("ambiguous", str(ctx.exception))
 
-    def test_a_single_casefold_match_still_resolves(self) -> None:
+    def test_a_qualified_casefold_match_is_rejected(self) -> None:
         records = (_rec("mdx:Some_Model", "Some_Model"),)
-        self.assertEqual(
-            resolve_model_record("mdx:some_model", records).id, "mdx:Some_Model"
-        )
+        with self.assertRaises(ValueError):
+            resolve_model_record("mdx:some_model", records)
 
     def test_an_unknown_reference_still_raises(self) -> None:
         with self.assertRaises(ValueError):

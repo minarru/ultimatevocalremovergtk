@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Iterable, Literal
+from typing import Any, Iterable, Literal, Mapping
 
 from bundled.constants import (
     APOLLO_ARCH_TYPE,
@@ -73,10 +73,16 @@ class ModelId:
 
     @classmethod
     def parse(cls, value: str) -> "ModelId":
-        family, separator, basename = str(value or "").strip().partition(":")
-        if not separator or family.casefold() not in FAMILIES:
-            raise ValueError(f"not a canonical model ID: {value!r}")
-        return cls(family.casefold(), basename.strip())
+        return parse_stored_model_id(value)
+
+
+def parse_stored_model_id(value: str) -> ModelId:
+    """Parse an exact ``family:basename`` stored model identifier."""
+    text = str(value or "").strip()
+    family, separator, basename = text.partition(":")
+    if not separator or family not in FAMILIES or not basename or ":" in basename:
+        raise ValueError(f"not a canonical model ID: {value!r}")
+    return ModelId(family, basename)
 
 
 @dataclass(frozen=True)
@@ -159,6 +165,21 @@ class ModelRecord:
         if self.mdx is not None:
             payload["mdx_kind"] = self.mdx.kind
         return payload
+
+
+class IdentityIndex:
+    def __init__(self, records: Mapping[str, ModelRecord]):
+        self._records = dict(records)
+
+    def lookup(self, model_id: str) -> ModelRecord:
+        key = parse_stored_model_id(model_id).value
+        try:
+            return self._records[key]
+        except KeyError:
+            raise ValueError(f"unknown model {model_id!r}") from None
+
+    def records(self) -> tuple[ModelRecord, ...]:
+        return tuple(self._records.values())
 
 
 def _normalize(value: str) -> str:
@@ -285,6 +306,13 @@ def resolve_model_record(
         raise ValueError("model value is empty")
     records = tuple(records)
     family = _qualified_family(raw)
+    prefix, separator, _basename = raw.partition(":")
+    if separator and prefix in FAMILIES:
+        canonical_id = ModelId.parse(raw).value
+        for record in records:
+            if record.id == canonical_id:
+                return record
+        raise ValueError(f"unknown model {raw!r}")
     term = raw.partition(":")[2].strip() if family is not None else raw
     candidates = tuple(
         record for record in records if family is None or record.family == family
@@ -383,6 +411,7 @@ __all__ = [
     "DemucsSpec",
     "FAMILIES",
     "FAMILY_BY_ARCH",
+    "IdentityIndex",
     "MdxSpec",
     "METHOD_BY_FAMILY",
     "ModelArtifacts",
@@ -392,6 +421,7 @@ __all__ = [
     "canonical_id_from_member_tag",
     "canonical_member_tag",
     "iter_model_records",
+    "parse_stored_model_id",
     "resolve_model_id",
     "resolve_model_record",
 ]

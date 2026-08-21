@@ -13,10 +13,61 @@ from core.model_catalogue import CatalogEntryId, ModelCatalogueRecord, ModelCata
 from core.model_identity import (
     CatalogueRef,
     DemucsSpec,
+    IdentityIndex,
     MdxSpec,
     ModelArtifacts,
+    ModelId,
     ModelRecord,
+    parse_stored_model_id,
 )
+
+
+class StrictIdParseTests(unittest.TestCase):
+    def test_parses_canonical_id(self) -> None:
+        parsed = parse_stored_model_id("mdx:UVR-MDX-NET-Inst_HQ_4")
+        self.assertEqual(parsed.family, "mdx")
+        self.assertEqual(parsed.basename, "UVR-MDX-NET-Inst_HQ_4")
+
+    def test_rejects_display_and_arch_prefix(self) -> None:
+        for value in (
+            "MDX-Net — UVR-MDX-NET Inst HQ 4",
+            "MDX-Net: UVR-MDX-NET Inst HQ 4",
+            "UVR-MDX-NET-Inst_HQ_4",
+            "mdx:",
+            "roformer:foo",
+        ):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    parse_stored_model_id(value)
+
+    def test_does_not_casefold_basename(self) -> None:
+        parsed = parse_stored_model_id("mdx:Some_Model")
+        self.assertEqual(parsed.basename, "Some_Model")
+
+
+class IdentityIndexLookupTests(unittest.TestCase):
+    def setUp(self) -> None:
+        record = ModelRecord(
+            id="mdx:Some_Model",
+            family="mdx",
+            basename="Some_Model",
+            display="MDX-Net — Some Model",
+            backend_name="Some_Model",
+            artifacts=ModelArtifacts("Some_Model.onnx"),
+            installed=True,
+        )
+        self.index = IdentityIndex({record.id: record})
+
+    def test_exact_id_hits(self) -> None:
+        self.assertEqual(self.index.lookup("mdx:Some_Model").basename, "Some_Model")
+
+    def test_casefold_id_does_not_hit(self) -> None:
+        with self.assertRaises(ValueError):
+            self.index.lookup("mdx:some_model")
+
+    def test_display_does_not_hit(self) -> None:
+        with self.assertRaises(ValueError):
+            self.index.lookup("MDX-Net — Some Model")
 
 
 class DownloadMatchingLockTests(unittest.TestCase):
