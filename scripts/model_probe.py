@@ -701,49 +701,112 @@ def main(argv: Optional[List[str]] = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Probe whether this build can run a model, without its weights.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Probe whether this build can construct and run a model from its "
+            "yaml config, without downloading weights. Builds the architecture "
+            "with random init, runs a forward pass on noise, and optionally "
+            "range-fetches only the checkpoint header to diff state_dict keys."
+        ),
+        epilog=(
+            "Online --entry / --sweep FORCE-load the mvsepless catalogue and "
+            "wait for it (not stale-while-revalidate). A cold cache therefore "
+            "blocks on a fetch rather than probing an empty list.\n"
+            "\n"
+            "Exit status:\n"
+            "  0  the probed model(s) all built and ran a forward pass\n"
+            "  1  at least one model was not buildable\n"
+            "  2  nothing to probe (empty --sweep, or --entry has no config_url)\n"
+            "\n"
+            "Examples:\n"
+            "  python scripts/model_probe.py --config path/to/config.yaml\n"
+            "  python scripts/model_probe.py --entry mbr_syhft_4stem --check-keys\n"
+            "  python scripts/model_probe.py --sweep --check-keys --json /tmp/sweep.json\n"
+            "  python scripts/model_probe.py --config model.yaml --checkpoint model.ckpt\n"
+        ),
     )
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--config", help="Path to a local yaml config")
-    source.add_argument("--entry", help="mvsepless catalogue entry id (fetches the yaml)")
+    source.add_argument(
+        "--config",
+        metavar="PATH",
+        help="Local yaml config. Fully offline; does not touch the catalogue.",
+    )
+    source.add_argument(
+        "--entry",
+        metavar="ID",
+        help=(
+            "mvsepless catalogue entry id. Fetches that entry's yaml "
+            "(cached). Online, waits for a live catalogue fetch rather than "
+            "returning an empty stale-while-revalidate snapshot."
+        ),
+    )
     source.add_argument(
         "--sweep",
         action="store_true",
-        help="Probe every unsupported mvsepless catalogue entry and print a verdict tally",
+        help=(
+            "Probe every unsupported mvsepless catalogue entry and print a "
+            "verdict tally. Default is unsupported-only; pass "
+            "--include-supported to probe the whole catalogue. An empty "
+            "target list (tight --only, or a catalogue that never loaded) "
+            "exits 2 rather than writing empty JSON."
+        ),
     )
     parser.add_argument(
         "--check-keys",
         action="store_true",
-        help="With --entry/--sweep: range-fetch checkpoint header(s) and diff state_dict keys",
+        help=(
+            "With --entry/--sweep: HTTP range-fetch each checkpoint header "
+            "(tens of KB, not the whole file) and diff its state_dict keys "
+            "against the built module. With --config, use --checkpoint instead."
+        ),
     )
     parser.add_argument(
         "--checkpoint",
         default="",
-        help="With --config/--entry: diff state_dict keys against a checkpoint already on disk",
+        metavar="PATH",
+        help=(
+            "With --config/--entry: diff state_dict keys against a checkpoint "
+            "already on disk instead of range-fetching."
+        ),
     )
     parser.add_argument(
         "--seconds",
         type=float,
         default=None,
-        help="Forward-pass noise length; defaults to the config's own chunk size",
+        metavar="N",
+        help="Forward-pass noise length in seconds; defaults to the config's own chunk size.",
     )
     parser.add_argument(
         "--only",
         default="",
-        help="With --sweep: only probe entries whose id or label contains this substring",
+        metavar="SUBSTR",
+        help="With --sweep: keep only entries whose id or label contains this substring.",
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=None,
-        help="With --sweep: probe at most this many entries",
+        metavar="N",
+        help="With --sweep: probe at most this many entries (after --only).",
     )
     parser.add_argument(
         "--include-supported",
         action="store_true",
-        help="With --sweep: also probe catalogue entries already marked supported",
+        help=(
+            "With --sweep: also probe entries already marked supported. "
+            "Without this, a catalogue of only supported models exits 2."
+        ),
     )
-    parser.add_argument("--json", dest="json_path", default=None)
+    parser.add_argument(
+        "--json",
+        dest="json_path",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Write the report JSON here. A single --config/--entry probe "
+            "writes one object; --sweep writes an object with a results array."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.sweep:

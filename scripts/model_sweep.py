@@ -892,59 +892,152 @@ def build_parser():
     import argparse
 
     parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "Start a real run for every model installed on this machine. "
-            "Use .venv/bin/python; system Python does not have pip deps."
-        )
+            "Local-only: start a real separation for every model installed on "
+            "this machine. Weights are gitignored, so this is not part of CI. "
+            "The parent stays torch-free; each job runs in its own subprocess. "
+            "If this interpreter cannot import soundfile, the CLI re-execs "
+            "into .venv/bin/python."
+        ),
+        epilog=(
+            "Settings and GPU:\n"
+            "  Default copies settings.json into an isolated scratch dir. GPU\n"
+            "  is used only if that copy has process.use_gpu on. --stock-settings\n"
+            "  writes empty JSON so Settings defaults apply (use_gpu is False),\n"
+            "  which is a CPU run. --cpu forces CPU either way.\n"
+            "\n"
+            "composite is not an app process method. It is four multi-pass jobs\n"
+            "this sweep adds on top of per-model runs: composite:4-stem,\n"
+            "composite:ensemble, composite:secondary-chain, composite:vocal-splitter.\n"
+            "Missing weights become SKIP, not a failure. They take\n"
+            "--composite-timeout, not --timeout.\n"
+            "\n"
+            "Examples:\n"
+            "  python scripts/model_sweep.py --list\n"
+            "  python scripts/model_sweep.py --list --manifest /tmp/jobs.json\n"
+            "  python scripts/model_sweep.py --method mdx --cpu --json /tmp/out.json\n"
+            "  python scripts/model_sweep.py --method composite --composite-timeout 900\n"
+        ),
     )
     parser.add_argument("--run-job", default=None, help=argparse.SUPPRESS)
     parser.add_argument(
         "--method",
         action="append",
         choices=("mdx", "vr", "demucs", "apollo", "composite"),
-        help="Limit to these job groups (repeatable; default: all)",
+        help=(
+            "Limit to these job groups (repeatable; default: all five). "
+            "mdx/vr/demucs/apollo are one real run per installed model. "
+            "composite is the four multi-pass jobs listed in the epilog, "
+            "not UVR's Ensemble Mode process method."
+        ),
     )
-    parser.add_argument("--only", default="", help="Substring filter on model filename")
-    parser.add_argument("--skip", default="", help="Comma-separated model filenames to skip")
-    parser.add_argument("--cpu", action="store_true", help="Force CPU for every job")
+    parser.add_argument(
+        "--only",
+        default="",
+        metavar="SUBSTR",
+        help="Keep only models whose filename contains this substring.",
+    )
+    parser.add_argument(
+        "--skip",
+        default="",
+        metavar="NAMES",
+        help="Comma-separated model filenames to drop from the plan.",
+    )
+    parser.add_argument(
+        "--cpu",
+        action="store_true",
+        help=(
+            "Force CPU for every job, even if the copied settings.json has GPU on."
+        ),
+    )
     parser.add_argument(
         "--no-cpu-retry",
         dest="cpu_retry",
         action="store_false",
-        help="Do not retry an OOM job on CPU",
+        help="Do not retry an OOM GPU job on CPU (retry is on by default).",
     )
     parser.set_defaults(cpu_retry=True)
     parser.add_argument(
         "--stock-settings",
         action="store_true",
-        help="Use default settings instead of a copy of the user's settings.json",
+        help=(
+            "Use Settings defaults instead of copying the user's settings.json. "
+            "Defaults have GPU off, so this is a CPU run. Omit this flag to "
+            "inherit GPU from the copied settings.json (unless --cpu)."
+        ),
     )
     parser.add_argument(
         "--timeout",
         type=float,
         default=None,
-        help=f"Per-model job timeout in seconds (default {DEFAULT_TIMEOUT:.0f}). "
-        "Does not apply to composite jobs; see --composite-timeout.",
+        metavar="SEC",
+        help=(
+            f"Per-model job timeout in seconds (default {DEFAULT_TIMEOUT:.0f}). "
+            "Does not apply to composite jobs; use --composite-timeout."
+        ),
     )
     parser.add_argument(
         "--composite-timeout",
         type=float,
         default=None,
-        help="Timeout in seconds for every job --method composite selects "
-        f"(defaults: {DEFAULT_TIMEOUT:.0f} for 4-stem, {ENSEMBLE_TIMEOUT:.0f} for the rest).",
+        metavar="SEC",
+        help=(
+            "Timeout in seconds for every job --method composite selects "
+            f"(defaults: {DEFAULT_TIMEOUT:.0f} for composite:4-stem, "
+            f"{ENSEMBLE_TIMEOUT:.0f} for the other three)."
+        ),
     )
-    parser.add_argument("--json", dest="json_path", default=None)
-    parser.add_argument("--list", action="store_true", help="Print the job list and exit")
+    parser.add_argument(
+        "--json",
+        dest="json_path",
+        default=None,
+        metavar="PATH",
+        help=(
+            "After the run, write results JSON here (outcomes, not the plan). "
+            "To dump the planned jobs without running them, use --list "
+            "--manifest PATH."
+        ),
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help=(
+            "Print the planned job list and exit without running anything. "
+            "Combine with --manifest to also write that plan as JSON."
+        ),
+    )
     parser.add_argument(
         "--manifest",
         default=None,
-        help="Write the resolved job list as JSON to this path.",
+        metavar="PATH",
+        help=(
+            "Write the planned job list as JSON (run metadata + jobs) to this "
+            "path. Does not stop the run by itself; pass --list as well to "
+            "plan-only."
+        ),
     )
-    parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument(
-        "--strict", action="store_true", help="Treat UNRECOGNIZED as a failure"
+        "--fail-fast",
+        action="store_true",
+        help=(
+            "Stop after the first failing job. SKIP and OOM-then-CPU-OK "
+            "continue; UNRECOGNIZED only stops if --strict is also set."
+        ),
     )
-    parser.add_argument("--keep-outputs", action="store_true")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Treat an UNRECOGNIZED outcome as a failure (exit non-zero).",
+    )
+    parser.add_argument(
+        "--keep-outputs",
+        action="store_true",
+        help=(
+            "Keep the scratch directory (copied settings, input clip, per-job "
+            "exports) instead of deleting it when the sweep finishes."
+        ),
+    )
     return parser
 
 
