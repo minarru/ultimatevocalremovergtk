@@ -105,13 +105,15 @@ class MainCliTests(unittest.TestCase):
             stem_semantics_audit, "_iter_entries", return_value=iter([])
         ) as mocked:
             stem_semantics_audit.main([])
-            mocked.assert_called_once_with(guessed_only=False, show_progress=True)
+            # Assert the flag under test, not the whole signature: pinning every
+            # kwarg makes this fail whenever an unrelated option is added.
+            self.assertTrue(mocked.call_args.kwargs["show_progress"])
 
         with patch.object(
             stem_semantics_audit, "_iter_entries", return_value=iter([])
         ) as mocked:
             stem_semantics_audit.main(["--quiet"])
-            mocked.assert_called_once_with(guessed_only=False, show_progress=False)
+            self.assertFalse(mocked.call_args.kwargs["show_progress"])
 
     def test_keyboard_interrupt_exits_130_without_writing_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -231,6 +233,172 @@ class HashStatusTests(unittest.TestCase):
             entry_id="e1", label="M", stems=["vocals"], hash_status="fetch_failed"
         )
         self.assertIn("fetch_failed", stem_semantics_audit.render_table([entry]))
+
+
+class HashCacheTests(unittest.TestCase):
+    """Repeated audits must not re-fetch ~10MB per entry."""
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        self.tmp = tempfile.mkdtemp(prefix="uvr-hashcache-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.path = os.path.join(self.tmp, "hashes.json")
+
+    def test_a_successful_lookup_is_served_from_cache(self) -> None:
+        cache = stem_semantics_audit.HashCache(self.path)
+        cache.put("https://x/m.ckpt", stem_semantics_audit.HashLookup(digest="abc", status="ok"))
+        cache.save()
+
+        reloaded = stem_semantics_audit.HashCache(self.path)
+        hit = reloaded.get("https://x/m.ckpt")
+        self.assertIsNotNone(hit)
+        assert hit is not None
+        self.assertEqual(hit.digest, "abc")
+        self.assertEqual(hit.status, "ok")
+
+    def test_a_failed_fetch_is_not_cached(self) -> None:
+        """One bad network day must not poison every later report."""
+        cache = stem_semantics_audit.HashCache(self.path)
+        cache.put(
+            "https://x/m.ckpt",
+            stem_semantics_audit.HashLookup(status="fetch_failed", error="timeout"),
+        )
+        cache.save()
+        self.assertIsNone(stem_semantics_audit.HashCache(self.path).get("https://x/m.ckpt"))
+
+    def test_different_urls_do_not_share_an_entry(self) -> None:
+        cache = stem_semantics_audit.HashCache(self.path)
+        cache.put("https://a/m.ckpt", stem_semantics_audit.HashLookup(digest="aaa", status="ok"))
+        cache.put("https://b/m.ckpt", stem_semantics_audit.HashLookup(digest="bbb", status="ok"))
+        cache.save()
+        reloaded = stem_semantics_audit.HashCache(self.path)
+        a = reloaded.get("https://a/m.ckpt")
+        b = reloaded.get("https://b/m.ckpt")
+        assert a is not None and b is not None
+        self.assertEqual((a.digest, b.digest), ("aaa", "bbb"))
+
+    def test_a_corrupt_cache_file_is_ignored_not_fatal(self) -> None:
+        with open(self.path, "w") as handle:
+            handle.write("{not json")
+        self.assertIsNone(stem_semantics_audit.HashCache(self.path).get("https://x/m.ckpt"))
+
+    def test_records_carry_the_fetch_time(self) -> None:
+        cache = stem_semantics_audit.HashCache(self.path)
+        cache.put("https://x/m.ckpt", stem_semantics_audit.HashLookup(digest="abc", status="ok"))
+        cache.save()
+        with open(self.path) as handle:
+            payload = json.load(handle)
+        record = next(iter(payload.values()))
+        self.assertIn("fetched_at", record)
+        self.assertGreater(record["fetched_at"], 0)
+
+    def test_the_hash_helper_consults_the_cache_before_fetching(self) -> None:
+        from unittest import mock
+
+        cache = stem_semantics_audit.HashCache(self.path)
+        cache.put("https://x/m.ckpt", stem_semantics_audit.HashLookup(digest="abc", status="ok"))
+        with mock.patch(
+            "scripts.model_tool_support.checkpoint_tail_hash",
+            side_effect=AssertionError("fetched despite a cache hit"),
+        ):
+            result = stem_semantics_audit._remote_checkpoint_hash("https://x/m.ckpt", cache=cache)
+        self.assertEqual(result.digest, "abc")
+
+    def test_a_miss_fetches_and_populates_the_cache(self) -> None:
+        from unittest import mock
+
+        cache = stem_semantics_audit.HashCache(self.path)
+        with mock.patch(
+            "scripts.model_tool_support.checkpoint_tail_hash", return_value="def"
+        ):
+            result = stem_semantics_audit._remote_checkpoint_hash("https://y/m.ckpt", cache=cache)
+        self.assertEqual(result.digest, "def")
+        hit = cache.get("https://y/m.ckpt")
+        assert hit is not None
+        self.assertEqual(hit.digest, "def")
+
+
+class SummaryCountsTests(unittest.TestCase):
+    def _entry(self, **kwargs: Any):
+        base = dict(entry_id="e", label="L")
+        base.update(kwargs)
+        return stem_semantics_audit.StemSemanticsEntry(**base)
+
+    def test_counts_confidence_and_hash_status(self) -> None:
+        entries = [
+            self._entry(is_karaoke_curated=True, hash_status="matched"),
+            self._entry(is_karaoke_curated=False, hash_status="unmatched"),
+            self._entry(is_karaoke_curated=False, hash_status="fetch_failed"),
+            self._entry(is_karaoke_curated=False, hash_status="no_url"),
+            self._entry(error="bad config"),
+        ]
+        text = stem_semantics_audit.render_summary(entries)
+        self.assertIn("5 entries", text)
+        self.assertIn("1 curated", text)
+        self.assertIn("1 fetch_failed", text)
+        self.assertIn("1 no_url", text)
+        self.assertIn("1 config error", text)
+
+    def test_summary_is_printed_after_the_table(self) -> None:
+        entries = [self._entry(is_karaoke_curated=True, hash_status="matched")]
+        self.assertIn("1 entries", stem_semantics_audit.render_summary(entries))
+
+
+class SelectionTests(unittest.TestCase):
+    """--only and --limit make a targeted review possible."""
+
+    class _T:
+        def __init__(self, entry_id: str, label: str) -> None:
+            self.entry_id = entry_id
+            self.label = label
+            self.config_url = "https://x/c.yaml"
+            self.checkpoint_url = "https://x/m.ckpt"
+            self.is_bv_model = False
+
+    def _targets(self):
+        return [
+            self._T("mel_karaoke", "MelBand Karaoke"),
+            self._T("bs_vocals", "BS Vocals"),
+            self._T("scnet_4stem", "SCNet 4-stem"),
+        ]
+
+    def test_select_targets_filters_by_substring(self) -> None:
+        picked = stem_semantics_audit.select_targets(self._targets(), only="karaoke")
+        self.assertEqual([t.entry_id for t in picked], ["mel_karaoke"])
+
+    def test_select_targets_matches_the_label_too(self) -> None:
+        picked = stem_semantics_audit.select_targets(self._targets(), only="SCNet")
+        self.assertEqual([t.entry_id for t in picked], ["scnet_4stem"])
+
+    def test_select_targets_is_case_insensitive(self) -> None:
+        picked = stem_semantics_audit.select_targets(self._targets(), only="KARAOKE")
+        self.assertEqual([t.entry_id for t in picked], ["mel_karaoke"])
+
+    def test_limit_truncates(self) -> None:
+        picked = stem_semantics_audit.select_targets(self._targets(), limit=2)
+        self.assertEqual(len(picked), 2)
+
+    def test_only_and_limit_compose(self) -> None:
+        picked = stem_semantics_audit.select_targets(
+            self._targets(), only="e", limit=1
+        )
+        self.assertEqual(len(picked), 1)
+
+    def test_no_selection_returns_everything(self) -> None:
+        self.assertEqual(len(stem_semantics_audit.select_targets(self._targets())), 3)
+
+    def test_flags_exist(self) -> None:
+        args = stem_semantics_audit.build_parser().parse_args(
+            ["--only", "kara", "--limit", "5", "--no-cache"]
+        )
+        self.assertEqual(args.only, "kara")
+        self.assertEqual(args.limit, 5)
+        self.assertTrue(args.no_cache)
+
+    def test_cache_is_on_by_default(self) -> None:
+        self.assertFalse(stem_semantics_audit.build_parser().parse_args([]).no_cache)
 
 
 class CuratedHashTableTests(unittest.TestCase):

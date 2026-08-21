@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+import urllib.error
 from typing import Any
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -529,6 +530,703 @@ class CacheIdentityTests(unittest.TestCase):
         self.assertFalse(catalogue._parse_args([]).refresh)
 
 
+class PublicationGuardTests(unittest.TestCase):
+    """A degraded snapshot must not replace a good catalogue document."""
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        os.environ["UVR_DISABLE_CATALOGUE_STEMS"] = "1"
+        self.addCleanup(lambda: os.environ.pop("UVR_DISABLE_CATALOGUE_STEMS", None))
+        self.tmp = tempfile.mkdtemp(prefix="uvr-guard-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.out = os.path.join(self.tmp, "models-catalogue.md")
+
+    def _report(self, *, usable: bool = True, failed: tuple = ()):
+        from core.catalogue_types import RefreshMode, RefreshReport
+
+        return RefreshReport(mode=RefreshMode.OFFLINE, usable=usable, failed=failed)
+
+    def test_previous_entry_count_is_read_from_an_existing_document(self) -> None:
+        with open(self.out, "w", encoding="utf-8") as handle:
+            handle.write("## Summary\n\n- Total catalogue entries: **412**\n")
+        self.assertEqual(catalogue._previous_entry_count(self.out), 412)
+
+    def test_missing_document_has_no_previous_count(self) -> None:
+        self.assertIsNone(catalogue._previous_entry_count(self.out))
+
+    def test_unusable_snapshot_is_refused(self) -> None:
+        verdict = catalogue._publication_verdict(
+            entries=[], report=self._report(usable=False), previous_count=None
+        )
+        self.assertFalse(verdict.ok)
+        self.assertIn("unusable", verdict.reason.lower())
+
+    def test_a_large_drop_is_refused_even_when_no_source_reported_failure(self) -> None:
+        """The real cold-cache case: offline sources are not refreshed, not failed.
+
+        A run against an empty supplemental cache produced 88 entries where the
+        published document had 474, with report.usable True and report.failed
+        empty -- so failure state cannot be the trigger. The count is.
+        """
+        verdict = catalogue._publication_verdict(
+            entries=[object()] * 88, report=self._report(), previous_count=474
+        )
+        self.assertFalse(verdict.ok)
+        self.assertIn("474", verdict.reason)
+
+    def test_a_small_drop_still_publishes(self) -> None:
+        """Ordinary regeneration jitter must not need an override flag."""
+        verdict = catalogue._publication_verdict(
+            entries=[object()] * 398, report=self._report(), previous_count=400
+        )
+        self.assertTrue(verdict.ok, verdict.reason)
+
+    def test_failed_sources_are_named_in_the_refusal(self) -> None:
+        from core.catalogue_types import SourceId
+
+        verdict = catalogue._publication_verdict(
+            entries=[object()] * 10,
+            report=self._report(failed=((SourceId.UPSTREAM, "boom"),)),
+            previous_count=400,
+        )
+        self.assertFalse(verdict.ok)
+        self.assertIn("upstream", verdict.reason)
+
+    def test_a_healthy_snapshot_publishes(self) -> None:
+        verdict = catalogue._publication_verdict(
+            entries=[object()] * 400, report=self._report(), previous_count=400
+        )
+        self.assertTrue(verdict.ok, verdict.reason)
+
+    def test_allow_degraded_overrides_a_refusal(self) -> None:
+        verdict = catalogue._publication_verdict(
+            entries=[], report=self._report(usable=False), previous_count=400,
+            allow_degraded=True,
+        )
+        self.assertTrue(verdict.ok, verdict.reason)
+
+    def test_allow_degraded_flag_is_exposed_on_the_cli(self) -> None:
+        self.assertTrue(catalogue._parse_args(["--allow-degraded"]).allow_degraded)
+        self.assertFalse(catalogue._parse_args([]).allow_degraded)
+
+
+class OfflineYamlCacheTests(unittest.TestCase):
+    """The URL-keyed yaml cache must actually be readable, including offline."""
+
+    _YAML = "training:\n  instruments: [vocals, other]\n  target_instrument: other\n"
+    _URL = "https://example.invalid/cfg/model_test.yaml"
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        self.tmp = tempfile.mkdtemp(prefix="uvr-yamlcache-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.calls: list = []
+
+    def _patches(self):
+        from unittest import mock
+
+        def record(request: Any, *args: Any, **kwargs: Any):
+            self.calls.append(getattr(request, "full_url", request))
+            raise urllib.error.URLError("blocked")
+
+        return [
+            mock.patch.object(catalogue, "YAML_CACHE_DIR", self.tmp),
+            mock.patch("core.mdx_config_fetch._urlopen", record),
+            mock.patch("core.mdx_config_fetch.fetch_mdx_config_url", lambda *a, **k: False),
+        ]
+
+    def _seed_cache(self) -> str:
+        path = catalogue._cache_path(self.tmp, self._URL, "model_test.yaml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(self._YAML)
+        return path
+
+    def test_yaml_paths_includes_the_url_keyed_cache_entry(self) -> None:
+        candidates = catalogue._yaml_paths("model_test.yaml", self._URL)
+        expected = catalogue._cache_path(
+            catalogue.YAML_CACHE_DIR, self._URL, "model_test.yaml"
+        )
+        self.assertIn(expected, candidates)
+
+    def test_offline_reads_a_previously_cached_yaml(self) -> None:
+        """The whole point of a cache-only offline mode."""
+        import contextlib
+
+        with contextlib.ExitStack() as stack:
+            for patch in self._patches():
+                stack.enter_context(patch)
+            cached = self._seed_cache()
+            self.assertTrue(os.path.isfile(cached))
+            instruments, target, _arch, source = catalogue._load_yaml_meta(
+                "model_test.yaml", self._URL, policy=catalogue.OFFLINE_FETCH_POLICY
+            )
+
+        self.assertEqual(self.calls, [], "offline must not fetch")
+        self.assertEqual(sorted(instruments), ["other", "vocals"])
+        self.assertEqual(target, "other")
+        self.assertTrue(source.startswith("remote_yaml:"), source)
+
+    def test_offline_without_a_cached_yaml_falls_back_without_fetching(self) -> None:
+        import contextlib
+
+        with contextlib.ExitStack() as stack:
+            for patch in self._patches():
+                stack.enter_context(patch)
+            catalogue._load_yaml_meta(
+                "model_test.yaml", self._URL, policy=catalogue.OFFLINE_FETCH_POLICY
+            )
+        self.assertEqual(self.calls, [])
+
+
+class CacheWriteAtomicityTests(unittest.TestCase):
+    def test_a_failed_cache_write_does_not_leave_a_truncated_entry(self) -> None:
+        """A truncated cache file would be re-served as valid for the whole TTL."""
+        import shutil
+        import tempfile
+        from unittest import mock
+
+        tmp = tempfile.mkdtemp(prefix="uvr-cache-atomic-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        url = "https://a.invalid/data.json"
+
+        body = {"data": b'{"ok": 1}'}
+
+        def opener(request: Any, *args: Any, **kwargs: Any):
+            class _R:
+                def read(self) -> bytes:
+                    return body["data"]
+
+                def __enter__(self) -> "_R":
+                    return self
+
+                def __exit__(self, *exc: Any) -> bool:
+                    return False
+
+            return _R()
+
+        with mock.patch("core.mdx_config_fetch._urlopen", opener):
+            good = catalogue._fetch_cached(url, tmp, "data.json")
+            assert good is not None
+            # Different bytes, so overwriting in place is distinguishable from
+            # a staged write that never lands.
+            body["data"] = b'{"ok": 2, "and": "much longer than the original"}'
+            with mock.patch("os.replace", side_effect=OSError("disk full")):
+                catalogue._fetch_cached(url, tmp, "data.json", refresh=True)
+
+        with open(good, "rb") as handle:
+            self.assertEqual(handle.read(), b'{"ok": 1}')
+        self.assertEqual(os.listdir(tmp), [os.path.basename(good)])
+
+
+class EntryMetaProvenanceTests(unittest.TestCase):
+    """Metadata that came from the snapshot must not report as unavailable."""
+
+    def test_entry_meta_supplied_metadata_is_recorded_as_its_source(self) -> None:
+        from core.catalog_sources import EntryMeta
+
+        entry = catalogue.ModelEntry(
+            source="mvsepless",
+            family="Roformer",
+            catalogue_label="Some Roformer",
+            weight_file="model.ckpt",
+            name_intent="unknown",
+        )
+        entry.metadata_source = "unavailable"
+        catalogue._apply_entry_meta(
+            entry,
+            EntryMeta(
+                label="Some Roformer",
+                display="Some Roformer",
+                arch="Roformer",
+                stems=["vocals", "other"],
+                target_instrument="other",
+            ),
+        )
+        self.assertNotEqual(entry.metadata_source, "unavailable")
+        self.assertIn("catalogue_meta", entry.metadata_source)
+
+    def test_entry_meta_that_adds_nothing_leaves_the_source_alone(self) -> None:
+        entry = catalogue.ModelEntry(
+            source="mvsepless",
+            family="Roformer",
+            catalogue_label="Some Roformer",
+            weight_file="model.ckpt",
+        )
+        entry.metadata_source = "unavailable"
+        catalogue._apply_entry_meta(entry, None)
+        self.assertEqual(entry.metadata_source, "unavailable")
+
+
+class SourceAttributionCostTests(unittest.TestCase):
+    def test_mvsepless_conversion_is_not_repeated_per_label(self) -> None:
+        """_source_for ran a full catalogue conversion once per label (~474x)."""
+        from unittest import mock
+
+        class _Snapshot:
+            vr = {f"Model {i}": f"m{i}.pth" for i in range(5)}
+            mdx: dict = {}
+            demucs: dict = {}
+            apollo: dict = {}
+            meta: dict = {}
+            unsupported: dict = {}
+            report = None
+
+        mvsepless = {"raw": {"needs": "conversion"}}
+        with mock.patch(
+            "core.mvsepless_catalog.convert_mvsepless_catalog", return_value={}
+        ) as convert:
+            catalogue._entries_from_snapshot(
+                _Snapshot(),
+                ({}, {}, {}, mvsepless),
+                catalogue.CatalogueContext(),
+                policy=catalogue.OFFLINE_FETCH_POLICY,
+            )
+        self.assertLessEqual(convert.call_count, 1, "converted once per label")
+
+
+class ReferenceTsvOptInTests(unittest.TestCase):
+    """The TSV is a deliberate output, not a side effect of running the command."""
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        os.environ["UVR_DISABLE_CATALOGUE_STEMS"] = "1"
+        self.addCleanup(lambda: os.environ.pop("UVR_DISABLE_CATALOGUE_STEMS", None))
+        self.tmp = tempfile.mkdtemp(prefix="uvr-tsv-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.tsv = os.path.join(self.tmp, "model_intent_reference.tsv")
+        self.out = os.path.join(self.tmp, "models-catalogue.md")
+
+    def _community(self):
+        return {
+            "model.ckpt": catalogue.CommunityRef(
+                filename="model.ckpt",
+                arch="Roformer",
+                primary_stem="Vocals",
+                stems_text="vocals, other",
+                friendly_name="Some Model",
+                intent="vocals",
+            )
+        }
+
+    def _run(self, argv: list, *, entries: int = 1) -> int:
+        import contextlib
+        from unittest import mock
+
+        class _Snapshot:
+            vr = {f"Model {i}": f"m{i}.pth" for i in range(entries)}
+            mdx: dict = {}
+            demucs: dict = {}
+            apollo: dict = {}
+            meta: dict = {}
+            unsupported: dict = {}
+            report = None
+
+        ctx = catalogue.CatalogueContext(community_by_file=self._community())
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(catalogue, "REFERENCE_TSV_PATH", self.tsv))
+            stack.enter_context(mock.patch.object(catalogue, "OUTPUT_PATH", self.out))
+            stack.enter_context(
+                mock.patch.object(catalogue, "_build_catalogue_context", lambda **k: ctx)
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    catalogue, "_snapshot_and_payloads",
+                    lambda **k: (_Snapshot(), ({}, {}, {}, {})),
+                )
+            )
+            return catalogue.main(argv)
+
+    def test_a_default_run_does_not_write_the_tsv(self) -> None:
+        self.assertEqual(self._run([]), 0)
+        self.assertTrue(os.path.isfile(self.out))
+        self.assertFalse(os.path.exists(self.tsv), "TSV written without being asked")
+
+    def test_write_tsv_writes_it(self) -> None:
+        self.assertEqual(self._run(["--write-tsv"]), 0)
+        self.assertTrue(os.path.isfile(self.tsv))
+        with open(self.tsv, encoding="utf-8") as handle:
+            self.assertIn("model.ckpt", handle.read())
+
+    def test_a_refused_run_does_not_write_the_tsv(self) -> None:
+        """A run that refuses to publish must not mutate the other artifact either."""
+        with open(self.out, "w", encoding="utf-8") as handle:
+            handle.write("## Summary\n\n- Total catalogue entries: **400**\n")
+        self.assertEqual(self._run(["--write-tsv"], entries=1), 2)
+        self.assertFalse(os.path.exists(self.tsv), "refused run still wrote the TSV")
+
+    def test_write_tsv_flag_is_exposed_on_the_cli(self) -> None:
+        self.assertTrue(catalogue._parse_args(["--write-tsv"]).write_tsv)
+        self.assertFalse(catalogue._parse_args([]).write_tsv)
+
+
+class CheckModeTests(unittest.TestCase):
+    """--check reports drift without touching the tree."""
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        os.environ["UVR_DISABLE_CATALOGUE_STEMS"] = "1"
+        self.addCleanup(lambda: os.environ.pop("UVR_DISABLE_CATALOGUE_STEMS", None))
+        self.tmp = tempfile.mkdtemp(prefix="uvr-check-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.out = os.path.join(self.tmp, "models-catalogue.md")
+        self.tsv = os.path.join(self.tmp, "model_intent_reference.tsv")
+
+    def _run(self, argv: list) -> int:
+        import contextlib
+        from unittest import mock
+
+        class _Snapshot:
+            vr = {f"Model {i}": f"m{i}.pth" for i in range(3)}
+            mdx: dict = {}
+            demucs: dict = {}
+            apollo: dict = {}
+            meta: dict = {}
+            unsupported: dict = {}
+            report = None
+
+        ctx = catalogue.CatalogueContext(
+            community_by_file={
+                "model.ckpt": catalogue.CommunityRef(
+                    filename="model.ckpt",
+                    arch="Roformer",
+                    primary_stem="Vocals",
+                    stems_text="vocals, other",
+                    friendly_name="Some Model",
+                    intent="vocals",
+                )
+            }
+        )
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(catalogue, "OUTPUT_PATH", self.out))
+            stack.enter_context(mock.patch.object(catalogue, "REFERENCE_TSV_PATH", self.tsv))
+            stack.enter_context(
+                mock.patch.object(catalogue, "_build_catalogue_context", lambda **k: ctx)
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    catalogue, "_snapshot_and_payloads",
+                    lambda **k: (_Snapshot(), ({}, {}, {}, {})),
+                )
+            )
+            return catalogue.main(argv)
+
+    def test_check_on_an_up_to_date_document_exits_zero(self) -> None:
+        self.assertEqual(self._run([]), 0)
+        before = open(self.out, "rb").read()
+        mtime = os.path.getmtime(self.out)
+        self.assertEqual(self._run(["--check"]), 0)
+        self.assertEqual(open(self.out, "rb").read(), before)
+        self.assertEqual(os.path.getmtime(self.out), mtime, "--check rewrote the file")
+
+    def test_check_reports_drift_without_writing(self) -> None:
+        self.assertEqual(self._run([]), 0)
+        with open(self.out, "a", encoding="utf-8") as handle:
+            handle.write("\ndrifted\n")
+        drifted = open(self.out, "rb").read()
+        self.assertEqual(self._run(["--check"]), 1)
+        self.assertEqual(open(self.out, "rb").read(), drifted, "--check wrote anyway")
+
+    def test_check_on_a_missing_document_is_drift(self) -> None:
+        self.assertEqual(self._run(["--check"]), 1)
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_check_also_covers_the_tsv_when_requested(self) -> None:
+        self.assertEqual(self._run(["--write-tsv"]), 0)
+        self.assertEqual(self._run(["--check", "--write-tsv"]), 0)
+        os.unlink(self.tsv)
+        self.assertEqual(self._run(["--check", "--write-tsv"]), 1)
+        self.assertFalse(os.path.exists(self.tsv))
+
+    def test_check_and_write_are_mutually_exclusive(self) -> None:
+        with self.assertRaises(SystemExit):
+            catalogue._parse_args(["--check", "--write"])
+
+    def test_write_is_the_default(self) -> None:
+        self.assertFalse(catalogue._parse_args([]).check)
+
+
+class VolatileHeaderTests(unittest.TestCase):
+    """Drift means the catalogue changed, not that time passed."""
+
+    def test_a_changed_generation_timestamp_is_not_drift(self) -> None:
+        rendered = catalogue._render([], unsupported_count=0)
+        aged = rendered.replace(
+            "Generated: ", "Generated: 1999-01-01 00:00 UTC ignored ", 1
+        )
+        self.assertNotEqual(rendered, aged)
+        self.assertEqual(
+            catalogue._canonical_for_diff(rendered),
+            catalogue._canonical_for_diff(aged),
+        )
+
+    def test_a_changed_entry_is_drift(self) -> None:
+        rendered = catalogue._render([], unsupported_count=0)
+        changed = rendered.replace("Total catalogue entries: **0**", "**9**", 1)
+        self.assertNotEqual(
+            catalogue._canonical_for_diff(rendered),
+            catalogue._canonical_for_diff(changed),
+        )
+
+
+class ProvenanceBlockTests(unittest.TestCase):
+    """The document should say whether it was generated from good data."""
+
+    def _report(
+        self,
+        *,
+        succeeded: tuple = (),
+        failed: tuple = (),
+        stale: tuple = (),
+        usable: bool = True,
+    ):
+        from core.catalogue_types import RefreshMode, RefreshReport
+
+        return RefreshReport(
+            mode=RefreshMode.STALE_WHILE_REVALIDATE,
+            succeeded=succeeded,
+            failed=failed,
+            stale=stale,
+            usable=usable,
+        )
+
+    def test_names_succeeded_and_failed_sources(self) -> None:
+        from core.catalogue_types import SourceId
+
+        text = catalogue._render(
+            [],
+            unsupported_count=0,
+            report=self._report(
+                succeeded=(SourceId.UPSTREAM,),
+                failed=((SourceId.POLITREES, "timeout"),),
+                stale=(SourceId.MVSEPLESS,),
+            ),
+        )
+        self.assertIn("upstream", text)
+        self.assertIn("politrees", text)
+        self.assertIn("timeout", text)
+        self.assertIn("mvsepless", text)
+
+    def test_provenance_lines_do_not_count_as_drift(self) -> None:
+        from core.catalogue_types import SourceId
+
+        a = catalogue._render([], unsupported_count=0, report=self._report())
+        b = catalogue._render(
+            [],
+            unsupported_count=0,
+            report=self._report(failed=((SourceId.POLITREES, "timeout"),)),
+        )
+        self.assertNotEqual(a, b)
+        self.assertEqual(
+            catalogue._canonical_for_diff(a), catalogue._canonical_for_diff(b)
+        )
+
+    def test_renders_without_a_report(self) -> None:
+        text = catalogue._render([], unsupported_count=0, report=None)
+        self.assertIn("Total catalogue entries", text)
+
+
+class FabricatedFlagTests(unittest.TestCase):
+    """Metadata that cannot resolve a backend must not produce mismatch flags."""
+
+    def test_intent_alone_is_not_resolved_metadata(self) -> None:
+        from core.catalog_sources import EntryMeta
+
+        entry = catalogue.ModelEntry(
+            source="mvsepless", family="Roformer",
+            catalogue_label="Some Model", weight_file="m.ckpt", name_intent="unknown",
+        )
+        entry.metadata_source = "unavailable"
+        catalogue._apply_entry_meta(
+            entry, EntryMeta(label="L", display="L", arch="Roformer", intent="vocals")
+        )
+        self.assertEqual(entry.metadata_source, "unavailable")
+
+    def test_stems_still_count_as_resolved_metadata(self) -> None:
+        from core.catalog_sources import EntryMeta
+
+        entry = catalogue.ModelEntry(
+            source="mvsepless", family="Roformer",
+            catalogue_label="Some Model", weight_file="m.ckpt",
+        )
+        entry.metadata_source = "unavailable"
+        catalogue._apply_entry_meta(
+            entry,
+            EntryMeta(label="L", display="L", arch="Roformer", stems=["vocals", "other"]),
+        )
+        self.assertEqual(entry.metadata_source, "catalogue_meta")
+
+    def test_unknown_backend_focus_produces_no_mismatch_flags(self) -> None:
+        """You cannot detect a mismatch against a backend you could not determine."""
+        entry = catalogue.ModelEntry(
+            source="mvsepless", family="Roformer",
+            catalogue_label="Some Model", weight_file="m.ckpt", name_intent="vocals",
+        )
+        entry.metadata_source = "catalogue_meta"
+        entry.backend_focus = "unknown"
+        self.assertEqual(catalogue._flag_mismatches(entry), [])
+
+    def test_intent_only_entry_ends_up_unflagged(self) -> None:
+        from core.catalog_sources import EntryMeta
+
+        entry = catalogue.ModelEntry(
+            source="mvsepless", family="Roformer",
+            catalogue_label="Some Model", weight_file="m.ckpt", name_intent="unknown",
+        )
+        entry.metadata_source = "unavailable"
+        catalogue._apply_entry_meta(
+            entry, EntryMeta(label="L", display="L", arch="Roformer", intent="vocals")
+        )
+        catalogue._finalize_entry(entry)
+        self.assertEqual(entry.flags, [])
+
+
+class YamlProvenanceStabilityTests(unittest.TestCase):
+    """The metadata label must not flip between runs, or --check sees drift."""
+
+    def test_a_downloaded_config_reports_the_same_source_on_the_next_run(self) -> None:
+        import shutil
+        import tempfile
+        from unittest import mock
+
+        store = tempfile.mkdtemp(prefix="uvr-cfgstore-")
+        self.addCleanup(shutil.rmtree, store, ignore_errors=True)
+        url = "https://example.invalid/c/m.yaml"
+        body = "training:\n  instruments: [vocals, other]\n  target_instrument: other\n"
+
+        def fake_fetch(name: str, _url: str) -> bool:
+            with open(os.path.join(store, name), "w", encoding="utf-8") as handle:
+                handle.write(body)
+            return True
+
+        with mock.patch("core.paths.MDX_C_CONFIG_PATH", store), mock.patch(
+            "core.mdx_config_fetch.fetch_mdx_config_url", fake_fetch
+        ):
+            first = catalogue._load_yaml_meta("m.yaml", url)[3]
+            second = catalogue._load_yaml_meta("m.yaml", url)[3]
+
+        self.assertEqual(first, second, "provenance label flipped between runs")
+
+
+class CheckContractTests(unittest.TestCase):
+    """--check must be genuinely read-only and must not lie about coverage."""
+
+    def test_check_forbids_metadata_writes(self) -> None:
+        """fetch_mdx_config_url writes yaml into the repo in the dev layout."""
+        policy = catalogue._policy_for(
+            catalogue._parse_args(["--check"])
+        )
+        self.assertFalse(policy.allow_metadata_writes)
+
+    def test_a_normal_run_still_allows_metadata_writes(self) -> None:
+        policy = catalogue._policy_for(catalogue._parse_args([]))
+        self.assertTrue(policy.allow_metadata_writes)
+
+    def test_load_yaml_meta_does_not_fetch_configs_when_writes_are_denied(self) -> None:
+        from unittest import mock
+
+        called = []
+
+        def spy(name: str, url: str) -> bool:
+            called.append(name)
+            return False
+
+        policy = catalogue.FetchPolicy(allow_network=True, allow_metadata_writes=False)
+        with mock.patch("core.mdx_config_fetch.fetch_mdx_config_url", spy), mock.patch(
+            "core.mdx_config_fetch._urlopen",
+            side_effect=urllib.error.URLError("blocked"),
+        ):
+            catalogue._load_yaml_meta(
+                "nope.yaml", "https://example.invalid/nope.yaml", policy=policy
+            )
+        self.assertEqual(called, [], "--check wrote a config into the model store")
+
+    def test_check_does_not_claim_to_refuse_a_write_it_never_makes(self) -> None:
+        import contextlib
+        import io
+        from unittest import mock
+
+        class _Snapshot:
+            vr: dict = {}
+            mdx: dict = {}
+            demucs: dict = {}
+            apollo: dict = {}
+            meta: dict = {}
+            unsupported: dict = {}
+            report = None
+
+        import tempfile
+
+        tmp = tempfile.mkdtemp(prefix="uvr-checkmsg-")
+        out = os.path.join(tmp, "models-catalogue.md")
+        with open(out, "w", encoding="utf-8") as handle:
+            handle.write("## Summary\n\n- Total catalogue entries: **400**\n")
+
+        stderr = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(catalogue, "OUTPUT_PATH", out))
+            stack.enter_context(
+                mock.patch.object(catalogue, "_build_catalogue_context",
+                                  lambda **k: catalogue.CatalogueContext())
+            )
+            stack.enter_context(
+                mock.patch.object(catalogue, "_snapshot_and_payloads",
+                                  lambda **k: (_Snapshot(), ({}, {}, {}, {})))
+            )
+            stack.enter_context(contextlib.redirect_stderr(stderr))
+            rc = catalogue.main(["--check"])
+
+        self.assertEqual(rc, 2)
+        message = stderr.getvalue()
+        self.assertNotIn("Refusing to write", message)
+        self.assertIn("cannot judge", message.lower())
+
+    def test_write_tsv_without_community_data_is_reported_not_silent(self) -> None:
+        import contextlib
+        import io
+        import tempfile
+        from unittest import mock
+
+        class _Snapshot:
+            vr = {"M": "m.pth"}
+            mdx: dict = {}
+            demucs: dict = {}
+            apollo: dict = {}
+            meta: dict = {}
+            unsupported: dict = {}
+            report = None
+
+        tmp = tempfile.mkdtemp(prefix="uvr-tsvwarn-")
+        stderr = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                mock.patch.object(catalogue, "OUTPUT_PATH", os.path.join(tmp, "c.md"))
+            )
+            stack.enter_context(
+                mock.patch.object(catalogue, "REFERENCE_TSV_PATH", os.path.join(tmp, "r.tsv"))
+            )
+            stack.enter_context(
+                mock.patch.object(catalogue, "_build_catalogue_context",
+                                  lambda **k: catalogue.CatalogueContext())
+            )
+            stack.enter_context(
+                mock.patch.object(catalogue, "_snapshot_and_payloads",
+                                  lambda **k: (_Snapshot(), ({}, {}, {}, {})))
+            )
+            stack.enter_context(contextlib.redirect_stderr(stderr))
+            rc = catalogue.main(["--write-tsv"])
+
+        self.assertEqual(rc, 0)
+        self.assertIn("tsv", stderr.getvalue().lower())
+
+
 class EntryMetaOverlayTests(unittest.TestCase):
     def test_fills_blank_stems_target_and_unknown_intent(self) -> None:
         from core.catalog_sources import EntryMeta
@@ -671,7 +1369,10 @@ class FetchHelperTests(unittest.TestCase):
             )
         self.assertEqual(instruments, ["vocals", "other"])
         self.assertEqual(target, "vocals")
-        self.assertEqual(source, f"remote_yaml:{yaml_name}")
+        # Labelled by where it now lives, not by whether this run fetched it:
+        # the config store label has to match what the next run will report,
+        # or the difference reads as catalogue drift.
+        self.assertEqual(source, f"bundled_yaml:{yaml_name}")
 
 
 if __name__ == "__main__":

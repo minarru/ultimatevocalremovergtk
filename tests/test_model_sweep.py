@@ -4,7 +4,7 @@ import importlib.util
 import os
 import sys
 import unittest
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 _SPEC = importlib.util.spec_from_file_location(
     "model_sweep",
@@ -736,6 +736,221 @@ class ResultProtocolTests(unittest.TestCase):
             self.assertEqual(leftovers, [])
 
 
+class ReportMetadataTests(unittest.TestCase):
+    """A sweep report must say what produced it, and what it did not run."""
+
+    def _job(self, job_id: str = "mdx:a.ckpt"):
+        return model_sweep.SweepJob(
+            id=job_id, kind=model_sweep.KIND_SINGLE, method="mdx", model="a.ckpt"
+        )
+
+    def _sweep(
+        self,
+        jobs: List[Any],
+        results: List[Any],
+        json_path: str,
+        *,
+        run_meta: Optional[Dict[str, Any]] = None,
+        fail_fast: bool = False,
+    ) -> int:
+        import tempfile
+
+        def spawn(*, spec: Dict[str, Any], job_dir: str, env: Dict[str, str], timeout: float):
+            os.makedirs(job_dir, exist_ok=True)
+            return results.pop(0)
+
+        with tempfile.TemporaryDirectory() as root:
+            return model_sweep.sweep(
+                jobs, spawn=spawn, root=root, settings_path="/s.json",
+                input_path="/in.wav", data_dir="/data", cpu=False, cpu_retry=False,
+                strict=False, fail_fast=fail_fast, json_path=json_path,
+                keep_outputs=False, run_meta=run_meta,
+            )
+
+    def _read(self, path: str) -> dict:
+        import json
+
+        with open(path) as handle:
+            return json.load(handle)
+
+    def test_report_carries_the_run_metadata(self) -> None:
+        import tempfile
+
+        ok = (0, {"ok": True, "outputs": [["a.wav", 10]]}, False)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "r.json")
+            self._sweep([self._job()], [ok], path, run_meta={"version": "v1.2.3"})
+            payload = self._read(path)
+        self.assertEqual(payload["run"]["version"], "v1.2.3")
+
+    def test_report_separates_planned_from_executed(self) -> None:
+        import tempfile
+
+        fail = (1, {"error_type": "RuntimeError", "message": "boom"}, False)
+        ok = (0, {"ok": True, "outputs": [["a.wav", 10]]}, False)
+        jobs = [self._job("mdx:a.ckpt"), self._job("mdx:b.ckpt"), self._job("mdx:c.ckpt")]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "r.json")
+            self._sweep(jobs, [fail, ok, ok], path, fail_fast=True)
+            payload = self._read(path)
+        self.assertEqual(payload["planned"], 3)
+        self.assertEqual(payload["executed"], 1)
+        self.assertEqual(len(payload["results"]), 1)
+
+    def test_summary_names_the_jobs_that_never_ran(self) -> None:
+        text = model_sweep.render_summary(["PASS"], planned=5)
+        self.assertIn("4 not run", text)
+
+    def test_summary_without_a_planned_count_is_unchanged(self) -> None:
+        self.assertNotIn("not run", model_sweep.render_summary(["PASS", "PASS"]))
+
+    def test_summary_omits_not_run_when_everything_ran(self) -> None:
+        self.assertNotIn("not run", model_sweep.render_summary(["PASS", "PASS"], planned=2))
+
+
+class RunMetadataTests(unittest.TestCase):
+    def test_describes_the_run(self) -> None:
+        args = model_sweep.build_parser().parse_args(
+            ["--method", "mdx", "--cpu", "--timeout", "42", "--stock-settings"]
+        )
+        meta = model_sweep.run_metadata(args)
+        self.assertEqual(meta["methods"], ["mdx"])
+        self.assertTrue(meta["cpu"])
+        self.assertEqual(meta["timeout_s"], 42.0)
+        self.assertEqual(meta["settings"], "stock")
+        self.assertIn("version", meta)
+
+    def test_records_copied_settings_by_default(self) -> None:
+        args = model_sweep.build_parser().parse_args([])
+        self.assertEqual(model_sweep.run_metadata(args)["settings"], "copied")
+
+    def test_commit_is_optional(self) -> None:
+        """Outside a git checkout the sweep must still produce a report."""
+        from unittest import mock
+
+        args = model_sweep.build_parser().parse_args([])
+        with mock.patch.object(
+            model_sweep, "_git_commit", side_effect=OSError("no git")
+        ):
+            meta = model_sweep.run_metadata(args)
+        self.assertEqual(meta["commit"], "")
+
+
+class ManifestTests(unittest.TestCase):
+    def test_manifest_records_the_resolved_job_list(self) -> None:
+        import json
+        import tempfile
+
+        jobs = [
+            model_sweep.SweepJob(
+                id="mdx:a", kind=model_sweep.KIND_SINGLE, method="mdx", model="a.ckpt"
+            ),
+            model_sweep.SweepJob(
+                id="ens:x", kind=model_sweep.KIND_ENSEMBLE,
+                timeout=model_sweep.ENSEMBLE_TIMEOUT,
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "m.json")
+            model_sweep.write_manifest(path, jobs, run_meta={"version": "v1"})
+            with open(path) as handle:
+                payload = json.load(handle)
+
+        self.assertEqual(payload["run"]["version"], "v1")
+        self.assertEqual(payload["planned"], 2)
+        self.assertEqual([j["id"] for j in payload["jobs"]], ["mdx:a", "ens:x"])
+        self.assertEqual(payload["jobs"][1]["timeout"], model_sweep.ENSEMBLE_TIMEOUT)
+
+    def test_manifest_flag_exists(self) -> None:
+        args = model_sweep.build_parser().parse_args(["--manifest", "/tmp/m.json"])
+        self.assertEqual(args.manifest, "/tmp/m.json")
+
+
+class CompositeTimeoutGroupTests(unittest.TestCase):
+    """--composite-timeout must cover the group --method composite selects."""
+
+    def _jobs(self):
+        return [
+            model_sweep.SweepJob(
+                id="mdx:a", kind=model_sweep.KIND_SINGLE, method="mdx", model="a.ckpt"
+            ),
+            # A composite job that happens to carry the per-model default.
+            model_sweep.SweepJob(
+                id="composite:4-stem", kind=model_sweep.KIND_SINGLE,
+                method="demucs", model="h.th", composite=True,
+            ),
+            model_sweep.SweepJob(
+                id="composite:ensemble", kind=model_sweep.KIND_ENSEMBLE,
+                timeout=model_sweep.ENSEMBLE_TIMEOUT, composite=True,
+            ),
+        ]
+
+    def test_composite_timeout_reaches_every_composite_job(self) -> None:
+        single, four_stem, ensemble = model_sweep.apply_timeouts(
+            self._jobs(), timeout=None, composite_timeout=1800.0
+        )
+        self.assertEqual(four_stem.timeout, 1800.0, "composite:4-stem was skipped")
+        self.assertEqual(ensemble.timeout, 1800.0)
+        self.assertEqual(single.timeout, model_sweep.DEFAULT_TIMEOUT)
+
+    def test_unset_flags_leave_each_job_default_alone(self) -> None:
+        single, four_stem, ensemble = model_sweep.apply_timeouts(
+            self._jobs(), timeout=None, composite_timeout=None
+        )
+        self.assertEqual(single.timeout, model_sweep.DEFAULT_TIMEOUT)
+        self.assertEqual(four_stem.timeout, model_sweep.DEFAULT_TIMEOUT)
+        self.assertEqual(ensemble.timeout, model_sweep.ENSEMBLE_TIMEOUT)
+
+    def test_timeout_does_not_touch_composite_jobs(self) -> None:
+        single, four_stem, ensemble = model_sweep.apply_timeouts(
+            self._jobs(), timeout=42.0, composite_timeout=None
+        )
+        self.assertEqual(single.timeout, 42.0)
+        self.assertEqual(four_stem.timeout, model_sweep.DEFAULT_TIMEOUT)
+        self.assertEqual(ensemble.timeout, model_sweep.ENSEMBLE_TIMEOUT)
+
+    def test_discovered_composite_jobs_are_marked(self) -> None:
+        installed = _installed(
+            demucs=["hdemucs_mmi.th"], mdx=["a.ckpt", "b.ckpt"], vr=["v.pth"],
+        )
+        jobs = model_sweep.discover_jobs(installed, methods={"composite"})
+        self.assertTrue(jobs, "no composite jobs discovered")
+        self.assertTrue(all(j.composite for j in jobs), [j.id for j in jobs])
+
+    def test_flags_default_to_none(self) -> None:
+        args = model_sweep.build_parser().parse_args([])
+        self.assertIsNone(args.timeout)
+        self.assertIsNone(args.composite_timeout)
+
+
+class CommitProvenanceTests(unittest.TestCase):
+    def test_a_dirty_tree_is_marked(self) -> None:
+        """This tree normally carries uncommitted edits; HEAD alone would lie."""
+        from unittest import mock
+
+        with mock.patch.object(model_sweep, "_git_output") as out:
+            out.side_effect = ["abc1234", " M scripts/model_sweep.py"]
+            self.assertEqual(model_sweep._git_commit(), "abc1234-dirty")
+
+    def test_a_clean_tree_is_not_marked(self) -> None:
+        from unittest import mock
+
+        with mock.patch.object(model_sweep, "_git_output") as out:
+            out.side_effect = ["abc1234", ""]
+            self.assertEqual(model_sweep._git_commit(), "abc1234")
+
+
+class ResolvedMethodsTests(unittest.TestCase):
+    def test_a_default_sweep_records_every_method_not_an_empty_list(self) -> None:
+        args = model_sweep.build_parser().parse_args([])
+        meta = model_sweep.run_metadata(args, methods={"mdx", "vr", "demucs"})
+        self.assertEqual(meta["methods"], ["demucs", "mdx", "vr"])
+
+    def test_an_explicit_selection_is_recorded_as_given(self) -> None:
+        args = model_sweep.build_parser().parse_args(["--method", "mdx"])
+        self.assertEqual(model_sweep.run_metadata(args, methods={"mdx"})["methods"], ["mdx"])
+
+
 class SpawnChildProcessGroupTests(unittest.TestCase):
     """Fix round 1: a timed-out child must have its whole process group
     killed, not just the immediate process, since it can shell out to
@@ -929,7 +1144,10 @@ class ParentControlFlowTests(unittest.TestCase):
 class CliTests(unittest.TestCase):
     def test_parser_defaults(self) -> None:
         args = model_sweep.build_parser().parse_args([])
-        self.assertEqual(args.timeout, 300.0)
+        # None means "not given", so each job keeps its own default; the
+        # effective per-model value is still DEFAULT_TIMEOUT.
+        self.assertIsNone(args.timeout)
+        self.assertEqual(model_sweep.DEFAULT_TIMEOUT, 300.0)
         self.assertFalse(args.cpu)
         self.assertFalse(args.strict)
         self.assertTrue(args.cpu_retry)

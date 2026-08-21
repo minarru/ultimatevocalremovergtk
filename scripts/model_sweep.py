@@ -40,6 +40,11 @@ class SweepJob:
     model: Optional[str] = None
     overrides: Dict[str, Any] = field(default_factory=dict)
     timeout: float = DEFAULT_TIMEOUT
+    #: Part of the group `--method composite` selects. Tracked explicitly: the
+    #: group is not identifiable from `kind` (two composite jobs are
+    #: KIND_SINGLE) nor from the timeout (composite:4-stem uses the per-model
+    #: default), so inferring it silently missed jobs.
+    composite: bool = False
     detail: str = ""
 
 
@@ -121,8 +126,8 @@ def discover_jobs(
     return jobs
 
 
-def _skip(job_id: str, reason: str) -> SweepJob:
-    return SweepJob(id=job_id, kind=KIND_SKIP, detail=reason)
+def _skip(job_id: str, reason: str, *, composite: bool = False) -> SweepJob:
+    return SweepJob(id=job_id, kind=KIND_SKIP, detail=reason, composite=composite)
 
 
 def _composite_jobs(installed: Installed) -> List[SweepJob]:
@@ -139,6 +144,7 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
                 method="demucs",
                 model=four_stem,
                 overrides={"demucs_stems": ALL_STEMS},
+                composite=True,
             )
         )
     else:
@@ -151,10 +157,11 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
                     method="mdx",
                     model=scnet,
                     overrides={"mdx_stems": ALL_STEMS},
+                    composite=True,
                 )
             )
         else:
-            jobs.append(_skip("composite:4-stem", "no 4-stem model installed"))
+            jobs.append(_skip("composite:4-stem", "no 4-stem model installed", composite=True))
 
     # 2. Two-member ensemble.
     if len(installed.ensemble_tags) >= 2:
@@ -169,10 +176,11 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
                     "is_save_all_outputs_ensemble": False,
                 },
                 timeout=ENSEMBLE_TIMEOUT,
+                composite=True,
             )
         )
     else:
-        jobs.append(_skip("composite:ensemble", "needs two ensemble-capable models"))
+        jobs.append(_skip("composite:ensemble", "needs two ensemble-capable models", composite=True))
 
     # 3. Primary + secondary chain.
     mdx_tag = next((t for t in installed.ensemble_tags if t.startswith("MDX-Net")), None)
@@ -189,10 +197,11 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
                     "vr_voc_inst_secondary_model_scale": 0.5,
                 },
                 timeout=ENSEMBLE_TIMEOUT,
+                composite=True,
             )
         )
     else:
-        jobs.append(_skip("composite:secondary-chain", "needs a VR and an MDX model"))
+        jobs.append(_skip("composite:secondary-chain", "needs a VR and an MDX model", composite=True))
 
     # 4. Vocal splitter chain.
     if installed.mdx and installed.karaoke_tags:
@@ -208,10 +217,11 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
                     "is_save_inst_set_vocal_splitter": True,
                 },
                 timeout=ENSEMBLE_TIMEOUT,
+                composite=True,
             )
         )
     else:
-        jobs.append(_skip("composite:vocal-splitter", "needs an MDX and a karaoke model"))
+        jobs.append(_skip("composite:vocal-splitter", "needs an MDX and a karaoke model", composite=True))
 
     return jobs
 
@@ -272,7 +282,115 @@ def render_row(job_id: str, verdict: str, elapsed_s: float, detail: str) -> str:
     return f"{row}\n    {detail}" if detail else row
 
 
-def render_summary(verdicts: Sequence[str]) -> str:
+def apply_timeouts(
+    jobs: Sequence[SweepJob],
+    *,
+    timeout: Optional[float] = None,
+    composite_timeout: Optional[float] = None,
+) -> List[SweepJob]:
+    """Override job timeouts with whatever the CLI asked for.
+
+    Routing is by group membership, not by the timeout a job currently holds:
+    composite jobs do not share one default (composite:4-stem runs on the
+    per-model default while the rest use ENSEMBLE_TIMEOUT), so keying on the
+    value let --composite-timeout silently miss the group's slowest member.
+
+    ``None`` means the flag was not given, leaving each job's own default.
+    """
+    resolved: List[SweepJob] = []
+    for job in jobs:
+        chosen = composite_timeout if job.composite else timeout
+        wanted = job.timeout if chosen is None else chosen
+        resolved.append(
+            job if wanted == job.timeout
+            else SweepJob(**{**job.__dict__, "timeout": wanted})
+        )
+    return resolved
+
+
+def write_manifest(
+    path: str, jobs: Sequence[SweepJob], *, run_meta: Optional[Dict[str, Any]] = None
+) -> None:
+    """Record the resolved job list, so a planned sweep can be reviewed or repeated."""
+    from core.json_store import write_json_atomic
+
+    write_json_atomic(
+        path,
+        {
+            "run": run_meta or {},
+            "planned": len(jobs),
+            "jobs": [dict(job.__dict__) for job in jobs],
+        },
+    )
+
+
+def _git_output(*args: str) -> str:
+    """stdout of a git command run at the repo root, or "" if it fails."""
+    import subprocess
+
+    result = subprocess.run(
+        ["git", *args],
+        capture_output=True,
+        text=True,
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _git_commit() -> str:
+    """Short commit, suffixed ``-dirty`` when the tree has uncommitted changes.
+
+    This tree normally carries long-lived local edits, so a bare HEAD would
+    attribute the run to code that never actually ran.
+    """
+    commit = _git_output("rev-parse", "--short", "HEAD")
+    if not commit:
+        return ""
+    return f"{commit}-dirty" if _git_output("status", "--porcelain") else commit
+
+
+def run_metadata(args: Any, *, methods: Optional[Sequence[str]] = None) -> Dict[str, Any]:
+    """What produced this report, so a result can be tied back to a build.
+
+    A bare list of verdicts cannot be compared against another run without
+    knowing the code, the device and the settings behind it.
+    """
+    import platform
+    import sys as _sys
+
+    try:
+        commit = _git_commit()
+    except OSError:
+        commit = ""
+
+    try:
+        # Repo root is on sys.path from module import.
+        from __version__ import VERSION
+    except ImportError:
+        VERSION = ""
+
+    return {
+        "version": VERSION,
+        "commit": commit,
+        "python": _sys.version.split()[0],
+        "platform": platform.platform(),
+        "cpu": bool(getattr(args, "cpu", False)),
+        "cpu_retry": bool(getattr(args, "cpu_retry", True)),
+        # The resolved set, not the raw flag: a default sweep runs every group
+        # and would otherwise report [], which reads as "nothing selected".
+        "methods": sorted(methods if methods is not None else (getattr(args, "method", None) or [])),
+        "only": getattr(args, "only", None) or "",
+        "skip": getattr(args, "skip", None) or "",
+        "timeout_s": float(getattr(args, "timeout", None) or DEFAULT_TIMEOUT),
+        "composite_timeout_s": float(
+            getattr(args, "composite_timeout", None) or ENSEMBLE_TIMEOUT
+        ),
+        "strict": bool(getattr(args, "strict", False)),
+        "settings": "stock" if getattr(args, "stock_settings", False) else "copied",
+    }
+
+
+def render_summary(verdicts: Sequence[str], *, planned: Optional[int] = None) -> str:
     passed = sum(1 for v in verdicts if v == PASS)
     skipped = sum(1 for v in verdicts if v.startswith("SKIP"))
     oom_ok = sum(1 for v in verdicts if v == OOM_CPU_OK)
@@ -285,6 +403,9 @@ def render_summary(verdicts: Sequence[str]) -> str:
         parts.append(f"{unrecognized} unrecognized")
     if skipped:
         parts.append(f"{skipped} skipped")
+    if planned is not None and planned > len(verdicts):
+        # --fail-fast stops early; without this the run reads as a smaller sweep.
+        parts.append(f"{planned - len(verdicts)} not run")
     return "  ".join(parts)
 
 
@@ -677,6 +798,7 @@ def sweep(
     fail_fast: bool,
     json_path: Optional[str],
     keep_outputs: bool,
+    run_meta: Optional[Dict[str, Any]] = None,
 ) -> int:
     """Run every job serially. One child alive at a time."""
     import json
@@ -708,11 +830,19 @@ def sweep(
             break
 
     print("-" * 96)
-    print(render_summary(verdicts))
+    print(render_summary(verdicts, planned=len(jobs)))
     if json_path:
         from core.json_store import write_json_atomic
 
-        write_json_atomic(json_path, {"results": rows})
+        write_json_atomic(
+            json_path,
+            {
+                "run": run_meta or {},
+                "planned": len(jobs),
+                "executed": len(rows),
+                "results": rows,
+            },
+        )
         print(f"json={json_path}")
     return 1 if any(is_failure(v, strict=strict) for v in verdicts) else 0
 
@@ -745,9 +875,27 @@ def build_parser():
         action="store_true",
         help="Use default settings instead of a copy of the user's settings.json",
     )
-    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help=f"Per-model job timeout in seconds (default {DEFAULT_TIMEOUT:.0f}). "
+        "Does not apply to composite jobs; see --composite-timeout.",
+    )
+    parser.add_argument(
+        "--composite-timeout",
+        type=float,
+        default=None,
+        help="Timeout in seconds for every job --method composite selects "
+        f"(defaults: {DEFAULT_TIMEOUT:.0f} for 4-stem, {ENSEMBLE_TIMEOUT:.0f} for the rest).",
+    )
     parser.add_argument("--json", dest="json_path", default=None)
     parser.add_argument("--list", action="store_true", help="Print the job list and exit")
+    parser.add_argument(
+        "--manifest",
+        default=None,
+        help="Write the resolved job list as JSON to this path.",
+    )
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument(
         "--strict", action="store_true", help="Treat UNRECOGNIZED as a failure"
@@ -776,10 +924,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     methods = set(args.method) if args.method else {"mdx", "vr", "demucs", "apollo", "composite"}
     skip = frozenset(s for s in (args.skip or "").split(",") if s)
     jobs = discover_jobs(installed, methods=methods, only=args.only, skip=skip)
-    jobs = [
-        job if job.timeout != DEFAULT_TIMEOUT else SweepJob(**{**job.__dict__, "timeout": args.timeout})
-        for job in jobs
-    ]
+    jobs = apply_timeouts(
+        jobs, timeout=args.timeout, composite_timeout=args.composite_timeout
+    )
+    meta = run_metadata(args, methods=sorted(methods))
+
+    if args.manifest:
+        write_manifest(args.manifest, jobs, run_meta=meta)
+        print(f"manifest={args.manifest}")
 
     if args.list:
         for job in jobs:
@@ -812,6 +964,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             fail_fast=args.fail_fast,
             json_path=args.json_path,
             keep_outputs=args.keep_outputs,
+            run_meta=meta,
         )
     finally:
         # sweep() already drops each job dir unless --keep-outputs; the copied

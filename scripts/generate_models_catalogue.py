@@ -176,20 +176,35 @@ def _snapshot_and_payloads(
 
 
 def _apply_entry_meta(entry: ModelEntry, meta: Any) -> None:
+    """Fill blanks from the snapshot's per-entry metadata.
+
+    Runs after metadata_source has already defaulted to "unavailable", so
+    anything supplied here has to claim provenance for itself -- otherwise the
+    entry is excluded from _flag_mismatches and under-counts in the summary
+    despite having real metadata.
+    """
     if meta is None:
         return
+    supplied = False
     stems = list(getattr(meta, "stems", None) or [])
     if stems and not entry.instruments:
         entry.instruments = stems
         entry.stem_count = max(entry.stem_count, len(stems))
+        supplied = True
     target = getattr(meta, "target_instrument", None) or ""
     if target and not entry.target_instrument:
         entry.target_instrument = str(target)
         if not entry.primary_stem:
             entry.primary_stem = str(target)
+        supplied = True
     intent = str(getattr(meta, "intent", "") or "")
     if intent and intent != INTENT_UNKNOWN and entry.name_intent == "unknown":
         entry.name_intent = intent
+        # Deliberately not `supplied`: intent alone cannot resolve a backend
+        # focus, so claiming provenance for it would let _flag_mismatches
+        # compare a real intent against an unknown backend and invent a flag.
+    if supplied and entry.metadata_source in ("", "unavailable"):
+        entry.metadata_source = "catalogue_meta"
 
 
 def _display_label(entry: ModelEntry) -> str:
@@ -208,6 +223,10 @@ class FetchPolicy:
     allow_network: bool = True
     refresh: bool = False
     max_age: float = CACHE_MAX_AGE_SECONDS
+    #: Whether this run may write into runtime model config storage. --check
+    #: promises to write nothing, and fetch_mdx_config_url writes a yaml into
+    #: paths.MDX_C_CONFIG_PATH -- inside the repo in the portable dev layout.
+    allow_metadata_writes: bool = True
 
 
 #: Used by callers that do not care -- online, cache-respecting, TTL'd.
@@ -249,6 +268,7 @@ def _fetch_cached(
             allow_network=policy.allow_network if allow_network is None else allow_network,
             refresh=refresh or policy.refresh,
             max_age=policy.max_age,
+            allow_metadata_writes=policy.allow_metadata_writes,
         )
 
     cache_path = _cache_path(cache_dir, url, filename)
@@ -270,8 +290,18 @@ def _fetch_cached(
 
         with _urlopen(url) as response:
             data = response.read()
-        with open(cache_path, "wb") as handle:
-            handle.write(data)
+        # Staged, so a failed write cannot truncate a good entry into a
+        # corrupt one that is then served for the rest of the TTL.
+        tmp_path = f"{cache_path}.part"
+        try:
+            with open(tmp_path, "wb") as handle:
+                handle.write(data)
+            os.replace(tmp_path, cache_path)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except FileNotFoundError:
+                pass
         return cache_path
     except (urllib.error.URLError, OSError, TimeoutError):
         return cache_path if cached else None
@@ -371,7 +401,7 @@ def _parse_community_models_txt(path: str) -> Dict[str, CommunityRef]:
     return refs
 
 
-def _write_reference_tsv(refs: Dict[str, CommunityRef]) -> None:
+def _reference_tsv_text(refs: Dict[str, CommunityRef]) -> str:
     rows = sorted(refs.values(), key=lambda item: item.filename.lower())
     lines = ["filename\tarch\tprimary_stem\tintent\tstems\tfriendly_name"]
     for ref in rows:
@@ -387,9 +417,7 @@ def _write_reference_tsv(refs: Dict[str, CommunityRef]) -> None:
                 ]
             )
         )
-    from core.json_store import write_text_atomic
-
-    write_text_atomic(REFERENCE_TSV_PATH, "\n".join(lines) + "\n")
+    return "\n".join(lines) + "\n"
 
 
 def _build_catalogue_context(
@@ -399,7 +427,10 @@ def _build_catalogue_context(
 ) -> CatalogueContext:
     if allow_network is not None:
         policy = FetchPolicy(
-            allow_network=allow_network, refresh=policy.refresh, max_age=policy.max_age
+            allow_network=allow_network,
+            refresh=policy.refresh,
+            max_age=policy.max_age,
+            allow_metadata_writes=policy.allow_metadata_writes,
         )
     remote_vr = _load_json_cache(
         _POLITREES_VR_DATA_URL, POLITREES_CACHE_DIR, "vr_model_data.json", policy=policy
@@ -411,8 +442,6 @@ def _build_catalogue_context(
         _COMMUNITY_MODELS_URL, COMMUNITY_CACHE_DIR, "models.txt", policy=policy
     )
     community = _parse_community_models_txt(community_path or "")
-    if community:
-        _write_reference_tsv(community)
     return CatalogueContext(
         community_by_file=community,
         vr_by_hash=_merge_hash_tables(paths.VR_HASH_JSON, remote_vr),
@@ -563,6 +592,9 @@ def _is_vocals_instrumental_pair(instruments: List[str]) -> bool:
 def _flag_mismatches(entry: ModelEntry) -> List[str]:
     if not entry.metadata_source or entry.metadata_source == "unavailable":
         return []
+    if not entry.backend_focus or entry.backend_focus == "unknown":
+        # No backend to disagree with; every comparison below would be noise.
+        return []
     flags: List[str] = []
     intent = entry.name_intent
     focus = entry.backend_focus
@@ -591,12 +623,36 @@ def _flag_mismatches(entry: ModelEntry) -> List[str]:
     return flags
 
 
-def _yaml_paths(yaml_name: str) -> List[str]:
-    return [
+def _yaml_paths(yaml_name: str, yaml_url: str = "") -> List[str]:
+    """Where a config yaml may already be on disk, most authoritative first.
+
+    The cache entry is URL-keyed, so it can only be probed when the URL is
+    known -- looking for the bare basename there never matches and left the
+    cache write-only.
+    """
+    candidates = [
         os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name),
         os.path.join(ROOT, "models", "MDX_Net_Models", "model_data", "mdx_c_configs", yaml_name),
-        os.path.join(YAML_CACHE_DIR, yaml_name),
     ]
+    if yaml_url:
+        candidates.append(_cache_path(YAML_CACHE_DIR, yaml_url, yaml_name))
+    return candidates
+
+
+def _yaml_source_label(yaml_name: str, config_path: str) -> str:
+    """Provenance label for a resolved config, keyed on where it now lives.
+
+    Must be a pure function of the final location: anything that depends on
+    whether *this* run downloaded it changes between runs and shows up as
+    catalogue drift.
+
+    "bundled_yaml" means "resolved from the local config store", which holds
+    both shipped configs and ones core downloaded earlier; the two are not
+    distinguishable after the fact. "remote_yaml" means this script fetched it
+    into its own cache.
+    """
+    where = "remote_yaml" if YAML_CACHE_DIR in config_path else "bundled_yaml"
+    return f"{where}:{yaml_name}"
 
 
 def _fetch_yaml(
@@ -628,36 +684,44 @@ def _load_yaml_meta(
 ) -> Tuple[List[str], str, str, str]:
     if allow_network is not None:
         policy = FetchPolicy(
-            allow_network=allow_network, refresh=policy.refresh, max_age=policy.max_age
+            allow_network=allow_network,
+            refresh=policy.refresh,
+            max_age=policy.max_age,
+            allow_metadata_writes=policy.allow_metadata_writes,
         )
     if not yaml_name:
         return [], "", "", ""
     config_path = ""
-    for candidate in _yaml_paths(yaml_name):
+    for candidate in _yaml_paths(yaml_name, yaml_url):
         if os.path.isfile(candidate):
             config_path = candidate
             break
-    source = ""
-    if not config_path and yaml_url and policy.allow_network:
-        # fetch_mdx_config_url writes into runtime model config storage, so it
-        # must never run for a read-only offline report.
-        from core.mdx_config_fetch import fetch_mdx_config_url
 
-        if fetch_mdx_config_url(yaml_name, yaml_url):
-            dest = os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name)
-            if os.path.isfile(dest):
-                config_path = dest
-                source = f"remote_yaml:{yaml_name}"
+    source = ""
+    if config_path:
+        source = _yaml_source_label(yaml_name, config_path)
+    elif yaml_url:
+        if policy.allow_network and policy.allow_metadata_writes:
+            # fetch_mdx_config_url writes into runtime model config storage, so
+            # it must never run for a read-only offline or --check report.
+            from core.mdx_config_fetch import fetch_mdx_config_url
+
+            if fetch_mdx_config_url(yaml_name, yaml_url):
+                dest = os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name)
+                if os.path.isfile(dest):
+                    config_path = dest
+                    # Same rule as the on-disk lookup above. Labelling this
+                    # "remote_yaml" made the value flip to "bundled_yaml" on the
+                    # next run, once the file was found in place -- which reads
+                    # as drift to --check.
+                    source = _yaml_source_label(yaml_name, config_path)
         if not config_path:
+            # Not gated on allow_network: _fetch_cached honours the policy
+            # itself, and offline it is the only thing that reads the cache.
             fetched = _fetch_yaml(yaml_url, yaml_name, policy=policy)
             if fetched:
                 config_path = fetched
                 source = f"remote_yaml:{yaml_name}"
-    elif config_path:
-        if YAML_CACHE_DIR in config_path:
-            source = f"remote_yaml:{yaml_name}"
-        else:
-            source = f"bundled_yaml:{yaml_name}"
     if not config_path:
         inferred = _infer_from_yaml_name(yaml_name)
         if inferred[0] or inferred[1]:
@@ -976,15 +1040,27 @@ def _source_for(
     trvlvr: Optional[dict] = None,
     extras: Optional[dict] = None,
     mvsepless: Optional[dict] = None,
+    *,
+    upstream_lists: Optional[Tuple[Any, Any, Any]] = None,
+    mvsepless_lists: Optional[dict] = None,
 ) -> str:
-    """Attribute ``label`` to catalogue sources by membership, in merge order."""
+    """Attribute ``label`` to catalogue sources by membership, in merge order.
+
+    ``upstream_lists`` and ``mvsepless_lists`` let a caller hoist the two
+    derived payloads out of a per-label loop; both are constant for a run and
+    rebuilding them per entry meant one full mvsepless conversion per model.
+    """
+    if upstream_lists is None and trvlvr:
+        upstream_lists = flatten_upstream_lists(trvlvr, vip=False)
     in_tr = False
-    if trvlvr:
-        vr, mdx, demucs = flatten_upstream_lists(trvlvr, vip=False)
+    if upstream_lists is not None:
+        vr, mdx, demucs = upstream_lists
         in_tr = label in vr or label in mdx or label in demucs
+    if mvsepless_lists is None:
+        mvsepless_lists = _mvsepless_lists(mvsepless)
     in_pt = _label_in_lists(label, politrees, _POLITREES_KEYS)
     in_ex = _label_in_lists(label, extras, _SUPPLEMENT_LIST_KEYS)
-    in_mv = _label_in_lists(label, _mvsepless_lists(mvsepless), _POLITREES_KEYS)
+    in_mv = _label_in_lists(label, mvsepless_lists, _POLITREES_KEYS)
     parts: List[str] = []
     if in_tr:
         parts.append("TRvlvr")
@@ -1027,9 +1103,20 @@ def _entries_from_snapshot(
     meta_index = getattr(snapshot, "meta", {}) or {}
     all_entries: List[ModelEntry] = []
 
+    # Both of these are constant across the run; computing them per label meant
+    # a full mvsepless catalogue conversion for every one of ~474 entries.
+    upstream_lists = flatten_upstream_lists(trvlvr, vip=False) if trvlvr else None
+    mvsepless_lists = _mvsepless_lists(mvsepless)
+
     def source_for(label: str) -> str:
         return _source_for(
-            label, politrees, trvlvr, extras=extras, mvsepless=mvsepless
+            label,
+            politrees,
+            trvlvr,
+            extras=extras,
+            mvsepless=mvsepless,
+            upstream_lists=upstream_lists,
+            mvsepless_lists=mvsepless_lists,
         )
 
     for label, payload in sorted(dict(snapshot.vr).items()):
@@ -1117,7 +1204,9 @@ def _md_table(headers: List[str], rows: List[List[str]]) -> str:
     return "\n".join(lines)
 
 
-def _render(entries: List[ModelEntry], *, unsupported_count: int = 0) -> str:
+def _render(
+    entries: List[ModelEntry], *, unsupported_count: int = 0, report: Any = None
+) -> str:
     flagged = [e for e in entries if e.flags]
     unknown = [e for e in entries if e.name_intent == "unknown"]
     with_meta = [e for e in entries if e.metadata_source not in ("unavailable", "")]
@@ -1151,6 +1240,7 @@ def _render(entries: List[ModelEntry], *, unsupported_count: int = 0) -> str:
         "`instruments: [other, vocals]`. That is a **2-stem vocal/instrumental** split.",
         "The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Demucs Other.",
         "",
+        *_provenance_lines(report),
         "## Summary",
         "",
         f"- Total catalogue entries: **{len(entries)}**",
@@ -1337,20 +1427,267 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Refetch supplemental catalogue downloads even if cached and fresh.",
     )
+    parser.add_argument(
+        "--allow-degraded",
+        action="store_true",
+        help="Publish even when sources failed and the catalogue shrank sharply.",
+    )
+    parser.add_argument(
+        "--write-tsv",
+        action="store_true",
+        help=f"Also write {os.path.basename(REFERENCE_TSV_PATH)} (off by default).",
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--write",
+        action="store_true",
+        help="Write the generated artifacts (the default).",
+    )
+    mode.add_argument(
+        "--check",
+        action="store_true",
+        help="Report whether the artifacts are up to date; write nothing. "
+        "Exits 1 on drift, for CI.",
+    )
     return parser.parse_args(argv)
+
+
+#: Line prefixes that change on every run regardless of the catalogue. Drift
+#: means the catalogue changed, not that time passed or a cache aged, so these
+#: are excluded from the --check comparison.
+_VOLATILE_PREFIXES = ("Generated: ", "- Snapshot ", "- Source ", "- Cache ")
+
+
+def _canonical_for_diff(text: str) -> str:
+    """``text`` with the volatile header lines removed, for drift comparison."""
+    return "\n".join(
+        line
+        for line in text.splitlines()
+        if not line.startswith(_VOLATILE_PREFIXES)
+    )
+
+
+def _text_matches(path: str, text: str) -> bool:
+    """Whether ``path`` already holds ``text``, ignoring volatile header lines."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            existing = handle.read()
+    except OSError:
+        return False
+    return _canonical_for_diff(existing) == _canonical_for_diff(text)
+
+
+def _provenance_lines(report: Any) -> List[str]:
+    """Where this document's data came from, and how healthy it was.
+
+    Answers "was this generated from good data?" at review time -- a document
+    regenerated from a half-stale snapshot otherwise looks identical to one
+    built from a clean fetch.
+    """
+    if report is None:
+        return []
+
+    def names(items: Any) -> str:
+        collected: List[str] = [
+            str(getattr(item, "value", item)) for item in (tuple(items or ()))
+        ]
+        return ", ".join(collected) if collected else "none"
+
+    lines = [
+        "## Source provenance",
+        "",
+        f"- Snapshot mode: `{getattr(getattr(report, 'mode', None), 'value', 'unknown')}`",
+        f"- Source refreshed: {names(getattr(report, 'succeeded', ()))}",
+        f"- Source stale: {names(getattr(report, 'stale', ()))}",
+    ]
+    failed: Tuple[Any, ...] = tuple(getattr(report, "failed", ()) or ())
+    if failed:
+        detail = "; ".join(
+            f"{getattr(item[0], 'value', item[0])} ({item[1]})" for item in failed
+        )
+        lines.append(f"- Source failed: {detail}")
+    else:
+        lines.append("- Source failed: none")
+    lines.append(f"- Source upstream live: {bool(getattr(report, 'upstream_live', False))}")
+
+    for label, cache_dir in (
+        ("politrees", POLITREES_CACHE_DIR),
+        ("community", COMMUNITY_CACHE_DIR),
+        ("yaml", YAML_CACHE_DIR),
+    ):
+        lines.append(f"- Cache {label}: {_cache_age_text(cache_dir)}")
+    lines.append("")
+    return lines
+
+
+def _cache_age_text(cache_dir: str) -> str:
+    """Newest entry age in a supplemental cache directory, in human terms."""
+    try:
+        stamps = [
+            os.path.getmtime(os.path.join(cache_dir, name))
+            for name in os.listdir(cache_dir)
+        ]
+    except OSError:
+        return "absent"
+    if not stamps:
+        return "empty"
+    age = time.time() - max(stamps)
+    if age < 3600:
+        return f"{age / 60:.0f}m old"
+    if age < 86400:
+        return f"{age / 3600:.0f}h old"
+    return f"{age / 86400:.0f}d old"
+
+
+#: A drop larger than this fraction of the previously published catalogue is
+#: treated as evidence the run is broken rather than as real shrinkage.
+_DEGRADED_DROP_RATIO = 0.10
+
+
+@dataclass(frozen=True)
+class PublicationVerdict:
+    """Whether this run's entries may replace the published document."""
+
+    ok: bool
+    reason: str = ""
+
+
+def _previous_entry_count(path: str) -> Optional[int]:
+    """Entry count recorded in an existing catalogue document, if there is one.
+
+    Read back from the summary line the renderer emits. This is a stopgap for
+    the machine-readable sidecar; it only has to be good enough to notice that
+    a 400-entry catalogue just became a 3-entry one.
+    """
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                match = re.search(r"Total catalogue entries: \*\*(\d+)\*\*", line)
+                if match:
+                    return int(match.group(1))
+    except OSError:
+        return None
+    return None
+
+
+def _publication_verdict(
+    *,
+    entries: List[Any],
+    report: Any,
+    previous_count: Optional[int],
+    allow_degraded: bool = False,
+) -> PublicationVerdict:
+    """Decide whether these entries may overwrite the published catalogue.
+
+    The entry count is the trigger, not source health. Offline sources are
+    simply not refreshed rather than reported as failed, so a cold cache
+    yields report.usable True and report.failed empty while producing a
+    fraction of the entries -- measured, an empty supplemental cache gave 88
+    entries where the published document had 474. Failed and stale sources
+    are still reported, as context for diagnosing the refusal.
+
+    Legitimate shrinkage goes through --allow-degraded, which is the only
+    thing that can distinguish it from a broken run.
+    """
+    if allow_degraded:
+        return PublicationVerdict(ok=True, reason="--allow-degraded")
+
+    if not getattr(report, "usable", True):
+        return PublicationVerdict(
+            ok=False,
+            reason="catalogue snapshot is unusable (no source produced entries)",
+        )
+
+    if previous_count:
+        floor = previous_count * (1 - _DEGRADED_DROP_RATIO)
+        if len(entries) < floor:
+            reason = f"{len(entries)} entries against {previous_count} previously"
+            failed: Tuple[Any, ...] = tuple(getattr(report, "failed", ()) or ())
+            stale: Tuple[Any, ...] = tuple(getattr(report, "stale", ()) or ())
+            if failed:
+                names = ", ".join(str(getattr(i[0], "value", i[0])) for i in failed)
+                reason += f"; failed sources: {names}"
+            if stale:
+                names = ", ".join(str(getattr(i, "value", i)) for i in stale)
+                reason += f"; stale sources: {names}"
+            return PublicationVerdict(ok=False, reason=reason)
+    return PublicationVerdict(ok=True)
+
+
+def _policy_for(args: argparse.Namespace) -> FetchPolicy:
+    """Fetch policy implied by the CLI flags."""
+    return FetchPolicy(
+        allow_network=not args.offline,
+        refresh=args.refresh,
+        # --check must leave the tree exactly as it found it.
+        allow_metadata_writes=not args.check,
+    )
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_args(argv)
-    policy = FetchPolicy(allow_network=not args.offline, refresh=args.refresh)
+    policy = _policy_for(args)
     ctx = _build_catalogue_context(policy=policy)
     snapshot, payloads = _snapshot_and_payloads(allow_network=policy.allow_network)
     entries = _entries_from_snapshot(snapshot, payloads, ctx, policy=policy)
     unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))
+
+    verdict = _publication_verdict(
+        entries=list(entries),
+        report=getattr(snapshot, "report", None),
+        previous_count=_previous_entry_count(OUTPUT_PATH),
+        allow_degraded=args.allow_degraded,
+    )
+    if not verdict.ok:
+        if args.check:
+            print(
+                f"Cannot judge {OUTPUT_PATH}: {verdict.reason}.\n"
+                "This run's data is too degraded to tell drift from a bad fetch.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"Refusing to write {OUTPUT_PATH}: {verdict.reason}.\n"
+                "Pass --allow-degraded if the catalogue really did shrink.",
+                file=sys.stderr,
+            )
+        return 2
+
+    rendered = _render(
+        entries, unsupported_count=unsupported, report=getattr(snapshot, "report", None)
+    )
+    tsv_text = ""
+    if args.write_tsv:
+        if ctx.community_by_file:
+            tsv_text = _reference_tsv_text(ctx.community_by_file)
+        else:
+            print(
+                f"--write-tsv had no community data; leaving {REFERENCE_TSV_PATH} alone "
+                "(the models.txt fetch produced nothing).",
+                file=sys.stderr,
+            )
+
+    if args.check:
+        drift = []
+        if not _text_matches(OUTPUT_PATH, rendered):
+            drift.append(OUTPUT_PATH)
+        if tsv_text and not _text_matches(REFERENCE_TSV_PATH, tsv_text):
+            drift.append(REFERENCE_TSV_PATH)
+        if drift:
+            for path in drift:
+                print(f"Out of date: {path}", file=sys.stderr)
+            regenerate = "python scripts/generate_models_catalogue.py"
+            if REFERENCE_TSV_PATH in drift:
+                regenerate += " --write-tsv"
+            print(f"Regenerate with: {regenerate}", file=sys.stderr)
+            return 1
+        print(f"Up to date: {OUTPUT_PATH}")
+        return 0
+
     from core.json_store import write_text_atomic
 
     # A failed write must not truncate the checked-in catalogue document.
-    write_text_atomic(OUTPUT_PATH, _render(entries, unsupported_count=unsupported))
+    write_text_atomic(OUTPUT_PATH, rendered)
     flagged = sum(1 for e in entries if e.flags)
     unknown = sum(1 for e in entries if e.name_intent == "unknown")
     with_meta = sum(1 for e in entries if e.metadata_source not in ("unavailable", ""))
@@ -1358,7 +1695,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         f"Wrote {OUTPUT_PATH} ({len(entries)} models, {with_meta} with metadata, "
         f"{unknown} unknown, {flagged} flagged, {unsupported} unsupported omitted)"
     )
-    if os.path.isfile(REFERENCE_TSV_PATH):
+    # Only after the guard: a refused run must not mutate this artifact either.
+    if tsv_text:
+        write_text_atomic(REFERENCE_TSV_PATH, tsv_text)
         print(f"Wrote {REFERENCE_TSV_PATH}")
     return 0
 
