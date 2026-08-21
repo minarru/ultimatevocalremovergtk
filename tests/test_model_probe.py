@@ -580,6 +580,98 @@ class IterCatalogueTargetsTests(unittest.TestCase):
         )
 
 
+class DefaultMvseplessCatalogueWaitsTests(unittest.TestCase):
+    """``ensure()`` is stale-while-revalidate: a cold cache returns empty and
+    fetches in the background. Probe/audit CLIs must wait for that fetch."""
+
+    def test_a_cold_cache_does_not_return_before_the_fetch_lands(self) -> None:
+        import tempfile
+        import time
+        from io import BytesIO
+        from unittest.mock import patch
+
+        from core.access_policy import AccessPolicy
+        from core.catalogue_coordinator import CatalogueCoordinator
+        from core.catalogue_types import SourceId
+        from core.remote_catalog_cache import RemoteJsonSource
+
+        payload = {
+            "slow_entry": {
+                "model_type": "medley_vox",
+                "full_name": "Slow Entry",
+                "config_url": "https://example.test/c.yaml",
+                "checkpoint_url": "https://example.test/w.ckpt",
+            }
+        }
+
+        def opener(_url: object) -> BytesIO:
+            time.sleep(0.2)
+            body = BytesIO(json.dumps(payload).encode("utf-8"))
+            body.status = 200  # type: ignore[attr-defined]
+            body.headers = {}  # type: ignore[attr-defined]
+            return body
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        delayed = RemoteJsonSource(
+            source_id=SourceId.MVSEPLESS,
+            url="https://example.test/models.json",
+            cache_filename="mvsepless_models.json",
+            cache_path=os.path.join(tmp.name, "mvsepless_models.json"),
+            opener=opener,
+            ttl_seconds=60,
+        )
+
+        def _coordinator(*_args: Any, **_kwargs: Any) -> CatalogueCoordinator:
+            return CatalogueCoordinator(
+                sources={SourceId.MVSEPLESS: delayed},
+                policy=AccessPolicy(allow_network=True, allow_metadata_writes=False),
+            )
+
+        with patch(
+            "core.catalogue_coordinator.CatalogueCoordinator", side_effect=_coordinator
+        ):
+            loaded = model_tool_support._default_mvsepless_catalogue()
+        self.assertEqual(loaded, payload)
+
+    def test_offline_serves_disk_and_does_not_fetch(self) -> None:
+        import tempfile
+        from unittest.mock import Mock, patch
+
+        from core.access_policy import AccessPolicy
+        from core.catalogue_coordinator import CatalogueCoordinator
+        from core.catalogue_types import SourceId
+        from core.remote_catalog_cache import RemoteJsonSource
+
+        payload = {"cached": {"model_type": "vr", "full_name": "Cached"}}
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "mvsepless_models.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"fetched_at": 1.0, "data": payload}, handle)
+        opener = Mock(side_effect=AssertionError("offline must not fetch"))
+        source = RemoteJsonSource(
+            source_id=SourceId.MVSEPLESS,
+            url="https://example.test/models.json",
+            cache_filename="mvsepless_models.json",
+            cache_path=path,
+            opener=opener,
+        )
+
+        def _coordinator(*_args: Any, **_kwargs: Any) -> CatalogueCoordinator:
+            return CatalogueCoordinator(
+                sources={SourceId.MVSEPLESS: source},
+                policy=AccessPolicy(allow_network=False, allow_metadata_writes=False),
+            )
+
+        with patch(
+            "core.catalogue_coordinator.CatalogueCoordinator", side_effect=_coordinator
+        ):
+            loaded = model_tool_support._default_mvsepless_catalogue(allow_network=False)
+        self.assertEqual(loaded, payload)
+        opener.assert_not_called()
+
+
 class SweepCatalogueTests(unittest.TestCase):
     """One bad entry (no config_url, fetch failure, ...) must not abort the sweep."""
 
@@ -1004,6 +1096,28 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["results"][0]["entry_id"], "medley_thing")
         self.assertEqual(code, 0)
         self.assertIn("buildable", buf.getvalue())
+
+    def test_sweep_with_no_targets_is_an_error_not_an_empty_success(self) -> None:
+        """A cold SWR snapshot used to write empty results and exit 0."""
+        import io as _io
+        import contextlib
+        import tempfile
+        from unittest.mock import patch
+
+        err = _io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "sweep.json")
+            with patch(
+                "scripts.model_tool_support._default_mvsepless_catalogue",
+                return_value={},
+            ), contextlib.redirect_stderr(err):
+                code = model_probe.main(["--sweep", "--json", out])
+            self.assertFalse(
+                os.path.isfile(out),
+                "empty success JSON would look like a completed sweep",
+            )
+        self.assertEqual(code, 2)
+        self.assertIn("No catalogue entries", err.getvalue())
 
 
 if __name__ == "__main__":

@@ -203,15 +203,30 @@ class CatalogueTarget:
 
 
 def _default_mvsepless_catalogue(*, allow_network: bool = True) -> Dict[str, Any]:
-    """Raw mvsepless ``models.json`` via the same coordinator Download Center uses."""
+    """Raw mvsepless ``models.json`` via the same coordinator Download Center uses.
+
+    ``CatalogueCoordinator.ensure()`` is stale-while-revalidate: a cold cache
+    returns empty and fetches in the background. Probe and audit CLIs need the
+    payload before they build a job list, so this waits for a blocking load.
+    """
     add_repo_to_path()
+    from core.access_policy import AccessPolicy
     from core.catalogue_coordinator import CatalogueCoordinator
-    from core.catalogue_types import SourceId
+    from core.catalogue_types import RefreshMode, SourceId
 
     coordinator = CatalogueCoordinator()
     try:
-        coordinator.ensure(vip=False, allow_network=allow_network)
-        content = coordinator.source(SourceId.MVSEPLESS).state.content
+        source = coordinator.source(SourceId.MVSEPLESS)
+        policy = coordinator.captured_policy()
+        if not allow_network:
+            policy = AccessPolicy(
+                allow_network=False,
+                allow_metadata_writes=policy.allow_metadata_writes,
+            )
+            source.load(mode=RefreshMode.OFFLINE, policy=policy)
+        else:
+            source.load(mode=RefreshMode.FORCE, policy=policy)
+        content = source.state.content
         if content is None:
             return {}
         return dict(content.payload)
