@@ -1161,6 +1161,87 @@ class CliTests(unittest.TestCase):
         self.assertFalse(args.cpu_retry)
 
 
+class InterpreterGuardTests(unittest.TestCase):
+    """``python scripts/model_sweep.py`` must not keep a system interpreter.
+
+    Distro Python often has numpy but not pip deps. Children inherit
+    ``sys.executable``, so crashing in ``make_input_clip`` is the first of
+    many failures; hop into ``.venv`` (or exit 2) before creating scratch.
+    """
+
+    def _hide_soundfile(self):
+        from unittest import mock
+
+        real = importlib.util.find_spec
+
+        def find_spec(name: str, package: Optional[str] = None):
+            if name == "soundfile":
+                return None
+            return real(name, package)
+
+        return mock.patch("importlib.util.find_spec", side_effect=find_spec)
+
+    def test_reexecs_into_venv_from_system_python(self) -> None:
+        from unittest import mock
+
+        venv = model_sweep.venv_python()
+        self.assertIsNotNone(venv)
+        assert venv is not None
+        with self._hide_soundfile(), mock.patch("os.execv") as execv, mock.patch.object(
+            sys, "executable", "/usr/bin/python"
+        ):
+            execv.side_effect = SystemExit(0)
+            with self.assertRaises(SystemExit):
+                model_sweep.ensure_sweep_interpreter(allow_reexec=True)
+        self.assertEqual(execv.call_count, 1)
+        self.assertEqual(
+            os.path.realpath(execv.call_args[0][0]), os.path.realpath(venv)
+        )
+
+    def test_in_process_callers_are_not_reexecd(self) -> None:
+        from unittest import mock
+
+        with self._hide_soundfile(), mock.patch("os.execv") as execv:
+            model_sweep.ensure_sweep_interpreter(allow_reexec=False)
+        execv.assert_not_called()
+
+    def test_already_on_venv_without_soundfile_exits_2(self) -> None:
+        from unittest import mock
+
+        venv = model_sweep.venv_python()
+        self.assertIsNotNone(venv)
+        with self._hide_soundfile(), mock.patch("os.execv") as execv, mock.patch.object(
+            sys, "executable", venv
+        ), mock.patch("sys.stderr", new_callable=lambda: __import__("io").StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                model_sweep.ensure_sweep_interpreter(allow_reexec=True)
+        execv.assert_not_called()
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_main_cli_path_allows_reexec(self) -> None:
+        from unittest import mock
+
+        with mock.patch.object(model_sweep, "ensure_sweep_interpreter") as guard, \
+             mock.patch.object(sys, "argv", ["model_sweep.py", "--list"]), \
+             mock.patch("core.ModelRepository"), \
+             mock.patch("core.settings.Settings.load"), \
+             mock.patch.object(model_sweep, "collect_installed", return_value=_installed()), \
+             mock.patch.object(model_sweep, "discover_jobs", return_value=[]):
+            self.assertEqual(model_sweep.main(), 0)
+        guard.assert_called_once_with(allow_reexec=True)
+
+    def test_main_with_argv_does_not_allow_reexec(self) -> None:
+        from unittest import mock
+
+        with mock.patch.object(model_sweep, "ensure_sweep_interpreter") as guard, \
+             mock.patch("core.ModelRepository"), \
+             mock.patch("core.settings.Settings.load"), \
+             mock.patch.object(model_sweep, "collect_installed", return_value=_installed()), \
+             mock.patch.object(model_sweep, "discover_jobs", return_value=[]):
+            self.assertEqual(model_sweep.main(["--list"]), 0)
+        guard.assert_called_once_with(allow_reexec=False)
+
+
 class ScratchCleanupTests(unittest.TestCase):
     """main() must not leak its top-level uvr-sweep-* scratch directory."""
 
