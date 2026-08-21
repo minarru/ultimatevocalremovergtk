@@ -51,7 +51,11 @@ def _mdx_c_hop_length(config: typing.Any) -> int:
     raise ValueError('MDX-C config is missing hop_length / hop_size.')
 
 
-def _filter_init_kwargs(model_cls: typing.Any, cfg: typing.Any) -> dict:
+# Public on purpose: these helpers are built against from outside this module
+# (the engine that runs MDX-C, and the architecture probe), so an underscore
+# would falsely imply single-module ownership. Named without pointing at any
+# consumer -- this module deliberately knows nothing about them.
+def filter_init_kwargs(model_cls: typing.Any, cfg: typing.Any) -> dict:
     """Drop YAML keys that are not accepted by a model class ``__init__``."""
     params = inspect.signature(model_cls.__init__).parameters
     if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
@@ -84,7 +88,7 @@ class UnknownMDXCArchitecture(ValueError):
     """
 
 
-def _build_mdx_c_model(
+def build_mdx_c_model(
     config: typing.Any,
     state_dict_keys: typing.Optional[typing.Sequence[str]] = None,
     model_type_hint: typing.Optional[str] = None,
@@ -92,7 +96,7 @@ def _build_mdx_c_model(
     if getattr(config, 'cls', None) == 'Bandit':
         from ml.bandit import Bandit
 
-        kwargs = _filter_init_kwargs(Bandit, config.kwargs)
+        kwargs = filter_init_kwargs(Bandit, config.kwargs)
         if 'fs' not in kwargs and hasattr(config.audio, 'sample_rate'):
             kwargs['fs'] = int(config.audio.sample_rate)
         return Bandit(**kwargs)
@@ -102,7 +106,7 @@ def _build_mdx_c_model(
         raise UnknownMDXCArchitecture('Unknown MDX-C architecture in configuration.')
 
     if 'num_bands' in model_cfg:
-        kwargs = _filter_init_kwargs(MelBandRoformer, model_cfg)
+        kwargs = filter_init_kwargs(MelBandRoformer, model_cfg)
         kwargs['match_input_audio_length'] = True
         return MelBandRoformer(**kwargs)
     # Most BS-Roformer yamls declare freqs_per_bands explicitly, but some
@@ -120,7 +124,7 @@ def _build_mdx_c_model(
         and 'band_specs' not in model_cfg
     )
     if 'freqs_per_bands' in model_cfg or is_bs_roformer_without_declared_bands:
-        kwargs = _filter_init_kwargs(BSRoformer, model_cfg)
+        kwargs = filter_init_kwargs(BSRoformer, model_cfg)
         # HyperACE attaches a segm branch to every mask estimator. Prefer the
         # checkpoint's own keys: only the packaged v2-instrumental yaml carries
         # a ``hyperace2`` flag, and that flag is top-level so it never reaches
@@ -143,21 +147,21 @@ def _build_mdx_c_model(
         if has_tran_kwargs:
             from ml.scnet import SCNetTran
 
-            return SCNetTran(**_filter_init_kwargs(SCNetTran, model_cfg))
+            return SCNetTran(**filter_init_kwargs(SCNetTran, model_cfg))
 
         variant = scnet_variant_from_state_dict(state_dict_keys or ())
         if variant == 'masked' or model_type_hint in _SCNET_MASKED_HINTS:
             from ml.scnet import SCNetMasked
 
-            return SCNetMasked(**_filter_init_kwargs(SCNetMasked, model_cfg))
+            return SCNetMasked(**filter_init_kwargs(SCNetMasked, model_cfg))
 
         from ml.scnet import SCNet
 
-        return SCNet(**_filter_init_kwargs(SCNet, model_cfg))
+        return SCNet(**filter_init_kwargs(SCNet, model_cfg))
     if 'band_specs' in model_cfg:
         from ml.bandit import MultiMaskMultiSourceBandSplitRNN
 
-        return MultiMaskMultiSourceBandSplitRNN(**_filter_init_kwargs(MultiMaskMultiSourceBandSplitRNN, model_cfg))
+        return MultiMaskMultiSourceBandSplitRNN(**filter_init_kwargs(MultiMaskMultiSourceBandSplitRNN, model_cfg))
     raise UnknownMDXCArchitecture('Unknown MDX-C architecture in configuration.')
 
 def _mdx_pitch_reference_sr() -> int:

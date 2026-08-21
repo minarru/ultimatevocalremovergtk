@@ -18,7 +18,7 @@ from ml import spec_utils
 
 from .base import SeperateAttributes
 from .mdx_c import (
-    _build_mdx_c_model,
+    build_mdx_c_model,
     _channel_last_for_write,
     _load_torch_checkpoint,
     _mdx_c_hop_length,
@@ -466,7 +466,7 @@ class SeperateMDXC(SeperateAttributes):
                 # Load first: the checkpoint's keys decide whether this is a
                 # HyperACE variant, which upstream configs do not declare.
                 checkpoint = _load_torch_checkpoint(self.model_path)
-                model = _build_mdx_c_model(
+                model = build_mdx_c_model(
                     self.roformer_config, state_dict_keys=list(checkpoint.keys())
                 )
                 model = model if not isinstance(model, torch.nn.DataParallel) else model.module

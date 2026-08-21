@@ -125,7 +125,7 @@ class BuiltModel:
 def dropped_config_keys(model_cls: Any, model_cfg: Any) -> List[str]:
     """Config keys ``model_cls.__init__`` will not accept.
 
-    Mirrors ``engines.mdx_c._filter_init_kwargs``, which drops unknown keys so a
+    Mirrors ``engines.mdx_c.filter_init_kwargs``, which drops unknown keys so a
     model still builds. That silence is the trap: a checkpoint trained *with*
     a feature loads into a network built *without* it.
     """
@@ -153,10 +153,18 @@ def _load_config(config_path: str) -> Any:
 #: purely a property of the checkpoint file this probe deliberately never
 #: downloads, so building a VR model requires a checkpoint size from elsewhere
 #: (``--checkpoint`` or ``--check-keys``'s remote HEAD-ish range request).
-_VR_NN_ARCH_SIZES = [31191, 33966, 56817, 123821, 123812, 129605, 218409, 537238, 537227]
-#: The subset of the above that route to the "5.1" CascadedNet rather than the
-#: classic CascadedASPPNet (engines/vr.py:67,89-96).
-_VR_5_1_ARCH_SIZES = {56817, 218409}
+def _vr_arch_tables() -> Tuple[Tuple[int, ...], "frozenset[int]"]:
+    """The VR selection table, from the runtime implementation that owns it.
+
+    Imported here rather than at module scope on purpose: ml.vr_network.nets
+    pulls in torch, and this CLI must stay importable without paying for that.
+    Restating the table locally is what this replaces -- a probe that
+    disagreed with the engine would build a different architecture than a
+    real run.
+    """
+    from ml.vr_network.nets import VR_5_1_ARCH_SIZES, VR_ARCH_SIZES
+
+    return VR_ARCH_SIZES, VR_5_1_ARCH_SIZES
 
 _VR_MODULE_CLASS_NAMES = {"CascadedNet", "CascadedASPPNet"}
 
@@ -166,7 +174,8 @@ def _vr_nn_arch_size_from_checkpoint_size(size_bytes: int) -> int:
     import math
 
     model_size_kb = math.ceil(size_bytes / 1024)
-    return min(_VR_NN_ARCH_SIZES, key=lambda x: abs(x - model_size_kb))
+    sizes, _ = _vr_arch_tables()
+    return min(sizes, key=lambda x: abs(x - model_size_kb))
 
 
 def _build_vr_model(model_section: Any, *, checkpoint_size_bytes: Optional[int]) -> Any:
@@ -190,7 +199,8 @@ def _build_vr_model(model_section: Any, *, checkpoint_size_bytes: Optional[int])
         raise ValueError("VR config has no model.model_params.bins band spec")
     n_fft_bins = int(params["bins"]) * 2
     nn_arch_size = _vr_nn_arch_size_from_checkpoint_size(checkpoint_size_bytes)
-    if nn_arch_size in _VR_5_1_ARCH_SIZES:
+    _, vr_5_1 = _vr_arch_tables()
+    if nn_arch_size in vr_5_1:
         from ml.vr_network.nets_new import CascadedNet
 
         nout = model_section.get("nout") or 32
@@ -210,10 +220,10 @@ def _build_htdemucs_model(config: Any, htdemucs_section: Any) -> Tuple[Any, List
     copy doesn't implement (e.g. ``num_subbands``) shows up as a dropped key
     rather than silently vanishing.
     """
-    from engines.mdx_c import _filter_init_kwargs
+    from engines.mdx_c import filter_init_kwargs
     from vendor.demucs.htdemucs import HTDemucs
 
-    kwargs = _filter_init_kwargs(HTDemucs, htdemucs_section)
+    kwargs = filter_init_kwargs(HTDemucs, htdemucs_section)
     training = getattr(config, "training", None)
     sources = list(getattr(training, "instruments", []) or []) if training else []
     if not sources:
@@ -245,7 +255,7 @@ def _instantiate(
     """
     import torch
 
-    from engines.mdx_c import UnknownMDXCArchitecture, _build_mdx_c_model
+    from engines.mdx_c import UnknownMDXCArchitecture, build_mdx_c_model
     from ml.tfc_tdf_v3 import TFC_TDF_net
 
     model_section = getattr(config, "model", None)
@@ -266,7 +276,7 @@ def _instantiate(
         return module, type(module).__name__, False, None
 
     try:
-        module = _build_mdx_c_model(
+        module = build_mdx_c_model(
             config, state_dict_keys=state_dict_keys, model_type_hint=model_type_hint
         )
         return module, type(module).__name__, True, None

@@ -12,6 +12,33 @@ from . import layers
 ModelCapacityTuple = tuple[int, ...]
 ModelCapacityData = list[ModelCapacityTuple]
 
+#: Every VR ``nn_architecture`` this port knows, in upstream's order. The
+#: variant is picked by nearest match against a checkpoint's size in KiB, so
+#: this is the whole selection space. Single source of truth: engines/vr.py
+#: and scripts/model_probe.py both import it rather than restating it.
+VR_ARCH_SIZES: tuple[int, ...] = (
+    31191,  # default
+    33966,
+    56817,
+    123821,
+    123812,
+    129605,
+    218409,
+    537238,
+    537227,
+)
+
+#: The subset routed to the "5.1" CascadedNet (ml/vr_network/nets_new.py)
+#: rather than the classic CascadedASPPNet built by determine_model_capacity.
+VR_5_1_ARCH_SIZES: frozenset[int] = frozenset({56817, 218409})
+
+#: Capacity partitions for the classic networks. Their union is exactly
+#: ``set(VR_ARCH_SIZES) - VR_5_1_ARCH_SIZES``; a size missing from all three
+#: would fall through determine_model_capacity unconfigured.
+_SP_MODEL_ARCH = (31191, 33966, 129605)
+_HP_MODEL_ARCH = (123821, 123812)
+_HP2_MODEL_ARCH = (537238, 537227)
+
 
 class BaseASPPNet(nn.Module):
 
@@ -63,10 +90,10 @@ class BaseASPPNet(nn.Module):
 
 def determine_model_capacity(n_fft_bins: int, nn_architecture: int) -> CascadedASPPNet:
     
-    sp_model_arch = [31191, 33966, 129605]
-    hp_model_arch = [123821, 123812]
-    hp2_model_arch = [537238, 537227]
-    
+    sp_model_arch = _SP_MODEL_ARCH
+    hp_model_arch = _HP_MODEL_ARCH
+    hp2_model_arch = _HP2_MODEL_ARCH
+
     if nn_architecture in sp_model_arch:
         model_capacity_data = [
             (2, 16),

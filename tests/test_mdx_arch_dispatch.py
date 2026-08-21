@@ -9,7 +9,7 @@ try:
 except ImportError:
     ConfigDict = None
 
-from engines.mdx_c import _build_mdx_c_model, _mdx_c_hop_length
+from engines.mdx_c import build_mdx_c_model, _mdx_c_hop_length
 
 
 @unittest.skipIf(ConfigDict is None, "ml_collections not installed")
@@ -39,7 +39,7 @@ class MdxArchDispatchTests(unittest.TestCase):
                 "inference": {"batch_size": 2, "dim_t": 256},
             }
         )
-        model = _build_mdx_c_model(config)
+        model = build_mdx_c_model(config)
         self.assertEqual(model.__class__.__name__, "SCNet")
         self.assertEqual(_mdx_c_hop_length(config), 1024)
 
@@ -87,17 +87,17 @@ class MdxArchDispatchTests(unittest.TestCase):
             tran_ff_dropout=0.0,
             tran_flash_attn=False,
         )
-        model = _build_mdx_c_model(config)
+        model = build_mdx_c_model(config)
         self.assertEqual(model.__class__.__name__, "SCNetTran")
 
     def test_scnet_masked_from_hint(self) -> None:
         config = self._scnet_config()
-        model = _build_mdx_c_model(config, model_type_hint="scnet_masked")
+        model = build_mdx_c_model(config, model_type_hint="scnet_masked")
         self.assertEqual(model.__class__.__name__, "SCNetMasked")
 
     def test_scnet_masked_from_keys(self) -> None:
         config = self._scnet_config()
-        model = _build_mdx_c_model(
+        model = build_mdx_c_model(
             config,
             state_dict_keys=["pos_embed_f", "mask_layer.0.weight", "encoder.0.SDlayer.convs.0.weight"],
         )
@@ -120,7 +120,7 @@ class MdxArchDispatchTests(unittest.TestCase):
                 "inference": {"batch_size": 2, "dim_t": 256},
             }
         )
-        model = _build_mdx_c_model(config)
+        model = build_mdx_c_model(config)
         self.assertEqual(model.__class__.__name__, "Bandit")
         self.assertEqual(_mdx_c_hop_length(config), 512)
 
@@ -141,7 +141,7 @@ class MdxArchDispatchTests(unittest.TestCase):
                 "inference": {"batch_size": 1, "dim_t": 256},
             }
         )
-        model = _build_mdx_c_model(config)
+        model = build_mdx_c_model(config)
         self.assertEqual(model.__class__.__name__, "MultiMaskMultiSourceBandSplitRNNSimple")
 
     def test_bs_roformer_accepts_mlp_expansion_factor(self) -> None:
@@ -172,7 +172,7 @@ class MdxArchDispatchTests(unittest.TestCase):
                 "inference": {"batch_size": 1, "dim_t": 256},
             }
         )
-        model = _build_mdx_c_model(config)
+        model = build_mdx_c_model(config)
         self.assertEqual(model.__class__.__name__, "BSRoformer")
 
     def test_bs_roformer_without_declared_bands_still_dispatches_as_bs_roformer(
@@ -199,13 +199,13 @@ class MdxArchDispatchTests(unittest.TestCase):
                 "inference": {"batch_size": 1, "dim_t": 256},
             }
         )
-        model = _build_mdx_c_model(config)
+        model = build_mdx_c_model(config)
         self.assertEqual(model.__class__.__name__, "BSRoformer")
 
     def test_bs_roformer_use_pope_dispatches_and_builds(self) -> None:
         """``use_pope`` (community "BS PolarFormer" checkpoints) is a yaml
         key that already matches BSRoformer's own constructor arg name, so
-        it flows through _filter_init_kwargs without any checkpoint-key
+        it flows through filter_init_kwargs without any checkpoint-key
         detection -- unlike hyperace/value_residual above."""
         from ml.bs_roformer import DEFAULT_FREQS_PER_BANDS
 
@@ -226,7 +226,7 @@ class MdxArchDispatchTests(unittest.TestCase):
                 "inference": {"batch_size": 1, "dim_t": 256},
             }
         )
-        model = _build_mdx_c_model(config)
+        model = build_mdx_c_model(config)
         self.assertEqual(model.__class__.__name__, "BSRoformer")
         state_dict_keys = model.state_dict().keys()
         self.assertTrue(any(k.endswith("pope_embed.bias") for k in state_dict_keys))
@@ -302,7 +302,7 @@ class MdxArchDispatchTests(unittest.TestCase):
                 "inference": {"batch_size": 1, "dim_t": 256},
             }
         )
-        model = _build_mdx_c_model(config)
+        model = build_mdx_c_model(config)
         self.assertEqual(model.__class__.__name__, "MelBandRoformer")
 
     def test_bs_roformer_accepts_integer_dropout_from_yaml(self) -> None:
@@ -325,7 +325,7 @@ class MdxArchDispatchTests(unittest.TestCase):
                 "inference": {"batch_size": 1, "dim_t": 256},
             }
         )
-        model = _build_mdx_c_model(config)
+        model = build_mdx_c_model(config)
         self.assertEqual(model.__class__.__name__, "BSRoformer")
 
     def test_melband_hop_length_prefers_stft_hop_length(self) -> None:
@@ -365,7 +365,7 @@ class MdxArchDispatchTests(unittest.TestCase):
                 "inference": {"batch_size": 1, "dim_t": 1101},
             }
         )
-        model = _build_mdx_c_model(config)
+        model = build_mdx_c_model(config)
         self.assertTrue(model.match_input_audio_length)
         length = _mdx_c_hop_length(config) * (config.inference.dim_t - 1)
         audio = torch.randn(1, 2, length)

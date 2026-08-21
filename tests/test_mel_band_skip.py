@@ -7,7 +7,7 @@ from typing import TypedDict, cast
 import torch
 from torch.nn import ModuleList
 
-from engines.mdx_c import _filter_init_kwargs
+from engines.mdx_c import filter_init_kwargs
 from ml.mel_band_roformer import MelBandRoformer
 
 
@@ -70,7 +70,7 @@ class MelBandSkipTests(unittest.TestCase):
             "linear_transformer_depth": 0,
             "num_bands": 8,
         }
-        filtered = _filter_init_kwargs(MelBandRoformer, {**cfg, "stereo": True})
+        filtered = filter_init_kwargs(MelBandRoformer, {**cfg, "stereo": True})
         for name in (
             "skip_connection",
             "use_torch_checkpoint",

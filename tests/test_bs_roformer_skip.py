@@ -6,13 +6,13 @@ from typing import cast
 import torch
 from torch.nn import ModuleList
 
-from engines.mdx_c import _filter_init_kwargs
+from engines.mdx_c import filter_init_kwargs
 from ml.bs_roformer import BSRoformer
 
 
 class BSRoformerSkipTests(unittest.TestCase):
     def test_skip_kwargs_accepted(self) -> None:
-        filtered = _filter_init_kwargs(
+        filtered = filter_init_kwargs(
             BSRoformer,
             {
                 "dim": 8,
