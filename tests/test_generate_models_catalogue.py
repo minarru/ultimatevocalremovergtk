@@ -10,7 +10,9 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 from core.catalogue_types import SourceId  # noqa: E402
-import generate_models_catalogue as catalogue  # noqa: E402
+import generate_models_catalogue as cli  # noqa: E402
+from catalogue import collect as catalogue  # noqa: E402
+from catalogue import render  # noqa: E402
 
 
 class UiNoteTests(unittest.TestCase):
@@ -228,7 +230,7 @@ class CollectEntriesTests(unittest.TestCase):
 
     def test_collect_entries_uses_coordinator_sources(self) -> None:
         ctx = catalogue.CatalogueContext()
-        _snapshot, entries = catalogue._collect_entries(
+        _snapshot, entries = catalogue.collect_entries(
             ctx, allow_network=False, coordinator=self._coordinator()
         )
         by_label = {entry.catalogue_label: entry for entry in entries}
@@ -308,8 +310,8 @@ class OfflinePolicyTests(unittest.TestCase):
             mock.patch.object(catalogue, "POLITREES_CACHE_DIR", os.path.join(self.tmp, "pt")),
             mock.patch.object(catalogue, "COMMUNITY_CACHE_DIR", os.path.join(self.tmp, "cm")),
             mock.patch.object(catalogue, "YAML_CACHE_DIR", os.path.join(self.tmp, "yaml")),
-            mock.patch.object(catalogue, "REFERENCE_TSV_PATH", os.path.join(self.tmp, "ref.tsv")),
-            mock.patch.object(catalogue, "OUTPUT_PATH", os.path.join(self.tmp, "out.md")),
+            mock.patch.object(cli, "REFERENCE_TSV_PATH", os.path.join(self.tmp, "ref.tsv")),
+            mock.patch.object(cli, "OUTPUT_PATH", os.path.join(self.tmp, "out.md")),
         ]
 
     def test_build_catalogue_context_offline_makes_no_network_calls(self) -> None:
@@ -362,7 +364,7 @@ class OfflinePolicyTests(unittest.TestCase):
 
             self._co = coordinator
             stack.enter_context(mock.patch.object(catalogue, "_snapshot_and_payloads", spy))
-            rc = catalogue.main(["--offline"])
+            rc = cli.main(["--offline"])
 
         self.assertEqual(rc, 0)
         self.assertIs(seen["allow_network"], False)
@@ -527,8 +529,8 @@ class CacheIdentityTests(unittest.TestCase):
         self.assertEqual(len(self.fetched), 2)
 
     def test_refresh_flag_is_exposed_on_the_cli(self) -> None:
-        self.assertTrue(catalogue._parse_args(["--refresh"]).refresh)
-        self.assertFalse(catalogue._parse_args([]).refresh)
+        self.assertTrue(cli._parse_args(["--refresh"]).refresh)
+        self.assertFalse(cli._parse_args([]).refresh)
 
 
 class CoordinatorRefreshTests(unittest.TestCase):
@@ -595,7 +597,7 @@ class CoordinatorRefreshTests(unittest.TestCase):
         with patch.object(catalogue, "_snapshot_and_payloads", spy), patch.object(
             catalogue, "_entries_from_snapshot", return_value=[]
         ):
-            catalogue._collect_entries(
+            catalogue.collect_entries(
                 catalogue.CatalogueContext(),
                 policy=catalogue.FetchPolicy(refresh=True),
             )
@@ -620,18 +622,18 @@ class CoordinatorRefreshTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "out.md")
-            with mock.patch.object(catalogue, "OUTPUT_PATH", out), mock.patch.object(
+            with mock.patch.object(cli, "OUTPUT_PATH", out), mock.patch.object(
                 catalogue,
                 "_build_catalogue_context",
                 lambda **k: catalogue.CatalogueContext(),
             ), mock.patch.object(
                 catalogue, "_snapshot_and_payloads", spy
             ), mock.patch.object(
-                catalogue,
+                cli,
                 "_publication_verdict",
-                return_value=catalogue.PublicationVerdict(ok=True),
+                return_value=cli.PublicationVerdict(ok=True),
             ), contextlib.redirect_stdout(mock.MagicMock()):
-                catalogue.main(["--refresh"])
+                cli.main(["--refresh"])
         self.assertTrue(seen.get("refresh"))
 
 
@@ -656,13 +658,13 @@ class PublicationGuardTests(unittest.TestCase):
     def test_previous_entry_count_is_read_from_an_existing_document(self) -> None:
         with open(self.out, "w", encoding="utf-8") as handle:
             handle.write("## Summary\n\n- Total catalogue entries: **412**\n")
-        self.assertEqual(catalogue._previous_entry_count(self.out), 412)
+        self.assertEqual(cli._previous_entry_count(self.out), 412)
 
     def test_missing_document_has_no_previous_count(self) -> None:
-        self.assertIsNone(catalogue._previous_entry_count(self.out))
+        self.assertIsNone(cli._previous_entry_count(self.out))
 
     def test_unusable_snapshot_is_refused(self) -> None:
-        verdict = catalogue._publication_verdict(
+        verdict = cli._publication_verdict(
             entries=[], report=self._report(usable=False), previous_count=None
         )
         self.assertFalse(verdict.ok)
@@ -675,7 +677,7 @@ class PublicationGuardTests(unittest.TestCase):
         published document had 474, with report.usable True and report.failed
         empty -- so failure state cannot be the trigger. The count is.
         """
-        verdict = catalogue._publication_verdict(
+        verdict = cli._publication_verdict(
             entries=[object()] * 88, report=self._report(), previous_count=474
         )
         self.assertFalse(verdict.ok)
@@ -683,7 +685,7 @@ class PublicationGuardTests(unittest.TestCase):
 
     def test_a_small_drop_still_publishes(self) -> None:
         """Ordinary regeneration jitter must not need an override flag."""
-        verdict = catalogue._publication_verdict(
+        verdict = cli._publication_verdict(
             entries=[object()] * 398, report=self._report(), previous_count=400
         )
         self.assertTrue(verdict.ok, verdict.reason)
@@ -691,7 +693,7 @@ class PublicationGuardTests(unittest.TestCase):
     def test_failed_sources_are_named_in_the_refusal(self) -> None:
         from core.catalogue_types import SourceId
 
-        verdict = catalogue._publication_verdict(
+        verdict = cli._publication_verdict(
             entries=[object()] * 10,
             report=self._report(failed=((SourceId.UPSTREAM, "boom"),)),
             previous_count=400,
@@ -700,21 +702,21 @@ class PublicationGuardTests(unittest.TestCase):
         self.assertIn("upstream", verdict.reason)
 
     def test_a_healthy_snapshot_publishes(self) -> None:
-        verdict = catalogue._publication_verdict(
+        verdict = cli._publication_verdict(
             entries=[object()] * 400, report=self._report(), previous_count=400
         )
         self.assertTrue(verdict.ok, verdict.reason)
 
     def test_allow_degraded_overrides_a_refusal(self) -> None:
-        verdict = catalogue._publication_verdict(
+        verdict = cli._publication_verdict(
             entries=[], report=self._report(usable=False), previous_count=400,
             allow_degraded=True,
         )
         self.assertTrue(verdict.ok, verdict.reason)
 
     def test_allow_degraded_flag_is_exposed_on_the_cli(self) -> None:
-        self.assertTrue(catalogue._parse_args(["--allow-degraded"]).allow_degraded)
-        self.assertFalse(catalogue._parse_args([]).allow_degraded)
+        self.assertTrue(cli._parse_args(["--allow-degraded"]).allow_degraded)
+        self.assertFalse(cli._parse_args([]).allow_degraded)
 
 
 class OfflineYamlCacheTests(unittest.TestCase):
@@ -934,8 +936,8 @@ class ReferenceTsvOptInTests(unittest.TestCase):
 
         ctx = catalogue.CatalogueContext(community_by_file=self._community())
         with contextlib.ExitStack() as stack:
-            stack.enter_context(mock.patch.object(catalogue, "REFERENCE_TSV_PATH", self.tsv))
-            stack.enter_context(mock.patch.object(catalogue, "OUTPUT_PATH", self.out))
+            stack.enter_context(mock.patch.object(cli, "REFERENCE_TSV_PATH", self.tsv))
+            stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", self.out))
             stack.enter_context(
                 mock.patch.object(catalogue, "_build_catalogue_context", lambda **k: ctx)
             )
@@ -945,7 +947,7 @@ class ReferenceTsvOptInTests(unittest.TestCase):
                     lambda **k: (_Snapshot(), ({}, {}, {}, {})),
                 )
             )
-            return catalogue.main(argv)
+            return cli.main(argv)
 
     def test_a_default_run_does_not_write_the_tsv(self) -> None:
         self.assertEqual(self._run([]), 0)
@@ -966,8 +968,8 @@ class ReferenceTsvOptInTests(unittest.TestCase):
         self.assertFalse(os.path.exists(self.tsv), "refused run still wrote the TSV")
 
     def test_write_tsv_flag_is_exposed_on_the_cli(self) -> None:
-        self.assertTrue(catalogue._parse_args(["--write-tsv"]).write_tsv)
-        self.assertFalse(catalogue._parse_args([]).write_tsv)
+        self.assertTrue(cli._parse_args(["--write-tsv"]).write_tsv)
+        self.assertFalse(cli._parse_args([]).write_tsv)
 
 
 class CheckModeTests(unittest.TestCase):
@@ -1010,8 +1012,8 @@ class CheckModeTests(unittest.TestCase):
             }
         )
         with contextlib.ExitStack() as stack:
-            stack.enter_context(mock.patch.object(catalogue, "OUTPUT_PATH", self.out))
-            stack.enter_context(mock.patch.object(catalogue, "REFERENCE_TSV_PATH", self.tsv))
+            stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", self.out))
+            stack.enter_context(mock.patch.object(cli, "REFERENCE_TSV_PATH", self.tsv))
             stack.enter_context(
                 mock.patch.object(catalogue, "_build_catalogue_context", lambda **k: ctx)
             )
@@ -1021,7 +1023,7 @@ class CheckModeTests(unittest.TestCase):
                     lambda **k: (_Snapshot(), ({}, {}, {}, {})),
                 )
             )
-            return catalogue.main(argv)
+            return cli.main(argv)
 
     def test_check_on_an_up_to_date_document_exits_zero(self) -> None:
         self.assertEqual(self._run([]), 0)
@@ -1052,32 +1054,32 @@ class CheckModeTests(unittest.TestCase):
 
     def test_check_and_write_are_mutually_exclusive(self) -> None:
         with self.assertRaises(SystemExit):
-            catalogue._parse_args(["--check", "--write"])
+            cli._parse_args(["--check", "--write"])
 
     def test_write_is_the_default(self) -> None:
-        self.assertFalse(catalogue._parse_args([]).check)
+        self.assertFalse(cli._parse_args([]).check)
 
 
 class VolatileHeaderTests(unittest.TestCase):
     """Drift means the catalogue changed, not that time passed."""
 
     def test_a_changed_generation_timestamp_is_not_drift(self) -> None:
-        rendered = catalogue._render([], unsupported_count=0)
+        rendered = render._render([], unsupported_count=0)
         aged = rendered.replace(
             "Generated: ", "Generated: 1999-01-01 00:00 UTC ignored ", 1
         )
         self.assertNotEqual(rendered, aged)
         self.assertEqual(
-            catalogue._canonical_for_diff(rendered),
-            catalogue._canonical_for_diff(aged),
+            render._canonical_for_diff(rendered),
+            render._canonical_for_diff(aged),
         )
 
     def test_a_changed_entry_is_drift(self) -> None:
-        rendered = catalogue._render([], unsupported_count=0)
+        rendered = render._render([], unsupported_count=0)
         changed = rendered.replace("Total catalogue entries: **0**", "**9**", 1)
         self.assertNotEqual(
-            catalogue._canonical_for_diff(rendered),
-            catalogue._canonical_for_diff(changed),
+            render._canonical_for_diff(rendered),
+            render._canonical_for_diff(changed),
         )
 
 
@@ -1105,7 +1107,7 @@ class ProvenanceBlockTests(unittest.TestCase):
     def test_names_succeeded_and_failed_sources(self) -> None:
         from core.catalogue_types import SourceId
 
-        text = catalogue._render(
+        text = render._render(
             [],
             unsupported_count=0,
             report=self._report(
@@ -1122,19 +1124,19 @@ class ProvenanceBlockTests(unittest.TestCase):
     def test_provenance_lines_do_not_count_as_drift(self) -> None:
         from core.catalogue_types import SourceId
 
-        a = catalogue._render([], unsupported_count=0, report=self._report())
-        b = catalogue._render(
+        a = render._render([], unsupported_count=0, report=self._report())
+        b = render._render(
             [],
             unsupported_count=0,
             report=self._report(failed=((SourceId.POLITREES, "timeout"),)),
         )
         self.assertNotEqual(a, b)
         self.assertEqual(
-            catalogue._canonical_for_diff(a), catalogue._canonical_for_diff(b)
+            render._canonical_for_diff(a), render._canonical_for_diff(b)
         )
 
     def test_renders_without_a_report(self) -> None:
-        text = catalogue._render([], unsupported_count=0, report=None)
+        text = render._render([], unsupported_count=0, report=None)
         self.assertIn("Total catalogue entries", text)
 
 
@@ -1225,13 +1227,13 @@ class CheckContractTests(unittest.TestCase):
 
     def test_check_forbids_metadata_writes(self) -> None:
         """fetch_mdx_config_url writes yaml into the repo in the dev layout."""
-        policy = catalogue._policy_for(
-            catalogue._parse_args(["--check"])
+        policy = cli._policy_for(
+            cli._parse_args(["--check"])
         )
         self.assertFalse(policy.allow_metadata_writes)
 
     def test_a_normal_run_still_allows_metadata_writes(self) -> None:
-        policy = catalogue._policy_for(catalogue._parse_args([]))
+        policy = cli._policy_for(cli._parse_args([]))
         self.assertTrue(policy.allow_metadata_writes)
 
     def test_load_yaml_meta_does_not_fetch_configs_when_writes_are_denied(self) -> None:
@@ -1276,7 +1278,7 @@ class CheckContractTests(unittest.TestCase):
 
         stderr = io.StringIO()
         with contextlib.ExitStack() as stack:
-            stack.enter_context(mock.patch.object(catalogue, "OUTPUT_PATH", out))
+            stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", out))
             stack.enter_context(
                 mock.patch.object(catalogue, "_build_catalogue_context",
                                   lambda **k: catalogue.CatalogueContext())
@@ -1286,7 +1288,7 @@ class CheckContractTests(unittest.TestCase):
                                   lambda **k: (_Snapshot(), ({}, {}, {}, {})))
             )
             stack.enter_context(contextlib.redirect_stderr(stderr))
-            rc = catalogue.main(["--check"])
+            rc = cli.main(["--check"])
 
         self.assertEqual(rc, 2)
         message = stderr.getvalue()
@@ -1312,10 +1314,10 @@ class CheckContractTests(unittest.TestCase):
         stderr = io.StringIO()
         with contextlib.ExitStack() as stack:
             stack.enter_context(
-                mock.patch.object(catalogue, "OUTPUT_PATH", os.path.join(tmp, "c.md"))
+                mock.patch.object(cli, "OUTPUT_PATH", os.path.join(tmp, "c.md"))
             )
             stack.enter_context(
-                mock.patch.object(catalogue, "REFERENCE_TSV_PATH", os.path.join(tmp, "r.tsv"))
+                mock.patch.object(cli, "REFERENCE_TSV_PATH", os.path.join(tmp, "r.tsv"))
             )
             stack.enter_context(
                 mock.patch.object(catalogue, "_build_catalogue_context",
@@ -1326,7 +1328,7 @@ class CheckContractTests(unittest.TestCase):
                                   lambda **k: (_Snapshot(), ({}, {}, {}, {})))
             )
             stack.enter_context(contextlib.redirect_stderr(stderr))
-            rc = catalogue.main(["--write-tsv"])
+            rc = cli.main(["--write-tsv"])
 
         self.assertEqual(rc, 0)
         self.assertIn("tsv", stderr.getvalue().lower())
@@ -1391,7 +1393,7 @@ class IntermediateRepresentationTests(unittest.TestCase):
                     },
                     handle,
                 )
-            self.assertEqual(catalogue._previous_entry_count(doc), 412)
+            self.assertEqual(cli._previous_entry_count(doc), 412)
 
     def test_previous_entry_count_falls_back_to_the_document(self) -> None:
         import tempfile
@@ -1400,7 +1402,7 @@ class IntermediateRepresentationTests(unittest.TestCase):
             doc = os.path.join(tmp, "models-catalogue.md")
             with open(doc, "w", encoding="utf-8") as handle:
                 handle.write("- Total catalogue entries: **7**\n")
-            self.assertEqual(catalogue._previous_entry_count(doc), 7)
+            self.assertEqual(cli._previous_entry_count(doc), 7)
 
     def test_a_corrupt_sidecar_falls_back_rather_than_failing(self) -> None:
         import tempfile
@@ -1411,7 +1413,7 @@ class IntermediateRepresentationTests(unittest.TestCase):
                 handle.write("- Total catalogue entries: **7**\n")
             with open(catalogue._ir_path_for(doc), "w", encoding="utf-8") as handle:
                 handle.write("{not json")
-            self.assertEqual(catalogue._previous_entry_count(doc), 7)
+            self.assertEqual(cli._previous_entry_count(doc), 7)
 
 
 class SummaryModeTests(unittest.TestCase):
@@ -1436,28 +1438,28 @@ class SummaryModeTests(unittest.TestCase):
         return [flagged, unknown, fine]
 
     def test_reports_counts(self) -> None:
-        text = catalogue.render_summary_report(self._entries(), unsupported_count=4)
+        text = render.render_summary_report(self._entries(), unsupported_count=4)
         self.assertIn("**3**", text)
         self.assertIn("4", text)
 
     def test_lists_flagged_entries(self) -> None:
-        text = catalogue.render_summary_report(self._entries(), unsupported_count=0)
+        text = render.render_summary_report(self._entries(), unsupported_count=0)
         self.assertIn("Bad Model", text)
         self.assertIn("backend is instrumental-focused", text)
 
     def test_lists_unknown_intent_entries(self) -> None:
-        text = catalogue.render_summary_report(self._entries(), unsupported_count=0)
+        text = render.render_summary_report(self._entries(), unsupported_count=0)
         self.assertIn("Mystery", text)
 
     def test_omits_the_clean_entries(self) -> None:
         """The point is the exception list, not the full inventory."""
-        text = catalogue.render_summary_report(self._entries(), unsupported_count=0)
+        text = render.render_summary_report(self._entries(), unsupported_count=0)
         self.assertNotIn("Good Model", text)
 
     def test_is_much_shorter_than_the_full_render(self) -> None:
         entries = self._entries()
-        full = catalogue._render(entries, unsupported_count=0)
-        summary = catalogue.render_summary_report(entries, unsupported_count=0)
+        full = render._render(entries, unsupported_count=0)
+        summary = render.render_summary_report(entries, unsupported_count=0)
         self.assertLess(len(summary), len(full))
 
     def test_summary_does_not_overwrite_the_document(self) -> None:
@@ -1481,7 +1483,7 @@ class SummaryModeTests(unittest.TestCase):
             with open(out, "w", encoding="utf-8") as handle:
                 handle.write("THE REAL CATALOGUE\n- Total catalogue entries: **400**\n")
             stdout = io.StringIO()
-            with mock.patch.object(catalogue, "OUTPUT_PATH", out), \
+            with mock.patch.object(cli, "OUTPUT_PATH", out), \
                  mock.patch.object(
                      catalogue, "_build_catalogue_context",
                      lambda **k: catalogue.CatalogueContext()
@@ -1491,7 +1493,7 @@ class SummaryModeTests(unittest.TestCase):
                      lambda **k: (_Snapshot(), ({}, {}, {}, {}))
                  ), \
                  contextlib.redirect_stdout(stdout):
-                rc = catalogue.main(["--summary"])
+                rc = cli.main(["--summary"])
 
             self.assertEqual(rc, 0)
             with open(out, encoding="utf-8") as handle:
@@ -1500,8 +1502,8 @@ class SummaryModeTests(unittest.TestCase):
         self.assertIn("Counts", stdout.getvalue())
 
     def test_summary_flag_exists(self) -> None:
-        self.assertTrue(catalogue._parse_args(["--summary"]).summary)
-        self.assertFalse(catalogue._parse_args([]).summary)
+        self.assertTrue(cli._parse_args(["--summary"]).summary)
+        self.assertFalse(cli._parse_args([]).summary)
 
 
 class CollectEntriesIsTheRealPathTests(unittest.TestCase):
@@ -1522,7 +1524,7 @@ class CollectEntriesIsTheRealPathTests(unittest.TestCase):
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch.object(catalogue, "OUTPUT_PATH", os.path.join(tmp, "c.md")), \
+            with mock.patch.object(cli, "OUTPUT_PATH", os.path.join(tmp, "c.md")), \
                  mock.patch.object(
                      catalogue, "_build_catalogue_context",
                      lambda **k: catalogue.CatalogueContext()
@@ -1532,10 +1534,10 @@ class CollectEntriesIsTheRealPathTests(unittest.TestCase):
                      lambda **k: (_Snapshot(), ({}, {}, {}, {}))
                  ), \
                  mock.patch.object(
-                     catalogue, "_collect_entries", wraps=catalogue._collect_entries
+                     catalogue, "collect_entries", wraps=catalogue.collect_entries
                  ) as collect:
-                catalogue.main([])
-        self.assertEqual(collect.call_count, 1, "main did not go through _collect_entries")
+                cli.main([])
+        self.assertEqual(collect.call_count, 1, "main did not go through collect_entries")
 
 
 class SidecarTrustTests(unittest.TestCase):
@@ -1563,25 +1565,25 @@ class SidecarTrustTests(unittest.TestCase):
     def test_a_sidecar_written_with_this_document_is_trusted(self) -> None:
         self._write_doc(474)
         self._write_sidecar(474, digest=catalogue._document_digest(self.doc))
-        self.assertEqual(catalogue._previous_entry_count(self.doc), 474)
+        self.assertEqual(cli._previous_entry_count(self.doc), 474)
 
     def test_a_stale_sidecar_cannot_lower_the_guard_floor(self) -> None:
         """The exact hazard: a degraded run's sidecar outliving its document."""
         self._write_doc(474)
         self._write_sidecar(88, digest="sha-of-some-other-document")
-        self.assertEqual(catalogue._previous_entry_count(self.doc), 474)
+        self.assertEqual(cli._previous_entry_count(self.doc), 474)
 
     def test_a_sidecar_with_no_digest_is_not_trusted(self) -> None:
         """Written before the cross-check existed; the document is authoritative."""
         self._write_doc(474)
         self._write_sidecar(88)
-        self.assertEqual(catalogue._previous_entry_count(self.doc), 474)
+        self.assertEqual(cli._previous_entry_count(self.doc), 474)
 
     def test_the_sidecar_is_used_when_the_document_has_no_count(self) -> None:
         with open(self.doc, "w", encoding="utf-8") as handle:
             handle.write("a document with no summary line\n")
         self._write_sidecar(412, digest=catalogue._document_digest(self.doc))
-        self.assertEqual(catalogue._previous_entry_count(self.doc), 412)
+        self.assertEqual(cli._previous_entry_count(self.doc), 412)
 
     def test_a_published_run_writes_a_matching_digest(self) -> None:
         import contextlib
@@ -1597,7 +1599,7 @@ class SidecarTrustTests(unittest.TestCase):
             report = None
 
         with contextlib.ExitStack() as stack:
-            stack.enter_context(mock.patch.object(catalogue, "OUTPUT_PATH", self.doc))
+            stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", self.doc))
             stack.enter_context(
                 mock.patch.object(catalogue, "_build_catalogue_context",
                                   lambda **k: catalogue.CatalogueContext())
@@ -1606,7 +1608,7 @@ class SidecarTrustTests(unittest.TestCase):
                 mock.patch.object(catalogue, "_snapshot_and_payloads",
                                   lambda **k: (_Snapshot(), ({}, {}, {}, {})))
             )
-            self.assertEqual(catalogue.main([]), 0)
+            self.assertEqual(cli.main([]), 0)
 
         with open(catalogue._ir_path_for(self.doc), encoding="utf-8") as handle:
             payload = json.load(handle)
@@ -1622,12 +1624,12 @@ class SummaryHonestyTests(unittest.TestCase):
         return RefreshReport(mode=RefreshMode.OFFLINE, usable=False)
 
     def test_an_unusable_snapshot_is_called_out(self) -> None:
-        text = catalogue.render_summary_report([], unsupported_count=0, report=self._dead_report())
+        text = render.render_summary_report([], unsupported_count=0, report=self._dead_report())
         self.assertNotIn("Nothing flagged", text)
         self.assertIn("unusable", text.lower())
 
     def test_an_empty_catalogue_is_called_out_even_without_a_report(self) -> None:
-        text = catalogue.render_summary_report([], unsupported_count=0, report=None)
+        text = render.render_summary_report([], unsupported_count=0, report=None)
         self.assertNotIn("Nothing flagged", text)
         self.assertIn("no entries", text.lower())
 
@@ -1637,7 +1639,7 @@ class SummaryHonestyTests(unittest.TestCase):
             weight_file="g.pth", name_intent="vocals",
             metadata_source="bundled_yaml:y.yaml",
         )
-        text = catalogue.render_summary_report([entry], unsupported_count=0)
+        text = render.render_summary_report([entry], unsupported_count=0)
         self.assertIn("Nothing flagged", text)
 
 
@@ -1714,13 +1716,13 @@ class RenderDisplayTests(unittest.TestCase):
             best_result="Instrumental",
             backend_focus="instrumental_primary",
         )
-        rendered = catalogue._render([entry])
+        rendered = render._render([entry])
         display = canonical_display_name(label)
         self.assertIn(display, rendered)
         self.assertNotIn("Roformer Model:", rendered)
 
     def test_render_header_lists_all_sources(self) -> None:
-        rendered = catalogue._render([])
+        rendered = render._render([])
         self.assertIn("TRvlvr + Politrees + extras + mvsepless", rendered)
         self.assertIn(
             "catalogue helper summarizing primary/target",
@@ -1729,7 +1731,7 @@ class RenderDisplayTests(unittest.TestCase):
         self.assertNotIn("what `ModelConfig` uses as `primary_stem`", rendered)
 
     def test_parse_args_offline(self) -> None:
-        args = catalogue._parse_args(["--offline"])
+        args = cli._parse_args(["--offline"])
         self.assertTrue(args.offline)
 
 

@@ -89,6 +89,10 @@ ui/data/icons/
 scripts/*
 !scripts/sync-github-mirror.sh
 !scripts/generate_models_catalogue.py
+!scripts/catalogue/
+!scripts/catalogue/__init__.py
+!scripts/catalogue/collect.py
+!scripts/catalogue/render.py
 !scripts/model_sweep.py
 !scripts/model_probe.py
 !scripts/model_tool_support.py
