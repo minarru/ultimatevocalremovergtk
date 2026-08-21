@@ -758,6 +758,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             ]
         if args.limit is not None:
             targets = targets[: args.limit]
+        if not targets:
+            print("No catalogue entries to probe.", file=sys.stderr)
+            if not args.include_supported:
+                print(
+                    "Default --sweep is unsupported-only; "
+                    "pass --include-supported to probe every entry.",
+                    file=sys.stderr,
+                )
+            return 2
         results = sweep_catalogue(
             targets,
             check_keys=args.check_keys,
