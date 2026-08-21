@@ -541,7 +541,9 @@ class CoordinatorRefreshTests(unittest.TestCase):
         empty = MagicMock()
         empty.state.content = None
         coordinator.source.return_value = empty
-        coordinator.ensure.return_value = MagicMock(name="snapshot")
+        snapshot = MagicMock(name="snapshot")
+        coordinator.ensure.return_value = snapshot
+        coordinator.snapshot.return_value = snapshot
         return coordinator
 
     def test_refresh_force_loads_coordinator_sources(self) -> None:
@@ -551,8 +553,11 @@ class CoordinatorRefreshTests(unittest.TestCase):
         catalogue._snapshot_and_payloads(
             allow_network=True, refresh=True, coordinator=coordinator
         )
-        coordinator.refresh.assert_called_once_with(mode=RefreshMode.FORCE)
-        coordinator.ensure.assert_called_once_with(vip=False, allow_network=True)
+        coordinator.snapshot.assert_called_once_with(
+            vip=False, mode=RefreshMode.FORCE
+        )
+        coordinator.ensure.assert_not_called()
+        coordinator.refresh.assert_not_called()
 
     def test_default_snapshot_does_not_force_refresh(self) -> None:
         coordinator = self._coordinator()
@@ -560,6 +565,7 @@ class CoordinatorRefreshTests(unittest.TestCase):
             allow_network=True, refresh=False, coordinator=coordinator
         )
         coordinator.refresh.assert_not_called()
+        coordinator.snapshot.assert_not_called()
         coordinator.ensure.assert_called_once_with(vip=False, allow_network=True)
 
     def test_offline_never_force_refreshes_even_when_asked(self) -> None:
@@ -568,6 +574,7 @@ class CoordinatorRefreshTests(unittest.TestCase):
             allow_network=False, refresh=True, coordinator=coordinator
         )
         coordinator.refresh.assert_not_called()
+        coordinator.snapshot.assert_not_called()
         coordinator.ensure.assert_called_once_with(vip=False, allow_network=False)
 
     def test_collect_entries_forwards_refresh(self) -> None:

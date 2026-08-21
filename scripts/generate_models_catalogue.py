@@ -169,9 +169,13 @@ def _snapshot_and_payloads(
     if owned:
         coordinator = CatalogueCoordinator()
     try:
+        # One blocking snapshot, not refresh() then ensure(). ensure() is
+        # stale-while-revalidate and used to republish the FORCE snapshot from
+        # cache, including a placeholder RefreshReport(usable=False).
         if refresh and allow_network:
-            coordinator.refresh(mode=RefreshMode.FORCE)
-        snapshot = coordinator.ensure(vip=False, allow_network=allow_network)
+            snapshot = coordinator.snapshot(vip=False, mode=RefreshMode.FORCE)
+        else:
+            snapshot = coordinator.ensure(vip=False, allow_network=allow_network)
         payloads = _source_payloads(coordinator)
         return snapshot, payloads
     finally:

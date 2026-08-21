@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any, Callable, Mapping, Optional
 
@@ -321,6 +321,8 @@ class CatalogueCoordinator:
             thread.start()
         for thread in threads:
             thread.join(timeout=120)
+        snapshot = self._publish(vip=False, report=None)
+        unlocked = self._publish(vip=True, report=None)
         report = RefreshReport(
             mode=RefreshMode.FORCE,
             succeeded=tuple(succeeded),
@@ -328,19 +330,16 @@ class CatalogueCoordinator:
             stale=tuple(stale),
             mixed_age=bool(stale or errors),
             upstream_live=upstream_live and SourceId.UPSTREAM not in errors,
-            usable=False,
-        )
-        snapshot = self._publish(vip=False, report=report)
-        self._publish(vip=True, report=report)
-        return RefreshReport(
-            mode=report.mode,
-            succeeded=report.succeeded,
-            failed=report.failed,
-            stale=report.stale,
-            mixed_age=report.mixed_age,
-            upstream_live=report.upstream_live,
             usable=bool(snapshot.vr or snapshot.mdx or snapshot.demucs or snapshot.apollo),
         )
+        snapshot = replace(snapshot, report=report)
+        unlocked = replace(unlocked, report=report)
+        with self._lock:
+            self._snapshots[(snapshot.revision.digest(), False)] = snapshot
+            self._snapshots[(unlocked.revision.digest(), True)] = unlocked
+            self._latest = snapshot
+            self._latest_unlocked = unlocked
+        return report
 
     def _load_sources(self, mode: RefreshMode, policy: AccessPolicy) -> None:
         for source in self._sources.values():
@@ -393,7 +392,9 @@ class CatalogueCoordinator:
         cache_key = (revision.digest(), vip)
         with self._lock:
             cached = self._snapshots.get(cache_key)
-            if cached is not None:
+            # Same digest can be republished with a later RefreshReport
+            # (FORCE used to cache usable=False, then SWR returned it).
+            if cached is not None and (report is None or cached.report == report):
                 return cached
 
         snapshot = self._build_snapshot(
