@@ -52,10 +52,14 @@ Other:
 ./uvr models list --all-known
 ./uvr bench song.wav -o /tmp/ab --model mdx:Model --a-env UVR_AUTOCAST=0 --b-env UVR_AUTOCAST=1
 python scripts/generate_models_catalogue.py   # regenerate docs/models-catalogue.md
+python scripts/generate_models_catalogue.py --check     # CI drift check; writes nothing
+python scripts/generate_models_catalogue.py --summary   # counts + mismatches to stdout
 python scripts/model_sweep.py --list      # local-only: every installed model, one real run each
 python scripts/model_sweep.py --method mdx --json /tmp/sweep.json
+python scripts/model_sweep.py --list --manifest /tmp/jobs.json   # resolved job list as JSON
 python scripts/model_probe.py --config <yaml>   # can this build run a model? no weights needed
 python scripts/model_probe.py --entry <id> --check-keys   # + range-fetch the checkpoint header
+python scripts/stem_semantics_audit.py --guessed-only   # curated-vs-guessed stem confidence
 ```
 
 There is no linter/formatter config in the repo.
@@ -112,6 +116,51 @@ Note the coupling: `Ensembler.get_files_to_ensemble` collects members by **filen
 ### UI structure
 
 `UVRApplication` ([ui/application.py](ui/application.py)) → `MainWindow` ([ui/window.py](ui/window.py)), with one `AppContext` ([ui/context.py](ui/context.py)) holding the shared `Settings` and lazily-built repository/runner. Per-method option panels are `MethodView` subclasses in [ui/views/](ui/views/) registered in `METHOD_VIEWS` — add a method there rather than editing the window assembly. Options shared across Separation/Ensemble/Audio Tools live in [ui/shared_settings.py](ui/shared_settings.py).
+
+## Maintenance scripts
+
+Four commands under `scripts/`, plus the module they share. None are part of the app.
+
+- **`scripts/*` is gitignored behind an allowlist.** A new script needs its own
+  `!scripts/<name>.py` line in [.gitignore](.gitignore), or `git add` refuses it and the
+  file never lands.
+- **One shared low-level module.** [scripts/model_tool_support.py](scripts/model_tool_support.py)
+  owns validated HTTP ranges, checkpoint headers and tail hashes, catalogue target
+  resolution and cache identity. `model_probe.py` and `stem_semantics_audit.py` both import
+  from it and neither imports the other; verdicts, reporting and architecture construction
+  stay in the CLIs. Range reads validate the 206 and `Content-Range` and raise `RangeError`
+  rather than returning whatever the server sent.
+- **The catalogue generator refuses to publish a degraded run.** Exit codes are distinct:
+  `0` wrote/up to date, `1` drift (`--check`), `2` this run's data is too degraded to
+  judge. A cold cache yields a fraction of the catalogue, so without the guard a partial
+  run replaces a good 7,000-line document. `--allow-degraded` overrides.
+- **`--check` and `--summary` are read-only.** `FetchPolicy.allow_metadata_writes` gates
+  `fetch_mdx_config_url`, which writes a yaml into `paths.MDX_C_CONFIG_PATH` — inside the
+  repo in the portable dev layout. `--summary` prints to stdout and writes nothing.
+- **Drift means the catalogue changed, not that time passed.** `--check` compares canonical
+  forms with the volatile header lines (`Generated:`, provenance, cache ages) stripped.
+- **Ephemeral catalogue caches live under `CACHE_DIR`**, keyed by a URL digest rather than
+  basename (two models can both ship a `config.yaml`), with a TTL. `--refresh` forces a
+  refetch; `--offline` is strictly cache-only and serves a stale entry rather than fetching.
+- **The `.ir.json` sidecar is tied to its document by SHA-256** and is gitignored. The
+  publication guard reads its previous entry count from it only when that digest matches,
+  falling back to the document — a stale sidecar must not lower the guard's floor.
+- **`model_sweep.main()` asserts the parent stays torch-free.** An in-process test must hide
+  `torch` from `sys.modules` for the call rather than weaken the assert; another test module
+  importing torch first trips it, so failures depend on test ordering.
+- **`--timeout` does not reach composite jobs.** They are their own group (`SweepJob.composite`,
+  not `kind`, and not identifiable from the timeout they carry) and take `--composite-timeout`.
+- **The stem audit caches successful hashes indefinitely and failures never.** Checkpoint
+  tails are immutable once published; caching a failure would let one bad network day poison
+  every later report. `--only`/`--limit` narrow a run, `--no-cache` re-fetches.
+- **VR architecture sizes have one definition**, `VR_ARCH_SIZES` / `VR_5_1_ARCH_SIZES` in
+  [ml/vr_network/nets.py](ml/vr_network/nets.py). `model_probe.py` imports them lazily —
+  that module pulls in torch, and the probe must stay importable without it.
+- **`build_mdx_c_model` / `filter_init_kwargs`** ([engines/mdx_c.py](engines/mdx_c.py)) are
+  public engine-layer API, built against from the engine and the probe.
+- Script artifacts publish through `core.json_store.write_text_atomic` / `write_json_atomic`:
+  a failed write must not truncate a checked-in document, and the sweep parent treats an
+  unreadable child `result.json` as a classified job failure rather than crashing.
 
 ## Repository workflow
 
