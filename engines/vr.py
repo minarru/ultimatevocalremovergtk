@@ -44,6 +44,7 @@ cpu = torch.device('cpu')
 warnings.filterwarnings("ignore")
 
 from ml.vr_network import nets, nets_new
+from ml.vr_network.nets import VR_5_1_ARCH_SIZES, VR_ARCH_SIZES
 from ml.vr_network.model_param_init import ModelParameters
 from core.paths import VR_PARAM_DIR
 from .orchestration import process_secondary_model
@@ -62,12 +63,8 @@ class SeperateVR(SeperateAttributes):
 
                 device = self.device
 
-                nn_arch_sizes = [
-                    31191, # default
-                    33966, 56817, 123821, 123812, 129605, 218409, 537238, 537227]
-                vr_5_1_models = [56817, 218409]
                 model_size = math.ceil(os.stat(self.model_path).st_size / 1024)
-                nn_arch_size = min(nn_arch_sizes, key=lambda x:abs(x-model_size))
+                nn_arch_size = min(VR_ARCH_SIZES, key=lambda x:abs(x-model_size))
 
                 from engines.model_weight_cache import (
                     get_weight_cache,
@@ -87,9 +84,9 @@ class SeperateVR(SeperateAttributes):
                 cached = get_weight_cache().get(key)
                 if cached and cached.module is not None:
                     self.model_run = materialize_module(cached.module, device)
-                    if nn_arch_size in vr_5_1_models or self.is_vr_51_model:
+                    if nn_arch_size in VR_5_1_ARCH_SIZES or self.is_vr_51_model:
                         self.is_vr_51_model = True
-                elif nn_arch_size in vr_5_1_models or self.is_vr_51_model:
+                elif nn_arch_size in VR_5_1_ARCH_SIZES or self.is_vr_51_model:
                     self.model_run = nets_new.CascadedNet(self.mp.param['bins'] * 2, 
                                                           nn_arch_size, 
                                                           nout=self.model_capacity[0], 
