@@ -788,6 +788,83 @@ class SourceAttributionCostTests(unittest.TestCase):
         self.assertLessEqual(convert.call_count, 1, "converted once per label")
 
 
+class ReferenceTsvOptInTests(unittest.TestCase):
+    """The TSV is a deliberate output, not a side effect of running the command."""
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        os.environ["UVR_DISABLE_CATALOGUE_STEMS"] = "1"
+        self.addCleanup(lambda: os.environ.pop("UVR_DISABLE_CATALOGUE_STEMS", None))
+        self.tmp = tempfile.mkdtemp(prefix="uvr-tsv-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.tsv = os.path.join(self.tmp, "model_intent_reference.tsv")
+        self.out = os.path.join(self.tmp, "models-catalogue.md")
+
+    def _community(self):
+        return {
+            "model.ckpt": catalogue.CommunityRef(
+                filename="model.ckpt",
+                arch="Roformer",
+                primary_stem="Vocals",
+                stems_text="vocals, other",
+                friendly_name="Some Model",
+                intent="vocals",
+            )
+        }
+
+    def _run(self, argv: list, *, entries: int = 1) -> int:
+        import contextlib
+        from unittest import mock
+
+        class _Snapshot:
+            vr = {f"Model {i}": f"m{i}.pth" for i in range(entries)}
+            mdx: dict = {}
+            demucs: dict = {}
+            apollo: dict = {}
+            meta: dict = {}
+            unsupported: dict = {}
+            report = None
+
+        ctx = catalogue.CatalogueContext(community_by_file=self._community())
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(catalogue, "REFERENCE_TSV_PATH", self.tsv))
+            stack.enter_context(mock.patch.object(catalogue, "OUTPUT_PATH", self.out))
+            stack.enter_context(
+                mock.patch.object(catalogue, "_build_catalogue_context", lambda **k: ctx)
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    catalogue, "_snapshot_and_payloads",
+                    lambda **k: (_Snapshot(), ({}, {}, {}, {})),
+                )
+            )
+            return catalogue.main(argv)
+
+    def test_a_default_run_does_not_write_the_tsv(self) -> None:
+        self.assertEqual(self._run([]), 0)
+        self.assertTrue(os.path.isfile(self.out))
+        self.assertFalse(os.path.exists(self.tsv), "TSV written without being asked")
+
+    def test_write_tsv_writes_it(self) -> None:
+        self.assertEqual(self._run(["--write-tsv"]), 0)
+        self.assertTrue(os.path.isfile(self.tsv))
+        with open(self.tsv, encoding="utf-8") as handle:
+            self.assertIn("model.ckpt", handle.read())
+
+    def test_a_refused_run_does_not_write_the_tsv(self) -> None:
+        """A run that refuses to publish must not mutate the other artifact either."""
+        with open(self.out, "w", encoding="utf-8") as handle:
+            handle.write("## Summary\n\n- Total catalogue entries: **400**\n")
+        self.assertEqual(self._run(["--write-tsv"], entries=1), 2)
+        self.assertFalse(os.path.exists(self.tsv), "refused run still wrote the TSV")
+
+    def test_write_tsv_flag_is_exposed_on_the_cli(self) -> None:
+        self.assertTrue(catalogue._parse_args(["--write-tsv"]).write_tsv)
+        self.assertFalse(catalogue._parse_args([]).write_tsv)
+
+
 class EntryMetaOverlayTests(unittest.TestCase):
     def test_fills_blank_stems_target_and_unknown_intent(self) -> None:
         from core.catalog_sources import EntryMeta

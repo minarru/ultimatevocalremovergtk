@@ -434,8 +434,6 @@ def _build_catalogue_context(
         _COMMUNITY_MODELS_URL, COMMUNITY_CACHE_DIR, "models.txt", policy=policy
     )
     community = _parse_community_models_txt(community_path or "")
-    if community:
-        _write_reference_tsv(community)
     return CatalogueContext(
         community_by_file=community,
         vr_by_hash=_merge_hash_tables(paths.VR_HASH_JSON, remote_vr),
@@ -1401,6 +1399,11 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Publish even when sources failed and the catalogue shrank sharply.",
     )
+    parser.add_argument(
+        "--write-tsv",
+        action="store_true",
+        help=f"Also write {os.path.basename(REFERENCE_TSV_PATH)} (off by default).",
+    )
     return parser.parse_args(argv)
 
 
@@ -1512,7 +1515,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         f"Wrote {OUTPUT_PATH} ({len(entries)} models, {with_meta} with metadata, "
         f"{unknown} unknown, {flagged} flagged, {unsupported} unsupported omitted)"
     )
-    if os.path.isfile(REFERENCE_TSV_PATH):
+    # Only after the guard: a refused run must not mutate this artifact either.
+    if args.write_tsv and ctx.community_by_file:
+        _write_reference_tsv(ctx.community_by_file)
         print(f"Wrote {REFERENCE_TSV_PATH}")
     return 0
 
