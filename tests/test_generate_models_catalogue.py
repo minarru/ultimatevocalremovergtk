@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+import urllib.error
 from typing import Any
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -609,6 +610,182 @@ class PublicationGuardTests(unittest.TestCase):
     def test_allow_degraded_flag_is_exposed_on_the_cli(self) -> None:
         self.assertTrue(catalogue._parse_args(["--allow-degraded"]).allow_degraded)
         self.assertFalse(catalogue._parse_args([]).allow_degraded)
+
+
+class OfflineYamlCacheTests(unittest.TestCase):
+    """The URL-keyed yaml cache must actually be readable, including offline."""
+
+    _YAML = "training:\n  instruments: [vocals, other]\n  target_instrument: other\n"
+    _URL = "https://example.invalid/cfg/model_test.yaml"
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        self.tmp = tempfile.mkdtemp(prefix="uvr-yamlcache-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.calls: list = []
+
+    def _patches(self):
+        from unittest import mock
+
+        def record(request: Any, *args: Any, **kwargs: Any):
+            self.calls.append(getattr(request, "full_url", request))
+            raise urllib.error.URLError("blocked")
+
+        return [
+            mock.patch.object(catalogue, "YAML_CACHE_DIR", self.tmp),
+            mock.patch("core.mdx_config_fetch._urlopen", record),
+            mock.patch("core.mdx_config_fetch.fetch_mdx_config_url", lambda *a, **k: False),
+        ]
+
+    def _seed_cache(self) -> str:
+        path = catalogue._cache_path(self.tmp, self._URL, "model_test.yaml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(self._YAML)
+        return path
+
+    def test_yaml_paths_includes_the_url_keyed_cache_entry(self) -> None:
+        candidates = catalogue._yaml_paths("model_test.yaml", self._URL)
+        expected = catalogue._cache_path(
+            catalogue.YAML_CACHE_DIR, self._URL, "model_test.yaml"
+        )
+        self.assertIn(expected, candidates)
+
+    def test_offline_reads_a_previously_cached_yaml(self) -> None:
+        """The whole point of a cache-only offline mode."""
+        import contextlib
+
+        with contextlib.ExitStack() as stack:
+            for patch in self._patches():
+                stack.enter_context(patch)
+            cached = self._seed_cache()
+            self.assertTrue(os.path.isfile(cached))
+            instruments, target, _arch, source = catalogue._load_yaml_meta(
+                "model_test.yaml", self._URL, policy=catalogue.OFFLINE_FETCH_POLICY
+            )
+
+        self.assertEqual(self.calls, [], "offline must not fetch")
+        self.assertEqual(sorted(instruments), ["other", "vocals"])
+        self.assertEqual(target, "other")
+        self.assertTrue(source.startswith("remote_yaml:"), source)
+
+    def test_offline_without_a_cached_yaml_falls_back_without_fetching(self) -> None:
+        import contextlib
+
+        with contextlib.ExitStack() as stack:
+            for patch in self._patches():
+                stack.enter_context(patch)
+            catalogue._load_yaml_meta(
+                "model_test.yaml", self._URL, policy=catalogue.OFFLINE_FETCH_POLICY
+            )
+        self.assertEqual(self.calls, [])
+
+
+class CacheWriteAtomicityTests(unittest.TestCase):
+    def test_a_failed_cache_write_does_not_leave_a_truncated_entry(self) -> None:
+        """A truncated cache file would be re-served as valid for the whole TTL."""
+        import shutil
+        import tempfile
+        from unittest import mock
+
+        tmp = tempfile.mkdtemp(prefix="uvr-cache-atomic-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        url = "https://a.invalid/data.json"
+
+        body = {"data": b'{"ok": 1}'}
+
+        def opener(request: Any, *args: Any, **kwargs: Any):
+            class _R:
+                def read(self) -> bytes:
+                    return body["data"]
+
+                def __enter__(self) -> "_R":
+                    return self
+
+                def __exit__(self, *exc: Any) -> bool:
+                    return False
+
+            return _R()
+
+        with mock.patch("core.mdx_config_fetch._urlopen", opener):
+            good = catalogue._fetch_cached(url, tmp, "data.json")
+            assert good is not None
+            # Different bytes, so overwriting in place is distinguishable from
+            # a staged write that never lands.
+            body["data"] = b'{"ok": 2, "and": "much longer than the original"}'
+            with mock.patch("os.replace", side_effect=OSError("disk full")):
+                catalogue._fetch_cached(url, tmp, "data.json", refresh=True)
+
+        with open(good, "rb") as handle:
+            self.assertEqual(handle.read(), b'{"ok": 1}')
+        self.assertEqual(os.listdir(tmp), [os.path.basename(good)])
+
+
+class EntryMetaProvenanceTests(unittest.TestCase):
+    """Metadata that came from the snapshot must not report as unavailable."""
+
+    def test_entry_meta_supplied_metadata_is_recorded_as_its_source(self) -> None:
+        from core.catalog_sources import EntryMeta
+
+        entry = catalogue.ModelEntry(
+            source="mvsepless",
+            family="Roformer",
+            catalogue_label="Some Roformer",
+            weight_file="model.ckpt",
+            name_intent="unknown",
+        )
+        entry.metadata_source = "unavailable"
+        catalogue._apply_entry_meta(
+            entry,
+            EntryMeta(
+                label="Some Roformer",
+                display="Some Roformer",
+                arch="Roformer",
+                stems=["vocals", "other"],
+                target_instrument="other",
+            ),
+        )
+        self.assertNotEqual(entry.metadata_source, "unavailable")
+        self.assertIn("catalogue_meta", entry.metadata_source)
+
+    def test_entry_meta_that_adds_nothing_leaves_the_source_alone(self) -> None:
+        entry = catalogue.ModelEntry(
+            source="mvsepless",
+            family="Roformer",
+            catalogue_label="Some Roformer",
+            weight_file="model.ckpt",
+        )
+        entry.metadata_source = "unavailable"
+        catalogue._apply_entry_meta(entry, None)
+        self.assertEqual(entry.metadata_source, "unavailable")
+
+
+class SourceAttributionCostTests(unittest.TestCase):
+    def test_mvsepless_conversion_is_not_repeated_per_label(self) -> None:
+        """_source_for ran a full catalogue conversion once per label (~474x)."""
+        from unittest import mock
+
+        class _Snapshot:
+            vr = {f"Model {i}": f"m{i}.pth" for i in range(5)}
+            mdx: dict = {}
+            demucs: dict = {}
+            apollo: dict = {}
+            meta: dict = {}
+            unsupported: dict = {}
+            report = None
+
+        mvsepless = {"raw": {"needs": "conversion"}}
+        with mock.patch(
+            "core.mvsepless_catalog.convert_mvsepless_catalog", return_value={}
+        ) as convert:
+            catalogue._entries_from_snapshot(
+                _Snapshot(),
+                ({}, {}, {}, mvsepless),
+                catalogue.CatalogueContext(),
+                policy=catalogue.OFFLINE_FETCH_POLICY,
+            )
+        self.assertLessEqual(convert.call_count, 1, "converted once per label")
 
 
 class EntryMetaOverlayTests(unittest.TestCase):

@@ -176,20 +176,33 @@ def _snapshot_and_payloads(
 
 
 def _apply_entry_meta(entry: ModelEntry, meta: Any) -> None:
+    """Fill blanks from the snapshot's per-entry metadata.
+
+    Runs after metadata_source has already defaulted to "unavailable", so
+    anything supplied here has to claim provenance for itself -- otherwise the
+    entry is excluded from _flag_mismatches and under-counts in the summary
+    despite having real metadata.
+    """
     if meta is None:
         return
+    supplied = False
     stems = list(getattr(meta, "stems", None) or [])
     if stems and not entry.instruments:
         entry.instruments = stems
         entry.stem_count = max(entry.stem_count, len(stems))
+        supplied = True
     target = getattr(meta, "target_instrument", None) or ""
     if target and not entry.target_instrument:
         entry.target_instrument = str(target)
         if not entry.primary_stem:
             entry.primary_stem = str(target)
+        supplied = True
     intent = str(getattr(meta, "intent", "") or "")
     if intent and intent != INTENT_UNKNOWN and entry.name_intent == "unknown":
         entry.name_intent = intent
+        supplied = True
+    if supplied and entry.metadata_source in ("", "unavailable"):
+        entry.metadata_source = "catalogue_meta"
 
 
 def _display_label(entry: ModelEntry) -> str:
@@ -270,8 +283,18 @@ def _fetch_cached(
 
         with _urlopen(url) as response:
             data = response.read()
-        with open(cache_path, "wb") as handle:
-            handle.write(data)
+        # Staged, so a failed write cannot truncate a good entry into a
+        # corrupt one that is then served for the rest of the TTL.
+        tmp_path = f"{cache_path}.part"
+        try:
+            with open(tmp_path, "wb") as handle:
+                handle.write(data)
+            os.replace(tmp_path, cache_path)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except FileNotFoundError:
+                pass
         return cache_path
     except (urllib.error.URLError, OSError, TimeoutError):
         return cache_path if cached else None
@@ -591,12 +614,20 @@ def _flag_mismatches(entry: ModelEntry) -> List[str]:
     return flags
 
 
-def _yaml_paths(yaml_name: str) -> List[str]:
-    return [
+def _yaml_paths(yaml_name: str, yaml_url: str = "") -> List[str]:
+    """Where a config yaml may already be on disk, most authoritative first.
+
+    The cache entry is URL-keyed, so it can only be probed when the URL is
+    known -- looking for the bare basename there never matches and left the
+    cache write-only.
+    """
+    candidates = [
         os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name),
         os.path.join(ROOT, "models", "MDX_Net_Models", "model_data", "mdx_c_configs", yaml_name),
-        os.path.join(YAML_CACHE_DIR, yaml_name),
     ]
+    if yaml_url:
+        candidates.append(_cache_path(YAML_CACHE_DIR, yaml_url, yaml_name))
+    return candidates
 
 
 def _fetch_yaml(
@@ -633,31 +664,36 @@ def _load_yaml_meta(
     if not yaml_name:
         return [], "", "", ""
     config_path = ""
-    for candidate in _yaml_paths(yaml_name):
+    for candidate in _yaml_paths(yaml_name, yaml_url):
         if os.path.isfile(candidate):
             config_path = candidate
             break
-    source = ""
-    if not config_path and yaml_url and policy.allow_network:
-        # fetch_mdx_config_url writes into runtime model config storage, so it
-        # must never run for a read-only offline report.
-        from core.mdx_config_fetch import fetch_mdx_config_url
 
-        if fetch_mdx_config_url(yaml_name, yaml_url):
-            dest = os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name)
-            if os.path.isfile(dest):
-                config_path = dest
-                source = f"remote_yaml:{yaml_name}"
+    source = ""
+    if config_path:
+        source = (
+            f"remote_yaml:{yaml_name}"
+            if YAML_CACHE_DIR in config_path
+            else f"bundled_yaml:{yaml_name}"
+        )
+    elif yaml_url:
+        if policy.allow_network:
+            # fetch_mdx_config_url writes into runtime model config storage, so
+            # it must never run for a read-only offline report.
+            from core.mdx_config_fetch import fetch_mdx_config_url
+
+            if fetch_mdx_config_url(yaml_name, yaml_url):
+                dest = os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name)
+                if os.path.isfile(dest):
+                    config_path = dest
+                    source = f"remote_yaml:{yaml_name}"
         if not config_path:
+            # Not gated on allow_network: _fetch_cached honours the policy
+            # itself, and offline it is the only thing that reads the cache.
             fetched = _fetch_yaml(yaml_url, yaml_name, policy=policy)
             if fetched:
                 config_path = fetched
                 source = f"remote_yaml:{yaml_name}"
-    elif config_path:
-        if YAML_CACHE_DIR in config_path:
-            source = f"remote_yaml:{yaml_name}"
-        else:
-            source = f"bundled_yaml:{yaml_name}"
     if not config_path:
         inferred = _infer_from_yaml_name(yaml_name)
         if inferred[0] or inferred[1]:
@@ -976,15 +1012,27 @@ def _source_for(
     trvlvr: Optional[dict] = None,
     extras: Optional[dict] = None,
     mvsepless: Optional[dict] = None,
+    *,
+    upstream_lists: Optional[Tuple[Any, Any, Any]] = None,
+    mvsepless_lists: Optional[dict] = None,
 ) -> str:
-    """Attribute ``label`` to catalogue sources by membership, in merge order."""
+    """Attribute ``label`` to catalogue sources by membership, in merge order.
+
+    ``upstream_lists`` and ``mvsepless_lists`` let a caller hoist the two
+    derived payloads out of a per-label loop; both are constant for a run and
+    rebuilding them per entry meant one full mvsepless conversion per model.
+    """
+    if upstream_lists is None and trvlvr:
+        upstream_lists = flatten_upstream_lists(trvlvr, vip=False)
     in_tr = False
-    if trvlvr:
-        vr, mdx, demucs = flatten_upstream_lists(trvlvr, vip=False)
+    if upstream_lists is not None:
+        vr, mdx, demucs = upstream_lists
         in_tr = label in vr or label in mdx or label in demucs
+    if mvsepless_lists is None:
+        mvsepless_lists = _mvsepless_lists(mvsepless)
     in_pt = _label_in_lists(label, politrees, _POLITREES_KEYS)
     in_ex = _label_in_lists(label, extras, _SUPPLEMENT_LIST_KEYS)
-    in_mv = _label_in_lists(label, _mvsepless_lists(mvsepless), _POLITREES_KEYS)
+    in_mv = _label_in_lists(label, mvsepless_lists, _POLITREES_KEYS)
     parts: List[str] = []
     if in_tr:
         parts.append("TRvlvr")
@@ -1027,9 +1075,20 @@ def _entries_from_snapshot(
     meta_index = getattr(snapshot, "meta", {}) or {}
     all_entries: List[ModelEntry] = []
 
+    # Both of these are constant across the run; computing them per label meant
+    # a full mvsepless catalogue conversion for every one of ~474 entries.
+    upstream_lists = flatten_upstream_lists(trvlvr, vip=False) if trvlvr else None
+    mvsepless_lists = _mvsepless_lists(mvsepless)
+
     def source_for(label: str) -> str:
         return _source_for(
-            label, politrees, trvlvr, extras=extras, mvsepless=mvsepless
+            label,
+            politrees,
+            trvlvr,
+            extras=extras,
+            mvsepless=mvsepless,
+            upstream_lists=upstream_lists,
+            mvsepless_lists=mvsepless_lists,
         )
 
     for label, payload in sorted(dict(snapshot.vr).items()):
