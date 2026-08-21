@@ -16,6 +16,7 @@ from bundled.constants import (
 )
 
 from . import paths
+from .demucs_models import demucs_bag_owner_basename
 
 if TYPE_CHECKING:
     from .catalog_sources import MergedCatalogues
@@ -118,6 +119,18 @@ def lookup_mapper_display(basename: str, name_mapper: Optional[Dict[str, str]]) 
     return None
 
 
+#: Any of the separators a family/title label has been written with. The Demucs
+#: name mapper is legacy data using ``v4 | X`` while every display is
+#: canonicalised to ``v4 — X`` (model_naming.TITLE_SEPARATOR), so a literal
+#: comparison inverted none of its 32 entries.
+_MAPPER_SEPARATOR_RE = re.compile(r"\s*[|\u2014\u2013-]\s*")
+
+
+def _normalize_mapper_label(label: str) -> str:
+    """Comparison form for a mapper label: one separator spelling, casefolded."""
+    return _MAPPER_SEPARATOR_RE.sub("\u0000", str(label or "")).strip().casefold()
+
+
 def resolve_mapper_basename(label: str, name_mapper: Optional[Dict[str, str]]) -> Optional[str]:
     """Resolve a display label to an on-disk basename using a name mapper."""
     if not label or not name_mapper:
@@ -128,6 +141,15 @@ def resolve_mapper_basename(label: str, name_mapper: Optional[Dict[str, str]]) -
     for file_key, display_name in name_mapper.items():
         if os.path.splitext(file_key)[0] == label:
             return label
+    # Separator- and case-insensitive pass before the substring fallback below,
+    # so a canonicalised display still matches its legacy mapper value.
+    normalized = _normalize_mapper_label(label)
+    for file_key, display_name in name_mapper.items():
+        if normalized == _normalize_mapper_label(display_name):
+            return os.path.splitext(file_key)[0]
+    for file_key, display_name in name_mapper.items():
+        if normalized == _normalize_mapper_label(os.path.splitext(file_key)[0]):
+            return os.path.splitext(file_key)[0]
     for file_key, display_name in name_mapper.items():
         if label in display_name:
             return os.path.splitext(file_key)[0]
@@ -406,12 +428,24 @@ def resolve_demucs_model_basename(
         return model_name
     mapped = resolve_mapper_basename(model_name, name_mapper)
     if mapped:
-        return mapped
+        return _demucs_selectable_stem(mapped)
     lookup = catalogue_index if catalogue_index is not None else load_demucs_catalog_display_index()
     for stem, display in lookup.items():
         if model_name == display:
-            return stem
+            return _demucs_selectable_stem(stem)
     return model_name
+
+
+def _demucs_selectable_stem(stem: str) -> str:
+    """Map a bag-member weight to the bag the user actually selects.
+
+    The catalogue display index is many-to-one -- five member signatures all
+    render as ``v4 — htdemucs_ft`` -- so inverting it lands on a member such as
+    ``75fc33f5-1941ce65``. That resolves to a real file, so the failure would be
+    silent: one member model loaded in place of the whole bag.
+    """
+    owner = demucs_bag_owner_basename(stem)
+    return owner or stem
 
 
 def display_name_for_model(

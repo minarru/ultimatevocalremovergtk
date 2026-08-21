@@ -14,7 +14,11 @@ from ..audio_io import resolve_wav_type_set
 from ..demucs_models import resolve_demucs_model_file
 from ..mdx_c_registry import compute_checkpoint_hash, try_register_from_catalog
 from ..mdx_config_fetch import ensure_mdx_c_config
-from ..model_display import resolve_mdx_model_basename, resolve_vr_model_basename
+from ..model_display import (
+    resolve_demucs_model_basename,
+    resolve_mdx_model_basename,
+    resolve_vr_model_basename,
+)
 from ..model_stem_semantics import resolve_karaoke_confidence
 from ..settings import Settings
 from ..settings.coerce import enum_value
@@ -812,13 +816,25 @@ class ModelConfig:
         self.mixer_path = os.path.join(paths.MDX_MODELS_DIR, "mixer_val.ckpt")
 
     def get_demucs_model_path(self):
+        # Same shape as get_vr_model_path / get_mdx_model_path above: canonicalize
+        # the user-facing name to an on-disk basename first. Comparing the name
+        # against raw mapper values instead meant a canonicalized display
+        # ("v4 — hdemucs_mmi") never matched its legacy mapper entry
+        # ("v4 | hdemucs_mmi"), and the display string was used as a filename.
+        resolved_name = resolve_demucs_model_basename(
+            self.model_name,
+            self.repo.demucs_name_select_MAPPER,
+            catalogue_index=self.repo.demucs_catalogue_display_index(),
+        )
         demucs_newer = self.demucs_version in {DEMUCS_V3, DEMUCS_V4}
         demucs_model_dir = paths.DEMUCS_NEWER_REPO_DIR if demucs_newer else paths.DEMUCS_MODELS_DIR
-        for file_name, chosen_model in self.repo.demucs_name_select_MAPPER.items():
-            if self.model_name == chosen_model:
+        # Matched on the mapper's *key* now, not its display value: the value
+        # is legacy text the canonicalizer above has already consumed.
+        for file_name in self.repo.demucs_name_select_MAPPER:
+            if resolved_name == os.path.splitext(file_name)[0]:
                 self.model_path = os.path.join(demucs_model_dir, file_name)
                 return
-        self.model_path = resolve_demucs_model_file(self.model_name, self.demucs_version)
+        self.model_path = resolve_demucs_model_file(resolved_name, self.demucs_version)
 
     def get_demucs_model_data(self):
         self.demucs_version = DEMUCS_V4
