@@ -20,6 +20,7 @@ from .json_store import (
     write_json_if_unchanged,
 )
 from .model_identity import (
+    ModelArtifacts,
     ModelIdentityService,
     ModelRecord,
     ModelId,
@@ -105,8 +106,13 @@ class IdentityMigrator:
                 records.setdefault(
                     model_id,
                     ModelRecord(
-                        model_id, "apollo", basename, str(display), False,
-                        filename or None,
+                        id=model_id,
+                        family="apollo",
+                        basename=basename,
+                        display=str(display),
+                        backend_name=filename,
+                        artifacts=ModelArtifacts(filename),
+                        installed=False,
                     ),
                 )
         except (OSError, TypeError, ValueError):

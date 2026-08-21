@@ -2,13 +2,21 @@
 
 import unittest
 
-from core.model_identity import ModelRecord, resolve_model_record
+from core.model_identity import ModelArtifacts, ModelRecord, resolve_model_record
 
 
 def _rec(model_id: str, basename: str, *, installed: bool = True, display: str = "") -> ModelRecord:
+    family = model_id.split(":", 1)[0]
     return ModelRecord(
-        id=model_id, family=model_id.split(":", 1)[0], basename=basename,
-        display=display or basename, installed=installed,
+        id=model_id,
+        family=family,
+        basename=basename,
+        display=display or basename,
+        backend_name=basename,
+        artifacts=ModelArtifacts(
+            f"{basename}.ckpt" if family == "mdx" else f"{basename}.pth"
+        ),
+        installed=installed,
     )
 
 

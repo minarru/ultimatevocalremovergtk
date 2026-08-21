@@ -140,10 +140,10 @@ def _model_info(record: Any, repo: Any, *, detailed: bool = False) -> dict[str, 
         from core.paths import APOLLO_MODELS_DIR
         from core.model_registry import ModelRegistryService
 
-        engine_name = record.engine_name or record.basename
-        path = os.path.join(APOLLO_MODELS_DIR, engine_name)
+        backend_name = record.backend_name
+        path = os.path.join(APOLLO_MODELS_DIR, backend_name)
         data = ApolloModelData(
-            engine_name, model_hash_table=repo.model_hash_table,
+            backend_name, model_hash_table=repo.model_hash_table,
             on_unrecognized=None, is_dry_check=True,
         )
         local = (
@@ -522,7 +522,7 @@ def cmd_models_configure(args: argparse.Namespace) -> int:
         if record.family == "apollo":
             from core import paths
 
-            model_path = os.path.join(paths.APOLLO_MODELS_DIR, record.engine_name or record.basename)
+            model_path = os.path.join(paths.APOLLO_MODELS_DIR, record.backend_name)
             model_hash = checkpoint_md5(model_path)
             method = APOLLO_ARCH_TYPE
         else:

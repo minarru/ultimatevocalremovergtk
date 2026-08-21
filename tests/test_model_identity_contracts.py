@@ -10,7 +10,13 @@ from unittest.mock import patch
 
 from bundled.constants import CHOOSE_MODEL, NO_MODEL
 from core.model_catalogue import CatalogEntryId, ModelCatalogueRecord, ModelCatalogueService
-from core.model_identity import ModelRecord
+from core.model_identity import (
+    CatalogueRef,
+    DemucsSpec,
+    MdxSpec,
+    ModelArtifacts,
+    ModelRecord,
+)
 
 
 class DownloadMatchingLockTests(unittest.TestCase):
@@ -66,20 +72,42 @@ class DownloadMatchingLockTests(unittest.TestCase):
         self.assertIn(other_id.value, message)
 
 
-class CliJsonEngineNameSnapshotTests(unittest.TestCase):
-    """Current ModelRecord JSON emits engine_name. Task 5 drops it."""
+class ModelRecordContractTests(unittest.TestCase):
+    def test_to_dict_reports_backend_name_not_engine_name(self) -> None:
+        record = ModelRecord(
+            id="demucs:htdemucs_6s",
+            family="demucs",
+            basename="htdemucs_6s",
+            display="v4 — htdemucs_6s",
+            backend_name="htdemucs_6s",
+            artifacts=ModelArtifacts(
+                primary_filename="htdemucs_6s.yaml",
+                supporting_filenames=("abc12345-deadbeef.th",),
+            ),
+            installed=True,
+            catalogue_entry=CatalogueRef("demucs", "Demucs v4: htdemucs_6s"),
+            demucs=DemucsSpec("v4", "6_stem"),
+        )
+        payload = record.to_dict()
+        self.assertEqual(payload["backend_name"], "htdemucs_6s")
+        self.assertEqual(payload["primary_artifact"], "htdemucs_6s.yaml")
+        self.assertEqual(payload["supporting_artifacts"], ["abc12345-deadbeef.th"])
+        self.assertEqual(payload["demucs_version"], "v4")
+        self.assertEqual(payload["source_layout"], "6_stem")
+        self.assertNotIn("engine_name", payload)
 
-    def test_to_dict_currently_includes_engine_name(self) -> None:
+    def test_mdx_kind_is_serialized(self) -> None:
         record = ModelRecord(
             id="mdx:UVR-MDX-NET-Inst_HQ_4",
             family="mdx",
             basename="UVR-MDX-NET-Inst_HQ_4",
             display="MDX-Net — UVR-MDX-NET Inst HQ 4",
+            backend_name="UVR-MDX-NET-Inst_HQ_4",
+            artifacts=ModelArtifacts("UVR-MDX-NET-Inst_HQ_4.onnx"),
+            installed=True,
+            mdx=MdxSpec("classic_onnx"),
         )
-        payload = record.to_dict()
-        self.assertIn("engine_name", payload)
-        self.assertEqual(payload["engine_name"], "UVR-MDX-NET-Inst_HQ_4")
-        self.assertNotIn("backend_name", payload)
+        self.assertEqual(record.to_dict()["mdx_kind"], "classic_onnx")
 
 
 class ManifestSchemaSnapshotTests(unittest.TestCase):

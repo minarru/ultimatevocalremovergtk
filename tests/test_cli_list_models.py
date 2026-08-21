@@ -16,29 +16,63 @@ from cli.discovery import (
     _print_detail, cmd_devices_list, cmd_models_download, cmd_profile_list,
 )
 from cli.main import main
-from core.model_identity import ModelIdentityService, ModelRecord, resolve_model_record
+from core.model_identity import (
+    ModelArtifacts,
+    ModelIdentityService,
+    ModelRecord,
+    resolve_model_record,
+)
 from core.model_catalogue import CatalogEntryId
 from core.model_registry import ModelRegistryService
 
 
 class ModelIdTests(unittest.TestCase):
     def test_qualified_id_is_stable(self) -> None:
-        records = [ModelRecord("mdx:model_a", "mdx", "model_a", "Model A")]
+        records = [ModelRecord(
+            id='mdx:model_a',
+            family='mdx',
+            basename='model_a',
+            display='Model A',
+            backend_name='model_a',
+            artifacts=ModelArtifacts('model_a.ckpt'),
+            installed=True,
+        )]
         result = resolve_model_record("mdx:model_a", records)
         self.assertEqual(result.id, "mdx:model_a")
 
     def test_apollo_id_is_supported(self) -> None:
         record = ModelRecord(
-            "apollo:restore", "apollo", "restore", "Restore", True,
-            "restore.ckpt",
+            id='apollo:restore',
+            family='apollo',
+            basename='restore',
+            display='Restore',
+            backend_name='restore.ckpt',
+            artifacts=ModelArtifacts('restore.ckpt'),
+            installed=True,
         )
         self.assertEqual(resolve_model_record("restore.ckpt", [record]).id, "apollo:restore")
 
     def test_family_constraint_rejects_cross_family_match(self) -> None:
         service = ModelIdentityService(object())
         records = (
-            ModelRecord("mdx:shared", "mdx", "shared", "Shared"),
-            ModelRecord("vr:other", "vr", "other", "Other"),
+            ModelRecord(
+                id='mdx:shared',
+                family='mdx',
+                basename='shared',
+                display='Shared',
+                backend_name='shared',
+                artifacts=ModelArtifacts('shared.ckpt'),
+                installed=True,
+            ),
+            ModelRecord(
+                id='vr:other',
+                family='vr',
+                basename='other',
+                display='Other',
+                backend_name='other',
+                artifacts=ModelArtifacts('other.ckpt'),
+                installed=True,
+            ),
         )
         with patch.object(service, "records", return_value=records):
             self.assertEqual(service.resolve("shared", family="mdx").id, "mdx:shared")
@@ -50,10 +84,13 @@ class ModelIdTests(unittest.TestCase):
         from core.model_identity import canonical_member_tag
 
         record = ModelRecord(
-            "mdx:UVR-MDX-NET-Inst_HQ_4",
-            "mdx",
-            "UVR-MDX-NET-Inst_HQ_4",
-            "MDX-Net — UVR-MDX-NET Inst HQ 4",
+            id='mdx:UVR-MDX-NET-Inst_HQ_4',
+            family='mdx',
+            basename='UVR-MDX-NET-Inst_HQ_4',
+            display='MDX-Net — UVR-MDX-NET Inst HQ 4',
+            backend_name='UVR-MDX-NET-Inst_HQ_4',
+            artifacts=ModelArtifacts('UVR-MDX-NET-Inst_HQ_4.ckpt'),
+            installed=True,
         )
         tag = canonical_member_tag(record)
         self.assertEqual(tag, "MDX-Net: MDX-Net — UVR-MDX-NET Inst HQ 4")
@@ -66,7 +103,15 @@ class ModelIdTests(unittest.TestCase):
     def test_allowed_families_reject_ineligible_identity(self) -> None:
         service = ModelIdentityService(object())
         records = (
-            ModelRecord("apollo:restore", "apollo", "restore", "Restore"),
+            ModelRecord(
+                id='apollo:restore',
+                family='apollo',
+                basename='restore',
+                display='Restore',
+                backend_name='restore',
+                artifacts=ModelArtifacts('restore.ckpt'),
+                installed=True,
+            ),
         )
         with patch.object(service, "records", return_value=records):
             with self.assertRaisesRegex(ValueError, "not eligible"):
@@ -89,8 +134,24 @@ class AdministrationCoreTests(unittest.TestCase):
 
     def test_ambiguous_unqualified_name_lists_ids(self) -> None:
         records = [
-            ModelRecord("mdx:vocals", "mdx", "vocals", "Vocals"),
-            ModelRecord("vr:vocals", "vr", "vocals", "Vocals"),
+            ModelRecord(
+                id='mdx:vocals',
+                family='mdx',
+                basename='vocals',
+                display='Vocals',
+                backend_name='vocals',
+                artifacts=ModelArtifacts('vocals.ckpt'),
+                installed=True,
+            ),
+            ModelRecord(
+                id='vr:vocals',
+                family='vr',
+                basename='vocals',
+                display='Vocals',
+                backend_name='vocals',
+                artifacts=ModelArtifacts('vocals.ckpt'),
+                installed=True,
+            ),
         ]
         with self.assertRaisesRegex(ValueError, "ambiguous"):
             resolve_model_record("vocals", records)
@@ -170,7 +231,15 @@ class AdministrationCoreTests(unittest.TestCase):
         self.assertIsNone(importlib.util.find_spec("core.offline"))
 
     def test_legacy_ensemble_tag_resolves_to_canonical_id(self) -> None:
-        records = [ModelRecord("mdx:model_a", "mdx", "model_a", "Model A")]
+        records = [ModelRecord(
+            id='mdx:model_a',
+            family='mdx',
+            basename='model_a',
+            display='Model A',
+            backend_name='model_a',
+            artifacts=ModelArtifacts('model_a.ckpt'),
+            installed=True,
+        )]
         result = resolve_model_record("MDX-Net: Model A", records)
         self.assertEqual(result.id, "mdx:model_a")
 
@@ -270,8 +339,24 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
     def test_default_list_skips_uninstalled_aliases(self) -> None:
         from cli.discovery import cmd_models_list
 
-        installed = ModelRecord("mdx:on_disk", "mdx", "on_disk", "On Disk", True)
-        alias = ModelRecord("mdx:alias", "mdx", "alias", "Alias", False)
+        installed = ModelRecord(
+            id='mdx:on_disk',
+            family='mdx',
+            basename='on_disk',
+            display='On Disk',
+            backend_name='on_disk',
+            artifacts=ModelArtifacts('on_disk.ckpt'),
+            installed=True,
+        )
+        alias = ModelRecord(
+            id='mdx:alias',
+            family='mdx',
+            basename='alias',
+            display='Alias',
+            backend_name='alias',
+            artifacts=ModelArtifacts('alias.ckpt'),
+            installed=False,
+        )
         args = argparse.Namespace(family=None, all_known=False, report="json", quiet=True, verbose=False, job_id="list")
         out = io.StringIO()
         with patch("cli.discovery.iter_model_records", return_value=(installed, alias)), patch(

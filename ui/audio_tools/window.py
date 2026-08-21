@@ -867,11 +867,11 @@ class AudioToolsPage:
         handler = make_apollo_unrecognized_handler(lambda: self.window)
         from core.model_identity import ModelIdentityService
 
-        engine_name = ModelIdentityService(self.context.repo).engine_value(
+        backend_name = ModelIdentityService(self.context.repo).engine_value(
             model_name, family="apollo"
         )
         model_data = ApolloModelData(
-            engine_name,
+            backend_name,
             model_hash_table=self.context.repo.model_hash_table,
             on_unrecognized=handler,
         )

@@ -24,6 +24,7 @@ from cli.replay import _flat_settings
 from core.blocking_runner import RunResult
 from core.job_callbacks import JobCallbacks
 from core.job_runner import InputOutcome, JobRunner
+from core.model_identity import ModelArtifacts
 from core.settings import Settings
 
 
@@ -151,7 +152,15 @@ class ProfileTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.MDX
         settings.mdx.model = "Model A"
-        record = ModelRecord("mdx:model_a", "mdx", "model_a", "Model A")
+        record = ModelRecord(
+            id='mdx:model_a',
+            family='mdx',
+            basename='model_a',
+            display='Model A',
+            backend_name='model_a',
+            artifacts=ModelArtifacts('model_a.ckpt'),
+            installed=True,
+        )
         with patch("cli.job.ModelIdentityService") as service_cls:
             service = service_cls.return_value
             service.resolve.return_value = record
@@ -169,7 +178,15 @@ class ProfileTests(unittest.TestCase):
         settings.process.method = ProcessMethod.MDX
         settings.mdx.model = "mdx:good"
         settings.vr.model = "vr:stale-missing"
-        mdx_record = ModelRecord("mdx:good", "mdx", "good", "Good")
+        mdx_record = ModelRecord(
+            id='mdx:good',
+            family='mdx',
+            basename='good',
+            display='Good',
+            backend_name='good',
+            artifacts=ModelArtifacts('good.ckpt'),
+            installed=True,
+        )
 
         def resolve(raw: str, **kwargs: Any) -> ModelRecord:
             if kwargs.get("family") == "vr" or "stale" in str(raw):
@@ -192,8 +209,24 @@ class ProfileTests(unittest.TestCase):
         settings.mdx.model = "mdx:good"
         settings.process.vocal_splitter_enabled = True
         settings.process.vocal_splitter = "Split Model"
-        mdx_record = ModelRecord("mdx:good", "mdx", "good", "Good")
-        split_record = ModelRecord("mdx:split", "mdx", "split", "Split Model")
+        mdx_record = ModelRecord(
+            id='mdx:good',
+            family='mdx',
+            basename='good',
+            display='Good',
+            backend_name='good',
+            artifacts=ModelArtifacts('good.ckpt'),
+            installed=True,
+        )
+        split_record = ModelRecord(
+            id='mdx:split',
+            family='mdx',
+            basename='split',
+            display='Split Model',
+            backend_name='split',
+            artifacts=ModelArtifacts('split.ckpt'),
+            installed=True,
+        )
 
         def resolve(raw: str, **kwargs: Any) -> ModelRecord:
             if "split" in str(raw).casefold():
@@ -217,8 +250,24 @@ class ProfileTests(unittest.TestCase):
         settings.mdx.model = "mdx:good"
         settings.mdx.is_secondary_model_activate = True
         settings.mdx.voc_inst_secondary_model = "Secondary"
-        primary = ModelRecord("mdx:good", "mdx", "good", "Good")
-        secondary = ModelRecord("mdx:sec", "mdx", "sec", "Secondary")
+        primary = ModelRecord(
+            id='mdx:good',
+            family='mdx',
+            basename='good',
+            display='Good',
+            backend_name='good',
+            artifacts=ModelArtifacts('good.ckpt'),
+            installed=True,
+        )
+        secondary = ModelRecord(
+            id='mdx:sec',
+            family='mdx',
+            basename='sec',
+            display='Secondary',
+            backend_name='sec',
+            artifacts=ModelArtifacts('sec.ckpt'),
+            installed=True,
+        )
 
         def resolve(raw: str, **kwargs: Any) -> ModelRecord:
             if str(raw) == "Secondary" or "sec" in str(raw).casefold():
@@ -251,7 +300,15 @@ class PlannedSettingsReturnTests(unittest.TestCase):
         pre_settings.mdx.model = "MDX-Net: Display"
         planned = Settings.defaults()
         planned.mdx.model = "mdx:planned-id"
-        record = ModelRecord("mdx:planned-id", "mdx", "planned-id", "Display")
+        record = ModelRecord(
+            id='mdx:planned-id',
+            family='mdx',
+            basename='planned-id',
+            display='Display',
+            backend_name='planned-id',
+            artifacts=ModelArtifacts('planned-id.ckpt'),
+            installed=True,
+        )
         profile = LoadedProfile("defaults", "built-in")
         args = argparse.Namespace(
             model="mdx:planned-id",
@@ -285,8 +342,24 @@ class PlannedSettingsReturnTests(unittest.TestCase):
         planned = Settings.defaults()
         planned.ensemble.selected_models = ["mdx:a", "mdx:b"]
         records = [
-            ModelRecord("mdx:a", "mdx", "a", "A"),
-            ModelRecord("mdx:b", "mdx", "b", "B"),
+            ModelRecord(
+                id='mdx:a',
+                family='mdx',
+                basename='a',
+                display='A',
+                backend_name='a',
+                artifacts=ModelArtifacts('a.ckpt'),
+                installed=True,
+            ),
+            ModelRecord(
+                id='mdx:b',
+                family='mdx',
+                basename='b',
+                display='B',
+                backend_name='b',
+                artifacts=ModelArtifacts('b.ckpt'),
+                installed=True,
+            ),
         ]
         profile = LoadedProfile("defaults", "built-in")
         args = argparse.Namespace(
@@ -325,8 +398,24 @@ class PlannedSettingsReturnTests(unittest.TestCase):
         planned = Settings.defaults()
         planned.ensemble.selected_models = ["mdx:a", "mdx:b"]
         records = [
-            ModelRecord("mdx:a", "mdx", "a", "A"),
-            ModelRecord("mdx:b", "mdx", "b", "B"),
+            ModelRecord(
+                id='mdx:a',
+                family='mdx',
+                basename='a',
+                display='A',
+                backend_name='a',
+                artifacts=ModelArtifacts('a.ckpt'),
+                installed=True,
+            ),
+            ModelRecord(
+                id='mdx:b',
+                family='mdx',
+                basename='b',
+                display='B',
+                backend_name='b',
+                artifacts=ModelArtifacts('b.ckpt'),
+                installed=True,
+            ),
         ]
         profile = LoadedProfile("defaults", "built-in")
         args = argparse.Namespace(
@@ -368,8 +457,24 @@ class PlannedSettingsReturnTests(unittest.TestCase):
 
         settings = Settings.defaults()
         planned = Settings.defaults()
-        model = ModelRecord("mdx:lead", "mdx", "lead", "Lead")
-        splitter = ModelRecord("mdx:split", "mdx", "split", "Split")
+        model = ModelRecord(
+            id='mdx:lead',
+            family='mdx',
+            basename='lead',
+            display='Lead',
+            backend_name='lead',
+            artifacts=ModelArtifacts('lead.ckpt'),
+            installed=True,
+        )
+        splitter = ModelRecord(
+            id='mdx:split',
+            family='mdx',
+            basename='split',
+            display='Split',
+            backend_name='split',
+            artifacts=ModelArtifacts('split.ckpt'),
+            installed=True,
+        )
         profile = LoadedProfile("defaults", "built-in")
         args = argparse.Namespace(
             model="mdx:lead",

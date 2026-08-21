@@ -168,7 +168,7 @@ class AudioJobResolver:
             record = self.identities.resolve(reference)
             if record.family != "apollo":
                 raise ValueError("Audio restore requires an apollo: model")
-            settings.audio_tools.apollo_model = record.engine_name or record.basename
+            settings.audio_tools.apollo_model = record.backend_name
             path = os.path.join(APOLLO_MODELS_DIR, settings.audio_tools.apollo_model)
             digest = None
             primary = None

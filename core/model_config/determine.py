@@ -75,7 +75,7 @@ def _model_config_for_reference(
     return ModelConfig(
         settings,
         repo,
-        record.engine_name or record.display,
+        record.backend_name,
         record.arch,
         **kwargs,
     )

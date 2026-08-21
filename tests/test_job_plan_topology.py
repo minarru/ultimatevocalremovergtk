@@ -14,6 +14,7 @@ from bundled.constants import (
     VOCAL_STEM,
 )
 from core.job_plan import JobResolver, JobSpec, ModelDescriptor, planned_output_stems
+from core.model_identity import ModelArtifacts
 from core.settings import Settings
 from core.stems import EnsemblePair, FOCUS_SECONDARY
 from core.types import ProcessMethod
@@ -263,10 +264,13 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         from core.types import ProcessMethod
 
         record = ModelRecord(
-            "mdx:UVR-MDX-NET-Inst_HQ_4",
-            "mdx",
-            "UVR-MDX-NET-Inst_HQ_4",
-            "MDX-Net — UVR-MDX-NET Inst HQ 4",
+            id='mdx:UVR-MDX-NET-Inst_HQ_4',
+            family='mdx',
+            basename='UVR-MDX-NET-Inst_HQ_4',
+            display='MDX-Net — UVR-MDX-NET Inst HQ 4',
+            backend_name='UVR-MDX-NET-Inst_HQ_4',
+            artifacts=ModelArtifacts('UVR-MDX-NET-Inst_HQ_4.ckpt'),
+            installed=True,
         )
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.MDX
@@ -293,7 +297,13 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
 
         resolver = JobResolver(Mock())
         record = ModelRecord(
-            id="mdx:test", family="mdx", basename="test", display="Test"
+            id='mdx:test',
+            family='mdx',
+            basename='test',
+            display='Test',
+            backend_name='test',
+            artifacts=ModelArtifacts('test.ckpt'),
+            installed=True,
         )
         with patch("core.job_plan.assemble_model", side_effect=fake_assemble):
             resolver._assemble(Settings.defaults(), "separate", [record])
@@ -306,7 +316,13 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.mdx.model = "mdx:broken"
         record = ModelRecord(
-            id="mdx:broken", family="mdx", basename="broken", display="Broken"
+            id='mdx:broken',
+            family='mdx',
+            basename='broken',
+            display='Broken',
+            backend_name='broken',
+            artifacts=ModelArtifacts('broken.ckpt'),
+            installed=True,
         )
         unavailable = Mock(
             model_status=False,

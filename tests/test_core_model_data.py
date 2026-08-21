@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from bundled.constants import DEFAULT, ENSEMBLE_MODE, MDX_ARCH_TYPE, VR_ARCH_TYPE
 from core.model_config import ModelConfig, assemble_model
+from core.model_identity import ModelArtifacts
 from core.settings import Settings
 
 
@@ -70,16 +71,18 @@ class AssembleEnsembleTests(unittest.TestCase):
 
 
 class AssembleMdxIdentityTests(unittest.TestCase):
-    def test_legacy_member_tag_becomes_engine_name(self) -> None:
+    def test_legacy_member_tag_becomes_backend_name(self) -> None:
         """Non-ensemble assemble still feeds the engine basename, not a member tag."""
         from core.model_identity import ModelIdentityService, ModelRecord, canonical_member_tag
 
         record = ModelRecord(
-            "mdx:UVR-MDX-NET-Inst_HQ_4",
-            "mdx",
-            "UVR-MDX-NET-Inst_HQ_4",
-            "UVR-MDX-NET Inst HQ 4",
-            engine_name="UVR-MDX-NET-Inst_HQ_4",
+            id='mdx:UVR-MDX-NET-Inst_HQ_4',
+            family='mdx',
+            basename='UVR-MDX-NET-Inst_HQ_4',
+            display='UVR-MDX-NET Inst HQ 4',
+            backend_name='UVR-MDX-NET-Inst_HQ_4',
+            artifacts=ModelArtifacts('UVR-MDX-NET-Inst_HQ_4.ckpt'),
+            installed=True,
         )
         tag = canonical_member_tag(record)
         captured: list[str] = []
@@ -96,15 +99,31 @@ class AssembleMdxIdentityTests(unittest.TestCase):
         with patch.object(ModelIdentityService, "records", return_value=(record,)):
             with patch("core.model_config.config.ModelConfig", side_effect=fake_config):
                 assemble_model(settings, MagicMock(), tag, MDX_ARCH_TYPE)
-        self.assertEqual(captured, [record.engine_name])
+        self.assertEqual(captured, [record.backend_name])
         self.assertNotIn(":", captured[0])
 
     def test_ensemble_assemble_passes_canonical_ids(self) -> None:
         from core.model_identity import ModelIdentityService, ModelRecord
 
         records = (
-            ModelRecord("mdx:a", "mdx", "a", "A", engine_name="a"),
-            ModelRecord("mdx:b", "mdx", "b", "B", engine_name="b"),
+            ModelRecord(
+                id='mdx:a',
+                family='mdx',
+                basename='a',
+                display='A',
+                backend_name='a',
+                artifacts=ModelArtifacts('a.ckpt'),
+                installed=True,
+            ),
+            ModelRecord(
+                id='mdx:b',
+                family='mdx',
+                basename='b',
+                display='B',
+                backend_name='b',
+                artifacts=ModelArtifacts('b.ckpt'),
+                installed=True,
+            ),
         )
         settings = Settings.defaults()
         settings.ensemble.selected_models = ["mdx:a", "mdx:b"]
@@ -150,7 +169,15 @@ class EnsembleModeIdentityTests(unittest.TestCase):
         from bundled.constants import MDX_ARCH_TYPE
         from core.model_identity import ModelRecord
 
-        record = ModelRecord("mdx:good", "mdx", "good", "Good", engine_name="good")
+        record = ModelRecord(
+            id='mdx:good',
+            family='mdx',
+            basename='good',
+            display='Good',
+            backend_name='good',
+            artifacts=ModelArtifacts('good.ckpt'),
+            installed=True,
+        )
         model = self._build("mdx:good", records=(record,))
         self.assertEqual(model.process_method, MDX_ARCH_TYPE)
         self.assertEqual(model.model_name, "Good")
@@ -160,7 +187,15 @@ class EnsembleModeIdentityTests(unittest.TestCase):
         from bundled.constants import MDX_ARCH_TYPE
         from core.model_identity import ModelRecord, canonical_member_tag
 
-        record = ModelRecord("mdx:good", "mdx", "good", "Good", engine_name="good")
+        record = ModelRecord(
+            id='mdx:good',
+            family='mdx',
+            basename='good',
+            display='Good',
+            backend_name='good',
+            artifacts=ModelArtifacts('good.ckpt'),
+            installed=True,
+        )
         tag = canonical_member_tag(record)
         model = self._build(tag, records=(record,))
         self.assertEqual(model.process_method, MDX_ARCH_TYPE)

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
 from bundled.constants import (
     APOLLO_ARCH_TYPE,
@@ -80,13 +80,52 @@ class ModelId:
 
 
 @dataclass(frozen=True)
+class ModelArtifacts:
+    primary_filename: str
+    supporting_filenames: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class DemucsSpec:
+    version: Literal["v1", "v2", "v3", "v4"]
+    source_layout: Literal["2_stem", "4_stem", "6_stem"]
+
+
+@dataclass(frozen=True)
+class MdxSpec:
+    kind: Literal[
+        "classic_onnx",
+        "mdx23c",
+        "mel_band_roformer",
+        "bs_roformer",
+        "scnet",
+        "scnet_masked",
+        "scnet_tran",
+        "bandit",
+        "bandit_v2",
+    ]
+
+
+@dataclass(frozen=True)
+class CatalogueRef:
+    family: str
+    selection: str
+
+
+@dataclass(frozen=True)
 class ModelRecord:
     id: str
     family: str
     basename: str
     display: str
-    installed: bool = True
-    engine_name: str | None = None
+    backend_name: str
+    artifacts: ModelArtifacts
+    installed: bool
+    catalogue_entry: CatalogueRef | None = None
+    identity_complete: bool = True
+    identity_error: str | None = None
+    demucs: DemucsSpec | None = None
+    mdx: MdxSpec | None = None
 
     @property
     def model_id(self) -> ModelId:
@@ -101,14 +140,25 @@ class ModelRecord:
         return ARCH_BY_FAMILY[self.family]
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "id": self.id,
             "family": self.family,
             "basename": self.basename,
             "display": self.display,
+            "backend_name": self.backend_name,
+            "primary_artifact": self.artifacts.primary_filename,
+            "supporting_artifacts": list(self.artifacts.supporting_filenames),
             "installed": self.installed,
-            "engine_name": self.engine_name or self.basename,
+            "identity_complete": self.identity_complete,
         }
+        if self.identity_error:
+            payload["identity_error"] = self.identity_error
+        if self.demucs is not None:
+            payload["demucs_version"] = self.demucs.version
+            payload["source_layout"] = self.demucs.source_layout
+        if self.mdx is not None:
+            payload["mdx_kind"] = self.mdx.kind
+        return payload
 
 
 def _normalize(value: str) -> str:
@@ -138,7 +188,13 @@ class _ModelInventory:
             for basename, display in zip(basenames, displays):
                 model_id = str(ModelId(family, basename))
                 result[model_id] = ModelRecord(
-                    model_id, family, basename, display or basename
+                    id=model_id,
+                    family=family,
+                    basename=basename,
+                    display=display or basename,
+                    backend_name=basename,
+                    artifacts=ModelArtifacts(primary_filename=basename),
+                    installed=True,
                 )
         from .apollo import list_apollo_models
 
@@ -146,7 +202,13 @@ class _ModelInventory:
             basename = os.path.splitext(filename)[0]
             model_id = str(ModelId("apollo", basename))
             result[model_id] = ModelRecord(
-                model_id, "apollo", basename, basename, True, filename
+                id=model_id,
+                family="apollo",
+                basename=basename,
+                display=basename,
+                backend_name=filename,
+                artifacts=ModelArtifacts(primary_filename=filename),
+                installed=True,
             )
         # Installed basenames, casefolded per family. The setdefault below only
         # defers to an installed model on an exact-case key, so a catalogue
@@ -167,7 +229,13 @@ class _ModelInventory:
                 result.setdefault(
                     model_id,
                     ModelRecord(
-                        model_id, family, str(basename), str(display), False
+                        id=model_id,
+                        family=family,
+                        basename=str(basename),
+                        display=str(display),
+                        backend_name=str(basename),
+                        artifacts=ModelArtifacts(primary_filename=str(basename)),
+                        installed=False,
                     ),
                 )
         return tuple(result.values())
@@ -233,7 +301,7 @@ def resolve_model_record(
         for record in candidates
         if term.casefold() == record.basename.casefold()
         or term.casefold() == record.display.casefold()
-        or term.casefold() == str(record.engine_name or "").casefold()
+        or term.casefold() == record.backend_name.casefold()
     )
     if len(exact) == 1:
         return exact[0]
@@ -247,7 +315,7 @@ def resolve_model_record(
         and (
             needle in _normalize(record.basename)
             or needle in _normalize(record.display)
-            or needle in _normalize(record.engine_name or "")
+            or needle in _normalize(record.backend_name)
         )
     }
     if len(matched) == 1:
@@ -290,7 +358,7 @@ class ModelIdentityService(_ModelInventory):
     ) -> str:
         """Convert a canonical/legacy reference to the value legacy engines consume."""
         record = self.resolve(reference, family=family)
-        return self.legacy_member_tag(record) if member else (record.engine_name or record.display)
+        return self.legacy_member_tag(record) if member else record.backend_name
 
 
 def iter_model_records(repo: Any) -> Iterable[ModelRecord]:
@@ -311,9 +379,13 @@ def canonical_id_from_member_tag(tag: str, repo: Any) -> str:
 
 __all__ = [
     "ARCH_BY_FAMILY",
+    "CatalogueRef",
+    "DemucsSpec",
     "FAMILIES",
     "FAMILY_BY_ARCH",
+    "MdxSpec",
     "METHOD_BY_FAMILY",
+    "ModelArtifacts",
     "ModelId",
     "ModelIdentityService",
     "ModelRecord",

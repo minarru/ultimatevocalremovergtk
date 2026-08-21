@@ -5,13 +5,19 @@ from unittest.mock import Mock
 
 from bundled.constants import DEF_OPT
 from core.job_plan import _apply_model_native_values
-from core.model_identity import ModelRecord
+from core.model_identity import ModelArtifacts, ModelRecord
 from core.settings import Settings
 
 
 def _record(family: str) -> ModelRecord:
     return ModelRecord(
-        id=f"{family}:m", family=family, basename="m", display="M"
+        id=f"{family}:m",
+        family=family,
+        basename="m",
+        display="M",
+        backend_name="m",
+        artifacts=ModelArtifacts("m.ckpt" if family == "mdx" else "m.pth"),
+        installed=True,
     )
 
 
