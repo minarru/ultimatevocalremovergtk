@@ -141,6 +141,11 @@ def build_mdx_c_model(
         # detect it the same way as the hyperace/SCNet variant checks above.
         if any('to_value_residual_mix' in key for key in (state_dict_keys or ())):
             kwargs['value_residual'] = True
+        # "Large Inst v2" attaches a transformer stack to every mask estimator.
+        # Declared by a top-level yaml flag, like hyperace2 above, so it never
+        # reaches the kwarg filter on its own.
+        if getattr(config, 'unwa_inst_large_2', False):
+            kwargs['mask_estimator_transformer'] = True
         return BSRoformer(**kwargs)
     if 'band_SR' in model_cfg or 'sources' in model_cfg:
         has_tran_kwargs = any(str(key).startswith('tran_') for key in model_cfg)

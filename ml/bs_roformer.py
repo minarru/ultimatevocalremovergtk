@@ -334,6 +334,7 @@ class MaskEstimator(Module):
             depth: int,
             mlp_expansion_factor: int = 4,
             hyperace: bool | str = False,
+            mask_estimator_transformer: bool = False,
     ) -> None:
         super().__init__()
         self.dim_inputs = dim_inputs
@@ -362,12 +363,65 @@ class MaskEstimator(Module):
                 variant=hyperace if isinstance(hyperace, str) else VARIANT_V2,
             )
 
+        # "Large Inst v2" checkpoints run their own time/freq transformer stack
+        # over the band features before the per-band MLPs, with a final norm.
+        # Enabled from the config's top-level ``unwa_inst_large_2`` flag — see
+        # engines.mdx_c.build_mdx_c_model. Reference:
+        # https://huggingface.co/pcunwa/BS-Roformer-Large-Inst (bs_roformer.py).
+        self.layers = None
+        self.norm = None
+        if mask_estimator_transformer:
+            # Depth, head count and head dim are fixed in the reference
+            # implementation rather than taken from the parent model, and the
+            # checkpoint's shapes follow it.
+            mask_heads, mask_dim_head, mask_depth = 8, 64, 4
+            mask_kwargs: dict[str, Any] = dict(
+                dim=dim,
+                heads=mask_heads,
+                dim_head=mask_dim_head,
+                attn_dropout=0.0,
+                ff_dropout=0.0,
+                flash_attn=True,
+                norm_output=False,
+            )
+            time_rotary = RotaryEmbedding(dim=mask_dim_head)
+            freq_rotary = RotaryEmbedding(dim=mask_dim_head)
+            self.layers = ModuleList([])
+            for _ in range(mask_depth):
+                self.layers.append(nn.ModuleList([
+                    Transformer(depth=1, rotary_embed=time_rotary, **mask_kwargs),
+                    Transformer(depth=1, rotary_embed=freq_rotary, **mask_kwargs),
+                ]))
+            self.norm = RMSNorm(dim)
+
     def forward(self, x: Tensor) -> Tensor:
         segm_out = None
         if self.segm is not None:
             y = rearrange(x, 'b t f c -> b c t f')
             y = self.segm(y)
             segm_out = rearrange(y, 'b c t f -> b t (f c)')
+
+        if self.layers is not None:
+            for transformer_block in self.layers:
+                pair = cast(ModuleList, transformer_block)
+                time_transformer, freq_transformer = cast(
+                    tuple[Transformer, Transformer], (pair[0], pair[1])
+                )
+
+                x = rearrange(x, 'b t f d -> b f t d')
+                x, ps = pack([x], '* t d')
+                # Our Transformer returns (out, first_values) for value-residual
+                # support; the reference implementation returns a bare tensor.
+                x, _ = time_transformer(x)
+                x, = unpack(x, ps, '* t d')
+
+                x = rearrange(x, 'b f t d -> b t f d')
+                x, ps = pack([x], '* f d')
+                x, _ = freq_transformer(x)
+                x, = unpack(x, ps, '* f d')
+
+            assert self.norm is not None
+            x = self.norm(x)
 
         bands = x.unbind(dim=-2)
 
@@ -446,6 +500,11 @@ class BSRoformer(Module):
             # yaml keys line up with the constructor arg directly, so no
             # checkpoint-key detection is needed.
             use_pope: bool = False,
+            # "Large Inst v2" checkpoints give each mask estimator its own
+            # time/freq transformer stack. Enabled from the config's top-level
+            # ``unwa_inst_large_2`` flag, not from the ``model:`` section --
+            # see engines.mdx_c.build_mdx_c_model.
+            mask_estimator_transformer: bool = False,
     ) -> None:
         super().__init__()
 
@@ -532,6 +591,7 @@ class BSRoformer(Module):
                 depth=mask_estimator_depth,
                 mlp_expansion_factor=mlp_expansion_factor,
                 hyperace=hyperace,
+                mask_estimator_transformer=mask_estimator_transformer,
             )
 
             self.mask_estimators.append(mask_estimator)
