@@ -183,7 +183,10 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
         jobs.append(_skip("composite:ensemble", "needs two ensemble-capable models", composite=True))
 
     # 3. Primary + secondary chain.
-    mdx_tag = next((t for t in installed.ensemble_tags if t.startswith("MDX-Net")), None)
+    # repo.model_list returns family-prefixed tags ("mdx:Name", "vr:Name").
+    # The old predicate matched a raw display name that no longer exists, so
+    # this job was skipped on every install while blaming a missing model.
+    mdx_tag = next((t for t in installed.ensemble_tags if t.startswith("mdx:")), None)
     if installed.vr and mdx_tag is not None:
         jobs.append(
             SweepJob(
@@ -201,7 +204,10 @@ def _composite_jobs(installed: Installed) -> List[SweepJob]:
             )
         )
     else:
-        jobs.append(_skip("composite:secondary-chain", "needs a VR and an MDX model", composite=True))
+        missing = "a VR model" if not installed.vr else "an MDX ensemble tag"
+        jobs.append(
+            _skip("composite:secondary-chain", f"needs {missing}", composite=True)
+        )
 
     # 4. Vocal splitter chain.
     if installed.mdx and installed.karaoke_tags:
@@ -234,8 +240,24 @@ OOM_CPU_OK = "OOM(cpu-ok)"
 UNRECOGNIZED = "UNRECOGNIZED"
 
 
+#: Enough for a torch load error's headline plus its first few key mismatches.
+_DETAIL_MAX_LINES = 6
+
+
 def _first_line(text: str) -> str:
     return (text or "").strip().splitlines()[0] if (text or "").strip() else ""
+
+
+def _error_detail(text: Optional[str]) -> str:
+    """The useful part of an exception message, bounded.
+
+    Keeping only the first line discarded everything for the errors that most
+    need explaining: torch puts "Error(s) in loading state_dict for X:" on line
+    one and the actual size mismatches and missing keys on the lines after it.
+    """
+    lines = [line.strip() for line in (text or "").strip().splitlines()]
+    kept = [line for line in lines if line][:_DETAIL_MAX_LINES]
+    return "\n".join(kept)
 
 
 def classify(
@@ -257,7 +279,7 @@ def classify(
     error_type = result.get("error_type")
     message = str(result.get("message") or "")
     if error_type:
-        detail = _first_line(message)
+        detail = _error_detail(message)
         if is_oom_message(message) or error_type == "OutOfMemoryError":
             return OOM, detail
         return f"FAIL({error_type})", detail
@@ -279,7 +301,10 @@ def is_failure(verdict: str, *, strict: bool) -> bool:
 
 def render_row(job_id: str, verdict: str, elapsed_s: float, detail: str) -> str:
     row = f"{job_id:<52.52} {verdict:<34.34} {elapsed_s:>7.1f}s"
-    return f"{row}\n    {detail}" if detail else row
+    if not detail:
+        return row
+    body = "\n".join(f"    {line}" for line in detail.splitlines())
+    return f"{row}\n{body}"
 
 
 def apply_timeouts(

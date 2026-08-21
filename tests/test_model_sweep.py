@@ -94,14 +94,19 @@ class DiscoveryTests(unittest.TestCase):
 
     def test_secondary_chain_composite_pairs_vr_with_mdx(self) -> None:
         installed = _installed(
-            mdx=["m.ckpt"], vr=["v.pth"], ensemble_tags=["MDX-Net: M", "VR Arc: V"]
+            mdx=["m.ckpt"],
+            vr=["v.pth"],
+            # Family-prefixed, as repo.model_list actually returns. The old
+            # "MDX-Net: M" fixture is why a job that could never run on a real
+            # install kept a green test.
+            ensemble_tags=["mdx:M", "vr:V"],
         )
         jobs = model_sweep.discover_jobs(installed, methods={"composite"})
         chain = next(j for j in jobs if j.id == "composite:secondary-chain")
         self.assertEqual(chain.method, "vr")
         self.assertEqual(chain.model, "v.pth")
         self.assertTrue(chain.overrides["vr_is_secondary_model_activate"])
-        self.assertEqual(chain.overrides["vr_voc_inst_secondary_model"], "MDX-Net: M")
+        self.assertEqual(chain.overrides["vr_voc_inst_secondary_model"], "mdx:M")
         self.assertEqual(chain.overrides["vr_voc_inst_secondary_model_scale"], 0.5)
 
     def test_vocal_splitter_composite_needs_a_karaoke_model(self) -> None:
@@ -202,7 +207,9 @@ class ClassifyTests(unittest.TestCase):
         )
         self.assertEqual(verdict, model_sweep.UNRECOGNIZED)
 
-    def test_detail_is_first_line_only(self) -> None:
+    def test_detail_keeps_the_useful_lines_of_an_error(self) -> None:
+        """Bounded, not truncated to one line: torch load errors explain
+        themselves on the lines *after* the headline."""
         _, detail = model_sweep.classify(
             exit_code=1,
             result=self._result(
@@ -210,7 +217,7 @@ class ClassifyTests(unittest.TestCase):
             ),
             timed_out=False,
         )
-        self.assertEqual(detail, "line one")
+        self.assertEqual(detail, "line one\nline two")
 
 
 class FailurePolicyTests(unittest.TestCase):
@@ -949,6 +956,100 @@ class ResolvedMethodsTests(unittest.TestCase):
     def test_an_explicit_selection_is_recorded_as_given(self) -> None:
         args = model_sweep.build_parser().parse_args(["--method", "mdx"])
         self.assertEqual(model_sweep.run_metadata(args, methods={"mdx"})["methods"], ["mdx"])
+
+
+class SecondaryChainDiscoveryTests(unittest.TestCase):
+    """The secondary-chain composite was permanently skipped on every install."""
+
+    def _installed(self, **kw: Any):
+        base = dict(
+            mdx=["a.ckpt"], vr=["v.pth"], demucs=[], apollo=[],
+            # Real format, as repo.model_list produces: family-prefixed tags.
+            ensemble_tags=["vr:9_HP2-UVR", "mdx:BS_Inst_EXP_VRL"],
+            karaoke_tags=[],
+        )
+        base.update(kw)
+        return _installed(**base)
+
+    def _job(self, jobs: List[Any], job_id: str) -> Any:
+        return next(j for j in jobs if j.id == job_id)
+
+    def test_a_prefixed_mdx_tag_produces_a_real_job(self) -> None:
+        jobs = model_sweep.discover_jobs(self._installed(), methods={"composite"})
+        job = self._job(jobs, "composite:secondary-chain")
+        self.assertNotEqual(job.kind, model_sweep.KIND_SKIP, job.detail)
+        self.assertEqual(
+            job.overrides["vr_voc_inst_secondary_model"], "mdx:BS_Inst_EXP_VRL"
+        )
+
+    def test_it_skips_only_when_no_mdx_tag_is_available(self) -> None:
+        jobs = model_sweep.discover_jobs(
+            self._installed(ensemble_tags=["vr:9_HP2-UVR"]), methods={"composite"}
+        )
+        job = self._job(jobs, "composite:secondary-chain")
+        self.assertEqual(job.kind, model_sweep.KIND_SKIP)
+
+    def test_the_skip_reason_names_what_is_actually_missing(self) -> None:
+        """It claimed 'needs a VR and an MDX model' while both were installed."""
+        jobs = model_sweep.discover_jobs(
+            self._installed(ensemble_tags=["vr:9_HP2-UVR"]), methods={"composite"}
+        )
+        job = self._job(jobs, "composite:secondary-chain")
+        self.assertIn("ensemble", job.detail.lower())
+
+    def test_no_vr_model_still_skips(self) -> None:
+        jobs = model_sweep.discover_jobs(
+            self._installed(vr=[]), methods={"composite"}
+        )
+        job = self._job(jobs, "composite:secondary-chain")
+        self.assertEqual(job.kind, model_sweep.KIND_SKIP)
+
+
+class ErrorDetailTests(unittest.TestCase):
+    """A state_dict load error puts everything useful after the first line."""
+
+    _LOAD_ERROR = (
+        "Error(s) in loading state_dict for BSRoformer:\n"
+        "\tsize mismatch for band_split.to_features.0.weight: "
+        "copying a param with shape torch.Size([384, 2, 2]) from checkpoint\n"
+        "\tUnexpected key(s) in state_dict: \"mask_estimators.0.segm\"\n"
+        "\tMissing key(s) in state_dict: \"final_norm.weight\"\n"
+    )
+
+    def test_keeps_more_than_the_first_line(self) -> None:
+        detail = model_sweep._error_detail(self._LOAD_ERROR)
+        self.assertIn("size mismatch", detail)
+        self.assertIn("Unexpected key", detail)
+
+    def test_keeps_the_first_line_too(self) -> None:
+        self.assertIn(
+            "Error(s) in loading state_dict", model_sweep._error_detail(self._LOAD_ERROR)
+        )
+
+    def test_is_bounded(self) -> None:
+        detail = model_sweep._error_detail("\n".join(f"line {i}" for i in range(50)))
+        self.assertLessEqual(len(detail.splitlines()), 6)
+
+    def test_a_single_line_error_is_unchanged(self) -> None:
+        self.assertEqual(model_sweep._error_detail("boom"), "boom")
+
+    def test_empty_stays_empty(self) -> None:
+        self.assertEqual(model_sweep._error_detail(""), "")
+        self.assertEqual(model_sweep._error_detail(None), "")
+
+    def test_classify_reports_the_full_load_error(self) -> None:
+        verdict, detail = model_sweep.classify(
+            exit_code=1,
+            result={"error_type": "RuntimeError", "message": self._LOAD_ERROR},
+            timed_out=False,
+        )
+        self.assertEqual(verdict, "FAIL(RuntimeError)")
+        self.assertIn("size mismatch", detail)
+
+    def test_render_row_indents_every_line_of_a_multi_line_detail(self) -> None:
+        row = model_sweep.render_row("mdx:x", "FAIL(RuntimeError)", 1.0, "a\nb")
+        lines = row.splitlines()
+        self.assertTrue(all(line.startswith("    ") for line in lines[1:]), row)
 
 
 class SpawnChildProcessGroupTests(unittest.TestCase):
