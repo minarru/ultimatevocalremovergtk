@@ -94,6 +94,46 @@ class KeepTextCutoverTests(unittest.TestCase):
         self.assertEqual(loaded.model, "MDX-Net: Model A")
         self.assertEqual(len(loaded.validation_warnings), 1)
 
+    def test_sparse_cli_profile_validates_apollo_in_its_native_shape(self) -> None:
+        import json
+        import tempfile
+        from unittest.mock import patch
+        from cli.profiles import PROFILE_SCHEMA_VERSION, load_profile
+
+        payload = {
+            "schema_version": PROFILE_SCHEMA_VERSION,
+            "name": "illegal-apollo",
+            "model": None,
+            "members": [],
+            "settings": {"audio_tools.apollo_model": "Apollo: Restoration Model"},
+        }
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+            json.dump(payload, handle)
+            path = handle.name
+        real = Settings.from_json_dict
+
+        def wrapped(data: Any) -> Settings:
+            if isinstance(data, dict) and "settings" in data:
+                raise AssertionError("sparse profile fed to Settings.from_json_dict")
+            return real(data)
+
+        with patch.object(Settings, "from_json_dict", side_effect=wrapped):
+            settings, loaded = load_profile(path)
+
+        self.assertEqual(
+            loaded.settings["audio_tools.apollo_model"],
+            "Apollo: Restoration Model",
+        )
+        self.assertEqual(settings.audio_tools.apollo_model, "Apollo: Restoration Model")
+        self.assertTrue(
+            any("audio_tools.apollo_model" in item for item in loaded.validation_warnings)
+        )
+        self.assertTrue(
+            any("audio_tools.apollo_model" in item for item in settings.validation_warnings)
+        )
+        self.assertNotIn("validation_warnings", loaded.to_dict())
+        self.assertNotIn("validation_warnings", settings.to_json_dict())
+
     def test_repository_validation_preserves_unknown_canonical_text(self) -> None:
         settings = Settings.defaults()
         settings.mdx.model = "mdx:not-installed"

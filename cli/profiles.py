@@ -26,6 +26,7 @@ IDENTITY_SETTING_PATHS = frozenset({
     "ensemble.selected_models",
 })
 MODEL_REFERENCE_SETTING_PATHS = frozenset({
+    "audio_tools.apollo_model",
     "process.vocal_splitter",
     "vr.voc_inst_secondary_model", "vr.other_secondary_model",
     "vr.bass_secondary_model", "vr.drums_secondary_model",
