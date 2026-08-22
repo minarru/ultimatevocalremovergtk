@@ -418,13 +418,14 @@ class AudioToolsPage:
             if record.family == "apollo" and record.installed
         ]
         models = [CHOOSE_MODEL, *((record.id, record.display) for record in records)]
-        stored = self.settings.audio_tools.apollo_model or CHOOSE_MODEL
-        if stored != CHOOSE_MODEL:
-            try:
-                stored = identities.resolve(str(stored), family="apollo").id
-                self.settings.audio_tools.apollo_model = stored
-            except ValueError:
-                pass
+        stored = str(self.settings.audio_tools.apollo_model or CHOOSE_MODEL)
+        # Mirrors ``MethodView.populate_models``: a stored value that is not one
+        # of this picker's installed IDs shows as no selection and is left on
+        # disk exactly as written. Resolving it here and writing the result back
+        # would let a refresh silently convert a legacy value -- which is what
+        # the identity cutover forbids.
+        if stored not in {record.id for record in records}:
+            stored = CHOOSE_MODEL
         was_loading = self._loading
         self._loading = True
         try:
