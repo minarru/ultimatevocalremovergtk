@@ -205,6 +205,31 @@ class InventoryCardinalityTests(unittest.TestCase):
         ):
             build_identity_index(repo, snapshot=snapshot)
 
+    def test_installed_mdx_pair_with_different_stems(self) -> None:
+        import tempfile
+
+        from core.model_inventory import build_identity_index
+
+        with tempfile.TemporaryDirectory() as directory:
+            yaml_path = f"{directory}/config.yaml"
+            with open(yaml_path, "w", encoding="utf-8") as handle:
+                handle.write("model_type: mdx23c\n")
+            repo = _empty_repo(
+                _model_artifact_files=lambda family: (
+                    ["model.ckpt", "config.yaml"] if family == "mdx" else []
+                ),
+                _model_artifact_path=lambda family, name: (
+                    yaml_path if name == "config.yaml" else f"{directory}/{name}"
+                ),
+            )
+            index = build_identity_index(repo, snapshot=_snapshot())
+            record = index.lookup("mdx:model")
+            self.assertTrue(record.installed)
+            self.assertEqual(record.artifacts.primary_filename, "model.ckpt")
+            self.assertEqual(record.artifacts.supporting_filenames, ("config.yaml",))
+            self.assertEqual(record.mdx, MdxSpec("mdx23c"))
+            self.assertTrue(record.identity_complete)
+
 
 class DownloadMatchingLockTests(unittest.TestCase):
     """models download stays catalogue-facing: exact row id, exact

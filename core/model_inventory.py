@@ -41,6 +41,12 @@ _MDX_KIND_HINTS = (
     ("bandit", ("bandit",)),
     ("mdx23c", ("mdx23c",)),
 )
+_CASE_INSENSITIVE_FS = os.path.normcase("A") == os.path.normcase("a")
+
+
+def _artifact_key(family: str, filename: str) -> tuple[str, str]:
+    name = os.path.normcase(filename) if _CASE_INSENSITIVE_FS else filename
+    return (family, name)
 
 
 def artifact_stem(filename: str) -> str:
@@ -257,6 +263,46 @@ def _installed_files(repo: Any, family: str) -> tuple[str, ...]:
     return tuple(str(name) for name in values)
 
 
+def _mdx_installed_yaml(repo: Any, checkpoint_filename: str) -> str | None:
+    files = _installed_files(repo, "mdx")
+    yamls = [name for name in files if name.casefold().endswith(_YAML_SUFFIXES)]
+    checkpoints = [name for name in files if name.casefold().endswith(".ckpt")]
+    if len(yamls) == 1 and len(checkpoints) == 1:
+        return yamls[0]
+    basename = artifact_stem(checkpoint_filename)
+    for name in yamls:
+        if artifact_stem(name) == basename:
+            return name
+    return None
+
+
+def _apollo_config_name(repo: Any, checkpoint_filename: str) -> str | None:
+    import json
+
+    from . import paths
+
+    path_provider = getattr(repo, "_model_artifact_path", None)
+    if not callable(path_provider):
+        return None
+    checkpoint_path = str(path_provider("apollo", checkpoint_filename))
+    hash_table = getattr(repo, "model_hash_table", None) or {}
+    model_hash = hash_table.get(checkpoint_path)
+    if not model_hash:
+        return None
+    json_path = os.path.join(paths.APOLLO_HASH_DIR, f"{model_hash}.json")
+    if not os.path.isfile(json_path):
+        return None
+    try:
+        with open(json_path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    config = payload.get("config_yaml")
+    return str(config) if config else None
+
+
 def _installed_record(repo: Any, family: str, filename: str) -> ModelRecord | None:
     folded = filename.casefold()
     basename = artifact_stem(filename)
@@ -269,14 +315,7 @@ def _installed_record(repo: Any, family: str, filename: str) -> ModelRecord | No
         )
     if family == "mdx" and folded.endswith(".ckpt"):
         path_provider = getattr(repo, "_model_artifact_path", None)
-        yaml_name = next(
-            (
-                name for name in _installed_files(repo, family)
-                if name.casefold().endswith(_YAML_SUFFIXES)
-                and artifact_stem(name) == basename
-            ),
-            None,
-        )
+        yaml_name = _mdx_installed_yaml(repo, filename)
         yaml_path = cast(
             str | None,
             path_provider(family, yaml_name)
@@ -299,8 +338,11 @@ def _installed_record(repo: Any, family: str, filename: str) -> ModelRecord | No
             demucs=spec,
         )
     if family == "apollo" and folded.endswith((".ckpt", ".bin")):
+        config_name = _apollo_config_name(repo, filename)
+        supporting = (config_name,) if config_name else ()
         return _record(
-            family, basename, basename, filename, filename, installed=True
+            family, basename, basename, filename, filename, supporting,
+            installed=True,
         )
     return None
 
@@ -338,11 +380,11 @@ def _installed_demucs_bags(
 def _merge_installed(repo: Any, records: list[ModelRecord]) -> list[ModelRecord]:
     result = list(records)
     by_primary = {
-        (record.family, record.artifacts.primary_filename): index
+        _artifact_key(record.family, record.artifacts.primary_filename): index
         for index, record in enumerate(result)
     }
     supporting = {
-        (record.family, name)
+        _artifact_key(record.family, name)
         for record in result
         for name in record.artifacts.supporting_filenames
     }
@@ -352,7 +394,7 @@ def _merge_installed(repo: Any, records: list[ModelRecord]) -> list[ModelRecord]
             _installed_demucs_bags(repo, files) if family == "demucs" else ({}, set())
         )
         for filename in files:
-            key = (family, filename)
+            key = _artifact_key(family, filename)
             if key in supporting or filename in demucs_members:
                 continue
             existing = by_primary.get(key)
