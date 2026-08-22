@@ -853,6 +853,7 @@ class JobResolver:
         settings = copy.deepcopy(spec.settings)
         settings.process.export_path = os.path.abspath(spec.output)
         diagnostics: list[Diagnostic] = []
+        configs_unavailable = False
         dependencies: dict[str, ModelRecord] = {}
         records: list[ModelRecord] = []
         models: list[Any] = []
@@ -869,12 +870,25 @@ class JobResolver:
             diagnostics.append(Diagnostic("model.identity", str(exc)))
         else:
             if dependencies:
-                dependencies = self._ensure_mdx_yaml_configs(
-                    dependencies, allow_network=allow_network
-                )
+                # An offline miss or a failed download is an actionable
+                # configuration diagnostic, not an exception: every other
+                # planning failure lands in ``diagnostics`` so
+                # ``--dry-run --report json`` still returns a plan payload.
+                # ``dependencies`` keeps its pre-fetch contents either way --
+                # it is what ``model_dependencies`` and the identity digest are
+                # built from, and emptying it would misreport the plan.
+                try:
+                    dependencies = self._ensure_mdx_yaml_configs(
+                        dependencies, allow_network=allow_network
+                    )
+                except ValueError as exc:
+                    diagnostics.append(Diagnostic("model.configuration", str(exc)))
+                    configs_unavailable = True
             records = self._primary_records(dependencies, spec.command)
+        # Assembling a model whose yaml is already known to be missing only
+        # restates the diagnostic just recorded.
         verify_model = level is not ValidationLevel.CONFIG
-        if records and verify_model:
+        if records and verify_model and not configs_unavailable:
             try:
                 with access_policy(
                     allow_network=allow_network,

@@ -7,6 +7,7 @@ import numpy as np
 from unittest.mock import Mock, patch
 
 from bundled.constants import DEMUCS_ARCH_TYPE, VR_ARCH_PM, VR_ARCH_TYPE
+from core import paths
 from core.job_plan import (
     JobResolver,
     JobSpec,
@@ -378,8 +379,11 @@ class MdxYamlFetchPolicyTests(unittest.TestCase):
         resolver.identities = Mock()
         resolver.identities.lookup.return_value = record
         with patch("core.mdx_config_fetch.ensure_mdx_c_config", side_effect=AssertionError("fetch")):
-            with self.assertRaises(ValueError):
-                resolver.resolve(_separate_spec(), allow_network=False)
+            plan = resolver.resolve(_separate_spec(), allow_network=False)
+        # No fetch, and the miss lands in the plan rather than escaping it.
+        self.assertIn(
+            "model.configuration", [item.code for item in plan.diagnostics]
+        )
 
     def test_plan_online_fetches_once_then_relooks_up(self) -> None:
         from core.job_plan import JobResolver
@@ -445,3 +449,60 @@ def _record(model_id: str, *, display: str = "X") -> ModelRecord:
         artifacts=ModelArtifacts(f"{basename}.onnx"),
         installed=True,
     )
+
+
+class OfflineMdxConfigDiagnosticTests(unittest.TestCase):
+    """An unavailable MDX yaml is a plan diagnostic, not an escaping exception.
+
+    ``_ensure_mdx_yaml_configs`` used to be called outside ``resolve``'s
+    ``try/except ValueError``, so its offline raise propagated: the GUI and CLI
+    both caught it broadly, but ``--dry-run --report json`` returned a bare
+    error instead of the plan payload every other planning failure produces.
+    """
+
+    def _spec(self, tmp: str) -> JobSpec:
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.MDX
+        settings.mdx.model = "mdx:roformer"
+        source = os.path.join(tmp, "input.wav")
+        with open(source, "wb") as handle:
+            handle.write(b"RIFF")
+        return JobSpec("separate", settings, (source,), os.path.join(tmp, "out"))
+
+    def _resolver(self) -> JobResolver:
+        record = ModelRecord(
+            id="mdx:roformer",
+            family="mdx",
+            basename="roformer",
+            display="Roformer",
+            backend_name="roformer",
+            artifacts=ModelArtifacts("roformer.ckpt", ("roformer.yaml",)),
+            installed=True,
+            mdx=MdxSpec("bs_roformer"),
+        )
+        repo = Mock()
+        repo.inventory_generation = 0
+        resolver = JobResolver(repo)
+        resolver.identities.lookup = Mock(return_value=record)  # type: ignore[method-assign]
+        return resolver
+
+    def test_offline_yaml_miss_becomes_a_diagnostic(self) -> None:
+        resolver = self._resolver()
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = self._spec(tmp)
+            with patch.object(paths, "MDX_C_CONFIG_PATH", os.path.join(tmp, "configs")):
+                plan = resolver.resolve(
+                    spec, ValidationLevel.MODEL, allow_network=False
+                )
+
+        codes = [item.code for item in plan.diagnostics]
+        self.assertIn("model.configuration", codes)
+        message = next(
+            item.message for item in plan.diagnostics
+            if item.code == "model.configuration"
+        )
+        self.assertIn("not available offline", message)
+        # The payload is still a plan: dependencies and the identity digest are
+        # built from the pre-fetch map, not emptied by the failure.
+        self.assertIn("mdx.model", plan.model_dependencies)
+        self.assertTrue(plan.model_identity_digest)
