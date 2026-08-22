@@ -174,9 +174,12 @@ class IdentityIndex:
     def lookup(self, model_id: str) -> ModelRecord:
         key = parse_stored_model_id(model_id).value
         try:
-            return self._records[key]
+            record = self._records[key]
         except KeyError:
             raise ValueError(f"unknown model {model_id!r}") from None
+        if (record.identity_error or "").startswith("identity collision between "):
+            raise ValueError(f"unavailable model {model_id!r}: {record.identity_error}")
+        return record
 
     def records(self) -> tuple[ModelRecord, ...]:
         return tuple(self._records.values())
@@ -197,7 +200,7 @@ class _ModelInventory:
     def records(self) -> tuple[ModelRecord, ...]:
         from .model_repository import ModelRepository
 
-        if isinstance(self.repo, ModelRepository):
+        if isinstance(self.repo, ModelRepository) or hasattr(self.repo, "_inventory_lock"):
             return self._published_index().records()
         return self._legacy_records()
 
@@ -310,7 +313,7 @@ class _ModelInventory:
     def lookup(self, model_id: str) -> ModelRecord:
         from .model_repository import ModelRepository
 
-        if isinstance(self.repo, ModelRepository):
+        if isinstance(self.repo, ModelRepository) or hasattr(self.repo, "_inventory_lock"):
             return self._published_index().lookup(model_id)
         return resolve_model_record(model_id, self.records(), fuzzy=False)
 

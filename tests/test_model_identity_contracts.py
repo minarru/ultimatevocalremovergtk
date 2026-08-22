@@ -101,6 +101,14 @@ def _fake_demucs_root_ckpt():
     return _empty_repo(list_demucs_models=lambda: ["mystery"]), _snapshot()
 
 
+def _fake_mdx_extension_collision():
+    return _empty_repo(
+        _model_artifact_files=lambda family: (
+            ["foo.onnx", "foo.ckpt"] if family == "mdx" else []
+        ),
+    ), _snapshot()
+
+
 class StrictIdParseTests(unittest.TestCase):
     def test_parses_canonical_id(self) -> None:
         parsed = parse_stored_model_id("mdx:UVR-MDX-NET-Inst_HQ_4")
@@ -229,6 +237,64 @@ class InventoryCardinalityTests(unittest.TestCase):
             self.assertEqual(record.artifacts.supporting_filenames, ("config.yaml",))
             self.assertEqual(record.mdx, MdxSpec("mdx23c"))
             self.assertTrue(record.identity_complete)
+
+
+class CollisionAndSafetyTests(unittest.TestCase):
+    def test_onnx_and_ckpt_same_basename_are_unavailable(self) -> None:
+        from core.model_inventory import build_identity_index
+
+        repo, snapshot = _fake_mdx_extension_collision()
+        index = build_identity_index(repo, snapshot=snapshot)
+        with self.assertRaises(ValueError):
+            index.lookup("mdx:foo")
+        runnable = [
+            record
+            for record in index.records()
+            if record.id == "mdx:foo" and record.identity_complete
+        ]
+        self.assertEqual(runnable, [])
+
+    def test_rejects_parent_directory_artifact_name(self) -> None:
+        from core.model_inventory import validate_artifact_name
+
+        with self.assertRaises(ValueError):
+            validate_artifact_name("../escape.pth", family="vr")
+
+    def test_stale_generation_discards_the_index(self) -> None:
+        import threading
+
+        from core.model_identity import ModelIdentityService
+        from core.model_inventory import build_identity_index
+
+        builds: list[int] = []
+
+        class Repo:
+            inventory_generation = 1
+            catalogue_revision = "a"
+            naming_revision = 0
+            _inventory_lock = threading.RLock()
+
+            def list_vr_models(self):
+                return []
+
+            def list_mdx_models(self):
+                return []
+
+            def list_demucs_models(self):
+                return []
+
+        repo = Repo()
+        service = ModelIdentityService(repo)
+
+        def racing_build(*args, **kwargs):
+            builds.append(repo.inventory_generation)
+            if len(builds) == 1:
+                repo.inventory_generation = 2
+            return build_identity_index(*args, **kwargs)
+
+        with patch("core.model_inventory.build_identity_index", side_effect=racing_build):
+            service.records()
+        self.assertGreaterEqual(len(builds), 2)
 
 
 class DownloadMatchingLockTests(unittest.TestCase):

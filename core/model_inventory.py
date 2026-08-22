@@ -61,20 +61,21 @@ def artifact_stem(filename: str) -> str:
 
 def validate_artifact_name(name: str, *, family: str) -> str:
     """Validate and normalize a model-root-relative artifact name."""
-    text = str(name).replace("\\", "/")
+    text = str(name or "").replace("\\", "/").strip()
     path = PurePosixPath(text)
     if (
         not text
         or text.startswith("/")
+        or text.startswith("~")
         or path.is_absolute()
         or PureWindowsPath(str(name)).is_absolute()
     ):
-        raise ValueError(f"invalid {family} artifact path {name!r}")
+        raise ValueError(f"illegal artifact path {name!r}")
     if any(part in {"", ".", ".."} for part in text.split("/")):
-        raise ValueError(f"invalid {family} artifact path {name!r}")
+        raise ValueError(f"illegal artifact path {name!r}")
     normalized = path.as_posix()
     if normalized.startswith("../"):
-        raise ValueError(f"invalid {family} artifact path {name!r}")
+        raise ValueError(f"illegal artifact path {name!r}")
     return normalized
 
 
@@ -84,10 +85,7 @@ def _entry_files(entry: Any, raw: Any, family: str) -> tuple[str, ...]:
         source = raw if isinstance(raw, Mapping) else {str(raw): ""}
     names: list[str] = []
     for item in source:
-        try:
-            names.append(validate_artifact_name(str(item), family=family))
-        except ValueError:
-            continue
+        names.append(validate_artifact_name(str(item), family=family))
     return tuple(names)
 
 
@@ -106,13 +104,17 @@ def _record(
     demucs: DemucsSpec | None = None,
     mdx: MdxSpec | None = None,
 ) -> ModelRecord:
+    primary = validate_artifact_name(primary, family=family)
+    supporting = tuple(
+        validate_artifact_name(name, family=family) for name in supporting
+    )
     return ModelRecord(
         id=f"{family}:{basename}",
         family=family,
         basename=basename,
         display=display,
         backend_name=backend_name,
-        artifacts=ModelArtifacts(primary, tuple(supporting)),
+        artifacts=ModelArtifacts(primary, supporting),
         installed=installed,
         catalogue_entry=CatalogueRef(family, selection) if selection else None,
         identity_complete=complete,
