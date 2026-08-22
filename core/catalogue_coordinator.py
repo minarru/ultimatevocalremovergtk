@@ -632,13 +632,26 @@ def _basename_index(meta: Mapping[str, Any], arch: str) -> dict[str, str]:
         if getattr(entry, "arch", None) != arch:
             continue
         display = str(getattr(entry, "display", "") or "")
-        checkpoint = getattr(entry, "checkpoint", None)
         files = getattr(entry, "files", {}) or {}
-        names = (
-            [checkpoint]
-            if checkpoint
-            else [name for name in files if _is_checkpoint_name(str(name))]
-        )
+        if arch == DEMUCS_ARCH_TYPE:
+            yaml_names = [
+                name
+                for name in files
+                if str(name).lower().endswith((".yaml", ".yml"))
+            ]
+            if yaml_names:
+                for yaml_name in yaml_names:
+                    stem = os.path.splitext(os.path.basename(str(yaml_name)))[0]
+                    index.setdefault(stem, display)
+                continue
+            names = [name for name in files if _is_checkpoint_name(str(name))]
+        else:
+            checkpoint = getattr(entry, "checkpoint", None)
+            names = (
+                [checkpoint]
+                if checkpoint
+                else [name for name in files if _is_checkpoint_name(str(name))]
+            )
         for filename in names:
             if not filename:
                 continue

@@ -203,6 +203,29 @@ class DisplayIndexPrimaryOnlyTests(unittest.TestCase):
         self.assertEqual(set(index), {"model"})
         self.assertNotIn("config", index)
 
+    def test_demucs_bag_member_stem_is_not_an_index_key(self) -> None:
+        from bundled.constants import DEMUCS_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.catalogue_coordinator import _basename_index
+
+        meta = {
+            "Demucs v4: htdemucs_ft": EntryMeta(
+                label="Demucs v4: htdemucs_ft",
+                display="v4 — htdemucs_ft",
+                arch=DEMUCS_ARCH_TYPE,
+                files={
+                    "f7e0c4bc-ba3fe64a.th": "http://x/f7e0c4bc-ba3fe64a.th",
+                    "d12395a8-e57c48e6.th": "http://x/d12395a8-e57c48e6.th",
+                    "htdemucs_ft.yaml": "http://x/htdemucs_ft.yaml",
+                },
+                checkpoint="f7e0c4bc-ba3fe64a.th",
+            )
+        }
+        index = _basename_index(meta, DEMUCS_ARCH_TYPE)
+        self.assertEqual(set(index), {"htdemucs_ft"})
+        self.assertNotIn("f7e0c4bc-ba3fe64a", index)
+        self.assertNotIn("d12395a8-e57c48e6", index)
+
 
 class ManifestSchemaSnapshotTests(unittest.TestCase):
     """Replayable manifests are schema 1 (separate/ensemble) and 2 (audio).
