@@ -281,6 +281,27 @@ class _ModelInventory:
             return None
         return ensure(vip=True, allow_network=False)
 
+    def _cache_slot(self) -> Any:
+        """The object owning the cached index for this repository.
+
+        Services are constructed per call site -- per view, per secondary model,
+        per dry inspection, per profile field -- so an instance-owned cache
+        never hits and every one of them pays a full ``build_identity_index``
+        (four directory scans, a yaml parse per installed Demucs bag, the
+        bundled-spec reads and the registry read). A real repository owns the
+        cache instead, invalidated by the same generation/revision key; a
+        duck-typed test stand-in keeps the per-instance one.
+        """
+        from .model_repository import ModelRepository
+
+        return self.repo if isinstance(self.repo, ModelRepository) else self
+
+    def invalidate(self) -> None:
+        """Drop the cached index this service reads."""
+        slot = self._cache_slot()
+        slot._identity_cache_key = None
+        slot._identity_cache = None
+
     def _published_index(self) -> IdentityIndex:
         from .model_inventory import build_identity_index
 
@@ -288,13 +309,14 @@ class _ModelInventory:
         lock = getattr(repo, "_inventory_lock", None)
         if lock is None:
             return build_identity_index(repo, snapshot=self._snapshot())
+        slot = self._cache_slot()
         with lock:
             generation = repo.inventory_generation
             catalogue_revision = repo.catalogue_revision
             naming_revision = repo.naming_revision
             key = (generation, catalogue_revision, naming_revision)
-            if self._identity_cache_key == key and self._identity_cache is not None:
-                return self._identity_cache
+            if slot._identity_cache_key == key and slot._identity_cache is not None:
+                return slot._identity_cache
             index = build_identity_index(repo, snapshot=self._snapshot())
             if (
                 repo.inventory_generation != generation
@@ -302,8 +324,8 @@ class _ModelInventory:
                 or repo.naming_revision != naming_revision
             ):
                 return self._published_index()
-            self._identity_cache_key = key
-            self._identity_cache = index
+            slot._identity_cache_key = key
+            slot._identity_cache = index
             return index
 
     @property

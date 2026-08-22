@@ -298,8 +298,13 @@ def _installed_files(repo: Any, family: str) -> tuple[str, ...]:
     return tuple(str(name) for name in values)
 
 
-def _mdx_installed_yaml(repo: Any, checkpoint_filename: str) -> str | None:
-    files = _installed_files(repo, "mdx")
+def _mdx_installed_yaml(files: tuple[str, ...], checkpoint_filename: str) -> str | None:
+    """Pick the yaml that belongs to one installed MDX checkpoint.
+
+    ``files`` is the caller's already-listed MDX artifact set: this used to
+    re-list the directory for every installed ``.ckpt``, making one index build
+    O(n) directory listings in the MDX family alone.
+    """
     yamls = [name for name in files if name.casefold().endswith(_YAML_SUFFIXES)]
     checkpoints = [name for name in files if name.casefold().endswith(".ckpt")]
     if len(yamls) == 1 and len(checkpoints) == 1:
@@ -338,7 +343,9 @@ def _apollo_config_name(repo: Any, checkpoint_filename: str) -> str | None:
     return str(config) if config else None
 
 
-def _installed_record(repo: Any, family: str, filename: str) -> ModelRecord | None:
+def _installed_record(
+    repo: Any, family: str, filename: str, files: tuple[str, ...] = ()
+) -> ModelRecord | None:
     folded = filename.casefold()
     basename = artifact_stem(filename)
     if family == "vr" and folded.endswith(".pth"):
@@ -350,7 +357,7 @@ def _installed_record(repo: Any, family: str, filename: str) -> ModelRecord | No
         )
     if family == "mdx" and folded.endswith(".ckpt"):
         path_provider = getattr(repo, "_model_artifact_path", None)
-        yaml_name = _mdx_installed_yaml(repo, filename)
+        yaml_name = _mdx_installed_yaml(files, filename)
         yaml_path = cast(
             str | None,
             path_provider(family, yaml_name)
@@ -445,7 +452,7 @@ def _merge_installed(repo: Any, records: list[ModelRecord]) -> list[ModelRecord]
                 ))
                 continue
             try:
-                record = _installed_record(repo, family, filename)
+                record = _installed_record(repo, family, filename, files)
             except ValueError as exc:
                 # Same rule as the catalogue rows: one unrepresentable filename
                 # on disk (a leading ``~``, say) drops that model, it does not

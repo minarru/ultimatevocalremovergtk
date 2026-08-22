@@ -538,3 +538,66 @@ class SentinelLockTests(unittest.TestCase):
     def test_choose_and_no_model_strings_are_stable(self) -> None:
         self.assertEqual(CHOOSE_MODEL, "Choose Model")
         self.assertEqual(NO_MODEL, "No Model Selected")
+
+
+class IdentityIndexCostTests(unittest.TestCase):
+    """The index is built once per repository state, not once per service."""
+
+    def test_mdx_family_is_listed_once_per_build(self) -> None:
+        from core.model_inventory import build_identity_index
+
+        calls: list[str] = []
+
+        def artifact_files(family: str) -> list[str]:
+            calls.append(family)
+            if family != "mdx":
+                return []
+            return [
+                "a.ckpt", "a.yaml", "b.ckpt", "b.yaml", "c.ckpt", "c.yaml",
+            ]
+
+        repo = _empty_repo(
+            _model_artifact_files=artifact_files,
+            _model_artifact_path=lambda family, name: f"/nowhere/{family}/{name}",
+        )
+        index = build_identity_index(repo, snapshot=_snapshot())
+
+        self.assertEqual(
+            sorted(record.id for record in index.records() if record.family == "mdx"),
+            ["mdx:a", "mdx:b", "mdx:c"],
+        )
+        self.assertEqual(
+            calls.count("mdx"), 1,
+            "the MDX artifact directory must be listed once, not once per checkpoint",
+        )
+
+    def test_two_services_over_one_repository_share_the_built_index(self) -> None:
+        from unittest.mock import patch
+
+        from core.model_identity import ModelIdentityService
+        from core.model_repository import ModelRepository
+
+        builds: list[int] = []
+        repo = ModelRepository()
+
+        from core import model_inventory
+
+        real_build = model_inventory.build_identity_index
+
+        def counting_build(*args: Any, **kwargs: Any):
+            builds.append(1)
+            return real_build(*args, **kwargs)
+
+        with patch.object(model_inventory, "build_identity_index", counting_build):
+            first = ModelIdentityService(repo).index
+            second = ModelIdentityService(repo).index
+
+        self.assertIs(first, second)
+        self.assertEqual(len(builds), 1)
+
+        with patch.object(model_inventory, "build_identity_index", counting_build):
+            repo.invalidate_models()
+            third = ModelIdentityService(repo).index
+
+        self.assertIsNot(third, first)
+        self.assertEqual(len(builds), 2)

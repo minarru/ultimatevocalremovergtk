@@ -57,6 +57,11 @@ class ModelRepository:
         self._notifying_models_changed = False
         self._inventory_lock = threading.RLock()
         self._inventory_generation = 0
+        # Owned here, not on ModelIdentityService: services are built per call
+        # site, so a per-service cache never hits. Keyed on the same
+        # generation/catalogue/naming triple the service computes.
+        self._identity_cache_key: Optional[Tuple[int, str, int]] = None
+        self._identity_cache: Optional["IdentityIndex"] = None
         self._naming_revision = 0
         self._catalogue = catalogue
         self.reload_mappers()
@@ -331,6 +336,8 @@ class ModelRepository:
             debug("model", f"invalidate_models generation={self._inventory_generation}")
             self._stem_check_cache = None
             self._karaoke_cache = None
+            self._identity_cache_key = None
+            self._identity_cache = None
             self.model_hash_table.clear()
             self.reload_mappers()
             self._notify_models_changed()

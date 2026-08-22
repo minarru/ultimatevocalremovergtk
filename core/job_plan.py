@@ -836,8 +836,7 @@ class JobResolver:
         if callable(invalidate):
             invalidate()
 
-        self.identities._identity_cache_key = None
-        self.identities._identity_cache = None
+        self.identities.invalidate()
         return {
             path: self.identities.lookup(record.id)
             for path, record in dependencies.items()
