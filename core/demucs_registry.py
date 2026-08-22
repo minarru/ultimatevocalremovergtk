@@ -13,7 +13,13 @@ from bundled.constants import (
 )
 
 from . import paths
+from .json_store import locked_json_path, read_json_object, write_json_atomic
 from .model_identity import DemucsSpec, parse_stored_model_id
+
+
+_DEMUCS_REGISTRY_SCHEMA_VERSION = 1
+_DEMUCS_VERSIONS = frozenset({"v1", "v2", "v3", "v4"})
+_DEMUCS_LAYOUTS = frozenset({"2_stem", "4_stem", "6_stem"})
 
 _SOURCE_LAYOUTS: dict[int, tuple[str, dict[str, int]]] = {
     2: ("2_stem", DEMUCS_2_SOURCE_MAPPER),
@@ -34,6 +40,109 @@ def _bundled_path(filename: str) -> str:
     return os.path.join(
         paths.BUNDLED_MODELS_DIR, "Demucs_Models", "model_data", filename
     )
+
+
+def _registered_models_path(models_dir: str) -> str:
+    return os.path.join(models_dir, "model_data", "registered_models.json")
+
+
+def _empty_registry_document() -> dict[str, Any]:
+    return {
+        "schema_version": _DEMUCS_REGISTRY_SCHEMA_VERSION,
+        "models": {},
+        "by_primary_hash": {},
+    }
+
+
+def _normalize_demucs_registry_relative_path(models_dir: str, value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("Demucs registry paths must be non-empty")
+    rooted = os.path.abspath(models_dir)
+    candidate = os.path.abspath(os.path.join(rooted, text.replace("\\", os.sep)))
+    if os.path.commonpath((rooted, candidate)) != rooted:
+        raise ValueError("path escapes Demucs model root")
+    relative = os.path.relpath(candidate, rooted)
+    if relative in {"", "."}:
+        raise ValueError("Demucs registry paths must reference a file")
+    return relative.replace(os.sep, "/")
+
+
+def _normalize_demucs_registry_model(
+    models_dir: str, model_id: str, raw: Mapping[str, Any]
+) -> dict[str, Any]:
+    parsed = parse_stored_model_id(model_id)
+    if parsed.family != "demucs":
+        raise ValueError(f"invalid Demucs registry ID {model_id!r}")
+
+    display_name = str(raw.get("display_name") or "").strip()
+    backend_name = str(raw.get("backend_name") or "").strip()
+    primary_hash = str(raw.get("primary_hash") or "").strip()
+    demucs_version = str(raw.get("demucs_version") or "").strip()
+    source_layout = str(raw.get("source_layout") or "").strip()
+    if not display_name:
+        raise ValueError(f"{parsed.value} is missing display_name")
+    if not backend_name:
+        raise ValueError(f"{parsed.value} is missing backend_name")
+    if not primary_hash:
+        raise ValueError(f"{parsed.value} is missing primary_hash")
+    if demucs_version not in _DEMUCS_VERSIONS:
+        raise ValueError(f"invalid Demucs version for {parsed.value}")
+    if source_layout not in _DEMUCS_LAYOUTS:
+        raise ValueError(f"invalid Demucs source layout for {parsed.value}")
+
+    supporting_raw = raw.get("supporting_artifacts", ())
+    if not isinstance(supporting_raw, list):
+        raise ValueError(f"{parsed.value} supporting_artifacts must be a list")
+
+    return {
+        "display_name": display_name,
+        "backend_name": backend_name,
+        "entrypoint": _normalize_demucs_registry_relative_path(
+            models_dir, raw.get("entrypoint")
+        ),
+        "supporting_artifacts": [
+            _normalize_demucs_registry_relative_path(models_dir, path)
+            for path in supporting_raw
+        ],
+        "primary_hash": primary_hash,
+        "demucs_version": demucs_version,
+        "source_layout": source_layout,
+    }
+
+
+def _normalize_demucs_registry_document(
+    payload: Mapping[str, Any] | None, *, models_dir: str
+) -> dict[str, Any]:
+    if payload is None:
+        return _empty_registry_document()
+    if int(payload.get("schema_version") or 0) != _DEMUCS_REGISTRY_SCHEMA_VERSION:
+        raise ValueError("unsupported Demucs registry schema")
+    raw_models = payload.get("models")
+    if not isinstance(raw_models, Mapping):
+        raise ValueError("Demucs registry is missing models")
+
+    models: dict[str, dict[str, Any]] = {}
+    by_primary_hash: dict[str, str] = {}
+    for model_id, raw in raw_models.items():
+        if not isinstance(raw, Mapping):
+            raise ValueError(f"invalid Demucs registry entry {model_id!r}")
+        normalized = _normalize_demucs_registry_model(models_dir, str(model_id), raw)
+        canonical_id = parse_stored_model_id(str(model_id)).value
+        primary_hash = str(normalized["primary_hash"])
+        existing = by_primary_hash.get(primary_hash)
+        if existing is not None and existing != canonical_id:
+            raise ValueError(
+                f"duplicate Demucs primary_hash {primary_hash!r} for {existing!r} and {canonical_id!r}"
+            )
+        models[canonical_id] = normalized
+        by_primary_hash[primary_hash] = canonical_id
+
+    return {
+        "schema_version": _DEMUCS_REGISTRY_SCHEMA_VERSION,
+        "models": models,
+        "by_primary_hash": by_primary_hash,
+    }
 
 
 def mapper_stems() -> set[str]:
@@ -122,7 +231,36 @@ def validate_demucs_inference_layouts(
     return source_map
 
 
+class DemucsRegistry:
+    def __init__(self, *, models_dir: str | None = None):
+        self.models_dir = os.path.abspath(models_dir or paths.DEMUCS_MODELS_DIR)
+        self.path = _registered_models_path(self.models_dir)
+        self.lock_path = f"{self.path}.lock"
+
+    def load(self) -> dict[str, Any]:
+        with locked_json_path(self.lock_path):
+            try:
+                payload = read_json_object(self.path)
+            except FileNotFoundError:
+                return _empty_registry_document()
+            normalized = _normalize_demucs_registry_document(
+                payload, models_dir=self.models_dir
+            )
+            if normalized != payload:
+                write_json_atomic(self.path, normalized)
+            return normalized
+
+    def save(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        normalized = _normalize_demucs_registry_document(
+            payload, models_dir=self.models_dir
+        )
+        with locked_json_path(self.lock_path):
+            write_json_atomic(self.path, normalized)
+        return normalized
+
+
 __all__ = [
+    "DemucsRegistry",
     "validate_demucs_inference_layouts",
     "demucs_source_layout_name",
     "load_bundled_demucs_specs",
