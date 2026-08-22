@@ -9,9 +9,12 @@ showing the old model list until it was collapsed and reopened.
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
+from bundled.constants import CHOOSE_MODEL, DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE
+from core.model_identity import ModelArtifacts, ModelRecord
 from ui.views.base import MethodView
 from ui.widgets.lazy_populate import LazyPopulator
 
@@ -132,6 +135,220 @@ class RefreshModelsTests(unittest.TestCase):
 
         self.assertEqual(view.populates, 2)
 
+
+def _record(
+    model_id: str,
+    display: str,
+    *,
+    installed: bool = True,
+    identity_complete: bool = True,
+) -> ModelRecord:
+    family, basename = model_id.split(":", 1)
+    return ModelRecord(
+        id=model_id,
+        family=family,
+        basename=basename,
+        display=display,
+        backend_name=basename,
+        artifacts=ModelArtifacts(primary_filename=basename),
+        installed=installed,
+        identity_complete=identity_complete,
+    )
+
+
+class InstalledRecordPickerTests(unittest.TestCase):
+    """The primary method picker is a projection of identity records."""
+
+    def _populate(
+        self,
+        records: list[ModelRecord],
+        *,
+        arch: str = MDX_ARCH_TYPE,
+        stored: object = CHOOSE_MODEL,
+        legacy_basenames: list[str] | None = None,
+    ) -> tuple[list[object], list[object], mock.Mock]:
+        view: Any = MethodView.__new__(MethodView)
+        view.context = SimpleNamespace(repo=object())
+        view.settings = object()
+        view.model_key = "mdx_net_model"
+        view.method_key = arch
+        view.resolution_method_key = ""
+        view.model_row = object()
+        basenames = legacy_basenames or [record.basename for record in records]
+        view.list_models = mock.Mock(return_value=basenames)
+
+        values: list[object] = []
+        selections: list[object] = []
+        write = mock.Mock()
+        legacy_displays = [record.display for record in records]
+        if len(legacy_displays) < len(basenames):
+            legacy_displays.extend(basenames[len(legacy_displays) :])
+
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records",
+            return_value=tuple(records),
+        ), mock.patch(
+            "ui.views.base.map_basenames_to_display",
+            return_value=legacy_displays,
+        ), mock.patch(
+            "ui.views.base.get_flat", return_value=stored
+        ), mock.patch(
+            "ui.views.base.set_combo_tag_values",
+            side_effect=lambda _row, items: values.extend(items),
+        ), mock.patch(
+            "ui.views.base.set_combo_value",
+            side_effect=lambda _row, value: selections.append(value),
+        ), mock.patch("ui.views.base.set_flat", write):
+            MethodView.populate_models(view)
+        return values, selections, write
+
+    def test_duplicate_displays_keep_two_distinct_ids(self) -> None:
+        values, _selections, _write = self._populate(
+            [
+                _record("mdx:first-checkpoint", "Community Vocals"),
+                _record("mdx:second-checkpoint", "Community Vocals"),
+            ]
+        )
+
+        self.assertEqual(
+            values,
+            [
+                CHOOSE_MODEL,
+                ("mdx:first-checkpoint", "Community Vocals"),
+                ("mdx:second-checkpoint", "Community Vocals"),
+            ],
+        )
+
+    def test_picker_uses_sdr_order_then_display_and_id_tiebreaks(self) -> None:
+        values, _selections, _write = self._populate(
+            [
+                _record("mdx:z-unscored", "Zulu"),
+                _record("mdx:b_sdr_1143", "Beta"),
+                _record("mdx:z_sdr_1297", "Zulu score"),
+                _record("mdx:a_sdr_1143", "Beta"),
+            ]
+        )
+
+        self.assertEqual(
+            values,
+            [
+                CHOOSE_MODEL,
+                ("mdx:z_sdr_1297", "Zulu score"),
+                ("mdx:a_sdr_1143", "Beta"),
+                ("mdx:b_sdr_1143", "Beta"),
+                ("mdx:z-unscored", "Zulu"),
+            ],
+        )
+
+    def test_illegal_display_text_is_visual_no_selection_without_a_write(self) -> None:
+        _values, selections, write = self._populate(
+            [_record("demucs:htdemucs", "v4 — htdemucs")],
+            arch=DEMUCS_ARCH_TYPE,
+            stored="v4 — htdemucs",
+        )
+
+        self.assertEqual(selections, [CHOOSE_MODEL])
+        write.assert_not_called()
+
+    def test_unhashable_stored_value_is_visual_no_selection_without_a_write(self) -> None:
+        try:
+            _values, selections, write = self._populate(
+                [_record("demucs:htdemucs", "v4 — htdemucs")],
+                arch=DEMUCS_ARCH_TYPE,
+                stored=["v4 — htdemucs"],
+            )
+        except TypeError as exc:
+            self.fail(f"preserved non-string model value crashed the picker: {exc}")
+
+        self.assertEqual(selections, [CHOOSE_MODEL])
+        write.assert_not_called()
+
+    def test_only_installed_family_records_are_members(self) -> None:
+        values, _selections, _write = self._populate(
+            [
+                _record("demucs:loose-th", "Loose TH", identity_complete=False),
+                _record("demucs:catalogue-only", "Catalogue only", installed=False),
+                _record("mdx:other-family", "Other family"),
+            ],
+            arch=DEMUCS_ARCH_TYPE,
+            legacy_basenames=["loose-th", "catalogue-only", "other-family", "msst.ckpt"],
+        )
+
+        self.assertEqual(values, [CHOOSE_MODEL, ("demucs:loose-th", "Loose TH")])
+
+    def test_save_does_not_overwrite_a_write_gated_stored_value(self) -> None:
+        view: Any = MethodView.__new__(MethodView)
+        view.settings = object()
+        view.model_key = "demucs_model"
+        view._model_write_gated = True
+        view.selected_model = mock.Mock(return_value=CHOOSE_MODEL)
+        view._persist_stem_only = mock.Mock()
+        view.save_options = mock.Mock()
+        view._save_scales = mock.Mock()
+        view._save_switches = mock.Mock()
+        view._save_spins = mock.Mock()
+
+        with mock.patch("ui.views.base.set_flat") as write:
+            MethodView.save(view)
+
+        write.assert_not_called()
+
+    def test_unsupported_demucs_checkpoint_does_not_count_as_an_available_model(self) -> None:
+        view: Any = MethodView.__new__(MethodView)
+        view.context = SimpleNamespace(repo=object())
+        view.method_key = DEMUCS_ARCH_TYPE
+        view.resolution_method_key = ""
+        view.list_models = mock.Mock(return_value=["unsupported-msst.ckpt"])
+
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records", return_value=()
+        ):
+            available = MethodView.has_any_models(view)
+
+        self.assertFalse(available)
+
+    def test_extra_model_picker_intersects_eligible_ids_with_installed_records(self) -> None:
+        records = [
+            _record("mdx:first", "Same display"),
+            _record("mdx:second", "Same display"),
+            _record("mdx:catalogue", "Catalogue only", installed=False),
+        ]
+        view: Any = MethodView.__new__(MethodView)
+        view.context = SimpleNamespace(repo=object())
+        view.settings = object()
+        view._model_combos = [
+            {
+                "row": object(),
+                "key": "mdx_voc_inst_secondary_model",
+                "provider": lambda: [
+                    "mdx:catalogue",
+                    "mdx:second",
+                    "mdx:first",
+                ],
+                "ready": False,
+            }
+        ]
+        values: list[object] = []
+
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records",
+            return_value=tuple(records),
+        ), mock.patch(
+            "ui.views.base.get_flat", return_value="No Model Selected"
+        ), mock.patch(
+            "ui.views.base.set_combo_tag_values",
+            side_effect=lambda _row, items: values.extend(items),
+        ), mock.patch("ui.views.base.set_combo_value"):
+            MethodView._populate_model_combos_now(view)
+
+        self.assertEqual(
+            values,
+            [
+                "No Model Selected",
+                ("mdx:first", "Same display"),
+                ("mdx:second", "Same display"),
+            ],
+        )
 
 if __name__ == "__main__":
     unittest.main()

@@ -86,7 +86,6 @@ from ..help_text import (
 )
 from ..hints import set_icon_button_a11y, set_tooltip
 from ..markup import set_row_subtitle, set_row_title
-from core.model_display import format_tag_subtitle, format_tag_title
 from core import (
     canonical_saved_ensemble_name,
     list_saved_ensembles,
@@ -175,6 +174,7 @@ class EnsemblePage:
         self._syncing_preset = False
         self._model_checks: Dict[str, Gtk.CheckButton] = {}
         self._model_row_text: Dict[str, tuple[str, str]] = {}
+        self._models_write_gated = False
         self._models_dirty = False
 
         # Distribute the groups across the shared two-column layout. The member
@@ -1020,8 +1020,34 @@ class EnsemblePage:
 
     # -- Model multi-select list ------------------------------------------------
 
-    def _rebuild_model_list(self, preselected: List[str]) -> None:
-        preselected_set = set(preselected)
+    def _rebuild_model_list(self, preselected: List[typing.Any]) -> None:
+        from core.model_identity import (
+            ARCH_BY_FAMILY,
+            ModelIdentityService,
+            parse_stored_model_id,
+        )
+
+        identity_error: Exception | None = None
+        try:
+            all_records = tuple(ModelIdentityService(self.context.repo).records())
+        except Exception as exc:  # noqa: BLE001 - surfaced below for a chosen pair
+            all_records = ()
+            identity_error = exc
+        installed_ids = {record.id for record in all_records if record.installed}
+        preselected_ids = {
+            value for value in preselected if isinstance(value, str)
+        }
+
+        def is_write_gated(value: typing.Any) -> bool:
+            if not isinstance(value, str):
+                return True
+            try:
+                parse_stored_model_id(value)
+            except ValueError:
+                return True
+            return value not in installed_ids
+
+        self._models_write_gated = any(is_write_gated(value) for value in preselected)
         child = self.models_listbox.get_first_child()
         while child is not None:
             nxt = child.get_next_sibling()
@@ -1040,7 +1066,19 @@ class EnsemblePage:
             return
 
         try:
-            tags = self.context.repo.ensemble_model_list(self.settings, pair)
+            if identity_error is not None:
+                raise identity_error
+            eligible_ids = set(
+                self.context.repo.ensemble_model_list(self.settings, pair)
+            )
+            records = sorted(
+                (
+                    record
+                    for record in all_records
+                    if record.installed and record.id in eligible_ids
+                ),
+                key=lambda record: (record.display.casefold(), record.id),
+            )
         except Exception as exc: # noqa: BLE001 - surfaced to the user
             from ..errorlog import log_error
 
@@ -1053,20 +1091,21 @@ class EnsemblePage:
             self._update_models_summary()
             return
 
-        if not tags:
+        if not records:
             self.models_listbox.append(Adw.ActionRow(title="No compatible models found"))
             self._update_models_dialog_status()
             self._update_models_summary()
             return
 
-        for tag in tags:
-            title = format_tag_title(tag, self.context.repo)
-            subtitle = format_tag_subtitle(tag)
+        for record in records:
+            tag = record.id
+            title = record.display
+            subtitle = ARCH_BY_FAMILY[record.family]
             row = Adw.ActionRow()
             set_row_title(row, title)
             row.set_subtitle(subtitle)
             check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
-            check.set_active(tag in preselected_set)
+            check.set_active(tag in preselected_ids)
             check.connect("toggled", self._on_model_toggled)
             row.add_prefix(check)
             row.set_activatable_widget(check)
@@ -1080,7 +1119,7 @@ class EnsemblePage:
         # _persist_selected_models then drops them — correct, but invisible,
         # so leave a trail. Karaoke models moving to their own pair is the
         # common cause.
-        dropped = preselected_set - set(tags)
+        dropped = preselected_ids - {record.id for record in records}
         if dropped:
             from core.debug_log import debug
 
@@ -1105,6 +1144,8 @@ class EnsemblePage:
         return list(self.settings.ensemble.selected_models or [])
 
     def _persist_selected_models(self) -> None:
+        if getattr(self, "_models_write_gated", False):
+            return
         self.settings.ensemble.selected_models = list(self._selected_model_tags())
 
     def _models_summary(self) -> str:
@@ -1238,6 +1279,7 @@ class EnsemblePage:
         self.settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         if not self._loading:
             set_combo_value(self.saved_row, CHOOSE_ENSEMBLE_OPTION)
+        self._models_write_gated = False
         self._persist_selected_models()
         self._update_models_dialog_status()
         self._update_models_summary()

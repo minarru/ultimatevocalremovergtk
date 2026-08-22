@@ -23,8 +23,6 @@ from typing import Callable
 from gi.repository import Adw
 
 from bundled.constants import DEVERB_MAPPER, NO_MODEL
-from core.model_display import format_tag_title
-
 from ..help_text import (
     IS_DEVERB_OPT_HELP,
     IS_DEVERB_VOC_HELP,
@@ -69,6 +67,8 @@ class VocalSplitRow(Adw.ExpanderRow):
         #: unopened row would clobber the stored tag with ``NO_MODEL``.
         #: ``_populator.ready`` is that gate.
         self._stored_splitter = NO_MODEL
+        self._splitter_write_gated = False
+        self._splitter_ids: set[str] = set()
         self._populator = LazyPopulator(
             is_expanded=self.get_expanded,
             populate=self._populate_models_now,
@@ -132,7 +132,18 @@ class VocalSplitRow(Adw.ExpanderRow):
                     else [NO_MODEL, self._stored_splitter]
                 )
                 set_combo_tag_values(self.splitter_row, seed)
-            set_combo_value(self.splitter_row, self._stored_splitter)
+            self._splitter_write_gated = bool(
+                self._populator.ready
+                and self._stored_splitter not in (NO_MODEL, None, "")
+                and (
+                    not isinstance(self._stored_splitter, str)
+                    or self._stored_splitter not in self._splitter_ids
+                )
+            )
+            set_combo_value(
+                self.splitter_row,
+                NO_MODEL if self._splitter_write_gated else self._stored_splitter,
+            )
         finally:
             self._syncing = False
 
@@ -157,7 +168,7 @@ class VocalSplitRow(Adw.ExpanderRow):
         )
         # Only trust the combo once its real list has loaded; before that it is
         # a seeded placeholder and the stored tag is authoritative.
-        if self._populator.ready:
+        if self._populator.ready and not self._splitter_write_gated:
             process.vocal_splitter = get_combo_value(self.splitter_row)
         else:
             process.vocal_splitter = self._stored_splitter
@@ -191,27 +202,32 @@ class VocalSplitRow(Adw.ExpanderRow):
             values = []
         self._syncing = True
         try:
-            tag_items = []
-            for tag in values:
-                try:
-                    friendly = format_tag_title(tag, self._repo)
-                except Exception:
-                    friendly = tag
-                tag_items.append((tag, friendly))
-            # A stored tag absent from the fresh list -- a deleted/renamed model,
-            # an older catalogue, or ``karaoke_model_list`` raising -- must still
-            # be selectable, or selecting it here would silently rewrite it to
-            # ``NO_MODEL`` on the next persist. Keep it as its own entry rather
-            # than dropping it.
-            known_tags = {NO_MODEL, *(item for item, _ in tag_items)}
-            if self._stored_splitter not in known_tags:
-                try:
-                    friendly = format_tag_title(self._stored_splitter, self._repo)
-                except Exception:
-                    friendly = self._stored_splitter
-                tag_items.append((self._stored_splitter, friendly))
+            from core.model_identity import ModelIdentityService
+
+            eligible = set(values)
+            records = sorted(
+                (
+                    record
+                    for record in ModelIdentityService(self._repo).records()
+                    if record.installed and record.id in eligible
+                ),
+                key=lambda record: (record.display.casefold(), record.id),
+            )
+            tag_items = [(record.id, record.display) for record in records]
             set_combo_tag_values(self.splitter_row, [NO_MODEL, *tag_items])
-            set_combo_value(self.splitter_row, self._stored_splitter)
+            ids = {record.id for record in records}
+            self._splitter_ids = ids
+            self._splitter_write_gated = bool(
+                self._stored_splitter not in (NO_MODEL, None, "")
+                and (
+                    not isinstance(self._stored_splitter, str)
+                    or self._stored_splitter not in ids
+                )
+            )
+            set_combo_value(
+                self.splitter_row,
+                NO_MODEL if self._splitter_write_gated else self._stored_splitter,
+            )
         finally:
             self._syncing = False
 
@@ -228,7 +244,7 @@ class VocalSplitRow(Adw.ExpanderRow):
         A collapsed row is invalidated but not repopulated -- resolving the list
         hashes checkpoints, and the next expand will do it.
         """
-        if self._populator.ready:
+        if self._populator.ready and not self._splitter_write_gated:
             self._stored_splitter = get_combo_value(self.splitter_row) or NO_MODEL
         self._populator.invalidate()
 
@@ -241,6 +257,7 @@ class VocalSplitRow(Adw.ExpanderRow):
                 self._stored_splitter = (
                     get_combo_value(self.splitter_row) or NO_MODEL
                 )
+                self._splitter_write_gated = False
             self.persist_to_settings(self._settings)
             self.refresh_summary()
         self._on_changed()

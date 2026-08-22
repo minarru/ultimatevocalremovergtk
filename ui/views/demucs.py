@@ -1,6 +1,8 @@
 """Demucs method view."""
 import typing
 
+from gi.repository import Adw
+
 from bundled.constants import (
     ALL_STEMS,
     DEMUCS_4_STEM_OPTIONS,
@@ -60,7 +62,31 @@ class DemucsView(MethodView):
         return self.context.repo.demucs_name_select_MAPPER
 
     def build_options(self, group: typing.Any):
+        self.identity_banner = Adw.Banner(revealed=False)
+        group.add(self.identity_banner)
         self.add_option_scale(group, "segment", "Segment", values=DEMUCS_SEGMENTS, hint=SEGMENT_HELP)
+
+    def _on_model_resolved(self, model: typing.Any) -> None:
+        from core.model_identity import ModelIdentityService
+
+        record = None
+        selected = self.selected_model()
+        try:
+            record = ModelIdentityService(self.context.repo).lookup(selected)
+        except ValueError:
+            pass
+        incomplete = bool(
+            record
+            and record.family == "demucs"
+            and record.installed
+            and not record.identity_complete
+        )
+        if incomplete and record is not None:
+            detail = record.identity_error or "Demucs version or source layout is unknown"
+            self.identity_banner.set_title(
+                f"This Demucs model needs identity configuration: {detail}"
+            )
+        self.identity_banner.set_revealed(incomplete)
 
     def _configure_save_stems(self, model: typing.Any) -> None:
         model_name = self.selected_model() or ""

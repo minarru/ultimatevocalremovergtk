@@ -44,6 +44,7 @@ class VocalSplitRowTests(unittest.TestCase):
 
     def _row(self):
         from ui.widgets.vocal_split_row import VocalSplitRow
+        from core.model_identity import ModelArtifacts, ModelRecord
         from core.model_repository import ModelRepository
 
         repo = ModelRepository()
@@ -57,6 +58,28 @@ class VocalSplitRowTests(unittest.TestCase):
             self.karaoke_calls += 1
             return list(self.karaoke_models)
         repo.karaoke_model_list = patched_karaoke
+
+        def installed_records(_service: typing.Any):
+            return tuple(
+                ModelRecord(
+                    id=model_id,
+                    family="vr",
+                    basename=model_id.partition(":")[2],
+                    display=model_id.partition(":")[2],
+                    backend_name=model_id.partition(":")[2],
+                    artifacts=ModelArtifacts(model_id.partition(":")[2]),
+                    installed=True,
+                )
+                for model_id in self.karaoke_models
+            )
+
+        identity_patcher = patch(
+            "core.model_identity.ModelIdentityService.records",
+            autospec=True,
+            side_effect=installed_records,
+        )
+        identity_patcher.start()
+        self.addCleanup(identity_patcher.stop)
 
         self.changed = 0
 
@@ -142,7 +165,7 @@ class VocalSplitRowTests(unittest.TestCase):
         self.assertEqual(settings.get("set_vocal_splitter"), "VR Arc: UVR-BVE-4B")
 
     def test_persist_preserves_a_stored_tag_missing_from_the_model_list(self):
-        """A deleted/renamed model's tag must survive expansion, not be reset.
+        """A deleted/renamed model is visually empty but survives persistence.
 
         Regression: expanding the row used to rebuild the combo from just the
         fresh (non-matching) list, silently landing the selection on index 0
@@ -152,6 +175,9 @@ class VocalSplitRowTests(unittest.TestCase):
         row = self._row()
         row.apply_from_settings(settings)
         row.set_expanded(True)  # triggers _populate_models against the fresh list
+        from ui.widgets.rows import get_combo_value
+
+        self.assertEqual(get_combo_value(row.splitter_row), "No Model Selected")
         row.persist_to_settings(settings)
         self.assertEqual(
             settings.get("set_vocal_splitter"), "VR Arc: 5_HP-Karaoke-UVR-DELETED"
@@ -273,6 +299,7 @@ class VocalSplitRowTests(unittest.TestCase):
 
     def test_refresh_preserves_a_selection_absent_from_the_new_list(self):
         from ui.widgets.rows import combo_values, get_combo_value
+        from bundled.constants import NO_MODEL
 
         row = self._row()
         row.apply_from_settings(self._settings())
@@ -284,7 +311,10 @@ class VocalSplitRowTests(unittest.TestCase):
         self.karaoke_models[:] = ["vr:UVR-BVE-5B"]
         row.refresh_models()
 
-        self.assertEqual(get_combo_value(row.splitter_row), "vr:UVR-BVE-4B")
+        self.assertEqual(get_combo_value(row.splitter_row), NO_MODEL)
+        settings = self._settings()
+        row.persist_to_settings(settings)
+        self.assertEqual(settings.get("set_vocal_splitter"), "vr:UVR-BVE-4B")
 
 
 if __name__ == "__main__":

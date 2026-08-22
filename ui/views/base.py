@@ -56,10 +56,11 @@ from ..widgets.rows import (
     use_wrapping_list,
 )
 from core.model_display import (
-    format_tag_title,
     map_basenames_to_display,
     resolve_model_basename,
 )
+from core.model_identity import FAMILY_BY_ARCH, ModelIdentityService, parse_stored_model_id
+from core.model_scores import parse_sdr_score
 from ..widgets.lazy_populate import LazyPopulator
 from ..widgets.stem_only import SaveStemsSection
 from core.model_stem_semantics import recommended_export_note, stem_display_overrides
@@ -156,6 +157,7 @@ class MethodView:
         self._switch_rows = {}
         self._spin_rows = {}
         self._model_combos = []
+        self._model_write_gated = False
         self._secondary_slot_rows = {}
         self._switch_dependent_appliers = []
         self.hints = HelpHintManager()
@@ -211,7 +213,11 @@ class MethodView:
 
     def has_any_models(self) -> bool:
         """Whether any model is installed for this method (excludes the picker placeholder)."""
-        return bool(self.list_models())
+        family = FAMILY_BY_ARCH[self.method_key_for_resolution]
+        return any(
+            record.installed and record.family == family
+            for record in ModelIdentityService(self.context.repo).records()
+        )
 
     def name_mapper(self):
         return None
@@ -219,34 +225,48 @@ class MethodView:
     def populate_models(self) -> None:
         arch = self.method_key_for_resolution
         repo = self.context.repo
-        basenames = list(self.list_models())
-        names = map_basenames_to_display(basenames, arch, repo)
-        from core.model_scores import sort_labels_by_sdr
-
-        sorted_names = sort_labels_by_sdr(
-            names,
-            score_texts=[(display, basename) for display, basename in zip(names, basenames)],
-        )
-        basename_by_display = {display: basename for display, basename in zip(names, basenames)}
-        from core.model_identity import FAMILY_BY_ARCH, ModelId
-
         family = FAMILY_BY_ARCH[arch]
-        items = [
-            (str(ModelId(family, basename_by_display[name])), name)
-            for name in sorted_names
-        ]
+        installed = tuple(
+            record
+            for record in ModelIdentityService(repo).records()
+            if record.installed
+        )
+        records = [record for record in installed if record.family == family]
+
+        def sort_key(record: typing.Any) -> tuple[int, float, str, str]:
+            score = parse_sdr_score(record.display, record.basename)
+            return (
+                1 if score is None else 0,
+                0.0 if score is None else -score,
+                record.display.casefold(),
+                record.id,
+            )
+
+        records.sort(key=sort_key)
+        items = [(record.id, record.display) for record in records]
         set_combo_tag_values(self.model_row, [CHOOSE_MODEL, *items])
         stored = get_flat(self.settings, self.model_key, CHOOSE_MODEL)
-        if stored not in (CHOOSE_MODEL, NO_MODEL, None):
+        ids = {item[0] for item in items}
+        self._model_write_gated = False
+        stored_is_item = isinstance(stored, str) and stored in ids
+        if stored not in (CHOOSE_MODEL, NO_MODEL, None, "") and not stored_is_item:
             try:
-                from core.model_identity import ModelIdentityService
-
-                stored = ModelIdentityService(repo).resolve(
-                    str(stored), family=family
-                ).id
-                set_flat(self.settings, self.model_key, stored)
+                parse_stored_model_id(str(stored))
             except ValueError:
-                pass
+                self._model_write_gated = True
+                set_combo_value(self.model_row, CHOOSE_MODEL)
+                return
+            present = any(record.id == stored for record in installed)
+            if not present:
+                self._model_write_gated = True
+                set_combo_value(self.model_row, CHOOSE_MODEL)
+                return
+            # A canonical ID installed under another family is likewise only
+            # a visual no-selection state. It stays stored verbatim until the
+            # user explicitly chooses one of this picker's installed IDs.
+            self._model_write_gated = True
+            set_combo_value(self.model_row, CHOOSE_MODEL)
+            return
         set_combo_value(self.model_row, stored)
 
     def refresh_models(self) -> None:
@@ -295,6 +315,7 @@ class MethodView:
             return
         from core.debug_log import debug, preview_text
 
+        self._model_write_gated = False
         set_flat(self.settings, self.model_key, self.selected_model())
         name = self.selected_model()
         debug(
@@ -446,7 +467,8 @@ class MethodView:
         so from an inactive view (e.g. Demucs ``quick_all`` while MDX is active)
         clears the active view's export focus before plan review.
         """
-        set_flat(self.settings, self.model_key, self.selected_model())
+        if not getattr(self, "_model_write_gated", False):
+            set_flat(self.settings, self.model_key, self.selected_model())
         if include_stem_only:
             self._persist_stem_only()
         self.save_options()
@@ -684,10 +706,18 @@ class MethodView:
                     values = entry["provider"]()
                 except Exception:
                     values = []
-                tag_items = [
-                    (tag, format_tag_title(tag, self.context.repo))
-                    for tag in values
-                ]
+                eligible = set(values)
+                records = sorted(
+                    (
+                        record
+                        for record in ModelIdentityService(
+                            self.context.repo
+                        ).records()
+                        if record.installed and record.id in eligible
+                    ),
+                    key=lambda record: (record.display.casefold(), record.id),
+                )
+                tag_items = [(record.id, record.display) for record in records]
                 set_combo_tag_values(entry["row"], [NO_MODEL, *tag_items])
                 set_combo_value(
                     entry["row"], get_flat(self.settings, entry["key"], NO_MODEL)
