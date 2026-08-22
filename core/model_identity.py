@@ -191,8 +191,17 @@ class _ModelInventory:
 
     def __init__(self, repo: Any):
         self.repo = repo
+        self._identity_cache_key: tuple[int, str, int] | None = None
+        self._identity_cache: IdentityIndex | None = None
 
     def records(self) -> tuple[ModelRecord, ...]:
+        from .model_repository import ModelRepository
+
+        if isinstance(self.repo, ModelRepository):
+            return self._published_index().records()
+        return self._legacy_records()
+
+    def _legacy_records(self) -> tuple[ModelRecord, ...]:
         from .model_display import map_basenames_to_display
 
         result: dict[str, ModelRecord] = {}
@@ -260,6 +269,50 @@ class _ModelInventory:
                     ),
                 )
         return tuple(result.values())
+
+    def _snapshot(self) -> Any | None:
+        coordinator = getattr(self.repo, "catalogue", None)
+        if coordinator is None:
+            return None
+        latest = getattr(coordinator, "_latest", None)
+        if latest is not None:
+            return latest
+        ensure = getattr(coordinator, "ensure", None)
+        if not callable(ensure):
+            return None
+        return ensure(vip=True, allow_network=False)
+
+    def _published_index(self) -> IdentityIndex:
+        from .model_inventory import build_identity_index
+
+        repo = self.repo
+        lock = getattr(repo, "_inventory_lock", None)
+        if lock is None:
+            return build_identity_index(repo, snapshot=self._snapshot())
+        with lock:
+            generation = repo.inventory_generation
+            catalogue_revision = repo.catalogue_revision
+            naming_revision = repo.naming_revision
+            key = (generation, catalogue_revision, naming_revision)
+            if self._identity_cache_key == key and self._identity_cache is not None:
+                return self._identity_cache
+            index = build_identity_index(repo, snapshot=self._snapshot())
+            if (
+                repo.inventory_generation != generation
+                or repo.catalogue_revision != catalogue_revision
+                or repo.naming_revision != naming_revision
+            ):
+                return self._published_index()
+            self._identity_cache_key = key
+            self._identity_cache = index
+            return index
+
+    def lookup(self, model_id: str) -> ModelRecord:
+        from .model_repository import ModelRepository
+
+        if isinstance(self.repo, ModelRepository):
+            return self._published_index().lookup(model_id)
+        return resolve_model_record(model_id, self.records(), fuzzy=False)
 
     def _cached_index(self, name: str) -> dict[str, str]:
         provider = getattr(self.repo, name)

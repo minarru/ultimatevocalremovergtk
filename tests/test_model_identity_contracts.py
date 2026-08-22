@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from bundled.constants import CHOOSE_MODEL, NO_MODEL
@@ -20,6 +21,84 @@ from core.model_identity import (
     ModelRecord,
     parse_stored_model_id,
 )
+
+
+def _empty_repo(**overrides):
+    values = {
+        "list_vr_models": lambda: [],
+        "list_mdx_models": lambda: [],
+        "list_demucs_models": lambda: [],
+        "inventory_generation": 0,
+        "catalogue_revision": "x",
+        "naming_revision": 0,
+        "mdx_name_select_MAPPER": {},
+        "demucs_name_select_MAPPER": {},
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _snapshot(*, vr=None, mdx=None, demucs=None, apollo=None, meta=None):
+    families = {
+        "vr": vr or {},
+        "mdx": mdx or {},
+        "demucs": demucs or {},
+        "apollo": apollo or {},
+    }
+    return SimpleNamespace(
+        **families,
+        meta_by_family={
+            family: dict((meta or {}).get(family, {})) for family in families
+        },
+        unsupported={},
+    )
+
+
+def _fake_mdx_pair():
+    from bundled.constants import MDX_ARCH_TYPE
+    from core.catalog_sources import EntryMeta
+
+    selectable = "MDX-Net Model: Pair"
+    files = {
+        "model.ckpt": "http://example.invalid/model.ckpt",
+        "config.yaml": "http://example.invalid/config.yaml",
+    }
+    entry = EntryMeta(
+        label=selectable,
+        display="MDX-Net — Pair",
+        arch=MDX_ARCH_TYPE,
+        files=files,
+        checkpoint="model.ckpt",
+    )
+    return _empty_repo(), _snapshot(
+        mdx={selectable: files}, meta={"mdx": {selectable: entry}}
+    )
+
+
+def _fake_demucs_bag():
+    from bundled.constants import DEMUCS_ARCH_TYPE
+    from core.catalog_sources import EntryMeta
+
+    selectable = "Demucs v4: htdemucs_ft"
+    files = {
+        "htdemucs_ft.yaml": "http://example.invalid/htdemucs_ft.yaml",
+        "f7e0c4bc-ba3fe64a.th": "http://example.invalid/f7e0c4bc-ba3fe64a.th",
+        "d12395a8-e57c48e6.th": "http://example.invalid/d12395a8-e57c48e6.th",
+    }
+    entry = EntryMeta(
+        label=selectable,
+        display="v4 — htdemucs_ft",
+        arch=DEMUCS_ARCH_TYPE,
+        files=files,
+        checkpoint="htdemucs_ft.yaml",
+    )
+    return _empty_repo(), _snapshot(
+        demucs={selectable: files}, meta={"demucs": {selectable: entry}}
+    )
+
+
+def _fake_demucs_root_ckpt():
+    return _empty_repo(list_demucs_models=lambda: ["mystery"]), _snapshot()
 
 
 class StrictIdParseTests(unittest.TestCase):
@@ -68,6 +147,63 @@ class IdentityIndexLookupTests(unittest.TestCase):
     def test_display_does_not_hit(self) -> None:
         with self.assertRaises(ValueError):
             self.index.lookup("MDX-Net — Some Model")
+
+
+class ArtifactStemTests(unittest.TestCase):
+    def test_strips_compound_th_gz(self) -> None:
+        from core.model_inventory import artifact_stem
+
+        self.assertEqual(artifact_stem("tasnet.th.gz"), "tasnet")
+        self.assertEqual(artifact_stem("tasnet.th"), "tasnet")
+        self.assertEqual(artifact_stem("model.ckpt"), "model")
+
+
+class InventoryCardinalityTests(unittest.TestCase):
+    def test_mdx_checkpoint_plus_yaml_is_one_record(self) -> None:
+        from core.model_inventory import build_identity_index
+
+        repo, snapshot = _fake_mdx_pair()
+        index = build_identity_index(repo, snapshot=snapshot)
+        ids = [record.id for record in index.records() if record.family == "mdx"]
+        self.assertEqual(ids, ["mdx:model"])
+        record = index.lookup("mdx:model")
+        self.assertEqual(record.artifacts.primary_filename, "model.ckpt")
+        self.assertEqual(record.artifacts.supporting_filenames, ("config.yaml",))
+
+    def test_demucs_bag_plus_members_is_one_record(self) -> None:
+        from core.model_inventory import build_identity_index
+
+        repo, snapshot = _fake_demucs_bag()
+        index = build_identity_index(repo, snapshot=snapshot)
+        demucs = [record for record in index.records() if record.family == "demucs"]
+        self.assertEqual([record.id for record in demucs], ["demucs:htdemucs_ft"])
+        self.assertTrue(demucs[0].artifacts.supporting_filenames)
+
+    def test_yaml_shaped_id_is_not_a_record(self) -> None:
+        from core.model_inventory import build_identity_index
+
+        repo, snapshot = _fake_mdx_pair()
+        index = build_identity_index(repo, snapshot=snapshot)
+        with self.assertRaises(ValueError):
+            index.lookup("mdx:config")
+
+    def test_demucs_root_ckpt_is_not_a_record(self) -> None:
+        from core.model_inventory import build_identity_index
+
+        repo, snapshot = _fake_demucs_root_ckpt()
+        index = build_identity_index(repo, snapshot=snapshot)
+        ids = [record.id for record in index.records()]
+        self.assertNotIn("demucs:mystery", ids)
+
+    def test_builder_does_not_touch_the_network(self) -> None:
+        from core.model_inventory import build_identity_index
+
+        repo, snapshot = _fake_mdx_pair()
+        with patch(
+            "core.mdx_config_fetch.ensure_mdx_c_config",
+            side_effect=AssertionError("fetch"),
+        ):
+            build_identity_index(repo, snapshot=snapshot)
 
 
 class DownloadMatchingLockTests(unittest.TestCase):

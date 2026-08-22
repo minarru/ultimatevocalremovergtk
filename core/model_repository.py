@@ -52,6 +52,7 @@ class ModelRepository:
         self._models_changed_subscribers: List[Callable[[], None]] = []
         self._models_changed_lock = threading.Lock()
         self._notifying_models_changed = False
+        self._inventory_lock = threading.RLock()
         self._inventory_generation = 0
         self._naming_revision = 0
         self._catalogue = catalogue
@@ -156,19 +157,61 @@ class ModelRepository:
         models: List[str] = []
         bag_sigs = demucs_yaml_bag_member_sigs(paths.DEMUCS_NEWER_REPO_DIR)
         for directory in (paths.DEMUCS_NEWER_REPO_DIR, paths.DEMUCS_MODELS_DIR):
-            for name in _list_models(directory, (".th", ".ckpt", ".yaml", ".gz")):
+            for name in _list_model_files(
+                directory, (".th", ".th.gz", ".ckpt", ".yaml", ".yml")
+            ):
+                if directory == paths.DEMUCS_MODELS_DIR and name.lower().endswith(".ckpt"):
+                    continue
+                stem = _artifact_stem(name)
                 if (
                     directory == paths.DEMUCS_NEWER_REPO_DIR
-                    and is_demucs_bag_member_weight(name, bag_sigs)
+                    and is_demucs_bag_member_weight(stem, bag_sigs)
                 ):
                     continue
-                models.append(name)
+                models.append(stem)
         seen, unique = set(), []
         for name in models:
             if name not in seen:
                 seen.add(name)
                 unique.append(name)
         return unique
+
+    def _model_artifact_files(self, family: str) -> List[str]:
+        """Return installed artifact filenames without hashing their contents."""
+        if family == "vr":
+            return _list_model_files(paths.VR_MODELS_DIR, (".pth",))
+        if family == "mdx":
+            return _list_model_files(
+                paths.MDX_MODELS_DIR, (".onnx", ".ckpt", ".yaml", ".yml")
+            )
+        if family == "apollo":
+            return _list_model_files(paths.APOLLO_MODELS_DIR, (".ckpt", ".bin"))
+        if family != "demucs":
+            return []
+        newer = _list_model_files(
+            paths.DEMUCS_NEWER_REPO_DIR, (".th", ".th.gz", ".ckpt", ".yaml", ".yml")
+        )
+        legacy = [
+            name
+            for name in _list_model_files(
+                paths.DEMUCS_MODELS_DIR, (".th", ".th.gz", ".yaml", ".yml")
+            )
+            if not name.lower().endswith(".ckpt")
+        ]
+        return newer + [name for name in legacy if name not in newer]
+
+    def _model_artifact_path(self, family: str, filename: str) -> str:
+        directories = {
+            "vr": (paths.VR_MODELS_DIR,),
+            "mdx": (paths.MDX_MODELS_DIR,),
+            "demucs": (paths.DEMUCS_NEWER_REPO_DIR, paths.DEMUCS_MODELS_DIR),
+            "apollo": (paths.APOLLO_MODELS_DIR,),
+        }
+        for directory in directories.get(family, ()):
+            candidate = os.path.join(directory, filename)
+            if os.path.isfile(candidate):
+                return candidate
+        return os.path.join(directories.get(family, ("",))[0], filename)
 
     # -- Model tags / stem filtering (ported from UVR's model menus) -----------
 
@@ -268,13 +311,14 @@ class ModelRepository:
         """
         from .debug_log import debug
 
-        self._inventory_generation += 1
-        debug("model", f"invalidate_models generation={self._inventory_generation}")
-        self._stem_check_cache = None
-        self._karaoke_cache = None
-        self.model_hash_table.clear()
-        self.reload_mappers()
-        self._notify_models_changed()
+        with self._inventory_lock:
+            self._inventory_generation += 1
+            debug("model", f"invalidate_models generation={self._inventory_generation}")
+            self._stem_check_cache = None
+            self._karaoke_cache = None
+            self.model_hash_table.clear()
+            self.reload_mappers()
+            self._notify_models_changed()
 
     def model_list(
         self,
@@ -454,13 +498,23 @@ def _checklist_id(model: Any) -> str:
 
 
 def _list_models(directory: str, extensions: typing.Any) -> List[str]:
+    return sorted(_artifact_stem(name) for name in _list_model_files(directory, extensions))
+
+
+def _artifact_stem(filename: str) -> str:
+    from .model_inventory import artifact_stem
+
+    return artifact_stem(filename)
+
+
+def _list_model_files(directory: str, extensions: typing.Any) -> List[str]:
     if not os.path.isdir(directory):
         return []
     names = []
     for entry in os.listdir(directory):
         full = os.path.join(directory, entry)
         if os.path.isfile(full) and entry.lower().endswith(tuple(extensions)):
-            names.append(os.path.splitext(entry)[0])
+            names.append(entry)
     return sorted(names)
 
 
