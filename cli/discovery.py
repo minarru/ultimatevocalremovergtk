@@ -167,10 +167,10 @@ def _model_info(record: Any, repo: Any, *, detailed: bool = False) -> dict[str, 
         return info
     settings = Settings.defaults()
     section = getattr(settings, record.family)
-    section.model = record.display
+    section.model = record.id
     settings.process.method = record.method
     try:
-        model = repo.resolve_model_dry(settings, record.method, record.display)
+        model = repo.resolve_model_dry(settings, record.method, record.id)
     except (AttributeError, KeyError, OSError, ValueError):
         model = None
     info: dict[str, Any] = {

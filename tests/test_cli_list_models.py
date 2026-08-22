@@ -248,6 +248,23 @@ class DiscoveryTests(unittest.TestCase):
     def args(self) -> argparse.Namespace:
         return argparse.Namespace(report="json", quiet=False, verbose=False)
 
+    def test_models_show_configures_installed_demucs_canonical_id(self) -> None:
+        out, err = io.StringIO(), io.StringIO()
+        with patch.dict(
+            os.environ,
+            {"UVR_DISABLE_POLITREES": "1", "UVR_DISABLE_MVSEPLESS": "1"},
+            clear=False,
+        ), redirect_stdout(out), redirect_stderr(err):
+            code = main([
+                "models", "show", "demucs:hdemucs_mmi", "--report", "json",
+            ])
+
+        self.assertEqual(code, 0, err.getvalue())
+        item = json.loads(out.getvalue())["items"][0]
+        self.assertEqual(item["id"], "demucs:hdemucs_mmi")
+        self.assertTrue(item["configured"])
+        self.assertEqual(item["architectural_facts"]["demucs_stem_count"], 4)
+
     def test_devices_have_auto_selection(self) -> None:
         out = io.StringIO()
         with patch("core.gpu.list_gpu_devices", return_value=[("0", "GPU")]), redirect_stdout(out):
