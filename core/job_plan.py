@@ -785,6 +785,8 @@ def device_runtime_diagnostics(settings: Settings) -> list[Diagnostic]:
 def _mdx_yaml_config_names(record: ModelRecord) -> tuple[str, ...]:
     if record.family != "mdx":
         return ()
+    if record.mdx is not None and record.mdx.kind == "classic_onnx":
+        return ()
     names = tuple(
         name for name in record.artifacts.supporting_filenames
         if name.casefold().endswith((".yaml", ".yml"))
