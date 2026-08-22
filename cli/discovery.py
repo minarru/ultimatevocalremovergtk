@@ -81,7 +81,7 @@ def add_models_parser(sub: argparse._SubParsersAction) -> None:
     listing.add_argument(
         "--all-known",
         action="store_true",
-        help="Include catalogue-only aliases that are not installed",
+        help="Include catalogue-only records that are not installed",
     )
     add_reporting_args(listing)
     listing.set_defaults(func=cmd_models_list)
