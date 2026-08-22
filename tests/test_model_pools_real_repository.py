@@ -236,6 +236,32 @@ class RealModelPoolTests(unittest.TestCase):
                 with self.subTest(pool=name, tag=tag):
                     index.lookup(tag)
 
+    def test_unrecognized_demucs_row_does_not_empty_valid_pools(self) -> None:
+        """One unbuildable installed row must not discard valid siblings."""
+        bad = "Test-Unrecognized-Demucs"
+        _write_json(
+            os.path.join(paths.DEMUCS_NEWER_REPO_DIR, f"{bad}.yaml"),
+            {"models": []},
+        )
+        self.repo.invalidate_models()
+
+        configs = self.repo.stem_check(self.settings)
+        self.assertEqual(
+            sorted(config.canonical_id for config in configs),
+            [f"mdx:{_MDX_VOCAL}", f"vr:{_VR_KARAOKE}", f"vr:{_VR_VOCAL}"],
+        )
+        self.assertEqual(
+            sorted(
+                self.repo.ensemble_model_list(
+                    self.settings, EnsemblePair.VOCALS_INSTRUMENTAL
+                )
+            ),
+            [f"mdx:{_MDX_VOCAL}", f"vr:{_VR_VOCAL}"],
+        )
+        self.assertEqual(
+            self.repo.karaoke_model_list(self.settings), [f"vr:{_VR_KARAOKE}"]
+        )
+
     def test_unresolvable_tag_degrades_to_unavailable(self) -> None:
         """A tag with no identity record must not raise, only be unavailable."""
         with mock.patch.object(

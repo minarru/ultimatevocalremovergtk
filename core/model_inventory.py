@@ -443,16 +443,16 @@ def _merge_installed(repo: Any, records: list[ModelRecord]) -> list[ModelRecord]
             if existing is not None:
                 result[existing] = replace(result[existing], installed=True)
                 continue
-            if filename in demucs_bags:
-                basename = artifact_stem(filename)
-                result.append(_record(
-                    "demucs", basename, basename, basename, filename,
-                    demucs_bags[filename], installed=True, complete=False,
-                    error=f"unknown Demucs version or source layout for {filename}",
-                ))
-                continue
             try:
-                record = _installed_record(repo, family, filename, files)
+                if filename in demucs_bags:
+                    basename = artifact_stem(filename)
+                    record = _record(
+                        "demucs", basename, basename, basename, filename,
+                        demucs_bags[filename], installed=True, complete=False,
+                        error=f"unknown Demucs version or source layout for {filename}",
+                    )
+                else:
+                    record = _installed_record(repo, family, filename, files)
             except ValueError as exc:
                 # Same rule as the catalogue rows: one unrepresentable filename
                 # on disk (a leading ``~``, say) drops that model, it does not

@@ -267,6 +267,42 @@ class InventoryCardinalityTests(unittest.TestCase):
         self.assertIn("vr:real", ids)
         self.assertNotIn("vr:~stray", ids)
 
+    def test_malformed_installed_demucs_bag_does_not_empty_the_index(self) -> None:
+        import tempfile
+
+        from core.model_inventory import build_identity_index
+
+        cases = (
+            ("illegal entrypoint", ["../bad.yaml"], []),
+            ("illegal supporting artifact", ["bad.yaml", "../sig-hash.th"], ["sig"]),
+        )
+        for label, demucs_files, signatures in cases:
+            with self.subTest(case=label), tempfile.TemporaryDirectory() as directory:
+                yaml_path = f"{directory}/bag.yaml"
+                with open(yaml_path, "w", encoding="utf-8") as handle:
+                    json.dump({"models": signatures}, handle)
+                repo = _empty_repo(
+                    _model_artifact_files=lambda family, rows=demucs_files: (
+                        ["good.pth"]
+                        if family == "vr"
+                        else rows
+                        if family == "demucs"
+                        else []
+                    ),
+                    _model_artifact_path=lambda _family, _name: yaml_path,
+                )
+
+                index = build_identity_index(
+                    repo,
+                    snapshot=_snapshot(),
+                    bundled_demucs_specs={},
+                    registered_demucs={},
+                )
+
+                self.assertEqual(
+                    [record.id for record in index.records()], ["vr:good"]
+                )
+
     def test_builder_does_not_touch_the_network(self) -> None:
         from core.model_inventory import build_identity_index
 

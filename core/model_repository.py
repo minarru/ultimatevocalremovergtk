@@ -287,9 +287,11 @@ class ModelRepository:
         if self._stem_check_cache is not None and self._stem_check_cache[0] == key:
             return self._stem_check_cache[1]
         identities = self._identity_index()
-        model_data: List[ModelConfig] = [
-            _dry_check_config(settings, self, tag, identities) for tag in key[0]
-        ]
+        model_data: List[ModelConfig] = []
+        for tag in key[0]:
+            model = _dry_check_config(settings, self, tag, identities)
+            if model is not None:
+                model_data.append(model)
         self._stem_check_cache = (key, model_data)
         return model_data
 
@@ -416,7 +418,11 @@ class ModelRepository:
         identities = self._identity_index()
         for tag in tags:
             model = _dry_check_config(settings, self, tag, identities)
-            if model.model_status and (model.is_karaoke or model.is_bv_model):
+            if (
+                model is not None
+                and model.model_status
+                and (model.is_karaoke or model.is_bv_model)
+            ):
                 model_list.append(_checklist_id(model))
         self._karaoke_cache = (tags, model_list)
         return list(model_list)
@@ -508,7 +514,7 @@ def _dry_check_config(
     repo: "ModelRepository",
     tag: str,
     identities: "IdentityIndex",
-) -> "ModelConfig":
+) -> Optional["ModelConfig"]:
     """Build the dry-check :class:`ModelConfig` for one canonical model tag.
 
     Dry-check pools are canonical ``family:basename`` IDs, which the legacy
@@ -518,14 +524,23 @@ def _dry_check_config(
     through to the legacy path, which marks the config unavailable: the right
     outcome for a model that cannot be addressed unambiguously.
     """
-    identity = None
     try:
-        identity = identities.lookup(tag)
-    except ValueError as exc:
+        identity = None
+        try:
+            identity = identities.lookup(tag)
+        except ValueError as exc:
+            from .debug_log import debug
+
+            debug("model", f"dry-check identity unresolved tag={tag!r}: {exc}")
+        return ModelConfig(settings, repo, tag, is_dry_check=True, identity=identity)
+    except (FileNotFoundError, ValueError, KeyError, OSError, json.JSONDecodeError) as exc:
         from .debug_log import debug
 
-        debug("model", f"dry-check identity unresolved tag={tag!r}: {exc}")
-    return ModelConfig(settings, repo, tag, is_dry_check=True, identity=identity)
+        debug(
+            "model",
+            f"dry-check failed tag={tag!r} error={type(exc).__name__}: {exc}",
+        )
+        return None
 
 
 def _canonical_model_tags(
@@ -583,4 +598,3 @@ def _list_model_files(directory: str, extensions: typing.Any) -> List[str]:
 
 
 from .model_config.config import ModelConfig
-
