@@ -178,22 +178,30 @@ def _project_mdx(selection: str, entry: Any, files: tuple[str, ...]) -> ModelRec
     )
 
 
+def _demucs_version_from_label(entry: Any) -> str | None:
+    for value in (getattr(entry, "label", ""), getattr(entry, "display", "")):
+        match = re.fullmatch(
+            r"(?:Demucs )?v([1-4])(?:\s*:\s*|\s*\|\s*)(.+)", str(value)
+        )
+        if match:
+            return f"v{match.group(1)}"
+    return None
+
+
+def _demucs_layout_from_stems(entry: Any) -> str | None:
+    stems = tuple(getattr(entry, "stems", ()) or ())
+    return {2: "2_stem", 4: "4_stem", 6: "6_stem"}.get(len(stems))
+
+
 def _demucs_spec(entry: Any) -> DemucsSpec | None:
     version = getattr(entry, "demucs_version", None)
-    layout = getattr(entry, "source_layout", None)
-    if version in {"v1", "v2", "v3", "v4"} and layout in {
-        "2_stem", "4_stem", "6_stem",
-    }:
-        return DemucsSpec(version, layout)  # type: ignore[arg-type]
+    if version not in {"v1", "v2", "v3", "v4"}:
+        version = _demucs_version_from_label(entry)
 
-    stems = tuple(getattr(entry, "stems", ()) or ())
-    layout = {2: "2_stem", 4: "4_stem", 6: "6_stem"}.get(len(stems))
-    version = None
-    for value in (getattr(entry, "label", ""), getattr(entry, "display", "")):
-        match = re.fullmatch(r"(?:Demucs )?v([1-4])(?:\s*:\s*|\s*\|\s*)(.+)", str(value))
-        if match:
-            version = f"v{match.group(1)}"
-            break
+    layout = getattr(entry, "source_layout", None)
+    if layout not in {"2_stem", "4_stem", "6_stem"}:
+        layout = _demucs_layout_from_stems(entry)
+
     if version is None or layout is None:
         return None
     return DemucsSpec(version, layout)  # type: ignore[arg-type]
