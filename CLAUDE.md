@@ -95,6 +95,8 @@ Layers, strictly one-directional (`ui` → `core` → `engines` → `ml`, and `c
 
 **Model identity is MD5-based.** `ModelRepository` resolves checkpoints by hash against the JSON hash maps in `models/*/model_data/`; `assemble_model` builds the per-run `ModelConfig` objects the engines consume. Weights are gitignored — only metadata and the small `UVR-DeNoise-Lite.pth` are committed.
 
+**Canonical model identity is `family:basename`, resolved exactly.** [core/model_identity.py](core/model_identity.py) defines `ModelId`/`ModelRecord` over the four families `vr`, `mdx`, `demucs`, `apollo`; [core/model_inventory.py](core/model_inventory.py) builds one `IdentityIndex` per `(inventory_generation, catalogue_revision, naming_revision)` from family adapters, offline (no network, no hashing). Publishing a fresh index rides `ModelRepository.invalidate_models()` — there is no separate identity-invalidation path. GUI method/ensemble/karaoke pickers list installed `ModelRecord`s only; catalogue-only entries surface solely via `models list --all-known`. Runtime code must never import a display-to-basename resolver (`resolve_mdx_model_basename` and siblings) — `core/model_display.py` is the sole allowed importer, enforced by [tests/test_no_runtime_display_inversion.py](tests/test_no_runtime_display_inversion.py).
+
 ### Separation run pipeline
 
 `JobRunner.start` begins with `assemble_model(settings, repo, arch_type=...)` (ensemble when `process.method` is Ensemble Mode), which returns the list of `ModelConfig` objects for the run. Long inputs are sliced/rejoined by [core/audio_chunking.py](core/audio_chunking.py) (`slice_mix` → per-chunk inference → `concat_stems`).

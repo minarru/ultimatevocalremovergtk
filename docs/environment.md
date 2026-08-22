@@ -128,9 +128,13 @@ uvr ensemble song.wav -o /tmp/stems \
   --main-stem vocals_instrumental
 ```
 
-Canonical model IDs are `vr:<basename>`, `mdx:<basename>`, and
-`demucs:<basename>`. An unqualified display name, basename, or substring is
-accepted only when it resolves uniquely across every installed family. Unknown
+Canonical model IDs are `vr:<basename>`, `mdx:<basename>`, `demucs:<basename>`,
+and `apollo:<basename>`. `separate`, `ensemble`, `models show`, and `models
+configure` require the exact canonical ID for `--model` — there is no
+display-name, bare-basename, or substring fallback; `uvr models list` (and
+`--all-known`) prints the exact IDs to use. `uvr audio restore --model` is the
+one exception: it also accepts a bare basename or display value that resolves
+uniquely within the `apollo` family (still no substring match). Unknown
 checkpoints must be registered before use:
 
 ```bash
@@ -139,6 +143,10 @@ uvr models register model.ckpt --family mdx --config model.json
 
 Registration copies the checkpoint into the managed model tree and stores its
 validated per-hash configuration. Local metadata overrides catalogue metadata.
+`--family demucs --config <json>` instead writes an entry (version, source
+layout, artifacts) to the versioned Demucs registry, keyed by canonical ID
+rather than checkpoint hash; `uvr models configure demucs:<basename> --reset`
+removes it.
 
 ### Defaults and profiles
 
@@ -230,10 +238,13 @@ by a per-output-dir `threading.Lock`. `--on-exists` accepts `fail`
 (default), `overwrite`, `rename`, or `skip`. Overwrite copies existing
 destinations to `.{name}.uvr-overwrite.bak` until the whole unit succeeds;
 failure restores backups and returns files to staging. Batches continue
-after an input failure by default; `--fail-fast` reverses this. Manifests
-record effective settings, provenance, model hashes, inputs, outputs,
-backend, and outcomes. Replay rejects changed model hashes unless
-`--allow-model-change` is supplied.
+after an input failure by default; `--fail-fast` reverses this. Manifests are
+schema 3 and record effective settings, provenance, a flat `model_dependencies`
+map of canonical IDs, the active `model_identity_digest` (`sha256:` prefix),
+model hashes, inputs, outputs, backend, and outcomes. Replay always rejects a
+changed model dependency (a different canonical ID); a changed checkpoint
+hash or identity digest for the same dependency set requires
+`--allow-model-change`.
 
 ### Reports and exit codes
 
@@ -269,7 +280,7 @@ success, and `130` interruption.
 
 | | |
 | --- | --- |
-| Manifest `schema_version` | `1` for `separate` / `ensemble`; `2` for `audio` |
+| Manifest `schema_version` | `3` for `separate`, `ensemble`, and `audio` — requires `model_dependencies` and `model_identity_digest`. Bench manifests stay at schema `1`. |
 | Interrupt document | `ok: false`, `status: "failed"`, `stopped: true`, exit `130` |
 | Planning / validate / dry-run | Installed + cached metadata only. Missing MDX-C YAML is an error; use `uvr models download` |
 | Access policy | Planning/validate/identity: `access_policy(allow_network=False, allow_metadata_writes=False)`. Downloads default online. |
@@ -278,7 +289,11 @@ success, and `130` interruption.
 
 Planning / validate / identity use
 `access_policy(allow_network=False, allow_metadata_writes=False)` /
-`mdx_c_network(False)`, not `catalogue_offline()`.
+`mdx_c_network(False)`, not `catalogue_offline()`. `--offline` opts an
+otherwise-online command out of live network access: `models validate` and
+`run` skip fetching a missing MDX-C YAML config, and `models catalog` /
+`models download` serve the last cached catalogue snapshot instead of forcing
+a refresh.
 
 ### Benchmarking and completion
 

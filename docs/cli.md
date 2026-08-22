@@ -45,3 +45,5 @@ GTK Save stems persist the same `process.stem_focus` field. `--profile gui` inhe
 `uvr models catalog` / `download` share one command-scoped catalogue coordinator and close it on exit. If a live refresh fails, they continue with the last good mixed-age snapshot and print a stale/partial warning (human stderr, `catalogue_status` in JSONL). They fail only when no usable snapshot or requested entry exists.
 
 `uvr models list` / `show` JSON keeps native yaml/hash `primary_stem` keys. The human table pretty-prints known aliases.
+
+`uvr models show` JSON reports the canonical identity fields from `ModelRecord.to_dict()` — `id`, `family`, `basename`, `display`, `backend_name` (the value the legacy engine layer consumes; there is no `engine_name` field) — plus artifact filenames and `identity_complete`/`identity_error`. Model identity lookup for `--model`, `models show`, and `models configure` is exact `family:basename`; only `uvr models download` keeps a catalogue-only fuzzy match (exact catalogue ID, selectable, or display, then a unique substring) — see [models.md](models.md).

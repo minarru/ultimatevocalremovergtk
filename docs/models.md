@@ -84,6 +84,26 @@ Verdicts, worst to best. Exit status is 0 only for `buildable`:
 - **VR's architecture variant is derived from the checkpoint's byte size**, never declared in the yaml (`engines/vr.py`'s own selection heuristic) — probing a VR entry needs `--checkpoint` or `--check-keys` so the probe has a size to work from; without one it reports `build-failed` rather than guessing.
 - **VR6 ("v6 beta3") entries have no matching network class anywhere in this port** — `ml/vr_network/` only ever implements the VR5/"5.1" family. The probe reports these as `build-failed` explicitly rather than silently building the wrong (VR5) architecture for them.
 
+## Model identity
+
+`core/model_identity.py` and `core/model_inventory.py` own the canonical identity every other layer resolves against. A `ModelRecord` keeps identity and presentation separate:
+
+| Field | Meaning |
+|---|---|
+| `id` (`family:basename`) | Canonical storage/execution key across the four families `vr`, `mdx`, `demucs`, `apollo` |
+| `display` | GUI/CLI human label |
+| Catalogue selectable (`CatalogueRef`) | The Download Center row identity — mirrors `catalog:{family}:{urlencoded(selection)}`, a separate namespace, never a runtime model identity |
+| `backend_name` | The value the legacy engine layer consumes to select/load the model |
+| `artifacts` | `ModelArtifacts.primary_filename` / `supporting_filenames` — the files on disk that make up the model |
+
+`build_identity_index` assembles one `IdentityIndex` per `(inventory_generation, catalogue_revision, naming_revision)` from four family adapters (catalogue snapshot, installed files, bundled `DemucsSpec`s, the Demucs registry). Construction is offline — no network fetch, no MDX-C YAML download, no checkpoint hashing. `IdentityIndex.lookup` is an exact `family:basename` dictionary lookup; there is no reverse/fuzzy display-to-basename resolution left in `engines/`, `core/`, or `cli/` outside `core/model_display.py` (enforced by [`tests/test_no_runtime_display_inversion.py`](../tests/test_no_runtime_display_inversion.py)).
+
+There is no identity migrator and no `identity_schema_version`. A stored model string that does not parse as `family:basename`, or names a model that is not currently installed, is left in `settings.json` untouched — the picker combo shows no selection (`Choose Model`) instead of silently substituting one, and the stored value is only overwritten once the user picks a model from that combo.
+
+GUI method/ensemble/karaoke pickers list installed `ModelRecord`s only (including configurable-but-incomplete Demucs `.th`/YAML records); `uvr models list --all-known` additionally lists catalogue-only records that are not installed. A **Demucs-root `.ckpt`** (the historic single-file layout, not a `.th`/`.th.gz` bag member) never becomes a `ModelRecord` or a picker entry — `uvr models validate` with no model argument instead reports it as an `unsupported Demucs-root .ckpt artifact` diagnostic.
+
+`uvr models download` keeps its own catalogue-only fuzzy resolution (`ModelCatalogueService.resolve` in [`core/model_catalogue.py`](../core/model_catalogue.py)): exact `catalog:` ID, exact selectable/display, then a unique substring. That is unrelated to, and untouched by, the exact `family:basename` identity lookup used everywhere else.
+
 ## HyperACE BS-Roformer
 
 The `BS-Roformer-HyperACE` entries in [`bundled/extra_models.json`](../bundled/extra_models.json) attach a segmentation branch to every mask estimator — a depthwise-separable CSP backbone, hypergraph attention, a gated FPN decoder and a frequency pixel-shuffle head — summed onto the per-band mask MLPs. It lives in [`ml/hyperace.py`](../ml/hyperace.py).
