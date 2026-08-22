@@ -90,12 +90,12 @@ def validate_demucs_registration_config(config: Mapping[str, Any]) -> dict[str, 
 
 def validate_demucs_entrypoint(source: str, demucs_version: str) -> None:
     """Reject checkpoint formats unsupported by the declared Demucs generation."""
-    filename = os.path.basename(source).casefold()
+    filename = os.path.basename(source)
     if demucs_version in {"v1", "v2"}:
-        if not filename.endswith((".th", ".th.gz")):
+        if not filename.casefold().endswith((".th", ".th.gz")):
             raise ValueError("v1/v2 Demucs entrypoint must be .th or .th.gz")
         return
-    if not filename.endswith((".th", ".yaml")) or filename.endswith(".th.gz"):
+    if not filename.endswith((".th", ".yaml")):
         raise ValueError("v3/v4 Demucs entrypoint must be .th or .yaml")
 
 
@@ -115,9 +115,18 @@ def _checkpoint_fingerprint(path: str) -> str:
     return fingerprint
 
 
+def _content_fingerprint(path: str) -> str:
+    """Return a complete-file digest for registration transaction equality."""
+    digest = sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _v3_v4_weight_signature(path: str) -> str:
     filename = os.path.basename(path)
-    if not filename.casefold().endswith(".th"):
+    if not filename.endswith(".th"):
         raise ValueError(f"v3/v4 Demucs weight must be .th: {filename}")
     stem = filename[:-3]
     parts = stem.split("-")
@@ -138,7 +147,7 @@ def _v3_v4_weight_signature(path: str) -> str:
     return signature
 
 
-def _yaml_bag_members(source: str) -> tuple[str, ...]:
+def _yaml_bag_members(source: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     try:
         with open(source, encoding="utf-8") as handle:
             document = yaml.safe_load(handle)
@@ -160,7 +169,7 @@ def _yaml_bag_members(source: str) -> tuple[str, ...]:
             os.path.join(directory, name)
             for name in os.listdir(directory)
             if name.startswith(prefix)
-            and name.casefold().endswith(".th")
+            and name.endswith(".th")
             and os.path.isfile(os.path.join(directory, name))
         ]
         if len(matches) != 1:
@@ -171,7 +180,7 @@ def _yaml_bag_members(source: str) -> tuple[str, ...]:
         if _v3_v4_weight_signature(matches[0]) != raw_signature:
             raise ValueError(f"Demucs YAML member does not match signature {raw_signature!r}")
         members.append(matches[0])
-    return tuple(members)
+    return tuple(members), tuple(str(signature) for signature in raw_models)
 
 
 @dataclass(frozen=True)
@@ -180,6 +189,8 @@ class DemucsRegistrationUnit:
     entry: dict[str, Any]
     source_paths: tuple[str, ...]
     destination_paths: tuple[str, ...]
+    content_fingerprints: tuple[str, ...]
+    bag_signatures: tuple[str, ...]
 
 
 def prepare_demucs_registration(
@@ -198,14 +209,14 @@ def prepare_demucs_registration(
     from .model_identity import ModelId
 
     model_id = ModelId("demucs", basename).value
-    support = (
-        _yaml_bag_members(source)
-        if source.casefold().endswith(".yaml")
-        else ()
-    )
+    if source.endswith(".yaml"):
+        support, bag_signatures = _yaml_bag_members(source)
+    else:
+        support = ()
+        bag_signatures = ()
     backend_name = (
         basename
-        if source.casefold().endswith(".yaml") or version in {"v1", "v2"}
+        if source.endswith(".yaml") or version in {"v1", "v2"}
         else _v3_v4_weight_signature(source)
     )
 
@@ -214,6 +225,9 @@ def prepare_demucs_registration(
         root if version in {"v1", "v2"} else os.path.join(root, "v3_v4_repo")
     )
     source_paths = (source, *support)
+    content_fingerprints = tuple(
+        _content_fingerprint(path) for path in source_paths
+    )
     destination_paths = tuple(
         os.path.join(destination_dir, os.path.basename(path)) for path in source_paths
     )
@@ -235,6 +249,8 @@ def prepare_demucs_registration(
         entry=entry,
         source_paths=source_paths,
         destination_paths=destination_paths,
+        content_fingerprints=content_fingerprints,
+        bag_signatures=bag_signatures,
     )
 
 
@@ -442,6 +458,11 @@ class DemucsRegistry:
                 write_json_atomic(self.path, normalized)
             return normalized
 
+    def load_read_only(self) -> dict[str, Any]:
+        """Return a locked, validated view without normalizing the file on disk."""
+        with locked_json_path(self.lock_path):
+            return self._load_unlocked()
+
     def save(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         normalized = _normalize_demucs_registry_document(
             payload, models_dir=self.models_dir
@@ -451,13 +472,50 @@ class DemucsRegistry:
         return normalized
 
     @staticmethod
-    def _assert_artifact_matches(source: str, destination: str) -> None:
+    def _assert_artifact_matches(
+        expected_fingerprint: str, destination: str
+    ) -> None:
         if not os.path.isfile(destination):
             raise ValueError(f"Demucs artifact is missing: {destination}")
-        if _checkpoint_fingerprint(source) != _checkpoint_fingerprint(destination):
+        if _content_fingerprint(destination) != expected_fingerprint:
             raise ValueError(
                 f"model destination already exists with different content: {destination}"
             )
+
+    @staticmethod
+    def _assert_unit_snapshot(unit: DemucsRegistrationUnit) -> None:
+        if not (
+            len(unit.source_paths)
+            == len(unit.destination_paths)
+            == len(unit.content_fingerprints)
+        ):
+            raise ValueError("invalid Demucs registration snapshot")
+        expected_member_count = len(unit.source_paths) - 1
+        entrypoint = str(unit.entry.get("entrypoint", ""))
+        if entrypoint.endswith(".yaml"):
+            if len(unit.bag_signatures) != expected_member_count:
+                raise ValueError("invalid Demucs YAML member snapshot")
+            for signature, source in zip(
+                unit.bag_signatures, unit.source_paths[1:], strict=True
+            ):
+                member = os.path.basename(source)
+                if not member.startswith(f"{signature}-") or not member.endswith(
+                    ".th"
+                ):
+                    raise ValueError("invalid Demucs YAML member snapshot")
+        elif unit.bag_signatures:
+            raise ValueError("direct Demucs weights cannot have YAML members")
+
+    @classmethod
+    def _assert_sources_unchanged(cls, unit: DemucsRegistrationUnit) -> None:
+        cls._assert_unit_snapshot(unit)
+        for source, expected in zip(
+            unit.source_paths, unit.content_fingerprints, strict=True
+        ):
+            if _content_fingerprint(source) != expected:
+                raise ValueError(
+                    f"Demucs artifact changed since validation: {source}"
+                )
 
     def _assert_registry_available(
         self,
@@ -503,10 +561,11 @@ class DemucsRegistry:
         with locked_json_path(self.lock_path):
             document = self._load_unlocked()
             self._assert_registry_available(document, unit, replace=replace)
-            for source, destination in zip(
-                unit.source_paths, unit.destination_paths, strict=True
+            self._assert_unit_snapshot(unit)
+            for expected, destination in zip(
+                unit.content_fingerprints, unit.destination_paths, strict=True
             ):
-                self._assert_artifact_matches(source, destination)
+                self._assert_artifact_matches(expected, destination)
             models = document["models"]
             assert isinstance(models, dict)
             models[unit.model_id] = unit.entry
@@ -550,21 +609,25 @@ class DemucsRegistry:
 
     def install(self, unit: DemucsRegistrationUnit) -> dict[str, Any]:
         """Install all artifacts, then durably publish their registry entry."""
-        document = self.load()
+        self._assert_sources_unchanged(unit)
+        document = self.load_read_only()
         self._assert_registry_available(document, unit, replace=False)
-        missing_destinations: list[tuple[str, str]] = []
-        for source, destination in zip(
-            unit.source_paths, unit.destination_paths, strict=True
+        missing_destinations: list[tuple[str, str, str]] = []
+        for source, destination, expected in zip(
+            unit.source_paths,
+            unit.destination_paths,
+            unit.content_fingerprints,
+            strict=True,
         ):
             if os.path.exists(destination):
-                self._assert_artifact_matches(source, destination)
+                self._assert_artifact_matches(expected, destination)
             else:
-                missing_destinations.append((source, destination))
+                missing_destinations.append((source, destination, expected))
 
         temporary_paths: list[tuple[str, str]] = []
         created_paths: list[str] = []
         try:
-            for source, destination in missing_destinations:
+            for source, destination, expected in missing_destinations:
                 os.makedirs(os.path.dirname(destination), exist_ok=True)
                 descriptor, temporary = tempfile.mkstemp(
                     prefix=f".{os.path.basename(destination)}.",
@@ -580,6 +643,11 @@ class DemucsRegistry:
                     except OSError:
                         pass
                     raise
+                if _content_fingerprint(temporary) != expected:
+                    os.remove(temporary)
+                    raise ValueError(
+                        f"Demucs artifact changed since validation: {source}"
+                    )
                 temporary_paths.append((temporary, destination))
 
             for temporary, destination in temporary_paths:
@@ -589,7 +657,7 @@ class DemucsRegistry:
                 except FileExistsError:
                     source_index = unit.destination_paths.index(destination)
                     self._assert_artifact_matches(
-                        unit.source_paths[source_index], destination
+                        unit.content_fingerprints[source_index], destination
                     )
                 os.remove(temporary)
 

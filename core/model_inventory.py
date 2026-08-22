@@ -593,7 +593,7 @@ def build_identity_index(
         from .demucs_registry import DemucsRegistry
 
         registered_demucs = cast(
-            Mapping[str, Any], DemucsRegistry().load()["models"]
+            Mapping[str, Any], DemucsRegistry().load_read_only()["models"]
         )
     records = _catalogue_records(snapshot) if snapshot is not None else []
     records = _merge_installed(repo, records)

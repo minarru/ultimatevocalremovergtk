@@ -11,7 +11,7 @@ import shlex
 import shutil
 import sys
 from enum import Enum
-from typing import Any
+from typing import Any, Mapping
 from bundled.constants import MDX_ARCH_TYPE, VR_ARCH_TYPE
 
 from core.paths import (
@@ -288,6 +288,34 @@ def cmd_models_show(args: argparse.Namespace) -> int:
     return _print_detail(args, info)
 
 
+def _registered_demucs_info(
+    model_id: str, entry: Mapping[str, Any], *, models_dir: str
+) -> dict[str, Any]:
+    """Build registration output from the entry that was durably committed."""
+    entrypoint = str(entry["entrypoint"])
+    supporting = [
+        os.path.basename(str(path)) for path in entry["supporting_artifacts"]
+    ]
+    return {
+        "id": model_id,
+        "family": "demucs",
+        "basename": model_id.partition(":")[2],
+        "display": str(entry["display_name"]),
+        "backend_name": str(entry["backend_name"]),
+        "primary_artifact": os.path.basename(entrypoint),
+        "supporting_artifacts": supporting,
+        "installed": True,
+        "identity_complete": True,
+        "demucs_version": str(entry["demucs_version"]),
+        "source_layout": str(entry["source_layout"]),
+        "configured": True,
+        "registered": True,
+        "path": os.path.join(models_dir, entrypoint.replace("/", os.sep)),
+        "hash": None,
+        "metadata_source": "model-registry",
+    }
+
+
 def cmd_models_register(args: argparse.Namespace) -> int:
     from core.apollo import checkpoint_md5
     from core.mdx_c_registry import compute_checkpoint_hash
@@ -313,19 +341,24 @@ def cmd_models_register(args: argparse.Namespace) -> int:
         try:
             unit = prepare_demucs_registration(source, config)
             registry = DemucsRegistry()
-            registry.install(unit)
+            repo = ModelRepository()
+            document = registry.install(unit)
         except (OSError, TypeError, ValueError) as exc:
             return fail(args, str(exc), exit_code=2, exc=exc)
-        repo = ModelRepository()
-        repo.invalidate_models()
         try:
-            record = resolve_model_id(unit.model_id, repo)
-            info = _model_info(record, repo)
-            if not info.get("configured"):
-                raise ValueError("registered checkpoint could not be configured")
-        except (OSError, ValueError) as exc:
-            return fail(args, str(exc), exit_code=2, exc=exc)
-        return _print_rows(args, [{**info, "registered": True}])
+            repo.invalidate_models()
+        except Exception:
+            # Registration is already durable; cache refresh cannot turn the
+            # completed transaction into a reported failure.
+            pass
+        models = document["models"]
+        assert isinstance(models, Mapping)
+        entry = models[unit.model_id]
+        assert isinstance(entry, Mapping)
+        info = _registered_demucs_info(
+            unit.model_id, entry, models_dir=registry.models_dir
+        )
+        return _print_rows(args, [info])
     destinations = {
         "vr": VR_MODELS_DIR, "mdx": MDX_MODELS_DIR,
         "demucs": DEMUCS_MODELS_DIR, "apollo": APOLLO_MODELS_DIR,
