@@ -616,6 +616,150 @@ class DemucsRegistrationTests(unittest.TestCase):
             self.assertFalse(os.path.exists(unit.destination_paths[0]))
             self.assertFalse(os.path.exists(registry.path))
 
+    def test_direct_checksum_mutation_during_snapshot_cannot_be_registered(
+        self,
+    ) -> None:
+        from core.demucs_registry import DemucsRegistry, prepare_demucs_registration
+
+        with tempfile.TemporaryDirectory() as tmp:
+            original = b"validated direct weight"
+            checksum = hashlib.sha256(original).hexdigest()[:8]
+            source = os.path.join(tmp, f"abc12345-{checksum}.th")
+            with open(source, "wb") as handle:
+                handle.write(original)
+            models_dir = os.path.join(tmp, "Demucs_Models")
+            registry = DemucsRegistry(models_dir=models_dir)
+            real_open = open
+            source_reads = 0
+
+            def mutate_on_second_source_read(
+                file: Any, mode: str = "r", *args: Any, **kwargs: Any
+            ) -> Any:
+                nonlocal source_reads
+                if os.path.abspath(str(file)) == source and mode == "rb":
+                    source_reads += 1
+                    if source_reads == 2:
+                        with real_open(source, "wb") as handle:
+                            handle.write(b"mutated invalid direct weight")
+                return real_open(file, mode, *args, **kwargs)
+
+            with self.assertRaisesRegex(
+                ValueError, "invalid declared checksum|changed since validation"
+            ):
+                with patch(
+                    "builtins.open", side_effect=mutate_on_second_source_read
+                ):
+                    unit = prepare_demucs_registration(
+                        source,
+                        {"demucs_version": "v4", "source_layout": "4_stem"},
+                        models_dir=models_dir,
+                    )
+                    registry.install(unit)
+
+            destination = os.path.join(
+                models_dir, "v3_v4_repo", os.path.basename(source)
+            )
+            self.assertFalse(os.path.exists(destination))
+            self.assertFalse(os.path.exists(registry.path))
+
+    def test_yaml_membership_mutation_during_snapshot_cannot_be_registered(
+        self,
+    ) -> None:
+        from core.demucs_registry import DemucsRegistry, prepare_demucs_registration
+
+        with tempfile.TemporaryDirectory() as tmp:
+            member_data = b"validated YAML member"
+            checksum = hashlib.sha256(member_data).hexdigest()[:8]
+            member_name = f"abc12345-{checksum}.th"
+            source = os.path.join(tmp, "custom.yaml")
+            member = os.path.join(tmp, member_name)
+            with open(source, "w", encoding="utf-8") as handle:
+                handle.write("models:\n  - abc12345\n")
+            with open(member, "wb") as handle:
+                handle.write(member_data)
+            models_dir = os.path.join(tmp, "Demucs_Models")
+            registry = DemucsRegistry(models_dir=models_dir)
+            real_open = open
+            source_reads = 0
+
+            def mutate_on_second_source_read(
+                file: Any, mode: str = "r", *args: Any, **kwargs: Any
+            ) -> Any:
+                nonlocal source_reads
+                if os.path.abspath(str(file)) == source and "r" in mode:
+                    source_reads += 1
+                    if source_reads == 2:
+                        with real_open(source, "w", encoding="utf-8") as handle:
+                            handle.write("models:\n  - def67890\n")
+                return real_open(file, mode, *args, **kwargs)
+
+            with self.assertRaisesRegex(
+                ValueError, "membership|must match exactly one|changed since validation"
+            ):
+                with patch(
+                    "builtins.open", side_effect=mutate_on_second_source_read
+                ):
+                    unit = prepare_demucs_registration(
+                        source,
+                        {"demucs_version": "v4", "source_layout": "4_stem"},
+                        models_dir=models_dir,
+                    )
+                    registry.install(unit)
+
+            repo_dir = os.path.join(models_dir, "v3_v4_repo")
+            self.assertFalse(os.path.exists(os.path.join(repo_dir, "custom.yaml")))
+            self.assertFalse(os.path.exists(os.path.join(repo_dir, member_name)))
+            self.assertFalse(os.path.exists(registry.path))
+
+    def test_bag_member_checksum_mutation_during_snapshot_cannot_be_registered(
+        self,
+    ) -> None:
+        from core.demucs_registry import DemucsRegistry, prepare_demucs_registration
+
+        with tempfile.TemporaryDirectory() as tmp:
+            member_data = b"validated bag weight"
+            checksum = hashlib.sha256(member_data).hexdigest()[:8]
+            member_name = f"abc12345-{checksum}.th"
+            source = os.path.join(tmp, "custom.yaml")
+            member = os.path.join(tmp, member_name)
+            with open(source, "w", encoding="utf-8") as handle:
+                handle.write("models:\n  - abc12345\n")
+            with open(member, "wb") as handle:
+                handle.write(member_data)
+            models_dir = os.path.join(tmp, "Demucs_Models")
+            registry = DemucsRegistry(models_dir=models_dir)
+            real_open = open
+            member_reads = 0
+
+            def mutate_on_second_member_read(
+                file: Any, mode: str = "r", *args: Any, **kwargs: Any
+            ) -> Any:
+                nonlocal member_reads
+                if os.path.abspath(str(file)) == member and mode == "rb":
+                    member_reads += 1
+                    if member_reads == 2:
+                        with real_open(member, "wb") as handle:
+                            handle.write(b"mutated invalid bag weight")
+                return real_open(file, mode, *args, **kwargs)
+
+            with self.assertRaisesRegex(
+                ValueError, "invalid declared checksum|changed since validation"
+            ):
+                with patch(
+                    "builtins.open", side_effect=mutate_on_second_member_read
+                ):
+                    unit = prepare_demucs_registration(
+                        source,
+                        {"demucs_version": "v4", "source_layout": "4_stem"},
+                        models_dir=models_dir,
+                    )
+                    registry.install(unit)
+
+            repo_dir = os.path.join(models_dir, "v3_v4_repo")
+            self.assertFalse(os.path.exists(os.path.join(repo_dir, "custom.yaml")))
+            self.assertFalse(os.path.exists(os.path.join(repo_dir, member_name)))
+            self.assertFalse(os.path.exists(registry.path))
+
     def test_projection_failure_cannot_report_failure_after_durable_commit(
         self,
     ) -> None:

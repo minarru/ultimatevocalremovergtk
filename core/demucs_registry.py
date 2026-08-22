@@ -6,8 +6,9 @@ import json
 import os
 import shutil
 import tempfile
+from collections import deque
 from dataclasses import dataclass
-from hashlib import sha256
+from hashlib import md5, sha256
 from typing import Any, Mapping
 
 import yaml
@@ -106,13 +107,45 @@ def _demucs_artifact_stem(filename: str) -> str:
     return os.path.splitext(name)[0]
 
 
-def _checkpoint_fingerprint(path: str) -> str:
-    from .mdx_c_registry import compute_checkpoint_hash
+@dataclass(frozen=True)
+class _ArtifactSnapshot:
+    content_fingerprint: str
+    checkpoint_fingerprint: str
+    content: bytes | None = None
 
-    fingerprint = compute_checkpoint_hash(path)
-    if not fingerprint:
-        raise ValueError(f"could not fingerprint checkpoint: {path}")
-    return fingerprint
+
+def _capture_artifact(path: str, *, include_content: bool = False) -> _ArtifactSnapshot:
+    """Capture transaction and UVR fingerprints from one byte stream."""
+    checkpoint_window = 10000 * 1024
+    content_digest = sha256()
+    checkpoint_chunks: deque[bytes] = deque()
+    checkpoint_size = 0
+    captured_chunks: list[bytes] | None = [] if include_content else None
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            content_digest.update(chunk)
+            if captured_chunks is not None:
+                captured_chunks.append(chunk)
+            checkpoint_chunks.append(chunk)
+            checkpoint_size += len(chunk)
+            while checkpoint_size > checkpoint_window:
+                overflow = checkpoint_size - checkpoint_window
+                first = checkpoint_chunks[0]
+                if len(first) <= overflow:
+                    checkpoint_chunks.popleft()
+                    checkpoint_size -= len(first)
+                else:
+                    checkpoint_chunks[0] = first[overflow:]
+                    checkpoint_size -= overflow
+    return _ArtifactSnapshot(
+        content_fingerprint=content_digest.hexdigest(),
+        checkpoint_fingerprint=md5(b"".join(checkpoint_chunks)).hexdigest(),
+        content=(
+            b"".join(captured_chunks)
+            if captured_chunks is not None
+            else None
+        ),
+    )
 
 
 def _content_fingerprint(path: str) -> str:
@@ -124,7 +157,7 @@ def _content_fingerprint(path: str) -> str:
     return digest.hexdigest()
 
 
-def _v3_v4_weight_signature(path: str) -> str:
+def _v3_v4_weight_signature(path: str, content_fingerprint: str) -> str:
     filename = os.path.basename(path)
     if not filename.endswith(".th"):
         raise ValueError(f"v3/v4 Demucs weight must be .th: {filename}")
@@ -138,20 +171,17 @@ def _v3_v4_weight_signature(path: str) -> str:
     signature = parts[0]
     if len(parts) == 2:
         checksum = parts[1]
-        digest = sha256()
-        with open(path, "rb") as handle:
-            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(chunk)
-        if digest.hexdigest()[: len(checksum)] != checksum:
+        if content_fingerprint[: len(checksum)] != checksum:
             raise ValueError(f"invalid declared checksum for {filename}")
     return signature
 
 
-def _yaml_bag_members(source: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+def _yaml_bag_members(
+    source: str, content: bytes
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     try:
-        with open(source, encoding="utf-8") as handle:
-            document = yaml.safe_load(handle)
-    except yaml.YAMLError as exc:
+        document = yaml.safe_load(content.decode("utf-8"))
+    except (UnicodeDecodeError, yaml.YAMLError) as exc:
         raise ValueError(f"invalid Demucs YAML bag: {exc}") from exc
     if not isinstance(document, Mapping):
         raise ValueError("Demucs YAML bag root must be an object")
@@ -177,8 +207,6 @@ def _yaml_bag_members(source: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
                 f"Demucs YAML signature {raw_signature!r} must match exactly one "
                 "adjacent signature-checksum.th weight"
             )
-        if _v3_v4_weight_signature(matches[0]) != raw_signature:
-            raise ValueError(f"Demucs YAML member does not match signature {raw_signature!r}")
         members.append(matches[0])
     return tuple(members), tuple(str(signature) for signature in raw_models)
 
@@ -209,15 +237,37 @@ def prepare_demucs_registration(
     from .model_identity import ModelId
 
     model_id = ModelId("demucs", basename).value
+    source_snapshot = _capture_artifact(
+        source, include_content=source.endswith(".yaml")
+    )
     if source.endswith(".yaml"):
-        support, bag_signatures = _yaml_bag_members(source)
+        assert source_snapshot.content is not None
+        support, bag_signatures = _yaml_bag_members(
+            source, source_snapshot.content
+        )
+        support_snapshots = tuple(_capture_artifact(path) for path in support)
+        for signature, path, snapshot in zip(
+            bag_signatures, support, support_snapshots, strict=True
+        ):
+            if (
+                _v3_v4_weight_signature(
+                    path, snapshot.content_fingerprint
+                )
+                != signature
+            ):
+                raise ValueError(
+                    f"Demucs YAML member does not match signature {signature!r}"
+                )
     else:
         support = ()
         bag_signatures = ()
+        support_snapshots = ()
     backend_name = (
         basename
         if source.endswith(".yaml") or version in {"v1", "v2"}
-        else _v3_v4_weight_signature(source)
+        else _v3_v4_weight_signature(
+            source, source_snapshot.content_fingerprint
+        )
     )
 
     root = os.path.abspath(models_dir or paths.DEMUCS_MODELS_DIR)
@@ -225,8 +275,9 @@ def prepare_demucs_registration(
         root if version in {"v1", "v2"} else os.path.join(root, "v3_v4_repo")
     )
     source_paths = (source, *support)
+    snapshots = (source_snapshot, *support_snapshots)
     content_fingerprints = tuple(
-        _content_fingerprint(path) for path in source_paths
+        snapshot.content_fingerprint for snapshot in snapshots
     )
     destination_paths = tuple(
         os.path.join(destination_dir, os.path.basename(path)) for path in source_paths
@@ -240,7 +291,7 @@ def prepare_demucs_registration(
         "backend_name": backend_name,
         "entrypoint": relative_paths[0],
         "supporting_artifacts": list(relative_paths[1:]),
-        "primary_hash": _checkpoint_fingerprint(source),
+        "primary_hash": source_snapshot.checkpoint_fingerprint,
         "demucs_version": version,
         "source_layout": str(normalized["source_layout"]),
     }
