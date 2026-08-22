@@ -55,7 +55,22 @@ class ModelIdTests(unittest.TestCase):
             artifacts=ModelArtifacts('restore.ckpt'),
             installed=True,
         )
-        self.assertEqual(resolve_model_record("restore.ckpt", [record]).id, "apollo:restore")
+        self.assertEqual(resolve_model_record("apollo:restore", [record]).id, "apollo:restore")
+        self.assertEqual(resolve_model_record("restore", [record]).id, "apollo:restore")
+
+    def test_backend_filename_is_not_a_resolvable_reference(self) -> None:
+        """``backend_name`` is an output of identity, never an input to it."""
+        record = ModelRecord(
+            id='apollo:restore',
+            family='apollo',
+            basename='restore',
+            display='Restore',
+            backend_name='restore.ckpt',
+            artifacts=ModelArtifacts('restore.ckpt'),
+            installed=True,
+        )
+        with self.assertRaisesRegex(ValueError, "unknown or unregistered"):
+            resolve_model_record("restore.ckpt", [record])
 
     def test_family_constraint_rejects_cross_family_match(self) -> None:
         service = ModelIdentityService(object())
@@ -85,7 +100,25 @@ class ModelIdTests(unittest.TestCase):
                 service.resolve("mdx:shared", family="vr")
 
     def test_family_does_not_prefix_legacy_arch_member_tag(self) -> None:
-        """Leftover ``Arch: Display`` tags still resolve; family= must not make ``mdx:MDX-Net:…``."""
+        """Leftover ``Arch: Basename`` tags still resolve; family= must not make ``mdx:MDX-Net:…``."""
+        record = ModelRecord(
+            id='mdx:UVR-MDX-NET-Inst_HQ_4',
+            family='mdx',
+            basename='UVR-MDX-NET-Inst_HQ_4',
+            display='MDX-Net — UVR-MDX-NET Inst HQ 4',
+            backend_name='UVR-MDX-NET-Inst_HQ_4',
+            artifacts=ModelArtifacts('UVR-MDX-NET-Inst_HQ_4.ckpt'),
+            installed=True,
+        )
+        service = ModelIdentityService(object())
+        with patch.object(service, "records", return_value=(record,)):
+            self.assertEqual(
+                service.resolve(f"MDX-Net: {record.basename}", family="mdx").id,
+                record.id,
+            )
+
+    def test_legacy_arch_tag_carrying_a_display_label_does_not_resolve(self) -> None:
+        """A catalogue display rename must never move an existing selection."""
         from core.model_identity import canonical_member_tag
 
         record = ModelRecord(
@@ -101,9 +134,8 @@ class ModelIdTests(unittest.TestCase):
         self.assertEqual(tag, "MDX-Net: MDX-Net — UVR-MDX-NET Inst HQ 4")
         service = ModelIdentityService(object())
         with patch.object(service, "records", return_value=(record,)):
-            self.assertEqual(
-                service.resolve(tag, family="mdx").id, record.id
-            )
+            with self.assertRaisesRegex(ValueError, "unknown or unregistered"):
+                service.resolve(tag, family="mdx")
 
     def test_allowed_families_reject_ineligible_identity(self) -> None:
         service = ModelIdentityService(object())
@@ -245,8 +277,11 @@ class AdministrationCoreTests(unittest.TestCase):
             artifacts=ModelArtifacts('model_a.ckpt'),
             installed=True,
         )]
-        result = resolve_model_record("MDX-Net: Model A", records)
+        result = resolve_model_record("MDX-Net: model_a", records)
         self.assertEqual(result.id, "mdx:model_a")
+        # The display half of a legacy tag is not an identity input.
+        with self.assertRaisesRegex(ValueError, "unknown or unregistered"):
+            resolve_model_record("MDX-Net: Model A", records)
 
 
 class DiscoveryTests(unittest.TestCase):

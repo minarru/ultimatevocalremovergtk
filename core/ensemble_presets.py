@@ -76,10 +76,12 @@ def load_curated_ensemble(preset_id: str) -> Optional[dict]:
 def resolve_member_tag(tag: str, repo: typing.Any) -> str:
     """Rewrite an ensemble member reference to a canonical ``family:basename`` id.
 
-    Resolution is an exact identity lookup (:meth:`ModelIdentityService.
-    canonical_id_from_member_tag`), never a display-text inversion. A member
-    that cannot be resolved (not installed, not in any known catalogue) still
-    yields a best-effort ``family:name`` id from the raw tag text, so
+    Resolution is an exact identity lookup by id or basename
+    (:meth:`ModelIdentityService.canonical_id_from_member_tag`), never a
+    display-text inversion -- a legacy ``Arch: Display`` tag whose name half is
+    a catalogue label is left as written. A member that cannot be resolved (not
+    installed, not in any known catalogue) still yields a best-effort
+    ``family:name`` id from the raw tag text, so
     :func:`classify_preset_members` can report it as missing instead of
     dropping it silently.
     """

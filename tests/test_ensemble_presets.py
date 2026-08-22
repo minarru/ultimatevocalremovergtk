@@ -71,12 +71,9 @@ class CuratedPresetLoadTests(unittest.TestCase):
 
 
 class ResolveAndDownloadTests(unittest.TestCase):
-    def test_resolve_member_tag_uses_display(self) -> None:
-        # Resolution is now an exact identity lookup, not a display-text
-        # inversion: seed a published index with the target record instead of
-        # patching a reverse-resolver.
-        repo = mock.Mock()
-        record = ModelRecord(
+    @staticmethod
+    def _resurrection_record() -> ModelRecord:
+        return ModelRecord(
             id="mdx:model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
             family="mdx",
             basename="model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
@@ -87,18 +84,35 @@ class ResolveAndDownloadTests(unittest.TestCase):
             ),
             installed=False,
         )
+
+    def test_resolve_member_tag_uses_basename(self) -> None:
+        # Resolution is an exact identity lookup by id or basename, not a
+        # display-text inversion: seed a published index with the target record
+        # instead of patching a reverse-resolver.
+        repo = mock.Mock()
+        record = self._resurrection_record()
         index = IdentityIndex({record.id: record})
         with mock.patch.object(
             ModelIdentityService, "_published_index", return_value=index,
         ):
-            tag = resolve_member_tag(
-                "MDX-Net: BandSplit Roformer | Resurrection Vocals by Unwa",
-                repo,
-            )
-        self.assertEqual(
-            tag,
-            "mdx:model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
-        )
+            tag = resolve_member_tag(f"MDX-Net: {record.basename}", repo)
+        self.assertEqual(tag, record.id)
+
+    def test_resolve_member_tag_does_not_invert_a_display_label(self) -> None:
+        """A catalogue rename must not be able to move a stored member.
+
+        The legacy tag keeps its raw name half so the missing-model report can
+        show what was written; it is never silently converted into an id.
+        """
+        repo = mock.Mock()
+        record = self._resurrection_record()
+        index = IdentityIndex({record.id: record})
+        with mock.patch.object(
+            ModelIdentityService, "_published_index", return_value=index,
+        ):
+            tag = resolve_member_tag(f"MDX-Net: {record.display}", repo)
+        self.assertNotEqual(tag, record.id)
+        self.assertEqual(tag, f"mdx:{record.display}")
 
     def test_classify_missing_members(self) -> None:
         repo = mock.Mock()

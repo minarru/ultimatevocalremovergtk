@@ -356,7 +356,12 @@ class _ModelInventory:
 def resolve_model_record(
     query: str, records: Iterable[ModelRecord]
 ) -> ModelRecord:
-    """Resolve ``query`` against an already-enumerated model inventory by exact match."""
+    """Resolve ``query`` against an already-enumerated model inventory.
+
+    Accepts a canonical ``family:basename`` id, or -- for the command-line
+    convenience paths -- a basename with or without a family qualifier. Never a
+    display label: see the comment on the basename comparison below.
+    """
     raw = str(query or "").strip()
     if not raw:
         raise ValueError("model value is empty")
@@ -380,12 +385,14 @@ def resolve_model_record(
     by_id = tuple(record for record in candidates if raw == record.id)
     if len(by_id) == 1:
         return by_id[0]
+    # Basename only. Matching ``record.display`` or ``record.backend_name`` here
+    # would make a catalogue label change able to alter which model a stored or
+    # typed reference selects, which spec invariant 4 forbids: display text is a
+    # one-way projection of an identity, never an input to resolving one.
     exact = tuple(
         record
         for record in candidates
         if term.casefold() == record.basename.casefold()
-        or term.casefold() == record.display.casefold()
-        or term.casefold() == record.backend_name.casefold()
     )
     if len(exact) == 1:
         return exact[0]
@@ -410,9 +417,11 @@ class ModelIdentityService(_ModelInventory):
     def canonical_id_from_member_tag(self, tag: str) -> str:
         """Resolve an ensemble member reference to its canonical id.
 
-        Accepts both canonical ``family:basename`` ids and legacy
-        ``Arch: Display`` tags; either way this is an exact identity lookup
-        against the enumerated records, never a display-text inversion.
+        Accepts canonical ``family:basename`` ids, and legacy ``Arch: Name``
+        tags whose name half is the model's basename. A legacy tag carrying a
+        catalogue *display* label no longer resolves: inverting display text is
+        what lets a catalogue rename change model selection. Such a member stays
+        on disk as written until the user re-picks it.
         """
         return self.resolve(str(tag)).id
 
