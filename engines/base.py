@@ -11,7 +11,6 @@ from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
 from core.export_naming import stem_wav_path
 from core.gpu_backend import resolve_inference_backend
-from core.model_display import display_name_for_model
 from core.stems import StemBucket, StemLiteral, export_stem_key, filename_tag
 from core.model_stem_semantics import vocal_inst_from_sources
 from core.progress_ticks import InferenceProgress
@@ -106,13 +105,17 @@ class SeperateAttributes:
         self.process_method = model_data.process_method
         self.model_path = model_data.model_path
         self.model_name = model_data.model_name
+        self.backend_name = (
+            getattr(model_data, "backend_name", None)
+            or model_data.model_basename
+            or model_data.model_name
+            or ""
+        )
+        self.model_cache_key = self.backend_name or model_data.model_basename or ""
         self.model_basename = model_data.model_basename
         self.model_display_label = (
-            display_name_for_model(
-                model_data.process_method,
-                model_data.model_name,
-                model_data.repo,
-            )
+            getattr(model_data, "model_display_label", None)
+            or model_data.model_name
             or model_data.model_basename
             or ""
         )
@@ -211,7 +214,7 @@ class SeperateAttributes:
 
         if model_data.process_method == MDX_ARCH_TYPE:
             self.is_mdx_ckpt = model_data.is_mdx_ckpt
-            self.primary_model_name, self.primary_sources = self.cached_source_callback(MDX_ARCH_TYPE, model_name=self.model_basename)
+            self.primary_model_name, self.primary_sources = self.cached_source_callback(MDX_ARCH_TYPE, model_name=self.model_cache_key)
             self.is_denoise = model_data.is_denoise#
             self.is_denoise_model = model_data.is_denoise_model#
             self.is_mdx_c_seg_def = model_data.is_mdx_c_seg_def#
@@ -284,10 +287,10 @@ class SeperateAttributes:
 
             self.shifts = model_data.shifts
             self.is_split_mode = model_data.is_split_mode if not self.demucs_version == DEMUCS_V4 else True
-            self.primary_model_name, self.primary_sources = self.cached_source_callback(DEMUCS_ARCH_TYPE, model_name=self.model_basename)
+            self.primary_model_name, self.primary_sources = self.cached_source_callback(DEMUCS_ARCH_TYPE, model_name=self.model_cache_key)
 
         if model_data.process_method == VR_ARCH_TYPE:
-            self.primary_model_name, self.primary_sources = self.cached_source_callback(VR_ARCH_TYPE, model_name=self.model_basename)
+            self.primary_model_name, self.primary_sources = self.cached_source_callback(VR_ARCH_TYPE, model_name=self.model_cache_key)
             self.mp = model_data.vr_model_param
             self.high_end_process = model_data.is_high_end_process
             self.is_tta = model_data.is_tta
@@ -392,17 +395,17 @@ class SeperateAttributes:
             
     def cache_source(self, secondary_sources: Any) -> None:
         
-        model_occurrences = self.list_all_models.count(self.model_basename)
+        model_occurrences = self.list_all_models.count(self.model_cache_key)
         
         if not model_occurrences <= 1:
             if self.process_method == MDX_ARCH_TYPE:
-                self.cached_model_source_holder(MDX_ARCH_TYPE, secondary_sources, self.model_basename)
+                self.cached_model_source_holder(MDX_ARCH_TYPE, secondary_sources, self.model_cache_key)
                 
             if self.process_method == VR_ARCH_TYPE:
-                self.cached_model_source_holder(VR_ARCH_TYPE, secondary_sources, self.model_basename)
+                self.cached_model_source_holder(VR_ARCH_TYPE, secondary_sources, self.model_cache_key)
 
             if self.process_method == DEMUCS_ARCH_TYPE:
-                self.cached_model_source_holder(DEMUCS_ARCH_TYPE, secondary_sources, self.model_basename)
+                self.cached_model_source_holder(DEMUCS_ARCH_TYPE, secondary_sources, self.model_cache_key)
            
     def process_vocal_split_chain(self, sources: dict[str, Any]) -> Any:
         return self._process_vocal_split_chain(sources)
@@ -433,7 +436,12 @@ class SeperateAttributes:
         if self.vocal_split_model is not None and is_valid_vocal_split_condition(
             master_vocal_source
         ):
-            splitter = getattr(self.vocal_split_model, "model_basename", None) or "vocal-split"
+            splitter = (
+                getattr(self.vocal_split_model, "model_display_label", None)
+                or getattr(self.vocal_split_model, "model_name", None)
+                or getattr(self.vocal_split_model, "model_basename", None)
+                or "vocal-split"
+            )
             with trace_phase("separate", "vocal_split_chain", model=splitter):
                 process_chain_model(
                     self.vocal_split_model,
@@ -463,7 +471,7 @@ class SeperateAttributes:
                     # silently wrong audio, so surface it instead.
                     raise ValueError(
                         "secondary model source supplied without a blend scale "
-                        f"(model={self.model_basename!r})"
+                        f"(model={self.model_display_label!r})"
                     )
                 stem_source = spec_utils.average_dual_sources(
                     stem_source, secondary_model_source, float(scale)

@@ -336,6 +336,21 @@ class SplitterExactIdTests(unittest.TestCase):
             )
 
 
+class DemucsInferenceIdentityTests(unittest.TestCase):
+    def test_mismatched_post_inference_layout_raises_actionable_error(self) -> None:
+        from core.demucs_registry import validate_demucs_output_layout
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"htdemucs_6s.*4_stem.*6_stem source layout",
+        ):
+            validate_demucs_output_layout(
+                expected_count=6,
+                actual_count=4,
+                model_label="v4 - htdemucs_6s",
+            )
+
+
 class MdxYamlFetchPolicyTests(unittest.TestCase):
     def test_plan_offline_does_not_fetch(self) -> None:
         from core.job_plan import JobResolver

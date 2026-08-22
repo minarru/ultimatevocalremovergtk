@@ -53,11 +53,11 @@ class SeperateVR(SeperateAttributes):
 
     def seperate(self) -> ExportPlan:
         self.model_run: Any
-        if self.primary_model_name == self.model_basename and isinstance(self.primary_sources, tuple):
+        if self.primary_model_name == self.model_cache_key and isinstance(self.primary_sources, tuple):
             y_spec, v_spec = self.primary_sources
             self.load_cached_sources()
         else:
-            with trace_phase("separate", "seperate", engine="SeperateVR", model=self.model_basename):
+            with trace_phase("separate", "seperate", engine="SeperateVR", model=self.model_display_label):
                 self.start_inference_console_write()
                 self.write_to_console(LOADING_MODEL)
 
@@ -190,7 +190,7 @@ class SeperateVR(SeperateAttributes):
         return X_spec
 
     def inference_vr(self, X_spec: typing.Any, device: typing.Any, aggressiveness: typing.Any):
-        with trace_phase("separate", "inference_vr", engine="SeperateVR", model=self.model_basename):
+        with trace_phase("separate", "inference_vr", engine="SeperateVR", model=self.model_display_label):
             def _execute(X_mag_pad: typing.Any, roi_size: typing.Any):
                 patches = (X_mag_pad.shape[2] - 2 * self.model_run.offset) // roi_size
                 total_iterations = patches//self.batch_size if not self.is_tta else (patches//self.batch_size)*2

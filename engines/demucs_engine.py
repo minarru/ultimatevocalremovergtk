@@ -22,6 +22,7 @@ from onnx2pytorch import ConvertModel
 from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
+from core.demucs_registry import validate_demucs_output_layout
 from core.demucs_models import demucs_pretrained_load_name
 from core.stems import (
     StemBucket,
@@ -99,7 +100,7 @@ class SeperateDemucs(SeperateAttributes):
         is_no_cache = False
 
         if (
-            self.primary_model_name == self.model_basename
+            self.primary_model_name == self.model_cache_key
             and isinstance(self.primary_sources, np.ndarray)
             and not self.pre_proc_model
         ):
@@ -118,7 +119,7 @@ class SeperateDemucs(SeperateAttributes):
                 "separate",
                 "seperate",
                 engine="SeperateDemucs",
-                model=self.model_basename,
+                model=self.model_display_label,
                 version=self.demucs_version,
             ):
                 self.write_to_console(LOADING_MODEL)
@@ -191,7 +192,7 @@ class SeperateDemucs(SeperateAttributes):
                 ) if not self.pre_proc_model else None
 
                 if (
-                    self.primary_model_name == self.model_basename
+                    self.primary_model_name == self.model_cache_key
                     and isinstance(self.primary_sources, np.ndarray)
                     and self.pre_proc_model
                 ):
@@ -211,39 +212,38 @@ class SeperateDemucs(SeperateAttributes):
             source = inst_source
 
         if isinstance(source, np.ndarray):
-            if len(source) == 2:
-                self.demucs_source_map = DEMUCS_2_SOURCE_MAPPER
-            else:
-                self.demucs_source_map = (
-                    DEMUCS_6_SOURCE_MAPPER if len(source) == 6 else DEMUCS_4_SOURCE_MAPPER
-                )
+            self.demucs_source_map = validate_demucs_output_layout(
+                expected_count=self.demucs_stem_count,
+                actual_count=len(source),
+                model_label=self.model_display_label or self.model_name or self.model_basename or "Demucs model",
+            )
 
-                if (
-                    len(source) == 6
-                    and self.process_data.is_ensemble_master
-                    or len(source) == 6
-                    and self.is_secondary_model
-                ):
-                    is_no_piano_guitar = True
-                    six_stem_other_source = list(source)
-                    six_stem_other_source = [
-                        i
-                        for n, i in enumerate(source)
-                        if n
-                        in [
-                            self.demucs_source_map[OTHER_STEM],
-                            self.demucs_source_map[GUITAR_STEM],
-                            self.demucs_source_map[PIANO_STEM],
-                        ]
+            if (
+                len(source) == 6
+                and self.process_data.is_ensemble_master
+                or len(source) == 6
+                and self.is_secondary_model
+            ):
+                is_no_piano_guitar = True
+                six_stem_other_source = list(source)
+                six_stem_other_source = [
+                    i
+                    for n, i in enumerate(source)
+                    if n
+                    in [
+                        self.demucs_source_map[OTHER_STEM],
+                        self.demucs_source_map[GUITAR_STEM],
+                        self.demucs_source_map[PIANO_STEM],
                     ]
-                    other_source = np.zeros_like(six_stem_other_source[0])
-                    for i in six_stem_other_source:
-                        other_source += i
-                    source_reshape = spec_utils.reshape_sources(
-                        source[self.demucs_source_map[OTHER_STEM]],
-                        other_source,
-                    )
-                    source[self.demucs_source_map[OTHER_STEM]] = source_reshape
+                ]
+                other_source = np.zeros_like(six_stem_other_source[0])
+                for i in six_stem_other_source:
+                    other_source += i
+                source_reshape = spec_utils.reshape_sources(
+                    source[self.demucs_source_map[OTHER_STEM]],
+                    other_source,
+                )
+                source[self.demucs_source_map[OTHER_STEM]] = source_reshape
 
         if not self.is_vocal_split_model:
             self.cache_source(source)
@@ -508,7 +508,7 @@ class SeperateDemucs(SeperateAttributes):
         return plan
     
     def demix_demucs(self, mix: typing.Any):
-        with trace_phase("separate", "demix_demucs", engine="SeperateDemucs", model=self.model_basename):
+        with trace_phase("separate", "demix_demucs", engine="SeperateDemucs", model=self.model_display_label):
             org_mix = mix
             sources: Any = None
             # See SeperateMDX.demix: bound unconditionally, reassigned and read

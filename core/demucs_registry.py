@@ -6,8 +6,20 @@ import json
 import os
 from typing import Any, Mapping
 
+from bundled.constants import (
+    DEMUCS_2_SOURCE_MAPPER,
+    DEMUCS_4_SOURCE_MAPPER,
+    DEMUCS_6_SOURCE_MAPPER,
+)
+
 from . import paths
 from .model_identity import DemucsSpec, parse_stored_model_id
+
+_SOURCE_LAYOUTS: dict[int, tuple[str, dict[str, int]]] = {
+    2: ("2_stem", DEMUCS_2_SOURCE_MAPPER),
+    4: ("4_stem", DEMUCS_4_SOURCE_MAPPER),
+    6: ("6_stem", DEMUCS_6_SOURCE_MAPPER),
+}
 
 
 def _read_json(path: str) -> Mapping[str, Any]:
@@ -62,4 +74,35 @@ def load_bundled_demucs_specs() -> dict[str, DemucsSpec]:
     return result
 
 
-__all__ = ["load_bundled_demucs_specs", "mapper_stems"]
+def demucs_source_layout_name(source_count: int) -> str | None:
+    """Return the canonical layout label for a Demucs source count."""
+    spec = _SOURCE_LAYOUTS.get(int(source_count))
+    return None if spec is None else spec[0]
+
+
+def validate_demucs_output_layout(
+    *, expected_count: int, actual_count: int, model_label: str
+) -> dict[str, int]:
+    """Return the native source map for ``actual_count`` or raise on layout drift."""
+    expected_layout = demucs_source_layout_name(expected_count)
+    actual = _SOURCE_LAYOUTS.get(int(actual_count))
+    if expected_layout is None:
+        raise ValueError(f"unsupported declared Demucs source layout: {expected_count}")
+    if actual is None:
+        raise ValueError(
+            f"{model_label} produced {actual_count} sources; expected {expected_layout} source layout"
+        )
+    actual_layout, source_map = actual
+    if actual_layout != expected_layout:
+        raise ValueError(
+            f"{model_label} produced {actual_layout}; expected {expected_layout} source layout"
+        )
+    return source_map
+
+
+__all__ = [
+    "demucs_source_layout_name",
+    "load_bundled_demucs_specs",
+    "mapper_stems",
+    "validate_demucs_output_layout",
+]

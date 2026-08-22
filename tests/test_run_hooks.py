@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import typing
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 _REPO = Path(__file__).resolve().parents[1]
 
@@ -26,3 +28,19 @@ class RunHooksHomeTests(unittest.TestCase):
         self.assertFalse(hasattr(job_runner, "_SingleRunHooks"))
         self.assertFalse(hasattr(job_runner, "_EnsembleRunHooks"))
         self.assertFalse(hasattr(job_runner, "_model_output_label"))
+
+    def test_model_output_label_prefers_carried_display_label(self) -> None:
+        from core.run_hooks import _model_output_label
+
+        model = typing.cast(
+            typing.Any,
+            SimpleNamespace(
+                model_display_label="Friendly Demucs",
+                model_name="demucs:raw-id",
+                model_basename="raw-id",
+                process_method="Demucs",
+                repo=None,
+            ),
+        )
+
+        self.assertEqual(_model_output_label(model), "Friendly Demucs")

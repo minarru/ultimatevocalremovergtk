@@ -23,7 +23,6 @@ from .ensembler import (
     _filter_final_ensemble_stems,
 )
 from .model_config import ModelConfig
-from .model_display import display_name_for_model
 from .run_estimate import combine_progress_local_step
 from .run_loop import FileState, _write_captured_stems
 from .stems import coerce_ensemble_pair, exclusive_flags_for_pair
@@ -31,8 +30,11 @@ from .stems import coerce_ensemble_pair, exclusive_flags_for_pair
 
 def _model_output_label(model: ModelConfig) -> str:
     """Return the user-facing model label for export paths and test mode."""
-    label = display_name_for_model(model.process_method, model.model_name, model.repo)
-    return label or model.model_basename or ""
+    return (
+        str(getattr(model, "model_display_label", "") or "")
+        or str(getattr(model, "model_name", "") or "")
+        or str(getattr(model, "model_basename", "") or "")
+    )
 
 
 class _SingleRunHooks:

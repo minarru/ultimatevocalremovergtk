@@ -64,11 +64,11 @@ class SeperateMDX(SeperateAttributes):
         samplerate = 44100
         self.model_run: Any
     
-        if self.primary_model_name == self.model_basename and isinstance(self.primary_sources, tuple):
+        if self.primary_model_name == self.model_cache_key and isinstance(self.primary_sources, tuple):
             mix, source = self.primary_sources
             self.load_cached_sources()
         else:
-            with trace_phase("separate", "seperate", engine="SeperateMDX", model=self.model_basename):
+            with trace_phase("separate", "seperate", engine="SeperateMDX", model=self.model_display_label):
                 self.start_inference_console_write()
                 self.write_to_console(LOADING_MODEL)
 
@@ -190,7 +190,7 @@ class SeperateMDX(SeperateAttributes):
             "separate",
             "demix",
             engine="SeperateMDX",
-            model=self.model_basename,
+            model=self.model_display_label,
             match_mix=is_match_mix,
         ):
             self.initialize_model_settings()
@@ -374,4 +374,3 @@ class SeperateMDX(SeperateAttributes):
             # Keep OLA math in float32 even when autocast produced fp16 logits.
             return self.stft.inverse(spec_pred.float())
         return self.stft.inverse(torch.as_tensor(spec_pred, device=self.device, dtype=torch.float32))
-

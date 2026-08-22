@@ -453,7 +453,15 @@ class ModelConfig:
                 self.is_secondary_model_activated = any(i is not None for i in self.secondary_model_4_stem)
                 self.demucs_4_stem_added_count -= 1 if self.is_secondary_model_activated else 0
                 if self.is_secondary_model_activated:
-                    self.secondary_model_4_stem_model_names_list = [i.model_basename if i is not None else None for i in self.secondary_model_4_stem]
+                    self.secondary_model_4_stem_model_names_list = [
+                        (
+                            getattr(i, "backend_name", None)
+                            or getattr(i, "model_basename", None)
+                        )
+                        if i is not None
+                        else None
+                        for i in self.secondary_model_4_stem
+                    ]
                     self.is_demucs_4_stem_secondaries = True
             else:
                 primary_stem = self.ensemble_primary_stem if self.is_ensemble_mode and is_demucs else self.primary_stem

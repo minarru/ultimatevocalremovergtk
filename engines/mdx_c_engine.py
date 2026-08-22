@@ -54,11 +54,11 @@ class SeperateMDXC(SeperateAttributes):
         samplerate = 44100
         sources = None
 
-        if self.primary_model_name == self.model_basename and isinstance(self.primary_sources, tuple):
+        if self.primary_model_name == self.model_cache_key and isinstance(self.primary_sources, tuple):
             mix, sources = self.primary_sources
             self.load_cached_sources()
         else:
-            with trace_phase("separate", "seperate", engine="SeperateMDXC", model=self.model_basename):
+            with trace_phase("separate", "seperate", engine="SeperateMDXC", model=self.model_display_label):
                 self.start_inference_console_write()
                 self.write_to_console(LOADING_MODEL)
                 mix = prepare_mix(self.audio_file)
@@ -301,7 +301,7 @@ class SeperateMDXC(SeperateAttributes):
             "separate",
             "demix",
             engine="SeperateMDXC",
-            model=self.model_basename,
+            model=self.model_display_label,
             roformer=False,
         ):
             sr_pitched = _mdx_pitch_reference_sr()
@@ -436,7 +436,7 @@ class SeperateMDXC(SeperateAttributes):
             "separate",
             "demix_roformer",
             engine="SeperateMDXC",
-            model=self.model_basename,
+            model=self.model_display_label,
         ):
             sr_pitched = _mdx_pitch_reference_sr()
             org_mix = mix

@@ -3,6 +3,7 @@ import typing
 
 import unittest
 from unittest import mock
+from types import SimpleNamespace
 
 from core.job_runner import JobRunner
 from core.separator_run import run_separator
@@ -54,6 +55,43 @@ class JobRunnerSeperatorTests(unittest.TestCase):
         model_name, sources = runner._cached_source_callback("MDX-Net", "other")
         self.assertIsNone(model_name)
         self.assertIsNone(sources)
+
+    def test_build_all_models_uses_backend_names_for_cache_identity(self) -> None:
+        from bundled.constants import DEMUCS_ARCH_TYPE
+
+        runner = JobRunner(Settings.defaults())
+        model = typing.cast(
+            typing.Any,
+            SimpleNamespace(
+                model_basename="shared",
+                backend_name="shared.onnx",
+                is_secondary_model_activated=True,
+                secondary_model=SimpleNamespace(
+                    model_basename="shared",
+                    backend_name="shared_secondary.ckpt",
+                ),
+                pre_proc_model=SimpleNamespace(
+                    model_basename="shared",
+                    backend_name="shared_pre_proc.yaml",
+                ),
+                process_method=DEMUCS_ARCH_TYPE,
+                is_demucs_4_stem_secondaries=True,
+                secondary_model_4_stem_model_names_list=["slot_a.onnx", "slot_b.onnx"],
+            ),
+        )
+
+        runner._build_all_models([model])
+
+        self.assertEqual(
+            runner.all_models,
+            [
+                "shared.onnx",
+                "shared_secondary.ckpt",
+                "shared_pre_proc.yaml",
+                "slot_a.onnx",
+                "slot_b.onnx",
+            ],
+        )
 
     def test_start_does_not_prepare_on_caller_thread(self) -> None:
         """``prepare_input_paths`` must not run before the worker starts."""

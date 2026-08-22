@@ -549,19 +549,28 @@ class JobRunner:
         The engines use ``list_all_models`` to decide whether a referenced
         primary/secondary model participates in the current run.
         """
-        primary = [m.model_basename for m in models if m.model_basename]
+        primary = [
+            getattr(m, "backend_name", None) or m.model_basename
+            for m in models
+            if getattr(m, "backend_name", None) or m.model_basename
+        ]
         secondary = []
         for m in models:
             if not m.is_secondary_model_activated or m.secondary_model is None:
                 continue
-            name = m.secondary_model.model_basename
+            name = (
+                getattr(m.secondary_model, "backend_name", None)
+                or m.secondary_model.model_basename
+            )
             if name:
                 secondary.append(name)
         pre_proc: List[str] = []
         for m in models:
             proc = getattr(m, "pre_proc_model", None)
-            if proc is not None and proc.model_basename:
-                pre_proc.append(proc.model_basename)
+            if proc is not None:
+                name = getattr(proc, "backend_name", None) or proc.model_basename
+                if name:
+                    pre_proc.append(name)
         demucs_4_stem: List[str] = []
         for m in models:
             if m.process_method == DEMUCS_ARCH_TYPE and getattr(m, "is_demucs_4_stem_secondaries", False):
