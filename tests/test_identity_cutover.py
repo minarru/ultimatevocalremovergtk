@@ -992,3 +992,127 @@ class ReplayManifestContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ValidationWarningSurfacingTests(unittest.TestCase):
+    """Stage-2 validation ran nowhere and its warnings were never printed.
+
+    A preserved illegal or uninstalled stored value is invisible by design --
+    no writer replaces it -- so without a surfaced warning the CLI silently
+    ignores it and the GUI shows an unexplained "Choose Model".
+    """
+
+    def test_warn_validation_prints_a_stderr_block_with_the_lookup_hint(self) -> None:
+        import argparse
+        import io
+        from contextlib import redirect_stderr
+
+        from cli.reporting import warn_validation
+
+        args = argparse.Namespace(report="human", quiet=False)
+        err = io.StringIO()
+        with redirect_stderr(err):
+            warn_validation(args, ["mdx.model: preserved 'MDX-Net: Kim Vocal 2'"])
+        text = err.getvalue()
+        self.assertIn("mdx.model", text)
+        self.assertIn("uvr models list", text)
+
+    def test_warn_validation_is_silent_when_quiet_or_empty(self) -> None:
+        import argparse
+        import io
+        from contextlib import redirect_stderr
+
+        from cli.reporting import warn_validation
+
+        err = io.StringIO()
+        with redirect_stderr(err):
+            warn_validation(argparse.Namespace(report="human", quiet=True), ["x"])
+            warn_validation(argparse.Namespace(report="human", quiet=False), [])
+            warn_validation(argparse.Namespace(report="human", quiet=False), None)
+        self.assertEqual(err.getvalue(), "")
+
+    def test_stored_identity_warnings_runs_stage_two_against_the_index(self) -> None:
+        from unittest import mock
+        from unittest.mock import patch
+
+        from cli.job import stored_identity_warnings
+        from cli.profiles import LoadedProfile
+        from core.model_identity import (
+            IdentityIndex,
+            ModelArtifacts,
+            ModelIdentityService,
+            ModelRecord,
+        )
+
+        record = ModelRecord(
+            id="mdx:known",
+            family="mdx",
+            basename="known",
+            display="Known",
+            backend_name="known",
+            artifacts=ModelArtifacts("known.onnx"),
+            installed=False,
+        )
+        settings = Settings.defaults()
+        settings.mdx.model = "mdx:known"
+        profile = LoadedProfile(
+            name="p", source="profile",
+            validation_warnings=["mdx.model: syntax note"],
+        )
+        index = IdentityIndex({record.id: record})
+        with patch.object(
+            ModelIdentityService, "_published_index", return_value=index
+        ):
+            warnings = stored_identity_warnings(settings, mock.Mock(), profile)
+
+        self.assertIn("mdx.model: syntax note", warnings)
+        self.assertTrue(
+            any("is not installed" in item for item in warnings), warnings
+        )
+
+    def test_stage_two_does_not_repeat_a_stage_one_syntax_complaint(self) -> None:
+        from unittest import mock
+        from unittest.mock import patch
+
+        from cli.job import stored_identity_warnings
+        from cli.profiles import LoadedProfile
+        from core.model_identity import IdentityIndex, ModelIdentityService
+
+        settings = Settings.defaults()
+        settings.mdx.voc_inst_secondary_model = "MDX-Net: Kim Vocal 2"
+        profile = LoadedProfile(
+            name="p", source="profile",
+            validation_warnings=[
+                "mdx.voc_inst_secondary_model: expected canonical model ID "
+                "family:basename or a permitted sentinel; preserved "
+                "'MDX-Net: Kim Vocal 2'; run 'uvr models list' to find IDs"
+            ],
+        )
+        with patch.object(
+            ModelIdentityService, "_published_index", return_value=IdentityIndex({})
+        ):
+            warnings = stored_identity_warnings(settings, mock.Mock(), profile)
+
+        matching = [
+            item for item in warnings
+            if item.startswith("mdx.voc_inst_secondary_model:")
+        ]
+        self.assertEqual(len(matching), 1, warnings)
+
+    def test_stored_identity_warnings_survive_an_unavailable_index(self) -> None:
+        from unittest import mock
+        from unittest.mock import patch
+
+        from cli.job import stored_identity_warnings
+        from cli.profiles import LoadedProfile
+        from core.model_identity import ModelIdentityService
+
+        profile = LoadedProfile(
+            name="p", source="profile", validation_warnings=["mdx.model: syntax note"],
+        )
+        with patch.object(
+            ModelIdentityService, "_published_index", side_effect=OSError("no models")
+        ):
+            warnings = stored_identity_warnings(Settings.defaults(), mock.Mock(), profile)
+
+        self.assertEqual(warnings, ["mdx.model: syntax note"])

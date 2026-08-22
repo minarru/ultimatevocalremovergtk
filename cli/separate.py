@@ -15,7 +15,14 @@ from .job import (
     resolve_separate_job,
 )
 from .process_flags import add_process_args
-from .reporting import add_reporting_args, emit_document, emit_event, fail, report_mode
+from .reporting import (
+    add_reporting_args,
+    emit_document,
+    emit_event,
+    fail,
+    report_mode,
+    warn_validation,
+)
 
 STEMS_HELP = (
     "Which stems to save. Concept names (vocals, instrumental, bass, drums, "
@@ -100,6 +107,7 @@ def cmd_separate(args: argparse.Namespace) -> int:
     except (OSError, ValueError) as exc:
         return fail(args, str(exc), exit_code=2, exc=exc)
 
+    warn_validation(args, job.validation_warnings)
     emit_event(args, "planned", command="separate", plan=job.plan)
     if args.dry_run:
         if report_mode(args) == "human":

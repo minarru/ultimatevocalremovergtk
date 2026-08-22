@@ -161,6 +161,13 @@ class MethodView:
         self.group.add(self.model_row)
         self.hints.register(self.model_row, CHOOSE_MODEL_HELP)
 
+        # A stored value the picker cannot select stays on disk verbatim (the
+        # cutover never writes Choose/No Model over it). Without this banner the
+        # page just shows "Choose Model" and the user has no way to tell an
+        # unset picker from a preserved illegal or uninstalled one.
+        self.stored_model_banner = Adw.Banner(revealed=False)
+        self.group.add(self.stored_model_banner)
+
         self.build_options(self.group)
 
         # Advanced / inference options: standard preferences list without an expander.
@@ -233,21 +240,34 @@ class MethodView:
             try:
                 parse_stored_model_id(str(stored))
             except ValueError:
-                self._model_write_gated = True
-                set_combo_value(self.model_row, CHOOSE_MODEL)
+                self._gate_stored_model(
+                    stored, "is not a canonical model ID (family:basename)"
+                )
                 return
             present = any(record.id == stored for record in installed)
             if not present:
-                self._model_write_gated = True
-                set_combo_value(self.model_row, CHOOSE_MODEL)
+                self._gate_stored_model(stored, "is not installed")
                 return
             # A canonical ID installed under another family is likewise only
             # a visual no-selection state. It stays stored verbatim until the
             # user explicitly chooses one of this picker's installed IDs.
-            self._model_write_gated = True
-            set_combo_value(self.model_row, CHOOSE_MODEL)
+            self._gate_stored_model(stored, f"is not a {family} model")
             return
+        self._clear_stored_model_banner()
         set_combo_value(self.model_row, stored)
+
+    def _gate_stored_model(self, stored: typing.Any, reason: str) -> None:
+        """Show no selection, keep the stored text, and say why."""
+        self._model_write_gated = True
+        self.stored_model_banner.set_title(
+            f"Saved model \u201c{stored}\u201d {reason}; "
+            "it was kept as written \u2014 pick a model to replace it."
+        )
+        self.stored_model_banner.set_revealed(True)
+        set_combo_value(self.model_row, CHOOSE_MODEL)
+
+    def _clear_stored_model_banner(self) -> None:
+        self.stored_model_banner.set_revealed(False)
 
     def refresh_models(self) -> None:
         """Re-list on-disk models (e.g. after a Download Center download)."""

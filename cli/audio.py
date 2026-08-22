@@ -30,9 +30,10 @@ from core.settings.job_resolution import SettingsLayer, SettingsResolver
 from .execution import BatchOutcome, PromotionSkipped, _promote, run_runner_cli
 from .process_flags import add_process_args, collect_overrides
 from .profiles import load_profile
+from .job import stored_identity_warnings
 from .reporting import (
     add_reporting_args, emit_document, emit_event, ensure_job_id, fail,
-    finish_progress, make_progress_printer, report_mode,
+    finish_progress, make_progress_printer, report_mode, warn_validation,
 )
 
 TOOL_BY_COMMAND = {
@@ -255,9 +256,13 @@ def _resolve_audio(args: argparse.Namespace, level: ValidationLevel = Validation
         TOOL_BY_COMMAND[command], settings, os.path.abspath(args.output),
         inputs, pairs, getattr(args, "name", None), sources,
     )
-    return AudioJobResolver(repo).resolve(
-        spec, level, allow_network=not getattr(args, "offline", False)
-    ), inherited
+    return (
+        AudioJobResolver(repo).resolve(
+            spec, level, allow_network=not getattr(args, "offline", False)
+        ),
+        inherited,
+        stored_identity_warnings(settings, repo, profile),
+    )
 
 
 def _confirm_audio(args: argparse.Namespace, plan: Any) -> int:
@@ -429,9 +434,10 @@ def _audio_plan_payload(plan: Any) -> dict[str, Any]:
 
 def cmd_audio(args: argparse.Namespace) -> int:
     try:
-        plan, inherited = _resolve_audio(args)
+        plan, inherited, warnings = _resolve_audio(args)
     except (OSError, TypeError, ValueError) as exc:
         return fail(args, str(exc), exit_code=2, exc=exc)
+    warn_validation(args, warnings)
     if not plan.ok:
         return fail(args, plan.diagnostics[0].message, exit_code=2, extra={"plan": _audio_plan_payload(plan)})
     if args.dry_run:
@@ -464,9 +470,10 @@ def cmd_audio(args: argparse.Namespace) -> int:
 
 def cmd_audio_validate(args: argparse.Namespace) -> int:
     try:
-        plan, _inherited = _resolve_audio(args, ValidationLevel(args.level))
+        plan, _inherited, warnings = _resolve_audio(args, ValidationLevel(args.level))
     except (ImportError, OSError, TypeError, ValueError) as exc:
         return fail(args, str(exc), exit_code=2, exc=exc, kind="validation")
+    warn_validation(args, warnings)
     if not plan.ok:
         return fail(
             args, plan.diagnostics[0].message, exit_code=2,

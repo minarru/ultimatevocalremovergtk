@@ -155,6 +155,27 @@ def finish_progress(args: Any = None, stream: Optional[TextIO] = None) -> None:
         out.flush()
 
 
+def warn_validation(args: Any, warnings: Any) -> None:
+    """Print stored-identity validation warnings to stderr.
+
+    An illegal or uninstalled stored model reference is preserved verbatim by
+    every writer, so nothing else tells the user it is there. Warnings never
+    change the exit code -- a value that is actually used still fails planning.
+    """
+    items = [str(item) for item in (warnings or ()) if str(item).strip()]
+    if not items or getattr(args, "quiet", False):
+        return
+    print("warning: stored model references need attention:", file=sys.stderr)
+    for item in items:
+        print(f"  {item}", file=sys.stderr)
+    if not all("uvr models" in item for item in items):
+        print(
+            "  run 'uvr models list' or 'uvr models catalog' for canonical "
+            "family:basename IDs",
+            file=sys.stderr,
+        )
+
+
 def emit_json(payload: dict[str, Any]) -> None:
     """Internal compatibility helper; new commands use :func:`emit_document`."""
     print(json.dumps(payload, indent=2, sort_keys=True))

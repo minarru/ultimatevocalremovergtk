@@ -174,6 +174,10 @@ class InstalledRecordPickerTests(unittest.TestCase):
         view.method_key = arch
         view.resolution_method_key = ""
         view.model_row = object()
+        # The base view shows a banner when it gates a stored value it cannot
+        # select; the real widget needs GTK, so record the calls instead.
+        self.banner = mock.Mock()
+        view.stored_model_banner = self.banner
         basenames = legacy_basenames or [record.basename for record in records]
         view.list_models = mock.Mock(return_value=basenames)
 
@@ -249,6 +253,41 @@ class InstalledRecordPickerTests(unittest.TestCase):
 
         self.assertEqual(selections, [CHOOSE_MODEL])
         write.assert_not_called()
+
+    def test_gated_stored_value_is_explained_by_a_banner(self) -> None:
+        """"Choose Model" alone cannot be told apart from a preserved value."""
+        _values, selections, write = self._populate(
+            [_record("demucs:htdemucs", "v4 — htdemucs")],
+            arch=DEMUCS_ARCH_TYPE,
+            stored="v4 — htdemucs",
+        )
+
+        self.assertEqual(selections, [CHOOSE_MODEL])
+        write.assert_not_called()
+        self.banner.set_revealed.assert_called_once_with(True)
+        title = self.banner.set_title.call_args.args[0]
+        self.assertIn("v4 — htdemucs", title)
+        self.assertIn("canonical model ID", title)
+
+    def test_uninstalled_canonical_value_is_explained_by_a_banner(self) -> None:
+        _values, selections, _write = self._populate(
+            [_record("mdx:installed", "Installed")],
+            stored="mdx:elsewhere",
+        )
+
+        self.assertEqual(selections, [CHOOSE_MODEL])
+        self.banner.set_revealed.assert_called_once_with(True)
+        self.assertIn("not installed", self.banner.set_title.call_args.args[0])
+
+    def test_selectable_stored_value_hides_the_banner(self) -> None:
+        _values, selections, _write = self._populate(
+            [_record("mdx:installed", "Installed")],
+            stored="mdx:installed",
+        )
+
+        self.assertEqual(selections, ["mdx:installed"])
+        self.banner.set_revealed.assert_called_once_with(False)
+        self.banner.set_title.assert_not_called()
 
     def test_unhashable_stored_value_is_visual_no_selection_without_a_write(self) -> None:
         try:

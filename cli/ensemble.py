@@ -16,7 +16,14 @@ from .job import (
     resolve_ensemble_job,
 )
 from .process_flags import add_process_args
-from .reporting import add_reporting_args, emit_document, emit_event, fail, report_mode
+from .reporting import (
+    add_reporting_args,
+    emit_document,
+    emit_event,
+    fail,
+    report_mode,
+    warn_validation,
+)
 from .separate import STEMS_HELP, check_runtime_deps, confirm_inherited
 
 _MAIN_STEMS = tuple(pair.value for pair in EnsemblePair if pair is not EnsemblePair.CHOOSE)
@@ -63,6 +70,7 @@ def cmd_ensemble(args: argparse.Namespace) -> int:
         job = resolve_ensemble_job(args)
     except (OSError, ValueError) as exc:
         return fail(args, str(exc), exit_code=2, exc=exc)
+    warn_validation(args, job.validation_warnings)
     emit_event(args, "planned", command="ensemble", plan=job.plan)
     if args.dry_run:
         if report_mode(args) == "human":

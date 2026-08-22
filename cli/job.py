@@ -17,7 +17,7 @@ from core.settings.job_resolution import (
 from core.stem_selection import apply_stem_selection
 
 from core.input_discovery import discover_inputs
-from core.model_identity import ModelRecord
+from core.model_identity import ModelIdentityService, ModelRecord
 from .model_identity import CliModelLookup
 from .process_flags import collect_overrides
 from .profiles import (
@@ -77,6 +77,9 @@ class ResolvedJob:
     plan: dict[str, Any] = field(default_factory=dict)
     identity_inherited: bool = False
     resolved: Any = None
+    #: Stage-1 (syntax) plus stage-2 (repository-bound) stored-identity
+    #: warnings. Preserved illegal values are otherwise invisible.
+    validation_warnings: list[str] = field(default_factory=list)
 
 
 def add_job_input_args(parser: argparse.ArgumentParser) -> None:
@@ -165,6 +168,46 @@ def _base_resolve(args: argparse.Namespace) -> tuple[Settings, LoadedProfile, li
     )
     output = os.path.abspath(args.output)
     return settings, profile, inputs, output
+
+
+def stored_identity_warnings(
+    settings: Settings, repo: ModelRepository, profile: LoadedProfile
+) -> list[str]:
+    """Stage-2 validation of every stored model reference, once per command.
+
+    Stage 1 (canonical syntax) runs in the settings reader; this is the half
+    that needs the repository -- exact record existence, installed state,
+    identity completeness and per-path family eligibility. Index construction
+    is offline, and a repository that cannot publish one yields the stage-1
+    warnings unchanged rather than failing the command.
+    """
+    warnings = list(profile.validation_warnings)
+    try:
+        index = ModelIdentityService(repo).index
+    except (OSError, ValueError):
+        return warnings
+    seen = {_warning_key(item) for item in warnings}
+    for item in settings.validate_model_references(index):
+        key = _warning_key(item)
+        if key in seen:
+            # The sparse-profile reader already reported this path's syntax,
+            # with its own lookup hint; do not say it twice.
+            continue
+        seen.add(key)
+        warnings.append(item)
+    return warnings
+
+
+def _warning_key(item: str) -> tuple[str, str]:
+    """Identity of a validation warning: its settings path and its kind.
+
+    The two readers word the syntax complaint slightly differently for the same
+    value, so compare the kind rather than the whole sentence.
+    """
+    path, _separator, body = str(item).partition(": ")
+    if body.startswith("expected canonical model ID"):
+        return (path, "syntax")
+    return (path, body)
 
 
 def _validate_job_overrides(overrides: list[tuple[str, Any]]) -> None:
@@ -313,6 +356,7 @@ def resolve_separate_job(
         plan=effective.to_dict(),
         identity_inherited=inherited,
         resolved=effective,
+        validation_warnings=stored_identity_warnings(settings, repo, profile),
     )
 
 
@@ -445,6 +489,7 @@ def resolve_ensemble_job(
         plan=effective.to_dict(),
         identity_inherited=inherited,
         resolved=effective,
+        validation_warnings=stored_identity_warnings(settings, repo, profile),
     )
 
 
