@@ -102,7 +102,7 @@ class ModelIdTests(unittest.TestCase):
         service = ModelIdentityService(object())
         with patch.object(service, "records", return_value=(record,)):
             self.assertEqual(
-                service.resolve(tag, family="mdx", fuzzy=False).id, record.id
+                service.resolve(tag, family="mdx").id, record.id
             )
 
     def test_allowed_families_reject_ineligible_identity(self) -> None:

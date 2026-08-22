@@ -16,7 +16,6 @@ from core import paths
 from core.debug_log import debug
 from core.model_display import (
     parse_model_tag,
-    resolve_model_basename,
     sanitize_catalogue_label,
 )
 from core.politrees_catalog import mdx_checkpoint_filename
@@ -75,16 +74,29 @@ def load_curated_ensemble(preset_id: str) -> Optional[dict]:
 
 
 def resolve_member_tag(tag: str, repo: typing.Any) -> str:
-    """Rewrite an ensemble member reference to a canonical ``family:basename`` id."""
-    from core.model_identity import FAMILY_BY_ARCH, ModelId
+    """Rewrite an ensemble member reference to a canonical ``family:basename`` id.
+
+    Resolution is an exact identity lookup (:meth:`ModelIdentityService.
+    canonical_id_from_member_tag`), never a display-text inversion. A member
+    that cannot be resolved (not installed, not in any known catalogue) still
+    yields a best-effort ``family:name`` id from the raw tag text, so
+    :func:`classify_preset_members` can report it as missing instead of
+    dropping it silently.
+    """
+    from core.model_identity import FAMILY_BY_ARCH, ModelId, ModelIdentityService
 
     arch, model_name = parse_model_tag(tag)
     if not arch or not model_name:
         return tag
-    basename = resolve_model_basename(arch, model_name, repo) or model_name
-    stem = os.path.splitext(basename)[0]
     family = FAMILY_BY_ARCH.get(arch)
-    if family and stem and ":" not in stem:
+    if not family:
+        return tag
+    try:
+        return ModelIdentityService(repo).canonical_id_from_member_tag(tag)
+    except ValueError:
+        pass
+    stem = os.path.splitext(model_name)[0]
+    if stem and ":" not in stem:
         return str(ModelId(family, stem))
     return tag
 
@@ -104,10 +116,15 @@ def _installed_basenames(repo: typing.Any, arch: str) -> set:
 
 
 def member_is_installed(tag: str, repo: typing.Any) -> bool:
+    from core.model_identity import ModelId
+
     arch, model_name = parse_model_tag(tag)
     if not arch or not model_name:
         return False
-    basename = resolve_model_basename(arch, model_name, repo)
+    try:
+        basename = ModelId.parse(resolve_member_tag(tag, repo)).basename
+    except ValueError:
+        basename = model_name
     installed = _installed_basenames(repo, arch)
     if basename in installed:
         return True

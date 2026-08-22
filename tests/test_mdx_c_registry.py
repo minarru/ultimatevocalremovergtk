@@ -20,11 +20,11 @@ from core.mdx_c_registry import (
     register_mdx_c_checkpoint,
     register_mdx_c_from_download_jobs,
     register_mdx_display_name,
-    resolve_mdx_model_basename,
     sanitize_catalogue_label,
     try_register_from_catalog,
     yaml_for_checkpoint,
 )
+from core.model_display import resolve_mdx_model_basename
 from core.model_config import ModelConfig
 
 

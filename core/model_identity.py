@@ -1,8 +1,8 @@
 """Canonical model identities shared by the GTK and command-line frontends.
 
-The processing engine still accepts the historical display-name and
-``"Architecture: Display"`` forms.  This module owns the adapters so neither
-frontend has to duplicate model-family inference or fuzzy lookup rules.
+The processing engine still accepts the historical ``"Architecture: Display"``
+ensemble-member form.  This module owns the adapters so neither frontend has
+to duplicate model-family inference or exact-identity lookup rules.
 """
 
 from __future__ import annotations
@@ -185,10 +185,6 @@ class IdentityIndex:
         return tuple(self._records.values())
 
 
-def _normalize(value: str) -> str:
-    return "".join(ch for ch in str(value).casefold() if ch.isalnum())
-
-
 class _ModelInventory:
     """Resolve model references against one :class:`ModelRepository`."""
 
@@ -319,7 +315,7 @@ class _ModelInventory:
 
         if isinstance(self.repo, ModelRepository) or hasattr(self.repo, "_inventory_lock"):
             return self._published_index().lookup(model_id)
-        return resolve_model_record(model_id, self.records(), fuzzy=False)
+        return resolve_model_record(model_id, self.records())
 
     def _cached_index(self, name: str) -> dict[str, str]:
         provider = getattr(self.repo, name)
@@ -329,7 +325,7 @@ class _ModelInventory:
             return provider()
 
     def resolve(
-        self, query: str, *, fuzzy: bool = True, family: str | None = None,
+        self, query: str, *, family: str | None = None,
         allowed_families: Iterable[str] | None = None,
     ) -> ModelRecord:
         raw = str(query or "").strip()
@@ -354,13 +350,13 @@ class _ModelInventory:
             if token_family is not None and token_family not in allowed:
                 raise ValueError(f"model {query!r} is not eligible for this setting")
             records = tuple(record for record in records if record.family in allowed)
-        return resolve_model_record(raw, records, fuzzy=fuzzy)
+        return resolve_model_record(raw, records)
 
 
 def resolve_model_record(
-    query: str, records: Iterable[ModelRecord], *, fuzzy: bool = True
+    query: str, records: Iterable[ModelRecord]
 ) -> ModelRecord:
-    """Resolve ``query`` against an already-enumerated model inventory."""
+    """Resolve ``query`` against an already-enumerated model inventory by exact match."""
     raw = str(query or "").strip()
     if not raw:
         raise ValueError("model value is empty")
@@ -393,23 +389,8 @@ def resolve_model_record(
     )
     if len(exact) == 1:
         return exact[0]
-    if not fuzzy:
-        raise ValueError(f"unknown model {raw!r}")
-    needle = _normalize(os.path.splitext(os.path.basename(term))[0])
-    matched = {
-        record.id: record
-        for record in candidates
-        if needle
-        and (
-            needle in _normalize(record.basename)
-            or needle in _normalize(record.display)
-            or needle in _normalize(record.backend_name)
-        )
-    }
-    if len(matched) == 1:
-        return next(iter(matched.values()))
-    if matched:
-        names = ", ".join(sorted(matched)[:8])
+    if exact:
+        names = ", ".join(sorted(record.id for record in exact)[:8])
         raise ValueError(f"ambiguous model {raw!r}; matches: {names}")
     qualifier = f" in family {family}" if family else ""
     raise ValueError(f"unknown or unregistered model {raw!r}{qualifier}")
@@ -427,18 +408,12 @@ class ModelIdentityService(_ModelInventory):
         return f"{record.arch}: {record.display}"
 
     def canonical_id_from_member_tag(self, tag: str) -> str:
-        from .model_display import parse_model_tag, resolve_model_basename
+        """Resolve an ensemble member reference to its canonical id.
 
-        arch, name = parse_model_tag(str(tag))
-        family = FAMILY_BY_ARCH.get(arch)
-        if family is None:
-            return self.resolve(str(tag)).id
-        basename = resolve_model_basename(arch, name, self.repo)
-        # The mapper may resolve an uninstalled but known model.  Preserve that
-        # stable identity; execution validation remains responsible for proving
-        # that its checkpoint exists.
-        if basename:
-            return str(ModelId(family, basename))
+        Accepts both canonical ``family:basename`` ids and legacy
+        ``Arch: Display`` tags; either way this is an exact identity lookup
+        against the enumerated records, never a display-text inversion.
+        """
         return self.resolve(str(tag)).id
 
     def engine_value(

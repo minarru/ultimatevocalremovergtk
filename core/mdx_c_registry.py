@@ -17,7 +17,6 @@ from .model_display import (
     build_checkpoint_display_index,
     display_name_for_basename,
     load_mdx_catalog_display_index,
-    resolve_mdx_model_basename,
     sanitize_catalogue_label,
 )
 

@@ -55,10 +55,7 @@ from ..widgets.rows import (
     set_scale_row_value,
     use_wrapping_list,
 )
-from core.model_display import (
-    map_basenames_to_display,
-    resolve_model_basename,
-)
+from core.model_display import map_basenames_to_display
 from core.model_identity import FAMILY_BY_ARCH, ModelIdentityService, parse_stored_model_id
 from core.model_scores import parse_sdr_score
 from ..widgets.lazy_populate import LazyPopulator
@@ -98,23 +95,6 @@ def apply_name_mapper(names: typing.Any, name_mapper: typing.Any, *, catalogue_i
         display_name_for_basename(name, name_mapper, catalogue_index=catalogue_index)
         for name in names
     ]
-
-
-def current_display_for_stored_model(stored: typing.Any, basenames: typing.Any, arch: typing.Any, repo: typing.Any) -> str:
-    """Resolve a stored picker value to the current runtime display label.
-
-    Accepts an on-disk basename or an older mapper/catalogue alias and returns
-    the catalogue-first display name when the model is still installed.
-    """
-    if not stored:
-        return stored
-    if stored in basenames:
-        candidate = stored
-    else:
-        candidate = resolve_model_basename(arch, stored, repo)
-    if candidate in basenames:
-        return map_basenames_to_display([candidate], arch, repo)[0]
-    return stored
 
 
 class MethodView:

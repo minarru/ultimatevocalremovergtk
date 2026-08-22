@@ -72,16 +72,24 @@ class CuratedPresetLoadTests(unittest.TestCase):
 
 class ResolveAndDownloadTests(unittest.TestCase):
     def test_resolve_member_tag_uses_display(self) -> None:
+        # Resolution is now an exact identity lookup, not a display-text
+        # inversion: seed a published index with the target record instead of
+        # patching a reverse-resolver.
         repo = mock.Mock()
-        repo.mdx_name_select_MAPPER = {}
-        repo.mdx_catalogue_display_index.return_value = {
-            "model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa": (
-                "BandSplit Roformer | Resurrection Vocals by Unwa"
+        record = ModelRecord(
+            id="mdx:model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
+            family="mdx",
+            basename="model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
+            display="BandSplit Roformer | Resurrection Vocals by Unwa",
+            backend_name="model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
+            artifacts=ModelArtifacts(
+                "model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa.ckpt"
             ),
-        }
-        with mock.patch(
-            "core.ensemble_presets.resolve_model_basename",
-            return_value="model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa",
+            installed=False,
+        )
+        index = IdentityIndex({record.id: record})
+        with mock.patch.object(
+            ModelIdentityService, "_published_index", return_value=index,
         ):
             tag = resolve_member_tag(
                 "MDX-Net: BandSplit Roformer | Resurrection Vocals by Unwa",
