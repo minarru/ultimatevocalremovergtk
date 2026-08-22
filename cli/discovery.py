@@ -25,13 +25,11 @@ from core.settings.access import parse_setting_assignment, validate_setting_path
 
 from core.model_identity import (
     FAMILIES,
-    ModelIdentityService,
-    ModelRecord,
     canonical_id_from_member_tag,
     iter_model_records,
-    parse_stored_model_id,
     resolve_model_id,
 )
+from .model_identity import CliModelLookup
 from .profiles import (
     IDENTITY_SETTING_PATHS,
     LoadedProfile,
@@ -255,17 +253,6 @@ def cmd_models_list(args: argparse.Namespace) -> int:
     return _print_rows(args, rows)
 
 
-def _lookup_cli_model(model_id: str, repo: Any) -> ModelRecord:
-    try:
-        parsed = parse_stored_model_id(model_id)
-    except ValueError:
-        raise ValueError(
-            "expected canonical model ID family:basename; run 'uvr models list' "
-            "for installed IDs or 'uvr models catalog' for downloadable models"
-        ) from None
-    return ModelIdentityService(repo).index.lookup(parsed.value)
-
-
 def cmd_models_show(args: argparse.Namespace) -> int:
     from core.access_policy import access_policy
     from core.model_repository import ModelRepository
@@ -273,7 +260,7 @@ def cmd_models_show(args: argparse.Namespace) -> int:
     allow_network = not getattr(args, "offline", False)
     try:
         repo = ModelRepository()
-        record = _lookup_cli_model(args.model, repo)
+        record = CliModelLookup(repo).lookup(args.model)
         with access_policy(
             allow_network=allow_network,
             allow_metadata_writes=allow_network,
@@ -622,7 +609,7 @@ def cmd_models_configure(args: argparse.Namespace) -> int:
 
     repo = ModelRepository()
     try:
-        record = _lookup_cli_model(args.model, repo)
+        record = CliModelLookup(repo).lookup(args.model)
         if record.family == "demucs":
             from core import paths
             from core.demucs_registry import (

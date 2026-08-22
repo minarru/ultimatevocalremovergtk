@@ -17,11 +17,8 @@ from core.settings.job_resolution import (
 from core.stem_selection import apply_stem_selection
 
 from core.input_discovery import discover_inputs
-from core.model_identity import (
-    ModelIdentityService,
-    ModelRecord,
-    parse_stored_model_id,
-)
+from core.model_identity import ModelRecord
+from .model_identity import CliModelLookup
 from .process_flags import collect_overrides
 from .profiles import (
     IDENTITY_SETTING_PATHS,
@@ -178,25 +175,11 @@ def _validate_job_overrides(overrides: list[tuple[str, Any]]) -> None:
         )
 
 
-def _lookup_model_id(
-    reference: str,
+def _canonicalize_model_references(
+    settings: Settings,
     repo: ModelRepository,
     *,
-    service: ModelIdentityService | None = None,
-) -> ModelRecord:
-    try:
-        parsed = parse_stored_model_id(reference)
-    except ValueError:
-        raise ValueError(
-            "expected canonical model ID family:basename; run 'uvr models list' "
-            "for installed IDs or 'uvr models catalog' for downloadable models"
-        ) from None
-    identity = service or ModelIdentityService(repo)
-    return identity.index.lookup(parsed.value)
-
-
-def _canonicalize_model_references(
-    settings: Settings, repo: ModelRepository
+    models: CliModelLookup | None = None,
 ) -> dict[str, dict[str, str]]:
     from core.settings.access import get_path, set_path
     from core.settings.coerce import enum_value
@@ -220,7 +203,7 @@ def _canonicalize_model_references(
         ProcessMethod.DEMUCS.value: "demucs",
         ProcessMethod.APOLLO.value: "apollo",
     }.get(method_value)
-    service = ModelIdentityService(repo)
+    models = models or CliModelLookup(repo)
     for path in MODEL_REFERENCE_SETTING_PATHS | frozenset(family_by_path):
         section_name = path.split(".", 1)[0]
         active = True
@@ -240,18 +223,15 @@ def _canonicalize_model_references(
         if raw.casefold() in sentinels:
             continue
         try:
-            record = _lookup_model_id(raw, repo, service=service)
             required_family = family_by_path.get(path)
-            if required_family is not None and record.family != required_family:
-                raise ValueError(
-                    f"model {record.id!r} does not belong to required family "
-                    f"{required_family}"
-                )
             eligible = allowed_by_path.get(path)
             if "secondary_model" in path:
                 eligible = ("vr", "mdx", "demucs")
-            if eligible is not None and record.family not in eligible:
-                raise ValueError(f"model {record.id!r} is not eligible for this setting")
+            record = models.lookup(
+                raw,
+                family=required_family,
+                allowed_families=eligible,
+            )
         except ValueError:
             if active:
                 raise
@@ -267,11 +247,12 @@ def resolve_separate_job(
 ) -> ResolvedJob:
     base, profile, inputs, output = _base_resolve(args)
     repo = ModelRepository()
+    models = CliModelLookup(repo)
     inherited = not bool(args.model) and bool(profile.model)
     model_query = args.model or profile.model
     if not model_query:
         raise ValueError("separate requires --model or a profile containing a model")
-    record = _lookup_model_id(model_query, repo)
+    record = models.lookup(model_query)
     settings, sources = _resolved_settings(
         base, output=output, method=record.family, model=record,
         stems=args.stems, long_chunk_seconds=args.long_chunk_seconds,
@@ -283,7 +264,7 @@ def resolve_separate_job(
     split_record = None
     if getattr(args, "vocal_split", None):
         splitter_id = resolve_splitter_identity(args.vocal_split, settings, repo)
-        split_record = _lookup_model_id(splitter_id, repo)
+        split_record = models.lookup(splitter_id)
         resolved_splitter = split_record.id
     overrides = collect_overrides(args, resolved_vocal_splitter=resolved_splitter)
     _validate_job_overrides(overrides)
@@ -295,7 +276,7 @@ def resolve_separate_job(
         layers=layers,
         base_provenance=sources,
     )
-    model_chains = _canonicalize_model_references(settings, repo)
+    model_chains = _canonicalize_model_references(settings, repo, models=models)
     from core.job_plan import JobResolver, JobSpec, ValidationLevel
 
     level = validation_level or ValidationLevel.MODEL
@@ -345,6 +326,7 @@ def resolve_ensemble_job(
 
     base, profile, inputs, output = _base_resolve(args)
     repo = ModelRepository()
+    models = CliModelLookup(repo)
     explicit_identity = bool(args.ensemble or args.models)
     member_tokens = list(args.models or []) if explicit_identity else list(profile.members)
     preset = args.ensemble if explicit_identity else profile.ensemble
@@ -381,7 +363,7 @@ def resolve_ensemble_job(
     if member_tokens:
         from bundled.constants import CHOOSE_ENSEMBLE_OPTION
 
-        records = [_lookup_model_id(token, repo) for token in member_tokens]
+        records = [models.lookup(token) for token in member_tokens]
         settings.ensemble.selected_models = [item.id for item in records]
         settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         sources["ensemble.selected_models"] = (
@@ -420,11 +402,11 @@ def resolve_ensemble_job(
         layers=layers,
         base_provenance=sources,
     )
-    model_chains = _canonicalize_model_references(settings, repo)
+    model_chains = _canonicalize_model_references(settings, repo, models=models)
     if not records:
         # Resolve preset tags back to canonical records for reports/manifests.
         for tag in settings.ensemble.selected_models:
-            records.append(_lookup_model_id(tag, repo))
+            records.append(models.lookup(tag))
     if len(records) < 2:
         raise ValueError("an ensemble needs at least two members")
     if not explicit_identity and profile.members:

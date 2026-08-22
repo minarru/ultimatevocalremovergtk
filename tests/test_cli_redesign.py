@@ -161,11 +161,13 @@ class ProfileTests(unittest.TestCase):
             artifacts=ModelArtifacts('model_a.ckpt'),
             installed=True,
         )
-        with patch("cli.job.ModelIdentityService") as service_cls:
-            service = service_cls.return_value
-            service.index.lookup.return_value = record
+        with patch("cli.job.CliModelLookup") as lookup_cls:
+            models = lookup_cls.return_value
+            models.lookup.return_value = record
             _canonicalize_model_references(settings, Mock())
-        service.index.lookup.assert_any_call("mdx:model_a")
+        models.lookup.assert_any_call(
+            "mdx:model_a", family="mdx", allowed_families=None
+        )
         self.assertEqual(settings.mdx.model, "mdx:model_a")
 
     def test_canonicalize_ignores_stale_unused_family_primary(self) -> None:
@@ -188,14 +190,14 @@ class ProfileTests(unittest.TestCase):
             installed=True,
         )
 
-        def lookup(raw: str) -> ModelRecord:
+        def lookup(raw: str, **_kwargs: Any) -> ModelRecord:
             if "stale" in str(raw):
                 raise ValueError("unknown or unregistered model")
             return mdx_record
 
-        with patch("cli.job.ModelIdentityService") as service_cls:
-            service = service_cls.return_value
-            service.index.lookup.side_effect = lookup
+        with patch("cli.job.CliModelLookup") as lookup_cls:
+            models = lookup_cls.return_value
+            models.lookup.side_effect = lookup
             _canonicalize_model_references(settings, Mock())
         self.assertEqual(settings.mdx.model, "mdx:good")
 
@@ -228,14 +230,14 @@ class ProfileTests(unittest.TestCase):
             installed=True,
         )
 
-        def lookup(raw: str) -> ModelRecord:
+        def lookup(raw: str, **_kwargs: Any) -> ModelRecord:
             if "split" in str(raw).casefold():
                 return split_record
             return mdx_record
 
-        with patch("cli.job.ModelIdentityService") as service_cls:
-            service = service_cls.return_value
-            service.index.lookup.side_effect = lookup
+        with patch("cli.job.CliModelLookup") as lookup_cls:
+            models = lookup_cls.return_value
+            models.lookup.side_effect = lookup
             _canonicalize_model_references(settings, Mock())
         self.assertEqual(settings.process.vocal_splitter, "mdx:split")
         self.assertEqual(settings.mdx.model, "mdx:good")
@@ -269,14 +271,14 @@ class ProfileTests(unittest.TestCase):
             installed=True,
         )
 
-        def lookup(raw: str) -> ModelRecord:
+        def lookup(raw: str, **_kwargs: Any) -> ModelRecord:
             if "sec" in str(raw).casefold():
                 return secondary
             return primary
 
-        with patch("cli.job.ModelIdentityService") as service_cls:
-            service = service_cls.return_value
-            service.index.lookup.side_effect = lookup
+        with patch("cli.job.CliModelLookup") as lookup_cls:
+            models = lookup_cls.return_value
+            models.lookup.side_effect = lookup
             _canonicalize_model_references(settings, Mock())
         self.assertEqual(settings.mdx.voc_inst_secondary_model, "mdx:sec")
         self.assertEqual(settings.mdx.model, "mdx:good")
@@ -319,8 +321,10 @@ class PlannedSettingsReturnTests(unittest.TestCase):
             device=None,
             on_exists="fail",
         )
+        models = Mock()
+        models.lookup.return_value = record
         with patch("cli.job._base_resolve", return_value=(pre_settings, profile, ["/a.wav"], "/out")), patch(
-            "cli.job._lookup_model_id", return_value=record
+            "cli.job.CliModelLookup", return_value=models
         ), patch("cli.job.ModelRepository"), patch(
             "cli.job._canonicalize_model_references", return_value={}
         ), patch("cli.job._device_pairs", return_value=([], False)), patch(
@@ -375,8 +379,10 @@ class PlannedSettingsReturnTests(unittest.TestCase):
             device=None,
             on_exists="fail",
         )
+        models = Mock()
+        models.lookup.side_effect = records
         with patch("cli.job._base_resolve", return_value=(pre_settings, profile, ["/a.wav"], "/out")), patch(
-            "cli.job._lookup_model_id", side_effect=records
+            "cli.job.CliModelLookup", return_value=models
         ), patch("cli.job.ModelRepository"), patch(
             "cli.job._canonicalize_model_references", return_value={}
         ), patch("cli.job._device_pairs", return_value=([], False)), patch(
@@ -437,8 +443,10 @@ class PlannedSettingsReturnTests(unittest.TestCase):
             captured["selected_models"] = list(spec.settings.ensemble.selected_models)
             return self._planned_effective(planned)
 
+        models = Mock()
+        models.lookup.side_effect = records
         with patch("cli.job._base_resolve", return_value=(settings, profile, ["/a.wav"], "/out")), patch(
-            "cli.job._lookup_model_id", side_effect=records
+            "cli.job.CliModelLookup", return_value=models
         ), patch("cli.job.ModelRepository"), patch(
             "cli.job._canonicalize_model_references", return_value={}
         ), patch("cli.job._device_pairs", return_value=([], False)), patch(
@@ -491,8 +499,10 @@ class PlannedSettingsReturnTests(unittest.TestCase):
             captured["splitter"] = resolved_vocal_splitter
             return []
 
+        models = Mock()
+        models.lookup.side_effect = [model, splitter]
         with patch("cli.job._base_resolve", return_value=(settings, profile, ["/a.wav"], "/out")), patch(
-            "cli.job._lookup_model_id", side_effect=[model, splitter]
+            "cli.job.CliModelLookup", return_value=models
         ), patch("cli.job.resolve_splitter_identity", return_value="mdx:split"), patch(
             "cli.job.ModelRepository"
         ), patch("cli.job._canonicalize_model_references", return_value={}), patch(

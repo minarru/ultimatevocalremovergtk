@@ -444,6 +444,11 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
 
 
 class StrictCliModelIdTests(unittest.TestCase):
+    canonical_error = (
+        "expected canonical model ID family:basename; run 'uvr models list' "
+        "for installed IDs or 'uvr models catalog' for downloadable models"
+    )
+
     def setUp(self) -> None:
         self.record = ModelRecord(
             id="mdx:model",
@@ -469,17 +474,17 @@ class StrictCliModelIdTests(unittest.TestCase):
     def test_models_show_rejects_a_bare_basename(self) -> None:
         code, payload = self._run(["models", "show", "model"])
         self.assertEqual(code, 2)
-        self.assertIn("expected canonical model ID family:basename", payload["error"]["message"])
+        self.assertEqual(payload["error"]["message"], self.canonical_error)
 
     def test_models_configure_rejects_a_bare_basename(self) -> None:
         code, payload = self._run(["models", "configure", "model", "--reset"])
         self.assertEqual(code, 2)
-        self.assertIn("expected canonical model ID family:basename", payload["error"]["message"])
+        self.assertEqual(payload["error"]["message"], self.canonical_error)
 
     def test_models_validate_rejects_a_bare_basename(self) -> None:
         code, payload = self._run(["models", "validate", "model"])
         self.assertEqual(code, 2)
-        self.assertIn("expected canonical model ID family:basename", payload["error"]["message"])
+        self.assertEqual(payload["error"]["message"], self.canonical_error)
 
     def test_separate_rejects_a_bare_basename_before_planning(self) -> None:
         from cli.profiles import LoadedProfile
@@ -499,7 +504,46 @@ class StrictCliModelIdTests(unittest.TestCase):
             ])
         payload = json.loads(out.getvalue())
         self.assertEqual(code, 2)
-        self.assertIn("expected canonical model ID family:basename", payload["error"]["message"])
+        self.assertEqual(payload["error"]["message"], self.canonical_error)
+
+
+class SharedCliModelLookupTests(unittest.TestCase):
+    def test_shared_lookup_rejects_noncanonical_text_with_discovery_hint(self) -> None:
+        from cli.model_identity import CliModelLookup
+
+        lookup = CliModelLookup(Mock())
+        with self.assertRaises(ValueError) as caught:
+            lookup.lookup("model")
+        self.assertEqual(
+            str(caught.exception),
+            "expected canonical model ID family:basename; run 'uvr models list' "
+            "for installed IDs or 'uvr models catalog' for downloadable models",
+        )
+
+    def test_shared_lookup_applies_exact_family_check_after_index_lookup(self) -> None:
+        from cli.model_identity import CliModelLookup
+
+        record = ModelRecord(
+            id="mdx:model",
+            family="mdx",
+            basename="model",
+            display="Model",
+            backend_name="model",
+            artifacts=ModelArtifacts("model.ckpt"),
+            installed=True,
+        )
+        index = IdentityIndex({record.id: record})
+        with patch(
+            "cli.model_identity.ModelIdentityService._published_index",
+            return_value=index,
+        ):
+            lookup = CliModelLookup(Mock())
+            self.assertEqual(lookup.lookup("mdx:model", family="mdx"), record)
+            with self.assertRaisesRegex(
+                ValueError,
+                "model 'mdx:model' does not belong to required family vr",
+            ):
+                lookup.lookup("mdx:model", family="vr")
 
 
 class ModelsValidateInventoryTests(unittest.TestCase):
