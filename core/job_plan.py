@@ -13,12 +13,14 @@ from enum import Enum
 from typing import Any, Mapping, Sequence
 
 from bundled.constants import (
+    CHOOSE_MODEL,
     DEMUCS_4_SOURCE_LIST,
     DEMUCS_ARCH_TYPE,
     ENSEMBLE_MODE,
     INST_WITH_BACKING_VOCALS_STEM,
     INST_WITH_LEAD_VOCALS_STEM,
     MDX_ARCH_TYPE,
+    NO_MODEL,
     VR_ARCH_PM,
 )
 
@@ -29,7 +31,14 @@ from .export_naming import (
     format_stem_basename,
 )
 from .model_config import assemble_model
-from .model_identity import ModelIdentityService, ModelRecord
+from .model_config.determine import _secondary_slot_for_stem
+from .model_identity import (
+    DemucsSpec,
+    MdxSpec,
+    ModelArtifacts,
+    ModelIdentityService,
+    ModelRecord,
+)
 from .access_policy import access_policy
 from .settings import Settings
 from .stems import (
@@ -51,6 +60,150 @@ from .stems import (
     select_stem_routes,
     ui_label,
 )
+
+
+MODEL_SENTINELS = frozenset({CHOOSE_MODEL, NO_MODEL, ""})
+_MODEL_FAMILIES = frozenset({"vr", "mdx", "demucs"})
+_SECONDARY_SLOTS = ("voc_inst", "other", "bass", "drums")
+
+
+def _identity_digest_entry(record: ModelRecord) -> dict[str, Any]:
+    return {
+        "id": record.id,
+        "family": record.family,
+        "backend_name": record.backend_name,
+        "primary": record.artifacts.primary_filename,
+        "supporting": list(record.artifacts.supporting_filenames),
+        "demucs": dataclasses.asdict(record.demucs) if record.demucs else None,
+        "mdx": dataclasses.asdict(record.mdx) if record.mdx else None,
+    }
+
+
+def compute_model_identity_digest(
+    dependencies: Mapping[str, ModelRecord],
+) -> str:
+    payload = {
+        path: _identity_digest_entry(dependencies[path])
+        for path in sorted(dependencies)
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
+
+
+EMPTY_MODEL_IDENTITY_DIGEST = compute_model_identity_digest({})
+
+
+def _model_reference(settings: Settings, path: str) -> str:
+    if path.startswith("ensemble.selected_models["):
+        index = int(path.removeprefix("ensemble.selected_models[").removesuffix("]"))
+        return str(settings.ensemble.selected_models[index] or "")
+    section_name, field_name = path.split(".", 1)
+    return str(getattr(getattr(settings, section_name), field_name) or "")
+
+
+def _selected_family_paths(settings: Settings, command: str) -> list[tuple[str, str]]:
+    method_value = str(getattr(settings.process.method, "value", settings.process.method))
+    if command == "ensemble" or method_value == ENSEMBLE_MODE:
+        return [
+            (f"ensemble.selected_models[{index}]", str(reference or ""))
+            for index, reference in enumerate(settings.ensemble.selected_models)
+            if str(reference or "") not in MODEL_SENTINELS
+        ]
+    family = {
+        VR_ARCH_PM: "vr",
+        MDX_ARCH_TYPE: "mdx",
+        DEMUCS_ARCH_TYPE: "demucs",
+    }.get(method_value)
+    if family is None:
+        return []
+    reference = str(getattr(getattr(settings, family), "model") or "")
+    return [] if reference in MODEL_SENTINELS else [(f"{family}.model", reference)]
+
+
+def active_model_paths(
+    settings: Settings,
+    *,
+    command: str,
+    primary: ModelRecord | Sequence[ModelRecord] | None = None,
+    source_layout: str | None = None,
+) -> tuple[str, ...]:
+    """Return stable settings paths for every active separation dependency."""
+    primary_paths = _selected_family_paths(settings, command)
+    paths = [path for path, _reference in primary_paths]
+    if primary is None:
+        primaries: tuple[ModelRecord, ...] = ()
+    elif isinstance(primary, ModelRecord):
+        primaries = (primary,)
+    else:
+        primaries = tuple(primary)
+    selected_families = {
+        record.family for record in primaries
+    } or {
+        reference.partition(":")[0]
+        for _path, reference in primary_paths
+        if reference.partition(":")[0] in _MODEL_FAMILIES
+    }
+    method_value = str(getattr(settings.process.method, "value", settings.process.method))
+    if not selected_families and command != "ensemble":
+        family = {
+            VR_ARCH_PM: "vr",
+            MDX_ARCH_TYPE: "mdx",
+            DEMUCS_ARCH_TYPE: "demucs",
+        }.get(method_value)
+        if family:
+            selected_families.add(family)
+
+    ensemble_multi = (
+        command == "ensemble"
+        and coerce_ensemble_pair(settings.ensemble.main_stem).is_multi_or_four()
+    )
+    demucs_layouts = {
+        record.demucs.source_layout
+        for record in primaries
+        if record.family == "demucs" and record.demucs is not None
+    }
+    if source_layout:
+        demucs_layouts.add(source_layout)
+
+    for family in ("vr", "mdx", "demucs"):
+        if family not in selected_families:
+            continue
+        section = getattr(settings, family)
+        if not section.is_secondary_model_activate:
+            continue
+        all_slots = (
+            family == "demucs"
+            and (
+                ensemble_multi
+                or bool(demucs_layouts.intersection({"4_stem", "6_stem"}))
+            )
+        )
+        if all_slots:
+            slots = _SECONDARY_SLOTS
+        else:
+            selected_stem = (
+                coerce_ensemble_pair(settings.ensemble.main_stem).stem_halves()[0]
+                if command == "ensemble"
+                else str(getattr(section, "stems", "") or "")
+            )
+            slot = _secondary_slot_for_stem(selected_stem) or "voc_inst"
+            slots = (slot,)
+        for slot in slots:
+            path = f"{family}.{slot}_secondary_model"
+            if _model_reference(settings, path) not in MODEL_SENTINELS:
+                paths.append(path)
+
+    if (
+        settings.process.vocal_splitter_enabled
+        and str(settings.process.vocal_splitter or "") not in MODEL_SENTINELS
+    ):
+        paths.append("process.vocal_splitter")
+    if (
+        settings.demucs.is_pre_proc_model_activate
+        and str(settings.demucs.pre_proc_model or "") not in MODEL_SENTINELS
+    ):
+        paths.append("demucs.pre_proc_model")
+    return tuple(paths)
 
 
 class ValidationLevel(str, Enum):
@@ -86,6 +239,10 @@ class ModelDescriptor:
     family: str
     basename: str
     display: str
+    backend_name: str = ""
+    artifacts: ModelArtifacts = field(default_factory=lambda: ModelArtifacts(""))
+    demucs: DemucsSpec | None = None
+    mdx: MdxSpec | None = None
     checkpoint: str | None = None
     checkpoint_hash: str | None = None
     primary_stem: str | None = None
@@ -136,6 +293,10 @@ class ResolvedJob:
     device: str
     output: str = ""
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    model_dependencies: Mapping[str, ModelRecord] = field(
+        default_factory=dict, compare=False, repr=False
+    )
+    model_identity_digest: str = EMPTY_MODEL_IDENTITY_DIGEST
 
     @property
     def ok(self) -> bool:
@@ -150,6 +311,11 @@ class ResolvedJob:
             "device": self.device,
             "output": self.output,
             "models": [dataclasses.asdict(model) for model in self.models],
+            "model_dependencies": {
+                path: record.id
+                for path, record in sorted(self.model_dependencies.items())
+            },
+            "model_identity_digest": self.model_identity_digest,
             "inputs": [
                 {
                     "path": item.path,
@@ -217,6 +383,10 @@ def _descriptor(record: ModelRecord, model: Any, verify: bool) -> ModelDescripto
         family=record.family,
         basename=record.basename,
         display=record.display,
+        backend_name=record.backend_name,
+        artifacts=record.artifacts,
+        demucs=record.demucs,
+        mdx=record.mdx,
         checkpoint=path or None,
         checkpoint_hash=digest,
         primary_stem=getattr(model, "primary_stem", None),
@@ -623,6 +793,7 @@ class JobResolver:
         settings = copy.deepcopy(spec.settings)
         settings.process.export_path = os.path.abspath(spec.output)
         diagnostics: list[Diagnostic] = []
+        dependencies: dict[str, ModelRecord] = {}
         records: list[ModelRecord] = []
         models: list[Any] = []
         if not spec.inputs:
@@ -633,7 +804,8 @@ class JobResolver:
         if not spec.output:
             diagnostics.append(Diagnostic("output.empty", "Choose an output folder"))
         try:
-            records = self._identity_records(settings, spec.command)
+            dependencies = self._dependency_map(settings, spec.command)
+            records = self._primary_records(dependencies, spec.command)
         except ValueError as exc:
             diagnostics.append(Diagnostic("model.identity", str(exc)))
         verify_model = level is not ValidationLevel.CONFIG
@@ -651,7 +823,16 @@ class JobResolver:
             _descriptor(record, model, verify_model)
             for record, model in zip(records, models)
         ) if models else tuple(
-            ModelDescriptor(record.id, record.family, record.basename, record.display)
+            ModelDescriptor(
+                record.id,
+                record.family,
+                record.basename,
+                record.display,
+                record.backend_name,
+                record.artifacts,
+                record.demucs,
+                record.mdx,
+            )
             for record in records
         )
         provenance = dict(spec.provenance)
@@ -686,10 +867,18 @@ class JobResolver:
             device=request.id,
             output=settings.process.export_path,
             metadata=dict(spec.metadata),
+            model_dependencies=dependencies,
+            model_identity_digest=compute_model_identity_digest(dependencies),
         )
 
     def is_current(self, plan: ResolvedJob) -> bool:
         if plan.inventory_generation != int(getattr(self.repo, "inventory_generation", 0)):
+            return False
+        try:
+            dependencies = self._dependency_map(plan.settings, plan.command)
+        except ValueError:
+            return False
+        if compute_model_identity_digest(dependencies) != plan.model_identity_digest:
             return False
         for descriptor in plan.models:
             if not descriptor.checkpoint or not descriptor.checkpoint_hash:
@@ -706,6 +895,7 @@ class JobResolver:
     ) -> ResolvedJob:
         """Build the shared immutable plan from models already dry-assembled by an adapter."""
         settings = copy.deepcopy(spec.settings)
+        dependencies = self._dependency_map(settings, spec.command)
         descriptors = tuple(
             _descriptor(record, model, level is not ValidationLevel.CONFIG)
             for record, model in zip(records, models)
@@ -732,24 +922,76 @@ class JobResolver:
             DeviceRequest.from_settings(settings.process).id,
             settings.process.export_path,
             dict(spec.metadata),
+            dependencies,
+            compute_model_identity_digest(dependencies),
         )
 
-    def _identity_records(self, settings: Settings, command: str) -> list[ModelRecord]:
-        method_value = str(getattr(settings.process.method, "value", settings.process.method))
-        if command == "ensemble" or method_value == ENSEMBLE_MODE:
-            records = [
-                self.identities.resolve(reference)
-                for reference in settings.ensemble.selected_models
+    def _dependency_map(
+        self, settings: Settings, command: str
+    ) -> dict[str, ModelRecord]:
+        primary_dependencies: dict[str, ModelRecord] = {}
+        for path, reference in _selected_family_paths(settings, command):
+            record = self.identities.lookup(reference)
+            if path.startswith("ensemble.selected_models["):
+                allowed = _MODEL_FAMILIES
+            else:
+                allowed = frozenset({path.partition(".")[0]})
+            self._validate_dependency_family(path, record, allowed)
+            primary_dependencies[path] = record
+
+        method_value = str(
+            getattr(settings.process.method, "value", settings.process.method)
+        )
+        is_ensemble = command == "ensemble" or method_value == ENSEMBLE_MODE
+        if is_ensemble and len(primary_dependencies) < 2:
+            raise ValueError("an ensemble requires at least two models")
+
+        dependencies = dict(primary_dependencies)
+        paths = active_model_paths(
+            settings,
+            command=command,
+            primary=tuple(primary_dependencies.values()),
+        )
+        for path in paths:
+            if path in dependencies:
+                continue
+            record = self.identities.lookup(_model_reference(settings, path))
+            allowed = (
+                frozenset({"vr", "mdx"})
+                if path == "process.vocal_splitter"
+                else frozenset({"demucs"})
+                if path == "demucs.pre_proc_model"
+                else _MODEL_FAMILIES
+            )
+            self._validate_dependency_family(path, record, allowed)
+            dependencies[path] = record
+        return dependencies
+
+    @staticmethod
+    def _validate_dependency_family(
+        path: str, record: ModelRecord, allowed: frozenset[str]
+    ) -> None:
+        if record.family not in allowed:
+            expected = ", ".join(sorted(allowed))
+            raise ValueError(
+                f"{path} references {record.id!r}, but requires family {expected}"
+            )
+
+    @staticmethod
+    def _primary_records(
+        dependencies: Mapping[str, ModelRecord], command: str
+    ) -> list[ModelRecord]:
+        if command == "ensemble":
+            return [
+                record
+                for path, record in dependencies.items()
+                if path.startswith("ensemble.selected_models[")
             ]
-            if len(records) < 2:
-                raise ValueError("an ensemble requires at least two models")
-            return records
-        family, reference = {
-            VR_ARCH_PM: ("vr", settings.vr.model),
-            MDX_ARCH_TYPE: ("mdx", settings.mdx.model),
-            DEMUCS_ARCH_TYPE: ("demucs", settings.demucs.model),
-        }[method_value]
-        return [self.identities.resolve(str(reference), family=family)]
+        return [
+            record
+            for path, record in dependencies.items()
+            if path in {"vr.model", "mdx.model", "demucs.model"}
+        ]
 
     def _assemble(
         self, settings: Settings, command: str, records: Sequence[ModelRecord]
@@ -849,8 +1091,9 @@ def format_effective_plan(plan: ResolvedJob) -> str:
 
 
 __all__ = [
-    "Diagnostic", "JobResolver", "JobSpec", "ModelDescriptor", "PlannedInput",
+    "Diagnostic", "JobResolver", "JobSpec", "MODEL_SENTINELS", "ModelDescriptor", "PlannedInput",
     "PlannedOutput", "Provenance", "ResolvedJob", "ValidationLevel",
-    "device_runtime_diagnostics", "format_effective_plan", "planned_output_stems",
-    "planned_output_routes", "settings_fingerprint",
+    "active_model_paths", "compute_model_identity_digest", "device_runtime_diagnostics",
+    "format_effective_plan", "planned_output_stems", "planned_output_routes",
+    "settings_fingerprint",
 ]

@@ -206,7 +206,6 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
         settings.ensemble.selected_models = ["mdx:a", "mdx:b"]
         resolver = JobResolver(Mock())
-        resolver._identity_records = Mock(return_value=[])  # type: ignore[method-assign]
         spec = JobSpec("ensemble", settings, ("/tmp/song.wav",), "/tmp/out")
         # Bypass assemble: feed descriptors through _plan_inputs.
         planned = resolver._plan_inputs(
@@ -257,9 +256,9 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         self.assertFalse(ok)
         fetch.assert_not_called()
 
-    def test_identity_records_keep_legacy_arch_member_tags(self) -> None:
+    def test_dependency_map_uses_exact_canonical_id(self) -> None:
         from core.job_plan import JobResolver
-        from core.model_identity import ModelRecord, canonical_member_tag
+        from core.model_identity import ModelRecord
         from core.settings import Settings
         from core.types import ProcessMethod
 
@@ -274,14 +273,15 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         )
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.MDX
-        settings.mdx.model = canonical_member_tag(record)
+        settings.mdx.model = record.id
         resolver = JobResolver(Mock())
         resolver.identities = Mock()
-        resolver.identities.resolve.return_value = record
-        self.assertEqual(resolver._identity_records(settings, "separate"), [record])
-        query = resolver.identities.resolve.call_args[0][0]
-        self.assertEqual(query, canonical_member_tag(record))
-        self.assertFalse(query.startswith("mdx:MDX-Net:"))
+        resolver.identities.lookup.return_value = record
+        self.assertEqual(
+            resolver._dependency_map(settings, "separate"),
+            {"mdx.model": record},
+        )
+        resolver.identities.lookup.assert_called_once_with(record.id)
 
     def test_job_assemble_disables_mdx_c_network(self) -> None:
         from core.access_policy import current_access_policy
@@ -333,7 +333,9 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
             secondary_stem="Instrumental",
         )
         resolver = JobResolver(Mock(inventory_generation=0))
-        resolver._identity_records = Mock(return_value=[record])  # type: ignore[method-assign]
+        resolver._dependency_map = Mock(  # type: ignore[method-assign]
+            return_value={"mdx.model": record}
+        )
 
         with tempfile.NamedTemporaryFile(suffix=".wav") as handle:
             spec = JobSpec("separate", settings, (handle.name,), "/tmp/out")
