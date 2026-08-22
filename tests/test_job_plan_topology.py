@@ -283,7 +283,7 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         )
         resolver.identities.lookup.assert_called_once_with(record.id)
 
-    def test_job_assemble_disables_mdx_c_network(self) -> None:
+    def test_job_assemble_honors_mdx_c_network_policy(self) -> None:
         from core.access_policy import current_access_policy
         from core.job_plan import JobResolver
         from core.model_identity import ModelRecord
@@ -306,7 +306,12 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
             installed=True,
         )
         with patch("core.job_plan.assemble_model", side_effect=fake_assemble):
-            resolver._assemble(Settings.defaults(), "separate", [record])
+            resolver._assemble(Settings.defaults(), "separate", [record], allow_network=True)
+        self.assertEqual(seen, [True])
+
+        seen.clear()
+        with patch("core.job_plan.assemble_model", side_effect=fake_assemble):
+            resolver._assemble(Settings.defaults(), "separate", [record], allow_network=False)
         self.assertEqual(seen, [False])
 
     def test_resolve_unavailable_model_status_is_configuration_diagnostic(self) -> None:

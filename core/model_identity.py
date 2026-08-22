@@ -310,6 +310,10 @@ class _ModelInventory:
             self._identity_cache = index
             return index
 
+    @property
+    def index(self) -> IdentityIndex:
+        return self._published_index()
+
     def lookup(self, model_id: str) -> ModelRecord:
         from .model_repository import ModelRepository
 

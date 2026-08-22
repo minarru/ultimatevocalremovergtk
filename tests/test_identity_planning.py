@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import unittest
 import tempfile
 from unittest.mock import Mock, patch
@@ -12,7 +13,13 @@ from core.job_plan import (
     active_model_paths,
     compute_model_identity_digest,
 )
-from core.model_identity import MdxSpec, ModelArtifacts, ModelRecord
+from core.model_identity import (
+    IdentityIndex,
+    MdxSpec,
+    ModelArtifacts,
+    ModelIdentityService,
+    ModelRecord,
+)
 from core.model_repository import ModelRepository
 from core.settings import Settings
 from core.types import ProcessMethod
@@ -267,6 +274,131 @@ class ResolvedPlanIdentityTests(unittest.TestCase):
 
         resolver.identities.lookup.return_value = changed
         self.assertFalse(resolver.is_current(plan))
+
+
+class ApolloSettingsStayCanonicalTests(unittest.TestCase):
+    def test_resolver_does_not_write_filename_into_settings(self) -> None:
+        from core.audio_plan import AudioJobResolver
+        from core.settings import Settings
+        from core.job_plan import ValidationLevel
+
+        settings = Settings.defaults()
+        settings.audio_tools.apollo_model = "apollo:restorer"
+        record = ModelRecord(
+            id="apollo:restorer",
+            family="apollo",
+            basename="restorer",
+            display="restorer",
+            backend_name="restorer.ckpt",
+            artifacts=ModelArtifacts("restorer.ckpt"),
+            installed=True,
+        )
+        resolver = AudioJobResolver(Mock(inventory_generation=0))
+        resolver.identities = Mock()
+        resolver.identities.resolve.return_value = record
+        resolver._resolve_apollo(settings, [], ValidationLevel.CONFIG)
+        self.assertEqual(settings.audio_tools.apollo_model, "apollo:restorer")
+
+
+class SplitterExactIdTests(unittest.TestCase):
+    def test_substring_no_longer_matches(self) -> None:
+        from core.settings.job_resolution import resolve_splitter_identity
+        from core.settings import Settings
+
+        settings = Settings.defaults()
+        repo, index = _repo_with_karaoke("vr:UVR-De-Echo-Normal")
+        with patch.object(
+            ModelIdentityService, "_published_index", return_value=index
+        ), patch.object(
+            ModelIdentityService,
+            "canonical_id_from_member_tag",
+            return_value="vr:UVR-De-Echo-Normal",
+        ):
+            with self.assertRaises(ValueError):
+                resolve_splitter_identity("Echo", settings, repo)
+
+    def test_canonical_splitter_id_still_resolves(self) -> None:
+        from core.settings.job_resolution import resolve_splitter_identity
+        from core.settings import Settings
+
+        settings = Settings.defaults()
+        repo, index = _repo_with_karaoke("vr:UVR-De-Echo-Normal")
+        with patch.object(
+            ModelIdentityService, "_published_index", return_value=index
+        ), patch.object(
+            ModelIdentityService,
+            "canonical_id_from_member_tag",
+            return_value="vr:UVR-De-Echo-Normal",
+        ):
+            self.assertEqual(
+                resolve_splitter_identity("vr:UVR-De-Echo-Normal", settings, repo),
+                "vr:UVR-De-Echo-Normal",
+            )
+
+
+class MdxYamlFetchPolicyTests(unittest.TestCase):
+    def test_plan_offline_does_not_fetch(self) -> None:
+        from core.job_plan import JobResolver
+
+        record = _mdx_record_missing_yaml()
+        resolver = JobResolver(_repo_with_mdx_c_missing_yaml())
+        resolver.identities = Mock()
+        resolver.identities.lookup.return_value = record
+        with patch("core.mdx_config_fetch.ensure_mdx_c_config", side_effect=AssertionError("fetch")):
+            with self.assertRaises(ValueError):
+                resolver.resolve(_separate_spec(), allow_network=False)
+
+    def test_plan_online_fetches_once_then_relooks_up(self) -> None:
+        from core.job_plan import JobResolver
+
+        fetches: list[str] = []
+
+        def fake_ensure(name: str, **kwargs: object) -> bool:
+            fetches.append(name)
+            return True
+
+        record = _mdx_record_missing_yaml()
+        resolver = JobResolver(_repo_with_mdx_c_missing_yaml())
+        resolver.identities = Mock()
+        resolver.identities.lookup.return_value = record
+        with patch("core.mdx_config_fetch.ensure_mdx_c_config", side_effect=fake_ensure), patch.object(
+            resolver, "_assemble", return_value=[Mock(model_status=True)]
+        ):
+            resolver.resolve(_separate_spec(), ValidationLevel.CONFIG, allow_network=True)
+        self.assertEqual(len(fetches), 1)
+
+
+def _repo_with_karaoke(canonical_id: str) -> tuple[Mock, IdentityIndex]:
+    record = _record(canonical_id)
+    repo = Mock()
+    repo.karaoke_model_list = Mock(return_value=[f"VR Arch: {canonical_id.split(':', 1)[1]}"])
+    return repo, IdentityIndex({canonical_id: record})
+
+
+def _mdx_record_missing_yaml() -> ModelRecord:
+    return ModelRecord(
+        id="mdx:TestModel",
+        family="mdx",
+        basename="TestModel",
+        display="Test",
+        backend_name="TestModel.ckpt",
+        artifacts=ModelArtifacts("TestModel.ckpt", ("missing_config.yaml",)),
+        installed=True,
+        mdx=MdxSpec("mdx23c"),
+    )
+
+
+def _repo_with_mdx_c_missing_yaml() -> Mock:
+    return Mock(inventory_generation=0, invalidate_models=Mock())
+
+
+def _separate_spec() -> JobSpec:
+    settings = Settings.defaults()
+    settings.process.method = ProcessMethod.MDX
+    settings.mdx.model = "mdx:TestModel"
+    fd, path = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    return JobSpec("separate", settings, (path,), "/tmp/out")
 
 
 def _record(model_id: str, *, display: str = "X") -> ModelRecord:

@@ -50,6 +50,11 @@ def add_ensemble_args(parser: argparse.ArgumentParser) -> None:
     add_profile_args(parser)
     add_process_args(parser)
     add_reporting_args(parser)
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Do not fetch missing MDX-C YAML configs during planning",
+    )
     parser.add_argument("--dry-run", action="store_true")
 
 

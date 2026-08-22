@@ -782,13 +782,71 @@ def device_runtime_diagnostics(settings: Settings) -> list[Diagnostic]:
     return []
 
 
+def _mdx_yaml_config_names(record: ModelRecord) -> tuple[str, ...]:
+    if record.family != "mdx":
+        return ()
+    names = tuple(
+        name for name in record.artifacts.supporting_filenames
+        if name.casefold().endswith((".yaml", ".yml"))
+    )
+    if names:
+        return names
+    if record.mdx is not None and record.mdx.kind != "classic_onnx":
+        from .mdx_c_registry import yaml_for_checkpoint
+
+        yaml_name = yaml_for_checkpoint(record.backend_name)
+        if yaml_name:
+            return (yaml_name,)
+    return ()
+
+
 class JobResolver:
     def __init__(self, repo: Any):
         self.repo = repo
         self.identities = ModelIdentityService(repo)
 
+    def _ensure_mdx_yaml_configs(
+        self,
+        dependencies: Mapping[str, ModelRecord],
+        *,
+        allow_network: bool,
+    ) -> dict[str, ModelRecord]:
+        from . import paths
+        from .mdx_config_fetch import ensure_mdx_c_config
+
+        fetched_any = False
+        for record in dependencies.values():
+            for yaml_name in _mdx_yaml_config_names(record):
+                dest = os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name)
+                if os.path.isfile(dest):
+                    continue
+                if not allow_network:
+                    raise ValueError(
+                        f"MDX configuration {yaml_name!r} is not available offline"
+                    )
+                if ensure_mdx_c_config(yaml_name, allow_network=True):
+                    fetched_any = True
+
+        if not fetched_any:
+            return dict(dependencies)
+
+        invalidate = getattr(self.repo, "invalidate_models", None)
+        if callable(invalidate):
+            invalidate()
+
+        self.identities._identity_cache_key = None
+        self.identities._identity_cache = None
+        return {
+            path: self.identities.lookup(record.id)
+            for path, record in dependencies.items()
+        }
+
     def resolve(
-        self, spec: JobSpec, level: ValidationLevel = ValidationLevel.MODEL
+        self,
+        spec: JobSpec,
+        level: ValidationLevel = ValidationLevel.MODEL,
+        *,
+        allow_network: bool = True,
     ) -> ResolvedJob:
         settings = copy.deepcopy(spec.settings)
         settings.process.export_path = os.path.abspath(spec.output)
@@ -805,14 +863,24 @@ class JobResolver:
             diagnostics.append(Diagnostic("output.empty", "Choose an output folder"))
         try:
             dependencies = self._dependency_map(settings, spec.command)
-            records = self._primary_records(dependencies, spec.command)
         except ValueError as exc:
             diagnostics.append(Diagnostic("model.identity", str(exc)))
+        else:
+            if dependencies:
+                dependencies = self._ensure_mdx_yaml_configs(
+                    dependencies, allow_network=allow_network
+                )
+            records = self._primary_records(dependencies, spec.command)
         verify_model = level is not ValidationLevel.CONFIG
         if records and verify_model:
             try:
-                with access_policy(allow_network=False, allow_metadata_writes=False):
-                    models = self._assemble(settings, spec.command, records)
+                with access_policy(
+                    allow_network=allow_network,
+                    allow_metadata_writes=allow_network,
+                ):
+                    models = self._assemble(
+                        settings, spec.command, records, allow_network=allow_network
+                    )
                 if len(models) != len(records):
                     raise ValueError("one or more model configurations are unavailable")
                 if any(not getattr(model, "model_status", False) for model in models):
@@ -992,11 +1060,16 @@ class JobResolver:
         ]
 
     def _assemble(
-        self, settings: Settings, command: str, records: Sequence[ModelRecord]
+        self,
+        settings: Settings,
+        command: str,
+        records: Sequence[ModelRecord],
+        *,
+        allow_network: bool = True,
     ) -> list[Any]:
         from .mdx_config_fetch import mdx_c_network
 
-        with mdx_c_network(False):
+        with mdx_c_network(allow_network):
             method_value = str(
                 getattr(settings.process.method, "value", settings.process.method)
             )

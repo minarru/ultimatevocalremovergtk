@@ -90,6 +90,11 @@ def add_models_parser(sub: argparse._SubParsersAction) -> None:
     show.set_defaults(func=cmd_models_show)
     validate = children.add_parser("validate", help="Verify a model checkpoint and configuration")
     validate.add_argument("model")
+    validate.add_argument(
+        "--offline",
+        action="store_true",
+        help="Do not fetch missing MDX-C YAML configs during validation",
+    )
     add_reporting_args(validate)
     validate.set_defaults(func=cmd_models_show, validating=True)
     register = children.add_parser("register", help="Register an unknown checkpoint")
@@ -248,12 +253,18 @@ def cmd_models_list(args: argparse.Namespace) -> int:
 
 
 def cmd_models_show(args: argparse.Namespace) -> int:
+    from core.access_policy import access_policy
     from core.model_repository import ModelRepository
 
+    allow_network = not getattr(args, "offline", False)
     try:
         repo = ModelRepository()
         record = resolve_model_id(args.model, repo)
-        info = _model_info(record, repo, detailed=True)
+        with access_policy(
+            allow_network=allow_network,
+            allow_metadata_writes=allow_network,
+        ):
+            info = _model_info(record, repo, detailed=True)
         if not info.get("configured"):
             raise ValueError(f"model configuration is unavailable for {record.id}")
         path = str(info.get("path") or "")

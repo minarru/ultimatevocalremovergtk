@@ -433,7 +433,7 @@ class PlannedSettingsReturnTests(unittest.TestCase):
         )
         captured: dict[str, list[str]] = {}
 
-        def capture_spec(spec: Any, _level: Any) -> Any:
+        def capture_spec(spec: Any, _level: Any, **_kwargs: Any) -> Any:
             captured["selected_models"] = list(spec.settings.ensemble.selected_models)
             return self._planned_effective(planned)
 

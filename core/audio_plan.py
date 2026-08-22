@@ -91,7 +91,11 @@ class AudioJobResolver:
         self.identities = ModelIdentityService(repo)
 
     def resolve(
-        self, spec: AudioJobSpec, level: ValidationLevel = ValidationLevel.MODEL
+        self,
+        spec: AudioJobSpec,
+        level: ValidationLevel = ValidationLevel.MODEL,
+        *,
+        allow_network: bool = True,
     ) -> ResolvedAudioJob:
         settings = copy.deepcopy(spec.settings)
         settings.process.export_path = os.path.abspath(spec.output) if spec.output else ""
@@ -168,21 +172,27 @@ class AudioJobResolver:
             record = self.identities.resolve(reference)
             if record.family != "apollo":
                 raise ValueError("Audio restore requires an apollo: model")
-            settings.audio_tools.apollo_model = record.backend_name
-            path = os.path.join(APOLLO_MODELS_DIR, settings.audio_tools.apollo_model)
+            path = os.path.join(APOLLO_MODELS_DIR, record.backend_name)
             digest = None
             primary = None
             if level is not ValidationLevel.CONFIG:
                 if not os.path.isfile(path):
                     raise ValueError(f"Apollo checkpoint is missing: {path}")
-                data = ApolloModelData(settings.audio_tools.apollo_model, is_dry_check=True)
+                data = ApolloModelData(record.backend_name, is_dry_check=True)
                 if not data.is_model_status:
                     raise ValueError(f"Apollo configuration is unavailable for {record.id}")
                 digest = data.model_hash
                 primary = "Restored"
             return ModelDescriptor(
-                record.id, record.family, record.basename, record.display,
-                path, digest, primary, None, "model-local",
+                record.id,
+                record.family,
+                record.basename,
+                record.display,
+                backend_name=record.backend_name,
+                checkpoint=path,
+                checkpoint_hash=digest,
+                primary_stem=primary,
+                metadata_source="model-local",
             )
         except (OSError, TypeError, ValueError) as exc:
             diagnostics.append(Diagnostic("audio.apollo.model", str(exc)))

@@ -61,6 +61,11 @@ def add_separate_args(parser: argparse.ArgumentParser) -> None:
     add_process_args(parser)
     add_reporting_args(parser)
     parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Do not fetch missing MDX-C YAML configs during planning",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Resolve and verify the model without loading weights or processing",

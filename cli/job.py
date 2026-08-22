@@ -295,6 +295,7 @@ def resolve_separate_job(
             },
         ),
         level,
+        allow_network=not getattr(args, "offline", False),
     )
     errors = [item.message for item in effective.diagnostics if item.severity == "error"]
     if errors:
@@ -425,6 +426,7 @@ def resolve_ensemble_job(
             },
         ),
         level,
+        allow_network=not getattr(args, "offline", False),
     )
     errors = [item.message for item in effective.diagnostics if item.severity == "error"]
     if errors:

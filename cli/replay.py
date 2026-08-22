@@ -24,6 +24,11 @@ def add_run_args(parser: argparse.ArgumentParser) -> None:
         help="Override the recorded collision policy",
     )
     parser.add_argument("--allow-model-change", action="store_true")
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Do not fetch missing MDX-C YAML configs during planning",
+    )
     add_reporting_args(parser)
 
 
@@ -140,6 +145,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                 for member in spec.get("members") or []:
                     child.extend(["--model", member])
         child.extend(["--on-exists", args.on_exists or spec.get("collision_policy") or "fail", "--report", "json", "--quiet"])
+        if getattr(args, "offline", False):
+            child.append("--offline")
         check_code, checked, _check_stderr = _run([*child, "--dry-run"])
         if check_code:
             return fail(args, "manifest replay validation failed", exit_code=2, extra={"validation": checked})

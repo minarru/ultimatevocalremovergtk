@@ -55,6 +55,11 @@ def _add_common(parser: argparse.ArgumentParser, *, paired: bool = False) -> Non
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--on-exists", choices=("fail", "overwrite", "rename", "skip"), default="fail")
     parser.add_argument("--fail-fast", action="store_true")
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Do not fetch missing MDX-C YAML configs during planning",
+    )
     manifest = parser.add_mutually_exclusive_group()
     manifest.add_argument("--manifest", action="store_true")
     manifest.add_argument("--manifest-out")
@@ -246,7 +251,9 @@ def _resolve_audio(args: argparse.Namespace, level: ValidationLevel = Validation
         TOOL_BY_COMMAND[command], settings, os.path.abspath(args.output),
         inputs, pairs, getattr(args, "name", None), sources,
     )
-    return AudioJobResolver(repo).resolve(spec, level), inherited
+    return AudioJobResolver(repo).resolve(
+        spec, level, allow_network=not getattr(args, "offline", False)
+    ), inherited
 
 
 def _confirm_audio(args: argparse.Namespace, plan: Any) -> int:
