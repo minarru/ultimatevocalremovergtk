@@ -12,7 +12,7 @@ import typing
 import json
 import os
 import threading
-from typing import AbstractSet, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, AbstractSet, Any, Callable, Dict, List, Optional, Tuple
 
 from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
 
@@ -26,6 +26,9 @@ from .model_display import (
     map_basenames_to_display,
 )
 from .settings import Settings
+
+if TYPE_CHECKING:
+    from .model_identity import IdentityIndex
 
 
 class ModelRepository:
@@ -278,11 +281,23 @@ class ModelRepository:
         key = (tuple(self.all_model_tags()), str(settings.mdx.stems))
         if self._stem_check_cache is not None and self._stem_check_cache[0] == key:
             return self._stem_check_cache[1]
+        identities = self._identity_index()
         model_data: List[ModelConfig] = [
-            ModelConfig(settings, self, tag, is_dry_check=True) for tag in key[0]
+            _dry_check_config(settings, self, tag, identities) for tag in key[0]
         ]
         self._stem_check_cache = (key, model_data)
         return model_data
+
+    def _identity_index(self) -> "IdentityIndex":
+        """The identity index for this repository's current inventory.
+
+        Built once per pool loop: every dry-check pool below resolves whole
+        tag lists, and a per-tag service would rebuild the index (four directory
+        scans plus the Demucs yaml/spec reads) for every model.
+        """
+        from .model_identity import ModelIdentityService
+
+        return ModelIdentityService(self).index
 
     def invalidate_stem_check(self) -> None:
         """Drop the dry-check pools only.
@@ -392,8 +407,9 @@ class ModelRepository:
         if self._karaoke_cache is not None and self._karaoke_cache[0] == tags:
             return list(self._karaoke_cache[1])
         model_list: List[str] = []
+        identities = self._identity_index()
         for tag in tags:
-            model = ModelConfig(settings, self, tag, is_dry_check=True)
+            model = _dry_check_config(settings, self, tag, identities)
             if model.model_status and (model.is_karaoke or model.is_bv_model):
                 model_list.append(_checklist_id(model))
         self._karaoke_cache = (tags, model_list)
@@ -479,6 +495,31 @@ class ModelRepository:
         if model is None:
             return None, None
         return model.primary_stem, model.secondary_stem
+
+
+def _dry_check_config(
+    settings: Settings,
+    repo: "ModelRepository",
+    tag: str,
+    identities: "IdentityIndex",
+) -> "ModelConfig":
+    """Build the dry-check :class:`ModelConfig` for one canonical model tag.
+
+    Dry-check pools are canonical ``family:basename`` IDs, which the legacy
+    ``"Arch: Display"`` parser in :class:`ModelConfig` cannot split -- it would
+    leave every installed model with ``model_status=False``. Resolve the record
+    here and hand it over as ``identity``. An unknown or collided ID falls
+    through to the legacy path, which marks the config unavailable: the right
+    outcome for a model that cannot be addressed unambiguously.
+    """
+    identity = None
+    try:
+        identity = identities.lookup(tag)
+    except ValueError as exc:
+        from .debug_log import debug
+
+        debug("model", f"dry-check identity unresolved tag={tag!r}: {exc}")
+    return ModelConfig(settings, repo, tag, is_dry_check=True, identity=identity)
 
 
 def _canonical_model_tags(
