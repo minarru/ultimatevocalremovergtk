@@ -306,7 +306,12 @@ class VocalSplitChainHandoffTests(unittest.TestCase):
     def test_chain_traces_splitter_model_not_primary(self) -> None:
         splitter = MagicMock()
         splitter.model_basename = "UVR-BVE-4B_SN-44100-1"
-        sep = self._sep(model_basename="bs_leap_xe_inst_unwa", vocal_split_model=splitter)
+        splitter.model_display_label = "UVR-BVE-4B_SN-44100-1"
+        sep = self._sep(
+            model_basename="bs_leap_xe_inst_unwa",
+            model_display_label="bs_leap_xe_inst_unwa",
+            vocal_split_model=splitter,
+        )
         voc = _arr(1.0).T
         with (
             patch("engines.base.process_chain_model") as chain,
@@ -411,6 +416,8 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
             is_roformer=False,
             primary_model_name="main",
             model_basename="main",
+            model_cache_key="main",
+            model_display_label="main",
             primary_sources=None,
             audio_file="/tmp/song.wav",
             is_vocal_split_model=True,

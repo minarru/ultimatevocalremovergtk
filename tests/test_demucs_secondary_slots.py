@@ -106,11 +106,14 @@ class _StubSeperateDemucs:
         from core.stems import StemId, StemRoute, StemRouteKind
 
         self.model_basename = "demucs-test"
+        self.model_cache_key = "demucs-test"
+        self.model_display_label = "demucs-test"
         self.primary_model_name = "demucs-test"
         # 4 stems x 2 channels x 8 frames, each stem a distinct constant.
         self.primary_sources = np.stack(
             [np.full((2, 8), float(i + 1)) for i in range(4)]
         )
+        self.demucs_stem_count = 4
         self.pre_proc_model = None
         self.is_vocal_split_model = False
         self.demucs_stems = ALL_STEMS

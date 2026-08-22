@@ -190,6 +190,7 @@ class TargetOtherNdarrayExportTests(unittest.TestCase):
             is_roformer=True,
             primary_model_name="bs_leap_xe_inst_unwa",
             model_basename="bs_leap_xe_inst_unwa",
+            model_cache_key="bs_leap_xe_inst_unwa",
             primary_sources=(mix, native),
             load_cached_sources=lambda: None,
             is_vocal_split_model=False,
