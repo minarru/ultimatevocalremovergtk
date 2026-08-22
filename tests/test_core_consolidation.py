@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 import unittest
-import copy
 import threading
 from unittest.mock import Mock, patch
 
-from bundled.constants import CHOOSE_MODEL, MDX_ARCH_TYPE, NO_MODEL
-from core.identity_migration import IdentityMigrator, migrate_identity_storage
+from bundled.constants import MDX_ARCH_TYPE
 from core.input_discovery import InputDiscoveryPolicy, InputDiscoveryService
 from core.job_plan import JobResolver, JobSpec, ValidationLevel
-from core.model_identity import ModelIdentityService
 from core.settings import Settings
+from core.settings.defaults import default_settings_dict
 from core.types import ProcessMethod
 
 
@@ -26,7 +23,7 @@ class _Repo:
         return []
 
     def list_mdx_models(self) -> list[str]:
-        return []
+        return ["model_a"]
 
     def list_demucs_models(self) -> list[str]:
         return []
@@ -42,212 +39,23 @@ class _Repo:
 
 
 class IdentityServiceTests(unittest.TestCase):
-    def test_catalog_known_identity_migrates_without_checkpoint(self) -> None:
-        migrator = IdentityMigrator(_Repo())
-        self.assertEqual(migrator.canonical("Model A", family="mdx"), "mdx:model_a")
+    def test_illegal_stored_text_is_preserved_with_a_warning(self) -> None:
+        payload = default_settings_dict()
+        payload["mdx"]["model"] = "MDX-Net: Model A"
 
-    def test_legacy_arch_member_tag_does_not_double_prefix(self) -> None:
-        migrator = IdentityMigrator(_Repo())
-        self.assertEqual(
-            migrator.canonical("MDX-Net: Model A", family="mdx"),
-            "mdx:model_a",
-        )
+        settings = Settings.from_json_dict(payload)
 
-    def test_unknown_references_clear_to_existing_sentinels(self) -> None:
-        settings = Settings.defaults()
-        settings.mdx.model = "Unknown Model"
-        settings.process.vocal_splitter = "MDX-Net: Unknown Splitter"
-        converted, cleared = IdentityMigrator(_Repo()).migrate_settings(settings)
-        self.assertEqual(converted, 0)
-        self.assertEqual(cleared, 2)
-        self.assertEqual(settings.mdx.model, CHOOSE_MODEL)
-        self.assertEqual(settings.process.vocal_splitter, NO_MODEL)
+        self.assertEqual(settings.mdx.model, "MDX-Net: Model A")
+        self.assertTrue(any("mdx.model" in item for item in settings.validation_warnings))
 
-    def test_ambiguous_secondary_is_left_unchanged(self) -> None:
-        from core.identity_migration import IdentityMigrator
-        from bundled.constants import NO_MODEL
+    def test_obsolete_identity_version_is_ignored_on_read(self) -> None:
+        payload = default_settings_dict()
+        payload["identity_schema_version"] = 1
 
-        settings = Settings.defaults()
-        settings.mdx.voc_inst_secondary_model = "Kim"
-        migrator = IdentityMigrator(_Repo())
-        with patch(
-            "core.identity_migration.resolve_model_record",
-            side_effect=ValueError("ambiguous model 'Kim'; matches: mdx:a, vr:a"),
-        ):
-            migrator.migrate_settings(settings)
-        self.assertEqual(settings.mdx.voc_inst_secondary_model, "Kim")
-        self.assertNotEqual(settings.mdx.voc_inst_secondary_model, NO_MODEL)
+        settings = Settings.from_json_dict(payload)
 
-    def test_ambiguous_secondary_is_recorded_on_conflicts_and_failures(self) -> None:
-        settings = Settings.defaults()
-        settings.identity_schema_version = 0
-        settings.mdx.voc_inst_secondary_model = "Kim"
-        with tempfile.TemporaryDirectory() as root, patch(
-            "core.identity_migration.resolve_model_record",
-            side_effect=ValueError("ambiguous model 'Kim'; matches: mdx:a, vr:a"),
-        ):
-            result = migrate_identity_storage(
-                settings,
-                _Repo(),
-                profile_directory=os.path.join(root, "profiles"),
-                ensemble_directory=os.path.join(root, "ensembles"),
-            )
-        self.assertEqual(settings.mdx.voc_inst_secondary_model, "Kim")
-        self.assertTrue(result.conflicts)
-        self.assertTrue(any("ambiguous" in item for item in result.conflicts))
-        for item in result.conflicts:
-            self.assertIn(item, result.failures)
-
-    def test_storage_migration_is_atomic_versioned_and_backed_up(self) -> None:
-        with tempfile.TemporaryDirectory() as root:
-            settings_path = os.path.join(root, "settings.json")
-            profiles = os.path.join(root, "profiles")
-            ensembles = os.path.join(root, "ensembles")
-            os.makedirs(profiles)
-            os.makedirs(ensembles)
-            settings = Settings.defaults()
-            settings.identity_schema_version = 0
-            settings.path = settings_path
-            settings.mdx.model = "Model A"
-            settings.save()
-            ensemble_path = os.path.join(ensembles, "mix.json")
-            with open(ensemble_path, "w", encoding="utf-8") as handle:
-                json.dump({"selected_models": ["MDX-Net: Model A"]}, handle)
-            snapshot = copy.deepcopy(settings)
-            result = migrate_identity_storage(
-                snapshot, _Repo(), profile_directory=profiles,
-                ensemble_directory=ensembles,
-            )
-            self.assertEqual(settings.mdx.model, "Model A")
-            self.assertEqual(snapshot.mdx.model, "mdx:model_a")
-            self.assertEqual(result.files_changed, 1)
-            self.assertFalse(os.path.isfile(settings_path + ".pre-canonical-id.bak"))
-            self.assertTrue(os.path.isfile(ensemble_path + ".pre-canonical-id.bak"))
-            with open(ensemble_path, encoding="utf-8") as handle:
-                saved = json.load(handle)
-            self.assertEqual(saved["selected_models"], ["mdx:model_a"])
-            self.assertEqual(saved["identity_schema_version"], 2)
-
-            from ui.context import AppContext
-
-            context = AppContext.__new__(AppContext)
-            context.settings = settings
-            context.save_settings = Mock()
-            applied, conflicts, error = context.apply_identity_migration(result)
-            self.assertGreaterEqual(applied, 2)
-            self.assertEqual(conflicts, 0)
-            self.assertIsNone(error)
-            self.assertEqual(settings.mdx.model, "mdx:model_a")
-            self.assertEqual(settings.identity_schema_version, 2)
-            self.assertTrue(os.path.isfile(settings_path + ".pre-canonical-id.bak"))
-
-    def test_live_edit_wins_over_migration_patch_and_version_retries(self) -> None:
-        from core.identity_migration import (
-            IdentityMigrationResult, IdentitySettingChange,
-        )
-        from ui.context import AppContext
-
-        settings = Settings.defaults()
-        settings.identity_schema_version = 0
-        settings.mdx.model = "User changed this"
-        context = AppContext.__new__(AppContext)
-        context.settings = settings
-        context.save_settings = Mock()
-        result = IdentityMigrationResult(settings_changes=(
-            IdentitySettingChange("mdx.model", "Model A", "mdx:model_a"),
-            IdentitySettingChange("identity_schema_version", 0, 2),
-        ))
-        applied, conflicts, error = context.apply_identity_migration(result)
-        self.assertEqual(applied, 0)
-        self.assertEqual(conflicts, 1)
-        self.assertIsNone(error)
-        self.assertEqual(settings.mdx.model, "User changed this")
-        self.assertEqual(settings.identity_schema_version, 0)
-        context.save_settings.assert_not_called()
-
-    def test_migration_skips_file_edited_after_read(self) -> None:
-        from core import json_store
-
-        with tempfile.TemporaryDirectory() as root:
-            ensembles = os.path.join(root, "ensembles")
-            os.makedirs(ensembles)
-            ensemble_path = os.path.join(ensembles, "mix.json")
-            live = {"selected_models": ["User live edit"]}
-            with open(ensemble_path, "w", encoding="utf-8") as handle:
-                json.dump({"selected_models": ["MDX-Net: Model A"]}, handle)
-
-            real_read = json_store.read_json_object
-
-            def read_then_live_edit(path: str) -> dict:
-                payload = real_read(path)
-                with open(path, "w", encoding="utf-8") as handle:
-                    json.dump(live, handle)
-                return payload
-
-            settings = Settings.defaults()
-            settings.identity_schema_version = 0
-            with patch(
-                "core.identity_migration.read_json_object",
-                side_effect=read_then_live_edit,
-            ):
-                result = migrate_identity_storage(
-                    settings,
-                    _Repo(),
-                    profile_directory=os.path.join(root, "profiles"),
-                    ensemble_directory=ensembles,
-                )
-            with open(ensemble_path, encoding="utf-8") as handle:
-                saved = json.load(handle)
-            self.assertEqual(saved, live)
-            self.assertEqual(result.files_changed, 0)
-            self.assertFalse(os.path.isfile(ensemble_path + ".pre-canonical-id.bak"))
-            self.assertTrue(
-                any("changed" in item.casefold() for item in result.conflicts)
-            )
-
-    def test_migration_write_reject_leaves_no_backup(self) -> None:
-        """write_json_if_unchanged False must not leave a .pre-canonical-id.bak."""
-        from core.json_store import write_json_if_unchanged as real_write
-
-        with tempfile.TemporaryDirectory() as root:
-            ensembles = os.path.join(root, "ensembles")
-            os.makedirs(ensembles)
-            ensemble_path = os.path.join(ensembles, "mix.json")
-            with open(ensemble_path, "w", encoding="utf-8") as handle:
-                json.dump({"selected_models": ["MDX-Net: Model A"]}, handle)
-
-            def write_after_hijack(
-                path: str,
-                payload: dict,
-                expected_digest: str,
-                *,
-                backup_suffix: str | None = None,
-            ) -> bool:
-                with open(path, "w", encoding="utf-8") as handle:
-                    json.dump({"selected_models": ["hijacked"]}, handle)
-                return real_write(
-                    path, payload, expected_digest, backup_suffix=backup_suffix,
-                )
-
-            settings = Settings.defaults()
-            settings.identity_schema_version = 0
-            with patch(
-                "core.identity_migration.write_json_if_unchanged",
-                side_effect=write_after_hijack,
-            ):
-                result = migrate_identity_storage(
-                    settings,
-                    _Repo(),
-                    profile_directory=os.path.join(root, "profiles"),
-                    ensemble_directory=ensembles,
-                )
-            self.assertEqual(result.files_changed, 0)
-            self.assertFalse(os.path.isfile(ensemble_path + ".pre-canonical-id.bak"))
-            self.assertTrue(
-                any("changed" in item.casefold() for item in result.conflicts)
-            )
-            with open(ensemble_path, encoding="utf-8") as handle:
-                self.assertEqual(json.load(handle)["selected_models"], ["hijacked"])
+        self.assertFalse(hasattr(settings, "identity_schema_version"))
+        self.assertNotIn("identity_schema_version", settings.to_json_dict())
 
     def test_repository_initialization_is_singleton_under_concurrency(self) -> None:
         from ui.context import AppContext

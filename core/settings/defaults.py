@@ -200,7 +200,6 @@ def default_ui() -> dict:
 def default_settings_dict() -> dict:
     return {
         "schema_version": SETTINGS_SCHEMA_VERSION,
-        "identity_schema_version": 2,
         "process": default_process(),
         "vr": default_vr(),
         "mdx": default_mdx(),

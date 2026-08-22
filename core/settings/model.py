@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from dataclasses import asdict, dataclass, field, fields, replace
 from enum import Enum
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from bundled.constants import (
     ALL_STEMS,
@@ -38,6 +38,30 @@ from .defaults import SETTINGS_SCHEMA_VERSION, default_settings_dict
 from .flat_map import FLAT_TO_PATH
 
 T = TypeVar("T")
+
+if TYPE_CHECKING:
+    from core.model_identity import IdentityIndex
+
+_MODEL_SENTINELS = frozenset({CHOOSE_MODEL, NO_MODEL, ""})
+_SECONDARY_MODEL_FIELDS = (
+    "voc_inst_secondary_model",
+    "other_secondary_model",
+    "bass_secondary_model",
+    "drums_secondary_model",
+)
+_MODEL_PATH_FAMILIES: dict[str, frozenset[str]] = {
+    "vr.model": frozenset({"vr"}),
+    "mdx.model": frozenset({"mdx"}),
+    "demucs.model": frozenset({"demucs"}),
+    "audio_tools.apollo_model": frozenset({"apollo"}),
+    "process.vocal_splitter": frozenset({"vr", "mdx"}),
+    "demucs.pre_proc_model": frozenset({"vr", "mdx"}),
+}
+for _section_name in ("vr", "mdx", "demucs"):
+    for _field_name in _SECONDARY_MODEL_FIELDS:
+        _MODEL_PATH_FAMILIES[f"{_section_name}.{_field_name}"] = frozenset(
+            {"vr", "mdx", "demucs"}
+        )
 
 
 def _json_value(value: Any) -> Any:
@@ -237,7 +261,6 @@ class UiSettings:
 @dataclass
 class Settings:
     schema_version: int = SETTINGS_SCHEMA_VERSION
-    identity_schema_version: int = 2
     process: ProcessSettings = field(default_factory=ProcessSettings)
     vr: VrSettings = field(default_factory=VrSettings)
     mdx: MdxSettings = field(default_factory=MdxSettings)
@@ -246,6 +269,9 @@ class Settings:
     audio_tools: AudioToolsSettings = field(default_factory=AudioToolsSettings)
     ui: UiSettings = field(default_factory=UiSettings)
     path: str = ""
+    validation_warnings: list[str] = field(
+        default_factory=list, repr=False, compare=False
+    )
 
     @classmethod
     def defaults(cls) -> Settings:
@@ -265,7 +291,6 @@ class Settings:
         )
         return _json_value({
             "schema_version": self.schema_version,
-            "identity_schema_version": self.identity_schema_version,
             "process": asdict(process),
             "vr": asdict(self.vr),
             "mdx": asdict(self.mdx),
@@ -281,9 +306,8 @@ class Settings:
         # Stamp the current version, never the file's: ``coerce_json_dict`` has
         # already migrated the payload, so keeping the old number would leave a
         # v3 file claiming v1 and mis-gate the next migration.
-        return cls(
+        settings = cls(
             schema_version=SETTINGS_SCHEMA_VERSION,
-            identity_schema_version=int(coerced.get("identity_schema_version") or 0),
             process=_merge_dataclass(ProcessSettings, ProcessSettings(), coerced.get("process")),
             vr=_merge_dataclass(VrSettings, VrSettings(), coerced.get("vr")),
             mdx=_merge_dataclass(MdxSettings, MdxSettings(), coerced.get("mdx")),
@@ -296,6 +320,76 @@ class Settings:
             ),
             ui=_merge_dataclass(UiSettings, UiSettings(), coerced.get("ui")),
         )
+        settings.validate_model_references()
+        return settings
+
+    def _model_reference_values(self) -> list[tuple[str, Any, frozenset[str]]]:
+        references: list[tuple[str, Any, frozenset[str]]] = []
+        for path, allowed_families in _MODEL_PATH_FAMILIES.items():
+            section_name, field_name = path.split(".", 1)
+            references.append(
+                (path, getattr(getattr(self, section_name), field_name), allowed_families)
+            )
+        references.extend(
+            (
+                f"ensemble.selected_models[{index}]",
+                value,
+                frozenset({"vr", "mdx", "demucs"}),
+            )
+            for index, value in enumerate(self.ensemble.selected_models)
+        )
+        return references
+
+    def validate_model_references(
+        self, index: IdentityIndex | None = None
+    ) -> list[str]:
+        """Validate stored identities without replacing the original text.
+
+        With no index this performs persistence syntax validation only.  A
+        repository-bound :class:`~core.model_identity.IdentityIndex` adds
+        exact existence, installation, identity-completeness, and per-field
+        family checks.
+        """
+        from core.model_identity import parse_stored_model_id
+
+        warnings: list[str] = []
+        for path, value, allowed_families in self._model_reference_values():
+            if isinstance(value, str) and value in _MODEL_SENTINELS:
+                continue
+            if not isinstance(value, str):
+                warnings.append(
+                    f"{path}: expected canonical model ID family:basename or a "
+                    f"permitted sentinel; preserved {value!r}"
+                )
+                continue
+            try:
+                parsed = parse_stored_model_id(value)
+            except ValueError:
+                warnings.append(
+                    f"{path}: expected canonical model ID family:basename or a "
+                    f"permitted sentinel; preserved {value!r}"
+                )
+                continue
+            if index is None:
+                continue
+            try:
+                record = index.lookup(parsed.value)
+            except ValueError as exc:
+                warnings.append(f"{path}: {exc}")
+                continue
+            if record.family not in allowed_families:
+                expected = ", ".join(sorted(allowed_families))
+                warnings.append(
+                    f"{path}: model {record.id!r} is not eligible; "
+                    f"requires family {expected}"
+                )
+            if not record.installed:
+                warnings.append(f"{path}: model {record.id!r} is not installed")
+            if not record.identity_complete:
+                detail = record.identity_error or "identity metadata is incomplete"
+                warnings.append(f"{path}: model {record.id!r}: {detail}")
+        self.validation_warnings = warnings
+        return list(warnings)
 
     @classmethod
     def from_flat(cls, data: dict[str, Any]) -> Settings:
@@ -318,6 +412,7 @@ class Settings:
         process = nested.get("process")
         if isinstance(process, dict) and process.get("stem_focus"):
             settings.process.stem_focus = str(process["stem_focus"])
+        settings.validate_model_references()
         return settings
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -350,7 +445,6 @@ class Settings:
     def reset_to_default(self) -> None:
         fresh = self.defaults()
         self.schema_version = fresh.schema_version
-        self.identity_schema_version = fresh.identity_schema_version
         self.process = copy.deepcopy(fresh.process)
         self.vr = copy.deepcopy(fresh.vr)
         self.mdx = copy.deepcopy(fresh.mdx)
@@ -358,6 +452,7 @@ class Settings:
         self.ensemble = copy.deepcopy(fresh.ensemble)
         self.audio_tools = copy.deepcopy(fresh.audio_tools)
         self.ui = copy.deepcopy(fresh.ui)
+        self.validation_warnings = list(fresh.validation_warnings)
 
     def save(self, path: str | None = None) -> None:
         from .io import save_settings

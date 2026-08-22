@@ -11,7 +11,7 @@ from typing import Any, List, Optional
 
 from . import paths
 from .ensemble_presets import curated_combo_label, curated_id_from_combo_label
-from .model_identity import ModelIdentityService
+from .model_identity import ModelIdentityService, parse_stored_model_id
 from .stems import EnsemblePair, coerce_ensemble_pair
 
 _ENSEMBLE_NAME_RE = re.compile(r"^[A-Za-z0-9 _-]{1,25}$")
@@ -62,7 +62,6 @@ def list_saved_ensembles() -> List[str]:
 def save_ensemble(
     name: str, ensemble_main_stem: Any, ensemble_type: str, selected_models: Any,
     *, wav_ensemble: bool = False, save_all_outputs: bool = True,
-    identity_schema_version: int = 2,
 ) -> str:
     """Persist an ensemble (``ensemble_main_stem`` is an :class:`~core.stems.EnsemblePair` id)."""
     pair = (
@@ -76,7 +75,6 @@ def save_ensemble(
         "selected_models": list(selected_models),
         "is_wav_ensemble": bool(wav_ensemble),
         "save_all_outputs": bool(save_all_outputs),
-        "identity_schema_version": identity_schema_version,
     }
     path = _saved_ensemble_path(name)
     cache_dir = paths.ENSEMBLE_CACHE_DIR
@@ -97,12 +95,49 @@ def save_ensemble(
     return path
 
 
-def load_ensemble(name: str) -> Optional[dict]:
+class EnsembleDocument(dict[str, Any]):
+    """Saved ensemble payload with transient reader validation warnings."""
+
+    def __init__(
+        self, payload: dict[str, Any], validation_warnings: list[str]
+    ) -> None:
+        super().__init__(payload)
+        self.validation_warnings = validation_warnings
+
+
+def _ensemble_syntax_warnings(payload: dict[str, Any]) -> list[str]:
+    from bundled.constants import CHOOSE_MODEL, NO_MODEL
+
+    warnings: list[str] = []
+    members = payload.get("selected_models")
+    if not isinstance(members, list):
+        return warnings
+    for index, value in enumerate(members):
+        if isinstance(value, str) and value in {"", CHOOSE_MODEL, NO_MODEL}:
+            continue
+        if isinstance(value, str):
+            try:
+                parse_stored_model_id(value)
+            except ValueError:
+                pass
+            else:
+                continue
+        warnings.append(
+            f"selected_models[{index}]: expected canonical model ID "
+            f"family:basename or a permitted sentinel; preserved {value!r}"
+        )
+    return warnings
+
+
+def load_ensemble(name: str) -> Optional[EnsembleDocument]:
     """Load a saved ensemble's data (``selection_action_chosen_ensemble_load_saved``)."""
     path = _saved_ensemble_path(name)
     if os.path.isfile(path):
         with open(path) as infile:
-            return json.load(infile)
+            payload = json.load(infile)
+        if not isinstance(payload, dict):
+            raise ValueError(f"saved ensemble {name!r} must contain a JSON object")
+        return EnsembleDocument(payload, _ensemble_syntax_warnings(payload))
     return None
 
 
@@ -182,7 +217,7 @@ class EnsembleService:
             except (AttributeError, TypeError, ValueError):
                 unresolved.append(str(reference))
         # Preserve unresolved curated references for the GUI's missing-model
-        # download offer; canonical migration handles user storage separately.
+        # download offer; persistence validation never rewrites stored text.
         members.extend(unresolved)
         return ResolvedEnsemblePreset(
             preset_id,

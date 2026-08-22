@@ -8,7 +8,7 @@ from typing import Any, Optional
 
 from core.paths import SETTINGS_CACHE_DIR, SETTINGS_DATA_FILE
 from core.json_store import read_json_object, safe_json_path, write_json_atomic
-from core.model_identity import FAMILIES
+from core.model_identity import FAMILIES, parse_stored_model_id
 from core.settings import Settings
 from core.settings.access import set_path, validate_setting_path, validate_setting_value
 
@@ -46,6 +46,9 @@ class LoadedProfile:
     ensemble: Optional[str] = None
     members: list[str] = field(default_factory=list)
     settings: dict[str, Any] = field(default_factory=dict)
+    validation_warnings: list[str] = field(
+        default_factory=list, repr=False, compare=False
+    )
 
     @property
     def inherited_identity(self) -> bool:
@@ -73,6 +76,44 @@ def profile_path(name: str) -> str:
     ):
         raise ValueError(f"invalid profile name {name!r}")
     return safe_json_path(PROFILE_DIR, clean)
+
+
+def _model_syntax_warning(path: str, value: Any) -> str | None:
+    from bundled.constants import CHOOSE_MODEL, NO_MODEL
+
+    if value is None or (
+        isinstance(value, str) and value in {"", CHOOSE_MODEL, NO_MODEL}
+    ):
+        return None
+    if isinstance(value, str):
+        try:
+            parse_stored_model_id(value)
+        except ValueError:
+            pass
+        else:
+            return None
+    return (
+        f"{path}: expected canonical model ID family:basename or a permitted "
+        f"sentinel; preserved {value!r}; run 'uvr models list' to find IDs"
+    )
+
+
+def _profile_syntax_warnings(
+    model: Any, members: list[str], values: dict[str, Any]
+) -> list[str]:
+    references = [("model", model)]
+    references.extend(
+        (f"members[{index}]", member) for index, member in enumerate(members)
+    )
+    references.extend(
+        (path, values[path])
+        for path in sorted(MODEL_REFERENCE_SETTING_PATHS.intersection(values))
+    )
+    return [
+        warning
+        for path, value in references
+        if (warning := _model_syntax_warning(path, value)) is not None
+    ]
 
 
 def _qualify_stored_model(family: str, model: str) -> str | None:
@@ -142,6 +183,7 @@ def load_profile(spec: Optional[str]) -> tuple[Settings, LoadedProfile]:
             ensemble=ensemble,
             members=members,
             settings=_flatten_settings(settings),
+            validation_warnings=list(settings.validation_warnings),
         )
     path = spec if os.path.isfile(spec) else profile_path(spec)
     if not os.path.isfile(path):
@@ -166,15 +208,19 @@ def load_profile(spec: Optional[str]) -> tuple[Settings, LoadedProfile]:
         raise ValueError("a profile cannot combine a primary model with ensemble identity")
     if payload.get("ensemble") and members:
         raise ValueError("a profile must choose an ensemble preset or a member list, not both")
+    model = payload.get("model")
+    validation_warnings = _profile_syntax_warnings(model, members, values)
     profile = LoadedProfile(
         name=str(payload.get("name") or os.path.splitext(os.path.basename(path))[0]),
         source="profile",
         path=path,
-        model=payload.get("model"),
+        model=model,
         ensemble=payload.get("ensemble"),
         members=list(members),
         settings=dict(values),
+        validation_warnings=validation_warnings,
     )
+    settings.validation_warnings.extend(validation_warnings)
     return settings, profile
 
 

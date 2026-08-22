@@ -1044,6 +1044,11 @@ class JobResolver:
             raise ValueError(
                 f"{path} references {record.id!r}, but requires family {expected}"
             )
+        if not record.installed:
+            raise ValueError(f"{path} references model {record.id!r}, which is not installed")
+        if not record.identity_complete:
+            detail = record.identity_error or "identity metadata is incomplete"
+            raise ValueError(f"{path} references model {record.id!r}: {detail}")
 
     @staticmethod
     def _primary_records(

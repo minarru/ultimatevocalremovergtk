@@ -121,7 +121,6 @@ class UVRApplication(Adw.Application):
             window = MainWindow(application=self)
             self._main_window = window
         window.present()
-        window.start_identity_migration()
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

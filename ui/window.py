@@ -305,41 +305,10 @@ class MainWindow(Adw.ApplicationWindow):
         # handler marshals to the main loop itself.
         self._model_refresh_armed = False
         self.context.repo.subscribe_models_changed(self._on_models_changed)
-        self._identity_migration_started = False
         self.connect("map", self._on_window_mapped)
         self.connect("close-request", self._on_close_request)
 
     # -- Construction -----------------------------------------------------------
-
-    def _on_identity_migration_complete(
-        self, result: typing.Any
-    ) -> None:
-        applied, conflicts, save_error = self.context.apply_identity_migration(result)
-        if applied:
-            self._load_from_settings()
-        if result.files_changed or result.cleared or result.failures or conflicts or save_error:
-            message = (
-                f"Updated stored model references: {result.converted} converted, "
-                f"{result.cleared} cleared"
-            )
-            if conflicts:
-                message += f", {conflicts} live edit(s) preserved"
-            if result.failures:
-                message += f", {len(result.failures)} file(s) could not be updated"
-            if save_error:
-                message += ", settings could not be saved"
-            self.toast(message)
-
-    def start_identity_migration(self) -> None:
-        """Start the one-shot repository-aware migration for a real app session."""
-        if self._identity_migration_started:
-            return
-        self._identity_migration_started = True
-        self.context.start_identity_migration(
-            lambda result: idle_on_main(
-                lambda: self._on_identity_migration_complete(result)
-            )
-        )
 
     def _build_header(self) -> Adw.HeaderBar:
         self._header = Adw.HeaderBar()

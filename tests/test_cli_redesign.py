@@ -744,7 +744,9 @@ class BatchExecutionTests(unittest.TestCase):
             open(source, "wb").close()
             output = os.path.join(root, "out")
             job = self.make_job(output, [source])
-            with patch("core.job_runner.JobRunner.start_resolved", fake_start_resolved):
+            with patch.object(JobRunner, "resolve_models", return_value=[]), patch(
+                "core.job_runner.JobRunner.start_resolved", fake_start_resolved
+            ):
                 run_batch(_args(), job)
         paths = captured["export_paths"]
         self.assertTrue(paths)
