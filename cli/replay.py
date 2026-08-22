@@ -10,10 +10,17 @@ import sys
 import tempfile
 from typing import Any
 
-from core.model_identity import parse_stored_model_id
+from core.job_plan import EMPTY_MODEL_IDENTITY_DIGEST, active_model_paths
+from core.model_identity import (
+    DemucsSpec,
+    ModelArtifacts,
+    ModelRecord,
+    parse_stored_model_id,
+)
+from core.settings import Settings
 
 from .reporting import add_reporting_args, emit_document, fail
-from .profiles import IDENTITY_SETTING_PATHS
+from .profiles import IDENTITY_SETTING_PATHS, MODEL_REFERENCE_SETTING_PATHS
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _MANIFEST_SCHEMA_VERSION = 3
@@ -54,7 +61,11 @@ def _flat_settings(
             continue
         for name, value in fields.items():
             path = f"{section}.{name}"
-            if path not in IDENTITY_SETTING_PATHS and not isinstance(value, dict):
+            if (
+                path not in IDENTITY_SETTING_PATHS
+                and path not in MODEL_REFERENCE_SETTING_PATHS
+                and not isinstance(value, dict)
+            ):
                 values[path] = value
     return values
 
@@ -132,6 +143,11 @@ def _validated_identity_contract(
         raise ValueError(
             "schema 3 manifest model_identity_digest must be a sha256: digest"
         )
+    if not raw_dependencies and digest != EMPTY_MODEL_IDENTITY_DIGEST:
+        raise ValueError(
+            "an empty model dependency map requires the canonical empty "
+            "model identity digest"
+        )
 
     dependencies: dict[str, str] = {}
     for raw_path, raw_model_id in sorted(raw_dependencies.items()):
@@ -176,6 +192,124 @@ def _profile_identity(
         else:
             settings[path] = model_id
     return model, [model_id for _index, model_id in sorted(members)], settings
+
+
+def _validate_command_dependency_topology(
+    command: str, spec: dict[str, Any], dependencies: dict[str, str]
+) -> None:
+    if command == "separate":
+        primaries = dependencies.keys() & {
+            "vr.model", "mdx.model", "demucs.model",
+        }
+        if len(primaries) != 1:
+            raise ValueError(
+                "a separate manifest requires exactly one primary model dependency"
+            )
+        return
+
+    if command == "ensemble":
+        indices = sorted(
+            index
+            for path in dependencies
+            if (index := _ensemble_member_index(path)) is not None
+        )
+        if len(indices) < 2:
+            raise ValueError(
+                "an ensemble manifest requires at least two model dependencies"
+            )
+        if indices != list(range(len(indices))):
+            raise ValueError(
+                "ensemble model dependencies must use contiguous indices starting at 0"
+            )
+        return
+
+    apollo_path = "audio_tools.apollo_model"
+    if spec.get("tool") == "restore":
+        if set(dependencies) != {apollo_path}:
+            raise ValueError(
+                "Apollo restore requires exactly one Apollo model dependency"
+            )
+    elif dependencies:
+        raise ValueError("model-free audio tools must not have model dependencies")
+
+
+def _primary_dependency_records(
+    command: str, dependencies: dict[str, str], plan: dict[str, Any]
+) -> tuple[ModelRecord, ...]:
+    descriptor_by_id = {
+        str(descriptor.get("id")): descriptor
+        for descriptor in plan.get("models") or []
+        if isinstance(descriptor, dict) and descriptor.get("id")
+    }
+    primary_items: list[tuple[int, str]] = []
+    for path, model_id in dependencies.items():
+        if command == "separate" and path in {
+            "vr.model", "mdx.model", "demucs.model",
+        }:
+            primary_items.append((0, model_id))
+        elif command == "ensemble" and (index := _ensemble_member_index(path)) is not None:
+            primary_items.append((index, model_id))
+
+    records: list[ModelRecord] = []
+    for _index, model_id in sorted(primary_items):
+        parsed = parse_stored_model_id(model_id)
+        descriptor = descriptor_by_id.get(model_id) or {}
+        raw_demucs = descriptor.get("demucs")
+        demucs = None
+        if isinstance(raw_demucs, dict):
+            version = raw_demucs.get("version")
+            layout = raw_demucs.get("source_layout")
+            if version in {"v1", "v2", "v3", "v4"} and layout in {
+                "2_stem", "4_stem", "6_stem",
+            }:
+                demucs = DemucsSpec(version, layout)
+        records.append(ModelRecord(
+            id=model_id,
+            family=parsed.family,
+            basename=parsed.basename,
+            display=model_id,
+            backend_name=parsed.basename,
+            artifacts=ModelArtifacts(parsed.basename),
+            installed=True,
+            demucs=demucs,
+        ))
+    return tuple(records)
+
+
+def _validate_active_dependency_paths(
+    manifest: dict[str, Any], command: str, dependencies: dict[str, str]
+) -> None:
+    if command == "audio":
+        return
+    raw_settings = manifest.get("settings") or (manifest.get("plan") or {}).get(
+        "settings"
+    )
+    if not isinstance(raw_settings, dict):
+        raise ValueError("schema 3 manifest settings must be an object")
+    settings = Settings.from_json_dict(raw_settings)
+    records = _primary_dependency_records(
+        command, dependencies, manifest.get("plan") or {}
+    )
+    if command == "separate":
+        primary = records[0]
+        getattr(settings, primary.family).model = primary.id
+    else:
+        settings.ensemble.selected_models = [record.id for record in records]
+    expected = set(active_model_paths(settings, command=command, primary=records))
+    actual = set(dependencies)
+    if expected == actual:
+        return
+    details: list[str] = []
+    missing = sorted(expected - actual)
+    extra = sorted(actual - expected)
+    if missing:
+        details.append("missing " + ", ".join(missing))
+    if extra:
+        details.append("extra " + ", ".join(extra))
+    raise ValueError(
+        "manifest model dependencies do not match active settings: "
+        + "; ".join(details)
+    )
 
 
 def _model_changes(
@@ -244,6 +378,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         dependencies, recorded_digest = _validated_identity_contract(
             manifest, command
         )
+        _validate_command_dependency_topology(command, spec, dependencies)
+        _validate_active_dependency_paths(manifest, command, dependencies)
         profile_model, profile_members, dependency_settings = _profile_identity(
             command, dependencies
         )

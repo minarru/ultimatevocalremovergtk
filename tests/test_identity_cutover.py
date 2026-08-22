@@ -307,13 +307,16 @@ class ReplayManifestContractTests(unittest.TestCase):
 
     @classmethod
     def _manifest(cls) -> dict[str, Any]:
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.MDX
+        settings.mdx.model = "mdx:primary"
         return {
             "schema_version": 3,
             "job_id": "recorded-job",
             "command": "separate",
             "model_dependencies": {"mdx.model": "mdx:primary"},
             "model_identity_digest": cls._RECORDED_DIGEST,
-            "settings": {},
+            "settings": settings.to_json_dict(),
             "plan": {
                 "models": [{"id": "mdx:primary", "checkpoint_hash": "old-hash"}],
             },
@@ -322,6 +325,66 @@ class ReplayManifestContractTests(unittest.TestCase):
                 "output": "/recorded/out",
                 # Replay must use the validated dependency ID, not this legacy text.
                 "model": "MDX-Net: Primary",
+                "collision_policy": "fail",
+            },
+        }
+
+    @classmethod
+    def _ensemble_manifest(
+        cls, indices: tuple[int, ...] = (0, 1)
+    ) -> dict[str, Any]:
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.ENSEMBLE
+        members = [f"mdx:member-{index}" for index in indices]
+        settings.ensemble.selected_models = members
+        return {
+            "schema_version": 3,
+            "job_id": "recorded-ensemble",
+            "command": "ensemble",
+            "model_dependencies": {
+                f"ensemble.selected_models[{index}]": model_id
+                for index, model_id in zip(indices, members)
+            },
+            "model_identity_digest": cls._RECORDED_DIGEST,
+            "settings": settings.to_json_dict(),
+            "plan": {
+                "models": [
+                    {"id": model_id, "checkpoint_hash": f"hash-{index}"}
+                    for index, model_id in zip(indices, members)
+                ],
+            },
+            "job_spec": {
+                "inputs": ["/recorded/song.wav"],
+                "output": "/recorded/out",
+                "members": members,
+                "collision_policy": "fail",
+            },
+        }
+
+    @classmethod
+    def _audio_manifest(
+        cls,
+        tool: str,
+        dependencies: dict[str, str],
+        digest: str,
+    ) -> dict[str, Any]:
+        settings = Settings.defaults()
+        if "audio_tools.apollo_model" in dependencies:
+            settings.audio_tools.apollo_model = dependencies[
+                "audio_tools.apollo_model"
+            ]
+        return {
+            "schema_version": 3,
+            "job_id": "recorded-audio",
+            "command": "audio",
+            "model_dependencies": dependencies,
+            "model_identity_digest": digest,
+            "settings": settings.to_json_dict(),
+            "plan": {"model": None},
+            "job_spec": {
+                "tool": tool,
+                "inputs": ["/recorded/song.wav"],
+                "output": "/recorded/out",
                 "collision_policy": "fail",
             },
         }
@@ -349,6 +412,190 @@ class ReplayManifestContractTests(unittest.TestCase):
                     self._args(handle.name, allow_model_change=allow_model_change)
                 )
         return code, json.loads(stdout.getvalue())
+
+    def _invoke_with_successful_child(
+        self,
+        manifest: dict[str, Any],
+        *,
+        allow_model_change: bool = False,
+    ) -> tuple[int, dict[str, Any], int, list[dict[str, Any]]]:
+        import io
+        import json
+        import tempfile
+        from contextlib import redirect_stderr, redirect_stdout
+        from unittest.mock import patch
+
+        from cli.replay import cmd_run
+
+        calls = 0
+        profiles: list[dict[str, Any]] = []
+        checked_plan = dict(manifest.get("plan") or {})
+        checked_plan["model_dependencies"] = dict(
+            manifest["model_dependencies"]
+        )
+        checked_plan["model_identity_digest"] = manifest[
+            "model_identity_digest"
+        ]
+
+        def run_child(argv: list[str]) -> tuple[int, dict[str, Any], str]:
+            nonlocal calls
+            calls += 1
+            profile_index = argv.index("--profile") + 1
+            with open(argv[profile_index], encoding="utf-8") as profile_handle:
+                profiles.append(json.load(profile_handle))
+            if "--dry-run" in argv:
+                return 0, {"plan": checked_plan}, ""
+            return 0, {"ok": True, "status": "success"}, ""
+
+        with tempfile.NamedTemporaryFile("w", suffix=".json") as handle:
+            json.dump(manifest, handle)
+            handle.flush()
+            stdout = io.StringIO()
+            with patch("cli.replay._run", side_effect=run_child), redirect_stdout(
+                stdout
+            ), redirect_stderr(io.StringIO()):
+                code = cmd_run(
+                    self._args(
+                        handle.name, allow_model_change=allow_model_change
+                    )
+                )
+        return code, json.loads(stdout.getvalue()), calls, profiles
+
+    def test_override_cannot_admit_noncanonical_empty_digest(self) -> None:
+        manifest = self._audio_manifest("stretch", {}, self._CURRENT_DIGEST)
+
+        code, payload, calls, _profiles = self._invoke_with_successful_child(
+            manifest, allow_model_change=True
+        )
+
+        self.assertEqual(code, 2)
+        self.assertEqual(calls, 0)
+        self.assertIn("empty", payload["error"]["message"])
+        self.assertIn("identity digest", payload["error"]["message"])
+
+    def test_command_dependency_topology_is_validated_before_child(self) -> None:
+        separate = self._manifest()
+        separate["model_dependencies"] = {}
+        separate["model_identity_digest"] = self._EMPTY_DIGEST
+
+        ensemble_short = self._ensemble_manifest((0,))
+        ensemble_gapped = self._ensemble_manifest((0, 2))
+        restore_empty = self._audio_manifest(
+            "restore", {}, self._EMPTY_DIGEST
+        )
+        model_free_apollo = self._audio_manifest(
+            "stretch",
+            {"audio_tools.apollo_model": "apollo:restorer"},
+            self._RECORDED_DIGEST,
+        )
+        cases = (
+            ("separate-primary", separate, "one primary"),
+            ("ensemble-short", ensemble_short, "at least two"),
+            ("ensemble-gapped", ensemble_gapped, "contiguous"),
+            ("restore-model", restore_empty, "Apollo"),
+            ("model-free-audio", model_free_apollo, "model-free"),
+        )
+        for name, manifest, message in cases:
+            with self.subTest(name=name):
+                code, payload, calls, _profiles = (
+                    self._invoke_with_successful_child(manifest)
+                )
+
+                self.assertEqual(code, 2)
+                self.assertEqual(calls, 0)
+                self.assertIn(message, payload["error"]["message"])
+
+    def test_missing_active_dependency_is_rejected_before_child(self) -> None:
+        separate = self._manifest()
+        separate["settings"]["process"]["vocal_splitter_enabled"] = True
+        separate["settings"]["process"]["vocal_splitter"] = "vr:splitter"
+
+        ensemble = self._ensemble_manifest()
+        ensemble["settings"]["process"]["vocal_splitter_enabled"] = True
+        ensemble["settings"]["process"]["vocal_splitter"] = "vr:splitter"
+
+        for command, manifest in (("separate", separate), ("ensemble", ensemble)):
+            with self.subTest(command=command):
+                code, payload, calls, _profiles = (
+                    self._invoke_with_successful_child(manifest)
+                )
+
+                self.assertEqual(code, 2)
+                self.assertEqual(calls, 0)
+                self.assertIn("process.vocal_splitter", payload["error"]["message"])
+
+    def test_extra_inactive_dependency_is_rejected_before_child(self) -> None:
+        manifest = self._manifest()
+        manifest["model_dependencies"]["process.vocal_splitter"] = "vr:splitter"
+
+        code, payload, calls, _profiles = self._invoke_with_successful_child(
+            manifest
+        )
+
+        self.assertEqual(code, 2)
+        self.assertEqual(calls, 0)
+        self.assertIn("process.vocal_splitter", payload["error"]["message"])
+
+    def test_sparse_profiles_copy_identities_only_from_dependency_map(self) -> None:
+        separate = self._manifest()
+        separate["settings"]["process"]["vocal_splitter"] = "vr:stale-splitter"
+        separate["settings"]["mdx"]["voc_inst_secondary_model"] = (
+            "vr:stale-secondary"
+        )
+        separate["settings"]["demucs"]["pre_proc_model"] = "mdx:stale-pre"
+
+        ensemble = self._ensemble_manifest()
+        ensemble["settings"]["process"]["vocal_splitter"] = "vr:stale-splitter"
+        ensemble["settings"]["mdx"]["voc_inst_secondary_model"] = (
+            "vr:stale-secondary"
+        )
+
+        audio = self._audio_manifest(
+            "restore",
+            {"audio_tools.apollo_model": "apollo:restorer"},
+            self._RECORDED_DIGEST,
+        )
+        audio["settings"]["audio_tools"]["apollo_model"] = "apollo:stale"
+
+        cases = (
+            (
+                "separate",
+                separate,
+                {
+                    "process.vocal_splitter",
+                    "mdx.voc_inst_secondary_model",
+                    "demucs.pre_proc_model",
+                },
+            ),
+            (
+                "ensemble",
+                ensemble,
+                {
+                    "process.vocal_splitter",
+                    "mdx.voc_inst_secondary_model",
+                },
+            ),
+            ("apollo", audio, {"audio_tools.apollo_model"}),
+        )
+        for name, manifest, forbidden in cases:
+            with self.subTest(name=name):
+                code, _payload, calls, profiles = (
+                    self._invoke_with_successful_child(manifest)
+                )
+
+                self.assertEqual(code, 0)
+                self.assertEqual(calls, 2)
+                self.assertTrue(profiles)
+                self.assertTrue(forbidden.isdisjoint(profiles[0]["settings"]))
+                if name == "separate":
+                    self.assertEqual(profiles[0]["model"], "mdx:primary")
+                elif name == "ensemble":
+                    self.assertEqual(
+                        profiles[0]["members"],
+                        ["mdx:member-0", "mdx:member-1"],
+                    )
+                else:
+                    self.assertEqual(profiles[0]["model"], "apollo:restorer")
 
     def test_separation_writer_emits_schema_3_identity_contract(self) -> None:
         import argparse
