@@ -22,7 +22,7 @@ from onnx2pytorch import ConvertModel
 from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
-from core.demucs_registry import validate_demucs_output_layout
+from core.demucs_registry import validate_demucs_inference_layouts
 from core.demucs_models import demucs_pretrained_load_name
 from core.stems import (
     StemBucket,
@@ -202,6 +202,19 @@ class SeperateDemucs(SeperateAttributes):
 
                 self.write_to_console(DONE, base_text="")
 
+        if isinstance(source, np.ndarray):
+            self.demucs_source_map = validate_demucs_inference_layouts(
+                expected_count=self.demucs_stem_count,
+                model_label=(
+                    self.model_display_label
+                    or self.model_name
+                    or self.model_basename
+                    or "Demucs model"
+                ),
+                source=source,
+                inst_source=inst_source if isinstance(inst_source, np.ndarray) else None,
+            )
+
         if isinstance(inst_source, np.ndarray):
             # Graft the pre-proc vocals slot into the main demix.
             source_reshape = spec_utils.reshape_sources(
@@ -212,12 +225,6 @@ class SeperateDemucs(SeperateAttributes):
             source = inst_source
 
         if isinstance(source, np.ndarray):
-            self.demucs_source_map = validate_demucs_output_layout(
-                expected_count=self.demucs_stem_count,
-                actual_count=len(source),
-                model_label=self.model_display_label or self.model_name or self.model_basename or "Demucs model",
-            )
-
             if (
                 len(source) == 6
                 and self.process_data.is_ensemble_master

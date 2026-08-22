@@ -100,7 +100,30 @@ def validate_demucs_output_layout(
     return source_map
 
 
+def validate_demucs_inference_layouts(
+    *,
+    expected_count: int,
+    model_label: str,
+    source: Any,
+    inst_source: Any | None = None,
+) -> dict[str, int]:
+    """Validate main and optional pre-processing Demucs outputs before grafting."""
+    source_map = validate_demucs_output_layout(
+        expected_count=expected_count,
+        actual_count=len(source),
+        model_label=model_label,
+    )
+    if inst_source is not None:
+        validate_demucs_output_layout(
+            expected_count=expected_count,
+            actual_count=len(inst_source),
+            model_label=f"{model_label} pre-processing result",
+        )
+    return source_map
+
+
 __all__ = [
+    "validate_demucs_inference_layouts",
     "demucs_source_layout_name",
     "load_bundled_demucs_specs",
     "mapper_stems",

@@ -1,5 +1,6 @@
 """JobRunner separator lifecycle."""
 import typing
+import types
 
 import unittest
 from unittest import mock
@@ -11,31 +12,49 @@ from core.settings import Settings
 
 
 class JobRunnerSeperatorTests(unittest.TestCase):
-    @mock.patch("engines.stem_writer.finish_export")
-    @mock.patch("core.separator_run.release_separator")
-    def test_run_seperator_releases_in_finally(
-        self, release_mock: mock.MagicMock, finish_mock: mock.MagicMock
-    ) -> None:
-        from engines.stem_writer import ExportPlan
+    @staticmethod
+    def _stem_writer_module(*, finish_result: typing.Any) -> types.ModuleType:
+        module = types.ModuleType("engines.stem_writer")
+        module_any = typing.cast(typing.Any, module)
+
+        class ExportPlan:
+            def __init__(self, sources: typing.Any=None) -> None:
+                self.sources = sources or {}
+
+        module_any.ExportPlan = ExportPlan
+        module_any.finish_export = mock.MagicMock(return_value=finish_result)
+        return module
+
+    def test_run_seperator_releases_in_finally(self) -> None:
+        module = self._stem_writer_module(finish_result={})
 
         runner = JobRunner(Settings.defaults())
         separator = mock.MagicMock()
-        plan = ExportPlan()
+        plan = module.ExportPlan()
         separator.seperate.return_value = plan
-        finish_mock.return_value = {}
-        run_separator(runner, separator)
+
+        with (
+            mock.patch.dict("sys.modules", {"engines.stem_writer": module}),
+            mock.patch("core.separator_run.release_separator") as release_mock,
+        ):
+            run_separator(runner, separator)
+
         separator.seperate.assert_called_once_with()
-        finish_mock.assert_called_once_with(separator, plan)
+        module.finish_export.assert_called_once_with(separator, plan)
         release_mock.assert_called_once_with(separator)
         self.assertIsNone(runner._active_separator)
 
-    @mock.patch("core.separator_run.release_separator")
-    def test_run_seperator_releases_after_exception(self, release_mock: mock.MagicMock) -> None:
+    def test_run_seperator_releases_after_exception(self) -> None:
+        module = self._stem_writer_module(finish_result={})
         runner = JobRunner(Settings.defaults())
         separator = mock.MagicMock()
         separator.seperate.side_effect = ValueError("fail")
-        with self.assertRaises(ValueError):
-            run_separator(runner, separator)
+        with (
+            mock.patch.dict("sys.modules", {"engines.stem_writer": module}),
+            mock.patch("core.separator_run.release_separator") as release_mock,
+        ):
+            with self.assertRaises(ValueError):
+                run_separator(runner, separator)
         release_mock.assert_called_once_with(separator)
         self.assertIsNone(runner._active_separator)
 

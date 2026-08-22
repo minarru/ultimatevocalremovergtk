@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import unittest
 import tempfile
+import numpy as np
 from unittest.mock import Mock, patch
 
 from bundled.constants import DEMUCS_ARCH_TYPE, VR_ARCH_PM, VR_ARCH_TYPE
@@ -348,6 +349,23 @@ class DemucsInferenceIdentityTests(unittest.TestCase):
                 expected_count=6,
                 actual_count=4,
                 model_label="v4 - htdemucs_6s",
+            )
+
+    def test_preprocessing_result_layout_is_validated_before_graft_indexing(self) -> None:
+        from core.demucs_registry import validate_demucs_inference_layouts
+
+        source = np.zeros((4, 2, 2), dtype=np.float32)
+        inst_source = np.zeros((2, 2, 2), dtype=np.float32)
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"pre-processing result.*2_stem.*4_stem source layout",
+        ):
+            validate_demucs_inference_layouts(
+                expected_count=4,
+                model_label="Friendly Demucs",
+                source=source,
+                inst_source=inst_source,
             )
 
 
