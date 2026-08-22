@@ -439,7 +439,16 @@ class ModelConfig:
         is_secondary_activated_and_status = self.is_secondary_model_activated and self.model_status
         is_demucs = self.process_method == DEMUCS_ARCH_TYPE
         is_all_stems = demucs.stems == ALL_STEMS
-        is_valid_ensemble = not self.is_ensemble_mode and is_all_stems and is_demucs
+        # The four per-stem Demucs secondary slots only exist on a model that
+        # actually emits four (or six) sources. ``active_model_paths`` widens to
+        # them on exactly that condition (``4_stem``/``6_stem`` layout), so a
+        # 2-source model here would resolve slots planning never declared.
+        is_valid_ensemble = (
+            not self.is_ensemble_mode
+            and is_all_stems
+            and is_demucs
+            and self.demucs_stem_count >= 4
+        )
         is_multi_stem_ensemble_demucs = self.is_multi_stem_ensemble and is_demucs
 
         if is_secondary_activated_and_status:

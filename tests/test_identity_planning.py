@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from typing import Literal
 import tempfile
 import numpy as np
 from unittest.mock import Mock, patch
@@ -506,3 +507,92 @@ class OfflineMdxConfigDiagnosticTests(unittest.TestCase):
         # built from the pre-fetch map, not emptied by the failure.
         self.assertIn("mdx.model", plan.model_dependencies)
         self.assertTrue(plan.model_identity_digest)
+
+
+class DemucsSecondarySlotAgreementTests(unittest.TestCase):
+    """The runtime must resolve exactly the slots planning declared.
+
+    ``active_model_paths`` widens to the four per-stem Demucs secondary slots
+    only for a ``4_stem``/``6_stem`` source layout. ``ModelConfig`` used to
+    widen for any Demucs model whenever ``demucs.stems == ALL_STEMS``, so a
+    2-source model resolved four slots the plan never validated or digested.
+    """
+
+    def _settings(self):
+        from bundled.constants import ALL_STEMS
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.DEMUCS
+        settings.demucs.model = "demucs:bag"
+        settings.demucs.stems = ALL_STEMS
+        settings.demucs.is_secondary_model_activate = True
+        for slot in ("voc_inst", "other", "bass", "drums"):
+            setattr(settings.demucs, f"{slot}_secondary_model", "mdx:helper")
+        return settings
+
+    def _record(self, layout: Literal["2_stem", "4_stem", "6_stem"]) -> ModelRecord:
+        from core.model_identity import DemucsSpec
+
+        return ModelRecord(
+            id="demucs:bag",
+            family="demucs",
+            basename="bag",
+            display="Bag",
+            backend_name="bag",
+            artifacts=ModelArtifacts("bag.th"),
+            installed=True,
+            demucs=DemucsSpec("v2" if layout == "2_stem" else "v4", layout),
+        )
+
+    def _resolved_slots(
+        self, layout: Literal["2_stem", "4_stem", "6_stem"]
+    ) -> list[str]:
+        from bundled.constants import DEMUCS_ARCH_TYPE
+        from core.model_config.config import ModelConfig
+
+        settings = self._settings()
+        asked: list[str] = []
+
+        def fake_determine(
+            _settings: object, _repo: object, _method: object, stem: object
+        ) -> tuple[None, None]:
+            asked.append(str(stem))
+            return None, None
+
+        with patch(
+            "core.model_config.determine.process_determine_secondary_model",
+            side_effect=fake_determine,
+        ):
+            ModelConfig(
+                settings, Mock(), "demucs:bag", DEMUCS_ARCH_TYPE,
+                is_dry_check=True, identity=self._record(layout),
+            )
+        return asked
+
+    def _planned_slots(
+        self, layout: Literal["2_stem", "4_stem", "6_stem"]
+    ) -> set[str]:
+        settings = self._settings()
+        return {
+            path.split(".", 1)[1].removesuffix("_secondary_model")
+            for path in active_model_paths(
+                settings, command="separate", primary=(self._record(layout),)
+            )
+            if path.endswith("_secondary_model")
+        }
+
+    def test_two_source_layout_resolves_one_slot_like_the_plan(self) -> None:
+        from bundled.constants import DEMUCS_4_SOURCE_LIST
+
+        asked = self._resolved_slots("2_stem")
+        self.assertNotEqual(asked, list(DEMUCS_4_SOURCE_LIST))
+        self.assertEqual(len(asked), 1)
+        self.assertEqual(self._planned_slots("2_stem"), {"voc_inst"})
+
+    def test_four_source_layout_resolves_every_slot_like_the_plan(self) -> None:
+        from bundled.constants import DEMUCS_4_SOURCE_LIST
+
+        self.assertEqual(self._resolved_slots("4_stem"), list(DEMUCS_4_SOURCE_LIST))
+        self.assertEqual(
+            self._planned_slots("4_stem"), {"voc_inst", "other", "bass", "drums"}
+        )
