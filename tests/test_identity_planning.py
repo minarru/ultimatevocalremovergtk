@@ -82,6 +82,45 @@ class ActivePathTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             resolver._dependency_map(settings, "separate")
 
+    def test_demucs_pre_proc_accepts_vr_and_mdx_families(self) -> None:
+        primary = _record("demucs:primary")
+        for pre_proc in (_record("vr:pre-proc"), _record("mdx:pre-proc")):
+            with self.subTest(family=pre_proc.family):
+                settings = Settings.defaults()
+                settings.process.method = DEMUCS_ARCH_TYPE
+                settings.demucs.model = primary.id
+                settings.demucs.is_pre_proc_model_activate = True
+                settings.demucs.pre_proc_model = pre_proc.id
+                records = {primary.id: primary, pre_proc.id: pre_proc}
+                resolver = JobResolver(Mock())
+                resolver.identities.lookup = Mock(side_effect=records.__getitem__)
+
+                self.assertEqual(
+                    resolver._dependency_map(settings, "separate"),
+                    {
+                        "demucs.model": primary,
+                        "demucs.pre_proc_model": pre_proc,
+                    },
+                )
+
+    def test_demucs_pre_proc_rejects_demucs_family(self) -> None:
+        primary = _record("demucs:primary")
+        pre_proc = _record("demucs:pre-proc")
+        settings = Settings.defaults()
+        settings.process.method = DEMUCS_ARCH_TYPE
+        settings.demucs.model = primary.id
+        settings.demucs.is_pre_proc_model_activate = True
+        settings.demucs.pre_proc_model = pre_proc.id
+        records = {primary.id: primary, pre_proc.id: pre_proc}
+        resolver = JobResolver(Mock())
+        resolver.identities.lookup = Mock(side_effect=records.__getitem__)
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"demucs\.pre_proc_model .* requires family mdx, vr",
+        ):
+            resolver._dependency_map(settings, "separate")
+
 
 class DigestTests(unittest.TestCase):
     def test_display_change_does_not_change_digest(self) -> None:

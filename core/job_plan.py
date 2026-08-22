@@ -958,9 +958,7 @@ class JobResolver:
             record = self.identities.lookup(_model_reference(settings, path))
             allowed = (
                 frozenset({"vr", "mdx"})
-                if path == "process.vocal_splitter"
-                else frozenset({"demucs"})
-                if path == "demucs.pre_proc_model"
+                if path in {"process.vocal_splitter", "demucs.pre_proc_model"}
                 else _MODEL_FAMILIES
             )
             self._validate_dependency_family(path, record, allowed)
