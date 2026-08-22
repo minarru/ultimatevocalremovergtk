@@ -225,6 +225,48 @@ class InventoryCardinalityTests(unittest.TestCase):
         ids = [record.id for record in index.records()]
         self.assertNotIn("demucs:mystery", ids)
 
+    def test_one_malformed_catalogue_row_does_not_empty_the_index(self) -> None:
+        """Catalogue content is fetched from four network sources.
+
+        A single illegal artifact name used to raise out of the whole build,
+        emptying every model picker at once.
+        """
+        from bundled.constants import VR_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.model_inventory import build_identity_index
+
+        good_files = {"good.pth": "http://example.invalid/good.pth"}
+        bad_files = {"../escape.pth": "http://example.invalid/escape.pth"}
+        entries = {
+            "VR: Good": EntryMeta(
+                label="VR: Good", display="Good", arch=VR_ARCH_TYPE, files=good_files,
+            ),
+            "VR: Bad": EntryMeta(
+                label="VR: Bad", display="Bad", arch=VR_ARCH_TYPE, files=bad_files,
+            ),
+        }
+        snapshot = _snapshot(
+            vr={"VR: Good": good_files, "VR: Bad": bad_files},
+            meta={"vr": entries},
+        )
+        index = build_identity_index(_empty_repo(), snapshot=snapshot)
+        ids = [record.id for record in index.records()]
+        self.assertIn("vr:good", ids)
+        self.assertNotIn("vr:escape", ids)
+
+    def test_one_unrepresentable_installed_filename_does_not_empty_the_index(self) -> None:
+        from core.model_inventory import build_identity_index
+
+        repo = _empty_repo(
+            _model_artifact_files=lambda family: (
+                ["~stray.pth", "real.pth"] if family == "vr" else []
+            ),
+        )
+        index = build_identity_index(repo, snapshot=_snapshot())
+        ids = [record.id for record in index.records()]
+        self.assertIn("vr:real", ids)
+        self.assertNotIn("vr:~stray", ids)
+
     def test_builder_does_not_touch_the_network(self) -> None:
         from core.model_inventory import build_identity_index
 

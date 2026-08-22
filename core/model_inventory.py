@@ -267,9 +267,22 @@ def _catalogue_records(snapshot: Any) -> list[ModelRecord]:
             entry = metadata.get(selection)
             if entry is None:
                 continue
-            record = projector(
-                str(selection), entry, _entry_files(entry, raw, family)
-            )
+            # Catalogue content comes from four network sources. An illegal
+            # artifact name in any single row must drop that row, not raise out
+            # of ``build_identity_index`` and empty every model picker.
+            try:
+                record = projector(
+                    str(selection), entry, _entry_files(entry, raw, family)
+                )
+            except ValueError as exc:
+                from .debug_log import debug
+
+                debug(
+                    "model",
+                    f"catalogue row rejected family={family} "
+                    f"selection={selection!r}: {exc}",
+                )
+                continue
             if record is not None:
                 records.append(record)
     return records
@@ -431,7 +444,20 @@ def _merge_installed(repo: Any, records: list[ModelRecord]) -> list[ModelRecord]
                     error=f"unknown Demucs version or source layout for {filename}",
                 ))
                 continue
-            record = _installed_record(repo, family, filename)
+            try:
+                record = _installed_record(repo, family, filename)
+            except ValueError as exc:
+                # Same rule as the catalogue rows: one unrepresentable filename
+                # on disk (a leading ``~``, say) drops that model, it does not
+                # empty the index for every other one.
+                from .debug_log import debug
+
+                debug(
+                    "model",
+                    f"installed artifact rejected family={family} "
+                    f"file={filename!r}: {exc}",
+                )
+                continue
             if record is not None:
                 result.append(record)
     return result
