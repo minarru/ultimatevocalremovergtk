@@ -9,7 +9,9 @@ import unittest
 import os
 import tempfile
 from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import Mock, patch
 
 from cli.discovery import (
@@ -17,6 +19,9 @@ from cli.discovery import (
 )
 from cli.main import main
 from core.model_identity import (
+    DemucsSpec,
+    IdentityIndex,
+    MdxSpec,
     ModelArtifacts,
     ModelIdentityService,
     ModelRecord,
@@ -384,6 +389,138 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
         payload = json.loads(out.getvalue())
         ids = [item["id"] for item in payload["items"]]
         self.assertEqual(ids, ["mdx:on_disk"])
+
+    def test_all_known_reports_every_record_from_the_published_index(self) -> None:
+        from cli.discovery import cmd_models_list
+
+        records = (
+            ModelRecord(
+                id="mdx:model",
+                family="mdx",
+                basename="model",
+                display="Model",
+                backend_name="model",
+                artifacts=ModelArtifacts("model.ckpt", ("model.yaml",)),
+                installed=False,
+                mdx=MdxSpec("mdx23c"),
+            ),
+            ModelRecord(
+                id="demucs:bag",
+                family="demucs",
+                basename="bag",
+                display="Bag",
+                backend_name="bag",
+                artifacts=ModelArtifacts("bag.yaml", ("member.th",)),
+                installed=False,
+                identity_complete=False,
+                identity_error="missing Demucs identity metadata",
+                demucs=DemucsSpec("v4", "4_stem"),
+            ),
+        )
+        args = argparse.Namespace(
+            family=None, all_known=True, report="json", quiet=True,
+            verbose=False, job_id="all-known",
+        )
+        out = io.StringIO()
+        with patch(
+            "core.model_identity.ModelIdentityService._published_index",
+            return_value=IdentityIndex({record.id: record for record in records}),
+        ), redirect_stdout(out):
+            code = cmd_models_list(args)
+
+        self.assertEqual(code, 0)
+        items = json.loads(out.getvalue())["items"]
+        self.assertEqual([item["id"] for item in items], ["mdx:model", "demucs:bag"])
+        self.assertEqual(items[0]["primary_artifact"], "model.ckpt")
+        self.assertEqual(items[0]["supporting_artifacts"], ["model.yaml"])
+        self.assertEqual(items[0]["mdx_kind"], "mdx23c")
+        self.assertEqual(items[1]["demucs_version"], "v4")
+        self.assertEqual(items[1]["source_layout"], "4_stem")
+        self.assertEqual(items[1]["identity_error"], "missing Demucs identity metadata")
+        for item in items:
+            self.assertIn("backend_name", item)
+            self.assertIn("identity_complete", item)
+            self.assertNotIn("engine_name", item)
+
+
+class StrictCliModelIdTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.record = ModelRecord(
+            id="mdx:model",
+            family="mdx",
+            basename="model",
+            display="Model",
+            backend_name="model",
+            artifacts=ModelArtifacts("model.ckpt"),
+            installed=True,
+            mdx=MdxSpec("mdx23c"),
+        )
+        self.index = IdentityIndex({self.record.id: self.record})
+
+    def _run(self, argv: list[str]) -> tuple[int, dict[str, Any]]:
+        out = io.StringIO()
+        with patch(
+            "core.model_identity.ModelIdentityService._published_index",
+            return_value=self.index,
+        ), redirect_stdout(out), redirect_stderr(io.StringIO()):
+            code = main([*argv, "--report", "json"])
+        return code, json.loads(out.getvalue())
+
+    def test_models_show_rejects_a_bare_basename(self) -> None:
+        code, payload = self._run(["models", "show", "model"])
+        self.assertEqual(code, 2)
+        self.assertIn("expected canonical model ID family:basename", payload["error"]["message"])
+
+    def test_models_configure_rejects_a_bare_basename(self) -> None:
+        code, payload = self._run(["models", "configure", "model", "--reset"])
+        self.assertEqual(code, 2)
+        self.assertIn("expected canonical model ID family:basename", payload["error"]["message"])
+
+    def test_models_validate_rejects_a_bare_basename(self) -> None:
+        code, payload = self._run(["models", "validate", "model"])
+        self.assertEqual(code, 2)
+        self.assertIn("expected canonical model ID family:basename", payload["error"]["message"])
+
+    def test_separate_rejects_a_bare_basename_before_planning(self) -> None:
+        from cli.profiles import LoadedProfile
+        from core.settings import Settings
+
+        out = io.StringIO()
+        with patch(
+            "cli.job._base_resolve",
+            return_value=(Settings.defaults(), LoadedProfile("defaults", "built-in"), ["song.wav"], "/tmp/out"),
+        ), patch(
+            "core.model_identity.ModelIdentityService._published_index",
+            return_value=self.index,
+        ), redirect_stdout(out), redirect_stderr(io.StringIO()):
+            code = main([
+                "separate", "song.wav", "-o", "/tmp/out", "--model", "model",
+                "--dry-run", "--report", "json",
+            ])
+        payload = json.loads(out.getvalue())
+        self.assertEqual(code, 2)
+        self.assertIn("expected canonical model ID family:basename", payload["error"]["message"])
+
+
+class ModelsValidateInventoryTests(unittest.TestCase):
+    def test_untargeted_validate_reports_demucs_root_ckpt(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            checkpoint = os.path.join(root, "unsupported.ckpt")
+            Path(checkpoint).write_bytes(b"")
+            out = io.StringIO()
+            with patch("cli.discovery.DEMUCS_MODELS_DIR", root), redirect_stdout(out):
+                code = main(["models", "validate", "--report", "json"])
+
+        self.assertEqual(code, 0)
+        items = json.loads(out.getvalue())["items"]
+        self.assertEqual(items, [{
+            "artifact": "unsupported.ckpt",
+            "family": "demucs",
+            "identity_complete": False,
+            "identity_error": "unsupported Demucs-root .ckpt artifact",
+            "installed": True,
+            "supported": False,
+        }])
 
 
 class ModelsCatalogSizeBatchTests(unittest.TestCase):

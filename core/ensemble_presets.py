@@ -187,13 +187,30 @@ def find_download_selection(tag: str, manager: typing.Any) -> Optional[Tuple[str
 def download_entries_for_missing(
     missing_tags: Iterable[str],
     manager: typing.Any,
+    repo: typing.Any = None,
 ) -> Tuple[List[Tuple[str, str]], List[str]]:
     """Return ``(enqueue_entries, unresolved_tags)`` for missing preset members."""
+    from core.model_identity import ARCH_BY_FAMILY, ModelIdentityService
+
     entries: List[Tuple[str, str]] = []
     unresolved: List[str] = []
     seen = set()
+    service = ModelIdentityService(repo) if repo is not None else None
     for tag in missing_tags:
-        found = find_download_selection(tag, manager)
+        if service is None:
+            # Compatibility for callers still loading legacy display-tag presets.
+            found = find_download_selection(tag, manager)
+        else:
+            try:
+                record = service.index.lookup(tag)
+            except ValueError:
+                found = None
+            else:
+                reference = record.catalogue_entry
+                found = (
+                    (reference.selection, ARCH_BY_FAMILY[reference.family])
+                    if reference is not None else None
+                )
         if found is None:
             unresolved.append(tag)
             continue

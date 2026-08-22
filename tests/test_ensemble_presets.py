@@ -1,6 +1,8 @@
 """Tests for curated ensemble recipe loading and member resolution."""
 
 from __future__ import annotations
+import json
+from pathlib import Path
 import typing
 
 import unittest
@@ -17,6 +19,23 @@ from core.ensemble_presets import (
     load_curated_ensemble,
     resolve_member_tag,
 )
+from core.model_identity import (
+    CatalogueRef,
+    IdentityIndex,
+    ModelArtifacts,
+    ModelIdentityService,
+    ModelRecord,
+    parse_stored_model_id,
+)
+
+
+class CuratedPresetIdTests(unittest.TestCase):
+    def test_every_bundled_member_is_a_canonical_id(self) -> None:
+        root = Path("bundled/ensemble_presets")
+        for path in root.glob("*.json"):
+            payload = json.loads(path.read_text())
+            for member in payload["selected_models"]:
+                parse_stored_model_id(member)
 
 
 class CuratedPresetLoadTests(unittest.TestCase):
@@ -117,19 +136,27 @@ class ResolveAndDownloadTests(unittest.TestCase):
 
     def test_download_entries_for_missing(self) -> None:
         manager = mock.Mock()
-        with mock.patch(
-            "core.ensemble_presets.find_download_selection",
-            side_effect=[
-                ("sel-a", MDX_ARCH_TYPE),
-                None,
-            ],
+        record = ModelRecord(
+            id="mdx:model-a",
+            family="mdx",
+            basename="model-a",
+            display="A display that is not a catalogue selection",
+            backend_name="model-a",
+            artifacts=ModelArtifacts("model-a.ckpt"),
+            installed=False,
+            catalogue_entry=CatalogueRef("mdx", "sel-a"),
+        )
+        index = IdentityIndex({record.id: record})
+        with mock.patch.object(
+            ModelIdentityService, "_published_index", return_value=index,
         ):
             entries, unresolved = download_entries_for_missing(
-                ["MDX-Net: A", "MDX-Net: B"],
+                ["mdx:model-a", "mdx:model-b"],
                 manager,
+                mock.Mock(),
             )
         self.assertEqual(entries, [("sel-a", MDX_ARCH_TYPE)])
-        self.assertEqual(unresolved, ["MDX-Net: B"])
+        self.assertEqual(unresolved, ["mdx:model-b"])
 
 
 

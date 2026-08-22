@@ -739,7 +739,9 @@ class EnsemblePage:
 
         manager = _get_manager(self.context)
         queue = _get_queue(self.context, manager)
-        entries, unresolved = download_entries_for_missing(missing, manager)
+        entries, unresolved = download_entries_for_missing(
+            missing, manager, self.context.repo
+        )
         if not entries and not unresolved:
             return
 

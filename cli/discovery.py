@@ -25,8 +25,11 @@ from core.settings.access import parse_setting_assignment, validate_setting_path
 
 from core.model_identity import (
     FAMILIES,
+    ModelIdentityService,
+    ModelRecord,
     canonical_id_from_member_tag,
     iter_model_records,
+    parse_stored_model_id,
     resolve_model_id,
 )
 from .profiles import (
@@ -88,15 +91,15 @@ def add_models_parser(sub: argparse._SubParsersAction) -> None:
     show.add_argument("model")
     add_reporting_args(show)
     show.set_defaults(func=cmd_models_show)
-    validate = children.add_parser("validate", help="Verify a model checkpoint and configuration")
-    validate.add_argument("model")
+    validate = children.add_parser("validate", help="Verify model checkpoints and configuration")
+    validate.add_argument("model", nargs="?")
     validate.add_argument(
         "--offline",
         action="store_true",
         help="Do not fetch missing MDX-C YAML configs during validation",
     )
     add_reporting_args(validate)
-    validate.set_defaults(func=cmd_models_show, validating=True)
+    validate.set_defaults(func=cmd_models_validate, validating=True)
     register = children.add_parser("register", help="Register an unknown checkpoint")
     register.add_argument("checkpoint")
     register.add_argument("--family", choices=FAMILIES, required=True)
@@ -252,6 +255,17 @@ def cmd_models_list(args: argparse.Namespace) -> int:
     return _print_rows(args, rows)
 
 
+def _lookup_cli_model(model_id: str, repo: Any) -> ModelRecord:
+    try:
+        parsed = parse_stored_model_id(model_id)
+    except ValueError:
+        raise ValueError(
+            "expected canonical model ID family:basename; run 'uvr models list' "
+            "for installed IDs or 'uvr models catalog' for downloadable models"
+        ) from None
+    return ModelIdentityService(repo).index.lookup(parsed.value)
+
+
 def cmd_models_show(args: argparse.Namespace) -> int:
     from core.access_policy import access_policy
     from core.model_repository import ModelRepository
@@ -259,7 +273,7 @@ def cmd_models_show(args: argparse.Namespace) -> int:
     allow_network = not getattr(args, "offline", False)
     try:
         repo = ModelRepository()
-        record = resolve_model_id(args.model, repo)
+        record = _lookup_cli_model(args.model, repo)
         with access_policy(
             allow_network=allow_network,
             allow_metadata_writes=allow_network,
@@ -286,6 +300,34 @@ def cmd_models_show(args: argparse.Namespace) -> int:
     except (OSError, ValueError) as exc:
         return fail(args, str(exc), exit_code=2, exc=exc)
     return _print_detail(args, info)
+
+
+def cmd_models_validate(args: argparse.Namespace) -> int:
+    if args.model is not None:
+        return cmd_models_show(args)
+    rows = []
+    try:
+        with os.scandir(DEMUCS_MODELS_DIR) as entries:
+            installed = sorted(
+                (
+                    (entry.name, entry.is_file())
+                    for entry in entries
+                ),
+                key=lambda item: item[0].casefold(),
+            )
+    except FileNotFoundError:
+        installed = []
+    for name, is_file in installed:
+        if is_file and name.casefold().endswith(".ckpt"):
+            rows.append({
+                "artifact": name,
+                "family": "demucs",
+                "identity_complete": False,
+                "identity_error": "unsupported Demucs-root .ckpt artifact",
+                "installed": True,
+                "supported": False,
+            })
+    return _print_rows(args, rows)
 
 
 def _registered_demucs_info(
@@ -580,7 +622,7 @@ def cmd_models_configure(args: argparse.Namespace) -> int:
 
     repo = ModelRepository()
     try:
-        record = ModelIdentityService(repo).resolve(args.model)
+        record = _lookup_cli_model(args.model, repo)
         if record.family == "demucs":
             from core import paths
             from core.demucs_registry import (

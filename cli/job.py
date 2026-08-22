@@ -17,7 +17,11 @@ from core.settings.job_resolution import (
 from core.stem_selection import apply_stem_selection
 
 from core.input_discovery import discover_inputs
-from core.model_identity import ModelIdentityService, ModelRecord, resolve_model_id
+from core.model_identity import (
+    ModelIdentityService,
+    ModelRecord,
+    parse_stored_model_id,
+)
 from .process_flags import collect_overrides
 from .profiles import (
     IDENTITY_SETTING_PATHS,
@@ -174,6 +178,23 @@ def _validate_job_overrides(overrides: list[tuple[str, Any]]) -> None:
         )
 
 
+def _lookup_model_id(
+    reference: str,
+    repo: ModelRepository,
+    *,
+    service: ModelIdentityService | None = None,
+) -> ModelRecord:
+    try:
+        parsed = parse_stored_model_id(reference)
+    except ValueError:
+        raise ValueError(
+            "expected canonical model ID family:basename; run 'uvr models list' "
+            "for installed IDs or 'uvr models catalog' for downloadable models"
+        ) from None
+    identity = service or ModelIdentityService(repo)
+    return identity.index.lookup(parsed.value)
+
+
 def _canonicalize_model_references(
     settings: Settings, repo: ModelRepository
 ) -> dict[str, dict[str, str]]:
@@ -219,18 +240,18 @@ def _canonicalize_model_references(
         if raw.casefold() in sentinels:
             continue
         try:
-            if path in family_by_path:
-                record = service.resolve(raw, family=family_by_path[path], fuzzy=False)
-            elif path in allowed_by_path:
-                record = service.resolve(
-                    raw, allowed_families=allowed_by_path[path], fuzzy=False
+            record = _lookup_model_id(raw, repo, service=service)
+            required_family = family_by_path.get(path)
+            if required_family is not None and record.family != required_family:
+                raise ValueError(
+                    f"model {record.id!r} does not belong to required family "
+                    f"{required_family}"
                 )
-            elif "secondary_model" in path:
-                record = service.resolve(
-                    raw, allowed_families=("vr", "mdx", "demucs"), fuzzy=False
-                )
-            else:
-                record = service.resolve(raw, fuzzy=False)
+            eligible = allowed_by_path.get(path)
+            if "secondary_model" in path:
+                eligible = ("vr", "mdx", "demucs")
+            if eligible is not None and record.family not in eligible:
+                raise ValueError(f"model {record.id!r} is not eligible for this setting")
         except ValueError:
             if active:
                 raise
@@ -250,7 +271,7 @@ def resolve_separate_job(
     model_query = args.model or profile.model
     if not model_query:
         raise ValueError("separate requires --model or a profile containing a model")
-    record = resolve_model_id(model_query, repo)
+    record = _lookup_model_id(model_query, repo)
     settings, sources = _resolved_settings(
         base, output=output, method=record.family, model=record,
         stems=args.stems, long_chunk_seconds=args.long_chunk_seconds,
@@ -262,7 +283,7 @@ def resolve_separate_job(
     split_record = None
     if getattr(args, "vocal_split", None):
         splitter_id = resolve_splitter_identity(args.vocal_split, settings, repo)
-        split_record = resolve_model_id(splitter_id, repo)
+        split_record = _lookup_model_id(splitter_id, repo)
         resolved_splitter = split_record.id
     overrides = collect_overrides(args, resolved_vocal_splitter=resolved_splitter)
     _validate_job_overrides(overrides)
@@ -360,7 +381,7 @@ def resolve_ensemble_job(
     if member_tokens:
         from bundled.constants import CHOOSE_ENSEMBLE_OPTION
 
-        records = [resolve_model_id(token, repo) for token in member_tokens]
+        records = [_lookup_model_id(token, repo) for token in member_tokens]
         settings.ensemble.selected_models = [item.id for item in records]
         settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         sources["ensemble.selected_models"] = (
@@ -403,7 +424,7 @@ def resolve_ensemble_job(
     if not records:
         # Resolve preset tags back to canonical records for reports/manifests.
         for tag in settings.ensemble.selected_models:
-            records.append(resolve_model_id(tag, repo))
+            records.append(_lookup_model_id(tag, repo))
     if len(records) < 2:
         raise ValueError("an ensemble needs at least two members")
     if not explicit_identity and profile.members:
