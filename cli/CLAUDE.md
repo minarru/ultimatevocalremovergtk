@@ -21,8 +21,8 @@ The command-line front end. A presentation layer, exactly like `ui/`.
   `KeyboardInterrupt`. Restore the previous SIGINT/SIGTERM handlers in `finally`.
 - **Clean defaults are the implicit profile.** GUI state is read only through
   `--profile gui`; named profiles are sparse and never write back to the GUI.
-- **Models own their family.** Public IDs are `vr:`, `mdx:`, or `demucs:` IDs;
-  there is no public processing-method flag.
+- **Models own their family.** Public IDs are `vr:`, `mdx:`, `demucs:`, or
+  `apollo:` IDs; there is no public processing-method flag.
 - **`--stems` is a concept, not a position.** It resolves against the model's
   route inventory (`core.stems.model_stem_routes`), so `vocals` exports vocals
   from an instrumental-primary model. Availability is diagnosed at plan time:

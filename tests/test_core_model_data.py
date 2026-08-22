@@ -8,6 +8,7 @@ from bundled.constants import DEFAULT, ENSEMBLE_MODE, MDX_ARCH_TYPE, VR_ARCH_TYP
 from core.model_config import ModelConfig, assemble_model
 from core.model_identity import IdentityIndex, ModelArtifacts, ModelRecord
 from core.settings import Settings
+from core.types.enums import ProcessMethod
 
 
 class OverlapMdxDefaultTests(unittest.TestCase):
@@ -78,7 +79,7 @@ class AssembleMdxIdentityTests(unittest.TestCase):
 
         repo, record = _repo_with_mdx_record("foo")
         settings = Settings.defaults()
-        settings.process.method = MDX_ARCH_TYPE
+        settings.process.method = ProcessMethod.MDX
         settings.mdx.model = record.id
         with tempfile.TemporaryDirectory() as directory:
             open(os.path.join(directory, "foo.onnx"), "wb").close()
@@ -98,7 +99,7 @@ class AssembleMdxIdentityTests(unittest.TestCase):
 
         repo, record = _repo_with_mdx_record("foo", display="WRONG LABEL")
         settings = Settings.defaults()
-        settings.process.method = MDX_ARCH_TYPE
+        settings.process.method = ProcessMethod.MDX
         settings.mdx.model = record.id
         with tempfile.TemporaryDirectory() as directory:
             open(os.path.join(directory, "foo.onnx"), "wb").close()
