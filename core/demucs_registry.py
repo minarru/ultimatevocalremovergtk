@@ -58,8 +58,9 @@ def _normalize_demucs_registry_relative_path(models_dir: str, value: object) -> 
     text = str(value or "").strip()
     if not text:
         raise ValueError("Demucs registry paths must be non-empty")
-    rooted = os.path.abspath(models_dir)
-    candidate = os.path.abspath(os.path.join(rooted, text.replace("\\", os.sep)))
+    rooted = os.path.realpath(models_dir)
+    lexical_candidate = os.path.join(models_dir, text.replace("\\", os.sep))
+    candidate = os.path.realpath(lexical_candidate)
     if os.path.commonpath((rooted, candidate)) != rooted:
         raise ValueError("path escapes Demucs model root")
     relative = os.path.relpath(candidate, rooted)

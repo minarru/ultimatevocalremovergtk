@@ -165,3 +165,26 @@ class DemucsRegistryDocumentTests(unittest.TestCase):
                 registry.save(payload)
 
             self.assertFalse(os.path.exists(registry.path))
+
+    def test_save_rejects_symlink_paths_that_resolve_outside_the_demucs_root(self) -> None:
+        from core.demucs_registry import DemucsRegistry
+
+        with tempfile.TemporaryDirectory() as tmp:
+            models_dir = os.path.join(tmp, "Demucs_Models")
+            outside_dir = os.path.join(tmp, "outside")
+            os.makedirs(outside_dir)
+            os.makedirs(os.path.join(models_dir, "model_data"))
+            os.symlink(outside_dir, os.path.join(models_dir, "link"))
+
+            registry = DemucsRegistry(models_dir=models_dir)
+            payload = self._sample_payload()
+            models = payload["models"]
+            assert isinstance(models, dict)
+            record = models["demucs:my_model"]
+            assert isinstance(record, dict)
+            record["entrypoint"] = "link/outside.yaml"
+
+            with self.assertRaisesRegex(ValueError, "path escapes"):
+                registry.save(payload)
+
+            self.assertFalse(os.path.exists(registry.path))
