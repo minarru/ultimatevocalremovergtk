@@ -27,26 +27,17 @@ def assemble_model(
 ) -> List["ModelConfig"]:
     """Build the model configurations for one separation run."""
     from .config import ModelConfig
-    from ..model_identity import ModelIdentityService, _qualified_family
+    from ..model_identity import ModelIdentityService
 
     identities = ModelIdentityService(repo)
 
-    def engine_value(
-        value: str, *, family: str | None = None
-    ) -> str:
-        raw = str(value or "")
-        if _qualified_family(raw) is None:
-            return raw
-        try:
-            return identities.engine_value(value, family=family)
-        except ValueError:
-            # Unresolvable ids still belong to ModelConfig so the run can
-            # report model_status instead of aborting assemble.
-            return raw
-
     if arch_type == ENSEMBLE_MODE:
         selected = settings.ensemble.selected_models or []
-        models = [ModelConfig(settings, repo, name) for name in selected]
+        records = [identities.lookup(model_id) for model_id in selected]
+        models = [
+            ModelConfig(settings, repo, record.display, identity=record)
+            for record in records
+        ]
         valid = [item for item in models if item.model_status]
         skipped = len(models) - len(valid)
         if skipped:
@@ -67,17 +58,25 @@ def assemble_model(
         return valid
     if not model:
         raise ValueError(f"assemble_model requires a model name for {arch_type}")
-    family = {
-        VR_ARCH_TYPE: "vr", VR_ARCH_PM: "vr",
-        MDX_ARCH_TYPE: "mdx", DEMUCS_ARCH_TYPE: "demucs",
-    }.get(arch_type)
-    model = engine_value(model, family=family)
+    record = identities.lookup(model)
     if arch_type == ENSEMBLE_CHECK:
-        return [ModelConfig(settings, repo, model)]
+        return [ModelConfig(settings, repo, record.display, identity=record)]
     if arch_type in (VR_ARCH_TYPE, VR_ARCH_PM):
-        return [ModelConfig(settings, repo, model, VR_ARCH_TYPE)]
+        return [
+            ModelConfig(
+                settings, repo, record.display, VR_ARCH_TYPE, identity=record
+            )
+        ]
     if arch_type == MDX_ARCH_TYPE:
-        return [ModelConfig(settings, repo, model, MDX_ARCH_TYPE)]
+        return [
+            ModelConfig(
+                settings, repo, record.display, MDX_ARCH_TYPE, identity=record
+            )
+        ]
     if arch_type == DEMUCS_ARCH_TYPE:
-        return [ModelConfig(settings, repo, model, DEMUCS_ARCH_TYPE)]
+        return [
+            ModelConfig(
+                settings, repo, record.display, DEMUCS_ARCH_TYPE, identity=record
+            )
+        ]
     raise NotImplementedError(f"assemble_model: arch_type '{arch_type}' is not supported")

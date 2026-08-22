@@ -5,12 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional, Tuple
 
+from ..model_identity import ModelArtifacts
 from ..stems import StemRoute
 
 
 @dataclass
 class ModelIdentity:
     model_name: str = ""
+    canonical_id: str = ""
+    model_display_label: str = ""
+    backend_name: str = ""
+    model_artifacts: Optional[ModelArtifacts] = None
     process_method: str = ""
     model_path: Optional[str] = None
     model_basename: Optional[str] = None

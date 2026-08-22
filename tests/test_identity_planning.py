@@ -82,6 +82,25 @@ class ActivePathTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             resolver._dependency_map(settings, "separate")
 
+    def test_enabled_missing_secondary_raises_during_model_assembly(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE, VOCAL_STEM
+        from core.model_config import process_determine_secondary_model
+        from core.model_identity import IdentityIndex, ModelIdentityService
+
+        settings = Settings.defaults()
+        settings.mdx.is_secondary_model_activate = True
+        settings.mdx.voc_inst_secondary_model = "mdx:missing"
+        repo = Mock()
+        with unittest.mock.patch.object(
+            ModelIdentityService,
+            "_published_index",
+            return_value=IdentityIndex({}),
+        ):
+            with self.assertRaises(ValueError):
+                process_determine_secondary_model(
+                    settings, repo, MDX_ARCH_TYPE, VOCAL_STEM
+                )
+
     def test_demucs_pre_proc_accepts_vr_and_mdx_families(self) -> None:
         primary = _record("demucs:primary")
         for pre_proc in (_record("vr:pre-proc"), _record("mdx:pre-proc")):

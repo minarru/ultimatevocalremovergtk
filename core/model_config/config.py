@@ -14,16 +14,12 @@ from ..audio_io import resolve_wav_type_set
 from ..demucs_models import resolve_demucs_model_file
 from ..mdx_c_registry import compute_checkpoint_hash, try_register_from_catalog
 from ..mdx_config_fetch import ensure_mdx_c_config
-from ..model_display import (
-    resolve_demucs_model_basename,
-    resolve_mdx_model_basename,
-    resolve_vr_model_basename,
-)
 from ..model_stem_semantics import resolve_karaoke_confidence
 from ..settings import Settings
 from ..settings.coerce import enum_value
 
 if TYPE_CHECKING:
+    from ..model_identity import ModelRecord
     from ..model_repository import ModelRepository
 
 
@@ -49,6 +45,7 @@ class ModelConfig:
         is_change_def: bool = False,
         is_get_hash_dir_only: bool = False,
         is_vocal_split_model: bool = False,
+        identity: "ModelRecord | None" = None,
     ):
         self.settings = settings
         self.repo: Any = repo
@@ -139,8 +136,21 @@ class ModelConfig:
         self.demucs_source_map: dict[str, int] = {}
         self.demucs_stem_count = 0
         self.mixer_path = paths.MDX_MIXER_PATH
-        self.model_name = model_name
-        self.process_method = selected_process_method
+        self.canonical_id = identity.id if identity is not None else ""
+        self.model_display_label = (
+            identity.display if identity is not None else model_name
+        )
+        self.backend_name = (
+            identity.backend_name if identity is not None else model_name
+        )
+        self.model_artifacts = (
+            identity.artifacts if identity is not None else None
+        )
+        self._identity_record = identity
+        self.model_name = self.model_display_label
+        self.process_method = (
+            identity.arch if identity is not None else selected_process_method
+        )
         self.model_status = False if self.model_name == CHOOSE_MODEL or self.model_name == NO_MODEL else True
         # Always defined: hash / path lookup may leave this unset for missing files.
         self.model_data: Any = None
@@ -197,34 +207,16 @@ class ModelConfig:
         self._is_secondary_model_param = is_secondary_model
 
         if selected_process_method == ENSEMBLE_MODE:
-            # Settings, checklist, and dry-check pass ``mdx:basename``. Leftover
-            # ``Arch: Display`` tags still resolve; ``model_and_process_tag`` is
-            # the canonical id when the reference is known.
-            from ..model_identity import ModelIdentityService, _qualified_family
-
-            qualified = _qualified_family(str(model_name or ""))
-            if qualified is not None:
-                try:
-                    record = ModelIdentityService(self.repo).resolve(
-                        model_name, fuzzy=False
-                    )
-                    self.process_method = record.arch
-                    self.model_name = record.display
-                    self.model_and_process_tag = record.id
-                except ValueError:
-                    if ENSEMBLE_PARTITION in model_name:
-                        self.process_method, _, self.model_name = model_name.partition(
-                            ENSEMBLE_PARTITION
-                        )
-                        self.model_and_process_tag = model_name
-                    else:
-                        self.model_status = False
-                        self.model_and_process_tag = model_name
+            if identity is not None:
+                self.process_method = identity.arch
+                self.model_and_process_tag = identity.id
             else:
-                self.process_method, _, self.model_name = model_name.partition(
+                self.process_method, separator, self.model_name = model_name.partition(
                     ENSEMBLE_PARTITION
                 )
                 self.model_and_process_tag = model_name
+                if not separator:
+                    self.model_status = False
             self.ensemble_primary_stem, self.ensemble_secondary_stem = self.return_ensemble_stems()
             is_not_secondary_or_pre_proc = not is_secondary_model and not is_pre_proc_model
             self.is_ensemble_mode = is_not_secondary_or_pre_proc
@@ -775,35 +767,37 @@ class ModelConfig:
         self.is_karaoke_curated = is_curated
 
     def get_vr_model_path(self) -> None:
-        resolved_name = resolve_vr_model_basename(
-            self.model_name,
-            catalogue_index=self.repo.vr_catalogue_display_index(),
+        artifacts = getattr(self, "model_artifacts", None)
+        primary = (
+            artifacts.primary_filename
+            if artifacts is not None
+            else getattr(self, "backend_name", self.model_name)
         )
-        self.model_path = os.path.join(paths.VR_MODELS_DIR, f"{resolved_name}.pth")
+        filename = primary if primary.casefold().endswith(".pth") else f"{primary}.pth"
+        self.model_path = os.path.join(paths.VR_MODELS_DIR, filename)
 
     def get_mdx_model_path(self):
-        resolved_name = resolve_mdx_model_basename(
-            self.model_name,
-            self.repo.mdx_name_select_MAPPER,
-            catalogue_index=self.repo.mdx_catalogue_display_index(),
-        )
-        if resolved_name.endswith(CKPT):
-            self.is_mdx_ckpt = True
-        ext = "" if self.is_mdx_ckpt else ONNX
-        for file_name, chosen_mdx_model in self.repo.mdx_name_select_MAPPER.items():
-            if resolved_name in file_name or self.model_name in chosen_mdx_model:
-                if file_name.endswith(CKPT):
-                    ext = ""
-                    self.is_mdx_ckpt = True
-                elif file_name.endswith(ONNX):
-                    # Mapper keys auto-registered from download jobs already
-                    # include the extension (unlike bundled catalogue keys),
-                    # so appending it again would look up "name.onnx.onnx".
-                    ext = ""
-                self.model_path = os.path.join(paths.MDX_MODELS_DIR, f"{file_name}{ext}")
-                break
+        artifacts = getattr(self, "model_artifacts", None)
+        if artifacts is not None:
+            filename = artifacts.primary_filename
+            self.is_mdx_ckpt = filename.casefold().endswith(CKPT)
+            self.model_path = os.path.join(paths.MDX_MODELS_DIR, filename)
         else:
-            base_path = os.path.join(paths.MDX_MODELS_DIR, resolved_name)
+            filename = getattr(self, "backend_name", self.model_name)
+            for file_name, chosen_mdx_model in self.repo.mdx_name_select_MAPPER.items():
+                if filename == file_name or self.model_name == chosen_mdx_model:
+                    filename = file_name
+                    break
+            if filename.casefold().endswith(CKPT):
+                self.is_mdx_ckpt = True
+                self.model_path = os.path.join(paths.MDX_MODELS_DIR, filename)
+                self.mixer_path = os.path.join(paths.MDX_MODELS_DIR, "mixer_val.ckpt")
+                return
+            if filename.casefold().endswith(ONNX):
+                self.model_path = os.path.join(paths.MDX_MODELS_DIR, filename)
+                self.mixer_path = os.path.join(paths.MDX_MODELS_DIR, "mixer_val.ckpt")
+                return
+            base_path = os.path.join(paths.MDX_MODELS_DIR, filename)
             ckpt_path = f"{base_path}{CKPT}"
             onnx_path = f"{base_path}{ONNX}"
             if os.path.isfile(ckpt_path):
@@ -812,29 +806,27 @@ class ModelConfig:
             elif os.path.isfile(onnx_path):
                 self.model_path = onnx_path
             else:
-                self.model_path = f"{base_path}{ext}"
+                self.model_path = onnx_path
         self.mixer_path = os.path.join(paths.MDX_MODELS_DIR, "mixer_val.ckpt")
 
     def get_demucs_model_path(self):
-        # Same shape as get_vr_model_path / get_mdx_model_path above: canonicalize
-        # the user-facing name to an on-disk basename first. Comparing the name
-        # against raw mapper values instead meant a canonicalized display
-        # ("v4 — hdemucs_mmi") never matched its legacy mapper entry
-        # ("v4 | hdemucs_mmi"), and the display string was used as a filename.
-        resolved_name = resolve_demucs_model_basename(
-            self.model_name,
-            self.repo.demucs_name_select_MAPPER,
-            catalogue_index=self.repo.demucs_catalogue_display_index(),
-        )
-        demucs_newer = self.demucs_version in {DEMUCS_V3, DEMUCS_V4}
+        record = getattr(self, "_identity_record", None)
+        spec = record.demucs if record is not None else None
+        demucs_version = spec.version if spec is not None else self.demucs_version
+        demucs_newer = demucs_version in {DEMUCS_V3, DEMUCS_V4}
         demucs_model_dir = paths.DEMUCS_NEWER_REPO_DIR if demucs_newer else paths.DEMUCS_MODELS_DIR
-        # Matched on the mapper's *key* now, not its display value: the value
-        # is legacy text the canonicalizer above has already consumed.
-        for file_name in self.repo.demucs_name_select_MAPPER:
-            if resolved_name == os.path.splitext(file_name)[0]:
+        artifacts = getattr(self, "model_artifacts", None)
+        if artifacts is not None:
+            self.model_path = os.path.join(
+                demucs_model_dir, artifacts.primary_filename
+            )
+            return
+        backend_name = getattr(self, "backend_name", self.model_name)
+        for file_name, display in self.repo.demucs_name_select_MAPPER.items():
+            if backend_name in {file_name, os.path.splitext(file_name)[0]} or self.model_name == display:
                 self.model_path = os.path.join(demucs_model_dir, file_name)
                 return
-        self.model_path = resolve_demucs_model_file(resolved_name, self.demucs_version)
+        self.model_path = resolve_demucs_model_file(backend_name, demucs_version)
 
     def get_demucs_model_data(self):
         self.demucs_version = DEMUCS_V4
@@ -946,6 +938,10 @@ class ModelConfig:
 
         self.identity = ModelIdentity(
             model_name=self.model_name,
+            canonical_id=self.canonical_id,
+            model_display_label=self.model_display_label,
+            backend_name=self.backend_name,
+            model_artifacts=self.model_artifacts,
             process_method=self.process_method,
             model_path=getattr(self, "model_path", None),
             model_basename=self.model_basename,

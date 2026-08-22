@@ -1,10 +1,12 @@
+import os
+import tempfile
 import typing
 import unittest
 from unittest.mock import MagicMock, patch
 
 from bundled.constants import DEFAULT, ENSEMBLE_MODE, MDX_ARCH_TYPE, VR_ARCH_TYPE
 from core.model_config import ModelConfig, assemble_model
-from core.model_identity import ModelArtifacts
+from core.model_identity import IdentityIndex, ModelArtifacts, ModelRecord
 from core.settings import Settings
 
 
@@ -28,83 +30,89 @@ class OverlapMdxDefaultTests(unittest.TestCase):
 
 class AssembleEnsembleTests(unittest.TestCase):
     def test_filters_invalid_members(self):
-        settings = Settings.from_flat(
-            {
-                "selected_models": [
-                    f"{VR_ARCH_TYPE}: good",
-                    f"{VR_ARCH_TYPE}: bad",
-                ]
-            }
-        )
+        settings = Settings.from_flat({"selected_models": ["mdx:good", "mdx:bad"]})
         repo = MagicMock()
         repo.on_unrecognized_model = None
+        records = {
+            name: _mdx_record(name.removeprefix("mdx:"))
+            for name in settings.ensemble.selected_models
+        }
 
         good = MagicMock()
         good.model_status = True
         bad = MagicMock()
         bad.model_status = False
 
-        with patch("core.model_config.config.ModelConfig", side_effect=[good, bad]):
+        with patch(
+            "core.model_identity.ModelIdentityService._published_index",
+            return_value=IdentityIndex(records),
+        ), patch("core.model_config.config.ModelConfig", side_effect=[good, bad]):
             with self.assertRaises(ValueError):
                 assemble_model(settings, repo, arch_type=ENSEMBLE_MODE)
 
     def test_returns_valid_members(self):
-        settings = Settings.from_flat(
-            {
-                "selected_models": [
-                    f"{VR_ARCH_TYPE}: a",
-                    f"{VR_ARCH_TYPE}: b",
-                ]
-            }
-        )
+        settings = Settings.from_flat({"selected_models": ["mdx:a", "mdx:b"]})
         repo = MagicMock()
         repo.on_unrecognized_model = None
+        records = {
+            name: _mdx_record(name.removeprefix("mdx:"))
+            for name in settings.ensemble.selected_models
+        }
 
         first = MagicMock()
         first.model_status = True
         second = MagicMock()
         second.model_status = True
 
-        with patch("core.model_config.config.ModelConfig", side_effect=[first, second]):
+        with patch(
+            "core.model_identity.ModelIdentityService._published_index",
+            return_value=IdentityIndex(records),
+        ), patch("core.model_config.config.ModelConfig", side_effect=[first, second]):
             models = assemble_model(settings, repo, arch_type=ENSEMBLE_MODE)
         self.assertEqual(models, [first, second])
 
 
 class AssembleMdxIdentityTests(unittest.TestCase):
-    def test_legacy_member_tag_becomes_backend_name(self) -> None:
-        """Non-ensemble assemble still feeds the engine basename, not a member tag."""
-        from core.model_identity import ModelIdentityService, ModelRecord, canonical_member_tag
+    def test_assemble_leaves_settings_as_canonical_id(self) -> None:
+        from core.model_identity import IdentityIndex, ModelIdentityService
 
-        record = ModelRecord(
-            id='mdx:UVR-MDX-NET-Inst_HQ_4',
-            family='mdx',
-            basename='UVR-MDX-NET-Inst_HQ_4',
-            display='UVR-MDX-NET Inst HQ 4',
-            backend_name='UVR-MDX-NET-Inst_HQ_4',
-            artifacts=ModelArtifacts('UVR-MDX-NET-Inst_HQ_4.ckpt'),
-            installed=True,
-        )
-        tag = canonical_member_tag(record)
-        captured: list[str] = []
-
-        def fake_config(
-            _settings: object, _repo: object, model_name: str, *_args: object, **_kwargs: object
-        ) -> MagicMock:
-            captured.append(model_name)
-            model = MagicMock()
-            model.model_status = True
-            return model
-
+        repo, record = _repo_with_mdx_record("foo")
         settings = Settings.defaults()
-        with patch.object(ModelIdentityService, "records", return_value=(record,)):
-            with patch("core.model_config.config.ModelConfig", side_effect=fake_config):
-                assemble_model(settings, MagicMock(), tag, MDX_ARCH_TYPE)
-        self.assertEqual(captured, [record.backend_name])
-        self.assertNotIn(":", captured[0])
+        settings.process.method = MDX_ARCH_TYPE
+        settings.mdx.model = record.id
+        with tempfile.TemporaryDirectory() as directory:
+            open(os.path.join(directory, "foo.onnx"), "wb").close()
+            with patch.object(
+                ModelIdentityService,
+                "_published_index",
+                return_value=IdentityIndex({record.id: record}),
+            ), patch("core.model_config.config.paths.MDX_MODELS_DIR", directory):
+                configs = assemble_model(settings, repo, record.id, MDX_ARCH_TYPE)
 
-    def test_ensemble_assemble_passes_canonical_ids(self) -> None:
-        from core.model_identity import ModelIdentityService, ModelRecord
+        self.assertEqual(settings.mdx.model, "mdx:foo")
+        self.assertEqual(configs[0].canonical_id, "mdx:foo")
+        self.assertEqual(configs[0].backend_name, "foo")
 
+    def test_path_uses_artifact_not_display(self) -> None:
+        from core.model_identity import IdentityIndex, ModelIdentityService
+
+        repo, record = _repo_with_mdx_record("foo", display="WRONG LABEL")
+        settings = Settings.defaults()
+        settings.process.method = MDX_ARCH_TYPE
+        settings.mdx.model = record.id
+        with tempfile.TemporaryDirectory() as directory:
+            open(os.path.join(directory, "foo.onnx"), "wb").close()
+            with patch.object(
+                ModelIdentityService,
+                "_published_index",
+                return_value=IdentityIndex({record.id: record}),
+            ), patch("core.model_config.config.paths.MDX_MODELS_DIR", directory):
+                configs = assemble_model(settings, repo, record.id, MDX_ARCH_TYPE)
+
+        self.assertEqual(os.path.basename(configs[0].model_path or ""), "foo.onnx")
+        self.assertEqual(configs[0].model_display_label, "WRONG LABEL")
+
+    def test_ensemble_assemble_passes_identity_records(self) -> None:
         records = (
             ModelRecord(
                 id='mdx:a',
@@ -127,26 +135,28 @@ class AssembleMdxIdentityTests(unittest.TestCase):
         )
         settings = Settings.defaults()
         settings.ensemble.selected_models = ["mdx:a", "mdx:b"]
-        captured: list[str] = []
+        captured: list[tuple[str, ModelRecord | None]] = []
 
         def fake_config(
             _settings: object, _repo: object, model_name: str, *_args: object, **_kwargs: object
         ) -> MagicMock:
-            captured.append(model_name)
+            captured.append((model_name, typing.cast(ModelRecord | None, _kwargs.get("identity"))))
             model = MagicMock()
             model.model_status = True
             return model
 
-        with patch.object(ModelIdentityService, "records", return_value=records):
-            with patch("core.model_config.config.ModelConfig", side_effect=fake_config):
-                assemble_model(settings, MagicMock(), arch_type=ENSEMBLE_MODE)
-        self.assertEqual(captured, ["mdx:a", "mdx:b"])
+        with patch(
+            "core.model_identity.ModelIdentityService._published_index",
+            return_value=IdentityIndex({record.id: record for record in records}),
+        ), patch("core.model_config.config.ModelConfig", side_effect=fake_config):
+            assemble_model(settings, MagicMock(), arch_type=ENSEMBLE_MODE)
+        self.assertEqual(captured, [("A", records[0]), ("B", records[1])])
 
 
 class EnsembleModeIdentityTests(unittest.TestCase):
-    def _build(self, token: str, *, records: tuple[object, ...] = ()) -> ModelConfig:
-        from core.model_identity import ModelIdentityService
-
+    def _build(
+        self, token: str, *, records: tuple[ModelRecord, ...] = ()
+    ) -> ModelConfig:
         settings = Settings.defaults()
         repo = MagicMock()
         repo.mdx_name_select_MAPPER = {}
@@ -161,11 +171,18 @@ class EnsembleModeIdentityTests(unittest.TestCase):
             self.model_hash = None
             self.model_status = False
 
-        with patch.object(ModelIdentityService, "records", return_value=records):
-            with patch.object(ModelConfig, "get_model_hash", fake_get_model_hash):
-                return ModelConfig(settings, repo, token, is_dry_check=True)
+        identity = records[0] if records else None
+        model_name = identity.display if identity is not None else token
+        with patch.object(ModelConfig, "get_model_hash", fake_get_model_hash):
+            return ModelConfig(
+                settings,
+                repo,
+                model_name,
+                is_dry_check=True,
+                identity=identity,
+            )
 
-    def test_canonical_id_sets_arch_display_and_member_tag(self) -> None:
+    def test_identity_sets_arch_display_and_member_tag(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE
         from core.model_identity import ModelRecord
 
@@ -183,7 +200,7 @@ class EnsembleModeIdentityTests(unittest.TestCase):
         self.assertEqual(model.model_name, "Good")
         self.assertEqual(model.model_and_process_tag, record.id)
 
-    def test_legacy_member_tag_still_splits(self) -> None:
+    def test_legacy_member_tag_splits_without_identity_lookup(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE
         from core.model_identity import ModelRecord, canonical_member_tag
 
@@ -197,10 +214,10 @@ class EnsembleModeIdentityTests(unittest.TestCase):
             installed=True,
         )
         tag = canonical_member_tag(record)
-        model = self._build(tag, records=(record,))
+        model = self._build(tag)
         self.assertEqual(model.process_method, MDX_ARCH_TYPE)
         self.assertEqual(model.model_name, "Good")
-        self.assertEqual(model.model_and_process_tag, record.id)
+        self.assertEqual(model.model_and_process_tag, tag)
 
 
 class ModelConfigKaraokeConfidenceTests(unittest.TestCase):
@@ -279,6 +296,28 @@ def _repo_with_mdx(*basenames: str) -> MagicMock:
     return repo
 
 
+def _repo_with_mdx_record(
+    basename: str, *, display: str | None = None
+) -> tuple[MagicMock, ModelRecord]:
+    repo = _repo_with_mdx(f"{basename}.onnx")
+    return repo, _mdx_record(basename, display=display)
+
+
+def _mdx_record(basename: str, *, display: str | None = None) -> ModelRecord:
+    from core.model_identity import MdxSpec
+
+    return ModelRecord(
+        id=f"mdx:{basename}",
+        family="mdx",
+        basename=basename,
+        display=display or basename,
+        backend_name=basename,
+        artifacts=ModelArtifacts(f"{basename}.onnx"),
+        installed=True,
+        mdx=MdxSpec("classic_onnx"),
+    )
+
+
 class ListModelTagsCanonicalTests(unittest.TestCase):
     """list_*_model_tags emit family:basename, sorted by display label."""
 
@@ -340,10 +379,13 @@ class NestedCanonicalModelConfigTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.vocal_splitter_enabled = True
         settings.process.vocal_splitter = "mdx:KaraokeFusion"
-        repo = _repo_with_mdx("KaraokeFusion")
+        repo, record = _repo_with_mdx_record("KaraokeFusion")
         captured, wrapper = self._capture_config()
 
-        with patch("core.model_config.config.ModelConfig", side_effect=wrapper), patch(
+        with patch(
+            "core.model_identity.ModelIdentityService._published_index",
+            return_value=IdentityIndex({record.id: record}),
+        ), patch("core.model_config.config.ModelConfig", side_effect=wrapper), patch(
             "core.model_display.map_basenames_to_display",
             side_effect=lambda names, *args, **kwargs: list(names),
         ), patch("core.apollo.list_apollo_models", return_value=[]):
@@ -358,10 +400,13 @@ class NestedCanonicalModelConfigTests(unittest.TestCase):
 
         settings = Settings.defaults()
         settings.mdx.voc_inst_secondary_model = "mdx:KaraokeFusion"
-        repo = _repo_with_mdx("KaraokeFusion")
+        repo, record = _repo_with_mdx_record("KaraokeFusion")
         captured, wrapper = self._capture_config()
 
-        with patch("core.model_config.config.ModelConfig", side_effect=wrapper), patch(
+        with patch(
+            "core.model_identity.ModelIdentityService._published_index",
+            return_value=IdentityIndex({record.id: record}),
+        ), patch("core.model_config.config.ModelConfig", side_effect=wrapper), patch(
             "core.model_display.map_basenames_to_display",
             side_effect=lambda names, *args, **kwargs: list(names),
         ), patch("core.apollo.list_apollo_models", return_value=[]):

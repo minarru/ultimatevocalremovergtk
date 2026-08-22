@@ -68,15 +68,13 @@ def _model_config_for_reference(
     raw = str(reference or "").strip()
     if not raw or raw in {CHOOSE_MODEL, NO_MODEL}:
         return None
-    try:
-        record = ModelIdentityService(repo).resolve(raw, fuzzy=False)
-    except ValueError:
-        return None
+    record = ModelIdentityService(repo).lookup(raw)
     return ModelConfig(
         settings,
         repo,
-        record.backend_name,
+        record.display,
         record.arch,
+        identity=record,
         **kwargs,
     )
 
