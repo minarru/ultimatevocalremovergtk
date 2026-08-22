@@ -440,7 +440,6 @@ def _merge_installed(repo: Any, records: list[ModelRecord]) -> list[ModelRecord]
 def _apply_bundled_demucs(
     records: list[ModelRecord],
     bundled: Mapping[str, DemucsSpec],
-    registered: Mapping[str, Any],
 ) -> list[ModelRecord]:
     result: list[ModelRecord] = []
     for record in records:
@@ -448,15 +447,111 @@ def _apply_bundled_demucs(
             result.append(record)
             continue
         spec = bundled.get(record.id) or record.demucs
-        custom = registered.get(record.id)
-        if isinstance(custom, DemucsSpec):
-            spec = custom
         if spec is None:
             result.append(record)
         else:
             result.append(replace(
                 record, demucs=spec, identity_complete=True, identity_error=None
             ))
+    return result
+
+
+def _registered_demucs_bag_membership_error(
+    entrypoint_path: str, supporting_paths: tuple[str, ...]
+) -> str | None:
+    if not entrypoint_path.casefold().endswith(".yaml"):
+        return None
+    try:
+        with open(entrypoint_path, encoding="utf-8") as handle:
+            document = yaml.safe_load(handle)
+    except (OSError, yaml.YAMLError):
+        return "registered Demucs bag membership is unreadable"
+    if not isinstance(document, Mapping):
+        return "registered Demucs bag membership root is invalid"
+    raw_models = document.get("models")
+    if not isinstance(raw_models, list) or not raw_models:
+        return "registered Demucs bag membership list is empty or invalid"
+
+    directory = os.path.dirname(entrypoint_path)
+    recorded = {os.path.realpath(path) for path in supporting_paths}
+    referenced: set[str] = set()
+    try:
+        adjacent = os.listdir(directory)
+    except OSError:
+        return "registered Demucs bag membership directory is unavailable"
+    for signature in raw_models:
+        if not isinstance(signature, str) or not signature:
+            return "registered Demucs bag membership contains an invalid signature"
+        matches = [
+            os.path.realpath(os.path.join(directory, name))
+            for name in adjacent
+            if name.startswith(f"{signature}-")
+            and name.casefold().endswith(".th")
+            and os.path.isfile(os.path.join(directory, name))
+        ]
+        if len(matches) != 1 or matches[0] not in recorded:
+            return f"registered Demucs bag membership mismatch for {signature}"
+        referenced.add(matches[0])
+    if referenced != recorded:
+        return "registered Demucs bag membership has unreferenced artifacts"
+    return None
+
+
+def _apply_registered_demucs(
+    records: list[ModelRecord],
+    registered: Mapping[str, Any],
+) -> list[ModelRecord]:
+    from . import paths
+
+    result: list[ModelRecord] = []
+    for record in records:
+        raw = registered.get(record.id) if record.family == "demucs" else None
+        if not isinstance(raw, Mapping):
+            result.append(record)
+            continue
+        entrypoint_path = str(raw.get("entrypoint") or "")
+        supporting_paths = tuple(
+            str(path) for path in (raw.get("supporting_artifacts") or ())
+        )
+        entrypoint = os.path.basename(entrypoint_path)
+        supporting = tuple(
+            os.path.basename(path) for path in supporting_paths
+        )
+        absolute_paths = tuple(
+            os.path.join(
+                paths.DEMUCS_MODELS_DIR, relative.replace("/", os.sep)
+            )
+            for relative in (entrypoint_path, *supporting_paths)
+        )
+        missing = [
+            relative
+            for relative, absolute in zip(
+                (entrypoint_path, *supporting_paths), absolute_paths, strict=True
+            )
+            if not os.path.isfile(absolute)
+        ]
+        membership_error = (
+            _registered_demucs_bag_membership_error(
+                absolute_paths[0], absolute_paths[1:]
+            )
+            if not missing else None
+        )
+        spec = DemucsSpec(
+            str(raw.get("demucs_version")),  # type: ignore[arg-type]
+            str(raw.get("source_layout")),  # type: ignore[arg-type]
+        )
+        result.append(replace(
+            record,
+            display=str(raw.get("display_name") or record.display),
+            backend_name=str(raw.get("backend_name") or record.backend_name),
+            artifacts=ModelArtifacts(entrypoint, supporting),
+            demucs=spec,
+            identity_complete=not missing and membership_error is None,
+            identity_error=(
+                f"missing registered Demucs artifacts: {', '.join(missing)}"
+                if missing else membership_error
+            ),
+        ))
     return result
 
 
@@ -494,9 +589,14 @@ def build_identity_index(
         from .demucs_registry import load_bundled_demucs_specs
 
         bundled_demucs_specs = load_bundled_demucs_specs()
+    if registered_demucs is None:
+        from .demucs_registry import DemucsRegistry
+
+        registered_demucs = cast(
+            Mapping[str, Any], DemucsRegistry().load()["models"]
+        )
     records = _catalogue_records(snapshot) if snapshot is not None else []
     records = _merge_installed(repo, records)
-    records = _apply_bundled_demucs(
-        records, bundled_demucs_specs, registered_demucs or {}
-    )
+    records = _apply_bundled_demucs(records, bundled_demucs_specs)
+    records = _apply_registered_demucs(records, registered_demucs)
     return IdentityIndex(_detect_collisions(records))

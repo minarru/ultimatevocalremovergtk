@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import tempfile
+from dataclasses import dataclass
+from hashlib import sha256
 from typing import Any, Mapping
+
+import yaml
 
 from bundled.constants import (
     DEMUCS_2_SOURCE_MAPPER,
@@ -52,6 +58,184 @@ def _empty_registry_document() -> dict[str, Any]:
         "models": {},
         "by_primary_hash": {},
     }
+
+
+def validate_demucs_registration_config(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate user-supplied custom Demucs identity metadata."""
+    demucs_version = config.get("demucs_version")
+    if demucs_version not in _DEMUCS_VERSIONS:
+        raise ValueError("invalid Demucs version; expected v1, v2, v3, or v4")
+    source_layout = config.get("source_layout")
+    if source_layout not in _DEMUCS_LAYOUTS:
+        raise ValueError(
+            "invalid Demucs source layout; expected 2_stem, 4_stem, or 6_stem"
+        )
+    display_name = config.get("display_name")
+    if display_name is not None and (
+        not isinstance(display_name, str) or not display_name.strip()
+    ):
+        raise ValueError("Demucs display_name must be a non-empty string")
+    if any(key in config for key in ("id", "model_id", "backend_name")):
+        raise ValueError("Demucs ID and backend name derive from the entrypoint")
+    return {
+        "demucs_version": demucs_version,
+        "source_layout": source_layout,
+        **(
+            {"display_name": display_name.strip()}
+            if isinstance(display_name, str)
+            else {}
+        ),
+    }
+
+
+def validate_demucs_entrypoint(source: str, demucs_version: str) -> None:
+    """Reject checkpoint formats unsupported by the declared Demucs generation."""
+    filename = os.path.basename(source).casefold()
+    if demucs_version in {"v1", "v2"}:
+        if not filename.endswith((".th", ".th.gz")):
+            raise ValueError("v1/v2 Demucs entrypoint must be .th or .th.gz")
+        return
+    if not filename.endswith((".th", ".yaml")) or filename.endswith(".th.gz"):
+        raise ValueError("v3/v4 Demucs entrypoint must be .th or .yaml")
+
+
+def _demucs_artifact_stem(filename: str) -> str:
+    name = os.path.basename(filename)
+    if name.casefold().endswith(".th.gz"):
+        return name[:-6]
+    return os.path.splitext(name)[0]
+
+
+def _checkpoint_fingerprint(path: str) -> str:
+    from .mdx_c_registry import compute_checkpoint_hash
+
+    fingerprint = compute_checkpoint_hash(path)
+    if not fingerprint:
+        raise ValueError(f"could not fingerprint checkpoint: {path}")
+    return fingerprint
+
+
+def _v3_v4_weight_signature(path: str) -> str:
+    filename = os.path.basename(path)
+    if not filename.casefold().endswith(".th"):
+        raise ValueError(f"v3/v4 Demucs weight must be .th: {filename}")
+    stem = filename[:-3]
+    parts = stem.split("-")
+    if len(parts) > 2 or not parts[0] or (len(parts) == 2 and not parts[1]):
+        raise ValueError(
+            f"invalid v3/v4 Demucs weight name {filename!r}; expected signature.th "
+            "or signature-checksum.th"
+        )
+    signature = parts[0]
+    if len(parts) == 2:
+        checksum = parts[1]
+        digest = sha256()
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        if digest.hexdigest()[: len(checksum)] != checksum:
+            raise ValueError(f"invalid declared checksum for {filename}")
+    return signature
+
+
+def _yaml_bag_members(source: str) -> tuple[str, ...]:
+    try:
+        with open(source, encoding="utf-8") as handle:
+            document = yaml.safe_load(handle)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid Demucs YAML bag: {exc}") from exc
+    if not isinstance(document, Mapping):
+        raise ValueError("Demucs YAML bag root must be an object")
+    raw_models = document.get("models")
+    if not isinstance(raw_models, list) or not raw_models:
+        raise ValueError("Demucs YAML bag must contain a non-empty models list")
+
+    directory = os.path.dirname(source)
+    members: list[str] = []
+    for raw_signature in raw_models:
+        if not isinstance(raw_signature, str) or not raw_signature:
+            raise ValueError("Demucs YAML bag signatures must be non-empty strings")
+        prefix = f"{raw_signature}-"
+        matches = [
+            os.path.join(directory, name)
+            for name in os.listdir(directory)
+            if name.startswith(prefix)
+            and name.casefold().endswith(".th")
+            and os.path.isfile(os.path.join(directory, name))
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"Demucs YAML signature {raw_signature!r} must match exactly one "
+                "adjacent signature-checksum.th weight"
+            )
+        if _v3_v4_weight_signature(matches[0]) != raw_signature:
+            raise ValueError(f"Demucs YAML member does not match signature {raw_signature!r}")
+        members.append(matches[0])
+    return tuple(members)
+
+
+@dataclass(frozen=True)
+class DemucsRegistrationUnit:
+    model_id: str
+    entry: dict[str, Any]
+    source_paths: tuple[str, ...]
+    destination_paths: tuple[str, ...]
+
+
+def prepare_demucs_registration(
+    source: str,
+    config: Mapping[str, Any],
+    *,
+    models_dir: str | None = None,
+) -> DemucsRegistrationUnit:
+    """Validate one custom Demucs artifact unit without changing the filesystem."""
+    source = os.path.abspath(source)
+    normalized = validate_demucs_registration_config(config)
+    version = str(normalized["demucs_version"])
+    validate_demucs_entrypoint(source, version)
+
+    basename = _demucs_artifact_stem(source)
+    from .model_identity import ModelId
+
+    model_id = ModelId("demucs", basename).value
+    support = (
+        _yaml_bag_members(source)
+        if source.casefold().endswith(".yaml")
+        else ()
+    )
+    backend_name = (
+        basename
+        if source.casefold().endswith(".yaml") or version in {"v1", "v2"}
+        else _v3_v4_weight_signature(source)
+    )
+
+    root = os.path.abspath(models_dir or paths.DEMUCS_MODELS_DIR)
+    destination_dir = (
+        root if version in {"v1", "v2"} else os.path.join(root, "v3_v4_repo")
+    )
+    source_paths = (source, *support)
+    destination_paths = tuple(
+        os.path.join(destination_dir, os.path.basename(path)) for path in source_paths
+    )
+    relative_paths = tuple(
+        _normalize_demucs_registry_relative_path(root, path)
+        for path in destination_paths
+    )
+    entry = {
+        "display_name": str(normalized.get("display_name") or basename),
+        "backend_name": backend_name,
+        "entrypoint": relative_paths[0],
+        "supporting_artifacts": list(relative_paths[1:]),
+        "primary_hash": _checkpoint_fingerprint(source),
+        "demucs_version": version,
+        "source_layout": str(normalized["source_layout"]),
+    }
+    return DemucsRegistrationUnit(
+        model_id=model_id,
+        entry=entry,
+        source_paths=source_paths,
+        destination_paths=destination_paths,
+    )
 
 
 def _normalize_demucs_registry_relative_path(models_dir: str, value: object) -> str:
@@ -238,15 +422,22 @@ class DemucsRegistry:
         self.path = _registered_models_path(self.models_dir)
         self.lock_path = f"{self.path}.lock"
 
+    def _load_unlocked(self) -> dict[str, Any]:
+        try:
+            payload = read_json_object(self.path)
+        except FileNotFoundError:
+            return _empty_registry_document()
+        return _normalize_demucs_registry_document(
+            payload, models_dir=self.models_dir
+        )
+
     def load(self) -> dict[str, Any]:
         with locked_json_path(self.lock_path):
+            normalized = self._load_unlocked()
             try:
                 payload = read_json_object(self.path)
             except FileNotFoundError:
-                return _empty_registry_document()
-            normalized = _normalize_demucs_registry_document(
-                payload, models_dir=self.models_dir
-            )
+                return normalized
             if normalized != payload:
                 write_json_atomic(self.path, normalized)
             return normalized
@@ -259,12 +450,190 @@ class DemucsRegistry:
             write_json_atomic(self.path, normalized)
         return normalized
 
+    @staticmethod
+    def _assert_artifact_matches(source: str, destination: str) -> None:
+        if not os.path.isfile(destination):
+            raise ValueError(f"Demucs artifact is missing: {destination}")
+        if _checkpoint_fingerprint(source) != _checkpoint_fingerprint(destination):
+            raise ValueError(
+                f"model destination already exists with different content: {destination}"
+            )
+
+    def _assert_registry_available(
+        self,
+        document: Mapping[str, Any],
+        unit: DemucsRegistrationUnit,
+        *,
+        replace: bool,
+    ) -> None:
+        models = document.get("models")
+        if not isinstance(models, Mapping):
+            raise ValueError("Demucs registry is missing models")
+        existing = models.get(unit.model_id)
+        if existing is not None and not replace:
+            raise ValueError(f"Demucs model ID is already registered: {unit.model_id}")
+        by_primary_hash = document.get("by_primary_hash")
+        if not isinstance(by_primary_hash, Mapping):
+            raise ValueError("Demucs registry is missing by_primary_hash")
+        claimed_id = by_primary_hash.get(unit.entry["primary_hash"])
+        if claimed_id is not None and claimed_id != unit.model_id:
+            raise ValueError(
+                f"Demucs primary hash is already registered as {claimed_id}"
+            )
+
+        claimed_paths: dict[str, str] = {}
+        for model_id, raw in models.items():
+            if model_id == unit.model_id or not isinstance(raw, Mapping):
+                continue
+            for path in (raw.get("entrypoint"), *(raw.get("supporting_artifacts") or ())):
+                claimed_paths[str(path)] = str(model_id)
+        for path in (
+            unit.entry["entrypoint"],
+            *unit.entry["supporting_artifacts"],
+        ):
+            claimed_id = claimed_paths.get(str(path))
+            if claimed_id is not None:
+                raise ValueError(
+                    f"Demucs artifact {path!r} is already claimed by {claimed_id}"
+                )
+
+    def _commit_unit(
+        self, unit: DemucsRegistrationUnit, *, replace: bool
+    ) -> dict[str, Any]:
+        with locked_json_path(self.lock_path):
+            document = self._load_unlocked()
+            self._assert_registry_available(document, unit, replace=replace)
+            for source, destination in zip(
+                unit.source_paths, unit.destination_paths, strict=True
+            ):
+                self._assert_artifact_matches(source, destination)
+            models = document["models"]
+            assert isinstance(models, dict)
+            models[unit.model_id] = unit.entry
+            normalized = _normalize_demucs_registry_document(
+                document, models_dir=self.models_dir
+            )
+            write_json_atomic(self.path, normalized)
+            return normalized
+
+    def _rollback_created_paths(self, created_paths: list[str]) -> None:
+        """Remove this command's artifacts unless a concurrent commit claimed them."""
+        if not created_paths:
+            return
+        with locked_json_path(self.lock_path):
+            try:
+                document = self._load_unlocked()
+            except (OSError, TypeError, ValueError):
+                return
+            models = document.get("models")
+            if not isinstance(models, Mapping):
+                return
+            claimed = {
+                str(path)
+                for raw in models.values()
+                if isinstance(raw, Mapping)
+                for path in (
+                    raw.get("entrypoint"),
+                    *(raw.get("supporting_artifacts") or ()),
+                )
+            }
+            for destination in created_paths:
+                relative = _normalize_demucs_registry_relative_path(
+                    self.models_dir, destination
+                )
+                if relative in claimed:
+                    continue
+                try:
+                    os.remove(destination)
+                except OSError:
+                    pass
+
+    def install(self, unit: DemucsRegistrationUnit) -> dict[str, Any]:
+        """Install all artifacts, then durably publish their registry entry."""
+        document = self.load()
+        self._assert_registry_available(document, unit, replace=False)
+        missing_destinations: list[tuple[str, str]] = []
+        for source, destination in zip(
+            unit.source_paths, unit.destination_paths, strict=True
+        ):
+            if os.path.exists(destination):
+                self._assert_artifact_matches(source, destination)
+            else:
+                missing_destinations.append((source, destination))
+
+        temporary_paths: list[tuple[str, str]] = []
+        created_paths: list[str] = []
+        try:
+            for source, destination in missing_destinations:
+                os.makedirs(os.path.dirname(destination), exist_ok=True)
+                descriptor, temporary = tempfile.mkstemp(
+                    prefix=f".{os.path.basename(destination)}.",
+                    suffix=".uvr-register.tmp",
+                    dir=os.path.dirname(destination),
+                )
+                os.close(descriptor)
+                try:
+                    shutil.copy2(source, temporary)
+                except Exception:
+                    try:
+                        os.remove(temporary)
+                    except OSError:
+                        pass
+                    raise
+                temporary_paths.append((temporary, destination))
+
+            for temporary, destination in temporary_paths:
+                try:
+                    os.link(temporary, destination)
+                    created_paths.append(destination)
+                except FileExistsError:
+                    source_index = unit.destination_paths.index(destination)
+                    self._assert_artifact_matches(
+                        unit.source_paths[source_index], destination
+                    )
+                os.remove(temporary)
+
+            return self._commit_unit(unit, replace=False)
+        except Exception:
+            for temporary, _destination in temporary_paths:
+                try:
+                    os.remove(temporary)
+                except OSError:
+                    pass
+            self._rollback_created_paths(created_paths)
+            raise
+
+    def configure(
+        self, unit: DemucsRegistrationUnit, *, replace: bool
+    ) -> dict[str, Any]:
+        """Attach or update metadata for artifacts already installed in place."""
+        return self._commit_unit(unit, replace=replace)
+
+    def reset(self, model_id: str) -> bool:
+        """Remove local metadata while leaving installed artifacts untouched."""
+        canonical_id = parse_stored_model_id(model_id).value
+        with locked_json_path(self.lock_path):
+            document = self._load_unlocked()
+            models = document["models"]
+            assert isinstance(models, dict)
+            removed = models.pop(canonical_id, None) is not None
+            if removed:
+                normalized = _normalize_demucs_registry_document(
+                    document, models_dir=self.models_dir
+                )
+                write_json_atomic(self.path, normalized)
+            return removed
+
 
 __all__ = [
+    "DemucsRegistrationUnit",
     "DemucsRegistry",
+    "prepare_demucs_registration",
     "validate_demucs_inference_layouts",
     "demucs_source_layout_name",
     "load_bundled_demucs_specs",
     "mapper_stems",
+    "validate_demucs_entrypoint",
+    "validate_demucs_registration_config",
     "validate_demucs_output_layout",
 ]

@@ -295,7 +295,7 @@ def cmd_models_register(args: argparse.Namespace) -> int:
     source = os.path.abspath(args.checkpoint)
     if not os.path.isfile(source):
         return fail(args, f"checkpoint not found: {args.checkpoint}", exit_code=2)
-    if args.family in {"vr", "mdx", "apollo"} and not args.config:
+    if args.family in {"vr", "mdx", "demucs", "apollo"} and not args.config:
         return fail(args, f"--config is required for unknown {args.family} checkpoints", exit_code=2)
     config: dict[str, Any] | None = None
     if args.config:
@@ -306,6 +306,26 @@ def cmd_models_register(args: argparse.Namespace) -> int:
                 raise ValueError("model config root must be an object")
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             return fail(args, f"invalid model config: {exc}", exit_code=2, exc=exc)
+    if args.family == "demucs" and config is not None:
+        from core.demucs_registry import DemucsRegistry, prepare_demucs_registration
+        from core.model_repository import ModelRepository
+
+        try:
+            unit = prepare_demucs_registration(source, config)
+            registry = DemucsRegistry()
+            registry.install(unit)
+        except (OSError, TypeError, ValueError) as exc:
+            return fail(args, str(exc), exit_code=2, exc=exc)
+        repo = ModelRepository()
+        repo.invalidate_models()
+        try:
+            record = resolve_model_id(unit.model_id, repo)
+            info = _model_info(record, repo)
+            if not info.get("configured"):
+                raise ValueError("registered checkpoint could not be configured")
+        except (OSError, ValueError) as exc:
+            return fail(args, str(exc), exit_code=2, exc=exc)
+        return _print_rows(args, [{**info, "registered": True}])
     destinations = {
         "vr": VR_MODELS_DIR, "mdx": MDX_MODELS_DIR,
         "demucs": DEMUCS_MODELS_DIR, "apollo": APOLLO_MODELS_DIR,
@@ -529,7 +549,77 @@ def cmd_models_configure(args: argparse.Namespace) -> int:
     try:
         record = ModelIdentityService(repo).resolve(args.model)
         if record.family == "demucs":
-            raise ValueError("Demucs models are self-describing and do not support local metadata")
+            from core import paths
+            from core.demucs_registry import (
+                DemucsRegistry,
+                prepare_demucs_registration,
+            )
+
+            non_demucs_metadata = (
+                "primary_stem", "vr_params", "nout", "nout_lstm",
+                "dim_f", "dim_t", "n_fft", "compensation",
+                "config_yaml", "roformer", "karaoke", "backing_vocal",
+                "bv_rebalance",
+            )
+            if args.reset:
+                if args.config or any(
+                    getattr(args, name, None) is not None
+                    for name in non_demucs_metadata
+                ):
+                    raise ValueError("--reset cannot be combined with metadata values")
+                registry = DemucsRegistry()
+                removed = registry.reset(record.id)
+                if removed:
+                    repo.invalidate_models()
+                return _print_rows(args, [{"id": record.id, "reset": removed}])
+            if not args.config:
+                raise ValueError("--config is required for Demucs models")
+            if any(
+                getattr(args, name, None) is not None
+                for name in non_demucs_metadata
+            ):
+                raise ValueError(
+                    "Demucs metadata is supplied only through --config"
+                )
+            with open(args.config, encoding="utf-8") as handle:
+                loaded = json.load(handle)
+            if not isinstance(loaded, dict):
+                raise ValueError("model config root must be an object")
+            registry = DemucsRegistry()
+            registered = registry.load()["models"].get(record.id)
+            if isinstance(registered, dict):
+                model_path = os.path.join(
+                    registry.models_dir,
+                    str(registered["entrypoint"]).replace("/", os.sep),
+                )
+            else:
+                model_path = str(
+                    repo._model_artifact_path(
+                        "demucs", record.artifacts.primary_filename
+                    )
+                )
+            if not os.path.isfile(model_path):
+                raise ValueError(f"installed checkpoint is unavailable for {record.id}")
+            unit = prepare_demucs_registration(
+                model_path, loaded, models_dir=paths.DEMUCS_MODELS_DIR
+            )
+            if unit.model_id != record.id:
+                raise ValueError(
+                    f"Demucs entrypoint derives {unit.model_id}, not {record.id}"
+                )
+            actual_dir = os.path.realpath(os.path.dirname(model_path))
+            expected_dir = os.path.realpath(os.path.dirname(unit.destination_paths[0]))
+            if actual_dir != expected_dir:
+                raise ValueError(
+                    "configure does not move Demucs artifacts between legacy and v3/v4 directories"
+                )
+            registry.configure(unit, replace=args.replace)
+            repo.invalidate_models()
+            return _print_rows(args, [{
+                "id": record.id,
+                "configured": True,
+                "path": registry.path,
+            }])
         if record.family == "apollo":
             from core import paths
 
