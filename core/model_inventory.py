@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import replace
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, Iterable, Mapping, cast
@@ -178,10 +179,21 @@ def _project_mdx(selection: str, entry: Any, files: tuple[str, ...]) -> ModelRec
 
 
 def _demucs_spec(entry: Any) -> DemucsSpec | None:
-    text = f"{getattr(entry, 'label', '')} {getattr(entry, 'display', '')}".casefold()
-    version = next((value for value in ("v1", "v2", "v3", "v4") if value in text), None)
+    version = getattr(entry, "demucs_version", None)
+    layout = getattr(entry, "source_layout", None)
+    if version in {"v1", "v2", "v3", "v4"} and layout in {
+        "2_stem", "4_stem", "6_stem",
+    }:
+        return DemucsSpec(version, layout)  # type: ignore[arg-type]
+
     stems = tuple(getattr(entry, "stems", ()) or ())
     layout = {2: "2_stem", 4: "4_stem", 6: "6_stem"}.get(len(stems))
+    version = None
+    for value in (getattr(entry, "label", ""), getattr(entry, "display", "")):
+        match = re.fullmatch(r"(?:Demucs )?v([1-4])(?:\s*:\s*|\s*\|\s*)(.+)", str(value))
+        if match:
+            version = f"v{match.group(1)}"
+            break
     if version is None or layout is None:
         return None
     return DemucsSpec(version, layout)  # type: ignore[arg-type]
@@ -427,9 +439,9 @@ def _apply_bundled_demucs(
         if record.family != "demucs":
             result.append(record)
             continue
-        spec = bundled.get(record.basename)
-        custom = registered.get(record.basename)
-        if spec is None and isinstance(custom, DemucsSpec):
+        spec = bundled.get(record.id) or record.demucs
+        custom = registered.get(record.id)
+        if isinstance(custom, DemucsSpec):
             spec = custom
         if spec is None:
             result.append(record)
@@ -470,9 +482,13 @@ def build_identity_index(
     registered_demucs: Mapping[str, Any] | None = None,
 ) -> IdentityIndex:
     """Build the logical inventory without network access or checkpoint hashing."""
+    if bundled_demucs_specs is None:
+        from .demucs_registry import load_bundled_demucs_specs
+
+        bundled_demucs_specs = load_bundled_demucs_specs()
     records = _catalogue_records(snapshot) if snapshot is not None else []
     records = _merge_installed(repo, records)
     records = _apply_bundled_demucs(
-        records, bundled_demucs_specs or {}, registered_demucs or {}
+        records, bundled_demucs_specs, registered_demucs or {}
     )
     return IdentityIndex(_detect_collisions(records))

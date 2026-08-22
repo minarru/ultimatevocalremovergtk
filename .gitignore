@@ -34,6 +34,7 @@ models/Demucs_Models/*
 !models/Demucs_Models/model_data/
 models/Demucs_Models/model_data/*
 !models/Demucs_Models/model_data/model_name_mapper.json
+!models/Demucs_Models/model_data/model_specs.json
 !models/Demucs_Models/v3_v4_repo/
 models/Demucs_Models/v3_v4_repo/*
 !models/Demucs_Models/v3_v4_repo/demucs_models.txt

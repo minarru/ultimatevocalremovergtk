@@ -72,6 +72,7 @@ MDX_HASH_JSON = os.path.join(MDX_HASH_DIR, "model_data.json")
 MDX_C_CONFIG_PATH = os.path.join(MDX_HASH_DIR, "mdx_c_configs")
 
 DEMUCS_MODEL_NAME_SELECT = os.path.join(DEMUCS_MODELS_DIR, "model_data", "model_name_mapper.json")
+DEMUCS_MODEL_SPECS = os.path.join(DEMUCS_MODELS_DIR, "model_data", "model_specs.json")
 MDX_MODEL_NAME_SELECT = os.path.join(MDX_MODELS_DIR, "model_data", "model_name_mapper.json")
 
 # Apollo restoration models. Like the other model trees these are writable /
@@ -243,6 +244,10 @@ def ensure_data_dir() -> None:
     _seed_bundled_file(
         os.path.join(BUNDLED_MODELS_DIR, "Demucs_Models", "model_data", "model_name_mapper.json"),
         DEMUCS_MODEL_NAME_SELECT,
+    )
+    _seed_bundled_file(
+        os.path.join(BUNDLED_MODELS_DIR, "Demucs_Models", "model_data", "model_specs.json"),
+        DEMUCS_MODEL_SPECS,
     )
 
     # Seed the bundled MDX-C config YAMLs.

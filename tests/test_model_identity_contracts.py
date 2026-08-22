@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import unittest
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 from bundled.constants import CHOOSE_MODEL, NO_MODEL
@@ -23,7 +24,7 @@ from core.model_identity import (
 )
 
 
-def _empty_repo(**overrides):
+def _empty_repo(**overrides: Any):
     values = {
         "list_vr_models": lambda: [],
         "list_mdx_models": lambda: [],
@@ -38,7 +39,14 @@ def _empty_repo(**overrides):
     return SimpleNamespace(**values)
 
 
-def _snapshot(*, vr=None, mdx=None, demucs=None, apollo=None, meta=None):
+def _snapshot(
+    *,
+    vr: Any = None,
+    mdx: Any = None,
+    demucs: Any = None,
+    apollo: Any = None,
+    meta: Any = None,
+):
     families = {
         "vr": vr or {},
         "mdx": mdx or {},
@@ -187,6 +195,20 @@ class InventoryCardinalityTests(unittest.TestCase):
         self.assertEqual([record.id for record in demucs], ["demucs:htdemucs_ft"])
         self.assertTrue(demucs[0].artifacts.supporting_filenames)
 
+    def test_bundled_demucs_spec_enriches_installed_bag(self) -> None:
+        from core.model_inventory import build_identity_index
+
+        repo = _empty_repo(
+            _model_artifact_files=lambda family: (
+                ["htdemucs_6s.yaml"] if family == "demucs" else []
+            ),
+        )
+        record = build_identity_index(repo, snapshot=_snapshot()).lookup(
+            "demucs:htdemucs_6s"
+        )
+        self.assertEqual(record.demucs, DemucsSpec("v4", "6_stem"))
+        self.assertTrue(record.identity_complete)
+
     def test_yaml_shaped_id_is_not_a_record(self) -> None:
         from core.model_inventory import build_identity_index
 
@@ -286,7 +308,7 @@ class CollisionAndSafetyTests(unittest.TestCase):
         repo = Repo()
         service = ModelIdentityService(repo)
 
-        def racing_build(*args, **kwargs):
+        def racing_build(*args: Any, **kwargs: Any):
             builds.append(repo.inventory_generation)
             if len(builds) == 1:
                 repo.inventory_generation = 2
