@@ -189,6 +189,7 @@ class AudioJobResolver:
                 record.basename,
                 record.display,
                 backend_name=record.backend_name,
+                artifacts=record.artifacts,
                 checkpoint=path,
                 checkpoint_hash=digest,
                 primary_stem=primary,

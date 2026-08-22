@@ -477,21 +477,12 @@ class DisplayIndexPrimaryOnlyTests(unittest.TestCase):
 
 
 class ManifestSchemaSnapshotTests(unittest.TestCase):
-    """Replayable manifests are schema 1 (separate/ensemble) and 2 (audio).
-    Bench is schema 1 and is not replayable. Task 18 bumps replayable
-    manifests to schema 3."""
+    """Replayable manifests are schema 3; bench remains non-replayable v1."""
 
-    def test_separate_manifest_schema_is_1(self) -> None:
+    def test_separate_manifest_schema_is_3(self) -> None:
         from cli.execution import MANIFEST_SCHEMA_VERSION
 
-        self.assertEqual(MANIFEST_SCHEMA_VERSION, 1)
-
-    def test_replay_currently_accepts_schema_1_and_2(self) -> None:
-        import inspect
-        from cli import replay
-
-        source = inspect.getsource(replay.cmd_run)
-        self.assertIn("{1, 2}", source)
+        self.assertEqual(MANIFEST_SCHEMA_VERSION, 3)
 
     def test_bench_manifest_schema_stays_1(self) -> None:
         import inspect

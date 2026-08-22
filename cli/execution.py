@@ -15,13 +15,13 @@ from typing import Any, Callable, Sequence, cast
 
 from core.blocking_runner import RunResult, run_blocking
 from core.export_naming import format_track_base
-from core.job_plan import ResolvedJob as CoreResolvedJob
+from core.job_plan import EMPTY_MODEL_IDENTITY_DIGEST, ResolvedJob as CoreResolvedJob
 from core.job_callbacks import JobCallbacks
 
 from .job import ResolvedJob
 from .reporting import emit_event, ensure_job_id, finish_progress, make_progress_printer
 
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 3
 
 _LOCKS_GUARD = threading.Lock()
 _OUTPUT_LOCKS: dict[str, threading.Lock] = {}
@@ -612,8 +612,22 @@ def write_manifest(
         section, field_name = setting_path.split(".", 1)
         if section in settings_payload:
             settings_payload[section][field_name] = identity["id"]
+    dependencies = job.plan.get("model_dependencies", {})
+    if not isinstance(dependencies, dict):
+        raise ValueError("resolved plan model_dependencies must be an object")
+    model_dependencies = {
+        str(path): str(model_id)
+        for path, model_id in sorted(dependencies.items())
+    }
+    identity_digest = job.plan.get(
+        "model_identity_digest", EMPTY_MODEL_IDENTITY_DIGEST
+    )
+    if not isinstance(identity_digest, str):
+        raise ValueError("resolved plan model_identity_digest must be a string")
     payload = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
+        "model_dependencies": model_dependencies,
+        "model_identity_digest": identity_digest,
         "job_id": ensure_job_id(args),
         "command": job.command,
         "argv": original_argv or [],

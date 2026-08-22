@@ -281,5 +281,467 @@ class KeepTextCutoverTests(unittest.TestCase):
         self.assertTrue(any("selected_models[0]" in item for item in loaded.validation_warnings))
 
 
+class ReplayManifestContractTests(unittest.TestCase):
+    _EMPTY_DIGEST = (
+        "sha256:44136fa355b3678a1146ad16f7e8649e"
+        "94fb4fc21fe77e8310c060f61caaff8a"
+    )
+    _RECORDED_DIGEST = "sha256:" + "1" * 64
+    _CURRENT_DIGEST = "sha256:" + "2" * 64
+
+    @staticmethod
+    def _args(path: str, *, allow_model_change: bool = False) -> Any:
+        import argparse
+
+        return argparse.Namespace(
+            manifest=path,
+            output=None,
+            on_exists=None,
+            allow_model_change=allow_model_change,
+            offline=False,
+            report="json",
+            quiet=True,
+            verbose=False,
+            job_id="replay-test",
+        )
+
+    @classmethod
+    def _manifest(cls) -> dict[str, Any]:
+        return {
+            "schema_version": 3,
+            "job_id": "recorded-job",
+            "command": "separate",
+            "model_dependencies": {"mdx.model": "mdx:primary"},
+            "model_identity_digest": cls._RECORDED_DIGEST,
+            "settings": {},
+            "plan": {
+                "models": [{"id": "mdx:primary", "checkpoint_hash": "old-hash"}],
+            },
+            "job_spec": {
+                "inputs": ["/recorded/song.wav"],
+                "output": "/recorded/out",
+                # Replay must use the validated dependency ID, not this legacy text.
+                "model": "MDX-Net: Primary",
+                "collision_policy": "fail",
+            },
+        }
+
+    def _invoke_without_child(
+        self, manifest: dict[str, Any], *, allow_model_change: bool = False
+    ) -> tuple[int, dict[str, Any]]:
+        import io
+        import json
+        import tempfile
+        from contextlib import redirect_stderr, redirect_stdout
+        from unittest.mock import patch
+
+        from cli.replay import cmd_run
+
+        with tempfile.NamedTemporaryFile("w", suffix=".json") as handle:
+            json.dump(manifest, handle)
+            handle.flush()
+            stdout = io.StringIO()
+            with patch(
+                "cli.replay._run",
+                side_effect=AssertionError("replay child must not run"),
+            ), redirect_stdout(stdout), redirect_stderr(io.StringIO()):
+                code = cmd_run(
+                    self._args(handle.name, allow_model_change=allow_model_change)
+                )
+        return code, json.loads(stdout.getvalue())
+
+    def test_separation_writer_emits_schema_3_identity_contract(self) -> None:
+        import argparse
+        import json
+        import os
+        import tempfile
+
+        from cli.execution import BatchOutcome, write_manifest
+        from cli.job import ResolvedJob
+        from cli.profiles import LoadedProfile
+
+        settings = Settings.defaults()
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "manifest.json")
+            job = ResolvedJob(
+                command="separate",
+                settings=settings,
+                profile=LoadedProfile("defaults", "built-in"),
+                inputs=["/recorded/song.wav"],
+                output=root,
+                plan={
+                    "model_dependencies": {"mdx.model": "mdx:primary"},
+                    "model_identity_digest": self._RECORDED_DIGEST,
+                },
+            )
+            write_manifest(
+                argparse.Namespace(
+                    manifest_out=path,
+                    manifest=False,
+                    job_id="writer-test",
+                    on_exists="fail",
+                ),
+                job,
+                BatchOutcome("success", 0.25),
+            )
+            with open(path, encoding="utf-8") as handle:
+                payload = json.load(handle)
+
+        self.assertEqual(payload["schema_version"], 3)
+        self.assertEqual(
+            payload["model_dependencies"], {"mdx.model": "mdx:primary"}
+        )
+        self.assertEqual(payload["model_identity_digest"], self._RECORDED_DIGEST)
+
+    def test_audio_writer_emits_empty_identity_contract_without_a_model(self) -> None:
+        import argparse
+        import json
+        import os
+        import tempfile
+        from types import SimpleNamespace
+
+        from cli.audio import _write_audio_manifest
+        from cli.execution import BatchOutcome
+
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "manifest.json")
+            plan = SimpleNamespace(
+                output=root,
+                units=(SimpleNamespace(inputs=("/recorded/song.wav",)),),
+                model=None,
+                to_dict=lambda: {"command": "audio", "model": None},
+            )
+            _write_audio_manifest(
+                argparse.Namespace(
+                    manifest_out=path,
+                    manifest=False,
+                    job_id="audio-writer-test",
+                    audio_command="stretch",
+                    original_argv=[],
+                    on_exists="fail",
+                ),
+                plan,
+                BatchOutcome("success", 0.25),
+            )
+            with open(path, encoding="utf-8") as handle:
+                payload = json.load(handle)
+
+        self.assertEqual(payload["schema_version"], 3)
+        self.assertEqual(payload["model_dependencies"], {})
+        self.assertEqual(payload["model_identity_digest"], self._EMPTY_DIGEST)
+
+    def test_audio_writer_emits_apollo_dependency_and_semantic_digest(self) -> None:
+        import argparse
+        import json
+        import os
+        import tempfile
+        from types import SimpleNamespace
+
+        from cli.audio import _write_audio_manifest
+        from cli.execution import BatchOutcome
+        from core.job_plan import ModelDescriptor
+        from core.model_identity import ModelArtifacts
+
+        model = ModelDescriptor(
+            id="apollo:restorer",
+            family="apollo",
+            basename="restorer",
+            display="Restorer",
+            backend_name="restorer.ckpt",
+            artifacts=ModelArtifacts("restorer.ckpt"),
+        )
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "manifest.json")
+            plan = SimpleNamespace(
+                output=root,
+                units=(SimpleNamespace(inputs=("/recorded/song.wav",)),),
+                model=model,
+                to_dict=lambda: {"command": "audio", "model": None},
+            )
+            _write_audio_manifest(
+                argparse.Namespace(
+                    manifest_out=path,
+                    manifest=False,
+                    job_id="audio-writer-test",
+                    audio_command="restore",
+                    original_argv=[],
+                    on_exists="fail",
+                ),
+                plan,
+                BatchOutcome("success", 0.25),
+            )
+            with open(path, encoding="utf-8") as handle:
+                payload = json.load(handle)
+
+        self.assertEqual(
+            payload["model_dependencies"],
+            {"audio_tools.apollo_model": "apollo:restorer"},
+        )
+        self.assertEqual(
+            payload["model_identity_digest"],
+            "sha256:6237d0e7483c76dc8c0cb6860acfd195"
+            "b817e4ce1b92b7c5159ff58d6047fcd2",
+        )
+
+    def test_apollo_plan_carries_artifacts_used_by_manifest_digest(self) -> None:
+        from unittest.mock import Mock
+
+        from core.audio_plan import AudioJobResolver
+        from core.job_plan import ValidationLevel
+
+        artifacts = ModelArtifacts("restorer.ckpt", ("restorer.yaml",))
+        record = ModelRecord(
+            id="apollo:restorer",
+            family="apollo",
+            basename="restorer",
+            display="Restorer",
+            backend_name="restorer.ckpt",
+            artifacts=artifacts,
+            installed=True,
+        )
+        resolver = AudioJobResolver(Mock())
+        resolver.identities = Mock()
+        resolver.identities.resolve.return_value = record
+        settings = Settings.defaults()
+        settings.audio_tools.apollo_model = record.id
+
+        descriptor = resolver._resolve_apollo(
+            settings, [], ValidationLevel.CONFIG
+        )
+
+        self.assertIsNotNone(descriptor)
+        assert descriptor is not None
+        self.assertEqual(descriptor.artifacts, artifacts)
+
+    def test_schema_1_is_a_compatibility_error_even_with_override(self) -> None:
+        manifest = self._manifest()
+        manifest["schema_version"] = 1
+
+        code, payload = self._invoke_without_child(
+            manifest, allow_model_change=True
+        )
+
+        self.assertEqual(code, 2)
+        self.assertIn("schema 1", payload["error"]["message"])
+        self.assertIn("schema 3", payload["error"]["message"])
+
+    def test_schema_3_requires_dependency_map_and_digest(self) -> None:
+        for field in ("model_dependencies", "model_identity_digest"):
+            with self.subTest(field=field):
+                manifest = self._manifest()
+                del manifest[field]
+
+                code, payload = self._invoke_without_child(manifest)
+
+                self.assertEqual(code, 2)
+                self.assertIn(field, payload["error"]["message"])
+
+    def test_schema_3_rejects_malformed_identity_fields(self) -> None:
+        cases = (
+            ("model_dependencies", [], "must be an object"),
+            ("model_identity_digest", "sha256:not-a-digest", "sha256: digest"),
+        )
+        for field, value, message in cases:
+            with self.subTest(field=field):
+                manifest = self._manifest()
+                manifest[field] = value
+
+                code, payload = self._invoke_without_child(manifest)
+
+                self.assertEqual(code, 2)
+                self.assertIn(message, payload["error"]["message"])
+
+    def test_dependency_path_is_rejected_before_child_resolution(self) -> None:
+        manifest = self._manifest()
+        manifest["model_dependencies"] = {"mdx.not_a_model_slot": "mdx:primary"}
+
+        code, payload = self._invoke_without_child(manifest)
+
+        self.assertEqual(code, 2)
+        self.assertIn("mdx.not_a_model_slot", payload["error"]["message"])
+        self.assertIn("dependency path", payload["error"]["message"])
+
+    def test_dependency_family_is_rejected_even_with_override(self) -> None:
+        manifest = self._manifest()
+        manifest["model_dependencies"] = {"mdx.model": "vr:wrong-family"}
+
+        code, payload = self._invoke_without_child(
+            manifest, allow_model_change=True
+        )
+
+        self.assertEqual(code, 2)
+        self.assertIn("mdx.model", payload["error"]["message"])
+        self.assertIn("family mdx", payload["error"]["message"])
+
+    def test_illegal_dependency_id_is_rejected_even_with_override(self) -> None:
+        manifest = self._manifest()
+        manifest["model_dependencies"] = {"mdx.model": "MDX-Net: Primary"}
+
+        code, payload = self._invoke_without_child(
+            manifest, allow_model_change=True
+        )
+
+        self.assertEqual(code, 2)
+        self.assertIn("canonical model ID", payload["error"]["message"])
+
+    def test_semantic_digest_drift_requires_override(self) -> None:
+        import io
+        import json
+        import tempfile
+        from contextlib import redirect_stderr, redirect_stdout
+        from unittest.mock import patch
+
+        from cli.replay import cmd_run
+
+        manifest = self._manifest()
+        checked = {
+            "plan": {
+                "model_dependencies": {"mdx.model": "mdx:primary"},
+                "model_identity_digest": self._CURRENT_DIGEST,
+                "models": [
+                    {"id": "mdx:primary", "checkpoint_hash": "old-hash"}
+                ],
+            }
+        }
+        with tempfile.NamedTemporaryFile("w", suffix=".json") as handle:
+            json.dump(manifest, handle)
+            handle.flush()
+            stdout = io.StringIO()
+            with patch("cli.replay._run", return_value=(0, checked, "")), redirect_stdout(
+                stdout
+            ), redirect_stderr(io.StringIO()):
+                code = cmd_run(self._args(handle.name))
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(code, 2)
+        self.assertIn("identity digest changed", payload["error"]["message"])
+        self.assertEqual(
+            payload["model_changes"]["model_identity_digest"],
+            {"recorded": self._RECORDED_DIGEST, "current": self._CURRENT_DIGEST},
+        )
+
+    def test_malformed_current_identity_contract_is_a_structured_error(self) -> None:
+        import io
+        import json
+        import tempfile
+        from contextlib import redirect_stderr, redirect_stdout
+        from unittest.mock import patch
+
+        from cli.replay import cmd_run
+
+        with tempfile.NamedTemporaryFile("w", suffix=".json") as handle:
+            json.dump(self._manifest(), handle)
+            handle.flush()
+            stdout = io.StringIO()
+            with patch(
+                "cli.replay._run", return_value=(0, {"plan": {}}, "")
+            ), redirect_stdout(stdout), redirect_stderr(io.StringIO()):
+                code = cmd_run(self._args(handle.name))
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(code, 2)
+        self.assertIn("model_dependencies", payload["error"]["message"])
+
+    def test_override_cannot_accept_a_missing_current_dependency(self) -> None:
+        import io
+        import json
+        import tempfile
+        from contextlib import redirect_stderr, redirect_stdout
+        from unittest.mock import patch
+
+        from cli.replay import cmd_run
+
+        checked = {
+            "plan": {
+                "model_dependencies": {},
+                "model_identity_digest": self._EMPTY_DIGEST,
+                "models": [],
+            }
+        }
+        calls = 0
+
+        def run_child(_argv: list[str]) -> tuple[int, dict[str, Any], str]:
+            nonlocal calls
+            calls += 1
+            return 0, checked, ""
+
+        with tempfile.NamedTemporaryFile("w", suffix=".json") as handle:
+            json.dump(self._manifest(), handle)
+            handle.flush()
+            stdout = io.StringIO()
+            with patch("cli.replay._run", side_effect=run_child), redirect_stdout(
+                stdout
+            ), redirect_stderr(io.StringIO()):
+                code = cmd_run(
+                    self._args(handle.name, allow_model_change=True)
+                )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(code, 2)
+        self.assertEqual(calls, 1)
+        self.assertIn("dependencies changed", payload["error"]["message"])
+
+    def test_override_reports_hash_and_digest_drift_and_replays_exact_id(self) -> None:
+        import io
+        import json
+        import tempfile
+        from contextlib import redirect_stderr, redirect_stdout
+        from unittest.mock import patch
+
+        from cli.replay import cmd_run
+
+        manifest = self._manifest()
+        checked = {
+            "plan": {
+                "model_dependencies": {"mdx.model": "mdx:primary"},
+                "model_identity_digest": self._CURRENT_DIGEST,
+                "models": [
+                    {"id": "mdx:primary", "checkpoint_hash": "new-hash"}
+                ],
+            }
+        }
+        captured_profile: dict[str, Any] = {}
+        calls = 0
+
+        def run_child(argv: list[str]) -> tuple[int, dict[str, Any], str]:
+            nonlocal calls
+            calls += 1
+            profile_index = argv.index("--profile") + 1
+            with open(argv[profile_index], encoding="utf-8") as profile_handle:
+                captured_profile.update(json.load(profile_handle))
+            if "--dry-run" in argv:
+                return 0, checked, ""
+            return 0, {"ok": True, "status": "success"}, ""
+
+        with tempfile.NamedTemporaryFile("w", suffix=".json") as handle:
+            json.dump(manifest, handle)
+            handle.flush()
+            stdout = io.StringIO()
+            with patch("cli.replay._run", side_effect=run_child), redirect_stdout(
+                stdout
+            ), redirect_stderr(io.StringIO()):
+                code = cmd_run(
+                    self._args(handle.name, allow_model_change=True)
+                )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(code, 0)
+        self.assertEqual(calls, 2)
+        self.assertEqual(captured_profile["model"], "mdx:primary")
+        self.assertEqual(
+            payload["model_changes"],
+            {
+                "checkpoint_hashes": {
+                    "recorded": {"mdx:primary": "old-hash"},
+                    "current": {"mdx:primary": "new-hash"},
+                },
+                "model_identity_digest": {
+                    "recorded": self._RECORDED_DIGEST,
+                    "current": self._CURRENT_DIGEST,
+                },
+            },
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

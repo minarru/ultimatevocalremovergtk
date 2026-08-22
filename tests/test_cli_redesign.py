@@ -651,7 +651,13 @@ class BatchExecutionTests(unittest.TestCase):
             self.assertEqual(result, path)
             with open(path, encoding="utf-8") as handle:
                 payload = json.load(handle)
-            self.assertEqual(payload["schema_version"], 1)
+            self.assertEqual(payload["schema_version"], 3)
+            self.assertEqual(payload["model_dependencies"], {})
+            self.assertEqual(
+                payload["model_identity_digest"],
+                "sha256:44136fa355b3678a1146ad16f7e8649e"
+                "94fb4fc21fe77e8310c060f61caaff8a",
+            )
             self.assertIn("settings", payload)
             self.assertEqual(payload["job_spec"]["inputs"], ["/a.wav"])
 

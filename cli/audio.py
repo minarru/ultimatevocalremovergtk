@@ -8,7 +8,7 @@ import os
 import shutil
 import sys
 import time
-from typing import Any
+from typing import Any, cast
 
 from bundled.constants import (
     ALIGN_INPUTS, APOLLO_RESTORE, CHANGE_PITCH, COMBINE_INPUTS, MANUAL_ENSEMBLE,
@@ -18,9 +18,13 @@ from core.audio_plan import AudioJobResolver, AudioJobSpec
 from core.audio_probe import probe_audio
 from core.audio_tools import AudioToolRunner
 from core.input_discovery import InputDiscoveryPolicy, InputDiscoveryService
-from core.job_plan import ValidationLevel
+from core.job_plan import (
+    EMPTY_MODEL_IDENTITY_DIGEST,
+    ValidationLevel,
+    compute_model_identity_digest,
+)
 from core.model_repository import ModelRepository
-from core.model_identity import ModelIdentityService
+from core.model_identity import ModelIdentityService, ModelRecord
 from core.settings.job_resolution import SettingsLayer, SettingsResolver
 
 from .execution import BatchOutcome, PromotionSkipped, _promote, run_runner_cli
@@ -259,7 +263,7 @@ def _resolve_audio(args: argparse.Namespace, level: ValidationLevel = Validation
 def _confirm_audio(args: argparse.Namespace, plan: Any) -> int:
     print(_format_audio_plan(plan), file=sys.stderr)
     if report_mode(args) != "human" or not getattr(sys.stdin, "isatty", lambda: False)():
-        return fail(args, "profile-supplied Apollo identity requires --accept-inherited", exit_code=2, extra={"plan": plan.to_dict()})
+        return fail(args, "profile-supplied Apollo identity requires --accept-inherited", exit_code=2, extra={"plan": _audio_plan_payload(plan)})
     sys.stderr.write("Use these settings? [y/N] ")
     sys.stderr.flush()
     return 0 if sys.stdin.readline().strip().casefold() in {"y", "yes"} else fail(args, "aborted; no files processed", exit_code=2)
@@ -382,10 +386,14 @@ def _write_audio_manifest(args: argparse.Namespace, plan: Any, outcome: BatchOut
         return None
     from core.json_store import write_json_atomic
 
+    plan_payload = _audio_plan_payload(plan)
     write_json_atomic(path, {
-        "schema_version": 2, "job_id": ensure_job_id(args), "command": "audio",
+        "schema_version": 3,
+        "model_dependencies": plan_payload["model_dependencies"],
+        "model_identity_digest": plan_payload["model_identity_digest"],
+        "job_id": ensure_job_id(args), "command": "audio",
         "argv": list(getattr(args, "original_argv", [])),
-        "plan": plan.to_dict(), "status": outcome.status, "inputs": outcome.inputs,
+        "plan": plan_payload, "status": outcome.status, "inputs": outcome.inputs,
         "job_spec": {
             "tool": args.audio_command,
             "inputs": [path for unit in plan.units for path in unit.inputs]
@@ -402,18 +410,35 @@ def _write_audio_manifest(args: argparse.Namespace, plan: Any, outcome: BatchOut
     return path
 
 
+def _audio_plan_payload(plan: Any) -> dict[str, Any]:
+    payload = plan.to_dict()
+    model = plan.model
+    if model is None:
+        dependencies: dict[str, str] = {}
+        digest = EMPTY_MODEL_IDENTITY_DIGEST
+    else:
+        path = "audio_tools.apollo_model"
+        dependencies = {path: str(model.id)}
+        digest = compute_model_identity_digest(
+            {path: cast(ModelRecord, model)}
+        )
+    payload["model_dependencies"] = dependencies
+    payload["model_identity_digest"] = digest
+    return payload
+
+
 def cmd_audio(args: argparse.Namespace) -> int:
     try:
         plan, inherited = _resolve_audio(args)
     except (OSError, TypeError, ValueError) as exc:
         return fail(args, str(exc), exit_code=2, exc=exc)
     if not plan.ok:
-        return fail(args, plan.diagnostics[0].message, exit_code=2, extra={"plan": plan.to_dict()})
+        return fail(args, plan.diagnostics[0].message, exit_code=2, extra={"plan": _audio_plan_payload(plan)})
     if args.dry_run:
         if report_mode(args) == "human":
             print(_format_audio_plan(plan))
         else:
-            emit_document(args, {"ok": True, "status": "validated", "dry_run": True, "plan": plan.to_dict(), "inputs": []})
+            emit_document(args, {"ok": True, "status": "validated", "dry_run": True, "plan": _audio_plan_payload(plan), "inputs": []})
         return 0
     if inherited and not args.accept_inherited:
         confirmed = _confirm_audio(args, plan)
@@ -421,7 +446,7 @@ def cmd_audio(args: argparse.Namespace) -> int:
             return confirmed
     elif args.verbose:
         print(_format_audio_plan(plan), file=sys.stderr)
-    emit_event(args, "started", command="audio", plan=plan.to_dict())
+    emit_event(args, "started", command="audio", plan=_audio_plan_payload(plan))
     try:
         outcome = _run_audio(args, plan)
         manifest = _write_audio_manifest(args, plan, outcome)
@@ -430,7 +455,7 @@ def cmd_audio(args: argparse.Namespace) -> int:
     payload = {
         "ok": outcome.exit_code == 0, "status": outcome.status,
         "command": "audio", "tool": plan.tool, "elapsed_s": outcome.elapsed_s,
-        "export_path": plan.output, "plan": plan.to_dict(), "inputs": outcome.inputs,
+        "export_path": plan.output, "plan": _audio_plan_payload(plan), "inputs": outcome.inputs,
         "manifest": manifest, "stopped": outcome.interrupted,
     }
     emit_document(args, payload)
@@ -445,7 +470,7 @@ def cmd_audio_validate(args: argparse.Namespace) -> int:
     if not plan.ok:
         return fail(
             args, plan.diagnostics[0].message, exit_code=2,
-            extra={"plan": plan.to_dict()}, kind="validation",
+            extra={"plan": _audio_plan_payload(plan)}, kind="validation",
         )
     if report_mode(args) == "human":
         print(_format_audio_plan(plan))
@@ -453,7 +478,7 @@ def cmd_audio_validate(args: argparse.Namespace) -> int:
     else:
         emit_document(args, {
             "ok": True, "status": "validated", "level": args.level,
-            "command": "audio", "plan": plan.to_dict(),
+            "command": "audio", "plan": _audio_plan_payload(plan),
         })
     return 0
 
