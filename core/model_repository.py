@@ -296,9 +296,8 @@ class ModelRepository:
     def _identity_index(self) -> "IdentityIndex":
         """The identity index for this repository's current inventory.
 
-        Built once per pool loop: every dry-check pool below resolves whole
-        tag lists, and a per-tag service would rebuild the index (four directory
-        scans plus the Demucs yaml/spec reads) for every model.
+        Resolved once per pool loop rather than per tag: the pools below walk
+        whole tag lists, and this is the only lookup surface they need.
         """
         from .model_identity import ModelIdentityService
 
@@ -544,10 +543,18 @@ def _checklist_id(model: Any) -> str:
     """Canonical row key for a dry-check config (``family:basename``)."""
     from .model_identity import FAMILY_BY_ARCH, ModelId
 
+    # The config carries its resolved record's id since the dry-check pools
+    # started resolving identities; use it rather than re-deriving one from a
+    # filename. ``os.path.splitext`` on a basename such as
+    # ``mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956`` strips ``.1956``
+    # and produces an id no record answers to.
+    canonical = str(getattr(model, "canonical_id", "") or "")
+    if canonical:
+        return canonical
     family = FAMILY_BY_ARCH.get(getattr(model, "process_method", None) or "")
     basename = getattr(model, "model_basename", None)
     if family and basename:
-        stem = os.path.splitext(str(basename))[0]
+        stem = _artifact_stem(str(basename))
         if stem and ":" not in stem:
             return str(ModelId(family, stem))
     tag = getattr(model, "model_and_process_tag", None)

@@ -192,6 +192,50 @@ class RealModelPoolTests(unittest.TestCase):
             self.assertIn(family, {"vr", "mdx", "demucs"})
             self.assertTrue(basename)
 
+    def test_pool_ids_are_all_resolvable_records(self) -> None:
+        """Every ID a pool emits must look up in the identity index.
+
+        A dotted basename such as ``..._sdr_10.1956`` used to lose its ``.1956``
+        to a second ``os.path.splitext`` in the row-key helper, so the ensemble
+        page offered a member -- and ``--vocal-split`` a splitter -- that no
+        record answered to.
+        """
+        from core.model_identity import ModelIdentityService
+
+        dotted = "Test-Dotted-Model.1956"
+        dotted_hash = _write_checkpoint(
+            os.path.join(paths.VR_MODELS_DIR, f"{dotted}.pth"), b"vr-dotted-weights"
+        )
+        _write_json(
+            os.path.join(paths.VR_HASH_DIR, f"{dotted_hash}.json"),
+            {
+                "vr_model_param": "4band_v2",
+                "primary_stem": "Vocals",
+                "is_karaokee": True,
+            },
+        )
+        self.repo.invalidate_models()
+        index = ModelIdentityService(self.repo).index
+
+        pools = {
+            "multi": self.repo.ensemble_model_list(
+                self.settings, EnsemblePair.MULTI_STEM
+            ),
+            "voc_inst": self.repo.ensemble_model_list(
+                self.settings, EnsemblePair.VOCALS_INSTRUMENTAL
+            ),
+            "karaoke_pair": self.repo.ensemble_model_list(
+                self.settings, EnsemblePair.KARAOKE
+            ),
+            "splitter": self.repo.karaoke_model_list(self.settings),
+        }
+        self.assertIn(f"vr:{dotted}", pools["multi"])
+        self.assertIn(f"vr:{dotted}", pools["splitter"])
+        for name, pool in pools.items():
+            for tag in pool:
+                with self.subTest(pool=name, tag=tag):
+                    index.lookup(tag)
+
     def test_unresolvable_tag_degrades_to_unavailable(self) -> None:
         """A tag with no identity record must not raise, only be unavailable."""
         with mock.patch.object(
