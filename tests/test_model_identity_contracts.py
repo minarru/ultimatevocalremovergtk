@@ -161,6 +161,49 @@ class ModelRecordContractTests(unittest.TestCase):
         self.assertEqual(record.to_dict()["mdx_kind"], "classic_onnx")
 
 
+class MetaByFamilyTests(unittest.TestCase):
+    def test_snapshot_has_family_split_meta(self) -> None:
+        import typing
+
+        from core.catalogue_coordinator import CatalogueSnapshot
+
+        hints = typing.get_type_hints(CatalogueSnapshot)
+        self.assertIn("meta_by_family", hints)
+
+    def test_same_selectable_in_two_families_does_not_overwrite(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE, VR_ARCH_TYPE
+        from core.catalogue_coordinator import build_meta_by_family
+
+        vr = {"Shared Label": {"a.pth": "http://example.invalid/a.pth"}}
+        mdx = {"Shared Label": {"b.onnx": "http://example.invalid/b.onnx"}}
+        result = build_meta_by_family(vr, mdx, {}, {}, extra_meta={})
+        self.assertEqual(result["vr"]["Shared Label"].arch, VR_ARCH_TYPE)
+        self.assertEqual(result["mdx"]["Shared Label"].arch, MDX_ARCH_TYPE)
+
+
+class DisplayIndexPrimaryOnlyTests(unittest.TestCase):
+    def test_yaml_stem_is_not_an_index_key(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.catalogue_coordinator import _basename_index
+
+        meta = {
+            "MDX-Net Model: Pair": EntryMeta(
+                label="MDX-Net Model: Pair",
+                display="MDX-Net — Pair",
+                arch=MDX_ARCH_TYPE,
+                files={
+                    "model.ckpt": "http://x/model.ckpt",
+                    "config.yaml": "http://x/config.yaml",
+                },
+                checkpoint="model.ckpt",
+            )
+        }
+        index = _basename_index(meta, MDX_ARCH_TYPE)
+        self.assertEqual(set(index), {"model"})
+        self.assertNotIn("config", index)
+
+
 class ManifestSchemaSnapshotTests(unittest.TestCase):
     """Replayable manifests are schema 1 (separate/ensemble) and 2 (audio).
     Bench is schema 1 and is not replayable. Task 18 bumps replayable

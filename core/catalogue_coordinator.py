@@ -78,6 +78,7 @@ class CatalogueSnapshot:
     demucs: Mapping[str, Any]
     apollo: Mapping[str, Any]
     meta: Mapping[str, Any]
+    meta_by_family: Mapping[str, Mapping[str, Any]]
     pre_dedupe_vr: Mapping[str, Any]
     pre_dedupe_mdx: Mapping[str, Any]
     pre_dedupe_demucs: Mapping[str, Any]
@@ -95,6 +96,27 @@ class CatalogueSnapshot:
 
 def _readonly_catalogue(value: Mapping[str, Any]) -> Mapping[str, Any]:
     return MappingProxyType(dict(value))
+
+
+def build_meta_by_family(
+    vr: Mapping[str, Any],
+    mdx: Mapping[str, Any],
+    demucs: Mapping[str, Any],
+    apollo: Mapping[str, Any],
+    extra_meta: Mapping[str, Any],
+    alias_meta: Mapping[str, Any] | None = None,
+) -> dict[str, dict[str, Any]]:
+    from .catalog_sources import _build_meta, _metadata_alias_index
+
+    aliases = (
+        alias_meta if alias_meta is not None else _metadata_alias_index(extra_meta)
+    )
+    return {
+        "vr": _build_meta(vr, VR_ARCH_TYPE, extra_meta, aliases),
+        "mdx": _build_meta(mdx, MDX_ARCH_TYPE, extra_meta, aliases),
+        "demucs": _build_meta(demucs, DEMUCS_ARCH_TYPE, extra_meta, aliases),
+        "apollo": _build_meta(apollo, APOLLO_ARCH_TYPE, extra_meta, aliases),
+    }
 
 
 class CatalogueCoordinator:
@@ -371,7 +393,6 @@ class CatalogueCoordinator:
     ) -> CatalogueSnapshot:
         from .catalog_sources import (
             EntryMeta,
-            _build_meta,
             _checkpoint_urls,
             _metadata_alias_index,
         )
@@ -408,7 +429,6 @@ class CatalogueCoordinator:
             apollo_download_list=apollo_download_list,
             unsupported_mvsepless_downloads=unsupported_mvsepless_downloads,
             EntryMeta=EntryMeta,
-            _build_meta=_build_meta,
             _checkpoint_urls=_checkpoint_urls,
             _metadata_alias_index=_metadata_alias_index,
             dedupe_download_catalogue=dedupe_download_catalogue,
@@ -440,13 +460,10 @@ class CatalogueCoordinator:
         apollo_download_list: Any,
         unsupported_mvsepless_downloads: Any,
         EntryMeta: Any,
-        _build_meta: Any,
         _checkpoint_urls: Any,
         _metadata_alias_index: Any,
         dedupe_download_catalogue: Any,
     ) -> CatalogueSnapshot:
-        from bundled.constants import APOLLO_ARCH_TYPE, DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
-
         upstream = contents.get(SourceId.UPSTREAM)
         politrees = contents.get(SourceId.POLITREES)
         extras = contents.get(SourceId.EXTRAS)
@@ -487,14 +504,12 @@ class CatalogueCoordinator:
             extra=dict(extras.payload) if extras is not None else None
         )
         alias_meta = _metadata_alias_index(extra_meta)
+        meta_by_family = build_meta_by_family(
+            vr, mdx, demucs, apollo, extra_meta, alias_meta
+        )
         meta: dict[str, Any] = {}
-        for catalogue, arch in (
-            (vr, VR_ARCH_TYPE),
-            (mdx, MDX_ARCH_TYPE),
-            (demucs, DEMUCS_ARCH_TYPE),
-            (apollo, APOLLO_ARCH_TYPE),
-        ):
-            meta.update(_build_meta(catalogue, arch, extra_meta, alias_meta))
+        for family_meta in meta_by_family.values():
+            meta.update(family_meta)  # transitional; identity must not use this
 
         from .download_sizes import trusted_content_ids_from_cache
 
@@ -513,9 +528,11 @@ class CatalogueCoordinator:
             allow_network=False,
         )
         self._index_builds += 1
-        display_vr = _basename_index(meta, VR_ARCH_TYPE)
-        display_mdx = _basename_index(meta, MDX_ARCH_TYPE)
-        display_demucs = _basename_index(meta, DEMUCS_ARCH_TYPE)
+        display_vr = _basename_index(meta_by_family["vr"], VR_ARCH_TYPE)
+        display_mdx = _basename_index(meta_by_family["mdx"], MDX_ARCH_TYPE)
+        display_demucs = _basename_index(
+            meta_by_family["demucs"], DEMUCS_ARCH_TYPE
+        )
         yaml_index = _checkpoint_yaml_index(vr, mdx, demucs, apollo)
         return CatalogueSnapshot(
             revision=revision,
@@ -524,6 +541,12 @@ class CatalogueCoordinator:
             demucs=_readonly_catalogue(demucs_out),
             apollo=_readonly_catalogue(apollo_out),
             meta=MappingProxyType(meta),
+            meta_by_family=MappingProxyType(
+                {
+                    family: MappingProxyType(entries)
+                    for family, entries in meta_by_family.items()
+                }
+            ),
             pre_dedupe_vr=_readonly_catalogue(vr),
             pre_dedupe_mdx=_readonly_catalogue(mdx),
             pre_dedupe_demucs=_readonly_catalogue(demucs),
@@ -602,13 +625,23 @@ class CatalogueCoordinator:
 def _basename_index(meta: Mapping[str, Any], arch: str) -> dict[str, str]:
     import os
 
+    from .model_display import _is_checkpoint_name
+
     index: dict[str, str] = {}
     for entry in meta.values():
         if getattr(entry, "arch", None) != arch:
             continue
-        files = getattr(entry, "files", {}) or {}
         display = str(getattr(entry, "display", "") or "")
-        for filename in files:
+        checkpoint = getattr(entry, "checkpoint", None)
+        files = getattr(entry, "files", {}) or {}
+        names = (
+            [checkpoint]
+            if checkpoint
+            else [name for name in files if _is_checkpoint_name(str(name))]
+        )
+        for filename in names:
+            if not filename:
+                continue
             stem = os.path.splitext(os.path.basename(str(filename)))[0]
             index.setdefault(stem, display)
     return index
@@ -760,5 +793,6 @@ __all__ = [
     "CatalogueCoordinator",
     "CatalogueSnapshot",
     "SourceId",
+    "build_meta_by_family",
     "flatten_upstream_lists",
 ]
