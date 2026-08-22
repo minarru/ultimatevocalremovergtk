@@ -443,17 +443,26 @@ class ModelRepository:
         rebuilding ``ModelConfig`` (which hashes the model file) more than once.
         """
         try:
+            if process_method == VR_ARCH_PM:
+                process_method = VR_ARCH_TYPE
+            identity = None
             if str(model_name or "").partition(":")[0].casefold() in {"vr", "mdx", "demucs"}:
                 from .model_identity import ModelIdentityService
 
-                family = {
-                    VR_ARCH_TYPE: "vr", VR_ARCH_PM: "vr",
-                    MDX_ARCH_TYPE: "mdx", DEMUCS_ARCH_TYPE: "demucs",
-                }.get(process_method)
-                model_name = ModelIdentityService(self).engine_value(
-                    model_name, family=family
+                identity = ModelIdentityService(self).lookup(model_name)
+                model_name = identity.display
+            if identity is None:
+                return ModelConfig(
+                    settings, self, model_name, process_method, is_dry_check=True
                 )
-            return ModelConfig(settings, self, model_name, process_method, is_dry_check=True)
+            return ModelConfig(
+                settings,
+                self,
+                model_name,
+                process_method,
+                is_dry_check=True,
+                identity=identity,
+            )
         except (FileNotFoundError, ValueError, KeyError, OSError, json.JSONDecodeError) as exc:
             from .debug_log import debug
 

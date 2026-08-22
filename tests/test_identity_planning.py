@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import unittest
 import tempfile
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from bundled.constants import DEMUCS_ARCH_TYPE
+from bundled.constants import DEMUCS_ARCH_TYPE, VR_ARCH_PM, VR_ARCH_TYPE
 from core.job_plan import (
     JobResolver,
     JobSpec,
@@ -13,19 +13,42 @@ from core.job_plan import (
     compute_model_identity_digest,
 )
 from core.model_identity import MdxSpec, ModelArtifacts, ModelRecord
+from core.model_repository import ModelRepository
 from core.settings import Settings
+from core.types import ProcessMethod
+
+
+class DryResolutionArchitectureTests(unittest.TestCase):
+    def test_vr_process_label_is_normalized_to_engine_architecture(self) -> None:
+        settings = Settings.defaults()
+        repo = Mock()
+        resolved = Mock()
+
+        with patch("core.model_repository.ModelConfig", return_value=resolved) as config:
+            result = ModelRepository.resolve_model_dry(
+                repo, settings, VR_ARCH_PM, "VR model"
+            )
+
+        self.assertIs(result, resolved)
+        config.assert_called_once_with(
+            settings,
+            repo,
+            "VR model",
+            VR_ARCH_TYPE,
+            is_dry_check=True,
+        )
 
 
 class ActivePathTests(unittest.TestCase):
     def test_mdx_primary_only_when_secondaries_off(self) -> None:
         settings = Settings.defaults()
-        settings.process.method = "MDX-Net"
+        settings.process.method = ProcessMethod.MDX
         settings.mdx.model = "mdx:UVR-MDX-NET-Inst_HQ_4"
         self.assertEqual(active_model_paths(settings, command="separate"), ("mdx.model",))
 
     def test_enabled_splitter_is_included(self) -> None:
         settings = Settings.defaults()
-        settings.process.method = "MDX-Net"
+        settings.process.method = ProcessMethod.MDX
         settings.mdx.model = "mdx:UVR-MDX-NET-Inst_HQ_4"
         settings.process.vocal_splitter_enabled = True
         settings.process.vocal_splitter = "vr:UVR-De-Echo-Normal"
@@ -36,7 +59,7 @@ class ActivePathTests(unittest.TestCase):
 
     def test_four_stem_secondaries_include_all_slots(self) -> None:
         settings = Settings.defaults()
-        settings.process.method = DEMUCS_ARCH_TYPE
+        settings.process.method = ProcessMethod.DEMUCS
         settings.demucs.model = "demucs:htdemucs"
         settings.demucs.is_secondary_model_activate = True
         settings.demucs.voc_inst_secondary_model = "mdx:a"
@@ -51,7 +74,7 @@ class ActivePathTests(unittest.TestCase):
 
     def test_two_stem_secondaries_include_only_primary_slot(self) -> None:
         settings = Settings.defaults()
-        settings.process.method = DEMUCS_ARCH_TYPE
+        settings.process.method = ProcessMethod.DEMUCS
         settings.demucs.model = "demucs:UVR_Demucs_Model_1"
         settings.demucs.is_secondary_model_activate = True
         settings.demucs.voc_inst_secondary_model = "mdx:a"
@@ -68,7 +91,7 @@ class ActivePathTests(unittest.TestCase):
         from core.job_plan import JobResolver
 
         settings = Settings.defaults()
-        settings.process.method = "MDX-Net"
+        settings.process.method = ProcessMethod.MDX
         settings.mdx.model = "mdx:primary"
         settings.mdx.is_secondary_model_activate = True
         settings.mdx.voc_inst_secondary_model = "mdx:missing"
@@ -91,7 +114,7 @@ class ActivePathTests(unittest.TestCase):
         settings.mdx.is_secondary_model_activate = True
         settings.mdx.voc_inst_secondary_model = "mdx:missing"
         repo = Mock()
-        with unittest.mock.patch.object(
+        with patch.object(
             ModelIdentityService,
             "_published_index",
             return_value=IdentityIndex({}),
@@ -106,7 +129,7 @@ class ActivePathTests(unittest.TestCase):
         for pre_proc in (_record("vr:pre-proc"), _record("mdx:pre-proc")):
             with self.subTest(family=pre_proc.family):
                 settings = Settings.defaults()
-                settings.process.method = DEMUCS_ARCH_TYPE
+                settings.process.method = ProcessMethod.DEMUCS
                 settings.demucs.model = primary.id
                 settings.demucs.is_pre_proc_model_activate = True
                 settings.demucs.pre_proc_model = pre_proc.id
@@ -126,7 +149,7 @@ class ActivePathTests(unittest.TestCase):
         primary = _record("demucs:primary")
         pre_proc = _record("demucs:pre-proc")
         settings = Settings.defaults()
-        settings.process.method = DEMUCS_ARCH_TYPE
+        settings.process.method = ProcessMethod.DEMUCS
         settings.demucs.model = primary.id
         settings.demucs.is_pre_proc_model_activate = True
         settings.demucs.pre_proc_model = pre_proc.id
@@ -188,7 +211,7 @@ class DigestTests(unittest.TestCase):
 class ResolvedPlanIdentityTests(unittest.TestCase):
     def test_plan_serializes_dependencies_and_descriptor_identity(self) -> None:
         settings = Settings.defaults()
-        settings.process.method = "MDX-Net"
+        settings.process.method = ProcessMethod.MDX
         settings.mdx.model = "mdx:primary"
         record = ModelRecord(
             id="mdx:primary",
@@ -221,7 +244,7 @@ class ResolvedPlanIdentityTests(unittest.TestCase):
 
     def test_active_identity_change_makes_plan_stale(self) -> None:
         settings = Settings.defaults()
-        settings.process.method = "MDX-Net"
+        settings.process.method = ProcessMethod.MDX
         settings.mdx.model = "mdx:primary"
         original = _record("mdx:primary")
         changed = ModelRecord(

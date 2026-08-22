@@ -146,6 +146,7 @@ class ModelConfig:
         self.model_artifacts = (
             identity.artifacts if identity is not None else None
         )
+        self.demucs = identity.demucs if identity is not None else None
         self._identity_record = identity
         self.model_name = self.model_display_label
         self.process_method = (
@@ -829,14 +830,35 @@ class ModelConfig:
         self.model_path = resolve_demucs_model_file(backend_name, demucs_version)
 
     def get_demucs_model_data(self):
-        self.demucs_version = DEMUCS_V4
-        for key, value in DEMUCS_VERSION_MAPPER.items():
-            if value in self.model_name:
-                self.demucs_version = key
-        if DEMUCS_UVR_MODEL in self.model_name:
-            self.demucs_source_list, self.demucs_source_map, self.demucs_stem_count = DEMUCS_2_SOURCE, DEMUCS_2_SOURCE_MAPPER, 2
+        spec = self.demucs if getattr(self, "demucs", None) is not None else None
+        if spec is None:
+            raise ValueError(
+                f"{self.canonical_id} is missing Demucs version/layout metadata"
+            )
+        self.demucs_version = {
+            "v1": DEMUCS_V1,
+            "v2": DEMUCS_V2,
+            "v3": DEMUCS_V3,
+            "v4": DEMUCS_V4,
+        }[spec.version]
+        if spec.source_layout == "2_stem":
+            self.demucs_source_list, self.demucs_source_map, self.demucs_stem_count = (
+                DEMUCS_2_SOURCE,
+                DEMUCS_2_SOURCE_MAPPER,
+                2,
+            )
+        elif spec.source_layout == "6_stem":
+            self.demucs_source_list, self.demucs_source_map, self.demucs_stem_count = (
+                DEMUCS_6_SOURCE,
+                DEMUCS_6_SOURCE_MAPPER,
+                6,
+            )
         else:
-            self.demucs_source_list, self.demucs_source_map, self.demucs_stem_count = DEMUCS_4_SOURCE, DEMUCS_4_SOURCE_MAPPER, 4
+            self.demucs_source_list, self.demucs_source_map, self.demucs_stem_count = (
+                DEMUCS_4_SOURCE,
+                DEMUCS_4_SOURCE_MAPPER,
+                4,
+            )
         if not self.is_ensemble_mode:
             self.primary_stem = PRIMARY_STEM if self.demucs_stems == ALL_STEMS else self.demucs_stems
             self.secondary_stem = secondary_stem(str(self.primary_stem or ""))
