@@ -926,7 +926,7 @@ class EnsemblePage:
         # Rebuild the model list for the new stem pair first: stem-only
         # toggles resolve export-semantics hints from _selected_model_tags(),
         # which otherwise still reflects the previous stem pair's checklist.
-        self._rebuild_model_list(self._selected_model_tags())
+        self._rebuild_model_list(self._model_members_for_rebuild())
         self._rebuild_stem_only_toggles()
         self._update_ensemble_options_summary()
 
@@ -1137,6 +1137,13 @@ class EnsemblePage:
     def _selected_model_tags(self) -> List[str]:
         return [tag for tag, check in self._model_checks.items() if check.get_active()]
 
+    def _model_members_for_rebuild(self) -> List[typing.Any]:
+        if getattr(self, "_models_write_gated", False):
+            return list(self.settings.ensemble.selected_models or [])
+        if self._model_checks:
+            return self._selected_model_tags()
+        return list(self.settings.ensemble.selected_models or [])
+
     def _effective_selected_models(self) -> List[str]:
         """Prefer live checklist state; fall back to persisted settings."""
         if self._model_checks:
@@ -1244,12 +1251,7 @@ class EnsemblePage:
         search = getattr(self, "models_search", None)
         if search is not None:
             search.set_text("")
-        preselected = (
-            self._selected_model_tags()
-            if self._model_checks
-            else (self.settings.ensemble.selected_models or [])
-        )
-        self._rebuild_model_list(preselected)
+        self._rebuild_model_list(self._model_members_for_rebuild())
         present_modal_dialog(self.models_dialog, self.window)
 
     def _open_member_model_options(self, *_args: typing.Any) -> None:
@@ -1311,13 +1313,8 @@ class EnsemblePage:
         """
         self.settings.process.method = ProcessMethod.ENSEMBLE
         self._sync_shared_from_settings()
-        preselected = (
-            self._selected_model_tags()
-            if self._model_checks
-            else (self.settings.ensemble.selected_models or [])
-        )
         self._models_dirty = False
-        self._rebuild_model_list(preselected)
+        self._rebuild_model_list(self._model_members_for_rebuild())
 
     def on_deactivated(self) -> None:
         # Method restoration is owned by the main window's tab handler.

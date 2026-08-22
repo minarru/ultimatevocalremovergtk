@@ -147,7 +147,7 @@ class MainStemChangedOrderTests(unittest.TestCase):
         page._update_ensemble_options_summary = mock.Mock(
             side_effect=lambda: order.append("update_summary")
         )
-        page._selected_model_tags = mock.Mock(return_value=["tag-a"])
+        page._model_members_for_rebuild = mock.Mock(return_value=["tag-a"])
 
         with mock.patch.object(
             ensemble_window,

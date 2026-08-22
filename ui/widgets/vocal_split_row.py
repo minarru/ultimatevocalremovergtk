@@ -253,7 +253,8 @@ class VocalSplitRow(Adw.ExpanderRow):
             return
         self._sync_dependents()
         if self._settings is not None:
-            if self._populator.ready:
+            source = _args[0] if _args else None
+            if self._populator.ready and source is self.splitter_row:
                 self._stored_splitter = (
                     get_combo_value(self.splitter_row) or NO_MODEL
                 )

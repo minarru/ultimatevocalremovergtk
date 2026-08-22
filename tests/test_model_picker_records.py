@@ -114,6 +114,7 @@ class _FakeRow:
     def __init__(self, title: str = "", subtitle: str = "", **_kwargs: object) -> None:
         self.title = title
         self.subtitle = subtitle
+        self._listbox: _FakeListBox | None = None
 
     def set_title(self, value: str) -> None:
         self.title = value
@@ -126,6 +127,14 @@ class _FakeRow:
 
     def set_activatable_widget(self, _child: object) -> None:
         pass
+
+    def get_next_sibling(self) -> _FakeRow | None:
+        if self._listbox is None:
+            return None
+        index = self._listbox.children.index(self)
+        if index + 1 >= len(self._listbox.children):
+            return None
+        return self._listbox.children[index + 1]
 
 
 class _FakeCheck:
@@ -146,11 +155,16 @@ class _FakeListBox:
     def __init__(self) -> None:
         self.children: list[_FakeRow] = []
 
-    def get_first_child(self) -> None:
-        return None
+    def get_first_child(self) -> _FakeRow | None:
+        return self.children[0] if self.children else None
 
     def append(self, row: _FakeRow) -> None:
+        row._listbox = self
         self.children.append(row)
+
+    def remove(self, row: _FakeRow) -> None:
+        self.children.remove(row)
+        row._listbox = None
 
     def invalidate_filter(self) -> None:
         pass
@@ -207,13 +221,25 @@ class EnsemblePickerTests(unittest.TestCase):
             ensemble=SimpleNamespace(selected_models=["MDX-Net: legacy display"])
         )
         page._models_write_gated = True
-        page._selected_model_tags = lambda: []
+        page._selected_model_tags = lambda: ["mdx:installed"]
+        page._loading = True
+        page._update_models_dialog_status = lambda: None
+        page._update_models_summary = lambda: None
+        page._rebuild_stem_only_toggles = lambda: None
 
         EnsemblePage._persist_selected_models(page)
 
         self.assertEqual(
             page.settings.ensemble.selected_models,
             ["MDX-Net: legacy display"],
+        )
+
+        page._on_model_toggled(_FakeCheck())
+
+        self.assertFalse(page._models_write_gated)
+        self.assertEqual(
+            page.settings.ensemble.selected_models,
+            ["mdx:installed"],
         )
 
     def test_rebuild_handles_an_unhashable_preserved_member(self) -> None:
@@ -253,6 +279,169 @@ class EnsemblePickerTests(unittest.TestCase):
             page.settings.ensemble.selected_models,
             [["invalid member"]],
         )
+
+    def test_repeated_activation_preserves_hidden_gated_members(self) -> None:
+        from core.settings import Settings
+        from core.stems import EnsemblePair
+        from ui.ensemble import window as ensemble_window
+
+        stored = ["mdx:installed", "mdx:uninstalled"]
+        settings = Settings()
+        settings.ensemble.selected_models = list(stored)
+        page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
+        page.models_listbox = _FakeListBox()
+        page.context = SimpleNamespace(
+            repo=SimpleNamespace(
+                ensemble_model_list=lambda _settings, _pair: ["mdx:installed"]
+            )
+        )
+        page.settings = settings
+        page._ensemble_pair = lambda: EnsemblePair.VOCALS_INSTRUMENTAL
+        page._update_models_dialog_status = lambda: None
+        page._update_models_summary = lambda: None
+        page._sync_shared_from_settings = lambda: None
+        record = _record("mdx:installed", "Installed")
+
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records",
+            return_value=(record,),
+        ), mock.patch.object(
+            ensemble_window.Adw, "ActionRow", _FakeRow
+        ), mock.patch.object(
+            ensemble_window.Gtk, "CheckButton", _FakeCheck
+        ), mock.patch.object(ensemble_window, "stash"):
+            page._rebuild_model_list(list(stored))
+            page.on_activated()
+            page.on_activated()
+
+        self.assertTrue(page._models_write_gated)
+        self.assertEqual(page.settings.ensemble.selected_models, stored)
+        self.assertEqual(page._selected_model_tags(), ["mdx:installed"])
+        self.assertEqual(len(page.models_listbox.children), 1)
+
+    def test_reopening_models_dialog_preserves_hidden_gated_members(self) -> None:
+        from core.settings import Settings
+        from core.stems import EnsemblePair
+        from ui.ensemble import window as ensemble_window
+
+        stored = ["mdx:installed", "MDX-Net: legacy display"]
+        settings = Settings()
+        settings.ensemble.selected_models = list(stored)
+        page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
+        page.models_listbox = _FakeListBox()
+        page.context = SimpleNamespace(
+            repo=SimpleNamespace(
+                ensemble_model_list=lambda _settings, _pair: ["mdx:installed"]
+            )
+        )
+        page.settings = settings
+        page._ensemble_pair = lambda: EnsemblePair.VOCALS_INSTRUMENTAL
+        page._update_models_dialog_status = lambda: None
+        page._update_models_summary = lambda: None
+        page.models_dialog = object()
+        page.window = object()
+        record = _record("mdx:installed", "Installed")
+
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records",
+            return_value=(record,),
+        ), mock.patch.object(
+            ensemble_window.Adw, "ActionRow", _FakeRow
+        ), mock.patch.object(
+            ensemble_window.Gtk, "CheckButton", _FakeCheck
+        ), mock.patch.object(ensemble_window, "stash"), mock.patch.object(
+            ensemble_window, "present_modal_dialog"
+        ):
+            page._rebuild_model_list(list(stored))
+            page._open_models_dialog()
+            page._open_models_dialog()
+
+        self.assertTrue(page._models_write_gated)
+        self.assertEqual(page.settings.ensemble.selected_models, stored)
+        self.assertEqual(page._selected_model_tags(), ["mdx:installed"])
+
+
+class _FakeControl:
+    def __init__(self, *, active: bool = False) -> None:
+        self.active = active
+        self.sensitive = True
+
+    def get_active(self) -> bool:
+        return self.active
+
+    def set_sensitive(self, value: bool) -> None:
+        self.sensitive = value
+
+
+class VocalSplitPickerGateTests(unittest.TestCase):
+    def _gated_row(self, stored: str) -> tuple[Any, Any]:
+        from core.settings import Settings
+        from ui.widgets.vocal_split_row import VocalSplitRow
+
+        settings = Settings()
+        settings.process.vocal_splitter = stored
+        row: Any = VocalSplitRow.__new__(VocalSplitRow)
+        row._syncing = False
+        row._settings = settings
+        row._stored_splitter = stored
+        row._splitter_write_gated = True
+        row._populator = SimpleNamespace(ready=True)
+        row.split_switch = _FakeControl()
+        row.splitter_row = _FakeControl()
+        row.save_inst_switch = _FakeControl()
+        row.deverb_switch = _FakeControl()
+        row.deverb_row = _FakeControl()
+        row.refresh_summary = lambda: None
+        row._on_changed = lambda: None
+        return row, settings
+
+    def test_every_non_picker_signal_preserves_each_gated_stored_value(self) -> None:
+        from ui.widgets import vocal_split_row
+
+        for stored in ("VR Arc: legacy display", "vr:uninstalled"):
+            for emitter_name in (
+                "split_switch",
+                "save_inst_switch",
+                "deverb_switch",
+                "deverb_row",
+            ):
+                with self.subTest(stored=stored, emitter=emitter_name):
+                    row, settings = self._gated_row(stored)
+                    emitter = getattr(row, emitter_name)
+                    emitter.active = True
+                    with mock.patch.object(
+                        vocal_split_row,
+                        "get_combo_value",
+                        side_effect=lambda control: (
+                            NO_MODEL
+                            if control is row.splitter_row
+                            else "Main Vocals Only"
+                        ),
+                    ):
+                        row._on_row_changed(emitter)
+
+                    self.assertTrue(row._splitter_write_gated)
+                    self.assertEqual(row._stored_splitter, stored)
+                    self.assertEqual(settings.process.vocal_splitter, stored)
+
+    def test_picker_signal_replaces_the_gated_stored_value(self) -> None:
+        from ui.widgets import vocal_split_row
+
+        row, settings = self._gated_row("vr:uninstalled")
+        with mock.patch.object(
+            vocal_split_row,
+            "get_combo_value",
+            side_effect=lambda control: (
+                "vr:installed"
+                if control is row.splitter_row
+                else "Main Vocals Only"
+            ),
+        ):
+            row._on_row_changed(row.splitter_row)
+
+        self.assertFalse(row._splitter_write_gated)
+        self.assertEqual(row._stored_splitter, "vr:installed")
+        self.assertEqual(settings.process.vocal_splitter, "vr:installed")
 
 
 class _FakeBanner:
