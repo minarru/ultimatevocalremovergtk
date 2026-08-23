@@ -17,6 +17,9 @@ The command-line front end. A presentation layer, exactly like `ui/`.
 - **Reports are versioned.** `--report json` owns one stdout document;
   `--report jsonl` owns one event per line. Usage errors follow the selected
   report mode. Interrupts use exit 130 and `"stopped": true`.
+- **Diagnostics never own stdout.** Route structured diagnostics through
+  `core.debug_log`; JSON/JSONL stdout remains machine-readable. `--verbose`
+  prints the effective plan and is independent from `--debug` / `--trace`.
 - **Ctrl-C is cooperative then forced.** `_run_job` must not re-raise
   `KeyboardInterrupt`. Restore the previous SIGINT/SIGTERM handlers in `finally`.
 - **Clean defaults are the implicit profile.** GUI state is read only through
@@ -48,3 +51,9 @@ The command-line front end. A presentation layer, exactly like `ui/`.
   never the model identity. Both dry validations finish before leg A and every
   run gets a new job-ID directory.
 - Patch the owning CLI presentation boundary or public core service in tests.
+
+## Focused verification
+
+```bash
+.venv/bin/python -m unittest discover -s tests -t . -p 'test_cli*.py' -q
+```

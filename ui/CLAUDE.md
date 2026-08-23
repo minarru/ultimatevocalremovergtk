@@ -12,6 +12,13 @@ Loaded when working under `ui/`. Layer rules, invariants and repo workflow live 
 - Drive the real app non-interactively for measurement: build `UVRApplication()`, arm `GLib.timeout_add(ms, lambda: (app.quit(), False)[1])`, then `app.run([])`. Scratch scripts need `PYTHONPATH=.` — `bundled` is not installed into the venv.
 - `cProfile` on Python 3.14 instruments **every** thread, not just the caller. A naive startup profile blames the main loop for the `uvr-separate-warm` thread's ~1.6 s torch import — which is correctly lazy. Attribute per call (`threading.current_thread() is MAIN`) before believing that anything blocks the main loop.
 
+## Model-list refresh
+
+- Widget selection state is the canonical `ModelRecord.id`; `display` is a replaceable label and must never be resolved back to identity.
+- Inventory and presentation notifications both coalesce through `MainWindow._refresh_models()`. Snapshot the selected ID before invalidating a lazy picker and repick safely after rebuilding it.
+- New model-list surfaces must expose `refresh_models()` and join `MainWindow._model_list_consumers()`.
+- Vocal Splitter remains filtered exclusively by karaoke/BV metadata; display wording must not affect eligibility.
+
 ## Settings coupling
 
 - The Save-stems widget ([ui/widgets/stem_only.py](widgets/stem_only.py)) is a GTK adapter over [`core/stem_selection.py`](../core/stem_selection.py), which writes `process.stem_focus` (a concept, `raw:…` tag, or positional `primary`/`secondary` sentinel) in every branch — including the ones that clear it back to `""`. Miss a branch and the widget looks right while `--profile gui` and the plan-time diagnostics inherit a stale concept.

@@ -16,13 +16,15 @@ Linux/GTK4 port of Ultimate Vocal Remover (upstream v5.6, Tkinter). The Tkinter 
 python -m ui                       # launch with the venv already activated
 ```
 
-Tests are **stdlib unittest** (no pytest config, despite a stray `.pytest_cache`). CI runs:
+Tests are **stdlib unittest** (no pytest config, despite a stray `.pytest_cache`). Run locally:
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -t . -v
-python -m unittest tests.test_dispatch                                  # one module
-python -m unittest tests.test_dispatch.DispatchTests.test_main_thread_wrapper  # one test
+.venv/bin/python -m unittest tests.test_dispatch                                  # one module
+.venv/bin/python -m unittest tests.test_dispatch.DispatchTests.test_main_thread_wrapper  # one test
 ```
+
+CI runs full discovery under `GSK_RENDERER=cairo xvfb-run -a`.
 
 Type checking is **basedpyright** (a pyright fork — same CLI, same config file), configured in [pyrightconfig.json](pyrightconfig.json): `standard` mode plus a few strict-mode rules, over `ui/ cli/ core/ engines/ tests/ bundled/ ml/ scripts/` (plus `__version__.py`). Keep `models/` and `vendor/demucs` excluded — do not chase type errors there. Stubs live in [typings/](typings/). Install the checker with `pip install -r requirements-dev.txt`; CI runs it on every PR.
 
@@ -76,7 +78,8 @@ Other:
 ./uvr models list --all-known
 ./uvr bench song.wav -o /tmp/ab --model mdx:Model --a-env UVR_AUTOCAST=0 --b-env UVR_AUTOCAST=1
 python scripts/generate_models_catalogue.py   # regenerate docs/models-catalogue.md
-python scripts/generate_models_catalogue.py --check     # CI drift check; writes nothing
+python scripts/generate_models_catalogue.py --check     # read-only drift check
+python scripts/generate_models_catalogue.py --check --write-display-reference
 python scripts/generate_models_catalogue.py --summary   # counts + mismatches to stdout
 python scripts/model_sweep.py --list      # local-only: every installed model, one real run each
 python scripts/model_sweep.py --method mdx --json /tmp/sweep.json
@@ -117,7 +120,9 @@ Layers, strictly one-directional (`ui` → `core` → `engines` → `ml`, and `c
 
 **Model identity is MD5-based.** `ModelRepository` resolves checkpoints by hash against the JSON hash maps in `models/*/model_data/`; `assemble_model` builds the per-run `ModelConfig` objects the engines consume. Weights are gitignored — only metadata and the small `UVR-DeNoise-Lite.pth` are committed.
 
-**Canonical model identity is `family:basename`, resolved exactly.** [core/model_identity.py](core/model_identity.py) defines `ModelId`/`ModelRecord` over the four families `vr`, `mdx`, `demucs`, `apollo`; [core/model_inventory.py](core/model_inventory.py) builds one `IdentityIndex` per `(inventory_generation, catalogue_revision, naming_revision)` from family adapters, offline (no network, no hashing). Publishing a fresh index rides `ModelRepository.invalidate_models()` — there is no separate identity-invalidation path. GUI method/ensemble/karaoke pickers list installed `ModelRecord`s only; catalogue-only entries surface solely via `models list --all-known`. Runtime code must never import a display-to-basename resolver (`resolve_mdx_model_basename` and siblings) — `core/model_display.py` is the sole allowed importer, enforced by [tests/test_no_runtime_display_inversion.py](tests/test_no_runtime_display_inversion.py).
+**Canonical model identity is `family:basename`, resolved exactly.** [core/model_identity.py](core/model_identity.py) defines `ModelId`/`ModelRecord` over the four families `vr`, `mdx`, `demucs`, `apollo`; [core/model_inventory.py](core/model_inventory.py) builds one `IdentityIndex` per `(inventory_generation, catalogue_revision, naming_revision)` from family adapters, offline (no network, no hashing). Installed-file or execution-metadata changes publish through `ModelRepository.invalidate_models()`. Catalogue association and label refinements use `invalidate_model_presentation()` and its separate subscriber; they must not bump `inventory_generation` or invalidate resolved plans. GUI method/ensemble/karaoke pickers list installed `ModelRecord`s only; catalogue-only entries surface solely via `models list --all-known`. Runtime code must never import a display-to-basename resolver (`resolve_mdx_model_basename` and siblings) — `core/model_display.py` is the sole allowed importer, enforced by [tests/test_no_runtime_display_inversion.py](tests/test_no_runtime_display_inversion.py).
+
+**Model display is a one-way projection.** [core/model_naming.py](core/model_naming.py) applies trusted override → exact manifest alias → conservatively formatted source label → raw basename. [core/model_registry.py](core/model_registry.py) atomically persists schema-2 presentation evidence in `registered_models.json`. Display text must never be used to recover canonical identity.
 
 ### Separation run pipeline
 
@@ -143,7 +148,7 @@ Note the coupling: `Ensembler.get_files_to_ensemble` collects members by **filen
 
 ## Maintenance scripts
 
-Four commands under `scripts/`, plus the module they share. None are part of the app.
+Four command entry points under `scripts/`, plus `model_tool_support.py` and the `scripts/catalogue/` collection/rendering package. None are part of the app.
 
 - **`scripts/*` is gitignored behind an allowlist.** A new script needs its own
   `!scripts/<name>.py` line in [.gitignore](.gitignore), or `git add` refuses it and the
@@ -211,7 +216,7 @@ Known bugs and roadmap gaps are tracked in [docs/tracked-issues.md](docs/tracked
 - `core.model_display.format_tag_title` resolves through `load_politrees_links()`, which fetches over the network (30s timeout) unless `UVR_DISABLE_POLITREES=1`. Tests patch `core.politrees_catalog.load_politrees_links` — see [tests/test_mdx_c_registry.py](tests/test_mdx_c_registry.py).
 - **The test suite blocks live outbound network.** Importing `tests` arms [tests/net_guard.py](tests/net_guard.py), which raises `BlockedNetworkAccess` on any TCP connect to a non-loopback address (AF_UNIX and loopback stay open, so GTK/DBus and local servers are fine). Set `UVR_TESTS_ALLOW_NETWORK=1` to bypass it while debugging. Note that most fetch paths swallow their own errors, so a new offender usually shows up as a slow test rather than a failure — patch the fetch instead of relying on the guard.
 - **There are two network catalogue sources**, politrees and mvsepless, each with its own disable flag (`UVR_DISABLE_POLITREES`, `UVR_DISABLE_MVSEPLESS`) and its own background refresh thread. CI runs `unittest discover -s tests -t .` so `tests/__init__.py` arms the network guard. Any test reaching `_merged_for_display()` must still neutralise **both** sources, or it leaks refresh threads into later modules.
-- `CatalogueCoordinator` owns source snapshots, merge, and projections for one AppContext or CLI command. `ModelRepository.inventory_generation` still changes only when installed files/local metadata change. Catalogue/identity refinements must not bump it or rebuild picker membership. `reload_mappers()` increments `naming_revision` and must not remesh sources. `format_tag_title` is keyed on `(tag, catalogue revision, naming revision)`.
+- `CatalogueCoordinator` owns source snapshots, merge, and projections for one AppContext or CLI command. `ModelRepository.inventory_generation` still changes only when installed files/local metadata change. Catalogue/identity refinements must not bump it or rebuild picker membership. Use `invalidate_model_presentation(reload_mappers=False)` for catalogue source/association refinements and `invalidate_model_presentation(reload_mappers=True)` after durable presentation-evidence changes. Calling `reload_mappers()` alone does not notify UI consumers. `format_tag_title` is keyed on `(tag, catalogue revision, naming revision)`.
 - **Job resolution fetches configs.** `resolve_mdx_jobs` → `ensure_mdx_c_config` downloads a missing MDX-C YAML. Tests that only care about the resolved job list should patch `core.mdx_config_fetch.ensure_mdx_c_config` (resolved at call time inside `politrees_catalog`) and `core.downloads.ensure_mdx_c_config` (bound by value at import).
 - Modules bind network helpers by value (`from .mdx_config_fetch import _urlopen`), so patching `core.mdx_config_fetch._urlopen` does **not** intercept them. Patch the importing module's own name (`core.politrees_catalog._urlopen`, `core.mvsepless_catalog._urlopen`). Late-bound wrappers accept `str | urllib.request.Request` so conditional GETs stay interceptable.
 - `core.model_display._merged_for_display()` remains a compatibility cache (`lru_cache`, keyed on `_display_generation`). Prefer coordinator indexes when a repository has been given a coordinator. `clear_display_cache()` still wraps `invalidate_catalogue_merge` for loaders that have not migrated.
@@ -225,4 +230,4 @@ Known bugs and roadmap gaps are tracked in [docs/tracked-issues.md](docs/tracked
 - GTK widget behaviour and layout-diagnosis notes live in [ui/CLAUDE.md](ui/CLAUDE.md), loaded when working under `ui/`.
 - Headless CLI layer rules live in [cli/CLAUDE.md](cli/CLAUDE.md), loaded when working under `cli/`.
 - **Read-only CLI commands default to offline.** `map_basenames_to_display`, `all_model_tags`, and `karaoke_model_list` (used by `--vocal-split`) reach `_merged_for_display()`, which fetches the politrees and mvsepless catalogues (30s timeout each). Read-only listing passes `allow_network=False` into catalogue helpers. Planning / validate / identity use `access_policy(allow_network=False, allow_metadata_writes=False)` / `mdx_c_network(False)`, not `catalogue_offline()`.
-- This working tree often carries long-lived uncommitted edits (model metadata under `models/*/model_data/`). Never run unscoped `git checkout -- .`, `git restore .`, `git reset --hard`, `git stash` or `git clean`; restore only exact paths, and stage explicitly rather than `git add -A`.
+- This working tree often carries long-lived uncommitted edits (model metadata under `models/*/model_data/`) and portable runtime state such as `registered_models.json`. Never stage runtime state or run unscoped `git checkout -- .`, `git restore .`, `git reset --hard`, `git stash` or `git clean`; restore only exact paths, and stage explicitly rather than `git add -A`.
