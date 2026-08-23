@@ -314,6 +314,14 @@ def _project_source_label(source_label: str) -> str:
     for pattern, replacement in _TOKEN_REPLACEMENTS:
         title = pattern.sub(replacement, title)
     title = _STEM_COUNT_RE.sub(r"(\g<count> Stems)", title)
+    family, family_separator, remainder = title.partition(TITLE_SEPARATOR)
+    if family_separator:
+        repeated_family = re.compile(
+            rf"^(?P<prefix>(?:\(\d+ Stems\)\s+)?(?:Huge\s+)?)"
+            rf"{re.escape(family)}\b[\s_-]*",
+            re.IGNORECASE,
+        )
+        title = f"{family}{TITLE_SEPARATOR}{repeated_family.sub(r'\g<prefix>', remainder)}"
     version, demucs_separator, backend = title.partition(TITLE_SEPARATOR)
     if demucs_separator and re.fullmatch(r"v\d+", version, re.IGNORECASE):
         title = (
@@ -323,6 +331,7 @@ def _project_source_label(source_label: str) -> str:
 
     if not separator:
         return title
+    author = re.sub(r"(\()\s*sdr\b", r"\1SDR", author, flags=re.IGNORECASE)
     canonical_author = _DISPLAY_MANIFEST["author_aliases"].get(
         author.strip().casefold(), author.strip()
     )

@@ -48,6 +48,17 @@
     "mdx:bs_pope_instvoc_aname": "BandSplit PolarFormer — Instrumental/Vocals Duality Lazy Bat · Aname",
     "mdx:bs_pope_karaoke_974_lambda": "BandSplit PolarFormer — Karaoke · Lambda001",
     "mdx:bs_pope_vocals_zfturbo": "BandSplit PolarFormer — Vocals · ZFTurbo",
+    "mdx:bs_mega_53stem_bowed_strings_mvsep": "BandSplit Roformer — Mega (53 Stems) (only Bowed Strings) · MVSep",
+    "mdx:kuielab_a_bass": "MDX-Net — KUIELAB A Bass",
+    "mdx:kuielab_a_drums": "MDX-Net — KUIELAB A Drums",
+    "mdx:kuielab_a_other": "MDX-Net — KUIELAB A Other",
+    "mdx:kuielab_a_vocals": "MDX-Net — KUIELAB A Vocals",
+    "mdx:kuielab_b_bass": "MDX-Net — KUIELAB B Bass",
+    "mdx:kuielab_b_drums": "MDX-Net — KUIELAB B Drums",
+    "mdx:kuielab_b_other": "MDX-Net — KUIELAB B Other",
+    "mdx:kuielab_b_vocals": "MDX-Net — KUIELAB B Vocals",
+    "mdx:mbr_bve_gonzaluigi": "MelBand Roformer — Karaoke BVE · Gonzaluigi",
+    "mdx:model_MelBand-Roformer_BVE_by-Gonza": "MelBand Roformer — Karaoke BVE · Gonza",
     "mdx:mbr_instfv9_gabox": "MelBand Roformer — Instrumental Fv9 · GaboxR67 [mbr_instfv9_gabox]",
     "mdx:mbr_inst_becruily": "MelBand Roformer — Instrumental · Becruily [mbr_inst_becruily]",
     "mdx:mbr_karaoke_fusion_aggr_gonzaluigi": "MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi [mbr_karaoke_fusion_aggr_gonzaluigi]"
@@ -63,16 +74,19 @@
   },
   "waivers": {
     "mdx:mbr_instfv9_gabox": {
-      "embedded-id": "The bracketed exact backend ID distinguishes a same-title catalogue collision."
+      "embedded-id": "The bracketed exact backend ID distinguishes a same-title catalogue collision.",
+      "underscore": "The underscore is part of the reviewed bracketed backend ID retained for collision safety."
     },
     "mdx:mbr_inst_becruily": {
-      "embedded-id": "The bracketed exact backend ID distinguishes a same-title catalogue collision."
+      "embedded-id": "The bracketed exact backend ID distinguishes a same-title catalogue collision.",
+      "underscore": "The underscore is part of the reviewed bracketed backend ID retained for collision safety."
     },
     "mdx:mbr_karaoke_fusion_aggr_gonzaluigi": {
       "embedded-id": "The bracketed exact backend ID distinguishes a same-title catalogue collision.",
+      "underscore": "The underscore is part of the reviewed bracketed backend ID retained for collision safety.",
       "near-duplicate-author": "Gonzaluigi is a reviewed distinct attribution from Gonza."
     },
-    "mdx:mbr_karaoke_fusion_aggr_gonza": {
+    "mdx:model_MelBand-Roformer_Karaoke_Fusion_Aggressive_by-Gonza": {
       "near-duplicate-author": "Gonza is a reviewed distinct attribution from Gonzaluigi."
     }
   }

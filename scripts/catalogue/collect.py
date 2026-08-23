@@ -57,6 +57,9 @@ from core.model_stem_semantics import (  # noqa: E402
 )
 OUTPUT_PATH = os.path.join(ROOT, "docs", "models-catalogue.md")
 REFERENCE_TSV_PATH = os.path.join(ROOT, "docs", "model_intent_reference.tsv")
+DISPLAY_REFERENCE_TSV_PATH = os.path.join(
+    ROOT, "docs", "model_display_reference.tsv"
+)
 
 #: Ephemeral supplements live under CACHE_DIR, not in the documentation tree:
 #: docs/ holds deliberate, reviewable output only.

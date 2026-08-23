@@ -3,7 +3,7 @@ import os
 import sys
 import unittest
 import urllib.error
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -490,8 +490,10 @@ class CacheIdentityTests(unittest.TestCase):
             b = catalogue._fetch_cached("https://b.invalid/y/config.yaml", self.tmp, "config.yaml")
         self.assertNotEqual(a, b)
         assert a is not None and b is not None
-        self.assertEqual(open(a, "rb").read(), b"first")
-        self.assertEqual(open(b, "rb").read(), b"second")
+        with open(a, "rb") as handle:
+            self.assertEqual(handle.read(), b"first")
+        with open(b, "rb") as handle:
+            self.assertEqual(handle.read(), b"second")
 
     def test_a_fresh_cache_entry_is_not_refetched(self) -> None:
         url = "https://a.invalid/data.json"
@@ -972,6 +974,287 @@ class ReferenceTsvOptInTests(unittest.TestCase):
         self.assertFalse(cli._parse_args([]).write_tsv)
 
 
+class DisplayReferenceRenderTests(unittest.TestCase):
+    """The presentation reference is deterministic data, not prose scraping."""
+
+    def test_renders_execution_source_display_and_quality_flags(self) -> None:
+        entries = [
+            catalogue.ModelEntry(
+                source="TRvlvr",
+                family="VR Architecture",
+                catalogue_label="VR Arch Single Model v5: 5_HP-Karaoke-UVR",
+                weight_file="5_HP-Karaoke-UVR.pth",
+            ),
+            catalogue.ModelEntry(
+                source="mvsepless",
+                family="SCNet",
+                catalogue_label="SCnet: 4-stems Huge SCNet Bleedless by Aname",
+                weight_file="huge_scnet_4stems_bleedless.ckpt",
+                arch="SCNet",
+            ),
+        ]
+
+        rendered = render.presentation_reference_tsv(entries)
+
+        self.assertEqual(
+            rendered.splitlines()[0],
+            "family\texecution_arch\tsource\tcatalogue_generation\t"
+            "catalogue_label\tcanonical_id\tcurrent_display\tweight_file\t"
+            "presentation_flags\twaiver_reasons\treview_status",
+        )
+        self.assertIn(
+            "VR Architecture\tVR Architecture\tTRvlvr\tv5\t"
+            "VR Arch Single Model v5: 5_HP-Karaoke-UVR\t"
+            "vr:5_HP-Karaoke-UVR\tHP Karaoke 5\t5_HP-Karaoke-UVR.pth\t\t"
+            "\tclean",
+            rendered,
+        )
+        self.assertIn(
+            "SCNet\tSCNet\tmvsepless\t\t"
+            "SCnet: 4-stems Huge SCNet Bleedless by Aname\t"
+            "mdx:huge_scnet_4stems_bleedless\t"
+            "SCNet — (4 Stems) Huge Bleedless · Aname\t"
+            "huge_scnet_4stems_bleedless.ckpt\t\t\tclean",
+            rendered,
+        )
+
+    def test_demucs_id_comes_from_the_runtime_primary_yaml(self) -> None:
+        entry = catalogue.ModelEntry(
+            source="TRvlvr",
+            family="Demucs",
+            catalogue_label="Demucs v4: htdemucs_ft",
+            weight_file="f7e0c4bc-ba3fe64a.th",
+            config_yaml="htdemucs_ft.yaml",
+        )
+
+        rendered = render.presentation_reference_tsv([entry])
+
+        self.assertIn(
+            "demucs:htdemucs_ft\tv4 — HTDemucs Fine-Tuned\t",
+            rendered,
+        )
+
+    def test_exact_manifest_waiver_marks_retained_flags_reviewed(self) -> None:
+        entry = catalogue.ModelEntry(
+            source="mvsepless",
+            family="MDX-Net",
+            catalogue_label=(
+                "Mel-Band Roformer Instrumental by Becruily "
+                "[mbr_inst_becruily]"
+            ),
+            weight_file="mbr_inst_becruily.ckpt",
+        )
+
+        rendered = render.presentation_reference_tsv([entry])
+
+        self.assertIn("underscore, embedded-id\tunderscore: ", rendered)
+        self.assertTrue(rendered.rstrip().endswith("\treviewed"))
+        self.assertIn("underscore: The underscore is part of the reviewed", rendered)
+        self.assertIn("embedded-id: The bracketed exact backend ID", rendered)
+
+    def test_repeated_family_flag_understands_normalized_stem_counts(self) -> None:
+        entry = catalogue.ModelEntry(
+            source="test",
+            family="SCNet",
+            catalogue_label="SCnet: 4-stems SCNet Large",
+            weight_file="scnet_large.ckpt",
+        )
+
+        self.assertIn(
+            "repeated-family",
+            render._presentation_flags(entry, "SCNet — (4 Stems) SCNet Large"),
+        )
+
+    def test_sorts_rows_independently_of_collection_order(self) -> None:
+        alpha = catalogue.ModelEntry(
+            source="test",
+            family="Alpha",
+            catalogue_label="Alpha",
+            weight_file="alpha.ckpt",
+        )
+        zulu = catalogue.ModelEntry(
+            source="test",
+            family="Zulu",
+            catalogue_label="Zulu",
+            weight_file="zulu.ckpt",
+        )
+
+        self.assertEqual(
+            render.presentation_reference_tsv([zulu, alpha]),
+            render.presentation_reference_tsv([alpha, zulu]),
+        )
+
+    def test_rows_do_not_end_in_whitespace_when_waiver_reasons_are_empty(self) -> None:
+        entry = catalogue.ModelEntry(
+            source="test",
+            family="SCNet",
+            catalogue_label="SCnet: Large",
+            weight_file="scnet_large.ckpt",
+        )
+
+        rendered = render.presentation_reference_tsv([entry])
+
+        self.assertTrue(all(line == line.rstrip() for line in rendered.splitlines()))
+
+
+class DisplayReferenceCliTests(unittest.TestCase):
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        os.environ["UVR_DISABLE_CATALOGUE_STEMS"] = "1"
+        self.addCleanup(lambda: os.environ.pop("UVR_DISABLE_CATALOGUE_STEMS", None))
+        self.tmp = tempfile.mkdtemp(prefix="uvr-display-reference-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.out = os.path.join(self.tmp, "models-catalogue.md")
+        self.reference = os.path.join(self.tmp, "model_display_reference.tsv")
+
+    def _run(
+        self,
+        argv: list[str],
+        *,
+        vr: Mapping[str, object] | None = None,
+        mdx: Mapping[str, object] | None = None,
+    ) -> int:
+        import contextlib
+        from unittest import mock
+
+        class _Snapshot:
+            def __init__(self) -> None:
+                self.vr: dict[str, object] = dict(
+                    {"VR Arch Single Model v5: 1_HP-UVR": "1_HP-UVR.pth"}
+                    if vr is None
+                    else vr
+                )
+                self.mdx: dict[str, object] = dict({} if mdx is None else mdx)
+                self.demucs: dict[str, object] = {}
+                self.apollo: dict[str, object] = {}
+                self.meta: dict[str, object] = {}
+                self.unsupported: dict[str, object] = {}
+                self.report = None
+
+        snapshot = _Snapshot()
+
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", self.out))
+            stack.enter_context(
+                mock.patch.object(
+                    cli, "DISPLAY_REFERENCE_TSV_PATH", self.reference
+                )
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    catalogue,
+                    "_build_catalogue_context",
+                    lambda **_kwargs: catalogue.CatalogueContext(),
+                )
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    catalogue,
+                    "_snapshot_and_payloads",
+                    lambda **_kwargs: (snapshot, ({}, {}, {}, {})),
+                )
+            )
+            return cli.main(argv)
+
+    def test_flag_writes_the_complete_reference(self) -> None:
+        self.assertEqual(self._run(["--write-display-reference"]), 0)
+        with open(self.reference, encoding="utf-8") as handle:
+            rendered = handle.read()
+        self.assertIn("catalogue_generation", rendered)
+        self.assertIn("1_HP-UVR.pth", rendered)
+
+    def test_check_detects_reference_drift_without_writing(self) -> None:
+        self.assertEqual(self._run(["--write-display-reference"]), 0)
+        with open(self.reference, "a", encoding="utf-8") as handle:
+            handle.write("drift\n")
+        with open(self.reference, "rb") as handle:
+            before = handle.read()
+
+        self.assertEqual(
+            self._run(["--check", "--write-display-reference"]), 1
+        )
+        with open(self.reference, "rb") as handle:
+            self.assertEqual(handle.read(), before)
+
+    def test_check_rejects_matching_reference_with_unreviewed_flags(self) -> None:
+        import contextlib
+        import io
+
+        mdx = {"MDX-Net Model: private_model": "private_model.onnx"}
+        self.assertEqual(
+            self._run(["--write-display-reference"], vr={}, mdx=mdx),
+            0,
+        )
+        with open(self.reference, "rb") as handle:
+            before = handle.read()
+        stderr = io.StringIO()
+
+        with contextlib.redirect_stderr(stderr):
+            result = self._run(
+                ["--check", "--write-display-reference"], vr={}, mdx=mdx
+            )
+
+        self.assertEqual(result, 1)
+        self.assertIn("unreviewed presentation flag", stderr.getvalue().lower())
+        with open(self.reference, "rb") as handle:
+            self.assertEqual(handle.read(), before)
+
+    def test_check_rejects_matching_case_insensitive_display_collision(self) -> None:
+        import contextlib
+        import io
+
+        mdx = {
+            "MDX-Net Model: Shared": "first.onnx",
+            "MDX-Net: shared": "second.onnx",
+        }
+        self.assertEqual(
+            self._run(["--write-display-reference"], vr={}, mdx=mdx),
+            0,
+        )
+        with open(self.reference, "rb") as handle:
+            before = handle.read()
+        stderr = io.StringIO()
+
+        with contextlib.redirect_stderr(stderr):
+            result = self._run(
+                ["--check", "--write-display-reference"], vr={}, mdx=mdx
+            )
+
+        self.assertEqual(result, 1)
+        self.assertIn("case-insensitive display collision", stderr.getvalue().lower())
+        with open(self.reference, "rb") as handle:
+            self.assertEqual(handle.read(), before)
+
+    def test_default_run_does_not_write_the_reference(self) -> None:
+        self.assertEqual(self._run([]), 0)
+        self.assertFalse(os.path.exists(self.reference))
+
+    def test_summary_with_flag_remains_read_only(self) -> None:
+        import contextlib
+        import io
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(
+                self._run(["--summary", "--write-display-reference"]), 0
+            )
+        self.assertFalse(os.path.exists(self.reference))
+
+    def test_refused_run_does_not_write_the_reference(self) -> None:
+        with open(self.out, "w", encoding="utf-8") as handle:
+            handle.write("## Summary\n\n- Total catalogue entries: **400**\n")
+
+        self.assertEqual(self._run(["--write-display-reference"]), 2)
+        self.assertFalse(os.path.exists(self.reference))
+
+    def test_flag_is_opt_in(self) -> None:
+        self.assertTrue(
+            cli._parse_args(["--write-display-reference"]).write_display_reference
+        )
+        self.assertFalse(cli._parse_args([]).write_display_reference)
+
+
 class CheckModeTests(unittest.TestCase):
     """--check reports drift without touching the tree."""
 
@@ -1027,19 +1310,23 @@ class CheckModeTests(unittest.TestCase):
 
     def test_check_on_an_up_to_date_document_exits_zero(self) -> None:
         self.assertEqual(self._run([]), 0)
-        before = open(self.out, "rb").read()
+        with open(self.out, "rb") as handle:
+            before = handle.read()
         mtime = os.path.getmtime(self.out)
         self.assertEqual(self._run(["--check"]), 0)
-        self.assertEqual(open(self.out, "rb").read(), before)
+        with open(self.out, "rb") as handle:
+            self.assertEqual(handle.read(), before)
         self.assertEqual(os.path.getmtime(self.out), mtime, "--check rewrote the file")
 
     def test_check_reports_drift_without_writing(self) -> None:
         self.assertEqual(self._run([]), 0)
         with open(self.out, "a", encoding="utf-8") as handle:
             handle.write("\ndrifted\n")
-        drifted = open(self.out, "rb").read()
+        with open(self.out, "rb") as handle:
+            drifted = handle.read()
         self.assertEqual(self._run(["--check"]), 1)
-        self.assertEqual(open(self.out, "rb").read(), drifted, "--check wrote anyway")
+        with open(self.out, "rb") as handle:
+            self.assertEqual(handle.read(), drifted, "--check wrote anyway")
 
     def test_check_on_a_missing_document_is_drift(self) -> None:
         self.assertEqual(self._run(["--check"]), 1)

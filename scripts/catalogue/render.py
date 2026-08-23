@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import os
+import re
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Mapping, Tuple
 
 from catalogue.collect import (
     COMMUNITY_CACHE_DIR,
@@ -18,6 +20,9 @@ from catalogue.collect import (
     ModelEntry,
     _display_label,
 )
+from core.model_identity import ModelId
+from core.model_inventory import artifact_stem
+from core.model_naming import load_model_display_manifest, project_model_display
 
 
 def _reference_tsv_text(refs: Dict[str, CommunityRef]) -> str:
@@ -37,6 +42,185 @@ def _reference_tsv_text(refs: Dict[str, CommunityRef]) -> str:
             )
         )
     return "\n".join(lines) + "\n"
+
+
+_DISPLAY_REFERENCE_HEADERS = (
+    "family",
+    "execution_arch",
+    "source",
+    "catalogue_generation",
+    "catalogue_label",
+    "canonical_id",
+    "current_display",
+    "weight_file",
+    "presentation_flags",
+    "waiver_reasons",
+    "review_status",
+)
+_VR_GENERATION_RE = re.compile(r"^VR Arch Single Model (v\d+):", re.IGNORECASE)
+_DEMUCS_GENERATION_RE = re.compile(r"^Demucs (v\d+):", re.IGNORECASE)
+_HYPHENATED_STEM_COUNT_RE = re.compile(r"\b\d+-stems?\b", re.IGNORECASE)
+
+
+def _tsv_cell(value: Any) -> str:
+    """Keep one logical value on one TSV row."""
+    return str(value or "").replace("\t", " ").replace("\r", " ").replace("\n", " ")
+
+
+def _catalogue_generation(label: str) -> str:
+    for pattern in (_VR_GENERATION_RE, _DEMUCS_GENERATION_RE):
+        match = pattern.match(label)
+        if match:
+            return match.group(1).lower()
+    return ""
+
+
+def _presentation_flags(entry: ModelEntry, display: str) -> List[str]:
+    """Mechanical indicators for names that merit presentation review.
+
+    These are audit hints, not renaming rules. In particular, a raw basename
+    may be the only honest label for an unknown custom model.
+    """
+    stem = os.path.splitext(os.path.basename(entry.weight_file))[0]
+    flags: List[str] = []
+    if display.casefold() == stem.casefold():
+        flags.append("raw-basename")
+    if "_" in display:
+        flags.append("underscore")
+    if _HYPHENATED_STEM_COUNT_RE.search(display):
+        flags.append("hyphenated-stem-count")
+
+    head, separator, tail = display.partition(" — ")
+    if separator and head:
+        repeated_head = re.compile(
+            rf"^(?:(?:\d+-stems?|\(\d+ Stems\))\s+)?"
+            rf"(?:huge\s+)?{re.escape(head)}\b",
+            re.IGNORECASE,
+        )
+        if repeated_head.search(tail):
+            flags.append("repeated-family")
+    if re.search(r"\bInstVoc\b", display):
+        flags.append("instvoc")
+    if re.search(r"\bsdr\b", display):
+        flags.append("lowercase-sdr")
+    if "[" in display or "]" in display:
+        flags.append("embedded-id")
+    return flags
+
+
+@dataclass(frozen=True)
+class PresentationReferenceAudit:
+    """Rendered reference plus strict quality outcomes for ``--check``."""
+
+    text: str
+    unreviewed: Tuple[Tuple[str, Tuple[str, ...]], ...]
+    collisions: Tuple[Tuple[str, Tuple[str, ...]], ...]
+
+
+def _canonical_model_id(entry: ModelEntry) -> str:
+    family = {
+        "VR Architecture": "vr",
+        "Demucs": "demucs",
+        "Apollo": "apollo",
+    }.get(entry.family, "mdx")
+    primary = (
+        entry.config_yaml
+        if family == "demucs" and entry.config_yaml
+        else entry.weight_file
+    )
+    if not primary:
+        raise ValueError(
+            f"catalogue row has no runtime primary artifact: {entry.catalogue_label!r}"
+        )
+    return ModelId(family, artifact_stem(primary)).value
+
+
+def presentation_reference_audit(
+    entries: List[ModelEntry],
+) -> PresentationReferenceAudit:
+    """Project the complete catalogue through runtime naming and audit it."""
+    projected = [
+        (
+            entry,
+            _canonical_model_id(entry),
+        )
+        for entry in entries
+    ]
+    displays = [
+        project_model_display(model_id, source_label=entry.catalogue_label)
+        for entry, model_id in projected
+    ]
+    display_counts: Dict[str, int] = {}
+    for display in displays:
+        key = display.casefold()
+        display_counts[key] = display_counts.get(key, 0) + 1
+
+    manifest = load_model_display_manifest()
+    waivers = manifest["waivers"]
+    rows = []
+    unreviewed_rows: List[Tuple[str, Tuple[str, ...]]] = []
+    collision_members: Dict[str, List[str]] = {}
+    collision_labels: Dict[str, str] = {}
+    for (entry, model_id), display in zip(projected, displays, strict=True):
+        flags = _presentation_flags(entry, display)
+        if display_counts[display.casefold()] > 1:
+            flags.append("duplicate-display")
+            collision_members.setdefault(display.casefold(), []).append(model_id)
+            collision_labels.setdefault(display.casefold(), display)
+        exact_waivers: Mapping[str, str] = waivers.get(model_id, {})
+        unreviewed = tuple(flag for flag in flags if flag not in exact_waivers)
+        if unreviewed:
+            unreviewed_rows.append((model_id, unreviewed))
+        review_status = (
+            "clean" if not flags else "unreviewed" if unreviewed else "reviewed"
+        )
+        waiver_reasons = " | ".join(
+            f"{flag}: {exact_waivers[flag]}"
+            for flag in flags
+            if flag in exact_waivers
+        )
+        row = (
+            entry.family,
+            entry.arch or entry.family,
+            entry.source,
+            _catalogue_generation(entry.catalogue_label),
+            entry.catalogue_label,
+            model_id,
+            display,
+            entry.weight_file,
+            ", ".join(flags),
+            waiver_reasons,
+            review_status,
+        )
+        rows.append(row)
+
+    rows.sort(
+        key=lambda row: (
+            row[0].casefold(),
+            row[6].casefold(),
+            row[7].casefold(),
+            row[4].casefold(),
+        )
+    )
+    lines = ["\t".join(_DISPLAY_REFERENCE_HEADERS)]
+    lines.extend("\t".join(_tsv_cell(cell) for cell in row) for row in rows)
+    collisions = tuple(
+        (
+            collision_labels[key],
+            tuple(sorted(model_ids, key=str.casefold)),
+        )
+        for key, model_ids in sorted(collision_members.items())
+    )
+    return PresentationReferenceAudit(
+        text="\n".join(lines) + "\n",
+        unreviewed=tuple(sorted(unreviewed_rows, key=lambda item: item[0].casefold())),
+        collisions=collisions,
+    )
+
+
+def presentation_reference_tsv(entries: List[ModelEntry]) -> str:
+    """Render the complete catalogue as deterministic presentation audit data."""
+    return presentation_reference_audit(entries).text
 
 
 def render_summary_report(
@@ -413,4 +597,3 @@ def _cache_age_text(cache_dir: str) -> str:
     if age < 86400:
         return f"{age / 3600:.0f}h old"
     return f"{age / 86400:.0f}d old"
-

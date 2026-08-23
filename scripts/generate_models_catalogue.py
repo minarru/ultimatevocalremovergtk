@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from catalogue import collect  # noqa: E402
 from catalogue import render  # noqa: E402
 from catalogue.collect import (  # noqa: E402
+    DISPLAY_REFERENCE_TSV_PATH,
     FetchPolicy,
     OUTPUT_PATH,
     REFERENCE_TSV_PATH,
@@ -59,6 +60,7 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
             "  python scripts/generate_models_catalogue.py\n"
             "  python scripts/generate_models_catalogue.py --refresh\n"
             "  python scripts/generate_models_catalogue.py --check\n"
+            "  python scripts/generate_models_catalogue.py --write-display-reference\n"
             "  python scripts/generate_models_catalogue.py --summary --offline\n"
         ),
     )
@@ -107,12 +109,21 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
             "models.txt. Off by default; --check then compares it too."
         ),
     )
+    parser.add_argument(
+        "--write-display-reference",
+        action="store_true",
+        help=(
+            f"Also write {os.path.basename(DISPLAY_REFERENCE_TSV_PATH)} with "
+            "the complete current display projection and mechanical quality "
+            "flags. Off by default; --check then compares it too."
+        ),
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--write",
         action="store_true",
         help=(
-            "Write docs/models-catalogue.md (and optional TSV/sidecar). "
+            "Write docs/models-catalogue.md (and optional TSVs/sidecar). "
             "This is the default when neither --check nor --summary is passed."
         ),
     )
@@ -285,19 +296,47 @@ def main(argv: Optional[List[str]] = None) -> int:
                 file=sys.stderr,
             )
 
+    display_reference = None
+    display_reference_text = ""
+    if args.write_display_reference:
+        display_reference = render.presentation_reference_audit(entries)
+        display_reference_text = display_reference.text
+
     if args.check:
         drift = []
         if not render._text_matches(OUTPUT_PATH, rendered):
             drift.append(OUTPUT_PATH)
         if tsv_text and not render._text_matches(REFERENCE_TSV_PATH, tsv_text):
             drift.append(REFERENCE_TSV_PATH)
+        if display_reference_text and not render._text_matches(
+            DISPLAY_REFERENCE_TSV_PATH, display_reference_text
+        ):
+            drift.append(DISPLAY_REFERENCE_TSV_PATH)
+        if display_reference is not None:
+            for model_id, flags in display_reference.unreviewed:
+                print(
+                    f"Unreviewed presentation flag(s): {model_id}: {', '.join(flags)}",
+                    file=sys.stderr,
+                )
+            for display, model_ids in display_reference.collisions:
+                print(
+                    "Accidental case-insensitive display collision: "
+                    f"{display!r}: {', '.join(model_ids)}",
+                    file=sys.stderr,
+                )
         if drift:
             for path in drift:
                 print(f"Out of date: {path}", file=sys.stderr)
             regenerate = "python scripts/generate_models_catalogue.py"
             if REFERENCE_TSV_PATH in drift:
                 regenerate += " --write-tsv"
+            if DISPLAY_REFERENCE_TSV_PATH in drift:
+                regenerate += " --write-display-reference"
             print(f"Regenerate with: {regenerate}", file=sys.stderr)
+        if drift or (
+            display_reference is not None
+            and (display_reference.unreviewed or display_reference.collisions)
+        ):
             return 1
         print(f"Up to date: {OUTPUT_PATH}")
         return 0
@@ -329,6 +368,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if tsv_text:
         write_text_atomic(REFERENCE_TSV_PATH, tsv_text)
         print(f"Wrote {REFERENCE_TSV_PATH}")
+    if display_reference_text:
+        write_text_atomic(DISPLAY_REFERENCE_TSV_PATH, display_reference_text)
+        print(f"Wrote {DISPLAY_REFERENCE_TSV_PATH}")
     return 0
 
 

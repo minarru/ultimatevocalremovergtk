@@ -167,6 +167,49 @@ class ProjectModelDisplayTests(unittest.TestCase):
             "v4 — HTDemucs Fine-Tuned",
         )
 
+    def test_projector_removes_a_repeated_family_after_the_stem_count(self) -> None:
+        self.assertEqual(
+            project_model_display(
+                "mdx:huge_scnet_4stems_bleedless",
+                source_label="SCnet: 4-stems Huge SCNet Bleedless by Aname",
+            ),
+            "SCNet — (4 Stems) Huge Bleedless · Aname",
+        )
+
+    def test_projector_normalizes_parenthetical_sdr_after_the_author(self) -> None:
+        self.assertEqual(
+            project_model_display(
+                "mdx:mbr_inst_1652_essid",
+                source_label="Mel-Band Roformer Instrumental by Essid (sdr 16.52)",
+            ),
+            "MelBand Roformer — Instrumental · Essid (SDR 16.52)",
+        )
+
+    def test_projector_uses_exact_aliases_for_reviewed_storage_copy(self) -> None:
+        self.assertEqual(
+            project_model_display(
+                "mdx:kuielab_a_bass",
+                source_label="MDX-Net Model: kuielab_a_bass",
+            ),
+            "MDX-Net — KUIELAB A Bass",
+        )
+        self.assertEqual(
+            project_model_display(
+                "mdx:bs_mega_53stem_bowed_strings_mvsep",
+                source_label="BS Roformer Mega 53 stems (only Bowed_Strings) by MVSep",
+            ),
+            "BandSplit Roformer — Mega (53 Stems) (only Bowed Strings) · MVSep",
+        )
+
+    def test_projector_uses_presentation_only_karaoke_wording_for_bve(self) -> None:
+        self.assertEqual(
+            project_model_display(
+                "mdx:mbr_bve_gonzaluigi",
+                source_label="Mel-Band Roformer BVE by Gonzaluigi",
+            ),
+            "MelBand Roformer — Karaoke BVE · Gonzaluigi",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
