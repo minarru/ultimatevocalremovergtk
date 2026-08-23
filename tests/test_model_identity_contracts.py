@@ -875,6 +875,60 @@ class DisplayEnrichmentTests(unittest.TestCase):
             mirrored.display, "BandSplit Roformer — Vocals · ViperX"
         )
 
+    def test_ambiguous_exact_catalogue_owners_follow_non_live_precedence(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+
+        first = "MDX-Net Model: Live Alpha"
+        second = "MDX-Net Model: Live Beta"
+        files = {"shared.onnx": "https://example.invalid/shared.onnx"}
+        metadata = {
+            selection: EntryMeta(
+                label=selection,
+                display=selection,
+                arch=MDX_ARCH_TYPE,
+                files=files,
+                checkpoint="shared.onnx",
+            )
+            for selection in (first, second)
+        }
+        snapshot = _snapshot(
+            meta={"mdx": metadata},
+            display_mdx={"shared": first},
+        )
+        cases = (
+            (
+                {"catalogue_label": "MDX23C Model: Persisted Choice"},
+                {"shared.onnx": "BS Roformer Vocals by viperx"},
+                "MDX23C — Persisted Choice",
+            ),
+            (
+                {},
+                {"shared.onnx": "BS Roformer Vocals by viperx"},
+                "BandSplit Roformer — Vocals · ViperX",
+            ),
+            ({}, {}, "shared"),
+        )
+
+        for persisted, mapper, expected in cases:
+            with self.subTest(expected=expected), patch(
+                "core.model_registry.ModelRegistryService.presentation",
+                return_value=persisted,
+            ):
+                record = self._records(
+                    self._repo(
+                        mdx=["shared.onnx"],
+                        mdx_name_select_MAPPER=mapper,
+                    ),
+                    snapshot,
+                )["mdx:shared"]
+
+            self.assertEqual(record.display, expected)
+            self.assertNotIn(
+                record.display,
+                ("MDX-Net — Live Alpha", "MDX-Net — Live Beta"),
+            )
+
     def test_inventory_projection_never_persists_presentation(self) -> None:
         from core.model_inventory import build_identity_index
 

@@ -702,11 +702,14 @@ _NAME_MAPPER_ATTR = {
 
 def _exact_catalogue_selection(
     snapshot: Any | None, record: ModelRecord
-) -> str:
-    if record.catalogue_entry is not None:
-        return record.catalogue_entry.selection
+) -> str | None:
+    """Return exact selection, empty for none, or ``None`` for ambiguity."""
     if snapshot is None:
-        return ""
+        return (
+            record.catalogue_entry.selection
+            if record.catalogue_entry is not None
+            else ""
+        )
     by_family = getattr(snapshot, "meta_by_family", None)
     family_meta = (
         by_family.get(record.family)
@@ -714,14 +717,26 @@ def _exact_catalogue_selection(
         else None
     )
     if not isinstance(family_meta, Mapping):
-        return ""
+        return (
+            record.catalogue_entry.selection
+            if record.catalogue_entry is not None
+            else ""
+        )
     primary = record.artifacts.primary_filename
     matches: list[str] = []
     for selection, entry in family_meta.items():
         files = getattr(entry, "files", None)
         if isinstance(files, Mapping) and primary in files:
             matches.append(str(selection))
-    return matches[0] if len(matches) == 1 else ""
+    if len(matches) > 1:
+        return None
+    if matches:
+        return matches[0]
+    return (
+        record.catalogue_entry.selection
+        if record.catalogue_entry is not None
+        else ""
+    )
 
 
 def _record_display(
@@ -741,10 +756,16 @@ def _record_display(
     if record.installed:
         persisted = ModelRegistryService.presentation(record.id)
         explicit = str(persisted.get("display_override") or "").strip()
-        current_label = _exact_catalogue_selection(snapshot, record)
+        exact_selection = _exact_catalogue_selection(snapshot, record)
+        current_label = exact_selection or ""
 
         attribute = _DISPLAY_INDEX_ATTR.get(record.family)
-        if not current_label and attribute and snapshot is not None:
+        if (
+            exact_selection is not None
+            and not current_label
+            and attribute
+            and snapshot is not None
+        ):
             index = getattr(snapshot, attribute, None)
             if isinstance(index, Mapping):
                 current_label = str(index.get(record.basename) or "").strip()
