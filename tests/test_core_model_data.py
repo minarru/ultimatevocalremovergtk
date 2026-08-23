@@ -466,6 +466,38 @@ class StemIdentityAssembleTests(unittest.TestCase):
         self.assertEqual(stub.secondary_stem, "other")
         self.assertEqual(stem_concept(stub, "vocals"), StemBucket.LEAD_VOCALS)
 
+    def test_disabled_vocal_splitter_does_not_suppress_selected_instrumental(self) -> None:
+        from bundled.constants import INST_STEM_ONLY
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
+        settings.process.vocal_splitter = "mdx:KaraokeFusion"
+        settings.process.vocal_splitter_enabled = False
+        settings.process.save_inst_vocal_splitter = True
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.apply()
+
+        self.assertFalse(
+            ModelConfig.check_only_selection_stem(stub, INST_STEM_ONLY)  # type: ignore[arg-type]
+        )
+
+    def test_enabled_vocal_splitter_can_suppress_selected_instrumental(self) -> None:
+        from bundled.constants import INST_STEM_ONLY
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
+        settings.process.vocal_splitter = "mdx:KaraokeFusion"
+        settings.process.vocal_splitter_enabled = True
+        settings.process.save_inst_vocal_splitter = True
+        stub = _FocusStub(settings, "vocals", "Instrumental")
+        stub.apply()
+
+        self.assertTrue(
+            ModelConfig.check_only_selection_stem(stub, INST_STEM_ONLY)  # type: ignore[arg-type]
+        )
+
     def test_applying_focus_never_writes_back_into_settings(self) -> None:
         """One Settings assembles many configs (ensemble members, secondaries,
         pre-process), and in the GUI it is the live persisted object that

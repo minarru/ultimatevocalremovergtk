@@ -701,7 +701,10 @@ class ModelConfig:
             )
 
         is_save_inst_splitter = self.settings.process.save_inst_vocal_splitter
-        has_voc_splitter = self.settings.process.vocal_splitter != NO_MODEL
+        has_voc_splitter = (
+            self.settings.process.vocal_splitter_enabled
+            and self.settings.process.vocal_splitter != NO_MODEL
+        )
 
         from core.stems import (
             StemBucket,

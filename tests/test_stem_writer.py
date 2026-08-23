@@ -142,6 +142,9 @@ class _FakeSep:
         self.is_pre_proc_model = False
         self.is_inst_only_voc_splitter = False
         self.is_sec_bv_rebalance = False
+        self.is_karaoke = False
+        self.is_bv_model = False
+        self.mdx_stem_count = 2
         self.settings = None
         self.writes: list[tuple[str, object, int, str | None]] = []
         self.split_calls: list[dict[str, object]] = []
@@ -302,6 +305,93 @@ class ExportSourceMapTests(unittest.TestCase):
             sep.writes,
             [("/tmp/Instrumental.wav", complement, 44100, "Instrumental")],
         )
+
+    def test_karaoke_complement_matches_plain_instrumental_source(self) -> None:
+        from core.stems import StemBucket, derived_stem_route
+        from engines.stem_writer import export_source_map
+
+        complement = object()
+        route = derived_stem_route(StemBucket.INST_WITH_BV)
+        sep = _FakeSep((route,))
+        sep.is_karaoke = True
+        sep.is_bv_model = False
+        sep.mdx_stem_count = 2
+
+        export_source_map(sep, {"Instrumental": complement}, samplerate=44100)
+
+        self.assertEqual(
+            sep.writes,
+            [
+                (
+                    "/tmp/Instrumental (With Backing Vocals).wav",
+                    complement,
+                    44100,
+                    "Instrumental (With Backing Vocals)",
+                )
+            ],
+        )
+
+    def test_bv_complement_matches_plain_instrumental_source(self) -> None:
+        from core.stems import StemBucket, derived_stem_route
+        from engines.stem_writer import export_source_map
+
+        complement = object()
+        route = derived_stem_route(StemBucket.INST_WITH_LEAD)
+        sep = _FakeSep((route,))
+        sep.is_karaoke = False
+        sep.is_bv_model = True
+        sep.mdx_stem_count = 2
+
+        export_source_map(sep, {"Instrumental": complement}, samplerate=44100)
+
+        self.assertEqual(
+            sep.writes,
+            [
+                (
+                    "/tmp/Instrumental (With Lead Vocals).wav",
+                    complement,
+                    44100,
+                    "Instrumental (With Lead Vocals)",
+                )
+            ],
+        )
+
+    def test_nonempty_unresolvable_export_raises(self) -> None:
+        from core.stems import StemLiteral, derived_stem_route
+        from engines.stem_writer import export_source_map
+
+        route = derived_stem_route(StemLiteral("Wanted"))
+        sep = _FakeSep((route,))
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"Wanted.*available.*Other",
+        ):
+            export_source_map(sep, {"Other": object()}, samplerate=44100)
+
+        self.assertEqual(sep.writes, [])
+
+    def test_ambiguous_derived_source_match_raises(self) -> None:
+        from core.stems import StemBucket, derived_stem_route
+        from engines.stem_writer import export_source_map
+
+        route = derived_stem_route(StemBucket.INST_WITH_BV)
+        sep = _FakeSep((route,))
+        sep.is_karaoke = True
+        sep.is_bv_model = False
+        sep.mdx_stem_count = 2
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"Ambiguous.*Instrumental.*Other",
+        ):
+            export_source_map(
+                sep,
+                {"Instrumental": object(), "Other": object()},
+                samplerate=44100,
+            )
+
+        self.assertEqual(sep.writes, [])
 
     def test_empty_routes_do_not_start_save_phase(self) -> None:
         from engines.stem_writer import export_source_map

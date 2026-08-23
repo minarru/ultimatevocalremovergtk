@@ -24,6 +24,7 @@ from bundled.constants import (
     LEAD_VOCAL_STEM_LABEL,
     SAVING_STEM,
 )
+from core.audio_io import save_format
 from core.model_stem_semantics import is_vocal_target
 from core.stems import (
     StemBucket,
@@ -31,12 +32,12 @@ from core.stems import (
     export_stem_key,
     filename_tag,
     resolve_in_sources,
+    route_matches_stem,
     run_export_routes,
     stem_concept,
 )
 from ml import spec_utils
 
-from core.audio_io import save_format
 from .vr_utils import vr_denoiser
 
 
@@ -385,9 +386,10 @@ def export_source_map(
 ) -> None:
     """Write each ``run_export_routes`` stem from an in-memory map.
 
-    Recipe stays with the caller: ``sources`` must already hold derived
-    complements under the names ``write_audio`` expects. Missing keys are
-    skipped so unused stems are not computed here. ``write_audio`` remains
+    Recipe stays with the caller: exact backend keys are authoritative, while
+    derived routes may resolve one semantically equivalent source key. Missing
+    individual routes are skipped, but a non-empty export that schedules no
+    writes raises instead of reporting false success. ``write_audio`` remains
     the only disk/buffer path.
     """
     extra_sources = extra_sources or {}
@@ -395,11 +397,25 @@ def export_source_map(
     if not routes and not extra_sources:
         return
     sep.begin_save_phase(len(routes) + len(extra_sources))
+    write_calls = 0
     for route in routes:
         lookup: Any = route.native if route.native is not None else route.label
         key = resolve_in_sources(sources, lookup)
         if key is None and route.label:
             key = resolve_in_sources(sources, route.label)
+        if key is None and route.native is None:
+            semantic_matches = [
+                source_key
+                for source_key in sources
+                if route_matches_stem(route, source_key, sep)
+            ]
+            if len(semantic_matches) > 1:
+                raise RuntimeError(
+                    "Ambiguous export source for "
+                    f"{route.concept!r}: matched {semantic_matches!r}"
+                )
+            if semantic_matches:
+                key = semantic_matches[0]
         if key is None:
             continue
         stem_name = (
@@ -407,12 +423,27 @@ def export_source_map(
         )
         path = sep.stem_export_wav_path(stem_name)
         sep.write_audio(path, sources[key], samplerate, stem_name=stem_name)
+        write_calls += 1
 
     for stem_name, stem_source in extra_sources.items():
         if stem_source is None:
             continue
         path = sep.stem_export_wav_path(stem_name)
         sep.write_audio(path, stem_source, samplerate, stem_name=stem_name)
+        write_calls += 1
+
+    has_export_candidates = bool(routes and sources) or any(
+        source is not None for source in extra_sources.values()
+    )
+    if has_export_candidates and write_calls == 0:
+        requested = [
+            {"concept": route.concept, "label": route.label} for route in routes
+        ]
+        available = list(sources)
+        raise RuntimeError(
+            "No audio writes were scheduled for a non-empty export: "
+            f"requested={requested!r}, available={available!r}"
+        )
 
 
 @dataclass
