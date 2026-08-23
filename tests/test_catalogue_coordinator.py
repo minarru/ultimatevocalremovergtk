@@ -94,6 +94,18 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         self.assertEqual(coordinator.builds, 1)
         coordinator.close()
 
+    def test_snapshot_records_exact_winning_source_for_each_entry(self) -> None:
+        coordinator = self._coordinator()
+        snapshot = coordinator.snapshot(
+            mode=RefreshMode.OFFLINE,
+            policy=AccessPolicy(
+                allow_network=False, allow_metadata_writes=False
+            ),
+        )
+
+        self.assertEqual(snapshot.entry_sources["mdx"]["Kept"], "upstream")
+        coordinator.close()
+
     def test_public_projection_includes_every_legacy_vip_list(self) -> None:
         payload = {
             "vr_download_list": {"VR Public": "public.pth"},

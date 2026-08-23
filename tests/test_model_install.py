@@ -26,6 +26,7 @@ def _snapshot(
     apollo: Any = None,
     demucs: Any = None,
     meta: Any = None,
+    entry_sources: Any = None,
 ):
     families = {
         "vr": vr or {},
@@ -42,6 +43,7 @@ def _snapshot(
         display_index_vr={},
         display_index_mdx={},
         display_index_demucs={},
+        entry_sources=entry_sources or {},
     )
 
 
@@ -225,6 +227,102 @@ class SingleFilePublicationTests(_Base):
         self.assertTrue(third.ready)
         self.assertFalse(third.published)
         self.assertEqual(repo.invalidations, 0)
+
+    def test_presentation_is_persisted_before_the_only_publication(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.model_registry import ModelRegistryService
+
+        selection = "MDX-Net Model: Durable"
+        files = {"durable.onnx": "u1"}
+        entry = EntryMeta(
+            label=selection,
+            display="Durable",
+            arch=MDX_ARCH_TYPE,
+            files=files,
+            checkpoint="durable.onnx",
+        )
+        snapshot = _snapshot(
+            mdx={selection: files},
+            meta={"mdx": {selection: entry}},
+            entry_sources={"mdx": {selection: "upstream"}},
+        )
+        repo = _Repo(snapshot, files={"mdx": ["durable.onnx"]})
+        order: list[str] = []
+        original = ModelRegistryService.remember_presentation
+
+        def remember(*args: Any, **kwargs: Any) -> bool:
+            order.append("persist")
+            return original(*args, **kwargs)
+
+        repo.invalidate_models = lambda: order.append("invalidate")
+        with mock.patch.object(
+            ModelRegistryService, "remember_presentation", side_effect=remember
+        ):
+            result = finalize_downloaded_model(
+                repo=repo,
+                family="mdx",
+                selection=selection,
+                jobs=[("u1", self._file("durable.onnx"))],
+                transfer_result="complete",
+            )
+
+        self.assertTrue(result.ready)
+        self.assertEqual(order, ["persist", "invalidate"])
+        self.assertEqual(
+            ModelRegistryService.presentation("mdx:durable"),
+            {"catalogue_label": selection, "catalogue_source": "upstream"},
+        )
+
+    def test_failed_presentation_write_is_retryable_from_exists(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.model_registry import ModelRegistryService
+
+        selection = "MDX-Net Model: Retry"
+        files = {"retry.onnx": "u1"}
+        entry = EntryMeta(
+            label=selection,
+            display="Retry",
+            arch=MDX_ARCH_TYPE,
+            files=files,
+            checkpoint="retry.onnx",
+        )
+        snapshot = _snapshot(
+            mdx={selection: files},
+            meta={"mdx": {selection: entry}},
+            entry_sources={"mdx": {selection: "upstream"}},
+        )
+        repo = _Repo(snapshot, files={"mdx": ["retry.onnx"]})
+        job = ("u1", self._file("retry.onnx"))
+        with mock.patch.object(
+            ModelRegistryService,
+            "remember_presentation",
+            side_effect=OSError("registry is read-only"),
+        ):
+            first = finalize_downloaded_model(
+                repo=repo,
+                family="mdx",
+                selection=selection,
+                jobs=[job],
+                transfer_result="complete",
+            )
+
+        self.assertFalse(first.ready)
+        self.assertFalse(first.published)
+        self.assertEqual(repo.invalidations, 0)
+        self.assertIn("presentation", first.detail)
+
+        second = finalize_downloaded_model(
+            repo=repo,
+            family="mdx",
+            selection=selection,
+            jobs=[job],
+            transfer_result="exists",
+        )
+        self.assertTrue(second.ready)
+        self.assertTrue(second.published)
+        self.assertEqual(repo.invalidations, 1)
 
 
 class IncompleteIdentityTests(_Base):

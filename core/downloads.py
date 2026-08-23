@@ -21,6 +21,7 @@ import ssl
 import threading
 import time
 import urllib.request
+import warnings
 from contextlib import ExitStack
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
@@ -95,6 +96,33 @@ _NAME_MAPPER_DESTS = frozenset(
         paths.DEMUCS_MODEL_NAME_SELECT,
     }
 )
+
+
+def _attempt_presentation_backfill(
+    repo: Any | None,
+    snapshot: Any | None,
+    *,
+    operation: str,
+) -> None:
+    if repo is None:
+        return
+    if snapshot is not None and not all(
+        isinstance(getattr(snapshot, family, None), Mapping)
+        for family in ("vr", "mdx", "demucs", "apollo")
+    ):
+        return
+    try:
+        from .model_inventory import backfill_installed_presentations
+
+        backfill_installed_presentations(repo, snapshot)
+    except (OSError, ValueError) as exc:
+        message = (
+            f"model presentation backfill failed after successful {operation}; "
+            "the live catalogue remains active and the next successful refresh "
+            f"will retry: {type(exc).__name__}: {exc}"
+        )
+        debug("download", message)
+        warnings.warn(message, RuntimeWarning, stacklevel=2)
 
 
 def _latest_version_key() -> str:
@@ -234,7 +262,7 @@ class DownloadManager:
     callers marshal the supplied callbacks onto the GTK main loop.
     """
 
-    def __init__(self, coordinator: Any = None):
+    def __init__(self, coordinator: Any = None, *, repo: Any = None):
         self.online_data: Dict = {}
         self.bulletin_data: str = INFO_UNAVAILABLE_TEXT
         self.is_online: bool = False
@@ -256,6 +284,7 @@ class DownloadManager:
         self._catalogue_changed_subscribers: List[Callable[[], None]] = []
         self._catalogue_changed_lock = threading.Lock()
         self._coordinator = None
+        self._repo = repo
         self._last_refresh_report: Any = None
         if coordinator is not None:
             self._bind_coordinator(coordinator)
@@ -544,6 +573,10 @@ class DownloadManager:
         self._last_refresh_report = report
         snapshot = coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=policy)
         self._apply_snapshot(snapshot)
+        if report.upstream_live:
+            _attempt_presentation_backfill(
+                self._repo, snapshot, operation="online catalogue refresh"
+            )
         self.is_online = bool(report.upstream_live)
         try:
             with _urlopen(BULLETIN_CHECK) as response:
@@ -1086,6 +1119,11 @@ class DownloadManager:
                 repo.invalidate_models()
             elif name_changed:
                 repo.invalidate_model_presentation(reload_mappers=True)
+            coordinator = getattr(repo, "catalogue", None)
+            snapshot = getattr(coordinator, "_latest", None)
+            _attempt_presentation_backfill(
+                repo, snapshot, operation="online model-metadata update"
+            )
         debug(
             "download",
             f"update_model_settings ok changed={changed} "

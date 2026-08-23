@@ -700,6 +700,30 @@ _NAME_MAPPER_ATTR = {
 }
 
 
+def _exact_catalogue_selection(
+    snapshot: Any | None, record: ModelRecord
+) -> str:
+    if record.catalogue_entry is not None:
+        return record.catalogue_entry.selection
+    if snapshot is None:
+        return ""
+    by_family = getattr(snapshot, "meta_by_family", None)
+    family_meta = (
+        by_family.get(record.family)
+        if isinstance(by_family, Mapping)
+        else None
+    )
+    if not isinstance(family_meta, Mapping):
+        return ""
+    primary = record.artifacts.primary_filename
+    matches: list[str] = []
+    for selection, entry in family_meta.items():
+        files = getattr(entry, "files", None)
+        if isinstance(files, Mapping) and primary in files:
+            matches.append(str(selection))
+    return matches[0] if len(matches) == 1 else ""
+
+
 def _record_display(
     repo: Any, record: ModelRecord, snapshot: Any | None
 ) -> str | None:
@@ -711,6 +735,45 @@ def _record_display(
     ``tests/test_no_runtime_display_inversion.py`` forbids it outright.
     """
     from .model_display import lookup_mapper_display_exact
+    from .model_naming import project_model_display
+    from .model_registry import ModelRegistryService
+
+    if record.installed:
+        persisted = ModelRegistryService.presentation(record.id)
+        explicit = str(persisted.get("display_override") or "").strip()
+        current_label = _exact_catalogue_selection(snapshot, record)
+
+        attribute = _DISPLAY_INDEX_ATTR.get(record.family)
+        if not current_label and attribute and snapshot is not None:
+            index = getattr(snapshot, attribute, None)
+            if isinstance(index, Mapping):
+                current_label = str(index.get(record.basename) or "").strip()
+                if current_label == record.basename:
+                    current_label = ""
+
+        persisted_label = str(persisted.get("catalogue_label") or "").strip()
+        mapper_label = ""
+        mapper_attribute = _NAME_MAPPER_ATTR.get(record.family)
+        if mapper_attribute:
+            mapper = getattr(repo, mapper_attribute, None)
+            if isinstance(mapper, Mapping):
+                mapper_label = str(
+                    lookup_mapper_display_exact(record.basename, mapper) or ""
+                ).strip()
+
+        existing = str(record.display or "").strip()
+        source_label = (
+            current_label
+            or persisted_label
+            or mapper_label
+            or (existing if existing != record.basename else "")
+        )
+        display = project_model_display(
+            record.id,
+            source_label=source_label,
+            explicit_display=explicit,
+        )
+        return None if display == existing else display
 
     current = str(record.display or "").strip()
     if current and current != record.basename:
@@ -737,6 +800,55 @@ def _record_display(
     # Nothing friendly is known. The raw basename is the label, so only rebuild
     # the record when it is not already carrying it.
     return None if current == record.basename else record.basename
+
+
+def _entry_source(snapshot: Any, family: str, selection: str) -> str:
+    by_family = getattr(snapshot, "entry_sources", None)
+    if isinstance(by_family, Mapping):
+        family_sources = by_family.get(family)
+        if isinstance(family_sources, Mapping):
+            source = str(family_sources.get(selection) or "").strip()
+            if source:
+                return source
+    return "catalogue"
+
+
+def backfill_installed_presentations(repo: Any, snapshot: Any | None) -> bool:
+    """Persist exact live catalogue or mirror evidence for installed models.
+
+    This is an explicit online-refresh mutation helper. Inventory construction
+    itself only reads presentation evidence and never calls this function.
+    """
+    from .model_display import lookup_mapper_display_exact
+    from .model_registry import ModelRegistryService
+
+    index = build_identity_index(repo, snapshot=snapshot)
+    changed = False
+    for record in index.records():
+        if not record.installed:
+            continue
+        label = ""
+        source = ""
+        exact_selection = _exact_catalogue_selection(snapshot, record)
+        if exact_selection:
+            label = exact_selection
+            source = _entry_source(snapshot, record.family, label)
+        else:
+            mapper_attribute = _NAME_MAPPER_ATTR.get(record.family)
+            mapper = getattr(repo, mapper_attribute, None) if mapper_attribute else None
+            if isinstance(mapper, Mapping):
+                label = str(
+                    lookup_mapper_display_exact(record.basename, mapper) or ""
+                ).strip()
+                if label:
+                    source = "model_name_mapper"
+        if label and ModelRegistryService.remember_presentation(
+            record.id,
+            catalogue_label=label,
+            catalogue_source=source,
+        ):
+            changed = True
+    return changed
 
 
 def _enrich_record_displays(

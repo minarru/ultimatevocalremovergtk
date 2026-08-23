@@ -463,7 +463,7 @@ class InventoryCardinalityTests(unittest.TestCase):
 
         self.assertTrue(record.installed)
         self.assertFalse(record.identity_complete)
-        self.assertEqual(record.display, "Catalogued display")
+        self.assertEqual(record.display, "MDX-Net — Catalogued")
         self.assertEqual(
             record.artifacts.supporting_filenames, ("trusted-local.yaml",)
         )
@@ -809,6 +809,88 @@ class DisplayEnrichmentTests(unittest.TestCase):
         records = self._records(repo, snapshot)
         self.assertEqual(records["mdx:model"].display, "MDX-Net — Pair")
 
+    def test_registry_override_and_exact_source_precedence_use_shared_projector(self) -> None:
+        from core.model_inventory import build_identity_index
+
+        repo, snapshot = _fake_mdx_pair()
+        repo._model_artifact_files = lambda family: (
+            ["model.ckpt", "config.yaml"] if family == "mdx" else []
+        )
+        repo.mdx_name_select_MAPPER = {"model.ckpt": "Mapper title"}
+        with patch(
+            "core.model_registry.ModelRegistryService.presentation",
+            return_value={
+                "catalogue_label": "Persisted title",
+                "display_override": "Trusted title",
+            },
+        ):
+            record = build_identity_index(
+                repo,
+                snapshot=snapshot,
+                bundled_demucs_specs={},
+                registered_demucs={},
+            ).lookup("mdx:model")
+
+        self.assertEqual(record.display, "Trusted title")
+        self.assertEqual(record.id, "mdx:model")
+        self.assertEqual(record.backend_name, "model")
+        self.assertEqual(record.artifacts.primary_filename, "model.ckpt")
+
+    def test_live_then_persisted_then_mirror_source_precedence(self) -> None:
+        from core.model_inventory import build_identity_index
+
+        repo, snapshot = _fake_mdx_pair()
+        repo._model_artifact_files = lambda family: (
+            ["model.ckpt", "config.yaml"] if family == "mdx" else []
+        )
+        repo.mdx_name_select_MAPPER = {"model.ckpt": "Mapper title"}
+        with patch(
+            "core.model_registry.ModelRegistryService.presentation",
+            return_value={"catalogue_label": "Persisted title"},
+        ):
+            live = build_identity_index(
+                repo,
+                snapshot=snapshot,
+                bundled_demucs_specs={},
+                registered_demucs={},
+            ).lookup("mdx:model")
+        self.assertEqual(live.display, "MDX-Net — Pair")
+
+        installed_only = self._repo(
+            mdx=["custom.onnx"],
+            mdx_name_select_MAPPER={"custom.onnx": "BS Roformer Vocals by viperx"},
+        )
+        with patch(
+            "core.model_registry.ModelRegistryService.presentation",
+            return_value={"catalogue_label": "MDX23C Model: Persisted"},
+        ):
+            persisted = self._records(installed_only, _snapshot())["mdx:custom"]
+        self.assertEqual(persisted.display, "MDX23C — Persisted")
+
+        with patch(
+            "core.model_registry.ModelRegistryService.presentation", return_value={}
+        ):
+            mirrored = self._records(installed_only, _snapshot())["mdx:custom"]
+        self.assertEqual(
+            mirrored.display, "BandSplit Roformer — Vocals · ViperX"
+        )
+
+    def test_inventory_projection_never_persists_presentation(self) -> None:
+        from core.model_inventory import build_identity_index
+
+        repo = self._repo(mdx=["custom.onnx"])
+        with patch(
+            "core.model_registry.ModelRegistryService.remember_presentation",
+            side_effect=AssertionError("inventory write"),
+        ):
+            record = build_identity_index(
+                repo,
+                snapshot=_snapshot(),
+                bundled_demucs_specs={},
+                registered_demucs={},
+            ).lookup("mdx:custom")
+        self.assertEqual(record.display, "custom")
+
     def test_former_vip_installed_model_uses_public_catalogue_display(self) -> None:
         payload = {
             "mdx_download_list": {},
@@ -827,7 +909,7 @@ class DisplayEnrichmentTests(unittest.TestCase):
 
         record = self._records(repo, snapshot)["mdx:UVR-MDX-NET_Main_427"]
 
-        self.assertEqual(record.display, "MDX-Net — UVR-MDX-NET_Main_427")
+        self.assertEqual(record.display, "MDX-Net — UVR Main 427")
         self.assertEqual(record.backend_name, "UVR-MDX-NET_Main_427")
 
     def test_catalogue_basename_echo_falls_through_to_mapper(self) -> None:
@@ -853,7 +935,7 @@ class DisplayEnrichmentTests(unittest.TestCase):
             demucs_name_select_MAPPER={"tasnet.th": "v1 | tasnet"},
         )
         records = self._records(repo, _snapshot())
-        self.assertEqual(records["demucs:tasnet"].display, "v1 | tasnet")
+        self.assertEqual(records["demucs:tasnet"].display, "v1 — TasNet")
 
     def test_vr_uses_catalogue_index_and_has_no_mapper_fallback(self) -> None:
         repo = self._repo(
@@ -862,8 +944,8 @@ class DisplayEnrichmentTests(unittest.TestCase):
         )
         snapshot = _snapshot(display_vr={"1_HP-UVR": "VR Arch — 1 HP"})
         records = self._records(repo, snapshot)
-        self.assertEqual(records["vr:1_HP-UVR"].display, "VR Arch — 1 HP")
-        self.assertEqual(records["vr:9_HP2-UVR"].display, "9_HP2-UVR")
+        self.assertEqual(records["vr:1_HP-UVR"].display, "HP 1")
+        self.assertEqual(records["vr:9_HP2-UVR"].display, "HP2 9")
 
     def test_apollo_keeps_raw_basename_without_catalogue_display(self) -> None:
         repo = self._repo(apollo=["custom_apollo.ckpt"])
@@ -908,7 +990,7 @@ class DisplayEnrichmentTests(unittest.TestCase):
             (
                 "UVR-MDX-NET-Inst_HQ_3.onnx",
                 "UVR-MDX-NET Inst HQ 3",
-                "UVR-MDX-NET Inst HQ 3",
+                "UVR-MDX-NET Instrumental High Quality 3",
             ),
             ("totally_unknown_model.onnx", None, "totally_unknown_model"),
         )
@@ -965,3 +1047,82 @@ class DisplayEnrichmentTests(unittest.TestCase):
         )
         result = _enrich_record_displays(self._repo(), [original], _snapshot())
         self.assertIs(result[0], original)
+
+
+class PresentationBackfillTests(unittest.TestCase):
+    def test_backfill_persists_installed_exact_catalogue_evidence(self) -> None:
+        from core.model_inventory import backfill_installed_presentations
+        from core.model_registry import ModelRegistryService
+
+        repo, snapshot = _fake_mdx_pair()
+        repo._model_artifact_files = lambda family: (
+            ["model.ckpt", "config.yaml"] if family == "mdx" else []
+        )
+        snapshot.entry_sources = {"mdx": {"MDX-Net Model: Pair": "upstream"}}
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "core.model_registry.paths.REGISTERED_MODEL_INDEX",
+            os.path.join(directory, "registered.json"),
+        ):
+            ModelRegistryService.remember_presentation(
+                "mdx:model", display_override="Trusted title"
+            )
+            changed = backfill_installed_presentations(repo, snapshot)
+            evidence = ModelRegistryService.presentation("mdx:model")
+
+        self.assertTrue(changed)
+        self.assertEqual(evidence["catalogue_label"], "MDX-Net Model: Pair")
+        self.assertEqual(evidence["catalogue_source"], "upstream")
+        self.assertEqual(evidence["display_override"], "Trusted title")
+
+    def test_mapper_refresh_can_backfill_without_a_catalogue_snapshot(self) -> None:
+        from core.model_inventory import backfill_installed_presentations
+        from core.model_registry import ModelRegistryService
+
+        repo = _empty_repo(
+            _model_artifact_files=lambda family: (
+                ["mirror.onnx"] if family == "mdx" else []
+            ),
+            mdx_name_select_MAPPER={"mirror.onnx": "MDX-Net Model: Mirror"},
+        )
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "core.model_registry.paths.REGISTERED_MODEL_INDEX",
+            os.path.join(directory, "registered.json"),
+        ):
+            changed = backfill_installed_presentations(repo, None)
+            evidence = ModelRegistryService.presentation("mdx:mirror")
+
+        self.assertTrue(changed)
+        self.assertEqual(evidence["catalogue_label"], "MDX-Net Model: Mirror")
+        self.assertEqual(evidence["catalogue_source"], "model_name_mapper")
+
+    def test_prededupe_exact_catalogue_evidence_is_backfilled(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.model_inventory import backfill_installed_presentations
+        from core.model_registry import ModelRegistryService
+
+        selection = "MDX-Net Model: Exact Alias"
+        entry = EntryMeta(
+            label=selection,
+            display="Exact Alias",
+            arch=MDX_ARCH_TYPE,
+            files={"alias.onnx": "https://example.invalid/alias.onnx"},
+            checkpoint="alias.onnx",
+        )
+        snapshot = _snapshot(meta={"mdx": {selection: entry}})
+        snapshot.entry_sources = {"mdx": {selection: "politrees"}}
+        repo = _empty_repo(
+            _model_artifact_files=lambda family: (
+                ["alias.onnx"] if family == "mdx" else []
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "core.model_registry.paths.REGISTERED_MODEL_INDEX",
+            os.path.join(directory, "registered.json"),
+        ):
+            changed = backfill_installed_presentations(repo, snapshot)
+            evidence = ModelRegistryService.presentation("mdx:alias")
+
+        self.assertTrue(changed)
+        self.assertEqual(evidence["catalogue_label"], selection)
+        self.assertEqual(evidence["catalogue_source"], "politrees")

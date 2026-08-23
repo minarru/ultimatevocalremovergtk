@@ -92,6 +92,7 @@ class CatalogueSnapshot:
     display_index_mdx: Mapping[str, str]
     display_index_demucs: Mapping[str, str]
     checkpoint_yaml_index: Mapping[str, str]
+    entry_sources: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     report: RefreshReport | None = None
 
     def download_lists(self) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]]:
@@ -465,16 +466,44 @@ class CatalogueCoordinator:
         vr, mdx, demucs = flatten_upstream_lists(
             dict(upstream.payload) if upstream is not None else {}
         )
+        source_owners: dict[str, dict[str, str]] = {
+            "vr": {str(label): SourceId.UPSTREAM.value for label in vr},
+            "mdx": {str(label): SourceId.UPSTREAM.value for label in mdx},
+            "demucs": {str(label): SourceId.UPSTREAM.value for label in demucs},
+            "apollo": {},
+        }
+
+        def track_source(
+            family: str,
+            before: Mapping[str, Any],
+            after: Mapping[str, Any],
+            source_id: SourceId,
+        ) -> None:
+            owners = source_owners[family]
+            for label, model in after.items():
+                if label not in before or before[label] != model:
+                    owners[str(label)] = source_id.value
+
         if politrees is not None:
+            before = (dict(vr), dict(mdx), dict(demucs))
             vr, mdx, demucs = merge_politrees_catalogues(
                 vr, mdx, demucs, dict(politrees.payload)
             )
+            for family, old, merged in zip(
+                ("vr", "mdx", "demucs"), before, (vr, mdx, demucs), strict=True
+            ):
+                track_source(family, old, merged, SourceId.POLITREES)
         if extras is not None:
             from .extra_catalog import merge_extra_catalogues
 
+            before = (dict(vr), dict(mdx), dict(demucs))
             vr, mdx, demucs = merge_extra_catalogues(
                 vr, mdx, demucs, extra=dict(extras.payload)
             )
+            for family, old, merged in zip(
+                ("vr", "mdx", "demucs"), before, (vr, mdx, demucs), strict=True
+            ):
+                track_source(family, old, merged, SourceId.EXTRAS)
         extra_meta: dict[str, Any] = {}
         converted: dict[str, Any] | None = None
         if mvsepless is not None:
@@ -488,14 +517,22 @@ class CatalogueCoordinator:
                 converted = raw
             else:
                 converted = convert_mvsepless_catalog(raw)
+            before = (dict(vr), dict(mdx), dict(demucs))
             vr, mdx, demucs = merge_mvsepless_catalogues(
                 vr, mdx, demucs, converted, allow_network=False
             )
+            for family, old, merged in zip(
+                ("vr", "mdx", "demucs"), before, (vr, mdx, demucs), strict=True
+            ):
+                track_source(family, old, merged, SourceId.MVSEPLESS)
             extra_meta = dict(converted.get("metadata") or {})
 
         apollo = apollo_download_list(
             extra=dict(extras.payload) if extras is not None else None
         )
+        source_owners["apollo"] = {
+            str(label): SourceId.EXTRAS.value for label in apollo
+        }
         alias_meta = _metadata_alias_index(extra_meta)
         meta_by_family = build_meta_by_family(
             vr, mdx, demucs, apollo, extra_meta, alias_meta
@@ -549,6 +586,17 @@ class CatalogueCoordinator:
             display_index_mdx=MappingProxyType(display_mdx),
             display_index_demucs=MappingProxyType(display_demucs),
             checkpoint_yaml_index=MappingProxyType(yaml_index),
+            entry_sources=MappingProxyType(
+                {
+                    family: MappingProxyType(
+                        {
+                            str(selection): source
+                            for selection, source in source_owners[family].items()
+                        }
+                    )
+                    for family in ("vr", "mdx", "demucs", "apollo")
+                }
+            ),
             report=report,
         )
 

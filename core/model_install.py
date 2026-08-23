@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 __all__ = ["ModelInstallResult", "finalize_downloaded_model"]
 
@@ -86,6 +86,19 @@ def _candidate_record(repo: Any, family: str, selection: str) -> Any | None:
     return None
 
 
+def _catalogue_source(repo: Any, family: str, selection: str) -> str:
+    coordinator = getattr(repo, "catalogue", None)
+    snapshot = getattr(coordinator, "_latest", None)
+    by_family = getattr(snapshot, "entry_sources", None)
+    if isinstance(by_family, Mapping):
+        sources = by_family.get(family)
+        if isinstance(sources, Mapping):
+            source = str(sources.get(selection) or "").strip()
+            if source:
+                return source
+    return "catalogue"
+
+
 def finalize_downloaded_model(
     *,
     repo: Any,
@@ -155,6 +168,26 @@ def finalize_downloaded_model(
             ),
         )
 
+    from .model_registry import ModelRegistryService
+
+    try:
+        presentation_changed = ModelRegistryService.remember_presentation(
+            record.id,
+            catalogue_label=selection,
+            catalogue_source=_catalogue_source(repo, family, selection),
+        )
+    except (OSError, ValueError) as exc:
+        return ModelInstallResult(
+            ready=False,
+            published=False,
+            metadata_changed=metadata_changed,
+            detail=(
+                f"could not persist presentation evidence for {record.id}; "
+                f"retry the download finalization: {type(exc).__name__}: {exc}"
+            ),
+        )
+
+    metadata_changed = metadata_changed or presentation_changed
     changed = transfer_result == "complete" or metadata_changed
     if changed:
         debug("model", f"publish {record.id} after download")

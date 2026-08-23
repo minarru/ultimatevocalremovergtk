@@ -83,7 +83,7 @@ class AppContext:
         if manager is None:
             from core.downloads import DownloadManager
 
-            manager = DownloadManager(coordinator=self.catalogue)
+            manager = DownloadManager(coordinator=self.catalogue, repo=self.repo)
             self._download_manager = manager
         return manager
 

@@ -1,14 +1,14 @@
 import os
-import shutil
 import tempfile
 import threading
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, NO_MODEL, VR_ARCH_TYPE
-from core.downloads import DownloadManager
 from core import paths
 from core.catalog_sources import EntryMeta
+from core.downloads import DownloadManager
 
 
 def _stub_config_fetch(test: unittest.TestCase) -> None:
@@ -110,6 +110,60 @@ class DownloadManagerResolveTests(unittest.TestCase):
             self.assertEqual(result, "exists")
             mdx_c.assert_not_called()
             apollo.assert_not_called()
+
+
+class PresentationBackfillRefreshTests(unittest.TestCase):
+    def _manager(self):
+        from core.catalogue_types import RefreshMode, RefreshReport
+
+        snapshot = SimpleNamespace(
+            vr={},
+            mdx={"Live": {"live.onnx": "https://example.test/live.onnx"}},
+            demucs={},
+            apollo={},
+            meta={},
+            unsupported={},
+        )
+        coordinator = Mock()
+        coordinator.refresh.return_value = RefreshReport(
+            mode=RefreshMode.FORCE,
+            succeeded=(),
+            upstream_live=True,
+            usable=True,
+        )
+        coordinator.snapshot.return_value = snapshot
+        coordinator.ensure.return_value = snapshot
+        coordinator.source.return_value = SimpleNamespace(
+            state=SimpleNamespace(content=None)
+        )
+        repo = object()
+        manager = DownloadManager(coordinator=coordinator, repo=repo)
+        return manager, coordinator, repo
+
+    def test_live_backfill_failure_warns_keeps_snapshot_and_retries(self) -> None:
+        manager, _coordinator, _repo = self._manager()
+        with patch(
+            "core.model_inventory.backfill_installed_presentations",
+            side_effect=OSError("registry is read-only"),
+        ) as backfill, patch(
+            "core.downloads._urlopen", side_effect=OSError("no bulletin")
+        ), patch.object(manager, "schedule_size_cache_warmup"), self.assertWarnsRegex(
+            RuntimeWarning, "live catalogue remains active"
+        ):
+            self.assertTrue(manager.refresh())
+            self.assertTrue(manager.refresh())
+
+        self.assertIn("Live", manager.mdx_download_list)
+        self.assertEqual(backfill.call_count, 2)
+
+    def test_offline_catalogue_load_never_backfills(self) -> None:
+        manager, _coordinator, _repo = self._manager()
+        with patch(
+            "core.model_inventory.backfill_installed_presentations"
+        ) as backfill:
+            self.assertTrue(manager.ensure_catalogues(allow_network=False))
+
+        backfill.assert_not_called()
 
 
 class DownloadManagerAvailabilityTests(unittest.TestCase):
@@ -264,6 +318,20 @@ class WarmSizeCacheTests(unittest.TestCase):
 
 
 class UpdateModelSettingsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._presentation_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._presentation_tmp.cleanup)
+        for target, filename in (
+            ("REGISTERED_MODEL_INDEX", "registered_models.json"),
+            ("MDX_MODEL_NAME_SELECT", "mdx_name_mapper.json"),
+            ("DEMUCS_MODEL_NAME_SELECT", "demucs_name_mapper.json"),
+        ):
+            patcher = patch.object(
+                paths, target, os.path.join(self._presentation_tmp.name, filename)
+            )
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_overlay_plan_and_commit_serialize_real_local_writer(self) -> None:
         import io
         import json
@@ -530,6 +598,20 @@ class UpdateModelSettingsTests(unittest.TestCase):
 
             side = [_FileResp(payload) for payload in remote]
             repo = mock.Mock()
+            repo.catalogue = SimpleNamespace(
+                _latest=SimpleNamespace(
+                    vr={},
+                    mdx={},
+                    demucs={},
+                    apollo={},
+                    meta_by_family={
+                        "vr": {}, "mdx": {}, "demucs": {}, "apollo": {}
+                    },
+                    display_index_vr={},
+                    display_index_mdx={},
+                    display_index_demucs={},
+                )
+            )
             with mock.patch.object(
                 downloads_mod,
                 "_MODEL_DATA_URLS",
@@ -576,6 +658,17 @@ class UpdateModelSettingsTests(unittest.TestCase):
         repo = self._run_update(local=same, remote=[same, same, same, same])
         repo.invalidate_models.assert_not_called()
         repo.invalidate_model_presentation.assert_not_called()
+
+    def test_successful_online_mapper_update_attempts_presentation_backfill(self) -> None:
+        same = {"a.ckpt": "A"}
+        with patch(
+            "core.model_inventory.backfill_installed_presentations",
+            return_value=False,
+        ) as backfill:
+            repo = self._run_update(local=same, remote=[same, same, same, same])
+
+        backfill.assert_called_once()
+        self.assertIs(backfill.call_args.args[0], repo)
 
     def test_update_model_settings_reloads_the_hash_mappers(self):
         """Rewriting the hash map on disk must reach `repo.mdx_hash_MAPPER`.
