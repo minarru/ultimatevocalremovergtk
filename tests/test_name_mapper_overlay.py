@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import unittest
+import warnings
 from unittest import mock
 
 from core import name_mapper
@@ -80,6 +81,33 @@ class NameMapperOverlayTests(unittest.TestCase):
         self.assertEqual(repo.mdx_name_select_MAPPER, {"a.ckpt": "Upstream A"})
         self.assertEqual(repo.demucs_name_select_MAPPER, {"b.th": "Upstream B"})
         self.assertEqual(repo._naming_revision, 1)
+
+    def test_archival_preserves_overlay_replaced_after_link(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            mapper = os.path.join(tmp, "model_name_mapper.json")
+            source = name_mapper.local_overlay_path(mapper)
+            archive = name_mapper.legacy_overlay_archive_path(mapper)
+            _write(source, {"model.ckpt": "Original"})
+            real_link = os.link
+
+            def link_then_replace(link_source: str, link_archive: str) -> None:
+                real_link(link_source, link_archive)
+                replacement = f"{link_source}.replacement"
+                _write(replacement, {"model.ckpt": "Concurrent replacement"})
+                os.replace(replacement, link_source)
+
+            with warnings.catch_warnings(record=True) as caught, mock.patch.object(
+                name_mapper.os, "link", side_effect=link_then_replace
+            ):
+                warnings.simplefilter("always")
+                changed = name_mapper.archive_legacy_local_overlay(mapper)
+
+            self.assertFalse(changed)
+            self.assertEqual(_read(source), {"model.ckpt": "Concurrent replacement"})
+            self.assertEqual(_read(archive), {"model.ckpt": "Original"})
+            self.assertTrue(
+                any("changed during archival" in str(item.message) for item in caught)
+            )
 
     def test_load_without_overlay_returns_mirror(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -107,6 +107,19 @@ def archive_legacy_local_overlay(mapper_path: str) -> bool:
         )
         return False
     try:
+        source_stat = os.stat(source, follow_symlinks=False)
+        archive_stat = os.stat(archive, follow_symlinks=False)
+    except FileNotFoundError:
+        return not os.path.exists(source) and os.path.isfile(archive)
+    if not os.path.samestat(source_stat, archive_stat):
+        warnings.warn(
+            f"ignored legacy model name mapper changed during archival; "
+            f"leaving replacement untouched: {source}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return False
+    try:
         os.unlink(source)
     except OSError as exc:
         warnings.warn(

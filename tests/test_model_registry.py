@@ -152,16 +152,59 @@ class ModelRegistryTests(unittest.TestCase):
             catalogue_label="New label",
             catalogue_source="new-source",
         )
+        self.assertTrue(changed)
+        changed = ModelRegistryService.remember_presentation(
+            "mdx:alpha",
+            catalogue_label="Newest label",
+            display_override="",
+        )
 
         self.assertTrue(changed)
         self.assertEqual(
             ModelRegistryService.presentation("mdx:alpha"),
             {
-                "catalogue_label": "New label",
+                "catalogue_label": "Newest label",
                 "catalogue_source": "new-source",
                 "display_override": "Trusted Alpha",
             },
         )
+
+    def test_non_string_presentation_fields_cannot_poison_registry(self) -> None:
+        trusted = {
+            "schema_version": 2,
+            "hashes": {"hash-a": "mdx:alpha"},
+            "models": {
+                "mdx:alpha": {
+                    "catalogue_label": "Alpha",
+                    "catalogue_source": "upstream",
+                    "display_override": "Trusted Alpha",
+                }
+            },
+        }
+        invalid_updates: tuple[dict[str, object], ...] = (
+            {"catalogue_label": 42},
+            {"catalogue_source": None},
+            {"display_override": None},
+        )
+
+        for invalid_update in invalid_updates:
+            with self.subTest(invalid_update=invalid_update):
+                _write_json(self.registry_path, trusted)
+                with open(self.registry_path, "rb") as handle:
+                    original = handle.read()
+
+                with self.assertRaisesRegex(ValueError, "must be strings"):
+                    ModelRegistryService.remember_presentation(
+                        "mdx:alpha",
+                        **invalid_update,  # type: ignore[arg-type]
+                    )
+
+                with open(self.registry_path, "rb") as handle:
+                    self.assertEqual(handle.read(), original)
+                self.assertEqual(
+                    ModelRegistryService.presentation("mdx:alpha"),
+                    trusted["models"]["mdx:alpha"],
+                )
 
     def test_presentation_keys_must_be_exact_canonical_ids(self) -> None:
         with self.assertRaisesRegex(ValueError, "canonical model ID"):

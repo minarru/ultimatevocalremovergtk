@@ -18,6 +18,12 @@ _PRESENTATION_FIELDS = (
 )
 
 
+def _presentation_input(field: str, value: object) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"model presentation fields must be strings: {field}")
+    return value
+
+
 def _empty_registry() -> dict[str, Any]:
     return {"schema_version": _SCHEMA_VERSION, "hashes": {}, "models": {}}
 
@@ -200,13 +206,20 @@ class ModelRegistryService:
         from .model_identity import parse_stored_model_id
 
         exact_id = str(parse_stored_model_id(canonical_id))
+        fields = (
+            ("catalogue_label", _presentation_input("catalogue_label", catalogue_label)),
+            (
+                "catalogue_source",
+                _presentation_input("catalogue_source", catalogue_source),
+            ),
+            (
+                "display_override",
+                _presentation_input("display_override", display_override),
+            ),
+        )
         updates = {
             field: value
-            for field, value in (
-                ("catalogue_label", catalogue_label),
-                ("catalogue_source", catalogue_source),
-                ("display_override", display_override),
-            )
+            for field, value in fields
             if value != ""
         }
         if not updates:
