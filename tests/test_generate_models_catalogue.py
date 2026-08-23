@@ -2509,23 +2509,59 @@ class EntryMetaOverlayTests(unittest.TestCase):
 
 
 class RenderDisplayTests(unittest.TestCase):
-    def test_render_uses_canonical_display_name(self) -> None:
-        from core.model_naming import canonical_display_name
-
-        label = "Roformer Model: BandSplit Roformer | HyperACE by Unwa"
+    def test_render_uses_id_aware_display_in_tables_and_detail_headings(self) -> None:
+        label = "VR Arch Single Model v5: 1_HP-UVR"
         entry = catalogue.ModelEntry(
             source="extras",
-            family="Roformer",
+            family="VR Architecture",
             catalogue_label=label,
-            weight_file="bs_hyperace.ckpt",
+            weight_file="1_HP-UVR.pth",
             name_intent="instrumental",
             best_result="Instrumental",
             backend_focus="instrumental_primary",
         )
+
         rendered = render._render([entry])
-        display = canonical_display_name(label)
-        self.assertIn(display, rendered)
-        self.assertNotIn("Roformer Model:", rendered)
+
+        self.assertIn("| VR Architecture | HP 1 |", rendered)
+        self.assertIn("### HP 1", rendered)
+        self.assertNotIn("| VR Architecture | 1_HP-UVR |", rendered)
+
+    def test_summary_uses_id_aware_display(self) -> None:
+        entry = catalogue.ModelEntry(
+            source="extras",
+            family="VR Architecture",
+            catalogue_label="VR Arch Single Model v5: 1_HP-UVR",
+            weight_file="1_HP-UVR.pth",
+            name_intent="instrumental",
+        )
+        entry.flags = ["review me"]
+
+        rendered = render.render_summary_report([entry])
+
+        self.assertIn("**HP 1** (VR Architecture)", rendered)
+        self.assertNotIn("**1_HP-UVR**", rendered)
+
+    def test_quick_reference_keeps_the_complete_projected_display(self) -> None:
+        entry = catalogue.ModelEntry(
+            source="mvsepless",
+            family="Roformer",
+            catalogue_label=(
+                "Mel-Band Roformer Karaoke Fusion Aggressive by Gonzaluigi "
+                "[mbr_karaoke_fusion_aggr_gonzaluigi]"
+            ),
+            weight_file="mbr_karaoke_fusion_aggr_gonzaluigi.ckpt",
+            name_intent="karaoke",
+        )
+        expected = (
+            "MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi "
+            "[mbr_karaoke_fusion_aggr_gonzaluigi]"
+        )
+
+        rendered = render._render([entry])
+        quick_reference = rendered.split("## Karaoke models", 1)[0]
+
+        self.assertIn(expected, quick_reference)
 
     def test_render_header_lists_all_sources(self) -> None:
         rendered = render._render([])

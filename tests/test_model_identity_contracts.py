@@ -587,6 +587,11 @@ class DownloadMatchingLockTests(unittest.TestCase):
 
 
 class CatalogueDisplayProjectionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        score_patcher = patch("core.model_scores.load_model_scores", return_value={})
+        score_patcher.start()
+        self.addCleanup(score_patcher.stop)
+
     def test_catalogue_record_uses_the_exact_id_aware_projector(self) -> None:
         from core.catalog_sources import EntryMeta
 

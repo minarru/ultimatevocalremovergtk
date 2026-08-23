@@ -19,7 +19,6 @@ from catalogue.collect import (
     YAML_CACHE_DIR,
     CommunityRef,
     ModelEntry,
-    _display_label,
 )
 from core.model_catalogue import (
     catalogue_presentation_id,
@@ -178,6 +177,11 @@ def _catalogue_projection(entry: ModelEntry) -> Tuple[str, str]:
 
 def _canonical_model_id(entry: ModelEntry) -> str:
     return _catalogue_projection(entry)[0]
+
+
+def _display_label(entry: ModelEntry) -> str:
+    """Return the same exact projected label used by the UI and TSV audit."""
+    return _catalogue_projection(entry)[1]
 
 
 def presentation_reference_audit(
@@ -420,7 +424,7 @@ def _render(
                 [
                     [
                         e.family,
-                        _display_label(e)[:60],
+                        _display_label(e),
                         e.name_intent,
                         (e.best_result[:50] + "…") if len(e.best_result) > 50 else e.best_result,
                         e.backend_focus,

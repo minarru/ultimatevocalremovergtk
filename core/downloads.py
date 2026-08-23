@@ -573,6 +573,11 @@ class DownloadManager:
         """Kick off a background size-cache refresh (idempotent per URL set)."""
         threading.Thread(target=self.warm_size_cache, daemon=True).start()
 
+    @property
+    def last_refresh_report(self) -> Any:
+        """Most recent catalogue refresh report for user-facing diagnostics."""
+        return self._last_refresh_report
+
     # -- Online refresh ---------------------------------------------------------
 
     def refresh(self) -> bool:

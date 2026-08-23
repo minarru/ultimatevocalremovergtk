@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import unittest
 from typing import Any, cast
+from unittest.mock import patch
+
 from ui.widget_state import fetch, stash
 
 
@@ -119,7 +121,8 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
         win._row_actions = {}
         win._list_boxes = {VR_ARCH_TYPE: Gtk.ListBox()}
 
-        win._add_model_row(VR_ARCH_TYPE, selection)
+        with patch("core.model_scores.load_model_scores", return_value={}):
+            win._add_model_row(VR_ARCH_TYPE, selection)
 
         self.assertEqual(win._row_actions[(VR_ARCH_TYPE, selection)].get_title(), "HP 1")
 

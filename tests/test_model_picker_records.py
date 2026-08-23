@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import unittest
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest import mock
 
 from bundled.constants import NO_MODEL
@@ -110,6 +110,83 @@ class VocalSplitPickerTests(unittest.TestCase):
         self.assertEqual(selections, [NO_MODEL])
 
 
+class PickerVerboseLoggingTests(unittest.TestCase):
+    def test_combo_population_logs_exact_display_and_basename_only_when_verbose(self) -> None:
+        from core import debug_log, glib_log
+        from ui.widgets import rows
+
+        class FakeStringList:
+            def __init__(self) -> None:
+                self.values: list[str] = []
+
+            def append(self, value: str) -> None:
+                self.values.append(value)
+
+        class FakeComboRow:
+            def __init__(self) -> None:
+                self.model: FakeStringList | None = None
+
+            def get_title(self) -> str:
+                return "Primary model"
+
+            def set_model(self, model: FakeStringList) -> None:
+                self.model = model
+
+        emitted: list[str] = []
+        old_domains = debug_log._DOMAINS
+        old_normalized = debug_log._GMD_NORMALIZED
+        try:
+            debug_log._DOMAINS = None
+            debug_log._GMD_NORMALIZED = False
+            glib_log.set_emit_hook(
+                lambda _domain, message, _level: emitted.append(message)
+            )
+            with mock.patch.dict(
+                os.environ,
+                {"G_MESSAGES_DEBUG": "uvr-model"},
+                clear=False,
+            ), mock.patch.object(rows.Gtk, "StringList", FakeStringList), mock.patch.object(
+                rows, "stash"
+            ):
+                os.environ.pop("UVR_VERBOSE", None)
+                rows.set_combo_tag_values(
+                    cast(Any, FakeComboRow()),
+                    [("vr:1_HP-UVR", "HP 1")],
+                )
+                self.assertEqual(emitted, [])
+
+                os.environ["UVR_VERBOSE"] = "1"
+                rows.set_combo_tag_values(
+                    cast(Any, FakeComboRow()),
+                    [("Choose Model", "Choose Model")],
+                )
+                self.assertEqual(emitted, [])
+
+                rows.set_combo_tag_values(
+                    cast(Any, FakeComboRow()),
+                    [
+                        ("Choose Model", "Choose Model"),
+                        ("vr:1_HP-UVR", "HP 1"),
+                        ("mdx:raw_name", "raw_name"),
+                    ],
+                )
+        finally:
+            os.environ.pop("UVR_VERBOSE", None)
+            debug_log._DOMAINS = old_domains
+            debug_log._GMD_NORMALIZED = old_normalized
+            glib_log.set_emit_hook(None)
+
+        self.assertEqual(
+            emitted,
+            [
+                "picker surface='Primary model' entries=2 basename_displays=1",
+                "picker surface='Primary model' id='vr:1_HP-UVR' "
+                "basename='1_HP-UVR' display='HP 1' display_is_basename=False",
+                "picker surface='Primary model' id='mdx:raw_name' "
+                "basename='raw_name' display='raw_name' display_is_basename=True",
+            ],
+        )
+
 class _FakeRow:
     def __init__(self, title: str = "", subtitle: str = "", **_kwargs: object) -> None:
         self.title = title
@@ -171,7 +248,8 @@ class _FakeListBox:
 
 
 class EnsemblePickerTests(unittest.TestCase):
-    def test_rows_are_installed_ids_with_family_disambiguation(self) -> None:
+    def test_rows_are_installed_ids_with_family_disambiguation_and_verbose_trace(self) -> None:
+        from core import debug_log, glib_log
         from core.stems import EnsemblePair
         from ui.ensemble import window as ensemble_window
 
@@ -196,13 +274,32 @@ class EnsemblePickerTests(unittest.TestCase):
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
 
-        with mock.patch(
-            "core.model_identity.ModelIdentityService.records",
-            return_value=tuple(records),
-        ), mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow), mock.patch.object(
-            ensemble_window.Gtk, "CheckButton", _FakeCheck
-        ), mock.patch.object(ensemble_window, "stash"):
-            page._rebuild_model_list([])
+        emitted: list[str] = []
+        old_domains = debug_log._DOMAINS
+        old_normalized = debug_log._GMD_NORMALIZED
+        try:
+            debug_log._DOMAINS = None
+            debug_log._GMD_NORMALIZED = False
+            glib_log.set_emit_hook(
+                lambda _domain, message, _level: emitted.append(message)
+            )
+            with mock.patch.dict(
+                os.environ,
+                {"G_MESSAGES_DEBUG": "uvr-model", "UVR_VERBOSE": "1"},
+                clear=False,
+            ), mock.patch(
+                "core.model_identity.ModelIdentityService.records",
+                return_value=tuple(records),
+            ), mock.patch.object(
+                ensemble_window.Adw, "ActionRow", _FakeRow
+            ), mock.patch.object(
+                ensemble_window.Gtk, "CheckButton", _FakeCheck
+            ), mock.patch.object(ensemble_window, "stash"):
+                page._rebuild_model_list([])
+        finally:
+            debug_log._DOMAINS = old_domains
+            debug_log._GMD_NORMALIZED = old_normalized
+            glib_log.set_emit_hook(None)
 
         self.assertEqual(
             [(row.title, row.subtitle) for row in page.models_listbox.children],
@@ -212,6 +309,17 @@ class EnsemblePickerTests(unittest.TestCase):
             ],
         )
         self.assertEqual(list(page._model_checks), ["mdx:shared", "vr:shared"])
+        self.assertIn(
+            "picker surface='Ensemble members (vocals_instrumental)' "
+            "entries=2 basename_displays=0",
+            emitted,
+        )
+        self.assertIn(
+            "picker surface='Ensemble members (vocals_instrumental)' "
+            "id='mdx:shared' basename='shared' display='Shared display' "
+            "display_is_basename=False",
+            emitted,
+        )
 
     def test_flush_drops_illegal_members_and_keeps_checked_members(self) -> None:
         from ui.ensemble.window import EnsemblePage

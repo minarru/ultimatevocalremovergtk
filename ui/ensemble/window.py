@@ -116,6 +116,7 @@ from ..shared_settings import (
 from ..settings_bind import set_flat
 from ..widgets.rows import (
     get_combo_value,
+    log_model_picker_items,
     make_combo_row,
     make_switch_row,
     set_combo_tag_values,
@@ -1161,6 +1162,11 @@ class EnsemblePage:
             self._update_models_dialog_status()
             self._update_models_summary()
             return
+
+        log_model_picker_items(
+            f"Ensemble members ({pair.value})",
+            ((record.id, record.display) for record in records),
+        )
 
         if not records:
             self.models_listbox.append(Adw.ActionRow(title="No compatible models found"))

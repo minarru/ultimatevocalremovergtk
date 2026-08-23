@@ -89,6 +89,43 @@ def persistence_feedback(error: Optional[str], success: str) -> str:
     return error or success
 
 
+def catalogue_refresh_feedback(
+    report: typing.Any,
+    *,
+    online: bool,
+    model_settings_updated: bool | None,
+    error: str = "",
+) -> str:
+    """Describe a manual catalogue-cache refresh without hiding stale sources."""
+    detail = str(error or "").strip().rstrip(".")
+    if detail:
+        return f"Couldn't refresh catalogue cache: {detail}. Previous cache kept."
+
+    sources: list[str] = []
+    for entry in getattr(report, "failed", ()):
+        source = entry[0] if isinstance(entry, tuple) and entry else entry
+        value = str(getattr(source, "value", source) or "").strip()
+        if value and value not in sources:
+            sources.append(value)
+    for source in getattr(report, "stale", ()):
+        value = str(getattr(source, "value", source) or "").strip()
+        if value and value not in sources:
+            sources.append(value)
+
+    if sources:
+        labels = [source.replace("_", " ").capitalize() for source in sources]
+        if len(labels) == 1:
+            joined = labels[0]
+        else:
+            joined = ", ".join(labels[:-1]) + f" and {labels[-1]}"
+        return f"Catalogue cache partially refreshed; kept previous data for {joined}"
+    if model_settings_updated is False:
+        return "Catalogue cache refreshed, but model parameters could not be updated"
+    if online or bool(getattr(report, "usable", False)):
+        return "Catalogue cache refreshed"
+    return "Couldn't refresh catalogue cache. Previous cache kept."
+
+
 class ProfileStore:
     """Read/write named settings profiles as JSON, matching ``UVR.py``.
 
@@ -436,9 +473,74 @@ class PreferencesDialog(Adw.PreferencesDialog):
             "is_auto_update_model_params",
         )
         maintenance_group.add(self.auto_update_model_params_row)
+
+        self.catalogue_cache_refresh_row = Adw.ActionRow(
+            title="Refresh catalogue cache",
+            subtitle="Download fresh model listings and update installed model names",
+        )
+        self.catalogue_cache_refresh_button = Gtk.Button(
+            label="Refresh",
+            valign=Gtk.Align.CENTER,
+        )
+        self.catalogue_cache_refresh_button.connect("clicked", self._on_catalogue_cache_refresh)
+        self.catalogue_cache_refresh_spinner = Gtk.Spinner(
+            valign=Gtk.Align.CENTER,
+            visible=False,
+        )
+        self.catalogue_cache_refresh_row.add_suffix(self.catalogue_cache_refresh_spinner)
+        self.catalogue_cache_refresh_row.add_suffix(self.catalogue_cache_refresh_button)
+        maintenance_group.add(self.catalogue_cache_refresh_row)
         page.add(maintenance_group)
 
         return page
+
+    def _on_catalogue_cache_refresh(self, _button: Gtk.Button) -> None:
+        if getattr(self, "_catalogue_cache_refreshing", False):
+            return
+        self._catalogue_cache_refreshing = True
+        self.catalogue_cache_refresh_button.set_sensitive(False)
+        self.catalogue_cache_refresh_spinner.set_visible(True)
+        self.catalogue_cache_refresh_spinner.start()
+        self.catalogue_cache_refresh_row.set_subtitle("Refreshing catalogue cache…")
+        threading.Thread(
+            target=self._catalogue_cache_refresh_worker,
+            daemon=True,
+        ).start()
+
+    def _catalogue_cache_refresh_worker(self) -> None:
+        from core.debug_log import debug
+
+        try:
+            manager = self.context.download_manager
+            online = bool(manager.refresh())
+            model_settings_updated: bool | None = None
+            if online and self.settings.process.auto_update_model_params:
+                model_settings_updated = bool(manager.update_model_settings(self.context.repo))
+            message = catalogue_refresh_feedback(
+                manager.last_refresh_report,
+                online=online,
+                model_settings_updated=model_settings_updated,
+            )
+        except Exception as exc:  # noqa: BLE001 - shown in Preferences and log
+            from .errorlog import log_error
+
+            log_error("Preferences", exc, context="refreshing catalogue cache")
+            message = catalogue_refresh_feedback(
+                None,
+                online=False,
+                model_settings_updated=None,
+                error=str(exc).strip() or type(exc).__name__,
+            )
+        debug("download", f"preferences catalogue refresh result={message!r}")
+        idle_on_main(self._finish_catalogue_cache_refresh, message)
+
+    def _finish_catalogue_cache_refresh(self, message: str) -> None:
+        self._catalogue_cache_refreshing = False
+        self.catalogue_cache_refresh_button.set_sensitive(True)
+        self.catalogue_cache_refresh_spinner.stop()
+        self.catalogue_cache_refresh_spinner.set_visible(False)
+        self.catalogue_cache_refresh_row.set_subtitle(message)
+        self.add_toast(Adw.Toast.new(message))
 
     # -- Load settings into widgets ---------------------------------------------
 

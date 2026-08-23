@@ -369,6 +369,8 @@ class DiscoveryTests(unittest.TestCase):
             "core.downloads.DownloadManager", return_value=manager
         ), patch(
             "core.model_catalogue.ModelCatalogueService", return_value=service
+        ), patch(
+            "core.model_scores.load_model_scores", return_value={}
         ), redirect_stdout(out):
             code = main([
                 "models", "catalog", "--family", "mdx", "--offline",

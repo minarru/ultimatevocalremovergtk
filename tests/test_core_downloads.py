@@ -705,7 +705,13 @@ class UpdateModelSettingsTests(unittest.TestCase):
                 def __exit__(self, *args: object) -> None:
                     return None
 
-            with mock.patch.object(paths, "MDX_HASH_JSON", mdx_hash_json):
+            with mock.patch.object(
+                paths, "MDX_HASH_JSON", mdx_hash_json
+            ), mock.patch.object(
+                paths,
+                "REGISTERED_MODEL_INDEX",
+                os.path.join(tmp, "registered_models.json"),
+            ):
                 repo = ModelRepository()
                 self.assertNotIn("fresh-md5", repo.mdx_hash_MAPPER)
                 with mock.patch.object(
