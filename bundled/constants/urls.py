@@ -44,6 +44,10 @@ DONATE_LINK_PATREON = "https://www.patreon.com/uvr"
 #DOWNLOAD REPOS
 NORMAL_REPO = "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/"
 
+ADDITIONAL_MODEL_REPO = (
+    "https://github.com/Anjok0109/ai_magic/releases/download/v5/"
+)
+
 FORK_RELEASE_JSON_URL = (
     "https://raw.githubusercontent.com/minarru/ultimatevocalremovergtk/main/packaging/release.json"
 )
@@ -53,8 +57,3 @@ FORK_RELEASE_PAGE = "https://github.com/minarru/ultimatevocalremovergtk/releases
 FORK_ISSUE_URL = "https://github.com/minarru/ultimatevocalremovergtk/issues/new"
 
 ISSUE_LINK = FORK_ISSUE_URL
-
-VIP_REPO = b'\xf3\xc2W\x19\x1foI)\xc2\xa9\xcc\xb67(Z\xf5',\
-           b'gAAAAABjQAIQ-NpNMMxMedpKHHb7ze_nqB05hw0YhbOy3pFzuzDrfqumn8_qvraxEoUpZC5ZXC0gGvfDxFMqyq9VWbYKlA67SUFI_wZB6QoVyGI581vs7kaGfUqlXHIdDS6tQ_U-BfjbEAK9EU_74-R2zXjz8Xzekw=='
-
-NO_CODE = 'incorrect_code'

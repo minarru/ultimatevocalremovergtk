@@ -264,7 +264,7 @@ class _ModelInventory:
         ensure = getattr(coordinator, "ensure", None)
         if not callable(ensure):
             return None
-        return ensure(vip=True, allow_network=False)
+        return ensure(allow_network=False)
 
     def _cache_slot(self) -> Any:
         """The object owning the cached index for this repository.

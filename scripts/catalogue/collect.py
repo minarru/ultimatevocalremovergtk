@@ -172,9 +172,9 @@ def _snapshot_and_payloads(
         # stale-while-revalidate and used to republish the FORCE snapshot from
         # cache, including a placeholder RefreshReport(usable=False).
         if refresh and allow_network:
-            snapshot = coordinator.snapshot(vip=False, mode=RefreshMode.FORCE)
+            snapshot = coordinator.snapshot(mode=RefreshMode.FORCE)
         else:
-            snapshot = coordinator.ensure(vip=False, allow_network=allow_network)
+            snapshot = coordinator.ensure(allow_network=allow_network)
         payloads = _source_payloads(coordinator)
         return snapshot, payloads
     finally:
@@ -1040,7 +1040,7 @@ def _source_for(
     rebuilding them per entry meant one full mvsepless conversion per model.
     """
     if upstream_lists is None and trvlvr:
-        upstream_lists = flatten_upstream_lists(trvlvr, vip=False)
+        upstream_lists = flatten_upstream_lists(trvlvr)
     in_tr = False
     if upstream_lists is not None:
         vr, mdx, demucs = upstream_lists
@@ -1094,7 +1094,7 @@ def _entries_from_snapshot(
 
     # Both of these are constant across the run; computing them per label meant
     # a full mvsepless catalogue conversion for every one of ~474 entries.
-    upstream_lists = flatten_upstream_lists(trvlvr, vip=False) if trvlvr else None
+    upstream_lists = flatten_upstream_lists(trvlvr) if trvlvr else None
     mvsepless_lists = _mvsepless_lists(mvsepless)
 
     def source_for(label: str) -> str:
@@ -1240,4 +1240,3 @@ def build_ir(
         "document_sha256": document_sha256,
         "entries": [asdict(entry) for entry in entries],
     }
-

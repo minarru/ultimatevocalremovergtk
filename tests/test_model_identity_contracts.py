@@ -13,6 +13,8 @@ from typing import Any
 from unittest.mock import patch
 
 from bundled.constants import CHOOSE_MODEL, NO_MODEL
+from core.catalogue_coordinator import CatalogueCoordinator
+from core.catalogue_types import SourceId
 from core.model_catalogue import CatalogEntryId, ModelCatalogueRecord, ModelCatalogueService
 from core.model_identity import (
     CatalogueRef,
@@ -24,6 +26,7 @@ from core.model_identity import (
     ModelRecord,
     parse_stored_model_id,
 )
+from core.remote_catalog_cache import RemoteJsonSource
 
 
 def _empty_repo(**overrides: Any):
@@ -39,6 +42,23 @@ def _empty_repo(**overrides: Any):
     }
     values.update(overrides)
     return SimpleNamespace(**values)
+
+
+def _coordinator_for_payload(payload: dict[str, Any]) -> CatalogueCoordinator:
+    sources = {
+        SourceId.UPSTREAM: RemoteJsonSource(
+            source_id=SourceId.UPSTREAM, local_loader=lambda: payload
+        )
+    }
+    for source_id in (
+        SourceId.POLITREES,
+        SourceId.EXTRAS,
+        SourceId.MVSEPLESS,
+    ):
+        sources[source_id] = RemoteJsonSource(
+            source_id=source_id, enabled=lambda: False
+        )
+    return CatalogueCoordinator(sources=sources)
 
 
 def _snapshot(
@@ -788,6 +808,27 @@ class DisplayEnrichmentTests(unittest.TestCase):
         repo.mdx_name_select_MAPPER = {"model.ckpt": "Mapper Label"}
         records = self._records(repo, snapshot)
         self.assertEqual(records["mdx:model"].display, "MDX-Net — Pair")
+
+    def test_former_vip_installed_model_uses_public_catalogue_display(self) -> None:
+        payload = {
+            "mdx_download_list": {},
+            "mdx_download_vip_list": {
+                "MDX-Net Model VIP: UVR-MDX-NET_Main_427": (
+                    "UVR-MDX-NET_Main_427.onnx"
+                )
+            },
+            "vr_download_list": {},
+            "demucs_download_list": {},
+        }
+        coordinator = _coordinator_for_payload(payload)
+        self.addCleanup(coordinator.close)
+        snapshot = coordinator.ensure(allow_network=False)
+        repo = self._repo(mdx=["UVR-MDX-NET_Main_427.onnx"])
+
+        record = self._records(repo, snapshot)["mdx:UVR-MDX-NET_Main_427"]
+
+        self.assertEqual(record.display, "MDX-Net — UVR-MDX-NET_Main_427")
+        self.assertEqual(record.backend_name, "UVR-MDX-NET_Main_427")
 
     def test_catalogue_basename_echo_falls_through_to_mapper(self) -> None:
         repo = self._repo(

@@ -245,7 +245,7 @@ def cmd_models_list(args: argparse.Namespace) -> int:
                 from core.catalogue_coordinator import CatalogueCoordinator
 
                 coordinator = CatalogueCoordinator()
-                coordinator.ensure(vip=True, allow_network=False)
+                coordinator.ensure(allow_network=False)
             repo = ModelRepository(catalogue=coordinator)
             repo.bind_model_hash_table(
                 lambda: persisted_settings.process.model_hash_table

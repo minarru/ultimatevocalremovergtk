@@ -20,6 +20,7 @@ from .model_display import (
     sanitize_catalogue_label,
 )
 
+# Ordinary and legacy-named upstream lists are all public presentation sources.
 _MDX_CATALOG_SOURCE_KEYS = (
     "mdx_download_list",
     "mdx23_download_list",
@@ -222,10 +223,10 @@ def load_mdx_catalog_index(*, allow_network: bool | None = None, coordinator: An
         else allow_network
     )
     if coordinator is not None:
-        snapshot = coordinator.ensure(vip=True, allow_network=network)
+        snapshot = coordinator.ensure(allow_network=network)
         return dict(snapshot.checkpoint_yaml_index)
     payload = _load_manual_download_cache()
-    _vr, mdx, _demucs = flatten_upstream_lists(payload, vip=True)
+    _vr, mdx, _demucs = flatten_upstream_lists(payload)
     merged = merged_catalogues(
         vr=_vr, mdx=mdx, demucs=_demucs, allow_network=network
     )

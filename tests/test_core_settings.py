@@ -87,10 +87,11 @@ class SettingsJsonTests(unittest.TestCase):
             path = os.path.join(tmp, "settings.json")
             model = Settings.defaults()
             model.path = path
-            model.set("user_code", "abc")
+            model.set("export_path", "/tmp/export")
             model.save()
             self.assertTrue(os.path.isfile(path))
             self.assertFalse(os.path.isfile(f"{path}.tmp"))
+            self.assertEqual(Settings.load(path).process.export_path, "/tmp/export")
 
     def test_pickle_import_writes_json_and_backup(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -556,7 +556,7 @@ class CoordinatorRefreshTests(unittest.TestCase):
             allow_network=True, refresh=True, coordinator=coordinator
         )
         coordinator.snapshot.assert_called_once_with(
-            vip=False, mode=RefreshMode.FORCE
+            mode=RefreshMode.FORCE
         )
         coordinator.ensure.assert_not_called()
         coordinator.refresh.assert_not_called()
@@ -568,7 +568,7 @@ class CoordinatorRefreshTests(unittest.TestCase):
         )
         coordinator.refresh.assert_not_called()
         coordinator.snapshot.assert_not_called()
-        coordinator.ensure.assert_called_once_with(vip=False, allow_network=True)
+        coordinator.ensure.assert_called_once_with(allow_network=True)
 
     def test_offline_never_force_refreshes_even_when_asked(self) -> None:
         coordinator = self._coordinator()
@@ -577,7 +577,7 @@ class CoordinatorRefreshTests(unittest.TestCase):
         )
         coordinator.refresh.assert_not_called()
         coordinator.snapshot.assert_not_called()
-        coordinator.ensure.assert_called_once_with(vip=False, allow_network=False)
+        coordinator.ensure.assert_called_once_with(allow_network=False)
 
     def test_collect_entries_forwards_refresh(self) -> None:
         from unittest.mock import MagicMock, patch

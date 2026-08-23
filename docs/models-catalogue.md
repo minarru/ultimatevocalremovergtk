@@ -1,6 +1,6 @@
 # UVR Model Catalogue (TRvlvr + Politrees + extras + mvsepless)
 
-Generated: 2026-08-21 12:53 UTC by `scripts/generate_models_catalogue.py`.
+Generated: 2026-08-23 08:28 UTC by `scripts/generate_models_catalogue.py`.
 
 Regenerate after catalogue updates:
 
@@ -25,21 +25,10 @@ Instrumental Mel-Band / BS models often use `target_instrument: other` with
 `instruments: [other, vocals]`. That is a **2-stem vocal/instrumental** split.
 The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Demucs Other.
 
-## Source provenance
-
-- Snapshot mode: `force`
-- Source refreshed: extras, upstream, politrees, mvsepless
-- Source stale: none
-- Source failed: none
-- Source upstream live: True
-- Cache politrees: 0m old
-- Cache community: 0m old
-- Cache yaml: empty
-
 ## Summary
 
-- Total catalogue entries: **474**
-- Entries with resolved metadata: **474**
+- Total catalogue entries: **484**
+- Entries with resolved metadata: **484**
 - Unknown intent remaining: **2**
 - Flagged mismatches: **5**
 - Unsupported mvsepless entries (omitted): **0**
@@ -215,6 +204,15 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Bandit | Bandit — Plus (ep 63) · ZFTurbo | multi_stem | Multi-stem: speech, music, effects | multi_stem | speech | — |
 | Bandit | Bandit — Cinematic Bandit Plus · kwatcharasupat | multi_stem | Multi-stem: Speech, Music, Effects | multi_stem | Speech | — |
 | Bandit | Bandit — Cinematic Bandit v2 Multilang · kwatcharasupat | multi_stem | Multi-stem: Speech, Music, Sfx | multi_stem | Speech | — |
+| MDX-Net ONNX | MDX-Net — UVR-MDX-NET-Inst_full_292 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
+| MDX-Net ONNX | MDX-Net — UVR-MDX-NET_Inst_187_beta | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
+| MDX-Net ONNX | MDX-Net — UVR-MDX-NET_Inst_82_beta | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
+| MDX-Net ONNX | MDX-Net — UVR-MDX-NET_Inst_90_beta | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
+| MDX-Net ONNX | MDX-Net — UVR-MDX-NET_Main_340 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
+| MDX-Net ONNX | MDX-Net — UVR-MDX-NET_Main_390 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
+| MDX-Net ONNX | MDX-Net — UVR-MDX-NET_Main_406 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
+| MDX-Net ONNX | MDX-Net — UVR-MDX-NET_Main_427 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
+| MDX-Net ONNX | MDX-Net — UVR-MDX-NET_Main_438 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net ONNX | MDX-Net — Kim Inst | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
 | MDX-Net ONNX | MDX-Net — Kim Vocal 1 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
 | MDX-Net ONNX | MDX-Net — Kim Vocal 2 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
@@ -256,6 +254,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MDX23C — Mid-Side · WesleyR36 | specialty_stem | similarity, difference | specialty_target:similarity | similarity | — |
 | MDX-Net | MDX23C — Mid-Side v1 · Gilliaaan | specialty_stem | center, wide | single_target:wide | wide | — |
 | MDX-Net | MDX23C — Mid-Side v2e · Gilliaaan | specialty_stem | center, wide | two_stem | center | — |
+| MDX23C | MDX23C — InstVoc HQ 2 | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | vocal_primary | Vocals | — |
 | MDX23C | MDX23C — DeReverb · aufr33 & jarredou | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
 | MDX23C | MDX23C — DrumSep · aufr33 & jarredou | multi_stem | Multi-stem: kick, snare, toms, hh, ride, crash | multi_stem | kick | — |
 | MDX23C | MDX23C — Phantom Centre extraction · wesleyr36 | specialty_stem | Similarity, Difference | specialty_target:Similarity | Similarity | — |
@@ -320,7 +319,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — Instrumental Fv9 · GaboxR67 | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Instrumental Fv9 · GaboxR67 [mbr_instfv9_ | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Instrumental FvX · GaboxR67 | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
-| MDX-Net | MelBand Roformer — Instrumental · Becruily [mbr_guitar_becru | instrumental | Guitar (single native output) | specialty_target:Guitar | Guitar | — |
+| MDX-Net | MelBand Roformer — Instrumental · Becruily [mbr_inst_becruil | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Instrumental · Essid (sdr 16.52) | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Instrumental · Essid (sdr 16.81) | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Instrumental v1 · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
@@ -551,7 +550,7 @@ Roformer karaoke yamls typically target **vocals** (lead) with instrumental comp
 | MelBand Roformer — Karaoke 25-02-2025 · GaboxR67 | karaoke | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
 | MelBand Roformer — Karaoke 28-02-2025 · GaboxR67 | karaoke | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
 | MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
-| MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi [mbr_karaoke_fusion2_aggr_gonzaluigi] | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
+| MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi [mbr_karaoke_fusion_aggr_gonzaluigi] | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | MelBand Roformer — Karaoke Fusion Total · Gonzaluigi | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | MelBand Roformer — Karaoke Fusion · Gonzaluigi | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | MelBand Roformer — Karaoke Small · GaboxR67 & Aufr33 | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
@@ -2942,6 +2941,132 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 
 ## MDX-Net ONNX (detail)
 
+### MDX-Net — UVR-MDX-NET-Inst_full_292
+
+- **Source:** TRvlvr
+- **Weight:** `UVR-MDX-NET-Inst_full_292.onnx`
+- **Name intent:** instrumental
+- **Backend focus:** instrumental_target
+- **Primary stem (backend):** `Instrumental`
+- **Instruments:** instrumental, vocals
+- **Target instrument:** `instrumental`
+- **Best result:** Instrumental (complement = Vocals)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
+- **Metadata:** politrees_mdx_hash
+- **Note:** Community ref: instrumental* (15.1), vocals (8.5)
+
+### MDX-Net — UVR-MDX-NET_Inst_187_beta
+
+- **Source:** TRvlvr
+- **Weight:** `UVR-MDX-NET_Inst_187_beta.onnx`
+- **Name intent:** instrumental
+- **Backend focus:** instrumental_target
+- **Primary stem (backend):** `Instrumental`
+- **Instruments:** instrumental, vocals
+- **Target instrument:** `instrumental`
+- **Best result:** Instrumental (complement = Vocals)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
+- **Metadata:** community_models.txt
+- **Note:** Community ref: instrumental* (14.3), vocals (8.5)
+
+### MDX-Net — UVR-MDX-NET_Inst_82_beta
+
+- **Source:** TRvlvr
+- **Weight:** `UVR-MDX-NET_Inst_82_beta.onnx`
+- **Name intent:** instrumental
+- **Backend focus:** instrumental_target
+- **Primary stem (backend):** `Instrumental`
+- **Instruments:** instrumental, vocals
+- **Target instrument:** `instrumental`
+- **Best result:** Instrumental (complement = Vocals)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
+- **Metadata:** community_models.txt
+- **Note:** Community ref: instrumental* (14.3), vocals (8.2)
+
+### MDX-Net — UVR-MDX-NET_Inst_90_beta
+
+- **Source:** TRvlvr
+- **Weight:** `UVR-MDX-NET_Inst_90_beta.onnx`
+- **Name intent:** instrumental
+- **Backend focus:** instrumental_target
+- **Primary stem (backend):** `Instrumental`
+- **Instruments:** instrumental, vocals
+- **Target instrument:** `instrumental`
+- **Best result:** Instrumental (complement = Vocals)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
+- **Metadata:** community_models.txt
+- **Note:** Community ref: instrumental* (13.9), vocals (8.1)
+
+### MDX-Net — UVR-MDX-NET_Main_340
+
+- **Source:** TRvlvr
+- **Weight:** `UVR-MDX-NET_Main_340.onnx`
+- **Name intent:** vocals
+- **Backend focus:** vocal_target
+- **Primary stem (backend):** `Vocals`
+- **Instruments:** instrumental, vocals
+- **Target instrument:** `vocals`
+- **Best result:** Vocals (complement = Instrumental)
+- **Save stems UI:** UI: Vocals / Instrumental
+- **Metadata:** community_models.txt
+- **Note:** Community ref: vocals* (10.2), instrumental (15.4)
+
+### MDX-Net — UVR-MDX-NET_Main_390
+
+- **Source:** TRvlvr
+- **Weight:** `UVR-MDX-NET_Main_390.onnx`
+- **Name intent:** vocals
+- **Backend focus:** vocal_target
+- **Primary stem (backend):** `Vocals`
+- **Instruments:** instrumental, vocals
+- **Target instrument:** `vocals`
+- **Best result:** Vocals (complement = Instrumental)
+- **Save stems UI:** UI: Vocals / Instrumental
+- **Metadata:** community_models.txt
+- **Note:** Community ref: vocals* (4.5), instrumental (8.8)
+
+### MDX-Net — UVR-MDX-NET_Main_406
+
+- **Source:** TRvlvr
+- **Weight:** `UVR-MDX-NET_Main_406.onnx`
+- **Name intent:** vocals
+- **Backend focus:** vocal_target
+- **Primary stem (backend):** `Vocals`
+- **Instruments:** instrumental, vocals
+- **Target instrument:** `vocals`
+- **Best result:** Vocals (complement = Instrumental)
+- **Save stems UI:** UI: Vocals / Instrumental
+- **Metadata:** community_models.txt
+- **Note:** Community ref: vocals* (10.4), instrumental (15.3)
+
+### MDX-Net — UVR-MDX-NET_Main_427
+
+- **Source:** TRvlvr
+- **Weight:** `UVR-MDX-NET_Main_427.onnx`
+- **Name intent:** vocals
+- **Backend focus:** vocal_target
+- **Primary stem (backend):** `Vocals`
+- **Instruments:** instrumental, vocals
+- **Target instrument:** `vocals`
+- **Best result:** Vocals (complement = Instrumental)
+- **Save stems UI:** UI: Vocals / Instrumental
+- **Metadata:** politrees_mdx_hash
+- **Note:** Community ref: vocals* (10.2), instrumental (15.5)
+
+### MDX-Net — UVR-MDX-NET_Main_438
+
+- **Source:** TRvlvr
+- **Weight:** `UVR-MDX-NET_Main_438.onnx`
+- **Name intent:** vocals
+- **Backend focus:** vocal_target
+- **Primary stem (backend):** `Vocals`
+- **Instruments:** instrumental, vocals
+- **Target instrument:** `vocals`
+- **Best result:** Vocals (complement = Instrumental)
+- **Save stems UI:** UI: Vocals / Instrumental
+- **Metadata:** politrees_mdx_hash
+- **Note:** Community ref: vocals* (10.1), instrumental (15.3)
+
 ### MDX-Net — Kim Inst
 
 - **Source:** TRvlvr+Politrees
@@ -3482,6 +3607,18 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** bundled_yaml:mdx23c_mid_side2e_gilliaaan_config.yaml
 
 ## MDX23C (detail)
+
+### MDX23C — InstVoc HQ 2
+
+- **Source:** TRvlvr
+- **Weight:** `MDX23C-8KFFT-InstVoc_HQ_2.ckpt`
+- **Name intent:** dual_voc_inst
+- **Backend focus:** vocal_primary
+- **Primary stem (backend):** `Vocals`
+- **Best result:** User picks Vocals or Instrumental (dual 2-stem)
+- **Save stems UI:** UI: Vocals / Instrumental (either stem is a valid primary export)
+- **Metadata:** community_models.txt
+- **Note:** Community ref: vocals (10.5), instrumental (15.9)
 
 ### MDX23C — DeReverb · aufr33 & jarredou
 
@@ -4393,21 +4530,6 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 ### MelBand Roformer — Instrumental Fv9 · GaboxR67
 
 - **Source:** mvsepless
-- **Weight:** `mbr_instfv9_gabox.ckpt`
-- **Config:** `mbr_instfv9_gabox_config.yaml`
-- **Architecture:** Mel-Band Roformer
-- **Name intent:** instrumental
-- **Backend focus:** instrumental_target
-- **Primary stem (backend):** `Instrumental`
-- **Instruments:** Instrumental, Vocals
-- **Target instrument:** `Instrumental`
-- **Best result:** Instrumental (complement = Vocals)
-- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
-- **Metadata:** bundled_yaml:mbr_instfv9_gabox_config.yaml
-
-### MelBand Roformer — Instrumental Fv9 · GaboxR67 [mbr_instfv9_2_gabox]
-
-- **Source:** mvsepless
 - **Weight:** `mbr_instfv9_2_gabox.ckpt`
 - **Config:** `mbr_instfv9_2_gabox_config.yaml`
 - **Architecture:** Mel-Band Roformer
@@ -4419,6 +4541,21 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** Instrumental (complement = Vocals)
 - **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** bundled_yaml:mbr_instfv9_2_gabox_config.yaml
+
+### MelBand Roformer — Instrumental Fv9 · GaboxR67 [mbr_instfv9_gabox]
+
+- **Source:** mvsepless
+- **Weight:** `mbr_instfv9_gabox.ckpt`
+- **Config:** `mbr_instfv9_gabox_config.yaml`
+- **Architecture:** Mel-Band Roformer
+- **Name intent:** instrumental
+- **Backend focus:** instrumental_target
+- **Primary stem (backend):** `Instrumental`
+- **Instruments:** Instrumental, Vocals
+- **Target instrument:** `Instrumental`
+- **Best result:** Instrumental (complement = Vocals)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
+- **Metadata:** bundled_yaml:mbr_instfv9_gabox_config.yaml
 
 ### MelBand Roformer — Instrumental FvX · GaboxR67
 
@@ -4435,19 +4572,20 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** bundled_yaml:mbr_instfvx_gabox_config.yaml
 
-### MelBand Roformer — Instrumental · Becruily [mbr_guitar_becruily]
+### MelBand Roformer — Instrumental · Becruily [mbr_inst_becruily]
 
 - **Source:** mvsepless
-- **Weight:** `mbr_guitar_becruily.ckpt`
-- **Config:** `mbr_guitar_becruily_config.yaml`
+- **Weight:** `mbr_inst_becruily.ckpt`
+- **Config:** `mbr_inst_becruily_config.yaml`
 - **Architecture:** Mel-Band Roformer
 - **Name intent:** instrumental
-- **Backend focus:** specialty_target:Guitar
-- **Primary stem (backend):** `Guitar`
-- **Instruments:** Guitar, Other
-- **Target instrument:** `Guitar`
-- **Best result:** Guitar (single native output)
-- **Metadata:** bundled_yaml:mbr_guitar_becruily_config.yaml
+- **Backend focus:** instrumental_target
+- **Primary stem (backend):** `Instrumental`
+- **Instruments:** Instrumental, Vocals
+- **Target instrument:** `Instrumental`
+- **Best result:** Instrumental (complement = Vocals)
+- **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
+- **Metadata:** bundled_yaml:mbr_inst_becruily_config.yaml
 
 ### MelBand Roformer — Instrumental · Essid (sdr 16.52)
 
@@ -4592,22 +4730,6 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 ### MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi
 
 - **Source:** mvsepless
-- **Weight:** `mbr_karaoke_fusion_aggr_gonzaluigi.ckpt`
-- **Config:** `mbr_karaoke_fusion_aggr_gonzaluigi_config.yaml`
-- **Architecture:** Mel-Band Roformer
-- **Name intent:** karaoke
-- **Backend focus:** karaoke_vocal_primary
-- **Primary stem (backend):** `Vocals`
-- **Instruments:** Vocals, Instrumental
-- **Target instrument:** `Vocals`
-- **Karaoke model:** yes
-- **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
-- **Save stems UI:** UI: Vocals / Instrumental
-- **Metadata:** bundled_yaml:mbr_karaoke_fusion_aggr_gonzaluigi_config.yaml
-
-### MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi [mbr_karaoke_fusion2_aggr_gonzaluigi]
-
-- **Source:** mvsepless
 - **Weight:** `mbr_karaoke_fusion2_aggr_gonzaluigi.ckpt`
 - **Config:** `mbr_karaoke_fusion2_aggr_gonzaluigi_config.yaml`
 - **Architecture:** Mel-Band Roformer
@@ -4620,6 +4742,22 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** bundled_yaml:mbr_karaoke_fusion2_aggr_gonzaluigi_config.yaml
+
+### MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi [mbr_karaoke_fusion_aggr_gonzaluigi]
+
+- **Source:** mvsepless
+- **Weight:** `mbr_karaoke_fusion_aggr_gonzaluigi.ckpt`
+- **Config:** `mbr_karaoke_fusion_aggr_gonzaluigi_config.yaml`
+- **Architecture:** Mel-Band Roformer
+- **Name intent:** karaoke
+- **Backend focus:** karaoke_vocal_primary
+- **Primary stem (backend):** `Vocals`
+- **Instruments:** Vocals, Instrumental
+- **Target instrument:** `Vocals`
+- **Karaoke model:** yes
+- **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
+- **Save stems UI:** UI: Vocals / Instrumental
+- **Metadata:** bundled_yaml:mbr_karaoke_fusion_aggr_gonzaluigi_config.yaml
 
 ### MelBand Roformer — Karaoke Fusion Total · Gonzaluigi
 
@@ -5252,7 +5390,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
-- **Metadata:** bundled_yaml:mbr_vocals_viperx_config.yaml
+- **Metadata:** politrees_mdx_hash
 
 ### MelBand Roformer — Vocals · ZFTurbo
 
@@ -7327,7 +7465,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 ### v3 — mdx
 
 - **Source:** TRvlvr+Politrees
-- **Weight:** `7d865c68-3d5dd56b.th`
+- **Weight:** `c511e2ab-fe698775.th`
 - **Config:** `mdx.yaml`
 - **Architecture:** MDX23C
 - **Name intent:** multi_stem
@@ -7340,7 +7478,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 ### v3 — mdx_extra
 
 - **Source:** TRvlvr+Politrees
-- **Weight:** `cfa93e08-61801ae1.th`
+- **Weight:** `e51eebcc-c1b80bdd.th`
 - **Config:** `mdx_extra.yaml`
 - **Architecture:** MDX23C
 - **Name intent:** multi_stem
@@ -7353,7 +7491,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 ### v3 — mdx_extra_q
 
 - **Source:** TRvlvr+Politrees
-- **Weight:** `7fd6ef75-a905dd85.th`
+- **Weight:** `83fc094f-4a16d450.th`
 - **Config:** `mdx_extra_q.yaml`
 - **Architecture:** MDX23C
 - **Name intent:** multi_stem
@@ -7366,7 +7504,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 ### v3 — mdx_q
 
 - **Source:** TRvlvr+Politrees
-- **Weight:** `305bc58f-18378783.th`
+- **Weight:** `b72baf4e-8778635e.th`
 - **Config:** `mdx_q.yaml`
 - **Architecture:** MDX23C
 - **Name intent:** multi_stem
@@ -7379,7 +7517,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 ### v3 — repro_mdx_a
 
 - **Source:** TRvlvr+Politrees
-- **Weight:** `902315c2-b39ce9c9.th`
+- **Weight:** `fa0cb7f9-100d8bf4.th`
 - **Config:** `repro_mdx_a.yaml`
 - **Architecture:** MDX23C
 - **Name intent:** multi_stem
@@ -7392,7 +7530,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 ### v3 — repro_mdx_a_hybrid_only
 
 - **Source:** TRvlvr+Politrees
-- **Weight:** `902315c2-b39ce9c9.th`
+- **Weight:** `fa0cb7f9-100d8bf4.th`
 - **Config:** `repro_mdx_a_hybrid_only.yaml`
 - **Architecture:** MDX23C
 - **Name intent:** multi_stem
@@ -7405,7 +7543,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 ### v3 — repro_mdx_a_time_only
 
 - **Source:** TRvlvr+Politrees
-- **Weight:** `1ef250f1-592467ce.th`
+- **Weight:** `9a6b4851-03af0aa6.th`
 - **Config:** `repro_mdx_a_time_only.yaml`
 - **Architecture:** MDX23C
 - **Name intent:** multi_stem
@@ -7457,7 +7595,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 ### v4 — htdemucs_ft
 
 - **Source:** TRvlvr+Politrees
-- **Weight:** `04573f0d-f3cf25b2.th`
+- **Weight:** `f7e0c4bc-ba3fe64a.th`
 - **Config:** `htdemucs_ft.yaml`
 - **Architecture:** MDX23C
 - **Name intent:** multi_stem

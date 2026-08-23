@@ -117,7 +117,6 @@ class ProcessSettings:
     long_file_chunk_seconds: float = 0.0
     long_file_chunk_overlap_seconds: float = 2.0
     semitone_shift: float = 0.0
-    user_code: str = ""
     model_hash_table: dict = field(default_factory=dict)
     vocal_splitter: str = NO_MODEL
     vocal_splitter_enabled: bool = False

@@ -2,14 +2,12 @@
 
 This is the framework-agnostic port of ``UVR.py``'s "Download Center Methods"
 (``online_data_refresh`` / ``download_list_fill`` / ``download_model_select`` /
-``download_item`` / ``download_model_settings`` / ``download_validate_code``) and
-the VIP-code decryption (``vip_downloads``). It reuses the exact remote URLs and
-model-list JSON schema UVR uses (see :mod:`data.constants`), so the GTK
-front end downloads the same files into the same model directories.
+``download_item`` / ``download_model_settings``). It reuses the upstream
+model-list JSON schema and routes public artifacts from both model repositories
+into the same model directories.
 
-Everything here is import-safe without ``torch``: only the standard library plus
-``cryptography`` (lazy-imported, and only for VIP-code validation) are used.
-Network and disk work happens on caller-supplied worker threads; this module
+Everything here is import-safe without ``torch`` and uses only the standard
+library. Network and disk work happens on caller-supplied worker threads; this module
 never touches any UI toolkit and reports progress through plain callbacks.
 """
 import typing
@@ -26,6 +24,7 @@ import urllib.request
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from bundled.constants import (
+    ADDITIONAL_MODEL_REPO,
     ALL_TYPES,
     APOLLO_ARCH_TYPE,
     BULLETIN_CHECK,
@@ -37,13 +36,11 @@ from bundled.constants import (
     MDX_ARCH_TYPE,
     MDX_MODEL_DATA_LINK,
     MDX_MODEL_NAME_DATA_LINK,
-    NO_CODE,
     NO_MODEL,
     NO_NEW_MODELS,
     NORMAL_REPO,
     OPERATING_SYSTEM,
-    VIP_REPO,
-    VIP_SELECTION,
+    LEGACY_ADDITIONAL_REPO_SELECTION,
     VR_ARCH_TYPE,
     VR_MODEL_DATA_LINK,
 )
@@ -208,31 +205,6 @@ def _transactional_json_refresh(writes: Mapping[str, Mapping[str, Any]]) -> tupl
     return True, True
 
 
-def vip_downloads(password: str, link_type: Tuple[bytes, bytes] = VIP_REPO) -> str:
-    """Decrypt the VIP model repo link with ``password`` (port of UVR's helper).
-
-    Returns the decrypted repo URL on success, or :data:`NO_CODE` when the code
-    is wrong or ``cryptography`` is unavailable.
-    """
-    try:
-        from cryptography.fernet import Fernet
-        from cryptography.hazmat.primitives import hashes
-        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-        import base64
-
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=link_type[0],
-            iterations=390000,
-        )
-        key = base64.urlsafe_b64encode(kdf.derive(bytes(password, "utf-8")))
-        f = Fernet(key)
-        return str(f.decrypt(link_type[1]), "UTF-8")
-    except Exception:
-        return NO_CODE
-
-
 class DownloadManager:
     """Holds the online model catalogue and performs downloads / update checks.
 
@@ -245,10 +217,9 @@ class DownloadManager:
         self.online_data: Dict = {}
         self.bulletin_data: str = INFO_UNAVAILABLE_TEXT
         self.is_online: bool = False
-        self.decoded_vip_link: str = NO_CODE
         self.latest_version: str = ""
 
-        # VIP-merged, on-disk-aware catalogues (populated by ``refresh``).
+        # Public, on-disk-aware catalogues (populated by ``refresh``).
         self.vr_download_list: Dict[str, Any] = {}
         self.mdx_download_list: Dict[str, Any] = {}
         self.demucs_download_list: Dict[str, Any] = {}
@@ -281,11 +252,7 @@ class DownloadManager:
         coordinator = getattr(self, "_coordinator", None)
         if coordinator is None:
             return
-        snapshot = getattr(
-            coordinator,
-            "_latest_unlocked" if self.decoded_vip_link != NO_CODE else "_latest",
-            None,
-        )
+        snapshot = getattr(coordinator, "_latest", None)
         if snapshot is not None:
             self._apply_snapshot(snapshot)
 
@@ -379,8 +346,9 @@ class DownloadManager:
                 allow_metadata_writes=policy.allow_metadata_writes,
             )
         coordinator = self._ensure_coordinator()
-        vip = self.decoded_vip_link != NO_CODE
-        snapshot = coordinator.ensure(vip=vip, allow_network=policy.allow_network, policy=policy)
+        snapshot = coordinator.ensure(
+            allow_network=policy.allow_network, policy=policy
+        )
         self._apply_snapshot(snapshot)
         if self._has_any_catalogue():
             return True
@@ -507,7 +475,6 @@ class DownloadManager:
                 from .access_policy import current_access_policy
 
                 snapshot = coordinator.snapshot(
-                    vip=self.decoded_vip_link != NO_CODE,
                     mode=RefreshMode.OFFLINE,
                     policy=current_access_policy(),
                 )
@@ -554,8 +521,7 @@ class DownloadManager:
         coordinator = self._ensure_coordinator()
         report = coordinator.refresh(mode=RefreshMode.FORCE, policy=policy)
         self._last_refresh_report = report
-        vip = self.decoded_vip_link != NO_CODE
-        snapshot = coordinator.snapshot(vip=vip, mode=RefreshMode.OFFLINE, policy=policy)
+        snapshot = coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=policy)
         self._apply_snapshot(snapshot)
         self.is_online = bool(report.upstream_live)
         try:
@@ -580,39 +546,13 @@ class DownloadManager:
         return bool(report.upstream_live)
 
     def _rebuild_catalogues(self) -> None:
-        """Build the VIP-merged catalogues from ``online_data`` (no disk filter)."""
+        """Build public catalogues from ``online_data`` (no disk filter)."""
         from .catalogue_coordinator import flatten_upstream_lists
 
-        vr, mdx, demucs = flatten_upstream_lists(
-            self.online_data, vip=self.decoded_vip_link != NO_CODE
-        )
+        vr, mdx, demucs = flatten_upstream_lists(self.online_data)
         self.vr_download_list = vr
         self.mdx_download_list = mdx
         self.demucs_download_list = demucs
-
-    # -- VIP code ---------------------------------------------------------------
-
-    def validate_vip_code(self, code: str) -> bool:
-        """Validate a VIP code; on success unlock the VIP models. Port of
-        ``download_validate_code``."""
-        self.decoded_vip_link = vip_downloads(code or "")
-        unlocked = self.decoded_vip_link != NO_CODE
-        if unlocked:
-            from .access_policy import current_access_policy
-
-            coordinator = getattr(self, "_coordinator", None)
-            if coordinator is not None:
-                from .catalogue_types import RefreshMode
-
-                snapshot = coordinator.snapshot(
-                    vip=True, mode=RefreshMode.OFFLINE, policy=current_access_policy()
-                )
-                self._apply_snapshot(snapshot)
-            elif self.online_data:
-                self._rebuild_catalogues()
-                self._merge_politrees_supplement()
-        debug("download", f"vip_validate unlocked={unlocked}")
-        return unlocked
 
     def _merge_politrees_supplement(self, *, allow_network: bool = True) -> None:
         """Merge every supplemental catalogue source over the upstream lists.
@@ -795,7 +735,11 @@ class DownloadManager:
         if not selection or selection in (NO_MODEL, NO_NEW_MODELS):
             return []
 
-        model_repo = self.decoded_vip_link if VIP_SELECTION in selection else NORMAL_REPO
+        model_repo = (
+            ADDITIONAL_MODEL_REPO
+            if LEGACY_ADDITIONAL_REPO_SELECTION in selection
+            else NORMAL_REPO
+        )
 
         if arch_type == VR_ARCH_TYPE:
             model = (catalogue or self.vr_download_list).get(selection)
@@ -1138,9 +1082,8 @@ class DownloadManager:
         Center listed 459, missing every extras and mvsepless entry and showing
         duplicate VR rows that dedupe removes.
 
-        VIP entries are folded into the base first, because the shared merge
-        deliberately omits the ``*_vip_list`` keys: unlocking them stays gated
-        on a code here exactly as before.
+        Legacy ``*_vip_list`` entries are folded into the same public base before
+        supplements and deduplication.
 
         Keys stay raw catalogue labels — ``manual_links`` resolves against them.
         The dialog renders :func:`canonical_display_name` for the row title.
@@ -1184,9 +1127,19 @@ class DownloadManager:
             return {}
 
     @staticmethod
-    def manual_links(arch_type: str, model: typing.Any) -> List[Tuple[str, str]]:
+    def manual_links(
+        arch_type: str,
+        model: typing.Any,
+        *,
+        selection: str = "",
+    ) -> List[Tuple[str, str]]:
         """Return ``[(label, url), ...]`` direct links for a manual-download entry."""
-        return manual_links_for_model(arch_type, model, NORMAL_REPO)
+        model_repo = (
+            ADDITIONAL_MODEL_REPO
+            if LEGACY_ADDITIONAL_REPO_SELECTION in selection
+            else NORMAL_REPO
+        )
+        return manual_links_for_model(arch_type, model, model_repo)
 
     @staticmethod
     def model_directory(arch_type: str, selection: str = "") -> str:

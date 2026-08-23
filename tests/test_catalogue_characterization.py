@@ -10,7 +10,6 @@ import time
 import unittest
 from unittest import mock
 
-from bundled.constants import NO_CODE
 from core.access_policy import AccessPolicy
 from core.catalogue_coordinator import CatalogueCoordinator, flatten_upstream_lists
 from core.catalogue_types import (
@@ -60,7 +59,6 @@ class UpstreamScnetBanditTests(unittest.TestCase):
         from core.downloads import DownloadManager
 
         manager = DownloadManager.__new__(DownloadManager)
-        manager.decoded_vip_link = NO_CODE
         manager.online_data = {
             "vr_download_list": {},
             "mdx_download_list": {},

@@ -34,7 +34,6 @@ from core import paths
 
 from .dialogs.utils import close_on_escape
 from .dispatch import idle_on_main
-from .help_text import VIP_DOWNLOAD_CODE_HINT
 from .hints import set_icon_button_a11y
 from core.model_naming import canonical_display_name
 from core.model_catalogue import catalogue_label_matches, filter_catalogue_labels
@@ -126,10 +125,6 @@ class DownloadCenterWindow:
         self._pinned_snapshot = None
         self._pending_source_delta = False
 
-        saved_code = self.settings.process.user_code
-        if saved_code:
-            self.manager.validate_vip_code(saved_code)
-
         self.window = Adw.Window()
         self.window.set_title("Download Center")
         self.window.set_default_size(760, 620)
@@ -189,11 +184,6 @@ class DownloadCenterWindow:
             self.switcher = Gtk.StackSwitcher()
             self.switcher.set_stack(self.stack)
         header.set_title_widget(self.switcher)
-
-        self.vip_button = Gtk.Button(icon_name="dialog-password-symbolic")
-        set_icon_button_a11y(self.vip_button, VIP_DOWNLOAD_CODE_HINT)
-        self.vip_button.connect("clicked", lambda *_: self._open_vip())
-        header.pack_start(self.vip_button)
 
         menu = Gio.Menu()
         menu.append("Open models folder", "dc.open-models")
@@ -740,19 +730,7 @@ class DownloadCenterWindow:
     def _pin_current_snapshot(self) -> None:
         manager = getattr(self, "manager", None)
         coordinator = getattr(manager, "_coordinator", None) if manager is not None else None
-        vip = False
-        if manager is not None:
-            from bundled.constants import NO_CODE
-
-            decoded = getattr(manager, "decoded_vip_link", NO_CODE)
-            vip = bool(decoded) and decoded != NO_CODE
-        snapshot = None
-        if coordinator is not None:
-            snapshot = getattr(
-                coordinator, "_latest_unlocked" if vip else "_latest", None
-            )
-            if snapshot is None:
-                snapshot = getattr(coordinator, "_latest", None)
+        snapshot = getattr(coordinator, "_latest", None) if coordinator is not None else None
         self._pinned_snapshot = snapshot
         revision = getattr(snapshot, "revision", None)
         digest = getattr(revision, "digest", None)
@@ -1236,11 +1214,6 @@ class DownloadCenterWindow:
         # removal path so active tab, filters, checkboxes, and scroll survive.
         self._flush_catalogue_row_refresh()
 
-    def _open_vip(self) -> None:
-        from .download import open_vip_code_dialog
-
-        open_vip_code_dialog(self.window, self.context, on_validated=self._on_vip_validated)
-
     def _open_manual(self) -> None:
         from .download import open_manual_downloads
 
@@ -1260,11 +1233,6 @@ class DownloadCenterWindow:
             self._toast(f"Couldn't open models folder: {exc}")
             return
         open_folder_in_file_manager(self.window, target, on_error=self._toast)
-
-    def _on_vip_validated(self, unlocked: bool) -> None:
-        if unlocked:
-            self.start_refresh()
-            self._toast("VIP models unlocked")
 
     def _toast(self, message: str) -> None:
         self.toast_overlay.add_toast(Adw.Toast.new(message))

@@ -261,10 +261,9 @@ def _flatten_source(source: Dict, keys: Tuple[str, ...]) -> Dict[str, Any]:
 def _display_base(keys: Tuple[str, ...], *, allow_network: bool) -> Dict[str, Any]:
     """Flatten one architecture's catalogues from the cache **and** Politrees.
 
-    Politrees is read here as well as inside the merge because the merge omits
-    the ``*_vip_list`` keys — the Download Center must not offer code-gated
-    models. Naming a checkpoint that is already on disk is not gated, though,
-    so the display index keeps reading them, as it always has.
+    Legacy ``*_vip_list`` keys remain external wire-format names. The display
+    index reads their labels so installed checkpoints receive the same public
+    presentation as Download Center rows.
     """
     from .politrees_catalog import load_politrees_links
 
@@ -384,7 +383,7 @@ def display_name_for_basename(
     lookup = catalogue_index if catalogue_index is not None else load_mdx_catalog_display_index()
     if basename in lookup:
         catalogue_name = lookup[basename]
-        # VIP / raw catalogue rows sometimes echo the filename; prefer mapper.
+        # Legacy-prefixed/raw catalogue rows may echo the filename; prefer mapper.
         if catalogue_name != basename:
             return catalogue_name
     mapped = lookup_mapper_display(basename, name_mapper)

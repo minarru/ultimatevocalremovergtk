@@ -361,7 +361,7 @@ class ModelRepository:
     def mdx_catalogue_display_index(self, *, allow_network: bool = False) -> Dict[str, str]:
         coordinator = self._catalogue
         if coordinator is not None:
-            snapshot = coordinator.ensure(vip=True, allow_network=allow_network)
+            snapshot = coordinator.ensure(allow_network=allow_network)
             return dict(snapshot.display_index_mdx)
         from .model_display import load_mdx_catalog_display_index
 
@@ -370,7 +370,7 @@ class ModelRepository:
     def vr_catalogue_display_index(self, *, allow_network: bool = False) -> Dict[str, str]:
         coordinator = self._catalogue
         if coordinator is not None:
-            snapshot = coordinator.ensure(vip=True, allow_network=allow_network)
+            snapshot = coordinator.ensure(allow_network=allow_network)
             return dict(snapshot.display_index_vr)
         from .model_display import load_vr_catalog_display_index
 
@@ -379,7 +379,7 @@ class ModelRepository:
     def demucs_catalogue_display_index(self, *, allow_network: bool = False) -> Dict[str, str]:
         coordinator = self._catalogue
         if coordinator is not None:
-            snapshot = coordinator.ensure(vip=True, allow_network=allow_network)
+            snapshot = coordinator.ensure(allow_network=allow_network)
             return dict(snapshot.display_index_demucs)
         from .model_display import load_demucs_catalog_display_index
 

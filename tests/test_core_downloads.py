@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from bundled.constants import DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, NO_MODEL, VR_ARCH_TYPE
-from core.downloads import DownloadManager, vip_downloads
+from core.downloads import DownloadManager
 from core import paths
 from core.catalog_sources import EntryMeta
 
@@ -165,11 +165,42 @@ class LegacyCatalogueSchemaTests(unittest.TestCase):
         self.assertIn("MDX23 Model: Legacy", manager.mdx_download_list)
 
 
-class VipDownloadsTests(unittest.TestCase):
-    def test_wrong_password_returns_no_code(self):
-        from bundled.constants import NO_CODE
+class AdditionalPublicRepositoryTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.manager = DownloadManager()
 
-        self.assertEqual(vip_downloads("definitely-wrong-password"), NO_CODE)
+    def test_former_vip_vr_model_uses_additional_public_repo(self) -> None:
+        label = "VR Arch Single Model VIP: Added"
+        self.manager.vr_download_list = {label: "added.pth"}
+        jobs = self.manager.resolve(label, VR_ARCH_TYPE)
+        self.assertEqual(
+            jobs[0][0],
+            "https://github.com/Anjok0109/ai_magic/releases/download/v5/added.pth",
+        )
+
+    def test_former_vip_mdx_model_uses_additional_public_repo(self) -> None:
+        label = "MDX-Net Model VIP: UVR-MDX-NET_Main_427"
+        self.manager.mdx_download_list = {
+            label: "UVR-MDX-NET_Main_427.onnx"
+        }
+        jobs = self.manager.resolve(label, MDX_ARCH_TYPE, fetch_config=False)
+        self.assertEqual(
+            jobs[0][0],
+            "https://github.com/Anjok0109/ai_magic/releases/download/v5/"
+            "UVR-MDX-NET_Main_427.onnx",
+        )
+
+    def test_former_vip_mdx_c_checkpoint_uses_additional_public_repo(self) -> None:
+        label = "MDX23C Model VIP: MDX23C_D1581"
+        self.manager.mdx_download_list = {
+            label: {"MDX23C_D1581.ckpt": "model_2_stem_061321.yaml"}
+        }
+        jobs = self.manager.resolve(label, MDX_ARCH_TYPE, fetch_config=False)
+        self.assertEqual(
+            jobs[0][0],
+            "https://github.com/Anjok0109/ai_magic/releases/download/v5/"
+            "MDX23C_D1581.ckpt",
+        )
 
 
 class WarmSizeCacheTests(unittest.TestCase):
@@ -703,7 +734,6 @@ class DownloadManagerSwrFreshnessTests(unittest.TestCase):
         )
         self.assertNotIn("Old", manager.mdx_download_list)
         self.assertIn("New", coordinator.snapshot(
-            vip=False,
             mode=RefreshMode.OFFLINE,
             policy=AccessPolicy(allow_network=False, allow_metadata_writes=False),
         ).mdx)

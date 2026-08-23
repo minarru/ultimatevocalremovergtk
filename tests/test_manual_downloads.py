@@ -50,29 +50,17 @@ class ManualDownloadMergeTests(unittest.TestCase):
             data = self.manager.manual_download_data()
         self.assertEqual(len(data["vr"]), 1)
 
-    def test_vip_entries_survive_the_merge_when_unlocked(self) -> None:
-        from bundled.constants import NO_CODE
-
+    def test_vip_entries_are_public_without_state_or_code(self) -> None:
         self.manager.online_data = {
-            "mdx23c_download_vip_list": {"VIP Model": {"v.ckpt": "v.yaml"}},
-        }
-        self.manager.decoded_vip_link = "unlocked"
-        self.assertNotEqual(self.manager.decoded_vip_link, NO_CODE)
-        with mock.patch(
-            "core.catalog_sources._supplemental_sources", return_value=({}, {}, {}, {})
-        ):
-            data = self.manager.manual_download_data()
-        self.assertIn("VIP Model", data["mdx"])
-
-    def test_vip_entries_stay_hidden_without_a_code(self) -> None:
-        self.manager.online_data = {
-            "mdx23c_download_vip_list": {"VIP Model": {"v.ckpt": "v.yaml"}},
+            "mdx23c_download_vip_list": {
+                "MDX23C Model VIP: Added": {"v.ckpt": "v.yaml"}
+            },
         }
         with mock.patch(
             "core.catalog_sources._supplemental_sources", return_value=({}, {}, {}, {})
         ):
             data = self.manager.manual_download_data()
-        self.assertNotIn("VIP Model", data["mdx"])
+        self.assertIn("MDX23C Model VIP: Added", data["mdx"])
 
     def test_entries_are_sorted_by_display_name(self) -> None:
         self.manager.online_data = {
@@ -98,6 +86,17 @@ class ManualDownloadMergeTests(unittest.TestCase):
         model = data["mdx"]["TR Roformer"]
         links = DownloadManager.manual_links("MDX-Net", model)
         self.assertTrue(links)
+
+    def test_former_vip_manual_link_uses_additional_public_repo(self) -> None:
+        label = "MDX-Net Model VIP: UVR-MDX-NET_Main_427"
+        links = DownloadManager.manual_links(
+            "MDX-Net", "UVR-MDX-NET_Main_427.onnx", selection=label
+        )
+        self.assertEqual(
+            links[0][1],
+            "https://github.com/Anjok0109/ai_magic/releases/download/v5/"
+            "UVR-MDX-NET_Main_427.onnx",
+        )
 
 
 class ManualDownloadRowTitleTests(unittest.TestCase):

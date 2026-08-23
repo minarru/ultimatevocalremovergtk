@@ -47,7 +47,6 @@ def default_process() -> dict:
         "long_file_chunk_seconds": 0.0,
         "long_file_chunk_overlap_seconds": 2.0,
         "semitone_shift": 0.0,
-        "user_code": "",
         "model_hash_table": {},
         "vocal_splitter": NO_MODEL,
         "vocal_splitter_enabled": False,

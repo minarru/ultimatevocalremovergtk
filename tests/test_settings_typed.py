@@ -49,6 +49,14 @@ class TypedSettingsTests(unittest.TestCase):
         self.assertEqual(settings.ensemble.main_stem, EnsemblePair.CHOOSE)
         self.assertFalse(settings.process.use_gpu)
 
+    def test_legacy_vip_code_is_ignored_and_not_reserialized(self) -> None:
+        payload = Settings.defaults().to_json_dict()
+        payload["process"]["user_code"] = "old-secret"
+        restored = Settings.from_json_dict(payload)
+        self.assertFalse(hasattr(restored.process, "user_code"))
+        self.assertNotIn("user_code", restored.to_json_dict()["process"])
+        self.assertIsNone(restored.get("user_code"))
+
     def test_coerce_field_legacy_display_becomes_choose(self):
         self.assertEqual(
             coerce_field("ensemble", "main_stem", "Vocals/Instrumental"),

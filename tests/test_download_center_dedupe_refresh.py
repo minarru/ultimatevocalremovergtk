@@ -11,7 +11,7 @@ import unittest
 from typing import Any
 from unittest import mock
 
-from bundled.constants import MDX_ARCH_TYPE, NO_CODE, VR_ARCH_TYPE
+from bundled.constants import MDX_ARCH_TYPE, VR_ARCH_TYPE
 from core.access_policy import AccessPolicy
 from core.catalogue_coordinator import CatalogueCoordinator
 from core.catalogue_types import RefreshMode, SourceId
@@ -282,32 +282,22 @@ class PinnedSnapshotDeltaTests(unittest.TestCase):
         DownloadCenterWindow._on_catalogue_delta(win, delta)
         win._schedule_catalogue_row_refresh.assert_called_once_with()
 
-    def test_pin_prefers_unlocked_snapshot_when_vip(self) -> None:
-        from bundled.constants import NO_CODE
+    def test_pin_uses_sole_public_snapshot(self) -> None:
         from ui.download_center import DownloadCenterWindow
 
-        locked = mock.MagicMock(name="locked")
-        locked.revision.digest.return_value = "locked"
-        locked.mdx = {"Public": {"p.ckpt": "https://u/p.ckpt"}}
-        unlocked = mock.MagicMock(name="unlocked")
-        unlocked.revision.digest.return_value = "unlocked"
-        unlocked.mdx = {
+        public = mock.MagicMock(name="public")
+        public.revision.digest.return_value = "public"
+        public.mdx = {
             "Public": {"p.ckpt": "https://u/p.ckpt"},
             "VIP": {"v.ckpt": "https://u/v.ckpt"},
         }
         coordinator = mock.MagicMock()
-        coordinator._latest = locked
-        coordinator._latest_unlocked = unlocked
+        coordinator._latest = public
 
         win = _bare_window()
         win.manager._coordinator = coordinator
-        win.manager.decoded_vip_link = "valid-code"
         DownloadCenterWindow._pin_current_snapshot(win)
-        self.assertIs(win._pinned_snapshot, unlocked)
-
-        win.manager.decoded_vip_link = NO_CODE
-        DownloadCenterWindow._pin_current_snapshot(win)
-        self.assertIs(win._pinned_snapshot, locked)
+        self.assertIs(win._pinned_snapshot, public)
 
     def test_queue_resolve_uses_pinned_snapshot_not_live_manager(self) -> None:
         from ui.download_center import DownloadCenterWindow
@@ -340,12 +330,14 @@ class PinnedSnapshotDeltaTests(unittest.TestCase):
         win._apply_download_completion_refresh.assert_not_called()
 
 
-class ComposedVipJourneyTests(unittest.TestCase):
+class ComposedPublicJourneyTests(unittest.TestCase):
     """Pin and resolve against a real coordinator, not mocked snapshots."""
 
     _PAYLOAD = {
         "mdx_download_list": {"Public": {"p.ckpt": "https://u/p.ckpt"}},
-        "mdx_download_vip_list": {"VIP": {"v.ckpt": "https://u/v.ckpt"}},
+        "mdx_download_vip_list": {
+            "MDX-Net Model VIP: Added": "added.onnx"
+        },
         "vr_download_list": {},
         "demucs_download_list": {},
     }
@@ -354,45 +346,38 @@ class ComposedVipJourneyTests(unittest.TestCase):
         self.coordinator = _injected_coordinator(self._PAYLOAD)
         self.addCleanup(self.coordinator.close)
         self.policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
-        self.locked = self.coordinator.snapshot(
-            vip=False, mode=RefreshMode.OFFLINE, policy=self.policy
-        )
-        self.unlocked = self.coordinator.snapshot(
-            vip=True, mode=RefreshMode.OFFLINE, policy=self.policy
+        self.public = self.coordinator.snapshot(
+            mode=RefreshMode.OFFLINE, policy=self.policy
         )
         self.manager = DownloadManager(self.coordinator)
-        self.manager.decoded_vip_link = "valid-code"
-        self.manager._apply_snapshot(self.unlocked)
+        self.manager._apply_snapshot(self.public)
 
-    def test_pin_and_resolve_uses_unlocked_snapshot_for_vip(self) -> None:
+    def test_pin_and_resolve_uses_public_snapshot_for_former_vip(self) -> None:
         from ui.download_center import DownloadCenterWindow
 
-        self.assertIn("Public", self.locked.mdx)
-        self.assertNotIn("VIP", self.locked.mdx)
-        self.assertIn("VIP", self.unlocked.mdx)
-        self.assertIn("VIP", self.manager.mdx_download_list)
+        label = "MDX-Net Model VIP: Added"
+        self.assertIn("Public", self.public.mdx)
+        self.assertIn(label, self.public.mdx)
+        self.assertIn(label, self.manager.mdx_download_list)
 
         win = _bare_window()
         win.manager = self.manager
         DownloadCenterWindow._pin_current_snapshot(win)
-        self.assertIs(win._pinned_snapshot, self.unlocked)
+        self.assertIs(win._pinned_snapshot, self.public)
 
-        jobs = DownloadCenterWindow._resolve_pinned(win, "VIP", MDX_ARCH_TYPE)
-        self.assertEqual(jobs[0][0], "https://u/v.ckpt")
-
-        self.manager.decoded_vip_link = NO_CODE
-        DownloadCenterWindow._pin_current_snapshot(win)
-        self.assertIs(win._pinned_snapshot, self.locked)
+        jobs = DownloadCenterWindow._resolve_pinned(win, label, MDX_ARCH_TYPE)
         self.assertEqual(
-            DownloadCenterWindow._resolve_pinned(win, "VIP", MDX_ARCH_TYPE), []
+            jobs[0][0],
+            "https://github.com/Anjok0109/ai_magic/releases/download/v5/added.onnx",
         )
 
-    def test_enqueue_selected_queues_vip_jobs_from_pinned_snapshot(self) -> None:
+    def test_enqueue_selected_queues_former_vip_from_public_snapshot(self) -> None:
         from ui.download_center import DownloadCenterWindow
 
+        label = "MDX-Net Model VIP: Added"
         win = _bare_window()
         win.manager = self.manager
-        _seed_row(win, MDX_ARCH_TYPE, "VIP", checked=True)
+        _seed_row(win, MDX_ARCH_TYPE, label, checked=True)
         win.queue = mock.MagicMock()
         win.queue.enqueue.return_value = "item-1"
         win._toast = mock.MagicMock()
@@ -402,12 +387,15 @@ class ComposedVipJourneyTests(unittest.TestCase):
 
         win.queue.enqueue.assert_called_once()
         args, kwargs = win.queue.enqueue.call_args
-        self.assertEqual(args[0], "VIP")
+        self.assertEqual(args[0], label)
         self.assertEqual(args[1], MDX_ARCH_TYPE)
         jobs = kwargs.get("jobs") or (args[2] if len(args) > 2 else None)
         self.assertIsNotNone(jobs)
         assert jobs is not None
-        self.assertEqual(jobs[0][0], "https://u/v.ckpt")
+        self.assertEqual(
+            jobs[0][0],
+            "https://github.com/Anjok0109/ai_magic/releases/download/v5/added.onnx",
+        )
         win._toast.assert_called_once()
         win._update_download_button.assert_called_once_with()
 

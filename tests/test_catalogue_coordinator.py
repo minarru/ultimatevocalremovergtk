@@ -1,4 +1,4 @@
-"""Coordinator snapshot, VIP, refresh-report, and delta tests."""
+"""Coordinator snapshot, refresh-report, and delta tests."""
 
 from __future__ import annotations
 
@@ -94,18 +94,52 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         self.assertEqual(coordinator.builds, 1)
         coordinator.close()
 
-    def test_vip_is_a_projection_not_source_state(self) -> None:
+    def test_public_projection_includes_every_legacy_vip_list(self) -> None:
         payload = {
-            "mdx_download_list": {"Public": {"p.ckpt": "https://u/p.ckpt"}},
-            "mdx_download_vip_list": {"VIP Only": {"v.ckpt": "https://u/v.ckpt"}},
+            "vr_download_list": {"VR Public": "public.pth"},
+            "vr_download_vip_list": {"VR VIP: Added": "added.pth"},
+            "mdx_download_list": {"MDX Public": "public.onnx"},
+            "mdx_download_vip_list": {
+                "MDX-Net Model VIP: Added MDX": "mdx.onnx"
+            },
+            "mdx23_download_vip_list": {
+                "MDX23 Model VIP: Added MDX23": {"23.ckpt": "23.yaml"}
+            },
+            "mdx23c_download_vip_list": {
+                "MDX23C Model VIP: Added MDX23C": {"23c.ckpt": "23c.yaml"}
+            },
+            "roformer_download_vip_list": {
+                "Roformer Model VIP: Added Roformer": {"r.ckpt": "r.yaml"}
+            },
+            "scnet_download_vip_list": {
+                "SCNet Model VIP: Added": {"s.ckpt": "s.yaml"}
+            },
+            "bandit_download_vip_list": {
+                "Bandit Model VIP: Added": {"b.ckpt": "b.yaml"}
+            },
+            "demucs_download_list": {},
+            "demucs_download_vip_list": {
+                "Demucs Model VIP: Added": "demucs.yaml"
+            },
         }
         coordinator = self._coordinator(payload)
         policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
-        locked = coordinator.snapshot(vip=False, mode=RefreshMode.OFFLINE, policy=policy)
-        unlocked = coordinator.snapshot(vip=True, mode=RefreshMode.OFFLINE, policy=policy)
-        self.assertIn("Public", locked.mdx)
-        self.assertNotIn("VIP Only", locked.mdx)
-        self.assertIn("VIP Only", unlocked.mdx)
+        snapshot = coordinator.snapshot(mode=RefreshMode.OFFLINE, policy=policy)
+        self.assertEqual(set(snapshot.vr), {"VR Public", "VR VIP: Added"})
+        self.assertEqual(
+            set(snapshot.mdx),
+            {
+                "MDX Public",
+                "MDX-Net Model VIP: Added MDX",
+                "MDX23 Model VIP: Added MDX23",
+                "MDX23C Model VIP: Added MDX23C",
+                "Roformer Model VIP: Added Roformer",
+                "SCNet Model VIP: Added",
+                "Bandit Model VIP: Added",
+            },
+        )
+        self.assertEqual(set(snapshot.demucs), {"Demucs Model VIP: Added"})
+        self.assertEqual(coordinator.builds, 1)
         coordinator.close()
 
     def test_close_is_idempotent(self) -> None:
@@ -206,7 +240,7 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         coordinator = self._coordinator()
         policy = AccessPolicy(allow_network=True, allow_metadata_writes=False)
         returned = coordinator.refresh(mode=RefreshMode.FORCE, policy=policy)
-        snap = coordinator.ensure(vip=False, policy=policy)
+        snap = coordinator.ensure(policy=policy)
         self.assertTrue(snap.mdx)
         self.assertTrue(returned.usable)
         report = snap.report

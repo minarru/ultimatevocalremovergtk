@@ -2,7 +2,7 @@ from .platform_info import LICENSE_OS_SPECIFIC_TEXT
 
 NO_CONNECTION = 'No Internet Connection'
 
-VIP_SELECTION = 'VIP:'
+LEGACY_ADDITIONAL_REPO_SELECTION = 'VIP:'
 
 NO_NEW_MODELS = 'All Available Models Downloaded'
 

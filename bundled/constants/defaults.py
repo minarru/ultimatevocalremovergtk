@@ -113,7 +113,6 @@ DEFAULT_DATA = {
         'save_format': WAV,
         'wav_type_set': 'PCM_16',
         'device_set': DEFAULT,
-        'user_code': '',
         'export_path': '',
         'input_paths': [],
         'lastDir': None,

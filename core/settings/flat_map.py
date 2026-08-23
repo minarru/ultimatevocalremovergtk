@@ -31,7 +31,6 @@ FLAT_TO_PATH: dict[str, tuple[str, str]] = {
     "long_file_chunk_seconds": ("process", "long_file_chunk_seconds"),
     "long_file_chunk_overlap_seconds": ("process", "long_file_chunk_overlap_seconds"),
     "semitone_shift": ("process", "semitone_shift"),
-    "user_code": ("process", "user_code"),
     "model_hash_table": ("process", "model_hash_table"),
     "set_vocal_splitter": ("process", "vocal_splitter"),
     "is_set_vocal_splitter": ("process", "vocal_splitter_enabled"),

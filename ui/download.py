@@ -1,4 +1,4 @@
-"""Download Center entry point, VIP / manual dialogs, and shared download services."""
+"""Download Center entry point, manual dialog, and shared download services."""
 
 from __future__ import annotations
 import typing
@@ -10,8 +10,6 @@ from gi.repository import Adw, GLib, Gtk
 
 from bundled.constants import (
     DEMUCS_ARCH_TYPE,
-    DONATE_LINK_BMAC,
-    DONATE_LINK_PATREON,
     MDX_ARCH_TYPE,
     VR_ARCH_TYPE,
 )
@@ -37,7 +35,6 @@ from .notifications import (
     NOTIFY_DOWNLOAD_FAILED,
     send_desktop_notification,
 )
-from .spacing import inset_md
 from .download_center import DownloadCenterWindow
 from .widgets.download_queue_indicator import DownloadQueueIndicator
 
@@ -377,9 +374,6 @@ def start_download_size_cache_warmup(app_context: typing.Any) -> None:
 
     def worker() -> None:
         manager = _get_manager(app_context)
-        code = app_context.settings.process.user_code
-        if code:
-            manager.validate_vip_code(code)
         if manager.ensure_catalogues():
             manager.schedule_size_cache_warmup()
         else:
@@ -408,87 +402,6 @@ def open_download_center(parent_window: typing.Any, app_context: typing.Any):
     app_context._download_center_window = center
     center.present()
     return center
-
-
-# ---------------------------------------------------------------------------
-# VIP code dialog
-# ---------------------------------------------------------------------------
-
-def open_vip_code_dialog(parent: typing.Any, app_context: typing.Any, on_validated: typing.Any=None):
-    manager = _get_manager(app_context)
-    settings = app_context.settings
-
-    dialog = Adw.Dialog()
-    dialog.set_title("Unlock VIP models")
-    configure_dialog_width(dialog, parent, fallback=520)
-
-    toast_overlay = Adw.ToastOverlay()
-    fill_dialog_width(toast_overlay)
-
-    page = Adw.PreferencesPage()
-    group = Adw.PreferencesGroup(
-        title="Download code",
-        description=(
-            "Obtain a code from the links below. Donations are appreciated but not required."
-        ),
-    )
-    page.add(group)
-
-    code_row = Adw.EntryRow(title="Code")
-    code_row.set_text(settings.process.user_code)
-    group.add(code_row)
-
-    def toast(message: str) -> None:
-        toast_overlay.add_toast(Adw.Toast.new(message))
-
-    def on_confirm(_button: typing.Any):
-        code = code_row.get_text().strip()
-        unlocked = manager.validate_vip_code(code)
-        if unlocked:
-            settings.process.user_code = code
-            error = app_context.try_save_settings(trigger="vip")
-            if error:
-                toast(error)
-            else:
-                toast("VIP models unlocked")
-        else:
-            toast("Incorrect code")
-        debug("download", f"ui vip_code_confirm unlocked={unlocked}")
-        if on_validated is not None:
-            on_validated(unlocked)
-
-    confirm_button = Gtk.Button(label="_Unlock", use_underline=True, valign=Gtk.Align.CENTER)
-    confirm_button.add_css_class("suggested-action")
-    confirm_button.connect("clicked", on_confirm)
-    code_row.add_suffix(confirm_button)
-
-    links_group = Adw.PreferencesGroup(title="Support UVR")
-    for title, link in (
-        ("Patreon", DONATE_LINK_PATREON),
-        ("Buy Me a Coffee", DONATE_LINK_BMAC),
-    ):
-        row = Adw.ActionRow(title=title)
-        button = Gtk.Button(icon_name="adw-external-link-symbolic", valign=Gtk.Align.CENTER)
-        set_icon_button_a11y(button, f"Open {title} in default browser")
-        button.connect(
-            "clicked",
-            lambda _b, url=link: open_uri_in_browser(parent, url, on_error=toast),
-        )
-        row.add_suffix(button)
-        row.set_activatable_widget(button)
-        links_group.add(row)
-    page.add(links_group)
-
-    content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-    inset_md(content)
-    fill_dialog_width(content)
-    fill_dialog_width(page)
-    content.append(page)
-
-    toast_overlay.set_child(content)
-    set_dialog_content(dialog, toast_overlay)
-    present_modal_dialog(dialog, parent)
-    return dialog
 
 
 # ---------------------------------------------------------------------------
@@ -522,7 +435,9 @@ def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
             # Canonical name for display; ``selectable`` stays the raw catalogue
             # label that manual_links resolves against.
             row.set_title(canonical_display_name(selectable))
-            links = DownloadManager.manual_links(arch, model)
+            links = DownloadManager.manual_links(
+                arch, model, selection=selectable
+            )
             for label, url in links:
                 link_row = Adw.ActionRow()
                 link_row.set_use_markup(False)

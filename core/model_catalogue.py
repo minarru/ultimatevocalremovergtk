@@ -101,7 +101,6 @@ class ModelCatalogueService:
         digest = revision.digest() if revision is not None and hasattr(revision, "digest") else None
         return (
             digest,
-            self.manager.decoded_vip_link,
             len(self.manager.vr_download_list),
             len(self.manager.mdx_download_list),
             len(self.manager.demucs_download_list),

@@ -10,11 +10,12 @@ from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
 ENVELOPE_SCHEMA = 1
-ADAPTER_SCHEMA = 1
+ADAPTER_SCHEMA = 2
 
 UPSTREAM_VR_KEYS = ("vr_download_list",)
 UPSTREAM_VR_VIP_KEYS = ("vr_download_vip_list",)
 UPSTREAM_DEMUCS_KEYS = ("demucs_download_list",)
+UPSTREAM_DEMUCS_VIP_KEYS = ("demucs_download_vip_list",)
 UPSTREAM_MDX_KEYS = (
     "mdx_download_list",
     "mdx23_download_list",
@@ -169,7 +170,6 @@ class RevisionVector:
     mvsepless: str = ""
     identity: str = ""
     adapter_schema: int = ADAPTER_SCHEMA
-    vip: bool = False
 
     def digest(self) -> str:
         return "|".join(
@@ -180,7 +180,6 @@ class RevisionVector:
                 self.mvsepless,
                 self.identity,
                 str(self.adapter_schema),
-                "vip" if self.vip else "locked",
             )
         )
 
@@ -240,6 +239,7 @@ __all__ = [
     "SourceState",
     "SourceStatus",
     "UPSTREAM_DEMUCS_KEYS",
+    "UPSTREAM_DEMUCS_VIP_KEYS",
     "UPSTREAM_MDX_KEYS",
     "UPSTREAM_MDX_VIP_KEYS",
     "UPSTREAM_VR_KEYS",

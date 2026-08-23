@@ -707,7 +707,7 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
         self.assertEqual(code, 0)
         ids = [item["id"] for item in json.loads(out.getvalue())["items"]]
         self.assertIn("vr:catalogue-only", ids)
-        coordinator.ensure.assert_called_once_with(vip=True, allow_network=False)
+        coordinator.ensure.assert_called_once_with(allow_network=False)
         coordinator.close.assert_called_once_with()
 
     def test_list_does_not_rename_corrupt_settings_json(self) -> None:

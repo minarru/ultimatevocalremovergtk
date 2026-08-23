@@ -28,6 +28,7 @@ from .catalogue_types import (
     SourceId,
     SourceState,
     UPSTREAM_DEMUCS_KEYS,
+    UPSTREAM_DEMUCS_VIP_KEYS,
     UPSTREAM_MDX_KEYS,
     UPSTREAM_MDX_VIP_KEYS,
     UPSTREAM_VR_KEYS,
@@ -41,26 +42,29 @@ DeltaCallback = Callable[[CatalogueDelta], None]
 
 
 def flatten_upstream_lists(
-    payload: Mapping[str, Any], *, vip: bool = False
+    payload: Mapping[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    """Flatten TRvlvr/bundled download_checks keys, including SCNet/Bandit.
+    """Flatten every public and legacy-gated upstream download list.
 
     Later keys overwrite values but keep the original insertion slot
-    (``dict.update``). VIP lists are folded only when ``vip`` is true.
+    (``dict.update``). Legacy ``*_vip_list`` names are compatibility-only;
+    their entries are part of the sole public projection.
     """
-    vr: dict[str, Any] = dict(payload.get("vr_download_list") or {})
+    vr: dict[str, Any] = {}
+    for key in (*UPSTREAM_VR_KEYS, *UPSTREAM_VR_VIP_KEYS):
+        catalogue = payload.get(key)
+        if isinstance(catalogue, dict):
+            vr.update(catalogue)
     mdx: dict[str, Any] = {}
-    for key in UPSTREAM_MDX_KEYS:
+    for key in (*UPSTREAM_MDX_KEYS, *UPSTREAM_MDX_VIP_KEYS):
         catalogue = payload.get(key)
         if isinstance(catalogue, dict):
             mdx.update(catalogue)
-    demucs: dict[str, Any] = dict(payload.get("demucs_download_list") or {})
-    if vip:
-        vr.update(payload.get("vr_download_vip_list") or {})
-        for key in UPSTREAM_MDX_VIP_KEYS:
-            catalogue = payload.get(key)
-            if isinstance(catalogue, dict):
-                mdx.update(catalogue)
+    demucs: dict[str, Any] = {}
+    for key in (*UPSTREAM_DEMUCS_KEYS, *UPSTREAM_DEMUCS_VIP_KEYS):
+        catalogue = payload.get(key)
+        if isinstance(catalogue, dict):
+            demucs.update(catalogue)
     return vr, mdx, demucs
 
 
@@ -138,9 +142,8 @@ class CatalogueCoordinator:
         self._sources = dict(sources) if sources is not None else _default_sources()
         for source in self._sources.values():
             source._on_update = self._on_source_updated
-        self._snapshots: dict[tuple[str, bool], CatalogueSnapshot] = {}
+        self._snapshots: dict[str, CatalogueSnapshot] = {}
         self._latest: CatalogueSnapshot | None = None
-        self._latest_unlocked: CatalogueSnapshot | None = None
         self._delta_subscribers: list[DeltaCallback] = []
         self._identity_subscribers: list[Callable[[], None]] = []
         self._pending_force: threading.Event | None = None
@@ -207,20 +210,18 @@ class CatalogueCoordinator:
     def snapshot(
         self,
         *,
-        vip: bool = False,
         mode: RefreshMode = RefreshMode.OFFLINE,
         policy: AccessPolicy | None = None,
     ) -> CatalogueSnapshot:
         report = self.refresh(mode=mode, policy=policy, wait=mode is RefreshMode.FORCE)
-        snap = self._latest_unlocked if vip else self._latest
+        snap = self._latest
         if snap is None:
-            snap = self._publish(vip=vip, report=report)
+            snap = self._publish(report=report)
         return snap
 
     def ensure(
         self,
         *,
-        vip: bool = False,
         allow_network: bool = True,
         policy: AccessPolicy | None = None,
     ) -> CatalogueSnapshot:
@@ -235,7 +236,7 @@ class CatalogueCoordinator:
             if captured.allow_network
             else RefreshMode.OFFLINE
         )
-        return self.snapshot(vip=vip, mode=mode, policy=captured)
+        return self.snapshot(mode=mode, policy=captured)
 
     def refresh(
         self,
@@ -249,7 +250,7 @@ class CatalogueCoordinator:
         captured = self.captured_policy(policy)
         if mode is RefreshMode.OFFLINE or not captured.allow_network:
             self._load_sources(RefreshMode.OFFLINE, captured)
-            snapshot = self._publish(vip=False, report=None)
+            snapshot = self._publish(report=None)
             return RefreshReport(
                 mode=RefreshMode.OFFLINE,
                 usable=bool(snapshot.vr or snapshot.mdx or snapshot.demucs or snapshot.apollo),
@@ -257,7 +258,7 @@ class CatalogueCoordinator:
 
         if mode is RefreshMode.STALE_WHILE_REVALIDATE:
             self._load_sources(RefreshMode.STALE_WHILE_REVALIDATE, captured)
-            snapshot = self._publish(vip=False, report=None)
+            snapshot = self._publish(report=None)
             return RefreshReport(
                 mode=mode,
                 usable=bool(snapshot.vr or snapshot.mdx or snapshot.demucs or snapshot.apollo),
@@ -269,8 +270,7 @@ class CatalogueCoordinator:
         if self._closed:
             return
         report = self._last_report
-        self._publish(vip=False, report=report)
-        self._publish(vip=True, report=report)
+        self._publish(report=report)
 
     def _coalesced_force(self, policy: AccessPolicy) -> RefreshReport:
         owner = False
@@ -343,8 +343,7 @@ class CatalogueCoordinator:
             thread.start()
         for thread in threads:
             thread.join(timeout=120)
-        snapshot = self._publish(vip=False, report=None)
-        unlocked = self._publish(vip=True, report=None)
+        snapshot = self._publish(report=None)
         report = RefreshReport(
             mode=RefreshMode.FORCE,
             succeeded=tuple(succeeded),
@@ -355,12 +354,9 @@ class CatalogueCoordinator:
             usable=bool(snapshot.vr or snapshot.mdx or snapshot.demucs or snapshot.apollo),
         )
         snapshot = replace(snapshot, report=report)
-        unlocked = replace(unlocked, report=report)
         with self._lock:
-            self._snapshots[(snapshot.revision.digest(), False)] = snapshot
-            self._snapshots[(unlocked.revision.digest(), True)] = unlocked
+            self._snapshots[snapshot.revision.digest()] = snapshot
             self._latest = snapshot
-            self._latest_unlocked = unlocked
         return report
 
     def _load_sources(self, mode: RefreshMode, policy: AccessPolicy) -> None:
@@ -373,7 +369,12 @@ class CatalogueCoordinator:
             for source_id, source in self._sources.items()
         }
 
-    def _revision(self, contents: Mapping[SourceId, SourceContent | None], *, vip: bool, identity: str) -> RevisionVector:
+    def _revision(
+        self,
+        contents: Mapping[SourceId, SourceContent | None],
+        *,
+        identity: str,
+    ) -> RevisionVector:
         def digest(source_id: SourceId) -> str:
             content = contents.get(source_id)
             return "" if content is None else content.semantic_digest
@@ -385,12 +386,9 @@ class CatalogueCoordinator:
             mvsepless=digest(SourceId.MVSEPLESS),
             identity=identity,
             adapter_schema=ADAPTER_SCHEMA,
-            vip=vip,
         )
 
-    def _publish(
-        self, *, vip: bool, report: RefreshReport | None
-    ) -> CatalogueSnapshot:
+    def _publish(self, *, report: RefreshReport | None) -> CatalogueSnapshot:
         from .catalog_sources import (
             EntryMeta,
             _checkpoint_urls,
@@ -402,15 +400,15 @@ class CatalogueCoordinator:
         from .mvsepless_catalog import unsupported_mvsepless_downloads
         from .politrees_catalog import merge_politrees_catalogues, merge_supplemental_list
 
-        if self._closed and self._latest is not None and not vip:
+        if self._closed and self._latest is not None:
             return self._latest
         contents = self._contents()
         identity_map = trusted_content_ids_from_cache(
             _identity_urls_from_contents(contents)
         )
         identity = _identity_digest(identity_map)
-        revision = self._revision(contents, vip=vip, identity=identity)
-        cache_key = (revision.digest(), vip)
+        revision = self._revision(contents, identity=identity)
+        cache_key = revision.digest()
         with self._lock:
             cached = self._snapshots.get(cache_key)
             # Same digest can be republished with a later RefreshReport
@@ -420,7 +418,6 @@ class CatalogueCoordinator:
 
         snapshot = self._build_snapshot(
             contents,
-            vip=vip,
             revision=revision,
             identity_map=identity_map,
             report=report,
@@ -433,13 +430,10 @@ class CatalogueCoordinator:
             _metadata_alias_index=_metadata_alias_index,
             dedupe_download_catalogue=dedupe_download_catalogue,
         )
-        previous = self._latest_unlocked if vip else self._latest
+        previous = self._latest
         with self._lock:
             self._snapshots[cache_key] = snapshot
-            if vip:
-                self._latest_unlocked = snapshot
-            else:
-                self._latest = snapshot
+            self._latest = snapshot
             self._builds += 1
         if previous is not None:
             delta = _delta_between(previous, snapshot)
@@ -451,7 +445,6 @@ class CatalogueCoordinator:
         self,
         contents: Mapping[SourceId, SourceContent | None],
         *,
-        vip: bool,
         revision: RevisionVector,
         identity_map: Mapping[str, str],
         report: RefreshReport | None,
@@ -470,7 +463,7 @@ class CatalogueCoordinator:
         mvsepless = contents.get(SourceId.MVSEPLESS)
 
         vr, mdx, demucs = flatten_upstream_lists(
-            dict(upstream.payload) if upstream is not None else {}, vip=vip
+            dict(upstream.payload) if upstream is not None else {}
         )
         if politrees is not None:
             vr, mdx, demucs = merge_politrees_catalogues(
@@ -570,8 +563,7 @@ class CatalogueCoordinator:
         # Drop cached projections so identity revision is visible.
         with self._lock:
             self._snapshots.clear()
-        snapshot = self._publish(vip=False, report=previous.report if previous else None)
-        self._publish(vip=True, report=snapshot.report)
+        snapshot = self._publish(report=previous.report if previous else None)
         if previous is None:
             return None
         delta = _delta_between(previous, snapshot)
