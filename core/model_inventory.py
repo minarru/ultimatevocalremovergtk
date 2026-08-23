@@ -941,4 +941,23 @@ def build_identity_index(
     records = _apply_bundled_demucs(records, bundled_demucs_specs)
     records = _apply_registered_demucs(records, registered_demucs)
     records = _enrich_record_displays(repo, records, snapshot)
-    return IdentityIndex(_detect_collisions(records))
+    detected = _detect_collisions(records)
+    from .debug_log import log_event
+
+    values = tuple(detected.values())
+    log_event(
+        "model",
+        "model_inventory_built",
+        record_count=len(values),
+        installed_count=sum(record.installed for record in values),
+        incomplete_count=sum(not record.identity_complete for record in values),
+        collision_count=sum(
+            str(record.identity_error or "").startswith("identity collision between ")
+            for record in values
+        ),
+        vr_count=sum(record.family == "vr" for record in values),
+        mdx_count=sum(record.family == "mdx" for record in values),
+        demucs_count=sum(record.family == "demucs" for record in values),
+        apollo_count=sum(record.family == "apollo" for record in values),
+    )
+    return IdentityIndex(detected)

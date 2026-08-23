@@ -150,7 +150,7 @@ class AudioJobResolver:
             except (ImportError, OSError, RuntimeError) as exc:
                 diagnostics.append(Diagnostic("audio.load", str(exc)))
         units = self._plan_units(spec, settings)
-        return ResolvedAudioJob(
+        plan = ResolvedAudioJob(
             spec.tool, settings, settings.process.export_path, units,
             dict(spec.provenance), tuple(diagnostics), level,
             int(getattr(self.repo, "inventory_generation", 0)),
@@ -159,6 +159,21 @@ class AudioJobResolver:
             dependencies,
             compute_model_identity_digest(dependencies),
         )
+        from .debug_log import log_event
+
+        log_event(
+            "settings",
+            "audio_plan_resolved",
+            tool=plan.tool,
+            validation_level=plan.validation_level.value,
+            unit_count=len(plan.units),
+            dependency_count=len(plan.model_dependencies),
+            diagnostic_count=len(plan.diagnostics),
+            error_count=sum(item.severity == "error" for item in plan.diagnostics),
+            inventory_generation=plan.inventory_generation,
+            device=plan.device,
+        )
+        return plan
 
     def is_current(self, plan: ResolvedAudioJob) -> bool:
         if plan.inventory_generation != int(getattr(self.repo, "inventory_generation", 0)):

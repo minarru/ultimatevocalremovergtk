@@ -18,7 +18,7 @@ import threading
 from typing import Any, Callable, Optional, Sequence
 
 from core import ModelRepository
-from core.debug_log import debug
+from core.debug_log import debug, log_event
 from core.input_discovery import prune_unreadable_paths
 from core.settings import Settings
 
@@ -115,7 +115,15 @@ class AppContext:
             self.settings.save()
             debug("settings", f"save_settings ok keys={len(self.settings.to_dict())}")
         except OSError as exc:
-            debug("settings", f"save_settings failed error={type(exc).__name__}: {exc}")
+            log_event(
+                "settings",
+                "settings_save_failed",
+                level="error",
+                trigger=trigger,
+                destination_path=path,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             raise
 
     def try_save_settings(self, *, trigger: str = "unspecified") -> Optional[str]:

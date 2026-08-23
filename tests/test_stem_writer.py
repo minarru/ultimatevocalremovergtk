@@ -6,6 +6,7 @@ import ast
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -357,17 +358,29 @@ class ExportSourceMapTests(unittest.TestCase):
         )
 
     def test_nonempty_unresolvable_export_raises(self) -> None:
+        from core import debug_log
         from core.stems import StemLiteral, derived_stem_route
         from engines.stem_writer import export_source_map
 
         route = derived_stem_route(StemLiteral("Wanted"))
         sep = _FakeSep((route,))
 
-        with self.assertRaisesRegex(
-            RuntimeError,
-            r"Wanted.*available.*Other",
-        ):
-            export_source_map(sep, {"Other": object()}, samplerate=44100)
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "uvr.log"
+            debug_log.configure(level="errors", log_file=str(log_path))
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"Wanted.*available.*Other",
+            ):
+                export_source_map(sep, {"Other": object()}, samplerate=44100)
+
+            diagnostic = log_path.read_text(encoding="utf-8")
+            self.assertIn("event=export_no_writes", diagnostic)
+            self.assertIn("component=audio", diagnostic)
+            self.assertIn("requested", diagnostic)
+            self.assertIn("available", diagnostic)
 
         self.assertEqual(sep.writes, [])
 

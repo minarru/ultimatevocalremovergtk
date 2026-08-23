@@ -8,6 +8,7 @@ import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
@@ -225,6 +226,22 @@ class InventoryCardinalityTests(unittest.TestCase):
         record = index.lookup("mdx:model")
         self.assertEqual(record.artifacts.primary_filename, "model.ckpt")
         self.assertEqual(record.artifacts.supporting_filenames, ("config.yaml",))
+
+    def test_inventory_build_records_family_and_health_counts(self) -> None:
+        from core import debug_log
+        from core.model_inventory import build_identity_index
+
+        repo, snapshot = _fake_mdx_pair()
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "uvr.log"
+            debug_log.configure(level="debug", log_file=str(log_path))
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            build_identity_index(repo, snapshot=snapshot)
+
+            diagnostic = log_path.read_text(encoding="utf-8")
+            self.assertIn("event=model_inventory_built", diagnostic)
+            self.assertIn("mdx_count=1", diagnostic)
+            self.assertIn("installed_count=0", diagnostic)
 
     def test_demucs_bag_plus_members_is_one_record(self) -> None:
         from core.model_inventory import build_identity_index

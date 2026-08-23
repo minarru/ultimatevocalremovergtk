@@ -39,7 +39,14 @@ from .sample_mode import prepare_input_paths
 from .settings import Settings
 from .stems import coerce_ensemble_pair
 from .run_estimate import count_inference_passes_from_models
-from .debug_log import debug, debug_elapsed
+from .debug_log import (
+    debug,
+    debug_elapsed,
+    current_operation_id,
+    log_event,
+    new_operation_id,
+    set_operation_id,
+)
 from . import job_callbacks
 from . import run_hooks
 from .run_loop import (
@@ -136,6 +143,7 @@ class JobRunner:
         self._run_output_root: str | None = None
         self._run_path_map: dict[str, str] | None = None
         self._resolved_command: str | None = None
+        self._operation_id: str | None = None
         self.last_outcomes: tuple[InputOutcome, ...] = ()
 
     # -- Public control ---------------------------------------------------------
@@ -155,6 +163,7 @@ class JobRunner:
         self._run_output_root = None
         self._run_path_map = None
         self._resolved_command = None
+        self._operation_id = None
         self.last_outcomes = ()
 
     def start(
@@ -166,6 +175,7 @@ class JobRunner:
         planned: Sequence[PlannedInput] | None = None,
         planned_output_root: str | None = None,
         model_dependencies: typing.Mapping[str, Any] | None = None,
+        operation_id: str | None = None,
     ) -> None:
         """Launch the worker thread. No-op if a run is already in flight.
 
@@ -194,6 +204,7 @@ class JobRunner:
             planned=planned,
             planned_output_root=planned_output_root,
             model_dependencies=model_dependencies,
+            operation_id=operation_id,
         )
 
     def _start_worker(
@@ -206,6 +217,7 @@ class JobRunner:
         planned: Sequence[PlannedInput] | None = None,
         planned_output_root: str | None = None,
         model_dependencies: typing.Mapping[str, Any] | None = None,
+        operation_id: str | None = None,
     ) -> None:
         """Shared KThread launch for single-method and ensemble workers."""
         if self.is_running():
@@ -219,6 +231,9 @@ class JobRunner:
         self._run_model_dependencies = model_dependencies
         self._run_planned = tuple(planned) if planned is not None else None
         self._run_output_root = planned_output_root
+        self._operation_id = (
+            operation_id or current_operation_id() or new_operation_id("run")
+        )
         paths = (
             [item.path for item in planned]
             if planned is not None
@@ -229,6 +244,13 @@ class JobRunner:
             args=(paths, callbacks, mode),
         )
         kind = "ensemble" if mode == "ensemble" else "single"
+        log_event(
+            "worker",
+            "worker_started",
+            operation_id=self._operation_id,
+            kind=kind,
+            input_count=len(paths),
+        )
         debug("worker", f"KThread {kind} start files={len(paths)}")
         self._thread.start()
 
@@ -240,6 +262,7 @@ class JobRunner:
         models: Sequence[Any] | None = None,
         fail_fast: bool = True,
         export_paths: Sequence[str] | None = None,
+        operation_id: str | None = None,
     ) -> None:
         """Assemble models once and walk every planned input on one worker.
 
@@ -255,9 +278,26 @@ class JobRunner:
         self._reset_run_state()
         self._run_output_root = job.output
         self._resolved_command = job.command
+        self._operation_id = (
+            operation_id or current_operation_id() or new_operation_id("job")
+        )
         self._thread = KThread(
             target=self._run_resolved,
-            args=(job, callbacks, models, fail_fast, export_paths),
+            args=(
+                job,
+                callbacks,
+                models,
+                fail_fast,
+                export_paths,
+                self._operation_id,
+            ),
+        )
+        log_event(
+            "worker",
+            "worker_started",
+            operation_id=self._operation_id,
+            kind=job.command,
+            input_count=len(job.inputs),
         )
         debug("worker", f"KThread resolved start inputs={len(job.inputs)}")
         self._thread.start()
@@ -269,7 +309,9 @@ class JobRunner:
         models: Sequence[Any] | None,
         fail_fast: bool,
         export_paths: Sequence[str] | None,
+        operation_id: str | None,
     ) -> None:
+        set_operation_id(operation_id)
         outcomes: list[InputOutcome] = []
         try:
             if models is not None:
@@ -280,6 +322,14 @@ class JobRunner:
             self._resolved_command = job.command
 
             for index, planned in enumerate(job.inputs):
+                log_event(
+                    "worker",
+                    "input_started",
+                    operation_id=operation_id,
+                    input_index=index + 1,
+                    input_count=len(job.inputs),
+                    input_path=planned.path,
+                )
                 previous_export: str | None = None
                 if export_paths is not None:
                     previous_export = self.settings.process.export_path
@@ -290,6 +340,16 @@ class JobRunner:
                     if export_paths is not None and previous_export is not None:
                         self.settings.process.export_path = previous_export
                 outcomes.append(outcome)
+                log_event(
+                    "worker",
+                    "input_completed",
+                    operation_id=operation_id,
+                    input_index=index + 1,
+                    status=outcome.status,
+                    output_count=len(outcome.outputs),
+                    elapsed_s=round(outcome.elapsed_s, 6),
+                    error=outcome.error,
+                )
                 self.last_outcomes = tuple(outcomes)
                 if outcome.stopped:
                     break
@@ -298,14 +358,42 @@ class JobRunner:
 
             self.last_outcomes = tuple(outcomes)
             if any(item.stopped for item in outcomes):
+                log_event(
+                    "worker",
+                    "worker_stopped",
+                    operation_id=operation_id,
+                    completed_inputs=len(outcomes),
+                )
                 callbacks.stopped()
             else:
+                log_event(
+                    "worker",
+                    "worker_completed",
+                    operation_id=operation_id,
+                    completed_inputs=len(outcomes),
+                    failed_inputs=sum(item.status == "failed" for item in outcomes),
+                )
                 callbacks.complete()
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
             self.last_outcomes = tuple(outcomes)
             if self._is_stopped:
+                log_event(
+                    "worker",
+                    "worker_stopped",
+                    operation_id=operation_id,
+                    completed_inputs=len(outcomes),
+                )
                 callbacks.stopped()
                 return
+            log_event(
+                "worker",
+                "worker_failed",
+                level="error",
+                operation_id=operation_id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                completed_inputs=len(outcomes),
+            )
             callbacks.error(exc)
             _release_inference_resources(self, park_weights=True)
 
@@ -671,6 +759,8 @@ class JobRunner:
         those stems per the chosen algorithm into the final outputs.
         """
         import shutil
+
+        set_operation_id(self._operation_id)
 
         lifecycle_label = "_run_ensemble" if mode == "ensemble" else "_run"
         debug("worker", f"{lifecycle_label} entered")

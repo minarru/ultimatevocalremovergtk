@@ -30,6 +30,27 @@ def add_reporting_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Show the effective plan before processing",
     )
+    diagnostics = group.add_mutually_exclusive_group()
+    diagnostics.add_argument(
+        "--debug",
+        action="store_true",
+        help="Record structured debug diagnostics (does not change plan output)",
+    )
+    diagnostics.add_argument(
+        "--trace",
+        action="store_true",
+        help="Record high-frequency structured trace diagnostics",
+    )
+    group.add_argument(
+        "--debug-sensitive",
+        action="store_true",
+        help="Include local paths and URL paths; credentials and queries stay redacted",
+    )
+    group.add_argument(
+        "--log-file",
+        metavar="PATH",
+        help="Write diagnostics to PATH instead of the rotating cache log",
+    )
 
 
 def ensure_job_id(args: Any) -> str:
@@ -191,6 +212,18 @@ def fail(
     kind: str = "configuration",
 ) -> int:
     """Report one failure without contaminating machine-readable stdout."""
+    from core.debug_log import log_event
+
+    log_event(
+        "cli",
+        "command_failed",
+        level="error",
+        operation_id=ensure_job_id(args),
+        kind=kind,
+        exit_code=exit_code,
+        error_type=type(exc).__name__ if exc is not None else None,
+        error=message,
+    )
     print(f"error: {message}", file=sys.stderr)
     if report_mode(args) != "human":
         error: dict[str, Any] = {"kind": kind, "message": message}

@@ -22,6 +22,7 @@ from core.types.settings_enums import (
     AudioTool,
     ColorScheme,
     DbAnalysis,
+    DiagnosticLevel,
     DeverbVocalOpt,
     FlacBitDepth,
     IntroAnalysis,
@@ -258,6 +259,12 @@ class UiSettings:
 
 
 @dataclass
+class DiagnosticsSettings:
+    level: DiagnosticLevel = DiagnosticLevel.ERRORS
+    include_sensitive: bool = False
+
+
+@dataclass
 class Settings:
     schema_version: int = SETTINGS_SCHEMA_VERSION
     process: ProcessSettings = field(default_factory=ProcessSettings)
@@ -267,6 +274,7 @@ class Settings:
     ensemble: EnsembleSettings = field(default_factory=EnsembleSettings)
     audio_tools: AudioToolsSettings = field(default_factory=AudioToolsSettings)
     ui: UiSettings = field(default_factory=UiSettings)
+    diagnostics: DiagnosticsSettings = field(default_factory=DiagnosticsSettings)
     path: str = ""
     validation_warnings: list[str] = field(
         default_factory=list, repr=False, compare=False
@@ -297,6 +305,7 @@ class Settings:
             "ensemble": asdict(self.ensemble),
             "audio_tools": asdict(self.audio_tools),
             "ui": asdict(self.ui),
+            "diagnostics": asdict(self.diagnostics),
         })
 
     @classmethod
@@ -318,6 +327,11 @@ class Settings:
                 AudioToolsSettings, AudioToolsSettings(), coerced.get("audio_tools")
             ),
             ui=_merge_dataclass(UiSettings, UiSettings(), coerced.get("ui")),
+            diagnostics=_merge_dataclass(
+                DiagnosticsSettings,
+                DiagnosticsSettings(),
+                coerced.get("diagnostics"),
+            ),
         )
         settings.validate_model_references()
         return settings
@@ -451,6 +465,7 @@ class Settings:
         self.ensemble = copy.deepcopy(fresh.ensemble)
         self.audio_tools = copy.deepcopy(fresh.audio_tools)
         self.ui = copy.deepcopy(fresh.ui)
+        self.diagnostics = copy.deepcopy(fresh.diagnostics)
         self.validation_warnings = list(fresh.validation_warnings)
 
     def save(self, path: str | None = None) -> None:

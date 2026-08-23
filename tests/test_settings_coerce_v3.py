@@ -21,9 +21,9 @@ from core.types.settings_enums import (
 
 
 class SchemaVersionTests(unittest.TestCase):
-    def test_defaults_are_v3(self) -> None:
-        self.assertEqual(SETTINGS_SCHEMA_VERSION, 3)
-        self.assertEqual(Settings.defaults().schema_version, 3)
+    def test_defaults_use_current_schema(self) -> None:
+        self.assertEqual(SETTINGS_SCHEMA_VERSION, 4)
+        self.assertEqual(Settings.defaults().schema_version, 4)
 
     def test_older_payload_is_stamped_current(self) -> None:
         """Loading coerces to v3, so the stamp must say v3 — not the file's."""

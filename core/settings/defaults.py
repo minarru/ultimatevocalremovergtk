@@ -13,9 +13,10 @@ from bundled.constants import (
     WAV,
 )
 
+# v4: persistent diagnostic level and sensitive-detail policy.
 # v3: closed enums + Default/Auto sentinels → null; numeric strings → int/float.
 # v2: ensemble.main_stem EnsemblePair ids only.
-SETTINGS_SCHEMA_VERSION = 3
+SETTINGS_SCHEMA_VERSION = 4
 
 
 def default_process() -> dict:
@@ -196,6 +197,13 @@ def default_ui() -> dict:
     }
 
 
+def default_diagnostics() -> dict:
+    return {
+        "level": "errors",
+        "include_sensitive": False,
+    }
+
+
 def default_settings_dict() -> dict:
     return {
         "schema_version": SETTINGS_SCHEMA_VERSION,
@@ -206,4 +214,5 @@ def default_settings_dict() -> dict:
         "ensemble": default_ensemble(),
         "audio_tools": default_audio_tools(),
         "ui": default_ui(),
+        "diagnostics": default_diagnostics(),
     }

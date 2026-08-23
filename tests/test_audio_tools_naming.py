@@ -9,6 +9,7 @@ The algorithm lands in the output filename, so it must resolve through
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from bundled.constants import APOLLO_RESTORE
@@ -25,6 +26,29 @@ class ManualEnsembleNamingTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "resolved Apollo backend"):
             runner.start(APOLLO_RESTORE, [], [], JobCallbacks())
+
+    def test_audio_worker_inherits_current_operation_id(self) -> None:
+        from bundled.constants import CHANGE_PITCH
+        from core import debug_log
+
+        settings = Settings.defaults()
+        settings.process.export_path = "/missing-output-directory"
+        runner = AudioToolRunner(settings)
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "uvr.log"
+            debug_log.configure(level="debug", log_file=str(log_path))
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            with debug_log.operation("audio-run-4"):
+                runner.start(CHANGE_PITCH, [], [], JobCallbacks())
+                thread = runner._thread
+                if thread is not None:
+                    thread.join(timeout=2)
+
+            failed = next(
+                line for line in log_path.read_text(encoding="utf-8").splitlines()
+                if "event=callback_error" in line
+            )
+            self.assertIn("operation=audio-run-4", failed)
 
     def test_audio_tools_never_uses_canonical_apollo_setting_as_filename(self) -> None:
         settings = Settings.defaults()

@@ -469,6 +469,7 @@ def run_batch(args: Any, job: ResolvedJob) -> BatchOutcome:
                     models=shared_models,
                     fail_fast=True,
                     export_paths=(stage,),
+                    operation_id=job_id,
                 ),
                 print_console=not args.quiet,
                 on_progress=progress,

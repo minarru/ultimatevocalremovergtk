@@ -5,6 +5,7 @@ import os
 import tempfile
 import threading
 import unittest
+from pathlib import Path
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -177,6 +178,30 @@ class QueuePublicationTests(unittest.TestCase):
         self.assertEqual(kwargs["selection"], "MDX-Net Model: A")
         self.assertEqual(kwargs["transfer_result"], "complete")
         self.assertEqual(kwargs["repo"], repo)
+
+    def test_queue_records_item_lifecycle_with_one_operation_id(self) -> None:
+        from core import debug_log
+        from core.download_queue import DownloadQueue
+        from core.model_install import ModelInstallResult
+
+        queue, _repo = self._queue(["complete"])
+        item = self._item(queue)
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "uvr.log"
+            debug_log.configure(level="debug", log_file=str(log_path))
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            with mock.patch(
+                "core.model_install.finalize_downloaded_model",
+                return_value=ModelInstallResult(ready=True, published=True),
+            ):
+                DownloadQueue._process_item(queue, item)
+
+            lines = log_path.read_text(encoding="utf-8").splitlines()
+            started = next(line for line in lines if "event=download_item_started" in line)
+            completed = next(line for line in lines if "event=download_item_completed" in line)
+            operation = f"operation=download-{item.item_id}"
+            self.assertIn(operation, started)
+            self.assertIn(operation, completed)
 
     def test_each_of_two_items_gets_its_own_publication(self) -> None:
         from core.download_queue import DownloadQueue

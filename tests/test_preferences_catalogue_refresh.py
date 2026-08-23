@@ -57,6 +57,29 @@ class PreferencesCatalogueRefreshTests(unittest.TestCase):
         self.assertEqual(dialog.catalogue_cache_refresh_button.get_label(), "Refresh")
         self.assertTrue(dialog.catalogue_cache_refresh_button.get_sensitive())
 
+    def test_general_page_exposes_persistent_diagnostic_controls(self) -> None:
+        from core.types.settings_enums import DiagnosticLevel
+
+        dialog = self._dialog()
+
+        self.assertEqual(dialog.diagnostic_level_row.get_title(), "Diagnostic logging")
+        self.assertEqual(dialog.diagnostic_level_row.get_selected(), 0)
+        self.assertFalse(dialog.diagnostic_sensitive_row.get_active())
+        self.assertEqual(dialog.settings.diagnostics.level, DiagnosticLevel.ERRORS)
+
+    def test_diagnostic_controls_apply_runtime_policy_immediately(self) -> None:
+        from core.types.settings_enums import DiagnosticLevel
+
+        dialog = self._dialog()
+        with mock.patch("core.debug_log.update_policy") as update_policy:
+            dialog.diagnostic_level_row.set_selected(2)
+            dialog.diagnostic_sensitive_row.set_active(True)
+
+        self.assertEqual(dialog.settings.diagnostics.level, DiagnosticLevel.TRACE)
+        self.assertTrue(dialog.settings.diagnostics.include_sensitive)
+        self.assertGreaterEqual(update_policy.call_count, 2)
+        update_policy.assert_called_with(level="trace", include_sensitive=True)
+
     def test_refresh_action_runs_in_worker_and_restores_controls(self) -> None:
         import ui.preferences as preferences
         from core.catalogue_types import RefreshMode, RefreshReport, SourceId

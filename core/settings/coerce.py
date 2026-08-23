@@ -13,6 +13,7 @@ from core.types.settings_enums import (
     AudioTool,
     ColorScheme,
     DbAnalysis,
+    DiagnosticLevel,
     DeverbVocalOpt,
     FlacBitDepth,
     IntroAnalysis,
@@ -247,6 +248,7 @@ _BOOL_FIELDS: frozenset[tuple[str, str]] = frozenset(
         ("ui", "notify_process_failed"),
         ("ui", "notify_download_complete"),
         ("ui", "notify_download_failed"),
+        ("diagnostics", "include_sensitive"),
     }
 )
 
@@ -338,6 +340,7 @@ _ENUM_FIELDS: dict[tuple[str, str], tuple[type[Enum], Enum]] = {
     ("mdx", "phase_option"): (AlignPhaseOption, AlignPhaseOption.AUTOMATIC),
     ("mdx", "phase_shifts"): (PhaseShiftsOpt, PhaseShiftsOpt.NONE),
     ("ui", "color_scheme"): (ColorScheme, ColorScheme.AUTO),
+    ("diagnostics", "level"): (DiagnosticLevel, DiagnosticLevel.ERRORS),
     ("audio_tools", "chosen_audio_tool"): (
         AudioTool,
         AudioTool.MANUAL_ENSEMBLE,
@@ -438,6 +441,7 @@ def coerce_json_dict(data: Any) -> dict[str, Any]:
         "ensemble",
         "audio_tools",
         "ui",
+        "diagnostics",
     ):
         if section in result:
             result[section] = _coerce_section(section, result[section])

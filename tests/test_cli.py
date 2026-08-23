@@ -6,16 +6,234 @@ import json
 import os
 import tempfile
 import unittest
+import warnings
 from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from cli.job import ResolvedJob
-from cli.main import build_parser, main
+from cli.main import UsageError, build_parser, main
 from cli.profiles import LoadedProfile
 from core.settings import Settings
 
 
 class ParserSurfaceTests(unittest.TestCase):
+    def test_runtime_hooks_install_before_parser_construction(self) -> None:
+        order: list[str] = []
+
+        with patch(
+            "core.debug_log.configure_bootstrap",
+            side_effect=lambda: order.append("bootstrap"),
+        ), patch(
+            "core.debug_log.install_runtime_hooks",
+            side_effect=lambda: order.append("hooks"),
+        ), patch(
+            "cli.main.build_parser",
+            side_effect=lambda: (
+                order.append("parser"),
+                (_ for _ in ()).throw(RuntimeError("parser failed")),
+            )[1],
+        ):
+            with self.assertRaisesRegex(RuntimeError, "parser failed"):
+                main([])
+
+        self.assertEqual(order, ["bootstrap", "hooks", "parser"])
+
+    def test_gui_command_preserves_cli_diagnostic_overrides(self) -> None:
+        from cli.main import cmd_gui
+
+        with patch("ui.application.main", return_value=0) as gui_main:
+            self.assertEqual(cmd_gui(argparse.Namespace()), 0)
+
+        gui_main.assert_called_once_with(configure_diagnostics=False)
+
+    def test_diagnostic_flags_parse_globally_and_after_processing_command(self) -> None:
+        parser = build_parser()
+
+        global_args = parser.parse_args(
+            [
+                "--trace",
+                "--debug-sensitive",
+                "--log-file",
+                "/tmp/global.log",
+                "settings",
+                "show",
+            ]
+        )
+        self.assertTrue(global_args.global_trace)
+        self.assertTrue(global_args.global_debug_sensitive)
+        self.assertEqual(global_args.global_log_file, "/tmp/global.log")
+
+        command_args = parser.parse_args(
+            [
+                "separate",
+                "input.wav",
+                "-o",
+                "out",
+                "--model",
+                "mdx:test",
+                "--debug",
+                "--log-file",
+                "/tmp/command.log",
+            ]
+        )
+        self.assertTrue(command_args.debug)
+        self.assertFalse(command_args.trace)
+        self.assertEqual(command_args.log_file, "/tmp/command.log")
+
+    def test_debug_and_trace_are_mutually_exclusive(self) -> None:
+        parser = build_parser()
+
+        with self.assertRaisesRegex(UsageError, "not allowed with argument"):
+            parser.parse_args(["--debug", "--trace", "settings", "show"])
+
+    def test_cli_configures_diagnostics_without_treating_verbose_as_debug(self) -> None:
+        from types import SimpleNamespace
+
+        args = SimpleNamespace(
+            global_report=None,
+            global_quiet=False,
+            global_verbose=True,
+            global_debug=True,
+            global_trace=False,
+            global_debug_sensitive=True,
+            global_log_file="/tmp/uvr-cli.log",
+            debug=False,
+            trace=False,
+            debug_sensitive=False,
+            log_file=None,
+            func=lambda _args: 0,
+        )
+        parser = Mock()
+        parser.parse_args.return_value = args
+        settings = Settings.defaults()
+
+        with patch("cli.main.build_parser", return_value=parser), patch(
+            "core.settings.Settings.load", return_value=settings
+        ), patch("core.debug_log.configure_from_settings") as configure, patch(
+            "core.debug_log.install_runtime_hooks"
+        ) as install_hooks:
+            self.assertEqual(main([]), 0)
+
+        configure.assert_called_once_with(
+            settings,
+            level="debug",
+            include_sensitive_details=True,
+            log_file="/tmp/uvr-cli.log",
+        )
+        install_hooks.assert_called_once_with()
+
+    def test_main_records_command_lifecycle_with_one_operation_id(self) -> None:
+        from types import SimpleNamespace
+
+        from core import debug_log
+
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = os.path.join(tmp, "uvr.log")
+            def command(_args: object) -> int:
+                debug_log.log_event("settings", "nested_command_work")
+                return 0
+
+            args = SimpleNamespace(
+                command="settings",
+                global_report=None,
+                global_quiet=False,
+                global_verbose=False,
+                global_debug=True,
+                global_trace=False,
+                global_debug_sensitive=False,
+                global_log_file=log_path,
+                debug=False,
+                trace=False,
+                debug_sensitive=False,
+                log_file=None,
+                report="human",
+                quiet=False,
+                verbose=False,
+                job_id="cli-operation",
+                func=command,
+            )
+            parser = Mock()
+            parser.parse_args.return_value = args
+
+            with warnings.catch_warnings(record=True) as captured, patch(
+                "cli.main.build_parser", return_value=parser
+            ), patch(
+                "core.settings.Settings.load", return_value=Settings.defaults()
+            ):
+                warnings.simplefilter("always")
+                self.assertEqual(main([]), 0)
+
+            self.assertFalse(
+                any("requires PyGObject" in str(item.message) for item in captured)
+            )
+
+            diagnostic = Path(log_path).read_text(encoding="utf-8")
+            self.assertIn("event=command_started", diagnostic)
+            self.assertIn("event=command_completed", diagnostic)
+            self.assertIn("event=nested_command_work", diagnostic)
+            lifecycle = [
+                line for line in diagnostic.splitlines()
+                if any(
+                    event in line
+                    for event in (
+                        "event=command_started",
+                        "event=nested_command_work",
+                        "event=command_completed",
+                    )
+                )
+            ]
+            self.assertEqual(len(lifecycle), 3)
+            self.assertTrue(
+                all("operation=cli-operation" in line for line in lifecycle)
+            )
+            self.assertIsNone(debug_log.current_operation_id())
+            debug_log.configure(level="errors", log_file="")
+
+    def test_gui_session_policy_changes_do_not_discard_cli_overrides(self) -> None:
+        from types import SimpleNamespace
+
+        from core import debug_log
+
+        observed: list[tuple[str, bool]] = []
+
+        def gui_command(_args: object) -> int:
+            debug_log.update_policy(level="errors", include_sensitive=False)
+            observed.append(
+                (debug_log.current_level(), debug_log.include_sensitive())
+            )
+            return 0
+
+        args = SimpleNamespace(
+            command="gui",
+            global_report=None,
+            global_quiet=False,
+            global_verbose=False,
+            global_debug=False,
+            global_trace=True,
+            global_debug_sensitive=True,
+            global_log_file="",
+            debug=False,
+            trace=False,
+            debug_sensitive=False,
+            log_file=None,
+            report="human",
+            quiet=False,
+            verbose=False,
+            job_id="gui-cli-operation",
+            func=gui_command,
+        )
+        parser = Mock()
+        parser.parse_args.return_value = args
+
+        with patch("cli.main.build_parser", return_value=parser), patch(
+            "core.settings.Settings.load", return_value=Settings.defaults()
+        ):
+            self.assertEqual(main([]), 0)
+
+        self.assertEqual(observed, [("trace", True)])
+        debug_log.configure(level="errors", log_file="")
+
     def test_public_hierarchy(self) -> None:
         parser = build_parser()
         for argv in (
@@ -78,6 +296,35 @@ class ParserSurfaceTests(unittest.TestCase):
 
 
 class HumanReportTests(unittest.TestCase):
+    def test_fail_records_structured_error_without_contaminating_json_stdout(self) -> None:
+        from types import SimpleNamespace
+
+        from cli.reporting import fail
+        from core import debug_log
+
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = os.path.join(tmp, "uvr.log")
+            debug_log.configure(level="errors", log_file=log_path)
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            args = SimpleNamespace(report="json", quiet=False, job_id="job-9")
+            out, err = io.StringIO(), io.StringIO()
+
+            with redirect_stdout(out), redirect_stderr(err):
+                code = fail(
+                    args,
+                    "output write failed",
+                    exit_code=2,
+                    exc=RuntimeError("boom"),
+                    kind="runtime",
+                )
+
+            self.assertEqual(code, 2)
+            self.assertFalse(json.loads(out.getvalue())["ok"])
+            diagnostic = Path(log_path).read_text(encoding="utf-8")
+            self.assertIn("event=command_failed", diagnostic)
+            self.assertIn("operation=job-9", diagnostic)
+            self.assertIn("kind='runtime'", diagnostic)
+
     def test_single_input_failure_prints_error_on_stderr(self) -> None:
         from cli.reporting import emit_document
 

@@ -3,13 +3,63 @@ import os
 import pickle
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from bundled.constants import DEFAULT_DATA
-from core.settings import Settings
+from core.settings import SETTINGS_SCHEMA_VERSION, Settings
+from core.types.settings_enums import DiagnosticLevel
 
 
 class SettingsJsonTests(unittest.TestCase):
+    def test_schema_v4_defaults_include_diagnostic_policy(self):
+        settings = Settings.defaults()
+
+        self.assertEqual(SETTINGS_SCHEMA_VERSION, 4)
+        self.assertEqual(settings.diagnostics.level, DiagnosticLevel.ERRORS)
+        self.assertFalse(settings.diagnostics.include_sensitive)
+        self.assertEqual(
+            settings.to_json_dict()["diagnostics"],
+            {"level": "errors", "include_sensitive": False},
+        )
+
+    def test_schema_v3_loads_with_safe_diagnostic_defaults(self):
+        payload = Settings.defaults().to_json_dict()
+        payload["schema_version"] = 3
+        payload.pop("diagnostics")
+
+        loaded = Settings.from_json_dict(payload)
+
+        self.assertEqual(loaded.schema_version, 4)
+        self.assertEqual(loaded.diagnostics.level, DiagnosticLevel.ERRORS)
+        self.assertFalse(loaded.diagnostics.include_sensitive)
+
+    def test_invalid_diagnostic_values_coerce_to_safe_defaults(self):
+        loaded = Settings.from_json_dict(
+            {
+                "schema_version": 4,
+                "diagnostics": {
+                    "level": "everything",
+                    "include_sensitive": "no",
+                },
+            }
+        )
+
+        self.assertEqual(loaded.diagnostics.level, DiagnosticLevel.ERRORS)
+        self.assertFalse(loaded.diagnostics.include_sensitive)
+
+    def test_diagnostic_settings_round_trip_but_stay_out_of_profiles(self):
+        settings = Settings.defaults()
+        settings.diagnostics.level = DiagnosticLevel.TRACE
+        settings.diagnostics.include_sensitive = True
+
+        restored = Settings.from_json_dict(settings.to_json_dict())
+
+        self.assertEqual(restored.diagnostics.level, DiagnosticLevel.TRACE)
+        self.assertTrue(restored.diagnostics.include_sensitive)
+        self.assertNotIn("diagnostic_level", settings.to_dict())
+        self.assertNotIn("include_sensitive", settings.to_dict())
+
     def test_round_trip(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "settings.json")
@@ -28,6 +78,24 @@ class SettingsJsonTests(unittest.TestCase):
                 handle.write("not-json{")
             loaded = Settings.load(path)
             self.assertEqual(loaded.get("save_format"), DEFAULT_DATA["save_format"])
+
+    def test_corrupt_file_is_recorded_at_the_default_error_level(self):
+        from core import debug_log
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "settings.json")
+            log_path = Path(tmp) / "uvr.log"
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("not-json{")
+            debug_log.configure(level="errors", log_file=str(log_path))
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+
+            Settings.load(path)
+
+            diagnostic = log_path.read_text(encoding="utf-8")
+            self.assertIn("event=settings_load_failed", diagnostic)
+            self.assertIn("level=ERROR", diagnostic)
+            self.assertNotIn(path, diagnostic)
 
     def test_corrupt_file_is_preserved_not_overwritten(self):
         """A settings.json we cannot parse must survive as a .bad sidecar.

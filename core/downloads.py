@@ -138,7 +138,16 @@ def _attempt_presentation_backfill(
             "the live catalogue remains active and the next successful refresh "
             f"will retry: {type(exc).__name__}: {exc}"
         )
-        debug("download", message)
+        from .debug_log import log_event
+
+        log_event(
+            "download",
+            "presentation_backfill_failed",
+            level="warning",
+            operation=operation,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         warnings.warn(message, RuntimeWarning, stacklevel=2)
 
 
@@ -249,7 +258,15 @@ def _transactional_json_refresh_locked(
             os.replace(tmp_path, path)
             committed.append(path)
     except Exception as exc:
-        debug("download", f"model-data commit failed error={type(exc).__name__}: {exc}")
+        from .debug_log import log_event
+
+        log_event(
+            "download",
+            "model_data_commit_failed",
+            level="error",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         for path in reversed(committed):
             backup_path = backups.get(path)
             try:

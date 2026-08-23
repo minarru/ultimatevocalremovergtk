@@ -13,7 +13,7 @@ from typing import Callable, Optional
 from gi.repository import GLib
 
 from core import JobCallbacks
-from core.debug_log import correlation_seq, debug, preview_text, verbose
+from core.debug_log import correlation_seq, log_event, preview_text, verbose
 from core.oom_choice import OomChoiceRequest
 
 _PROGRESS_LOG_STEP = 0.05
@@ -36,16 +36,8 @@ def idle_on_main(func: Callable, *args: typing.Any, **kwargs: typing.Any) -> Non
 
 
 def _should_log_progress(fraction: float) -> bool:
-    global _last_progress_log
-    if verbose():
-        return True
-    if fraction >= 1.0 or _last_progress_log < 0:
-        _last_progress_log = fraction
-        return True
-    if fraction - _last_progress_log >= _PROGRESS_LOG_STEP:
-        _last_progress_log = fraction
-        return True
-    return False
+    del fraction
+    return verbose()
 
 
 def _preview_args(label: str, args: tuple) -> str:
@@ -80,18 +72,26 @@ def main_thread(func: Callable) -> Callable:
         seq = correlation_seq()
         preview = _preview_args(label, args)
         scheduled_at = time.monotonic()
-        debug("dispatch", f"schedule {label}({preview})", seq=seq)
+        log_event(
+            "dispatch",
+            "dispatch_scheduled",
+            level="trace",
+            sequence=seq,
+            callback=label,
+            arguments=preview,
+        )
 
         def invoke():
             latency_ms = (time.monotonic() - scheduled_at) * 1000.0
-            if is_progress:
-                debug("dispatch", f"invoke {label}({preview})", seq=seq)
-            else:
-                debug(
-                    "dispatch",
-                    f"invoke {label}({preview}) after {latency_ms:.1f}ms",
-                    seq=seq,
-                )
+            log_event(
+                "dispatch",
+                "dispatch_invoked",
+                level="trace",
+                sequence=seq,
+                callback=label,
+                arguments=preview,
+                latency_ms=round(latency_ms, 3),
+            )
             func(*args, **kwargs)
             return GLib.SOURCE_REMOVE
 

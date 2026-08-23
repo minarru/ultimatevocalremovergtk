@@ -35,7 +35,7 @@ from .catalogue_types import (
     UPSTREAM_VR_VIP_KEYS,
     readonly_mapping,
 )
-from .debug_log import debug
+from .debug_log import debug, log_event
 from .remote_catalog_cache import RemoteJsonSource
 
 DeltaCallback = Callable[[CatalogueDelta], None]
@@ -247,26 +247,64 @@ class CatalogueCoordinator:
         policy: AccessPolicy | None = None,
         wait: bool | None = None,
     ) -> RefreshReport:
-        if self._closed:
-            return RefreshReport(mode=mode, usable=self._latest is not None)
         captured = self.captured_policy(policy)
+        log_event(
+            "download",
+            "catalogue_refresh_started",
+            mode=mode.value,
+            allow_network=captured.allow_network,
+            allow_cache_writes=captured.allow_cache_writes,
+        )
+        if self._closed:
+            report = RefreshReport(mode=mode, usable=self._latest is not None)
+            self._log_refresh_completed(report)
+            return report
         if mode is RefreshMode.OFFLINE or not captured.allow_network:
             self._load_sources(RefreshMode.OFFLINE, captured)
             snapshot = self._publish(report=None)
-            return RefreshReport(
+            report = RefreshReport(
                 mode=RefreshMode.OFFLINE,
                 usable=bool(snapshot.vr or snapshot.mdx or snapshot.demucs or snapshot.apollo),
             )
+            self._log_refresh_completed(report, snapshot)
+            return report
 
         if mode is RefreshMode.STALE_WHILE_REVALIDATE:
             self._load_sources(RefreshMode.STALE_WHILE_REVALIDATE, captured)
             snapshot = self._publish(report=None)
-            return RefreshReport(
+            report = RefreshReport(
                 mode=mode,
                 usable=bool(snapshot.vr or snapshot.mdx or snapshot.demucs or snapshot.apollo),
             )
+            self._log_refresh_completed(report, snapshot)
+            return report
 
-        return self._coalesced_force(captured)
+        report = self._coalesced_force(captured)
+        self._log_refresh_completed(report)
+        return report
+
+    def _log_refresh_completed(
+        self,
+        report: RefreshReport,
+        snapshot: CatalogueSnapshot | None = None,
+    ) -> None:
+        published = snapshot or self._latest
+        log_event(
+            "download",
+            "catalogue_refresh_completed",
+            level="warning" if report.failed else "debug",
+            mode=report.mode.value,
+            usable=report.usable,
+            upstream_live=report.upstream_live,
+            succeeded_sources=tuple(source.value for source in report.succeeded),
+            failed_sources=tuple(source.value for source, _error in report.failed),
+            failure_details={source.value: error for source, error in report.failed},
+            stale_sources=tuple(source.value for source in report.stale),
+            vr_count=len(published.vr) if published is not None else 0,
+            mdx_count=len(published.mdx) if published is not None else 0,
+            demucs_count=len(published.demucs) if published is not None else 0,
+            apollo_count=len(published.apollo) if published is not None else 0,
+        )
 
     def _on_source_updated(self) -> None:
         if self._closed:

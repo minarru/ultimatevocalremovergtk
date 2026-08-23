@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from bundled.constants import (
@@ -384,6 +385,31 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         stems = planned_output_stems(settings, (_desc("Vocals"),), command="ensemble")
         labels = tuple(stem for stem, _conditional in stems)
         self.assertEqual(labels, (BASS_STEM, DRUM_STEM, OTHER_STEM, VOCAL_STEM))
+
+
+class PlanningDiagnosticsTests(unittest.TestCase):
+    def test_resolve_records_counts_without_input_paths(self) -> None:
+        from core import debug_log
+        from core.job_plan import ValidationLevel
+
+        settings = Settings.defaults()
+        resolver = JobResolver(Mock(inventory_generation=3))
+        resolver._dependency_map = Mock(return_value={})  # type: ignore[method-assign]
+        resolver._primary_dependency_map = Mock(return_value={})  # type: ignore[method-assign]
+        with tempfile.NamedTemporaryFile(suffix=".wav") as source, \
+             tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "uvr.log"
+            debug_log.configure(level="debug", log_file=str(log_path))
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            resolver.resolve(
+                JobSpec("separate", settings, (source.name,), tmp),
+                ValidationLevel.CONFIG,
+            )
+
+            diagnostic = log_path.read_text(encoding="utf-8")
+            self.assertIn("event=plan_resolved", diagnostic)
+            self.assertIn("input_count=1", diagnostic)
+            self.assertNotIn(source.name, diagnostic)
 
 
 if __name__ == "__main__":

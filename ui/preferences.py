@@ -83,6 +83,12 @@ _COLOR_SCHEME_OPTIONS = (
     ("Dark", "dark"),
 )
 
+_DIAGNOSTIC_LEVEL_OPTIONS = (
+    ("Errors only", "errors"),
+    ("Debug", "debug"),
+    ("Trace", "trace"),
+)
+
 
 def persistence_feedback(error: Optional[str], success: str) -> str:
     """Return exactly one honest result message for a settings write."""
@@ -236,6 +242,30 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.color_scheme_row.connect("notify::selected", self._on_color_scheme_changed)
         appearance_group.add(self.color_scheme_row)
         page.add(appearance_group)
+
+        diagnostics_group = Adw.PreferencesGroup(
+            title="Diagnostics",
+            description="Write a rotating troubleshooting log under the application cache directory",
+        )
+        self.diagnostic_level_row = make_combo_row(
+            "Diagnostic logging",
+            [label for label, _value in _DIAGNOSTIC_LEVEL_OPTIONS],
+            subtitle="Errors are always recorded; Debug and Trace add progressively more detail",
+        )
+        self.diagnostic_level_row.connect(
+            "notify::selected", self._on_diagnostic_level_changed
+        )
+        diagnostics_group.add(self.diagnostic_level_row)
+
+        self.diagnostic_sensitive_row = Adw.SwitchRow(
+            title="Include sensitive details",
+            subtitle="Include local paths and URL paths; credentials and URL queries are never logged",
+        )
+        self.diagnostic_sensitive_row.connect(
+            "notify::active", self._on_diagnostic_sensitive_changed
+        )
+        diagnostics_group.add(self.diagnostic_sensitive_row)
+        page.add(diagnostics_group)
 
         profiles_group = Adw.PreferencesGroup(
             title="Saved settings profiles",
@@ -568,6 +598,27 @@ class PreferencesDialog(Adw.PreferencesDialog):
             self.confirm_processing_plan_row.set_active(
                 bool(self.settings.ui.confirm_processing_plan)
             )
+            diagnostic_level = str(
+                getattr(
+                    self.settings.diagnostics.level,
+                    "value",
+                    self.settings.diagnostics.level,
+                )
+            )
+            diagnostic_index = next(
+                (
+                    index
+                    for index, (_label, value) in enumerate(
+                        _DIAGNOSTIC_LEVEL_OPTIONS
+                    )
+                    if value == diagnostic_level
+                ),
+                0,
+            )
+            self.diagnostic_level_row.set_selected(diagnostic_index)
+            self.diagnostic_sensitive_row.set_active(
+                bool(self.settings.diagnostics.include_sensitive)
+            )
 
             if hasattr(self, "directml_row"):
                 self.directml_row.set_active(bool(self.settings.process.use_directml))
@@ -675,6 +726,45 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.settings.ui.color_scheme = coerce_field("ui", "color_scheme", value)
         self._persist()
         apply_color_scheme(value)
+
+    def _on_diagnostic_level_changed(
+        self, row: typing.Any, _pspec: typing.Any
+    ) -> None:
+        if self._loading:
+            return
+        index = row.get_selected()
+        if index == Gtk.INVALID_LIST_POSITION:
+            return
+        from core.types.settings_enums import DiagnosticLevel
+
+        value = _DIAGNOSTIC_LEVEL_OPTIONS[index][1]
+        self.settings.diagnostics.level = DiagnosticLevel(value)
+        self._apply_diagnostic_policy()
+        self._persist()
+
+    def _on_diagnostic_sensitive_changed(
+        self, row: typing.Any, _pspec: typing.Any
+    ) -> None:
+        if self._loading:
+            return
+        self.settings.diagnostics.include_sensitive = bool(row.get_active())
+        self._apply_diagnostic_policy()
+        self._persist()
+
+    def _apply_diagnostic_policy(self) -> None:
+        from core.debug_log import update_policy
+
+        level = str(
+            getattr(
+                self.settings.diagnostics.level,
+                "value",
+                self.settings.diagnostics.level,
+            )
+        )
+        update_policy(
+            level=level,
+            include_sensitive=self.settings.diagnostics.include_sensitive,
+        )
 
     def _on_combo_changed(self, row: typing.Any, _pspec: typing.Any, key: typing.Any) -> None:
         if self._loading:
@@ -891,6 +981,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         from core.debug_log import debug
 
         self.settings.reset_to_default()
+        self._apply_diagnostic_policy()
         error = self.context.try_save_settings(trigger="reset")
         debug("settings", "profile reset confirmed")
         self._reload_widgets()

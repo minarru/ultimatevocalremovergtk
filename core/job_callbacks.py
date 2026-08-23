@@ -11,7 +11,7 @@ import typing
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from .debug_log import debug, next_seq, preview_text, set_correlation_seq, verbose
+from .debug_log import log_event, next_seq, preview_text, set_correlation_seq
 from .oom_choice import OOM_CHOICE_AUTO, OOM_CHOICE_STOP, OomChoiceRequest
 from .run_control import check_stopped
 
@@ -54,6 +54,18 @@ class JobCallbacks:
         if not self.on_progress:
             return
         clamped = max(0.0, min(1.0, fraction))
+        log_event(
+            "worker",
+            "progress_update",
+            level="trace",
+            fraction=round(clamped, 6),
+            local_step=local_step,
+            pass_index=pass_index,
+            pass_total=pass_total,
+            detail=detail,
+            combine_index=combine_index,
+            combine_total=combine_total,
+        )
         self.on_progress(
             clamped,
             local_step=local_step,
@@ -78,23 +90,34 @@ class JobCallbacks:
     def console(self, text: str) -> None:
         seq = next_seq()
         set_correlation_seq(seq)
-        if verbose():
-            debug("worker", f"console emit {preview_text(text)!r}", seq=seq)
+        log_event(
+            "worker",
+            "console_chunk",
+            level="trace",
+            sequence=seq,
+            text=preview_text(text),
+        )
         if self.on_console:
             self.on_console(text)
 
     def complete(self) -> None:
-        debug("worker", "complete")
+        log_event("worker", "callback_completed")
         if self.on_complete:
             self.on_complete()
 
     def stopped(self) -> None:
-        debug("worker", "stopped")
+        log_event("worker", "callback_stopped")
         if self.on_stopped:
             self.on_stopped()
 
     def error(self, exc: BaseException) -> None:
-        debug("worker", f"error {type(exc).__name__}: {exc}")
+        log_event(
+            "worker",
+            "callback_error",
+            level="error",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         if self.on_error:
             self.on_error(exc)
 
@@ -115,15 +138,16 @@ class JobCallbacks:
             done.set()
 
         request.reply = reply
-        debug(
+        log_event(
             "worker",
-            "oom choice requested "
-            f"kind={request.process_kind!r} export={request.can_export} "
-            f"retry={request.can_retry}",
+            "oom_choice_requested",
+            process_kind=request.process_kind,
+            can_export=request.can_export,
+            can_retry=request.can_retry,
         )
         self.on_oom_choice(request)
         while not done.wait(timeout=0.05):
             check_stopped(runner)
         choice = box["choice"]
-        debug("worker", f"oom choice={choice!r}")
+        log_event("worker", "oom_choice_received", choice=choice)
         return choice

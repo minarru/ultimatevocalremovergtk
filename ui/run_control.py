@@ -26,10 +26,14 @@ from bundled.constants import (
 from core.debug_log import (
     clear_run_start,
     debug,
+    log_event,
     mark_run_start,
+    new_operation_id,
     next_seq,
+    operation,
     preview_text,
     set_correlation_seq,
+    set_operation_id,
     verbose,
 )
 from core.run_estimate import ProgressEtaTracker
@@ -88,6 +92,8 @@ class RunController:
         self._run_output_dir = ""
         self._run_label = "Processing"
         self._run_started_at = 0.0
+        self._operation_id: Optional[str] = None
+        self._operation_started_at = 0.0
         self._eta_tracker = ProgressEtaTracker()
         self._last_progress_ui_at = 0.0
         self._last_progress_phase: Optional[str] = None
@@ -162,6 +168,7 @@ class RunController:
 
         if self._preflight_in_progress or self._plan_dialog is not None:
             return
+        self._ensure_operation()
         if hasattr(target, "build_job_spec"):
             self._begin_preflight(target)
             return
@@ -182,6 +189,7 @@ class RunController:
         from core.audio_plan import ResolvedAudioJob
         from core.job_plan import ResolvedJob
 
+        operation_id = self._ensure_operation()
         runner = self._window.context.runner
         if plan is not None:
             import copy
@@ -192,10 +200,25 @@ class RunController:
             runner.settings = self._window.settings
         callbacks = self._callbacks()
         debug("ui", f"handle_start -> {type(target).__name__}.start()")
-        if isinstance(plan, (ResolvedJob, ResolvedAudioJob)):
-            target.start(callbacks, plan=plan)
-        else:
-            target.start(callbacks)
+        try:
+            if isinstance(plan, (ResolvedJob, ResolvedAudioJob)):
+                target.start(callbacks, plan=plan)
+            else:
+                target.start(callbacks)
+        except Exception as exc:  # noqa: BLE001 - surface launch failures in the UI
+            self.fail_to_start(
+                f"Unable to start {type(target).__name__}: {exc}",
+                exc,
+            )
+            return
+        if (
+            getattr(self, "_operation_id", None) == operation_id
+            and getattr(self, "_running_target", None) is None
+        ):
+            self._finish_operation(
+                "run_cancelled",
+                reason="target_not_launched",
+            )
 
     def _apply_page_runner_settings(
         self, target: typing.Any, settings: typing.Any
@@ -239,7 +262,14 @@ class RunController:
             spec = target.build_job_spec()
         except Exception as exc:  # noqa: BLE001 - presented through normal UI
             self._window.toast(f"Could not prepare processing plan: {exc}")
+            self._finish_operation(
+                "run_preflight_failed",
+                level="error",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             return
+        operation_id = self._ensure_operation()
         focus = str(getattr(spec.settings.process, "stem_focus", "") or "")
         debug(
             "ui",
@@ -252,18 +282,19 @@ class RunController:
             from core.audio_plan import AudioJobResolver, AudioJobSpec
             from core.job_plan import JobResolver, ValidationLevel
 
-            try:
-                if isinstance(spec, AudioJobSpec):
-                    plan = AudioJobResolver(self._window.context.repo).resolve(
-                        spec, ValidationLevel.RUNTIME
-                    )
-                else:
-                    plan = JobResolver(self._window.context.repo).resolve(
-                        spec, ValidationLevel.RUNTIME
-                    )
-                error: BaseException | None = None
-            except Exception as exc:  # noqa: BLE001 - marshalled to GTK
-                plan, error = None, exc
+            with operation(operation_id):
+                try:
+                    if isinstance(spec, AudioJobSpec):
+                        plan = AudioJobResolver(self._window.context.repo).resolve(
+                            spec, ValidationLevel.RUNTIME
+                        )
+                    else:
+                        plan = JobResolver(self._window.context.repo).resolve(
+                            spec, ValidationLevel.RUNTIME
+                        )
+                    error: BaseException | None = None
+                except Exception as exc:  # noqa: BLE001 - marshalled to GTK
+                    plan, error = None, exc
             idle_on_main(
                 self._finish_preflight, target, fingerprint, plan, error
             )
@@ -279,10 +310,20 @@ class RunController:
         self._set_preflight_busy(False)
         if error is not None:
             self._window.toast(f"Could not prepare processing plan: {error}")
+            self._finish_operation(
+                "run_preflight_failed",
+                level="error",
+                error_type=type(error).__name__,
+                error=str(error),
+            )
             return
         errors = [item.message for item in plan.diagnostics if item.severity == "error"]
         if errors:
             self._window.toast(errors[0])
+            self._finish_operation(
+                "run_preflight_rejected",
+                reason=errors[0],
+            )
             return
         from core.audio_plan import ResolvedAudioJob
 
@@ -315,6 +356,10 @@ class RunController:
                 self._accept_plan(target, fingerprint, plan)
             else:
                 self._window._refresh_start_readiness()
+                self._finish_operation(
+                    "run_cancelled",
+                    reason="plan_confirmation",
+                )
 
         dialog.connect("response", response)
         self._plan_dialog = dialog
@@ -329,6 +374,13 @@ class RunController:
             current = target.build_job_spec()
         except Exception as exc:  # noqa: BLE001
             self._window.toast(f"Could not recheck processing plan: {exc}")
+            self._finish_operation(
+                "run_preflight_failed",
+                level="error",
+                stage="acceptance",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             return
         if settings_fingerprint(current.settings) != fingerprint:
             self._window.toast("Processing settings or models changed; reviewing the updated plan")
@@ -341,20 +393,22 @@ class RunController:
             self._begin_preflight(target)
             return
         self._set_preflight_busy(True)
+        operation_id = self._ensure_operation()
 
         def worker() -> None:
             from core.audio_plan import AudioJobResolver, ResolvedAudioJob
             from core.job_plan import JobResolver
 
-            try:
-                is_current = (
-                    AudioJobResolver(self._window.context.repo).is_current(plan)
-                    if isinstance(plan, ResolvedAudioJob)
-                    else JobResolver(self._window.context.repo).is_current(plan)
-                )
-                error: BaseException | None = None
-            except Exception as exc:  # noqa: BLE001 - marshalled to GTK
-                is_current, error = False, exc
+            with operation(operation_id):
+                try:
+                    is_current = (
+                        AudioJobResolver(self._window.context.repo).is_current(plan)
+                        if isinstance(plan, ResolvedAudioJob)
+                        else JobResolver(self._window.context.repo).is_current(plan)
+                    )
+                    error: BaseException | None = None
+                except Exception as exc:  # noqa: BLE001 - marshalled to GTK
+                    is_current, error = False, exc
             idle_on_main(
                 self._finish_plan_recheck,
                 target, fingerprint, plan, is_current, error,
@@ -373,6 +427,13 @@ class RunController:
         self._set_preflight_busy(False)
         if error is not None:
             self._window.toast(f"Could not recheck processing plan: {error}")
+            self._finish_operation(
+                "run_preflight_failed",
+                level="error",
+                stage="recheck",
+                error_type=type(error).__name__,
+                error=str(error),
+            )
             return
         try:
             current = target.build_job_spec()
@@ -381,6 +442,13 @@ class RunController:
             )
         except Exception as exc:  # noqa: BLE001
             self._window.toast(f"Could not recheck processing plan: {exc}")
+            self._finish_operation(
+                "run_preflight_failed",
+                level="error",
+                stage="final_recheck",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             return
         if not is_current or not settings_unchanged:
             self._window.toast(
@@ -400,11 +468,18 @@ class RunController:
         """Shared bookkeeping when any run target starts its worker."""
         from core.error_context import clear_run_error_context, set_run_error_context
 
+        self._ensure_operation()
         mark_run_start()
         reset_progress_log()
         clear_run_error_context()
         set_run_error_context(**self._snapshot_error_context(target))
-        debug("ui", f"begin_run target={type(target).__name__} engines_imported={engines_imported()} warm={warm_status()}")
+        log_event(
+            "ui",
+            "run_started",
+            target=type(target).__name__,
+            engines_imported=engines_imported(),
+            warm_status=warm_status(),
+        )
         self._running_target = target
         runner = getattr(self._window.context, "runner", None)
         runner_export = ""
@@ -428,9 +503,23 @@ class RunController:
         self._window.log_panel.prepare_for_run()
         debug("ui", "begin_run UI ready (log revealed, prepare_for_run done)")
 
+    def _ensure_operation(self) -> str:
+        operation_id = getattr(self, "_operation_id", None)
+        if operation_id is None:
+            operation_id = new_operation_id("ui-run")
+            self._operation_id = operation_id
+            self._operation_started_at = time.monotonic()
+        set_operation_id(operation_id)
+        return operation_id
+
     def fail_to_start(self, message: str, exc: BaseException) -> None:
         """Recover the UI when a run target could not launch its worker."""
-        debug("ui", f"fail_to_start error={type(exc).__name__}: {exc}")
+        self._finish_operation(
+            "run_start_failed",
+            level="error",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         clear_run_start()
         self._window._stop_pulse()
         self._set_running(False)
@@ -438,6 +527,32 @@ class RunController:
         self._report_error(message, exc)
         self._running_target = None
         self._restore_runner_settings()
+
+    def _finish_operation(
+        self,
+        event: str,
+        *,
+        level: str = "debug",
+        **fields: object,
+    ) -> None:
+        operation_id = getattr(self, "_operation_id", None)
+        if operation_id is None:
+            return
+        started_at = getattr(self, "_operation_started_at", 0.0) or getattr(
+            self, "_run_started_at", 0.0
+        )
+        elapsed = max(0.0, time.monotonic() - started_at)
+        log_event(
+            "ui",
+            event,
+            level=level,
+            operation_id=operation_id,
+            elapsed_seconds=round(elapsed, 3),
+            **fields,
+        )
+        self._operation_id = None
+        self._operation_started_at = 0.0
+        set_operation_id(None)
 
     def handle_start_action(self) -> None:
         if self._window.start_button.get_sensitive():
@@ -616,6 +731,7 @@ class RunController:
         self._running_target = None
         self._cleanup_target = None
         clear_run_start()
+        self._finish_operation("run_stopped", reason="shutdown")
         if target is not None:
             if hasattr(target, "unpause"):
                 target.unpause()
@@ -718,6 +834,8 @@ class RunController:
         self._running_target = None
         self._window.log_panel.clear_progress()
         clear_run_start()
+        if stopped:
+            self._finish_operation("run_stopped", reason="user")
 
     def _on_oom_choice(self, request: typing.Any) -> None:
         """Present the mid-run OOM dialog; ``request.respond`` unblocks the worker."""
@@ -779,7 +897,6 @@ class RunController:
     def _on_complete(self) -> None:
         from core.error_context import clear_run_error_context
 
-        debug("ui", f"on_complete output_dir={os.path.basename(self._run_output_dir or '') or '(none)'}")
         clear_run_error_context()
         self._window._stop_pulse()
         self._set_running(False)
@@ -793,9 +910,15 @@ class RunController:
         self._show_complete_toast(output_dir)
         self._send_completion_notification(output_dir)
         self._schedule_release_inference_memory(wait_for_stop=0.5)
+        self._finish_operation("run_completed", output_path=output_dir)
 
     def _on_error(self, exc: BaseException) -> None:
-        debug("ui", f"on_error error={type(exc).__name__}: {exc}")
+        self._finish_operation(
+            "run_failed",
+            level="error",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         self._window._stop_pulse()
         self._set_running(False)
         self._window.log_panel.set_progress_text("Failed")

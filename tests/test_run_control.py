@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest import mock
@@ -571,6 +573,165 @@ class PlanRecheckTests(unittest.TestCase):
 
 
 class BeginRunOutputTests(unittest.TestCase):
+    def test_start_target_clears_operation_when_target_aborts_before_begin_run(self) -> None:
+        from core import debug_log
+
+        window = mock.Mock()
+        window.settings = Settings.defaults()
+        window.context.runner.settings = Settings.defaults()
+        target = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._operation_id = None
+        controller._operation_started_at = 0.0
+        controller._running_target = None
+        controller._callbacks = mock.Mock(return_value=mock.Mock())
+
+        with mock.patch(
+            "ui.run_control.new_operation_id", return_value="ui-run-aborted"
+        ):
+            controller._start_target(target)
+
+        self.assertIsNone(controller._operation_id)
+        self.assertIsNone(debug_log.current_operation_id())
+
+    def test_start_target_handles_pre_begin_exception_and_clears_operation(self) -> None:
+        from core import debug_log
+
+        window = mock.Mock()
+        window.settings = Settings.defaults()
+        window.context.runner.settings = Settings.defaults()
+        target = mock.Mock()
+        target.start.side_effect = RuntimeError("pre-begin failure")
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._operation_id = None
+        controller._operation_started_at = 0.0
+        controller._running_target = None
+        controller._callbacks = mock.Mock(return_value=mock.Mock())
+        controller.fail_to_start = mock.Mock(
+            side_effect=lambda _message, _exc: controller._finish_operation(
+                "run_start_failed", level="error"
+            )
+        )
+
+        with mock.patch(
+            "ui.run_control.new_operation_id", return_value="ui-run-failed"
+        ):
+            controller._start_target(target)
+
+        controller.fail_to_start.assert_called_once()
+        self.assertIsNone(controller._operation_id)
+        self.assertIsNone(debug_log.current_operation_id())
+
+    def test_preflight_operation_is_reused_when_run_begins(self) -> None:
+        from core import debug_log
+        from core.run_estimate import ProgressEtaTracker
+        from core.settings import Settings
+
+        window = mock.Mock()
+        window.settings = Settings.defaults()
+        window.context.runner.settings = Settings.defaults()
+        window.log_panel = mock.Mock()
+        window.console = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._operation_id = "ui-run-preflight"
+        controller._operation_started_at = 10.0
+        controller._eta_tracker = ProgressEtaTracker()
+        controller._snapshot_error_context = mock.Mock(return_value={})
+        controller._run_label_for = mock.Mock(return_value="Separation")
+        controller._set_running = mock.Mock()
+        debug_log.set_operation_id("ui-run-preflight")
+        self.addCleanup(debug_log.set_operation_id, None)
+
+        with mock.patch("ui.run_control.mark_run_start"), \
+             mock.patch("ui.run_control.reset_progress_log"), \
+             mock.patch("ui.run_control.new_operation_id") as new_operation_id, \
+             mock.patch("core.error_context.clear_run_error_context"), \
+             mock.patch("core.error_context.set_run_error_context"):
+            controller.begin_run(object())
+
+        new_operation_id.assert_not_called()
+        self.assertEqual(controller._operation_id, "ui-run-preflight")
+        self.assertEqual(debug_log.current_operation_id(), "ui-run-preflight")
+
+    def test_preflight_worker_inherits_ui_operation_id(self) -> None:
+        from core import debug_log
+        from core.settings import Settings
+
+        observed: list[str | None] = []
+        settings = Settings.defaults()
+        spec = mock.Mock(settings=settings)
+        plan = mock.Mock(diagnostics=[])
+        target = mock.Mock()
+        target.build_job_spec.return_value = spec
+        window = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._operation_id = None
+        controller._operation_started_at = 0.0
+        controller._preflight_in_progress = False
+        controller._plan_dialog = None
+        controller._set_preflight_busy = mock.Mock()
+        controller._finish_preflight = mock.Mock()
+
+        class ImmediateThread:
+            def __init__(
+                self,
+                *,
+                target: Any,
+                **_kwargs: Any,
+            ) -> None:
+                self._target = target
+
+            def start(self) -> None:
+                self._target()
+
+        resolver = mock.Mock()
+
+        def resolve(_spec: object, _level: object) -> object:
+            observed.append(debug_log.current_operation_id())
+            debug_log.log_event("settings", "plan_resolved")
+            return plan
+
+        resolver.resolve.side_effect = resolve
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "uvr.log"
+            debug_log.configure(level="debug", log_file=str(log_path))
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            with mock.patch("ui.run_control.target_blocked_reason", return_value=None), \
+                 mock.patch("ui.run_control.new_operation_id", return_value="ui-run-preflight"), \
+                 mock.patch("ui.run_control.threading.Thread", ImmediateThread), \
+                 mock.patch("core.job_plan.JobResolver", return_value=resolver), \
+                 mock.patch("ui.run_control.idle_on_main", side_effect=lambda func, *args: func(*args)):
+                controller.handle_start(target)
+
+            debug_log.log_event("worker", "worker_started")
+            debug_log.log_event("audio", "export_completed")
+            controller._finish_operation("run_completed")
+            correlated = [
+                line
+                for line in log_path.read_text(encoding="utf-8").splitlines()
+                if any(
+                    event in line
+                    for event in (
+                        "event=plan_resolved",
+                        "event=worker_started",
+                        "event=export_completed",
+                        "event=run_completed",
+                    )
+                )
+            ]
+
+        self.assertEqual(observed, ["ui-run-preflight"])
+        self.assertEqual(len(correlated), 4)
+        self.assertTrue(
+            all("operation=ui-run-preflight" in line for line in correlated)
+        )
+        self.assertIsNone(controller._operation_id)
+        self.assertIsNone(debug_log.current_operation_id())
+
     def test_begin_run_uses_runner_export_path(self) -> None:
         from core.run_estimate import ProgressEtaTracker
         from core.settings import Settings
@@ -602,6 +763,38 @@ class BeginRunOutputTests(unittest.TestCase):
             controller.begin_run(object())
 
         self.assertEqual(controller._run_output_dir, "/plan/out")
+
+    def test_begin_run_creates_operation_context_and_completion_clears_it(self) -> None:
+        from core import debug_log
+        from core.run_estimate import ProgressEtaTracker
+        from core.settings import Settings
+
+        window = mock.Mock()
+        window.settings = Settings.defaults()
+        window.context.runner.settings = Settings.defaults()
+        window.log_panel = mock.Mock()
+        window.console = mock.Mock()
+        controller = RunController.__new__(RunController)
+        controller._window = window
+        controller._eta_tracker = ProgressEtaTracker()
+        controller._snapshot_error_context = mock.Mock(return_value={})
+        controller._run_label_for = mock.Mock(return_value="Separation")
+        controller._set_running = mock.Mock()
+        controller._restore_runner_settings = mock.Mock()
+        controller._show_complete_toast = mock.Mock()
+        controller._send_completion_notification = mock.Mock()
+        controller._schedule_release_inference_memory = mock.Mock()
+
+        with mock.patch("ui.run_control.mark_run_start"), \
+             mock.patch("ui.run_control.reset_progress_log"), \
+             mock.patch("ui.run_control.new_operation_id", return_value="ui-run-7"), \
+             mock.patch("core.error_context.clear_run_error_context"), \
+             mock.patch("core.error_context.set_run_error_context"):
+            controller.begin_run(object())
+            self.assertEqual(debug_log.current_operation_id(), "ui-run-7")
+            controller._on_complete()
+
+        self.assertIsNone(debug_log.current_operation_id())
 
     def test_fail_to_start_restores_runner_settings(self) -> None:
         window = mock.Mock()

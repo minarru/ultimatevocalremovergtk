@@ -10,7 +10,8 @@ UVR_DEV_CSS=1 ./run_uvr.sh
 env UVR_DEV_CSS=1 ./run_uvr.sh
 ```
 
-For GLib debug logging details and component names, see also `core/debug_log.py`.
+For the structured diagnostic implementation and GLib compatibility domains,
+see also `core/debug_log.py`.
 
 ---
 
@@ -29,28 +30,69 @@ Standard XDG / platform paths (`XDG_DATA_HOME`, `XDG_CACHE_HOME`, `LOCALAPPDATA`
 
 ## Logging and debug
 
-| Variable | Example | Purpose |
-|----------|---------|---------|
-| `G_MESSAGES_DEBUG` | `uvr` · `uvr-ui,uvr-download` · `all` | GLib debug domains (`uvr-*` shorthands expanded at launch) |
-| `UVR_LOG_FILE` | `/tmp/uvr.log` | Mirror debug output to a plain-text file |
-| `UVR_VERBOSE` | `1` | High-frequency trace (`uvr-trace`; progress ticks, worker polls) |
+The GUI and CLI share one structured diagnostic pipeline. It defaults to
+**Errors**, writing a rotating log at `UVR_CACHE_DIR/logs/uvr.log` (five files,
+2 MiB each). In the GUI, change the live and persisted level under
+**Preferences → General → Diagnostics**. The levels are:
 
-**Components:** `ui`, `dispatch`, `trace`, `worker`, `separate`, `cleanup`, `model`, `audio`, `download`, `error`, `settings`.
+- **Errors:** unrecovered failures, corrupt settings, uncaught exceptions, and
+  export paths that produced no writes.
+- **Debug:** lifecycle boundaries and compact decisions for startup, settings,
+  planning, model inventory, execution, exports, catalogue refresh (including
+  recoverable source warnings), and model downloads.
+- **Trace:** Debug plus high-frequency progress, console-chunk, GTK-dispatch,
+  and polling events.
 
-**Suggested profiles:**
+Each line carries a UTC timestamp, level, component, process-session ID, event
+name, and—where applicable—an operation ID shared by CLI commands, UI runs,
+workers, exports, and downloads. Python warnings are captured at Debug/Trace;
+uncaught main-thread and worker-thread exceptions are always captured.
+
+Local paths and URL paths are redacted by default. **Include sensitive details**
+reveals those paths for troubleshooting. Credentials, authorization values,
+cookies, URL user-info/query strings, raw audio/sample arrays, tensors, and
+model weights are never written. Structured values are escaped to one physical
+line, and log files are forced to owner-only permissions. CLI JSON/JSONL
+stdout remains reserved for the report document/events; diagnostics go to the
+log and GLib/stderr.
+
+The CLI accepts `--debug` or `--trace`, plus `--debug-sensitive` and
+`--log-file PATH`. Put these before the command to apply them globally, or on a
+processing/reporting command that exposes the same flags. `--verbose` remains
+independent: it prints the effective plan and does not enable diagnostic logs.
+Without a flag or environment override, the CLI uses the persisted diagnostic
+policy from Preferences; functional job settings still follow the CLI profile
+rules described below.
+
+| Variable | Values / example | Purpose |
+|----------|------------------|---------|
+| `UVR_LOG_LEVEL` | `errors`, `debug`, `trace` | Override the persisted diagnostic level |
+| `UVR_LOG_FILE` | `/tmp/uvr.log` | Override the rotating cache-log destination |
+| `UVR_DEBUG_SENSITIVE` | `1`, `true`, `yes` | Include local and URL paths (never secrets or URL queries) |
+| `UVR_VERBOSE` | `1` | Legacy alias for Trace |
+| `G_MESSAGES_DEBUG` | `uvr` · `uvr-ui,uvr-download` · `all` | Legacy GLib debug-domain filter (`uvr-*` shorthands expanded at launch) |
+
+**Components:** `ui`, `cli`, `dispatch`, `trace`, `worker`, `separate`,
+`cleanup`, `model`, `audio`, `download`, `ensemble`, `cache`, `error`, and
+`settings`.
+
+**Examples:**
 
 ```bash
-# UI and settings (Save Stems persist + plan output resolution)
+# Persistent structured debug log at the normal cache location
+uvr --debug gui
+
+# Trace one CLI job into an explicit file
+uvr separate song.wav -o /tmp/stems --model mdx:model \
+  --trace --log-file /tmp/uvr-trace.log
+
+# Legacy component-focused GLib output
 G_MESSAGES_DEBUG=uvr-ui,uvr-settings,uvr-error python -m ui
-
-# Separation run
-G_MESSAGES_DEBUG=uvr-ui,uvr-worker,uvr-dispatch,uvr-separate,uvr-model,uvr-error python -m ui
-
-# File + domains
-G_MESSAGES_DEBUG=uvr-download UVR_LOG_FILE=/tmp/uvr.log python -m ui
 ```
 
-`run_uvr.sh` normalizes `G_MESSAGES_DEBUG` and prints a hint when debug vars are set. A second instance exits immediately (single-instance app) — use `journalctl --user -f` or `UVR_LOG_FILE` + `tail -f` on a running session.
+`run_uvr.sh` normalizes `G_MESSAGES_DEBUG` and prints a hint when debug variables
+are set. A second GUI instance exits immediately (single-instance app); inspect
+the rotating cache log or use `journalctl --user -f` for the active process.
 
 ---
 
@@ -252,7 +294,8 @@ hash or identity digest for the same dependency set requires
 versioned result document. JSONL emits versioned planning, progress,
 per-input, and terminal events. Engine logs never enter machine-readable
 stdout. `--quiet` suppresses progress and engine chatter; `--verbose`
-prints the effective plan for a real job.
+prints the effective plan for a real job. `--debug` and `--trace` control the
+separate structured diagnostic stream described above.
 
 JSON documents have the stable outer shape below. Success results add the
 effective `plan`, per-input outcomes, timings, and output paths; failures use

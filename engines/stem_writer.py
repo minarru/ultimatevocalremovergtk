@@ -25,6 +25,7 @@ from bundled.constants import (
     SAVING_STEM,
 )
 from core.audio_io import save_format
+from core.debug_log import log_event
 from core.model_stem_semantics import is_vocal_target
 from core.stems import (
     StemBucket,
@@ -396,6 +397,13 @@ def export_source_map(
     routes = run_export_routes(sep)
     if not routes and not extra_sources:
         return
+    log_event(
+        "audio",
+        "export_started",
+        route_count=len(routes),
+        source_count=len(sources),
+        extra_source_count=len(extra_sources),
+    )
     sep.begin_save_phase(len(routes) + len(extra_sources))
     write_calls = 0
     for route in routes:
@@ -410,6 +418,13 @@ def export_source_map(
                 if route_matches_stem(route, source_key, sep)
             ]
             if len(semantic_matches) > 1:
+                log_event(
+                    "audio",
+                    "export_source_ambiguous",
+                    level="error",
+                    route=route.concept,
+                    matches=semantic_matches,
+                )
                 raise RuntimeError(
                     "Ambiguous export source for "
                     f"{route.concept!r}: matched {semantic_matches!r}"
@@ -422,6 +437,13 @@ def export_source_map(
             route.native.raw if route.native is not None else str(route.label)
         )
         path = sep.stem_export_wav_path(stem_name)
+        log_event(
+            "audio",
+            "write_scheduled",
+            level="trace",
+            stem=stem_name,
+            output_path=path,
+        )
         sep.write_audio(path, sources[key], samplerate, stem_name=stem_name)
         write_calls += 1
 
@@ -429,6 +451,13 @@ def export_source_map(
         if stem_source is None:
             continue
         path = sep.stem_export_wav_path(stem_name)
+        log_event(
+            "audio",
+            "write_scheduled",
+            level="trace",
+            stem=stem_name,
+            output_path=path,
+        )
         sep.write_audio(path, stem_source, samplerate, stem_name=stem_name)
         write_calls += 1
 
@@ -440,10 +469,18 @@ def export_source_map(
             {"concept": route.concept, "label": route.label} for route in routes
         ]
         available = list(sources)
+        log_event(
+            "audio",
+            "export_no_writes",
+            level="error",
+            requested=requested,
+            available=available,
+        )
         raise RuntimeError(
             "No audio writes were scheduled for a non-empty export: "
             f"requested={requested!r}, available={available!r}"
         )
+    log_event("audio", "export_completed", write_count=write_calls)
 
 
 @dataclass

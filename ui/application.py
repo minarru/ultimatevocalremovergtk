@@ -36,22 +36,24 @@ class UVRApplication(Adw.Application):
 
     def do_startup(self):
         Adw.Application.do_startup(self)
-        from core.debug_log import debug, enabled
+        from core.debug_log import log_event
         from core.paths import DATA_DIR
 
-        if enabled("ui"):
-            try:
-                adw_ver = f"{Adw.MAJOR_VERSION}.{Adw.MINOR_VERSION}"
-            except Exception:  # noqa: BLE001
-                adw_ver = "unknown"
-            try:
-                from __version__ import VERSION
-            except Exception:  # noqa: BLE001
-                VERSION = "unknown"
-            debug(
-                "ui",
-                f"startup version={VERSION} data_dir={DATA_DIR} adw={adw_ver}",
-            )
+        try:
+            adw_ver = f"{Adw.MAJOR_VERSION}.{Adw.MINOR_VERSION}"
+        except Exception:  # noqa: BLE001
+            adw_ver = "unknown"
+        try:
+            from __version__ import VERSION
+        except Exception:  # noqa: BLE001
+            VERSION = "unknown"
+        log_event(
+            "ui",
+            "application_runtime_ready",
+            version=VERSION,
+            data_path=DATA_DIR,
+            adwaita_version=adw_ver,
+        )
         # Provision the writable runtime-data tree (and seed bundled assets when
         # running from a read-only install) before any window/model work.
         ensure_data_dir()
@@ -123,19 +125,32 @@ class UVRApplication(Adw.Application):
         window.present()
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(
+    argv: Optional[Sequence[str]] = None,
+    *,
+    configure_diagnostics: bool = True,
+) -> int:
     import os
 
     from core import glib_log
-    from core.debug_log import announce_log_file, debug, enabled
+    from core.debug_log import (
+        announce_log_file,
+        configure_bootstrap,
+        configure_from_settings,
+        install_runtime_hooks,
+        log_event,
+    )
     from core.torch_checkpoint import ensure_demucs_import_aliases
 
+    if configure_diagnostics:
+        configure_bootstrap()
+    install_runtime_hooks()
     ensure_demucs_import_aliases()
-
+    if configure_diagnostics:
+        configure_from_settings(Settings.load())
     glib_log.init()
     announce_log_file()
-    if enabled("ui"):
-        debug("ui", f"main pid={os.getpid()}")
+    log_event("ui", "application_started", pid=os.getpid())
 
     app = UVRApplication()
     try:
@@ -144,13 +159,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # PyGObject calls app.quit() on SIGINT, then re-raises via
         # default_int_handler (e.g. sysprof-cli ^C while profiling).
         status = 130
-        if enabled("ui"):
-            debug("ui", "KeyboardInterrupt after main loop (SIGINT)")
+        log_event("ui", "application_interrupted", level="warning")
 
-    if enabled("ui"):
-        if not app._did_activate:
-            debug("ui", "duplicate instance rejected (single-instance)")
-        debug("ui", f"exit status={status} activated={app._did_activate}")
+    if not app._did_activate:
+        log_event("ui", "duplicate_instance_rejected")
+    log_event(
+        "ui",
+        "application_exited",
+        status=status,
+        activated=app._did_activate,
+    )
 
     from .shutdown import finalize_process_exit
 

@@ -458,11 +458,15 @@ class ModelRepository:
         it holds is also in the persistent stat-guarded table, so refilling
         costs an ``os.stat`` per checkpoint rather than an md5.
         """
-        from .debug_log import debug
+        from .debug_log import log_event
 
         with self._inventory_lock:
             self._inventory_generation += 1
-            debug("model", f"invalidate_models generation={self._inventory_generation}")
+            log_event(
+                "model",
+                "model_inventory_invalidated",
+                generation=self._inventory_generation,
+            )
             self._stem_check_cache = None
             self._karaoke_cache = None
             self._identity_cache_key = None

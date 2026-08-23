@@ -171,6 +171,22 @@ class CatalogueCoordinatorTests(unittest.TestCase):
         self.assertEqual(calls, [])
         coordinator.close()
 
+    def test_offline_refresh_records_start_and_snapshot_counts(self) -> None:
+        coordinator = self._coordinator()
+        policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)
+        with mock.patch("core.catalogue_coordinator.log_event") as event:
+            coordinator.refresh(mode=RefreshMode.OFFLINE, policy=policy)
+
+        names = [call.args[1] for call in event.call_args_list]
+        self.assertIn("catalogue_refresh_started", names)
+        self.assertIn("catalogue_refresh_completed", names)
+        completed = next(
+            call for call in event.call_args_list
+            if call.args[1] == "catalogue_refresh_completed"
+        )
+        self.assertEqual(completed.kwargs["mdx_count"], 1)
+        coordinator.close()
+
     def test_identity_removal_uses_identity_kind(self) -> None:
         coordinator = self._coordinator()
         policy = AccessPolicy(allow_network=False, allow_metadata_writes=False)

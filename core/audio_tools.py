@@ -363,6 +363,7 @@ class AudioToolRunner:
         callbacks: JobCallbacks,
         apollo_params: Optional[dict] = None,
         output_name: str | None = None,
+        operation_id: str | None = None,
     ) -> None:
         if self.is_running():
             return
@@ -372,11 +373,16 @@ class AudioToolRunner:
             )
         from kthread import KThread
 
-        from .debug_log import debug
+        from .debug_log import current_operation_id, log_event
 
-        debug(
+        worker_operation_id = operation_id or current_operation_id()
+        log_event(
             "audio",
-            f"start tool={tool!r} singles={len(single_inputs)} pairs={len(dual_pairs)}",
+            "audio_worker_started",
+            operation_id=worker_operation_id,
+            tool=tool,
+            single_count=len(single_inputs),
+            pair_count=len(dual_pairs),
         )
         self._is_stopped = False
         self._is_paused = False
@@ -386,7 +392,13 @@ class AudioToolRunner:
         self._output_name = output_name
         self._thread = KThread(
             target=self._run,
-            args=(tool, list(single_inputs), [tuple(p) for p in dual_pairs], callbacks),
+            args=(
+                tool,
+                list(single_inputs),
+                [tuple(p) for p in dual_pairs],
+                callbacks,
+                worker_operation_id,
+            ),
         )
         self._thread.start()
 
@@ -435,10 +447,12 @@ class AudioToolRunner:
         single_inputs: List[str],
         dual_pairs: List[Tuple[str, str]],
         callbacks: JobCallbacks,
+        operation_id: str | None = None,
     ) -> None:
-        from .debug_log import debug, debug_elapsed
+        from .debug_log import log_event, set_operation_id
 
-        debug("audio", f"_run entered tool={tool!r}")
+        set_operation_id(operation_id)
+        log_event("audio", "audio_worker_entered", tool=tool)
         stime = time.perf_counter()
         time_elapsed = lambda: f'Time Elapsed: {time.strftime("%H:%M:%S", time.gmtime(int(time.perf_counter() - stime)))}'
 
@@ -466,26 +480,36 @@ class AudioToolRunner:
             callbacks.progress(1.0)
             callbacks.console(f"\nProcess complete\n{time_elapsed()}\n")
             callbacks.complete()
+            log_event("audio", "audio_worker_completed", tool=tool)
         except ProcessStopped:
-            debug("audio", "_run ProcessStopped")
+            log_event("audio", "audio_worker_stopped", tool=tool)
             callbacks.console(PROCESS_STOPPED_BY_USER)
             self._finish_active_unit(callbacks, ProcessStopped())
             callbacks.stopped()
             _release_inference_resources(self)
         except Exception as exc:  # noqa: BLE001 - surfaced through the callback
             if self._is_stopped:
-                debug("audio", "_run stopped during error")
+                log_event("audio", "audio_worker_stopped", tool=tool, stage="error")
                 callbacks.console(PROCESS_STOPPED_BY_USER)
                 callbacks.stopped()
                 _release_inference_resources(self)
                 return
-            debug("audio", f"_run failed {type(exc).__name__}: {exc}")
+            log_event(
+                "audio",
+                "audio_worker_failed",
+                level="error",
+                tool=tool,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             self._finish_active_unit(callbacks, exc)
             callbacks.console(f"\nProcess failed\n{time_elapsed()}\n")
             callbacks.error(exc)
             _release_inference_resources(self, park_weights=True)
         else:
             _release_inference_resources(self)
+        finally:
+            set_operation_id(None)
 
     def _start_unit(
         self, callbacks: JobCallbacks, paths: typing.Sequence[str], output: typing.Any

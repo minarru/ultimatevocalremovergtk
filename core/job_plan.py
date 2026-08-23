@@ -616,13 +616,16 @@ def _debug_planned_output_routes(
 ) -> None:
     """Opt-in trace when resolving planned export routes (``uvr-settings``)."""
     try:
-        from core.debug_log import debug
+        from core.debug_log import log_event
 
-        labels = ",".join(route.label for route in routes) or "(none)"
-        debug(
+        log_event(
             "settings",
-            f"planned outputs focus={focus!r} positional={positional!r} "
-            f"reason={reason} routes=[{labels}] count={len(routes)}",
+            "planned_outputs",
+            focus=focus,
+            positional=positional,
+            reason=reason,
+            routes=tuple(route.label for route in routes),
+            route_count=len(routes),
         )
     except Exception:
         pass
@@ -1112,7 +1115,7 @@ class JobResolver:
                 diagnostics.append(Diagnostic("model.load", str(exc)))
         planned = self._plan_inputs(settings, spec, descriptors)
         request = DeviceRequest.from_settings(settings.process)
-        return ResolvedJob(
+        plan = ResolvedJob(
             command=spec.command,
             settings=settings,
             inputs=planned,
@@ -1128,6 +1131,22 @@ class JobResolver:
             model_dependencies=dependencies,
             model_identity_digest=compute_model_identity_digest(dependencies),
         )
+        from .debug_log import log_event
+
+        log_event(
+            "settings",
+            "plan_resolved",
+            command=plan.command,
+            validation_level=plan.validation_level.value,
+            input_count=len(plan.inputs),
+            model_count=len(plan.models),
+            dependency_count=len(plan.model_dependencies),
+            diagnostic_count=len(plan.diagnostics),
+            error_count=sum(item.severity == "error" for item in plan.diagnostics),
+            inventory_generation=plan.inventory_generation,
+            device=plan.device,
+        )
+        return plan
 
     def is_current(self, plan: ResolvedJob) -> bool:
         if plan.inventory_generation != int(getattr(self.repo, "inventory_generation", 0)):
@@ -1195,7 +1214,7 @@ class JobResolver:
             provenance,
             command=spec.command,
         ))
-        return ResolvedJob(
+        plan = ResolvedJob(
             spec.command,
             settings,
             self._plan_inputs(settings, spec, descriptors),
@@ -1211,6 +1230,19 @@ class JobResolver:
             dependencies,
             compute_model_identity_digest(dependencies),
         )
+        from .debug_log import log_event
+
+        log_event(
+            "settings",
+            "plan_adopted",
+            command=plan.command,
+            validation_level=plan.validation_level.value,
+            input_count=len(plan.inputs),
+            model_count=len(plan.models),
+            dependency_count=len(plan.model_dependencies),
+            diagnostic_count=len(plan.diagnostics),
+        )
+        return plan
 
     def _primary_dependency_map(
         self,

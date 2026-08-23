@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
-from core.debug_log import debug
+from core.debug_log import debug, log_event, operation
 
 # Cap queue UI refresh rate while a download reports per-chunk progress.
 _PROGRESS_NOTIFY_INTERVAL_S = 0.1
@@ -200,9 +200,32 @@ class DownloadQueue:
                 self._ensure_worker()
 
     def _process_item(self, item: DownloadQueueItem) -> bool:
+        operation_id = f"download-{item.item_id}"
+        with operation(operation_id):
+            return self._process_item_with_context(item, operation_id)
+
+    def _process_item_with_context(
+        self,
+        item: DownloadQueueItem,
+        operation_id: str,
+    ) -> bool:
+        log_event(
+            "download",
+            "download_item_started",
+            operation_id=operation_id,
+            selection=item.selection,
+            architecture=item.arch_type,
+            file_count=len(item.jobs),
+        )
         if item.stop_event.is_set():
             item.status = STATUS_CANCELLED
             item.detail = default_detail_for_status(STATUS_CANCELLED)
+            log_event(
+                "download",
+                "download_item_cancelled",
+                operation_id=operation_id,
+                stage="before_transfer",
+            )
             self._notify()
             return False
 
@@ -210,6 +233,12 @@ class DownloadQueue:
 
         def on_progress(fraction: float) -> None:
             item.progress = max(0.0, min(1.0, fraction))
+            log_event(
+                "download",
+                "download_progress",
+                level="trace",
+                fraction=round(item.progress, 6),
+            )
             nonlocal last_progress_notify
             now = time.monotonic()
             if fraction >= 1.0 or now - last_progress_notify >= _PROGRESS_NOTIFY_INTERVAL_S:
@@ -220,6 +249,12 @@ class DownloadQueue:
             if item.detail == text:
                 return
             item.detail = text
+            log_event(
+                "download",
+                "download_status_changed",
+                level="trace",
+                detail=text,
+            )
             self._notify()
 
         try:
@@ -231,12 +266,25 @@ class DownloadQueue:
             )
         except Exception as exc:  # noqa: BLE001
             if item.stop_event.is_set():
-                debug("download", f"queue cancelled id={item.item_id}")
+                log_event(
+                    "download",
+                    "download_item_cancelled",
+                    operation_id=operation_id,
+                    stage="transfer",
+                )
                 item.status = STATUS_CANCELLED
                 item.detail = default_detail_for_status(STATUS_CANCELLED)
                 self._notify()
                 return False
-            debug("download", f"queue failed id={item.item_id} err={type(exc).__name__}: {exc}")
+            log_event(
+                "download",
+                "download_item_failed",
+                level="error",
+                operation_id=operation_id,
+                stage="transfer",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             item.status = STATUS_FAILED
             detail = str(exc).strip() or type(exc).__name__
             if type(exc).__name__ not in detail:
@@ -255,6 +303,7 @@ class DownloadQueue:
             self._notify()
             return False
 
+        outcome = None
         if item.stop_event.is_set() and result == RESULT_STOPPED:
             item.status = STATUS_CANCELLED
             item.detail = default_detail_for_status(STATUS_CANCELLED)
@@ -265,6 +314,14 @@ class DownloadQueue:
                 # it would put a model in the pickers that cannot run.
                 item.status = STATUS_FAILED
                 item.detail = outcome.detail or default_detail_for_status(STATUS_FAILED)
+                log_event(
+                    "download",
+                    "download_item_failed",
+                    level="error",
+                    operation_id=operation_id,
+                    stage="publication",
+                    error=item.detail,
+                )
                 self._notify()
                 return False
             item.status = map_download_result(result)
@@ -274,6 +331,13 @@ class DownloadQueue:
             if default_detail:
                 item.detail = default_detail
         self._notify()
+        log_event(
+            "download",
+            "download_item_completed",
+            operation_id=operation_id,
+            status=item.status,
+            published=bool(getattr(outcome, "published", False)),
+        )
         return item.status == STATUS_COMPLETE
 
     def _finalize_item(self, item: DownloadQueueItem, result: str) -> typing.Any:

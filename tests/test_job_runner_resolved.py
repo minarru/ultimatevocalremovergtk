@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 import dataclasses
+import tempfile
+from pathlib import Path
 from unittest.mock import Mock
 from unittest.mock import patch
 
@@ -38,6 +40,62 @@ def _job(paths: tuple[str, ...], output: str) -> ResolvedJob:
 
 
 class StartResolvedTests(unittest.TestCase):
+    def test_worker_lifecycle_keeps_explicit_operation_id(self) -> None:
+        from core import debug_log
+
+        runner = JobRunner(Settings.defaults())
+        job = _job(("/tmp/a.wav",), "/tmp/out")
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "uvr.log"
+            debug_log.configure(level="debug", log_file=str(log_path))
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            with patch.object(runner, "resolve_models", return_value=["M"]), patch.object(
+                runner,
+                "_run_one_planned",
+                return_value=InputOutcome("/tmp/a.wav", "success"),
+            ):
+                runner.start_resolved(
+                    job,
+                    JobCallbacks(),
+                    fail_fast=True,
+                    operation_id="job-42",
+                )
+                thread = runner._thread
+                if thread is not None:
+                    thread.join(timeout=2)
+
+            diagnostic = log_path.read_text(encoding="utf-8")
+            self.assertIn("event=worker_started", diagnostic)
+            self.assertIn("event=worker_completed", diagnostic)
+            self.assertGreaterEqual(diagnostic.count("operation=job-42"), 2)
+
+    def test_worker_inherits_ui_operation_context_when_id_is_omitted(self) -> None:
+        from core import debug_log
+
+        runner = JobRunner(Settings.defaults())
+        job = _job(("/tmp/a.wav",), "/tmp/out")
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "uvr.log"
+            debug_log.configure(level="debug", log_file=str(log_path))
+            self.addCleanup(debug_log.configure, level="errors", log_file="")
+            with patch.object(runner, "resolve_models", return_value=["M"]), patch.object(
+                runner,
+                "_run_one_planned",
+                return_value=InputOutcome("/tmp/a.wav", "success"),
+            ), debug_log.operation("ui-run-8"):
+                runner.start_resolved(job, JobCallbacks(), fail_fast=True)
+                thread = runner._thread
+                if thread is not None:
+                    thread.join(timeout=2)
+
+            diagnostic = log_path.read_text(encoding="utf-8")
+            started_line = next(
+                line
+                for line in diagnostic.splitlines()
+                if "event=worker_started" in line
+            )
+            self.assertIn("operation=ui-run-8", started_line)
+
     def test_assembles_once_for_two_inputs(self) -> None:
         runner = JobRunner(Settings.defaults())
         job = _job(("/tmp/a.wav", "/tmp/b.wav"), "/tmp/out")
