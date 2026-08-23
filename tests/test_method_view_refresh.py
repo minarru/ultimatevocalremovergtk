@@ -306,6 +306,9 @@ class InstalledRecordPickerTests(unittest.TestCase):
         self.assertIn((missing.id, missing.display), items_seen[-1])
         self.assertEqual(selections[-1], CHOOSE_MODEL)
         self.assertTrue(view._model_write_gated)
+        title = view.stored_model_banner.set_title.call_args.args[0]
+        self.assertIn("now available", title)
+        self.assertNotIn("not installed", title)
 
     def test_picker_uses_sdr_order_then_display_and_id_tiebreaks(self) -> None:
         values, _selections, _write = self._populate(
@@ -685,6 +688,11 @@ class InstalledRecordPickerGtkTests(unittest.TestCase):
             displayed = combo_values(view.model_row)
             self.assertIn(missing.display, displayed)
             self.assertEqual(get_combo_value(view.model_row), CHOOSE_MODEL)
+            self.assertTrue(view._model_write_gated)
+            self.assertTrue(view.stored_model_banner.get_revealed())
+            self.assertIn("now available", view.stored_model_banner.get_title())
+            self.assertNotIn("not installed", view.stored_model_banner.get_title())
+            writes.assert_not_called()
             view.model_row.set_selected(displayed.index(missing.display))
 
         writes.assert_called_once_with(view.settings, view.model_key, missing.id)

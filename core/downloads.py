@@ -98,6 +98,23 @@ _NAME_MAPPER_DESTS = frozenset(
 )
 
 
+@dataclasses.dataclass(frozen=True)
+class ManualDownloadRow:
+    """One projected Manual Downloads row with its raw selection intact."""
+
+    arch_type: str
+    selection: str
+    display: str
+    model: Any
+
+    def resolve_links(self) -> List[Tuple[str, str]]:
+        return DownloadManager.manual_links(
+            self.arch_type,
+            self.model,
+            selection=self.selection,
+        )
+
+
 def _attempt_presentation_backfill(
     repo: Any | None,
     snapshot: Any | None,
@@ -1158,9 +1175,13 @@ class DownloadManager:
         supplements and deduplication.
 
         Keys stay raw catalogue labels — ``manual_links`` resolves against them.
-        The dialog renders :func:`canonical_display_name` for the row title.
+        Ordering uses the same exact family-scoped projector as every other
+        catalogue surface.
         """
-        from .model_naming import canonical_display_name
+        from .model_catalogue import (
+            catalogue_entry_meta,
+            project_catalogue_display,
+        )
 
         if self.online_data:
             # Compatibility overlay: tests and callers may assign ``online_data``
@@ -1176,18 +1197,52 @@ class DownloadManager:
             dict(self.demucs_download_list),
         )
 
-        def by_display(catalogue: Dict[str, Any]) -> Dict[str, Any]:
+        def by_display(family: str, catalogue: Dict[str, Any]) -> Dict[str, Any]:
+            def display(label: str) -> str:
+                raw = catalogue[label]
+                meta = catalogue_entry_meta(self, family, label)
+                return project_catalogue_display(family, label, raw, meta)
+
             return {
                 label: catalogue[label]
-                for label in sorted(
-                    catalogue, key=lambda name: canonical_display_name(name).casefold()
-                )
+                for label in sorted(catalogue, key=lambda name: display(name).casefold())
             }
 
         return {
-            "vr": by_display(vr),
-            "mdx": by_display(mdx),
-            "demucs": by_display(demucs),
+            "vr": by_display("vr", vr),
+            "mdx": by_display("mdx", mdx),
+            "demucs": by_display("demucs", demucs),
+        }
+
+    def manual_download_rows(self) -> Dict[str, tuple[ManualDownloadRow, ...]]:
+        """Return exact projected rows while retaining native link inputs."""
+        from .model_catalogue import (
+            catalogue_entry_meta,
+            project_catalogue_display,
+        )
+
+        data = self.manual_download_data()
+        arch_types = {
+            "vr": VR_ARCH_TYPE,
+            "mdx": MDX_ARCH_TYPE,
+            "demucs": DEMUCS_ARCH_TYPE,
+        }
+        return {
+            family: tuple(
+                ManualDownloadRow(
+                    arch_types[family],
+                    selection,
+                    project_catalogue_display(
+                        family,
+                        selection,
+                        model,
+                        catalogue_entry_meta(self, family, selection),
+                    ),
+                    model,
+                )
+                for selection, model in catalogue.items()
+            )
+            for family, catalogue in data.items()
         }
 
     @staticmethod

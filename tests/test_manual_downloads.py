@@ -8,10 +8,10 @@ Download Center listed 459.
 
 from __future__ import annotations
 
-import typing
 import unittest
 from unittest import mock
 
+from bundled.constants import VR_ARCH_TYPE
 from core.downloads import DownloadManager
 
 
@@ -78,7 +78,7 @@ class ManualDownloadMergeTests(unittest.TestCase):
         )
 
     def test_labels_stay_raw_so_manual_links_still_resolve(self) -> None:
-        """Keys remain catalogue labels; the dialog renders the canonical name."""
+        """The compatibility mapping continues to retain raw catalogue keys."""
         with mock.patch(
             "core.catalog_sources._supplemental_sources", return_value=({}, {}, {}, {})
         ):
@@ -86,6 +86,39 @@ class ManualDownloadMergeTests(unittest.TestCase):
         model = data["mdx"]["TR Roformer"]
         links = DownloadManager.manual_links("MDX-Net", model)
         self.assertTrue(links)
+
+    def test_exact_projection_controls_row_title_sort_and_link_selection(self) -> None:
+        hp = "VR Arch Single Model v5: 1_HP-UVR"
+        aardvark = "VR Arch Single Model v5: Aardvark"
+        self.manager.online_data = {
+            "vr_download_list": {
+                hp: "1_HP-UVR.pth",
+                aardvark: "Aardvark.pth",
+            }
+        }
+        with mock.patch(
+            "core.catalog_sources._supplemental_sources",
+            return_value=({}, {}, {}, {}),
+        ):
+            rows = self.manager.manual_download_rows()["vr"]
+
+        self.assertEqual(
+            [(row.display, row.selection) for row in rows],
+            [("Aardvark", aardvark), ("HP 1", hp)],
+        )
+        hp_row = rows[1]
+        self.assertEqual(hp_row.model, "1_HP-UVR.pth")
+        with mock.patch.object(
+            DownloadManager,
+            "manual_links",
+            return_value=[("Model", "https://example.invalid/model")],
+        ) as resolve:
+            self.assertTrue(hp_row.resolve_links())
+        resolve.assert_called_once_with(
+            VR_ARCH_TYPE,
+            "1_HP-UVR.pth",
+            selection=hp,
+        )
 
     def test_former_vip_manual_link_uses_additional_public_repo(self) -> None:
         label = "MDX-Net Model VIP: UVR-MDX-NET_Main_427"
@@ -99,8 +132,8 @@ class ManualDownloadMergeTests(unittest.TestCase):
         )
 
 
-class ManualDownloadRowTitleTests(unittest.TestCase):
-    def test_dialog_renders_the_canonical_name(self) -> None:
+class StructureOnlyFormatterCompatibilityTests(unittest.TestCase):
+    def test_canonical_formatter_remains_available(self) -> None:
         from core.model_naming import canonical_display_name
 
         self.assertEqual(

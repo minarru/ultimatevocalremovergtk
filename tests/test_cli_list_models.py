@@ -326,6 +326,63 @@ class DiscoveryTests(unittest.TestCase):
         self.assertTrue(item["configured"])
         self.assertEqual(item["architectural_facts"]["demucs_stem_count"], 4)
 
+    def test_catalogue_cli_uses_audit_display_for_ineligible_mdx_pth_row(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.model_catalogue import ModelCatalogueService
+
+        selection = (
+            "Roformer Model: BandSplit Roformer | 4-stems FT by SYH99999"
+        )
+        checkpoint = "BandSplit_Roformer_4stems_FT_by_SYH99999.pth"
+        files = {
+            checkpoint: "https://example.invalid/model.pth",
+            "config.yaml": "https://example.invalid/config.yaml",
+        }
+        manager: Any = SimpleNamespace(
+            _coordinator=None,
+            vr_download_list={},
+            mdx_download_list={selection: files},
+            demucs_download_list={},
+            apollo_download_list={},
+            unsupported_download_list={},
+            catalogue_meta={
+                selection: EntryMeta(
+                    label=selection,
+                    display=selection,
+                    arch=MDX_ARCH_TYPE,
+                    files=files,
+                    checkpoint=checkpoint,
+                )
+            },
+            resolve=lambda *_args, **_kwargs: (),
+        )
+        service = ModelCatalogueService(manager)
+        service.refresh = Mock(return_value=True)  # type: ignore[method-assign]
+        coordinator = Mock()
+        out = io.StringIO()
+
+        with patch(
+            "core.catalogue_coordinator.CatalogueCoordinator",
+            return_value=coordinator,
+        ), patch(
+            "core.downloads.DownloadManager", return_value=manager
+        ), patch(
+            "core.model_catalogue.ModelCatalogueService", return_value=service
+        ), redirect_stdout(out):
+            code = main([
+                "models", "catalog", "--family", "mdx", "--offline",
+                "--report", "json",
+            ])
+
+        self.assertEqual(code, 0)
+        item = json.loads(out.getvalue())["items"][0]
+        self.assertEqual(item["selection"], selection)
+        self.assertEqual(
+            item["display"],
+            "BandSplit Roformer — (4 Stems) Fine-Tuned · SYH99999",
+        )
+
     def test_devices_have_auto_selection(self) -> None:
         out = io.StringIO()
         with patch("core.gpu.list_gpu_devices", return_value=[("0", "GPU")]), redirect_stdout(out):

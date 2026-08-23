@@ -23,7 +23,6 @@ from core.download_status import (
     STATUS_FAILED,
 )
 from core.downloads import DownloadManager
-from core.model_naming import canonical_display_name
 
 from .dispatch import idle_on_main, latest_main_thread
 from .dialogs.utils import configure_dialog_width, fill_dialog_width, present_modal_dialog, set_dialog_content
@@ -410,7 +409,7 @@ def open_download_center(parent_window: typing.Any, app_context: typing.Any):
 
 def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
     manager = _get_manager(app_context)
-    data = manager.manual_download_data()
+    data = manager.manual_download_rows()
 
     dialog = Adw.Dialog()
     dialog.set_title("Manual downloads")
@@ -429,15 +428,12 @@ def open_manual_downloads(parent: typing.Any, app_context: typing.Any):
         if not models:
             continue
         group = Adw.PreferencesGroup(title=group_title)
-        for selectable, model in models.items():
+        for manual_row in models:
+            selectable = manual_row.selection
             row = Adw.ExpanderRow()
             row.set_use_markup(False)
-            # Canonical name for display; ``selectable`` stays the raw catalogue
-            # label that manual_links resolves against.
-            row.set_title(canonical_display_name(selectable))
-            links = DownloadManager.manual_links(
-                arch, model, selection=selectable
-            )
+            row.set_title(manual_row.display)
+            links = manual_row.resolve_links()
             for label, url in links:
                 link_row = Adw.ActionRow()
                 link_row.set_use_markup(False)

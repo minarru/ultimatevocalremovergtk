@@ -242,6 +242,12 @@ class MethodView:
             self._model_write_gated = False
             self._model_gated_value = None
         if gate_survives_refresh:
+            if isinstance(stored, str) and stored in ids:
+                self.stored_model_banner.set_title(
+                    f"Saved model “{stored}” is now available; "
+                    "pick it to select it."
+                )
+                self.stored_model_banner.set_revealed(True)
             set_combo_value(self.model_row, CHOOSE_MODEL)
             return
         stored_is_item = isinstance(stored, str) and stored in ids

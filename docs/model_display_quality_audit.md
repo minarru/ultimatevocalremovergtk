@@ -31,13 +31,19 @@ alone as the final runtime display.
 ## Checked-in reference
 
 [`model_display_reference.tsv`](model_display_reference.tsv) contains exactly
-484 current public catalogue rows. Each row records:
+484 current public catalogue rows and their syntactic presentation IDs. Runtime
+inventory projects 483 of those rows. The remaining row,
+`BandSplit_Roformer_4stems_FT_by_SYH99999.pth`, is intentionally ineligible
+under the MDX `.ckpt`/`.onnx` execution contract; its exact `mdx:` presentation
+ID lets catalogue surfaces use the audited title without creating an executable
+inventory record. Presentation coverage does not alter runtime eligibility.
+Each row records:
 
 - catalogue family, effective execution architecture, source, and declared
   catalogue generation;
 - the unmodified catalogue label;
-- the exact canonical runtime ID derived from the runtime primary artifact;
-- the runtime-projected display and exact weight filename;
+- the exact family-scoped presentation ID derived from the primary artifact;
+- the shared projected display and exact weight filename;
 - mechanical presentation flags;
 - `clean`, `reviewed`, or `unreviewed` status; and
 - exact per-flag waiver reasons from
@@ -56,8 +62,9 @@ Current strict result:
 
 | Measure | Count |
 | --- | ---: |
-| Reference rows | 484 |
-| Unique canonical IDs | 484 |
+| Syntactic catalogue presentation IDs | 484 |
+| Runtime inventory projections | 483 |
+| Unique presentation IDs | 484 |
 | Clean rows | 481 |
 | Reviewed rows | 3 |
 | Unreviewed rows | 0 |

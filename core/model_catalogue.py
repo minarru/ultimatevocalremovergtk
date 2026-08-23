@@ -24,21 +24,28 @@ FAMILY_ARCH = {
 }
 
 
-def project_catalogue_display(
+def catalogue_presentation_id(
     family: str,
     selection: str,
     raw: Any,
     meta: Any,
-) -> str:
-    """Project one catalogue row through the exact runtime naming contract."""
+) -> str | None:
+    """Derive an exact presentation ID without changing runtime eligibility.
+
+    Runtime projectors remain authoritative whenever they accept a row.  When
+    they decline one, an exact declared primary that belongs to the validated
+    file set is sufficient for presentation only.  This gives catalogue rows
+    exact ID-aware titles without changing any family's execution rules.
+    """
+    from .model_identity import ModelId
     from .model_inventory import (
         _entry_files,
         _project_apollo,
         _project_demucs,
         _project_mdx,
         _project_vr,
+        artifact_stem,
     )
-    from .model_naming import project_model_display
 
     projector = {
         "vr": _project_vr,
@@ -47,18 +54,46 @@ def project_catalogue_display(
         "apollo": _project_apollo,
     }.get(family)
     if projector is None or meta is None:
-        return canonical_display_name(selection)
+        return None
+    try:
+        files = _entry_files(meta, raw, family)
+    except ValueError:
+        return None
     try:
         record = projector(
             selection,
             meta,
-            _entry_files(meta, raw, family),
+            files,
         )
     except ValueError:
         record = None
-    if record is None:
+    if record is not None:
+        return record.id
+
+    declared = str(getattr(meta, "checkpoint", "") or "")
+    presentation_primaries = [
+        name
+        for name in files
+        if not name.casefold().endswith((".yaml", ".yml"))
+    ]
+    if len(presentation_primaries) != 1 or declared != presentation_primaries[0]:
+        return None
+    return ModelId(family, artifact_stem(declared)).value
+
+
+def project_catalogue_display(
+    family: str,
+    selection: str,
+    raw: Any,
+    meta: Any,
+) -> str:
+    """Project one catalogue row through the exact presentation contract."""
+    from .model_naming import project_model_display
+
+    model_id = catalogue_presentation_id(family, selection, raw, meta)
+    if model_id is None:
         return canonical_display_name(selection)
-    return project_model_display(record.id, source_label=selection)
+    return project_model_display(model_id, source_label=selection)
 
 
 def catalogue_entry_meta(manager: Any, family: str, selection: str) -> Any:
@@ -254,5 +289,6 @@ class ModelCatalogueService:
 __all__ = [
     "CatalogEntryId", "FAMILY_ARCH", "ModelCatalogueRecord",
     "ModelCatalogueService", "catalogue_label_matches", "filter_catalogue_labels",
-    "catalogue_entry_meta", "project_catalogue_display",
+    "catalogue_entry_meta", "catalogue_presentation_id",
+    "project_catalogue_display",
 ]

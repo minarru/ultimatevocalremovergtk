@@ -8,6 +8,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any, Dict, List, Mapping, Tuple
 
 from catalogue.collect import (
@@ -20,9 +21,11 @@ from catalogue.collect import (
     ModelEntry,
     _display_label,
 )
-from core.model_identity import ModelId
-from core.model_inventory import artifact_stem
-from core.model_naming import load_model_display_manifest, project_model_display
+from core.model_catalogue import (
+    catalogue_presentation_id,
+    project_catalogue_display,
+)
+from core.model_naming import load_model_display_manifest
 
 
 def _reference_tsv_text(refs: Dict[str, CommunityRef]) -> str:
@@ -128,7 +131,7 @@ class PresentationReferenceAudit:
     collisions: Tuple[Tuple[str, Tuple[str, ...]], ...]
 
 
-def _canonical_model_id(entry: ModelEntry) -> str:
+def _catalogue_projection(entry: ModelEntry) -> Tuple[str, str]:
     try:
         family = _RUNTIME_FAMILY_BY_CATALOGUE_FAMILY[entry.family]
     except KeyError as exc:
@@ -137,33 +140,56 @@ def _canonical_model_id(entry: ModelEntry) -> str:
             f"unsupported catalogue family {entry.family!r} for "
             f"{entry.catalogue_label!r}; accepted families: {accepted}"
         ) from exc
-    primary = (
-        entry.config_yaml
-        if family == "demucs" and entry.config_yaml
-        else entry.weight_file
-    )
-    if not primary:
+    if not entry.weight_file:
         raise ValueError(
-            f"catalogue row has no runtime primary artifact: {entry.catalogue_label!r}"
+            f"catalogue row has no primary artifact: {entry.catalogue_label!r}"
         )
-    return ModelId(family, artifact_stem(primary)).value
+    files = {entry.weight_file: ""}
+    if entry.config_yaml:
+        files[entry.config_yaml] = ""
+    meta = SimpleNamespace(
+        label=entry.catalogue_label,
+        display=entry.catalogue_label,
+        files=files,
+        checkpoint=entry.weight_file,
+        stems=(),
+    )
+    model_id = catalogue_presentation_id(
+        family,
+        entry.catalogue_label,
+        files,
+        meta,
+    )
+    if model_id is None:
+        raise ValueError(
+            f"catalogue row has no unambiguous presentation primary: "
+            f"{entry.catalogue_label!r}"
+        )
+    return (
+        model_id,
+        project_catalogue_display(
+            family,
+            entry.catalogue_label,
+            files,
+            meta,
+        ),
+    )
+
+
+def _canonical_model_id(entry: ModelEntry) -> str:
+    return _catalogue_projection(entry)[0]
 
 
 def presentation_reference_audit(
     entries: List[ModelEntry],
 ) -> PresentationReferenceAudit:
-    """Project the complete catalogue through runtime naming and audit it."""
+    """Project the complete catalogue through shared presentation and audit it."""
+    projections = [_catalogue_projection(entry) for entry in entries]
     projected = [
-        (
-            entry,
-            _canonical_model_id(entry),
-        )
-        for entry in entries
+        (entry, model_id)
+        for entry, (model_id, _display) in zip(entries, projections, strict=True)
     ]
-    displays = [
-        project_model_display(model_id, source_label=entry.catalogue_label)
-        for entry, model_id in projected
-    ]
+    displays = [display for _model_id, display in projections]
     display_counts: Dict[str, int] = {}
     for display in displays:
         key = display.casefold()

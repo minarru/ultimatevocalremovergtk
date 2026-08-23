@@ -654,6 +654,104 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
 
         self.assertEqual([row.display for row in rows], ["HP 1", "1_HP-UVR"])
 
+    def test_ineligible_mdx_pth_row_uses_its_exact_presentation_id_only(self) -> None:
+        from core.catalog_sources import EntryMeta
+        from core.model_inventory import _catalogue_records
+
+        selection = (
+            "Roformer Model: BandSplit Roformer | 4-stems FT by SYH99999"
+        )
+        checkpoint = "BandSplit_Roformer_4stems_FT_by_SYH99999.pth"
+        files = {
+            checkpoint: "https://example.invalid/model.pth",
+            "config.yaml": "https://example.invalid/config.yaml",
+        }
+        meta = EntryMeta(
+            label=selection,
+            display=selection,
+            arch=MDX_ARCH_TYPE,
+            files=files,
+            checkpoint=checkpoint,
+        )
+        manager = SimpleNamespace(
+            _coordinator=None,
+            vr_download_list={},
+            mdx_download_list={selection: files},
+            demucs_download_list={},
+            apollo_download_list={},
+            unsupported_download_list={},
+            catalogue_meta={selection: meta},
+            resolve=lambda *_args, **_kwargs: (),
+        )
+
+        row = ModelCatalogueService(cast(Any, manager)).records()[0]
+        runtime = _catalogue_records(SimpleNamespace(
+            vr={},
+            mdx={selection: files},
+            demucs={},
+            apollo={},
+            meta_by_family={
+                "vr": {},
+                "mdx": {selection: meta},
+                "demucs": {},
+                "apollo": {},
+            },
+        ))
+
+        self.assertEqual(row.selection, selection)
+        self.assertEqual(
+            row.display,
+            "BandSplit Roformer — (4 Stems) Fine-Tuned · SYH99999",
+        )
+        self.assertFalse(
+            any(record.id == f"mdx:{checkpoint[:-4]}" for record in runtime)
+        )
+
+    def test_malformed_or_primaryless_rows_keep_the_safe_raw_fallback(self) -> None:
+        from core.catalog_sources import EntryMeta
+        from core.model_catalogue import project_catalogue_display
+
+        selection = "Roformer Model: Safe Raw Fallback"
+        cases = (
+            ({"../unsafe.pth": "https://example.invalid/model"}, "../unsafe.pth"),
+            ({"config.yaml": "https://example.invalid/config"}, None),
+        )
+        for files, checkpoint in cases:
+            with self.subTest(files=files):
+                meta = EntryMeta(
+                    label=selection,
+                    display=selection,
+                    arch=MDX_ARCH_TYPE,
+                    files=files,
+                    checkpoint=checkpoint,
+                )
+                self.assertEqual(
+                    project_catalogue_display("mdx", selection, files, meta),
+                    "Safe Raw Fallback",
+                )
+
+    def test_ambiguous_declared_primary_does_not_mint_a_presentation_id(self) -> None:
+        from core.catalog_sources import EntryMeta
+        from core.model_catalogue import project_catalogue_display
+
+        selection = "VR Arch Single Model v5: 1_HP-UVR"
+        files = {
+            "1_HP-UVR.pth": "https://example.invalid/first",
+            "other.pth": "https://example.invalid/second",
+        }
+        meta = EntryMeta(
+            label=selection,
+            display=selection,
+            arch=VR_ARCH_TYPE,
+            files=files,
+            checkpoint="1_HP-UVR.pth",
+        )
+
+        self.assertEqual(
+            project_catalogue_display("vr", selection, files, meta),
+            "1_HP-UVR",
+        )
+
 
 class ModelRecordContractTests(unittest.TestCase):
     def test_to_dict_reports_backend_name_not_engine_name(self) -> None:
