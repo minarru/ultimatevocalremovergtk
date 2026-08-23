@@ -192,3 +192,97 @@ of this scoped commit.
 ## Concerns / handoff
 
 None. The repository-wide Ruff baseline remains outside Task 3 scope.
+
+## Fix Round 1
+
+Implementation commit: `842a194` (`fix(models): reject ambiguous live display evidence`).
+
+### Review finding addressed
+
+Exact catalogue selection now preserves three states: one exact selection, no
+exact evidence, and ambiguous exact ownership. An ambiguous primary artifact
+can no longer fall through to the first-wins basename display index. Inventory
+instead continues through persisted exact evidence, then an exact trusted
+mirror mapper label, then the raw canonical basename. The basename-index
+fallback remains available when exact catalogue evidence is genuinely absent,
+preserving the existing non-ambiguous behavior.
+
+The exact membership scan also precedes an existing record's catalogue
+association, so two current same-family owners cannot be hidden by collision
+projection retaining the first record.
+
+### RED evidence
+
+The focused table-driven regression was added before the production fix. It
+constructs two MDX catalogue metadata entries that own the same exact
+`shared.onnx` artifact, supplies the first label through the basename display
+index, and checks persisted, mapper, and raw fallback cases independently.
+
+```bash
+.venv/bin/python -m unittest \
+  tests.test_model_identity_contracts.DisplayEnrichmentTests.test_ambiguous_exact_catalogue_owners_follow_non_live_precedence -v
+```
+
+Result against `2af089e`: expected RED, 1 failure. The first table case
+returned `MDX-Net — Live Alpha` instead of `MDX23C — Persisted Choice`,
+demonstrating that ambiguous membership activated the first-label index path.
+
+### GREEN evidence
+
+The same command after representing ambiguity separately passed:
+
+```text
+Ran 1 test in 0.011s
+
+OK
+```
+
+### Fix Round 1 verification
+
+Focused inventory/identity and touched integration tests:
+
+```bash
+.venv/bin/python -m unittest \
+  tests.test_model_identity_contracts tests.test_no_runtime_display_inversion \
+  tests.test_model_install tests.test_core_downloads -v
+```
+
+Result: 117 tests passed in 1.323 seconds.
+
+Production lint and test-file lint excluding only that file's documented
+pre-existing baseline findings:
+
+```bash
+.venv/bin/ruff check core/model_inventory.py
+.venv/bin/ruff check tests/test_model_identity_contracts.py \
+  --ignore I001,F401,B023
+```
+
+Result: both commands reported `All checks passed!`.
+
+```bash
+.venv/bin/python -m basedpyright \
+  core/model_inventory.py tests/test_model_identity_contracts.py
+```
+
+Result: 0 errors, 0 warnings, 0 notes.
+
+```bash
+git diff --check
+```
+
+Result: passed with no output.
+
+### Fix Round 1 self-review
+
+- The regression fails if ambiguity is collapsed back to the empty/no-evidence
+  state, and literal expectations cover each permitted next precedence level.
+- Neither ambiguous live label is accepted, regardless of first-wins index
+  ordering.
+- Exact single-owner catalogue evidence and genuine no-evidence basename-index
+  behavior remain covered by the pre-existing display-enrichment tests.
+- Backfill receives the same ambiguous sentinel and therefore cannot persist a
+  guessed catalogue selection; it may still use exact mirror evidence.
+- Identity, catalogue selection, eligibility, runtime fields, hashing, network
+  behavior, and inventory write behavior are unchanged.
+- Task 5-owned files were preserved and excluded from the fix commit.
