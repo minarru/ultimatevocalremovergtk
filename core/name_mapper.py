@@ -1,8 +1,9 @@
-"""Checkpoint → display-name mappers, split into an upstream mirror + local overlay.
+"""Checkpoint → display-name mappers and legacy local-overlay migration.
 
-``model_name_mapper.json`` mirrors upstream verbatim. Fork-local and
-locally-registered names live beside it in ``model_name_mapper_local.json`` and
-are merged on read, overlay winning.
+``model_name_mapper.json`` mirrors upstream verbatim. Older releases stored
+fork-local and locally-registered names beside it in
+``model_name_mapper_local.json``. That overlay remains readable only through
+the explicit legacy helper; presentation snapshots consume the mirror alone.
 
 The previous scheme merged ``{**local, **remote}`` straight back into the
 upstream file, which made that file the running union of every version upstream
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import warnings
 from typing import Dict, Mapping
 
 _LOCAL_SUFFIX = "_local.json"
@@ -25,6 +27,12 @@ def local_overlay_path(mapper_path: str) -> str:
     """Sibling overlay file for ``mapper_path``."""
     base, _ext = os.path.splitext(mapper_path)
     return f"{base}{_LOCAL_SUFFIX}"
+
+
+def legacy_overlay_archive_path(mapper_path: str) -> str:
+    """Sibling archive used when durable registry presentation takes over."""
+    overlay, _extension = os.path.splitext(local_overlay_path(mapper_path))
+    return f"{overlay}.legacy.json"
 
 
 def _load_object(path: str) -> Dict[str, str]:
@@ -55,8 +63,60 @@ def load_local_overlay(mapper_path: str) -> Dict[str, str]:
 
 
 def load_name_mapper(mapper_path: str) -> Dict[str, str]:
-    """Upstream mirror with the local overlay applied on top."""
+    """Upstream mirror with the legacy local overlay applied on top.
+
+    Retained for migration-era callers that have not moved their persistence
+    to :class:`core.model_registry.ModelRegistryService`. New presentation
+    reads must use :func:`load_presentation_name_mapper`.
+    """
     return {**_load_object(mapper_path), **load_local_overlay(mapper_path)}
+
+
+def load_presentation_name_mapper(mapper_path: str) -> Dict[str, str]:
+    """Load exact upstream presentation data, ignoring the legacy overlay."""
+    return _load_object(mapper_path)
+
+
+def archive_legacy_local_overlay(mapper_path: str) -> bool:
+    """Move an old local overlay aside without ever replacing an archive.
+
+    A hard-link followed by unlink gives the sibling-file rename semantics we
+    need while retaining ``O_EXCL``-like protection against an archive created
+    concurrently. If the archive already exists, both files remain untouched
+    and the ignored source is reported to the caller through a warning.
+    """
+    source = local_overlay_path(mapper_path)
+    if not os.path.isfile(source):
+        return False
+    archive = legacy_overlay_archive_path(mapper_path)
+    try:
+        os.link(source, archive)
+    except FileExistsError:
+        warnings.warn(
+            f"legacy model name mapper archive already exists; "
+            f"leaving ignored source untouched: {source}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return False
+    except OSError as exc:
+        warnings.warn(
+            f"could not archive ignored legacy model name mapper {source}: {exc}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return False
+    try:
+        os.unlink(source)
+    except OSError as exc:
+        warnings.warn(
+            f"archived legacy model name mapper but could not remove ignored "
+            f"source {source}: {exc}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return False
+    return True
 
 
 def add_local_name(mapper_path: str, key: str, display_name: str) -> bool:

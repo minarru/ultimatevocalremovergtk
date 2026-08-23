@@ -267,14 +267,13 @@ class ModelRepository:
         Owns ``naming_revision`` because that token keys display projections
         only. A presentation refresh reloads these without touching hash maps.
         """
-        # Name mappers are mirror + local overlay, not a single file.
-        from .name_mapper import load_name_mapper
+        from .name_mapper import load_presentation_name_mapper
 
         for attr, path in (
             ("mdx_name_select_MAPPER", paths.MDX_MODEL_NAME_SELECT),
             ("demucs_name_select_MAPPER", paths.DEMUCS_MODEL_NAME_SELECT),
         ):
-            setattr(self, attr, load_name_mapper(path))
+            setattr(self, attr, load_presentation_name_mapper(path))
         self._naming_revision += 1
 
     def reload_mappers(self) -> None:

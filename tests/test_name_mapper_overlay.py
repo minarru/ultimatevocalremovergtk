@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 from core import name_mapper
 
@@ -43,6 +44,42 @@ class NameMapperOverlayTests(unittest.TestCase):
             merged,
             {"a.ckpt": "Upstream A", "b.ckpt": "Fork B", "c.ckpt": "Fork C"},
         )
+
+    def test_presentation_loader_ignores_legacy_local_overlay(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            mapper = os.path.join(tmp, "model_name_mapper.json")
+            _write(mapper, {"a.ckpt": "Upstream A", "b.ckpt": "Upstream B"})
+            _write(
+                name_mapper.local_overlay_path(mapper),
+                {"b.ckpt": "Legacy B", "c.ckpt": "Legacy C"},
+            )
+
+            loaded = name_mapper.load_presentation_name_mapper(mapper)
+
+        self.assertEqual(loaded, {"a.ckpt": "Upstream A", "b.ckpt": "Upstream B"})
+
+    def test_repository_presentation_snapshot_ignores_legacy_overlays(self) -> None:
+        from core.model_repository import ModelRepository
+
+        with tempfile.TemporaryDirectory() as tmp:
+            mdx_mapper = os.path.join(tmp, "mdx", "model_name_mapper.json")
+            demucs_mapper = os.path.join(tmp, "demucs", "model_name_mapper.json")
+            _write(mdx_mapper, {"a.ckpt": "Upstream A"})
+            _write(demucs_mapper, {"b.th": "Upstream B"})
+            _write(name_mapper.local_overlay_path(mdx_mapper), {"a.ckpt": "Legacy A"})
+            _write(name_mapper.local_overlay_path(demucs_mapper), {"b.th": "Legacy B"})
+            repo = ModelRepository.__new__(ModelRepository)
+            repo._naming_revision = 0
+
+            with (
+                mock.patch("core.model_repository.paths.MDX_MODEL_NAME_SELECT", mdx_mapper),
+                mock.patch("core.model_repository.paths.DEMUCS_MODEL_NAME_SELECT", demucs_mapper),
+            ):
+                ModelRepository._reload_name_mappers(repo)
+
+        self.assertEqual(repo.mdx_name_select_MAPPER, {"a.ckpt": "Upstream A"})
+        self.assertEqual(repo.demucs_name_select_MAPPER, {"b.th": "Upstream B"})
+        self.assertEqual(repo._naming_revision, 1)
 
     def test_load_without_overlay_returns_mirror(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
