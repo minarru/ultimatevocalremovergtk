@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable, Mapping, Optional
 
-from .access_policy import AccessPolicy
+from .access_policy import AccessPolicy, access_policy
 from .catalogue_types import (
     ADAPTER_SCHEMA,
     ENVELOPE_SCHEMA,
@@ -286,8 +286,17 @@ class RemoteJsonSource:
 
         def run() -> None:
             try:
-                self._fetch(captured, force=False)
-                self._notify_update()
+                # Context variables do not cross thread boundaries. Keep the
+                # source's captured policy active through its coordinator
+                # callback so derived-cache reads during publication inherit
+                # the same write restrictions as the fetch itself.
+                with access_policy(
+                    allow_network=captured.allow_network,
+                    allow_metadata_writes=captured.allow_metadata_writes,
+                    allow_cache_writes=captured.allow_cache_writes,
+                ):
+                    self._fetch(captured, force=False)
+                    self._notify_update()
             except Exception as exc:
                 debug(
                     "download",
