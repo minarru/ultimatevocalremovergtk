@@ -179,6 +179,7 @@ class RunController:
         )
 
     def _start_target(self, target: typing.Any, plan: typing.Any=None) -> None:
+        from core.audio_plan import ResolvedAudioJob
         from core.job_plan import ResolvedJob
 
         runner = self._window.context.runner
@@ -191,7 +192,7 @@ class RunController:
             runner.settings = self._window.settings
         callbacks = self._callbacks()
         debug("ui", f"handle_start -> {type(target).__name__}.start()")
-        if isinstance(plan, ResolvedJob):
+        if isinstance(plan, (ResolvedJob, ResolvedAudioJob)):
             target.start(callbacks, plan=plan)
         else:
             target.start(callbacks)

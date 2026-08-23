@@ -295,7 +295,34 @@ def _validate_active_dependency_paths(
         getattr(settings, primary.family).model = primary.id
     else:
         settings.ensemble.selected_models = [record.id for record in records]
-    expected = set(active_model_paths(settings, command=command, primary=records))
+    descriptor_by_id = {
+        str(descriptor.get("id")): descriptor
+        for descriptor in (manifest.get("plan") or {}).get("models") or []
+        if isinstance(descriptor, dict) and descriptor.get("id")
+    }
+    if command == "separate":
+        primary_paths = [f"{records[0].family}.model"]
+    else:
+        indexed_primary_paths: list[tuple[int, str]] = []
+        for path in dependencies:
+            index = _ensemble_member_index(path)
+            if index is not None:
+                indexed_primary_paths.append((index, path))
+        primary_paths = [
+            path for _index, path in sorted(indexed_primary_paths)
+        ]
+    primary_stems = {
+        path: str(descriptor_by_id[record.id]["primary_stem"])
+        for path, record in zip(primary_paths, records)
+        if record.id in descriptor_by_id
+        and descriptor_by_id[record.id].get("primary_stem")
+    }
+    expected = set(active_model_paths(
+        settings,
+        command=command,
+        primary=records,
+        primary_stems=primary_stems,
+    ))
     actual = set(dependencies)
     if expected == actual:
         return

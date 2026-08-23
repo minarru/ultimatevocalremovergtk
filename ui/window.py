@@ -283,7 +283,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.set_content(self.toast_overlay)
         self._reveal_data_dir_banner_if_needed()
 
-        init_download_queue_ui(self, self.context, on_models_changed=self._refresh_models)
+        init_download_queue_ui(self, self.context)
 
         # Collapse the two option columns into a single column when the window
         # is narrow. ``set_orientation`` is driven from the apply/unapply
@@ -304,7 +304,7 @@ class MainWindow(Adw.ApplicationWindow):
         # the download worker thread. Subscribing here closes that gap; the
         # handler marshals to the main loop itself.
         self._model_refresh_armed = False
-        self.context.repo.subscribe_models_changed(self._on_models_changed)
+        self._subscribe_model_events()
         self.connect("map", self._on_window_mapped)
         self.connect("close-request", self._on_close_request)
 
@@ -936,7 +936,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _finalize_close(self, deferred: bool) -> None:
         # The repository outlives this window (it hangs off AppContext), so a
         # live subscription would keep calling into a dead widget tree.
-        self.context.repo.unsubscribe_models_changed(self._on_models_changed)
+        self._unsubscribe_model_events()
         self._flush_settings()
         self._save_geometry()
         self._handle_settings_error(self.context.try_save_settings(trigger="close"))
@@ -1031,6 +1031,10 @@ class MainWindow(Adw.ApplicationWindow):
                 callbacks,
                 planned=planned,
                 planned_output_root=planned_output_root,
+                model_dependencies=(
+                    plan.model_dependencies
+                    if isinstance(plan, ResolvedJob) else None
+                ),
             )
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
             self.fail_to_start(f"Unable to start separation: {exc}", exc)
@@ -1093,19 +1097,17 @@ class MainWindow(Adw.ApplicationWindow):
         debug("ui", "open download_center")
         from .download import open_download_center
 
-        open_download_center(self, self.context, on_models_changed=self._refresh_models)
+        open_download_center(self, self.context)
 
     def _refresh_models(self, *, source: str = "download_center") -> None:
-        from core.debug_log import debug
+        """Repaint every model-list consumer. Never invalidates.
 
-        if source != "repository":
-            # Cache invalidation is the event source. Its repository
-            # notification owns the single UI repaint; repainting here as well
-            # would duplicate the work, and invalidating from the repaint path
-            # creates an endless idle-callback feedback loop.
-            debug("ui", f"refresh_models invalidate source={source}")
-            self.context.repo.invalidate_models()
-            return
+        Invalidation belongs to core, before the notification that schedules
+        this repaint: a download publishes through the shared finalizer, and a
+        catalogue refinement through the presentation event. Invalidating from
+        the repaint path created an endless idle-callback feedback loop.
+        """
+        from core.debug_log import debug
 
         controller = getattr(self, "_run_controller", None)
         if controller is not None and controller.is_running():
@@ -1148,11 +1150,29 @@ class MainWindow(Adw.ApplicationWindow):
 
     # -- Repository-driven refresh ----------------------------------------------
 
+    def _subscribe_model_events(self) -> None:
+        """One handler for both repository events.
+
+        `models_changed` means the installed set changed;
+        `model_presentation_changed` means only labels did. Both repaint the
+        same widgets, so they share one callback and one coalescer rather than
+        opening a second idle path.
+        """
+        repo = self.context.repo
+        repo.subscribe_models_changed(self._on_models_changed)
+        repo.subscribe_model_presentation_changed(self._on_models_changed)
+
+    def _unsubscribe_model_events(self) -> None:
+        repo = self.context.repo
+        repo.unsubscribe_models_changed(self._on_models_changed)
+        repo.unsubscribe_model_presentation_changed(self._on_models_changed)
+
     def _on_models_changed(self) -> None:
         """``ModelRepository`` invalidated: fired from a worker thread.
 
-        Coalesced, because a download batch invalidates once per registered
-        model and a full refresh per file would be wasteful.
+        Serves both the inventory and presentation events. Coalesced, because a
+        download batch publishes once per model and a catalogue refresh can emit
+        alongside it -- a full repaint per event would be wasteful.
         """
         if self._model_refresh_armed:
             return

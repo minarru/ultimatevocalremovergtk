@@ -683,8 +683,37 @@ class MethodView:
         set_combo_value(row, stored)
         row.connect("notify::selected", lambda *_a, k=key, r=row: self._on_model_combo(k, r))
         self._add_row(container, row)
-        self._model_combos.append({"row": row, "key": key, "provider": provider, "ready": False})
+        warning_row = Adw.ActionRow(title="Saved model unavailable", visible=False)
+        warning_row.set_subtitle_lines(0)
+        self._add_row(container, warning_row)
+        self._model_combos.append({
+            "row": row,
+            "warning_row": warning_row,
+            "key": key,
+            "provider": provider,
+            "ready": False,
+            "eligible_ids": set(),
+            "write_gated": False,
+            "gated_value": None,
+        })
         return self._hint(row, hint)
+
+    @staticmethod
+    def _set_model_combo_warning(entry: dict[str, typing.Any], stored: typing.Any) -> None:
+        warning_row = entry.get("warning_row")
+        if warning_row is None:
+            return
+        warning_row.set_subtitle(
+            f"Saved model {stored!r} cannot be selected; it was kept as written. "
+            "Pick a model to replace it."
+        )
+        warning_row.set_visible(True)
+
+    @staticmethod
+    def _clear_model_combo_warning(entry: dict[str, typing.Any]) -> None:
+        warning_row = entry.get("warning_row")
+        if warning_row is not None:
+            warning_row.set_visible(False)
 
     def _on_model_combo(self, key: typing.Any, row: typing.Any) -> None:
         if self._loading or getattr(self, "_populating_models", False):
@@ -692,7 +721,17 @@ class MethodView:
         entry = next((e for e in self._model_combos if e["key"] == key), None)
         if entry and not entry["ready"]:
             return
-        set_flat(self.settings, key, get_combo_value(row))
+        selected = get_combo_value(row)
+        if entry is not None:
+            if selected != NO_MODEL:
+                try:
+                    parse_stored_model_id(str(selected))
+                except ValueError:
+                    return
+            entry["write_gated"] = False
+            entry["gated_value"] = None
+            self._clear_model_combo_warning(entry)
+        set_flat(self.settings, key, selected)
         self._touch_settings()
 
     def _ensure_model_combos_populated(self, *_args: typing.Any) -> None:
@@ -719,9 +758,26 @@ class MethodView:
                 )
                 tag_items = [(record.id, record.display) for record in records]
                 set_combo_tag_values(entry["row"], [NO_MODEL, *tag_items])
-                set_combo_value(
-                    entry["row"], get_flat(self.settings, entry["key"], NO_MODEL)
-                )
+                ids = {record.id for record in records}
+                entry["eligible_ids"] = ids
+                stored = get_flat(self.settings, entry["key"], NO_MODEL)
+                already_gated = bool(entry.get("write_gated", False))
+                gated_value = entry.get("gated_value")
+                if already_gated and stored == gated_value:
+                    gated = True
+                else:
+                    gated = stored not in (NO_MODEL, None, "") and (
+                        not isinstance(stored, str) or stored not in ids
+                    )
+                entry["write_gated"] = gated
+                if gated:
+                    entry["gated_value"] = stored
+                    self._set_model_combo_warning(entry, stored)
+                    set_combo_value(entry["row"], NO_MODEL)
+                else:
+                    entry["gated_value"] = None
+                    self._clear_model_combo_warning(entry)
+                    set_combo_value(entry["row"], stored)
                 entry["ready"] = True
         finally:
             self._populating_models = False

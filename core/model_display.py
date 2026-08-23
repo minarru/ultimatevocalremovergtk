@@ -119,6 +119,25 @@ def lookup_mapper_display(basename: str, name_mapper: Optional[Dict[str, str]]) 
     return None
 
 
+def lookup_mapper_display_exact(
+    basename: str, name_mapper: Optional[Mapping[str, str]]
+) -> Optional[str]:
+    """Map an on-disk basename to a display label by exact key only.
+
+    Unlike :func:`lookup_mapper_display`, this never falls back to splitext
+    scanning, casefolding, or substring matching: ``model`` must not pick up
+    ``model_v2.ckpt``. Inventory projection uses this so a display label can
+    never be invented from a near-miss key.
+    """
+    if not basename or not name_mapper:
+        return None
+    for extension in _MAPPER_EXTENSIONS:
+        key = basename if not extension else f"{basename}{extension}"
+        if key in name_mapper:
+            return str(name_mapper[key])
+    return None
+
+
 #: Any of the separators a family/title label has been written with. The Demucs
 #: name mapper is legacy data using ``v4 | X`` while every display is
 #: canonicalised to ``v4 — X`` (model_naming.TITLE_SEPARATOR), so a literal

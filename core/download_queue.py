@@ -15,6 +15,8 @@ from core.debug_log import debug
 _PROGRESS_NOTIFY_INTERVAL_S = 0.1
 from core.download_status import (
     ACTIVE_STATUSES,
+    RESULT_COMPLETE,
+    RESULT_EXISTS,
     RESULT_STOPPED,
     STATUS_CANCELLED,
     STATUS_COMPLETE,
@@ -226,7 +228,6 @@ class DownloadQueue:
                 on_progress=on_progress,
                 on_info=on_info,
                 stop_event=item.stop_event,
-                repo=self.repo,
             )
         except Exception as exc:  # noqa: BLE001
             if item.stop_event.is_set():
@@ -258,6 +259,14 @@ class DownloadQueue:
             item.status = STATUS_CANCELLED
             item.detail = default_detail_for_status(STATUS_CANCELLED)
         else:
+            outcome = self._finalize_item(item, result)
+            if outcome is not None and not outcome.ready:
+                # The transfer succeeded but the model is not usable: publishing
+                # it would put a model in the pickers that cannot run.
+                item.status = STATUS_FAILED
+                item.detail = outcome.detail or default_detail_for_status(STATUS_FAILED)
+                self._notify()
+                return False
             item.status = map_download_result(result)
             if item.status == STATUS_COMPLETE:
                 item.progress = 1.0
@@ -266,3 +275,33 @@ class DownloadQueue:
                 item.detail = default_detail
         self._notify()
         return item.status == STATUS_COMPLETE
+
+    def _finalize_item(self, item: DownloadQueueItem, result: str) -> typing.Any:
+        """Publish one logical model as soon as it becomes usable.
+
+        Per item, not per batch: the first of two queued models must reach the
+        pickers while the second is still downloading.
+        """
+        if self.repo is None or result not in (RESULT_COMPLETE, RESULT_EXISTS):
+            return None
+        from core.model_identity import FAMILY_BY_ARCH
+        from core.model_install import finalize_downloaded_model
+
+        family = FAMILY_BY_ARCH.get(item.arch_type or "")
+        if not family:
+            return None
+        try:
+            return finalize_downloaded_model(
+                repo=self.repo,
+                family=family,
+                selection=item.selection,
+                jobs=list(item.jobs),
+                transfer_result=result,
+            )
+        except Exception as exc:  # noqa: BLE001 - a bad item must not kill the queue
+            debug("download", f"finalize failed id={item.item_id}: {exc}")
+            from core.model_install import ModelInstallResult
+
+            return ModelInstallResult(
+                ready=False, published=False, detail=f"could not publish: {exc}"
+            )

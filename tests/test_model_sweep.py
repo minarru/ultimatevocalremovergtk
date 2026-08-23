@@ -663,7 +663,12 @@ class RunChildTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.audio_tools.apollo_model = "apollo_universal_model.ckpt"
         settings.process.export_path = "/tmp/out"
-        plan = mock.Mock(diagnostics=[], settings=settings, output="/tmp/out")
+        plan = mock.Mock(
+            diagnostics=[],
+            settings=settings,
+            output="/tmp/out",
+            model=mock.Mock(backend_name="apollo_universal_model.ckpt"),
+        )
         outcome = RunResult(0.01, stopped=True, error=TimeoutError("timeout"))
 
         def fake_run_blocking(runner: object, start_runner: Any, **_kwargs: object) -> RunResult:
@@ -672,9 +677,9 @@ class RunChildTests(unittest.TestCase):
 
         with mock.patch(
             "core.apollo.ApolloModelData", return_value=fake_model_data
-        ), mock.patch(
+        ) as model_data_cls, mock.patch(
             "core.audio_tools.AudioToolRunner", return_value=fake_runner
-        ), mock.patch(
+        ) as runner_cls, mock.patch(
             "core.audio_plan.AudioJobResolver.resolve", return_value=plan
         ), mock.patch(
             "core.blocking_runner.run_blocking", side_effect=fake_run_blocking
@@ -687,6 +692,15 @@ class RunChildTests(unittest.TestCase):
         self.assertEqual(fake_runner.start.call_args.args[0], model_sweep.APOLLO_RESTORE)
         self.assertNotIn("planned", fake_runner.start.call_args.kwargs)
         fake_runner.start_resolved.assert_not_called()
+        model_data_cls.assert_called_once_with(
+            "apollo_universal_model.ckpt",
+            model_hash_table=fake_repo.model_hash_table,
+            on_unrecognized=None,
+        )
+        runner_cls.assert_called_once_with(
+            plan.settings,
+            apollo_backend_name="apollo_universal_model.ckpt",
+        )
 
 
 class ResultProtocolTests(unittest.TestCase):

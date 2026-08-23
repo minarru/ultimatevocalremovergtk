@@ -85,10 +85,8 @@ class ResolveAndDownloadTests(unittest.TestCase):
             installed=False,
         )
 
-    def test_resolve_member_tag_uses_basename(self) -> None:
-        # Resolution is an exact identity lookup by id or basename, not a
-        # display-text inversion: seed a published index with the target record
-        # instead of patching a reverse-resolver.
+    def test_resolve_member_tag_preserves_legacy_text(self) -> None:
+        """Saved legacy text remains visible rather than becoming an identity."""
         repo = mock.Mock()
         record = self._resurrection_record()
         index = IdentityIndex({record.id: record})
@@ -96,7 +94,7 @@ class ResolveAndDownloadTests(unittest.TestCase):
             ModelIdentityService, "_published_index", return_value=index,
         ):
             tag = resolve_member_tag(f"MDX-Net: {record.basename}", repo)
-        self.assertEqual(tag, record.id)
+        self.assertEqual(tag, f"MDX-Net: {record.basename}")
 
     def test_resolve_member_tag_does_not_invert_a_display_label(self) -> None:
         """A catalogue rename must not be able to move a stored member.
@@ -112,7 +110,7 @@ class ResolveAndDownloadTests(unittest.TestCase):
         ):
             tag = resolve_member_tag(f"MDX-Net: {record.display}", repo)
         self.assertNotEqual(tag, record.id)
-        self.assertEqual(tag, f"mdx:{record.display}")
+        self.assertEqual(tag, f"MDX-Net: {record.display}")
 
     def test_classify_missing_members(self) -> None:
         repo = mock.Mock()

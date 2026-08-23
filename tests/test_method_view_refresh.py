@@ -8,6 +8,7 @@ showing the old model list until it was collapsed and reopened.
 
 from __future__ import annotations
 
+import os
 import unittest
 from types import SimpleNamespace
 from typing import Any
@@ -206,6 +207,52 @@ class InstalledRecordPickerTests(unittest.TestCase):
             MethodView.populate_models(view)
         return values, selections, write
 
+
+    def test_relabelled_record_repaints_without_touching_the_selection(self) -> None:
+        """A friendlier catalogue label must not move the user's choice.
+
+        The picker is a projection of `ModelRecord.display`, so a presentation
+        refresh changes the visible label while the stored canonical id stays
+        selected and unwritten.
+        """
+        raw, _selections, _write = self._populate(
+            [_record("mdx:kim_vocal_1", "kim_vocal_1")],
+            stored="mdx:kim_vocal_1",
+        )
+        friendly, selections, write = self._populate(
+            [_record("mdx:kim_vocal_1", "Kim Vocal 1")],
+            stored="mdx:kim_vocal_1",
+        )
+
+        self.assertIn(("mdx:kim_vocal_1", "kim_vocal_1"), raw)
+        self.assertIn(("mdx:kim_vocal_1", "Kim Vocal 1"), friendly)
+        self.assertEqual(selections, ["mdx:kim_vocal_1"])
+        write.assert_not_called()
+
+    def test_relabel_that_reorders_the_list_keeps_the_selection(self) -> None:
+        """Sort is by display, so a rename can reorder the combo."""
+        before, _sel_before, _w = self._populate(
+            [
+                _record("mdx:alpha", "Alpha"),
+                _record("mdx:beta", "Beta"),
+            ],
+            stored="mdx:beta",
+        )
+        after, selections, write = self._populate(
+            [
+                _record("mdx:alpha", "Zulu"),
+                _record("mdx:beta", "Beta"),
+            ],
+            stored="mdx:beta",
+        )
+
+        def ids(items: list[object]) -> list[object]:
+            return [item[0] for item in items if isinstance(item, tuple)]
+
+        self.assertNotEqual(ids(before), ids(after))
+        self.assertEqual(selections, ["mdx:beta"])
+        write.assert_not_called()
+
     def test_duplicate_displays_keep_two_distinct_ids(self) -> None:
         values, _selections, _write = self._populate(
             [
@@ -388,6 +435,132 @@ class InstalledRecordPickerTests(unittest.TestCase):
                 ("mdx:second", "Same display"),
             ],
         )
+
+
+@unittest.skipUnless(
+    os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),
+    "GTK widget construction needs a display",
+)
+class SecondaryPickerWarningGtkTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        cls._app = Adw.Application(application_id="org.uvr.test.secondary-warning")
+        cls._app.register()
+
+    def test_illegal_secondary_stays_verbatim_until_valid_repick(self) -> None:
+        from gi.repository import Adw
+
+        from bundled.constants import NO_MODEL
+        from core.settings import Settings
+        from ui.widgets.rows import get_combo_value, make_combo_row, set_combo_value
+
+        illegal = "mdx:missing-secondary"
+        settings = Settings.defaults()
+        settings.mdx.voc_inst_secondary_model = illegal
+        record = _record("mdx:secondary", "Friendly secondary")
+        missing = _record("mdx:missing-secondary", "Now available")
+        records = [record]
+        eligible = [record.id]
+
+        view: Any = MethodView.__new__(MethodView)
+        view.context = SimpleNamespace(repo=object())
+        view.settings = settings
+        view._loading = False
+        view._populating_models = False
+        view._touch_settings = mock.Mock()
+        combo = make_combo_row("Vocals / Instrumental", [NO_MODEL])
+        warning = Adw.ActionRow(title="Saved model unavailable", visible=False)
+        entry = {
+            "row": combo,
+            "warning_row": warning,
+            "key": "mdx_voc_inst_secondary_model",
+            "provider": lambda: list(eligible),
+            "ready": False,
+        }
+        view._model_combos = [entry]
+
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records",
+            side_effect=lambda: tuple(records),
+        ):
+            MethodView._populate_model_combos_now(view)
+
+            self.assertEqual(settings.mdx.voc_inst_secondary_model, illegal)
+            self.assertEqual(get_combo_value(combo), NO_MODEL)
+            self.assertTrue(warning.get_visible())
+            self.assertIn(illegal, warning.get_subtitle() or "")
+
+            # Installing the exact missing identity is an inventory refresh,
+            # not a user choice. The gate must remain sticky.
+            records.append(missing)
+            eligible.append(missing.id)
+            MethodView._populate_model_combos_now(view)
+
+        self.assertEqual(settings.mdx.voc_inst_secondary_model, illegal)
+        self.assertEqual(get_combo_value(combo), NO_MODEL)
+        self.assertTrue(warning.get_visible())
+        self.assertIn(illegal, warning.get_subtitle() or "")
+
+        set_combo_value(combo, missing.id)
+        MethodView._on_model_combo(view, entry["key"], combo)
+
+        self.assertEqual(settings.mdx.voc_inst_secondary_model, missing.id)
+        self.assertFalse(warning.get_visible())
+
+    def test_external_settings_change_replaces_stale_secondary_gate(self) -> None:
+        from gi.repository import Adw
+
+        from bundled.constants import NO_MODEL
+        from core.settings import Settings
+        from ui.widgets.rows import get_combo_value, make_combo_row
+
+        original = "mdx:missing-original"
+        replacement = _record("mdx:replacement", "Replacement")
+        settings = Settings.defaults()
+        settings.mdx.voc_inst_secondary_model = original
+        view: Any = MethodView.__new__(MethodView)
+        view.context = SimpleNamespace(repo=object())
+        view.settings = settings
+        view._loading = False
+        view._populating_models = False
+        view._touch_settings = mock.Mock()
+        combo = make_combo_row("Vocals / Instrumental", [NO_MODEL])
+        warning = Adw.ActionRow(title="Saved model unavailable", visible=False)
+        entry = {
+            "row": combo,
+            "warning_row": warning,
+            "key": "mdx_voc_inst_secondary_model",
+            "provider": lambda: [replacement.id],
+            "ready": False,
+        }
+        view._model_combos = [entry]
+
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records",
+            return_value=(replacement,),
+        ):
+            MethodView._populate_model_combos_now(view)
+            self.assertTrue(warning.get_visible())
+
+            new_invalid = "mdx:missing-replacement"
+            settings.mdx.voc_inst_secondary_model = new_invalid
+            MethodView._populate_model_combos_now(view)
+            self.assertEqual(get_combo_value(combo), NO_MODEL)
+            self.assertIn(new_invalid, warning.get_subtitle() or "")
+            self.assertNotIn(original, warning.get_subtitle() or "")
+
+            settings.mdx.voc_inst_secondary_model = replacement.id
+            MethodView._populate_model_combos_now(view)
+
+        self.assertEqual(get_combo_value(combo), replacement.id)
+        self.assertFalse(warning.get_visible())
+        self.assertFalse(entry["write_gated"])
 
 if __name__ == "__main__":
     unittest.main()

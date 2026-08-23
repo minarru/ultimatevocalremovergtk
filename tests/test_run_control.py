@@ -1,4 +1,6 @@
 import unittest
+from types import SimpleNamespace
+from typing import Any, cast
 from unittest import mock
 
 from core.job_plan import PlannedInput, ResolvedJob, ValidationLevel, settings_fingerprint
@@ -239,6 +241,60 @@ class AudioPreflightTests(unittest.TestCase):
         controller._accept_plan.assert_called_once_with(target, "fingerprint", plan)
         controller._present_plan_confirmation.assert_not_called()
 
+    def test_audio_page_uses_resolved_apollo_backend_at_start(self) -> None:
+        from bundled.constants import APOLLO_RESTORE
+        from core.audio_plan import ResolvedAudioJob
+        from core.job_plan import ModelDescriptor, ValidationLevel
+        from core.model_identity import ModelArtifacts
+        from ui.audio_tools.window import AudioToolsPage
+
+        settings = Settings.defaults()
+        settings.audio_tools.apollo_model = "apollo:restorer"
+        plan = ResolvedAudioJob(
+            APOLLO_RESTORE,
+            settings,
+            "/tmp/out",
+            (),
+            {},
+            (),
+            ValidationLevel.RUNTIME,
+            0,
+            "fingerprint",
+            "cpu",
+            ModelDescriptor(
+                id="apollo:restorer",
+                family="apollo",
+                basename="restorer",
+                display="Restorer",
+                backend_name="restorer.ckpt",
+                artifacts=ModelArtifacts("restorer.ckpt"),
+            ),
+        )
+        runner = mock.Mock(apollo_backend_name=None)
+        page = SimpleNamespace(
+            _current_tool=mock.Mock(return_value=APOLLO_RESTORE),
+            _dual_pairs=[],
+            inputs_row=SimpleNamespace(paths=["/tmp/song.wav"]),
+            _resolve_apollo_model=mock.Mock(return_value={"ok": True}),
+            runner=runner,
+            window=mock.Mock(),
+            context=mock.Mock(try_save_settings=mock.Mock(return_value=None)),
+            _toast=mock.Mock(),
+        )
+        callbacks = mock.Mock()
+
+        AudioToolsPage.start(cast(Any, page), callbacks, plan)
+
+        page._resolve_apollo_model.assert_called_once_with("restorer.ckpt")
+        self.assertEqual(runner.apollo_backend_name, "restorer.ckpt")
+        runner.start.assert_called_once_with(
+            APOLLO_RESTORE,
+            ["/tmp/song.wav"],
+            [],
+            callbacks,
+            apollo_params={"ok": True},
+        )
+
 
 class StartTargetSettingsCopyTests(unittest.TestCase):
     def test_start_target_does_not_mutate_window_settings(self) -> None:
@@ -293,7 +349,7 @@ class StartTargetSettingsCopyTests(unittest.TestCase):
 
         target.start.assert_called_once_with(callbacks, plan=plan)
 
-    def test_start_target_does_not_forward_audio_plan(self) -> None:
+    def test_start_target_forwards_audio_plan_backend_contract(self) -> None:
         from bundled.constants import TIME_STRETCH
         from core.audio_plan import ResolvedAudioJob
         from core.job_plan import ValidationLevel
@@ -318,8 +374,7 @@ class StartTargetSettingsCopyTests(unittest.TestCase):
 
         controller._start_target(target, plan)
 
-        target.start.assert_called_once_with(callbacks)
-        self.assertNotIn("plan", target.start.call_args.kwargs)
+        target.start.assert_called_once_with(callbacks, plan=plan)
 
     def test_start_target_applies_plan_to_audio_tools_page_runner(self) -> None:
         from core.settings import Settings
@@ -536,3 +591,47 @@ class StartingProgressTextTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ActiveModelLabelTests(unittest.TestCase):
+    """The label the run surfaces is the identity display, not a second mapper.
+
+    `ModelConfig.model_display_label` is assigned from `identity.display`, and
+    `_model_output_label` is what export paths and the floating log read. No UI
+    code re-derives a label during a run.
+    """
+
+    def test_run_label_prefers_the_identity_display(self) -> None:
+        from core.run_hooks import _model_output_label
+
+        model = SimpleNamespace(
+            model_display_label="MelBand Roformer — Karaoke · becruily",
+            model_name="melband_roformer_karaoke_becruily",
+            model_basename="melband_roformer_karaoke_becruily",
+        )
+
+        self.assertEqual(
+            _model_output_label(cast(Any, model)),
+            "MelBand Roformer — Karaoke · becruily",
+        )
+
+    def test_unknown_custom_model_falls_back_to_its_basename(self) -> None:
+        from core.run_hooks import _model_output_label
+
+        model = SimpleNamespace(
+            model_display_label="",
+            model_name="",
+            model_basename="my_private_model",
+        )
+
+        self.assertEqual(_model_output_label(cast(Any, model)), "my_private_model")
+
+    def test_model_config_takes_its_label_from_the_identity_record(self) -> None:
+        """Locks the assignment in core/model_config/config.py."""
+        import inspect
+
+        from core.model_config import config as config_mod
+
+        source = inspect.getsource(config_mod)
+        self.assertIn("self.model_display_label = (", source)
+        self.assertIn("identity.display if identity is not None else model_name", source)

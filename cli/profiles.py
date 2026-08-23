@@ -8,7 +8,7 @@ from typing import Any, Optional
 
 from core.paths import SETTINGS_CACHE_DIR, SETTINGS_DATA_FILE
 from core.json_store import read_json_object, safe_json_path, write_json_atomic
-from core.model_identity import FAMILIES, parse_stored_model_id
+from core.model_identity import parse_stored_model_id
 from core.settings import Settings
 from core.settings.access import set_path, validate_setting_path, validate_setting_value
 
@@ -117,16 +117,6 @@ def _profile_syntax_warnings(
     ]
 
 
-def _qualify_stored_model(family: str, model: str) -> str | None:
-    raw = str(model or "").strip()
-    if not raw or raw.casefold() in {"choose model", "no model selected", "none"}:
-        return None
-    prefix = raw.partition(":")[0].casefold()
-    if prefix in FAMILIES:
-        return raw
-    return f"{family}:{raw}"
-
-
 def _identity_from_gui(settings: Settings) -> tuple[Optional[str], Optional[str], list[str]]:
     from bundled.constants import DEMUCS_ARCH_TYPE, ENSEMBLE_MODE, MDX_ARCH_TYPE, VR_ARCH_PM
 
@@ -142,7 +132,7 @@ def _identity_from_gui(settings: Settings) -> tuple[Optional[str], Optional[str]
     }.get(method)
     section = {"vr": settings.vr, "mdx": settings.mdx, "demucs": settings.demucs}.get(family or "")
     model = str(getattr(section, "model", "") or "") if section is not None else ""
-    return (_qualify_stored_model(family, model) if family else None), None, []
+    return (model or None) if family else None, None, []
 
 
 def _flatten_settings(settings: Settings) -> dict[str, Any]:

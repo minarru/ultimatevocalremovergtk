@@ -68,6 +68,7 @@ class VocalSplitRow(Adw.ExpanderRow):
         #: ``_populator.ready`` is that gate.
         self._stored_splitter = NO_MODEL
         self._splitter_write_gated = False
+        self._splitter_gated_value: typing.Any = None
         self._splitter_ids: set[str] = set()
         self._populator = LazyPopulator(
             is_expanded=self.get_expanded,
@@ -77,6 +78,10 @@ class VocalSplitRow(Adw.ExpanderRow):
         self.split_switch = make_switch_row("Enable vocal split mode")
         self.splitter_row = make_combo_row("Vocal splitter model", [NO_MODEL])
         use_wrapping_list(self.splitter_row)
+        self.splitter_warning_row = Adw.ActionRow(
+            title="Saved model unavailable", visible=False
+        )
+        self.splitter_warning_row.set_subtitle_lines(0)
         self.save_inst_switch = make_switch_row("Save split vocal instrumentals")
         self.deverb_switch = make_switch_row("Deverb vocals")
         self.deverb_row = make_combo_row(
@@ -86,6 +91,7 @@ class VocalSplitRow(Adw.ExpanderRow):
         for row in (
             self.split_switch,
             self.splitter_row,
+            self.splitter_warning_row,
             self.save_inst_switch,
             self.deverb_switch,
             self.deverb_row,
@@ -114,7 +120,17 @@ class VocalSplitRow(Adw.ExpanderRow):
         """Restore every row from ``settings`` without emitting changes."""
         self._settings = settings
         process = settings.process
-        self._stored_splitter = process.vocal_splitter or NO_MODEL
+        incoming = process.vocal_splitter or NO_MODEL
+        gated_value = getattr(self, "_splitter_gated_value", None)
+        if (
+            getattr(self, "_splitter_write_gated", False)
+            and incoming == gated_value
+        ):
+            self._stored_splitter = gated_value
+        else:
+            self._splitter_write_gated = False
+            self._splitter_gated_value = None
+            self._stored_splitter = incoming
         self._syncing = True
         try:
             self.split_switch.set_active(bool(process.vocal_splitter_enabled))
@@ -132,14 +148,21 @@ class VocalSplitRow(Adw.ExpanderRow):
                     else [NO_MODEL, self._stored_splitter]
                 )
                 set_combo_tag_values(self.splitter_row, seed)
-            self._splitter_write_gated = bool(
-                self._populator.ready
-                and self._stored_splitter not in (NO_MODEL, None, "")
-                and (
-                    not isinstance(self._stored_splitter, str)
-                    or self._stored_splitter not in self._splitter_ids
+            if not getattr(self, "_splitter_write_gated", False):
+                self._splitter_write_gated = bool(
+                    self._populator.ready
+                    and self._stored_splitter not in (NO_MODEL, None, "")
+                    and (
+                        not isinstance(self._stored_splitter, str)
+                        or self._stored_splitter not in self._splitter_ids
+                    )
                 )
-            )
+                if self._splitter_write_gated:
+                    self._splitter_gated_value = self._stored_splitter
+            if self._splitter_write_gated:
+                self._show_splitter_warning()
+            else:
+                self._hide_splitter_warning()
             set_combo_value(
                 self.splitter_row,
                 NO_MODEL if self._splitter_write_gated else self._stored_splitter,
@@ -177,6 +200,24 @@ class VocalSplitRow(Adw.ExpanderRow):
         """Re-read the section's subtitle from the cached settings."""
         settings = self._settings
         self.set_subtitle(vocal_split_summary(settings) if settings is not None else OFF)
+
+    def _show_splitter_warning(self) -> None:
+        row = getattr(self, "splitter_warning_row", None)
+        if row is None:
+            return
+        stored = getattr(self, "_splitter_gated_value", None)
+        if stored is None:
+            stored = self._stored_splitter
+        row.set_subtitle(
+            f"Saved model {stored!r} cannot be selected; it was "
+            "kept as written. Pick a model to replace it."
+        )
+        row.set_visible(True)
+
+    def _hide_splitter_warning(self) -> None:
+        row = getattr(self, "splitter_warning_row", None)
+        if row is not None:
+            row.set_visible(False)
 
     # -- Internals --------------------------------------------------------------
 
@@ -217,13 +258,20 @@ class VocalSplitRow(Adw.ExpanderRow):
             set_combo_tag_values(self.splitter_row, [NO_MODEL, *tag_items])
             ids = {record.id for record in records}
             self._splitter_ids = ids
-            self._splitter_write_gated = bool(
-                self._stored_splitter not in (NO_MODEL, None, "")
-                and (
-                    not isinstance(self._stored_splitter, str)
-                    or self._stored_splitter not in ids
+            if not getattr(self, "_splitter_write_gated", False):
+                self._splitter_write_gated = bool(
+                    self._stored_splitter not in (NO_MODEL, None, "")
+                    and (
+                        not isinstance(self._stored_splitter, str)
+                        or self._stored_splitter not in ids
+                    )
                 )
-            )
+                if self._splitter_write_gated:
+                    self._splitter_gated_value = self._stored_splitter
+            if self._splitter_write_gated:
+                self._show_splitter_warning()
+            else:
+                self._hide_splitter_warning()
             set_combo_value(
                 self.splitter_row,
                 NO_MODEL if self._splitter_write_gated else self._stored_splitter,
@@ -259,6 +307,8 @@ class VocalSplitRow(Adw.ExpanderRow):
                     get_combo_value(self.splitter_row) or NO_MODEL
                 )
                 self._splitter_write_gated = False
+                self._splitter_gated_value = None
+                self._hide_splitter_warning()
             self.persist_to_settings(self._settings)
             self.refresh_summary()
         self._on_changed()

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import unittest
+import dataclasses
+from unittest.mock import Mock
 from unittest.mock import patch
 
 from core.export_naming import OutputNamingContext
@@ -39,6 +41,8 @@ class StartResolvedTests(unittest.TestCase):
     def test_assembles_once_for_two_inputs(self) -> None:
         runner = JobRunner(Settings.defaults())
         job = _job(("/tmp/a.wav", "/tmp/b.wav"), "/tmp/out")
+        dependencies = {"mdx.model": Mock(id="mdx:primary")}
+        job = dataclasses.replace(job, model_dependencies=dependencies)
         with patch.object(runner, "resolve_models", return_value=["M"]) as resolve:
             with patch.object(runner, "_run_one_planned", return_value=InputOutcome("/tmp/a.wav", "success")):
                 # If you name the per-item helper differently, patch that name.
@@ -46,7 +50,7 @@ class StartResolvedTests(unittest.TestCase):
                 thread = runner._thread
                 if thread is not None and thread.is_alive():
                     thread.join(timeout=2)
-        resolve.assert_called_once()
+        resolve.assert_called_once_with(dependencies)
 
     def test_fail_fast_stops_after_first_error(self) -> None:
         runner = JobRunner(Settings.defaults())

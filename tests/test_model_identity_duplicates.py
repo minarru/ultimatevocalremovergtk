@@ -38,11 +38,10 @@ class ExactIdPrecedenceTests(unittest.TestCase):
         record = resolve_model_record("mdx:MDX23C_D1581", self._records())
         self.assertEqual(record.id, "mdx:MDX23C_D1581")
 
-    def test_an_unqualified_case_ambiguous_term_still_raises(self) -> None:
-        """Without an exact id there is genuinely nothing to prefer."""
+    def test_an_unqualified_case_variant_is_not_a_runtime_identity(self) -> None:
         with self.assertRaises(ValueError) as ctx:
             resolve_model_record("mdx23c_d1581", self._records())
-        self.assertIn("ambiguous", str(ctx.exception))
+        self.assertIn("not a canonical model ID", str(ctx.exception))
 
     def test_a_qualified_casefold_match_is_rejected(self) -> None:
         records = (_rec("mdx:Some_Model", "Some_Model"),)

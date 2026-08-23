@@ -8,7 +8,7 @@ import os
 import shutil
 import sys
 import time
-from typing import Any, cast
+from typing import Any
 
 from bundled.constants import (
     ALIGN_INPUTS, APOLLO_RESTORE, CHANGE_PITCH, COMBINE_INPUTS, MANUAL_ENSEMBLE,
@@ -18,16 +18,13 @@ from core.audio_plan import AudioJobResolver, AudioJobSpec
 from core.audio_probe import probe_audio
 from core.audio_tools import AudioToolRunner
 from core.input_discovery import InputDiscoveryPolicy, InputDiscoveryService
-from core.job_plan import (
-    EMPTY_MODEL_IDENTITY_DIGEST,
-    ValidationLevel,
-    compute_model_identity_digest,
-)
+from core.job_plan import ValidationLevel
 from core.model_repository import ModelRepository
-from core.model_identity import ModelIdentityService, ModelRecord
+from core.settings import Settings
 from core.settings.job_resolution import SettingsLayer, SettingsResolver
 
 from .execution import BatchOutcome, PromotionSkipped, _promote, run_runner_cli
+from .model_identity import CliModelLookup
 from .process_flags import add_process_args, collect_overrides
 from .profiles import load_profile
 from .job import stored_identity_warnings
@@ -224,6 +221,10 @@ def _resolve_audio(args: argparse.Namespace, level: ValidationLevel = Validation
         ),
     )
     repo = ModelRepository()
+    persisted_settings = Settings.load()
+    repo.bind_model_hash_table(
+        lambda: persisted_settings.process.model_hash_table
+    )
     inherited = False
     if command == "restore":
         profile_model = (
@@ -235,7 +236,7 @@ def _resolve_audio(args: argparse.Namespace, level: ValidationLevel = Validation
         inherited = not bool(args.model) and bool(profile_model)
         if not reference:
             raise ValueError("audio restore requires --model or a profile model")
-        record = ModelIdentityService(repo).resolve(reference, family="apollo")
+        record = CliModelLookup(repo).lookup(reference, family="apollo")
         if record.family != "apollo":
             raise ValueError("audio restore requires an apollo: model")
         settings.audio_tools.apollo_model = record.id
@@ -308,14 +309,23 @@ def _run_audio(args: argparse.Namespace, plan: Any) -> BatchOutcome:
             os.makedirs(stage, exist_ok=True)
             settings = copy.deepcopy(plan.settings)
             settings.process.export_path = stage
-            runner = AudioToolRunner(settings)
+            apollo_backend_name = (
+                plan.model.backend_name
+                if plan.tool == APOLLO_RESTORE and plan.model is not None
+                else None
+            )
+            runner = AudioToolRunner(
+                settings, apollo_backend_name=apollo_backend_name
+            )
             singles = list(unit.inputs) if plan.tool not in {ALIGN_INPUTS, MATCH_INPUTS} else []
             pairs = [tuple(unit.inputs)] if plan.tool in {ALIGN_INPUTS, MATCH_INPUTS} else []
             apollo_params = None
             if plan.tool == APOLLO_RESTORE:
                 from core.apollo import ApolloModelData
 
-                data = ApolloModelData(settings.audio_tools.apollo_model, is_dry_check=True)
+                if not apollo_backend_name:
+                    raise ValueError("resolved Apollo backend is unavailable")
+                data = ApolloModelData(apollo_backend_name, is_dry_check=True)
                 apollo_params = {"extracted_params": data.extracted_params, "config": data.config}
             progress = make_progress_printer(args)
             manual_name = None
@@ -416,20 +426,7 @@ def _write_audio_manifest(args: argparse.Namespace, plan: Any, outcome: BatchOut
 
 
 def _audio_plan_payload(plan: Any) -> dict[str, Any]:
-    payload = plan.to_dict()
-    model = plan.model
-    if model is None:
-        dependencies: dict[str, str] = {}
-        digest = EMPTY_MODEL_IDENTITY_DIGEST
-    else:
-        path = "audio_tools.apollo_model"
-        dependencies = {path: str(model.id)}
-        digest = compute_model_identity_digest(
-            {path: cast(ModelRecord, model)}
-        )
-    payload["model_dependencies"] = dependencies
-    payload["model_identity_digest"] = digest
-    return payload
+    return plan.to_dict()
 
 
 def cmd_audio(args: argparse.Namespace) -> int:

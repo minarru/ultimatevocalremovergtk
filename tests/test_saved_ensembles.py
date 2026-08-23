@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from core import ensemble_service, paths
@@ -40,6 +41,112 @@ class SavedEnsemblePersistenceTests(unittest.TestCase):
             with open(os.path.join(tmp, "bad.name.json"), "w", encoding="utf-8") as handle:
                 json.dump({}, handle)
             self.assertEqual(ensemble_service.list_saved_ensembles(), ["Good_Name"])
+
+
+@unittest.skipUnless(
+    os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),
+    "GTK widget construction needs a display",
+)
+class SavedEnsembleWarningGtkTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        cls._app = Adw.Application(application_id="org.uvr.test.saved-warning")
+        cls._app.register()
+
+    def test_reader_warning_is_visible_after_saved_preset_selection(self) -> None:
+        from gi.repository import Adw
+
+        from bundled.constants import CHOOSE_ENSEMBLE_OPTION
+        from core.ensemble_service import ResolvedEnsemblePreset
+        from core.settings import Settings
+        from core.stems import EnsemblePair
+        from ui.ensemble.window import EnsemblePage
+        from ui.widgets.rows import make_combo_row, set_combo_value
+
+        warning = "ensemble.selected_models[0]: preserved 'MDX-Net: legacy'"
+        preset = ResolvedEnsemblePreset(
+            id="Broken",
+            display="Broken",
+            kind="saved",
+            main_stem=EnsemblePair.VOCALS_INSTRUMENTAL,
+            algorithm="Max Spec/Min Spec",
+            members=("MDX-Net: legacy",),
+            validation_warnings=(warning,),
+        )
+        settings = Settings.defaults()
+        page = EnsemblePage.__new__(EnsemblePage)
+        page._loading = False
+        page.settings = settings
+        page.context = SimpleNamespace(repo=object())
+        page.window = SimpleNamespace(_refresh_start_readiness=lambda: None)
+        page.saved_row = make_combo_row(
+            "Saved ensemble", [CHOOSE_ENSEMBLE_OPTION, "Broken"]
+        )
+        set_combo_value(page.saved_row, "Broken")
+        page.main_stem_row = make_combo_row(
+            "Main stem", [EnsemblePair.VOCALS_INSTRUMENTAL.value]
+        )
+        page._ensemble_banner = Adw.Banner(revealed=False)
+        page._config_blocked_reason = lambda: None
+        page._refresh_ensemble_type_values = lambda: None
+        page._rebuild_stem_only_toggles = lambda: None
+        page._rebuild_model_list = lambda preselected: None
+        page._persist_selected_models = lambda: None
+        page._toast = lambda message: None
+
+        with patch(
+            "core.ensemble_service.EnsembleService.apply", return_value=preset
+        ):
+            EnsemblePage._on_saved_selected(page)
+
+        self.assertTrue(page._ensemble_banner.get_revealed())
+        self.assertIn("MDX-Net: legacy", page._ensemble_banner.get_title())
+
+    def test_valid_member_repick_clears_gated_preset_warning(self) -> None:
+        from gi.repository import Adw
+
+        from bundled.constants import CHOOSE_ENSEMBLE_OPTION
+        from core.settings import Settings
+        from ui.ensemble.window import EnsemblePage
+        from ui.widgets.rows import make_combo_row
+
+        settings = Settings.defaults()
+        settings.ensemble.selected_models = ["mdx:first", "mdx:missing"]
+        page = EnsemblePage.__new__(EnsemblePage)
+        page.settings = settings
+        page._loading = True
+        page._models_write_gated = True
+        page._ensemble_validation_warnings = (
+            "ensemble.selected_models[1]: unknown model 'mdx:missing'",
+        )
+        page._ensemble_member_warnings = (
+            "ensemble.selected_models[1]: model 'mdx:missing' is not installed",
+        )
+        page._ensemble_banner = Adw.Banner(revealed=True)
+        page._config_blocked_reason = lambda: None
+        page.window = SimpleNamespace(_refresh_start_readiness=lambda: None)
+        page.saved_row = make_combo_row(
+            "Saved ensemble", [CHOOSE_ENSEMBLE_OPTION, "Broken"]
+        )
+        page._selected_model_tags = lambda: ["mdx:first", "mdx:second"]
+        page._update_models_dialog_status = lambda: None
+        page._update_models_summary = lambda: EnsemblePage._update_ensemble_banner(page)
+        page._rebuild_stem_only_toggles = lambda: None
+
+        EnsemblePage._on_model_toggled(page, object())  # type: ignore[arg-type]
+
+        self.assertEqual(
+            settings.ensemble.selected_models, ["mdx:first", "mdx:second"]
+        )
+        self.assertEqual(page._ensemble_validation_warnings, ())
+        self.assertEqual(page._ensemble_member_warnings, ())
+        self.assertFalse(page._ensemble_banner.get_revealed())
 
 
 if __name__ == "__main__":

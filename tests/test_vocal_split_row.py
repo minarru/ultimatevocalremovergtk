@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import typing
+from types import SimpleNamespace
 
 import os
 import unittest
@@ -80,6 +81,17 @@ class VocalSplitRowTests(unittest.TestCase):
         )
         identity_patcher.start()
         self.addCleanup(identity_patcher.stop)
+
+        self.changed = 0
+
+        def on_changed():
+            self.changed += 1
+
+        return VocalSplitRow(repo, on_changed)
+
+    def _row_with_repo(self, repo: typing.Any) -> typing.Any:
+        """A row over a real repository: nothing about eligibility is patched."""
+        from ui.widgets.vocal_split_row import VocalSplitRow
 
         self.changed = 0
 
@@ -182,6 +194,80 @@ class VocalSplitRowTests(unittest.TestCase):
         self.assertEqual(
             settings.get("set_vocal_splitter"), "VR Arc: 5_HP-Karaoke-UVR-DELETED"
         )
+
+    def test_missing_stored_splitter_is_visible_until_valid_repick(self):
+        from bundled.constants import NO_MODEL
+        from ui.widgets.rows import combo_values, get_combo_value
+
+        illegal = "VR Arc: 5_HP-Karaoke-UVR-DELETED"
+        settings = self._settings(set_vocal_splitter=illegal)
+        row = self._row()
+        row.apply_from_settings(settings)
+        row.set_expanded(True)
+
+        self.assertEqual(settings.get("set_vocal_splitter"), illegal)
+        self.assertEqual(get_combo_value(row.splitter_row), NO_MODEL)
+        self.assertTrue(row.splitter_warning_row.get_visible())
+        self.assertIn(illegal, row.splitter_warning_row.get_subtitle() or "")
+
+        displayed = combo_values(row.splitter_row)
+        row.splitter_row.set_selected(displayed.index("UVR-BVE-4B"))
+
+        self.assertEqual(settings.get("set_vocal_splitter"), "vr:UVR-BVE-4B")
+        self.assertFalse(row.splitter_warning_row.get_visible())
+
+    def test_installed_refresh_does_not_clear_a_presented_missing_gate(self):
+        from bundled.constants import NO_MODEL
+        from ui.widgets.rows import combo_values, get_combo_value
+
+        missing = "vr:UVR-BVE-5B"
+        settings = self._settings(set_vocal_splitter=missing)
+        row = self._row()
+        row.apply_from_settings(settings)
+        row.set_expanded(True)
+        self.assertTrue(row.splitter_warning_row.get_visible())
+
+        self.karaoke_models.append(missing)
+        row.refresh_models()
+
+        self.assertEqual(settings.get("set_vocal_splitter"), missing)
+        self.assertEqual(get_combo_value(row.splitter_row), NO_MODEL)
+        self.assertTrue(row.splitter_warning_row.get_visible())
+        self.assertIn(missing, row.splitter_warning_row.get_subtitle() or "")
+
+        displayed = combo_values(row.splitter_row)
+        row.splitter_row.set_selected(displayed.index("UVR-BVE-5B"))
+        self.assertEqual(settings.get("set_vocal_splitter"), missing)
+        self.assertFalse(row.splitter_warning_row.get_visible())
+
+    def test_shared_settings_repick_replaces_another_rows_stale_gate(self):
+        from ui.widgets.vocal_split_row import VocalSplitRow
+        from ui.widgets.rows import combo_values, get_combo_value
+
+        missing = "vr:later"
+        replacement = "vr:UVR-BVE-4B"
+        settings = self._settings(set_vocal_splitter=missing)
+        row_a = self._row()
+        row_b = VocalSplitRow(row_a._repo, lambda: None)
+
+        row_a.apply_from_settings(settings)
+        row_a.set_expanded(True)
+        self.assertTrue(row_a.splitter_warning_row.get_visible())
+
+        row_b.apply_from_settings(settings)
+        row_b.set_expanded(True)
+        displayed = combo_values(row_b.splitter_row)
+        row_b.splitter_row.set_selected(displayed.index("UVR-BVE-4B"))
+        self.assertEqual(settings.get("set_vocal_splitter"), replacement)
+
+        # A second page/row must treat the shared Settings object as authority.
+        row_a.apply_from_settings(settings)
+        self.assertEqual(get_combo_value(row_a.splitter_row), replacement)
+        self.assertFalse(row_a.splitter_warning_row.get_visible())
+
+        # Persisting an unrelated control must not resurrect row A's old gate.
+        row_a.save_inst_switch.set_active(True)
+        self.assertEqual(settings.get("set_vocal_splitter"), replacement)
 
     def test_persist_preserves_a_stored_tag_when_karaoke_model_list_raises(self):
         from ui.widgets.vocal_split_row import VocalSplitRow
@@ -315,6 +401,67 @@ class VocalSplitRowTests(unittest.TestCase):
         settings = self._settings()
         row.persist_to_settings(settings)
         self.assertEqual(settings.get("set_vocal_splitter"), "vr:UVR-BVE-4B")
+
+    def test_refresh_presents_only_karaoke_members_with_friendly_labels(self):
+        """The splitter pool stays karaoke-only while labels get friendlier.
+
+        Classification is faked per model, but the eligibility filter and the
+        row's record projection are the real ones: a non-karaoke installed
+        model must never reach the combo no matter how friendly its label is.
+        """
+        import tempfile
+        from core import model_repository as model_repository_mod
+        from core.model_repository import ModelRepository
+        from ui.widgets.rows import combo_values, get_combo_value
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        os.environ["UVR_DATA_DIR"] = tmp.name
+        self.addCleanup(lambda: os.environ.pop("UVR_DATA_DIR", None))
+
+        repo = ModelRepository()
+        repo._model_artifact_files = lambda family: (
+            ["karaoke_model.onnx", "plain_model.onnx"] if family == "mdx" else []
+        )
+        repo.mdx_name_select_MAPPER = {
+            "karaoke_model.onnx": "Karaoke Friendly",
+            "plain_model.onnx": "Plain Friendly",
+        }
+        repo.default_change_model_tags = lambda: [
+            "mdx:karaoke_model",
+            "mdx:plain_model",
+        ]
+
+        def fake_dry_check(
+            settings: typing.Any,
+            repo_: typing.Any,
+            tag: typing.Any,
+            identities: typing.Any,
+        ) -> typing.Any:
+            return SimpleNamespace(
+                canonical_id=tag,
+                model_status=True,
+                is_karaoke=tag == "mdx:karaoke_model",
+                is_bv_model=False,
+            )
+
+        row = self._row_with_repo(repo)
+        with patch.object(
+            model_repository_mod, "_dry_check_config", side_effect=fake_dry_check
+        ):
+            row.apply_from_settings(self._settings())
+            row.set_expanded(True)
+
+        displayed = combo_values(row.splitter_row)
+
+        self.assertIn("Karaoke Friendly", displayed)
+        self.assertNotIn("Plain Friendly", displayed)
+        # The label is presentation; selecting it must store the canonical id.
+        row.split_switch.set_active(True)
+        row.splitter_row.set_selected(displayed.index("Karaoke Friendly"))
+        self.assertEqual(get_combo_value(row.splitter_row), "mdx:karaoke_model")
+        self.assertNotIn("mdx:plain_model", row._splitter_ids)
+        self.assertEqual(row._splitter_ids, {"mdx:karaoke_model"})
 
 
 if __name__ == "__main__":

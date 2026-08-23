@@ -46,6 +46,9 @@ class ModelRepository:
         self.demucs_name_select_MAPPER: dict = {}
         # AppContext seeds this ephemeral cache from trusted persisted entries.
         self.model_hash_table: Dict[str, str] = {}
+        self._model_hash_table_provider: Optional[
+            Callable[[], typing.Mapping[str, Any]]
+        ] = None
         # Phase 3 hook: later phases set this to a callable that prompts the user
         # for parameters of an unrecognized model. Returning ``None`` (the
         # default) simply marks such models as unavailable.
@@ -55,6 +58,9 @@ class ModelRepository:
         self._models_changed_subscribers: List[Callable[[], None]] = []
         self._models_changed_lock = threading.Lock()
         self._notifying_models_changed = False
+        self._presentation_changed_subscribers: List[Callable[[], None]] = []
+        self._presentation_changed_lock = threading.Lock()
+        self._notifying_presentation_changed = False
         self._inventory_lock = threading.RLock()
         self._inventory_generation = 0
         # Owned here, not on ModelIdentityService: services are built per call
@@ -65,6 +71,12 @@ class ModelRepository:
         self._naming_revision = 0
         self._catalogue = catalogue
         self.reload_mappers()
+        # Catalogue refinements are presentation deltas: they change the label a
+        # record projects, never which files are installed. Subscribing here is
+        # what turns a late catalogue arrival into a repaint.
+        subscribe_delta = getattr(catalogue, "subscribe_delta", None)
+        if callable(subscribe_delta):
+            subscribe_delta(self._on_catalogue_delta)
 
     @property
     def inventory_generation(self) -> int:
@@ -91,6 +103,31 @@ class ModelRepository:
             return ""
         value = digest()
         return value if isinstance(value, str) else ""
+
+    def bind_model_hash_table(
+        self, provider: Callable[[], typing.Mapping[str, Any]]
+    ) -> None:
+        """Bind the persisted stat-guarded hash table owned by the caller.
+
+        The repository keeps only the flattened trusted projection. Retaining
+        the provider lets model invalidation rebuild that projection with
+        fresh stat checks instead of forcing checkpoint hashing.
+        """
+        with self._inventory_lock:
+            self._model_hash_table_provider = provider
+            self._rehydrate_model_hash_table()
+            self._identity_cache_key = None
+            self._identity_cache = None
+
+    def _rehydrate_model_hash_table(self) -> None:
+        provider = self._model_hash_table_provider
+        self.model_hash_table.clear()
+        if provider is None:
+            return
+        from .model_hash_cache import flatten_trusted, snapshot_table
+
+        persisted = snapshot_table(provider())
+        self.model_hash_table.update(flatten_trusted(persisted))
 
     # -- Change notification ----------------------------------------------------
 
@@ -132,11 +169,89 @@ class ModelRepository:
         finally:
             self._notifying_models_changed = False
 
-    def reload_mappers(self) -> None:
+    def _on_catalogue_delta(self, delta: Any) -> None:
+        """Translate a typed catalogue delta into a presentation refresh.
+
+        Only source and identity deltas move model labels: ``SOURCES_CHANGED``
+        can introduce a friendlier display, and ``IDENTITY_REFINED`` can make an
+        installed record gain or lose the exact catalogue association it
+        projects from. ``METADATA_CHANGED`` carries stem subtitles, which are
+        not model labels.
+
+        Deliberately does not read ``coordinator.snapshot()``: the coordinator
+        has already published, and pulling here would remesh sources from a
+        notification callback. The next identity read consumes the new snapshot.
+
+        Release is owned by the coordinator: :meth:`CatalogueCoordinator.close`
+        clears its subscriber list, and the repository has no disposal hook of
+        its own to add an unused ``close()`` API to.
+        """
+        from .catalogue_types import DeltaKind
+
+        kind = getattr(delta, "kind", None)
+        if kind not in (DeltaKind.SOURCES_CHANGED, DeltaKind.IDENTITY_REFINED):
+            return
+        self.invalidate_model_presentation(reload_mappers=False)
+
+    def subscribe_model_presentation_changed(
+        self, callback: Callable[[], None]
+    ) -> None:
+        """Call ``callback`` after :meth:`invalidate_model_presentation`.
+
+        Presentation-only: labels or catalogue associations changed while the
+        set of installed files, resolved plans and eligibility caches all stayed
+        valid. Fired from whichever thread invalidated, exactly like
+        ``models_changed``, so listeners marshal to their own loop themselves.
+        """
+        with self._presentation_changed_lock:
+            if callback not in self._presentation_changed_subscribers:
+                self._presentation_changed_subscribers.append(callback)
+
+    def unsubscribe_model_presentation_changed(
+        self, callback: Callable[[], None]
+    ) -> None:
+        with self._presentation_changed_lock:
+            try:
+                self._presentation_changed_subscribers.remove(callback)
+            except ValueError:
+                pass
+
+    def _notify_model_presentation_changed(self) -> None:
+        if self._notifying_presentation_changed:
+            return
+        with self._presentation_changed_lock:
+            callbacks = list(self._presentation_changed_subscribers)
+        self._notifying_presentation_changed = True
+        try:
+            for callback in callbacks:
+                try:
+                    callback()
+                except Exception:
+                    from .debug_log import debug
+
+                    debug("model", "model_presentation_changed subscriber raised")
+        finally:
+            self._notifying_presentation_changed = False
+
+    def invalidate_model_presentation(self, *, reload_mappers: bool = False) -> None:
+        """Labels changed; the files on disk did not.
+
+        Drops only the identity/display projection cache. Inventory generation,
+        hash maps, dry-check and karaoke pools all survive, so a resolved plan
+        stays effective and no checkpoint is rehashed.
+        """
         from .debug_log import debug
 
-        debug("model", "reload_mappers")
-        self._naming_revision += 1
+        with self._inventory_lock:
+            debug("model", f"invalidate_model_presentation mappers={reload_mappers}")
+            if reload_mappers:
+                self._reload_name_mappers()
+            self._identity_cache_key = None
+            self._identity_cache = None
+        self._notify_model_presentation_changed()
+
+    def _reload_hash_mappers(self) -> None:
+        """Execution data: checkpoint hash -> model parameters."""
         for attr, path in (
             ("vr_hash_MAPPER", paths.VR_HASH_JSON),
             ("mdx_hash_MAPPER", paths.MDX_HASH_JSON),
@@ -146,6 +261,12 @@ class ModelRepository:
             except (FileNotFoundError, ValueError):
                 setattr(self, attr, {})
 
+    def _reload_name_mappers(self) -> None:
+        """Presentation data: on-disk basename -> friendly label.
+
+        Owns ``naming_revision`` because that token keys display projections
+        only. A presentation refresh reloads these without touching hash maps.
+        """
         # Name mappers are mirror + local overlay, not a single file.
         from .name_mapper import load_name_mapper
 
@@ -154,6 +275,14 @@ class ModelRepository:
             ("demucs_name_select_MAPPER", paths.DEMUCS_MODEL_NAME_SELECT),
         ):
             setattr(self, attr, load_name_mapper(path))
+        self._naming_revision += 1
+
+    def reload_mappers(self) -> None:
+        from .debug_log import debug
+
+        debug("model", "reload_mappers")
+        self._reload_hash_mappers()
+        self._reload_name_mappers()
 
     def list_vr_models(self) -> List[str]:
         return _list_models(paths.VR_MODELS_DIR, (".pth",))
@@ -339,7 +468,7 @@ class ModelRepository:
             self._karaoke_cache = None
             self._identity_cache_key = None
             self._identity_cache = None
-            self.model_hash_table.clear()
+            self._rehydrate_model_hash_table()
             self.reload_mappers()
             self._notify_models_changed()
 

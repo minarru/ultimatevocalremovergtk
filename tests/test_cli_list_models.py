@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import pickle
 import signal
 import threading
 import unittest
@@ -45,6 +46,20 @@ class ModelIdTests(unittest.TestCase):
         result = resolve_model_record("mdx:model_a", records)
         self.assertEqual(result.id, "mdx:model_a")
 
+    def test_runtime_lookup_does_not_strip_edge_whitespace(self) -> None:
+        record = ModelRecord(
+            id="mdx:model_a",
+            family="mdx",
+            basename="model_a",
+            display="Model A",
+            backend_name="model_a",
+            artifacts=ModelArtifacts("model_a.ckpt"),
+            installed=True,
+        )
+
+        with self.assertRaises(ValueError):
+            resolve_model_record("mdx:model_a ", [record])
+
     def test_apollo_id_is_supported(self) -> None:
         record = ModelRecord(
             id='apollo:restore',
@@ -56,7 +71,6 @@ class ModelIdTests(unittest.TestCase):
             installed=True,
         )
         self.assertEqual(resolve_model_record("apollo:restore", [record]).id, "apollo:restore")
-        self.assertEqual(resolve_model_record("restore", [record]).id, "apollo:restore")
 
     def test_backend_filename_is_not_a_resolvable_reference(self) -> None:
         """``backend_name`` is an output of identity, never an input to it."""
@@ -69,11 +83,11 @@ class ModelIdTests(unittest.TestCase):
             artifacts=ModelArtifacts('restore.ckpt'),
             installed=True,
         )
-        with self.assertRaisesRegex(ValueError, "unknown or unregistered"):
+        with self.assertRaisesRegex(ValueError, "not a canonical model ID"):
             resolve_model_record("restore.ckpt", [record])
 
     def test_family_constraint_rejects_cross_family_match(self) -> None:
-        service = ModelIdentityService(object())
+        service = ModelIdentityService(SimpleNamespace(_inventory_lock=None))
         records = (
             ModelRecord(
                 id='mdx:shared',
@@ -94,28 +108,32 @@ class ModelIdTests(unittest.TestCase):
                 installed=True,
             ),
         )
-        with patch.object(service, "records", return_value=records):
-            self.assertEqual(service.resolve("shared", family="mdx").id, "mdx:shared")
+        with patch.object(service, "_published_index", return_value=IdentityIndex({
+            record.id: record for record in records
+        })):
+            self.assertEqual(service.resolve("mdx:shared", family="mdx").id, "mdx:shared")
             with self.assertRaisesRegex(ValueError, "required family"):
                 service.resolve("mdx:shared", family="vr")
 
-    def test_family_does_not_prefix_legacy_arch_member_tag(self) -> None:
-        """Leftover ``Arch: Basename`` tags still resolve; family= must not make ``mdx:MDX-Net:…``."""
+    def test_service_rejects_bare_and_legacy_runtime_references(self) -> None:
+        """Runtime resolution accepts only a canonical family:basename identity."""
         record = ModelRecord(
-            id='mdx:UVR-MDX-NET-Inst_HQ_4',
+            id='mdx:model',
             family='mdx',
-            basename='UVR-MDX-NET-Inst_HQ_4',
-            display='MDX-Net — UVR-MDX-NET Inst HQ 4',
-            backend_name='UVR-MDX-NET-Inst_HQ_4',
-            artifacts=ModelArtifacts('UVR-MDX-NET-Inst_HQ_4.ckpt'),
+            basename='model',
+            display='Model',
+            backend_name='model',
+            artifacts=ModelArtifacts('model.ckpt'),
             installed=True,
         )
-        service = ModelIdentityService(object())
-        with patch.object(service, "records", return_value=(record,)):
-            self.assertEqual(
-                service.resolve(f"MDX-Net: {record.basename}", family="mdx").id,
-                record.id,
-            )
+        service = ModelIdentityService(SimpleNamespace(_inventory_lock=None))
+        with patch.object(
+            service, "_published_index", return_value=IdentityIndex({record.id: record})
+        ):
+            with self.assertRaisesRegex(ValueError, "not a canonical model ID"):
+                service.resolve("model", family="mdx")
+            with self.assertRaisesRegex(ValueError, "not a canonical model ID"):
+                service.resolve("MDX-Net: model")
 
     def test_legacy_arch_tag_carrying_a_display_label_does_not_resolve(self) -> None:
         """A catalogue display rename must never move an existing selection."""
@@ -132,9 +150,9 @@ class ModelIdTests(unittest.TestCase):
         )
         tag = canonical_member_tag(record)
         self.assertEqual(tag, "MDX-Net: MDX-Net — UVR-MDX-NET Inst HQ 4")
-        service = ModelIdentityService(object())
+        service = ModelIdentityService(SimpleNamespace(_inventory_lock=None))
         with patch.object(service, "records", return_value=(record,)):
-            with self.assertRaisesRegex(ValueError, "unknown or unregistered"):
+            with self.assertRaisesRegex(ValueError, "not a canonical model ID"):
                 service.resolve(tag, family="mdx")
 
     def test_allowed_families_reject_ineligible_identity(self) -> None:
@@ -169,7 +187,7 @@ class AdministrationCoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "config_yaml"):
             ModelRegistryService.validate_payload("apollo", {"primary_stem": "Restored"})
 
-    def test_ambiguous_unqualified_name_lists_ids(self) -> None:
+    def test_service_rejects_an_unqualified_name_before_ambiguity_lookup(self) -> None:
         records = [
             ModelRecord(
                 id='mdx:vocals',
@@ -190,8 +208,12 @@ class AdministrationCoreTests(unittest.TestCase):
                 installed=True,
             ),
         ]
-        with self.assertRaisesRegex(ValueError, "ambiguous"):
-            resolve_model_record("vocals", records)
+        service = ModelIdentityService(SimpleNamespace(_inventory_lock=None))
+        with patch.object(
+            service, "_published_index",
+            return_value=IdentityIndex({record.id: record for record in records}),
+        ), self.assertRaisesRegex(ValueError, "not a canonical model ID"):
+            service.resolve("vocals")
 
     def test_registered_hash_index_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as root, patch(
@@ -267,7 +289,7 @@ class AdministrationCoreTests(unittest.TestCase):
 
         self.assertIsNone(importlib.util.find_spec("core.offline"))
 
-    def test_legacy_ensemble_tag_resolves_to_canonical_id(self) -> None:
+    def test_legacy_ensemble_tag_is_not_a_runtime_identity(self) -> None:
         records = [ModelRecord(
             id='mdx:model_a',
             family='mdx',
@@ -277,10 +299,9 @@ class AdministrationCoreTests(unittest.TestCase):
             artifacts=ModelArtifacts('model_a.ckpt'),
             installed=True,
         )]
-        result = resolve_model_record("MDX-Net: model_a", records)
-        self.assertEqual(result.id, "mdx:model_a")
-        # The display half of a legacy tag is not an identity input.
-        with self.assertRaisesRegex(ValueError, "unknown or unregistered"):
+        with self.assertRaisesRegex(ValueError, "not a canonical model ID"):
+            resolve_model_record("MDX-Net: model_a", records)
+        with self.assertRaisesRegex(ValueError, "not a canonical model ID"):
             resolve_model_record("MDX-Net: Model A", records)
 
 
@@ -385,6 +406,166 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(payload["inputs"][0]["error"], "interrupted")
 
 
+class CliDownloadPublicationTests(unittest.TestCase):
+    """The CLI publishes each model through the same finalizer as the GUI."""
+
+    def _record(self, name: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=f"catalog:mdx:{name}",
+            family="mdx",
+            selection=f"MDX-Net Model: {name}",
+            supported=True,
+        )
+
+    def _run(
+        self,
+        records: list,
+        *,
+        finalize_results: list,
+        download_results: list | None = None,
+    ):
+        manager = Mock()
+        manager.download.side_effect = download_results or (
+            ["complete"] * len(records)
+        )
+        service = Mock()
+        service.manager = manager
+        service.refresh.return_value = True
+        service.resolve.side_effect = list(records)
+        service.jobs.return_value = tuple(
+            (record, (("url", f"/tmp/{record.id}.onnx"),)) for record in records
+        )
+        args = argparse.Namespace(
+            entries=[record.id for record in records], offline=True, report="json",
+            quiet=True, verbose=False, job_id="download-test",
+        )
+        repo = Mock()
+        out, err = io.StringIO(), io.StringIO()
+        with patch(
+            "core.model_catalogue.ModelCatalogueService", return_value=service
+        ), patch(
+            "core.model_repository.ModelRepository", return_value=repo
+        ), patch(
+            "core.model_install.finalize_downloaded_model",
+            side_effect=list(finalize_results),
+        ) as finalize, redirect_stdout(out), redirect_stderr(err):
+            code = cmd_models_download(args)
+        return code, json.loads(out.getvalue()), finalize, repo, manager
+
+    def test_each_transfer_finalizes_with_its_exact_identity(self) -> None:
+        from core.model_install import ModelInstallResult
+
+        records = [self._record("A"), self._record("B")]
+        code, payload, finalize, _repo, _manager = self._run(
+            records,
+            finalize_results=[
+                ModelInstallResult(ready=True, published=True),
+                ModelInstallResult(ready=True, published=True),
+            ],
+        )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(finalize.call_count, 2)
+        families = [call.kwargs["family"] for call in finalize.call_args_list]
+        selections = [call.kwargs["selection"] for call in finalize.call_args_list]
+        self.assertEqual(families, ["mdx", "mdx"])
+        self.assertEqual(
+            selections, ["MDX-Net Model: A", "MDX-Net Model: B"]
+        )
+        self.assertTrue(payload["ok"])
+
+    def test_an_incomplete_result_fails_only_that_input(self) -> None:
+        from core.model_install import ModelInstallResult
+
+        records = [self._record("A"), self._record("B")]
+        code, payload, _finalize, _repo, _manager = self._run(
+            records,
+            finalize_results=[
+                ModelInstallResult(
+                    ready=False, published=False, detail="missing config.yaml"
+                ),
+                ModelInstallResult(ready=True, published=True),
+            ],
+        )
+
+        statuses = [row["status"] for row in payload["inputs"]]
+        self.assertEqual(statuses, ["failed", "success"])
+        self.assertEqual(payload["inputs"][0]["error"], "missing config.yaml")
+        self.assertEqual(code, 3)  # partial
+
+    def test_no_post_batch_invalidation(self) -> None:
+        """Publication is per model; a batch-level invalidation would be a second."""
+        from core.model_install import ModelInstallResult
+
+        records = [self._record("A")]
+        _code, _payload, _finalize, repo, _manager = self._run(
+            records, finalize_results=[ModelInstallResult(ready=True, published=True)]
+        )
+
+        repo.invalidate_models.assert_not_called()
+
+    def test_mapper_refresh_runs_before_any_publication(self) -> None:
+        """Otherwise it becomes a second full invalidation after publishing."""
+        from core.model_install import ModelInstallResult
+
+        order: list[str] = []
+        records = [self._record("A")]
+        manager = Mock()
+        manager.download.side_effect = lambda *a, **k: (
+            order.append("download") or "complete"
+        )
+        manager.update_model_settings.side_effect = lambda *a, **k: order.append(
+            "update_model_settings"
+        )
+        service = Mock()
+        service.manager = manager
+        service.refresh.return_value = True
+        service.resolve.side_effect = list(records)
+        service.jobs.return_value = tuple(
+            (record, (("url", "/tmp/a.onnx"),)) for record in records
+        )
+        args = argparse.Namespace(
+            entries=[records[0].id], offline=True, report="json", quiet=True,
+            verbose=False, job_id="download-test",
+        )
+        out, err = io.StringIO(), io.StringIO()
+        with patch(
+            "core.model_catalogue.ModelCatalogueService", return_value=service
+        ), patch("core.model_repository.ModelRepository"), patch(
+            "core.model_install.finalize_downloaded_model",
+            side_effect=lambda **k: (
+                order.append("finalize")
+                or ModelInstallResult(ready=True, published=True)
+            ),
+        ), redirect_stdout(out), redirect_stderr(err):
+            cmd_models_download(args)
+
+        self.assertEqual(order[0], "update_model_settings")
+        self.assertIn("finalize", order)
+        self.assertLess(order.index("update_model_settings"), order.index("finalize"))
+
+    def test_download_is_called_without_a_repository(self) -> None:
+        from core.model_install import ModelInstallResult
+
+        records = [self._record("A")]
+        _code, _payload, _finalize, _repo, manager = self._run(
+            records, finalize_results=[ModelInstallResult(ready=True, published=True)]
+        )
+
+        self.assertNotIn("repo", manager.download.call_args.kwargs)
+
+    def test_stdout_remains_one_valid_json_document(self) -> None:
+        from core.model_install import ModelInstallResult
+
+        records = [self._record("A")]
+        _code, payload, _finalize, _repo, _manager = self._run(
+            records, finalize_results=[ModelInstallResult(ready=True, published=True)]
+        )
+
+        self.assertEqual(payload["command"], "models.download")
+        self.assertEqual(len(payload["inputs"]), 1)
+
+
 class ModelsListInstalledDefaultTests(unittest.TestCase):
     def test_parser_has_all_known_flag(self) -> None:
         from cli.main import build_parser
@@ -477,6 +658,117 @@ class ModelsListInstalledDefaultTests(unittest.TestCase):
             self.assertIn("identity_complete", item)
             self.assertNotIn("engine_name", item)
 
+    def test_all_known_owns_an_offline_catalogue_backed_repository(self) -> None:
+        from bundled.constants import VR_ARCH_TYPE
+        from cli.discovery import cmd_models_list
+        from core.catalog_sources import EntryMeta
+
+        selection = "VR Model: Catalogue Only"
+        files = {"catalogue-only.pth": "https://example.invalid/catalogue-only.pth"}
+        entry = EntryMeta(
+            label=selection,
+            display="Catalogue Only",
+            arch=VR_ARCH_TYPE,
+            files=files,
+        )
+        snapshot = SimpleNamespace(
+            vr={selection: files},
+            mdx={},
+            demucs={},
+            apollo={},
+            meta_by_family={
+                "vr": {selection: entry},
+                "mdx": {},
+                "demucs": {},
+                "apollo": {},
+            },
+            unsupported={},
+        )
+        coordinator = Mock()
+        coordinator._latest = None
+
+        def ensure_snapshot(**_kwargs: object) -> object:
+            coordinator._latest = snapshot
+            return snapshot
+
+        coordinator.ensure.side_effect = ensure_snapshot
+        args = argparse.Namespace(
+            family="vr", all_known=True, report="json", quiet=True,
+            verbose=False, job_id="all-known-offline",
+        )
+        out = io.StringIO()
+
+        with patch(
+            "core.catalogue_coordinator.CatalogueCoordinator",
+            return_value=coordinator,
+        ), redirect_stdout(out):
+            code = cmd_models_list(args)
+
+        self.assertEqual(code, 0)
+        ids = [item["id"] for item in json.loads(out.getvalue())["items"]]
+        self.assertIn("vr:catalogue-only", ids)
+        coordinator.ensure.assert_called_once_with(vip=True, allow_network=False)
+        coordinator.close.assert_called_once_with()
+
+    def test_list_does_not_rename_corrupt_settings_json(self) -> None:
+        from cli.discovery import cmd_models_list
+
+        with tempfile.TemporaryDirectory() as tmp:
+            json_path = os.path.join(tmp, "settings.json")
+            pickle_path = os.path.join(tmp, "data.pkl")
+            with open(json_path, "w", encoding="utf-8") as handle:
+                handle.write("not-json{")
+            args = argparse.Namespace(
+                family=None, all_known=False, report="json", quiet=True,
+                verbose=False, job_id="read-only-corrupt-settings",
+            )
+
+            with patch(
+                "core.settings.io.SETTINGS_JSON_FILE", json_path
+            ), patch(
+                "core.settings.io.SETTINGS_PICKLE_FILE", pickle_path
+            ), patch(
+                "core.settings.io.SETTINGS_PICKLE_BAK", f"{pickle_path}.bak"
+            ), patch(
+                "cli.discovery.iter_model_records", return_value=()
+            ), redirect_stdout(io.StringIO()):
+                code = cmd_models_list(args)
+
+            self.assertEqual(code, 0)
+            self.assertTrue(os.path.isfile(json_path))
+            self.assertFalse(os.path.exists(f"{json_path}.bad"))
+            with open(json_path, encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "not-json{")
+
+    def test_list_does_not_migrate_legacy_settings_pickle(self) -> None:
+        from cli.discovery import cmd_models_list
+
+        with tempfile.TemporaryDirectory() as tmp:
+            json_path = os.path.join(tmp, "settings.json")
+            pickle_path = os.path.join(tmp, "data.pkl")
+            with open(pickle_path, "wb") as handle:
+                pickle.dump({"export_path": "/legacy"}, handle)
+            args = argparse.Namespace(
+                family=None, all_known=False, report="json", quiet=True,
+                verbose=False, job_id="read-only-legacy-settings",
+            )
+
+            with patch(
+                "core.settings.io.SETTINGS_JSON_FILE", json_path
+            ), patch(
+                "core.settings.io.SETTINGS_PICKLE_FILE", pickle_path
+            ), patch(
+                "core.settings.io.SETTINGS_PICKLE_BAK", f"{pickle_path}.bak"
+            ), patch(
+                "cli.discovery.iter_model_records", return_value=()
+            ), redirect_stdout(io.StringIO()):
+                code = cmd_models_list(args)
+
+            self.assertEqual(code, 0)
+            self.assertTrue(os.path.isfile(pickle_path))
+            self.assertFalse(os.path.exists(f"{pickle_path}.bak"))
+            self.assertFalse(os.path.exists(json_path))
+
 
 class StrictCliModelIdTests(unittest.TestCase):
     canonical_error = (
@@ -535,6 +827,29 @@ class StrictCliModelIdTests(unittest.TestCase):
         ), redirect_stdout(out), redirect_stderr(io.StringIO()):
             code = main([
                 "separate", "song.wav", "-o", "/tmp/out", "--model", "model",
+                "--dry-run", "--report", "json",
+            ])
+        payload = json.loads(out.getvalue())
+        self.assertEqual(code, 2)
+        self.assertEqual(payload["error"]["message"], self.canonical_error)
+
+    def test_audio_restore_rejects_a_bare_apollo_basename(self) -> None:
+        record = ModelRecord(
+            id="apollo:restorer",
+            family="apollo",
+            basename="restorer",
+            display="Restorer",
+            backend_name="restorer.ckpt",
+            artifacts=ModelArtifacts("restorer.ckpt"),
+            installed=True,
+        )
+        out = io.StringIO()
+        with patch(
+            "core.model_identity.ModelIdentityService._published_index",
+            return_value=IdentityIndex({record.id: record}),
+        ), redirect_stdout(out), redirect_stderr(io.StringIO()):
+            code = main([
+                "audio", "restore", "song.wav", "-o", "/tmp/out", "--model", "restorer",
                 "--dry-run", "--report", "json",
             ])
         payload = json.loads(out.getvalue())
@@ -650,3 +965,52 @@ class ModelsCatalogSizeBatchTests(unittest.TestCase):
             code = cmd_models_catalog(args)
         self.assertEqual(code, 0)
         prefetch.assert_not_called()
+
+
+class CliDisplayParityTests(unittest.TestCase):
+    """Human output reads the enriched display; JSON keeps exact identity."""
+
+    def _record(self):
+        from core.model_identity import ModelArtifacts, ModelRecord
+
+        return ModelRecord(
+            id="mdx:melband_roformer_karaoke_becruily",
+            family="mdx",
+            basename="melband_roformer_karaoke_becruily",
+            display="MelBand Roformer — Karaoke · becruily",
+            backend_name="melband_roformer_karaoke_becruily",
+            artifacts=ModelArtifacts(
+                "melband_roformer_karaoke_becruily.ckpt",
+                ("melband_roformer_karaoke_becruily.yaml",),
+            ),
+            installed=True,
+        )
+
+    def test_record_payload_keeps_identity_and_carries_display(self) -> None:
+        payload = self._record().to_dict()
+
+        self.assertEqual(payload["id"], "mdx:melband_roformer_karaoke_becruily")
+        self.assertEqual(
+            payload["basename"], "melband_roformer_karaoke_becruily"
+        )
+        self.assertEqual(
+            payload["backend_name"], "melband_roformer_karaoke_becruily"
+        )
+        self.assertEqual(
+            payload["display"], "MelBand Roformer — Karaoke · becruily"
+        )
+        # The friendly label must never leak into an identity field.
+        for key in ("id", "basename", "backend_name"):
+            self.assertNotIn("—", str(payload[key]))
+
+    def test_artifacts_are_unchanged_by_a_friendly_label(self) -> None:
+        record = self._record()
+
+        self.assertEqual(
+            record.artifacts.primary_filename,
+            "melband_roformer_karaoke_becruily.ckpt",
+        )
+        self.assertEqual(
+            record.artifacts.supporting_filenames,
+            ("melband_roformer_karaoke_becruily.yaml",),
+        )

@@ -31,7 +31,7 @@ from .export_naming import (
     format_stem_basename,
 )
 from .model_config import assemble_model
-from .model_config.determine import _secondary_slot_for_stem
+from .model_config.determine import secondary_slot_for_primary_stem
 from .model_identity import (
     DemucsSpec,
     MdxSpec,
@@ -126,6 +126,7 @@ def active_model_paths(
     command: str,
     primary: ModelRecord | Sequence[ModelRecord] | None = None,
     source_layout: str | None = None,
+    primary_stems: Mapping[str, str] | None = None,
 ) -> tuple[str, ...]:
     """Return stable settings paths for every active separation dependency."""
     primary_paths = _selected_family_paths(settings, command)
@@ -164,6 +165,16 @@ def active_model_paths(
     }
     if source_layout:
         demucs_layouts.add(source_layout)
+    native_stems_by_family: dict[str, set[str]] = {}
+    for index, record in enumerate(primaries):
+        primary_path = primary_paths[index][0] if index < len(primary_paths) else ""
+        native_stem = str(
+            (primary_stems or {}).get(primary_path)
+            or (primary_stems or {}).get(record.id)
+            or ""
+        )
+        if native_stem:
+            native_stems_by_family.setdefault(record.family, set()).add(native_stem)
 
     for family in ("vr", "mdx", "demucs"):
         if family not in selected_families:
@@ -175,19 +186,42 @@ def active_model_paths(
             family == "demucs"
             and (
                 ensemble_multi
-                or bool(demucs_layouts.intersection({"4_stem", "6_stem"}))
+                or (
+                    command != "ensemble"
+                    and bool(demucs_layouts.intersection({"4_stem", "6_stem"}))
+                )
             )
         )
         if all_slots:
             slots = _SECONDARY_SLOTS
         else:
-            selected_stem = (
-                coerce_ensemble_pair(settings.ensemble.main_stem).stem_halves()[0]
-                if command == "ensemble"
-                else str(getattr(section, "stems", "") or "")
+            selected_stems = native_stems_by_family.get(family, set())
+            if not selected_stems:
+                selected_stems = {
+                    str(
+                        (primary_stems or {}).get(family)
+                        or (
+                            coerce_ensemble_pair(
+                                settings.ensemble.main_stem
+                            ).stem_halves()[0]
+                            if command == "ensemble" else getattr(section, "stems", "")
+                        )
+                        or ""
+                    )
+                }
+            if family == "demucs" and command == "ensemble":
+                selected_stems = {
+                    coerce_ensemble_pair(
+                        settings.ensemble.main_stem
+                    ).stem_halves()[0]
+                }
+            selected_slots = {
+                secondary_slot_for_primary_stem(stem) or "voc_inst"
+                for stem in selected_stems
+            }
+            slots = tuple(
+                slot for slot in _SECONDARY_SLOTS if slot in selected_slots
             )
-            slot = _secondary_slot_for_stem(selected_stem) or "voc_inst"
-            slots = (slot,)
         for slot in slots:
             path = f"{family}.{slot}_secondary_model"
             if _model_reference(settings, path) not in MODEL_SENTINELS:
@@ -802,6 +836,22 @@ def _mdx_yaml_config_names(record: ModelRecord) -> tuple[str, ...]:
     return ()
 
 
+def _is_repairable_mdx_config_dependency(record: ModelRecord) -> bool:
+    """Whether planning may fetch one exact missing MDX-C YAML for this record."""
+    names = _mdx_yaml_config_names(record)
+    return (
+        record.family == "mdx"
+        and record.installed
+        and not record.identity_complete
+        and record.mdx is None
+        and record.artifacts.primary_filename.casefold().endswith(".ckpt")
+        and len(names) == 1
+        and str(record.identity_error or "").startswith(
+            "unknown MDX YAML architecture"
+        )
+    )
+
+
 class JobResolver:
     def __init__(self, repo: Any):
         self.repo = repo
@@ -816,31 +866,44 @@ class JobResolver:
         from . import paths
         from .mdx_config_fetch import ensure_mdx_c_config
 
-        fetched_any = False
+        refresh_needed = False
         for record in dependencies.values():
             for yaml_name in _mdx_yaml_config_names(record):
                 dest = os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name)
                 if os.path.isfile(dest):
+                    if _is_repairable_mdx_config_dependency(record):
+                        refresh_needed = True
                     continue
                 if not allow_network:
                     raise ValueError(
                         f"MDX configuration {yaml_name!r} is not available offline"
                     )
                 if ensure_mdx_c_config(yaml_name, allow_network=True):
-                    fetched_any = True
+                    refresh_needed = True
+                else:
+                    raise ValueError(
+                        f"MDX configuration {yaml_name!r} could not be downloaded"
+                    )
 
-        if not fetched_any:
-            return dict(dependencies)
+        resolved = dict(dependencies)
+        if refresh_needed:
+            invalidate = getattr(self.repo, "invalidate_models", None)
+            if callable(invalidate):
+                invalidate()
 
-        invalidate = getattr(self.repo, "invalidate_models", None)
-        if callable(invalidate):
-            invalidate()
+            self.identities.invalidate()
+            resolved = {
+                path: self.identities.lookup(record.id)
+                for path, record in dependencies.items()
+            }
 
-        self.identities.invalidate()
-        return {
-            path: self.identities.lookup(record.id)
-            for path, record in dependencies.items()
-        }
+        for path, record in resolved.items():
+            if not record.identity_complete:
+                detail = record.identity_error or "identity metadata is incomplete"
+                raise ValueError(
+                    f"{path} references model {record.id!r}: {detail}"
+                )
+        return resolved
 
     def resolve(
         self,
@@ -856,6 +919,7 @@ class JobResolver:
         dependencies: dict[str, ModelRecord] = {}
         records: list[ModelRecord] = []
         models: list[Any] = []
+        topology_models: list[Any] = []
         if not spec.inputs:
             diagnostics.append(Diagnostic("inputs.empty", "Select at least one input file"))
         for path in spec.inputs:
@@ -864,7 +928,28 @@ class JobResolver:
         if not spec.output:
             diagnostics.append(Diagnostic("output.empty", "Choose an output folder"))
         try:
-            dependencies = self._dependency_map(settings, spec.command)
+            needs_primary_probe = self._settings_need_secondary_topology(
+                settings, spec.command
+            )
+            if needs_primary_probe:
+                primary_dependencies = self._primary_dependency_map(
+                    settings,
+                    spec.command,
+                    allow_repairable_mdx_config=True,
+                )
+                dependencies = dict(primary_dependencies)
+            else:
+                dependencies = self._dependency_map(
+                    settings,
+                    spec.command,
+                    allow_repairable_mdx_config=True,
+                )
+                primary_dependencies = {
+                    path: dependencies[path]
+                    for path, _reference in _selected_family_paths(
+                        settings, spec.command
+                    )
+                }
         except ValueError as exc:
             diagnostics.append(Diagnostic("model.identity", str(exc)))
         else:
@@ -883,7 +968,95 @@ class JobResolver:
                 except ValueError as exc:
                     diagnostics.append(Diagnostic("model.configuration", str(exc)))
                     configs_unavailable = True
+                else:
+                    primary_dependencies = {
+                        path: dependencies[path]
+                        for path, _reference in _selected_family_paths(
+                            settings, spec.command
+                        )
+                    }
+                    try:
+                        self._validate_karaoke_dependencies(
+                            settings, dependencies
+                        )
+                    except ValueError as exc:
+                        diagnostics.append(
+                            Diagnostic("model.identity", str(exc))
+                        )
+                        configs_unavailable = True
             records = self._primary_records(dependencies, spec.command)
+            if records and not configs_unavailable and needs_primary_probe:
+                try:
+                    with access_policy(
+                        allow_network=allow_network,
+                        allow_metadata_writes=allow_network,
+                    ):
+                        primary_models = self._assemble(
+                            settings,
+                            spec.command,
+                            records,
+                            allow_network=allow_network,
+                            model_dependencies={},
+                        )
+                    if len(primary_models) != len(records):
+                        raise ValueError(
+                            "one or more primary model configurations are unavailable"
+                        )
+                    if any(
+                        not getattr(model, "model_status", False)
+                        for model in primary_models
+                    ):
+                        raise ValueError(
+                            "one or more primary model configurations are unavailable"
+                        )
+                    topology_models = list(primary_models)
+                    primary_stems = {
+                        path: str(
+                            getattr(model, "primary_stem", "") or ""
+                        )
+                        for (path, _record), model in zip(
+                            primary_dependencies.items(), primary_models
+                        )
+                    }
+                except (OSError, ValueError) as exc:
+                    diagnostics.append(Diagnostic("model.configuration", str(exc)))
+                    configs_unavailable = True
+                else:
+                    try:
+                        dependencies = self._dependency_map(
+                            settings,
+                            spec.command,
+                            primary_dependencies=primary_dependencies,
+                            primary_stems=primary_stems,
+                            allow_repairable_mdx_config=True,
+                        )
+                    except ValueError as exc:
+                        diagnostics.append(Diagnostic("model.identity", str(exc)))
+                        configs_unavailable = True
+                    else:
+                        try:
+                            dependencies = self._ensure_mdx_yaml_configs(
+                                dependencies, allow_network=allow_network
+                            )
+                        except ValueError as exc:
+                            diagnostics.append(
+                                Diagnostic("model.configuration", str(exc))
+                            )
+                            configs_unavailable = True
+                        else:
+                            try:
+                                self._validate_karaoke_dependencies(
+                                    settings, dependencies
+                                )
+                            except ValueError as exc:
+                                diagnostics.append(
+                                    Diagnostic("model.identity", str(exc))
+                                )
+                                configs_unavailable = True
+                            else:
+                                records = self._primary_records(
+                                    dependencies, spec.command
+                                )
         # Assembling a model whose yaml is already known to be missing only
         # restates the diagnostic just recorded.
         verify_model = level is not ValidationLevel.CONFIG
@@ -894,7 +1067,8 @@ class JobResolver:
                     allow_metadata_writes=allow_network,
                 ):
                     models = self._assemble(
-                        settings, spec.command, records, allow_network=allow_network
+                        settings, spec.command, records, allow_network=allow_network,
+                        model_dependencies=dependencies,
                     )
                 if len(models) != len(records):
                     raise ValueError("one or more model configurations are unavailable")
@@ -902,10 +1076,11 @@ class JobResolver:
                     raise ValueError("one or more model configurations are unavailable")
             except (OSError, ValueError) as exc:
                 diagnostics.append(Diagnostic("model.configuration", str(exc)))
+        descriptor_models = models or topology_models
         descriptors = tuple(
             _descriptor(record, model, verify_model)
-            for record, model in zip(records, models)
-        ) if models else tuple(
+            for record, model in zip(records, descriptor_models)
+        ) if descriptor_models else tuple(
             ModelDescriptor(
                 record.id,
                 record.family,
@@ -958,7 +1133,23 @@ class JobResolver:
         if plan.inventory_generation != int(getattr(self.repo, "inventory_generation", 0)):
             return False
         try:
-            dependencies = self._dependency_map(plan.settings, plan.command)
+            primary_dependencies = self._primary_dependency_map(
+                plan.settings,
+                plan.command,
+            )
+            dependencies = self._dependency_map(
+                plan.settings,
+                plan.command,
+                primary_dependencies=primary_dependencies,
+                primary_stems={
+                    path: descriptor.primary_stem
+                    for (path, _record), descriptor in zip(
+                        primary_dependencies.items(), plan.models
+                    )
+                    if descriptor.primary_stem
+                },
+            )
+            self._validate_karaoke_dependencies(plan.settings, dependencies)
         except ValueError:
             return False
         if compute_model_identity_digest(dependencies) != plan.model_identity_digest:
@@ -978,7 +1169,19 @@ class JobResolver:
     ) -> ResolvedJob:
         """Build the shared immutable plan from models already dry-assembled by an adapter."""
         settings = copy.deepcopy(spec.settings)
-        dependencies = self._dependency_map(settings, spec.command)
+        primary_dependencies = self._primary_dependency_map(settings, spec.command)
+        dependencies = self._dependency_map(
+            settings,
+            spec.command,
+            primary_dependencies=primary_dependencies,
+            primary_stems={
+                path: str(getattr(model, "primary_stem", "") or "")
+                for (path, _record), model in zip(
+                    primary_dependencies.items(), models
+                )
+            },
+        )
+        self._validate_karaoke_dependencies(settings, dependencies)
         descriptors = tuple(
             _descriptor(record, model, level is not ValidationLevel.CONFIG)
             for record, model in zip(records, models)
@@ -1009,8 +1212,12 @@ class JobResolver:
             compute_model_identity_digest(dependencies),
         )
 
-    def _dependency_map(
-        self, settings: Settings, command: str
+    def _primary_dependency_map(
+        self,
+        settings: Settings,
+        command: str,
+        *,
+        allow_repairable_mdx_config: bool = False,
     ) -> dict[str, ModelRecord]:
         primary_dependencies: dict[str, ModelRecord] = {}
         for path, reference in _selected_family_paths(settings, command):
@@ -1019,7 +1226,12 @@ class JobResolver:
                 allowed = _MODEL_FAMILIES
             else:
                 allowed = frozenset({path.partition(".")[0]})
-            self._validate_dependency_family(path, record, allowed)
+            self._validate_dependency_family(
+                path,
+                record,
+                allowed,
+                allow_repairable_mdx_config=allow_repairable_mdx_config,
+            )
             primary_dependencies[path] = record
 
         method_value = str(
@@ -1029,11 +1241,30 @@ class JobResolver:
         if is_ensemble and len(primary_dependencies) < 2:
             raise ValueError("an ensemble requires at least two models")
 
+        return primary_dependencies
+
+    def _dependency_map(
+        self,
+        settings: Settings,
+        command: str,
+        *,
+        primary_dependencies: Mapping[str, ModelRecord] | None = None,
+        primary_stems: Mapping[str, str] | None = None,
+        allow_repairable_mdx_config: bool = False,
+    ) -> dict[str, ModelRecord]:
+        if primary_dependencies is None:
+            primary_dependencies = self._primary_dependency_map(
+                settings,
+                command,
+                allow_repairable_mdx_config=allow_repairable_mdx_config,
+            )
+
         dependencies = dict(primary_dependencies)
         paths = active_model_paths(
             settings,
             command=command,
             primary=tuple(primary_dependencies.values()),
+            primary_stems=primary_stems,
         )
         for path in paths:
             if path in dependencies:
@@ -1044,13 +1275,57 @@ class JobResolver:
                 if path in {"process.vocal_splitter", "demucs.pre_proc_model"}
                 else _MODEL_FAMILIES
             )
-            self._validate_dependency_family(path, record, allowed)
+            self._validate_dependency_family(
+                path,
+                record,
+                allowed,
+                allow_repairable_mdx_config=allow_repairable_mdx_config,
+            )
             dependencies[path] = record
         return dependencies
 
+    def _validate_karaoke_dependencies(
+        self,
+        settings: Settings,
+        dependencies: Mapping[str, ModelRecord],
+    ) -> None:
+        record = dependencies.get("process.vocal_splitter")
+        if record is None:
+            return
+        # The active MDX YAML recovery step has already run. Pool construction
+        # may inspect unrelated installed models, but it must not fetch or
+        # write metadata while deciding exact karaoke/BV membership.
+        with access_policy(allow_network=False, allow_metadata_writes=False):
+            karaoke_ids = {
+                str(value) for value in self.repo.karaoke_model_list(settings)
+            }
+        if record.id not in karaoke_ids:
+            raise ValueError(
+                f"process.vocal_splitter references model {record.id!r}, which "
+                "is not karaoke/BV eligible"
+            )
+
+    @staticmethod
+    def _settings_need_secondary_topology(
+        settings: Settings, command: str
+    ) -> bool:
+        selected_families = {
+            reference.partition(":")[0]
+            for _path, reference in _selected_family_paths(settings, command)
+        }
+        return any(
+            family in selected_families
+            and bool(getattr(getattr(settings, family), "is_secondary_model_activate"))
+            for family in _MODEL_FAMILIES
+        )
+
     @staticmethod
     def _validate_dependency_family(
-        path: str, record: ModelRecord, allowed: frozenset[str]
+        path: str,
+        record: ModelRecord,
+        allowed: frozenset[str],
+        *,
+        allow_repairable_mdx_config: bool = False,
     ) -> None:
         if record.family not in allowed:
             expected = ", ".join(sorted(allowed))
@@ -1060,6 +1335,11 @@ class JobResolver:
         if not record.installed:
             raise ValueError(f"{path} references model {record.id!r}, which is not installed")
         if not record.identity_complete:
+            if (
+                allow_repairable_mdx_config
+                and _is_repairable_mdx_config_dependency(record)
+            ):
+                return
             detail = record.identity_error or "identity metadata is incomplete"
             raise ValueError(f"{path} references model {record.id!r}: {detail}")
 
@@ -1086,6 +1366,7 @@ class JobResolver:
         records: Sequence[ModelRecord],
         *,
         allow_network: bool = True,
+        model_dependencies: Mapping[str, ModelRecord] | None = None,
     ) -> list[Any]:
         from .mdx_config_fetch import mdx_c_network
 
@@ -1095,10 +1376,16 @@ class JobResolver:
             )
             if command == "ensemble" or method_value == ENSEMBLE_MODE:
                 settings.ensemble.selected_models = [record.id for record in records]
-                return assemble_model(settings, self.repo, arch_type=ENSEMBLE_MODE)
+                return assemble_model(
+                    settings, self.repo, arch_type=ENSEMBLE_MODE,
+                    model_dependencies=model_dependencies,
+                )
             record = records[0]
             setattr(getattr(settings, record.family), "model", record.id)
-            return assemble_model(settings, self.repo, record.id, record.method)
+            return assemble_model(
+                settings, self.repo, record.id, record.method,
+                model_dependencies=model_dependencies,
+            )
 
     def _runtime_diagnostics(self, settings: Settings) -> list[Diagnostic]:
         missing = [name for name in ("kthread", "soundfile") if importlib.util.find_spec(name) is None]

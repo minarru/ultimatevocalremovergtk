@@ -61,7 +61,12 @@ class AudioTools:
     dispatches to.
     """
 
-    def __init__(self, settings: Settings):
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        apollo_backend_name: str | None = None,
+    ):
         self.settings = settings
         time_stamp = round(time.time())
         process = settings.process
@@ -96,10 +101,13 @@ class AudioTools:
         # convention used by separate.py / model_data.py.
         from core import paths
 
-        self.apollo_model = audio_tools.apollo_model
+        self.apollo_model = apollo_backend_name
         self.apollo_overlap_val = int(audio_tools.apollo_overlap)
         self.apollo_chunk_val = int(audio_tools.apollo_chunk_size)
-        self.apollo_model_location = os.path.join(paths.APOLLO_MODELS_DIR, self.apollo_model or "")
+        self.apollo_model_location = (
+            os.path.join(paths.APOLLO_MODELS_DIR, self.apollo_model)
+            if self.apollo_model else ""
+        )
         self.use_gpu = bool(process.use_gpu)
         self.is_gpu_conversion = self.use_gpu  # back-compat alias
         self.is_use_directml = bool(process.use_directml)
@@ -265,6 +273,10 @@ class AudioTools:
         config: Optional[dict],
         set_progress_bar: Callable[[float, float], None],
     ) -> None:
+        if not self.apollo_model_location:
+            raise ValueError(
+                "A resolved Apollo backend checkpoint is required for inference."
+            )
         import soundfile as sf
 
         # ``apollo_inference`` pulls in torch; import it lazily so ``core``
@@ -326,8 +338,14 @@ class AudioToolRunner:
     callbacks so they execute on the main loop.
     """
 
-    def __init__(self, settings: Settings):
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        apollo_backend_name: str | None = None,
+    ):
         self.settings = settings
+        self.apollo_backend_name = apollo_backend_name
         self._thread = None
         self._is_stopped = False
         self._is_paused = False
@@ -348,6 +366,10 @@ class AudioToolRunner:
     ) -> None:
         if self.is_running():
             return
+        if tool == APOLLO_RESTORE and not self.apollo_backend_name:
+            raise ValueError(
+                "A resolved Apollo backend checkpoint is required before start."
+            )
         from kthread import KThread
 
         from .debug_log import debug
@@ -425,7 +447,10 @@ class AudioToolRunner:
             if not export_path or not os.path.isdir(export_path):
                 raise ValueError("A valid output folder is required.")
 
-            audio_tool = AudioTools(self.settings)
+            audio_tool = AudioTools(
+                self.settings,
+                apollo_backend_name=self.apollo_backend_name,
+            )
 
             if tool == MANUAL_ENSEMBLE:
                 self._run_manual_ensemble(audio_tool, single_inputs, callbacks)

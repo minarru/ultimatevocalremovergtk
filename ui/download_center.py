@@ -96,14 +96,12 @@ class DownloadCenterWindow:
         app_context: typing.Any,
         manager: DownloadManager,
         queue: DownloadQueue,
-        on_models_changed: typing.Any=None,
     ):
         self.parent = parent
         self.context = app_context
         self.settings = app_context.settings
         self.manager = manager
         self.queue = queue
-        self._on_models_changed = on_models_changed
 
         self._available: dict[str, list[str]] = {}
         self._unsupported: dict[str, list[tuple[str, str]]] = {}

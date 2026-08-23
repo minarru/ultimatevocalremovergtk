@@ -7,6 +7,7 @@ import dataclasses
 import importlib.util
 import os
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any, Mapping
 
 from bundled.constants import (
@@ -21,8 +22,15 @@ from bundled.constants import (
 from .apollo import ApolloModelData
 from .device import DeviceRequest
 from .export_naming import sanitize_filename_component
-from .job_plan import Diagnostic, ModelDescriptor, ValidationLevel, settings_fingerprint
-from .model_identity import ModelIdentityService
+from .job_plan import (
+    EMPTY_MODEL_IDENTITY_DIGEST,
+    Diagnostic,
+    ModelDescriptor,
+    ValidationLevel,
+    compute_model_identity_digest,
+    settings_fingerprint,
+)
+from .model_identity import ModelIdentityService, ModelRecord
 from .paths import APOLLO_MODELS_DIR
 from .settings import Settings
 
@@ -30,6 +38,11 @@ AUDIO_TOOL_IDS = (
     MANUAL_ENSEMBLE, TIME_STRETCH, CHANGE_PITCH,
     ALIGN_INPUTS, MATCH_INPUTS, APOLLO_RESTORE,
 )
+_APOLLO_DEPENDENCY_PATH = "audio_tools.apollo_model"
+
+
+def _empty_model_dependencies() -> Mapping[str, ModelRecord]:
+    return MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -63,6 +76,17 @@ class ResolvedAudioJob:
     settings_fingerprint: str
     device: str
     model: ModelDescriptor | None = None
+    model_dependencies: Mapping[str, ModelRecord] = field(
+        default_factory=_empty_model_dependencies, compare=False, repr=False
+    )
+    model_identity_digest: str = EMPTY_MODEL_IDENTITY_DIGEST
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "model_dependencies",
+            MappingProxyType(dict(self.model_dependencies)),
+        )
 
     @property
     def ok(self) -> bool:
@@ -78,6 +102,11 @@ class ResolvedAudioJob:
             "settings_fingerprint": self.settings_fingerprint,
             "device": self.device,
             "model": dataclasses.asdict(self.model) if self.model else None,
+            "model_dependencies": {
+                path: record.id
+                for path, record in sorted(self.model_dependencies.items())
+            },
+            "model_identity_digest": self.model_identity_digest,
             "units": [dataclasses.asdict(unit) for unit in self.units],
             "provenance": dict(self.provenance),
             "diagnostics": [dataclasses.asdict(item) for item in self.diagnostics],
@@ -106,7 +135,13 @@ class AudioJobResolver:
             diagnostics.append(Diagnostic("output.empty", "Choose an output folder"))
         diagnostics.extend(self._input_diagnostics(spec))
         diagnostics.extend(self._option_diagnostics(spec.tool, settings))
-        model = self._resolve_apollo(settings, diagnostics, level) if spec.tool == APOLLO_RESTORE else None
+        model: ModelDescriptor | None = None
+        dependencies: Mapping[str, ModelRecord] = _empty_model_dependencies()
+        if spec.tool == APOLLO_RESTORE:
+            record = self._resolve_apollo_record(settings, diagnostics)
+            if record is not None:
+                model = self._apollo_descriptor(record, diagnostics, level)
+                dependencies = MappingProxyType({_APOLLO_DEPENDENCY_PATH: record})
         if level in {ValidationLevel.RUNTIME, ValidationLevel.LOAD}:
             diagnostics.extend(self._runtime_diagnostics(spec.tool, settings))
         if level is ValidationLevel.LOAD and spec.tool == APOLLO_RESTORE and model:
@@ -121,10 +156,29 @@ class AudioJobResolver:
             int(getattr(self.repo, "inventory_generation", 0)),
             settings_fingerprint(settings), DeviceRequest.from_settings(settings.process).id,
             model,
+            dependencies,
+            compute_model_identity_digest(dependencies),
         )
 
     def is_current(self, plan: ResolvedAudioJob) -> bool:
         if plan.inventory_generation != int(getattr(self.repo, "inventory_generation", 0)):
+            return False
+        current_dependencies: dict[str, ModelRecord] = {}
+        try:
+            for path, recorded in plan.model_dependencies.items():
+                if path != _APOLLO_DEPENDENCY_PATH:
+                    return False
+                current = self.identities.lookup(recorded.id)
+                self._validate_apollo_record(current)
+                current_dependencies[path] = current
+        except (AttributeError, TypeError, ValueError):
+            return False
+        if plan.model is not None and not current_dependencies:
+            return False
+        if (
+            compute_model_identity_digest(current_dependencies)
+            != plan.model_identity_digest
+        ):
             return False
         if plan.model and plan.model.checkpoint and plan.model.checkpoint_hash:
             from .apollo import checkpoint_md5
@@ -167,11 +221,42 @@ class AudioJobResolver:
     def _resolve_apollo(
         self, settings: Settings, diagnostics: list[Diagnostic], level: ValidationLevel
     ) -> ModelDescriptor | None:
+        record = self._resolve_apollo_record(settings, diagnostics)
+        return (
+            self._apollo_descriptor(record, diagnostics, level)
+            if record is not None
+            else None
+        )
+
+    def _resolve_apollo_record(
+        self, settings: Settings, diagnostics: list[Diagnostic]
+    ) -> ModelRecord | None:
         reference = str(settings.audio_tools.apollo_model or "")
         try:
-            record = self.identities.resolve(reference)
-            if record.family != "apollo":
-                raise ValueError("Audio restore requires an apollo: model")
+            record = self.identities.lookup(reference)
+            self._validate_apollo_record(record)
+            return record
+        except (OSError, TypeError, ValueError) as exc:
+            diagnostics.append(Diagnostic("audio.apollo.model", str(exc)))
+            return None
+
+    @staticmethod
+    def _validate_apollo_record(record: ModelRecord) -> None:
+        if record.family != "apollo":
+            raise ValueError("Audio restore requires an apollo: model")
+        if not record.installed:
+            raise ValueError(f"Apollo model {record.id!r} is not installed")
+        if not record.identity_complete:
+            detail = record.identity_error or "identity metadata is incomplete"
+            raise ValueError(f"Apollo model {record.id!r}: {detail}")
+
+    @staticmethod
+    def _apollo_descriptor(
+        record: ModelRecord,
+        diagnostics: list[Diagnostic],
+        level: ValidationLevel,
+    ) -> ModelDescriptor | None:
+        try:
             path = os.path.join(APOLLO_MODELS_DIR, record.backend_name)
             digest = None
             primary = None

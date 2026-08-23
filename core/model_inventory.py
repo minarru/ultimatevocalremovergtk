@@ -16,6 +16,7 @@ from .model_identity import (
     IdentityIndex,
     MdxSpec,
     ModelArtifacts,
+    ModelId,
     ModelRecord,
 )
 
@@ -77,6 +78,8 @@ def validate_artifact_name(name: str, *, family: str) -> str:
     normalized = path.as_posix()
     if normalized.startswith("../"):
         raise ValueError(f"illegal artifact path {name!r}")
+    if len(path.parts) != 1:
+        raise ValueError(f"unsupported {family} artifact layout {name!r}")
     return normalized
 
 
@@ -109,8 +112,9 @@ def _record(
     supporting = tuple(
         validate_artifact_name(name, family=family) for name in supporting
     )
+    model_id = ModelId(family, basename)
     return ModelRecord(
-        id=f"{family}:{basename}",
+        id=model_id.value,
         family=family,
         basename=basename,
         display=display,
@@ -316,20 +320,24 @@ def _mdx_installed_yaml(files: tuple[str, ...], checkpoint_filename: str) -> str
     return None
 
 
-def _apollo_config_name(repo: Any, checkpoint_filename: str) -> str | None:
+def _trusted_local_metadata(
+    repo: Any,
+    family: str,
+    checkpoint_filename: str,
+    hash_directory: str,
+) -> Mapping[str, Any] | None:
+    """Read hash-keyed metadata for a checkpoint already trusted by its owner."""
     import json
-
-    from . import paths
 
     path_provider = getattr(repo, "_model_artifact_path", None)
     if not callable(path_provider):
         return None
-    checkpoint_path = str(path_provider("apollo", checkpoint_filename))
+    checkpoint_path = str(path_provider(family, checkpoint_filename))
     hash_table = getattr(repo, "model_hash_table", None) or {}
     model_hash = hash_table.get(checkpoint_path)
-    if not model_hash:
+    if not isinstance(model_hash, str) or not model_hash:
         return None
-    json_path = os.path.join(paths.APOLLO_HASH_DIR, f"{model_hash}.json")
+    json_path = os.path.join(hash_directory, f"{model_hash}.json")
     if not os.path.isfile(json_path):
         return None
     try:
@@ -338,6 +346,55 @@ def _apollo_config_name(repo: Any, checkpoint_filename: str) -> str | None:
     except (OSError, json.JSONDecodeError):
         return None
     if not isinstance(payload, Mapping):
+        return None
+    return payload
+
+
+def _mdx_spec_from_architecture(architecture: str, yaml_name: str) -> MdxSpec | None:
+    kinds = {
+        "MDX23C": "mdx23c",
+        "Mel-Band Roformer": "mel_band_roformer",
+        "BS Roformer": "bs_roformer",
+        "SCNet": "scnet",
+        "SCNet Masked": "scnet_masked",
+        "SCNet Tran": "scnet_tran",
+        "Bandit": "bandit_v2" if "bandit_v2" in yaml_name.casefold() else "bandit",
+    }
+    kind = kinds.get(architecture)
+    return MdxSpec(kind) if kind is not None else None  # type: ignore[arg-type]
+
+
+def _trusted_mdx_config(
+    repo: Any, checkpoint_filename: str
+) -> tuple[str, MdxSpec | None] | None:
+    """Return exact trusted YAML evidence, even before the YAML is available."""
+    from . import paths
+    from .mdx_c_registry import infer_mdx_c_architecture
+
+    payload = _trusted_local_metadata(
+        repo, "mdx", checkpoint_filename, paths.MDX_HASH_DIR
+    )
+    if payload is None:
+        return None
+    config = payload.get("config_yaml")
+    if not isinstance(config, str) or not config.casefold().endswith(_YAML_SUFFIXES):
+        return None
+    try:
+        yaml_name = validate_artifact_name(config, family="mdx")
+    except ValueError:
+        return None
+    architecture, _is_roformer = infer_mdx_c_architecture(yaml_name)
+    spec = _mdx_spec_from_architecture(architecture, yaml_name)
+    return yaml_name, spec
+
+
+def _apollo_config_name(repo: Any, checkpoint_filename: str) -> str | None:
+    from . import paths
+
+    payload = _trusted_local_metadata(
+        repo, "apollo", checkpoint_filename, paths.APOLLO_HASH_DIR
+    )
+    if payload is None:
         return None
     config = payload.get("config_yaml")
     return str(config) if config else None
@@ -357,14 +414,18 @@ def _installed_record(
         )
     if family == "mdx" and folded.endswith(".ckpt"):
         path_provider = getattr(repo, "_model_artifact_path", None)
-        yaml_name = _mdx_installed_yaml(files, filename)
-        yaml_path = cast(
-            str | None,
-            path_provider(family, yaml_name)
-            if yaml_name and callable(path_provider)
-            else None,
-        )
-        kind = _mdx_kind((filename, yaml_name or ""), yaml_path)
+        trusted_config = _trusted_mdx_config(repo, filename)
+        if trusted_config is not None:
+            yaml_name, kind = trusted_config
+        else:
+            yaml_name = _mdx_installed_yaml(files, filename)
+            yaml_path = cast(
+                str | None,
+                path_provider(family, yaml_name)
+                if yaml_name and callable(path_provider)
+                else None,
+            )
+            kind = _mdx_kind((filename, yaml_name or ""), yaml_path)
         return _record(
             family, basename, basename, basename, filename,
             (yaml_name,) if yaml_name else (), installed=True,
@@ -441,7 +502,43 @@ def _merge_installed(repo: Any, records: list[ModelRecord]) -> list[ModelRecord]
                 continue
             existing = by_primary.get(key)
             if existing is not None:
-                result[existing] = replace(result[existing], installed=True)
+                catalogue_record = result[existing]
+                if family == "mdx" and not catalogue_record.identity_complete:
+                    local_record = _installed_record(repo, family, filename, files)
+                    if local_record is not None:
+                        local_supporting = (
+                            local_record.artifacts.supporting_filenames
+                            or catalogue_record.artifacts.supporting_filenames
+                        )
+                        mdx = local_record.mdx or catalogue_record.mdx
+                        complete = (
+                            catalogue_record.identity_complete
+                            or local_record.identity_complete
+                        )
+                        result[existing] = replace(
+                            catalogue_record,
+                            artifacts=replace(
+                                catalogue_record.artifacts,
+                                supporting_filenames=local_supporting,
+                            ),
+                            installed=True,
+                            identity_complete=complete,
+                            identity_error=(
+                                None
+                                if complete
+                                else local_record.identity_error
+                                or catalogue_record.identity_error
+                            ),
+                            mdx=mdx,
+                        )
+                    else:
+                        result[existing] = replace(
+                            catalogue_record, installed=True
+                        )
+                else:
+                    result[existing] = replace(
+                        catalogue_record, installed=True
+                    )
                 continue
             try:
                 if filename in demucs_bags:
@@ -588,6 +685,79 @@ def _apply_registered_demucs(
     return result
 
 
+#: Presentation-only sources, by family. VR has a catalogue display index but
+#: no legacy name mapper; Apollo has neither and keeps whatever display its
+#: catalogue or registration record already carried.
+_DISPLAY_INDEX_ATTR = {
+    "vr": "display_index_vr",
+    "mdx": "display_index_mdx",
+    "demucs": "display_index_demucs",
+}
+
+_NAME_MAPPER_ATTR = {
+    "mdx": "mdx_name_select_MAPPER",
+    "demucs": "demucs_name_select_MAPPER",
+}
+
+
+def _record_display(
+    repo: Any, record: ModelRecord, snapshot: Any | None
+) -> str | None:
+    """Resolve one record's friendly label from exact evidence only.
+
+    Returns ``None`` when the record already carries its authoritative label, so
+    the caller never has to compare presentation text: comparing ``display`` is
+    the inversion that lets a catalogue rename move an existing selection, and
+    ``tests/test_no_runtime_display_inversion.py`` forbids it outright.
+    """
+    from .model_display import lookup_mapper_display_exact
+
+    current = str(record.display or "").strip()
+    if current and current != record.basename:
+        return None
+
+    attribute = _DISPLAY_INDEX_ATTR.get(record.family)
+    if attribute and snapshot is not None:
+        index = getattr(snapshot, attribute, None)
+        if isinstance(index, Mapping):
+            candidate = str(index.get(record.basename) or "").strip()
+            # A catalogue that only echoes the basename is not a friendly label.
+            if candidate and candidate != record.basename:
+                return candidate
+
+    mapper_attribute = _NAME_MAPPER_ATTR.get(record.family)
+    if mapper_attribute:
+        mapper = getattr(repo, mapper_attribute, None)
+        if isinstance(mapper, Mapping):
+            mapped = lookup_mapper_display_exact(record.basename, mapper)
+            candidate = str(mapped or "").strip()
+            if candidate:
+                return candidate
+
+    # Nothing friendly is known. The raw basename is the label, so only rebuild
+    # the record when it is not already carrying it.
+    return None if current == record.basename else record.basename
+
+
+def _enrich_record_displays(
+    repo: Any, records: list[ModelRecord], snapshot: Any | None
+) -> list[ModelRecord]:
+    """Give every record its authoritative display label, presentation only.
+
+    Runs once after all catalogue/installed/Demucs merges so that
+    ``ModelRecord.display`` is the single friendly label every consumer reads.
+    Only ``.display`` may change here: identity, artifacts and execution specs
+    are already final, and the identity digest excludes display.
+    """
+    result: list[ModelRecord] = []
+    for record in records:
+        display = _record_display(repo, record, snapshot)
+        result.append(
+            record if display is None else replace(record, display=display)
+        )
+    return result
+
+
 def _detect_collisions(records: list[ModelRecord]) -> dict[str, ModelRecord]:
     grouped: dict[str, list[ModelRecord]] = {}
     for record in records:
@@ -632,4 +802,5 @@ def build_identity_index(
     records = _merge_installed(repo, records)
     records = _apply_bundled_demucs(records, bundled_demucs_specs)
     records = _apply_registered_demucs(records, registered_demucs)
+    records = _enrich_record_displays(repo, records, snapshot)
     return IdentityIndex(_detect_collisions(records))

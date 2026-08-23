@@ -274,11 +274,90 @@ class KeepTextCutoverTests(unittest.TestCase):
             with open(illegal_path, "w", encoding="utf-8") as handle:
                 json.dump({"selected_models": ["MDX-Net: Model A"]}, handle)
             loaded = ensemble_service.load_ensemble("illegal")
+            preset = ensemble_service.EnsembleService(object()).resolve("illegal")
 
         self.assertIsNotNone(loaded)
         assert loaded is not None
         self.assertEqual(loaded["selected_models"], ["MDX-Net: Model A"])
         self.assertTrue(any("selected_models[0]" in item for item in loaded.validation_warnings))
+        self.assertEqual(preset.validation_warnings, tuple(loaded.validation_warnings))
+
+    def test_saved_ensemble_keeps_nonstring_member_through_resolve_and_apply(self) -> None:
+        import json
+        import os
+        import tempfile
+        from unittest.mock import patch
+        from core import ensemble_service, paths
+
+        member = {"legacy": ["model", 17]}
+        with tempfile.TemporaryDirectory() as root, patch.object(
+            paths, "ENSEMBLE_CACHE_DIR", root
+        ):
+            with open(os.path.join(root, "nonstring.json"), "w", encoding="utf-8") as handle:
+                json.dump({"selected_models": [member]}, handle)
+            loaded = ensemble_service.load_ensemble("nonstring")
+            service = ensemble_service.EnsembleService(object())
+            preset = service.resolve("nonstring")
+            settings = Settings.defaults()
+            applied = service.apply(settings, "nonstring")
+
+        self.assertIsNotNone(loaded)
+        assert loaded is not None
+        self.assertEqual(loaded["selected_models"], [member])
+        self.assertIsInstance(preset.members[0], dict)
+        self.assertEqual(preset.members[0], member)
+        self.assertEqual(settings.ensemble.selected_models, [member])
+        self.assertIsInstance(settings.ensemble.selected_models[0], dict)
+        self.assertEqual(applied.validation_warnings, tuple(loaded.validation_warnings))
+        self.assertTrue(any("selected_models[0]" in item for item in applied.validation_warnings))
+
+    def test_saved_ensemble_exact_missing_member_adds_field_warning(self) -> None:
+        import tempfile
+        from unittest.mock import patch
+
+        from core import ensemble_service, paths
+
+        def record(model_id: str) -> ModelRecord:
+            family, basename = model_id.split(":", 1)
+            return ModelRecord(
+                id=model_id,
+                family=family,
+                basename=basename,
+                display=basename,
+                backend_name=basename,
+                artifacts=ModelArtifacts(f"{basename}.onnx"),
+                installed=True,
+            )
+
+        first = record("mdx:first")
+        second = record("mdx:second")
+        missing = "mdx:missing"
+        index = IdentityIndex({first.id: first, second.id: second})
+
+        class ExactResolver:
+            def resolve(self, value: str) -> ModelRecord:
+                return index.lookup(value)
+
+        with tempfile.TemporaryDirectory() as root, patch.object(
+            paths, "ENSEMBLE_CACHE_DIR", root
+        ):
+            ensemble_service.save_ensemble(
+                "missing-member",
+                "vocals_instrumental",
+                "Max Spec/Min Spec",
+                [first.id, second.id, missing],
+            )
+            service = ensemble_service.EnsembleService(object())
+            service.identities = ExactResolver()  # type: ignore[assignment]
+            preset = service.resolve("missing-member")
+
+        self.assertEqual(preset.members, (first.id, second.id, missing))
+        matching = [
+            warning for warning in preset.validation_warnings
+            if "selected_models[2]" in warning
+        ]
+        self.assertEqual(len(matching), 1, preset.validation_warnings)
+        self.assertIn(missing, matching[0])
 
 
 class ReplayManifestContractTests(unittest.TestCase):
@@ -536,6 +615,51 @@ class ReplayManifestContractTests(unittest.TestCase):
         self.assertEqual(calls, 0)
         self.assertIn("process.vocal_splitter", payload["error"]["message"])
 
+    def test_replay_topology_uses_recorded_native_primary_stem(self) -> None:
+        from cli.replay import _validate_active_dependency_paths
+
+        manifest = self._manifest()
+        manifest["settings"]["mdx"]["stems"] = "Drums"
+        manifest["settings"]["mdx"]["is_secondary_model_activate"] = True
+        manifest["settings"]["mdx"]["voc_inst_secondary_model"] = (
+            "mdx:voc-inst-helper"
+        )
+        manifest["settings"]["mdx"]["drums_secondary_model"] = (
+            "mdx:drums-helper"
+        )
+        manifest["plan"]["models"][0]["primary_stem"] = "instrumental"
+        dependencies = {
+            "mdx.model": "mdx:primary",
+            "mdx.voc_inst_secondary_model": "mdx:voc-inst-helper",
+        }
+
+        _validate_active_dependency_paths(manifest, "separate", dependencies)
+
+        del manifest["plan"]["models"][0]["primary_stem"]
+        with self.assertRaisesRegex(ValueError, "missing mdx.drums_secondary_model"):
+            _validate_active_dependency_paths(manifest, "separate", dependencies)
+
+    def test_ensemble_replay_unions_same_family_native_slots(self) -> None:
+        from cli.replay import _validate_active_dependency_paths
+
+        manifest = self._ensemble_manifest()
+        manifest["settings"]["mdx"]["is_secondary_model_activate"] = True
+        manifest["settings"]["mdx"]["voc_inst_secondary_model"] = "mdx:voc-helper"
+        manifest["settings"]["mdx"]["other_secondary_model"] = "mdx:other-helper"
+        manifest["plan"]["models"][0]["primary_stem"] = "Vocals"
+        manifest["plan"]["models"][1]["primary_stem"] = "other"
+        dependencies = dict(manifest["model_dependencies"])
+        dependencies.update({
+            "mdx.voc_inst_secondary_model": "mdx:voc-helper",
+            "mdx.other_secondary_model": "mdx:other-helper",
+        })
+
+        _validate_active_dependency_paths(manifest, "ensemble", dependencies)
+
+        del dependencies["mdx.other_secondary_model"]
+        with self.assertRaisesRegex(ValueError, "missing mdx.other_secondary_model"):
+            _validate_active_dependency_paths(manifest, "ensemble", dependencies)
+
     def test_sparse_profiles_copy_identities_only_from_dependency_map(self) -> None:
         separate = self._manifest()
         separate["settings"]["process"]["vocal_splitter"] = "vr:stale-splitter"
@@ -656,7 +780,12 @@ class ReplayManifestContractTests(unittest.TestCase):
                 output=root,
                 units=(SimpleNamespace(inputs=("/recorded/song.wav",)),),
                 model=None,
-                to_dict=lambda: {"command": "audio", "model": None},
+                to_dict=lambda: {
+                    "command": "audio",
+                    "model": None,
+                    "model_dependencies": {},
+                    "model_identity_digest": self._EMPTY_DIGEST,
+                },
             )
             _write_audio_manifest(
                 argparse.Namespace(
@@ -703,7 +832,17 @@ class ReplayManifestContractTests(unittest.TestCase):
                 output=root,
                 units=(SimpleNamespace(inputs=("/recorded/song.wav",)),),
                 model=model,
-                to_dict=lambda: {"command": "audio", "model": None},
+                to_dict=lambda: {
+                    "command": "audio",
+                    "model": None,
+                    "model_dependencies": {
+                        "audio_tools.apollo_model": "apollo:restorer"
+                    },
+                    "model_identity_digest": (
+                        "sha256:6237d0e7483c76dc8c0cb6860acfd195"
+                        "b817e4ce1b92b7c5159ff58d6047fcd2"
+                    ),
+                },
             )
             _write_audio_manifest(
                 argparse.Namespace(
@@ -748,7 +887,7 @@ class ReplayManifestContractTests(unittest.TestCase):
         )
         resolver = AudioJobResolver(Mock())
         resolver.identities = Mock()
-        resolver.identities.resolve.return_value = record
+        resolver.identities.lookup.return_value = record
         settings = Settings.defaults()
         settings.audio_tools.apollo_model = record.id
 

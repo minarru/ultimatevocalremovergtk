@@ -1,8 +1,8 @@
-"""Canonical model identities shared by the GTK and command-line frontends.
+"""Exact canonical model identities shared by every frontend and runtime path.
 
-The processing engine still accepts the historical ``"Architecture: Display"``
-ensemble-member form.  This module owns the adapters so neither frontend has
-to duplicate model-family inference or exact-identity lookup rules.
+Stored and runtime references use ``family:basename``. Display labels and
+historical architecture-prefixed tags are presentation or migration data, not
+accepted lookup identities.
 """
 
 from __future__ import annotations
@@ -34,25 +34,6 @@ ARCH_BY_FAMILY = {
 }
 FAMILY_BY_ARCH = {value: key for key, value in ARCH_BY_FAMILY.items()}
 FAMILY_BY_ARCH[VR_ARCH_PM] = "vr"
-_LEGACY_FAMILIES = {
-    VR_ARCH_TYPE.casefold(): "vr",
-    VR_ARCH_PM.casefold(): "vr",
-    MDX_ARCH_TYPE.casefold(): "mdx",
-    DEMUCS_ARCH_TYPE.casefold(): "demucs",
-}
-
-
-def _qualified_family(token: str) -> str | None:
-    """Return the model family if ``token`` already carries a family or arch prefix."""
-    prefix, separator, _rest = str(token or "").strip().partition(":")
-    if not separator:
-        return None
-    folded = prefix.casefold()
-    if folded in FAMILIES:
-        return folded
-    return _LEGACY_FAMILIES.get(folded)
-
-
 @dataclass(frozen=True, order=True)
 class ModelId:
     family: str
@@ -61,7 +42,11 @@ class ModelId:
     def __post_init__(self) -> None:
         if self.family not in FAMILIES:
             raise ValueError(f"unknown model family {self.family!r}")
-        if not self.basename or ":" in self.basename:
+        if (
+            not self.basename
+            or self.basename != self.basename.strip()
+            or ":" in self.basename
+        ):
             raise ValueError(f"invalid model basename {self.basename!r}")
 
     @property
@@ -78,7 +63,7 @@ class ModelId:
 
 def parse_stored_model_id(value: str) -> ModelId:
     """Parse an exact ``family:basename`` stored model identifier."""
-    text = str(value or "").strip()
+    text = str(value or "")
     family, separator, basename = text.partition(":")
     if not separator or family not in FAMILIES or not basename or ":" in basename:
         raise ValueError(f"not a canonical model ID: {value!r}")
@@ -350,79 +335,35 @@ class _ModelInventory:
         self, query: str, *, family: str | None = None,
         allowed_families: Iterable[str] | None = None,
     ) -> ModelRecord:
-        raw = str(query or "").strip()
-        token_family = _qualified_family(raw)
+        model_id = parse_stored_model_id(str(query or ""))
+        record = self.lookup(model_id.value)
         if family is not None:
             family = family.casefold()
             if family not in FAMILIES:
                 raise ValueError(f"unknown model family {family!r}")
-            if token_family is not None:
-                if token_family != family:
-                    raise ValueError(
-                        f"model {raw!r} does not belong to required family {family}"
-                    )
-            elif raw:
-                raw = f"{family}:{raw}"
-        records = self.records()
+            if record.family != family:
+                raise ValueError(
+                    f"model {record.id!r} does not belong to required family {family}"
+                )
         if allowed_families is not None:
             allowed = frozenset(str(value).casefold() for value in allowed_families)
             invalid = allowed.difference(FAMILIES)
             if invalid:
                 raise ValueError(f"unknown model family {sorted(invalid)[0]!r}")
-            if token_family is not None and token_family not in allowed:
-                raise ValueError(f"model {query!r} is not eligible for this setting")
-            records = tuple(record for record in records if record.family in allowed)
-        return resolve_model_record(raw, records)
+            if record.family not in allowed:
+                raise ValueError(f"model {record.id!r} is not eligible for this setting")
+        return record
 
 
 def resolve_model_record(
     query: str, records: Iterable[ModelRecord]
 ) -> ModelRecord:
-    """Resolve ``query`` against an already-enumerated model inventory.
-
-    Accepts a canonical ``family:basename`` id, or -- for the command-line
-    convenience paths -- a basename with or without a family qualifier. Never a
-    display label: see the comment on the basename comparison below.
-    """
-    raw = str(query or "").strip()
-    if not raw:
-        raise ValueError("model value is empty")
-    records = tuple(records)
-    family = _qualified_family(raw)
-    prefix, separator, _basename = raw.partition(":")
-    if separator and prefix in FAMILIES:
-        canonical_id = ModelId.parse(raw).value
-        for record in records:
-            if record.id == canonical_id:
-                return record
-        raise ValueError(f"unknown model {raw!r}")
-    term = raw.partition(":")[2].strip() if family is not None else raw
-    candidates = tuple(
-        record for record in records if family is None or record.family == family
-    )
-    # An exact id is unambiguous by construction, so it must be tried on its
-    # own. Folding it in with the casefold comparisons below let a
-    # case-variant sibling (two records for one checkpoint) dilute a
-    # character-for-character match into "ambiguous".
-    by_id = tuple(record for record in candidates if raw == record.id)
-    if len(by_id) == 1:
-        return by_id[0]
-    # Basename only. Matching ``record.display`` or ``record.backend_name`` here
-    # would make a catalogue label change able to alter which model a stored or
-    # typed reference selects, which spec invariant 4 forbids: display text is a
-    # one-way projection of an identity, never an input to resolving one.
-    exact = tuple(
-        record
-        for record in candidates
-        if term.casefold() == record.basename.casefold()
-    )
-    if len(exact) == 1:
-        return exact[0]
-    if exact:
-        names = ", ".join(sorted(record.id for record in exact)[:8])
-        raise ValueError(f"ambiguous model {raw!r}; matches: {names}")
-    qualifier = f" in family {family}" if family else ""
-    raise ValueError(f"unknown or unregistered model {raw!r}{qualifier}")
+    """Resolve an exact canonical ID against an already-enumerated inventory."""
+    model_id = parse_stored_model_id(str(query or "")).value
+    for record in records:
+        if record.id == model_id:
+            return record
+    raise ValueError(f"unknown model {model_id!r}")
 
 
 class ModelIdentityService(_ModelInventory):
@@ -437,20 +378,13 @@ class ModelIdentityService(_ModelInventory):
         return f"{record.arch}: {record.display}"
 
     def canonical_id_from_member_tag(self, tag: str) -> str:
-        """Resolve an ensemble member reference to its canonical id.
-
-        Accepts canonical ``family:basename`` ids, and legacy ``Arch: Name``
-        tags whose name half is the model's basename. A legacy tag carrying a
-        catalogue *display* label no longer resolves: inverting display text is
-        what lets a catalogue rename change model selection. Such a member stays
-        on disk as written until the user re-picks it.
-        """
+        """Resolve an exact canonical ensemble member id."""
         return self.resolve(str(tag)).id
 
     def engine_value(
         self, reference: str, *, member: bool = False, family: str | None = None
     ) -> str:
-        """Convert a canonical/legacy reference to the value legacy engines consume."""
+        """Convert an exact canonical reference to the engine-facing value."""
         record = self.resolve(reference, family=family)
         return self.legacy_member_tag(record) if member else record.backend_name
 

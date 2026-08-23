@@ -360,6 +360,48 @@ class EnsemblePickerTests(unittest.TestCase):
         self.assertEqual(page.settings.ensemble.selected_models, stored)
         self.assertEqual(page._selected_model_tags(), ["mdx:installed"])
 
+    def test_installed_but_pair_ineligible_member_stays_gated_and_warned(self) -> None:
+        from core.settings import Settings
+        from core.stems import EnsemblePair
+        from ui.ensemble import window as ensemble_window
+
+        stored = ["mdx:first", "mdx:second", "mdx:ineligible"]
+        settings = Settings()
+        settings.ensemble.selected_models = list(stored)
+        page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
+        page.models_listbox = _FakeListBox()
+        page.context = SimpleNamespace(
+            repo=SimpleNamespace(
+                ensemble_model_list=lambda _settings, _pair: [
+                    "mdx:first",
+                    "mdx:second",
+                ]
+            )
+        )
+        page.settings = settings
+        page._ensemble_pair = lambda: EnsemblePair.VOCALS_INSTRUMENTAL
+        page._update_models_dialog_status = lambda: None
+        page._update_models_summary = lambda: None
+        records = tuple(_record(model_id, model_id) for model_id in stored)
+
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records",
+            return_value=records,
+        ), mock.patch.object(
+            ensemble_window.Adw, "ActionRow", _FakeRow
+        ), mock.patch.object(
+            ensemble_window.Gtk, "CheckButton", _FakeCheck
+        ), mock.patch.object(ensemble_window, "stash"):
+            page._rebuild_model_list(list(stored))
+            page._rebuild_model_list(list(settings.ensemble.selected_models))
+
+        self.assertTrue(page._models_write_gated)
+        self.assertEqual(settings.ensemble.selected_models, stored)
+        warnings = page._ensemble_member_warnings
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn("mdx:ineligible", warnings[0])
+        self.assertIn("not eligible", warnings[0])
+
 
 class _FakeControl:
     def __init__(self, *, active: bool = False) -> None:
@@ -531,3 +573,90 @@ class DemucsIdentityBannerGtkTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EnsembleRefreshLifecycleTests(unittest.TestCase):
+    """`EnsemblePage.refresh_models` must repaint an open dialog.
+
+    Marking dirty and waiting for `on_activated` is right for a page nobody is
+    looking at -- rebuilding resolves `ensemble_model_list`, which hashes
+    checkpoints. But when the member dialog is already mapped, the user is
+    staring at the stale list, so it has to rebuild now.
+    """
+
+    def _page(self, *, mapped: bool) -> Any:
+        from ui.ensemble.window import EnsemblePage
+
+        page: Any = EnsemblePage.__new__(EnsemblePage)
+        page.vocal_split_row = mock.MagicMock()
+        page._models_dirty = False
+        page._models_write_gated = False
+        page._rebuilds = []
+        page._rebuild_model_list = lambda members: page._rebuilds.append(list(members))
+        page._model_members_for_rebuild = lambda: ["mdx:a", "mdx:b"]
+        page.models_dialog = mock.MagicMock()
+        page.models_dialog.get_mapped.return_value = mapped
+        return page
+
+    def test_rebuilds_immediately_when_the_dialog_is_mapped(self) -> None:
+        from ui.ensemble.window import EnsemblePage
+
+        page = self._page(mapped=True)
+
+        EnsemblePage.refresh_models(page)
+
+        self.assertEqual(page._rebuilds, [["mdx:a", "mdx:b"]])
+        page.vocal_split_row.refresh_models.assert_called_once_with()
+
+    def test_clears_the_dirty_flag_after_rebuilding(self) -> None:
+        from ui.ensemble.window import EnsemblePage
+
+        page = self._page(mapped=True)
+        page._models_dirty = True
+
+        EnsemblePage.refresh_models(page)
+
+        self.assertFalse(page._models_dirty)
+
+    def test_marks_dirty_without_rebuilding_when_inactive(self) -> None:
+        from ui.ensemble.window import EnsemblePage
+
+        page = self._page(mapped=False)
+
+        EnsemblePage.refresh_models(page)
+
+        self.assertEqual(page._rebuilds, [])
+        self.assertTrue(page._models_dirty)
+        page.vocal_split_row.refresh_models.assert_called_once_with()
+
+    def test_a_partially_built_page_does_not_raise(self) -> None:
+        """A refresh can arrive before the dialog exists."""
+        from ui.ensemble.window import EnsemblePage
+
+        page = self._page(mapped=False)
+        del page.models_dialog
+
+        EnsemblePage.refresh_models(page)
+
+        self.assertTrue(page._models_dirty)
+        self.assertEqual(page._rebuilds, [])
+
+    def test_write_gated_members_survive_an_immediate_rebuild(self) -> None:
+        """The gate feeds stored members, not the live checklist."""
+        from ui.ensemble.window import EnsemblePage
+
+        page = self._page(mapped=True)
+        page._models_write_gated = True
+        page.settings = SimpleNamespace(
+            ensemble=SimpleNamespace(selected_models=["MDX-Net: legacy display"])
+        )
+        page._model_checks = [object()]
+        page._selected_model_tags = lambda: ["mdx:installed"]
+        page._model_members_for_rebuild = lambda: EnsemblePage._model_members_for_rebuild(
+            page
+        )
+
+        EnsemblePage.refresh_models(page)
+
+        self.assertEqual(page._rebuilds, [["MDX-Net: legacy display"]])
+        self.assertTrue(page._models_write_gated)

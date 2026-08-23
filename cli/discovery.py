@@ -25,9 +25,7 @@ from core.settings.access import parse_setting_assignment, validate_setting_path
 
 from core.model_identity import (
     FAMILIES,
-    canonical_id_from_member_tag,
     iter_model_records,
-    resolve_model_id,
 )
 from .model_identity import CliModelLookup
 from .profiles import (
@@ -236,21 +234,37 @@ def _model_info(record: Any, repo: Any, *, detailed: bool = False) -> dict[str, 
 
 
 def cmd_models_list(args: argparse.Namespace) -> int:
+    from core.access_policy import access_policy
     from core.model_repository import ModelRepository
 
-    repo = ModelRepository()
-    records = iter_model_records(repo)
-    if not getattr(args, "all_known", False):
-        records = (record for record in records if record.installed)
-    rows = []
-    for record in records:
-        if args.family is not None and record.family != args.family:
-            continue
-        if not record.installed:
-            rows.append({**record.to_dict(), "configured": False})
-            continue
-        rows.append(_model_info(record, repo))
-    return _print_rows(args, rows)
+    coordinator = None
+    try:
+        with access_policy(allow_network=False, allow_metadata_writes=False):
+            persisted_settings = Settings.load()
+            if getattr(args, "all_known", False):
+                from core.catalogue_coordinator import CatalogueCoordinator
+
+                coordinator = CatalogueCoordinator()
+                coordinator.ensure(vip=True, allow_network=False)
+            repo = ModelRepository(catalogue=coordinator)
+            repo.bind_model_hash_table(
+                lambda: persisted_settings.process.model_hash_table
+            )
+            records = iter_model_records(repo)
+            if coordinator is None:
+                records = (record for record in records if record.installed)
+            rows = []
+            for record in records:
+                if args.family is not None and record.family != args.family:
+                    continue
+                if not record.installed:
+                    rows.append({**record.to_dict(), "configured": False})
+                    continue
+                rows.append(_model_info(record, repo))
+            return _print_rows(args, rows)
+    finally:
+        if coordinator is not None:
+            coordinator.close()
 
 
 def cmd_models_show(args: argparse.Namespace) -> int:
@@ -384,9 +398,20 @@ def cmd_models_register(args: argparse.Namespace) -> int:
         assert isinstance(models, Mapping)
         entry = models[unit.model_id]
         assert isinstance(entry, Mapping)
-        info = _registered_demucs_info(
-            unit.model_id, entry, models_dir=registry.models_dir
-        )
+        try:
+            info = _registered_demucs_info(
+                unit.model_id, entry, models_dir=registry.models_dir
+            )
+        except Exception:
+            # The registry install above is already durable. A presentation
+            # projection must not turn that completed transaction into a
+            # reported registration failure.
+            info = {
+                "id": unit.model_id,
+                "family": "demucs",
+                "installed": True,
+                "registered": True,
+            }
         return _print_rows(args, [info])
     destinations = {
         "vr": VR_MODELS_DIR, "mdx": MDX_MODELS_DIR,
@@ -429,7 +454,9 @@ def cmd_models_register(args: argparse.Namespace) -> int:
             )
             hash_created = True
         repo = ModelRepository()
-        record = resolve_model_id(f"{args.family}:{os.path.splitext(os.path.basename(source))[0]}", repo)
+        record = CliModelLookup(repo).lookup(
+            f"{args.family}:{os.path.splitext(os.path.basename(source))[0]}"
+        )
         info = _model_info(record, repo)
         if not info.get("configured"):
             raise ValueError("registered checkpoint could not be configured")
@@ -546,7 +573,12 @@ def _cmd_models_download_body(args: argparse.Namespace, coordinator: Any) -> int
     except (OSError, ValueError):
         previous = None
     outcomes: list[dict[str, Any]] = []
-    repo = ModelRepository()
+    # Same coordinator the manager meshed: the finalizer verifies each download
+    # against the already-published snapshot rather than fetching its own.
+    repo = ModelRepository(catalogue=coordinator)
+    # Ahead of the loop on purpose. Run after publication it would be a second
+    # full invalidation for models that already published themselves.
+    service.manager.update_model_settings(repo)
     try:
         for record, jobs in resolved:
             emit_event(args, "started", command="models.download", input=record.id)
@@ -558,16 +590,23 @@ def _cmd_models_download_body(args: argparse.Namespace, coordinator: Any) -> int
                     ),
                     on_info=(None if args.quiet else lambda text: print(text, file=sys.stderr)),
                     stop_event=stop_event,
-                    repo=repo,
                 )
                 status = "success" if result in {"complete", "exists"} else "failed"
                 item = {"input": record.id, "status": status, "result": result}
                 if stop_event.is_set():
                     item.update(status="failed", error="interrupted")
                 if item["status"] == "success":
-                    from core.model_registry import ModelRegistryService
+                    from core.model_install import finalize_downloaded_model
 
-                    ModelRegistryService.index_downloaded(record.family, jobs)
+                    outcome = finalize_downloaded_model(
+                        repo=repo,
+                        family=record.family,
+                        selection=record.selection,
+                        jobs=list(jobs),
+                        transfer_result=result,
+                    )
+                    if not outcome.ready:
+                        item.update(status="failed", error=outcome.detail)
             except KeyboardInterrupt:
                 stop_event.set()
                 item = {
@@ -588,9 +627,6 @@ def _cmd_models_download_body(args: argparse.Namespace, coordinator: Any) -> int
                 pass
     failures = sum(row["status"] == "failed" for row in outcomes)
     successes = sum(row["status"] == "success" for row in outcomes)
-    if successes and not stop_event.is_set():
-        service.manager.update_model_settings(repo)
-        repo.invalidate_models()
     exit_code = 130 if stop_event.is_set() else 3 if failures and successes else 1 if failures else 0
     emit_document(args, {
         "ok": exit_code == 0, "status": "partial" if exit_code == 3 else "failed" if exit_code else "success",
@@ -801,10 +837,8 @@ def cmd_ensembles_show(args: argparse.Namespace) -> int:
     try:
         from core.model_repository import ModelRepository
         repo = ModelRepository()
-        members = [
-            canonical_id_from_member_tag(tag, repo)
-            for tag in data.get("selected_models") or []
-        ]
+        lookup = CliModelLookup(repo)
+        members = [lookup.lookup(tag).id for tag in data.get("selected_models") or []]
     except (OSError, ValueError):
         members = list(data.get("selected_models") or [])
     detail = {
@@ -1019,12 +1053,11 @@ def cmd_profile_create(args: argparse.Namespace) -> int:
         if model or members or reference_paths:
             from core.model_repository import ModelRepository
             repo = ModelRepository()
-            model = resolve_model_id(model, repo).id if model else None
-            members = [resolve_model_id(item, repo).id for item in members]
+            lookup = CliModelLookup(repo)
+            model = lookup.lookup(model).id if model else None
+            members = [lookup.lookup(item).id for item in members]
             for setting_path in reference_paths:
-                values[setting_path] = resolve_model_id(
-                    str(values[setting_path]), repo
-                ).id
+                values[setting_path] = lookup.lookup(str(values[setting_path])).id
         if args.ensemble:
             needle = args.ensemble.casefold()
             matches = [

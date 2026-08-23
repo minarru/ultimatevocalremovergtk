@@ -789,11 +789,7 @@ class DemucsRegistrationTests(unittest.TestCase):
             with (
                 patch("core.paths.DEMUCS_MODELS_DIR", models_dir),
                 patch(
-                    "cli.discovery.resolve_model_id",
-                    side_effect=ValueError("simulated projection failure"),
-                ),
-                patch(
-                    "cli.discovery._model_info",
+                    "cli.discovery._registered_demucs_info",
                     side_effect=ValueError("simulated projection failure"),
                 ),
                 redirect_stdout(output),
@@ -813,8 +809,12 @@ class DemucsRegistrationTests(unittest.TestCase):
                 document = json.load(handle)
             self.assertIn("demucs:custom", document["models"])
             payload = json.loads(output.getvalue())
-            self.assertEqual(payload["items"][0]["id"], "demucs:custom")
-            self.assertTrue(payload["items"][0]["registered"])
+            self.assertEqual(payload["items"], [{
+                "id": "demucs:custom",
+                "family": "demucs",
+                "installed": True,
+                "registered": True,
+            }])
 
     def test_v2_th_gz_installs_in_legacy_directory_with_compound_stem(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

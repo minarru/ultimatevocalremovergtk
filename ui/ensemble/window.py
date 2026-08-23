@@ -176,6 +176,8 @@ class EnsemblePage:
         self._model_row_text: Dict[str, tuple[str, str]] = {}
         self._models_write_gated = False
         self._models_dirty = False
+        self._ensemble_validation_warnings: tuple[str, ...] = ()
+        self._ensemble_member_warnings: tuple[str, ...] = ()
 
         # Distribute the groups across the shared two-column layout. The member
         # model checklist now lives in a modal dialog opened from a compact
@@ -687,6 +689,8 @@ class EnsemblePage:
         name = get_combo_value(self.saved_row)
         if not name or name == CHOOSE_ENSEMBLE_OPTION:
             self.settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
+            self._ensemble_validation_warnings = ()
+            self._update_ensemble_banner()
             return
         from core.ensemble_service import EnsembleService
 
@@ -704,6 +708,8 @@ class EnsemblePage:
         self._rebuild_stem_only_toggles()
         self._rebuild_model_list(list(preset.members))
         self._persist_selected_models()
+        self._ensemble_validation_warnings = preset.validation_warnings
+        self._update_ensemble_banner()
         if preset.description:
             self._toast(preset.description)
         if preset.kind == "curated":
@@ -923,6 +929,7 @@ class EnsemblePage:
             return
         self._set_ensemble_pair(get_combo_value(self.main_stem_row))
         self.settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
+        self._ensemble_validation_warnings = ()
         set_combo_value(self.saved_row, CHOOSE_ENSEMBLE_OPTION)
         self._refresh_ensemble_type_values()
         # Rebuild the model list for the new stem pair first: stem-only
@@ -1040,16 +1047,40 @@ class EnsemblePage:
             value for value in preselected if isinstance(value, str)
         }
 
-        def is_write_gated(value: typing.Any) -> bool:
+        def member_warning(
+            index: int,
+            value: typing.Any,
+            eligible_ids: set[str] | None = None,
+        ) -> str | None:
+            path = f"ensemble.selected_models[{index}]"
             if not isinstance(value, str):
-                return True
+                return f"{path}: expected a canonical model ID; preserved {value!r}"
             try:
-                parse_stored_model_id(value)
+                model_id = parse_stored_model_id(value).value
             except ValueError:
-                return True
-            return value not in installed_ids
+                return f"{path}: expected a canonical model ID; preserved {value!r}"
+            if model_id not in installed_ids:
+                return f"{path}: model {value!r} is not installed; preserved as written"
+            if eligible_ids is not None and model_id not in eligible_ids:
+                return (
+                    f"{path}: model {value!r} is not eligible for "
+                    f"{self._ensemble_pair().value!r}; preserved as written"
+                )
+            return None
 
-        self._models_write_gated = any(is_write_gated(value) for value in preselected)
+        def collect_member_warnings(
+            eligible_ids: set[str] | None = None,
+        ) -> tuple[str, ...]:
+            warnings: list[str] = []
+            for index, value in enumerate(preselected):
+                warning = member_warning(index, value, eligible_ids)
+                if warning is not None:
+                    warnings.append(warning)
+            return tuple(warnings)
+
+        member_warnings = collect_member_warnings()
+        self._ensemble_member_warnings = member_warnings
+        self._models_write_gated = bool(member_warnings)
         child = self.models_listbox.get_first_child()
         while child is not None:
             nxt = child.get_next_sibling()
@@ -1073,6 +1104,9 @@ class EnsemblePage:
             eligible_ids = set(
                 self.context.repo.ensemble_model_list(self.settings, pair)
             )
+            member_warnings = collect_member_warnings(eligible_ids)
+            self._ensemble_member_warnings = member_warnings
+            self._models_write_gated = bool(member_warnings)
             records = sorted(
                 (
                     record
@@ -1117,10 +1151,8 @@ class EnsemblePage:
             self._model_row_text[tag] = (title, subtitle)
 
         # A preset saved before a model became ineligible for this stem pair
-        # still lists it. Those tags are simply never rendered, and
-        # _persist_selected_models then drops them — correct, but invisible,
-        # so leave a trail. Karaoke models moving to their own pair is the
-        # common cause.
+        # does not render that member, but the write gate above preserves it
+        # until the user explicitly replaces the selection.
         dropped = preselected_ids - {record.id for record in records}
         if dropped:
             from core.debug_log import debug
@@ -1284,6 +1316,8 @@ class EnsemblePage:
         if not self._loading:
             set_combo_value(self.saved_row, CHOOSE_ENSEMBLE_OPTION)
         self._models_write_gated = False
+        self._ensemble_validation_warnings = ()
+        self._ensemble_member_warnings = ()
         self._persist_selected_models()
         self._update_models_dialog_status()
         self._update_models_summary()
@@ -1295,15 +1329,23 @@ class EnsemblePage:
         """The installed model set changed.
 
         The splitter row is refreshed now -- it is cheap and it has no
-        activation hook of its own. The member checklist is only marked dirty:
-        rebuilding it resolves ``ensemble_model_list`` (which hashes
-        checkpoints) for a page that may not be on screen, and
-        ``_rebuild_model_list`` calls ``_persist_selected_models``, which drops
-        members no longer eligible -- doing that off-screen could silently prune
-        a saved preset. ``on_activated`` consumes the flag.
+        activation hook of its own. The member checklist rebuilds immediately
+        only when its dialog is mapped: rebuilding resolves
+        ``ensemble_model_list`` (which hashes checkpoints), so a page nobody is
+        looking at is just marked dirty and ``on_activated`` consumes the flag.
+        Either way the member write gate preserves stored members that are no
+        longer eligible instead of silently pruning a saved preset.
         """
         self.vocal_split_row.refresh_models()
-        self._models_dirty = True
+        # getattr: a refresh can arrive before the page finishes building.
+        dialog = getattr(self, "models_dialog", None)
+        if dialog is not None and dialog.get_mapped():
+            # The user is looking at the list right now; a dirty flag consumed
+            # at the next activation would leave stale labels on screen.
+            self._models_dirty = False
+            self._rebuild_model_list(self._model_members_for_rebuild())
+        else:
+            self._models_dirty = True
 
     def on_activated(self) -> None:
         """Make the ensemble method active and refresh from shared settings.
@@ -1371,7 +1413,15 @@ class EnsemblePage:
         banner = getattr(self, "_ensemble_banner", None)
         if banner is None:
             return
-        reason = self._config_blocked_reason()
+        warnings = tuple(dict.fromkeys((
+            *getattr(self, "_ensemble_validation_warnings", ()),
+            *getattr(self, "_ensemble_member_warnings", ()),
+        )))
+        reason = (
+            "Saved ensemble warning: " + " ".join(warnings)
+            if warnings
+            else self._config_blocked_reason()
+        )
         if reason:
             banner.set_title(reason)
         banner.set_revealed(reason is not None)
@@ -1407,6 +1457,10 @@ class EnsemblePage:
                 callbacks,
                 planned=planned,
                 planned_output_root=planned_output_root,
+                model_dependencies=(
+                    plan.model_dependencies
+                    if isinstance(plan, ResolvedJob) else None
+                ),
             )
         except Exception as exc: # noqa: BLE001 - surfaced to the user
             self.window.fail_to_start(f"Unable to start ensemble: {exc}", exc)

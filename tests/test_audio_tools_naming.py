@@ -11,13 +11,31 @@ import tempfile
 import unittest
 from unittest import mock
 
-from core.audio_tools import AudioTools
+from bundled.constants import APOLLO_RESTORE
+from core.audio_tools import AudioToolRunner, AudioTools
+from core.job_callbacks import JobCallbacks
 from core.settings import Settings
 from core.settings.coerce import coerce_field
 from core.types.settings_enums import ManualEnsembleOption
 
 
 class ManualEnsembleNamingTests(unittest.TestCase):
+    def test_apollo_runner_requires_resolved_backend_before_start(self) -> None:
+        runner = AudioToolRunner(Settings.defaults())
+
+        with self.assertRaisesRegex(ValueError, "resolved Apollo backend"):
+            runner.start(APOLLO_RESTORE, [], [], JobCallbacks())
+
+    def test_audio_tools_never_uses_canonical_apollo_setting_as_filename(self) -> None:
+        settings = Settings.defaults()
+        settings.audio_tools.apollo_model = "apollo:restorer"
+
+        tool = AudioTools(settings)
+
+        self.assertIsNone(tool.apollo_model)
+        self.assertEqual(tool.apollo_model_location, "")
+        with self.assertRaisesRegex(ValueError, "resolved Apollo backend"):
+            tool.apollo_process("in.wav", "in", {}, {}, mock.Mock())
     def _run_manual_ensemble(self, algorithm: ManualEnsembleOption) -> str:
         with tempfile.TemporaryDirectory() as export_dir:
             settings = Settings.defaults()

@@ -92,11 +92,9 @@ class AppContext:
         if self._repo is None:
             with self._repo_lock:
                 if self._repo is None:
-                    from core.model_hash_cache import flatten_trusted
-
                     repo = ModelRepository(catalogue=self.catalogue)
-                    repo.model_hash_table = flatten_trusted(
-                        self.settings.process.model_hash_table
+                    repo.bind_model_hash_table(
+                        lambda: self.settings.process.model_hash_table
                     )
                     self._repo = repo
                     self._install_unrecognized_model_hook()

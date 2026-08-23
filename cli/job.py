@@ -80,6 +80,7 @@ class ResolvedJob:
     #: Stage-1 (syntax) plus stage-2 (repository-bound) stored-identity
     #: warnings. Preserved illegal values are otherwise invisible.
     validation_warnings: list[str] = field(default_factory=list)
+    repo: ModelRepository | None = field(default=None, repr=False, compare=False)
 
 
 def add_job_input_args(parser: argparse.ArgumentParser) -> None:
@@ -248,7 +249,6 @@ def _canonicalize_model_references(
     }.get(method_value)
     models = models or CliModelLookup(repo)
     for path in MODEL_REFERENCE_SETTING_PATHS | frozenset(family_by_path):
-        section_name = path.split(".", 1)[0]
         active = True
         if path in family_by_path:
             # Only the job's own family primary is load-bearing; stale GUI
@@ -259,10 +259,12 @@ def _canonicalize_model_references(
         elif path == "demucs.pre_proc_model":
             active = settings.demucs.is_pre_proc_model_activate
         elif "secondary_model" in path:
-            active = bool(
-                getattr(getattr(settings, section_name), "is_secondary_model_activate")
-            )
-        raw = str(get_path(settings, path, "") or "").strip()
+            # The applicable secondary slot is a property of the assembled
+            # primary's native stem, which is not known at this presentation
+            # boundary. Canonicalize records that exist, but let JobResolver
+            # validate only the topology path it plans and digests.
+            active = False
+        raw = str(get_path(settings, path, "") or "")
         if raw.casefold() in sentinels:
             continue
         try:
@@ -290,6 +292,10 @@ def resolve_separate_job(
 ) -> ResolvedJob:
     base, profile, inputs, output = _base_resolve(args)
     repo = ModelRepository()
+    persisted_settings = Settings.load()
+    repo.bind_model_hash_table(
+        lambda: persisted_settings.process.model_hash_table
+    )
     models = CliModelLookup(repo)
     inherited = not bool(args.model) and bool(profile.model)
     model_query = args.model or profile.model
@@ -357,6 +363,7 @@ def resolve_separate_job(
         identity_inherited=inherited,
         resolved=effective,
         validation_warnings=stored_identity_warnings(settings, repo, profile),
+        repo=repo,
     )
 
 
@@ -370,6 +377,10 @@ def resolve_ensemble_job(
 
     base, profile, inputs, output = _base_resolve(args)
     repo = ModelRepository()
+    persisted_settings = Settings.load()
+    repo.bind_model_hash_table(
+        lambda: persisted_settings.process.model_hash_table
+    )
     models = CliModelLookup(repo)
     explicit_identity = bool(args.ensemble or args.models)
     member_tokens = list(args.models or []) if explicit_identity else list(profile.members)
@@ -490,6 +501,7 @@ def resolve_ensemble_job(
         identity_inherited=inherited,
         resolved=effective,
         validation_warnings=stored_identity_warnings(settings, repo, profile),
+        repo=repo,
     )
 
 

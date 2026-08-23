@@ -136,8 +136,13 @@ def _send_download_notifications(
         )
 
 
-def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any, *, on_models_changed: typing.Any=None) -> DownloadQueueIndicator:
-    """Wire the header download indicator and app-level queue callbacks."""
+def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any) -> DownloadQueueIndicator:
+    """Wire the header download indicator and app-level queue callbacks.
+
+    Batch completion is aggregate UI only. Model publication is per item, owned
+    by the queue's finalizer, and reaches the widgets through the repository
+    event -- a batch-level refresh callback here would repaint late and once.
+    """
     manager = _get_manager(app_context)
     queue = _get_queue(app_context, manager)
     indicator = getattr(main_window, "_download_queue_indicator", None)
@@ -175,8 +180,6 @@ def init_download_queue_ui(main_window: typing.Any, app_context: typing.Any, *, 
         center = getattr(app_context, "_download_center_window", None)
         if center is not None:
             center.refresh_after_downloads()
-        if on_models_changed is not None:
-            on_models_changed()
         message, needs_attention = download_batch_message(batch_items)
         toast = Adw.Toast.new(message)
         if needs_attention:
@@ -386,7 +389,7 @@ def start_download_size_cache_warmup(app_context: typing.Any) -> None:
     threading.Thread(target=worker, daemon=True).start()
 
 
-def open_download_center(parent_window: typing.Any, app_context: typing.Any, on_models_changed: typing.Any=None):
+def open_download_center(parent_window: typing.Any, app_context: typing.Any):
     """Open or raise the Download Center utility window."""
     start_download_size_cache_warmup(app_context)
     center = getattr(app_context, "_download_center_window", None)
@@ -401,7 +404,6 @@ def open_download_center(parent_window: typing.Any, app_context: typing.Any, on_
         app_context,
         manager,
         queue,
-        on_models_changed=on_models_changed,
     )
     app_context._download_center_window = center
     center.present()

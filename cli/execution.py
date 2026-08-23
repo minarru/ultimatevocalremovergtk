@@ -428,9 +428,9 @@ def run_batch(args: Any, job: ResolvedJob) -> BatchOutcome:
     interrupted = False
     from core.job_runner import JobRunner
 
-    shared_runner = JobRunner(job.settings)
-    shared_models = shared_runner.resolve_models()
+    shared_runner = JobRunner(job.settings, job.repo)
     resolved: Any = job.resolved
+    shared_models = shared_runner.resolve_models(resolved.model_dependencies)
     planned_all: tuple[Any, ...] = tuple(getattr(resolved, "inputs", None) or ())
     total = len(planned_all)
     progress = make_progress_printer(args)

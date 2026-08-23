@@ -157,11 +157,12 @@ class ResolvedEnsemblePreset:
     kind: str
     main_stem: EnsemblePair
     algorithm: str
-    members: tuple[str, ...]
-    source_members: tuple[str, ...] = ()
+    members: tuple[Any, ...]
+    source_members: tuple[Any, ...] = ()
     description: str = ""
     wav_ensemble: bool = False
     save_all_outputs: bool = True
+    validation_warnings: tuple[str, ...] = ()
 
 
 class EnsembleService:
@@ -204,20 +205,29 @@ class EnsembleService:
                 + (", ".join(repr(item) for item in known) or "(none)")
             )
         source_members = list(data.get("selected_models") or [])
-        if kind == "curated":
-            source_members = ensemble_presets.resolve_member_tags(source_members, self.repo)
-        members: list[str] = []
-        unresolved: list[str] = []
-        for reference in source_members:
+        validation_warnings: list[str] = list(
+            getattr(data, "validation_warnings", ())
+        )
+        members: list[Any] = []
+        unresolved: list[Any] = []
+        for index, reference in enumerate(source_members):
             try:
-                if str(reference).partition(":")[0].casefold() in {"vr", "mdx", "demucs"}:
-                    members.append(self.identities.resolve(reference).id)
+                members.append(self.identities.resolve(reference).id)
+            except (AttributeError, TypeError, ValueError) as exc:
+                unresolved.append(reference)
+                # Syntax/type failures are already retained by the document
+                # reader. Exact canonical IDs that disappear from the current
+                # index need their own stage-two, field-specific warning.
+                try:
+                    parse_stored_model_id(reference)
+                except (TypeError, ValueError):
+                    pass
                 else:
-                    members.append(self.identities.canonical_id_from_member_tag(reference))
-            except (AttributeError, TypeError, ValueError):
-                unresolved.append(str(reference))
-        # Preserve unresolved curated references for the GUI's missing-model
-        # download offer; persistence validation never rewrites stored text.
+                    validation_warnings.append(
+                        f"selected_models[{index}]: {exc}; preserved {reference!r}"
+                    )
+        # Preserve unresolved references for the GUI's missing-model download
+        # offer; persistence validation never rewrites stored text.
         members.extend(unresolved)
         return ResolvedEnsemblePreset(
             preset_id,
@@ -230,6 +240,7 @@ class EnsembleService:
             str(data.get("description") or "").strip(),
             bool(data.get("is_wav_ensemble", False)),
             bool(data.get("save_all_outputs", True)),
+            tuple(validation_warnings),
         )
 
     def apply(self, settings: Any, name: str) -> ResolvedEnsemblePreset:

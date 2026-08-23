@@ -851,9 +851,13 @@ class DownloadManager:
         on_progress: Optional[Callable[[float], None]] = None,
         on_info: Optional[Callable[[str], None]] = None,
         stop_event: typing.Any=None,
-        repo: typing.Any=None,
     ) -> str:
         """Download every ``(url, save_path)`` job sequentially.
+
+        Transfer only. Registration, usability verification and repository
+        publication belong to ``core.model_install.finalize_downloaded_model``,
+        which both frontends call once per logical model -- doing any of it here
+        published models before all of their artifacts had landed.
 
         Reports overall progress in ``[0, 1]`` via ``on_progress`` and a short
         status string via ``on_info``. Honours a ``threading.Event``-style
@@ -928,16 +932,6 @@ class DownloadManager:
         if on_progress:
             on_progress(1.0)
         result = "complete" if any_downloaded else "exists"
-        if result in ("complete", "exists"):
-            from .apollo_registry import register_apollo_from_download_jobs
-            from .mdx_c_registry import register_mdx_c_from_download_jobs
-
-            if register_mdx_c_from_download_jobs(jobs) and repo is not None:
-                repo.invalidate_models()
-            # Apollo models are recognised by an md5 -> config_yaml mapping;
-            # write it now so the Audio Tools picker does not prompt for a
-            # config the catalogue already specified.
-            register_apollo_from_download_jobs(jobs)
         debug_elapsed("download", f"download done status={result}", started)
         return result
 
@@ -1076,13 +1070,17 @@ class DownloadManager:
             return False
 
         writes: Dict[str, Mapping[str, Any]] = {}
-        semantic_changed = False
+        # Tracked apart so a pure relabelling refresh repaints the pickers
+        # without staling resolved plans or rehashing every checkpoint.
+        hash_changed = False
+        name_changed = False
         for (_url, dest), data in zip(_MODEL_DATA_URLS, fetched):
             if not isinstance(data, dict):
                 debug("download", f"update_model_settings invalid payload path={dest}")
                 return False
             payload: Mapping[str, Any] = data
-            if dest in _NAME_MAPPER_DESTS:
+            is_name_mapper = dest in _NAME_MAPPER_DESTS
+            if is_name_mapper:
                 # Plan the first-run overlay migration without writing it yet;
                 # the overlay marker participates in the same transaction.
                 from .name_mapper import local_overlay_path, plan_local_overlay_migration
@@ -1090,22 +1088,31 @@ class DownloadManager:
                 local_only = plan_local_overlay_migration(dest, data)
                 if local_only is not None:
                     writes[local_overlay_path(dest)] = local_only
-                    semantic_changed = semantic_changed or bool(local_only)
+                    name_changed = name_changed or bool(local_only)
             if not _json_file_matches(dest, payload):
-                semantic_changed = True
+                if is_name_mapper:
+                    name_changed = True
+                else:
+                    hash_changed = True
             writes[dest] = payload
 
         ok, _wrote_files = _transactional_json_refresh(writes)
         if not ok:
             return False
-        changed = semantic_changed
-        if changed and repo is not None:
-            # Not invalidate_stem_check: the hash maps and name mappers were
-            # just rewritten on disk, and only reload_mappers picks those up.
-            repo.invalidate_models()
+        changed = hash_changed or name_changed
+        if repo is not None:
+            if hash_changed:
+                # Not invalidate_stem_check: the hash maps and name mappers were
+                # just rewritten on disk, and only reload_mappers picks those up.
+                # Full invalidation subsumes any name change in the same
+                # transaction, so never emit both events.
+                repo.invalidate_models()
+            elif name_changed:
+                repo.invalidate_model_presentation(reload_mappers=True)
         debug(
             "download",
             f"update_model_settings ok changed={changed} "
+            f"hash_changed={hash_changed} name_changed={name_changed} "
             f"invalidated={changed and repo is not None}",
         )
         return True

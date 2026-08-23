@@ -84,14 +84,20 @@ class RunDeferralTests(unittest.TestCase):
 
         apply_refresh.assert_called_once_with(source="repository")
 
-    def test_external_refresh_invalidates_and_waits_for_repository_notification(self) -> None:
+    def test_external_refresh_repaints_without_invalidating(self) -> None:
+        """`_refresh_models` is repaint-only.
+
+        Invalidation moved into core, ahead of the notification: downloads
+        publish through the shared finalizer and catalogue refinements through
+        the presentation event, so no UI path invalidates any more.
+        """
         window = _window()
 
         with mock.patch.object(MainWindow, "_apply_model_refresh") as apply_refresh:
             MainWindow._refresh_models(window, source="download_center")
 
-        window.context.repo.invalidate_models.assert_called_once_with()
-        apply_refresh.assert_not_called()
+        window.context.repo.invalidate_models.assert_not_called()
+        apply_refresh.assert_called_once_with(source="download_center")
 
     def test_applying_clears_the_deferred_marker(self) -> None:
         window = _window()
@@ -104,17 +110,15 @@ class RunDeferralTests(unittest.TestCase):
 
 class RepositorySubscriptionTests(unittest.TestCase):
     def test_repository_flush_does_not_schedule_a_second_refresh(self) -> None:
+        """The repaint must not re-enter the coalescer and loop forever."""
         window = _window()
         window._model_refresh_armed = False
         scheduled: list[Any] = []
-        window.context.repo.invalidate_models.side_effect = lambda: MainWindow._on_models_changed(
-            window
-        )
 
         with mock.patch(
             "ui.window.idle_on_main", side_effect=lambda fn, *a, **k: scheduled.append(fn)
         ):
-            MainWindow._refresh_models(window, source="download_center")
+            MainWindow._on_models_changed(window)
             self.assertEqual(len(scheduled), 1)
             scheduled.pop()()
 
@@ -167,3 +171,98 @@ class RepositorySubscriptionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DualEventSubscriptionTests(unittest.TestCase):
+    """One callback, one coalescer, two repository events.
+
+    A presentation-only refinement (a friendlier catalogue label) and a full
+    inventory change both have to repaint the pickers, but only the latter may
+    stale a resolved plan. They therefore arrive as two events and must still
+    collapse into one repaint.
+    """
+
+    def test_initialization_subscribes_the_same_callback_to_both(self) -> None:
+        window = _window()
+
+        MainWindow._subscribe_model_events(window)
+
+        repo = window.context.repo
+        repo.subscribe_models_changed.assert_called_once_with(
+            window._on_models_changed
+        )
+        repo.subscribe_model_presentation_changed.assert_called_once_with(
+            window._on_models_changed
+        )
+
+    def test_closing_unsubscribes_that_callback_from_both(self) -> None:
+        window = _window()
+
+        MainWindow._unsubscribe_model_events(window)
+
+        repo = window.context.repo
+        repo.unsubscribe_models_changed.assert_called_once_with(
+            window._on_models_changed
+        )
+        repo.unsubscribe_model_presentation_changed.assert_called_once_with(
+            window._on_models_changed
+        )
+
+    def test_either_event_schedules_one_idle_flush(self) -> None:
+        for label in ("inventory", "presentation"):
+            with self.subTest(event=label):
+                window = _window()
+                window._model_refresh_armed = False
+                with mock.patch("ui.window.idle_on_main") as idle:
+                    MainWindow._on_models_changed(window)
+                idle.assert_called_once_with(window._flush_models_changed)
+
+    def test_both_events_before_the_idle_callback_cause_one_repaint(self) -> None:
+        window = _window()
+        window._model_refresh_armed = False
+
+        with mock.patch("ui.window.idle_on_main") as idle:
+            MainWindow._on_models_changed(window)  # inventory event
+            MainWindow._on_models_changed(window)  # presentation event
+
+        idle.assert_called_once_with(window._flush_models_changed)
+
+        with mock.patch.object(MainWindow, "_apply_model_refresh") as apply_refresh:
+            MainWindow._flush_models_changed(window)
+
+        apply_refresh.assert_called_once()
+
+    def test_repaint_never_calls_either_invalidation(self) -> None:
+        window = _window()
+
+        MainWindow._apply_model_refresh(window)
+
+        window.context.repo.invalidate_models.assert_not_called()
+        window.context.repo.invalidate_model_presentation.assert_not_called()
+
+    def test_refresh_models_is_repaint_only(self) -> None:
+        """Invalidation happens in core before the notification, never here."""
+        window = _window()
+
+        MainWindow._refresh_models(window, source="download_center")
+
+        window.context.repo.invalidate_models.assert_not_called()
+        window.context.repo.invalidate_model_presentation.assert_not_called()
+
+    def test_an_active_run_defers_and_coalesces_the_repaint(self) -> None:
+        window = _window()
+        controller = mock.MagicMock()
+        controller.is_running.return_value = True
+        window._run_controller = controller
+        window._model_refresh_armed = False
+
+        with mock.patch("ui.window.idle_on_main") as idle:
+            MainWindow._on_models_changed(window)
+            MainWindow._on_models_changed(window)
+        idle.assert_called_once_with(window._flush_models_changed)
+
+        with mock.patch.object(MainWindow, "_apply_model_refresh") as apply_refresh:
+            MainWindow._flush_models_changed(window)
+
+        apply_refresh.assert_not_called()
+        self.assertEqual(window._deferred_model_refresh, "repository")

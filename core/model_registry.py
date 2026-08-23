@@ -46,7 +46,14 @@ class ModelRegistryService:
         return str(value) if value else None
 
     @staticmethod
-    def remember_registered(model_hash: str, canonical_id: str) -> None:
+    def remember_registered(model_hash: str, canonical_id: str) -> bool:
+        """Record hash -> canonical id ownership.
+
+        Returns whether this call changed the index. Callers that ignore the
+        return stay source-compatible; the download finalizer uses it to tell a
+        genuine repair apart from a re-run over an already-indexed model, so an
+        unchanged ``exists`` transfer does not republish.
+        """
         if not model_hash or not canonical_id:
             raise ValueError("registered models require a hash and canonical ID")
         with locked_json_path(paths.REGISTERED_MODEL_INDEX):
@@ -54,8 +61,11 @@ class ModelRegistryService:
                 index = read_json_object(paths.REGISTERED_MODEL_INDEX)
             except (OSError, ValueError):
                 index = {}
+            if index.get(model_hash) == canonical_id:
+                return False
             index[model_hash] = canonical_id
             write_json_atomic(paths.REGISTERED_MODEL_INDEX, index)
+            return True
 
     @staticmethod
     def forget_registered(model_hash: str) -> None:
@@ -71,8 +81,12 @@ class ModelRegistryService:
     @classmethod
     def index_downloaded(
         cls, family: str, jobs: list[tuple[str, str]] | tuple[tuple[str, str], ...]
-    ) -> None:
-        """Record hashes downloaded through a catalogue without scanning inventory."""
+    ) -> bool:
+        """Record hashes downloaded through a catalogue without scanning inventory.
+
+        Returns whether any ownership entry was added or repaired.
+        """
+        changed = False
         extensions = {
             "vr": (".pth",), "mdx": (".onnx", ".ckpt"),
             "apollo": (".ckpt", ".bin"),
@@ -93,10 +107,12 @@ class ModelRegistryService:
             if model_hash:
                 from .model_identity import ModelId
 
-                cls.remember_registered(
+                if cls.remember_registered(
                     model_hash,
                     str(ModelId(family, os.path.splitext(os.path.basename(checkpoint))[0])),
-                )
+                ):
+                    changed = True
+        return changed
     def write_local(
         self, process_method: str, model_hash: str, payload: dict[str, Any],
         *, replace: bool = True,

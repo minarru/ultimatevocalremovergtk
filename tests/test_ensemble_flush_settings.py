@@ -14,7 +14,10 @@ from core.stem_selection import ExclusiveView, StemSelectionState
 from core.types import ProcessMethod
 
 
-def _resolved_job(*, command: str, path: str, output: str, settings: Settings) -> ResolvedJob:
+def _resolved_job(
+    *, command: str, path: str, output: str, settings: Settings,
+    model_dependencies: typing.Mapping[str, typing.Any] | None = None,
+) -> ResolvedJob:
     planned = PlannedInput(
         path=path,
         naming=OutputNamingContext(
@@ -38,6 +41,7 @@ def _resolved_job(*, command: str, path: str, output: str, settings: Settings) -
         settings_fingerprint=settings_fingerprint(settings),
         device="cpu",
         output=output,
+        model_dependencies=model_dependencies or {},
     )
 
 
@@ -88,11 +92,13 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
         page = _minimal_page()
         page.input_row.paths = ["/widget/changed.wav"]
         page.output_row.path = "/widget/out"
+        dependencies = {"ensemble.selected_models[0]": Mock(id="mdx:a")}
         plan = _resolved_job(
             command="ensemble",
             path="/in/song.wav",
             output="/plan/out",
             settings=page.settings,
+            model_dependencies=dependencies,
         )
 
         page.start(MagicMock(), plan=plan)
@@ -101,6 +107,7 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
         self.assertEqual(list(args[0]), ["/in/song.wav"])
         self.assertEqual(kwargs["planned"], plan.inputs)
         self.assertEqual(kwargs["planned_output_root"], "/plan/out")
+        self.assertIs(kwargs["model_dependencies"], dependencies)
         page.save_stems.persist_to_settings.assert_called_once()
 
     def test_flush_preserves_stem_focus_from_widget(self) -> None:
@@ -143,11 +150,13 @@ class SeparationPlannedStartTests(unittest.TestCase):
         from ui.window import _SeparationTarget
 
         window = _minimal_separation_window()
+        dependencies = {"mdx.model": Mock(id="mdx:primary")}
         plan = _resolved_job(
             command="separate",
             path="/in/song.wav",
             output="/plan/out",
             settings=Settings.defaults(),
+            model_dependencies=dependencies,
         )
         target = _SeparationTarget(window)
 
@@ -157,6 +166,7 @@ class SeparationPlannedStartTests(unittest.TestCase):
         self.assertEqual(list(args[0]), ["/in/song.wav"])
         self.assertEqual(kwargs["planned"], plan.inputs)
         self.assertEqual(kwargs["planned_output_root"], "/plan/out")
+        self.assertIs(kwargs["model_dependencies"], dependencies)
         window.begin_run.assert_called_once_with(window._separation_target)
 
     def test_unplanned_start_still_reads_widget_paths(self) -> None:

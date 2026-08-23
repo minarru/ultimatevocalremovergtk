@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import typing
-from typing import TYPE_CHECKING, Any, Optional, Sequence, cast
+from typing import TYPE_CHECKING, Any, Mapping, Optional, Sequence, cast
 
 from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
 
@@ -46,9 +46,11 @@ class ModelConfig:
         is_get_hash_dir_only: bool = False,
         is_vocal_split_model: bool = False,
         identity: "ModelRecord | None" = None,
+        model_dependencies: Mapping[str, "ModelRecord"] | None = None,
     ):
         self.settings = settings
         self.repo: Any = repo
+        self.model_dependencies = model_dependencies
         from ..model_data import (
             _mdx_c_primary_for_select,
             _mdx_c_secondary_for_pair,
@@ -478,7 +480,10 @@ class ModelConfig:
 
         if self.process_method == DEMUCS_ARCH_TYPE and not is_secondary_model:
             if self.demucs_stem_count >= 3 and self.pre_proc_model_activated:
-                self.pre_proc_model = process_determine_demucs_pre_proc_model(self.settings, self.repo, self.primary_stem)
+                self.pre_proc_model = process_determine_demucs_pre_proc_model(
+                    self.settings, self.repo, self.primary_stem,
+                    self.model_dependencies,
+                )
                 self.pre_proc_model_activated = True if self.pre_proc_model else False
                 self.is_demucs_pre_proc_model_inst_mix = (
                     demucs.is_pre_proc_model_inst_mix if self.pre_proc_model else False
@@ -624,7 +629,9 @@ class ModelConfig:
         self.vocal_split_model = None
         self.is_vocal_split_model_activated = False
         if not self.is_secondary_model and self.model_status:
-            self.vocal_split_model = process_determine_vocal_split_model(self.settings, self.repo)
+            self.vocal_split_model = process_determine_vocal_split_model(
+                self.settings, self.repo, self.model_dependencies
+            )
             self.is_vocal_split_model_activated = True if self.vocal_split_model else False
             if self.vocal_split_model and self.vocal_split_model.bv_model_rebalance:
                 self.is_sec_bv_rebalance = True
@@ -637,6 +644,7 @@ class ModelConfig:
             self.repo,
             self.process_method,
             primary_stem,
+            self.model_dependencies,
         )
         self.secondary_model = secondary_model
         self.secondary_model_scale = secondary_model_scale

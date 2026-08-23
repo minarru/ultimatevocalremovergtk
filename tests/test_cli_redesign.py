@@ -128,14 +128,14 @@ class ProfileTests(unittest.TestCase):
             _loaded, profile = load_profile("gui")
         self.assertEqual(profile.model, "mdx:UVR-MDX-NET-Inst_HQ_4")
 
-    def test_gui_profile_prefixes_legacy_display_names(self) -> None:
+    def test_gui_profile_preserves_a_noncanonical_primary_value(self) -> None:
         settings = Settings.defaults()
         from core.types import ProcessMethod
         settings.process.method = ProcessMethod.MDX
         settings.mdx.model = "UVR-MDX-NET-Inst_HQ_4"
         with patch("cli.profiles.Settings.load", return_value=settings):
             _loaded, profile = load_profile("gui")
-        self.assertEqual(profile.model, "mdx:UVR-MDX-NET-Inst_HQ_4")
+        self.assertEqual(profile.model, "UVR-MDX-NET-Inst_HQ_4")
 
     def test_flatten_keeps_list_settings(self) -> None:
         from cli.profiles import _flatten_settings
@@ -282,6 +282,151 @@ class ProfileTests(unittest.TestCase):
             _canonicalize_model_references(settings, Mock())
         self.assertEqual(settings.mdx.voc_inst_secondary_model, "mdx:sec")
         self.assertEqual(settings.mdx.model, "mdx:good")
+
+    def test_canonicalize_defers_invalid_inactive_secondary_to_planner(self) -> None:
+        from cli.job import _canonicalize_model_references
+        from core.model_identity import ModelRecord
+        from core.types import ProcessMethod
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.MDX
+        settings.mdx.model = "mdx:good"
+        settings.mdx.is_secondary_model_activate = True
+        settings.mdx.voc_inst_secondary_model = "mdx:secondary"
+        settings.mdx.drums_secondary_model = "not-a-canonical-id"
+        primary = ModelRecord(
+            id="mdx:good", family="mdx", basename="good", display="Good",
+            backend_name="good", artifacts=ModelArtifacts("good.ckpt"),
+            installed=True,
+        )
+        secondary = ModelRecord(
+            id="mdx:secondary", family="mdx", basename="secondary",
+            display="Secondary", backend_name="secondary",
+            artifacts=ModelArtifacts("secondary.ckpt"), installed=True,
+        )
+
+        def lookup(raw: str, **_kwargs: Any) -> ModelRecord:
+            if raw == primary.id:
+                return primary
+            if raw == secondary.id:
+                return secondary
+            raise ValueError("not a canonical model ID")
+
+        models = Mock()
+        models.lookup.side_effect = lookup
+        identities = _canonicalize_model_references(
+            settings, Mock(), models=models
+        )
+
+        self.assertEqual(settings.mdx.drums_secondary_model, "not-a-canonical-id")
+        self.assertNotIn("mdx.drums_secondary_model", identities)
+
+    def test_canonicalize_preserves_whitespace_in_active_splitter_id(self) -> None:
+        from cli.job import _canonicalize_model_references
+        from core.types import ProcessMethod
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.MDX
+        settings.mdx.model = "mdx:good"
+        settings.process.vocal_splitter_enabled = True
+        settings.process.vocal_splitter = " mdx:split "
+        models = Mock()
+
+        def lookup(raw: str, **_kwargs: Any) -> Mock:
+            if raw in {"mdx:good", "mdx:split"}:
+                return Mock(id=raw)
+            raise ValueError("not a canonical model ID")
+
+        models.lookup.side_effect = lookup
+
+        with self.assertRaisesRegex(ValueError, "canonical"):
+            _canonicalize_model_references(settings, Mock(), models=models)
+
+        self.assertEqual(settings.process.vocal_splitter, " mdx:split ")
+
+    def test_canonicalize_preserves_whitespace_in_active_preproc_id(self) -> None:
+        from cli.job import _canonicalize_model_references
+        from core.types import ProcessMethod
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.DEMUCS
+        settings.demucs.model = "demucs:good"
+        settings.demucs.is_pre_proc_model_activate = True
+        settings.demucs.pre_proc_model = " vr:preproc "
+        models = Mock()
+
+        def lookup(raw: str, **_kwargs: Any) -> Mock:
+            if raw in {"demucs:good", "vr:preproc"}:
+                return Mock(id=raw)
+            raise ValueError("not a canonical model ID")
+
+        models.lookup.side_effect = lookup
+
+        with self.assertRaisesRegex(ValueError, "canonical"):
+            _canonicalize_model_references(settings, Mock(), models=models)
+
+        self.assertEqual(settings.demucs.pre_proc_model, " vr:preproc ")
+
+    def test_canonicalize_keeps_exact_active_preproc_id(self) -> None:
+        from cli.job import _canonicalize_model_references
+        from core.model_identity import ModelRecord
+        from core.types import ProcessMethod
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.DEMUCS
+        settings.demucs.model = "demucs:good"
+        settings.demucs.is_pre_proc_model_activate = True
+        settings.demucs.pre_proc_model = "vr:preproc"
+        records = {
+            "demucs:good": ModelRecord(
+                id="demucs:good", family="demucs", basename="good",
+                display="Good", backend_name="good",
+                artifacts=ModelArtifacts("good.yaml"), installed=True,
+            ),
+            "vr:preproc": ModelRecord(
+                id="vr:preproc", family="vr", basename="preproc",
+                display="Preproc", backend_name="preproc",
+                artifacts=ModelArtifacts("preproc.pth"), installed=True,
+            ),
+        }
+        models = Mock()
+        models.lookup.side_effect = lambda raw, **_kwargs: records[raw]
+
+        identities = _canonicalize_model_references(
+            settings, Mock(), models=models
+        )
+
+        self.assertEqual(settings.demucs.pre_proc_model, "vr:preproc")
+        self.assertEqual(
+            identities["demucs.pre_proc_model"]["id"], "vr:preproc"
+        )
+
+    def test_canonicalize_preserves_whitespace_in_inactive_secondary_id(self) -> None:
+        from cli.job import _canonicalize_model_references
+        from core.types import ProcessMethod
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.MDX
+        settings.mdx.model = "mdx:good"
+        settings.mdx.is_secondary_model_activate = True
+        settings.mdx.voc_inst_secondary_model = " mdx:secondary "
+        models = Mock()
+
+        def lookup(raw: str, **_kwargs: Any) -> Mock:
+            if raw in {"mdx:good", "mdx:secondary"}:
+                return Mock(id=raw)
+            raise ValueError("not a canonical model ID")
+
+        models.lookup.side_effect = lookup
+
+        identities = _canonicalize_model_references(
+            settings, Mock(), models=models
+        )
+
+        self.assertEqual(
+            settings.mdx.voc_inst_secondary_model, " mdx:secondary "
+        )
+        self.assertNotIn("mdx.voc_inst_secondary_model", identities)
 
 
 class PlannedSettingsReturnTests(unittest.TestCase):

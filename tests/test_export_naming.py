@@ -1,6 +1,9 @@
+import os
+import typing
 import unittest
 
 from core.export_naming import (
+    build_output_naming_context,
     format_stem_basename,
     format_track_base,
     preview_output_name,
@@ -121,3 +124,64 @@ class PreviewOutputNameTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EnrichedModelLabelNamingTests(unittest.TestCase):
+    """Filenames and model folders use `ModelRecord.display`, sanitized.
+
+    Sanitization touches filesystem components only. It must never reach the
+    canonical id, backend name or artifacts, which stay exactly as resolved.
+    """
+
+    _FRIENDLY = "MelBand Roformer — Karaoke · becruily"
+
+    def _naming(self, **overrides: typing.Any):
+        from core.export_naming import build_output_naming_context
+
+        settings = Settings.defaults()
+        settings.process.add_model_name = True
+        for key, value in overrides.pop("settings", {}).items():
+            setattr(settings.process, key, value)
+        return build_output_naming_context(
+            settings,
+            "/music/song.wav",
+            export_path="/out",
+            model_label=overrides.pop("model_label", self._FRIENDLY),
+            **overrides,
+        )
+
+    def test_add_model_name_uses_the_friendly_display(self) -> None:
+        naming = self._naming()
+
+        self.assertEqual(naming.track_base, f"song {self._FRIENDLY}")
+        self.assertEqual(
+            format_stem_basename(naming.track_base, "Vocals"),
+            f"song {self._FRIENDLY} (Vocals)",
+        )
+
+    def test_create_model_folder_uses_the_same_sanitized_display(self) -> None:
+        naming = self._naming(settings={"create_model_folder": True})
+
+        self.assertEqual(
+            naming.export_directory,
+            os.path.join("/out", sanitize_filename_component(self._FRIENDLY), "song"),
+        )
+
+    def test_unsafe_label_is_sanitized_only_in_path_components(self) -> None:
+        unsafe = "Evil/Model\\Name: v2"
+        naming = self._naming(
+            model_label=unsafe, settings={"create_model_folder": True}
+        )
+
+        self.assertNotIn("/", os.path.basename(os.path.dirname(naming.export_directory)))
+        self.assertEqual(
+            os.path.dirname(naming.export_directory),
+            os.path.join("/out", "Evil Model Name v2"),
+        )
+        # The label itself is carried verbatim; only the path component changed.
+        self.assertEqual(naming.model_label, unsafe)
+
+    def test_unknown_custom_model_appends_its_raw_basename(self) -> None:
+        naming = self._naming(model_label="my_private_model")
+
+        self.assertEqual(naming.track_base, "song my_private_model")

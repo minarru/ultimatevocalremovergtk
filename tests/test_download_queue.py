@@ -5,8 +5,10 @@ import os
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from unittest.mock import MagicMock
 
+from bundled.constants import MDX_ARCH_TYPE
 from core.download_queue import DownloadQueue
 
 
@@ -132,3 +134,173 @@ class DownloadQueueTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QueuePublicationTests(unittest.TestCase):
+    """Each logical model publishes as it becomes usable, not per batch."""
+
+    def _queue(self, results: list[str]):
+        from core.download_queue import DownloadQueue
+
+        manager = mock.MagicMock()
+        manager.download.side_effect = list(results)
+        repo = mock.MagicMock()
+        return DownloadQueue(manager, repo=repo), repo
+
+    def _item(self, queue: typing.Any, selection: str = "MDX-Net Model: A"):
+        from core.download_queue import DownloadQueueItem
+
+        return DownloadQueueItem(
+            item_id=selection,
+            selection=selection,
+            arch_type=MDX_ARCH_TYPE,
+            label=selection,
+            jobs=[("u", "/tmp/does-not-matter.onnx")],
+        )
+
+    def test_finalizer_runs_once_per_successful_item(self) -> None:
+        from core.download_queue import DownloadQueue
+        from core.model_install import ModelInstallResult
+
+        queue, repo = self._queue(["complete"])
+        item = self._item(queue)
+
+        with mock.patch(
+            "core.model_install.finalize_downloaded_model",
+            return_value=ModelInstallResult(ready=True, published=True),
+        ) as finalize:
+            DownloadQueue._process_item(queue, item)
+
+        finalize.assert_called_once()
+        kwargs = finalize.call_args.kwargs
+        self.assertEqual(kwargs["family"], "mdx")
+        self.assertEqual(kwargs["selection"], "MDX-Net Model: A")
+        self.assertEqual(kwargs["transfer_result"], "complete")
+        self.assertEqual(kwargs["repo"], repo)
+
+    def test_each_of_two_items_gets_its_own_publication(self) -> None:
+        from core.download_queue import DownloadQueue
+        from core.model_install import ModelInstallResult
+
+        queue, _repo = self._queue(["complete", "complete"])
+        first = self._item(queue, "MDX-Net Model: A")
+        second = self._item(queue, "MDX-Net Model: B")
+
+        with mock.patch(
+            "core.model_install.finalize_downloaded_model",
+            return_value=ModelInstallResult(ready=True, published=True),
+        ) as finalize:
+            DownloadQueue._process_item(queue, first)
+            self.assertEqual(finalize.call_count, 1)  # before the second starts
+            DownloadQueue._process_item(queue, second)
+
+        self.assertEqual(finalize.call_count, 2)
+
+    def test_a_stopped_transfer_never_finalizes(self) -> None:
+        from core.download_queue import DownloadQueue
+
+        queue, _repo = self._queue(["stopped"])
+        item = self._item(queue)
+        item.stop_event.set()
+
+        with mock.patch("core.model_install.finalize_downloaded_model") as finalize:
+            DownloadQueue._process_item(queue, item)
+
+        finalize.assert_not_called()
+
+    def test_a_failed_transfer_never_finalizes(self) -> None:
+        from core.download_queue import DownloadQueue
+
+        queue, _repo = self._queue([])
+        queue.manager.download.side_effect = RuntimeError("boom")
+        item = self._item(queue)
+
+        with mock.patch("core.model_install.finalize_downloaded_model") as finalize:
+            DownloadQueue._process_item(queue, item)
+
+        finalize.assert_not_called()
+
+    def test_an_unusable_result_fails_the_item_with_its_detail(self) -> None:
+        from core.download_queue import DownloadQueue
+        from core.download_status import STATUS_FAILED
+        from core.model_install import ModelInstallResult
+
+        queue, _repo = self._queue(["complete"])
+        item = self._item(queue)
+
+        with mock.patch(
+            "core.model_install.finalize_downloaded_model",
+            return_value=ModelInstallResult(
+                ready=False, published=False, detail="missing config.yaml"
+            ),
+        ):
+            ok = DownloadQueue._process_item(queue, item)
+
+        self.assertFalse(ok)
+        self.assertEqual(item.status, STATUS_FAILED)
+        self.assertEqual(item.detail, "missing config.yaml")
+
+    def test_a_finalizer_exception_fails_only_that_item(self) -> None:
+        from core.download_queue import DownloadQueue
+        from core.download_status import STATUS_FAILED
+
+        queue, _repo = self._queue(["complete"])
+        item = self._item(queue)
+
+        with mock.patch(
+            "core.model_install.finalize_downloaded_model",
+            side_effect=RuntimeError("registry exploded"),
+        ):
+            ok = DownloadQueue._process_item(queue, item)
+
+        self.assertFalse(ok)
+        self.assertEqual(item.status, STATUS_FAILED)
+        self.assertIn("registry exploded", item.detail)
+
+    def test_download_is_called_without_a_repository(self) -> None:
+        from core.download_queue import DownloadQueue
+        from core.model_install import ModelInstallResult
+
+        queue, _repo = self._queue(["complete"])
+        item = self._item(queue)
+
+        with mock.patch(
+            "core.model_install.finalize_downloaded_model",
+            return_value=ModelInstallResult(ready=True, published=True),
+        ):
+            DownloadQueue._process_item(queue, item)
+
+        self.assertNotIn("repo", queue.manager.download.call_args.kwargs)
+
+
+class DownloadUiInterfaceTests(unittest.TestCase):
+    """Batch completion is aggregate UI; it owns no model publication.
+
+    The `on_models_changed` parameter existed so a finished batch could refresh
+    the pickers once, late. Publication is now per item, so the parameter is
+    gone and the repository event is the only refresh source.
+    """
+
+    def test_no_ui_entry_point_accepts_a_models_changed_callback(self) -> None:
+        import inspect
+
+        from ui.download import init_download_queue_ui, open_download_center
+        from ui.download_center import DownloadCenterWindow
+
+        for func in (init_download_queue_ui, open_download_center,
+                     DownloadCenterWindow.__init__):
+            with self.subTest(entry=getattr(func, "__qualname__", func)):
+                self.assertNotIn(
+                    "on_models_changed", inspect.signature(func).parameters
+                )
+
+    def test_batch_completion_does_not_invalidate(self) -> None:
+        """No invalidation call survives anywhere in the batch UI path."""
+        import inspect
+
+        from ui import download as download_mod
+
+        source = inspect.getsource(download_mod)
+        self.assertNotIn("invalidate_models", source)
+        self.assertNotIn("invalidate_model_presentation", source)
+        self.assertNotIn("on_models_changed", source)

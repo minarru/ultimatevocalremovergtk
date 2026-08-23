@@ -691,16 +691,20 @@ def _run_tool(settings: Any, input_path: str, timeout: float, *, repo: Any):
     errors = [item.message for item in plan.diagnostics if item.severity == "error"]
     if errors:
         raise ValueError(errors[0])
+    if plan.model is None:
+        raise ValueError("resolved Apollo model is unavailable")
     os.makedirs(plan.output, exist_ok=True)
     model_data = ApolloModelData(
-        plan.settings.audio_tools.apollo_model,
+        plan.model.backend_name,
         model_hash_table=repo.model_hash_table,
         on_unrecognized=None,
     )
     if not model_data.is_model_status:
         raise RuntimeError(f"Apollo model not valid: {settings.audio_tools.apollo_model}")
 
-    runner = AudioToolRunner(plan.settings)
+    runner = AudioToolRunner(
+        plan.settings, apollo_backend_name=plan.model.backend_name
+    )
     def write_console(text: str) -> None:
         sys.stdout.write(text)
 

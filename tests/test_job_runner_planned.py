@@ -84,6 +84,51 @@ class JobRunnerPlannedTests(unittest.TestCase):
         self.assertEqual(runner._run_planned, planned)
         self.assertEqual(runner._run_output_root, "/out")
 
+    def test_legacy_single_runtime_assembles_with_planned_dependencies(self) -> None:
+        settings = Settings.defaults()
+        settings.process.export_path = "/out"
+        runner = JobRunner(settings)
+        dependencies = {"mdx.model": Mock(id="mdx:primary")}
+        runner._run_model_dependencies = dependencies
+        sentinel = RuntimeError("assembly observed")
+        with (
+            patch("core.job_runner.import_separate_engines"),
+            patch.object(runner, "_prepare_paths_for_run", return_value=[]),
+            patch.object(runner, "resolve_models", side_effect=sentinel) as resolve,
+            patch(
+                "core.job_runner.with_worker_lifecycle",
+                side_effect=lambda _runner, _callbacks, _label, body: body(),
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "assembly observed"):
+                runner._run_separation([], Mock(), "single")
+        resolve.assert_called_once_with(dependencies)
+
+    def test_legacy_ensemble_runtime_assembles_with_planned_dependencies(self) -> None:
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.ENSEMBLE
+        runner = JobRunner(settings)
+        dependencies = {"ensemble.selected_models[0]": Mock(id="mdx:a")}
+        runner._run_model_dependencies = dependencies
+        sentinel = RuntimeError("assembly observed")
+        with (
+            patch("core.job_runner.import_separate_engines"),
+            patch.object(runner, "_prepare_paths_for_run", return_value=[]),
+            patch("core.job_runner.assemble_model", side_effect=sentinel) as assemble,
+            patch(
+                "core.job_runner.with_worker_lifecycle",
+                side_effect=lambda _runner, _callbacks, _label, body: body(),
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "assembly observed"):
+                runner._run_separation([], Mock(), "ensemble")
+        assemble.assert_called_once_with(
+            settings,
+            runner.repo,
+            arch_type="Ensemble Mode",
+            model_dependencies=dependencies,
+        )
+
     def test_naming_keeps_model_folder_when_root_is_plan_output(self) -> None:
         settings = Settings.defaults()
         settings.process.export_path = "/out"
@@ -113,11 +158,13 @@ class JobRunnerPlannedTests(unittest.TestCase):
     def test_reset_clears_run_models_and_planned(self) -> None:
         runner = JobRunner(Settings.defaults())
         runner._run_models = [Mock()]
+        runner._run_model_dependencies = {"mdx.model": Mock()}
         runner._run_planned = ()
         runner._run_output_root = "/out"
         runner._run_path_map = {"/clip": "/in/a.wav"}
         runner._reset_run_state()
         self.assertIsNone(runner._run_models)
+        self.assertIsNone(runner._run_model_dependencies)
         self.assertIsNone(runner._run_planned)
         self.assertIsNone(runner._run_output_root)
         self.assertIsNone(runner._run_path_map)

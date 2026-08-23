@@ -56,6 +56,7 @@ from core.mdx_c_registry import infer_mdx_c_architecture
 from core.model_config import ModelConfig
 from core.model_data import load_mdx_c_config
 from core.model_display import display_name_for_model
+from core.model_identity import ModelIdentityService
 from ..help_text import (
     MDX_DIM_F_SET_HELP,
     MDX_DIM_T_SET_HELP,
@@ -516,10 +517,27 @@ def make_apollo_unrecognized_handler(get_parent: typing.Any):
 # Change-model-defaults dialog
 # ---------------------------------------------------------------------------
 
+def _change_defaults_model_config(
+    context: typing.Any,
+    canonical_id: str,
+    *,
+    is_get_hash_dir_only: bool = False,
+):
+    """Resolve once and carry exact identity into dry model inspection."""
+    record = ModelIdentityService(context.repo).lookup(canonical_id)
+    return ModelConfig(
+        context.settings,
+        context.repo,
+        record.display,
+        record.arch,
+        is_dry_check=True,
+        is_get_hash_dir_only=is_get_hash_dir_only,
+        identity=record,
+    )
+
 def show_change_defaults_dialog(context: typing.Any, parent: typing.Any):
     """Modal editor to change or delete a known model's stored parameters."""
     repo = context.repo
-    settings = context.settings
 
     dialog = Adw.Dialog()
     dialog.set_title(CHANGE_MODEL_DEFAULTS_TEXT)
@@ -561,12 +579,10 @@ def show_change_defaults_dialog(context: typing.Any, parent: typing.Any):
         tag = get_combo_value(model_row)
         if not tag or tag == NO_MODEL:
             return None
-        return ModelConfig(
-            settings,
-            repo,
+        return _change_defaults_model_config(
+            context,
             tag,
-            is_dry_check=True,
-            is_get_hash_dir_only=is_get_hash_dir_only,
+            is_get_hash_dir_only=bool(is_get_hash_dir_only),
         )
 
     def on_change(_button: typing.Any):

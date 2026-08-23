@@ -74,33 +74,13 @@ def load_curated_ensemble(preset_id: str) -> Optional[dict]:
 
 
 def resolve_member_tag(tag: str, repo: typing.Any) -> str:
-    """Rewrite an ensemble member reference to a canonical ``family:basename`` id.
+    """Keep persisted members exact; legacy text remains visible for repair."""
+    from core.model_identity import parse_stored_model_id
 
-    Resolution is an exact identity lookup by id or basename
-    (:meth:`ModelIdentityService.canonical_id_from_member_tag`), never a
-    display-text inversion -- a legacy ``Arch: Display`` tag whose name half is
-    a catalogue label is left as written. A member that cannot be resolved (not
-    installed, not in any known catalogue) still yields a best-effort
-    ``family:name`` id from the raw tag text, so
-    :func:`classify_preset_members` can report it as missing instead of
-    dropping it silently.
-    """
-    from core.model_identity import FAMILY_BY_ARCH, ModelId, ModelIdentityService
-
-    arch, model_name = parse_model_tag(tag)
-    if not arch or not model_name:
-        return tag
-    family = FAMILY_BY_ARCH.get(arch)
-    if not family:
-        return tag
     try:
-        return ModelIdentityService(repo).canonical_id_from_member_tag(tag)
+        return parse_stored_model_id(tag).value
     except ValueError:
-        pass
-    stem = os.path.splitext(model_name)[0]
-    if stem and ":" not in stem:
-        return str(ModelId(family, stem))
-    return tag
+        return tag
 
 
 def resolve_member_tags(tags: Sequence[str], repo: typing.Any) -> List[str]:
@@ -118,15 +98,18 @@ def _installed_basenames(repo: typing.Any, arch: str) -> set:
 
 
 def member_is_installed(tag: str, repo: typing.Any) -> bool:
-    from core.model_identity import ModelId
+    from core.model_identity import ARCH_BY_FAMILY, parse_stored_model_id
 
-    arch, model_name = parse_model_tag(tag)
-    if not arch or not model_name:
-        return False
     try:
-        basename = ModelId.parse(resolve_member_tag(tag, repo)).basename
+        model_id = parse_stored_model_id(tag)
     except ValueError:
+        arch, model_name = parse_model_tag(tag)
+        if not arch or not model_name:
+            return False
         basename = model_name
+    else:
+        arch = ARCH_BY_FAMILY[model_id.family]
+        basename = model_id.basename
     installed = _installed_basenames(repo, arch)
     if basename in installed:
         return True

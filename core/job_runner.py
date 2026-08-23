@@ -107,7 +107,13 @@ class JobRunner:
 
     def __init__(self, settings: Settings, repo: Optional[ModelRepository] = None):
         self.settings = settings
-        self.repo = repo or ModelRepository()
+        if repo is None:
+            self.repo = ModelRepository()
+            self.repo.bind_model_hash_table(
+                lambda: self.settings.process.model_hash_table
+            )
+        else:
+            self.repo = repo
         self._thread: Optional[KThread] = None
         self._is_stopped = False
         self._is_paused = False
@@ -125,6 +131,7 @@ class JobRunner:
         self._ensemble_salvage_members: list[dict[str, Any]] = []
         self._last_oom_exported = False
         self._run_models: Sequence[Any] | None = None
+        self._run_model_dependencies: typing.Mapping[str, Any] | None = None
         self._run_planned: Sequence[PlannedInput] | None = None
         self._run_output_root: str | None = None
         self._run_path_map: dict[str, str] | None = None
@@ -143,6 +150,7 @@ class JobRunner:
         self._ensemble_salvage_members = []
         self._last_oom_exported = False
         self._run_models = None
+        self._run_model_dependencies = None
         self._run_planned = None
         self._run_output_root = None
         self._run_path_map = None
@@ -157,6 +165,7 @@ class JobRunner:
         models: Sequence[Any] | None = None,
         planned: Sequence[PlannedInput] | None = None,
         planned_output_root: str | None = None,
+        model_dependencies: typing.Mapping[str, Any] | None = None,
     ) -> None:
         """Launch the worker thread. No-op if a run is already in flight.
 
@@ -167,6 +176,8 @@ class JobRunner:
         basenames come from the matching :class:`~core.job_plan.PlannedInput`
         after rebasing onto the current export path. ``planned_output_root``
         is required in that case so model-folder rebasing cannot flatten.
+        ``model_dependencies`` carries the accepted plan's exact nested model
+        records into legacy GUI worker assembly.
         """
         if self.is_running():
             return
@@ -182,6 +193,7 @@ class JobRunner:
             models=models,
             planned=planned,
             planned_output_root=planned_output_root,
+            model_dependencies=model_dependencies,
         )
 
     def _start_worker(
@@ -193,6 +205,7 @@ class JobRunner:
         models: Sequence[Any] | None = None,
         planned: Sequence[PlannedInput] | None = None,
         planned_output_root: str | None = None,
+        model_dependencies: typing.Mapping[str, Any] | None = None,
     ) -> None:
         """Shared KThread launch for single-method and ensemble workers."""
         if self.is_running():
@@ -203,6 +216,7 @@ class JobRunner:
 
         self._reset_run_state()
         self._run_models = list(models) if models is not None else None
+        self._run_model_dependencies = model_dependencies
         self._run_planned = tuple(planned) if planned is not None else None
         self._run_output_root = planned_output_root
         paths = (
@@ -261,7 +275,7 @@ class JobRunner:
             if models is not None:
                 self._run_models = list(models)
             else:
-                self._run_models = self.resolve_models()
+                self._run_models = self.resolve_models(job.model_dependencies)
             self._run_output_root = job.output
             self._resolved_command = job.command
 
@@ -522,11 +536,19 @@ class JobRunner:
 
     # -- Worker -----------------------------------------------------------------
 
-    def resolve_models(self) -> List[ModelConfig]:
+    def resolve_models(
+        self,
+        model_dependencies: typing.Mapping[str, typing.Any] | None = None,
+    ) -> List[ModelConfig]:
         """Build the ``ModelConfig`` list for the currently chosen method."""
         method = ProcessMethod(self.settings.process.method)
         if method is ProcessMethod.ENSEMBLE:
-            return assemble_model(self.settings, self.repo, arch_type=ENSEMBLE_MODE)
+            return assemble_model(
+                self.settings,
+                self.repo,
+                arch_type=ENSEMBLE_MODE,
+                model_dependencies=model_dependencies,
+            )
         if method is ProcessMethod.VR:
             model_name = self.settings.vr.model
         elif method is ProcessMethod.MDX:
@@ -537,7 +559,13 @@ class JobRunner:
             raise NotImplementedError(
                 f"process method '{method.value}' is implemented in a later phase"
             )
-        return assemble_model(self.settings, self.repo, model_name, method.value)
+        return assemble_model(
+            self.settings,
+            self.repo,
+            model_name,
+            method.value,
+            model_dependencies=model_dependencies,
+        )
 
     def _count_true_models(self, models: Sequence[Any]) -> int:
         """Progress denominator: shared with the Save stems workload estimate."""
@@ -663,10 +691,13 @@ class JobRunner:
                 models = list(self._run_models)
             elif mode == "ensemble":
                 models = assemble_model(
-                    self.settings, self.repo, arch_type=ENSEMBLE_MODE
+                    self.settings,
+                    self.repo,
+                    arch_type=ENSEMBLE_MODE,
+                    model_dependencies=self._run_model_dependencies,
                 )
             else:
-                models = self.resolve_models()
+                models = self.resolve_models(self._run_model_dependencies)
             debug_elapsed(
                 "worker", "resolve_models", resolve_started, count=len(models)
             )

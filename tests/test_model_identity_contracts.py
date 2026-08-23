@@ -5,6 +5,8 @@ Target-behavior tests are added in later tasks in this same file."""
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import unittest
 from types import SimpleNamespace
 from typing import Any
@@ -46,6 +48,9 @@ def _snapshot(
     demucs: Any = None,
     apollo: Any = None,
     meta: Any = None,
+    display_vr: Any = None,
+    display_mdx: Any = None,
+    display_demucs: Any = None,
 ):
     families = {
         "vr": vr or {},
@@ -59,6 +64,9 @@ def _snapshot(
             family: dict((meta or {}).get(family, {})) for family in families
         },
         unsupported={},
+        display_index_vr=dict(display_vr or {}),
+        display_index_mdx=dict(display_mdx or {}),
+        display_index_demucs=dict(display_demucs or {}),
     )
 
 
@@ -138,6 +146,12 @@ class StrictIdParseTests(unittest.TestCase):
     def test_does_not_casefold_basename(self) -> None:
         parsed = parse_stored_model_id("mdx:Some_Model")
         self.assertEqual(parsed.basename, "Some_Model")
+
+    def test_rejects_basename_with_edge_whitespace(self) -> None:
+        for value in ("vr: model", "vr:model "):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    parse_stored_model_id(value)
 
 
 class IdentityIndexLookupTests(unittest.TestCase):
@@ -267,6 +281,29 @@ class InventoryCardinalityTests(unittest.TestCase):
         self.assertIn("vr:real", ids)
         self.assertNotIn("vr:~stray", ids)
 
+    def test_untargetable_and_nested_installed_filenames_are_omitted(self) -> None:
+        from core.model_inventory import build_identity_index
+
+        repo = _empty_repo(
+            _model_artifact_files=lambda family: (
+                [
+                    ".pth", "bad:name.pth", "model .pth",
+                    "nested/stray.pth", "valid.pth",
+                ]
+                if family == "vr"
+                else []
+            ),
+        )
+
+        index = build_identity_index(repo, snapshot=_snapshot())
+
+        self.assertEqual(
+            [record.id for record in index.records()],
+            ["vr:valid"],
+        )
+        for record in index.records():
+            self.assertEqual(index.lookup(record.id), record)
+
     def test_malformed_installed_demucs_bag_does_not_empty_the_index(self) -> None:
         import tempfile
 
@@ -337,6 +374,79 @@ class InventoryCardinalityTests(unittest.TestCase):
             self.assertEqual(record.artifacts.supporting_filenames, ("config.yaml",))
             self.assertEqual(record.mdx, MdxSpec("mdx23c"))
             self.assertTrue(record.identity_complete)
+
+    def test_missing_trusted_mdx_yaml_keeps_exact_supporting_evidence(self) -> None:
+        from core import paths
+        from core.model_inventory import build_identity_index
+
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint_path = os.path.join(directory, "recoverable.ckpt")
+            hash_directory = os.path.join(directory, "model_data")
+            os.makedirs(hash_directory)
+            with open(os.path.join(hash_directory, "trusted.json"), "w", encoding="utf-8") as handle:
+                json.dump({"config_yaml": "exact-recovery.yaml"}, handle)
+            repo = _empty_repo(
+                _model_artifact_files=lambda family: (
+                    ["recoverable.ckpt"] if family == "mdx" else []
+                ),
+                _model_artifact_path=lambda _family, _name: checkpoint_path,
+                model_hash_table={checkpoint_path: "trusted"},
+            )
+
+            with patch.object(paths, "MDX_HASH_DIR", hash_directory):
+                record = build_identity_index(repo, snapshot=_snapshot()).lookup(
+                    "mdx:recoverable"
+                )
+
+        self.assertFalse(record.identity_complete)
+        self.assertIsNone(record.mdx)
+        self.assertEqual(
+            record.artifacts.supporting_filenames, ("exact-recovery.yaml",)
+        )
+
+    def test_incomplete_catalogue_match_is_enriched_from_trusted_install(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from core import paths
+        from core.catalog_sources import EntryMeta
+        from core.model_inventory import build_identity_index
+
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint_path = os.path.join(directory, "catalogued.ckpt")
+            hash_directory = os.path.join(directory, "model_data")
+            os.makedirs(hash_directory)
+            with open(os.path.join(hash_directory, "trusted.json"), "w", encoding="utf-8") as handle:
+                json.dump({"config_yaml": "trusted-local.yaml"}, handle)
+            selection = "MDX-Net Model: Catalogued"
+            files = {"catalogued.ckpt": "http://example.invalid/catalogued.ckpt"}
+            entry = EntryMeta(
+                label=selection,
+                display="Catalogued display",
+                arch=MDX_ARCH_TYPE,
+                files=files,
+                checkpoint="catalogued.ckpt",
+            )
+            repo = _empty_repo(
+                _model_artifact_files=lambda family: (
+                    ["catalogued.ckpt"] if family == "mdx" else []
+                ),
+                _model_artifact_path=lambda _family, _name: checkpoint_path,
+                model_hash_table={checkpoint_path: "trusted"},
+            )
+            snapshot = _snapshot(
+                mdx={selection: files}, meta={"mdx": {selection: entry}}
+            )
+
+            with patch.object(paths, "MDX_HASH_DIR", hash_directory):
+                record = build_identity_index(repo, snapshot=snapshot).lookup(
+                    "mdx:catalogued"
+                )
+
+        self.assertTrue(record.installed)
+        self.assertFalse(record.identity_complete)
+        self.assertEqual(record.display, "Catalogued display")
+        self.assertEqual(
+            record.artifacts.supporting_filenames, ("trusted-local.yaml",)
+        )
 
 
 class CollisionAndSafetyTests(unittest.TestCase):
@@ -637,3 +747,180 @@ class IdentityIndexCostTests(unittest.TestCase):
 
         self.assertIsNot(third, first)
         self.assertEqual(len(builds), 2)
+
+
+class DisplayEnrichmentTests(unittest.TestCase):
+    """`ModelRecord.display` is the authoritative friendly label."""
+
+    def _repo(
+        self,
+        *,
+        mdx: Any = (),
+        vr: Any = (),
+        demucs: Any = (),
+        apollo: Any = (),
+        **overrides: Any,
+    ):
+        files = {
+            "mdx": list(mdx),
+            "vr": list(vr),
+            "demucs": list(demucs),
+            "apollo": list(apollo),
+        }
+        return _empty_repo(
+            _model_artifact_files=lambda family: files.get(family, []),
+            **overrides,
+        )
+
+    def _records(self, repo: Any, snapshot: Any) -> dict[str, ModelRecord]:
+        from core.model_inventory import build_identity_index
+
+        index = build_identity_index(
+            repo,
+            snapshot=snapshot,
+            bundled_demucs_specs={},
+            registered_demucs={},
+        )
+        return {record.id: record for record in index.records()}
+
+    def test_catalogue_display_wins_over_conflicting_mapper(self) -> None:
+        repo, snapshot = _fake_mdx_pair()
+        repo.mdx_name_select_MAPPER = {"model.ckpt": "Mapper Label"}
+        records = self._records(repo, snapshot)
+        self.assertEqual(records["mdx:model"].display, "MDX-Net — Pair")
+
+    def test_catalogue_basename_echo_falls_through_to_mapper(self) -> None:
+        repo = self._repo(
+            mdx=["model.ckpt"],
+            mdx_name_select_MAPPER={"model.ckpt": "Friendly Mapper"},
+        )
+        snapshot = _snapshot(display_mdx={"model": "model"})
+        records = self._records(repo, snapshot)
+        self.assertEqual(records["mdx:model"].display, "Friendly Mapper")
+
+    def test_installed_only_mdx_gets_exact_mapper_display(self) -> None:
+        repo = self._repo(
+            mdx=["Kim_Vocal_1.onnx"],
+            mdx_name_select_MAPPER={"Kim_Vocal_1.onnx": "Kim Vocal 1"},
+        )
+        records = self._records(repo, _snapshot())
+        self.assertEqual(records["mdx:Kim_Vocal_1"].display, "Kim Vocal 1")
+
+    def test_installed_only_demucs_gets_exact_mapper_display(self) -> None:
+        repo = self._repo(
+            demucs=["tasnet.th"],
+            demucs_name_select_MAPPER={"tasnet.th": "v1 | tasnet"},
+        )
+        records = self._records(repo, _snapshot())
+        self.assertEqual(records["demucs:tasnet"].display, "v1 | tasnet")
+
+    def test_vr_uses_catalogue_index_and_has_no_mapper_fallback(self) -> None:
+        repo = self._repo(
+            vr=["1_HP-UVR.pth", "9_HP2-UVR.pth"],
+            mdx_name_select_MAPPER={"9_HP2-UVR.pth": "Must Not Apply"},
+        )
+        snapshot = _snapshot(display_vr={"1_HP-UVR": "VR Arch — 1 HP"})
+        records = self._records(repo, snapshot)
+        self.assertEqual(records["vr:1_HP-UVR"].display, "VR Arch — 1 HP")
+        self.assertEqual(records["vr:9_HP2-UVR"].display, "9_HP2-UVR")
+
+    def test_apollo_keeps_raw_basename_without_catalogue_display(self) -> None:
+        repo = self._repo(apollo=["custom_apollo.ckpt"])
+        records = self._records(repo, _snapshot())
+        self.assertEqual(records["apollo:custom_apollo"].display, "custom_apollo")
+
+    def test_unknown_custom_model_retains_raw_basename(self) -> None:
+        repo = self._repo(mdx=["my_private_model.onnx"])
+        records = self._records(repo, _snapshot())
+        self.assertEqual(records["mdx:my_private_model"].display, "my_private_model")
+
+    def test_substring_only_mapper_candidate_is_ignored(self) -> None:
+        repo = self._repo(
+            mdx=["model.onnx"],
+            mdx_name_select_MAPPER={"model_v2.ckpt": "Wrong Model"},
+        )
+        records = self._records(repo, _snapshot())
+        self.assertEqual(records["mdx:model"].display, "model")
+
+    def test_local_mapper_overlay_precedence_survives_enrichment(self) -> None:
+        repo = self._repo(
+            mdx=["model.onnx"],
+            mdx_name_select_MAPPER={"model.onnx": "Overlay Wins"},
+        )
+        records = self._records(repo, _snapshot())
+        self.assertEqual(records["mdx:model"].display, "Overlay Wins")
+
+    def test_catalogue_index_outranks_demucs_mapper(self) -> None:
+        repo = self._repo(
+            demucs=["registered.th"],
+            demucs_name_select_MAPPER={"registered.th": "Mapper Label"},
+        )
+        records = self._records(
+            repo, _snapshot(display_demucs={"registered": "Catalogue Label"})
+        )
+        self.assertEqual(records["demucs:registered"].display, "Catalogue Label")
+
+    def test_table_driven_exact_mappings_agree_and_unknowns_stay_raw(self) -> None:
+        cases = (
+            ("Kim_Vocal_1.onnx", "Kim Vocal 1", "Kim Vocal 1"),
+            ("Kim_Vocal_2.onnx", "Kim Vocal 2", "Kim Vocal 2"),
+            (
+                "UVR-MDX-NET-Inst_HQ_3.onnx",
+                "UVR-MDX-NET Inst HQ 3",
+                "UVR-MDX-NET Inst HQ 3",
+            ),
+            ("totally_unknown_model.onnx", None, "totally_unknown_model"),
+        )
+        mapper = {name: label for name, label, _ in cases if label}
+        repo = self._repo(
+            mdx=[name for name, _, _ in cases],
+            mdx_name_select_MAPPER=mapper,
+        )
+        records = self._records(repo, _snapshot())
+        for filename, _, expected in cases:
+            basename = os.path.splitext(filename)[0]
+            with self.subTest(model=basename):
+                self.assertEqual(records[f"mdx:{basename}"].display, expected)
+
+    def test_enrichment_changes_only_display(self) -> None:
+        from core.model_inventory import _enrich_record_displays
+
+        repo = self._repo(mdx_name_select_MAPPER={"model.onnx": "Friendly"})
+        original = ModelRecord(
+            id="mdx:model",
+            family="mdx",
+            basename="model",
+            display="model",
+            backend_name="model",
+            artifacts=ModelArtifacts("model.onnx", ()),
+            installed=True,
+        )
+        enriched = _enrich_record_displays(repo, [original], _snapshot())[0]
+
+        self.assertEqual(enriched.display, "Friendly")
+        self.assertEqual(enriched.id, original.id)
+        self.assertEqual(enriched.family, original.family)
+        self.assertEqual(enriched.basename, original.basename)
+        self.assertEqual(enriched.backend_name, original.backend_name)
+        self.assertEqual(enriched.artifacts, original.artifacts)
+        self.assertEqual(enriched.demucs, original.demucs)
+        self.assertEqual(enriched.mdx, original.mdx)
+        self.assertEqual(enriched.installed, original.installed)
+        self.assertEqual(enriched.identity_complete, original.identity_complete)
+        self.assertEqual(enriched.identity_error, original.identity_error)
+        self.assertEqual(enriched.catalogue_entry, original.catalogue_entry)
+
+    def test_enrichment_returns_same_object_when_unchanged(self) -> None:
+        from core.model_inventory import _enrich_record_displays
+
+        original = ModelRecord(
+            id="mdx:model",
+            family="mdx",
+            basename="model",
+            display="model",
+            backend_name="model",
+            artifacts=ModelArtifacts("model.onnx", ()),
+            installed=True,
+        )
+        result = _enrich_record_displays(self._repo(), [original], _snapshot())
+        self.assertIs(result[0], original)

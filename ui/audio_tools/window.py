@@ -154,6 +154,10 @@ class AudioToolsPage:
         # registered through the identical ``HelpHintManager`` path.
         self.hints = HelpHintManager()
         self._apollo_has_models = True
+        self._apollo_model_ids: set[str] = set()
+        self._apollo_stored_value: typing.Any = CHOOSE_MODEL
+        self._apollo_write_gated = False
+        self._apollo_gated_value: typing.Any = None
         self._banner_mode: Optional[str] = None
 
         # Match Separation / Ensemble: shared Files (inputs + output) on the
@@ -395,7 +399,16 @@ class AudioToolsPage:
         return box
 
     def _on_apollo_model_changed(self, *_args: typing.Any) -> None:
-        self._set("apollo_model", get_combo_value(self.apollo_model_row))
+        if self._loading:
+            return
+        selected = get_combo_value(self.apollo_model_row)
+        if selected not in self._apollo_model_ids:
+            return
+        self._apollo_stored_value = selected
+        self._apollo_write_gated = False
+        self._apollo_gated_value = None
+        self._set("apollo_model", selected)
+        self._update_audio_banner()
         self.window._refresh_start_readiness()
 
     def refresh_models(self) -> None:
@@ -418,19 +431,32 @@ class AudioToolsPage:
             if record.family == "apollo" and record.installed
         ]
         models = [CHOOSE_MODEL, *((record.id, record.display) for record in records)]
-        stored = str(self.settings.audio_tools.apollo_model or CHOOSE_MODEL)
+        stored = self.settings.audio_tools.apollo_model or CHOOSE_MODEL
+        ids = {record.id for record in records}
+        self._apollo_model_ids = ids
+        if not (
+            self._apollo_write_gated and stored == self._apollo_gated_value
+        ):
+            self._apollo_write_gated = False
+            self._apollo_gated_value = None
         # Mirrors ``MethodView.populate_models``: a stored value that is not one
         # of this picker's installed IDs shows as no selection and is left on
         # disk exactly as written. Resolving it here and writing the result back
         # would let a refresh silently convert a legacy value -- which is what
         # the identity cutover forbids.
-        if stored not in {record.id for record in records}:
-            stored = CHOOSE_MODEL
+        if not self._apollo_write_gated:
+            self._apollo_write_gated = stored not in (CHOOSE_MODEL, None, "") and (
+                not isinstance(stored, str) or stored not in ids
+            )
+            if self._apollo_write_gated:
+                self._apollo_gated_value = stored
+        self._apollo_stored_value = stored
+        selected = CHOOSE_MODEL if self._apollo_write_gated else stored
         was_loading = self._loading
         self._loading = True
         try:
             set_combo_tag_values(self.apollo_model_row, models)
-            if not set_combo_value(self.apollo_model_row, stored):
+            if not set_combo_value(self.apollo_model_row, selected):
                 self.apollo_model_row.set_selected(0)
         finally:
             self._loading = was_loading
@@ -630,6 +656,16 @@ class AudioToolsPage:
         from core.external_tools import resolve_rubberband
 
         tool = self._current_tool()
+        if tool == APOLLO_RESTORE and self._apollo_write_gated:
+            self._banner_mode = "apollo-identity"
+            self._audio_banner.set_title(
+                f"Saved Apollo model {self._apollo_stored_value!r} cannot be "
+                "selected; it was kept as written. Pick a model to replace it."
+            )
+            self._audio_banner.set_button_label("")
+            self._audio_banner.set_revealed(True)
+            self.window._refresh_start_readiness()
+            return
         if tool in (TIME_STRETCH, CHANGE_PITCH) and not resolve_rubberband():
             self._banner_mode = "rubberband"
             self._audio_banner.set_title(_RUBBERBAND_BANNER_TITLE)
@@ -811,8 +847,6 @@ class AudioToolsPage:
         # Input/output/tool readiness is validated by ``MainWindow._on_start``
         # before dispatch; the Apollo model resolution below still surfaces its
         # own dialog/toast for the deeper model-recognition cases.
-        # ``plan`` is accepted for the shared run-target signature and ignored:
-        # Audio Tools execute through AudioToolRunner, not PlannedInput.
         tool = self._current_tool()
 
         from core.audio_tools import DUAL_INPUT_TOOLS
@@ -826,9 +860,14 @@ class AudioToolsPage:
         else:
             single_inputs = list(self.inputs_row.paths)
             if tool == APOLLO_RESTORE:
-                apollo_params = self._resolve_apollo_model()
+                backend_name = (
+                    plan.model.backend_name
+                    if plan is not None and plan.model is not None else None
+                )
+                apollo_params = self._resolve_apollo_model(backend_name)
                 if apollo_params is None:
                     return
+                self.runner.apollo_backend_name = backend_name
 
         self.window.begin_run(self)
 
@@ -846,7 +885,7 @@ class AudioToolsPage:
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
             self.window.fail_to_start(f"Unable to start: {exc}", exc)
 
-    def _resolve_apollo_model(self):
+    def _resolve_apollo_model(self, planned_backend_name: str | None = None):
         """Resolve the selected Apollo model on the UI thread before the run.
 
         Returns ``{"extracted_params": ..., "config": ...}`` when the model is
@@ -868,9 +907,9 @@ class AudioToolsPage:
         handler = make_apollo_unrecognized_handler(lambda: self.window)
         from core.model_identity import ModelIdentityService
 
-        backend_name = ModelIdentityService(self.context.repo).engine_value(
-            model_name, family="apollo"
-        )
+        backend_name = planned_backend_name or ModelIdentityService(
+            self.context.repo
+        ).engine_value(model_name, family="apollo")
         model_data = ApolloModelData(
             backend_name,
             model_hash_table=self.context.repo.model_hash_table,
