@@ -70,15 +70,30 @@ def catalogue_presentation_id(
     if record is not None:
         return record.id
 
+    # Presentation references cover syntactic catalogue IDs even when a
+    # family's runtime projector rejects that artifact suffix.  Keep this
+    # escape hatch fail-closed: there must be one exact declared weight and at
+    # most one YAML configuration, and the derived basename must itself be a
+    # valid canonical-ID component.
     declared = str(getattr(meta, "checkpoint", "") or "")
+    yamls = [
+        name for name in files if name.casefold().endswith((".yaml", ".yml"))
+    ]
     presentation_primaries = [
         name
         for name in files
         if not name.casefold().endswith((".yaml", ".yml"))
     ]
-    if len(presentation_primaries) != 1 or declared != presentation_primaries[0]:
+    if (
+        len(yamls) > 1
+        or len(presentation_primaries) != 1
+        or declared != presentation_primaries[0]
+    ):
         return None
-    return ModelId(family, artifact_stem(declared)).value
+    try:
+        return ModelId(family, artifact_stem(declared)).value
+    except ValueError:
+        return None
 
 
 def project_catalogue_display(

@@ -12,7 +12,13 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
-from bundled.constants import CHOOSE_MODEL, MDX_ARCH_TYPE, NO_MODEL, VR_ARCH_TYPE
+from bundled.constants import (
+    CHOOSE_MODEL,
+    DEMUCS_ARCH_TYPE,
+    MDX_ARCH_TYPE,
+    NO_MODEL,
+    VR_ARCH_TYPE,
+)
 from core.catalogue_coordinator import CatalogueCoordinator
 from core.catalogue_types import SourceId
 from core.model_catalogue import CatalogEntryId, ModelCatalogueRecord, ModelCatalogueService
@@ -715,6 +721,8 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
         cases = (
             ({"../unsafe.pth": "https://example.invalid/model"}, "../unsafe.pth"),
             ({"config.yaml": "https://example.invalid/config"}, None),
+            ({".pth": "https://example.invalid/model"}, ".pth"),
+            ({"bad:name.pth": "https://example.invalid/model"}, "bad:name.pth"),
         )
         for files, checkpoint in cases:
             with self.subTest(files=files):
@@ -751,6 +759,50 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
             project_catalogue_display("vr", selection, files, meta),
             "1_HP-UVR",
         )
+
+    def test_ambiguous_yaml_primaries_do_not_mint_a_presentation_id(self) -> None:
+        from core.catalog_sources import EntryMeta
+        from core.model_catalogue import project_catalogue_display
+
+        cases = (
+            (
+                "mdx",
+                MDX_ARCH_TYPE,
+                "Roformer Model: Safe Raw Fallback",
+                {
+                    "model.pth": "https://example.invalid/model",
+                    "first.yaml": "https://example.invalid/first",
+                    "second.yaml": "https://example.invalid/second",
+                },
+                "model.pth",
+                "Safe Raw Fallback",
+            ),
+            (
+                "demucs",
+                DEMUCS_ARCH_TYPE,
+                "Demucs v4: htdemucs",
+                {
+                    "htdemucs.th": "https://example.invalid/model",
+                    "first.yaml": "https://example.invalid/first",
+                    "second.yaml": "https://example.invalid/second",
+                },
+                "htdemucs.th",
+                "v4 — htdemucs",
+            ),
+        )
+        for family, arch, selection, files, checkpoint, expected in cases:
+            with self.subTest(family=family):
+                meta = EntryMeta(
+                    label=selection,
+                    display=selection,
+                    arch=arch,
+                    files=files,
+                    checkpoint=checkpoint,
+                )
+                self.assertEqual(
+                    project_catalogue_display(family, selection, files, meta),
+                    expected,
+                )
 
 
 class ModelRecordContractTests(unittest.TestCase):
