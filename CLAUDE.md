@@ -41,6 +41,30 @@ basedpyright's own extra rules are left **off**: measured against this tree they
 
 The stubs are a **separate `--no-deps` install on purpose**: `PyGObject-stubs` declares a runtime dependency on `PyGObject`, and resolving it builds PyGObject from PyPI source (meson + pycairo, cairo dev headers) — which fails on a bare runner and contradicts the `--system-site-packages` design, where GTK comes from the distro. Don't fold that line back into [requirements-dev.txt](requirements-dev.txt).
 
+Ruff is pinned in `requirements-dev.txt` and configured by [ruff.toml](ruff.toml)
+for deterministic local linting and formatting. The configured Python target is
+3.12, the documented fallback floor; running Ruff from a newer system or venv
+Python does not change that compatibility target. Prefer checking or formatting
+only the Python files touched by a change:
+
+```bash
+.venv/bin/ruff check path/to/file.py
+.venv/bin/ruff format --check path/to/file.py
+.venv/bin/ruff format path/to/file.py
+```
+
+The full-tree commands are useful for auditing, but currently report accepted
+backlog and are **not CI gates**:
+
+```bash
+.venv/bin/ruff check .
+.venv/bin/ruff format --check .
+```
+
+Do not apply unrestricted `ruff check --fix` or bulk-format the repository as
+part of unrelated work. Existing intentional wildcard and lazy-import patterns
+use scoped configuration or inline `noqa` comments; preserve their rationale.
+
 Other:
 
 ```bash
@@ -61,8 +85,6 @@ python scripts/model_probe.py --config <yaml>   # can this build run a model? no
 python scripts/model_probe.py --entry <id> --check-keys   # + range-fetch the checkpoint header
 python scripts/stem_semantics_audit.py --guessed-only   # curated-vs-guessed stem confidence
 ```
-
-There is no linter/formatter config in the repo.
 
 ## Architecture
 

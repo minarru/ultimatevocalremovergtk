@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *.pyo
 .Python
+.ruff_cache/
 
 # Virtual environments
 .venv
