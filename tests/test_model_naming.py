@@ -2,7 +2,11 @@
 
 import unittest
 
-from core.model_naming import canonical_display_name, strip_catalogue_prefix
+from core.model_naming import (
+    canonical_display_name,
+    project_model_display,
+    strip_catalogue_prefix,
+)
 
 
 class StripCataloguePrefixTests(unittest.TestCase):
@@ -13,7 +17,9 @@ class StripCataloguePrefixTests(unittest.TestCase):
         )
         self.assertEqual(strip_catalogue_prefix("MDX23C Model VIP: Foo"), "Foo")
         self.assertEqual(strip_catalogue_prefix("MDX23 Model: Legacy"), "Legacy")
-        self.assertEqual(strip_catalogue_prefix("SCnet: 4-stems Huge by Aname"), "4-stems Huge by Aname")
+        self.assertEqual(
+            strip_catalogue_prefix("SCnet: 4-stems Huge by Aname"), "4-stems Huge by Aname"
+        )
 
     def test_strips_vr_prefixes(self) -> None:
         self.assertEqual(strip_catalogue_prefix("VR Arch Single Model v5: 1_HP-UVR"), "1_HP-UVR")
@@ -29,12 +35,9 @@ class CanonicalDisplayNameTests(unittest.TestCase):
     def test_four_dialects_converge(self) -> None:
         cases = {
             "MDX23C InstVoc HQ": "MDX23C — InstVoc HQ",
-            "MelBand Roformer | Karaoke by Aufr33 & Viperx":
-                "MelBand Roformer — Karaoke · Aufr33 & Viperx",
-            "Roformer Model: BandSplit Roformer | HyperACE v2 Instrumental by Unwa":
-                "BandSplit Roformer — HyperACE v2 Instrumental · Unwa",
-            "Mel-Band Roformer Vocals by Kimberley Jensen":
-                "MelBand Roformer — Vocals · Kimberley Jensen",
+            "MelBand Roformer | Karaoke by Aufr33 & Viperx": "MelBand Roformer — Karaoke · Aufr33 & Viperx",
+            "Roformer Model: BandSplit Roformer | HyperACE v2 Instrumental by Unwa": "BandSplit Roformer — HyperACE v2 Instrumental · Unwa",
+            "Mel-Band Roformer Vocals by Kimberley Jensen": "MelBand Roformer — Vocals · Kimberley Jensen",
         }
         for raw, expected in cases.items():
             with self.subTest(raw=raw):
@@ -57,8 +60,7 @@ class CanonicalDisplayNameTests(unittest.TestCase):
     def test_crops_hyperace_finetune_parenthetical(self) -> None:
         self.assertEqual(
             canonical_display_name(
-                "BS Roformer Instrumental HyperACE v2 "
-                "(finetuned anvuew vocal model) by Unwa"
+                "BS Roformer Instrumental HyperACE v2 (finetuned anvuew vocal model) by Unwa"
             ),
             "BandSplit Roformer — Instrumental HyperACE v2 · Unwa",
         )
@@ -117,6 +119,53 @@ class CanonicalDisplayNameTests(unittest.TestCase):
             with self.subTest(raw=raw):
                 once = canonical_display_name(raw)
                 self.assertEqual(canonical_display_name(once), once)
+
+
+class ProjectModelDisplayTests(unittest.TestCase):
+    def test_projector_applies_exact_aliases_before_source_formatting(self) -> None:
+        """A curated alias must win only for its exact canonical ID."""
+        self.assertEqual(
+            project_model_display(
+                "mdx:bs_pope_4stem_09072026_aname",
+                source_label="BS PolarFormer 4 stems 09-07-2026 by Somebody Else",
+            ),
+            "BandSplit PolarFormer — 09-07-2026 (4 Stems) · Aname",
+        )
+        self.assertEqual(
+            project_model_display("mdx:bs_pope_4stem_09072026_aname-copy"),
+            "bs_pope_4stem_09072026_aname-copy",
+        )
+
+    def test_projector_precedence_and_conservative_source_formatting(self) -> None:
+        """Trusted overrides win; unknown IDs format an exact label or remain raw."""
+        self.assertEqual(
+            project_model_display(
+                "mdx:bs_pope_4stem_09072026_aname",
+                explicit_display="Trusted title",
+            ),
+            "Trusted title",
+        )
+        self.assertEqual(
+            project_model_display(
+                "mdx:private-model",
+                source_label="BS Roformer 4 stems FT InstVoc HQ by viperx",
+            ),
+            "BandSplit Roformer — (4 Stems) Fine-Tuned Instrumental/Vocals High Quality · ViperX",
+        )
+        self.assertEqual(
+            project_model_display("mdx:private-model"),
+            "private-model",
+        )
+
+    def test_projector_curates_demucs_backend_from_an_exact_source_label(self) -> None:
+        """Demucs generation remains visible when its artifact basename differs."""
+        self.assertEqual(
+            project_model_display(
+                "demucs:htdemucs_ft-f7e0c4bc",
+                source_label="Demucs v4: htdemucs_ft",
+            ),
+            "v4 — HTDemucs Fine-Tuned",
+        )
 
 
 if __name__ == "__main__":

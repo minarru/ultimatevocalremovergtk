@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "model_aliases": {
+    "vr:1_HP-UVR": "HP 1",
+    "vr:2_HP-UVR": "HP 2",
+    "vr:3_HP-Vocal-UVR": "HP Vocal 3",
+    "vr:4_HP-Vocal-UVR": "HP Vocal 4",
+    "vr:5_HP-Karaoke-UVR": "HP Karaoke 5",
+    "vr:6_HP-Karaoke-UVR": "HP Karaoke 6",
+    "vr:7_HP2-UVR": "HP2 7",
+    "vr:8_HP2-UVR": "HP2 8",
+    "vr:9_HP2-UVR": "HP2 9",
+    "vr:10_SP-UVR-2B-32000-1": "SP 2-Band 32 kHz 1",
+    "vr:11_SP-UVR-2B-32000-2": "SP 2-Band 32 kHz 2",
+    "vr:12_SP-UVR-3B-44100": "SP 3-Band 44.1 kHz",
+    "vr:13_SP-UVR-4B-44100-1": "SP 4-Band 44.1 kHz 1",
+    "vr:14_SP-UVR-4B-44100-2": "SP 4-Band 44.1 kHz 2",
+    "vr:15_SP-UVR-MID-44100-1": "SP Mid 44.1 kHz 1",
+    "vr:16_SP-UVR-MID-44100-2": "SP Mid 44.1 kHz 2",
+    "vr:17_HP-Wind_Inst-UVR": "HP Wind Instrumental 17",
+    "vr:MGM_HIGHEND_v4": "MGM High-End",
+    "vr:MGM_LOWEND_A_v4": "MGM Low-End A",
+    "vr:MGM_LOWEND_B_v4": "MGM Low-End B",
+    "vr:MGM_MAIN_v4": "MGM Main",
+    "vr:UVR-BVE-4B_SN-44100-1": "Karaoke BVE (4 Bands, SN, 44.1 kHz) 1",
+    "demucs:demucs": "v1 — Demucs",
+    "demucs:demucs_extra": "v1 — Demucs Extra",
+    "demucs:light": "v1 — Light",
+    "demucs:light_extra": "v1 — Light Extra",
+    "demucs:tasnet": "v1 — TasNet",
+    "demucs:tasnet_extra": "v1 — TasNet Extra",
+    "demucs:demucs48_hq": "v2 — Demucs 48 kHz High Quality",
+    "demucs:demucs_unittest": "v2 — Demucs Unit Test",
+    "demucs:mdx": "v3 — MDX",
+    "demucs:mdx_extra": "v3 — MDX Extra",
+    "demucs:mdx_extra_q": "v3 — MDX Extra Quality",
+    "demucs:mdx_q": "v3 — MDX Quality",
+    "demucs:repro_mdx_a": "v3 — Repro MDX A",
+    "demucs:repro_mdx_a_hybrid_only": "v3 — Repro MDX A Hybrid Only",
+    "demucs:repro_mdx_a_time_only": "v3 — Repro MDX A Time Only",
+    "demucs:UVR Model": "v3 — UVR Model",
+    "demucs:hdemucs_mmi": "v4 — HDemucs MMI",
+    "demucs:htdemucs": "v4 — HTDemucs",
+    "demucs:htdemucs_6s": "v4 — HTDemucs (6 Stems)",
+    "demucs:htdemucs_ft": "v4 — HTDemucs Fine-Tuned",
+    "mdx:bs_pope_4stem_09072026_aname": "BandSplit PolarFormer — 09-07-2026 (4 Stems) · Aname",
+    "mdx:bs_pope_4stem_aname": "BandSplit PolarFormer — Lazy Bat (4 Stems) · Aname",
+    "mdx:bs_pope_instvoc_aname": "BandSplit PolarFormer — Instrumental/Vocals Duality Lazy Bat · Aname",
+    "mdx:bs_pope_karaoke_974_lambda": "BandSplit PolarFormer — Karaoke · Lambda001",
+    "mdx:bs_pope_vocals_zfturbo": "BandSplit PolarFormer — Vocals · ZFTurbo",
+    "mdx:mbr_instfv9_gabox": "MelBand Roformer — Instrumental Fv9 · GaboxR67 [mbr_instfv9_gabox]",
+    "mdx:mbr_inst_becruily": "MelBand Roformer — Instrumental · Becruily [mbr_inst_becruily]",
+    "mdx:mbr_karaoke_fusion_aggr_gonzaluigi": "MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi [mbr_karaoke_fusion_aggr_gonzaluigi]"
+  },
+  "author_aliases": {
+    "anvuew": "Anvuew",
+    "aufr33": "Aufr33",
+    "becrily": "Becruily",
+    "becruily": "Becruily",
+    "gilliaaan": "Gilliaaan",
+    "viperx": "ViperX",
+    "zfturbo": "ZFTurbo"
+  },
+  "waivers": {
+    "mdx:mbr_instfv9_gabox": {
+      "embedded-id": "The bracketed exact backend ID distinguishes a same-title catalogue collision."
+    },
+    "mdx:mbr_inst_becruily": {
+      "embedded-id": "The bracketed exact backend ID distinguishes a same-title catalogue collision."
+    },
+    "mdx:mbr_karaoke_fusion_aggr_gonzaluigi": {
+      "embedded-id": "The bracketed exact backend ID distinguishes a same-title catalogue collision.",
+      "near-duplicate-author": "Gonzaluigi is a reviewed distinct attribution from Gonza."
+    },
+    "mdx:mbr_karaoke_fusion_aggr_gonza": {
+      "near-duplicate-author": "Gonza is a reviewed distinct attribution from Gonzaluigi."
+    }
+  }
+}
