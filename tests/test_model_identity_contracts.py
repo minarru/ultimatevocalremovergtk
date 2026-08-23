@@ -9,10 +9,10 @@ import os
 import tempfile
 import unittest
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
-from bundled.constants import CHOOSE_MODEL, NO_MODEL
+from bundled.constants import CHOOSE_MODEL, MDX_ARCH_TYPE, NO_MODEL, VR_ARCH_TYPE
 from core.catalogue_coordinator import CatalogueCoordinator
 from core.catalogue_types import SourceId
 from core.model_catalogue import CatalogEntryId, ModelCatalogueRecord, ModelCatalogueService
@@ -578,6 +578,81 @@ class DownloadMatchingLockTests(unittest.TestCase):
         message = str(ctx.exception)
         self.assertIn(self.hq4_id.value, message)
         self.assertIn(other_id.value, message)
+
+
+class CatalogueDisplayProjectionTests(unittest.TestCase):
+    def test_catalogue_record_uses_the_exact_id_aware_projector(self) -> None:
+        from core.catalog_sources import EntryMeta
+
+        selection = "VR Arch Single Model v5: 1_HP-UVR"
+        raw = {"1_HP-UVR.pth": "https://example.invalid/1_HP-UVR.pth"}
+        manager = SimpleNamespace(
+            _coordinator=None,
+            vr_download_list={selection: raw},
+            mdx_download_list={},
+            demucs_download_list={},
+            apollo_download_list={},
+            unsupported_download_list={},
+            catalogue_meta={
+                selection: EntryMeta(
+                    label=selection,
+                    display="1_HP-UVR",
+                    arch=VR_ARCH_TYPE,
+                    files=raw,
+                    checkpoint="1_HP-UVR.pth",
+                )
+            },
+            resolve=lambda *_args, **_kwargs: (),
+        )
+
+        row = ModelCatalogueService(cast(Any, manager)).records()[0]
+
+        self.assertEqual(row.display, "HP 1")
+
+    def test_catalogue_projection_uses_family_split_metadata(self) -> None:
+        from core.catalog_sources import EntryMeta
+
+        selection = "VR Arch Single Model v5: 1_HP-UVR"
+        vr_raw = {"1_HP-UVR.pth": "https://example.invalid/1_HP-UVR.pth"}
+        mdx_raw = {"1_HP-UVR.onnx": "https://example.invalid/1_HP-UVR.onnx"}
+        vr_meta = EntryMeta(
+            label=selection,
+            display="1_HP-UVR",
+            arch=VR_ARCH_TYPE,
+            files=vr_raw,
+            checkpoint="1_HP-UVR.pth",
+        )
+        mdx_meta = EntryMeta(
+            label=selection,
+            display="1_HP-UVR",
+            arch=MDX_ARCH_TYPE,
+            files=mdx_raw,
+            checkpoint="1_HP-UVR.onnx",
+        )
+        manager = SimpleNamespace(
+            _coordinator=SimpleNamespace(
+                _latest=SimpleNamespace(
+                    revision=None,
+                    meta_by_family={
+                        "vr": {selection: vr_meta},
+                        "mdx": {selection: mdx_meta},
+                    },
+                )
+            ),
+            vr_download_list={selection: vr_raw},
+            mdx_download_list={selection: mdx_raw},
+            demucs_download_list={},
+            apollo_download_list={},
+            unsupported_download_list={},
+            # The compatibility-flat value is deliberately the wrong family
+            # for VR; surface projection must not consume it.
+            catalogue_meta={selection: mdx_meta},
+            resolve=lambda *_args, **_kwargs: (),
+        )
+
+        rows = ModelCatalogueService(cast(Any, manager)).records()
+
+        self.assertEqual([row.display for row in rows], ["HP 1", "1_HP-UVR"])
 
 
 class ModelRecordContractTests(unittest.TestCase):

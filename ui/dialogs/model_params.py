@@ -190,9 +190,12 @@ class _ParamDialog:
         is_ckpt = getattr(self.model_data, "is_mdx_ckpt", False) or str(self.model_data.model_path).endswith(CKPT)
         repo = getattr(self.model_data, "repo", None)
         title = (
-            display_name_for_model(method, self.model_data.model_name, repo)
-            if repo is not None
-            else self.model_data.model_name
+            str(getattr(self.model_data, "model_display_label", "") or "")
+            or (
+                display_name_for_model(method, self.model_data.model_name, repo)
+                if repo is not None
+                else self.model_data.model_name
+            )
         )
         group = Adw.PreferencesGroup(
             title=f"{title}",

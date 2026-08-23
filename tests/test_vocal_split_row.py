@@ -425,7 +425,9 @@ class VocalSplitRowTests(unittest.TestCase):
         )
         repo.mdx_name_select_MAPPER = {
             "karaoke_model.onnx": "Karaoke Friendly",
-            "plain_model.onnx": "Plain Friendly",
+            # Presentation wording is intentionally misleading: metadata alone
+            # decides whether a Vocal Splitter row is eligible.
+            "plain_model.onnx": "Karaoke-labelled decoy",
         }
         repo.default_change_model_tags = lambda: [
             "mdx:karaoke_model",
@@ -455,7 +457,7 @@ class VocalSplitRowTests(unittest.TestCase):
         displayed = combo_values(row.splitter_row)
 
         self.assertIn("Karaoke Friendly", displayed)
-        self.assertNotIn("Plain Friendly", displayed)
+        self.assertNotIn("Karaoke-labelled decoy", displayed)
         # The label is presentation; selecting it must store the canonical id.
         row.split_switch.set_active(True)
         row.splitter_row.set_selected(displayed.index("Karaoke Friendly"))

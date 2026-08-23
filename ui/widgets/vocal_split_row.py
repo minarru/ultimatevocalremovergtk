@@ -199,7 +199,9 @@ class VocalSplitRow(Adw.ExpanderRow):
     def refresh_summary(self) -> None:
         """Re-read the section's subtitle from the cached settings."""
         settings = self._settings
-        self.set_subtitle(vocal_split_summary(settings) if settings is not None else OFF)
+        self.set_subtitle(
+            vocal_split_summary(settings, self._repo) if settings is not None else OFF
+        )
 
     def _show_splitter_warning(self) -> None:
         row = getattr(self, "splitter_warning_row", None)

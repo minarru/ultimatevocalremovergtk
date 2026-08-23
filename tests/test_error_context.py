@@ -101,6 +101,21 @@ class ErrorContextTests(unittest.TestCase):
         self.assertEqual(ctx["input_files"], ["song.wav"])
         self.assertTrue(ctx["models"])
 
+    @unittest.mock.patch("core.error_context.ModelIdentityService")
+    def test_build_separation_context_prefers_installed_record_display(
+        self, service: unittest.mock.Mock
+    ) -> None:
+        service.return_value.display_label.return_value = "Inst HQ 3"
+        settings = Settings.defaults()
+        settings.set("chosen_process_method", MDX_ARCH_TYPE)
+        settings.set("mdx_net_model", "mdx:UVR-MDX-NET-Inst_HQ_3")
+
+        ctx = build_separation_context(
+            settings, ModelRepository(), ["song.wav"], MDX_ARCH_TYPE
+        )
+
+        self.assertEqual(ctx["models"], ["Inst HQ 3"])
+
     def test_model_summary_lines_for_vr_and_demucs(self) -> None:
         """Regression: VR/Demucs branches must not NameError on VR_ARCH_TYPE."""
 
@@ -129,6 +144,26 @@ class ErrorContextTests(unittest.TestCase):
             demucs.overlap = 0.25
             demucs_lines = model_summary_lines(demucs)
             self.assertTrue(any("engine=Demucs" in line for line in demucs_lines))
+
+    def test_model_summary_prefers_the_carried_identity_display(self) -> None:
+        model = unittest.mock.Mock()
+        model.model_display_label = "BandSplit PolarFormer — Karaoke · Lambda001"
+        model.process_method = MDX_ARCH_TYPE
+        model.model_name = "raw-checkpoint"
+        model.model_basename = "raw-checkpoint"
+        model.repo = object()
+        model.is_roformer = True
+        model.mdx_segment_size = 256
+        model.is_mdx_c_seg_def = False
+        model.overlap_mdx23 = 8
+        model.is_secondary_model_activated = False
+
+        with unittest.mock.patch(
+            "core.error_context.display_name_for_model", return_value="stale mapper label"
+        ):
+            lines = model_summary_lines(model)
+
+        self.assertEqual(lines[0], f"model={model.model_display_label}")
 
 
 if __name__ == "__main__":

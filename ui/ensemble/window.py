@@ -1036,6 +1036,15 @@ class EnsemblePage:
             parse_stored_model_id,
         )
 
+        preserve_presented_gate = bool(
+            getattr(self, "_models_write_gated", False)
+            and preselected == getattr(self, "_models_gated_values", None)
+        )
+        prior_gated_ids = set(
+            getattr(self, "_models_gated_ids", ())
+            if preserve_presented_gate
+            else ()
+        )
         identity_error: Exception | None = None
         try:
             all_records = tuple(ModelIdentityService(self.context.repo).records())
@@ -1105,8 +1114,34 @@ class EnsemblePage:
                 self.context.repo.ensemble_model_list(self.settings, pair)
             )
             member_warnings = collect_member_warnings(eligible_ids)
+            gated_ids = {
+                value
+                for index, value in enumerate(preselected)
+                if isinstance(value, str)
+                and member_warning(index, value, eligible_ids) is not None
+            }
+            if preserve_presented_gate:
+                gated_ids.update(prior_gated_ids)
+                newly_available = sorted(prior_gated_ids - {
+                    value
+                    for index, value in enumerate(preselected)
+                    if isinstance(value, str)
+                    and member_warning(index, value, eligible_ids) is not None
+                })
+                member_warnings = (
+                    *member_warnings,
+                    *(
+                        f"ensemble member {value!r} is now available; "
+                        "pick it to select it"
+                        for value in newly_available
+                    ),
+                )
             self._ensemble_member_warnings = member_warnings
-            self._models_write_gated = bool(member_warnings)
+            self._models_write_gated = bool(member_warnings) or bool(gated_ids)
+            self._models_gated_values = (
+                list(preselected) if self._models_write_gated else None
+            )
+            self._models_gated_ids = tuple(sorted(gated_ids))
             records = sorted(
                 (
                     record
@@ -1141,7 +1176,7 @@ class EnsemblePage:
             set_row_title(row, title)
             row.set_subtitle(subtitle)
             check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
-            check.set_active(tag in preselected_ids)
+            check.set_active(tag in preselected_ids and tag not in gated_ids)
             check.connect("toggled", self._on_model_toggled)
             row.add_prefix(check)
             row.set_activatable_widget(check)
@@ -1316,6 +1351,8 @@ class EnsemblePage:
         if not self._loading:
             set_combo_value(self.saved_row, CHOOSE_ENSEMBLE_OPTION)
         self._models_write_gated = False
+        self._models_gated_values = None
+        self._models_gated_ids = ()
         self._ensemble_validation_warnings = ()
         self._ensemble_member_warnings = ()
         self._persist_selected_models()

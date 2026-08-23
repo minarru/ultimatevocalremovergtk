@@ -17,6 +17,7 @@ from bundled.constants import (
     VR_ARCH_TYPE,
 )
 from core.model_display import display_name_for_model
+from core.model_identity import ModelIdentityService
 from core.settings import Settings
 from core.settings.flat_map import FLAT_TO_PATH
 
@@ -206,7 +207,10 @@ def non_default_setting_lines(settings: Settings) -> List[str]:
 
 
 def model_summary_lines(model: typing.Any) -> List[str]:
-    label = display_name_for_model(model.process_method, model.model_name, model.repo)
+    label = (
+        str(getattr(model, "model_display_label", "") or "")
+        or display_name_for_model(model.process_method, model.model_name, model.repo)
+    )
     lines = [
         f"model={label or model.model_name}",
         f"basename={model.model_basename or '(unknown)'}",
@@ -330,7 +334,10 @@ def build_separation_context(
     )
     models: List[str] = []
     if model_name and model_name not in (CHOOSE_MODEL, "", None):
-        label = display_name_for_model(method_key, model_name, repo)
+        try:
+            label = ModelIdentityService(repo).display_label(str(model_name))
+        except (TypeError, ValueError):
+            label = display_name_for_model(method_key, model_name, repo)
         models.append(label or str(model_name))
 
     return {

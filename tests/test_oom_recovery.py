@@ -206,6 +206,33 @@ class JobRunnerOomRecoveryTests(unittest.TestCase):
     @patch("core.separator_run.prepare_separator_vram")
     @patch("core.separator_run._release_inference_resources")
     @patch("core.separator_run.release_separator")
+    def test_oom_dialog_prefers_the_carried_identity_display(
+        self, _release_sep: Any, _release_inf: Any, _prep_vram: Any
+    ) -> None:
+        model = self._model(2208)
+        model.model_display_label = "SCNet Transient"
+
+        def rebuild() -> FakeSeparator:
+            return FakeSeparator(model, always_fail=True)
+
+        def on_choice(request: OomChoiceRequest) -> None:
+            self.assertEqual(request.model_label, "SCNet Transient")
+            request.respond(OOM_CHOICE_STOP)
+
+        callbacks = JobCallbacks(on_oom_choice=on_choice, on_console=lambda _t: None)
+        with self.assertRaises(ProcessStopped):
+            run_separator(
+                self.runner,
+                rebuild(),
+                callbacks=callbacks,
+                model=model,
+                process_kind="separation",
+                rebuild=rebuild,
+            )
+
+    @patch("core.separator_run.prepare_separator_vram")
+    @patch("core.separator_run._release_inference_resources")
+    @patch("core.separator_run.release_separator")
     def test_auto_retries_then_reraises(
         self, _release_sep: Any, _release_inf: Any, _prep_vram: Any
     ) -> None:

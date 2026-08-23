@@ -1014,3 +1014,49 @@ class CliDisplayParityTests(unittest.TestCase):
             record.artifacts.supporting_filenames,
             ("melband_roformer_karaoke_becruily.yaml",),
         )
+
+    def test_human_ensemble_plan_lists_display_and_exact_id(self) -> None:
+        from cli.job import format_effective_plan
+
+        text = format_effective_plan(
+            {
+                "models": [
+                    {"id": "mdx:first", "display": "Friendly First"},
+                    {"id": "vr:second", "display": "Friendly Second"},
+                ],
+                "output": "/tmp/out",
+                "settings": {"process": {}},
+                "metadata": {},
+                "device": "cpu",
+                "inputs": [],
+            }
+        )
+
+        self.assertIn("Friendly First [mdx:first]", text)
+        self.assertIn("Friendly Second [vr:second]", text)
+
+    def test_human_plan_uses_vocal_splitter_display(self) -> None:
+        from cli.job import format_effective_plan
+
+        text = format_effective_plan(
+            {
+                "models": [{"id": "mdx:main", "display": "Friendly Main"}],
+                "output": "/tmp/out",
+                "settings": {
+                    "process": {
+                        "vocal_splitter_enabled": True,
+                        "vocal_splitter": "vr:splitter",
+                    }
+                },
+                "metadata": {
+                    "vocal_splitter": {
+                        "id": "vr:splitter",
+                        "display": "HP Karaoke 5",
+                    }
+                },
+                "device": "cpu",
+                "inputs": [],
+            }
+        )
+
+        self.assertIn("vocal splitter: HP Karaoke 5 [vr:splitter]", text)

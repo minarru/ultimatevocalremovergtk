@@ -177,7 +177,8 @@ def run_separator(
             first_retry = candidates[0] if candidates else None
             try:
                 model_label = (
-                    (
+                    str(getattr(model, "model_display_label", "") or "")
+                    or (
                         display_name_for_model(
                             model.process_method, model.model_name, model.repo
                         )

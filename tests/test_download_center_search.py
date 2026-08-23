@@ -88,6 +88,77 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
 
         self.assertTrue(win._row_matches_filter(row, "mdx"))
 
+    def test_download_row_uses_the_exact_id_aware_display(self) -> None:
+        from types import SimpleNamespace
+
+        from gi.repository import Gtk
+
+        from bundled.constants import VR_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from ui.download_center import DownloadCenterWindow
+
+        selection = "VR Arch Single Model v5: 1_HP-UVR"
+        raw = {"1_HP-UVR.pth": "https://example.invalid/1_HP-UVR.pth"}
+        win = cast(Any, object.__new__(DownloadCenterWindow))
+        win.manager = SimpleNamespace(
+            catalogue_meta={
+                selection: EntryMeta(
+                    label=selection,
+                    display="1_HP-UVR",
+                    arch=VR_ARCH_TYPE,
+                    files=raw,
+                    checkpoint="1_HP-UVR.pth",
+                )
+            },
+            vr_download_list={selection: raw},
+            mdx_download_list={},
+            demucs_download_list={},
+            apollo_download_list={},
+        )
+        win._row_checks = {}
+        win._row_actions = {}
+        win._list_boxes = {VR_ARCH_TYPE: Gtk.ListBox()}
+
+        win._add_model_row(VR_ARCH_TYPE, selection)
+
+        self.assertEqual(win._row_actions[(VR_ARCH_TYPE, selection)].get_title(), "HP 1")
+
+    def test_live_filter_matches_the_exact_id_aware_display(self) -> None:
+        from types import SimpleNamespace
+
+        from gi.repository import Adw, Gtk
+
+        from bundled.constants import VR_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.model_scores import PURPOSE_ALL
+        from ui.download_center import DownloadCenterWindow
+        from ui.widget_state import stash
+
+        selection = "VR Arch Single Model v5: 1_HP-UVR"
+        raw = {"1_HP-UVR.pth": "https://example.invalid/1_HP-UVR.pth"}
+        win = cast(Any, object.__new__(DownloadCenterWindow))
+        win._hide_unsupported = False
+        win._purpose = PURPOSE_ALL
+        win.manager = SimpleNamespace(
+            catalogue_meta={
+                selection: EntryMeta(
+                    label=selection,
+                    display="1_HP-UVR",
+                    arch=VR_ARCH_TYPE,
+                    files=raw,
+                    checkpoint="1_HP-UVR.pth",
+                )
+            }
+        )
+        search = Gtk.SearchEntry()
+        search.set_text("HP 1")
+        win._search_entries = {VR_ARCH_TYPE: search}
+        row = Adw.ActionRow()
+        stash(row, "_uvr_model_name", selection)
+        stash(row, "_uvr_display_name", "HP 1")
+
+        self.assertTrue(win._row_matches_filter(row, VR_ARCH_TYPE))
+
 
 class CanonicalSearchTests(unittest.TestCase):
     def test_query_matches_canonical_name(self) -> None:

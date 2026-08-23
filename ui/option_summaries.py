@@ -23,6 +23,7 @@ from bundled.constants import (
     NO_MODEL,
 )
 from core.model_display import parse_model_tag
+from core.model_identity import ModelIdentityService
 from core.stems import EnsemblePair, coerce_ensemble_pair, ui_label
 
 from .settings_bind import enum_value, get_flat
@@ -46,7 +47,7 @@ _SECONDARY_PAIRS: Tuple[Tuple[str, str], ...] = (
 )
 
 
-def _model_label(tag: typing.Any) -> str:
+def _model_label(tag: typing.Any, repo: typing.Any = None) -> str:
     """Return the display/basename half of a stored model reference.
 
     Accepts canonical ids (``mdx:basename``) and leftover ``Arch: Display``
@@ -55,6 +56,11 @@ def _model_label(tag: typing.Any) -> str:
     """
     if not tag or tag == NO_MODEL:
         return ""
+    if repo is not None:
+        try:
+            return ModelIdentityService(repo).display_label(str(tag))
+        except (TypeError, ValueError):
+            pass
     _arch, name = parse_model_tag(str(tag))
     return name or str(tag)
 
@@ -78,7 +84,13 @@ def four_stem_secondaries_apply(settings: typing.Any, process_method: str) -> bo
     return is_demucs and settings.demucs.stems == ALL_STEMS
 
 
-def secondary_models_summary(settings: typing.Any, prefix: str, *, four_stem: bool) -> str:
+def secondary_models_summary(
+    settings: typing.Any,
+    prefix: str,
+    *,
+    four_stem: bool,
+    repo: typing.Any = None,
+) -> str:
     """One-line state of the per-architecture secondary-model section.
 
     ``four_stem`` must match what the section actually shows (see
@@ -92,7 +104,7 @@ def secondary_models_summary(settings: typing.Any, prefix: str, *, four_stem: bo
     parts: List[str] = []
     for slot, label in pairs:
         name = _model_label(
-            get_flat(settings, f"{prefix}_{slot}_secondary_model", NO_MODEL)
+            get_flat(settings, f"{prefix}_{slot}_secondary_model", NO_MODEL), repo
         )
         if not name:
             continue
@@ -106,11 +118,11 @@ def secondary_models_summary(settings: typing.Any, prefix: str, *, four_stem: bo
     return _SEP.join(parts) if parts else ON_NO_MODEL
 
 
-def preproc_summary(settings: typing.Any) -> str:
+def preproc_summary(settings: typing.Any, repo: typing.Any = None) -> str:
     """One-line state of the Demucs pre-process-model section."""
     if not settings.demucs.is_pre_proc_model_activate:
         return OFF
-    name = _model_label(settings.demucs.pre_proc_model or NO_MODEL)
+    name = _model_label(settings.demucs.pre_proc_model or NO_MODEL, repo)
     if not name:
         return ON_NO_MODEL
     if settings.demucs.is_pre_proc_model_inst_mix:
@@ -118,7 +130,7 @@ def preproc_summary(settings: typing.Any) -> str:
     return name
 
 
-def vocal_split_summary(settings: typing.Any) -> str:
+def vocal_split_summary(settings: typing.Any, repo: typing.Any = None) -> str:
     """One-line state of the vocal-splitter and deverb section.
 
     This section holds two independent switches, so it is ``OFF`` only when both
@@ -131,7 +143,7 @@ def vocal_split_summary(settings: typing.Any) -> str:
 
     parts: List[str] = []
     if split_on:
-        name = _model_label(settings.process.vocal_splitter or NO_MODEL)
+        name = _model_label(settings.process.vocal_splitter or NO_MODEL, repo)
         parts.append(name if name else ON_NO_MODEL)
     if deverb_on:
         parts.append(f"deverb: {enum_value(settings.process.deverb_vocal_opt)}")

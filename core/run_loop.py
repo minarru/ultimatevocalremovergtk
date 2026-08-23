@@ -60,7 +60,8 @@ def _progress_detail(
         parts.append(f"Chunk {chunk_num}/{chunk_total}")
     if model is not None:
         label = (
-            display_name_for_model(
+            str(getattr(model, "model_display_label", "") or "")
+            or display_name_for_model(
                 model.process_method, model.model_name, model.repo
             )
             or getattr(model, "model_basename", "")

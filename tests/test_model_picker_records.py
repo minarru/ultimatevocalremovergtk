@@ -402,6 +402,49 @@ class EnsemblePickerTests(unittest.TestCase):
         self.assertIn("mdx:ineligible", warnings[0])
         self.assertIn("not eligible", warnings[0])
 
+    def test_refresh_lists_a_newly_installed_gated_member_without_selecting_it(self) -> None:
+        """A repository refresh may reveal an ID, but only a click selects it."""
+        from core.settings import Settings
+        from core.stems import EnsemblePair
+        from ui.ensemble import window as ensemble_window
+
+        missing_id = "mdx:later"
+        settings = Settings()
+        settings.ensemble.selected_models = ["mdx:installed", missing_id]
+        eligible = ["mdx:installed"]
+        records = [_record("mdx:installed", "Installed")]
+        page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
+        page.models_listbox = _FakeListBox()
+        page.context = SimpleNamespace(
+            repo=SimpleNamespace(
+                ensemble_model_list=lambda _settings, _pair: list(eligible)
+            )
+        )
+        page.settings = settings
+        page._ensemble_pair = lambda: EnsemblePair.VOCALS_INSTRUMENTAL
+        page._update_models_dialog_status = lambda: None
+        page._update_models_summary = lambda: None
+
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records",
+            side_effect=lambda: tuple(records),
+        ), mock.patch.object(
+            ensemble_window.Adw, "ActionRow", _FakeRow
+        ), mock.patch.object(
+            ensemble_window.Gtk, "CheckButton", _FakeCheck
+        ), mock.patch.object(ensemble_window, "stash"):
+            page._rebuild_model_list(list(settings.ensemble.selected_models))
+            self.assertTrue(page._models_write_gated)
+
+            records.append(_record(missing_id, "Arrived Later"))
+            eligible.append(missing_id)
+            page._rebuild_model_list(list(settings.ensemble.selected_models))
+
+        self.assertIn(missing_id, page._model_checks)
+        self.assertFalse(page._model_checks[missing_id].get_active())
+        self.assertTrue(page._models_write_gated)
+        self.assertEqual(settings.ensemble.selected_models, ["mdx:installed", missing_id])
+
 
 class _FakeControl:
     def __init__(self, *, active: bool = False) -> None:

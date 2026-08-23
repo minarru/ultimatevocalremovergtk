@@ -69,6 +69,64 @@ class ChangeDefaultsIdentityTests(unittest.TestCase):
             identity=self.record,
         )
 
+    def test_parameter_dialog_prefers_the_carried_identity_display(self) -> None:
+        from ui.dialogs import model_params
+
+        model_data = SimpleNamespace(
+            process_method=MDX_ARCH_TYPE,
+            model_path="checkpoint.onnx",
+            model_name="raw-checkpoint",
+            model_display_label=self.record.display,
+            repo=self.repo,
+        )
+        dialog = model_params._ParamDialog.__new__(model_params._ParamDialog)
+        dialog.model_data = model_data
+        dialog.existing = {}
+        groups: list[object] = []
+        page = SimpleNamespace(add=groups.append)
+
+        class Group:
+            def __init__(self, **kwargs: object) -> None:
+                self.title = kwargs.get("title")
+
+        with mock.patch.object(
+            model_params.Adw, "PreferencesGroup", Group
+        ), mock.patch.object(
+            model_params, "display_name_for_model", return_value="stale mapper label"
+        ), mock.patch.object(dialog, "_build_mdx"):
+            dialog._build(page)
+
+        self.assertEqual(getattr(groups[0], "title", None), self.record.display)
+
+    def test_parameter_dialog_keeps_the_carried_display_without_a_repository(
+        self,
+    ) -> None:
+        from ui.dialogs import model_params
+
+        model_data = SimpleNamespace(
+            process_method=MDX_ARCH_TYPE,
+            model_path="checkpoint.onnx",
+            model_name="raw-checkpoint",
+            model_display_label=self.record.display,
+            repo=None,
+        )
+        dialog = model_params._ParamDialog.__new__(model_params._ParamDialog)
+        dialog.model_data = model_data
+        dialog.existing = {}
+        groups: list[object] = []
+        page = SimpleNamespace(add=groups.append)
+
+        class Group:
+            def __init__(self, **kwargs: object) -> None:
+                self.title = kwargs.get("title")
+
+        with mock.patch.object(
+            model_params.Adw, "PreferencesGroup", Group
+        ), mock.patch.object(dialog, "_build_mdx"):
+            dialog._build(page)
+
+        self.assertEqual(getattr(groups[0], "title", None), self.record.display)
+
 
 if __name__ == "__main__":
     unittest.main()

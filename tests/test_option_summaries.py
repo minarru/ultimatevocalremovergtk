@@ -4,6 +4,7 @@ from __future__ import annotations
 import typing
 
 import unittest
+from unittest.mock import patch
 
 from bundled.constants import (
     ALL_STEMS,
@@ -109,6 +110,24 @@ class SecondaryModelsSummaryTests(unittest.TestCase):
         self.assertIn("UVR-MDX-NET-Inst_HQ_3", summary)
         self.assertNotIn("mdx:", summary)
 
+    @patch("ui.option_summaries.ModelIdentityService")
+    def test_canonical_id_uses_the_installed_record_display(
+        self, service: typing.Any
+    ) -> None:
+        service.return_value.display_label.return_value = "Inst HQ 3"
+        settings = _Settings(
+            mdx_is_secondary_model_activate=True,
+            mdx_voc_inst_secondary_model="mdx:UVR-MDX-NET-Inst_HQ_3",
+            mdx_voc_inst_secondary_model_scale=0.9,
+        )
+
+        summary = secondary_models_summary(
+            settings, "mdx", four_stem=False, repo=object()
+        )
+
+        self.assertIn("Inst HQ 3", summary)
+        self.assertNotIn("UVR-MDX-NET-Inst_HQ_3", summary)
+
     def test_two_stem_ignores_other_bass_drums(self):
         settings = _Settings(
             demucs_is_secondary_model_activate=True,
@@ -183,6 +202,19 @@ class VocalSplitSummaryTests(unittest.TestCase):
             is_deverb_vocals=False,
         )
         self.assertEqual(vocal_split_summary(settings), "UVR-BVE-4B")
+
+    @patch("ui.option_summaries.ModelIdentityService")
+    def test_splitter_uses_the_installed_record_display(
+        self, service: typing.Any
+    ) -> None:
+        service.return_value.display_label.return_value = "BV 4B"
+        settings = _Settings(
+            is_set_vocal_splitter=True,
+            set_vocal_splitter="vr:UVR-BVE-4B",
+            is_deverb_vocals=False,
+        )
+
+        self.assertEqual(vocal_split_summary(settings, repo=object()), "BV 4B")
 
     def test_splitter_on_without_model_reports_no_model(self):
         settings = _Settings(

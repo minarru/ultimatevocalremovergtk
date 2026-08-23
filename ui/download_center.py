@@ -36,7 +36,13 @@ from .dialogs.utils import close_on_escape
 from .dispatch import idle_on_main
 from .hints import set_icon_button_a11y
 from core.model_naming import canonical_display_name
-from core.model_catalogue import catalogue_label_matches, filter_catalogue_labels
+from core.model_catalogue import (
+    catalogue_entry_meta,
+    catalogue_label_matches,
+    filter_catalogue_labels,
+    project_catalogue_display,
+)
+from core.model_identity import FAMILY_BY_ARCH
 from core.model_scores import primary_sdr, sdr_for_files
 
 from .markup import set_row_subtitle, set_row_title
@@ -332,7 +338,10 @@ class DownloadCenterWindow:
             return True
         query = search.get_text().strip().casefold()
         reason = fetch(action, "_uvr_unsupported_reason", "")
-        return catalogue_label_matches(str(label), query, extra=str(reason))
+        display = fetch(action, "_uvr_display_name", "")
+        return catalogue_label_matches(
+            str(label), query, extra=f"{display} {reason}".strip()
+        )
 
     def _row_sort_key(self, row: typing.Any) -> tuple[int, int, float, str]:
         """Order key: supported first, then the active sort mode, then name."""
@@ -432,18 +441,20 @@ class DownloadCenterWindow:
 
         stem, sdr, stems_text = self._row_score(name)
 
+        display = self._catalogue_display(arch, name)
         action = Adw.ActionRow()
-        set_row_title(action, canonical_display_name(name))
+        set_row_title(action, display)
         action.add_prefix(check)
         action.set_activatable_widget(check)
         # Identity stays the raw catalogue label: resolve()/download() key on it.
         stash(action, "_uvr_model_name", name)
+        stash(action, "_uvr_display_name", display)
         stash(action, "_uvr_check", check)
         stash(action, "_uvr_unsupported", False)
         stash(action, "_uvr_sdr", sdr)
         stash(action, "_uvr_sdr_stem", stem)
         stash(action, "_uvr_stems_text", stems_text)
-        stash(action, "_uvr_sort_name", canonical_display_name(name).casefold())
+        stash(action, "_uvr_sort_name", display.casefold())
         set_row_subtitle(action, format_sdr_subtitle(sdr, stem=stem, extra=stems_text))
 
         self._row_checks[key] = check
@@ -455,21 +466,32 @@ class DownloadCenterWindow:
         if key in self._row_actions:
             return
 
+        display = self._catalogue_display(arch, name)
         action = Adw.ActionRow()
-        set_row_title(action, canonical_display_name(name))
+        set_row_title(action, display)
         set_row_subtitle(action, f"Unsupported — {reason}")
         action.add_css_class("dim-label")
         action.set_sensitive(False)
         stash(action, "_uvr_model_name", name)
+        stash(action, "_uvr_display_name", display)
         stash(action, "_uvr_unsupported", True)
         stash(action, "_uvr_unsupported_reason", reason)
         stash(action, "_uvr_sdr", parse_sdr_score(name))
         stash(action, "_uvr_sdr_stem", None)
         stash(action, "_uvr_stems_text", "")
-        stash(action, "_uvr_sort_name", canonical_display_name(name).casefold())
+        stash(action, "_uvr_sort_name", display.casefold())
 
         self._row_actions[key] = action
         self._list_boxes[arch].append(action)
+
+    def _catalogue_display(self, arch: str, selection: str) -> str:
+        family = FAMILY_BY_ARCH.get(arch)
+        if family is None:
+            return canonical_display_name(selection)
+        catalogue = getattr(self.manager, f"{family}_download_list", {})
+        raw = catalogue.get(selection) if isinstance(catalogue, dict) else None
+        meta = catalogue_entry_meta(self.manager, family, selection)
+        return project_catalogue_display(family, selection, raw, meta)
 
     def _on_row_check_toggled(self, key: tuple[str, str]) -> None:
         self._update_download_button()

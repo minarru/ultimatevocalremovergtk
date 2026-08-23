@@ -234,7 +234,16 @@ class MethodView:
         set_combo_tag_values(self.model_row, [CHOOSE_MODEL, *items])
         stored = get_flat(self.settings, self.model_key, CHOOSE_MODEL)
         ids = {item[0] for item in items}
-        self._model_write_gated = False
+        gate_survives_refresh = bool(
+            getattr(self, "_model_write_gated", False)
+            and stored == getattr(self, "_model_gated_value", None)
+        )
+        if not gate_survives_refresh:
+            self._model_write_gated = False
+            self._model_gated_value = None
+        if gate_survives_refresh:
+            set_combo_value(self.model_row, CHOOSE_MODEL)
+            return
         stored_is_item = isinstance(stored, str) and stored in ids
         if stored not in (CHOOSE_MODEL, NO_MODEL, None, "") and not stored_is_item:
             try:
@@ -259,6 +268,7 @@ class MethodView:
     def _gate_stored_model(self, stored: typing.Any, reason: str) -> None:
         """Show no selection, keep the stored text, and say why."""
         self._model_write_gated = True
+        self._model_gated_value = stored
         self.stored_model_banner.set_title(
             f"Saved model \u201c{stored}\u201d {reason}; "
             "it was kept as written \u2014 pick a model to replace it."
@@ -316,6 +326,7 @@ class MethodView:
         from core.debug_log import debug, preview_text
 
         self._model_write_gated = False
+        self._model_gated_value = None
         set_flat(self.settings, self.model_key, self.selected_model())
         name = self.selected_model()
         debug(
@@ -851,12 +862,15 @@ class MethodView:
             four_stem = four_stem_secondaries_apply(self.settings, self.method_key)
             secondary.set_subtitle(
                 secondary_models_summary(
-                    self.settings, self.secondary_prefix, four_stem=four_stem
+                    self.settings,
+                    self.secondary_prefix,
+                    four_stem=four_stem,
+                    repo=self.context.repo,
                 )
             )
         preproc = getattr(self, "preproc_expander", None)
         if preproc is not None:
-            preproc.set_subtitle(preproc_summary(self.settings))
+            preproc.set_subtitle(preproc_summary(self.settings, self.context.repo))
 
     def _sync_expander_summaries(self) -> None:
         """Refresh subtitles, then open whatever is switched on.

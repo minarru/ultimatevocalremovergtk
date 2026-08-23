@@ -516,7 +516,12 @@ def format_effective_plan(plan: dict[str, Any]) -> str:
                 f"  checkpoint: {model['checkpoint']} ({model.get('checkpoint_hash') or 'unverified'})"
             )
     elif models:
-        lines.append("  models: " + ", ".join(str(item.get("id")) for item in models))
+        lines.append(
+            "  models: "
+            + ", ".join(
+                f"{item.get('display')} [{item.get('id')}]" for item in models
+            )
+        )
     metadata = plan.get("metadata") or {}
     if metadata.get("preset"):
         lines.append(f"  ensemble: {metadata['preset']}")
@@ -538,7 +543,10 @@ def format_effective_plan(plan: dict[str, Any]) -> str:
         f"{process.get('long_file_chunk_overlap_seconds')}s"
     )
     if process.get("vocal_splitter_enabled"):
-        lines.append(f"  vocal splitter: {process.get('vocal_splitter')}")
+        splitter = metadata.get("vocal_splitter") or {}
+        splitter_id = splitter.get("id") or process.get("vocal_splitter")
+        splitter_display = splitter.get("display") or splitter_id
+        lines.append(f"  vocal splitter: {splitter_display} [{splitter_id}]")
     lines.append(
         f"  naming: model-folders={process.get('create_model_folder')} "
         f"model-name={process.get('add_model_name')}"

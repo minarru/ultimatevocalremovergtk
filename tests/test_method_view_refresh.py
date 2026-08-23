@@ -270,6 +270,43 @@ class InstalledRecordPickerTests(unittest.TestCase):
             ],
         )
 
+    def test_refresh_lists_a_newly_installed_gated_primary_without_selecting_it(self) -> None:
+        """A download repaint must not turn a preserved missing ID into a choice."""
+        missing = _record("mdx:later", "Arrived Later", installed=False)
+        records = [missing]
+        view: Any = MethodView.__new__(MethodView)
+        view.context = SimpleNamespace(repo=object())
+        view.settings = object()
+        view.model_key = "mdx_net_model"
+        view.method_key = MDX_ARCH_TYPE
+        view.resolution_method_key = ""
+        view.model_row = object()
+        view.stored_model_banner = mock.Mock()
+        selections: list[object] = []
+        items_seen: list[list[object]] = []
+
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records",
+            side_effect=lambda: tuple(records),
+        ), mock.patch(
+            "ui.views.base.get_flat", return_value=missing.id
+        ), mock.patch(
+            "ui.views.base.set_combo_tag_values",
+            side_effect=lambda _row, items: items_seen.append(list(items)),
+        ), mock.patch(
+            "ui.views.base.set_combo_value",
+            side_effect=lambda _row, value: selections.append(value),
+        ):
+            MethodView.populate_models(view)
+            self.assertEqual(selections[-1], CHOOSE_MODEL)
+
+            records[0] = _record(missing.id, missing.display, installed=True)
+            MethodView.populate_models(view)
+
+        self.assertIn((missing.id, missing.display), items_seen[-1])
+        self.assertEqual(selections[-1], CHOOSE_MODEL)
+        self.assertTrue(view._model_write_gated)
+
     def test_picker_uses_sdr_order_then_display_and_id_tiebreaks(self) -> None:
         values, _selections, _write = self._populate(
             [
@@ -561,6 +598,98 @@ class SecondaryPickerWarningGtkTests(unittest.TestCase):
         self.assertEqual(get_combo_value(combo), replacement.id)
         self.assertFalse(warning.get_visible())
         self.assertFalse(entry["write_gated"])
+
+
+@unittest.skipUnless(
+    os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),
+    "GTK widget construction needs a display",
+)
+class InstalledRecordPickerGtkTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        import gi
+
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw
+
+        cls._app = Adw.Application(
+            application_id="org.uvr.test.installed-record-picker"
+        )
+        cls._app.register()
+
+    def _view(self) -> Any:
+        from gi.repository import Adw
+        from ui.widgets.rows import make_combo_row
+
+        view: Any = MethodView.__new__(MethodView)
+        view.context = SimpleNamespace(repo=object())
+        view.settings = object()
+        view.model_key = "mdx_net_model"
+        view.method_key = MDX_ARCH_TYPE
+        view.resolution_method_key = ""
+        view.model_row = make_combo_row("Model", [CHOOSE_MODEL])
+        view.stored_model_banner = Adw.Banner(revealed=False)
+        view._loading = False
+        view._on_settings_changed = mock.Mock()
+        view.update_stem_labels = mock.Mock()
+        view.model_row.connect(
+            "notify::selected", lambda *_args: MethodView._on_model_changed(view)
+        )
+        return view
+
+    def test_friendly_repaint_preserves_the_exact_selected_id(self) -> None:
+        from ui.widgets.rows import combo_values, get_combo_value
+
+        model_id = "mdx:bs_pope_4stem_09072026_aname"
+        records = [_record(model_id, "Raw catalogue label")]
+        view = self._view()
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records",
+            side_effect=lambda: tuple(records),
+        ), mock.patch("ui.views.base.get_flat", return_value=model_id):
+            view._loading = True
+            try:
+                MethodView.populate_models(view)
+                records[0] = _record(
+                    model_id,
+                    "BandSplit PolarFormer — 09-07-2026 (4 Stems) · Aname",
+                )
+                MethodView.populate_models(view)
+            finally:
+                view._loading = False
+
+        self.assertIn(records[0].display, combo_values(view.model_row))
+        self.assertEqual(get_combo_value(view.model_row), model_id)
+
+    def test_post_download_refresh_reveals_a_gated_id_for_explicit_repick(self) -> None:
+        from ui.widgets.rows import combo_values, get_combo_value
+
+        missing = _record("mdx:later", "Arrived Later", installed=False)
+        records = [missing]
+        view = self._view()
+        writes = mock.Mock()
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records",
+            side_effect=lambda: tuple(records),
+        ), mock.patch(
+            "ui.views.base.get_flat", return_value=missing.id
+        ), mock.patch("ui.views.base.set_flat", writes):
+            view._loading = True
+            try:
+                MethodView.populate_models(view)
+                records[0] = _record(missing.id, missing.display, installed=True)
+                MethodView.populate_models(view)
+            finally:
+                view._loading = False
+
+            displayed = combo_values(view.model_row)
+            self.assertIn(missing.display, displayed)
+            self.assertEqual(get_combo_value(view.model_row), CHOOSE_MODEL)
+            view.model_row.set_selected(displayed.index(missing.display))
+
+        writes.assert_called_once_with(view.settings, view.model_key, missing.id)
+        self.assertEqual(get_combo_value(view.model_row), missing.id)
+
 
 if __name__ == "__main__":
     unittest.main()

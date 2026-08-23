@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 from urllib.parse import quote, unquote
 
 from bundled.constants import APOLLO_ARCH_TYPE, DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
@@ -22,6 +22,55 @@ FAMILY_ARCH = {
     "demucs": DEMUCS_ARCH_TYPE,
     "apollo": APOLLO_ARCH_TYPE,
 }
+
+
+def project_catalogue_display(
+    family: str,
+    selection: str,
+    raw: Any,
+    meta: Any,
+) -> str:
+    """Project one catalogue row through the exact runtime naming contract."""
+    from .model_inventory import (
+        _entry_files,
+        _project_apollo,
+        _project_demucs,
+        _project_mdx,
+        _project_vr,
+    )
+    from .model_naming import project_model_display
+
+    projector = {
+        "vr": _project_vr,
+        "mdx": _project_mdx,
+        "demucs": _project_demucs,
+        "apollo": _project_apollo,
+    }.get(family)
+    if projector is None or meta is None:
+        return canonical_display_name(selection)
+    try:
+        record = projector(
+            selection,
+            meta,
+            _entry_files(meta, raw, family),
+        )
+    except ValueError:
+        record = None
+    if record is None:
+        return canonical_display_name(selection)
+    return project_model_display(record.id, source_label=selection)
+
+
+def catalogue_entry_meta(manager: Any, family: str, selection: str) -> Any:
+    """Read native family-scoped metadata, with the legacy flat map as fallback."""
+    coordinator = getattr(manager, "_coordinator", None)
+    snapshot = getattr(coordinator, "_latest", None)
+    by_family = getattr(snapshot, "meta_by_family", None)
+    if isinstance(by_family, Mapping):
+        family_meta = by_family.get(family)
+        if isinstance(family_meta, Mapping) and selection in family_meta:
+            return family_meta[selection]
+    return manager.catalogue_meta.get(selection)
 
 
 @dataclass(frozen=True)
@@ -129,7 +178,10 @@ class ModelCatalogueService:
         for family, values in catalogues.items():
             arch = FAMILY_ARCH[family]
             for selection, _model in values.items():
-                meta = self.manager.catalogue_meta.get(selection)
+                meta = catalogue_entry_meta(self.manager, family, selection)
+                display = project_catalogue_display(
+                    family, selection, _model, meta
+                )
                 intent = str(getattr(meta, "intent", "") or "") or None
                 reason = unsupported.get((arch, selection))
                 jobs = self.manager.resolve(selection, arch, fetch_config=False)
@@ -145,7 +197,7 @@ class ModelCatalogueService:
                 score = scored[1] if scored is not None else parse_sdr_score(selection)
                 rows.append(ModelCatalogueRecord(
                     str(CatalogEntryId(family, selection)), family, selection,
-                    canonical_display_name(selection),
+                    display,
                     purpose_for_label(selection, intent=intent), reason is None,
                     installed, reason, score,
                     describe_cached_download_size(jobs) if jobs else "—",
@@ -166,7 +218,15 @@ class ModelCatalogueService:
             and (purpose in {"", PURPOSE_ALL} or row.purpose == purpose)
             and (supported is None or row.supported is supported)
             and (installed is None or row.installed is installed)
-            and catalogue_label_matches(row.selection, query, extra=row.unsupported_reason or "")
+            and catalogue_label_matches(
+                row.selection,
+                query,
+                extra=" ".join(
+                    value
+                    for value in (row.display, row.unsupported_reason or "")
+                    if value
+                ),
+            )
         )
 
     def resolve(self, reference: str) -> ModelCatalogueRecord:
@@ -194,4 +254,5 @@ class ModelCatalogueService:
 __all__ = [
     "CatalogEntryId", "FAMILY_ARCH", "ModelCatalogueRecord",
     "ModelCatalogueService", "catalogue_label_matches", "filter_catalogue_labels",
+    "catalogue_entry_meta", "project_catalogue_display",
 ]
