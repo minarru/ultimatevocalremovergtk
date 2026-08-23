@@ -41,13 +41,23 @@ def _resolve(
     *,
     command: str = "separate",
 ):
+    with tempfile.NamedTemporaryFile(suffix=".wav") as source:
+        return _resolve_spec(
+            JobSpec(command, settings, (source.name,), "/tmp/out"), records
+        )
+
+
+def _resolve_spec(
+    spec: JobSpec,
+    records: dict[str, ModelRecord],
+):
     repo = Mock(inventory_generation=0)
     repo.karaoke_model_list.return_value = ["vr:gated-splitter"]
     resolver = JobResolver(repo)
     resolver.identities.lookup = Mock(side_effect=records.__getitem__)
     if any(
         section.is_secondary_model_activate
-        for section in (settings.vr, settings.mdx, settings.demucs)
+        for section in (spec.settings.vr, spec.settings.mdx, spec.settings.demucs)
     ):
         resolver._assemble = Mock(
             return_value=[
@@ -66,12 +76,11 @@ def _resolve(
                 )
             ]
         )
-    with tempfile.NamedTemporaryFile(suffix=".wav") as source:
-        return resolver.resolve(
-            JobSpec(command, settings, (source.name,), "/tmp/out"),
-            ValidationLevel.CONFIG,
-            allow_network=False,
-        )
+    return resolver.resolve(
+        spec,
+        ValidationLevel.CONFIG,
+        allow_network=False,
+    )
 
 
 def _flush_method_view(
@@ -156,14 +165,17 @@ class GatedSeparationPlanTests(unittest.TestCase):
         self.assertEqual(plan.settings.demucs.pre_proc_model, NO_MODEL)
         self.assertNotIn("demucs.pre_proc_model", plan.model_dependencies)
 
-    def test_gated_vocal_splitter_is_disabled_in_the_resolved_plan(self) -> None:
+    def test_ensemble_build_job_spec_flushes_gated_vocal_splitter(self) -> None:
+        from ui.ensemble.window import EnsemblePage
         from ui.widgets.vocal_split_row import VocalSplitRow
 
-        primary = _record("mdx:primary")
+        first = _record("mdx:first")
+        second = _record("vr:second")
         gated = _record("vr:gated-splitter")
         settings = Settings.defaults()
-        settings.process.method = ProcessMethod.MDX
-        settings.mdx.model = primary.id
+        settings.process.method = ProcessMethod.ENSEMBLE
+        settings.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
+        settings.ensemble.selected_models = [first.id, second.id]
         settings.process.vocal_splitter_enabled = True
         settings.process.vocal_splitter = gated.id
         row: Any = VocalSplitRow.__new__(VocalSplitRow)
@@ -175,8 +187,24 @@ class GatedSeparationPlanTests(unittest.TestCase):
         row._splitter_write_gated = True
         row._stored_splitter = gated.id
 
-        VocalSplitRow.persist_to_settings(row, settings)
-        plan = _resolve(settings, {primary.id: primary, gated.id: gated})
+        with tempfile.NamedTemporaryFile(suffix=".wav") as source:
+            page: Any = EnsemblePage.__new__(EnsemblePage)
+            page.settings = settings
+            page.vocal_split_row = row
+            page._models_write_gated = False
+            page._model_checks = {
+                first.id: SimpleNamespace(get_active=lambda: True),
+                second.id: SimpleNamespace(get_active=lambda: True),
+            }
+            page.save_stems = SimpleNamespace(persist_to_settings=lambda: None)
+            page.input_row = SimpleNamespace(paths=[source.name])
+            page.output_row = SimpleNamespace(path="/tmp/out")
+
+            spec = EnsemblePage.build_job_spec(page)
+            plan = _resolve_spec(
+                spec,
+                {first.id: first, second.id: second, gated.id: gated},
+            )
 
         self.assertFalse(plan.settings.process.vocal_splitter_enabled)
         self.assertEqual(plan.settings.process.vocal_splitter, NO_MODEL)
@@ -202,6 +230,9 @@ class GatedEnsemblePlanTests(unittest.TestCase):
             gated.id: SimpleNamespace(get_active=lambda: False),
             second.id: SimpleNamespace(get_active=lambda: True),
         }
+        page.vocal_split_row = SimpleNamespace(
+            persist_to_settings=lambda _settings: None
+        )
         page.save_stems = SimpleNamespace(persist_to_settings=lambda: None)
 
         EnsemblePage._flush_run_settings(page)

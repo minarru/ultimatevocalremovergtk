@@ -367,3 +367,140 @@ Output: `0 errors, 0 warnings, 0 notes`; Ruff `All checks passed!`;
   valid ensemble checks survive removal of the gated member.
 - No new core gating schema was introduced, and no Task 5 catalogue or audit
   file was edited for this round.
+
+## Fix Round 2
+
+### Root cause and scope audit
+
+`EnsemblePage` owns a page-local `VocalSplitRow` and persists it from live
+change signals, but its preflight/start boundary flushed only ensemble members
+and Save Stems. Consequently, a gated splitter that had not emitted another
+change could remain enabled in the copied `JobSpec` and resolve after the model
+became installed.
+
+The shared-settings contract requires each tab to flush only its own live
+copies immediately before snapshotting. The fix therefore adds the Ensemble
+row's existing `persist_to_settings()` operation to
+`EnsemblePage._flush_run_settings()`. Audio Tools has no Vocal Splitter row and
+does not execute the separation Vocal Splitter path; its `AudioJobSpec` snapshot
+has no equivalent defect and was not changed.
+
+Fix Round 2 changed only:
+
+- `ui/ensemble/window.py`
+- `tests/test_gui_gated_plans.py`
+- `tests/test_ensemble_flush_settings.py`
+- this report
+
+### RED evidence
+
+The prior regression was strengthened before production changed. It now builds
+an actual `EnsemblePage` snapshot through `build_job_spec()` (and therefore the
+real `_flush_run_settings()`), then resolves that exact spec and checks the
+plan's effective Vocal Splitter settings and dependencies.
+
+Private RED command (runner not piped):
+
+```text
+codex sandbox \
+ -c 'permissions.gtk-headless.extends=":workspace"' \
+ -c 'permissions.gtk-headless.description="GTK tests using private headless Wayland"' \
+ -c 'permissions.gtk-headless.network.enabled=true' \
+ -C "$PWD" --disable network_proxy -P gtk-headless \
+ /home/rudam/.codex/skills/testing-gtk-headless/scripts/run-private-wayland.sh -- \
+ env UVR_DISABLE_POLITREES=1 UVR_DISABLE_MVSEPLESS=1 \
+ .venv/bin/python -m unittest \
+ tests.test_gui_gated_plans.GatedSeparationPlanTests.test_ensemble_build_job_spec_flushes_gated_vocal_splitter -v
+```
+
+Observed against `a5e7448` before the implementation:
+
+```text
+Private Wayland socket: /tmp/codex-gtk.dGNUxW/codex-gtk
+Private D-Bus: unix:path=/tmp/dbus-Ou301H3k7n,...
+AssertionError: True is not false
+Ran 1 test in 0.225s
+FAILED (failures=1)
+runner exit 1
+```
+
+The failure was the intended live-path defect:
+`plan.settings.process.vocal_splitter_enabled` remained `True`.
+
+### GREEN and final verification
+
+After the one-line production flush, the identical focused regression passed:
+
+```text
+Private Wayland socket: /tmp/codex-gtk.GTzKu1/codex-gtk
+Private D-Bus: unix:path=/tmp/dbus-1zDA62qSHY,...
+Ran 1 test in 0.235s
+OK
+runner exit 0
+```
+
+Final focused private GTK command:
+
+```text
+codex sandbox \
+ -c 'permissions.gtk-headless.extends=":workspace"' \
+ -c 'permissions.gtk-headless.description="GTK tests using private headless Wayland"' \
+ -c 'permissions.gtk-headless.network.enabled=true' \
+ -C "$PWD" --disable network_proxy -P gtk-headless \
+ /home/rudam/.codex/skills/testing-gtk-headless/scripts/run-private-wayland.sh -- \
+ env UVR_DISABLE_POLITREES=1 UVR_DISABLE_MVSEPLESS=1 \
+ .venv/bin/python -m unittest \
+ tests.test_ensemble_flush_settings tests.test_gui_gated_plans -v
+```
+
+Output/evidence:
+
+```text
+Private Wayland socket: /tmp/codex-gtk.fG4dFn/codex-gtk
+Private D-Bus: unix:path=/tmp/dbus-Z4O4GpWbvU,...
+Ran 10 tests in 0.239s
+OK
+runner exit 0
+```
+
+The portal's expected FUSE/PipeWire and private-compositor teardown warnings
+did not affect runner exit status. No host display or session bus was passed.
+
+Relevant non-GTK verification:
+
+```text
+env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
+ UVR_DISABLE_POLITREES=1 UVR_DISABLE_MVSEPLESS=1 \
+ .venv/bin/python -m unittest \
+ tests.test_gui_gated_plans tests.test_error_context \
+ tests.test_ensemble_flush_settings tests.test_identity_planning \
+ tests.test_saved_ensembles -v
+```
+
+Output: `Ran 70 tests in 0.747s` / `OK (skipped=2)` / exit 0. The two
+display-required saved-ensemble tests are covered by the earlier private suite.
+
+Static and whitespace verification:
+
+```text
+.venv/bin/basedpyright ui/ensemble/window.py \
+ tests/test_gui_gated_plans.py tests/test_ensemble_flush_settings.py
+.venv/bin/ruff check --select E9,F63,F7,F82 ui/ensemble/window.py \
+ tests/test_gui_gated_plans.py tests/test_ensemble_flush_settings.py
+git diff --check
+```
+
+Output: basedpyright `0 errors, 0 warnings, 0 notes`; Ruff
+`All checks passed!`; whitespace clean; all commands exited 0.
+
+### Fix Round 2 self-review
+
+- The regression fails if the real Ensemble flush stops persisting its
+  page-local Vocal Splitter; it no longer tests the row in isolation.
+- The resolved plan proves the gated model is `NO_MODEL`, disabled, and absent
+  from `model_dependencies`.
+- `build_job_spec()` and `start()` share `_flush_run_settings()`, so both plan
+  review and direct run startup receive the corrected state.
+- No inactive Separation or Audio Tools widget is flushed, preserving the
+  per-page stale-widget guard.
+- No Task 5 file was edited, staged, or committed by this round.

@@ -51,6 +51,7 @@ def _minimal_page(*, settings: Settings | None = None) -> typing.Any:
     page = object.__new__(ensemble_window.EnsemblePage)
     page.settings = settings or Settings.defaults()
     page.save_stems = MagicMock()
+    page.vocal_split_row = MagicMock()
     page._persist_selected_models = MagicMock()
     page.input_row = MagicMock()
     page.input_row.paths = ["/tmp/song.wav"]
@@ -74,6 +75,7 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
 
         self.assertEqual(page.settings.process.method, ProcessMethod.ENSEMBLE)
         page._persist_selected_models.assert_called_once()
+        page.vocal_split_row.persist_to_settings.assert_called_once_with(page.settings)
         page.save_stems.persist_to_settings.assert_called_once()
         self.assertEqual(spec.command, "ensemble")
         self.assertEqual(spec.inputs, ("/tmp/song.wav",))
@@ -84,6 +86,7 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
         page.start(MagicMock())
 
         page.save_stems.persist_to_settings.assert_called_once()
+        page.vocal_split_row.persist_to_settings.assert_called_once_with(page.settings)
         page._persist_selected_models.assert_called_once()
         page.window.begin_run.assert_called_once_with(page)
         page.context.runner.start.assert_called_once()

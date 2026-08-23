@@ -1432,6 +1432,7 @@ class EnsemblePage:
         """Persist widget state plan/start reads (mirrors separation preflight flush)."""
         self.settings.process.method = ProcessMethod.ENSEMBLE
         self._persist_selected_models()
+        self.vocal_split_row.persist_to_settings(self.settings)
         self.save_stems.persist_to_settings()
 
     def build_job_spec(self) -> typing.Any:
