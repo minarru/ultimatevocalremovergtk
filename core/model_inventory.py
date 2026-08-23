@@ -783,11 +783,16 @@ def _record_display(
                 ).strip()
 
         existing = str(record.display or "").strip()
+        existing_source = (
+            existing
+            if exact_selection is not None and existing != record.basename
+            else ""
+        )
         source_label = (
             current_label
             or persisted_label
             or mapper_label
-            or (existing if existing != record.basename else "")
+            or existing_source
         )
         display = project_model_display(
             record.id,

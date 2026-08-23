@@ -876,25 +876,22 @@ class DisplayEnrichmentTests(unittest.TestCase):
         )
 
     def test_ambiguous_exact_catalogue_owners_follow_non_live_precedence(self) -> None:
-        from bundled.constants import MDX_ARCH_TYPE
-        from core.catalog_sources import EntryMeta
-
         first = "MDX-Net Model: Live Alpha"
         second = "MDX-Net Model: Live Beta"
-        files = {"shared.onnx": "https://example.invalid/shared.onnx"}
-        metadata = {
-            selection: EntryMeta(
-                label=selection,
-                display=selection,
-                arch=MDX_ARCH_TYPE,
-                files=files,
-                checkpoint="shared.onnx",
-            )
-            for selection in (first, second)
-        }
-        snapshot = _snapshot(
-            meta={"mdx": metadata},
-            display_mdx={"shared": first},
+        coordinator = _coordinator_for_payload({
+            "vr_download_list": {},
+            "mdx_download_list": {
+                first: "shared.onnx",
+                second: "shared.onnx",
+            },
+            "demucs_download_list": {},
+        })
+        self.addCleanup(coordinator.close)
+        snapshot = coordinator.ensure(allow_network=False)
+        self.assertEqual(tuple(snapshot.mdx), (first,))
+        self.assertEqual(
+            set(snapshot.meta_by_family["mdx"]),
+            {first, second},
         )
         cases = (
             (
