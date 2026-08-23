@@ -286,3 +286,107 @@ Result: passed with no output.
 - Identity, catalogue selection, eligibility, runtime fields, hashing, network
   behavior, and inventory write behavior are unchanged.
 - Task 5-owned files were preserved and excluded from the fix commit.
+
+## Fix Round 2
+
+Implementation commit: `dbf1624` (`fix(models): discard ambiguous retained display`).
+
+### Review finding addressed
+
+Ambiguous exact ownership now suppresses every live-derived presentation
+source, including the friendly display retained on the first catalogue record
+after download-list deduplication. The projector receives only persisted exact
+registry evidence, exact trusted mirror mapper evidence, or no source label in
+that state. With no source label it still applies any exact curated alias and
+otherwise returns the raw canonical basename. Trusted explicit registry
+overrides remain a separate highest-precedence projector input.
+
+Genuine no-evidence and single-owner paths continue to accept their existing
+trusted catalogue/display sources.
+
+### Strengthened regression
+
+The previous synthetic metadata-only fixture was replaced with a real
+`CatalogueCoordinator` snapshot. Its upstream payload contains two current MDX
+rows for the same `shared.onnx` artifact. The test verifies that catalogue
+deduplication retains only the first row while `meta_by_family` retains both
+exact owners, then table-checks persisted, mapper, and raw fallback results and
+rejects both live labels.
+
+### RED evidence
+
+```bash
+.venv/bin/python -m unittest \
+  tests.test_model_identity_contracts.DisplayEnrichmentTests.test_ambiguous_exact_catalogue_owners_follow_non_live_precedence -v
+```
+
+Result against `911e7e4`: expected RED, 1 failure. The persisted and mapper
+cases followed their correct precedence, but the raw case returned the
+retained `MDX-Net — Live Alpha` catalogue display instead of `shared`:
+
+```text
+AssertionError: 'MDX-Net — Live Alpha' != 'shared'
+Ran 1 test in 0.009s
+FAILED (failures=1)
+```
+
+### GREEN evidence
+
+The same command after suppressing retained display only for the ambiguous
+sentinel passed:
+
+```text
+Ran 1 test in 0.015s
+
+OK
+```
+
+### Fix Round 2 verification
+
+Focused identity/inventory and touched integration tests:
+
+```bash
+.venv/bin/python -m unittest \
+  tests.test_model_identity_contracts tests.test_no_runtime_display_inversion \
+  tests.test_model_install tests.test_core_downloads -v
+```
+
+Result: 117 tests passed in 1.321 seconds.
+
+```bash
+.venv/bin/ruff check core/model_inventory.py
+.venv/bin/ruff check tests/test_model_identity_contracts.py \
+  --ignore I001,F401,B023
+```
+
+Result: both commands reported `All checks passed!`. The three ignored rule
+codes are the same documented pre-existing findings in that legacy test file.
+
+```bash
+.venv/bin/python -m basedpyright \
+  core/model_inventory.py tests/test_model_identity_contracts.py
+```
+
+Result: 0 errors, 0 warnings, 0 notes.
+
+```bash
+git diff --check
+```
+
+Result: passed with no output.
+
+### Fix Round 2 self-review
+
+- The strengthened regression traverses upstream flattening, catalogue
+  metadata construction, first-wins deduplication, catalogue record creation,
+  installed merge, display enrichment, and collision projection.
+- The raw case fails if the retained `record.display` is accepted again; the
+  persisted and mapper literals independently protect their precedence.
+- Explicit overrides are passed independently of source-label selection, and
+  exact curated aliases remain projector-owned, so neither is discarded by
+  suppressing ambiguous live source text.
+- Single-owner current labels and genuine no-evidence display-index fallback
+  remain covered by the existing enrichment suite.
+- Canonical identity, catalogue eligibility/selection, artifacts, runtime
+  resolution, hashing, network behavior, and inventory writes are unchanged.
+- Task 5-owned files were preserved and excluded from the fix commit.
