@@ -551,6 +551,7 @@ class CoordinatorRefreshTests(unittest.TestCase):
         return coordinator
 
     def test_refresh_force_loads_coordinator_sources(self) -> None:
+        from core.access_policy import AccessPolicy
         from core.catalogue_types import RefreshMode
 
         coordinator = self._coordinator()
@@ -558,28 +559,39 @@ class CoordinatorRefreshTests(unittest.TestCase):
             allow_network=True, refresh=True, coordinator=coordinator
         )
         coordinator.snapshot.assert_called_once_with(
-            mode=RefreshMode.FORCE
+            mode=RefreshMode.FORCE,
+            policy=AccessPolicy(allow_network=True, allow_metadata_writes=True),
         )
         coordinator.ensure.assert_not_called()
         coordinator.refresh.assert_not_called()
 
     def test_default_snapshot_does_not_force_refresh(self) -> None:
+        from core.access_policy import AccessPolicy
+
         coordinator = self._coordinator()
         catalogue._snapshot_and_payloads(
             allow_network=True, refresh=False, coordinator=coordinator
         )
         coordinator.refresh.assert_not_called()
         coordinator.snapshot.assert_not_called()
-        coordinator.ensure.assert_called_once_with(allow_network=True)
+        coordinator.ensure.assert_called_once_with(
+            allow_network=True,
+            policy=AccessPolicy(allow_network=True, allow_metadata_writes=True),
+        )
 
     def test_offline_never_force_refreshes_even_when_asked(self) -> None:
+        from core.access_policy import AccessPolicy
+
         coordinator = self._coordinator()
         catalogue._snapshot_and_payloads(
             allow_network=False, refresh=True, coordinator=coordinator
         )
         coordinator.refresh.assert_not_called()
         coordinator.snapshot.assert_not_called()
-        coordinator.ensure.assert_called_once_with(allow_network=False)
+        coordinator.ensure.assert_called_once_with(
+            allow_network=False,
+            policy=AccessPolicy(allow_network=False, allow_metadata_writes=True),
+        )
 
     def test_collect_entries_forwards_refresh(self) -> None:
         from unittest.mock import MagicMock, patch
@@ -591,9 +603,11 @@ class CoordinatorRefreshTests(unittest.TestCase):
             allow_network: bool,
             coordinator: Any = None,
             refresh: bool = False,
+            policy: Any = None,
         ) -> Any:
             seen["refresh"] = refresh
             seen["allow_network"] = allow_network
+            seen["policy"] = policy
             return MagicMock(), ({}, {}, {}, {})
 
         with patch.object(catalogue, "_snapshot_and_payloads", spy), patch.object(
@@ -605,6 +619,7 @@ class CoordinatorRefreshTests(unittest.TestCase):
             )
         self.assertTrue(seen["refresh"])
         self.assertTrue(seen["allow_network"])
+        self.assertTrue(seen["policy"].allow_cache_writes)
 
     def test_main_refresh_forwards_to_snapshot(self) -> None:
         import contextlib
@@ -618,8 +633,10 @@ class CoordinatorRefreshTests(unittest.TestCase):
             allow_network: bool,
             coordinator: Any = None,
             refresh: bool = False,
+            policy: Any = None,
         ) -> Any:
             seen["refresh"] = refresh
+            seen["policy"] = policy
             return mock.MagicMock(unsupported=None, report=None), ({}, {}, {}, {})
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -637,6 +654,7 @@ class CoordinatorRefreshTests(unittest.TestCase):
             ), contextlib.redirect_stdout(mock.MagicMock()):
                 cli.main(["--refresh"])
         self.assertTrue(seen.get("refresh"))
+        self.assertTrue(seen["policy"].allow_cache_writes)
 
 
 class PublicationGuardTests(unittest.TestCase):
@@ -977,6 +995,46 @@ class ReferenceTsvOptInTests(unittest.TestCase):
 class DisplayReferenceRenderTests(unittest.TestCase):
     """The presentation reference is deterministic data, not prose scraping."""
 
+    def test_canonical_id_family_allowlist_covers_every_current_family(self) -> None:
+        expected_prefixes = {
+            "VR Architecture": "vr",
+            "Demucs": "demucs",
+            "Apollo": "apollo",
+            "MDX-Net": "mdx",
+            "MDX-Net ONNX": "mdx",
+            "MDX23C": "mdx",
+            "Roformer": "mdx",
+            "SCNet": "mdx",
+            "Bandit": "mdx",
+        }
+
+        for family, expected_prefix in expected_prefixes.items():
+            with self.subTest(family=family):
+                entry = catalogue.ModelEntry(
+                    source="test",
+                    family=family,
+                    catalogue_label=f"{family}: Model",
+                    weight_file="model.ckpt",
+                )
+                self.assertEqual(
+                    render._canonical_model_id(entry),
+                    f"{expected_prefix}:model",
+                )
+
+    def test_canonical_id_rejects_an_unknown_family_instead_of_minting_mdx(self) -> None:
+        entry = catalogue.ModelEntry(
+            source="test",
+            family="MDXNet",
+            catalogue_label="Misspelled MDX family",
+            weight_file="model.ckpt",
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "unsupported catalogue family 'MDXNet'.*Misspelled MDX family",
+        ):
+            render._canonical_model_id(entry)
+
     def test_renders_execution_source_display_and_quality_flags(self) -> None:
         entries = [
             catalogue.ModelEntry(
@@ -1068,13 +1126,13 @@ class DisplayReferenceRenderTests(unittest.TestCase):
     def test_sorts_rows_independently_of_collection_order(self) -> None:
         alpha = catalogue.ModelEntry(
             source="test",
-            family="Alpha",
+            family="MDX-Net",
             catalogue_label="Alpha",
             weight_file="alpha.ckpt",
         )
         zulu = catalogue.ModelEntry(
             source="test",
-            family="Zulu",
+            family="Roformer",
             catalogue_label="Zulu",
             weight_file="zulu.ckpt",
         )
@@ -1512,16 +1570,202 @@ class YamlProvenanceStabilityTests(unittest.TestCase):
 class CheckContractTests(unittest.TestCase):
     """--check must be genuinely read-only and must not lie about coverage."""
 
+    def test_online_check_fetches_in_memory_without_mutating_any_cache_or_artifact(
+        self,
+    ) -> None:
+        import contextlib
+        import io
+        import shutil
+        import tempfile
+        from unittest import mock
+
+        from core.catalogue_coordinator import CatalogueCoordinator
+        from core.remote_catalog_cache import RemoteJsonSource
+
+        tmp = tempfile.mkdtemp(prefix="uvr-online-check-readonly-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        cache_root = os.path.join(tmp, "cache")
+        supplemental_cache = os.path.join(cache_root, "supplemental")
+        community_cache = os.path.join(cache_root, "community")
+        yaml_cache = os.path.join(cache_root, "yaml")
+        source_cache = os.path.join(cache_root, "sources", "upstream.json")
+        stem_cache = os.path.join(cache_root, "derived", "stems.json")
+        size_cache = os.path.join(cache_root, "identity", "sizes.json")
+        model_store = os.path.join(tmp, "model-store")
+        out = os.path.join(tmp, "models-catalogue.md")
+        intent_ref = os.path.join(tmp, "model_intent_reference.tsv")
+        display_ref = os.path.join(tmp, "model_display_reference.tsv")
+        sidecar = catalogue._ir_path_for(out)
+
+        os.makedirs(supplemental_cache)
+        stale_path = catalogue._cache_path(
+            supplemental_cache,
+            catalogue._POLITREES_VR_DATA_URL,
+            "vr_model_data.json",
+        )
+        with open(stale_path, "wb") as handle:
+            handle.write(b'{"stale": true}')
+        os.utime(stale_path, (1, 1))
+
+        sentinels = {
+            out: b"catalogue sentinel\n",
+            intent_ref: b"intent sentinel\n",
+            display_ref: b"display sentinel\n",
+            sidecar: b'{"sidecar": "sentinel"}\n',
+        }
+        for path, data in sentinels.items():
+            with open(path, "wb") as handle:
+                handle.write(data)
+
+        class _Response:
+            status = 200
+            headers: dict = {}
+
+            def __init__(self, data: bytes) -> None:
+                self.data = data
+
+            def read(self, *_args: object) -> bytes:
+                return self.data
+
+            def __enter__(self) -> "_Response":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+        upstream_payload = {
+            "vr_download_list": {
+                "VR Arch Single Model v5: 1_HP-UVR": "1_HP-UVR.pth"
+            },
+            "mdx_download_list": {
+                "MDX23C Model: Fresh": {
+                    "fresh.ckpt": "https://example.invalid/fresh.ckpt",
+                    "fresh.yaml": "https://example.invalid/fresh.yaml",
+                }
+            },
+            "demucs_download_list": {},
+        }
+        source_calls: list[str] = []
+
+        def source_open(target: object) -> _Response:
+            source_calls.append(str(getattr(target, "full_url", target)))
+            return _Response(json.dumps(upstream_payload).encode("utf-8"))
+
+        supplement_calls: list[str] = []
+
+        def supplemental_open(target: object) -> _Response:
+            url = str(getattr(target, "full_url", target))
+            supplement_calls.append(url)
+            if url == catalogue._POLITREES_VR_DATA_URL:
+                return _Response(b'{"fresh": {"primary_stem": "Vocals"}}')
+            if url == catalogue._POLITREES_MDX_DATA_URL:
+                return _Response(b"{}")
+            if url == catalogue._COMMUNITY_MODELS_URL:
+                return _Response(b"")
+            if url == "https://example.invalid/fresh.yaml":
+                return _Response(
+                    b"training:\n"
+                    b"  instruments: [vocals, other]\n"
+                    b"  target_instrument: other\n"
+                )
+            raise AssertionError(f"unexpected fetch: {url}")
+
+        coordinator = CatalogueCoordinator(
+            sources={
+                SourceId.UPSTREAM: RemoteJsonSource(
+                    source_id=SourceId.UPSTREAM,
+                    url="https://example.invalid/upstream.json",
+                    cache_path=source_cache,
+                    opener=source_open,
+                ),
+                SourceId.POLITREES: _disabled(SourceId.POLITREES),
+                SourceId.EXTRAS: _disabled(SourceId.EXTRAS),
+                SourceId.MVSEPLESS: _disabled(SourceId.MVSEPLESS),
+            }
+        )
+        self.addCleanup(coordinator.close)
+
+        stderr = io.StringIO()
+        from core import catalogue_stem_cache, download_sizes
+
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", out))
+            stack.enter_context(mock.patch.object(cli, "REFERENCE_TSV_PATH", intent_ref))
+            stack.enter_context(
+                mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", display_ref)
+            )
+            stack.enter_context(
+                mock.patch.object(catalogue, "CatalogueCoordinator", lambda: coordinator)
+            )
+            stack.enter_context(
+                mock.patch.object(catalogue, "POLITREES_CACHE_DIR", supplemental_cache)
+            )
+            stack.enter_context(
+                mock.patch.object(catalogue, "COMMUNITY_CACHE_DIR", community_cache)
+            )
+            stack.enter_context(mock.patch.object(catalogue, "YAML_CACHE_DIR", yaml_cache))
+            stack.enter_context(
+                mock.patch.object(catalogue.paths, "MDX_C_CONFIG_PATH", model_store)
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    catalogue.paths, "CATALOGUE_STEM_CACHE_FILE", stem_cache
+                )
+            )
+            stack.enter_context(
+                mock.patch.object(catalogue.paths, "DOWNLOAD_SIZE_CACHE_FILE", size_cache)
+            )
+            stack.enter_context(mock.patch.object(catalogue_stem_cache, "_memory_entries", None))
+            stack.enter_context(mock.patch.object(download_sizes, "_memory_payload", None))
+            stack.enter_context(mock.patch.object(download_sizes, "_memory_path", None))
+            stack.enter_context(
+                mock.patch.dict(os.environ, {"UVR_DISABLE_CATALOGUE_STEMS": ""})
+            )
+            stack.enter_context(mock.patch.object(catalogue, "_scan_weight_hashes", lambda *a: {}))
+            stack.enter_context(
+                mock.patch("core.mdx_config_fetch._urlopen", supplemental_open)
+            )
+            stack.enter_context(contextlib.redirect_stderr(stderr))
+            rc = cli.main(["--check", "--refresh", "--write-display-reference"])
+
+        self.assertEqual(rc, 1, stderr.getvalue())
+        self.assertTrue(source_calls, "coordinator network data was not compared")
+        self.assertEqual(
+            set(supplement_calls),
+            {
+                catalogue._POLITREES_VR_DATA_URL,
+                catalogue._POLITREES_MDX_DATA_URL,
+                catalogue._COMMUNITY_MODELS_URL,
+                "https://example.invalid/fresh.yaml",
+            },
+        )
+        self.assertIn("Out of date", stderr.getvalue())
+        with open(stale_path, "rb") as handle:
+            self.assertEqual(handle.read(), b'{"stale": true}')
+        for path, data in sentinels.items():
+            with self.subTest(path=path):
+                with open(path, "rb") as handle:
+                    self.assertEqual(handle.read(), data)
+        self.assertEqual(os.listdir(supplemental_cache), [os.path.basename(stale_path)])
+        self.assertFalse(os.path.exists(community_cache))
+        self.assertFalse(os.path.exists(yaml_cache))
+        self.assertFalse(os.path.exists(os.path.dirname(source_cache)))
+        self.assertFalse(os.path.exists(os.path.dirname(stem_cache)))
+        self.assertFalse(os.path.exists(os.path.dirname(size_cache)))
+        self.assertFalse(os.path.exists(model_store))
+
     def test_check_forbids_metadata_writes(self) -> None:
         """fetch_mdx_config_url writes yaml into the repo in the dev layout."""
         policy = cli._policy_for(
             cli._parse_args(["--check"])
         )
         self.assertFalse(policy.allow_metadata_writes)
+        self.assertFalse(policy.allow_cache_writes)
 
     def test_a_normal_run_still_allows_metadata_writes(self) -> None:
         policy = cli._policy_for(cli._parse_args([]))
         self.assertTrue(policy.allow_metadata_writes)
+        self.assertTrue(policy.allow_cache_writes)
 
     def test_load_yaml_meta_does_not_fetch_configs_when_writes_are_denied(self) -> None:
         from unittest import mock
@@ -1541,6 +1785,57 @@ class CheckContractTests(unittest.TestCase):
                 "nope.yaml", "https://example.invalid/nope.yaml", policy=policy
             )
         self.assertEqual(called, [], "--check wrote a config into the model store")
+
+    def test_read_only_online_yaml_fetch_is_parsed_without_creating_a_cache(self) -> None:
+        import shutil
+        import tempfile
+        from unittest import mock
+
+        tmp = tempfile.mkdtemp(prefix="uvr-yaml-readonly-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        cache_dir = os.path.join(tmp, "yaml-cache")
+        model_store = os.path.join(tmp, "model-store")
+        body = (
+            b"training:\n"
+            b"  instruments: [vocals, other]\n"
+            b"  target_instrument: other\n"
+            b"model:\n"
+            b"  num_bands: 64\n"
+        )
+
+        class _Response:
+            def read(self, *_args: object) -> bytes:
+                return body
+
+            def __enter__(self) -> "_Response":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+        policy = catalogue.FetchPolicy(
+            allow_network=True,
+            allow_metadata_writes=False,
+            allow_cache_writes=False,
+        )
+        with mock.patch.object(catalogue, "YAML_CACHE_DIR", cache_dir), mock.patch.object(
+            catalogue.paths, "MDX_C_CONFIG_PATH", model_store
+        ), mock.patch(
+            "core.mdx_config_fetch.fetch_mdx_config_url",
+            side_effect=AssertionError("model-store write path used"),
+        ), mock.patch("core.mdx_config_fetch._urlopen", return_value=_Response()):
+            instruments, target, arch, source = catalogue._load_yaml_meta(
+                "fresh.yaml",
+                "https://example.invalid/fresh.yaml",
+                policy=policy,
+            )
+
+        self.assertEqual(instruments, ["vocals", "other"])
+        self.assertEqual(target, "other")
+        self.assertEqual(arch, "Mel-Band Roformer")
+        self.assertEqual(source, "remote_yaml:fresh.yaml")
+        self.assertFalse(os.path.exists(cache_dir))
+        self.assertFalse(os.path.exists(model_store))
 
     def test_check_does_not_claim_to_refuse_a_write_it_never_makes(self) -> None:
         import contextlib

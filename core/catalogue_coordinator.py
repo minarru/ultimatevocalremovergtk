@@ -231,6 +231,7 @@ class CatalogueCoordinator:
             captured = AccessPolicy(
                 allow_network=False,
                 allow_metadata_writes=captured.allow_metadata_writes,
+                allow_cache_writes=captured.allow_cache_writes,
             )
         mode = (
             RefreshMode.STALE_WHILE_REVALIDATE

@@ -394,6 +394,7 @@ class DownloadManager:
             policy = AccessPolicy(
                 allow_network=False,
                 allow_metadata_writes=policy.allow_metadata_writes,
+                allow_cache_writes=policy.allow_cache_writes,
             )
         coordinator = self._ensure_coordinator()
         snapshot = coordinator.ensure(

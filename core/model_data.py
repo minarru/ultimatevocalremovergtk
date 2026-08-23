@@ -18,17 +18,8 @@ from .model_stem_semantics import (
 _MDX_C_YAML_LOADER = None
 
 
-def load_mdx_c_config(path: str) -> dict:
-    """Load a bundled MDX-C / Roformer yaml config.
-
-    Shipped configs use ``!!python/tuple`` for a few list fields; this extends
-    :class:`yaml.SafeLoader` with only that tag so we avoid ``FullLoader`` while
-    still parsing the trusted local files under ``mdx_c_configs/``. It also
-    widens the float resolver: PyYAML's default one requires a ``.`` in the
-    mantissa, so a bare-exponent value like ``1e-3`` (no shipped config uses
-    this, but externally-sourced yamls — e.g. vendored Demucs's own configs —
-    commonly do) silently loads as the string ``"1e-3"`` instead of ``0.001``.
-    """
+def _mdx_c_yaml_loader() -> typing.Any:
+    """Return the restricted loader shared by file and in-memory configs."""
     import re
 
     import yaml
@@ -62,9 +53,31 @@ def load_mdx_c_config(path: str) -> dict:
             list("-+0123456789."),
         )
         _MDX_C_YAML_LOADER = MdxCYamlLoader
+    return _MDX_C_YAML_LOADER
+
+
+def load_mdx_c_config_data(data: str | bytes) -> dict:
+    """Parse trusted MDX-C / Roformer YAML already held in memory."""
+    import yaml
+
+    return yaml.load(data, Loader=_mdx_c_yaml_loader())
+
+
+def load_mdx_c_config(path: str) -> dict:
+    """Load a bundled MDX-C / Roformer yaml config.
+
+    Shipped configs use ``!!python/tuple`` for a few list fields; this extends
+    :class:`yaml.SafeLoader` with only that tag so we avoid ``FullLoader`` while
+    still parsing the trusted local files under ``mdx_c_configs/``. It also
+    widens the float resolver: PyYAML's default one requires a ``.`` in the
+    mantissa, so a bare-exponent value like ``1e-3`` (no shipped config uses
+    this, but externally-sourced yamls — e.g. vendored Demucs's own configs —
+    commonly do) silently loads as the string ``"1e-3"`` instead of ``0.001``.
+    """
+    import yaml
 
     with open(path) as config_file:
-        return yaml.load(config_file, Loader=_MDX_C_YAML_LOADER)
+        return yaml.load(config_file, Loader=_mdx_c_yaml_loader())
 
 
 def _mdx_c_training(config: typing.Any) -> Any:

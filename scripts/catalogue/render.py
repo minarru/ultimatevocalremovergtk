@@ -60,6 +60,17 @@ _DISPLAY_REFERENCE_HEADERS = (
 _VR_GENERATION_RE = re.compile(r"^VR Arch Single Model (v\d+):", re.IGNORECASE)
 _DEMUCS_GENERATION_RE = re.compile(r"^Demucs (v\d+):", re.IGNORECASE)
 _HYPHENATED_STEM_COUNT_RE = re.compile(r"\b\d+-stems?\b", re.IGNORECASE)
+_RUNTIME_FAMILY_BY_CATALOGUE_FAMILY = {
+    "VR Architecture": "vr",
+    "Demucs": "demucs",
+    "Apollo": "apollo",
+    "MDX-Net": "mdx",
+    "MDX-Net ONNX": "mdx",
+    "MDX23C": "mdx",
+    "Roformer": "mdx",
+    "SCNet": "mdx",
+    "Bandit": "mdx",
+}
 
 
 def _tsv_cell(value: Any) -> str:
@@ -118,11 +129,14 @@ class PresentationReferenceAudit:
 
 
 def _canonical_model_id(entry: ModelEntry) -> str:
-    family = {
-        "VR Architecture": "vr",
-        "Demucs": "demucs",
-        "Apollo": "apollo",
-    }.get(entry.family, "mdx")
+    try:
+        family = _RUNTIME_FAMILY_BY_CATALOGUE_FAMILY[entry.family]
+    except KeyError as exc:
+        accepted = ", ".join(_RUNTIME_FAMILY_BY_CATALOGUE_FAMILY)
+        raise ValueError(
+            f"unsupported catalogue family {entry.family!r} for "
+            f"{entry.catalogue_label!r}; accepted families: {accepted}"
+        ) from exc
     primary = (
         entry.config_yaml
         if family == "demucs" and entry.config_yaml

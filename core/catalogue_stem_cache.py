@@ -64,6 +64,14 @@ def normalize_config_url(url: str) -> str:
 
 def _cache_path() -> str:
     from core import paths
+    from core.access_policy import current_access_policy
+
+    if not current_access_policy().allow_cache_writes:
+        from core.remote_catalog_cache import inspect_cache_path
+
+        return inspect_cache_path(
+            "catalogue_stem_cache.json", paths.CATALOGUE_STEM_CACHE_FILE
+        )
 
     return paths.migrate_cache_file(
         "catalogue_stem_cache.json", paths.CATALOGUE_STEM_CACHE_FILE
@@ -152,7 +160,7 @@ def remember_stems(
         entries[key] = entry
         from .access_policy import current_access_policy
 
-        if not current_access_policy().allow_metadata_writes:
+        if not current_access_policy().allow_cache_writes:
             return
         try:
             cache_path = _cache_path()

@@ -47,7 +47,10 @@ Demucs identity follows the runtime artifact contract: a bag with a YAML uses
 the YAML basename, while older single-weight entries use the weight basename.
 VR uses `vr:<pth basename>`, MDX/MDX-C-derived entries use
 `mdx:<checkpoint basename>`, and Apollo uses `apollo:<checkpoint basename>`.
-All 484 checked-in IDs are unique.
+The accepted catalogue-family mapping is explicit: `VR Architecture`,
+`Demucs`, `Apollo`, `MDX-Net`, `MDX-Net ONNX`, `MDX23C`, `Roformer`, `SCNet`,
+and `Bandit`. Any other spelling fails generation instead of silently minting
+an `mdx:` ID. All 484 checked-in IDs are unique.
 
 Current strict result:
 
@@ -125,7 +128,9 @@ and review it. Strict check mode exits 1 for any of:
 - any case-insensitive display collision.
 
 `--check --write-display-reference` never writes the catalogue, sidecar,
-reference, downloaded metadata, or cache content.
+reference, downloaded metadata, or cache content. An online check may still
+read the network: missing or stale coordinator, supplement, community, and
+YAML data is consumed in memory without creating or replacing cache paths.
 
 ## Snapshot and offline behavior
 

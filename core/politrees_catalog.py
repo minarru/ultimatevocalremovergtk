@@ -199,6 +199,7 @@ def load_politrees_links(
     net_policy = AccessPolicy(
         allow_network=True,
         allow_metadata_writes=policy.allow_metadata_writes,
+        allow_cache_writes=policy.allow_cache_writes,
     )
     state = source.load(mode=RefreshMode.FORCE, policy=net_policy)
     if state.content is not None:

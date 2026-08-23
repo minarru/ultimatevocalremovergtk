@@ -244,6 +244,7 @@ def _policy_for(args: argparse.Namespace) -> FetchPolicy:
         refresh=args.refresh,
         # --check and --summary must leave the tree exactly as they found it.
         allow_metadata_writes=not (args.check or args.summary),
+        allow_cache_writes=not (args.check or args.summary),
     )
 
 

@@ -24,6 +24,7 @@ sys.path.insert(0, ROOT)
 
 from bundled.constants import INST_STEM, VOCAL_STEM  # noqa: E402
 from core import paths  # noqa: E402
+from core.access_policy import AccessPolicy, access_policy  # noqa: E402
 from core.catalogue_coordinator import CatalogueCoordinator, flatten_upstream_lists  # noqa: E402
 from core.catalogue_types import (  # noqa: E402
     RefreshMode,
@@ -34,7 +35,12 @@ from core.catalogue_types import (  # noqa: E402
 )
 from core.extra_catalog import APOLLO_LIST_KEY  # noqa: E402
 from core.mdx_c_registry import compute_checkpoint_hash, infer_mdx_c_architecture  # noqa: E402
-from core.model_data import load_mdx_c_config, load_model_hash_data, _mdx_c_training  # noqa: E402
+from core.model_data import (  # noqa: E402
+    _mdx_c_training,
+    load_mdx_c_config,
+    load_mdx_c_config_data,
+    load_model_hash_data,
+)
 from core.model_naming import canonical_display_name  # noqa: E402
 from core.model_stem_semantics import (  # noqa: E402
     INTENT_MULTI_STEM,
@@ -166,7 +172,13 @@ def _snapshot_and_payloads(
     allow_network: bool,
     refresh: bool = False,
     coordinator: Optional[CatalogueCoordinator] = None,
+    policy: Optional[FetchPolicy] = None,
 ) -> Tuple[Any, Tuple[dict, dict, dict, dict]]:
+    source_policy = AccessPolicy(
+        allow_network=allow_network,
+        allow_metadata_writes=True if policy is None else policy.allow_metadata_writes,
+        allow_cache_writes=True if policy is None else policy.allow_cache_writes,
+    )
     owned = coordinator is None
     if owned:
         coordinator = CatalogueCoordinator()
@@ -174,10 +186,19 @@ def _snapshot_and_payloads(
         # One blocking snapshot, not refresh() then ensure(). ensure() is
         # stale-while-revalidate and used to republish the FORCE snapshot from
         # cache, including a placeholder RefreshReport(usable=False).
-        if refresh and allow_network:
-            snapshot = coordinator.snapshot(mode=RefreshMode.FORCE)
-        else:
-            snapshot = coordinator.ensure(allow_network=allow_network)
+        with access_policy(
+            allow_network=source_policy.allow_network,
+            allow_metadata_writes=source_policy.allow_metadata_writes,
+            allow_cache_writes=source_policy.allow_cache_writes,
+        ):
+            if refresh and allow_network:
+                snapshot = coordinator.snapshot(
+                    mode=RefreshMode.FORCE, policy=source_policy
+                )
+            else:
+                snapshot = coordinator.ensure(
+                    allow_network=allow_network, policy=source_policy
+                )
         payloads = _source_payloads(coordinator)
         return snapshot, payloads
     finally:
@@ -237,6 +258,9 @@ class FetchPolicy:
     #: promises to write nothing, and fetch_mdx_config_url writes a yaml into
     #: paths.MDX_C_CONFIG_PATH -- inside the repo in the portable dev layout.
     allow_metadata_writes: bool = True
+    #: Whether network responses may be persisted in catalogue supplement or
+    #: coordinator source caches. Check/summary may still fetch into memory.
+    allow_cache_writes: bool = True
 
 
 #: Used by callers that do not care -- online, cache-respecting, TTL'd.
@@ -258,6 +282,80 @@ def _cache_path(cache_dir: str, url: str, filename: str) -> str:
     return os.path.join(cache_dir, f"{stem}-{digest}{ext}")
 
 
+def _fetch_cached_bytes(
+    url: str,
+    cache_dir: str,
+    filename: str,
+    *,
+    policy: FetchPolicy = DEFAULT_FETCH_POLICY,
+    allow_network: Optional[bool] = None,
+    refresh: bool = False,
+) -> Tuple[Optional[bytes], Optional[str]]:
+    """Return response bytes and the readable cache path, if one exists.
+
+    Offline is strictly cache-only: a miss stays a miss and a stale entry is
+    still served, because the alternative is a silent download. Online, an
+    entry older than ``policy.max_age`` is refreshed. A read-only online run
+    receives fresh bytes in memory without creating or replacing cache files.
+    """
+    if allow_network is not None or refresh:
+        policy = FetchPolicy(
+            allow_network=policy.allow_network if allow_network is None else allow_network,
+            refresh=refresh or policy.refresh,
+            max_age=policy.max_age,
+            allow_metadata_writes=policy.allow_metadata_writes,
+            allow_cache_writes=policy.allow_cache_writes,
+        )
+
+    cache_path = _cache_path(cache_dir, url, filename)
+    cached = os.path.isfile(cache_path)
+    cached_data: Optional[bytes] = None
+    if cached:
+        try:
+            with open(cache_path, "rb") as handle:
+                cached_data = handle.read()
+        except OSError:
+            pass
+
+    if not policy.allow_network:
+        # However old: offline must never turn a cache hit into a fetch.
+        return cached_data, cache_path if cached_data is not None else None
+    if cached_data is not None and not policy.refresh:
+        try:
+            if time.time() - os.path.getmtime(cache_path) < policy.max_age:
+                return cached_data, cache_path
+        except OSError:
+            pass
+
+    try:
+        from core.mdx_config_fetch import _urlopen
+
+        with _urlopen(url) as response:
+            data = response.read()
+    except (urllib.error.URLError, OSError, TimeoutError):
+        return cached_data, cache_path if cached_data is not None else None
+
+    persisted_path: Optional[str] = cache_path if cached_data is not None else None
+    if policy.allow_cache_writes:
+        # Staged, so a failed write cannot truncate a good entry into a
+        # corrupt one that is then served for the rest of the TTL.
+        tmp_path = f"{cache_path}.part"
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+            with open(tmp_path, "wb") as handle:
+                handle.write(data)
+            os.replace(tmp_path, cache_path)
+            persisted_path = cache_path
+        except OSError:
+            pass
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+    return data, persisted_path
+
+
 def _fetch_cached(
     url: str,
     cache_dir: str,
@@ -267,67 +365,28 @@ def _fetch_cached(
     allow_network: Optional[bool] = None,
     refresh: bool = False,
 ) -> Optional[str]:
-    """Return a cached copy of ``url``, refetching when stale or asked to.
-
-    Offline is strictly cache-only: a miss stays a miss and a stale entry is
-    still served, because the alternative is a silent download. Online, an
-    entry older than ``policy.max_age`` is refreshed.
-    """
-    if allow_network is not None or refresh:
-        policy = FetchPolicy(
-            allow_network=policy.allow_network if allow_network is None else allow_network,
-            refresh=refresh or policy.refresh,
-            max_age=policy.max_age,
-            allow_metadata_writes=policy.allow_metadata_writes,
-        )
-
-    cache_path = _cache_path(cache_dir, url, filename)
-    cached = os.path.isfile(cache_path)
-
-    if not policy.allow_network:
-        # However old: offline must never turn a cache hit into a fetch.
-        return cache_path if cached else None
-    if cached and not policy.refresh:
-        try:
-            if time.time() - os.path.getmtime(cache_path) < policy.max_age:
-                return cache_path
-        except OSError:
-            pass
-
-    os.makedirs(cache_dir, exist_ok=True)
-    try:
-        from core.mdx_config_fetch import _urlopen
-
-        with _urlopen(url) as response:
-            data = response.read()
-        # Staged, so a failed write cannot truncate a good entry into a
-        # corrupt one that is then served for the rest of the TTL.
-        tmp_path = f"{cache_path}.part"
-        try:
-            with open(tmp_path, "wb") as handle:
-                handle.write(data)
-            os.replace(tmp_path, cache_path)
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except FileNotFoundError:
-                pass
-        return cache_path
-    except (urllib.error.URLError, OSError, TimeoutError):
-        return cache_path if cached else None
+    """Return a readable cache path for compatibility with path consumers."""
+    data, path = _fetch_cached_bytes(
+        url,
+        cache_dir,
+        filename,
+        policy=policy,
+        allow_network=allow_network,
+        refresh=refresh,
+    )
+    return path if data is not None else None
 
 
 def _load_json_cache(
     url: str, cache_dir: str, filename: str, *, policy: FetchPolicy = DEFAULT_FETCH_POLICY
 ) -> dict:
-    path = _fetch_cached(url, cache_dir, filename, policy=policy)
-    if not path:
+    data, _path = _fetch_cached_bytes(url, cache_dir, filename, policy=policy)
+    if data is None:
         return {}
     try:
-        with open(path, encoding="utf-8") as handle:
-            payload = json.load(handle)
+        payload = json.loads(data.decode("utf-8"))
         return payload if isinstance(payload, dict) else {}
-    except (json.JSONDecodeError, OSError):
+    except (UnicodeDecodeError, json.JSONDecodeError):
         return {}
 
 
@@ -380,35 +439,46 @@ def _intent_from_community_stems(stems_text: str) -> Tuple[str, str]:
     return intent, primary
 
 
-def _parse_community_models_txt(path: str) -> Dict[str, CommunityRef]:
+def _parse_community_model_lines(lines: Any) -> Dict[str, CommunityRef]:
     refs: Dict[str, CommunityRef] = {}
-    if not os.path.isfile(path):
-        return refs
-    with open(path, encoding="utf-8") as handle:
-        for line in handle:
-            line = line.rstrip()
-            if not line or line.startswith("#") or line.startswith("-"):
-                continue
-            if set(line) <= {"-"}:
-                continue
-            if "Model Filename" in line or "Output Stems" in line:
-                continue
-            parts = re.split(r"\s{2,}", line.strip())
-            if len(parts) < 4:
-                continue
-            filename, arch, stems_text, friendly = parts[0], parts[1], parts[2], parts[3]
-            if not filename.endswith((".pth", ".onnx", ".ckpt", ".th")):
-                continue
-            intent, primary = _intent_from_community_stems(stems_text)
-            refs[filename.lower()] = CommunityRef(
-                filename=filename,
-                arch=arch,
-                primary_stem=primary,
-                stems_text=stems_text,
-                friendly_name=friendly,
-                intent=intent,
-            )
+    for line in lines:
+        line = line.rstrip()
+        if not line or line.startswith("#") or line.startswith("-"):
+            continue
+        if set(line) <= {"-"}:
+            continue
+        if "Model Filename" in line or "Output Stems" in line:
+            continue
+        parts = re.split(r"\s{2,}", line.strip())
+        if len(parts) < 4:
+            continue
+        filename, arch, stems_text, friendly = parts[0], parts[1], parts[2], parts[3]
+        if not filename.endswith((".pth", ".onnx", ".ckpt", ".th")):
+            continue
+        intent, primary = _intent_from_community_stems(stems_text)
+        refs[filename.lower()] = CommunityRef(
+            filename=filename,
+            arch=arch,
+            primary_stem=primary,
+            stems_text=stems_text,
+            friendly_name=friendly,
+            intent=intent,
+        )
     return refs
+
+
+def _parse_community_models_txt(path: str) -> Dict[str, CommunityRef]:
+    if not os.path.isfile(path):
+        return {}
+    with open(path, encoding="utf-8") as handle:
+        return _parse_community_model_lines(handle)
+
+
+def _parse_community_models_bytes(data: bytes) -> Dict[str, CommunityRef]:
+    try:
+        return _parse_community_model_lines(data.decode("utf-8").splitlines())
+    except UnicodeDecodeError:
+        return {}
 
 
 
@@ -423,6 +493,7 @@ def _build_catalogue_context(
             refresh=policy.refresh,
             max_age=policy.max_age,
             allow_metadata_writes=policy.allow_metadata_writes,
+            allow_cache_writes=policy.allow_cache_writes,
         )
     remote_vr = _load_json_cache(
         _POLITREES_VR_DATA_URL, POLITREES_CACHE_DIR, "vr_model_data.json", policy=policy
@@ -430,10 +501,10 @@ def _build_catalogue_context(
     remote_mdx = _load_json_cache(
         _POLITREES_MDX_DATA_URL, POLITREES_CACHE_DIR, "mdx_model_data.json", policy=policy
     )
-    community_path = _fetch_cached(
+    community_data, _community_path = _fetch_cached_bytes(
         _COMMUNITY_MODELS_URL, COMMUNITY_CACHE_DIR, "models.txt", policy=policy
     )
-    community = _parse_community_models_txt(community_path or "")
+    community = _parse_community_models_bytes(community_data or b"")
     return CatalogueContext(
         community_by_file=community,
         vr_by_hash=_merge_hash_tables(paths.VR_HASH_JSON, remote_vr),
@@ -655,6 +726,14 @@ def _fetch_yaml(
     return _fetch_cached(url, YAML_CACHE_DIR, yaml_name, policy=policy)
 
 
+def _fetch_yaml_bytes(
+    url: str, yaml_name: str, *, policy: FetchPolicy = DEFAULT_FETCH_POLICY
+) -> Tuple[Optional[bytes], Optional[str]]:
+    if not url or not yaml_name.endswith(".yaml"):
+        return None, None
+    return _fetch_cached_bytes(url, YAML_CACHE_DIR, yaml_name, policy=policy)
+
+
 def _training_fields(training: Any) -> Tuple[List[str], str]:
     if training is None:
         return [], ""
@@ -680,6 +759,7 @@ def _load_yaml_meta(
             refresh=policy.refresh,
             max_age=policy.max_age,
             allow_metadata_writes=policy.allow_metadata_writes,
+            allow_cache_writes=policy.allow_cache_writes,
         )
     if not yaml_name:
         return [], "", "", ""
@@ -690,6 +770,7 @@ def _load_yaml_meta(
             break
 
     source = ""
+    config_data: Optional[bytes] = None
     if config_path:
         source = _yaml_source_label(yaml_name, config_path)
     elif yaml_url:
@@ -710,17 +791,24 @@ def _load_yaml_meta(
         if not config_path:
             # Not gated on allow_network: _fetch_cached honours the policy
             # itself, and offline it is the only thing that reads the cache.
-            fetched = _fetch_yaml(yaml_url, yaml_name, policy=policy)
-            if fetched:
-                config_path = fetched
+            config_data, fetched_path = _fetch_yaml_bytes(
+                yaml_url, yaml_name, policy=policy
+            )
+            if fetched_path:
+                config_path = fetched_path
+            if config_data is not None:
                 source = f"remote_yaml:{yaml_name}"
-    if not config_path:
+    if not config_path and config_data is None:
         inferred = _infer_from_yaml_name(yaml_name)
         if inferred[0] or inferred[1]:
             return inferred[0], inferred[1], inferred[2], f"yaml_name_heuristic:{yaml_name}"
         return [], "", "", ""
     try:
-        config = load_mdx_c_config(config_path)
+        config = (
+            load_mdx_c_config(config_path)
+            if config_data is None
+            else load_mdx_c_config_data(config_data)
+        )
         training = _mdx_c_training(config)
         instruments, target = _training_fields(training)
         arch, _ = infer_mdx_c_architecture(yaml_name)
@@ -1191,11 +1279,13 @@ def collect_entries(
             refresh=policy.refresh,
             max_age=policy.max_age,
             allow_metadata_writes=policy.allow_metadata_writes,
+            allow_cache_writes=policy.allow_cache_writes,
         )
     snapshot, payloads = _snapshot_and_payloads(
         allow_network=policy.allow_network,
         refresh=policy.refresh,
         coordinator=coordinator,
+        policy=policy,
     )
     return snapshot, _entries_from_snapshot(snapshot, payloads, ctx, policy=policy)
 

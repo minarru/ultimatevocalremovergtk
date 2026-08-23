@@ -152,7 +152,7 @@ class RemoteJsonSource:
         if not dest:
             return None
         filename = self.cache_filename or os.path.basename(dest)
-        if policy.allow_metadata_writes:
+        if policy.allow_cache_writes:
             from . import paths
 
             return paths.migrate_cache_file(filename, dest)
@@ -281,6 +281,7 @@ class RemoteJsonSource:
         captured = AccessPolicy(
             allow_network=policy.allow_network,
             allow_metadata_writes=policy.allow_metadata_writes,
+            allow_cache_writes=policy.allow_cache_writes,
         )
 
         def run() -> None:
@@ -376,6 +377,7 @@ class RemoteJsonSource:
                 disk_policy = AccessPolicy(
                     allow_network=False,
                     allow_metadata_writes=False,
+                    allow_cache_writes=False,
                 )
                 self._read_disk(disk_policy, now)
             return self.state
@@ -389,7 +391,7 @@ class RemoteJsonSource:
             return self.state
         with self._lock:
             self._publish_content(content, now, from_network=True)
-        if policy.allow_metadata_writes:
+        if policy.allow_cache_writes:
             self._write_disk(content, policy)
         return self.state
 
@@ -530,7 +532,7 @@ class RemoteJsonSource:
             status.backoff_until = now + delay
 
     def _write_disk(self, content: SourceContent, policy: AccessPolicy) -> None:
-        if not policy.allow_metadata_writes or not self._cache_path:
+        if not policy.allow_cache_writes or not self._cache_path:
             return
         path = self._cache_file(policy)
         if not path:

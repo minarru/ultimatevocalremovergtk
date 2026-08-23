@@ -222,6 +222,7 @@ def _default_mvsepless_catalogue(*, allow_network: bool = True) -> Dict[str, Any
             policy = AccessPolicy(
                 allow_network=False,
                 allow_metadata_writes=policy.allow_metadata_writes,
+                allow_cache_writes=policy.allow_cache_writes,
             )
             source.load(mode=RefreshMode.OFFLINE, policy=policy)
         else:
