@@ -264,6 +264,118 @@ class WarmSizeCacheTests(unittest.TestCase):
 
 
 class UpdateModelSettingsTests(unittest.TestCase):
+    def test_overlay_plan_and_commit_serialize_real_local_writer(self) -> None:
+        import io
+        import json
+        import tempfile
+        from unittest import mock
+
+        from core import downloads as downloads_mod
+        from core import name_mapper
+        from core.downloads import DownloadManager
+
+        remote = {"upstream.ckpt": "Fresh upstream"}
+        with tempfile.TemporaryDirectory() as tmp:
+            mapper = os.path.join(tmp, "mdx_mapper.json")
+            overlay = name_mapper.local_overlay_path(mapper)
+            with open(mapper, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "legacy.ckpt": "Legacy evidence",
+                        "upstream.ckpt": "Old upstream",
+                    },
+                    handle,
+                )
+
+            class _FileResp:
+                def __init__(self, payload: dict[str, str]) -> None:
+                    self._buf = io.StringIO(json.dumps(payload))
+
+                def __enter__(self) -> io.StringIO:
+                    return self._buf
+
+                def __exit__(self, *args: object) -> None:
+                    return None
+
+            plan_derived = threading.Event()
+            release_refresh = threading.Event()
+            writer_started = threading.Event()
+            writer_done = threading.Event()
+            refresh_results: list[bool] = []
+            writer_results: list[bool] = []
+            failures: list[BaseException] = []
+            real_plan = name_mapper.plan_local_overlay_migration
+
+            def pause_after_plan(
+                mapper_path: str, incoming: dict[str, str]
+            ) -> dict[str, str] | None:
+                planned = real_plan(mapper_path, incoming)
+                plan_derived.set()
+                if not release_refresh.wait(5):
+                    raise TimeoutError("test did not release mapper refresh")
+                return planned
+
+            def refresh() -> None:
+                try:
+                    refresh_results.append(DownloadManager().update_model_settings())
+                except BaseException as exc:
+                    failures.append(exc)
+
+            def add_name() -> None:
+                writer_started.set()
+                try:
+                    writer_results.append(
+                        name_mapper.add_local_name(mapper, "concurrent.ckpt", "Concurrent evidence")
+                    )
+                except BaseException as exc:
+                    failures.append(exc)
+                finally:
+                    writer_done.set()
+
+            with (
+                mock.patch.object(downloads_mod, "_MODEL_DATA_URLS", [("https://x/mdx", mapper)]),
+                mock.patch.object(downloads_mod, "_NAME_MAPPER_DESTS", frozenset({mapper})),
+                mock.patch.object(downloads_mod, "_urlopen", return_value=_FileResp(remote)),
+                mock.patch.object(
+                    name_mapper,
+                    "plan_local_overlay_migration",
+                    side_effect=pause_after_plan,
+                ),
+            ):
+                refresh_thread = threading.Thread(target=refresh)
+                writer_thread = threading.Thread(target=add_name)
+                refresh_thread.start()
+                self.assertTrue(plan_derived.wait(2), "refresh did not reach planning boundary")
+                writer_thread.start()
+                self.assertTrue(writer_started.wait(2), "writer thread did not start")
+                writer_blocked = False
+                try:
+                    writer_blocked = not writer_done.wait(0.5)
+                finally:
+                    release_refresh.set()
+                    refresh_thread.join(2)
+                    writer_thread.join(2)
+
+            self.assertTrue(
+                writer_blocked,
+                "writer replaced the overlay after the refresh derived a stale plan",
+            )
+            self.assertFalse(refresh_thread.is_alive())
+            self.assertFalse(writer_thread.is_alive())
+            self.assertEqual(failures, [])
+            self.assertEqual(refresh_results, [True])
+            self.assertEqual(writer_results, [True])
+            with open(mapper, encoding="utf-8") as handle:
+                self.assertEqual(json.load(handle), remote)
+            with open(overlay, encoding="utf-8") as handle:
+                self.assertEqual(
+                    json.load(handle),
+                    {
+                        "legacy.ckpt": "Legacy evidence",
+                        "concurrent.ckpt": "Concurrent evidence",
+                    },
+                )
+
     def test_name_mapper_keeps_local_only_keys(self) -> None:
         import io
         import json

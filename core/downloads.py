@@ -131,12 +131,22 @@ def _json_file_matches(path: str, payload: Mapping[str, Any]) -> bool:
     return existing == payload
 
 
-def _transactional_json_refresh(writes: Mapping[str, Mapping[str, Any]]) -> tuple[bool, bool]:
+def _transactional_json_refresh(
+    writes: Mapping[str, Mapping[str, Any]],
+    *,
+    locked_paths: typing.Iterable[str] = (),
+    prepare_locked: Callable[[], Mapping[str, Mapping[str, Any]]] | None = None,
+) -> tuple[bool, bool]:
     """Stage and commit a set of JSON files, rolling back on commit failure."""
+    transaction_paths = set(writes)
+    transaction_paths.update(locked_paths)
     with ExitStack() as locks:
-        for path in sorted(writes, key=os.path.abspath):
+        for path in sorted(transaction_paths, key=os.path.abspath):
             locks.enter_context(locked_json_path(path))
-        return _transactional_json_refresh_locked(writes)
+        prepared = prepare_locked() if prepare_locked is not None else {}
+        if not set(prepared).issubset(transaction_paths):
+            raise ValueError("prepared JSON write does not hold its destination lock")
+        return _transactional_json_refresh_locked({**writes, **prepared})
 
 
 def _transactional_json_refresh_locked(
@@ -1024,7 +1034,10 @@ class DownloadManager:
             )
             return False
 
+        from .name_mapper import local_overlay_path, plan_local_overlay_migration
+
         writes: Dict[str, Mapping[str, Any]] = {}
+        name_mapper_payloads: Dict[str, Mapping[str, Any]] = {}
         # Tracked apart so a pure relabelling refresh repaints the pickers
         # without staling resolved plans or rehashing every checkpoint.
         hash_changed = False
@@ -1036,22 +1049,31 @@ class DownloadManager:
             payload: Mapping[str, Any] = data
             is_name_mapper = dest in _NAME_MAPPER_DESTS
             if is_name_mapper:
-                # Plan the first-run overlay migration without writing it yet;
-                # the overlay marker participates in the same transaction.
-                from .name_mapper import local_overlay_path, plan_local_overlay_migration
-
-                local_only = plan_local_overlay_migration(dest, data)
-                if local_only is not None:
-                    writes[local_overlay_path(dest)] = local_only
-                    name_changed = name_changed or bool(local_only)
-            if not _json_file_matches(dest, payload):
-                if is_name_mapper:
-                    name_changed = True
-                else:
-                    hash_changed = True
+                name_mapper_payloads[dest] = payload
             writes[dest] = payload
 
-        ok, _wrote_files = _transactional_json_refresh(writes)
+        def prepare_locked() -> Mapping[str, Mapping[str, Any]]:
+            nonlocal hash_changed, name_changed
+            overlay_writes: Dict[str, Mapping[str, Any]] = {}
+            for dest, payload in writes.items():
+                if not _json_file_matches(dest, payload):
+                    if dest in name_mapper_payloads:
+                        name_changed = True
+                    else:
+                        hash_changed = True
+            for dest, payload in name_mapper_payloads.items():
+                local_only = plan_local_overlay_migration(dest, payload)
+                if local_only is not None:
+                    overlay_writes[local_overlay_path(dest)] = local_only
+                    name_changed = name_changed or bool(local_only)
+            return overlay_writes
+
+        overlay_paths = tuple(local_overlay_path(dest) for dest in name_mapper_payloads)
+        ok, _wrote_files = _transactional_json_refresh(
+            writes,
+            locked_paths=overlay_paths,
+            prepare_locked=prepare_locked,
+        )
         if not ok:
             return False
         changed = hash_changed or name_changed
