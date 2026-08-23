@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import threading
 import unittest
 import warnings
 from unittest import mock
@@ -108,6 +109,74 @@ class NameMapperOverlayTests(unittest.TestCase):
             self.assertTrue(
                 any("changed during archival" in str(item.message) for item in caught)
             )
+
+    def test_archival_serializes_real_local_overlay_writer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            mapper = os.path.join(tmp, "model_name_mapper.json")
+            source = name_mapper.local_overlay_path(mapper)
+            archive = name_mapper.legacy_overlay_archive_path(mapper)
+            _write(source, {"old.ckpt": "Prior evidence"})
+            linked = threading.Event()
+            release_archive = threading.Event()
+            writer_started = threading.Event()
+            writer_done = threading.Event()
+            archive_results: list[bool] = []
+            writer_results: list[bool] = []
+            failures: list[BaseException] = []
+            real_link = os.link
+
+            def pause_after_link(link_source: str, link_archive: str) -> None:
+                real_link(link_source, link_archive)
+                linked.set()
+                if not release_archive.wait(5):
+                    raise TimeoutError("test did not release archival")
+
+            def archive_overlay() -> None:
+                try:
+                    archive_results.append(
+                        name_mapper.archive_legacy_local_overlay(mapper)
+                    )
+                except BaseException as exc:
+                    failures.append(exc)
+
+            def add_name() -> None:
+                writer_started.set()
+                try:
+                    writer_results.append(
+                        name_mapper.add_local_name(mapper, "new.ckpt", "New evidence")
+                    )
+                except BaseException as exc:
+                    failures.append(exc)
+                finally:
+                    writer_done.set()
+
+            with mock.patch.object(
+                name_mapper.os, "link", side_effect=pause_after_link
+            ):
+                archive_thread = threading.Thread(target=archive_overlay)
+                writer_thread = threading.Thread(target=add_name)
+                archive_thread.start()
+                self.assertTrue(linked.wait(2), "archive did not reach link boundary")
+                writer_thread.start()
+                self.assertTrue(writer_started.wait(2), "writer thread did not start")
+                try:
+                    self.assertFalse(
+                        writer_done.wait(0.5),
+                        "writer replaced the overlay while archival was paused",
+                    )
+                    self.assertEqual(_read(source), {"old.ckpt": "Prior evidence"})
+                finally:
+                    release_archive.set()
+                archive_thread.join(2)
+                writer_thread.join(2)
+
+            self.assertFalse(archive_thread.is_alive())
+            self.assertFalse(writer_thread.is_alive())
+            self.assertEqual(failures, [])
+            self.assertEqual(archive_results, [True])
+            self.assertEqual(writer_results, [True])
+            self.assertEqual(_read(archive), {"old.ckpt": "Prior evidence"})
+            self.assertEqual(_read(source), {"new.ckpt": "New evidence"})
 
     def test_load_without_overlay_returns_mirror(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

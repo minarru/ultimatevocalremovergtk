@@ -21,6 +21,7 @@ import ssl
 import threading
 import time
 import urllib.request
+from contextlib import ExitStack
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from bundled.constants import (
@@ -56,6 +57,7 @@ from .download_sizes import (
     prefetch_remote_sizes,
     prefetch_same_size_identity,
 )
+from .json_store import locked_json_path
 from .mdx_config_fetch import ensure_mdx_c_config
 from .mvsepless_catalog import (
     unsupported_mvsepless_downloads,
@@ -131,6 +133,15 @@ def _json_file_matches(path: str, payload: Mapping[str, Any]) -> bool:
 
 def _transactional_json_refresh(writes: Mapping[str, Mapping[str, Any]]) -> tuple[bool, bool]:
     """Stage and commit a set of JSON files, rolling back on commit failure."""
+    with ExitStack() as locks:
+        for path in sorted(writes, key=os.path.abspath):
+            locks.enter_context(locked_json_path(path))
+        return _transactional_json_refresh_locked(writes)
+
+
+def _transactional_json_refresh_locked(
+    writes: Mapping[str, Mapping[str, Any]],
+) -> tuple[bool, bool]:
     staged: Dict[str, str] = {}
     backups: Dict[str, Optional[str]] = {}
     committed: List[str] = []

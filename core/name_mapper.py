@@ -20,6 +20,8 @@ import os
 import warnings
 from typing import Dict, Mapping
 
+from .json_store import locked_json_path
+
 _LOCAL_SUFFIX = "_local.json"
 
 
@@ -47,15 +49,16 @@ def _load_object(path: str) -> Dict[str, str]:
 
 
 def _write_object(path: str, payload: Mapping[str, str]) -> bool:
-    try:
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        tmp_path = f"{path}.tmp"
-        with open(tmp_path, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps(dict(payload), indent=4))
-        os.replace(tmp_path, path)
-        return True
-    except OSError:
-        return False
+    with locked_json_path(path):
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            tmp_path = f"{path}.tmp"
+            with open(tmp_path, "w", encoding="utf-8") as handle:
+                handle.write(json.dumps(dict(payload), indent=4))
+            os.replace(tmp_path, path)
+            return True
+        except OSError:
+            return False
 
 
 def load_local_overlay(mapper_path: str) -> Dict[str, str]:
@@ -86,6 +89,11 @@ def archive_legacy_local_overlay(mapper_path: str) -> bool:
     and the ignored source is reported to the caller through a warning.
     """
     source = local_overlay_path(mapper_path)
+    with locked_json_path(source):
+        return _archive_legacy_local_overlay_locked(source, mapper_path)
+
+
+def _archive_legacy_local_overlay_locked(source: str, mapper_path: str) -> bool:
     if not os.path.isfile(source):
         return False
     archive = legacy_overlay_archive_path(mapper_path)
@@ -134,11 +142,13 @@ def archive_legacy_local_overlay(mapper_path: str) -> bool:
 
 def add_local_name(mapper_path: str, key: str, display_name: str) -> bool:
     """Record a fork-local display name. Never touches the upstream mirror."""
-    overlay = load_local_overlay(mapper_path)
-    if overlay.get(key) == display_name:
-        return False
-    overlay[key] = display_name
-    return _write_object(local_overlay_path(mapper_path), overlay)
+    overlay_path = local_overlay_path(mapper_path)
+    with locked_json_path(overlay_path):
+        overlay = _load_object(overlay_path)
+        if overlay.get(key) == display_name:
+            return False
+        overlay[key] = display_name
+        return _write_object(overlay_path, overlay)
 
 
 def migrate_local_only_keys(mapper_path: str, remote: Mapping[str, object]) -> bool:
@@ -154,11 +164,13 @@ def migrate_local_only_keys(mapper_path: str, remote: Mapping[str, object]) -> b
     written unconditionally here — empty when there was nothing to rescue — and
     its existence means the mirror is authoritative from now on.
     """
-    local_only = plan_local_overlay_migration(mapper_path, remote)
-    if local_only is None:
-        return False
-    written = _write_object(local_overlay_path(mapper_path), local_only)
-    return bool(local_only) and written
+    overlay_path = local_overlay_path(mapper_path)
+    with locked_json_path(overlay_path):
+        local_only = plan_local_overlay_migration(mapper_path, remote)
+        if local_only is None:
+            return False
+        written = _write_object(overlay_path, local_only)
+        return bool(local_only) and written
 
 
 def plan_local_overlay_migration(
