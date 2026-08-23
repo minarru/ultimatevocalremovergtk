@@ -183,7 +183,9 @@ class VocalSplitRow(Adw.ExpanderRow):
     def persist_to_settings(self, settings: typing.Any) -> None:
         """Write every global vocal-split key back to ``settings``."""
         process = settings.process
-        process.vocal_splitter_enabled = self.split_switch.get_active()
+        process.vocal_splitter_enabled = (
+            self.split_switch.get_active() and not self._splitter_write_gated
+        )
         process.save_inst_vocal_splitter = self.save_inst_switch.get_active()
         process.deverb_vocals = self.deverb_switch.get_active()
         process.deverb_vocal_opt = (
@@ -191,7 +193,9 @@ class VocalSplitRow(Adw.ExpanderRow):
         )
         # Only trust the combo once its real list has loaded; before that it is
         # a seeded placeholder and the stored tag is authoritative.
-        if self._populator.ready and not self._splitter_write_gated:
+        if self._splitter_write_gated:
+            process.vocal_splitter = NO_MODEL
+        elif self._populator.ready:
             process.vocal_splitter = get_combo_value(self.splitter_row)
         else:
             process.vocal_splitter = self._stored_splitter
@@ -212,7 +216,7 @@ class VocalSplitRow(Adw.ExpanderRow):
             stored = self._stored_splitter
         row.set_subtitle(
             f"Saved model {stored!r} cannot be selected; it was "
-            "kept as written. Pick a model to replace it."
+            "disabled for processing. Pick a model to enable vocal splitting."
         )
         row.set_visible(True)
 

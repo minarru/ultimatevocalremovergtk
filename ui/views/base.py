@@ -486,6 +486,17 @@ class MethodView:
         self._save_scales()
         self._save_switches()
         self._save_spins()
+        self._flush_gated_model_settings()
+
+    def _flush_gated_model_settings(self) -> None:
+        """Remove UI-gated auxiliary models from effective run settings."""
+        for entry in getattr(self, "_model_combos", ()):
+            if not entry.get("write_gated", False):
+                continue
+            set_flat(self.settings, entry["key"], NO_MODEL)
+            activate_key = entry.get("activate_key")
+            if activate_key:
+                set_flat(self.settings, activate_key, False)
 
     # -- Method-specific option controls ---------------------------------------
 
@@ -680,7 +691,16 @@ class MethodView:
 
     # -- Secondary / pre-process / vocal-splitter model selection --------------
 
-    def _add_model_combo(self, container: typing.Any, key: typing.Any, provider: typing.Any, title: typing.Any, hint: typing.Any=None):
+    def _add_model_combo(
+        self,
+        container: typing.Any,
+        key: typing.Any,
+        provider: typing.Any,
+        title: typing.Any,
+        hint: typing.Any = None,
+        *,
+        activate_key: typing.Any = None,
+    ):
         """Add a model-picker combo (lazily populated to avoid startup hashing).
 
         The combo is registered separately from :attr:`_option_rows` so its value
@@ -701,6 +721,7 @@ class MethodView:
             "row": row,
             "warning_row": warning_row,
             "key": key,
+            "activate_key": activate_key,
             "provider": provider,
             "ready": False,
             "eligible_ids": set(),
@@ -715,8 +736,8 @@ class MethodView:
         if warning_row is None:
             return
         warning_row.set_subtitle(
-            f"Saved model {stored!r} cannot be selected; it was kept as written. "
-            "Pick a model to replace it."
+            f"Saved model {stored!r} cannot be selected and will be disabled "
+            "when settings are applied. Pick a model to enable it."
         )
         warning_row.set_visible(True)
 
@@ -947,6 +968,7 @@ class MethodView:
                     provider,
                     pair_label,
                     hint=SECONDARY_MODEL_HELP,
+                    activate_key=f"{prefix}_is_secondary_model_activate",
                 )
                 scale = self.add_option_scale(
                     self.secondary_expander,
@@ -975,6 +997,7 @@ class MethodView:
                 lambda: repo.model_list(settings, VOCAL_STEM, INST_STEM, is_no_demucs=True),
                 "Pre-process model",
                 hint=PRE_PROC_MODEL_HELP,
+                activate_key="is_demucs_pre_proc_model_activate",
             )
             inst_mix_row = self.add_option_switch(self.preproc_expander, "is_demucs_pre_proc_model_inst_mix", "Save instrumental mixture", hint=PRE_PROC_MODEL_INST_MIX_HELP)
             self._bind_switch_dependents(activate, [model_row, inst_mix_row])

@@ -55,6 +55,47 @@ class FormatMmssTests(unittest.TestCase):
         self.assertEqual(_format_mmss(125), "2:05")
 
 
+class EnsembleErrorContextSnapshotTests(unittest.TestCase):
+    def test_live_snapshot_uses_repository_display_labels(self) -> None:
+        from core.model_identity import ModelArtifacts, ModelRecord
+
+        settings = Settings.defaults()
+        settings.ensemble.selected_models = ["mdx:first", "vr:second"]
+        records = {
+            "mdx:first": ModelRecord(
+                "mdx:first", "mdx", "first", "Friendly First", "first",
+                ModelArtifacts("first.onnx"), True,
+            ),
+            "vr:second": ModelRecord(
+                "vr:second", "vr", "second", "Friendly Second", "second",
+                ModelArtifacts("second.pth"), True,
+            ),
+        }
+        repo = object()
+        window = SimpleNamespace(
+            settings=settings,
+            context=SimpleNamespace(repo=repo),
+            content_stack=SimpleNamespace(
+                get_visible_child_name=lambda: "ensemble"
+            ),
+            _ensemble_page=SimpleNamespace(
+                input_row=SimpleNamespace(paths=["/tmp/song.wav"])
+            ),
+        )
+        controller = cast(Any, RunController.__new__(RunController))
+        controller._window = window
+
+        with mock.patch(
+            "core.error_context.ModelIdentityService.lookup",
+            autospec=True,
+            side_effect=lambda _service, model_id: records[model_id],
+        ):
+            context = controller._snapshot_error_context(object())
+
+        self.assertEqual(context["models"], ["Friendly First", "Friendly Second"])
+        self.assertEqual(settings.ensemble.selected_models, ["mdx:first", "vr:second"])
+
+
 class SetRunningUnlockTests(unittest.TestCase):
     def test_unlock_keeps_model_options_enabled(self) -> None:
         """Regression: unlock must clear Stop before syncing Model options.

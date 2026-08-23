@@ -176,8 +176,8 @@ class VocalSplitRowTests(unittest.TestCase):
         row.persist_to_settings(settings)
         self.assertEqual(settings.get("set_vocal_splitter"), "VR Arc: UVR-BVE-4B")
 
-    def test_persist_preserves_a_stored_tag_missing_from_the_model_list(self):
-        """A deleted/renamed model is visually empty but survives persistence.
+    def test_persist_clears_a_stored_tag_missing_from_the_model_list(self):
+        """A deleted/renamed model cannot become active after a later install.
 
         Regression: expanding the row used to rebuild the combo from just the
         fresh (non-matching) list, silently landing the selection on index 0
@@ -191,9 +191,8 @@ class VocalSplitRowTests(unittest.TestCase):
 
         self.assertEqual(get_combo_value(row.splitter_row), "No Model Selected")
         row.persist_to_settings(settings)
-        self.assertEqual(
-            settings.get("set_vocal_splitter"), "VR Arc: 5_HP-Karaoke-UVR-DELETED"
-        )
+        self.assertEqual(settings.get("set_vocal_splitter"), "No Model Selected")
+        self.assertFalse(settings.get("is_set_vocal_splitter"))
 
     def test_missing_stored_splitter_is_visible_until_valid_repick(self):
         from bundled.constants import NO_MODEL
@@ -269,7 +268,7 @@ class VocalSplitRowTests(unittest.TestCase):
         row_a.save_inst_switch.set_active(True)
         self.assertEqual(settings.get("set_vocal_splitter"), replacement)
 
-    def test_persist_preserves_a_stored_tag_when_karaoke_model_list_raises(self):
+    def test_persist_clears_a_stored_tag_when_karaoke_model_list_raises(self):
         from ui.widgets.vocal_split_row import VocalSplitRow
         from core.model_repository import ModelRepository
 
@@ -285,7 +284,8 @@ class VocalSplitRowTests(unittest.TestCase):
         row.apply_from_settings(settings)
         row.set_expanded(True)  # triggers _populate_models, which will raise internally
         row.persist_to_settings(settings)
-        self.assertEqual(settings.get("set_vocal_splitter"), "VR Arc: UVR-BVE-4B")
+        self.assertEqual(settings.get("set_vocal_splitter"), "No Model Selected")
+        self.assertFalse(settings.get("is_set_vocal_splitter"))
 
     def test_dependent_rows_are_dimmed_while_their_switch_is_off(self):
         row = self._row()
@@ -383,7 +383,7 @@ class VocalSplitRowTests(unittest.TestCase):
         row.set_expanded(True)
         self.assertIn("UVR-BVE-5B", " ".join(combo_values(row.splitter_row)))
 
-    def test_refresh_preserves_a_selection_absent_from_the_new_list(self):
+    def test_refresh_flush_drops_a_selection_absent_from_the_new_list(self):
         from ui.widgets.rows import combo_values, get_combo_value
         from bundled.constants import NO_MODEL
 
@@ -400,7 +400,8 @@ class VocalSplitRowTests(unittest.TestCase):
         self.assertEqual(get_combo_value(row.splitter_row), NO_MODEL)
         settings = self._settings()
         row.persist_to_settings(settings)
-        self.assertEqual(settings.get("set_vocal_splitter"), "vr:UVR-BVE-4B")
+        self.assertEqual(settings.get("set_vocal_splitter"), NO_MODEL)
+        self.assertFalse(settings.get("is_set_vocal_splitter"))
 
     def test_refresh_presents_only_karaoke_members_with_friendly_labels(self):
         """The splitter pool stays karaoke-only while labels get friendlier.

@@ -349,9 +349,21 @@ def build_separation_context(
 
 
 def build_ensemble_context(
-    settings: Settings, input_paths: Sequence[str]
+    settings: Settings,
+    input_paths: Sequence[str],
+    repo: typing.Any = None,
 ) -> Dict[str, Any]:
-    models = list(settings.ensemble.selected_models or [])
+    references = list(settings.ensemble.selected_models or [])
+    models: List[str] = []
+    identities = ModelIdentityService(repo) if repo is not None else None
+    for reference in references:
+        if identities is None:
+            models.append(str(reference))
+            continue
+        try:
+            models.append(identities.lookup(str(reference)).display)
+        except (TypeError, ValueError):
+            models.append(str(reference))
     return {
         "process": ENSEMBLE_MODE,
         "models": models,

@@ -1063,17 +1063,17 @@ class EnsemblePage:
         ) -> str | None:
             path = f"ensemble.selected_models[{index}]"
             if not isinstance(value, str):
-                return f"{path}: expected a canonical model ID; preserved {value!r}"
+                return f"{path}: expected a canonical model ID; excluding {value!r}"
             try:
                 model_id = parse_stored_model_id(value).value
             except ValueError:
-                return f"{path}: expected a canonical model ID; preserved {value!r}"
+                return f"{path}: expected a canonical model ID; excluding {value!r}"
             if model_id not in installed_ids:
-                return f"{path}: model {value!r} is not installed; preserved as written"
+                return f"{path}: model {value!r} is not installed; excluding it"
             if eligible_ids is not None and model_id not in eligible_ids:
                 return (
                     f"{path}: model {value!r} is not eligible for "
-                    f"{self._ensemble_pair().value!r}; preserved as written"
+                    f"{self._ensemble_pair().value!r}; excluding it"
                 )
             return None
 
@@ -1186,8 +1186,8 @@ class EnsemblePage:
             self._model_row_text[tag] = (title, subtitle)
 
         # A preset saved before a model became ineligible for this stem pair
-        # does not render that member, but the write gate above preserves it
-        # until the user explicitly replaces the selection.
+        # does not render that member. The persist boundary below drops it so
+        # a later install cannot silently reactivate it.
         dropped = preselected_ids - {record.id for record in records}
         if dropped:
             from core.debug_log import debug
@@ -1220,7 +1220,10 @@ class EnsemblePage:
         return list(self.settings.ensemble.selected_models or [])
 
     def _persist_selected_models(self) -> None:
-        if getattr(self, "_models_write_gated", False):
+        if (
+            getattr(self, "_models_write_gated", False)
+            and not getattr(self, "_model_checks", None)
+        ):
             return
         self.settings.ensemble.selected_models = list(self._selected_model_tags())
 

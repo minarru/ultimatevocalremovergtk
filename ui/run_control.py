@@ -958,7 +958,7 @@ class RunController:
         if tab == "ensemble":
             page = getattr(window, "_ensemble_page", None)
             paths = list(page.input_row.paths) if page is not None else []
-            return build_ensemble_context(settings, paths)
+            return build_ensemble_context(settings, paths, repo=repo)
         if tab == "audio_tools":
             from bundled.constants import (
                 APOLLO_RESTORE,

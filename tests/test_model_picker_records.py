@@ -213,7 +213,7 @@ class EnsemblePickerTests(unittest.TestCase):
         )
         self.assertEqual(list(page._model_checks), ["mdx:shared", "vr:shared"])
 
-    def test_write_gate_preserves_illegal_members_until_a_user_edit(self) -> None:
+    def test_flush_drops_illegal_members_and_keeps_checked_members(self) -> None:
         from ui.ensemble.window import EnsemblePage
 
         page: Any = EnsemblePage.__new__(EnsemblePage)
@@ -221,6 +221,7 @@ class EnsemblePickerTests(unittest.TestCase):
             ensemble=SimpleNamespace(selected_models=["MDX-Net: legacy display"])
         )
         page._models_write_gated = True
+        page._model_checks = {"mdx:installed": _FakeCheck(active=True)}
         page._selected_model_tags = lambda: ["mdx:installed"]
         page._loading = True
         page._update_models_dialog_status = lambda: None
@@ -231,7 +232,7 @@ class EnsemblePickerTests(unittest.TestCase):
 
         self.assertEqual(
             page.settings.ensemble.selected_models,
-            ["MDX-Net: legacy display"],
+            ["mdx:installed"],
         )
 
         page._on_model_toggled(_FakeCheck())
@@ -275,12 +276,9 @@ class EnsemblePickerTests(unittest.TestCase):
             self.fail(f"preserved non-string ensemble member crashed the picker: {exc}")
 
         self.assertTrue(page._models_write_gated)
-        self.assertEqual(
-            page.settings.ensemble.selected_models,
-            [["invalid member"]],
-        )
+        self.assertEqual(page.settings.ensemble.selected_models, [])
 
-    def test_repeated_activation_preserves_hidden_gated_members(self) -> None:
+    def test_repeated_activation_does_not_restore_dropped_gated_members(self) -> None:
         from core.settings import Settings
         from core.stems import EnsemblePair
         from ui.ensemble import window as ensemble_window
@@ -314,12 +312,12 @@ class EnsemblePickerTests(unittest.TestCase):
             page.on_activated()
             page.on_activated()
 
-        self.assertTrue(page._models_write_gated)
-        self.assertEqual(page.settings.ensemble.selected_models, stored)
+        self.assertFalse(page._models_write_gated)
+        self.assertEqual(page.settings.ensemble.selected_models, ["mdx:installed"])
         self.assertEqual(page._selected_model_tags(), ["mdx:installed"])
         self.assertEqual(len(page.models_listbox.children), 1)
 
-    def test_reopening_models_dialog_preserves_hidden_gated_members(self) -> None:
+    def test_reopening_models_dialog_does_not_restore_dropped_gated_members(self) -> None:
         from core.settings import Settings
         from core.stems import EnsemblePair
         from ui.ensemble import window as ensemble_window
@@ -356,11 +354,11 @@ class EnsemblePickerTests(unittest.TestCase):
             page._open_models_dialog()
             page._open_models_dialog()
 
-        self.assertTrue(page._models_write_gated)
-        self.assertEqual(page.settings.ensemble.selected_models, stored)
+        self.assertFalse(page._models_write_gated)
+        self.assertEqual(page.settings.ensemble.selected_models, ["mdx:installed"])
         self.assertEqual(page._selected_model_tags(), ["mdx:installed"])
 
-    def test_installed_but_pair_ineligible_member_stays_gated_and_warned(self) -> None:
+    def test_pair_ineligible_member_is_dropped_at_persist_boundary(self) -> None:
         from core.settings import Settings
         from core.stems import EnsemblePair
         from ui.ensemble import window as ensemble_window
@@ -395,12 +393,12 @@ class EnsemblePickerTests(unittest.TestCase):
             page._rebuild_model_list(list(stored))
             page._rebuild_model_list(list(settings.ensemble.selected_models))
 
-        self.assertTrue(page._models_write_gated)
-        self.assertEqual(settings.ensemble.selected_models, stored)
+        self.assertFalse(page._models_write_gated)
+        self.assertEqual(
+            settings.ensemble.selected_models, ["mdx:first", "mdx:second"]
+        )
         warnings = page._ensemble_member_warnings
-        self.assertEqual(len(warnings), 1, warnings)
-        self.assertIn("mdx:ineligible", warnings[0])
-        self.assertIn("not eligible", warnings[0])
+        self.assertEqual(warnings, ())
 
     def test_refresh_lists_a_newly_installed_gated_member_without_selecting_it(self) -> None:
         """A repository refresh may reveal an ID, but only a click selects it."""
@@ -442,8 +440,8 @@ class EnsemblePickerTests(unittest.TestCase):
 
         self.assertIn(missing_id, page._model_checks)
         self.assertFalse(page._model_checks[missing_id].get_active())
-        self.assertTrue(page._models_write_gated)
-        self.assertEqual(settings.ensemble.selected_models, ["mdx:installed", missing_id])
+        self.assertFalse(page._models_write_gated)
+        self.assertEqual(settings.ensemble.selected_models, ["mdx:installed"])
 
 
 class _FakeControl:
@@ -480,7 +478,7 @@ class VocalSplitPickerGateTests(unittest.TestCase):
         row._on_changed = lambda: None
         return row, settings
 
-    def test_every_non_picker_signal_preserves_each_gated_stored_value(self) -> None:
+    def test_every_non_picker_signal_flushes_each_gated_stored_value(self) -> None:
         from ui.widgets import vocal_split_row
 
         for stored in ("VR Arc: legacy display", "vr:uninstalled"):
@@ -507,7 +505,8 @@ class VocalSplitPickerGateTests(unittest.TestCase):
 
                     self.assertTrue(row._splitter_write_gated)
                     self.assertEqual(row._stored_splitter, stored)
-                    self.assertEqual(settings.process.vocal_splitter, stored)
+                    self.assertEqual(settings.process.vocal_splitter, NO_MODEL)
+                    self.assertFalse(settings.process.vocal_splitter_enabled)
 
     def test_picker_signal_replaces_the_gated_stored_value(self) -> None:
         from ui.widgets import vocal_split_row

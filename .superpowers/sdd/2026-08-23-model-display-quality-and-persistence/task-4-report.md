@@ -210,3 +210,160 @@ Output: `0 errors, 0 warnings, 0 notes`; `git diff --check` clean; Ruff
 No unresolved Task 4 concern remains. Repository-wide formatting debt was not
 expanded or mechanically rewritten; focused syntax/error lint, type checking,
 and whitespace checks are clean.
+
+## Fix Round 1
+
+This round addresses both Important review findings. It supersedes the earlier
+write-gate preservation wording above: a gated auxiliary-model value is now
+removed from effective GUI settings at the flush/persist boundary. This
+intentionally sacrifices the stale remembered selection so a later install
+cannot activate it without an explicit repick.
+
+### Surface and plan audit
+
+- Secondary and Demucs pre-process combo gates now flush the model key to
+  `NO_MODEL` and their corresponding activation flag to `False`.
+- Vocal Splitter now flushes its gated model to `NO_MODEL` and disables the
+  splitter while still deriving picker eligibility exclusively from repository
+  karaoke/BV metadata.
+- Ensemble persistence drops gated or unchecked members while retaining valid,
+  explicitly checked members. A resolved-plan regression covers a three-member
+  selection where the newly installed gated member remains unselected and the
+  other two members remain active.
+- Primary separation and Apollo restoration already block plan construction
+  through `has_model()` / `_apollo_blocked_reason` while their gated combos show
+  `CHOOSE_MODEL`; their existing private-GTK regressions remain green, so no
+  production change was made to those paths.
+- Ensemble human error context now resolves exact selected-model IDs through
+  `ModelIdentityService` when the live GUI supplies its repository. It falls
+  back to the exact stored value when lookup fails and never mutates the
+  canonical settings payload.
+
+### Files changed in Fix Round 1
+
+- `ui/views/base.py`
+- `ui/widgets/vocal_split_row.py`
+- `ui/ensemble/window.py`
+- `ui/run_control.py`
+- `core/error_context.py`
+- `tests/test_gui_gated_plans.py`
+- `tests/test_model_picker_records.py`
+- `tests/test_vocal_split_row.py`
+- `tests/test_error_context.py`
+- `tests/test_run_control.py`
+- this report
+
+### RED evidence
+
+Resolved-plan regressions were first run against the preservation behavior:
+
+```text
+env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
+ UVR_DISABLE_POLITREES=1 UVR_DISABLE_MVSEPLESS=1 \
+ .venv/bin/python -m unittest \
+ tests.test_gui_gated_plans \
+ tests.test_error_context.ErrorContextTests.test_ensemble_error_log_uses_displays_without_mutating_exact_ids -v
+```
+
+Observed before implementation: four failures showed the secondary,
+pre-process, Vocal Splitter, and third ensemble member still active in the
+resolved plan; the error-context test errored because
+`build_ensemble_context()` did not accept a repository. The corrected fixtures
+still failed on the production behavior, rather than on test setup.
+
+The live-caller regression was also proven independently by temporarily
+removing the repository argument after adding the test and using the private
+runner. Private socket `/tmp/codex-gtk.ihqrdD/codex-gtk` produced:
+
+```text
+['mdx:first', 'vr:second'] != ['Friendly First', 'Friendly Second']
+Ran 1 test
+FAILED (failures=1)
+runner exit 1
+```
+
+### GREEN evidence
+
+The same focused non-GTK command passed after the minimal implementation:
+
+```text
+Ran 5 tests
+OK
+```
+
+The live-caller test passed through private socket
+`/tmp/codex-gtk.3IOTEI/codex-gtk`, with a private D-Bus, `Ran 1 test`, `OK`,
+and runner exit 0.
+
+Covering non-GTK verification:
+
+```text
+env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
+ UVR_DISABLE_POLITREES=1 UVR_DISABLE_MVSEPLESS=1 \
+ .venv/bin/python -m unittest \
+ tests.test_gui_gated_plans tests.test_error_context \
+ tests.test_ensemble_flush_settings tests.test_identity_planning \
+ tests.test_saved_ensembles -v
+```
+
+Output: `Ran 70 tests in 0.707s` / `OK (skipped=2)` / exit 0. The two GTK
+tests skipped without a display were included in the private run below.
+
+Final private GTK command (not piped):
+
+```text
+codex sandbox \
+ -c 'permissions.gtk-headless.extends=":workspace"' \
+ -c 'permissions.gtk-headless.description="GTK tests using private headless Wayland"' \
+ -c 'permissions.gtk-headless.network.enabled=true' \
+ -C "$PWD" --disable network_proxy -P gtk-headless \
+ /home/rudam/.codex/skills/testing-gtk-headless/scripts/run-private-wayland.sh -- \
+ env UVR_DISABLE_POLITREES=1 UVR_DISABLE_MVSEPLESS=1 \
+ .venv/bin/python -m unittest \
+ tests.test_method_view_refresh tests.test_model_picker_records \
+ tests.test_vocal_split_row tests.test_apollo_picker_write_gate \
+ tests.test_saved_ensembles.SavedEnsembleWarningGtkTests \
+ tests.test_run_control.EnsembleErrorContextSnapshotTests
+```
+
+Private-display evidence and output:
+
+```text
+Private Wayland socket: /tmp/codex-gtk.yYCDk4/codex-gtk
+Private D-Bus: unix:path=/tmp/dbus-sjaBqe2GgZ,...
+Ran 78 tests in 0.266s
+OK
+runner exit 0
+```
+
+Expected portal teardown warnings about unavailable FUSE/PipeWire and losing
+the private compositor did not affect the successful runner result. No host
+display or session bus was passed to the test command.
+
+Static and whitespace verification:
+
+```text
+.venv/bin/basedpyright core/error_context.py ui/run_control.py \
+ ui/views/base.py ui/widgets/vocal_split_row.py ui/ensemble/window.py \
+ tests/test_gui_gated_plans.py tests/test_error_context.py \
+ tests/test_run_control.py tests/test_model_picker_records.py \
+ tests/test_vocal_split_row.py
+.venv/bin/ruff check --select E9,F63,F7,F82 <same files>
+git diff --check
+```
+
+Output: `0 errors, 0 warnings, 0 notes`; Ruff `All checks passed!`;
+`git diff --check` clean; all commands exited 0.
+
+### Fix Round 1 self-review
+
+- The plan tests exercise real `JobResolver` CONFIG plans and dependency maps,
+  not widget state alone.
+- Exact canonical IDs remain in settings and plan identity payloads; only the
+  copied human error-context model list is projected to display text.
+- Error-context display lookup is optional and preserves the prior exact-value
+  fallback when no repository is supplied or resolution fails.
+- Refresh still reveals newly installed entries without selecting them, and
+  valid ensemble checks survive removal of the gated member.
+- No new core gating schema was introduced, and no Task 5 catalogue or audit
+  file was edited for this round.

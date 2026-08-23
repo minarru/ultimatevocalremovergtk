@@ -7,6 +7,7 @@ import wave
 from bundled.constants import DEFAULT_DATA, DEMUCS_ARCH_TYPE, MDX_ARCH_TYPE, VR_ARCH_TYPE
 from bundled.error_handling import error_text
 from core.error_context import (
+    build_ensemble_context,
     build_separation_context,
     clear_run_error_context,
     format_error_context,
@@ -17,6 +18,7 @@ from core.error_context import (
     update_run_error_context,
 )
 from core.model_repository import ModelRepository
+from core.model_identity import ModelArtifacts, ModelRecord
 from core.settings import Settings
 from ui.errorlog import log_error
 
@@ -115,6 +117,63 @@ class ErrorContextTests(unittest.TestCase):
         )
 
         self.assertEqual(ctx["models"], ["Inst HQ 3"])
+
+    def test_ensemble_error_log_uses_displays_without_mutating_exact_ids(
+        self,
+    ) -> None:
+        settings = Settings.defaults()
+        settings.ensemble.selected_models = ["mdx:first", "vr:second"]
+        records = {
+            "mdx:first": ModelRecord(
+                id="mdx:first",
+                family="mdx",
+                basename="first",
+                display="Friendly First",
+                backend_name="first",
+                artifacts=ModelArtifacts("first.onnx"),
+                installed=True,
+            ),
+            "vr:second": ModelRecord(
+                id="vr:second",
+                family="vr",
+                basename="second",
+                display="Friendly Second",
+                backend_name="second",
+                artifacts=ModelArtifacts("second.pth"),
+                installed=True,
+            ),
+        }
+
+        with unittest.mock.patch(
+            "core.error_context.ModelIdentityService.lookup",
+            autospec=True,
+            side_effect=lambda _service, model_id: records[model_id],
+        ):
+            ctx = build_ensemble_context(settings, ["song.wav"], repo=object())
+            set_run_error_context(**ctx)
+            text = format_error_context()
+
+        self.assertIn("Friendly First", text)
+        self.assertIn("Friendly Second", text)
+        self.assertNotIn("mdx:first", text)
+        self.assertNotIn("vr:second", text)
+        self.assertEqual(settings.ensemble.selected_models, ["mdx:first", "vr:second"])
+
+    def test_ensemble_error_log_keeps_exact_id_when_display_lookup_fails(
+        self,
+    ) -> None:
+        settings = Settings.defaults()
+        settings.ensemble.selected_models = ["mdx:missing"]
+
+        with unittest.mock.patch(
+            "core.error_context.ModelIdentityService.lookup",
+            autospec=True,
+            side_effect=ValueError("not installed"),
+        ):
+            ctx = build_ensemble_context(settings, ["song.wav"], repo=object())
+
+        self.assertEqual(ctx["models"], ["mdx:missing"])
+        self.assertEqual(settings.ensemble.selected_models, ["mdx:missing"])
 
     def test_model_summary_lines_for_vr_and_demucs(self) -> None:
         """Regression: VR/Demucs branches must not NameError on VR_ARCH_TYPE."""
