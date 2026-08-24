@@ -1,7 +1,7 @@
 # Model Display Quality Audit
 
-**Date:** 2026-08-23
-**Status:** Implemented and enforced
+**Date:** 2026-08-24
+**Status:** Revised, implemented, and enforced
 **Scope:** Complete current public catalogue, runtime display projection, and
 online/offline verification
 
@@ -13,7 +13,9 @@ presentation evidence:
 ```text
 explicit trusted registry override
   -> exact bundled alias
-  -> exact live or persisted source label through conservative formatting
+  -> exact current published catalogue label
+  -> exact persisted catalogue label
+  -> exact family name-mapper label
   -> raw canonical basename
 ```
 
@@ -79,29 +81,36 @@ reasoned waiver. No flag is globally suppressed.
 
 The projector applies these approved rules only to presentation:
 
-- VR has no artificial family prefix. Exact aliases cover the 22 formerly raw
-  legacy names while retaining meaningful HP/SP/HP2, band, sample-rate, SN,
-  and sequence tokens.
+- VR has no artificial family prefix. Exact aliases cover all 28 reviewed
+  legacy and utility names while retaining meaningful HP/SP/HP2, band,
+  sample-rate, SN, and sequence tokens.
 - Mel-Band variants render as `MelBand Roformer`; BS variants render as
   `BandSplit Roformer`; the five PolarFormer entries use exact
   `BandSplit PolarFormer` aliases.
-- Counts render as `(N Stems)`. `Inst`, `Voc`, and `InstVoc` render as
-  `Instrumental`, `Vocals`, and `Instrumental/Vocals` where they are known
-  presentation terms.
-- `FT`, `HQ`, `SDR`, `FFT`, and `8K` use the approved readable forms. Opaque
-  `SN`, `Fv9`, and numeric identifiers are preserved.
+- Counts render after the complete variant as `(N Stems)`, with no empty em
+  dash for a family-only entry. `Inst`, `Voc`, `InstVoc`, and reviewed `Vocal`
+  output classes render as `Instrumental`, `Vocals`, and
+  `Instrumental/Vocals`.
+- Standalone `FT` expands to `Fine-Tuned`; `HQ` remains abbreviated. `SDR`,
+  `FFT`, `8K`, and reviewed sample-rate units use their canonical forms.
+  Opaque `SN`, `Fv9`, `SYHFT`, and numeric identifiers are preserved.
 - Repeated family copy such as `SCNet ... SCNet` is removed without changing
   the family heading.
-- The eight KUIELAB ONNX storage-style names and the exact Bowed Strings row
-  use reviewed exact aliases; this does not create a general filename parser.
+- All 54 Mega rows use `Mega Full` or `Mega <Stem> Only`, followed by
+  `(53 Stems)`. The 25 formerly count-leading rows place their count after the
+  complete variant.
+- The eight KUIELAB ONNX storage-style names, the reviewed classic ONNX batch,
+  all remaining VR utility names, and the exact correction batches use
+  canonical-ID aliases; this does not create a general filename parser.
 - Demucs retains its meaningful `v1`-`v4` generation and uses curated backend
   spellings such as `HTDemucs Fine-Tuned`.
 - The classic ONNX batch retains the `MDX-Net` engine heading and renders its
   descriptive `UVR` body without storage punctuation.
 - BVE-to-Karaoke wording is presentation-only. Karaoke/BV eligibility still
   comes from model metadata, never from title text.
-- Exact author aliases normalize known spellings without guessing ownership.
-  Gonza and Gonzaluigi remain distinct reviewed attributions.
+- Exact author aliases normalize each component of a reviewed `A & B`
+  attribution without title-casing unknown handles. Gonza and Gonzaluigi
+  remain distinct reviewed attributions.
 - A genuinely unknown custom model with no exact evidence stays at its raw
   canonical basename.
 
@@ -118,6 +127,9 @@ currently checks:
 | `repeated-family` | Family is repeated in heading and title |
 | `instvoc` | Compact `InstVoc` remains |
 | `lowercase-sdr` | Metric abbreviation is inconsistently cased |
+| `expanded-hq` | The canonical `HQ` token was expanded to `High Quality` |
+| `leading-stem-count` | A count appears before rather than after the variant |
+| `operational-note` | A download/backend note leaked into presentation text |
 | `embedded-id` | A bracketed backend identifier remains visible |
 | `duplicate-display` | Two rows collide after Unicode case folding |
 
@@ -142,7 +154,7 @@ YAML data is consumed in memory without creating or replacing cache paths.
 ## Snapshot and offline behavior
 
 The checked-in reference was reproduced from the complete warm cache captured
-on 2026-08-23:
+on 2026-08-24:
 
 | Collection mode | Entries | Presentation result |
 | --- | ---: | --- |
@@ -153,8 +165,11 @@ on 2026-08-23:
 Online and warm-offline runs use the same projector, so equivalent exact
 source evidence produces identical names. The registry persists exact
 presentation evidence for installed models, and successful downloads publish
-only after that evidence is stored. Cold-offline unknowns do not receive a
-guessed remote association; they retain their raw basename.
+only after that evidence is stored. Refresh backfill matches exact primary
+artifacts against the post-deduplication public snapshot, so harmless source
+label aliases do not create false ambiguity. A genuine published ambiguity is
+non-mutating and emits an actionable warning. Cold-offline unknowns do not
+receive a guessed remote association; they retain their raw basename.
 
 The existing degraded-publication guard applies before either checked-in
 document is written or judged. A cold-cache subset therefore exits 2 instead

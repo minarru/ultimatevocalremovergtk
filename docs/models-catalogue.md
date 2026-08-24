@@ -1,6 +1,6 @@
 # UVR Model Catalogue (TRvlvr + Politrees + extras + mvsepless)
 
-Generated: 2026-08-23 17:23 UTC by `scripts/generate_models_catalogue.py`.
+Generated: 2026-08-24 11:07 UTC by `scripts/generate_models_catalogue.py`.
 
 Regenerate after catalogue updates:
 
@@ -37,8 +37,8 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 
 | Family | Model | Metadata | Primary/Target |
 | --- | --- | --- | --- |
-| Apollo | Apollo — EDM Restoration Big · essid | bundled_yaml:apollo_edm_big_by_essid.yaml | — |
-| Apollo | Apollo — EDM Restoration · essid | bundled_yaml:apollo_edm_by_essid.yaml | — |
+| Apollo | Apollo — EDM Restoration Big · Essid | bundled_yaml:apollo_edm_big_by_essid.yaml | — |
+| Apollo | Apollo — EDM Restoration · Essid | bundled_yaml:apollo_edm_by_essid.yaml | — |
 
 ## Quick reference (all models)
 
@@ -58,35 +58,35 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | VR Architecture | HP Wind Instrumental 17 | special_fx | no woodwinds (mix minus woodwinds) | two_stem | no woodwinds | — |
 | VR Architecture | HP 1 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
 | VR Architecture | HP 2 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | HP Vocal 3 | vocals | Vocals (+ Instrumental complement) | two_stem | Vocals | NAME says vocals but backend is not vocal-focused |
-| VR Architecture | HP Vocal 4 | vocals | Vocals (+ Instrumental complement) | two_stem | Vocals | NAME says vocals but backend is not vocal-focused |
+| VR Architecture | HP Vocals 3 | vocals | Vocals (+ Instrumental complement) | two_stem | Vocals | NAME says vocals but backend is not vocal-focused |
+| VR Architecture | HP Vocals 4 | vocals | Vocals (+ Instrumental complement) | two_stem | Vocals | NAME says vocals but backend is not vocal-focused |
 | VR Architecture | HP Karaoke 5 | karaoke | Karaoke backing (Instrumental primary; complement … | karaoke_instrumental_primary | Instrumental | — |
 | VR Architecture | HP Karaoke 6 | karaoke | Karaoke backing (Instrumental primary; complement … | karaoke_instrumental_primary | Instrumental | — |
 | VR Architecture | HP2 7 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
 | VR Architecture | HP2 8 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
 | VR Architecture | HP2 9 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
 | VR Architecture | Karaoke BVE (4 Bands, SN, 44.1 kHz) 1 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
-| VR Architecture | UVR-De-Echo-Aggressive · FoxJoy | special_fx | no echo (mix minus echo) | two_stem | no echo | — |
-| VR Architecture | UVR-De-Echo-Normal · FoxJoy | special_fx | no echo (mix minus echo) | two_stem | no echo | — |
-| VR Architecture | UVR-DeEcho-DeReverb · FoxJoy | special_fx | no reverb (mix minus reverb) | two_stem | no reverb | — |
-| VR Architecture | UVR-DeNoise · FoxJoy | special_fx | Noise (isolated noise stem) | two_stem | noise | — |
-| VR Architecture | UVR-DeNoise-Lite · FoxJoy | special_fx | Noise (isolated noise stem) | two_stem | noise | — |
-| VR Architecture | UVR-DeReverb · aufr33 & jarredou | special_fx | Dry (dereverbbed signal) | two_stem | dry | — |
-| MDX-Net | BS Guitar · Kimberley Xlance | specialty_stem | guitar, other | specialty_target:guitar | guitar | — |
+| VR Architecture | UVR De-Echo — Aggressive · FoxJoy | special_fx | no echo (mix minus echo) | two_stem | no echo | — |
+| VR Architecture | UVR De-Echo — Normal · FoxJoy | special_fx | no echo (mix minus echo) | two_stem | no echo | — |
+| VR Architecture | UVR De-Echo/DeReverb · FoxJoy | special_fx | no reverb (mix minus reverb) | two_stem | no reverb | — |
+| VR Architecture | UVR DeNoise · FoxJoy | special_fx | Noise (isolated noise stem) | two_stem | noise | — |
+| VR Architecture | UVR DeNoise Lite · FoxJoy | special_fx | Noise (isolated noise stem) | two_stem | noise | — |
+| VR Architecture | UVR DeReverb · Aufr33 & Jarredou | special_fx | Dry (dereverbbed signal) | two_stem | dry | — |
+| MDX-Net | BandSplit Roformer — Guitar · Kimberley Xlance | specialty_stem | guitar, other | specialty_target:guitar | guitar | — |
 | MDX-Net | BandSplit PolarFormer — 09-07-2026 (4 Stems) · Aname | multi_stem | Multi-stem: vocals, other, drums, bass | multi_stem | vocals | — |
 | MDX-Net | BandSplit PolarFormer — Lazy Bat (4 Stems) · Aname | multi_stem | Multi-stem: vocals, other, drums, bass | multi_stem | vocals | — |
 | MDX-Net | BandSplit PolarFormer — Instrumental/Vocals Duality Lazy Bat · Aname | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | two_stem | vocals | — |
 | MDX-Net | BandSplit PolarFormer — Karaoke · Lambda001 | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | lead | — |
 | MDX-Net | BandSplit PolarFormer — Vocals · ZFTurbo | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| MDX-Net | BandSplit Roformer — (4 Stems) · ZFTurbo | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| MDX-Net | BandSplit Roformer — (4 Stems) · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| MDX-Net | BandSplit Roformer (4 Stems) · ZFTurbo | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| MDX-Net | BandSplit Roformer (4 Stems) · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
 | MDX-Net | BandSplit Roformer — Bass Experimental · BeatLoo Labs | multi_stem | Multi-stem: bass, other | single_target:bass | bass | — |
 | MDX-Net | BandSplit Roformer — Bass · Xlance | multi_stem | Multi-stem: bass, other | single_target:bass | bass | — |
 | MDX-Net | BandSplit Roformer — Bowed Strings · Gilliaaan | specialty_stem | strings, other | two_stem | strings | — |
-| MDX-Net | BandSplit Roformer — Deverb (SDR 22.50) · Anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
-| MDX-Net | BandSplit Roformer — Deverb 256-8 · Anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
-| MDX-Net | BandSplit Roformer — Deverb 384-10 · Anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
-| MDX-Net | BandSplit Roformer — Deverb Roon · Anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
+| MDX-Net | BandSplit Roformer — DeReverb (SDR 22.50) · Anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
+| MDX-Net | BandSplit Roformer — DeReverb 256-8 · Anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
+| MDX-Net | BandSplit Roformer — DeReverb 384-10 · Anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
+| MDX-Net | BandSplit Roformer — DeReverb Room · Anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
 | MDX-Net | BandSplit Roformer — Drums Duality · Gilliaaan | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | two_stem | drums | — |
 | MDX-Net | BandSplit Roformer — Drums Experimental · BeatLoo Labs | multi_stem | Multi-stem: drums, other | single_target:drums | drums | — |
 | MDX-Net | BandSplit Roformer — Drums v1 · Xlance | multi_stem | Multi-stem: drums, other | single_target:drums | drums | — |
@@ -103,7 +103,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | BandSplit Roformer — Instrumental Resurrection · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
 | MDX-Net | BandSplit Roformer — Karaoke Inverted · GaboxR67 | karaoke | Karaoke backing (Instrumental primary; complement … | karaoke_instrumental_primary | other | — |
 | MDX-Net | BandSplit Roformer — Karaoke · Anvuew | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
-| MDX-Net | BandSplit Roformer — Karaoke · Becrily & Frazer | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
+| MDX-Net | BandSplit Roformer — Karaoke · Becruily & Frazer | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | MDX-Net | BandSplit Roformer — Karaoke · GaboxR67 | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | vocals | — |
 | MDX-Net | BandSplit Roformer — Karaoke · GiantAILAB | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | vocals | — |
 | MDX-Net | BandSplit Roformer — Keys · Xlance | specialty_stem | keys, other | single_target:keys | keys | — |
@@ -112,64 +112,64 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | BandSplit Roformer — Leap XE (90 bands) Instrumental · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
 | MDX-Net | BandSplit Roformer — Leap XE (90 bands) Vocals · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | BandSplit Roformer — Logic (6 Stems) · Chantrail | multi_stem | Multi-stem: bass, drums, other, vocals, guitar, pi… | multi_stem | bass | — |
-| MDX-Net | BandSplit Roformer — Mag (3719) · Anvuew | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
+| MDX-Net | BandSplit Roformer — Mag (3179) · Anvuew | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | BandSplit Roformer — Mag · Anvuew | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| MDX-Net | BandSplit Roformer — Male-Female (ep 146) · Sucial | specialty_stem | male, female | specialty_two_stem | male | — |
-| MDX-Net | BandSplit Roformer — Male-Female (ep 267) · Sucial | specialty_stem | male, female | specialty_two_stem | male | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (FULL) · MVSep | multi_stem | Multi-stem: accordion, acoustic-guitar, back-vocal… | multi_stem | accordion | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Accordion) · MVSep | specialty_stem | accordion, other | single_target:accordion | accordion | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Acoustic-Guitar) · MVSep | specialty_stem | acoustic-guitar, other | single_target:acoustic-guitar | acoustic-guitar | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Back-Vocal) · MVSep | specialty_stem | back-vocal, other | single_target:back-vocal | back-vocal | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Banjo) · MVSep | specialty_stem | banjo, other | single_target:banjo | banjo | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Bass) · MVSep | multi_stem | Multi-stem: bass, other | single_target:bass | bass | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Bassoon) · MVSep | multi_stem | Multi-stem: bassoon, other | single_target:bassoon | bassoon | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Bells) · MVSep | specialty_stem | bells, other | single_target:bells | bells | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Bowed Strings) · MVSep | specialty_stem | bowed_strings, other | single_target:bowed_strings | bowed_strings | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Brass) · MVSep | specialty_stem | brass, other | single_target:brass | brass | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Cello) · MVSep | specialty_stem | cello, other | single_target:cello | cello | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Clarinet) · MVSep | specialty_stem | clarinet, other | single_target:clarinet | clarinet | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Congas) · MVSep | specialty_stem | congas, other | single_target:congas | congas | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Digital-Piano) · MVSep | specialty_stem | digital-piano, other | single_target:digital-piano | digital-piano | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Dobro) · MVSep | specialty_stem | dobro, other | single_target:dobro | dobro | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Double-Bass) · MVSep | multi_stem | Multi-stem: double-bass, other | single_target:double-bass | double-bass | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Drums) · MVSep | multi_stem | Multi-stem: drums, other | single_target:drums | drums | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Electric-Guitar) · MVSep | specialty_stem | electric-guitar, other | single_target:electric-guitar | electric-guitar | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Flute) · MVSep | specialty_stem | flute, other | single_target:flute | flute | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only French-Horn) · MVSep | specialty_stem | french-horn, other | single_target:french-horn | french-horn | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Glockenspiel) · MVSep | specialty_stem | glockenspiel, other | single_target:glockenspiel | glockenspiel | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Guitar) · MVSep | specialty_stem | guitar, other | specialty_target:guitar | guitar | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Harmonica) · MVSep | specialty_stem | harmonica, other | single_target:harmonica | harmonica | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Harp) · MVSep | specialty_stem | harp, other | single_target:harp | harp | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Harpsichord) · MVSep | specialty_stem | harpsichord, other | single_target:harpsichord | harpsichord | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Hh) · MVSep | specialty_stem | hh, other | single_target:hh | hh | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Keys) · MVSep | specialty_stem | keys, other | single_target:keys | keys | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Kick) · MVSep | specialty_stem | kick, other | single_target:kick | kick | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Lead-Vocal) · MVSep | vocals | lead-vocal (single native output) | vocal_target | lead-vocal | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Mandolin) · MVSep | specialty_stem | mandolin, other | single_target:mandolin | mandolin | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Marimba) · MVSep | specialty_stem | marimba, other | single_target:marimba | marimba | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Oboe) · MVSep | specialty_stem | oboe, other | single_target:oboe | oboe | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Organ) · MVSep | specialty_stem | organ, other | single_target:organ | organ | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Percussion) · MVSep | specialty_stem | percussion, other | single_target:percussion | percussion | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Piano) · MVSep | multi_stem | Multi-stem: piano, other | single_target:piano | piano | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Saxophone) · MVSep | specialty_stem | saxophone, other | single_target:saxophone | saxophone | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Sitar) · MVSep | specialty_stem | sitar, other | single_target:sitar | sitar | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Snare) · MVSep | specialty_stem | snare, other | single_target:snare | snare | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Strings) · MVSep | specialty_stem | strings, other | single_target:strings | strings | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Synth) · MVSep | specialty_stem | synth, other | single_target:synth | synth | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Tambourine) · MVSep | specialty_stem | tambourine, other | single_target:tambourine | tambourine | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Timpani) · MVSep | specialty_stem | timpani, other | single_target:timpani | timpani | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Toms) · MVSep | specialty_stem | toms, other | single_target:toms | toms | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Triangle) · MVSep | specialty_stem | triangle, other | single_target:triangle | triangle | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Trombone) · MVSep | specialty_stem | trombone, other | single_target:trombone | trombone | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Trumpet) · MVSep | specialty_stem | trumpet, other | single_target:trumpet | trumpet | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Tuba) · MVSep | specialty_stem | tuba, other | single_target:tuba | tuba | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Ukulele) · MVSep | specialty_stem | ukulele, other | single_target:ukulele | ukulele | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Viola) · MVSep | specialty_stem | viola, other | single_target:viola | viola | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Violin) · MVSep | specialty_stem | violin, other | single_target:violin | violin | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Vocal) · MVSep | vocals | Vocals (complement = Instrumental) | vocal_target | vocal | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Wind) · MVSep | specialty_stem | wind, other | single_target:wind | wind | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Wind-Chimes) · MVSep | specialty_stem | wind-chimes, other | single_target:wind-chimes | wind-chimes | — |
-| MDX-Net | BandSplit Roformer — Mega (53 Stems) (only Woodwind) · MVSep | specialty_stem | woodwind, other | single_target:woodwind | woodwind | — |
+| MDX-Net | BandSplit Roformer — Male/Female (ep 146) · Sucial | specialty_stem | male, female | specialty_two_stem | male | — |
+| MDX-Net | BandSplit Roformer — Male/Female (ep 267) · Sucial | specialty_stem | male, female | specialty_two_stem | male | — |
+| MDX-Net | BandSplit Roformer — Mega Full (53 Stems) · MVSep | multi_stem | Multi-stem: accordion, acoustic-guitar, back-vocal… | multi_stem | accordion | — |
+| MDX-Net | BandSplit Roformer — Mega Accordion Only (53 Stems) · MVSep | specialty_stem | accordion, other | single_target:accordion | accordion | — |
+| MDX-Net | BandSplit Roformer — Mega Acoustic Guitar Only (53 Stems) · MVSep | specialty_stem | acoustic-guitar, other | single_target:acoustic-guitar | acoustic-guitar | — |
+| MDX-Net | BandSplit Roformer — Mega Backing Vocals Only (53 Stems) · MVSep | specialty_stem | back-vocal, other | single_target:back-vocal | back-vocal | — |
+| MDX-Net | BandSplit Roformer — Mega Banjo Only (53 Stems) · MVSep | specialty_stem | banjo, other | single_target:banjo | banjo | — |
+| MDX-Net | BandSplit Roformer — Mega Bass Only (53 Stems) · MVSep | multi_stem | Multi-stem: bass, other | single_target:bass | bass | — |
+| MDX-Net | BandSplit Roformer — Mega Bassoon Only (53 Stems) · MVSep | multi_stem | Multi-stem: bassoon, other | single_target:bassoon | bassoon | — |
+| MDX-Net | BandSplit Roformer — Mega Bells Only (53 Stems) · MVSep | specialty_stem | bells, other | single_target:bells | bells | — |
+| MDX-Net | BandSplit Roformer — Mega Bowed Strings Only (53 Stems) · MVSep | specialty_stem | bowed_strings, other | single_target:bowed_strings | bowed_strings | — |
+| MDX-Net | BandSplit Roformer — Mega Brass Only (53 Stems) · MVSep | specialty_stem | brass, other | single_target:brass | brass | — |
+| MDX-Net | BandSplit Roformer — Mega Cello Only (53 Stems) · MVSep | specialty_stem | cello, other | single_target:cello | cello | — |
+| MDX-Net | BandSplit Roformer — Mega Clarinet Only (53 Stems) · MVSep | specialty_stem | clarinet, other | single_target:clarinet | clarinet | — |
+| MDX-Net | BandSplit Roformer — Mega Congas Only (53 Stems) · MVSep | specialty_stem | congas, other | single_target:congas | congas | — |
+| MDX-Net | BandSplit Roformer — Mega Digital Piano Only (53 Stems) · MVSep | specialty_stem | digital-piano, other | single_target:digital-piano | digital-piano | — |
+| MDX-Net | BandSplit Roformer — Mega Dobro Only (53 Stems) · MVSep | specialty_stem | dobro, other | single_target:dobro | dobro | — |
+| MDX-Net | BandSplit Roformer — Mega Double Bass Only (53 Stems) · MVSep | multi_stem | Multi-stem: double-bass, other | single_target:double-bass | double-bass | — |
+| MDX-Net | BandSplit Roformer — Mega Drums Only (53 Stems) · MVSep | multi_stem | Multi-stem: drums, other | single_target:drums | drums | — |
+| MDX-Net | BandSplit Roformer — Mega Electric Guitar Only (53 Stems) · MVSep | specialty_stem | electric-guitar, other | single_target:electric-guitar | electric-guitar | — |
+| MDX-Net | BandSplit Roformer — Mega Flute Only (53 Stems) · MVSep | specialty_stem | flute, other | single_target:flute | flute | — |
+| MDX-Net | BandSplit Roformer — Mega French Horn Only (53 Stems) · MVSep | specialty_stem | french-horn, other | single_target:french-horn | french-horn | — |
+| MDX-Net | BandSplit Roformer — Mega Glockenspiel Only (53 Stems) · MVSep | specialty_stem | glockenspiel, other | single_target:glockenspiel | glockenspiel | — |
+| MDX-Net | BandSplit Roformer — Mega Guitar Only (53 Stems) · MVSep | specialty_stem | guitar, other | specialty_target:guitar | guitar | — |
+| MDX-Net | BandSplit Roformer — Mega Harmonica Only (53 Stems) · MVSep | specialty_stem | harmonica, other | single_target:harmonica | harmonica | — |
+| MDX-Net | BandSplit Roformer — Mega Harp Only (53 Stems) · MVSep | specialty_stem | harp, other | single_target:harp | harp | — |
+| MDX-Net | BandSplit Roformer — Mega Harpsichord Only (53 Stems) · MVSep | specialty_stem | harpsichord, other | single_target:harpsichord | harpsichord | — |
+| MDX-Net | BandSplit Roformer — Mega Hi-Hat Only (53 Stems) · MVSep | specialty_stem | hh, other | single_target:hh | hh | — |
+| MDX-Net | BandSplit Roformer — Mega Keys Only (53 Stems) · MVSep | specialty_stem | keys, other | single_target:keys | keys | — |
+| MDX-Net | BandSplit Roformer — Mega Kick Only (53 Stems) · MVSep | specialty_stem | kick, other | single_target:kick | kick | — |
+| MDX-Net | BandSplit Roformer — Mega Lead Vocals Only (53 Stems) · MVSep | vocals | lead-vocal (single native output) | vocal_target | lead-vocal | — |
+| MDX-Net | BandSplit Roformer — Mega Mandolin Only (53 Stems) · MVSep | specialty_stem | mandolin, other | single_target:mandolin | mandolin | — |
+| MDX-Net | BandSplit Roformer — Mega Marimba Only (53 Stems) · MVSep | specialty_stem | marimba, other | single_target:marimba | marimba | — |
+| MDX-Net | BandSplit Roformer — Mega Oboe Only (53 Stems) · MVSep | specialty_stem | oboe, other | single_target:oboe | oboe | — |
+| MDX-Net | BandSplit Roformer — Mega Organ Only (53 Stems) · MVSep | specialty_stem | organ, other | single_target:organ | organ | — |
+| MDX-Net | BandSplit Roformer — Mega Percussion Only (53 Stems) · MVSep | specialty_stem | percussion, other | single_target:percussion | percussion | — |
+| MDX-Net | BandSplit Roformer — Mega Piano Only (53 Stems) · MVSep | multi_stem | Multi-stem: piano, other | single_target:piano | piano | — |
+| MDX-Net | BandSplit Roformer — Mega Saxophone Only (53 Stems) · MVSep | specialty_stem | saxophone, other | single_target:saxophone | saxophone | — |
+| MDX-Net | BandSplit Roformer — Mega Sitar Only (53 Stems) · MVSep | specialty_stem | sitar, other | single_target:sitar | sitar | — |
+| MDX-Net | BandSplit Roformer — Mega Snare Only (53 Stems) · MVSep | specialty_stem | snare, other | single_target:snare | snare | — |
+| MDX-Net | BandSplit Roformer — Mega Strings Only (53 Stems) · MVSep | specialty_stem | strings, other | single_target:strings | strings | — |
+| MDX-Net | BandSplit Roformer — Mega Synth Only (53 Stems) · MVSep | specialty_stem | synth, other | single_target:synth | synth | — |
+| MDX-Net | BandSplit Roformer — Mega Tambourine Only (53 Stems) · MVSep | specialty_stem | tambourine, other | single_target:tambourine | tambourine | — |
+| MDX-Net | BandSplit Roformer — Mega Timpani Only (53 Stems) · MVSep | specialty_stem | timpani, other | single_target:timpani | timpani | — |
+| MDX-Net | BandSplit Roformer — Mega Toms Only (53 Stems) · MVSep | specialty_stem | toms, other | single_target:toms | toms | — |
+| MDX-Net | BandSplit Roformer — Mega Triangle Only (53 Stems) · MVSep | specialty_stem | triangle, other | single_target:triangle | triangle | — |
+| MDX-Net | BandSplit Roformer — Mega Trombone Only (53 Stems) · MVSep | specialty_stem | trombone, other | single_target:trombone | trombone | — |
+| MDX-Net | BandSplit Roformer — Mega Trumpet Only (53 Stems) · MVSep | specialty_stem | trumpet, other | single_target:trumpet | trumpet | — |
+| MDX-Net | BandSplit Roformer — Mega Tuba Only (53 Stems) · MVSep | specialty_stem | tuba, other | single_target:tuba | tuba | — |
+| MDX-Net | BandSplit Roformer — Mega Ukulele Only (53 Stems) · MVSep | specialty_stem | ukulele, other | single_target:ukulele | ukulele | — |
+| MDX-Net | BandSplit Roformer — Mega Viola Only (53 Stems) · MVSep | specialty_stem | viola, other | single_target:viola | viola | — |
+| MDX-Net | BandSplit Roformer — Mega Violin Only (53 Stems) · MVSep | specialty_stem | violin, other | single_target:violin | violin | — |
+| MDX-Net | BandSplit Roformer — Mega Vocals Only (53 Stems) · MVSep | vocals | Vocals (complement = Instrumental) | vocal_target | vocal | — |
+| MDX-Net | BandSplit Roformer — Mega Wind Only (53 Stems) · MVSep | specialty_stem | wind, other | single_target:wind | wind | — |
+| MDX-Net | BandSplit Roformer — Mega Wind Chimes Only (53 Stems) · MVSep | specialty_stem | wind-chimes, other | single_target:wind-chimes | wind-chimes | — |
+| MDX-Net | BandSplit Roformer — Mega Woodwind Only (53 Stems) · MVSep | specialty_stem | woodwind, other | single_target:woodwind | woodwind | — |
 | MDX-Net | BandSplit Roformer — Mid-Side v1 · Gilliaaan | specialty_stem | center, wide | single_target:center | center | — |
 | MDX-Net | BandSplit Roformer — Mid-Side v2 · Gilliaaan | specialty_stem | center, wide | single_target:center | center | — |
 | MDX-Net | BandSplit Roformer — Orchestra v1 · Xlance | specialty_stem | orch, other | single_target:orch | orch | — |
@@ -179,8 +179,8 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | BandSplit Roformer — Percussion v2 · Xlance | specialty_stem | percussion, other | single_target:percussion | percussion | — |
 | MDX-Net | BandSplit Roformer — Resurrection v2 (Quality Test) · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | BandSplit Roformer — SW | multi_stem | Multi-stem: bass, drums, other, vocals, guitar, pi… | multi_stem | bass | — |
-| MDX-Net | BandSplit Roformer — SW Fixed · jarredou | multi_stem | Multi-stem: bass, drums, other, vocals, guitar, pi… | multi_stem | bass | — |
-| MDX-Net | BandSplit Roformer — SppechSep · AliceN | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
+| MDX-Net | BandSplit Roformer — SW Fixed · Jarredou | multi_stem | Multi-stem: bass, drums, other, vocals, guitar, pi… | multi_stem | bass | — |
+| MDX-Net | BandSplit Roformer — SpeechSep · AliceN | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | BandSplit Roformer — Synth v1 · Xlance | specialty_stem | synth, other | single_target:synth | synth | — |
 | MDX-Net | BandSplit Roformer — Synth v2 · Xlance | specialty_stem | synth, other | single_target:synth | synth | — |
 | MDX-Net | BandSplit Roformer — Vocals (SDR 12.96) · ViperX | vocals | Vocals (complement = Instrumental) | vocal_target | Vocals | — |
@@ -196,45 +196,45 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | BandSplit Roformer — Vocals · GaboxR67 | vocals | Vocals (complement = Instrumental) | vocal_target | Vocals | — |
 | MDX-Net | BandSplit Roformer — Vocals v1 · Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | BandSplit Roformer — Vocals v2 · Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| MDX-Net | BandSplit Roformer — Vox · Xlance | vocals | vox (single native output) | vocal_target | vox | — |
-| MDX-Net | BS Siamese Roformer Vocals · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
+| MDX-Net | BandSplit Roformer — Vocals · Xlance | vocals | vox (single native output) | vocal_target | vox | — |
+| MDX-Net | BandSplit Roformer — Siamese Vocals · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Bandit | Bandit — Last Checkpoint · ZFTurbo | multi_stem | Multi-stem: speech, music, effects | multi_stem | speech | — |
 | Bandit | Bandit — Plus (ep 30) · ZFTurbo | multi_stem | Multi-stem: speech, music, effects | multi_stem | speech | — |
 | Bandit | Bandit — Plus (ep 57) · ZFTurbo | multi_stem | Multi-stem: speech, music, effects | multi_stem | speech | — |
 | Bandit | Bandit — Plus (ep 63) · ZFTurbo | multi_stem | Multi-stem: speech, music, effects | multi_stem | speech | — |
 | Bandit | Bandit — Cinematic Bandit Plus · kwatcharasupat | multi_stem | Multi-stem: Speech, Music, Effects | multi_stem | Speech | — |
 | Bandit | Bandit — Cinematic Bandit v2 Multilang · kwatcharasupat | multi_stem | Multi-stem: Speech, Music, Sfx | multi_stem | Speech | — |
-| MDX-Net ONNX | MDX-Net — UVR Instrumental full 292 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
-| MDX-Net ONNX | MDX-Net — UVR Instrumental 187 beta | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
-| MDX-Net ONNX | MDX-Net — UVR Instrumental 82 beta | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
-| MDX-Net ONNX | MDX-Net — UVR Instrumental 90 beta | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
+| MDX-Net ONNX | MDX-Net — UVR Instrumental Full 292 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
+| MDX-Net ONNX | MDX-Net — UVR Instrumental 187 Beta | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
+| MDX-Net ONNX | MDX-Net — UVR Instrumental 82 Beta | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
+| MDX-Net ONNX | MDX-Net — UVR Instrumental 90 Beta | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
 | MDX-Net ONNX | MDX-Net — UVR Main 340 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net ONNX | MDX-Net — UVR Main 390 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net ONNX | MDX-Net — UVR Main 406 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net ONNX | MDX-Net — UVR Main 427 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net ONNX | MDX-Net — UVR Main 438 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net ONNX | MDX-Net — Kim Instrumental | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
-| MDX-Net ONNX | MDX-Net — Kim Vocal 1 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net — Kim Vocal 2 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net — Reverb High Quality · FoxJoy | special_fx | Reverb (isolated reverb stem) | special_fx_primary:reverb | reverb | — |
+| MDX-Net ONNX | MDX-Net — Kim Vocals 1 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
+| MDX-Net ONNX | MDX-Net — Kim Vocals 2 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
+| MDX-Net ONNX | MDX-Net — Reverb HQ · FoxJoy | special_fx | Reverb (isolated reverb stem) | special_fx_primary:reverb | reverb | — |
 | MDX-Net ONNX | MDX-Net — UVR 1 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
 | MDX-Net ONNX | MDX-Net — UVR 2 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
 | MDX-Net ONNX | MDX-Net — UVR 3 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
-| MDX-Net ONNX | MDX-Net — UVR Crowd High Quality 1 · Aufr33 | special_fx | no crowd (mix minus crowd) | special_fx_primary:no crowd | no crowd | — |
+| MDX-Net ONNX | MDX-Net — UVR Crowd HQ 1 · Aufr33 | special_fx | no crowd (mix minus crowd) | special_fx_primary:no crowd | no crowd | — |
 | MDX-Net ONNX | MDX-Net — UVR Instrumental 1 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
 | MDX-Net ONNX | MDX-Net — UVR Instrumental 2 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
 | MDX-Net ONNX | MDX-Net — UVR Instrumental 3 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
-| MDX-Net ONNX | MDX-Net — UVR Instrumental High Quality 1 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
-| MDX-Net ONNX | MDX-Net — UVR Instrumental High Quality 2 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
-| MDX-Net ONNX | MDX-Net — UVR Instrumental High Quality 3 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
-| MDX-Net ONNX | MDX-Net — UVR Instrumental High Quality 4 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
-| MDX-Net ONNX | MDX-Net — UVR Instrumental High Quality 5 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
+| MDX-Net ONNX | MDX-Net — UVR Instrumental HQ 1 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
+| MDX-Net ONNX | MDX-Net — UVR Instrumental HQ 2 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
+| MDX-Net ONNX | MDX-Net — UVR Instrumental HQ 3 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
+| MDX-Net ONNX | MDX-Net — UVR Instrumental HQ 4 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
+| MDX-Net ONNX | MDX-Net — UVR Instrumental HQ 5 | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
 | MDX-Net ONNX | MDX-Net — UVR Instrumental Main | instrumental | Instrumental (complement = Vocals) | instrumental_target | instrumental | — |
 | MDX-Net ONNX | MDX-Net — UVR Karaoke | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | MDX-Net ONNX | MDX-Net — UVR Karaoke 2 | karaoke | Karaoke backing (Instrumental primary; complement … | karaoke_instrumental_primary | other | — |
 | MDX-Net ONNX | MDX-Net — UVR Main | dual_voc_inst | Vocals or Instrumental — both are first-class 2-st… | vocal_target | vocals | — |
 | MDX-Net ONNX | MDX-Net — UVR Vocals Fine-Tuned | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| MDX-Net ONNX | MDX-Net — UVR MDXNET 9482 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
+| MDX-Net ONNX | MDX-Net — UVR 9482 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
 | MDX-Net ONNX | MDX-Net — KUIELAB A Bass | multi_stem | Kuielab Demucs bass stem (single 4-stem component) | demucs_component:bass | bass | — |
 | MDX-Net ONNX | MDX-Net — KUIELAB A Drums | multi_stem | Kuielab Demucs drums stem (single 4-stem component… | demucs_component:drums | drums | — |
 | MDX-Net ONNX | MDX-Net — KUIELAB A Other | multi_stem | Kuielab Demucs other stem (single 4-stem component… | demucs_component:other | other | — |
@@ -243,30 +243,30 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net ONNX | MDX-Net — KUIELAB B Drums | multi_stem | Kuielab Demucs drums stem (single 4-stem component… | demucs_component:drums | drums | — |
 | MDX-Net ONNX | MDX-Net — KUIELAB B Other | multi_stem | Kuielab Demucs other stem (single 4-stem component… | demucs_component:other | other | — |
 | MDX-Net ONNX | MDX-Net — KUIELAB B Vocals | multi_stem | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
-| MDX-Net | MDX23C — (4 Stems) Small · KUIELAB | multi_stem | Vocals (+ Instrumental complement) | multi_stem | vocals | — |
-| MDX-Net | MDX23C — (4 Stems) · KUIELAB | multi_stem | Vocals (+ Instrumental complement) | multi_stem | vocals | — |
-| MDX-Net | MDX23C — (4 Stems) · ZFTurbo | multi_stem | Multi-stem: vocals, bass, drums, other | multi_stem | vocals | — |
-| MDX-Net | MDX23C — 8K FFT Instrumental/Vocals High Quality v1 | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | two_stem | Vocals | — |
-| MDX-Net | MDX23C — 8K FFT Instrumental/Vocals High Quality v2 | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | two_stem | Vocals | — |
+| MDX-Net | MDX23C — Small (4 Stems) · KUIELAB | multi_stem | Vocals (+ Instrumental complement) | multi_stem | vocals | — |
+| MDX-Net | MDX23C (4 Stems) · KUIELAB | multi_stem | Vocals (+ Instrumental complement) | multi_stem | vocals | — |
+| MDX-Net | MDX23C (4 Stems) · ZFTurbo | multi_stem | Multi-stem: vocals, bass, drums, other | multi_stem | vocals | — |
+| MDX-Net | MDX23C — 8K FFT Instrumental/Vocals HQ v1 | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | two_stem | Vocals | — |
+| MDX-Net | MDX23C — 8K FFT Instrumental/Vocals HQ v2 | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | two_stem | Vocals | — |
 | MDX-Net | MDX23C — DrumSep (5 Stems) · Aufr33 & Jarredou | multi_stem | Multi-stem: kick, snare, toms, hh, cymbals | multi_stem | kick | — |
 | MDX-Net | MDX23C — DrumSep (6 Stems) · Aufr33 & Jarredou | multi_stem | Multi-stem: kick, snare, toms, hh, ride, crash | multi_stem | kick | — |
-| MDX-Net | MDX23C — Instrumental/Vocals High Quality · ZFTurbo | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | two_stem | vocals | — |
+| MDX-Net | MDX23C — Instrumental/Vocals HQ · ZFTurbo | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | two_stem | vocals | — |
 | MDX-Net | MDX23C — Mid-Side · WesleyR36 | specialty_stem | similarity, difference | specialty_target:similarity | similarity | — |
 | MDX-Net | MDX23C — Mid-Side v1 · Gilliaaan | specialty_stem | center, wide | single_target:wide | wide | — |
 | MDX-Net | MDX23C — Mid-Side v2e · Gilliaaan | specialty_stem | center, wide | two_stem | center | — |
-| MDX23C | MDX23C — Instrumental/Vocals High Quality 2 | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | vocal_primary | Vocals | — |
-| MDX23C | MDX23C — DeReverb · aufr33 & jarredou | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
-| MDX23C | MDX23C — DrumSep · aufr33 & jarredou | multi_stem | Multi-stem: kick, snare, toms, hh, ride, crash | multi_stem | kick | — |
-| MDX23C | MDX23C — Phantom Centre extraction · wesleyr36 | specialty_stem | Similarity, Difference | specialty_target:Similarity | Similarity | — |
-| MDX23C | MDX23C — Instrumental/Vocals High Quality | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | vocal_primary | Vocals | — |
+| MDX23C | MDX23C — 8K FFT Instrumental/Vocals HQ 2 | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | vocal_primary | Vocals | — |
+| MDX23C | MDX23C — DeReverb · Aufr33 & Jarredou | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
+| MDX23C | MDX23C — DrumSep · Aufr33 & Jarredou | multi_stem | Multi-stem: kick, snare, toms, hh, ride, crash | multi_stem | kick | — |
+| MDX23C | MDX23C — Phantom Centre Extraction · WesleyR36 | specialty_stem | Similarity, Difference | specialty_target:Similarity | Similarity | — |
+| MDX23C | MDX23C — 8K FFT Instrumental/Vocals HQ | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | vocal_primary | Vocals | — |
 | MDX23C | MDX23C — D1581 | vocals | Vocals (+ Instrumental complement) | two_stem | Vocals | NAME says vocals but backend is not vocal-focused |
 | MDX-Net | MDX23C — Orchestra Experimental · Verosment | specialty_stem | inst, orch | single_target:orch | orch | — |
 | MDX-Net | MDX23C — SFX Splitter · Jasper | multi_stem | Multi-stem: foreground, background | two_stem | foreground | — |
 | MDX-Net | MDX23C — SFX · Jasper | multi_stem | Multi-stem: foreground, background | two_stem | foreground | — |
 | MDX-Net | MDX23C — Vocals · KUIELAB | multi_stem | Vocals (+ Instrumental complement) | vocal_target | vocals | — |
-| MDX-Net | MelBand Roformer — (4 Stems) Large · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| MDX-Net | MelBand Roformer — (4 Stems) XL · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| MDX-Net | MelBand Roformer — (4 Stems) v2 Large · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| MDX-Net | MelBand Roformer — Large (4 Stems) · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| MDX-Net | MelBand Roformer — XL (4 Stems) · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| MDX-Net | MelBand Roformer — Large v2 (4 Stems) · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
 | MDX-Net | MelBand Roformer — Ambiance · jazzpear | specialty_stem | ambience, other | single_target:ambience | ambience | — |
 | MDX-Net | MelBand Roformer — BGM · Jasper | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — Karaoke BVE · Gonzaluigi | specialty_stem | Lead, Back | specialty_target:Lead | Lead | — |
@@ -281,9 +281,9 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — DeBigReverb · Sucial | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
 | MDX-Net | MelBand Roformer — DeNoise Aggressive · Aufr33 | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
 | MDX-Net | MelBand Roformer — DeNoise · Yuluoye | special_fx | other (post-processing stem) | special_fx_target:dry | other | — |
-| MDX-Net | MelBand Roformer — DeNoiser Children 16k · Phaedrus33 | special_fx | speech (post-processing stem) | single_target:speech | speech | — |
+| MDX-Net | MelBand Roformer — DeNoiser Children 16 kHz · Phaedrus33 | special_fx | speech (post-processing stem) | single_target:speech | speech | — |
 | MDX-Net | MelBand Roformer — DeUX · Becruily | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | two_stem | Vocals | — |
-| MDX-Net | MelBand Roformer — Denoise DeBleed · GaboxR67 | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
+| MDX-Net | MelBand Roformer — DeNoise DeBleed · GaboxR67 | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Duet · Dry Paint Dealer Undr | vocals | singer_1, singer_2 | two_stem | singer_1 | NAME says vocals but backend is not vocal-focused; NAME says vocals but backend is specialty 2-stem |
 | MDX-Net | MelBand Roformer — Explosions · jazzpear | specialty_stem | explosions, other | single_target:explosions | explosions | — |
 | MDX-Net | MelBand Roformer — Fighting · jazzpear | specialty_stem | fighting, other | single_target:fighting | fighting | — |
@@ -341,7 +341,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — Kim Fine-Tuned v2 Fullness · Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — Kim Fine-Tuned v2 · Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — Kim Fine-Tuned v3 · Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| MDX-Net | MelBand Roformer — Kim Fine-Tuned v3 preview · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
+| MDX-Net | MelBand Roformer — Kim Fine-Tuned v3 Preview · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — Lead Vocals DeReverb · GaboxR67 | vocals | Vocals (complement = Instrumental) | vocal_target | Vocals | — |
 | MDX-Net | MelBand Roformer — Lead-Rhythm Guitar · listra92 | specialty_stem | Lead, Rhythm | specialty_target:Lead | Lead | — |
 | MDX-Net | MelBand Roformer — Merged Beta v1 · SYH99999 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
@@ -374,28 +374,28 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — Vocals Fv7 Final · GaboxR67 | vocals | Vocals (complement = Instrumental) | vocal_target | Vocals | — |
 | MDX-Net | MelBand Roformer — Vocals · ViperX | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | MDX-Net | MelBand Roformer — Vocals · ZFTurbo | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| MDX-Net | MelBand Roformer — Xeno · DrYound3r (only weights) | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| Roformer | BandSplit Roformer — Viperx-1053 | drum_bass_sep | no drum-bass (drum/bass separation; complement = D… | special_fx_primary:no drum-bass | no drum-bass | — |
-| Roformer | BandSplit Roformer — Viperx-1296 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
-| Roformer | BandSplit Roformer — Viperx-1297 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
-| Roformer | BandSplit Roformer — (4 Stems) Fine-Tuned · SYH99999 | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| Roformer | BandSplit Roformer — Chorus Male-Female · Sucial | specialty_stem | male, female | specialty_two_stem | male | — |
-| Roformer | BandSplit Roformer — Dereverb · Anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
+| MDX-Net | MelBand Roformer — Xeno · DrYound3r | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
+| Roformer | BandSplit Roformer — Drum/Bass Separation (SDR 10.53) · ViperX | drum_bass_sep | no drum-bass (drum/bass separation; complement = D… | special_fx_primary:no drum-bass | no drum-bass | — |
+| Roformer | BandSplit Roformer — ViperX 12.96 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
+| Roformer | BandSplit Roformer — ViperX 12.97 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
+| Roformer | BandSplit Roformer — Fine-Tuned (4 Stems) · SYH99999 | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| Roformer | BandSplit Roformer — Chorus Male/Female · Sucial | specialty_stem | male, female | specialty_two_stem | male | — |
+| Roformer | BandSplit Roformer — DeReverb · Anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
 | Roformer | BandSplit Roformer — FNO · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
 | Roformer | BandSplit Roformer — HyperACE Instrumental · Unwa | instrumental | instrument (single native output) | single_target:instrument | instrument | — |
 | Roformer | BandSplit Roformer — HyperACE v2 Instrumental · Unwa | instrumental | instrument (single native output) | single_target:instrument | instrument | — |
 | Roformer | BandSplit Roformer — HyperACE v2 Vocals · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | BandSplit Roformer — Instrumental-EXP-Value-Residual · Unwa | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | Roformer | BandSplit Roformer — Karaoke Frazer · Becruily | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
-| Roformer | BandSplit Roformer — Male-Female · Aufr33 | specialty_stem | male, female | specialty_two_stem | male | — |
+| Roformer | BandSplit Roformer — Male/Female · Aufr33 | specialty_stem | male, female | specialty_two_stem | male | — |
 | Roformer | BandSplit Roformer — Resurrection Instrumental · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
 | Roformer | BandSplit Roformer — Resurrection Vocals · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | BandSplit Roformer — Revive · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | BandSplit Roformer — Revive v2 · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | BandSplit Roformer — Revive v3 · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| Roformer | BandSplit Roformer — SW · jarredou | multi_stem | Multi-stem: bass, drums, other, vocals, guitar, pi… | multi_stem | bass | — |
+| Roformer | BandSplit Roformer — SW · Jarredou | multi_stem | Multi-stem: bass, drums, other, vocals, guitar, pi… | multi_stem | bass | — |
 | Roformer | BandSplit Roformer — Vocals · Gabox | vocals | Vocals (complement = Instrumental) | vocal_target | Vocals | — |
-| Roformer | Mel-Roformer-Viperx-1143 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
+| Roformer | MelBand Roformer — Vocals (SDR 11.44) · ViperX | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
 | Roformer | MelBand Roformer — Kim Big Beta v4 Fine-Tuned · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer — Kim Big Beta v5e Fine-Tuned · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer — Kim Big Beta v6 Fine-Tuned · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
@@ -404,12 +404,12 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Roformer | MelBand Roformer — Kim Fine-Tuned · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer — Kim Fine-Tuned v2 Bleedless · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer — Kim Fine-Tuned v2 · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| Roformer | MelBand Roformer — Kim Instrumental V1 · Unwa | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
-| Roformer | MelBand Roformer — Kim Instrumental V2 · Unwa | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
+| Roformer | MelBand Roformer — Kim Instrumental v1 · Unwa | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
+| Roformer | MelBand Roformer — Kim Instrumental v2 · Unwa | instrumental | Instrumental (+ Vocals complement) | instrumental_primary | Instrumental | — |
 | Roformer | MelBand Roformer — Kim Instrumental v1e Plus · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
 | Roformer | MelBand Roformer — Kim Instrumental v1e · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
-| Roformer | MelBand Roformer — Kim Instrumental/Vocals Duality V1 · Unwa | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | vocal_primary | Vocals | — |
-| Roformer | MelBand Roformer — Kim Instrumental/Vocals Duality V2 · Unwa | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | vocal_primary | Vocals | — |
+| Roformer | MelBand Roformer — Kim Instrumental/Vocals Duality v1 · Unwa | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | vocal_primary | Vocals | — |
+| Roformer | MelBand Roformer — Kim Instrumental/Vocals Duality v2 · Unwa | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | vocal_primary | Vocals | — |
 | Roformer | MelBand Roformer — Kim SYHFT · SYH99999 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer — Kim SYHFT v2 · SYH99999 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer — Kim SYHFT v2.5 · SYH99999 | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
@@ -419,15 +419,15 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Roformer | MelBand Roformer — Kim Vocals v1 · Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer — Kim Vocals v2 · Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer — Kim Vocals v3 · Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| Roformer | MelBand Roformer — (4 Stems) Fine-Tuned Large v1 · SYH99999 | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| Roformer | MelBand Roformer — (4 Stems) Fine-Tuned Large v2 · SYH99999 | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| Roformer | MelBand Roformer — (4 Stems) Large v1 · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| Roformer | MelBand Roformer — (4 Stems) XL v1 · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| Roformer | MelBand Roformer — Fine-Tuned Large v1 (4 Stems) · SYH99999 | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| Roformer | MelBand Roformer — Fine-Tuned Large v2 (4 Stems) · SYH99999 | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| Roformer | MelBand Roformer — Large v1 (4 Stems) · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| Roformer | MelBand Roformer — XL v1 (4 Stems) · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
 | Roformer | MelBand Roformer — Aspiration Less Aggressive · Sucial | specialty_stem | aspiration, other | specialty_two_stem | aspiration | — |
 | Roformer | MelBand Roformer — Aspiration · Sucial | specialty_stem | aspiration, other | specialty_two_stem | aspiration | — |
 | Roformer | MelBand Roformer — Karaoke BVE · Gonza | specialty_stem | Lead, Back | specialty_target:Lead | Lead | — |
 | Roformer | MelBand Roformer — Bleed Suppressor v1 · Unwa & 97chris | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
-| Roformer | MelBand Roformer — Crowd · Aufr33 & Viperx | specialty_stem | crowd, other | specialty_target:crowd | crowd | — |
+| Roformer | MelBand Roformer — Crowd · Aufr33 & ViperX | specialty_stem | crowd, other | specialty_target:crowd | crowd | — |
 | Roformer | MelBand Roformer — DeReverb Big · Sucial | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
 | Roformer | MelBand Roformer — DeReverb Less Aggressive · Anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
 | Roformer | MelBand Roformer — DeReverb Mono · Anvuew | special_fx | No reverb (dereverbbed signal) | special_fx_target:noreverb | noreverb | — |
@@ -436,8 +436,8 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Roformer | MelBand Roformer — DeReverb-Echo Fused · Sucial | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
 | Roformer | MelBand Roformer — DeReverb-Echo · Sucial | special_fx | Dry (dereverbbed signal) | two_stem | dry | — |
 | Roformer | MelBand Roformer — DeReverb-Echo v2 · Sucial | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
-| Roformer | MelBand Roformer — Denoise Aggr · Aufr33 | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
-| Roformer | MelBand Roformer — Denoise · Aufr33 | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
+| Roformer | MelBand Roformer — DeNoise Aggr · Aufr33 | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
+| Roformer | MelBand Roformer — DeNoise · Aufr33 | special_fx | Dry (dereverbbed signal) | special_fx_target:dry | dry | — |
 | Roformer | MelBand Roformer — Duality v1 · Aname | dual_voc_inst | User picks Vocals or Instrumental (dual 2-stem) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer — Guitar · Becruily | specialty_stem | Guitar, Other | specialty_target:Guitar | Guitar | — |
 | Roformer | MelBand Roformer — Instrumental Bleedless v1 · Gabox | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
@@ -464,7 +464,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Roformer | MelBand Roformer — Karaoke Fusion Aggressive v2 · Gonza | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | Roformer | MelBand Roformer — Karaoke Fusion Standard · Gonza | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | Roformer | MelBand Roformer — Karaoke Fusion Total · Gonza | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
-| Roformer | MelBand Roformer — Karaoke · Aufr33 & Viperx | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
+| Roformer | MelBand Roformer — Karaoke · Aufr33 & ViperX | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | Roformer | MelBand Roformer — Karaoke · Gabox | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | Roformer | MelBand Roformer — Karaoke · Gabox (beta) | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | Roformer | MelBand Roformer — Karaoke · Becruily | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
@@ -479,29 +479,29 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Roformer | MelBand Roformer — Vocals · Gabox | vocals | Vocals (complement = Instrumental) | vocal_target | Vocals | — |
 | Roformer | MelBand Roformer — Vocals · Kimberley Jensen | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
 | Roformer | MelBand Roformer — Vocals · Becruily | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| Roformer | MelBand Roformer — instrumental Metal preview · Mesk | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
-| MDX-Net | SCNet — (4 Stems) Huge v1 · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| MDX-Net | SCNet — (4 Stems) XL · StarryTong | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| MDX-Net | SCNet — (4 Stems) XL · ZFTurbo | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| MDX-Net | SCNet — (4 Stems) · ZFTurbo | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| MDX-Net | SCNet — Choirsep · Dry Paint Dealer Undr | multi_stem | Multi-stem: alto, bass, soprano, tenor | multi_stem | alto | — |
+| Roformer | MelBand Roformer — Instrumental Metal Preview · Mesk | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
+| MDX-Net | SCNet — Huge v1 (4 Stems) · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| MDX-Net | SCNet — XL (4 Stems) · StarryTong | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| MDX-Net | SCNet — XL (4 Stems) · ZFTurbo | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| MDX-Net | SCNet (4 Stems) · ZFTurbo | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| MDX-Net | SCNet — ChoirSep · Dry Paint Dealer Undr | multi_stem | Multi-stem: alto, bass, soprano, tenor | multi_stem | alto | — |
 | MDX-Net | SCNet — Large Jazz model · Joris Vaneyghen | multi_stem | Multi-stem: drums, bass, piano, other | multi_stem | drums | — |
-| MDX-Net | SCNet — Masked (4 Stems) Small · ZFTurbo | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| MDX-Net | SCNet — Masked (4 Stems) XL IHF · ZFTurbo | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| MDX-Net | SCNet — Masked Choirsep · Dry Paint Dealer Undr | multi_stem | Multi-stem: soprano, alto, tenor, bass | multi_stem | soprano | — |
+| MDX-Net | SCNet — Masked Small (4 Stems) · ZFTurbo | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| MDX-Net | SCNet — Masked XL IHF (4 Stems) · ZFTurbo | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| MDX-Net | SCNet — Masked ChoirSep · Dry Paint Dealer Undr | multi_stem | Multi-stem: soprano, alto, tenor, bass | multi_stem | soprano | — |
 | MDX-Net | SCNet — Mid-Side v2 · Gilliaaan | multi_stem | Multi-stem: center, wide | two_stem | center | — |
 | MDX-Net | SCNet — Surround · Jasper | multi_stem | Multi-stem: LRF, LFE, LRS, CEN | multi_stem | LRF | — |
 | MDX-Net | SCNet — Tran (4 Stems) · ZFTurbo | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
 | MDX-Net | SCNet — XL IHF (4 Stems) · ZFTurbo | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
 | MDX-Net | SCNet — XL Jazz model · Joris Vaneyghen | multi_stem | Multi-stem: drums, bass, piano, other | multi_stem | drums | — |
-| SCNet | SCNet — (4 Stems) Huge Bleedless · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| SCNet | SCNet — (4 Stems) Huge Fullness · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| SCNet | SCNet — (4 Stems) Huge Strong Fullness · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| SCNet | SCNet — (4 Stems) Huge v1.2 · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
-| SCNet | SCNet — (4 Stems) Large | multi_stem | Multi-stem: Drums, Bass, Other, Vocals | multi_stem | Drums | — |
-| SCNet | SCNet — (4 Stems) Large · starrytong | multi_stem | Multi-stem: Drums, Bass, Other, Vocals | multi_stem | Drums | — |
-| SCNet | SCNet — (4 Stems) MUSDB18 · starrytong | multi_stem | Multi-stem: Drums, Bass, Other, Vocals | multi_stem | Drums | — |
-| SCNet | SCNet — (4 Stems) XL | multi_stem | Multi-stem: Drums, Bass, Other, Vocals | multi_stem | Drums | — |
+| SCNet | SCNet — Huge Bleedless (4 Stems) · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| SCNet | SCNet — Huge Fullness (4 Stems) · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| SCNet | SCNet — Huge Strong Fullness (4 Stems) · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| SCNet | SCNet — Huge v1.2 (4 Stems) · Aname | multi_stem | Multi-stem: drums, bass, other, vocals | multi_stem | drums | — |
+| SCNet | SCNet — Large (4 Stems) | multi_stem | Multi-stem: Drums, Bass, Other, Vocals | multi_stem | Drums | — |
+| SCNet | SCNet — Large (4 Stems) · StarryTong | multi_stem | Multi-stem: Drums, Bass, Other, Vocals | multi_stem | Drums | — |
+| SCNet | SCNet — MUSDB18 (4 Stems) · StarryTong | multi_stem | Multi-stem: Drums, Bass, Other, Vocals | multi_stem | Drums | — |
+| SCNet | SCNet — XL (4 Stems) | multi_stem | Multi-stem: Drums, Bass, Other, Vocals | multi_stem | Drums | — |
 | Demucs | v1 — Demucs | multi_stem | 4-stem Demucs | multi_stem |  | — |
 | Demucs | v1 — Demucs Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
 | Demucs | v1 — Light | multi_stem | 4-stem Demucs | multi_stem |  | — |
@@ -509,7 +509,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Demucs | v1 — TasNet | multi_stem | 4-stem Demucs | multi_stem |  | — |
 | Demucs | v1 — TasNet Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
 | Demucs | v2 — Demucs | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v2 — Demucs 48 kHz High Quality | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | v2 — Demucs 48 kHz HQ | multi_stem | 4-stem Demucs | multi_stem |  | — |
 | Demucs | v2 — Demucs Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
 | Demucs | v2 — Demucs Unit Test | multi_stem | 4-stem Demucs | multi_stem |  | — |
 | Demucs | v2 — TasNet | multi_stem | 4-stem Demucs | multi_stem |  | — |
@@ -526,8 +526,8 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Demucs | v4 — HTDemucs | multi_stem | 4-stem Demucs | multi_stem |  | — |
 | Demucs | v4 — HTDemucs (6 Stems) | multi_stem | 6-stem Demucs | multi_stem |  | — |
 | Demucs | v4 — HTDemucs Fine-Tuned | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Apollo | Apollo — EDM Restoration Big · essid | unknown | unknown | unknown |  | — |
-| Apollo | Apollo — EDM Restoration · essid | unknown | unknown | unknown |  | — |
+| Apollo | Apollo — EDM Restoration Big · Essid | unknown | unknown | unknown |  | — |
+| Apollo | Apollo — EDM Restoration · Essid | unknown | unknown | unknown |  | — |
 
 ## Karaoke models
 
@@ -542,7 +542,7 @@ Roformer karaoke yamls typically target **vocals** (lead) with instrumental comp
 | BandSplit PolarFormer — Karaoke · Lambda001 | lead | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | BandSplit Roformer — Karaoke Inverted · GaboxR67 | other | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
 | BandSplit Roformer — Karaoke · Anvuew | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
-| BandSplit Roformer — Karaoke · Becrily & Frazer | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
+| BandSplit Roformer — Karaoke · Becruily & Frazer | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | BandSplit Roformer — Karaoke · GaboxR67 | vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | BandSplit Roformer — Karaoke · GiantAILAB | vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | MDX-Net — UVR Karaoke | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
@@ -561,7 +561,7 @@ Roformer karaoke yamls typically target **vocals** (lead) with instrumental comp
 | MelBand Roformer — Karaoke Fusion Aggressive v2 · Gonza | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | MelBand Roformer — Karaoke Fusion Standard · Gonza | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | MelBand Roformer — Karaoke Fusion Total · Gonza | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
-| MelBand Roformer — Karaoke · Aufr33 & Viperx | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
+| MelBand Roformer — Karaoke · Aufr33 & ViperX | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | MelBand Roformer — Karaoke · Gabox | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | MelBand Roformer — Karaoke · Gabox (beta) | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | MelBand Roformer — Karaoke · Becruily | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
@@ -595,14 +595,14 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 | BandSplit Roformer — Resurrection Instrumental · Unwa | config_BandSplit-Roformer_Resurrection_Instrumental_by-Unwa.yaml | vocals, other | Instrumental (yaml `other`; complement = vocals) |
 | MelBand Roformer — Kim Instrumental v1e Plus · Unwa | config_melband_roformer_inst.yaml | other, vocals | Instrumental (yaml `other`; complement = vocals) |
 | MelBand Roformer — Kim Instrumental v1e · Unwa | config_melband_roformer_inst.yaml | other, vocals | Instrumental (yaml `other`; complement = vocals) |
-| MelBand Roformer — instrumental Metal preview · Mesk | config_melband_roformer_inst_metal_prev_by_mesk.yaml | vocals, other | Instrumental (yaml `other`; complement = vocals) |
+| MelBand Roformer — Instrumental Metal Preview · Mesk | config_melband_roformer_inst_metal_prev_by_mesk.yaml | vocals, other | Instrumental (yaml `other`; complement = vocals) |
 
 ## Flagged mismatches
 
 | Label | Intent | Backend | Target/Primary | Best result | Flags |
 | --- | --- | --- | --- | --- | --- |
-| HP Vocal 3 | vocals | two_stem | Vocals | Vocals (+ Instrumental complement) | NAME says vocals but backend is not vocal-focused |
-| HP Vocal 4 | vocals | two_stem | Vocals | Vocals (+ Instrumental complement) | NAME says vocals but backend is not vocal-focused |
+| HP Vocals 3 | vocals | two_stem | Vocals | Vocals (+ Instrumental complement) | NAME says vocals but backend is not vocal-focused |
+| HP Vocals 4 | vocals | two_stem | Vocals | Vocals (+ Instrumental complement) | NAME says vocals but backend is not vocal-focused |
 | MDX23C — D1581 | vocals | two_stem | Vocals | Vocals (+ Instrumental complement) | NAME says vocals but backend is not vocal-focused |
 | MelBand Roformer — Duet · Dry Paint Dealer Undr | vocals | two_stem | singer_1 | singer_1, singer_2 | NAME says vocals but backend is not vocal-focused; NAME says vocals but backend is specialty 2-stem |
 | MelBand Roformer — Small · Aname | vocals | two_stem | Instrumental | Instrumental (+ Vocals complement) | NAME says vocals but backend is not vocal-focused |
@@ -710,7 +710,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Best result:** Instrumental (+ Vocals complement)
 - **Save stems UI:** UI: Instrumental / complement
-- **Metadata:** politrees_vr_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.3), vocals (7.8)
 
 ### SP 4-Band 44.1 kHz 2
@@ -723,7 +723,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Best result:** Instrumental (+ Vocals complement)
 - **Save stems UI:** UI: Instrumental / complement
-- **Metadata:** politrees_vr_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.5), vocals (8.0)
 
 ### SP Mid 44.1 kHz 1
@@ -749,7 +749,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Best result:** Instrumental (+ Vocals complement)
 - **Save stems UI:** UI: Instrumental / complement
-- **Metadata:** politrees_vr_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.3), vocals (7.4)
 
 ### HP Wind Instrumental 17
@@ -791,7 +791,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.5), vocals (8.2)
 
-### HP Vocal 3
+### HP Vocals 3
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `3_HP-Vocal-UVR.pth`
@@ -805,7 +805,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Note:** Community ref: vocals* (8.2), instrumental (14.0)
 - **⚠ Flags:** NAME says vocals but backend is not vocal-focused
 
-### HP Vocal 4
+### HP Vocals 4
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `4_HP-Vocal-UVR.pth`
@@ -830,7 +830,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Karaoke model:** yes
 - **Best result:** Karaoke backing (Instrumental primary; complement = lead vocals)
 - **Save stems UI:** UI: Instrumental / complement
-- **Metadata:** politrees_vr_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (12.2), vocals (5.2)
 
 ### HP Karaoke 6
@@ -844,7 +844,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Karaoke model:** yes
 - **Best result:** Karaoke backing (Instrumental primary; complement = lead vocals)
 - **Save stems UI:** UI: Instrumental / complement
-- **Metadata:** politrees_vr_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.0), vocals (4.6)
 
 ### HP2 7
@@ -883,7 +883,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Instrumental, Vocals
 - **Best result:** Instrumental (+ Vocals complement)
 - **Save stems UI:** UI: Instrumental / complement
-- **Metadata:** politrees_vr_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.7), vocals (8.0)
 
 ### Karaoke BVE (4 Bands, SN, 44.1 kHz) 1
@@ -898,7 +898,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: vocals* (0.0), instrumental (7.7)
 
-### UVR-De-Echo-Aggressive · FoxJoy
+### UVR De-Echo — Aggressive · FoxJoy
 
 - **Source:** TRvlvr
 - **Weight:** `UVR-De-Echo-Aggressive.pth`
@@ -911,7 +911,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: no echo*, echo
 
-### UVR-De-Echo-Normal · FoxJoy
+### UVR De-Echo — Normal · FoxJoy
 
 - **Source:** TRvlvr
 - **Weight:** `UVR-De-Echo-Normal.pth`
@@ -924,7 +924,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: no echo*, echo
 
-### UVR-DeEcho-DeReverb · FoxJoy
+### UVR De-Echo/DeReverb · FoxJoy
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-DeEcho-DeReverb.pth`
@@ -934,10 +934,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** No Reverb, Reverb
 - **Best result:** no reverb (mix minus reverb)
 - **Save stems UI:** UI: no reverb / complement stem
-- **Metadata:** politrees_vr_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: no reverb*, reverb
 
-### UVR-DeNoise · FoxJoy
+### UVR DeNoise · FoxJoy
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-DeNoise.pth`
@@ -947,10 +947,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** No Noise, Noise
 - **Best result:** Noise (isolated noise stem)
 - **Save stems UI:** UI: noise / complement stem
-- **Metadata:** politrees_vr_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: noise*, no noise
 
-### UVR-DeNoise-Lite · FoxJoy
+### UVR DeNoise Lite · FoxJoy
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-DeNoise-Lite.pth`
@@ -963,7 +963,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** politrees_vr_hash
 - **Note:** Community ref: noise*, no noise
 
-### UVR-DeReverb · aufr33 & jarredou
+### UVR DeReverb · Aufr33 & Jarredou
 
 - **Source:** Politrees
 - **Weight:** `UVR-De-Reverb-aufr33-jarredou.pth`
@@ -978,7 +978,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 
 ## MDX-Net (detail)
 
-### BS Guitar · Kimberley Xlance
+### BandSplit Roformer — Guitar · Kimberley Xlance
 
 - **Source:** mvsepless
 - **Weight:** `bs_gtr_xlancer.ckpt`
@@ -1065,7 +1065,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:bs_pope_vocals_zfturbo_config.yaml
 
-### BandSplit Roformer — (4 Stems) · ZFTurbo
+### BandSplit Roformer (4 Stems) · ZFTurbo
 
 - **Source:** mvsepless
 - **Weight:** `bs_4stem_zfturbo.ckpt`
@@ -1079,7 +1079,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:bs_4stem_zfturbo_config.yaml
 
-### BandSplit Roformer — (4 Stems) · Aname
+### BandSplit Roformer (4 Stems) · Aname
 
 - **Source:** mvsepless
 - **Weight:** `bs_4stem_aname.ckpt`
@@ -1135,7 +1135,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: strings / other subset
 - **Metadata:** bundled_yaml:bs_bowed_str_gilliaaan_config.yaml
 
-### BandSplit Roformer — Deverb (SDR 22.50) · Anvuew
+### BandSplit Roformer — DeReverb (SDR 22.50) · Anvuew
 
 - **Source:** mvsepless
 - **Weight:** `bs_dereverb_2250_anvuew.ckpt`
@@ -1150,7 +1150,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: noreverb / complement stem
 - **Metadata:** bundled_yaml:bs_dereverb_2250_anvuew_config.yaml
 
-### BandSplit Roformer — Deverb 256-8 · Anvuew
+### BandSplit Roformer — DeReverb 256-8 · Anvuew
 
 - **Source:** mvsepless
 - **Weight:** `bs_deverb_256_8_anvuew.ckpt`
@@ -1165,7 +1165,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: noreverb / complement stem
 - **Metadata:** bundled_yaml:bs_deverb_256_8_anvuew_config.yaml
 
-### BandSplit Roformer — Deverb 384-10 · Anvuew
+### BandSplit Roformer — DeReverb 384-10 · Anvuew
 
 - **Source:** mvsepless
 - **Weight:** `bs_deverb_384_10_anvuew.ckpt`
@@ -1180,7 +1180,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: noreverb / complement stem
 - **Metadata:** bundled_yaml:bs_deverb_384_10_anvuew_config.yaml
 
-### BandSplit Roformer — Deverb Roon · Anvuew
+### BandSplit Roformer — DeReverb Room · Anvuew
 
 - **Source:** mvsepless
 - **Weight:** `bs_deverb_room_anvuew.ckpt`
@@ -1435,7 +1435,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** bundled_yaml:bs_karaoke_anvuew_config.yaml
 
-### BandSplit Roformer — Karaoke · Becrily & Frazer
+### BandSplit Roformer — Karaoke · Becruily & Frazer
 
 - **Source:** mvsepless
 - **Weight:** `bs_karaoke_becruily.ckpt`
@@ -1573,7 +1573,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:bs_logic_6stem_config.yaml
 
-### BandSplit Roformer — Mag (3719) · Anvuew
+### BandSplit Roformer — Mag (3179) · Anvuew
 
 - **Source:** mvsepless
 - **Weight:** `bs_mag_3179_anvuew.ckpt`
@@ -1603,7 +1603,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** bundled_yaml:bs_mag_anvuew_config.yaml
 
-### BandSplit Roformer — Male-Female (ep 146) · Sucial
+### BandSplit Roformer — Male/Female (ep 146) · Sucial
 
 - **Source:** mvsepless
 - **Weight:** `bs_male_female_146_sucial.ckpt`
@@ -1617,7 +1617,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: male / female subset
 - **Metadata:** bundled_yaml:bs_male_female_146_sucial_config.yaml
 
-### BandSplit Roformer — Male-Female (ep 267) · Sucial
+### BandSplit Roformer — Male/Female (ep 267) · Sucial
 
 - **Source:** mvsepless
 - **Weight:** `bs_male_female_267_sucial.ckpt`
@@ -1631,7 +1631,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: male / female subset
 - **Metadata:** bundled_yaml:bs_male_female_267_sucial_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (FULL) · MVSep
+### BandSplit Roformer — Mega Full (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_full_mvsep.ckpt`
@@ -1645,7 +1645,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:bs_mega_53stem_full_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Accordion) · MVSep
+### BandSplit Roformer — Mega Accordion Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_accordion_mvsep.ckpt`
@@ -1660,7 +1660,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: accordion / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_accordion_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Acoustic-Guitar) · MVSep
+### BandSplit Roformer — Mega Acoustic Guitar Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_acoustic-guitar_mvsep.ckpt`
@@ -1675,7 +1675,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: acoustic-guitar / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_acoustic-guitar_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Back-Vocal) · MVSep
+### BandSplit Roformer — Mega Backing Vocals Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_back-vocal_mvsep.ckpt`
@@ -1691,7 +1691,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** bundled_yaml:bs_mega_53stem_back-vocal_mvsep_config.yaml
 - **Note:** Name intent corrected from metadata (specialty_stem)
 
-### BandSplit Roformer — Mega (53 Stems) (only Banjo) · MVSep
+### BandSplit Roformer — Mega Banjo Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_banjo_mvsep.ckpt`
@@ -1706,7 +1706,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: banjo / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_banjo_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Bass) · MVSep
+### BandSplit Roformer — Mega Bass Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_bass_mvsep.ckpt`
@@ -1720,7 +1720,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** Multi-stem: bass, other
 - **Metadata:** bundled_yaml:bs_mega_53stem_bass_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Bassoon) · MVSep
+### BandSplit Roformer — Mega Bassoon Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_bassoon_mvsep.ckpt`
@@ -1734,7 +1734,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** Multi-stem: bassoon, other
 - **Metadata:** bundled_yaml:bs_mega_53stem_bassoon_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Bells) · MVSep
+### BandSplit Roformer — Mega Bells Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_bells_mvsep.ckpt`
@@ -1749,7 +1749,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: bells / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_bells_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Bowed Strings) · MVSep
+### BandSplit Roformer — Mega Bowed Strings Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_bowed_strings_mvsep.ckpt`
@@ -1764,7 +1764,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: bowed_strings / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_bowed_strings_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Brass) · MVSep
+### BandSplit Roformer — Mega Brass Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_brass_mvsep.ckpt`
@@ -1779,7 +1779,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: brass / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_brass_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Cello) · MVSep
+### BandSplit Roformer — Mega Cello Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_cello_mvsep.ckpt`
@@ -1794,7 +1794,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: cello / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_cello_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Clarinet) · MVSep
+### BandSplit Roformer — Mega Clarinet Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_clarinet_mvsep.ckpt`
@@ -1809,7 +1809,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: clarinet / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_clarinet_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Congas) · MVSep
+### BandSplit Roformer — Mega Congas Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_congas_mvsep.ckpt`
@@ -1824,7 +1824,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: congas / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_congas_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Digital-Piano) · MVSep
+### BandSplit Roformer — Mega Digital Piano Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_digital-piano_mvsep.ckpt`
@@ -1839,7 +1839,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: digital-piano / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_digital-piano_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Dobro) · MVSep
+### BandSplit Roformer — Mega Dobro Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_dobro_mvsep.ckpt`
@@ -1854,7 +1854,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: dobro / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_dobro_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Double-Bass) · MVSep
+### BandSplit Roformer — Mega Double Bass Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_double-bass_mvsep.ckpt`
@@ -1868,7 +1868,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** Multi-stem: double-bass, other
 - **Metadata:** bundled_yaml:bs_mega_53stem_double-bass_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Drums) · MVSep
+### BandSplit Roformer — Mega Drums Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_drums_mvsep.ckpt`
@@ -1882,7 +1882,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** Multi-stem: drums, other
 - **Metadata:** bundled_yaml:bs_mega_53stem_drums_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Electric-Guitar) · MVSep
+### BandSplit Roformer — Mega Electric Guitar Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_electric-guitar_mvsep.ckpt`
@@ -1897,7 +1897,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: electric-guitar / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_electric-guitar_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Flute) · MVSep
+### BandSplit Roformer — Mega Flute Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_flute_mvsep.ckpt`
@@ -1912,7 +1912,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: flute / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_flute_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only French-Horn) · MVSep
+### BandSplit Roformer — Mega French Horn Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_french-horn_mvsep.ckpt`
@@ -1927,7 +1927,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: french-horn / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_french-horn_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Glockenspiel) · MVSep
+### BandSplit Roformer — Mega Glockenspiel Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_glockenspiel_mvsep.ckpt`
@@ -1942,7 +1942,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: glockenspiel / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_glockenspiel_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Guitar) · MVSep
+### BandSplit Roformer — Mega Guitar Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_guitar_mvsep.ckpt`
@@ -1957,7 +1957,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: guitar / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_guitar_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Harmonica) · MVSep
+### BandSplit Roformer — Mega Harmonica Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_harmonica_mvsep.ckpt`
@@ -1972,7 +1972,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: harmonica / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_harmonica_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Harp) · MVSep
+### BandSplit Roformer — Mega Harp Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_harp_mvsep.ckpt`
@@ -1987,7 +1987,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: harp / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_harp_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Harpsichord) · MVSep
+### BandSplit Roformer — Mega Harpsichord Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_harpsichord_mvsep.ckpt`
@@ -2002,7 +2002,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: harpsichord / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_harpsichord_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Hh) · MVSep
+### BandSplit Roformer — Mega Hi-Hat Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_hh_mvsep.ckpt`
@@ -2017,7 +2017,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: hh / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_hh_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Keys) · MVSep
+### BandSplit Roformer — Mega Keys Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_keys_mvsep.ckpt`
@@ -2032,7 +2032,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: keys / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_keys_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Kick) · MVSep
+### BandSplit Roformer — Mega Kick Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_kick_mvsep.ckpt`
@@ -2047,7 +2047,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: kick / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_kick_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Lead-Vocal) · MVSep
+### BandSplit Roformer — Mega Lead Vocals Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_lead-vocal_mvsep.ckpt`
@@ -2061,7 +2061,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** lead-vocal (single native output)
 - **Metadata:** bundled_yaml:bs_mega_53stem_lead-vocal_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Mandolin) · MVSep
+### BandSplit Roformer — Mega Mandolin Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_mandolin_mvsep.ckpt`
@@ -2076,7 +2076,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: mandolin / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_mandolin_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Marimba) · MVSep
+### BandSplit Roformer — Mega Marimba Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_marimba_mvsep.ckpt`
@@ -2091,7 +2091,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: marimba / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_marimba_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Oboe) · MVSep
+### BandSplit Roformer — Mega Oboe Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_oboe_mvsep.ckpt`
@@ -2106,7 +2106,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: oboe / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_oboe_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Organ) · MVSep
+### BandSplit Roformer — Mega Organ Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_organ_mvsep.ckpt`
@@ -2121,7 +2121,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: organ / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_organ_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Percussion) · MVSep
+### BandSplit Roformer — Mega Percussion Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_percussion_mvsep.ckpt`
@@ -2136,7 +2136,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: percussion / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_percussion_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Piano) · MVSep
+### BandSplit Roformer — Mega Piano Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_piano_mvsep.ckpt`
@@ -2150,7 +2150,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** Multi-stem: piano, other
 - **Metadata:** bundled_yaml:bs_mega_53stem_piano_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Saxophone) · MVSep
+### BandSplit Roformer — Mega Saxophone Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_saxophone_mvsep.ckpt`
@@ -2165,7 +2165,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: saxophone / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_saxophone_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Sitar) · MVSep
+### BandSplit Roformer — Mega Sitar Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_sitar_mvsep.ckpt`
@@ -2180,7 +2180,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: sitar / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_sitar_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Snare) · MVSep
+### BandSplit Roformer — Mega Snare Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_snare_mvsep.ckpt`
@@ -2195,7 +2195,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: snare / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_snare_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Strings) · MVSep
+### BandSplit Roformer — Mega Strings Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_strings_mvsep.ckpt`
@@ -2210,7 +2210,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: strings / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_strings_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Synth) · MVSep
+### BandSplit Roformer — Mega Synth Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_synth_mvsep.ckpt`
@@ -2225,7 +2225,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: synth / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_synth_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Tambourine) · MVSep
+### BandSplit Roformer — Mega Tambourine Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_tambourine_mvsep.ckpt`
@@ -2240,7 +2240,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: tambourine / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_tambourine_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Timpani) · MVSep
+### BandSplit Roformer — Mega Timpani Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_timpani_mvsep.ckpt`
@@ -2255,7 +2255,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: timpani / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_timpani_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Toms) · MVSep
+### BandSplit Roformer — Mega Toms Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_toms_mvsep.ckpt`
@@ -2270,7 +2270,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: toms / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_toms_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Triangle) · MVSep
+### BandSplit Roformer — Mega Triangle Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_triangle_mvsep.ckpt`
@@ -2285,7 +2285,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: triangle / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_triangle_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Trombone) · MVSep
+### BandSplit Roformer — Mega Trombone Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_trombone_mvsep.ckpt`
@@ -2300,7 +2300,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: trombone / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_trombone_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Trumpet) · MVSep
+### BandSplit Roformer — Mega Trumpet Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_trumpet_mvsep.ckpt`
@@ -2315,7 +2315,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: trumpet / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_trumpet_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Tuba) · MVSep
+### BandSplit Roformer — Mega Tuba Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_tuba_mvsep.ckpt`
@@ -2330,7 +2330,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: tuba / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_tuba_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Ukulele) · MVSep
+### BandSplit Roformer — Mega Ukulele Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_ukulele_mvsep.ckpt`
@@ -2345,7 +2345,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: ukulele / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_ukulele_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Viola) · MVSep
+### BandSplit Roformer — Mega Viola Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_viola_mvsep.ckpt`
@@ -2360,7 +2360,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: viola / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_viola_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Violin) · MVSep
+### BandSplit Roformer — Mega Violin Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_violin_mvsep.ckpt`
@@ -2375,7 +2375,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: violin / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_violin_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Vocal) · MVSep
+### BandSplit Roformer — Mega Vocals Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_vocal_mvsep.ckpt`
@@ -2390,7 +2390,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** bundled_yaml:bs_mega_53stem_vocal_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Wind) · MVSep
+### BandSplit Roformer — Mega Wind Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_wind_mvsep.ckpt`
@@ -2405,7 +2405,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: wind / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_wind_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Wind-Chimes) · MVSep
+### BandSplit Roformer — Mega Wind Chimes Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_wind-chimes_mvsep.ckpt`
@@ -2420,7 +2420,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: wind-chimes / other subset
 - **Metadata:** bundled_yaml:bs_mega_53stem_wind-chimes_mvsep_config.yaml
 
-### BandSplit Roformer — Mega (53 Stems) (only Woodwind) · MVSep
+### BandSplit Roformer — Mega Woodwind Only (53 Stems) · MVSep
 
 - **Source:** mvsepless
 - **Weight:** `bs_mega_53stem_woodwind_mvsep.ckpt`
@@ -2570,7 +2570,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:bs_6stem_config.yaml
 
-### BandSplit Roformer — SW Fixed · jarredou
+### BandSplit Roformer — SW Fixed · Jarredou
 
 - **Source:** mvsepless
 - **Weight:** `bs_6stem_fixed.ckpt`
@@ -2584,7 +2584,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:bs_6stem_fixed_config.yaml
 
-### BandSplit Roformer — SppechSep · AliceN
+### BandSplit Roformer — SpeechSep · AliceN
 
 - **Source:** mvsepless
 - **Weight:** `bs_speech_alicen.ckpt`
@@ -2824,7 +2824,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:bs_vocals2_aname_config.yaml
 
-### BandSplit Roformer — Vox · Xlance
+### BandSplit Roformer — Vocals · Xlance
 
 - **Source:** mvsepless
 - **Weight:** `bs_vox_xlancer.ckpt`
@@ -2838,7 +2838,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** vox (single native output)
 - **Metadata:** bundled_yaml:bs_vox_xlancer_config.yaml
 
-### BS Siamese Roformer Vocals · Unwa
+### BandSplit Roformer — Siamese Vocals · Unwa
 
 - **Source:** mvsepless
 - **Weight:** `bs_siamese_vocals_unwa.ckpt`
@@ -2941,7 +2941,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 
 ## MDX-Net ONNX (detail)
 
-### MDX-Net — UVR Instrumental full 292
+### MDX-Net — UVR Instrumental Full 292
 
 - **Source:** TRvlvr
 - **Weight:** `UVR-MDX-NET-Inst_full_292.onnx`
@@ -2952,10 +2952,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Target instrument:** `instrumental`
 - **Best result:** Instrumental (complement = Vocals)
 - **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (15.1), vocals (8.5)
 
-### MDX-Net — UVR Instrumental 187 beta
+### MDX-Net — UVR Instrumental 187 Beta
 
 - **Source:** TRvlvr
 - **Weight:** `UVR-MDX-NET_Inst_187_beta.onnx`
@@ -2969,7 +2969,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (14.3), vocals (8.5)
 
-### MDX-Net — UVR Instrumental 82 beta
+### MDX-Net — UVR Instrumental 82 Beta
 
 - **Source:** TRvlvr
 - **Weight:** `UVR-MDX-NET_Inst_82_beta.onnx`
@@ -2983,7 +2983,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (14.3), vocals (8.2)
 
-### MDX-Net — UVR Instrumental 90 beta
+### MDX-Net — UVR Instrumental 90 Beta
 
 - **Source:** TRvlvr
 - **Weight:** `UVR-MDX-NET_Inst_90_beta.onnx`
@@ -3050,7 +3050,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
 - **Save stems UI:** UI: Vocals / Instrumental
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: vocals* (10.2), instrumental (15.5)
 
 ### MDX-Net — UVR Main 438
@@ -3064,7 +3064,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
 - **Save stems UI:** UI: Vocals / Instrumental
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: vocals* (10.1), instrumental (15.3)
 
 ### MDX-Net — Kim Instrumental
@@ -3079,7 +3079,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (15.5), vocals (9.1)
 
-### MDX-Net — Kim Vocal 1
+### MDX-Net — Kim Vocals 1
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `Kim_Vocal_1.onnx`
@@ -3091,7 +3091,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: vocals* (10.1), instrumental (15.5)
 
-### MDX-Net — Kim Vocal 2
+### MDX-Net — Kim Vocals 2
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `Kim_Vocal_2.onnx`
@@ -3103,7 +3103,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: vocals* (10.2), instrumental (15.4)
 
-### MDX-Net — Reverb High Quality · FoxJoy
+### MDX-Net — Reverb HQ · FoxJoy
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `Reverb_HQ_By_FoxJoy.onnx`
@@ -3151,7 +3151,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: vocals* (9.7), instrumental (15.0)
 
-### MDX-Net — UVR Crowd High Quality 1 · Aufr33
+### MDX-Net — UVR Crowd HQ 1 · Aufr33
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-MDX-NET_Crowd_HQ_1.onnx`
@@ -3205,7 +3205,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (15.3), vocals (9.2)
 
-### MDX-Net — UVR Instrumental High Quality 1
+### MDX-Net — UVR Instrumental HQ 1
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-MDX-NET-Inst_HQ_1.onnx`
@@ -3219,7 +3219,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (15.4), vocals (8.8)
 
-### MDX-Net — UVR Instrumental High Quality 2
+### MDX-Net — UVR Instrumental HQ 2
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-MDX-NET-Inst_HQ_2.onnx`
@@ -3233,7 +3233,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (15.3), vocals (8.8)
 
-### MDX-Net — UVR Instrumental High Quality 3
+### MDX-Net — UVR Instrumental HQ 3
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-MDX-NET-Inst_HQ_3.onnx`
@@ -3247,7 +3247,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (15.4), vocals (8.8)
 
-### MDX-Net — UVR Instrumental High Quality 4
+### MDX-Net — UVR Instrumental HQ 4
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-MDX-NET-Inst_HQ_4.onnx`
@@ -3258,10 +3258,10 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Target instrument:** `instrumental`
 - **Best result:** Instrumental (complement = Vocals)
 - **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (15.5), vocals (8.8)
 
-### MDX-Net — UVR Instrumental High Quality 5
+### MDX-Net — UVR Instrumental HQ 5
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-MDX-NET-Inst_HQ_5.onnx`
@@ -3272,7 +3272,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Target instrument:** `instrumental`
 - **Best result:** Instrumental (complement = Vocals)
 - **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (15.3), vocals (8.7)
 
 ### MDX-Net — UVR Instrumental Main
@@ -3299,7 +3299,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Karaoke model:** yes
 - **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
 - **Save stems UI:** UI: Vocals / complement
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: vocals* (5.6), instrumental (14.1)
 
 ### MDX-Net — UVR Karaoke 2
@@ -3346,7 +3346,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: vocals* (10.2), instrumental (15.4)
 
-### MDX-Net — UVR MDXNET 9482
+### MDX-Net — UVR 9482
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR_MDXNET_9482.onnx`
@@ -3450,7 +3450,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 
 ## MDX-Net (detail)
 
-### MDX23C — (4 Stems) Small · KUIELAB
+### MDX23C — Small (4 Stems) · KUIELAB
 
 - **Source:** mvsepless
 - **Weight:** `mdx23c_4stem_small_kuielab.ckpt`
@@ -3464,7 +3464,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:mdx23c_4stem_small_kuielab_config.yaml
 
-### MDX23C — (4 Stems) · KUIELAB
+### MDX23C (4 Stems) · KUIELAB
 
 - **Source:** mvsepless
 - **Weight:** `mdx23c_4stem_kuielab.ckpt`
@@ -3476,9 +3476,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** vocals, drums, bass, other
 - **Best result:** Vocals (+ Instrumental complement)
 - **Save stems UI:** UI: per-stem subset or focus row
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** bundled_yaml:mdx23c_4stem_kuielab_config.yaml
 
-### MDX23C — (4 Stems) · ZFTurbo
+### MDX23C (4 Stems) · ZFTurbo
 
 - **Source:** mvsepless
 - **Weight:** `mdx23c_4stem_zfturbo.ckpt`
@@ -3492,7 +3492,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:mdx23c_4stem_zfturbo_config.yaml
 
-### MDX23C — 8K FFT Instrumental/Vocals High Quality v1
+### MDX23C — 8K FFT Instrumental/Vocals HQ v1
 
 - **Source:** mvsepless
 - **Weight:** `mdx23c_instvoc_hq1.ckpt`
@@ -3506,7 +3506,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental (either stem is a valid primary export)
 - **Metadata:** bundled_yaml:mdx23c_instvoc_hq1_config.yaml
 
-### MDX23C — 8K FFT Instrumental/Vocals High Quality v2
+### MDX23C — 8K FFT Instrumental/Vocals HQ v2
 
 - **Source:** mvsepless
 - **Weight:** `mdx23c_instvoc_hq2.ckpt`
@@ -3518,7 +3518,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** Vocals, Instrumental
 - **Best result:** User picks Vocals or Instrumental (dual 2-stem)
 - **Save stems UI:** UI: Vocals / Instrumental (either stem is a valid primary export)
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** bundled_yaml:mdx23c_instvoc_hq2_config.yaml
 
 ### MDX23C — DrumSep (5 Stems) · Aufr33 & Jarredou
 
@@ -3548,7 +3548,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:mdx23c_drumsep_6stem_aufr33_jarredou_config.yaml
 
-### MDX23C — Instrumental/Vocals High Quality · ZFTurbo
+### MDX23C — Instrumental/Vocals HQ · ZFTurbo
 
 - **Source:** mvsepless
 - **Weight:** `mdx23c_instvoc_zfturbo.ckpt`
@@ -3608,7 +3608,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 
 ## MDX23C (detail)
 
-### MDX23C — Instrumental/Vocals High Quality 2
+### MDX23C — 8K FFT Instrumental/Vocals HQ 2
 
 - **Source:** TRvlvr
 - **Weight:** `MDX23C-8KFFT-InstVoc_HQ_2.ckpt`
@@ -3620,7 +3620,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: vocals (10.5), instrumental (15.9)
 
-### MDX23C — DeReverb · aufr33 & jarredou
+### MDX23C — DeReverb · Aufr33 & Jarredou
 
 - **Source:** Politrees
 - **Weight:** `MDX23C-De-Reverb-aufr33-jarredou.ckpt`
@@ -3636,7 +3636,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** bundled_yaml:config_dereverb_mdx23c.yaml
 - **Note:** Community ref: dry, no dry
 
-### MDX23C — DrumSep · aufr33 & jarredou
+### MDX23C — DrumSep · Aufr33 & Jarredou
 
 - **Source:** Politrees
 - **Weight:** `MDX23C-DrumSep-aufr33-jarredou.ckpt`
@@ -3651,7 +3651,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** bundled_yaml:config_drumsep_mdx23c.yaml
 - **Note:** Community ref: kick, snare, toms, hh, ride, crash
 
-### MDX23C — Phantom Centre extraction · wesleyr36
+### MDX23C — Phantom Centre Extraction · WesleyR36
 
 - **Source:** Politrees
 - **Weight:** `model_mdx23c_ep_271_l1_freq_72.2383.ckpt`
@@ -3664,33 +3664,31 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Target instrument:** `Similarity`
 - **Best result:** Similarity, Difference
 - **Save stems UI:** UI: Similarity / Difference subset
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** bundled_yaml:config_mdx23c_similarity.yaml
 
-### MDX23C — Instrumental/Vocals High Quality
+### MDX23C — 8K FFT Instrumental/Vocals HQ
 
 - **Source:** TRvlvr
 - **Weight:** `MDX23C-8KFFT-InstVoc_HQ.ckpt`
-- **Config:** `model_2_stem_full_band_8k.yaml`
 - **Name intent:** dual_voc_inst
 - **Backend focus:** vocal_primary
 - **Primary stem (backend):** `Vocals`
 - **Best result:** User picks Vocals or Instrumental (dual 2-stem)
 - **Save stems UI:** UI: Vocals / Instrumental (either stem is a valid primary export)
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: vocals (10.6), instrumental (15.8)
 
 ### MDX23C — D1581
 
 - **Source:** TRvlvr
 - **Weight:** `MDX23C_D1581.ckpt`
-- **Config:** `model_2_stem_061321.yaml`
 - **Name intent:** vocals
 - **Backend focus:** two_stem
 - **Primary stem (backend):** `Vocals`
 - **Instruments:** Instrumental, Vocals
 - **Best result:** Vocals (+ Instrumental complement)
 - **Save stems UI:** UI: Vocals / complement
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: vocals (10.0), instrumental (15.5)
 - **⚠ Flags:** NAME says vocals but backend is not vocal-focused
 
@@ -3752,7 +3750,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:mdx23c_vocals_kuielab_config.yaml
 
-### MelBand Roformer — (4 Stems) Large · Aname
+### MelBand Roformer — Large (4 Stems) · Aname
 
 - **Source:** mvsepless
 - **Weight:** `mbr_4stemlarge1_aname.ckpt`
@@ -3766,7 +3764,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:mbr_4stemlarge1_aname_config.yaml
 
-### MelBand Roformer — (4 Stems) XL · Aname
+### MelBand Roformer — XL (4 Stems) · Aname
 
 - **Source:** mvsepless
 - **Weight:** `mbr_4stemxl1_aname.ckpt`
@@ -3780,7 +3778,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:mbr_4stemxl1_aname_config.yaml
 
-### MelBand Roformer — (4 Stems) v2 Large · Aname
+### MelBand Roformer — Large v2 (4 Stems) · Aname
 
 - **Source:** mvsepless
 - **Weight:** `mbr_4stemlarge2_aname.ckpt`
@@ -4004,7 +4002,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: other / complement stem
 - **Metadata:** bundled_yaml:mbr_denoise_yuluoye_config.yaml
 
-### MelBand Roformer — DeNoiser Children 16k · Phaedrus33
+### MelBand Roformer — DeNoiser Children 16 kHz · Phaedrus33
 
 - **Source:** mvsepless
 - **Weight:** `mbr_denoise_children_phaedrus33.ckpt`
@@ -4033,7 +4031,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental (either stem is a valid primary export)
 - **Metadata:** bundled_yaml:mbr_deux_becruily_config.yaml
 
-### MelBand Roformer — Denoise DeBleed · GaboxR67
+### MelBand Roformer — DeNoise DeBleed · GaboxR67
 
 - **Source:** mvsepless
 - **Weight:** `mbr_denoise_debleed_gabox.ckpt`
@@ -4694,7 +4692,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Target instrument:** `other`
 - **Best result:** Instrumental (yaml `other`; complement = vocals)
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** bundled_yaml:mbr_inst2_unwa_config.yaml
 - **Note:** Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)
 
 ### MelBand Roformer — Karaoke 25-02-2025 · GaboxR67
@@ -4914,7 +4912,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:mbr_kimft3_aname_config.yaml
 
-### MelBand Roformer — Kim Fine-Tuned v3 preview · Unwa
+### MelBand Roformer — Kim Fine-Tuned v3 Preview · Unwa
 
 - **Source:** mvsepless
 - **Weight:** `mbr_kimft3_prev_unwa.ckpt`
@@ -5390,7 +5388,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Target instrument:** `vocals`
 - **Best result:** Vocals (complement = Instrumental)
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** bundled_yaml:mbr_vocals_viperx_config.yaml
 
 ### MelBand Roformer — Vocals · ZFTurbo
 
@@ -5407,7 +5405,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:mbr_vocals_zfturbo_config.yaml
 
-### MelBand Roformer — Xeno · DrYound3r (only weights)
+### MelBand Roformer — Xeno · DrYound3r
 
 - **Source:** mvsepless
 - **Weight:** `mbr_xeno.ckpt`
@@ -5424,7 +5422,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 
 ## Roformer (detail)
 
-### BandSplit Roformer — Viperx-1053
+### BandSplit Roformer — Drum/Bass Separation (SDR 10.53) · ViperX
 
 - **Source:** TRvlvr
 - **Weight:** `model_bs_roformer_ep_937_sdr_10.5309.ckpt`
@@ -5436,33 +5434,31 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: no drum-bass*, drum-bass
 
-### BandSplit Roformer — Viperx-1296
+### BandSplit Roformer — ViperX 12.96
 
 - **Source:** TRvlvr
 - **Weight:** `model_bs_roformer_ep_368_sdr_12.9628.ckpt`
-- **Config:** `model_bs_roformer_ep_368_sdr_12.9628.yaml`
 - **Name intent:** vocals
 - **Backend focus:** vocal_primary
 - **Primary stem (backend):** `Vocals`
 - **Best result:** Vocals (+ Instrumental complement)
 - **Save stems UI:** UI: Vocals / complement
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: vocals* (12.1), instrumental (16.3)
 
-### BandSplit Roformer — Viperx-1297
+### BandSplit Roformer — ViperX 12.97
 
 - **Source:** TRvlvr
 - **Weight:** `model_bs_roformer_ep_317_sdr_12.9755.ckpt`
-- **Config:** `model_bs_roformer_ep_317_sdr_12.9755.yaml`
 - **Name intent:** vocals
 - **Backend focus:** vocal_primary
 - **Primary stem (backend):** `Vocals`
 - **Best result:** Vocals (+ Instrumental complement)
 - **Save stems UI:** UI: Vocals / complement
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: vocals* (11.8), instrumental (16.5)
 
-### BandSplit Roformer — (4 Stems) Fine-Tuned · SYH99999
+### BandSplit Roformer — Fine-Tuned (4 Stems) · SYH99999
 
 - **Source:** Politrees
 - **Weight:** `BandSplit_Roformer_4stems_FT_by_SYH99999.pth`
@@ -5476,7 +5472,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:config_BandSplit_Roformer_4stems_FT_by_SYH99999.yaml
 
-### BandSplit Roformer — Chorus Male-Female · Sucial
+### BandSplit Roformer — Chorus Male/Female · Sucial
 
 - **Source:** Politrees
 - **Weight:** `model_chorus_bs_roformer_ep_267_sdr_24.1275.ckpt`
@@ -5491,7 +5487,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** bundled_yaml:config_bs_roformer_chorus_male_female.yaml
 - **Note:** Community ref: male, female
 
-### BandSplit Roformer — Dereverb · Anvuew
+### BandSplit Roformer — DeReverb · Anvuew
 
 - **Source:** Politrees
 - **Weight:** `deverb_bs_roformer_8_384dim_10depth.ckpt`
@@ -5579,7 +5575,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Target instrument:** `Instrumental`
 - **Best result:** Instrumental (complement = Vocals)
 - **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** bundled_yaml:config_bs_roformer_inst_exp_vrl.yaml
 
 ### BandSplit Roformer — Karaoke Frazer · Becruily
 
@@ -5597,7 +5593,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** bundled_yaml:config_BandSplit-Roformer_Karaoke_Frazer_by-becruily.yaml
 
-### BandSplit Roformer — Male-Female · Aufr33
+### BandSplit Roformer — Male/Female · Aufr33
 
 - **Source:** Politrees
 - **Weight:** `bs_roformer_male_female_by_aufr33_sdr_7.2889.ckpt`
@@ -5687,7 +5683,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:config_bs_roformer_revive_by_unwa.yaml
 
-### BandSplit Roformer — SW · jarredou
+### BandSplit Roformer — SW · Jarredou
 
 - **Source:** Politrees
 - **Weight:** `model_BandSplit-Roformer_SW_by-jarredou.ckpt`
@@ -5717,17 +5713,16 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** bundled_yaml:config_bs_roformer_voc_gabox.yaml
 
-### Mel-Roformer-Viperx-1143
+### MelBand Roformer — Vocals (SDR 11.44) · ViperX
 
 - **Source:** TRvlvr
 - **Weight:** `model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt`
-- **Config:** `model_mel_band_roformer_ep_3005_sdr_11.4360.yaml`
 - **Name intent:** vocals
 - **Backend focus:** vocal_primary
 - **Primary stem (backend):** `Vocals`
 - **Best result:** Vocals (+ Instrumental complement)
 - **Save stems UI:** UI: Vocals / complement
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: vocals* (10.5), instrumental (15.1)
 
 ### MelBand Roformer — Kim Big Beta v4 Fine-Tuned · Unwa
@@ -5854,20 +5849,19 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:config_melband_roformer_kim_ft_unwa.yaml
 
-### MelBand Roformer — Kim Instrumental V1 · Unwa
+### MelBand Roformer — Kim Instrumental v1 · Unwa
 
 - **Source:** TRvlvr
 - **Weight:** `melband_roformer_inst_v1.ckpt`
-- **Config:** `config_melbandroformer_inst.yaml`
 - **Name intent:** instrumental
 - **Backend focus:** instrumental_primary
 - **Primary stem (backend):** `Instrumental`
 - **Best result:** Instrumental (+ Vocals complement)
 - **Save stems UI:** UI: Instrumental / complement
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (15.9), vocals (9.8)
 
-### MelBand Roformer — Kim Instrumental V2 · Unwa
+### MelBand Roformer — Kim Instrumental v2 · Unwa
 
 - **Source:** TRvlvr
 - **Weight:** `melband_roformer_inst_v2.ckpt`
@@ -5912,20 +5906,19 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Note:** Community ref: instrumental* (15.8), vocals (9.6)
 - **Note:** Expected: inst models use yaml stem `other` (UI: Vocals / Instrumental)
 
-### MelBand Roformer — Kim Instrumental/Vocals Duality V1 · Unwa
+### MelBand Roformer — Kim Instrumental/Vocals Duality v1 · Unwa
 
 - **Source:** TRvlvr
 - **Weight:** `melband_roformer_instvoc_duality_v1.ckpt`
-- **Config:** `config_melbandroformer_instvoc_duality.yaml`
 - **Name intent:** dual_voc_inst
 - **Backend focus:** vocal_primary
 - **Primary stem (backend):** `Vocals`
 - **Best result:** User picks Vocals or Instrumental (dual 2-stem)
 - **Save stems UI:** UI: Vocals / Instrumental (either stem is a valid primary export)
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: vocals (11.0), instrumental (16.1)
 
-### MelBand Roformer — Kim Instrumental/Vocals Duality V2 · Unwa
+### MelBand Roformer — Kim Instrumental/Vocals Duality v2 · Unwa
 
 - **Source:** TRvlvr
 - **Weight:** `melband_roformer_instvox_duality_v2.ckpt`
@@ -6076,7 +6069,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:config_melband_roformer_vocals_fullness_aname.yaml
 
-### MelBand Roformer — (4 Stems) Fine-Tuned Large v1 · SYH99999
+### MelBand Roformer — Fine-Tuned Large v1 (4 Stems) · SYH99999
 
 - **Source:** Politrees
 - **Weight:** `MelBand_Roformer_4stems_FT_Large_v1_by_SYH99999.ckpt`
@@ -6090,7 +6083,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:config_MelBand_Roformer_4stems_FT_Large_by_SYH99999.yaml
 
-### MelBand Roformer — (4 Stems) Fine-Tuned Large v2 · SYH99999
+### MelBand Roformer — Fine-Tuned Large v2 (4 Stems) · SYH99999
 
 - **Source:** Politrees
 - **Weight:** `MelBand_Roformer_4stems_FT_Large_v2_by_SYH99999.ckpt`
@@ -6104,7 +6097,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:config_MelBand_Roformer_4stems_FT_Large_by_SYH99999.yaml
 
-### MelBand Roformer — (4 Stems) Large v1 · Aname
+### MelBand Roformer — Large v1 (4 Stems) · Aname
 
 - **Source:** Politrees
 - **Weight:** `MelBand_Roformer_4stems_Large_v1_by_Aname.ckpt`
@@ -6118,7 +6111,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:config_MelBand_Roformer_4stems_Large_v1_by_Aname.yaml
 
-### MelBand Roformer — (4 Stems) XL v1 · Aname
+### MelBand Roformer — XL v1 (4 Stems) · Aname
 
 - **Source:** Politrees
 - **Weight:** `MelBand_Roformer_4stems_XL_v1_by_Aname.ckpt`
@@ -6193,7 +6186,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** bundled_yaml:config_melband_roformer_bleed_suppressor_v1.yaml
 - **Note:** Community ref: instrumental*, bleed
 
-### MelBand Roformer — Crowd · Aufr33 & Viperx
+### MelBand Roformer — Crowd · Aufr33 & ViperX
 
 - **Source:** Politrees
 - **Weight:** `mel_band_roformer_crowd_aufr33_viperx_sdr_8.7144.ckpt`
@@ -6332,7 +6325,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** bundled_yaml:config_melband_roformer_dereverb-echo_sdr_13.4843_v2.yaml
 - **Note:** Community ref: dry*, no dry
 
-### MelBand Roformer — Denoise Aggr · Aufr33
+### MelBand Roformer — DeNoise Aggr · Aufr33
 
 - **Source:** Politrees
 - **Weight:** `denoise_mel_band_roformer_aufr33_aggr_sdr_27.9768.ckpt`
@@ -6348,7 +6341,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** bundled_yaml:config_melband_roformer_denoise_aufr33_aggr_sdr_27.9768.yaml
 - **Note:** Community ref: dry*, other
 
-### MelBand Roformer — Denoise · Aufr33
+### MelBand Roformer — DeNoise · Aufr33
 
 - **Source:** Politrees
 - **Weight:** `denoise_mel_band_roformer_aufr33_sdr_27.9959.ckpt`
@@ -6758,7 +6751,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** bundled_yaml:config_MelBand-Roformer_Karaoke_Fusion_Total_by-Gonza.yaml
 
-### MelBand Roformer — Karaoke · Aufr33 & Viperx
+### MelBand Roformer — Karaoke · Aufr33 & ViperX
 
 - **Source:** Politrees
 - **Weight:** `mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt`
@@ -6772,7 +6765,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Karaoke model:** yes
 - **Best result:** Karaoke vocals (Vocals primary; complement = instrumental backing)
 - **Save stems UI:** UI: Vocals / Instrumental
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** bundled_yaml:config_melband_roformer_karaoke_aufr33_viperx_sdr_10.1956.yaml
 - **Note:** Community ref: vocals* (8.4), instrumental (14.7)
 
 ### MelBand Roformer — Karaoke · Gabox
@@ -6988,7 +6981,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental (yaml `other` is the backing track)
 - **Metadata:** bundled_yaml:config_melband_roformer_vocals_becruily.yaml
 
-### MelBand Roformer — instrumental Metal preview · Mesk
+### MelBand Roformer — Instrumental Metal Preview · Mesk
 
 - **Source:** Politrees
 - **Weight:** `melband_roformer_inst_metal_prev_by_mesk.ckpt`
@@ -7006,7 +6999,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 
 ## MDX-Net (detail)
 
-### SCNet — (4 Stems) Huge v1 · Aname
+### SCNet — Huge v1 (4 Stems) · Aname
 
 - **Source:** mvsepless
 - **Weight:** `scnet_huge_4stem_aname.ckpt`
@@ -7020,7 +7013,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:scnet_huge_4stem_aname_config.yaml
 
-### SCNet — (4 Stems) XL · StarryTong
+### SCNet — XL (4 Stems) · StarryTong
 
 - **Source:** mvsepless
 - **Weight:** `scnet_xl_4stem_starrytong.ckpt`
@@ -7032,9 +7025,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: drums, bass, other, vocals
 - **Save stems UI:** UI: per-stem subset or focus row
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** bundled_yaml:scnet_xl_4stem_starrytong_config.yaml
 
-### SCNet — (4 Stems) XL · ZFTurbo
+### SCNet — XL (4 Stems) · ZFTurbo
 
 - **Source:** mvsepless
 - **Weight:** `scnet_xl_4stem_zftrubo.ckpt`
@@ -7046,9 +7039,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: drums, bass, other, vocals
 - **Save stems UI:** UI: per-stem subset or focus row
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** bundled_yaml:scnet_xl_4stem_zftrubo_config.yaml
 
-### SCNet — (4 Stems) · ZFTurbo
+### SCNet (4 Stems) · ZFTurbo
 
 - **Source:** mvsepless
 - **Weight:** `scnet_4stem_zfturbo.ckpt`
@@ -7060,9 +7053,9 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** drums, bass, other, vocals
 - **Best result:** Multi-stem: drums, bass, other, vocals
 - **Save stems UI:** UI: per-stem subset or focus row
-- **Metadata:** politrees_mdx_hash
+- **Metadata:** bundled_yaml:scnet_4stem_zfturbo_config.yaml
 
-### SCNet — Choirsep · Dry Paint Dealer Undr
+### SCNet — ChoirSep · Dry Paint Dealer Undr
 
 - **Source:** mvsepless
 - **Weight:** `scnet_choirsep_exp.ckpt`
@@ -7090,7 +7083,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:scnet_jazz_4stem_jorisvaneyghen_config.yaml
 
-### SCNet — Masked (4 Stems) Small · ZFTurbo
+### SCNet — Masked Small (4 Stems) · ZFTurbo
 
 - **Source:** mvsepless
 - **Weight:** `scnet_masked_small_4stem_zftrubo.ckpt`
@@ -7104,7 +7097,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:scnet_masked_small_4stem_zftrubo_config.yaml
 
-### SCNet — Masked (4 Stems) XL IHF · ZFTurbo
+### SCNet — Masked XL IHF (4 Stems) · ZFTurbo
 
 - **Source:** mvsepless
 - **Weight:** `scnet_masked_xl_ihf_4stem_zftrubo.ckpt`
@@ -7118,7 +7111,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:scnet_masked_xl_ihf_4stem_zftrubo_config.yaml
 
-### SCNet — Masked Choirsep · Dry Paint Dealer Undr
+### SCNet — Masked ChoirSep · Dry Paint Dealer Undr
 
 - **Source:** mvsepless
 - **Weight:** `scnet_masked_choirsep_exp.ckpt`
@@ -7203,7 +7196,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 
 ## SCNet (detail)
 
-### SCNet — (4 Stems) Huge Bleedless · Aname
+### SCNet — Huge Bleedless (4 Stems) · Aname
 
 - **Source:** extras
 - **Weight:** `huge_scnet_4stems_bleedless.ckpt`
@@ -7217,7 +7210,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:config_huge_scnet_4stems.yaml
 
-### SCNet — (4 Stems) Huge Fullness · Aname
+### SCNet — Huge Fullness (4 Stems) · Aname
 
 - **Source:** extras
 - **Weight:** `huge_scnet_4stems_fullness.ckpt`
@@ -7231,7 +7224,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:config_huge_scnet_4stems.yaml
 
-### SCNet — (4 Stems) Huge Strong Fullness · Aname
+### SCNet — Huge Strong Fullness (4 Stems) · Aname
 
 - **Source:** extras
 - **Weight:** `huge_scnet_4stems_strong_fullness.ckpt`
@@ -7245,7 +7238,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:config_huge_scnet_4stems.yaml
 
-### SCNet — (4 Stems) Huge v1.2 · Aname
+### SCNet — Huge v1.2 (4 Stems) · Aname
 
 - **Source:** extras
 - **Weight:** `huge_scnet_4stems_v1.2.ckpt`
@@ -7259,7 +7252,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:config_huge_scnet_4stems.yaml
 
-### SCNet — (4 Stems) Large
+### SCNet — Large (4 Stems)
 
 - **Source:** Politrees
 - **Weight:** `model_scnet_sdr_9.3244.ckpt`
@@ -7273,7 +7266,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:config_musdb18_scnet_large.yaml
 
-### SCNet — (4 Stems) Large · starrytong
+### SCNet — Large (4 Stems) · StarryTong
 
 - **Source:** Politrees
 - **Weight:** `SCNet-large_starrytong_fixed.ckpt`
@@ -7287,7 +7280,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:config_musdb18_scnet_large_starrytong.yaml
 
-### SCNet — (4 Stems) MUSDB18 · starrytong
+### SCNet — MUSDB18 (4 Stems) · StarryTong
 
 - **Source:** Politrees
 - **Weight:** `scnet_checkpoint_musdb18.ckpt`
@@ -7301,7 +7294,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** bundled_yaml:config_musdb18_scnet.yaml
 
-### SCNet — (4 Stems) XL
+### SCNet — XL (4 Stems)
 
 - **Source:** Politrees
 - **Weight:** `model_scnet_ep_54_sdr_9.8051.ckpt`
@@ -7394,7 +7387,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v2 — Demucs 48 kHz High Quality
+### v2 — Demucs 48 kHz HQ
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `demucs48_hq-28a1282c.th`
@@ -7607,7 +7600,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 
 ## Apollo (detail)
 
-### Apollo — EDM Restoration Big · essid
+### Apollo — EDM Restoration Big · Essid
 
 - **Source:** extras
 - **Weight:** `apollo_edm_big_by_essid.ckpt`
@@ -7618,7 +7611,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Best result:** unknown
 - **Metadata:** bundled_yaml:apollo_edm_big_by_essid.yaml
 
-### Apollo — EDM Restoration · essid
+### Apollo — EDM Restoration · Essid
 
 - **Source:** extras
 - **Weight:** `apollo_edm_by_essid.ckpt`

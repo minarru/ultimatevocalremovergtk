@@ -700,34 +700,48 @@ _NAME_MAPPER_ATTR = {
 }
 
 
+def _published_catalogue_selection_index(
+    records: Iterable[ModelRecord],
+) -> dict[tuple[str, str], tuple[str, ...]]:
+    """Index published selections by family and their projected primary artifact."""
+    grouped: dict[tuple[str, str], list[str]] = {}
+    for record in records:
+        if record.catalogue_entry is None:
+            continue
+        key = (record.family, record.artifacts.primary_filename)
+        grouped.setdefault(key, []).append(record.catalogue_entry.selection)
+    return {key: tuple(selections) for key, selections in grouped.items()}
+
+
+def _published_catalogue_selections(
+    published_index: Mapping[tuple[str, str], tuple[str, ...]],
+    record: ModelRecord,
+) -> tuple[str, ...]:
+    """Return published selections whose exact projected primary matches."""
+    key = (record.family, record.artifacts.primary_filename)
+    return published_index.get(key, ())
+
+
 def _exact_catalogue_selection(
-    snapshot: Any | None, record: ModelRecord
+    snapshot: Any | None,
+    record: ModelRecord,
+    published_index: Mapping[tuple[str, str], tuple[str, ...]],
 ) -> str | None:
-    """Return exact selection, empty for none, or ``None`` for ambiguity."""
+    """Return one published selection, empty for none, or ``None`` for ambiguity."""
     if snapshot is None:
         return (
             record.catalogue_entry.selection
             if record.catalogue_entry is not None
             else ""
         )
-    by_family = getattr(snapshot, "meta_by_family", None)
-    family_meta = (
-        by_family.get(record.family)
-        if isinstance(by_family, Mapping)
-        else None
-    )
-    if not isinstance(family_meta, Mapping):
+    catalogue = getattr(snapshot, record.family, None)
+    if not isinstance(catalogue, Mapping):
         return (
             record.catalogue_entry.selection
             if record.catalogue_entry is not None
             else ""
         )
-    primary = record.artifacts.primary_filename
-    matches: list[str] = []
-    for selection, entry in family_meta.items():
-        files = getattr(entry, "files", None)
-        if isinstance(files, Mapping) and primary in files:
-            matches.append(str(selection))
+    matches = _published_catalogue_selections(published_index, record)
     if len(matches) > 1:
         return None
     if matches:
@@ -740,7 +754,10 @@ def _exact_catalogue_selection(
 
 
 def _record_display(
-    repo: Any, record: ModelRecord, snapshot: Any | None
+    repo: Any,
+    record: ModelRecord,
+    snapshot: Any | None,
+    published_index: Mapping[tuple[str, str], tuple[str, ...]],
 ) -> str | None:
     """Resolve one record's friendly label from exact evidence only.
 
@@ -756,7 +773,9 @@ def _record_display(
     if record.installed:
         persisted = ModelRegistryService.presentation(record.id)
         explicit = str(persisted.get("display_override") or "").strip()
-        exact_selection = _exact_catalogue_selection(snapshot, record)
+        exact_selection = _exact_catalogue_selection(
+            snapshot, record, published_index
+        )
         current_label = exact_selection or ""
 
         attribute = _DISPLAY_INDEX_ATTR.get(record.family)
@@ -849,13 +868,30 @@ def backfill_installed_presentations(repo: Any, snapshot: Any | None) -> bool:
     from .model_registry import ModelRegistryService
 
     index = build_identity_index(repo, snapshot=snapshot)
+    published_index = _published_catalogue_selection_index(
+        _catalogue_records(snapshot) if snapshot is not None else ()
+    )
     changed = False
     for record in index.records():
         if not record.installed:
             continue
         label = ""
         source = ""
-        exact_selection = _exact_catalogue_selection(snapshot, record)
+        published_matches = _published_catalogue_selections(published_index, record)
+        if len(published_matches) > 1:
+            from .debug_log import log_event
+
+            log_event(
+                "model",
+                "presentation_catalogue_ambiguity",
+                level="warning",
+                canonical_id=record.id,
+                candidates=published_matches,
+            )
+            continue
+        exact_selection = _exact_catalogue_selection(
+            snapshot, record, published_index
+        )
         if exact_selection:
             label = exact_selection
             source = _entry_source(snapshot, record.family, label)
@@ -878,7 +914,10 @@ def backfill_installed_presentations(repo: Any, snapshot: Any | None) -> bool:
 
 
 def _enrich_record_displays(
-    repo: Any, records: list[ModelRecord], snapshot: Any | None
+    repo: Any,
+    records: list[ModelRecord],
+    snapshot: Any | None,
+    published_index: Mapping[tuple[str, str], tuple[str, ...]] | None = None,
 ) -> list[ModelRecord]:
     """Give every record its authoritative display label, presentation only.
 
@@ -887,9 +926,13 @@ def _enrich_record_displays(
     Only ``.display`` may change here: identity, artifacts and execution specs
     are already final, and the identity digest excludes display.
     """
+    if published_index is None:
+        published_index = _published_catalogue_selection_index(
+            _catalogue_records(snapshot) if snapshot is not None else ()
+        )
     result: list[ModelRecord] = []
     for record in records:
-        display = _record_display(repo, record, snapshot)
+        display = _record_display(repo, record, snapshot, published_index)
         result.append(
             record if display is None else replace(record, display=display)
         )
@@ -936,11 +979,15 @@ def build_identity_index(
         registered_demucs = cast(
             Mapping[str, Any], DemucsRegistry().load_read_only()["models"]
         )
-    records = _catalogue_records(snapshot) if snapshot is not None else []
+    published_records = _catalogue_records(snapshot) if snapshot is not None else []
+    published_index = _published_catalogue_selection_index(published_records)
+    records = published_records
     records = _merge_installed(repo, records)
     records = _apply_bundled_demucs(records, bundled_demucs_specs)
     records = _apply_registered_demucs(records, registered_demucs)
-    records = _enrich_record_displays(repo, records, snapshot)
+    records = _enrich_record_displays(
+        repo, records, snapshot, published_index=published_index
+    )
     detected = _detect_collisions(records)
     from .debug_log import log_event
 

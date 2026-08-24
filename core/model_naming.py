@@ -80,11 +80,27 @@ _TOKEN_REPLACEMENTS = (
     (re.compile(r"\binst(?:rumental)?[-\s]?voc(?:als)?\b", re.IGNORECASE), "Instrumental/Vocals"),
     (re.compile(r"\binst\b", re.IGNORECASE), "Instrumental"),
     (re.compile(r"\bvoc\b", re.IGNORECASE), "Vocals"),
+    (re.compile(r"\bvox\b", re.IGNORECASE), "Vocals"),
+    (re.compile(r"\bvocal\b", re.IGNORECASE), "Vocals"),
     (re.compile(r"\bft\b", re.IGNORECASE), "Fine-Tuned"),
-    (re.compile(r"\bhq\b", re.IGNORECASE), "High Quality"),
+    (re.compile(r"\bhigh[\s_-]+quality\b", re.IGNORECASE), "HQ"),
+    (re.compile(r"\bhq\b", re.IGNORECASE), "HQ"),
     (re.compile(r"\bsdr\b", re.IGNORECASE), "SDR"),
     (re.compile(r"\bfft\b", re.IGNORECASE), "FFT"),
     (re.compile(r"\b8k\b", re.IGNORECASE), "8K"),
+    (re.compile(r"\b16k\b", re.IGNORECASE), "16 kHz"),
+    (re.compile(r"\bde[\s_-]?verb\b|\bdereverb\b", re.IGNORECASE), "DeReverb"),
+    (re.compile(r"\bdenoise\b", re.IGNORECASE), "DeNoise"),
+    (re.compile(r"\bdebleed\b", re.IGNORECASE), "DeBleed"),
+    (re.compile(r"\bspeechsep\b", re.IGNORECASE), "SpeechSep"),
+    (re.compile(r"\bchoirsep\b", re.IGNORECASE), "ChoirSep"),
+    (re.compile(r"\bdrumsep\b", re.IGNORECASE), "DrumSep"),
+    (re.compile(r"\bmale[\s_-]+female\b", re.IGNORECASE), "Male/Female"),
+    (
+        re.compile(r"\b(beta|preview|full|final)\b", re.IGNORECASE),
+        lambda match: match.group(1).title(),
+    ),
+    (re.compile(r"\bV(?=\d+(?:\.\d+)?\b)", re.IGNORECASE), "v"),
 )
 _DEMUCS_BACKEND_ALIASES = {
     "demucs": "Demucs",
@@ -93,7 +109,7 @@ _DEMUCS_BACKEND_ALIASES = {
     "light_extra": "Light Extra",
     "tasnet": "TasNet",
     "tasnet_extra": "TasNet Extra",
-    "demucs48_hq": "Demucs 48 kHz High Quality",
+    "demucs48_hq": "Demucs 48 kHz HQ",
     "demucs_unittest": "Demucs Unit Test",
     "mdx": "MDX",
     "mdx_extra": "MDX Extra",
@@ -321,7 +337,25 @@ def _project_source_label(source_label: str) -> str:
             rf"{re.escape(family)}\b[\s_-]*",
             re.IGNORECASE,
         )
-        title = f"{family}{TITLE_SEPARATOR}{repeated_family.sub(r'\g<prefix>', remainder)}"
+        remainder = repeated_family.sub(r"\g<prefix>", remainder)
+        count_match = re.search(r"\((?P<count>\d+) Stems\)", remainder)
+        if count_match:
+            stem_count = count_match.group(0)
+            remainder = re.sub(r"\(\d+ Stems\)", " ", remainder, count=1)
+            remainder = re.sub(
+                r"\b(?P<version>v\d+(?:\.\d+)?)\s+(?P<size>Small|Large|XL)\b",
+                r"\g<size> \g<version>",
+                remainder,
+                flags=re.IGNORECASE,
+            )
+            remainder = re.sub(r"\s+", " ", remainder).strip(" -—")
+            title = (
+                f"{family}{TITLE_SEPARATOR}{remainder} {stem_count}"
+                if remainder
+                else f"{family} {stem_count}"
+            )
+        else:
+            title = f"{family}{TITLE_SEPARATOR}{remainder}"
     version, demucs_separator, backend = title.partition(TITLE_SEPARATOR)
     if demucs_separator and re.fullmatch(r"v\d+", version, re.IGNORECASE):
         title = (
@@ -332,9 +366,14 @@ def _project_source_label(source_label: str) -> str:
     if not separator:
         return title
     author = re.sub(r"(\()\s*sdr\b", r"\1SDR", author, flags=re.IGNORECASE)
-    canonical_author = _DISPLAY_MANIFEST["author_aliases"].get(
-        author.strip().casefold(), author.strip()
-    )
+    author = re.sub(r"\s*\(\s*only weights\s*\)\s*$", "", author, flags=re.IGNORECASE)
+    canonical_components: list[str] = []
+    for component in re.split(r"\s*&\s*", author.strip()):
+        token = component.strip()
+        canonical_components.append(
+            _DISPLAY_MANIFEST["author_aliases"].get(token.casefold(), token)
+        )
+    canonical_author = " & ".join(component for component in canonical_components if component)
     return f"{title}{AUTHOR_SEPARATOR}{canonical_author}" if canonical_author else title
 
 

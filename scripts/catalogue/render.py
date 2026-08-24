@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import re
 import time
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -102,6 +103,12 @@ def _presentation_flags(entry: ModelEntry, display: str) -> List[str]:
         flags.append("underscore")
     if _HYPHENATED_STEM_COUNT_RE.search(display):
         flags.append("hyphenated-stem-count")
+    if re.search(r"\bHigh Quality\b", display, re.IGNORECASE):
+        flags.append("expanded-hq")
+    if re.search(r" — \(\d+ Stems\)(?:\s|$)", display):
+        flags.append("leading-stem-count")
+    if re.search(r"\(\s*only weights\s*\)", display, re.IGNORECASE):
+        flags.append("operational-note")
 
     head, separator, tail = display.partition(" — ")
     if separator and head:
@@ -190,13 +197,12 @@ def presentation_reference_audit(
     """Project the complete catalogue through shared presentation and audit it."""
     projections = [_catalogue_projection(entry) for entry in entries]
     projected = [
-        (entry, model_id)
-        for entry, (model_id, _display) in zip(entries, projections, strict=True)
+        (entry, model_id) for entry, (model_id, _display) in zip(entries, projections, strict=True)
     ]
     displays = [display for _model_id, display in projections]
     display_counts: Dict[str, int] = {}
     for display in displays:
-        key = display.casefold()
+        key = unicodedata.normalize("NFKC", display).casefold()
         display_counts[key] = display_counts.get(key, 0) + 1
 
     manifest = load_model_display_manifest()
@@ -207,21 +213,18 @@ def presentation_reference_audit(
     collision_labels: Dict[str, str] = {}
     for (entry, model_id), display in zip(projected, displays, strict=True):
         flags = _presentation_flags(entry, display)
-        if display_counts[display.casefold()] > 1:
+        collision_key = unicodedata.normalize("NFKC", display).casefold()
+        if display_counts[collision_key] > 1:
             flags.append("duplicate-display")
-            collision_members.setdefault(display.casefold(), []).append(model_id)
-            collision_labels.setdefault(display.casefold(), display)
+            collision_members.setdefault(collision_key, []).append(model_id)
+            collision_labels.setdefault(collision_key, display)
         exact_waivers: Mapping[str, str] = waivers.get(model_id, {})
         unreviewed = tuple(flag for flag in flags if flag not in exact_waivers)
         if unreviewed:
             unreviewed_rows.append((model_id, unreviewed))
-        review_status = (
-            "clean" if not flags else "unreviewed" if unreviewed else "reviewed"
-        )
+        review_status = "clean" if not flags else "unreviewed" if unreviewed else "reviewed"
         waiver_reasons = " | ".join(
-            f"{flag}: {exact_waivers[flag]}"
-            for flag in flags
-            if flag in exact_waivers
+            f"{flag}: {exact_waivers[flag]}" for flag in flags if flag in exact_waivers
         )
         row = (
             entry.family,

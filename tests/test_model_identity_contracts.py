@@ -686,9 +686,7 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
         from core.catalog_sources import EntryMeta
         from core.model_inventory import _catalogue_records
 
-        selection = (
-            "Roformer Model: BandSplit Roformer | 4-stems FT by SYH99999"
-        )
+        selection = "Roformer Model: BandSplit Roformer | 4-stems FT by SYH99999"
         checkpoint = "BandSplit_Roformer_4stems_FT_by_SYH99999.pth"
         files = {
             checkpoint: "https://example.invalid/model.pth",
@@ -713,27 +711,27 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
         )
 
         row = ModelCatalogueService(cast(Any, manager)).records()[0]
-        runtime = _catalogue_records(SimpleNamespace(
-            vr={},
-            mdx={selection: files},
-            demucs={},
-            apollo={},
-            meta_by_family={
-                "vr": {},
-                "mdx": {selection: meta},
-                "demucs": {},
-                "apollo": {},
-            },
-        ))
+        runtime = _catalogue_records(
+            SimpleNamespace(
+                vr={},
+                mdx={selection: files},
+                demucs={},
+                apollo={},
+                meta_by_family={
+                    "vr": {},
+                    "mdx": {selection: meta},
+                    "demucs": {},
+                    "apollo": {},
+                },
+            )
+        )
 
         self.assertEqual(row.selection, selection)
         self.assertEqual(
             row.display,
-            "BandSplit Roformer — (4 Stems) Fine-Tuned · SYH99999",
+            "BandSplit Roformer — Fine-Tuned (4 Stems) · SYH99999",
         )
-        self.assertFalse(
-            any(record.id == f"mdx:{checkpoint[:-4]}" for record in runtime)
-        )
+        self.assertFalse(any(record.id == f"mdx:{checkpoint[:-4]}" for record in runtime))
 
     def test_malformed_or_primaryless_rows_keep_the_safe_raw_fallback(self) -> None:
         from core.catalog_sources import EntryMeta
@@ -1122,17 +1120,19 @@ class DisplayEnrichmentTests(unittest.TestCase):
             mirrored.display, "BandSplit Roformer — Vocals · ViperX"
         )
 
-    def test_ambiguous_exact_catalogue_owners_follow_non_live_precedence(self) -> None:
+    def test_prededupe_aliases_follow_the_published_live_entry(self) -> None:
         first = "MDX-Net Model: Live Alpha"
         second = "MDX-Net Model: Live Beta"
-        coordinator = _coordinator_for_payload({
-            "vr_download_list": {},
-            "mdx_download_list": {
-                first: "shared.onnx",
-                second: "shared.onnx",
-            },
-            "demucs_download_list": {},
-        })
+        coordinator = _coordinator_for_payload(
+            {
+                "vr_download_list": {},
+                "mdx_download_list": {
+                    first: "shared.onnx",
+                    second: "shared.onnx",
+                },
+                "demucs_download_list": {},
+            }
+        )
         self.addCleanup(coordinator.close)
         snapshot = coordinator.ensure(allow_network=False)
         self.assertEqual(tuple(snapshot.mdx), (first,))
@@ -1141,23 +1141,18 @@ class DisplayEnrichmentTests(unittest.TestCase):
             {first, second},
         )
         cases = (
-            (
-                {"catalogue_label": "MDX23C Model: Persisted Choice"},
-                {"shared.onnx": "BS Roformer Vocals by viperx"},
-                "MDX23C — Persisted Choice",
-            ),
-            (
-                {},
-                {"shared.onnx": "BS Roformer Vocals by viperx"},
-                "BandSplit Roformer — Vocals · ViperX",
-            ),
-            ({}, {}, "shared"),
+            ({"catalogue_label": "MDX23C Model: Persisted Choice"}, {}),
+            ({}, {"shared.onnx": "BS Roformer Vocals by viperx"}),
+            ({}, {}),
         )
 
-        for persisted, mapper, expected in cases:
-            with self.subTest(expected=expected), patch(
-                "core.model_registry.ModelRegistryService.presentation",
-                return_value=persisted,
+        for persisted, mapper in cases:
+            with (
+                self.subTest(persisted=persisted, mapper=mapper),
+                patch(
+                    "core.model_registry.ModelRegistryService.presentation",
+                    return_value=persisted,
+                ),
             ):
                 record = self._records(
                     self._repo(
@@ -1167,11 +1162,7 @@ class DisplayEnrichmentTests(unittest.TestCase):
                     snapshot,
                 )["mdx:shared"]
 
-            self.assertEqual(record.display, expected)
-            self.assertNotIn(
-                record.display,
-                ("MDX-Net — Live Alpha", "MDX-Net — Live Beta"),
-            )
+            self.assertEqual(record.display, "MDX-Net — Live Alpha")
 
     def test_inventory_projection_never_persists_presentation(self) -> None:
         from core.model_inventory import build_identity_index
@@ -1225,7 +1216,10 @@ class DisplayEnrichmentTests(unittest.TestCase):
             mdx_name_select_MAPPER={"Kim_Vocal_1.onnx": "Kim Vocal 1"},
         )
         records = self._records(repo, _snapshot())
-        self.assertEqual(records["mdx:Kim_Vocal_1"].display, "Kim Vocal 1")
+        self.assertEqual(
+            records["mdx:Kim_Vocal_1"].display,
+            "MDX-Net — Kim Vocals 1",
+        )
 
     def test_installed_only_demucs_gets_exact_mapper_display(self) -> None:
         repo = self._repo(
@@ -1283,12 +1277,12 @@ class DisplayEnrichmentTests(unittest.TestCase):
 
     def test_table_driven_exact_mappings_agree_and_unknowns_stay_raw(self) -> None:
         cases = (
-            ("Kim_Vocal_1.onnx", "Kim Vocal 1", "Kim Vocal 1"),
-            ("Kim_Vocal_2.onnx", "Kim Vocal 2", "Kim Vocal 2"),
+            ("Kim_Vocal_1.onnx", "Kim Vocal 1", "MDX-Net — Kim Vocals 1"),
+            ("Kim_Vocal_2.onnx", "Kim Vocal 2", "MDX-Net — Kim Vocals 2"),
             (
                 "UVR-MDX-NET-Inst_HQ_3.onnx",
                 "UVR-MDX-NET Inst HQ 3",
-                "UVR-MDX-NET Instrumental High Quality 3",
+                "MDX-Net — UVR Instrumental HQ 3",
             ),
             ("totally_unknown_model.onnx", None, "totally_unknown_model"),
         )
@@ -1393,34 +1387,185 @@ class PresentationBackfillTests(unittest.TestCase):
         self.assertEqual(evidence["catalogue_label"], "MDX-Net Model: Mirror")
         self.assertEqual(evidence["catalogue_source"], "model_name_mapper")
 
-    def test_prededupe_exact_catalogue_evidence_is_backfilled(self) -> None:
+    def test_genuine_published_ambiguity_warns_without_mutating_registry(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE
         from core.catalog_sources import EntryMeta
         from core.model_inventory import backfill_installed_presentations
         from core.model_registry import ModelRegistryService
 
-        selection = "MDX-Net Model: Exact Alias"
-        entry = EntryMeta(
-            label=selection,
-            display="Exact Alias",
-            arch=MDX_ARCH_TYPE,
-            files={"alias.onnx": "https://example.invalid/alias.onnx"},
-            checkpoint="alias.onnx",
+        files_a = {
+            "ambiguous.onnx": "https://example.invalid/ambiguous.onnx",
+            "config-a.yaml": "https://example.invalid/config-a.yaml",
+        }
+        files_b = {
+            "ambiguous.onnx": "https://example.invalid/ambiguous.onnx",
+            "config-b.yaml": "https://example.invalid/config-b.yaml",
+        }
+        first = "MDX-Net Model: Published A"
+        second = "MDX-Net Model: Published B"
+        snapshot = _snapshot(
+            mdx={first: files_a, second: files_b},
+            meta={
+                "mdx": {
+                    first: EntryMeta(
+                        label=first,
+                        display="Published A",
+                        arch=MDX_ARCH_TYPE,
+                        files=files_a,
+                        checkpoint="ambiguous.onnx",
+                    ),
+                    second: EntryMeta(
+                        label=second,
+                        display="Published B",
+                        arch=MDX_ARCH_TYPE,
+                        files=files_b,
+                        checkpoint="ambiguous.onnx",
+                    ),
+                }
+            },
         )
-        snapshot = _snapshot(meta={"mdx": {selection: entry}})
-        snapshot.entry_sources = {"mdx": {selection: "politrees"}}
+        snapshot.entry_sources = {"mdx": {first: "upstream", second: "politrees"}}
+        repo = _empty_repo(
+            inventory_generation=23,
+            _model_artifact_files=lambda family: ["ambiguous.onnx"] if family == "mdx" else [],
+            mdx_name_select_MAPPER={"ambiguous.onnx": "Mapper label"},
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch(
+                "core.model_registry.paths.REGISTERED_MODEL_INDEX",
+                os.path.join(directory, "registered.json"),
+            ),
+            patch("core.debug_log.log_event") as log_event,
+        ):
+            ModelRegistryService.remember_presentation(
+                "mdx:ambiguous",
+                catalogue_label="Existing label",
+                catalogue_source="existing-source",
+            )
+            changed = backfill_installed_presentations(repo, snapshot)
+            evidence = ModelRegistryService.presentation("mdx:ambiguous")
+
+        self.assertFalse(changed)
+        self.assertEqual(evidence["catalogue_label"], "Existing label")
+        self.assertEqual(evidence["catalogue_source"], "existing-source")
+        self.assertEqual(repo.inventory_generation, 23)
+        log_event.assert_any_call(
+            "model",
+            "presentation_catalogue_ambiguity",
+            level="warning",
+            canonical_id="mdx:ambiguous",
+            candidates=(first, second),
+        )
+
+    def test_supporting_artifact_does_not_claim_published_primary_identity(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from core import model_inventory
+        from core.catalog_sources import EntryMeta
+        from core.model_inventory import backfill_installed_presentations
+        from core.model_registry import ModelRegistryService
+
+        selection = "MDX-Net Model: Declared Primary"
+        files = {
+            "installed.ckpt": "https://example.invalid/installed.ckpt",
+            "declared.ckpt": "https://example.invalid/declared.ckpt",
+        }
+        snapshot = _snapshot(
+            mdx={selection: files},
+            meta={
+                "mdx": {
+                    selection: EntryMeta(
+                        label=selection,
+                        display="Declared Primary",
+                        arch=MDX_ARCH_TYPE,
+                        files=files,
+                        checkpoint="declared.ckpt",
+                    )
+                }
+            },
+        )
+        snapshot.entry_sources = {"mdx": {selection: "upstream"}}
         repo = _empty_repo(
             _model_artifact_files=lambda family: (
-                ["alias.onnx"] if family == "mdx" else []
+                ["installed.ckpt"] if family == "mdx" else []
             ),
         )
-        with tempfile.TemporaryDirectory() as directory, patch(
-            "core.model_registry.paths.REGISTERED_MODEL_INDEX",
-            os.path.join(directory, "registered.json"),
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch(
+                "core.model_registry.paths.REGISTERED_MODEL_INDEX",
+                os.path.join(directory, "registered.json"),
+            ),
+            patch.object(
+                model_inventory,
+                "_catalogue_records",
+                wraps=model_inventory._catalogue_records,
+            ) as catalogue_records,
         ):
+            ModelRegistryService.remember_presentation(
+                "mdx:installed",
+                catalogue_label="Existing label",
+                catalogue_source="existing-source",
+            )
+            changed = backfill_installed_presentations(repo, snapshot)
+            evidence = ModelRegistryService.presentation("mdx:installed")
+
+        self.assertFalse(changed)
+        self.assertEqual(evidence["catalogue_label"], "Existing label")
+        self.assertEqual(evidence["catalogue_source"], "existing-source")
+        self.assertEqual(catalogue_records.call_count, 2)
+
+    def test_prededupe_label_aliases_use_the_one_published_entry(self) -> None:
+        from bundled.constants import MDX_ARCH_TYPE
+        from core.catalog_sources import EntryMeta
+        from core.model_inventory import backfill_installed_presentations
+        from core.model_registry import ModelRegistryService
+
+        published = "Roformer Model: MelBand Roformer | Instrumental V1 by Unwa"
+        alias = "Roformer Model: MelBand Roformer | Instrumental v1 by Unwa"
+        files = {"alias.onnx": "https://example.invalid/alias.onnx"}
+        published_entry = EntryMeta(
+            label=published,
+            display="MelBand Roformer — Instrumental v1 · Unwa",
+            arch=MDX_ARCH_TYPE,
+            files=files,
+            checkpoint="alias.onnx",
+        )
+        alias_entry = EntryMeta(
+            label=alias,
+            display="MelBand Roformer — Instrumental v1 · Unwa",
+            arch=MDX_ARCH_TYPE,
+            files=files,
+            checkpoint="alias.onnx",
+        )
+        snapshot = _snapshot(
+            mdx={published: files},
+            meta={"mdx": {published: published_entry, alias: alias_entry}},
+        )
+        snapshot.entry_sources = {"mdx": {published: "upstream", alias: "politrees"}}
+        repo = _empty_repo(
+            inventory_generation=17,
+            _model_artifact_files=lambda family: ["alias.onnx"] if family == "mdx" else [],
+            mdx_name_select_MAPPER={"alias.onnx": "MB-Roformer-Inst-v1"},
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch(
+                "core.model_registry.paths.REGISTERED_MODEL_INDEX",
+                os.path.join(directory, "registered.json"),
+            ),
+        ):
+            ModelRegistryService.remember_presentation(
+                "mdx:alias",
+                catalogue_label="MB-Roformer-Inst-v1",
+                catalogue_source="model_name_mapper",
+                display_override="Trusted title",
+            )
             changed = backfill_installed_presentations(repo, snapshot)
             evidence = ModelRegistryService.presentation("mdx:alias")
 
         self.assertTrue(changed)
-        self.assertEqual(evidence["catalogue_label"], selection)
-        self.assertEqual(evidence["catalogue_source"], "politrees")
+        self.assertEqual(evidence["catalogue_label"], published)
+        self.assertEqual(evidence["catalogue_source"], "upstream")
+        self.assertEqual(evidence["display_override"], "Trusted title")
+        self.assertEqual(repo.inventory_generation, 17)

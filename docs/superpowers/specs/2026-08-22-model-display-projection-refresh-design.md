@@ -4,6 +4,12 @@
 **Status:** Implemented and verified (2026-08-23). Full suite 2639 tests OK (6 skipped); basedpyright 0 errors; GTK tests run on a private headless Wayland session, not the host compositor.  
 **Scope:** Exact model display projection, presentation refresh, picker refresh policy, and completed-download publication
 
+> **Revision notice (2026-08-24):** The naming-quality and published-catalogue
+> backfill rules in this implemented design are superseded by the approved
+> [`Model Display Quality and Backfill Revision Design`](2026-08-24-model-display-quality-and-backfill-revision-design.md).
+> Canonical identity and the remaining refresh/publication contracts here stay
+> in force.
+
 ## Summary
 
 Every model surface must obtain its human-readable name from

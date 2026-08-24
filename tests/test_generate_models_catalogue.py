@@ -1071,7 +1071,7 @@ class DisplayReferenceRenderTests(unittest.TestCase):
             "SCNet\tSCNet\tmvsepless\t\t"
             "SCnet: 4-stems Huge SCNet Bleedless by Aname\t"
             "mdx:huge_scnet_4stems_bleedless\t"
-            "SCNet — (4 Stems) Huge Bleedless · Aname\t"
+            "SCNet — Huge Bleedless (4 Stems) · Aname\t"
             "huge_scnet_4stems_bleedless.ckpt\t\t\tclean",
             rendered,
         )
@@ -1123,6 +1123,23 @@ class DisplayReferenceRenderTests(unittest.TestCase):
             render._presentation_flags(entry, "SCNet — (4 Stems) SCNet Large"),
         )
 
+    def test_revision_quality_flags_detect_superseded_presentation_forms(self) -> None:
+        entry = catalogue.ModelEntry(
+            source="test",
+            family="MDX-Net",
+            catalogue_label="Model",
+            weight_file="model.ckpt",
+        )
+
+        cases = {
+            "MDX-Net — UVR Instrumental High Quality 4": "expanded-hq",
+            "SCNet — (4 Stems) Huge Bleedless · Aname": "leading-stem-count",
+            "MelBand Roformer — Xeno · DrYound3r (only weights)": ("operational-note"),
+        }
+        for display, flag in cases.items():
+            with self.subTest(display=display):
+                self.assertIn(flag, render._presentation_flags(entry, display))
+
     def test_sorts_rows_independently_of_collection_order(self) -> None:
         alpha = catalogue.ModelEntry(
             source="test",
@@ -1140,6 +1157,28 @@ class DisplayReferenceRenderTests(unittest.TestCase):
         self.assertEqual(
             render.presentation_reference_tsv([zulu, alpha]),
             render.presentation_reference_tsv([alpha, zulu]),
+        )
+
+    def test_collision_detection_normalizes_unicode_and_case(self) -> None:
+        composed = catalogue.ModelEntry(
+            source="test",
+            family="MDX-Net",
+            catalogue_label="Caf\u00e9",
+            weight_file="composed.ckpt",
+        )
+        decomposed = catalogue.ModelEntry(
+            source="test",
+            family="MDX-Net",
+            catalogue_label="CAFE\u0301",
+            weight_file="decomposed.ckpt",
+        )
+
+        audit = render.presentation_reference_audit([composed, decomposed])
+
+        self.assertEqual(len(audit.collisions), 1)
+        self.assertEqual(
+            set(audit.collisions[0][1]),
+            {"mdx:composed", "mdx:decomposed"},
         )
 
     def test_rows_do_not_end_in_whitespace_when_waiver_reasons_are_empty(self) -> None:

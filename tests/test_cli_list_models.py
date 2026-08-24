@@ -382,7 +382,7 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(item["selection"], selection)
         self.assertEqual(
             item["display"],
-            "BandSplit Roformer — (4 Stems) Fine-Tuned · SYH99999",
+            "BandSplit Roformer — Fine-Tuned (4 Stems) · SYH99999",
         )
 
     def test_devices_have_auto_selection(self) -> None:
