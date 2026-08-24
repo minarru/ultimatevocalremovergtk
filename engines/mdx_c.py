@@ -15,9 +15,7 @@ from core.model_stem_semantics import (
 )
 from core.stems import (
     StemBucket,
-    StemId,
     StemRouteKind,
-    resolve_in_sources,
 )
 from ml import spec_utils
 
@@ -287,8 +285,21 @@ def mdx_selected_stems(stem_list: typing.Any, stems_selected: typing.Any) -> typ
     """
     lookup = {str(stem): stem for stem in (stems_selected or [])}
     return [
-        stem for stem in stem_list if resolve_in_sources(lookup, StemId(str(stem))) is not None
+        stem for stem in stem_list if _exact_mdx_source_key(lookup, str(stem)) is not None
     ]
+
+
+def _exact_mdx_source_key(
+    sources: typing.Mapping[str, typing.Any], native: str
+) -> str | None:
+    """Resolve an MDX-C backend key by exact spelling or casing only."""
+    if native in sources:
+        return native
+    wanted = str(native).casefold()
+    for key in sources:
+        if str(key).casefold() == wanted:
+            return str(key)
+    return None
 
 
 def mdx_combined_secondary_key(sources: typing.Any, stem_list: typing.Any, secondary_stem_label: typing.Any):
@@ -298,9 +309,9 @@ def mdx_combined_secondary_key(sources: typing.Any, stem_list: typing.Any, secon
     stems outside the pair table (``center``/``wide``) matches no source key at
     all. Fall back to the model's own other instrument.
     """
-    key = resolve_in_sources(sources, StemId(str(secondary_stem_label or "")))
+    key = _exact_mdx_source_key(sources, str(secondary_stem_label or ""))
     if key is None and len(stem_list) == 2:
-        key = resolve_in_sources(sources, StemId(str(stem_list[1])))
+        key = _exact_mdx_source_key(sources, str(stem_list[1]))
     if key is None:
         available = sorted(map(str, sources.keys())) if isinstance(sources, dict) else []
         raise KeyError(
@@ -351,7 +362,7 @@ def derive_mdx_multi_complement(
     match_frequency_pitch: typing.Any = None,
 ) -> typing.Any:
     """Derive a multi-source primary complement using the configured recipe."""
-    primary_key = resolve_in_sources(sources, StemId(primary_stem))
+    primary_key = _exact_mdx_source_key(sources, primary_stem)
     if primary_key is None:
         raise KeyError(
             f"stem {primary_stem!r} not in sources {sorted(map(str, sources))}"

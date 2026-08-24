@@ -287,6 +287,85 @@ class FinishExportTests(unittest.TestCase):
 
 
 class ExportSourceMapTests(unittest.TestCase):
+    def test_vocal_split_schedules_only_the_declared_pair(self) -> None:
+        from types import SimpleNamespace
+
+        from core.stems import model_stem_routes
+        from engines.stem_writer import export_source_map
+
+        model = SimpleNamespace(
+            canonical_id="mdx:bs_karaoke_3stem_giantailab",
+            mdx_model_stems=["vocals", "backing_vocal", "instrumental"],
+            demucs_source_list=[],
+            primary_stem_native="vocals",
+            primary_stem="vocals",
+            secondary_stem="instrumental",
+            target_instrument="",
+            is_vocal_split_model=True,
+            is_karaoke=True,
+            is_bv_model=False,
+            mdx_stem_count=3,
+            mdxnet_stems_selected=[],
+        )
+        routes = model_stem_routes(model)
+        sep = _FakeSep(routes)
+        sep.is_vocal_split_model = True
+
+        export_source_map(
+            sep,
+            {
+                "vocals": object(),
+                "backing_vocal": object(),
+                "instrumental": object(),
+            },
+            samplerate=44100,
+        )
+
+        self.assertEqual(sep.save_phase_total, 2)
+        self.assertEqual(
+            [write[3] for write in sep.writes],
+            ["Lead Vocals", "Backing Vocals"],
+        )
+
+    def test_full_mix_keeps_giantailab_third_route(self) -> None:
+        from types import SimpleNamespace
+
+        from core.stems import model_stem_routes
+        from engines.stem_writer import export_source_map
+
+        model = SimpleNamespace(
+            canonical_id="mdx:bs_karaoke_3stem_giantailab",
+            mdx_model_stems=["vocals", "backing_vocal", "instrumental"],
+            demucs_source_list=[],
+            primary_stem_native="vocals",
+            primary_stem="vocals",
+            secondary_stem="instrumental",
+            target_instrument="",
+            is_vocal_split_model=False,
+            is_karaoke=True,
+            is_bv_model=False,
+            mdx_stem_count=3,
+            mdxnet_stems_selected=[],
+        )
+        routes = model_stem_routes(model)
+        sep = _FakeSep(routes)
+
+        export_source_map(
+            sep,
+            {
+                "vocals": object(),
+                "backing_vocal": object(),
+                "instrumental": object(),
+            },
+            samplerate=44100,
+        )
+
+        self.assertEqual(sep.save_phase_total, 3)
+        self.assertEqual(
+            [write[3] for write in sep.writes],
+            ["Lead Vocals", "Backing Vocal", "Instrumental with Backing Vocals"],
+        )
+
     def test_native_lookup_uses_raw_key_but_writes_canonical_route_label(self) -> None:
         from core.stem_roles import StemRoleId
         from core.stems import StemId, StemRoute, StemRouteKind

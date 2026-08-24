@@ -14,9 +14,7 @@ from bundled.error_handling import *
 from core.debug_log import trace_phase
 from core.model_stem_semantics import is_vocal_target, vocal_split_source_roles
 from core.stems import (
-    StemId,
     exports_named_stem,
-    resolve_in_sources,
     route_matches_stem,
     run_export_routes,
 )
@@ -25,6 +23,7 @@ from ml import spec_utils
 from .base import SeperateAttributes
 from .mdx_c import (
     _channel_last_for_write,
+    _exact_mdx_source_key,
     _load_torch_checkpoint,
     _mdx_c_hop_length,
     _mdx_pitch_reference_sr,
@@ -93,7 +92,7 @@ class SeperateMDXC(SeperateAttributes):
 
         stem_list = [self.mdx_c_configs.training.target_instrument] if self.mdx_c_configs.training.target_instrument and not self.is_vocal_main_target else [i for i in self.mdx_c_configs.training.instruments]
 
-        from engines.stem_writer import ExportPlan
+        from engines.stem_writer import ExportPlan, vocal_split_export_routes
 
         if self.is_vocal_split_model:
             if isinstance(sources, dict):
@@ -108,7 +107,7 @@ class SeperateMDXC(SeperateAttributes):
             export_sources = self._vocal_split_pair_sources(
                 working_split,
                 mix,
-                routes=run_export_routes(self),
+                routes=vocal_split_export_routes(self),
             )
             return ExportPlan(
                 sources=export_sources,
@@ -194,14 +193,14 @@ class SeperateMDXC(SeperateAttributes):
                     stem_key = str(stem_list[0])
                 elif select == ALL_STEMS:
                     stem_key = primary
-                elif isinstance(working_sources, dict) and resolve_in_sources(
-                    working_sources, StemId(select)
+                elif isinstance(working_sources, dict) and _exact_mdx_source_key(
+                    working_sources, _export_source_key(select)
                 ) is not None:
-                    stem_key = select
+                    stem_key = _export_source_key(select)
                 else:
-                    stem_key = primary
+                    stem_key = _export_source_key(primary)
                 if isinstance(working_sources, dict):
-                    resolved = resolve_in_sources(working_sources, StemId(stem_key))
+                    resolved = _exact_mdx_source_key(working_sources, stem_key)
                     if resolved is None:
                         raise KeyError(
                             f"stem {stem_key!r} not in sources "
@@ -222,7 +221,7 @@ class SeperateMDXC(SeperateAttributes):
                     if isinstance(working_sources, dict) and len(stem_list) > 2:
                         self.secondary_source = derive_mdx_multi_complement(
                             working_sources,
-                            str(self.primary_stem or ""),
+                            _export_source_key(str(self.primary_stem or "")),
                             mix,
                             combine_stems=bool(self.is_mdx_combine_stems),
                             invert_spec=bool(self.is_invert_spec),
@@ -238,12 +237,13 @@ class SeperateMDXC(SeperateAttributes):
                             secondary_source = working_sources
 
                         self.secondary_source = secondary_source.T 
-                    elif isinstance(working_sources, dict) and resolve_in_sources(
-                        working_sources, StemId(self.secondary_stem)
+                    elif isinstance(working_sources, dict) and _exact_mdx_source_key(
+                        working_sources, _export_source_key(self.secondary_stem)
                     ):
-                        sec_key = resolve_in_sources(
-                            working_sources, StemId(self.secondary_stem)
+                        sec_key = _exact_mdx_source_key(
+                            working_sources, _export_source_key(self.secondary_stem)
                         )
+                        assert sec_key is not None
                         self.secondary_source = working_sources[sec_key].T
                     else:
                         self.secondary_source, raw_mix = source_primary, self.match_frequency_pitch(mix)
@@ -286,7 +286,10 @@ class SeperateMDXC(SeperateAttributes):
         routes: typing.Sequence[Any] | None = None,
     ) -> dict[str, Any]:
         """Build lead/backing from yaml-keyed demix output for export."""
-        if routes:
+        if routes is not None:
+            from engines.stem_writer import vocal_split_pair_routes
+
+            routes = vocal_split_pair_routes(tuple(routes))
             route_sources: dict[str, Any] = {}
             missing: list[Any] = []
             for route in routes:

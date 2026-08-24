@@ -11,6 +11,7 @@ from core.stems import StemBucket, StemId, StemRoute, StemRouteKind
 from engines.mdx_c import (
     derive_mdx_complement,
     derive_mdx_multi_complement,
+    mdx_combined_secondary_key,
     mdx_export_routing_flags,
     mdx_selected_stems,
 )
@@ -161,6 +162,31 @@ class MDXExportRoutingTests(unittest.TestCase):
         expected = (sources["drums"] + sources["bass"]).T
         np.testing.assert_array_equal(summed, expected)
         np.testing.assert_array_equal(subtracted, expected)
+
+    def test_multi_complement_rejects_plural_alias_for_singular_native_key(self) -> None:
+        sources = {
+            "vocals": np.ones((2, 4), dtype=np.float32),
+            "other": np.zeros((2, 4), dtype=np.float32),
+        }
+
+        with self.assertRaisesRegex(KeyError, "stem 'vocal' not in sources"):
+            derive_mdx_multi_complement(
+                sources,
+                "vocal",
+                np.ones((2, 4), dtype=np.float32),
+                combine_stems=True,
+            )
+
+    def test_combined_secondary_prefers_exact_native_not_semantic_alias(self) -> None:
+        sources = {
+            "vocals": np.ones((2, 4), dtype=np.float32),
+            "other": np.zeros((2, 4), dtype=np.float32),
+        }
+
+        self.assertEqual(
+            mdx_combined_secondary_key(sources, ["vocal", "other"], "vocal"),
+            "other",
+        )
 
     def test_working_sources_copy_preserves_cached_dict(self) -> None:
         cached = {"Vocals": np.array([1.0]), "Instrumental": np.array([2.0])}
@@ -320,6 +346,9 @@ class MdxSelectedStemsTests(unittest.TestCase):
             ["Vocals", "Instrumental", "Drums", "Bass"], ["Vocals", "Drums"]
         )
         self.assertEqual(selected, ["Vocals", "Drums"])
+
+    def test_singular_native_does_not_match_plural_selection_alias(self) -> None:
+        self.assertEqual(mdx_selected_stems(["vocal"], ["vocals"]), [])
 
     def test_empty_selection_matches_nothing(self) -> None:
         self.assertEqual(mdx_selected_stems(["vocals", "other"], []), [])

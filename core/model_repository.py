@@ -25,7 +25,9 @@ from .model_data import load_model_hash_data
 from .model_display import (
     map_basenames_to_display,
 )
+from .model_stem_manifest import resolve_model_stem_semantics
 from .settings import Settings
+from .stem_roles import StemProcessingContext, StemReviewStatus
 
 if TYPE_CHECKING:
     from .model_identity import IdentityIndex
@@ -554,6 +556,7 @@ class ModelRepository:
                 model is not None
                 and model.model_status
                 and (model.is_karaoke or model.is_bv_model)
+                and _has_reviewed_vocal_split_context(model)
             ):
                 model_list.append(_checklist_id(model))
         self._karaoke_cache = (tags, model_list)
@@ -706,6 +709,44 @@ def _checklist_id(model: Any) -> str:
             return str(ModelId(family, stem))
     tag = getattr(model, "model_and_process_tag", None)
     return str(tag or "")
+
+
+def _has_reviewed_vocal_split_context(model: Any) -> bool:
+    """Require exact reviewed splitter semantics for one dry-check model."""
+    native_stems: tuple[str, ...] = ()
+    for attribute in ("mdx_model_stems", "demucs_source_list"):
+        value = getattr(model, attribute, ())
+        if isinstance(value, (list, tuple)) and value:
+            native_stems = tuple(str(item) for item in value if item)
+            if native_stems:
+                break
+    if not native_stems:
+        native_stems = tuple(
+            dict.fromkeys(
+                str(item)
+                for item in (
+                    getattr(model, "primary_stem_native", None)
+                    or getattr(model, "primary_stem", None),
+                    getattr(model, "secondary_stem", None),
+                )
+                if item
+            )
+        )
+    model_id = _checklist_id(model)
+    if not model_id or not native_stems:
+        return False
+    semantics = resolve_model_stem_semantics(
+        model_id,
+        native_stems=native_stems,
+        backend_primary=str(
+            getattr(model, "primary_stem_native", None)
+            or getattr(model, "primary_stem", "")
+            or ""
+        ),
+        backend_target=str(getattr(model, "target_instrument", "") or ""),
+        context=StemProcessingContext.VOCAL_SPLIT,
+    )
+    return semantics.status is StemReviewStatus.REVIEWED
 
 
 def _list_models(directory: str, extensions: typing.Any) -> List[str]:

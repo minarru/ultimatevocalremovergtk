@@ -422,16 +422,18 @@ class VocalSplitRowTests(unittest.TestCase):
 
         repo = ModelRepository()
         repo._model_artifact_files = lambda family: (
-            ["karaoke_model.onnx", "plain_model.onnx"] if family == "mdx" else []
+            ["UVR_MDXNET_KARA_2.onnx", "plain_model.onnx"]
+            if family == "mdx"
+            else []
         )
         repo.mdx_name_select_MAPPER = {
-            "karaoke_model.onnx": "Karaoke Friendly",
+            "UVR_MDXNET_KARA_2.onnx": "Karaoke Friendly",
             # Presentation wording is intentionally misleading: metadata alone
             # decides whether a Vocal Splitter row is eligible.
             "plain_model.onnx": "Karaoke-labelled decoy",
         }
         repo.default_change_model_tags = lambda: [
-            "mdx:karaoke_model",
+            "mdx:UVR_MDXNET_KARA_2",
             "mdx:plain_model",
         ]
 
@@ -441,11 +443,17 @@ class VocalSplitRowTests(unittest.TestCase):
             tag: typing.Any,
             identities: typing.Any,
         ) -> typing.Any:
+            is_karaoke = tag == "mdx:UVR_MDXNET_KARA_2"
             return SimpleNamespace(
                 canonical_id=tag,
                 model_status=True,
-                is_karaoke=tag == "mdx:karaoke_model",
+                is_karaoke=is_karaoke,
                 is_bv_model=False,
+                mdx_model_stems=("other", "vocals") if is_karaoke else (),
+                primary_stem_native="Instrumental" if is_karaoke else "",
+                primary_stem="Instrumental" if is_karaoke else "",
+                secondary_stem="Vocals" if is_karaoke else "",
+                target_instrument="other" if is_karaoke else "",
             )
 
         row = self._row_with_repo(repo)
@@ -456,15 +464,16 @@ class VocalSplitRowTests(unittest.TestCase):
             row.set_expanded(True)
 
         displayed = combo_values(row.splitter_row)
+        karaoke_label = "MDX-Net — UVR Karaoke 2"
 
-        self.assertIn("Karaoke Friendly", displayed)
+        self.assertIn(karaoke_label, displayed)
         self.assertNotIn("Karaoke-labelled decoy", displayed)
         # The label is presentation; selecting it must store the canonical id.
         row.split_switch.set_active(True)
-        row.splitter_row.set_selected(displayed.index("Karaoke Friendly"))
-        self.assertEqual(get_combo_value(row.splitter_row), "mdx:karaoke_model")
+        row.splitter_row.set_selected(displayed.index(karaoke_label))
+        self.assertEqual(get_combo_value(row.splitter_row), "mdx:UVR_MDXNET_KARA_2")
         self.assertNotIn("mdx:plain_model", row._splitter_ids)
-        self.assertEqual(row._splitter_ids, {"mdx:karaoke_model"})
+        self.assertEqual(row._splitter_ids, {"mdx:UVR_MDXNET_KARA_2"})
 
 
 if __name__ == "__main__":

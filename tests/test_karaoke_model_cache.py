@@ -25,7 +25,7 @@ class KaraokeModelCacheTests(unittest.TestCase):
 
     def test_second_call_reuses_cached_tags(self) -> None:
         tags = (
-            "vr:FakeVR",
+            "vr:5_HP-Karaoke-UVR",
             "mdx:FakeMDX",
         )
         builds: list[str] = []
@@ -45,9 +45,12 @@ class KaraokeModelCacheTests(unittest.TestCase):
             builds.append(str(model_name))
             real_init(self, settings, repo, model_name, **kwargs)
             self.model_status = True
-            self.is_karaoke = str(model_name).endswith("FakeVR")
+            self.is_karaoke = str(model_name) == tags[0]
             self.is_bv_model = False
             self.model_and_process_tag = str(model_name)
+            self.primary_stem_native = "Instrumental"
+            self.primary_stem = "Instrumental"
+            self.secondary_stem = "Vocals"
 
         with mock.patch.object(ModelRepository, "default_change_model_tags", fake_tags):
             with mock.patch.object(ModelConfig, "__init__", counting_init):
@@ -59,7 +62,7 @@ class KaraokeModelCacheTests(unittest.TestCase):
         self.assertEqual(len(builds), 2, "warm hit must not construct ModelConfigs again")
 
     def test_invalidate_stem_check_clears_karaoke_cache(self) -> None:
-        tags = ("vr:FakeVR",)
+        tags = ("vr:5_HP-Karaoke-UVR",)
         builds: list[str] = []
 
         def fake_tags(self: ModelRepository) -> list[str]:
@@ -80,6 +83,9 @@ class KaraokeModelCacheTests(unittest.TestCase):
             self.is_karaoke = True
             self.is_bv_model = False
             self.model_and_process_tag = str(model_name)
+            self.primary_stem_native = "Instrumental"
+            self.primary_stem = "Instrumental"
+            self.secondary_stem = "Vocals"
 
         with mock.patch.object(ModelRepository, "default_change_model_tags", fake_tags):
             with mock.patch.object(ModelConfig, "__init__", counting_init):

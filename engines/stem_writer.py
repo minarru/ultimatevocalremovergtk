@@ -14,23 +14,20 @@ import numpy as np
 import soundfile as sf
 
 from bundled.constants import (
-    BV_VOCAL_STEM_LABEL,
     DONE,
     FLAC,
     INFERENCE_STEP_DEVERBING,
-    INST_WITH_BACKING_VOCALS_STEM,
-    INST_WITH_LEAD_VOCALS_STEM,
-    LEAD_VOCAL_STEM,
-    LEAD_VOCAL_STEM_LABEL,
     SAVING_STEM,
 )
 from core.audio_io import save_format
 from core.debug_log import log_event
+from core.model_stem_manifest import load_bundled_stem_semantics
 from core.stem_roles import StemRoleId
 from core.stems import (
     StemBucket,
     StemLiteral,
     StemRoute,
+    StemRouteKind,
     route_matches_stem,
     run_export_routes,
     stem_concept,
@@ -38,6 +35,41 @@ from core.stems import (
 from ml import spec_utils
 
 from .vr_utils import vr_denoiser
+
+
+_VOCAL_SPLIT_PAIR_ROLES = frozenset(("vocal.lead", "vocal.backing"))
+
+
+def vocal_split_pair_routes(routes: tuple[StemRoute, ...]) -> tuple[StemRoute, ...]:
+    """Keep only the exact reviewed lead/backing routes for splitter output."""
+    return tuple(
+        route
+        for route in routes
+        if isinstance(route.role, StemRoleId)
+        and route.role.value in _VOCAL_SPLIT_PAIR_ROLES
+    )
+
+
+def vocal_split_export_routes(sep: Any) -> tuple[StemRoute, ...]:
+    """Routes scheduled by this export, applying the reviewed splitter pair."""
+    routes = run_export_routes(sep)
+    if not bool(getattr(sep, "is_vocal_split_model", False)):
+        return routes
+    return vocal_split_pair_routes(routes)
+
+
+def _reviewed_output_route(role_value: str) -> StemRoute | None:
+    role = StemRoleId(role_value)
+    definition = load_bundled_stem_semantics().roles.get(role)
+    if definition is None:
+        return None
+    return StemRoute(
+        native=None,
+        role=role,
+        label=definition.display,
+        filename_tag=definition.filename_tag,
+        kind=StemRouteKind.DERIVED,
+    )
 
 
 def _save_audio_file(
@@ -205,22 +237,21 @@ def _save_with_message(
 
 def _save_voc_split_instrumental(
     sep: Any,
-    stem_name: str | None,
     stem_source: Any,
     *,
     samplerate: int,
-    buffer_stem_name: str | None,
     is_not_ensemble: bool,
     is_inst_invert: bool = False,
-    is_lead: bool | None = None,
+    is_lead: bool,
 ) -> None:
-    local = stem_concept(sep, stem_name) if is_lead is None else None
-    inst_stem_name = (
-        INST_WITH_LEAD_VOCALS_STEM
-        if (is_lead if is_lead is not None else local is StemBucket.LEAD_VOCALS)
-        else INST_WITH_BACKING_VOCALS_STEM
+    output_route = _reviewed_output_route(
+        "mix.instrumental_with_lead_vocals"
+        if is_lead
+        else "mix.instrumental_with_backing_vocals"
     )
-    inst_stem_path = sep.audio_file_base_voc_split(inst_stem_name)
+    if output_route is None:
+        return
+    inst_stem_path = sep.audio_file_base_voc_split(output_route.label)
     stem_source = -stem_source if is_inst_invert else stem_source
     inst_stem_source = spec_utils.combine_arrarys(
         [sep.master_inst_source, stem_source], is_swap=True
@@ -228,41 +259,30 @@ def _save_voc_split_instrumental(
     _save_with_message(
         sep,
         inst_stem_path,
-        inst_stem_name,
+        output_route.label,
         inst_stem_source,
         samplerate=samplerate,
-        buffer_stem_name=buffer_stem_name,
+        buffer_stem_name=output_route.filename_tag,
         is_not_ensemble=is_not_ensemble,
     )
 
 
 def _save_voc_split_vocal(
     sep: Any,
-    stem_name: str | None,
     stem_source: Any,
     *,
     samplerate: int,
-    buffer_stem_name: str | None,
     is_not_ensemble: bool,
-    output_label: str | None = None,
+    output_route: StemRoute,
 ) -> None:
-    if output_label is None:
-        local = stem_concept(sep, stem_name)
-        voc_split_stem_name = (
-            LEAD_VOCAL_STEM_LABEL
-            if local is StemBucket.LEAD_VOCALS
-            else BV_VOCAL_STEM_LABEL
-        )
-    else:
-        voc_split_stem_name = output_label
-    voc_split_stem_path = sep.audio_file_base_voc_split(voc_split_stem_name)
+    voc_split_stem_path = sep.audio_file_base_voc_split(output_route.label)
     _save_with_message(
         sep,
         voc_split_stem_path,
-        voc_split_stem_name,
+        output_route.label,
         stem_source,
         samplerate=samplerate,
-        buffer_stem_name=buffer_stem_name,
+        buffer_stem_name=output_route.filename_tag,
         is_not_ensemble=is_not_ensemble,
     )
 
@@ -328,6 +348,15 @@ def write_audio(
     is_do_not_save_inst = (
         sep.is_save_vocal_only and sep.is_sec_bv_rebalance and is_inst_family
     )
+    vocal_output_route = None
+    if sep.is_vocal_split_model and is_vocal_family:
+        vocal_output_route = (
+            route
+            if route is not None
+            and isinstance(route.role, StemRoleId)
+            and route.role.value in _VOCAL_SPLIT_PAIR_ROLES
+            else _reviewed_output_route("vocal.lead" if is_lead else "vocal.backing")
+        )
 
     # Bound unconditionally: every read below sits behind the same
     # ``is_bv_rebalance_lead`` guard that assigns it.
@@ -341,25 +370,24 @@ def write_audio(
     if not is_bv_model_lead and not is_do_not_save_inst:
         if sep.is_vocal_split_model or not sep.is_secondary_model:
             if sep.is_vocal_split_model and not sep.is_inst_only_voc_splitter:
-                _save_voc_split_vocal(
-                    sep,
-                    display_name,
-                    stem_source,
-                    samplerate=samplerate,
-                    buffer_stem_name=buffer_tag,
-                    is_not_ensemble=is_not_ensemble,
-                    output_label=display_name if route is not None else None,
-                )
-                if is_bv_rebalance_lead:
+                if vocal_output_route is not None:
                     _save_voc_split_vocal(
                         sep,
-                        LEAD_VOCAL_STEM,
-                        bv_rebalance_lead_source,
+                        stem_source,
                         samplerate=samplerate,
-                        buffer_stem_name=buffer_tag,
                         is_not_ensemble=is_not_ensemble,
-                        output_label=LEAD_VOCAL_STEM_LABEL,
+                        output_route=vocal_output_route,
                     )
+                if is_bv_rebalance_lead:
+                    lead_route = _reviewed_output_route("vocal.lead")
+                    if lead_route is not None:
+                        _save_voc_split_vocal(
+                            sep,
+                            bv_rebalance_lead_source,
+                            samplerate=samplerate,
+                            is_not_ensemble=is_not_ensemble,
+                            output_route=lead_route,
+                        )
             else:
                 if not is_no_vocal_save:
                     _save_with_message(
@@ -375,20 +403,16 @@ def write_audio(
             if sep.is_save_inst_vocal_splitter and not sep.is_save_vocal_only:
                 _save_voc_split_instrumental(
                     sep,
-                    display_name,
                     stem_source,
                     samplerate=samplerate,
-                    buffer_stem_name=buffer_tag,
                     is_not_ensemble=is_not_ensemble,
                     is_lead=is_lead,
                 )
                 if is_bv_rebalance_lead:
                     _save_voc_split_instrumental(
                         sep,
-                        LEAD_VOCAL_STEM,
                         bv_rebalance_lead_source,
                         samplerate=samplerate,
-                        buffer_stem_name=buffer_tag,
                         is_not_ensemble=is_not_ensemble,
                         is_inst_invert=True,
                         is_lead=True,
@@ -428,7 +452,7 @@ def export_source_map(
     the only disk/buffer path.
     """
     extra_sources = extra_sources or {}
-    routes = run_export_routes(sep)
+    routes = vocal_split_export_routes(sep)
     if not routes and not extra_sources:
         return
     log_event(
@@ -557,4 +581,11 @@ def finish_export(sep: Any, plan: ExportPlan) -> dict[str, Any]:
     return dict(payload)
 
 
-__all__ = ["ExportPlan", "finish_export", "write_audio", "export_source_map"]
+__all__ = [
+    "ExportPlan",
+    "export_source_map",
+    "finish_export",
+    "vocal_split_export_routes",
+    "vocal_split_pair_routes",
+    "write_audio",
+]

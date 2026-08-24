@@ -322,6 +322,47 @@ class WriteAudioGuardTests(unittest.TestCase):
         self.assertIsInstance(route.role, StemLiteral)
         self.assertEqual(sep.master_vocal_path, path)
 
+    def test_vr_bve_capture_uses_distinct_reviewed_tags_for_generated_outputs(self) -> None:
+        sep = self._vocal_split_writer()
+        sep.is_save_inst_vocal_splitter = True
+        sep.master_inst_source = _arr(4.0).T
+        routes = model_stem_routes(
+            _semantic_model(
+                "vr:UVR-BVE-4B_SN-44100-1",
+                ["Vocals", "Instrumental"],
+                backend_primary="Vocals",
+                vocal_split=True,
+            )
+        )
+
+        for index, route in enumerate(routes, start=1):
+            sep.write_audio(
+                f"/tmp/source-{index}.wav",
+                _arr(float(index)).T,
+                44100,
+                stem_name=route.label,
+                route=route,
+            )
+
+        self.assertEqual(
+            set(sep._ensemble_stem_buffers),
+            {
+                "Backing_Vocals",
+                "Lead_Vocals",
+                "Instrumental_with_Backing_Vocals",
+                "Instrumental_with_Lead_Vocals",
+            },
+        )
+        self.assertEqual(
+            set(sep._ensemble_stem_paths.values()),
+            {
+                "/tmp/Backing Vocals.wav",
+                "/tmp/Lead Vocals.wav",
+                "/tmp/Instrumental with Backing Vocals.wav",
+                "/tmp/Instrumental with Lead Vocals.wav",
+            },
+        )
+
     def test_instrumental_does_not_record_master_vocal_path(self) -> None:
         sep = self._secondary_writer()
         sep.write_audio("/tmp/song_(Instrumental).wav", _arr(1.0).T, 44100, stem_name=INST_STEM)
@@ -530,6 +571,18 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
             [LEAD_VOCAL_STEM_LABEL, BV_VOCAL_STEM_LABEL],
         )
 
+    def test_explicit_empty_reviewed_routes_do_not_fall_back_to_spelling(self) -> None:
+        fake = _SplitPairFake()
+
+        built = SeperateMDXC._vocal_split_pair_sources(
+            fake,  # type: ignore[arg-type]
+            {"Vocals": _arr(1.0), "Instrumental": _arr(2.0)},
+            _arr(3.0),
+            routes=(),
+        )
+
+        self.assertEqual(built, {})
+
     def test_lowercase_and_fusion_single_target_dict(self) -> None:
         self.assertEqual(
             list(self._build({"vocals": _arr(1.0), INST_STEM: _arr(2.0)})),
@@ -644,6 +697,32 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
         self.assertEqual(list(plan.sources), ["Vocals", "Instrumental"])
         np.testing.assert_array_equal(plan.sources["Vocals"], lead.T)
         np.testing.assert_array_equal(plan.sources["Instrumental"], backing.T)
+
+    def test_giantailab_reviewed_plan_discards_non_pair_native_route(self) -> None:
+        from types import SimpleNamespace
+
+        routes = model_stem_routes(
+            _semantic_model(
+                "mdx:bs_karaoke_3stem_giantailab",
+                ["vocals", "backing_vocal", "instrumental"],
+                backend_primary="vocals",
+                vocal_split=True,
+            )
+        )
+        fake = SimpleNamespace(is_bv_model=False, is_vocal_split_model=True)
+
+        built = SeperateMDXC._vocal_split_pair_sources(
+            fake,  # type: ignore[arg-type]
+            {
+                "vocals": _arr(1.0),
+                "backing_vocal": _arr(2.0),
+                "instrumental": _arr(3.0),
+            },
+            _arr(6.0),
+            routes=routes,
+        )
+
+        self.assertEqual(list(built), ["vocals", "instrumental"])
 
     def test_three_stem_karaoke_skips_splitter_instrumental(self) -> None:
         self.assertEqual(

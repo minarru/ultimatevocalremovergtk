@@ -25,7 +25,7 @@ from core.model_repository import ModelRepository
 from core.settings import Settings
 from core.stems import EnsemblePair
 
-_VR_KARAOKE = "Test-Karaoke-Model"
+_VR_KARAOKE = "5_HP-Karaoke-UVR"
 _VR_VOCAL = "Test-Vocal-Model"
 _MDX_VOCAL = "Test-MDX-Model"
 
@@ -391,6 +391,49 @@ class RealModelPoolTests(unittest.TestCase):
             self.repo.karaoke_model_list(self.settings), [f"vr:{_VR_KARAOKE}"]
         )
 
+    def test_karaoke_pool_fails_closed_without_exact_reviewed_split_context(self) -> None:
+        rejected_vr = (
+            "Metadata-Only-Karaoke",
+            "4_HP-Vocal-UVR",
+            "UVR-DeNoise",
+        )
+        for name in rejected_vr:
+            checkpoint_hash = _write_checkpoint(
+                os.path.join(paths.VR_MODELS_DIR, f"{name}.pth"),
+                f"{name}-weights".encode(),
+            )
+            _write_json(
+                os.path.join(paths.VR_HASH_DIR, f"{checkpoint_hash}.json"),
+                {
+                    "vr_model_param": "4band_v2",
+                    "primary_stem": "Vocals",
+                    "is_karaokee": True,
+                },
+            )
+
+        waived = "UVR_MDXNET_KARA"
+        waived_hash = _write_checkpoint(
+            os.path.join(paths.MDX_MODELS_DIR, f"{waived}.onnx"),
+            b"waived-karaoke-weights",
+        )
+        _write_json(
+            os.path.join(paths.MDX_HASH_DIR, f"{waived_hash}.json"),
+            {
+                "compensate": 1.035,
+                "mdx_dim_f_set": 2048,
+                "mdx_dim_t_set": 8,
+                "mdx_n_fft_scale_set": 6144,
+                "primary_stem": "Vocals",
+                "is_karaokee": True,
+            },
+        )
+        self.repo.invalidate_models()
+
+        self.assertEqual(
+            self.repo.karaoke_model_list(self.settings),
+            [f"vr:{_VR_KARAOKE}"],
+        )
+
     def test_real_planner_accepts_only_exact_karaoke_splitter_ids(self) -> None:
         from core.job_plan import JobResolver, JobSpec, ValidationLevel
         from core.types import ProcessMethod
@@ -554,7 +597,9 @@ class RealModelPoolTests(unittest.TestCase):
             "splitter": self.repo.karaoke_model_list(self.settings),
         }
         self.assertIn(f"vr:{dotted}", pools["multi"])
-        self.assertIn(f"vr:{dotted}", pools["splitter"])
+        # Exact identity resolution is not sufficient for Vocal Splitter:
+        # this metadata-only custom model has no reviewed vocal_split context.
+        self.assertNotIn(f"vr:{dotted}", pools["splitter"])
         for name, pool in pools.items():
             for tag in pool:
                 with self.subTest(pool=name, tag=tag):
