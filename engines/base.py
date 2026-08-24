@@ -252,7 +252,6 @@ class SeperateAttributes:
             self.demucs_stems = model_data.demucs_stems if not main_process_method in [MDX_ARCH_TYPE, VR_ARCH_TYPE] else None
             self.secondary_model_4_stem = model_data.secondary_model_4_stem
             self.secondary_model_4_stem_scale = model_data.secondary_model_4_stem_scale
-            self.is_chunk_demucs = model_data.is_chunk_demucs
             self.segment = model_data.segment
             self.demucs_version = model_data.demucs_version
             self.demucs_source_list = model_data.demucs_source_list

@@ -197,11 +197,6 @@ def warn_validation(args: Any, warnings: Any) -> None:
         )
 
 
-def emit_json(payload: dict[str, Any]) -> None:
-    """Internal compatibility helper; new commands use :func:`emit_document`."""
-    print(json.dumps(payload, indent=2, sort_keys=True))
-
-
 def fail(
     args: Any,
     message: str,

@@ -232,7 +232,6 @@ _BOOL_FIELDS: frozenset[tuple[str, str]] = frozenset(
         ("mdx", "is_invert_spec"),
         ("mdx", "is_mixer_mode"),
         ("mdx", "is_secondary_model_activate"),
-        ("demucs", "is_chunk_demucs"),
         ("demucs", "is_split_mode"),
         ("demucs", "is_demucs_combine_stems"),
         ("demucs", "is_secondary_model_activate"),
@@ -261,7 +260,6 @@ _INT_FIELDS: frozenset[tuple[str, str]] = frozenset(
         ("mdx", "segment_size"),
         ("mdx", "margin"),
         ("mdx", "overlap_mdx23"),
-        ("demucs", "margin_demucs"),
         ("demucs", "shifts"),
         ("audio_tools", "apollo_overlap"),
         ("audio_tools", "apollo_chunk_size"),
@@ -313,7 +311,6 @@ _OPTIONAL_FLOAT_FIELDS = frozenset(
 _CHUNKS_FIELDS = frozenset(
     {
         ("mdx", "chunks"),
-        ("demucs", "chunks_demucs"),
     }
 )
 
@@ -459,7 +456,6 @@ FLAT_SENTINEL_LABELS: dict[str, str] = {
     "overlap_mdx": DEF_OPT,
     "compensate": AUTO_SELECT,
     "chunks": AUTO_SELECT,
-    "chunks_demucs": AUTO_SELECT,
     "segment": DEF_OPT,
 }
 
@@ -468,6 +464,6 @@ def setting_for_combo(flat_key: str, value: Any) -> Any:
     """Map a stored setting to a combo/scale display value."""
     if value is None:
         return FLAT_SENTINEL_LABELS.get(flat_key)
-    if value == "full" and flat_key in ("chunks", "chunks_demucs"):
+    if value == "full" and flat_key == "chunks":
         return "Full"
     return enum_value(value)

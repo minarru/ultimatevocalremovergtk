@@ -122,5 +122,4 @@ class DemucsView(MethodView):
             hint=OVERLAP_HELP,
         )
         self.add_advanced_switch("is_split_mode", "Split mode", hint=IS_SPLIT_MODE_HELP)
-        # Legacy "Enable chunks" (is_chunk_demucs) is unused by the engine; omit from UI.
         self.add_advanced_switch("is_demucs_combine_stems", "Combine stems", hint=IS_DEMUCS_COMBINE_STEMS_HELP)

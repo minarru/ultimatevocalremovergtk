@@ -193,9 +193,6 @@ class DemucsSettings:
     segment: int | None = None
     overlap: float = DEMUCS_OVERLAP[0]
     shifts: int = 2
-    chunks_demucs: int | str | None = None
-    margin_demucs: int = 44100
-    is_chunk_demucs: bool = False
     is_split_mode: bool = True
     is_demucs_combine_stems: bool = True
     voc_inst_secondary_model: str = NO_MODEL

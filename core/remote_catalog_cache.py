@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import threading
 import time
 import urllib.error
@@ -586,11 +585,6 @@ def _read_envelope(path: str) -> Optional[dict[str, Any]]:
         return payload
     # Bare catalogue JSON (bundled-style) is treated as data with unknown age.
     return {"fetched_at": 0.0, "data": payload}
-
-
-def copy_without_write(src: str, dest: str) -> None:
-    """Unused helper kept for tests that patch shutil copy/move."""
-    shutil.copy2(src, dest)
 
 
 __all__ = ["RemoteJsonSource", "inspect_cache_path"]

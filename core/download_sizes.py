@@ -491,11 +491,6 @@ def _head_remote_meta(
         return None, None, None
 
 
-def _head_content_length(url: str) -> Optional[int]:
-    size, _validator, _content_id = _unpack_head_meta(_head_remote_meta(url))
-    return size
-
-
 def _get_content_length(url: str) -> Optional[int]:
     try:
         with urllib.request.urlopen(

@@ -413,15 +413,12 @@ class ModelConfig:
                     if demucs.stems not in [VOCAL_STEM, INST_STEM]
                     else False
                 )
-            self.margin_demucs = int(demucs.margin_demucs)
-            self.chunks_demucs = 0
             self.shifts = int(demucs.shifts)
             self.is_split_mode = demucs.is_split_mode
             # Engine ``demucs_segments`` expects the legacy ``Default`` label.
             self.segment = (
                 DEF_OPT if demucs.segment is None else str(demucs.segment)
             )
-            self.is_chunk_demucs = demucs.is_chunk_demucs
             self.get_demucs_model_data()
             self.get_demucs_model_path()
 
@@ -1094,12 +1091,9 @@ class ModelConfig:
         )
         self.demucs_options = (
             DemucsOptions(
-                margin_demucs=self.margin_demucs,
-                chunks_demucs=self.chunks_demucs,
                 shifts=self.shifts,
                 is_split_mode=bool(self.is_split_mode),
                 segment=self.segment,
-                is_chunk_demucs=bool(self.is_chunk_demucs),
                 demucs_stems=self.demucs_stems,
                 is_demucs_combine_stems=bool(self.is_demucs_combine_stems),
                 demucs_source_list=tuple(self.demucs_source_list),

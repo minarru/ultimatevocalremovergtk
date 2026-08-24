@@ -512,31 +512,6 @@ def display_name_for_model(
     return name
 
 
-def resolve_model_basename(
-    arch: str,
-    name: str,
-    repo: "ModelRepository",
-) -> str:
-    """Resolve a friendly label to an on-disk basename/stem."""
-    if not name:
-        return name
-    if arch in (VR_ARCH_TYPE,):
-        return resolve_vr_model_basename(name, catalogue_index=repo.vr_catalogue_display_index())
-    if arch in (MDX_ARCH_TYPE,):
-        return resolve_mdx_model_basename(
-            name,
-            repo.mdx_name_select_MAPPER,
-            catalogue_index=repo.mdx_catalogue_display_index(),
-        )
-    if arch in (DEMUCS_ARCH_TYPE,):
-        return resolve_demucs_model_basename(
-            name,
-            repo.demucs_name_select_MAPPER,
-            catalogue_index=repo.demucs_catalogue_display_index(),
-        )
-    return name
-
-
 def parse_model_tag(tag: str) -> Tuple[str, str]:
     """Split a checklist tag into ``(arch, name)``.
 

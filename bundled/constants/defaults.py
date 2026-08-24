@@ -33,9 +33,6 @@ DEFAULT_DATA = {
         'overlap_mdx': MDX_OVERLAP[0],
         'overlap_mdx23': '8',
         'shifts': 2,
-        'chunks_demucs': CHUNKS[0],
-        'margin_demucs': 44100,
-        'is_chunk_demucs': False,
         'is_chunk_mdxnet': False,
         'is_split_mode': True,
         'is_demucs_combine_stems': True,#

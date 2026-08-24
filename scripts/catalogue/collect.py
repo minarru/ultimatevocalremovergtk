@@ -467,13 +467,6 @@ def _parse_community_model_lines(lines: Any) -> Dict[str, CommunityRef]:
     return refs
 
 
-def _parse_community_models_txt(path: str) -> Dict[str, CommunityRef]:
-    if not os.path.isfile(path):
-        return {}
-    with open(path, encoding="utf-8") as handle:
-        return _parse_community_model_lines(handle)
-
-
 def _parse_community_models_bytes(data: bytes) -> Dict[str, CommunityRef]:
     try:
         return _parse_community_model_lines(data.decode("utf-8").splitlines())
@@ -716,14 +709,6 @@ def _yaml_source_label(yaml_name: str, config_path: str) -> str:
     """
     where = "remote_yaml" if YAML_CACHE_DIR in config_path else "bundled_yaml"
     return f"{where}:{yaml_name}"
-
-
-def _fetch_yaml(
-    url: str, yaml_name: str, *, policy: FetchPolicy = DEFAULT_FETCH_POLICY
-) -> Optional[str]:
-    if not url or not yaml_name.endswith(".yaml"):
-        return None
-    return _fetch_cached(url, YAML_CACHE_DIR, yaml_name, policy=policy)
 
 
 def _fetch_yaml_bytes(

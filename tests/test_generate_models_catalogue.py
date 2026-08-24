@@ -2619,8 +2619,6 @@ class FetchHelperTests(unittest.TestCase):
             catalogue.paths, "MDX_C_CONFIG_PATH", tmp
         ), patch(
             "core.mdx_config_fetch.fetch_mdx_config_url", side_effect=fake_fetch
-        ), patch.object(
-            catalogue, "_fetch_yaml", side_effect=AssertionError("yaml cache fallback")
         ):
             instruments, target, _arch, source = catalogue._load_yaml_meta(
                 yaml_name, "https://example.invalid/x.yaml"

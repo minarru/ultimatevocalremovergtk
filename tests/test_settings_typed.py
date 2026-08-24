@@ -57,6 +57,23 @@ class TypedSettingsTests(unittest.TestCase):
         self.assertNotIn("user_code", restored.to_json_dict()["process"])
         self.assertIsNone(restored.get("user_code"))
 
+    def test_legacy_demucs_chunk_controls_are_ignored_and_not_reserialized(self) -> None:
+        payload = Settings.defaults().to_json_dict()
+        payload["demucs"].update(
+            {
+                "chunks_demucs": 7,
+                "margin_demucs": 22050,
+                "is_chunk_demucs": True,
+            },
+        )
+
+        restored = Settings.from_json_dict(payload)
+
+        serialized = restored.to_json_dict()["demucs"]
+        self.assertNotIn("chunks_demucs", serialized)
+        self.assertNotIn("margin_demucs", serialized)
+        self.assertNotIn("is_chunk_demucs", serialized)
+
     def test_coerce_field_legacy_display_becomes_choose(self):
         self.assertEqual(
             coerce_field("ensemble", "main_stem", "Vocals/Instrumental"),

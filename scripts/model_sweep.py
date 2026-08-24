@@ -244,10 +244,6 @@ UNRECOGNIZED = "UNRECOGNIZED"
 _DETAIL_MAX_LINES = 6
 
 
-def _first_line(text: str) -> str:
-    return (text or "").strip().splitlines()[0] if (text or "").strip() else ""
-
-
 def _error_detail(text: Optional[str]) -> str:
     """The useful part of an exception message, bounded.
 

@@ -77,7 +77,6 @@ _PROCESS_SETTING_KEYS = (
     "mdx_is_secondary_model_activate",
     "vr_is_secondary_model_activate",
     "demucs_stems",
-    "is_chunk_demucs",
     "is_chunk_mdxnet",
     "is_split_mode",
     "is_demucs_combine_stems",
