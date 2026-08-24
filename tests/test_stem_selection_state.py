@@ -408,9 +408,9 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
         from core.model_stem_manifest import load_bundled_stem_semantics
         from core.stem_selection import (
             _SUBSET_CUSTOM,
-            _manifest_signature_roles,
             StemSelectionState,
             SubsetView,
+            _manifest_signature_roles,
         )
 
         cases = (

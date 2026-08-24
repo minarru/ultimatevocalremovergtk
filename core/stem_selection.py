@@ -1056,14 +1056,10 @@ class StemSelectionState:
                     settings.process.stem_focus = ""
                     return
                 route = selection.routes[0]
-            settings.process.stem_focus = _persist_route_focus(
-                route, inventory
-            )
+            settings.process.stem_focus = _persist_route_focus(route, inventory)
             return
         route = _route_for_native(self.routes, persist)
-        settings.process.stem_focus = (
-            _persist_route_focus(route, self.routes) if route else ""
-        )
+        settings.process.stem_focus = _persist_route_focus(route, self.routes) if route else ""
 
     def ensure_demucs_export_defaults(
         self, settings: Any, native: Optional[str] = None
