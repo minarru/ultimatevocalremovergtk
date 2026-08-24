@@ -17,6 +17,7 @@ from types import MappingProxyType
 from typing import Mapping, Sequence
 
 from .debug_log import log_event
+from .model_identity import parse_stored_model_id
 from .paths import BUNDLED_DATA_DIR
 from .stem_roles import (
     ModelStemSemantics,
@@ -116,6 +117,13 @@ def _normalized(value: str) -> str:
 
 def _native_key(value: str) -> str:
     return value.strip().casefold()
+
+
+def _canonical_model_id(value: str, path: tuple[str | int, ...]) -> str:
+    try:
+        return parse_stored_model_id(value).value
+    except ValueError as error:
+        raise _error(path, f"invalid canonical model ID: {error}") from error
 
 
 def _parse_roles(value: object) -> Mapping[StemRoleId, StemRoleDefinition]:
@@ -242,8 +250,7 @@ def _parse_models(
     result: dict[str, _ModelStemDeclaration] = {}
     for model_id, raw_model in document.items():
         path = ("models", model_id)
-        if model_id.count(":") != 1 or any(not part for part in model_id.split(":")):
-            raise _error(path, "model id must be canonical family:basename")
+        canonical_model_id = _canonical_model_id(model_id, path)
         model = _mapping(raw_model, path)
         raw_signature = model.get("native_signature")
         if not isinstance(raw_signature, list):
@@ -303,7 +310,7 @@ def _parse_models(
                     "multiple logical primaries",
                 )
             contexts[context] = _ModelStemContext(logical_primary, outputs)
-        result[model_id] = _ModelStemDeclaration(
+        result[canonical_model_id] = _ModelStemDeclaration(
             signature, intent, MappingProxyType(contexts), evidence
         )
     return MappingProxyType(result)
@@ -314,9 +321,8 @@ def _parse_waivers(value: object) -> Mapping[str, str]:
     result: dict[str, str] = {}
     for model_id, reason in document.items():
         path = ("waivers", model_id)
-        if model_id.count(":") != 1 or any(not part for part in model_id.split(":")):
-            raise _error(path, "model id must be canonical family:basename")
-        result[model_id] = _string(reason, path)
+        canonical_model_id = _canonical_model_id(model_id, path)
+        result[canonical_model_id] = _string(reason, path)
     return MappingProxyType(result)
 
 
@@ -336,7 +342,7 @@ def load_stem_manifest(path: Path) -> StemSemanticsRegistry:
     """Read and strictly validate a JSON manifest from ``path``."""
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise _error(("manifest",), f"could not read manifest: {error}") from error
     return load_stem_manifest_document(document)
 

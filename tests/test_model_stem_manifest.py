@@ -129,6 +129,46 @@ class StemRoleValueTests(unittest.TestCase):
 
 
 class ManifestValidationTests(unittest.TestCase):
+    def test_accepts_all_supported_canonical_model_families(self) -> None:
+        for model_id in ("vr:fixture", "mdx:fixture", "demucs:fixture", "apollo:fixture"):
+            with self.subTest(model_id=model_id):
+                document = _manifest()
+                declaration = document["models"].pop("mdx:fixture")
+                document["models"][model_id] = declaration
+
+                registry = load_stem_manifest_document(document)
+
+                self.assertIn(model_id, registry.models)
+
+    def test_rejects_noncanonical_model_and_waiver_ids_with_their_paths(self) -> None:
+        invalid_ids = (
+            "unknown:fixture",
+            "MDX:fixture",
+            "mdx :fixture",
+            "mdx: fixture",
+            "mdx:fixture ",
+            "mdx:fixture:extra",
+            "fixture",
+            "vr:",
+        )
+
+        for model_id in invalid_ids:
+            with self.subTest(section="models", model_id=model_id):
+                document = _manifest()
+                declaration = document["models"].pop("mdx:fixture")
+                document["models"][model_id] = declaration
+                with self.assertRaises(StemManifestError) as raised:
+                    load_stem_manifest_document(document)
+                self.assertEqual(raised.exception.path, ("models", model_id))
+
+            with self.subTest(section="waivers", model_id=model_id):
+                document = _manifest()
+                reason = document["waivers"].pop("apollo:restoration")
+                document["waivers"][model_id] = reason
+                with self.assertRaises(StemManifestError) as raised:
+                    load_stem_manifest_document(document)
+                self.assertEqual(raised.exception.path, ("waivers", model_id))
+
     def test_seed_manifest_loads_core_roles_pairs_and_an_empty_model_catalogue(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
 
@@ -332,6 +372,32 @@ class ExactResolutionTests(unittest.TestCase):
 
 
 class BundledFallbackTests(unittest.TestCase):
+    def test_invalid_utf8_is_a_typed_direct_error_and_a_single_raw_bundled_fallback(
+        self,
+    ) -> None:
+        self.addCleanup(load_bundled_stem_semantics.cache_clear)
+        with TemporaryDirectory() as directory:
+            broken = Path(directory) / "model_stem_manifest.json"
+            broken.write_bytes(b"\xff")
+
+            with self.assertRaisesRegex(StemManifestError, "could not read manifest"):
+                load_stem_manifest(broken)
+
+            with (
+                patch("core.model_stem_manifest.BUNDLED_MANIFEST_PATH", broken),
+                patch("core.model_stem_manifest.log_event") as log_event,
+            ):
+                load_bundled_stem_semantics.cache_clear()
+                first = load_bundled_stem_semantics()
+                raw = resolve_model_stem_semantics("mdx:fixture", native_stems=("Vocals",))
+                second = load_bundled_stem_semantics()
+
+            self.assertEqual(first, second)
+            self.assertEqual(first.models, {})
+            self.assertEqual(raw.status, StemReviewStatus.RAW)
+            self.assertEqual(raw.outputs[0].role, StemLiteral("Vocals"))
+            log_event.assert_called_once()
+
     def test_corrupt_bundled_manifest_logs_once_and_returns_raw_but_direct_load_raises(
         self,
     ) -> None:
