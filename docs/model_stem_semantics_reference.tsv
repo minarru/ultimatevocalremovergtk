@@ -1,0 +1,1167 @@
+model_id	context	native	role	display	filename_tag	production	logical_primary	backend_primary	backend_target	guessed_intent	review_status	evidence	warning
+demucs:UVR_Demucs_Model_1	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	true			dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+demucs:UVR_Demucs_Model_1	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs-e07c671f	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs-e07c671f	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs-e07c671f	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs-e07c671f	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs48_hq-28a1282c	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs48_hq-28a1282c	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs48_hq-28a1282c	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs48_hq-28a1282c	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs_extra	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs_extra	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs_extra	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs_extra	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs_extra-3646af93	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs_extra-3646af93	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs_extra-3646af93	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs_extra-3646af93	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs_unittest-09ebc15f	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs_unittest-09ebc15f	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs_unittest-09ebc15f	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:demucs_unittest-09ebc15f	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:hdemucs_mmi	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:hdemucs_mmi	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:hdemucs_mmi	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:hdemucs_mmi	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:htdemucs	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:htdemucs	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:htdemucs	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:htdemucs	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:htdemucs_6s	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:htdemucs_6s	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:htdemucs_6s	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:htdemucs_6s	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:htdemucs_6s	full_mix	guitar	instrument.guitar	Guitar	Guitar	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:htdemucs_6s	full_mix	piano	instrument.piano	Piano	Piano	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:htdemucs_ft	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:htdemucs_ft	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:htdemucs_ft	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:htdemucs_ft	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:light	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:light	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:light	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:light	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:light_extra	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:light_extra	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:light_extra	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:light_extra	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx_extra	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx_extra	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx_extra	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx_extra	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx_extra_q	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx_extra_q	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx_extra_q	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx_extra_q	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx_q	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx_q	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx_q	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:mdx_q	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:repro_mdx_a	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:repro_mdx_a	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:repro_mdx_a	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:repro_mdx_a	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:repro_mdx_a_hybrid_only	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:repro_mdx_a_hybrid_only	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:repro_mdx_a_hybrid_only	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:repro_mdx_a_hybrid_only	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:repro_mdx_a_time_only	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:repro_mdx_a_time_only	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:repro_mdx_a_time_only	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:repro_mdx_a_time_only	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet-beb46fac	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet-beb46fac	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet-beb46fac	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet-beb46fac	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet_extra	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet_extra	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet_extra	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet_extra	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet_extra-df3777b2	full_mix	drums	instrument.drums	Drums	Drums	native	true			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet_extra-df3777b2	full_mix	bass	instrument.bass	Bass	Bass	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet_extra-df3777b2	full_mix	other	residual.other	Residual	Residual	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+demucs:tasnet_extra-df3777b2	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false			multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:BS_Inst_EXP_VRL	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:BS_Inst_EXP_VRL	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:BandSplit_Roformer_4stems_FT_by_SYH99999	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:BandSplit_Roformer_4stems_FT_by_SYH99999	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:BandSplit_Roformer_4stems_FT_by_SYH99999	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:BandSplit_Roformer_4stems_FT_by_SYH99999	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MDX23C-De-Reverb-aufr33-jarredou	full_mix	dry	effect.reverb	Reverb	Reverb	native	true	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:MDX23C-De-Reverb-aufr33-jarredou	full_mix	No dry	effect.reverb.removed	Reverb Removed	Reverb_Removed	native	false	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:MDX23C-DrumSep-aufr33-jarredou	full_mix	kick	instrument.kick	Kick	Kick	native	true	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MDX23C-DrumSep-aufr33-jarredou	full_mix	snare	instrument.snare	Snare	Snare	native	false	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MDX23C-DrumSep-aufr33-jarredou	full_mix	toms	instrument.toms	Toms	Toms	native	false	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MDX23C-DrumSep-aufr33-jarredou	full_mix	hh	instrument.hh	Hi-Hat	Hi_Hat	native	false	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MDX23C-DrumSep-aufr33-jarredou	full_mix	ride	instrument.ride	Ride	Ride	native	false	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MDX23C-DrumSep-aufr33-jarredou	full_mix	crash	instrument.crash	Crash	Crash	native	false	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MDX23C_D1581	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals		vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:MDX23C_D1581	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals		vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBandRoformerBigSYHFTV1	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBandRoformerBigSYHFTV1	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBandRoformerSYHFT	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBandRoformerSYHFT	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBandRoformerSYHFTV2	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBandRoformerSYHFTV2	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBandRoformerSYHFTV2.5	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBandRoformerSYHFTV2.5	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBandRoformerSYHFTV3Epsilon	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBandRoformerSYHFTV3Epsilon	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_FT_Large_v1_by_SYH99999	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_FT_Large_v1_by_SYH99999	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_FT_Large_v1_by_SYH99999	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_FT_Large_v1_by_SYH99999	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_FT_Large_v2_by_SYH99999	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_FT_Large_v2_by_SYH99999	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_FT_Large_v2_by_SYH99999	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_FT_Large_v2_by_SYH99999	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_Large_v1_by_Aname	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_Large_v1_by_Aname	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_Large_v1_by_Aname	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_Large_v1_by_Aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_XL_v1_by_Aname	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_XL_v1_by_Aname	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_XL_v1_by_Aname	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:MelBand_Roformer_4stems_XL_v1_by_Aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:SCNet-large_starrytong_fixed	full_mix	Drums	instrument.drums	Drums	Drums	native	true	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:SCNet-large_starrytong_fixed	full_mix	Bass	instrument.bass	Bass	Bass	native	false	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:SCNet-large_starrytong_fixed	full_mix	Other	residual.other	Residual	Residual	native	false	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:SCNet-large_starrytong_fixed	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_1	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_1	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_2	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_2	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_3	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_3	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_HQ_1	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_HQ_1	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_HQ_2	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_HQ_2	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_HQ_3	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_HQ_3	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_HQ_4	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_HQ_4	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_HQ_5	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_HQ_5	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_Main	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_Main	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_full_292	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Inst_full_292	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Voc_FT	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET-Voc_FT	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Inst_187_beta	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Inst_187_beta	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Inst_82_beta	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Inst_82_beta	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Inst_90_beta	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Inst_90_beta	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Main_340	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Main_340	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Main_390	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Main_390	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Main_406	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Main_406	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Main_427	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Main_427	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Main_438	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR-MDX-NET_Main_438	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR_MDXNET_KARA_2	full_mix	other	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Instrumental	other	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR_MDXNET_KARA_2	full_mix	vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Instrumental	other	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR_MDXNET_KARA_2	vocal_split	other	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Instrumental	other	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR_MDXNET_KARA_2	vocal_split	vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Instrumental	other	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR_MDXNET_Main	full_mix	instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:UVR_MDXNET_Main	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:aspiration_mel_band_roformer_less_aggr_sdr_18.1201	full_mix	aspiration	vocal.aspiration	Vocal Aspiration	Vocal_Aspiration	native	true	aspiration		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:aspiration_mel_band_roformer_less_aggr_sdr_18.1201	full_mix	other	residual.other	Residual	Residual	native	false	aspiration		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:aspiration_mel_band_roformer_sdr_18.9845	full_mix	aspiration	vocal.aspiration	Vocal Aspiration	Vocal_Aspiration	native	true	aspiration		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:aspiration_mel_band_roformer_sdr_18.9845	full_mix	other	residual.other	Residual	Residual	native	false	aspiration		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bandit_30_zfturbo	full_mix	speech	cinematic.speech	Speech	Speech	native	true	speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bandit_30_zfturbo	full_mix	music	mix.music	Music	Music	native	false	speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bandit_30_zfturbo	full_mix	effects	effect.reverb	Reverb	Reverb	native	false	speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bandit_57_zfturbo	full_mix	speech	cinematic.speech	Speech	Speech	native	true	speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bandit_57_zfturbo	full_mix	music	mix.music	Music	Music	native	false	speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bandit_57_zfturbo	full_mix	effects	effect.reverb	Reverb	Reverb	native	false	speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bandit_63_zfturbo	full_mix	speech	cinematic.speech	Speech	Speech	native	true	speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bandit_63_zfturbo	full_mix	music	mix.music	Music	Music	native	false	speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bandit_63_zfturbo	full_mix	effects	effect.reverb	Reverb	Reverb	native	false	speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bandit_last	full_mix	speech	cinematic.speech	Speech	Speech	native	true	speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bandit_last	full_mix	music	mix.music	Music	Music	native	false	speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bandit_last	full_mix	effects	effect.reverb	Reverb	Reverb	native	false	speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_4stem_aname	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_4stem_aname	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_4stem_aname	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_4stem_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_4stem_zfturbo	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_4stem_zfturbo	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_4stem_zfturbo	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_4stem_zfturbo	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_6stem	full_mix	bass	instrument.bass	Bass	Bass	native	true	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_6stem	full_mix	drums	instrument.drums	Drums	Drums	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_6stem	full_mix	other	residual.other	Residual	Residual	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_6stem	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_6stem	full_mix	guitar	instrument.guitar	Guitar	Guitar	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_6stem	full_mix	piano	instrument.piano	Piano	Piano	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_6stem_fixed	full_mix	bass	instrument.bass	Bass	Bass	native	true	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_6stem_fixed	full_mix	drums	instrument.drums	Drums	Drums	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_6stem_fixed	full_mix	other	residual.other	Residual	Residual	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_6stem_fixed	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_6stem_fixed	full_mix	guitar	instrument.guitar	Guitar	Guitar	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_6stem_fixed	full_mix	piano	instrument.piano	Piano	Piano	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_bass_beatloo_labs	full_mix	bass	instrument.bass	Bass	Bass	native	true	bass	bass	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_bass_beatloo_labs	full_mix	other	residual.other	Residual	Residual	native	false	bass	bass	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_bass_xlancer	full_mix	bass	instrument.bass	Bass	Bass	native	true	bass	bass	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_bass_xlancer	full_mix	other	residual.other	Residual	Residual	native	false	bass	bass	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_bowed_str_gilliaaan	full_mix	strings	instrument.strings	Strings	Strings	native	true	strings		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_bowed_str_gilliaaan	full_mix	other	residual.other	Residual	Residual	native	false	strings		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_dereverb_2250_anvuew	full_mix	noreverb	effect.reverb	Reverb	Reverb	native	true	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_dereverb_2250_anvuew	full_mix	reverb	effect.reverb.removed	Reverb Removed	Reverb_Removed	native	false	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_deverb_256_8_anvuew	full_mix	noreverb	effect.reverb	Reverb	Reverb	native	true	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_deverb_256_8_anvuew	full_mix	reverb	effect.reverb.removed	Reverb Removed	Reverb_Removed	native	false	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_deverb_384_10_anvuew	full_mix	noreverb	effect.reverb	Reverb	Reverb	native	true	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_deverb_384_10_anvuew	full_mix	reverb	effect.reverb.removed	Reverb Removed	Reverb_Removed	native	false	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_deverb_room_anvuew	full_mix	noreverb	effect.reverb	Reverb	Reverb	native	true	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_deverb_room_anvuew	full_mix	reverb	effect.reverb.removed	Reverb Removed	Reverb_Removed	native	false	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_drums2_xlancer	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums	drums	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_drums2_xlancer	full_mix	other	residual.other	Residual	Residual	native	false	drums	drums	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_drums_beatloo_labs	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums	drums	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_drums_beatloo_labs	full_mix	other	residual.other	Residual	Residual	native	false	drums	drums	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_drums_gilliaaan	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_drums_gilliaaan	full_mix	other	residual.other	Residual	Residual	native	false	drums		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_drums_xlancer	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums	drums	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_drums_xlancer	full_mix	other	residual.other	Residual	Residual	native	false	drums	drums	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_fnf2_mrdense67	full_mix	Voices	vocal.vocals	Vocals	Vocals	native	true	Voices	Voices	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_fnf2_mrdense67	full_mix	Inst	mix.instrumental	Instrumental	Instrumental	native	false	Voices	Voices	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_fnf_mrdense67	full_mix	Voices	vocal.vocals	Vocals	Vocals	native	true	Voices	Voices	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_fnf_mrdense67	full_mix	Inst	mix.instrumental	Instrumental	Instrumental	native	false	Voices	Voices	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_gtr_xlancer	full_mix	guitar	instrument.guitar	Guitar	Guitar	native	true	guitar	guitar	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_gtr_xlancer	full_mix	other	residual.other	Residual	Residual	native	false	guitar	guitar	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_hyperace	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	instrument	instrument	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_hyperace	full_mix	instrument	mix.instrumental	Instrumental	Instrumental	native	true	instrument	instrument	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_inst_exp_vlp_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_inst_exp_vlp_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_inst_fno_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_inst_fno_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_inst_hyperace2_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	instrument	instrument	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_inst_hyperace2_unwa	full_mix	instrument	mix.instrumental	Instrumental	Instrumental	native	true	instrument	instrument	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_inst_hyperace_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	instrument	instrument	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_inst_hyperace_unwa	full_mix	instrument	mix.instrumental	Instrumental	Instrumental	native	true	instrument	instrument	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_inst_large2_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	instrument	instrument	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_inst_large2_unwa	full_mix	instrument	mix.instrumental	Instrumental	Instrumental	native	true	instrument	instrument	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_3stem_giantailab	full_mix	vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	vocals		karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_3stem_giantailab	full_mix	backing_vocal	residual.backing_vocal	Backing Vocal	Backing_Vocal	native	false	vocals		karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_3stem_giantailab	full_mix	instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	vocals		karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_3stem_giantailab	vocal_split	vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	vocals		karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_3stem_giantailab	vocal_split	backing_vocal	residual.backing_vocal	Backing Vocal	Backing_Vocal	native	false	vocals		karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_3stem_giantailab	vocal_split	instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	vocals		karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_anvuew	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_anvuew	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_anvuew	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_anvuew	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_becruily	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_becruily	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_becruily	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_becruily	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_gabox	full_mix	vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	vocals	vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_gabox	full_mix	other	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	vocals	vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_gabox	vocal_split	vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	vocals	vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_gabox	vocal_split	other	vocal.backing	Backing Vocals	Backing_Vocals	native	false	vocals	vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_inv_gabox	full_mix	vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	other	other	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_inv_gabox	full_mix	other	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	other	other	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_inv_gabox	vocal_split	vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	other	other	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_karaoke_inv_gabox	vocal_split	other	vocal.backing	Backing Vocals	Backing_Vocals	native	false	other	other	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_keys_xlancer	full_mix	keys	instrument.keys	Keys	Keys	native	true	keys	keys	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_keys_xlancer	full_mix	other	residual.other	Residual	Residual	native	false	keys	keys	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_leap_inst_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_leap_inst_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_leap_voc_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_leap_voc_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_leap_xe_inst_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_leap_xe_inst_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_leap_xe_voc_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_leap_xe_voc_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_logic_6stem	full_mix	bass	instrument.bass	Bass	Bass	native	true	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_logic_6stem	full_mix	drums	instrument.drums	Drums	Drums	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_logic_6stem	full_mix	other	residual.other	Residual	Residual	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_logic_6stem	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_logic_6stem	full_mix	guitar	instrument.guitar	Guitar	Guitar	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_logic_6stem	full_mix	piano	instrument.piano	Piano	Piano	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mag_3179_anvuew	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mag_3179_anvuew	full_mix	instrument	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mag_anvuew	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mag_anvuew	full_mix	instrument	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_male_female_146_sucial	full_mix	male	vocal.male	Male Vocals	Male_Vocals	native	true	male		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_male_female_146_sucial	full_mix	female	vocal.female	Female Vocals	Female_Vocals	native	false	male		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_male_female_267_sucial	full_mix	male	vocal.male	Male Vocals	Male_Vocals	native	true	male		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_male_female_267_sucial	full_mix	female	vocal.female	Female Vocals	Female_Vocals	native	false	male		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_accordion_mvsep	full_mix	accordion	instrument.accordion	Accordion	Accordion	native	true	accordion	accordion	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_accordion_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	accordion	accordion	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_acoustic-guitar_mvsep	full_mix	acoustic-guitar	instrument.acoustic_guitar	Acoustic Guitar	Acoustic_Guitar	native	true	acoustic-guitar	acoustic-guitar	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_acoustic-guitar_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	acoustic-guitar	acoustic-guitar	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_back-vocal_mvsep	full_mix	back-vocal	vocal.backing	Backing Vocals	Backing_Vocals	native	true	back-vocal	back-vocal	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_back-vocal_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	back-vocal	back-vocal	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_banjo_mvsep	full_mix	banjo	instrument.banjo	Banjo	Banjo	native	true	banjo	banjo	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_banjo_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	banjo	banjo	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_bass_mvsep	full_mix	bass	instrument.bass	Bass	Bass	native	true	bass	bass	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_bass_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	bass	bass	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_bassoon_mvsep	full_mix	bassoon	instrument.bassoon	Bassoon	Bassoon	native	true	bassoon	bassoon	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_bassoon_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	bassoon	bassoon	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_bells_mvsep	full_mix	bells	instrument.bells	Bells	Bells	native	true	bells	bells	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_bells_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	bells	bells	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_bowed_strings_mvsep	full_mix	bowed_strings	instrument.bowed_strings	Bowed Strings	Bowed_Strings	native	true	bowed_strings	bowed_strings	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_bowed_strings_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	bowed_strings	bowed_strings	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_brass_mvsep	full_mix	brass	instrument.brass	Brass	Brass	native	true	brass	brass	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_brass_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	brass	brass	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_cello_mvsep	full_mix	cello	instrument.cello	Cello	Cello	native	true	cello	cello	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_cello_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	cello	cello	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_clarinet_mvsep	full_mix	clarinet	instrument.clarinet	Clarinet	Clarinet	native	true	clarinet	clarinet	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_clarinet_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	clarinet	clarinet	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_congas_mvsep	full_mix	congas	instrument.congas	Congas	Congas	native	true	congas	congas	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_congas_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	congas	congas	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_digital-piano_mvsep	full_mix	digital-piano	instrument.digital_piano	Digital Piano	Digital_Piano	native	true	digital-piano	digital-piano	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_digital-piano_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	digital-piano	digital-piano	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_dobro_mvsep	full_mix	dobro	instrument.dobro	Dobro	Dobro	native	true	dobro	dobro	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_dobro_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	dobro	dobro	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_double-bass_mvsep	full_mix	double-bass	instrument.double_bass	Double Bass	Double_Bass	native	true	double-bass	double-bass	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_double-bass_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	double-bass	double-bass	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_drums_mvsep	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums	drums	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_drums_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	drums	drums	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_electric-guitar_mvsep	full_mix	electric-guitar	instrument.electric_guitar	Electric Guitar	Electric_Guitar	native	true	electric-guitar	electric-guitar	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_electric-guitar_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	electric-guitar	electric-guitar	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_flute_mvsep	full_mix	flute	instrument.flute	Flute	Flute	native	true	flute	flute	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_flute_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	flute	flute	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_french-horn_mvsep	full_mix	french-horn	instrument.french_horn	French Horn	French_Horn	native	true	french-horn	french-horn	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_french-horn_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	french-horn	french-horn	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	accordion	instrument.accordion	Accordion	Accordion	native	true	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	acoustic-guitar	instrument.acoustic_guitar	Acoustic Guitar	Acoustic_Guitar	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	back-vocal	vocal.backing	Backing Vocals	Backing_Vocals	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	banjo	instrument.banjo	Banjo	Banjo	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	bass	instrument.bass	Bass	Bass	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	bassoon	instrument.bassoon	Bassoon	Bassoon	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	bells	instrument.bells	Bells	Bells	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	bowed_strings	instrument.bowed_strings	Bowed Strings	Bowed_Strings	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	brass	instrument.brass	Brass	Brass	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	cello	instrument.cello	Cello	Cello	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	clarinet	instrument.clarinet	Clarinet	Clarinet	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	congas	instrument.congas	Congas	Congas	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	digital-piano	instrument.digital_piano	Digital Piano	Digital_Piano	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	dobro	instrument.dobro	Dobro	Dobro	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	double-bass	instrument.double_bass	Double Bass	Double_Bass	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	drums	instrument.drums	Drums	Drums	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	electric-guitar	instrument.electric_guitar	Electric Guitar	Electric_Guitar	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	flute	instrument.flute	Flute	Flute	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	french-horn	instrument.french_horn	French Horn	French_Horn	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	glockenspiel	instrument.glockenspiel	Glockenspiel	Glockenspiel	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	guitar	instrument.guitar	Guitar	Guitar	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	harmonica	instrument.harmonica	Harmonica	Harmonica	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	harp	instrument.harp	Harp	Harp	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	harpsichord	instrument.harpsichord	Harpsichord	Harpsichord	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	hh	instrument.hh	Hi-Hat	Hi_Hat	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	keys	instrument.keys	Keys	Keys	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	kick	instrument.kick	Kick	Kick	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	lead-vocal	vocal.lead	Lead Vocals	Lead_Vocals	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	mandolin	instrument.mandolin	Mandolin	Mandolin	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	marimba	instrument.marimba	Marimba	Marimba	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	oboe	instrument.oboe	Oboe	Oboe	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	organ	instrument.organ	Organ	Organ	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	percussion	instrument.percussion	Percussion	Percussion	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	piano	instrument.piano	Piano	Piano	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	saxophone	instrument.saxophone	Saxophone	Saxophone	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	sitar	instrument.sitar	Sitar	Sitar	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	snare	instrument.snare	Snare	Snare	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	strings	instrument.strings	Strings	Strings	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	synth	instrument.synth	Synth	Synth	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	tambourine	instrument.tambourine	Tambourine	Tambourine	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	timpani	instrument.timpani	Timpani	Timpani	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	toms	instrument.toms	Toms	Toms	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	triangle	instrument.triangle	Triangle	Triangle	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	trombone	instrument.trombone	Trombone	Trombone	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	trumpet	instrument.trumpet	Trumpet	Trumpet	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	tuba	instrument.tuba	Tuba	Tuba	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	ukulele	instrument.ukulele	Ukulele	Ukulele	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	viola	instrument.viola	Viola	Viola	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	violin	instrument.violin	Violin	Violin	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	vocal	vocal.vocals	Vocals	Vocals	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	wind	instrument.wind	Wind	Wind	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	wind-chimes	instrument.wind_chimes	Wind Chimes	Wind_Chimes	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_full_mvsep	full_mix	woodwind	instrument.woodwind	Woodwinds	Woodwinds	native	false	accordion		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_glockenspiel_mvsep	full_mix	glockenspiel	instrument.glockenspiel	Glockenspiel	Glockenspiel	native	true	glockenspiel	glockenspiel	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_glockenspiel_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	glockenspiel	glockenspiel	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_guitar_mvsep	full_mix	guitar	instrument.guitar	Guitar	Guitar	native	true	guitar	guitar	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_guitar_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	guitar	guitar	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_harmonica_mvsep	full_mix	harmonica	instrument.harmonica	Harmonica	Harmonica	native	true	harmonica	harmonica	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_harmonica_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	harmonica	harmonica	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_harp_mvsep	full_mix	harp	instrument.harp	Harp	Harp	native	true	harp	harp	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_harp_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	harp	harp	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_harpsichord_mvsep	full_mix	harpsichord	instrument.harpsichord	Harpsichord	Harpsichord	native	true	harpsichord	harpsichord	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_harpsichord_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	harpsichord	harpsichord	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_hh_mvsep	full_mix	hh	instrument.hh	Hi-Hat	Hi_Hat	native	true	hh	hh	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_hh_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	hh	hh	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_keys_mvsep	full_mix	keys	instrument.keys	Keys	Keys	native	true	keys	keys	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_keys_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	keys	keys	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_kick_mvsep	full_mix	kick	instrument.kick	Kick	Kick	native	true	kick	kick	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_kick_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	kick	kick	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_lead-vocal_mvsep	full_mix	lead-vocal	vocal.lead	Lead Vocals	Lead_Vocals	native	true	lead-vocal	lead-vocal	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_lead-vocal_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	lead-vocal	lead-vocal	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_mandolin_mvsep	full_mix	mandolin	instrument.mandolin	Mandolin	Mandolin	native	true	mandolin	mandolin	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_mandolin_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	mandolin	mandolin	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_marimba_mvsep	full_mix	marimba	instrument.marimba	Marimba	Marimba	native	true	marimba	marimba	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_marimba_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	marimba	marimba	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_oboe_mvsep	full_mix	oboe	instrument.oboe	Oboe	Oboe	native	true	oboe	oboe	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_oboe_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	oboe	oboe	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_organ_mvsep	full_mix	organ	instrument.organ	Organ	Organ	native	true	organ	organ	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_organ_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	organ	organ	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_percussion_mvsep	full_mix	percussion	instrument.percussion	Percussion	Percussion	native	true	percussion	percussion	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_percussion_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	percussion	percussion	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_piano_mvsep	full_mix	piano	instrument.piano	Piano	Piano	native	true	piano	piano	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_piano_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	piano	piano	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_saxophone_mvsep	full_mix	saxophone	instrument.saxophone	Saxophone	Saxophone	native	true	saxophone	saxophone	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_saxophone_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	saxophone	saxophone	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_sitar_mvsep	full_mix	sitar	instrument.sitar	Sitar	Sitar	native	true	sitar	sitar	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_sitar_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	sitar	sitar	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_snare_mvsep	full_mix	snare	instrument.snare	Snare	Snare	native	true	snare	snare	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_snare_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	snare	snare	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_strings_mvsep	full_mix	strings	instrument.strings	Strings	Strings	native	true	strings	strings	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_strings_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	strings	strings	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_synth_mvsep	full_mix	synth	instrument.synth	Synth	Synth	native	true	synth	synth	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_synth_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	synth	synth	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_tambourine_mvsep	full_mix	tambourine	instrument.tambourine	Tambourine	Tambourine	native	true	tambourine	tambourine	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_tambourine_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	tambourine	tambourine	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_timpani_mvsep	full_mix	timpani	instrument.timpani	Timpani	Timpani	native	true	timpani	timpani	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_timpani_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	timpani	timpani	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_toms_mvsep	full_mix	toms	instrument.toms	Toms	Toms	native	true	toms	toms	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_toms_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	toms	toms	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_triangle_mvsep	full_mix	triangle	instrument.triangle	Triangle	Triangle	native	true	triangle	triangle	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_triangle_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	triangle	triangle	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_trombone_mvsep	full_mix	trombone	instrument.trombone	Trombone	Trombone	native	true	trombone	trombone	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_trombone_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	trombone	trombone	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_trumpet_mvsep	full_mix	trumpet	instrument.trumpet	Trumpet	Trumpet	native	true	trumpet	trumpet	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_trumpet_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	trumpet	trumpet	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_tuba_mvsep	full_mix	tuba	instrument.tuba	Tuba	Tuba	native	true	tuba	tuba	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_tuba_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	tuba	tuba	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_ukulele_mvsep	full_mix	ukulele	instrument.ukulele	Ukulele	Ukulele	native	true	ukulele	ukulele	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_ukulele_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	ukulele	ukulele	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_viola_mvsep	full_mix	viola	instrument.viola	Viola	Viola	native	true	viola	viola	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_viola_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	viola	viola	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_violin_mvsep	full_mix	violin	instrument.violin	Violin	Violin	native	true	violin	violin	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_violin_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	violin	violin	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_vocal_mvsep	full_mix	vocal	vocal.vocals	Vocals	Vocals	native	true	vocal	vocal	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_vocal_mvsep	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocal	vocal	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_wind-chimes_mvsep	full_mix	wind-chimes	instrument.wind_chimes	Wind Chimes	Wind_Chimes	native	true	wind-chimes	wind-chimes	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_wind-chimes_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	wind-chimes	wind-chimes	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_wind_mvsep	full_mix	wind	instrument.wind	Wind	Wind	native	true	wind	wind	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_wind_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	wind	wind	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_woodwind_mvsep	full_mix	woodwind	instrument.woodwind	Woodwinds	Woodwinds	native	true	woodwind	woodwind	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mega_53stem_woodwind_mvsep	full_mix	other	residual.other	Residual	Residual	native	false	woodwind	woodwind	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mid_side1_gilliaaan	full_mix	center	spatial.center	Center	Center	native	true	center	center	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mid_side1_gilliaaan	full_mix	wide	spatial.side	Side	Side	native	false	center	center	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mid_side2_gilliaaan	full_mix	center	spatial.center	Center	Center	native	true	center	center	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_mid_side2_gilliaaan	full_mix	wide	spatial.side	Side	Side	native	false	center	center	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_neo_inst_beta	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_neo_inst_beta	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_orch2_xlancer	full_mix	orch	instrument.orch	Orchestra	Orchestra	native	true	orch	orch	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_orch2_xlancer	full_mix	other	residual.other	Residual	Residual	native	false	orch	orch	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_orch_xlancer	full_mix	orch	instrument.orch	Orchestra	Orchestra	native	true	orch	orch	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_orch_xlancer	full_mix	other	residual.other	Residual	Residual	native	false	orch	orch	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_other_viperx	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_other_viperx	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_perc2_xlancer	full_mix	percussion	instrument.percussion	Percussion	Percussion	native	true	percussion	percussion	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_perc2_xlancer	full_mix	other	residual.other	Residual	Residual	native	false	percussion	percussion	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_perc_xlancer	full_mix	percussion	instrument.percussion	Percussion	Percussion	native	true	percussion	percussion	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_perc_xlancer	full_mix	other	residual.other	Residual	Residual	native	false	percussion	percussion	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_4stem_09072026_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_4stem_09072026_aname	full_mix	other	residual.other	Residual	Residual	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_4stem_09072026_aname	full_mix	drums	instrument.drums	Drums	Drums	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_4stem_09072026_aname	full_mix	bass	instrument.bass	Bass	Bass	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_4stem_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_4stem_aname	full_mix	other	residual.other	Residual	Residual	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_4stem_aname	full_mix	drums	instrument.drums	Drums	Drums	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_4stem_aname	full_mix	bass	instrument.bass	Bass	Bass	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_instvoc_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_instvoc_aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_karaoke_974_lambda	full_mix	lead	vocal.lead	Lead Vocals	Lead_Vocals	native	true	lead	lead	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_karaoke_974_lambda	full_mix	back_instrum	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	lead	lead	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_karaoke_974_lambda	vocal_split	lead	vocal.lead	Lead Vocals	Lead_Vocals	native	true	lead	lead	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_karaoke_974_lambda	vocal_split	back_instrum	vocal.backing	Backing Vocals	Backing_Vocals	native	false	lead	lead	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_vocals_zfturbo	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_pope_vocals_zfturbo	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_resurrection2_quality_test_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_resurrection2_quality_test_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_resurrection_inst_gabox	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_resurrection_inst_gabox	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_resurrection_inst_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_resurrection_inst_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_resurrection_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_resurrection_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_revive1_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_revive1_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_revive2_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_revive2_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_revive3e_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_revive3e_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_roformer_inst_hyperacev2	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	instrument	instrument	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_roformer_inst_hyperacev2	full_mix	instrument	mix.instrumental	Instrumental	Instrumental	native	true	instrument	instrument	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_roformer_male_female_by_aufr33_sdr_7.2889	full_mix	male	vocal.male	Male Vocals	Male_Vocals	native	true	male		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_roformer_male_female_by_aufr33_sdr_7.2889	full_mix	female	vocal.female	Female Vocals	Female_Vocals	native	false	male		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_roformer_revive_by_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_roformer_revive_by_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_roformer_revive_v2_by_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_roformer_revive_v2_by_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_roformer_revive_v3_by_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_roformer_revive_v3_by_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_roformer_voc_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_roformer_voc_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_roformer_voc_hyperacev2	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_roformer_voc_hyperacev2	full_mix	instrument	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_siamese_vocals_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_siamese_vocals_unwa	full_mix	instrument	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_speech_alicen	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_speech_alicen	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_syn2_xlancer	full_mix	synth	instrument.synth	Synth	Synth	native	true	synth	synth	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_syn2_xlancer	full_mix	other	residual.other	Residual	Residual	native	false	synth	synth	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_syn_xlancer	full_mix	synth	instrument.synth	Synth	Synth	native	true	synth	synth	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_syn_xlancer	full_mix	other	residual.other	Residual	Residual	native	false	synth	synth	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_voc_hyperace2_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_voc_hyperace2_unwa	full_mix	instrument	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vocals1_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vocals1_aname	full_mix	instrument	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vocals2_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vocals2_aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vocals_1296_viperx	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vocals_1296_viperx	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vocals_1297_viperx	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vocals_1297_viperx	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vocals_anvuew	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vocals_anvuew	full_mix	instrument	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vocals_large1_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vocals_large1_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vocalsft1_anvuew	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vocalsft1_anvuew	full_mix	instrument	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_voctest_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_voctest_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vox_xlancer	full_mix	vox	vocal.vocals	Vocals	Vocals	native	true	vox	vox	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:bs_vox_xlancer	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vox	vox	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:checkpoint-multi_fixed	full_mix	Speech	cinematic.speech	Speech	Speech	native	true	Speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:checkpoint-multi_fixed	full_mix	Music	mix.music	Music	Music	native	false	Speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:checkpoint-multi_fixed	full_mix	Sfx	cinematic.sfx	SFX	SFX	native	false	Speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:denoise_mel_band_roformer_aufr33_aggr_sdr_27.9768	full_mix	dry	effect.reverb	Reverb	Reverb	native	true	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:denoise_mel_band_roformer_aufr33_aggr_sdr_27.9768	full_mix	other	residual.other	Residual	Residual	native	false	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:denoise_mel_band_roformer_aufr33_sdr_27.9959	full_mix	dry	effect.reverb	Reverb	Reverb	native	true	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:denoise_mel_band_roformer_aufr33_sdr_27.9959	full_mix	other	residual.other	Residual	Residual	native	false	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb-echo_mel_band_roformer_sdr_10.0169	full_mix	dry	effect.reverb	Reverb	Reverb	native	true	dry		special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb-echo_mel_band_roformer_sdr_10.0169	full_mix	No dry	effect.reverb.removed	Reverb Removed	Reverb_Removed	native	false	dry		special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb-echo_mel_band_roformer_sdr_13.4843_v2	full_mix	dry	effect.reverb	Reverb	Reverb	native	true	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb-echo_mel_band_roformer_sdr_13.4843_v2	full_mix	No dry	effect.reverb.removed	Reverb Removed	Reverb_Removed	native	false	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb_big_mbr_ep_362	full_mix	dry	effect.reverb	Reverb	Reverb	native	true	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb_big_mbr_ep_362	full_mix	other	residual.other	Residual	Residual	native	false	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb_echo_mbr_fused	full_mix	dry	effect.reverb	Reverb	Reverb	native	true	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb_echo_mbr_fused	full_mix	other	residual.other	Residual	Residual	native	false	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb_mel_band_roformer_anvuew_sdr_19.1729	full_mix	noreverb	effect.reverb	Reverb	Reverb	native	true	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb_mel_band_roformer_anvuew_sdr_19.1729	full_mix	reverb	effect.reverb.removed	Reverb Removed	Reverb_Removed	native	false	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb_mel_band_roformer_less_aggressive_anvuew_sdr_18.8050	full_mix	noreverb	effect.reverb	Reverb	Reverb	native	true	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb_mel_band_roformer_less_aggressive_anvuew_sdr_18.8050	full_mix	reverb	effect.reverb.removed	Reverb Removed	Reverb_Removed	native	false	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb_mel_band_roformer_mono_anvuew_sdr_20.4029	full_mix	noreverb	effect.reverb	Reverb	Reverb	native	true	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb_mel_band_roformer_mono_anvuew_sdr_20.4029	full_mix	reverb	effect.reverb.removed	Reverb Removed	Reverb_Removed	native	false	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb_super_big_mbr_ep_346	full_mix	dry	effect.reverb	Reverb	Reverb	native	true	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:dereverb_super_big_mbr_ep_346	full_mix	other	residual.other	Residual	Residual	native	false	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:deverb_bs_roformer_8_384dim_10depth	full_mix	noreverb	effect.reverb	Reverb	Reverb	native	true	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:deverb_bs_roformer_8_384dim_10depth	full_mix	reverb	effect.reverb.removed	Reverb Removed	Reverb_Removed	native	false	noreverb	noreverb	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_bleedless	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_bleedless	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_bleedless	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_bleedless	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_fullness	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_fullness	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_fullness	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_fullness	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_strong_fullness	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_strong_fullness	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_strong_fullness	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_strong_fullness	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_v1.2	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_v1.2	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_v1.2	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:huge_scnet_4stems_v1.2	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_4stemlarge1_aname	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_4stemlarge1_aname	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_4stemlarge1_aname	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_4stemlarge1_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_4stemlarge2_aname	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_4stemlarge2_aname	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_4stemlarge2_aname	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_4stemlarge2_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_4stemxl1_aname	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_4stemxl1_aname	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_4stemxl1_aname	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_4stemxl1_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_amb_jazzpear	full_mix	ambience	cinematic.ambience	Ambience	Ambience	native	true	ambience	ambience	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_amb_jazzpear	full_mix	other	residual.other	Residual	Residual	native	false	ambience	ambience	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bgm_jasper	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bgm_jasper	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta1_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta1_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta2_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta2_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta3_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta3_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta4_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta4_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta5e_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta5e_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta6_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta6_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta6x_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta6x_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta7_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigbeta7_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigsyhft1fast	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bigsyhft1fast	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bve_gonzaluigi	full_mix	Lead	residual.lead	Lead	Lead	native	true	Lead	Lead	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_bve_gonzaluigi	full_mix	Back	residual.back	Back	Back	native	false	Lead	Lead	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_debigreverb_sucial	full_mix	dry	effect.reverb	Reverb	Reverb	native	true	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_debigreverb_sucial	full_mix	other	residual.other	Residual	Residual	native	false	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_denoise_aggr_aufr33	full_mix	dry	effect.reverb	Reverb	Reverb	native	true	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_denoise_aggr_aufr33	full_mix	other	residual.other	Residual	Residual	native	false	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_denoise_children_phaedrus33	full_mix	speech	cinematic.speech	Speech	Speech	native	true	speech	speech	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_denoise_children_phaedrus33	full_mix	noise	effect.noise	Noise	Noise	native	false	speech	speech	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_denoise_debleed_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_denoise_debleed_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_denoise_yuluoye	full_mix	dry	effect.reverb	Reverb	Reverb	native	false	other	other	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_denoise_yuluoye	full_mix	other	residual.other	Residual	Residual	native	true	other	other	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_desuperbigreverb_sucial	full_mix	dry	effect.reverb	Reverb	Reverb	native	true	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_desuperbigreverb_sucial	full_mix	other	residual.other	Residual	Residual	native	false	dry	dry	special_fx	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_deux_becruily	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_deux_becruily	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_duet_drypaint	full_mix	singer_1	vocal.singer_1	Singer 1 Vocals	Singer_1_Vocals	native	true	singer_1		vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_duet_drypaint	full_mix	singer_2	vocal.singer_2	Singer 2 Vocals	Singer_2_Vocals	native	false	singer_1		vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_expl_jazzpear	full_mix	explosions	cinematic.explosions	Explosions	Explosions	native	true	explosions	explosions	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_expl_jazzpear	full_mix	other	residual.other	Residual	Residual	native	false	explosions	explosions	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_fight_jazzpear	full_mix	fighting	cinematic.fighting	Fighting	Fighting	native	true	fighting	fighting	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_fight_jazzpear	full_mix	other	residual.other	Residual	Residual	native	false	fighting	fighting	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_foot_jazzpear	full_mix	footsteps	cinematic.footsteps	Footsteps	Footsteps	native	true	footsteps	footsteps	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_foot_jazzpear	full_mix	other	residual.other	Residual	Residual	native	false	footsteps	footsteps	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_gen_jazzpear	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_gen_jazzpear	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_guitar_chencfd	full_mix	guitar	instrument.guitar	Guitar	Guitar	native	true	guitar	guitar	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_guitar_chencfd	full_mix	others	residual.others	Others	Others	native	false	guitar	guitar	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_hybrid_arch_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_hybrid_arch_aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst1+_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst1+_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst1_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst1_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst1e+_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst1e+_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst1e_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst1e_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst2_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst2_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst_1652_essid	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst_1652_essid	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst_1681_essid	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst_1681_essid	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst_becruily	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst_becruily	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst_metal_prev_meskvlla33	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst_metal_prev_meskvlla33	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst_rifforge_meskvlla33	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_inst_rifforge_meskvlla33	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instbv1_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instbv1_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instbv2_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instbv2_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instbv3_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instbv3_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instflowersv10_gabox	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instflowersv10_gabox	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv10_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv10_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv1_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv1_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv2_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv2_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv3_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv3_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv4_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv4_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv4n_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv4n_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv5_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv5_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv5n_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv5n_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv6_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv6_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv6n_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv6n_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv7+_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv7+_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv7_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv7_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv7n_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv7n_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv7z_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv7z_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv8_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv8_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv8b_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv8b_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv9_2_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv9_2_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv9_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfv9_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfvx_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instfvx_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instvoc_duality1_unwa	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instvoc_duality1_unwa	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instvoc_duality2_unwa	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_instvoc_duality2_unwa	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke1_gabox	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke1_gabox	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke1_gabox	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke1_gabox	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke25022025_gabox	full_mix	karaoke	vocal.lead	Lead Vocals	Lead_Vocals	native	true	karaoke	karaoke	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke25022025_gabox	full_mix	other	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	karaoke	karaoke	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke25022025_gabox	vocal_split	karaoke	vocal.lead	Lead Vocals	Lead_Vocals	native	true	karaoke	karaoke	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke25022025_gabox	vocal_split	other	vocal.backing	Backing Vocals	Backing_Vocals	native	false	karaoke	karaoke	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke28022025_gabox	full_mix	karaoke	vocal.lead	Lead Vocals	Lead_Vocals	native	true	karaoke	karaoke	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke28022025_gabox	full_mix	other	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	karaoke	karaoke	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke28022025_gabox	vocal_split	karaoke	vocal.lead	Lead Vocals	Lead_Vocals	native	true	karaoke	karaoke	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke28022025_gabox	vocal_split	other	vocal.backing	Backing Vocals	Backing_Vocals	native	false	karaoke	karaoke	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke2_gabox	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke2_gabox	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke2_gabox	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke2_gabox	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion2_aggr_gonzaluigi	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion2_aggr_gonzaluigi	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion2_aggr_gonzaluigi	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion2_aggr_gonzaluigi	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion_aggr_gonzaluigi	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion_aggr_gonzaluigi	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion_aggr_gonzaluigi	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion_aggr_gonzaluigi	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion_gonzaluigi	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion_gonzaluigi	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion_gonzaluigi	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion_gonzaluigi	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion_total_aggr_gonzaluigi	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion_total_aggr_gonzaluigi	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion_total_aggr_gonzaluigi	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_fusion_total_aggr_gonzaluigi	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_small_gabox_aufr33	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_small_gabox_aufr33	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_small_gabox_aufr33	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_karaoke_small_gabox_aufr33	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_kimft1_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_kimft1_aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_kimft1_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_kimft1_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_kimft2_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_kimft2_aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_kimft2f_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_kimft2f_aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_kimft3_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_kimft3_aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_kimft3_prev_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_kimft3_prev_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_lead_rhythm_guitar_listra92	full_mix	Lead	residual.lead	Lead	Lead	native	true	Lead	Lead	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_lead_rhythm_guitar_listra92	full_mix	Rhythm	instrument.rhythm	Rhythm Guitar	Rhythm_Guitar	native	false	Lead	Lead	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_leadvoc_dereverb_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_leadvoc_dereverb_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_mid_side_gilliaaan	full_mix	mid	spatial.center	Center	Center	native	true	mid		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_mid_side_gilliaaan	full_mix	side	spatial.side	Side	Side	native	false	mid		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_misc_jazzpear	full_mix	foley	cinematic.foley	Foley	Foley	native	true	foley	foley	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_misc_jazzpear	full_mix	other	residual.other	Residual	Residual	native	false	foley	foley	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_musicless_jasper	full_mix	nomusic	mix.music.removed	Music Removed	Music_Removed	native	true	nomusic	nomusic	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_musicless_jasper	full_mix	music	mix.music	Music	Music	native	false	nomusic	nomusic	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_neo_inst_vfx	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_neo_inst_vfx	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_percussion_yolkispaliks	full_mix	percussions	instrument.percussion	Percussion	Percussion	native	true	percussions	percussions	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_percussion_yolkispaliks	full_mix	other	residual.other	Residual	Residual	native	false	percussions	percussions	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_scratch_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_scratch_aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_small_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_small_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_speech_alicen	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_speech_alicen	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhft1	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhft1	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhft2	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhft2	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhft2.5	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhft2.5	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhft3	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhft3	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhftB1_1	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhftB1_1	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhftB1_2	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhftB1_2	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhftB1_3	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhftB1_3	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhftbeta1	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_syhftbeta1	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_toon_jazzpear	full_mix	anime	cinematic.anime	Anime	Anime	native	true	anime	anime	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_toon_jazzpear	full_mix	other	residual.other	Residual	Residual	native	false	anime	anime	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocals_viperx	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocals_viperx	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocals_zfturbo	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocals_zfturbo	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv1_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv1_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv2_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv2_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv3_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv3_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv4_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv4_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv5_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv5_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv6_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv6_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv7_beta1_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv7_beta1_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv7_beta2_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv7_beta2_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv7_beta3_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv7_beta3_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv7_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_vocalsfv7_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_xeno	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mbr_xeno	full_mix	instrum	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_4stem_kuielab	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_4stem_kuielab	full_mix	drums	instrument.drums	Drums	Drums	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_4stem_kuielab	full_mix	bass	instrument.bass	Bass	Bass	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_4stem_kuielab	full_mix	other	residual.other	Residual	Residual	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_4stem_small_kuielab	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_4stem_small_kuielab	full_mix	drums	instrument.drums	Drums	Drums	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_4stem_small_kuielab	full_mix	bass	instrument.bass	Bass	Bass	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_4stem_small_kuielab	full_mix	other	residual.other	Residual	Residual	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_4stem_zfturbo	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_4stem_zfturbo	full_mix	bass	instrument.bass	Bass	Bass	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_4stem_zfturbo	full_mix	drums	instrument.drums	Drums	Drums	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_4stem_zfturbo	full_mix	other	residual.other	Residual	Residual	native	false	vocals		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_drumsep_5stem_aufr33_jarredou	full_mix	kick	instrument.kick	Kick	Kick	native	true	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_drumsep_5stem_aufr33_jarredou	full_mix	snare	instrument.snare	Snare	Snare	native	false	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_drumsep_5stem_aufr33_jarredou	full_mix	toms	instrument.toms	Toms	Toms	native	false	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_drumsep_5stem_aufr33_jarredou	full_mix	hh	instrument.hh	Hi-Hat	Hi_Hat	native	false	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_drumsep_5stem_aufr33_jarredou	full_mix	cymbals	instrument.cymbals	Cymbals	Cymbals	native	false	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_drumsep_6stem_aufr33_jarredou	full_mix	kick	instrument.kick	Kick	Kick	native	true	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_drumsep_6stem_aufr33_jarredou	full_mix	snare	instrument.snare	Snare	Snare	native	false	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_drumsep_6stem_aufr33_jarredou	full_mix	toms	instrument.toms	Toms	Toms	native	false	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_drumsep_6stem_aufr33_jarredou	full_mix	hh	instrument.hh	Hi-Hat	Hi_Hat	native	false	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_drumsep_6stem_aufr33_jarredou	full_mix	ride	instrument.ride	Ride	Ride	native	false	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_drumsep_6stem_aufr33_jarredou	full_mix	crash	instrument.crash	Crash	Crash	native	false	kick		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_instvoc_hq1	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_instvoc_hq1	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_instvoc_hq2	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_instvoc_hq2	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_instvoc_zfturbo	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_instvoc_zfturbo	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals		dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_mid_side2e_gilliaaan	full_mix	center	spatial.center	Center	Center	native	true	center		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_mid_side2e_gilliaaan	full_mix	wide	spatial.side	Side	Side	native	false	center		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_mid_side_gilliaaan	full_mix	center	spatial.center	Center	Center	native	false	wide	wide	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_mid_side_gilliaaan	full_mix	wide	spatial.side	Side	Side	native	true	wide	wide	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_mid_side_wesleyr36	full_mix	similarity	spatial.center	Center	Center	native	true	similarity	similarity	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_mid_side_wesleyr36	full_mix	difference	spatial.side	Side	Side	native	false	similarity	similarity	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_orch_verosment	full_mix	inst	mix.instrumental	Instrumental	Instrumental	native	false	orch	orch	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_orch_verosment	full_mix	orch	instrument.orch	Orchestra	Orchestra	native	true	orch	orch	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_sfx_jasper	full_mix	foreground	cinematic.foreground_sfx	Foreground SFX	Foreground_SFX	native	true	foreground		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_sfx_jasper	full_mix	background	cinematic.background_sfx	Background SFX	Background_SFX	native	false	foreground		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_sfxsplitter_jasper	full_mix	foreground	cinematic.foreground_sfx	Foreground SFX	Foreground_SFX	native	true	foreground		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_sfxsplitter_jasper	full_mix	background	cinematic.background_sfx	Background SFX	Background_SFX	native	false	foreground		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_vocals_kuielab	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mdx23c_vocals_kuielab	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_bleed_suppressor_v1	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_bleed_suppressor_v1	full_mix	Bleed	mix.bleed	Bleed	Bleed	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_crowd_aufr33_viperx_sdr_8.7144	full_mix	crowd	cinematic.crowd	Crowd	Crowd	native	true	crowd	crowd	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_crowd_aufr33_viperx_sdr_8.7144	full_mix	other	residual.other	Residual	Residual	native	false	crowd	crowd	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_bleedless_v1_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_bleedless_v1_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_bleedless_v2_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_bleedless_v2_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_denoise_debleed_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_denoise_debleed_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v1_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v1_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v2_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v2_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v3_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v3_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v4_noise_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v4_noise_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v5_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v5_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v5_noise_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v5_noise_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v6_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v6_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v6_noise_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v6_noise_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v7_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v7_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v7_noise_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v7_noise_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v8_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_v8_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_vX_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_fullness_vX_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_v1_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_v1_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_v2_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_v2_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_v3_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_inst_v3_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_instrumental_becruily	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_instrumental_becruily	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_instrumental_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_instrumental_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	Instrumental	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_karaoke_gabox	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_karaoke_gabox	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_karaoke_gabox	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_karaoke_gabox	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_kim_ft2_bleedless_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_kim_ft2_bleedless_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_kim_ft2_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_kim_ft2_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_kim_ft_unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_kim_ft_unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_voc_fullness_v1_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_voc_fullness_v1_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_voc_fullness_v2_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_voc_fullness_v2_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_voc_fullness_v3_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_voc_fullness_v3_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_voc_fullness_v4_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_voc_fullness_v4_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_voc_fullness_v5_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_voc_fullness_v5_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_voc_fullness_v6_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_voc_fullness_v6_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_voc_gabox	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_voc_gabox	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	Vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_vocals_becruily	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_vocals_becruily	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_vocals_fullness_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:mel_band_roformer_vocals_fullness_aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_big_beta4	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_big_beta4	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_big_beta5e	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_big_beta5e	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_big_beta6	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_big_beta6	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_big_beta6x	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_big_beta6x	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_guitar_becruily	full_mix	Guitar	instrument.guitar	Guitar	Guitar	native	true	Guitar	Guitar	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_guitar_becruily	full_mix	Other	residual.other	Residual	Residual	native	false	Guitar	Guitar	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_inst_metal_prev_by_mesk	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_inst_metal_prev_by_mesk	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_inst_v1e	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_inst_v1e	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_inst_v1e_plus	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_inst_v1e_plus	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_karaoke_becruily	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals		karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_karaoke_becruily	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals		karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_karaoke_becruily	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals		karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_karaoke_becruily	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals		karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_kim_vocals_fullness_v1_by_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_kim_vocals_fullness_v1_by_aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_kim_vocals_fullness_v2_by_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_kim_vocals_fullness_v2_by_aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_kim_vocals_v1_by_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_kim_vocals_v1_by_aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_kim_vocals_v2_by_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_kim_vocals_v2_by_aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_kim_vocals_v3_by_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_kim_vocals_v3_by_aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_small_by_aname	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:melband_roformer_small_by_aname	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_FNO_by-Unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_FNO_by-Unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_Karaoke_Frazer_by-becruily	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_Karaoke_Frazer_by-becruily	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_Karaoke_Frazer_by-becruily	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_Karaoke_Frazer_by-becruily	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_Resurrection_Instrumental_by-Unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_Resurrection_Instrumental_by-Unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	true	other	other	instrumental	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_Resurrection_Vocals_by-Unwa	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_SW_by-jarredou	full_mix	bass	instrument.bass	Bass	Bass	native	true	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_SW_by-jarredou	full_mix	drums	instrument.drums	Drums	Drums	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_SW_by-jarredou	full_mix	other	residual.other	Residual	Residual	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_SW_by-jarredou	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_SW_by-jarredou	full_mix	guitar	instrument.guitar	Guitar	Guitar	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_BandSplit-Roformer_SW_by-jarredou	full_mix	piano	instrument.piano	Piano	Piano	native	false	bass		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_BVE_by-Gonza	full_mix	Lead	residual.lead	Lead	Lead	native	true	Lead	Lead	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_BVE_by-Gonza	full_mix	Back	residual.back	Back	Back	native	false	Lead	Lead	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Duality_v1_by-Aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	vocals	vocals	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Duality_v1_by-Aname	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	vocals	vocals	dual_voc_inst	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Aggressive_by-Gonza	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Aggressive_by-Gonza	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Aggressive_by-Gonza	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Aggressive_by-Gonza	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Aggressive_v2_by-Gonza	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Aggressive_v2_by-Gonza	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Aggressive_v2_by-Gonza	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Aggressive_v2_by-Gonza	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Standard_by-Gonza	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Standard_by-Gonza	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Standard_by-Gonza	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Standard_by-Gonza	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Total_by-Gonza	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Total_by-Gonza	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Total_by-Gonza	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_Fusion_Total_by-Gonza	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_by-Gabox	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_by-Gabox	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_by-Gabox	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_MelBand-Roformer_Karaoke_by-Gabox	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Vocals	Vocals	karaoke	reviewed	reviewed checked-in catalogue metadata
+mdx:model_bandit_plus_dnr_sdr_11.47	full_mix	Speech	cinematic.speech	Speech	Speech	native	true	Speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_bandit_plus_dnr_sdr_11.47	full_mix	Music	mix.music	Music	Music	native	false	Speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_bandit_plus_dnr_sdr_11.47	full_mix	Effects	effect.reverb	Reverb	Reverb	native	false	Speech		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_chorus_bs_roformer_ep_267_sdr_24.1275	full_mix	male	vocal.male	Male Vocals	Male_Vocals	native	true	male		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_chorus_bs_roformer_ep_267_sdr_24.1275	full_mix	female	vocal.female	Female Vocals	Female_Vocals	native	false	male		specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_mdx23c_ep_271_l1_freq_72.2383	full_mix	Similarity	spatial.center	Center	Center	native	true	Similarity	Similarity	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_mdx23c_ep_271_l1_freq_72.2383	full_mix	Difference	spatial.side	Side	Side	native	false	Similarity	Similarity	specialty_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_scnet_ep_54_sdr_9.8051	full_mix	Drums	instrument.drums	Drums	Drums	native	true	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_scnet_ep_54_sdr_9.8051	full_mix	Bass	instrument.bass	Bass	Bass	native	false	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_scnet_ep_54_sdr_9.8051	full_mix	Other	residual.other	Residual	Residual	native	false	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_scnet_ep_54_sdr_9.8051	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_scnet_sdr_9.3244	full_mix	Drums	instrument.drums	Drums	Drums	native	true	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_scnet_sdr_9.3244	full_mix	Bass	instrument.bass	Bass	Bass	native	false	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_scnet_sdr_9.3244	full_mix	Other	residual.other	Residual	Residual	native	false	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:model_scnet_sdr_9.3244	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_4stem_zfturbo	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_4stem_zfturbo	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_4stem_zfturbo	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_4stem_zfturbo	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_checkpoint_musdb18	full_mix	Drums	instrument.drums	Drums	Drums	native	true	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_checkpoint_musdb18	full_mix	Bass	instrument.bass	Bass	Bass	native	false	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_checkpoint_musdb18	full_mix	Other	residual.other	Residual	Residual	native	false	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_checkpoint_musdb18	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_choirsep_exp	full_mix	alto	vocal.alto	Alto Vocals	Alto_Vocals	native	true	alto		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_choirsep_exp	full_mix	bass	instrument.bass	Bass	Bass	native	false	alto		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_choirsep_exp	full_mix	soprano	vocal.soprano	Soprano Vocals	Soprano_Vocals	native	false	alto		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_choirsep_exp	full_mix	tenor	vocal.tenor	Tenor Vocals	Tenor_Vocals	native	false	alto		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_huge_4stem_aname	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_huge_4stem_aname	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_huge_4stem_aname	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_huge_4stem_aname	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_jazz_4stem_jorisvaneyghen	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_jazz_4stem_jorisvaneyghen	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_jazz_4stem_jorisvaneyghen	full_mix	piano	instrument.piano	Piano	Piano	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_jazz_4stem_jorisvaneyghen	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_masked_choirsep_exp	full_mix	soprano	vocal.soprano	Soprano Vocals	Soprano_Vocals	native	true	soprano		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_masked_choirsep_exp	full_mix	alto	vocal.alto	Alto Vocals	Alto_Vocals	native	false	soprano		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_masked_choirsep_exp	full_mix	tenor	vocal.tenor	Tenor Vocals	Tenor_Vocals	native	false	soprano		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_masked_choirsep_exp	full_mix	bass	instrument.bass	Bass	Bass	native	false	soprano		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_masked_small_4stem_zftrubo	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_masked_small_4stem_zftrubo	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_masked_small_4stem_zftrubo	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_masked_small_4stem_zftrubo	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_masked_xl_ihf_4stem_zftrubo	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_masked_xl_ihf_4stem_zftrubo	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_masked_xl_ihf_4stem_zftrubo	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_masked_xl_ihf_4stem_zftrubo	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_mid_side2_gilliaaan	full_mix	center	spatial.center	Center	Center	native	true	center		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_mid_side2_gilliaaan	full_mix	wide	spatial.side	Side	Side	native	false	center		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_surround_jasper	full_mix	LRF	cinematic.front_lr	Front L/R	Front_L_R	native	true	LRF		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_surround_jasper	full_mix	LFE	cinematic.lfe	LFE	LFE	native	false	LRF		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_surround_jasper	full_mix	LRS	cinematic.surround_lr	Surround L/R	Surround_L_R	native	false	LRF		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_surround_jasper	full_mix	CEN	spatial.center	Center	Center	native	false	LRF		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_tran_4stem_zftrubo	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_tran_4stem_zftrubo	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_tran_4stem_zftrubo	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_tran_4stem_zftrubo	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_4stem_starrytong	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_4stem_starrytong	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_4stem_starrytong	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_4stem_starrytong	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_4stem_zftrubo	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_4stem_zftrubo	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_4stem_zftrubo	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_4stem_zftrubo	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_ihf_4stem_zfturbo	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_ihf_4stem_zfturbo	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_ihf_4stem_zfturbo	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_ihf_4stem_zfturbo	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_jazz_4stem_jorisvaneyghen	full_mix	drums	instrument.drums	Drums	Drums	native	true	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_jazz_4stem_jorisvaneyghen	full_mix	bass	instrument.bass	Bass	Bass	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_jazz_4stem_jorisvaneyghen	full_mix	piano	instrument.piano	Piano	Piano	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:scnet_xl_jazz_4stem_jorisvaneyghen	full_mix	other	residual.other	Residual	Residual	native	false	drums		multi_stem	reviewed	reviewed checked-in catalogue metadata
+mdx:vocals_mel_band_roformer	full_mix	vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+mdx:vocals_mel_band_roformer	full_mix	other	mix.instrumental	Instrumental	Instrumental	native	false	Vocals	vocals	vocals	reviewed	reviewed checked-in catalogue metadata
+vr:10_SP-UVR-2B-32000-1	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:10_SP-UVR-2B-32000-1	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:11_SP-UVR-2B-32000-2	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:11_SP-UVR-2B-32000-2	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:12_SP-UVR-3B-44100	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:12_SP-UVR-3B-44100	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:13_SP-UVR-4B-44100-1	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:13_SP-UVR-4B-44100-1	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:14_SP-UVR-4B-44100-2	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:14_SP-UVR-4B-44100-2	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:15_SP-UVR-MID-44100-1	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:15_SP-UVR-MID-44100-1	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:16_SP-UVR-MID-44100-2	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:16_SP-UVR-MID-44100-2	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:17_HP-Wind_Inst-UVR	full_mix	No Woodwinds	instrument.woodwind.removed	Woodwinds Removed	Woodwinds_Removed	native	true	no woodwinds		special_fx	reviewed	reviewed checked-in catalogue metadata
+vr:17_HP-Wind_Inst-UVR	full_mix	Woodwinds	instrument.woodwind	Woodwinds	Woodwinds	native	false	no woodwinds		special_fx	reviewed	reviewed checked-in catalogue metadata
+vr:1_HP-UVR	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:1_HP-UVR	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:2_HP-UVR	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:2_HP-UVR	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:3_HP-Vocal-UVR	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals		vocals	reviewed	reviewed checked-in catalogue metadata
+vr:3_HP-Vocal-UVR	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals		vocals	reviewed	reviewed checked-in catalogue metadata
+vr:4_HP-Vocal-UVR	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	false	Vocals		vocals	reviewed	reviewed checked-in catalogue metadata
+vr:4_HP-Vocal-UVR	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	true	Vocals		vocals	reviewed	reviewed checked-in catalogue metadata
+vr:5_HP-Karaoke-UVR	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Instrumental		karaoke	reviewed	reviewed checked-in catalogue metadata
+vr:5_HP-Karaoke-UVR	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Instrumental		karaoke	reviewed	reviewed checked-in catalogue metadata
+vr:5_HP-Karaoke-UVR	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Instrumental		karaoke	reviewed	reviewed checked-in catalogue metadata
+vr:5_HP-Karaoke-UVR	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Instrumental		karaoke	reviewed	reviewed checked-in catalogue metadata
+vr:6_HP-Karaoke-UVR	full_mix	Instrumental	mix.instrumental_with_backing_vocals	Instrumental with Backing Vocals	Instrumental_with_Backing_Vocals	native	false	Instrumental		karaoke	reviewed	reviewed checked-in catalogue metadata
+vr:6_HP-Karaoke-UVR	full_mix	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Instrumental		karaoke	reviewed	reviewed checked-in catalogue metadata
+vr:6_HP-Karaoke-UVR	vocal_split	Instrumental	vocal.backing	Backing Vocals	Backing_Vocals	native	false	Instrumental		karaoke	reviewed	reviewed checked-in catalogue metadata
+vr:6_HP-Karaoke-UVR	vocal_split	Vocals	vocal.lead	Lead Vocals	Lead_Vocals	native	true	Instrumental		karaoke	reviewed	reviewed checked-in catalogue metadata
+vr:7_HP2-UVR	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:7_HP2-UVR	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:8_HP2-UVR	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:8_HP2-UVR	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:9_HP2-UVR	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:9_HP2-UVR	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:MGM_HIGHEND_v4	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:MGM_HIGHEND_v4	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:MGM_LOWEND_A_v4	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:MGM_LOWEND_A_v4	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:MGM_LOWEND_B_v4	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:MGM_LOWEND_B_v4	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:MGM_MAIN_v4	full_mix	Instrumental	mix.instrumental	Instrumental	Instrumental	native	true	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:MGM_MAIN_v4	full_mix	Vocals	vocal.vocals	Vocals	Vocals	native	false	Instrumental		instrumental	reviewed	reviewed checked-in catalogue metadata
+vr:UVR-De-Echo-Aggressive	full_mix	Echo	effect.echo	Echo	Echo	native	false	no echo		special_fx	reviewed	reviewed checked-in catalogue metadata
+vr:UVR-De-Echo-Aggressive	full_mix	No Echo	effect.echo.removed	Echo Removed	Echo_Removed	native	true	no echo		special_fx	reviewed	reviewed checked-in catalogue metadata
+vr:UVR-De-Echo-Normal	full_mix	Echo	effect.echo	Echo	Echo	native	false	no echo		special_fx	reviewed	reviewed checked-in catalogue metadata
+vr:UVR-De-Echo-Normal	full_mix	No Echo	effect.echo.removed	Echo Removed	Echo_Removed	native	true	no echo		special_fx	reviewed	reviewed checked-in catalogue metadata
+vr:UVR-De-Reverb-aufr33-jarredou	full_mix	Dry	effect.reverb	Reverb	Reverb	native	true	dry		special_fx	reviewed	reviewed checked-in catalogue metadata
+vr:UVR-De-Reverb-aufr33-jarredou	full_mix	No Dry	effect.reverb.removed	Reverb Removed	Reverb_Removed	native	false	dry		special_fx	reviewed	reviewed checked-in catalogue metadata
+vr:UVR-DeEcho-DeReverb	full_mix	No Reverb	effect.reverb.removed	Reverb Removed	Reverb_Removed	native	true	no reverb		special_fx	reviewed	reviewed checked-in catalogue metadata
+vr:UVR-DeEcho-DeReverb	full_mix	Reverb	effect.reverb	Reverb	Reverb	native	false	no reverb		special_fx	reviewed	reviewed checked-in catalogue metadata
+vr:UVR-DeNoise	full_mix	No Noise	effect.noise.removed	Noise Removed	Noise_Removed	native	false	noise		special_fx	reviewed	reviewed checked-in catalogue metadata
+vr:UVR-DeNoise	full_mix	Noise	effect.noise	Noise	Noise	native	true	noise		special_fx	reviewed	reviewed checked-in catalogue metadata
+vr:UVR-DeNoise-Lite	full_mix	No Noise	effect.noise.removed	Noise Removed	Noise_Removed	native	false	noise		special_fx	reviewed	reviewed checked-in catalogue metadata
+vr:UVR-DeNoise-Lite	full_mix	Noise	effect.noise	Noise	Noise	native	true	noise		special_fx	reviewed	reviewed checked-in catalogue metadata

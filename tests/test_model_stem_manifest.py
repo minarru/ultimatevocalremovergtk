@@ -129,6 +129,13 @@ class StemRoleValueTests(unittest.TestCase):
 
 
 class ManifestValidationTests(unittest.TestCase):
+    def test_bundled_catalogue_covers_every_current_exact_identity(self) -> None:
+        """The checked-in review is exhaustive, never inferred at runtime."""
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+
+        self.assertEqual(len(registry.models) + len(registry.waivers), 484)
+        self.assertFalse(set(registry.models) & set(registry.waivers))
+
     def test_accepts_all_supported_canonical_model_families(self) -> None:
         for model_id in ("vr:fixture", "mdx:fixture", "demucs:fixture", "apollo:fixture"):
             with self.subTest(model_id=model_id):
@@ -169,10 +176,10 @@ class ManifestValidationTests(unittest.TestCase):
                     load_stem_manifest_document(document)
                 self.assertEqual(raised.exception.path, ("waivers", model_id))
 
-    def test_seed_manifest_loads_core_roles_pairs_and_an_empty_model_catalogue(self) -> None:
+    def test_bundled_manifest_loads_core_roles_pairs_and_reviewed_catalogue(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
 
-        self.assertEqual(registry.models, {})
+        self.assertEqual(len(registry.models) + len(registry.waivers), 484)
         self.assertIn(StemRoleId("vocal.vocals"), registry.roles)
         self.assertEqual(
             registry.pairs["pair.center_side"].roles,

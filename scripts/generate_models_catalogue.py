@@ -6,6 +6,8 @@ mvsepless, plus Apollo). This script audits stem metadata against catalogue
 naming intent so mislabeled vocal vs instrumental models can be spotted.
 """
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import argparse
@@ -20,13 +22,16 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from catalogue import collect  # noqa: E402
-from catalogue import render  # noqa: E402
+from catalogue import (
+    collect,
+    render,
+)  # noqa: E402
 from catalogue.collect import (  # noqa: E402
     DISPLAY_REFERENCE_TSV_PATH,
-    FetchPolicy,
     OUTPUT_PATH,
     REFERENCE_TSV_PATH,
+    STEM_SEMANTICS_REFERENCE_TSV_PATH,
+    FetchPolicy,
     _document_digest,
     _ir_path_for,
     _unsupported_count,
@@ -116,6 +121,15 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
             f"Also write {os.path.basename(DISPLAY_REFERENCE_TSV_PATH)} with "
             "the complete current display projection and mechanical quality "
             "flags. Off by default; --check then compares it too."
+        ),
+    )
+    parser.add_argument(
+        "--write-stem-semantics-reference",
+        action="store_true",
+        help=(
+            f"Also write {os.path.basename(STEM_SEMANTICS_REFERENCE_TSV_PATH)} "
+            "from the local reviewed semantic manifest. Under --check it is "
+            "rendered in memory and compared without writes."
         ),
     )
     mode = parser.add_mutually_exclusive_group()
@@ -302,6 +316,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.write_display_reference:
         display_reference = render.presentation_reference_audit(entries)
         display_reference_text = display_reference.text
+    stem_semantics_reference_text = ""
+    if args.write_stem_semantics_reference:
+        stem_semantics_reference_text = render.stem_semantics_reference_tsv(entries)
 
     if args.check:
         drift = []
@@ -313,6 +330,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             DISPLAY_REFERENCE_TSV_PATH, display_reference_text
         ):
             drift.append(DISPLAY_REFERENCE_TSV_PATH)
+        if stem_semantics_reference_text and not render._text_matches(
+            STEM_SEMANTICS_REFERENCE_TSV_PATH, stem_semantics_reference_text
+        ):
+            drift.append(STEM_SEMANTICS_REFERENCE_TSV_PATH)
         if display_reference is not None:
             for model_id, flags in display_reference.unreviewed:
                 print(
@@ -333,6 +354,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 regenerate += " --write-tsv"
             if DISPLAY_REFERENCE_TSV_PATH in drift:
                 regenerate += " --write-display-reference"
+            if STEM_SEMANTICS_REFERENCE_TSV_PATH in drift:
+                regenerate += " --write-stem-semantics-reference"
             print(f"Regenerate with: {regenerate}", file=sys.stderr)
         if drift or (
             display_reference is not None
@@ -372,6 +395,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if display_reference_text:
         write_text_atomic(DISPLAY_REFERENCE_TSV_PATH, display_reference_text)
         print(f"Wrote {DISPLAY_REFERENCE_TSV_PATH}")
+    if stem_semantics_reference_text:
+        write_text_atomic(STEM_SEMANTICS_REFERENCE_TSV_PATH, stem_semantics_reference_text)
+        print(f"Wrote {STEM_SEMANTICS_REFERENCE_TSV_PATH}")
     return 0
 
 

@@ -51,6 +51,31 @@ class RenderTableTests(unittest.TestCase):
         self.assertIn("config unreadable", table)
 
 
+class CatalogueEvidenceCountTests(unittest.TestCase):
+    def test_exact_member_community_tokens_extend_only_the_audit_vocabulary(self) -> None:
+        from types import SimpleNamespace
+
+        entries = [
+            SimpleNamespace(
+                weight_file="present.ckpt",
+                instruments=["vocals"],
+                primary_stem="Vocals",
+                target_instrument="other",
+            )
+        ]
+        refs = {
+            "present.ckpt": SimpleNamespace(stems_text="Vocals*, bleed, echo"),
+            "missing.ckpt": SimpleNamespace(stems_text="invented-token"),
+        }
+
+        counts = stem_semantics_audit.catalogue_evidence_counts(entries, refs)
+
+        self.assertEqual(counts.literal_names, 9)
+        self.assertEqual(counts.normalized_names, 8)
+        self.assertEqual(counts.primary_names, 1)
+        self.assertEqual(counts.community_tokens, ("bleed", "echo", "Vocals"))
+
+
 class IterEntriesProgressTests(unittest.TestCase):
     def test_reports_each_target_to_stderr(self) -> None:
         from types import SimpleNamespace

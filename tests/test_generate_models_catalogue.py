@@ -1353,6 +1353,13 @@ class DisplayReferenceCliTests(unittest.TestCase):
         )
         self.assertFalse(cli._parse_args([]).write_display_reference)
 
+    def test_stem_semantics_reference_flag_is_opt_in(self) -> None:
+        self.assertTrue(
+            cli._parse_args(["--write-stem-semantics-reference"])
+            .write_stem_semantics_reference
+        )
+        self.assertFalse(cli._parse_args([]).write_stem_semantics_reference)
+
 
 class CheckModeTests(unittest.TestCase):
     """--check reports drift without touching the tree."""

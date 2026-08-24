@@ -270,6 +270,55 @@ def presentation_reference_tsv(entries: List[ModelEntry]) -> str:
     return presentation_reference_audit(entries).text
 
 
+def stem_semantics_reference_tsv(entries: List[ModelEntry]) -> str:
+    """Render reviewed runtime semantics; guessed catalogue intent is evidence only."""
+    from core.model_stem_manifest import (
+        BUNDLED_MANIFEST_PATH,
+        load_stem_manifest,
+        resolve_model_stem_semantics,
+    )
+    from core.stem_roles import StemProcessingContext, StemRoleId
+
+    registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+    lines = [
+        "model_id\tcontext\tnative\trole\tdisplay\tfilename_tag\tproduction\t"
+        "logical_primary\tbackend_primary\tbackend_target\tguessed_intent\t"
+        "review_status\tevidence\twarning"
+    ]
+    for entry in sorted(entries, key=_canonical_model_id):
+        model_id = _canonical_model_id(entry)
+        contexts = [StemProcessingContext.FULL_MIX]
+        declaration = registry.models.get(model_id)
+        if declaration is not None and StemProcessingContext.VOCAL_SPLIT in declaration.contexts:
+            contexts.append(StemProcessingContext.VOCAL_SPLIT)
+        for context in contexts:
+            semantics = resolve_model_stem_semantics(
+                model_id,
+                native_stems=entry.instruments,
+                backend_primary=entry.primary_stem,
+                backend_target=entry.target_instrument,
+                context=context,
+                registry=registry,
+            )
+            for output in semantics.outputs:
+                role = output.role.value if isinstance(output.role, StemRoleId) else output.role.tag
+                definition = registry.roles.get(output.role) if isinstance(output.role, StemRoleId) else None
+                lines.append(
+                    "\t".join(
+                        _tsv_cell(value)
+                        for value in (
+                            model_id, context.value, output.native.raw if output.native else "", role,
+                            definition.display if definition else output.native.raw if output.native else role,
+                            definition.filename_tag if definition else output.native.raw if output.native else role,
+                            output.production.value, str(output.logical_primary).lower(),
+                            entry.primary_stem, entry.target_instrument, entry.name_intent,
+                            semantics.status.value, semantics.evidence, semantics.warning,
+                        )
+                    ).rstrip()
+                )
+    return "\n".join(lines) + "\n"
+
+
 def render_summary_report(
     entries: List[ModelEntry], *, unsupported_count: int = 0, report: Any = None
 ) -> str:

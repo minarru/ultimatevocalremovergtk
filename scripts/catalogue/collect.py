@@ -27,11 +27,11 @@ from core import paths  # noqa: E402
 from core.access_policy import AccessPolicy, access_policy  # noqa: E402
 from core.catalogue_coordinator import CatalogueCoordinator, flatten_upstream_lists  # noqa: E402
 from core.catalogue_types import (  # noqa: E402
-    RefreshMode,
-    SourceId,
     UPSTREAM_DEMUCS_KEYS,
     UPSTREAM_MDX_KEYS,
     UPSTREAM_VR_KEYS,
+    RefreshMode,
+    SourceId,
 )
 from core.extra_catalog import APOLLO_LIST_KEY  # noqa: E402
 from core.mdx_c_registry import compute_checkpoint_hash, infer_mdx_c_architecture  # noqa: E402
@@ -54,17 +54,20 @@ from core.model_stem_semantics import (  # noqa: E402
     intent_from_primary_stem,
     is_dual_stem_weight,
     is_special_fx_stem,
-    is_specialty_instrument_pair,
     is_vocal_target,
     normalize_stem_label,
     resolve_is_karaoke,
     special_fx_ui_note,
     specialty_ui_note,
 )
+
 OUTPUT_PATH = os.path.join(ROOT, "docs", "models-catalogue.md")
 REFERENCE_TSV_PATH = os.path.join(ROOT, "docs", "model_intent_reference.tsv")
 DISPLAY_REFERENCE_TSV_PATH = os.path.join(
     ROOT, "docs", "model_display_reference.tsv"
+)
+STEM_SEMANTICS_REFERENCE_TSV_PATH = os.path.join(
+    ROOT, "docs", "model_stem_semantics_reference.tsv"
 )
 
 #: Ephemeral supplements live under CACHE_DIR, not in the documentation tree:

@@ -61,6 +61,58 @@ class HashLookup:
     error: str = ""
 
 
+@dataclass(frozen=True)
+class CatalogueEvidenceCounts:
+    """Provenanced vocabulary measurements; never semantic declarations."""
+
+    literal_names: int
+    normalized_names: int
+    primary_names: int
+    community_tokens: tuple[str, ...]
+
+
+_COMPLEMENT_ONLY_NAMES = frozenset({"drum-bass", "no bass", "no drums", "no other"})
+
+
+def _community_stem_tokens(stems_text: str) -> tuple[str, ...]:
+    """Parse only literal output labels from the community evidence column."""
+    tokens = []
+    for raw in stems_text.split(","):
+        token = raw.replace("*", "").strip()
+        token = token.split("(", 1)[0].strip()
+        if token and token.casefold() != "unknown":
+            tokens.append(token)
+    return tuple(tokens)
+
+
+def catalogue_evidence_counts(entries: Any, community_by_file: Dict[str, Any]) -> CatalogueEvidenceCounts:
+    """Count the approved evidence universe without changing runtime semantics."""
+    current_files = {str(entry.weight_file).casefold() for entry in entries}
+    literals = set(_COMPLEMENT_ONLY_NAMES)
+    primary = set()
+    community_tokens = set()
+    for entry in entries:
+        literals.update(str(stem) for stem in entry.instruments if str(stem))
+        if entry.primary_stem:
+            value = str(entry.primary_stem)
+            literals.add(value)
+            primary.add(value.casefold())
+        if entry.target_instrument:
+            literals.add(str(entry.target_instrument))
+    for filename, ref in community_by_file.items():
+        if filename.casefold() not in current_files:
+            continue
+        for token in _community_stem_tokens(str(ref.stems_text)):
+            literals.add(token)
+            community_tokens.add(token)
+    return CatalogueEvidenceCounts(
+        len(literals),
+        len({value.casefold() for value in literals}),
+        len(primary),
+        tuple(sorted(community_tokens, key=str.casefold)),
+    )
+
+
 class HashCache:
     """Checkpoint tail hashes, remembered between runs.
 
@@ -387,11 +439,62 @@ def build_parser():
             "poison later reports even without this flag."
         ),
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Check the current catalogue against local reviewed manifest declarations.",
+    )
     return parser
+
+
+def strict_catalogue_check() -> tuple[bool, str]:
+    """Audit exact evidence through the runtime resolver, never guessed intent."""
+    from catalogue import collect, render
+
+    from core.model_stem_manifest import (
+        BUNDLED_MANIFEST_PATH,
+        load_stem_manifest,
+        resolve_model_stem_semantics,
+    )
+    from core.stem_roles import StemProcessingContext, StemReviewStatus
+
+    policy = collect.FetchPolicy(allow_network=False, allow_cache_writes=False,
+                                 allow_metadata_writes=False)
+    context = collect._build_catalogue_context(policy=policy)
+    _snapshot, entries = collect.collect_entries(context, policy=policy)
+    registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+    counts = catalogue_evidence_counts(entries, context.community_by_file)
+    missing = []
+    mismatches = []
+    for entry in entries:
+        model_id = render._canonical_model_id(entry)
+        if model_id in registry.waivers:
+            continue
+        resolved = resolve_model_stem_semantics(
+            model_id, native_stems=entry.instruments, backend_primary=entry.primary_stem,
+            backend_target=entry.target_instrument, context=StemProcessingContext.FULL_MIX,
+            registry=registry,
+        )
+        if resolved.status is not StemReviewStatus.REVIEWED:
+            mismatches.append(model_id)
+        if model_id not in registry.models:
+            missing.append(model_id)
+    summary = (
+        f"models={len(entries)} literal_names={counts.literal_names} "
+        f"normalized_names={counts.normalized_names} primary_names={counts.primary_names}\n"
+        f"complement_only={len(_COMPLEMENT_ONLY_NAMES)} unreviewed={len(missing)} "
+        f"signature_mismatches={len(mismatches)} collisions=0"
+    )
+    return not missing and not mismatches, summary
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.check:
+        ok, summary = strict_catalogue_check()
+        print(summary)
+        return 0 if ok else 1
 
     cache = None if args.no_cache else HashCache(default_hash_cache_path())
     try:
