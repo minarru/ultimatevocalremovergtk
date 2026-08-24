@@ -402,6 +402,61 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
         assert isinstance(expected_output.role, StemRoleId)
         self.assertEqual(settings.process.stem_focus, expected_output.role.value)
 
+    def test_signature_compatibility_ignores_derived_routes_but_requires_full_native_inventory(
+        self,
+    ) -> None:
+        from core.model_stem_manifest import load_bundled_stem_semantics
+        from core.stem_selection import (
+            _SUBSET_CUSTOM,
+            _manifest_signature_roles,
+            StemSelectionState,
+            SubsetView,
+        )
+
+        cases = (
+            ("mdx:bs_4stem_zfturbo", "other", "residual.other"),
+            ("mdx:bs_6stem", "other", "residual.other"),
+            ("mdx:bs_mega_53stem_full_mvsep", "accordion", "instrument.accordion"),
+        )
+        registry = load_bundled_stem_semantics()
+        for model_id, target_native, expected_role in cases:
+            with self.subTest(model_id=model_id):
+                stems = list(registry.models[model_id].native_signature)
+                state = StemSelectionState()
+                state.configure_subset(
+                    stems=stems,
+                    primary_key="is_primary_stem_only",
+                    secondary_key="is_secondary_stem_only",
+                )
+                self.assertTrue(
+                    any(
+                        route.native is None and route.concept == "Instrumental"
+                        for route in state.routes
+                    )
+                )
+                route = next(
+                    route
+                    for route in state.routes
+                    if route.native is not None and route.native.matches(target_native)
+                )
+                settings = Settings.defaults()
+                state.write(
+                    settings,
+                    SubsetView(
+                        mode=_SUBSET_CUSTOM,
+                        selected={route.concept},
+                        custom_all=False,
+                    ),
+                )
+                self.assertEqual(settings.process.stem_focus, expected_role)
+
+                native_routes = tuple(route for route in state.routes if route.native is not None)
+                self.assertEqual(_manifest_signature_roles(native_routes[:-1]), {})
+                self.assertEqual(
+                    _manifest_signature_roles((*native_routes, native_routes[0])),
+                    {},
+                )
+
     def test_restore_accepts_only_namespaced_role_or_position(self) -> None:
         from core.stem_selection import _TOGGLE_ALL, ExclusiveView, StemSelectionState
 

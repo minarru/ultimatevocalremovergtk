@@ -74,7 +74,7 @@ def _route_native_key(route: StemRoute) -> str:
 
 def _manifest_signature_roles(routes: Sequence[StemRoute]) -> dict[str, str]:
     """Return roles agreed by every full-mix declaration for this inventory."""
-    native_keys = tuple(_route_native_key(route) for route in routes)
+    native_keys = tuple(_route_native_key(route) for route in routes if route.native is not None)
     if not native_keys or any(not key for key in native_keys):
         return {}
     signature = frozenset(native_keys)
