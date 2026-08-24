@@ -218,24 +218,29 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
             state.write(settings, ExclusiveView(choice=route.concept))
             self.assertEqual(settings.process.stem_focus, expected_role)
 
-    def test_all_legacy_bucket_roles_persist_as_reviewed_roles(self) -> None:
-        from core.stem_selection import _persist_route_focus
-        from core.stems import StemBucket, derived_stem_route
-
-        expected = {
-            StemBucket.LEAD_VOCALS: "vocal.lead",
-            StemBucket.BACKING_VOCALS: "vocal.backing",
-            StemBucket.INST_WITH_BV: "mix.instrumental_with_backing_vocals",
-            StemBucket.INST_WITH_LEAD: "mix.instrumental_with_lead_vocals",
-            StemBucket.GUITAR: "instrument.guitar",
-            StemBucket.PIANO: "instrument.piano",
-        }
-        for bucket, role in expected.items():
-            with self.subTest(bucket=bucket):
-                self.assertEqual(_persist_route_focus(derived_stem_route(bucket)), role)
-
-    def test_instrument_and_removal_state_choices_do_not_clear_focus(self) -> None:
+    def test_explicit_bv_pair_persists_reviewed_pair_roles(self) -> None:
         from core.stem_selection import ExclusiveView, StemSelectionState
+
+        state = StemSelectionState()
+        state.configure_exclusive(
+            primary_stem="Backing Vocals",
+            secondary_stem="Instrumental With Lead Vocals",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            is_bv=True,
+        )
+        settings = Settings.defaults()
+        for route, expected in zip(
+            state.routes,
+            ("vocal.backing", "mix.instrumental_with_lead_vocals"),
+            strict=True,
+        ):
+            state.write(settings, ExclusiveView(choice=route.concept))
+            self.assertEqual(settings.process.stem_focus, expected)
+
+    def test_exact_instrument_bucket_and_ambiguous_partner_keep_identity(self) -> None:
+        from core.stem_selection import ExclusiveView, StemSelectionState
+        from core.stems import FOCUS_SECONDARY
 
         settings = Settings.defaults()
         state = StemSelectionState()
@@ -249,7 +254,7 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
         state.write(settings, ExclusiveView(choice=state.routes[0].concept))
         self.assertEqual(settings.process.stem_focus, "instrument.guitar")
         state.write(settings, ExclusiveView(choice=state.routes[1].concept))
-        self.assertEqual(settings.process.stem_focus, "effect.reverb.removed")
+        self.assertEqual(settings.process.stem_focus, FOCUS_SECONDARY)
 
     def test_unknown_identityless_choices_use_positional_focus_not_raw_or_empty(self) -> None:
         from core.stem_selection import ExclusiveView, StemSelectionState
@@ -303,12 +308,160 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only",
         )
         state.write(settings, ExclusiveView(choice=state.routes[1].concept))
-        self.assertEqual(settings.process.stem_focus, "effect.reverb")
+        self.assertEqual(settings.process.stem_focus, "effect.reverb.removed")
 
         restored = state.read(settings)
         self.assertIsInstance(restored, ExclusiveView)
         assert isinstance(restored, ExclusiveView)
         self.assertEqual(restored.choice, state.routes[1].concept)
+
+    def test_manifest_signature_direction_controls_removal_compatibility(self) -> None:
+        from core.model_stem_manifest import resolve_model_stem_semantics
+        from core.stem_roles import StemRoleId
+        from core.stem_selection import ExclusiveView, StemSelectionState
+
+        cases = (
+            (
+                "mdx:bs_dereverb_2250_anvuew",
+                ["noreverb", "reverb"],
+                0,
+            ),
+            (
+                "mdx:MDX23C-De-Reverb-aufr33-jarredou",
+                ["dry", "No dry"],
+                1,
+            ),
+        )
+        for model_id, stems, index in cases:
+            with self.subTest(model_id=model_id, stem=stems[index]):
+                expected = resolve_model_stem_semantics(
+                    model_id,
+                    native_stems=stems,
+                )
+                expected_role = expected.outputs[index].role
+                self.assertIsInstance(expected_role, StemRoleId)
+                assert isinstance(expected_role, StemRoleId)
+                state = StemSelectionState()
+                state.configure_exclusive(
+                    primary_stem=stems[0],
+                    secondary_stem=stems[1],
+                    primary_key="is_primary_stem_only",
+                    secondary_key="is_secondary_stem_only",
+                )
+                settings = Settings.defaults()
+                state.write(settings, ExclusiveView(choice=state.routes[index].concept))
+                self.assertEqual(settings.process.stem_focus, expected_role.value)
+
+    def test_incomplete_backing_vocal_inventory_uses_positional_focus(self) -> None:
+        from core.stem_selection import ExclusiveView, StemSelectionState
+        from core.stems import FOCUS_SECONDARY
+
+        state = StemSelectionState()
+        state.configure_exclusive(
+            primary_stem="vocals",
+            secondary_stem="backing_vocal",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+        )
+        settings = Settings.defaults()
+        state.write(settings, ExclusiveView(choice=state.routes[1].concept))
+        self.assertEqual(settings.process.stem_focus, FOCUS_SECONDARY)
+
+    def test_complete_backing_vocal_inventory_uses_manifest_role(self) -> None:
+        from core.model_stem_manifest import resolve_model_stem_semantics
+        from core.stem_roles import StemRoleId
+        from core.stem_selection import _SUBSET_CUSTOM, StemSelectionState, SubsetView
+
+        stems = ["vocals", "backing_vocal", "instrumental"]
+        state = StemSelectionState()
+        state.configure_subset(
+            stems=stems,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+        )
+        route = next(
+            route
+            for route in state.routes
+            if route.native and route.native.matches("backing_vocal")
+        )
+        settings = Settings.defaults()
+        state.write(
+            settings,
+            SubsetView(mode=_SUBSET_CUSTOM, selected={route.concept}, custom_all=False),
+        )
+        expected = resolve_model_stem_semantics(
+            "mdx:bs_karaoke_3stem_giantailab",
+            native_stems=stems,
+        )
+        expected_output = next(
+            output
+            for output in expected.outputs
+            if output.native and output.native.matches("backing_vocal")
+        )
+        self.assertIsInstance(expected_output.role, StemRoleId)
+        assert isinstance(expected_output.role, StemRoleId)
+        self.assertEqual(settings.process.stem_focus, expected_output.role.value)
+
+    def test_restore_accepts_only_namespaced_role_or_position(self) -> None:
+        from core.stem_selection import _TOGGLE_ALL, ExclusiveView, StemSelectionState
+
+        state = StemSelectionState()
+        state.configure_exclusive(
+            primary_stem="noreverb",
+            secondary_stem="reverb",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+        )
+        settings = Settings.defaults()
+        for invalid_focus in ("Vocals", "raw:noreverb"):
+            with self.subTest(focus=invalid_focus):
+                settings.process.stem_focus = invalid_focus
+                restored = state.read(settings)
+                self.assertIsInstance(restored, ExclusiveView)
+                assert isinstance(restored, ExclusiveView)
+                self.assertEqual(restored.choice, _TOGGLE_ALL)
+        settings.process.stem_focus = "effect.reverb"
+        restored = state.read(settings)
+        self.assertIsInstance(restored, ExclusiveView)
+        assert isinstance(restored, ExclusiveView)
+        self.assertEqual(restored.choice, state.routes[0].concept)
+
+    def test_legacy_bucket_focus_does_not_activate_subset_or_demucs_quick_state(self) -> None:
+        from bundled.constants import ALL_STEMS, BASS_STEM, VOCAL_STEM
+        from core.stem_selection import (
+            _FOCUS_VOCALS,
+            _SUBSET_CUSTOM,
+            DemucsView,
+            StemSelectionState,
+            SubsetView,
+        )
+        from core.stems import StemBucket
+
+        settings = Settings.defaults()
+        settings.mdx.stems_selected = [VOCAL_STEM]
+        settings.process.stem_focus = "Vocals"
+        subset = StemSelectionState()
+        subset.configure_subset(
+            stems=[VOCAL_STEM, BASS_STEM],
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+        )
+        subset_view = subset.read(settings)
+        self.assertIsInstance(subset_view, SubsetView)
+        assert isinstance(subset_view, SubsetView)
+        self.assertEqual(subset_view.mode, _SUBSET_CUSTOM)
+
+        settings.demucs.stems = VOCAL_STEM
+        demucs = StemSelectionState()
+        demucs.configure_demucs(
+            focus_stems=[ALL_STEMS, _FOCUS_VOCALS, BASS_STEM],
+            primary_key="is_primary_stem_only_Demucs",
+            secondary_key="is_secondary_stem_only_Demucs",
+        )
+        demucs_view = demucs.read(settings)
+        self.assertIsInstance(demucs_view, DemucsView)
+        assert isinstance(demucs_view, DemucsView)
+        self.assertEqual(demucs_view.active, StemBucket.VOCALS.value)
 
 
 class CliStemSelectionStateTests(unittest.TestCase):
@@ -424,7 +577,6 @@ class SubsetConceptSelectionTests(unittest.TestCase):
         from bundled.constants import BASS_STEM, VOCAL_STEM
         from core.settings import Settings
         from core.stem_selection import StemSelectionState, SubsetView, _QUICK_VOCALS
-        from core.stems import StemBucket
 
         settings = Settings.defaults()
         state = StemSelectionState()
@@ -471,7 +623,7 @@ class DemucsConceptSelectionTests(unittest.TestCase):
         self.assertEqual(view.active, StemBucket.BASS.value)
         self.assertEqual(view.export_choice, StemBucket.BASS.value)
 
-    def test_lowercase_vocals_plus_vocals_focus_is_focus_vocals(self) -> None:
+    def test_namespaced_vocals_focus_is_focus_vocals(self) -> None:
         from bundled.constants import ALL_STEMS, BASS_STEM
         from core.settings import Settings
         from core.stem_selection import (
@@ -479,11 +631,10 @@ class DemucsConceptSelectionTests(unittest.TestCase):
             StemSelectionState,
             _FOCUS_VOCALS,
         )
-        from core.stems import StemBucket
 
         settings = Settings.defaults()
         settings.demucs.stems = "vocals"
-        settings.process.stem_focus = StemBucket.VOCALS.value
+        settings.process.stem_focus = "vocal.vocals"
         state = StemSelectionState()
         state.configure_demucs(
             focus_stems=[ALL_STEMS, _FOCUS_VOCALS, BASS_STEM],

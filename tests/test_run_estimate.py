@@ -319,7 +319,7 @@ class SaveStemsOutputCountTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only",
             has_model=True,
         )
-        self.settings.process.stem_focus = VOCAL_STEM
+        self.settings.process.stem_focus = "vocal.vocals"
         self.section.sync_from_settings()
         self.assertEqual(self.section.expected_output_count(), 1)
 

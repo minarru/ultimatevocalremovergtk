@@ -210,7 +210,9 @@ class StemRouteTests(unittest.TestCase):
             StemSelectionStatus.UNMATCHED,
         )
 
-    def test_cached_semantics_are_rejected_after_model_id_signature_or_context_mutation(self) -> None:
+    def test_cached_semantics_are_rejected_after_model_id_signature_or_context_mutation(
+        self,
+    ) -> None:
         class Model(self._ReviewedReversePrimaryModel):
             canonical_id = "mdx:MDX23C_D1581"
             demucs_source_list: list[str] = []
@@ -233,13 +235,50 @@ class StemRouteTests(unittest.TestCase):
         model.canonical_id = "mdx:MDX23C_D1581"
         model.mdx_model_stems = ["Vocals", "Instrumental"]
         routes_after_signature_mutation = model_stem_routes(model)
-        self.assertTrue(all(isinstance(route.role, StemRoleId) for route in routes_after_signature_mutation))
+        self.assertTrue(
+            all(isinstance(route.role, StemRoleId) for route in routes_after_signature_mutation)
+        )
         self.assertIsNot(model.stem_semantics, cached)
 
         model.mdx_model_stems = ["Instrumental", "Vocals"]
         model.is_vocal_split_model = True
         self.assertTrue(
             all(isinstance(route.role, StemLiteral) for route in model_stem_routes(model))
+        )
+
+    def test_cached_semantics_track_caller_signature_order_and_spelling(self) -> None:
+        class Model(self._ReviewedReversePrimaryModel):
+            canonical_id = "mdx:MDX23C_D1581"
+            demucs_source_list: list[str] = []
+            mdx_model_stems = ["Instrumental", "Vocals"]
+            mdx_stem_count = 2
+            demucs_stem_count = 0
+            stem_semantics = None
+
+        model = Model()
+        first_routes = model_stem_routes(model)
+        first_cached = model.stem_semantics
+        self.assertEqual(
+            [route.native.raw for route in first_routes if route.native],
+            ["Vocals", "Instrumental"],
+        )
+        self.assertIs(model_stem_routes(model) and model.stem_semantics, first_cached)
+
+        model.mdx_model_stems = ["instrumental", "vocals"]
+        lower_routes = model_stem_routes(model)
+        lower_cached = model.stem_semantics
+        self.assertIsNot(lower_cached, first_cached)
+        self.assertEqual(
+            [route.native.raw for route in lower_routes if route.native],
+            ["vocals", "instrumental"],
+        )
+
+        model.mdx_model_stems = ["Vocals", "Instrumental"]
+        reversed_routes = model_stem_routes(model)
+        self.assertIsNot(model.stem_semantics, lower_cached)
+        self.assertEqual(
+            [route.native.raw for route in reversed_routes if route.native],
+            ["Vocals", "Instrumental"],
         )
 
     class _MultiModel:

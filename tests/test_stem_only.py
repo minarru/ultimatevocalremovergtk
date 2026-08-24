@@ -168,7 +168,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertFalse(self.section._exclusive_row.get_visible())
 
     def test_exclusive_sync_persist_round_trip(self):
-        self.settings.process.stem_focus = VOCAL_STEM
+        self.settings.process.stem_focus = "vocal.vocals"
         self.section.configure_exclusive(
             primary_stem=VOCAL_STEM,
             secondary_stem=INST_STEM,
@@ -260,9 +260,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertEqual(self.settings.process.stem_focus, "")
 
     def test_subset_quick_instrumental_persist(self):
-        from core.stems import StemBucket
-
-        self.settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
+        self.settings.process.stem_focus = "mix.instrumental"
         self.settings["mdx_stems_selected"] = [VOCAL_STEM]
         self.section.configure_subset(
             stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM],
@@ -280,9 +278,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertEqual(self.settings.process.stem_focus, "mix.instrumental")
 
     def test_subset_quick_vocals_highlights_vocal_chip(self):
-        from core.stems import StemBucket
-
-        self.settings.process.stem_focus = StemBucket.VOCALS.value
+        self.settings.process.stem_focus = "vocal.vocals"
         self.settings["mdx_stems_selected"] = [VOCAL_STEM]
         self.section.configure_subset(
             stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM],
@@ -437,7 +433,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.section.sync_from_settings()
         set_combo_value(self.section._exclusive_row, "raw:reverb")
         self.section.persist_to_settings()
-        self.assertEqual(self.settings.process.stem_focus, "effect.reverb")
+        self.assertEqual(self.settings.process.stem_focus, "effect.reverb.removed")
 
         self.section.configure_exclusive(
             primary_stem="noreverb",
@@ -447,7 +443,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        self.assertEqual(self.settings.process.stem_focus, "effect.reverb")
+        self.assertEqual(self.settings.process.stem_focus, "effect.reverb.removed")
         self.assertIn("reverb", self.section.export_summary().casefold())
 
     def test_two_different_unrecognized_stem_models_do_not_collide(self) -> None:
@@ -473,13 +469,11 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        self.assertEqual(self.settings.process.stem_focus, "effect.reverb")
+        self.assertEqual(self.settings.process.stem_focus, "effect.reverb.removed")
         self.assertIn("Exporting all outputs", self.section.export_summary())
 
-    def test_subset_lowercase_vocals_matches_vocals_quick(self) -> None:
-        from core.stems import StemBucket
-
-        self.settings.process.stem_focus = StemBucket.VOCALS.value
+    def test_subset_reviewed_vocals_focus_matches_vocals_quick(self) -> None:
+        self.settings.process.stem_focus = "vocal.vocals"
         self.settings["mdx_stems_selected"] = ["vocals"]
         self.section.configure_subset(
             stems=["vocals", "other"],
@@ -492,7 +486,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertEqual(self.section._subset_mode, _QUICK_VOCALS)
 
     def test_exclusive_lowercase_focus_matches_yaml_vocals(self) -> None:
-        self.settings.process.stem_focus = "vocals"
+        self.settings.process.stem_focus = "vocal.vocals"
         self.section.configure_exclusive(
             primary_stem="other",
             secondary_stem="vocals",
@@ -505,9 +499,9 @@ class SaveStemsSectionTests(unittest.TestCase):
 
     def test_ensemble_karaoke_vocals_focus_selects_lead(self) -> None:
         from bundled.constants import INST_WITH_BACKING_VOCALS_STEM, LEAD_VOCAL_STEM_LABEL
-        from core.stems import EnsemblePair, StemBucket
+        from core.stems import EnsemblePair
 
-        self.settings.process.stem_focus = StemBucket.VOCALS.value
+        self.settings.process.stem_focus = "vocal.lead"
         self.section.configure_exclusive(
             primary_stem=LEAD_VOCAL_STEM_LABEL,
             secondary_stem=INST_WITH_BACKING_VOCALS_STEM,
@@ -535,11 +529,9 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.section.sync_from_settings()
         self.assertIn("Exporting all outputs", self.section.export_summary())
 
-    def test_demucs_lowercase_vocals_focus_matches_vocals_chip(self) -> None:
-        from core.stems import StemBucket
-
+    def test_demucs_reviewed_vocals_focus_matches_vocals_chip(self) -> None:
         self.settings["demucs_stems"] = "vocals"
-        self.settings.process.stem_focus = StemBucket.VOCALS.value
+        self.settings.process.stem_focus = "vocal.vocals"
         self.section.configure_demucs(
             focus_stems=[ALL_STEMS, "focus_instrumental", "focus_vocals", BASS_STEM],
             primary_key="is_primary_stem_only_Demucs",

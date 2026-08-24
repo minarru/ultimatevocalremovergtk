@@ -1041,14 +1041,14 @@ def _model_semantics(model: Any, native_stems: Sequence[str]) -> ModelStemSemant
         if bool(getattr(model, "is_vocal_split_model", False))
         else StemProcessingContext.FULL_MIX
     )
+    cache_key = (
+        model_id,
+        tuple((StemId(stem).casefold(), str(stem)) for stem in native_stems),
+        context,
+    )
     cached = getattr(model, "stem_semantics", None)
     if isinstance(cached, ModelStemSemantics) and (
-        cached.model_id == model_id
-        and cached.context is context
-        and tuple(
-            output.native.casefold() for output in cached.outputs if output.native is not None
-        )
-        == tuple(StemId(stem).casefold() for stem in native_stems)
+        getattr(model, "_stem_semantics_cache_key", None) == cache_key
     ):
         return cached
     semantics = resolve_model_stem_semantics(
@@ -1064,6 +1064,7 @@ def _model_semantics(model: Any, native_stems: Sequence[str]) -> ModelStemSemant
     # Settings object while retaining this exact resolution for later routes.
     try:
         model.stem_semantics = semantics
+        model._stem_semantics_cache_key = cache_key
     except (AttributeError, TypeError):
         pass
     return semantics
