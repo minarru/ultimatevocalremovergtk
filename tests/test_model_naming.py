@@ -164,14 +164,14 @@ class ProjectModelDisplayTests(unittest.TestCase):
                 "demucs:htdemucs_ft-f7e0c4bc",
                 source_label="Demucs v4: htdemucs_ft",
             ),
-            "v4 — HTDemucs Fine-Tuned",
+            "Demucs v4 — Hybrid Transformer Fine-Tuned",
         )
         self.assertEqual(
             project_model_display(
                 "demucs:demucs48_hq-28a1282c",
                 source_label="Demucs v2: demucs48_hq",
             ),
-            "v2 — Demucs 48 kHz HQ",
+            "Demucs v2 — Time-Domain 48 kHz HQ",
         )
 
     def test_projector_removes_a_repeated_family_after_the_stem_count(self) -> None:
@@ -184,12 +184,22 @@ class ProjectModelDisplayTests(unittest.TestCase):
         )
 
     def test_projector_normalizes_parenthetical_sdr_after_the_author(self) -> None:
-        self.assertEqual(
-            project_model_display(
-                "mdx:mbr_inst_1652_essid",
-                source_label="Mel-Band Roformer Instrumental by Essid (sdr 16.52)",
+        expected = {
+            "mdx:mbr_inst_1652_essid": (
+                "MelBand Roformer — Instrumental (SDR 16.52) · Essid"
             ),
-            "MelBand Roformer — Instrumental · Essid (SDR 16.52)",
+            "mdx:mbr_inst_1681_essid": (
+                "MelBand Roformer — Instrumental (SDR 16.81) · Essid"
+            ),
+        }
+        for model_id, display in expected.items():
+            with self.subTest(model_id=model_id):
+                self.assertEqual(project_model_display(model_id), display)
+
+    def test_projector_places_gabox_beta_before_the_author(self) -> None:
+        self.assertEqual(
+            project_model_display("mdx:mel_band_roformer_karaoke_gabox"),
+            "MelBand Roformer — Karaoke Beta · Gabox",
         )
 
     def test_projector_uses_exact_aliases_for_reviewed_storage_copy(self) -> None:
@@ -363,6 +373,10 @@ class ProjectModelDisplayTests(unittest.TestCase):
             "mdx:bs_inst_exp_vlp_unwa": (
                 "BandSplit Roformer — Instrumental EXP Value Residual · Unwa"
             ),
+            "mdx:BS_Inst_EXP_VRL": (
+                "BandSplit Roformer — Instrumental EXP Value Residual · Unwa "
+                "[BS_Inst_EXP_VRL]"
+            ),
             "mdx:melband_roformer_inst_metal_prev_by_mesk": (
                 "MelBand Roformer — Instrumental Metal Preview · Mesk"
             ),
@@ -413,20 +427,117 @@ class ProjectModelDisplayTests(unittest.TestCase):
             with self.subTest(model_id=model_id):
                 self.assertEqual(project_model_display(model_id), display)
 
-    def test_projector_uses_reviewed_vr_utility_names(self) -> None:
+    def test_projector_uses_all_28_reviewed_vr_names(self) -> None:
         expected = {
-            "vr:UVR-De-Echo-Aggressive": "UVR De-Echo — Aggressive · FoxJoy",
-            "vr:UVR-De-Echo-Normal": "UVR De-Echo — Normal · FoxJoy",
-            "vr:UVR-DeEcho-DeReverb": "UVR De-Echo/DeReverb · FoxJoy",
-            "vr:UVR-DeNoise": "UVR DeNoise · FoxJoy",
-            "vr:UVR-DeNoise-Lite": "UVR DeNoise Lite · FoxJoy",
-            "vr:UVR-De-Reverb-aufr33-jarredou": "UVR DeReverb · Aufr33 & Jarredou",
+            "vr:1_HP-UVR": "VR v5 — HP 1",
+            "vr:2_HP-UVR": "VR v5 — HP 2",
+            "vr:3_HP-Vocal-UVR": "VR v5 — HP Vocals 3",
+            "vr:4_HP-Vocal-UVR": "VR v5 — HP Vocals 4",
+            "vr:5_HP-Karaoke-UVR": "VR v5 — HP Karaoke 5",
+            "vr:6_HP-Karaoke-UVR": "VR v5 — HP Karaoke 6",
+            "vr:7_HP2-UVR": "VR v5 — HP2 7",
+            "vr:8_HP2-UVR": "VR v5 — HP2 8",
+            "vr:9_HP2-UVR": "VR v5 — HP2 9",
+            "vr:10_SP-UVR-2B-32000-1": "VR v5 — SP 2-Band 32 kHz 1",
+            "vr:11_SP-UVR-2B-32000-2": "VR v5 — SP 2-Band 32 kHz 2",
+            "vr:12_SP-UVR-3B-44100": "VR v5 — SP 3-Band 44.1 kHz",
+            "vr:13_SP-UVR-4B-44100-1": "VR v5 — SP 4-Band 44.1 kHz 1",
+            "vr:14_SP-UVR-4B-44100-2": "VR v5 — SP 4-Band 44.1 kHz 2",
+            "vr:15_SP-UVR-MID-44100-1": "VR v5 — SP Mid 44.1 kHz 1",
+            "vr:16_SP-UVR-MID-44100-2": "VR v5 — SP Mid 44.1 kHz 2",
+            "vr:17_HP-Wind_Inst-UVR": "VR v5 — HP Wind Instrumental 17",
+            "vr:UVR-BVE-4B_SN-44100-1": (
+                "VR v5 — Karaoke BVE (4 Bands, SN, 44.1 kHz) 1"
+            ),
+            "vr:UVR-De-Echo-Aggressive": "VR v5 — De-Echo Aggressive · FoxJoy",
+            "vr:UVR-De-Echo-Normal": "VR v5 — De-Echo Normal · FoxJoy",
+            "vr:UVR-DeEcho-DeReverb": "VR v5 — De-Echo/DeReverb · FoxJoy",
+            "vr:UVR-DeNoise": "VR v5 — DeNoise · FoxJoy",
+            "vr:UVR-DeNoise-Lite": "VR v5 — DeNoise Lite · FoxJoy",
+            "vr:UVR-De-Reverb-aufr33-jarredou": (
+                "VR v5 — DeReverb · Aufr33 & Jarredou"
+            ),
+            "vr:MGM_HIGHEND_v4": "VR v4 — MGM High-End",
+            "vr:MGM_LOWEND_A_v4": "VR v4 — MGM Low-End A",
+            "vr:MGM_LOWEND_B_v4": "VR v4 — MGM Low-End B",
+            "vr:MGM_MAIN_v4": "VR v4 — MGM Main",
         }
+        self.assertEqual(len(expected), 28)
         for model_id, display in expected.items():
             with self.subTest(model_id=model_id):
                 self.assertEqual(project_model_display(model_id), display)
-        self.assertEqual(project_model_display("vr:3_HP-Vocal-UVR"), "HP Vocals 3")
-        self.assertEqual(project_model_display("vr:4_HP-Vocal-UVR"), "HP Vocals 4")
+
+    def test_projector_uses_all_24_reviewed_demucs_names(self) -> None:
+        expected = {
+            "demucs:demucs": "Demucs v1 — Time-Domain",
+            "demucs:demucs_extra": "Demucs v1 — Time-Domain Extra",
+            "demucs:light": "Demucs v1 — Light",
+            "demucs:light_extra": "Demucs v1 — Light Extra",
+            "demucs:tasnet": "Demucs v1 — Conv-TasNet",
+            "demucs:tasnet_extra": "Demucs v1 — Conv-TasNet Extra",
+            "demucs:demucs-e07c671f": "Demucs v2 — Time-Domain",
+            "demucs:demucs48_hq-28a1282c": "Demucs v2 — Time-Domain 48 kHz HQ",
+            "demucs:demucs_extra-3646af93": "Demucs v2 — Time-Domain Extra",
+            "demucs:demucs_unittest-09ebc15f": "Demucs v2 — Unit Test",
+            "demucs:tasnet-beb46fac": "Demucs v2 — Conv-TasNet",
+            "demucs:tasnet_extra-df3777b2": "Demucs v2 — Conv-TasNet Extra",
+            "demucs:mdx": "Demucs v3 — MDX",
+            "demucs:mdx_extra": "Demucs v3 — MDX Extra",
+            "demucs:mdx_extra_q": "Demucs v3 — MDX Extra Quantized",
+            "demucs:mdx_q": "Demucs v3 — MDX Quantized",
+            "demucs:repro_mdx_a": "Demucs v3 — Repro MDX A",
+            "demucs:repro_mdx_a_hybrid_only": (
+                "Demucs v3 — Repro MDX A Hybrid Only"
+            ),
+            "demucs:repro_mdx_a_time_only": (
+                "Demucs v3 — Repro MDX A Time-Domain Only"
+            ),
+            "demucs:UVR_Demucs_Model_1": "Demucs v3 — UVR Model (2 Stems)",
+            "demucs:hdemucs_mmi": "Demucs v4 — Hybrid Demucs MMI",
+            "demucs:htdemucs": "Demucs v4 — Hybrid Transformer",
+            "demucs:htdemucs_6s": "Demucs v4 — Hybrid Transformer (6 Stems)",
+            "demucs:htdemucs_ft": "Demucs v4 — Hybrid Transformer Fine-Tuned",
+        }
+        self.assertEqual(len(expected), 24)
+        for model_id, display in expected.items():
+            with self.subTest(model_id=model_id):
+                self.assertEqual(project_model_display(model_id), display)
+
+    def test_projector_uses_family_fallbacks_without_inventing_versions(self) -> None:
+        cases = {
+            "vr:private_model": "VR — private_model",
+            "demucs:private_model": "Demucs — private_model",
+        }
+        for model_id, expected in cases.items():
+            with self.subTest(model_id=model_id):
+                self.assertEqual(project_model_display(model_id), expected)
+
+        sourced = {
+            ("vr:private_model", "VR Arch Single Model v5: Custom Model"): (
+                "VR v5 — Custom Model"
+            ),
+            ("demucs:private_model", "Demucs v4: custom_model"): (
+                "Demucs v4 — custom_model"
+            ),
+            ("vr:private_model", "VR v5 — Custom Model"): "VR v5 — Custom Model",
+            ("demucs:private_model", "Demucs v4 — Custom Model"): (
+                "Demucs v4 — Custom Model"
+            ),
+        }
+        for (model_id, source_label), expected in sourced.items():
+            with self.subTest(model_id=model_id, source_label=source_label):
+                self.assertEqual(
+                    project_model_display(model_id, source_label=source_label),
+                    expected,
+                )
+
+    def test_family_prefixing_never_changes_trusted_overrides(self) -> None:
+        for model_id in ("vr:private_model", "demucs:private_model"):
+            with self.subTest(model_id=model_id):
+                self.assertEqual(
+                    project_model_display(model_id, explicit_display="Trusted title"),
+                    "Trusted title",
+                )
 
     def test_projector_uses_the_reviewed_mega_template(self) -> None:
         terms = {
@@ -492,15 +603,49 @@ class ProjectModelDisplayTests(unittest.TestCase):
             with self.subTest(model_id=model_id):
                 self.assertEqual(project_model_display(model_id), expected)
 
-    def test_reviewed_collision_and_author_distinctions_remain_unique(self) -> None:
-        displays = {
-            project_model_display("mdx:mbr_instfv9_gabox"),
-            project_model_display("mdx:mbr_inst_becruily"),
-            project_model_display("mdx:mbr_karaoke_fusion_aggr_gonzaluigi"),
+    def test_all_four_reviewed_collision_suffixes_remain_distinct(self) -> None:
+        pairs = (
+            (
+                "mdx:mbr_instfv9_gabox",
+                "mdx:mbr_instfv9_2_gabox",
+                "Mel-Band Roformer Instrumental Fv9 by GaboxR67",
+                "MelBand Roformer — Instrumental Fv9 · GaboxR67",
+            ),
+            (
+                "mdx:mbr_inst_becruily",
+                "mdx:mel_band_roformer_instrumental_becruily",
+                "Mel-Band Roformer Instrumental by becruily",
+                "MelBand Roformer — Instrumental · Becruily",
+            ),
+            (
+                "mdx:mbr_karaoke_fusion_aggr_gonzaluigi",
+                "mdx:mbr_karaoke_fusion2_aggr_gonzaluigi",
+                "Mel-Band Roformer Karaoke Fusion Aggressive by Gonzaluigi",
+                "MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi",
+            ),
+            (
+                "mdx:BS_Inst_EXP_VRL",
+                "mdx:bs_inst_exp_vlp_unwa",
+                "BS Roformer Instrumental EXP Value Residual by Unwa",
+                "BandSplit Roformer — Instrumental EXP Value Residual · Unwa",
+            ),
+        )
+        for suffixed_id, same_title_id, source_label, expected_title in pairs:
+            with self.subTest(suffixed_id=suffixed_id):
+                suffixed = project_model_display(suffixed_id)
+                same_title = project_model_display(
+                    same_title_id,
+                    source_label=source_label,
+                )
+                self.assertEqual(same_title, expected_title)
+                self.assertTrue(suffixed.startswith(f"{expected_title} ["))
+                self.assertNotEqual(suffixed, same_title)
+
+    def test_gonza_and_gonzaluigi_attributions_remain_distinct(self) -> None:
+        self.assertNotEqual(
             project_model_display("mdx:mbr_bve_gonzaluigi"),
             project_model_display("mdx:model_MelBand-Roformer_BVE_by-Gonza"),
-        }
-        self.assertEqual(len(displays), 5)
+        )
 
 
 if __name__ == "__main__":

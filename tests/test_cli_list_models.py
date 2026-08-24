@@ -3,12 +3,12 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import pickle
 import signal
+import tempfile
 import threading
 import unittest
-import os
-import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,9 +16,13 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 from cli.discovery import (
-    _print_detail, cmd_devices_list, cmd_models_download, cmd_profile_list,
+    _print_detail,
+    cmd_devices_list,
+    cmd_models_download,
+    cmd_profile_list,
 )
 from cli.main import main
+from core.model_catalogue import CatalogEntryId
 from core.model_identity import (
     DemucsSpec,
     IdentityIndex,
@@ -28,7 +32,6 @@ from core.model_identity import (
     ModelRecord,
     resolve_model_record,
 )
-from core.model_catalogue import CatalogEntryId
 from core.model_registry import ModelRegistryService
 
 

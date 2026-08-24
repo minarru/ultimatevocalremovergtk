@@ -150,7 +150,6 @@ menubutton.uvr-download-queue-chip > button.chip .uvr-chip-content {
 /* Error summary scrolls only past the measured cap; height is set in Python.
    SYNC: _ERROR_SUMMARY_MAX_HEIGHT in ui/errorlog.py */
 .uvr-error-summary-scroll {
-    max-height: 280px;
     background: transparent;
     border: none;
     box-shadow: none;

@@ -104,7 +104,7 @@ class ManualDownloadMergeTests(unittest.TestCase):
 
         self.assertEqual(
             [(row.display, row.selection) for row in rows],
-            [("Aardvark", aardvark), ("HP 1", hp)],
+            [("VR v5 — Aardvark", aardvark), ("VR v5 — HP 1", hp)],
         )
         hp_row = rows[1]
         self.assertEqual(hp_row.model, "1_HP-UVR.pth")

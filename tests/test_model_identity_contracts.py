@@ -29,7 +29,6 @@ from core.model_identity import (
     IdentityIndex,
     MdxSpec,
     ModelArtifacts,
-    ModelId,
     ModelRecord,
     parse_stored_model_id,
 )
@@ -369,7 +368,7 @@ class InventoryCardinalityTests(unittest.TestCase):
                         if family == "demucs"
                         else []
                     ),
-                    _model_artifact_path=lambda _family, _name: yaml_path,
+                    _model_artifact_path=lambda _family, _name, _path=yaml_path: _path,
                 )
 
                 index = build_identity_index(
@@ -635,7 +634,7 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
 
         row = ModelCatalogueService(cast(Any, manager)).records()[0]
 
-        self.assertEqual(row.display, "HP 1")
+        self.assertEqual(row.display, "VR v5 — HP 1")
 
     def test_catalogue_projection_uses_family_split_metadata(self) -> None:
         from core.catalog_sources import EntryMeta
@@ -680,7 +679,10 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
 
         rows = ModelCatalogueService(cast(Any, manager)).records()
 
-        self.assertEqual([row.display for row in rows], ["HP 1", "1_HP-UVR"])
+        self.assertEqual(
+            [row.display for row in rows],
+            ["VR v5 — HP 1", "VR v5 — 1_HP-UVR"],
+        )
 
     def test_ineligible_mdx_pth_row_uses_its_exact_presentation_id_only(self) -> None:
         from core.catalog_sources import EntryMeta
@@ -777,7 +779,7 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
 
         self.assertEqual(
             project_catalogue_display("vr", selection, files, meta),
-            "1_HP-UVR",
+            "VR v5 — 1_HP-UVR",
         )
 
     def test_ambiguous_yaml_primaries_do_not_mint_a_presentation_id(self) -> None:
@@ -807,7 +809,7 @@ class CatalogueDisplayProjectionTests(unittest.TestCase):
                     "second.yaml": "https://example.invalid/second",
                 },
                 "htdemucs.th",
-                "v4 — htdemucs",
+                "Demucs v4 — htdemucs",
             ),
         )
         for family, arch, selection, files, checkpoint, expected in cases:
@@ -939,6 +941,7 @@ class ManifestSchemaSnapshotTests(unittest.TestCase):
 
     def test_bench_manifest_schema_stays_1(self) -> None:
         import inspect
+
         from cli import bench
 
         source = inspect.getsource(bench.cmd_bench)
@@ -1227,7 +1230,10 @@ class DisplayEnrichmentTests(unittest.TestCase):
             demucs_name_select_MAPPER={"tasnet.th": "v1 | tasnet"},
         )
         records = self._records(repo, _snapshot())
-        self.assertEqual(records["demucs:tasnet"].display, "v1 — TasNet")
+        self.assertEqual(
+            records["demucs:tasnet"].display,
+            "Demucs v1 — Conv-TasNet",
+        )
 
     def test_vr_uses_catalogue_index_and_has_no_mapper_fallback(self) -> None:
         repo = self._repo(
@@ -1236,8 +1242,8 @@ class DisplayEnrichmentTests(unittest.TestCase):
         )
         snapshot = _snapshot(display_vr={"1_HP-UVR": "VR Arch — 1 HP"})
         records = self._records(repo, snapshot)
-        self.assertEqual(records["vr:1_HP-UVR"].display, "HP 1")
-        self.assertEqual(records["vr:9_HP2-UVR"].display, "HP2 9")
+        self.assertEqual(records["vr:1_HP-UVR"].display, "VR v5 — HP 1")
+        self.assertEqual(records["vr:9_HP2-UVR"].display, "VR v5 — HP2 9")
 
     def test_apollo_keeps_raw_basename_without_catalogue_display(self) -> None:
         repo = self._repo(apollo=["custom_apollo.ckpt"])

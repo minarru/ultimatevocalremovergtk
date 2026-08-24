@@ -9,10 +9,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
-from core.catalogue_types import SourceId  # noqa: E402
 import generate_models_catalogue as cli  # noqa: E402
 from catalogue import collect as catalogue  # noqa: E402
 from catalogue import render  # noqa: E402
+
+from core.catalogue_types import SourceId  # noqa: E402
 
 
 class UiNoteTests(unittest.TestCase):
@@ -1063,7 +1064,8 @@ class DisplayReferenceRenderTests(unittest.TestCase):
         self.assertIn(
             "VR Architecture\tVR Architecture\tTRvlvr\tv5\t"
             "VR Arch Single Model v5: 5_HP-Karaoke-UVR\t"
-            "vr:5_HP-Karaoke-UVR\tHP Karaoke 5\t5_HP-Karaoke-UVR.pth\t\t"
+            "vr:5_HP-Karaoke-UVR\tVR v5 — HP Karaoke 5\t"
+            "5_HP-Karaoke-UVR.pth\t\t"
             "\tclean",
             rendered,
         )
@@ -1088,7 +1090,7 @@ class DisplayReferenceRenderTests(unittest.TestCase):
         rendered = render.presentation_reference_tsv([entry])
 
         self.assertIn(
-            "demucs:htdemucs_ft\tv4 — HTDemucs Fine-Tuned\t",
+            "demucs:htdemucs_ft\tDemucs v4 — Hybrid Transformer Fine-Tuned\t",
             rendered,
         )
 
@@ -2562,8 +2564,8 @@ class RenderDisplayTests(unittest.TestCase):
 
         rendered = render._render([entry])
 
-        self.assertIn("| VR Architecture | HP 1 |", rendered)
-        self.assertIn("### HP 1", rendered)
+        self.assertIn("| VR Architecture | VR v5 — HP 1 |", rendered)
+        self.assertIn("### VR v5 — HP 1", rendered)
         self.assertNotIn("| VR Architecture | 1_HP-UVR |", rendered)
 
     def test_summary_uses_id_aware_display(self) -> None:
@@ -2578,7 +2580,7 @@ class RenderDisplayTests(unittest.TestCase):
 
         rendered = render.render_summary_report([entry])
 
-        self.assertIn("**HP 1** (VR Architecture)", rendered)
+        self.assertIn("**VR v5 — HP 1** (VR Architecture)", rendered)
         self.assertNotIn("**1_HP-UVR**", rendered)
 
     def test_quick_reference_keeps_the_complete_projected_display(self) -> None:

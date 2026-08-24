@@ -66,7 +66,7 @@ _FAMILY_PATTERNS = (
 #: ``canonical_display_name`` idempotent.
 _AUTHOR_RE = re.compile(r"(?:\s+by[\s_-]+|\s*\u00b7\s*)(?P<author>[^|\u00b7]+?)\s*$", re.IGNORECASE)
 
-_DEMUCS_RE = re.compile(r"^Demucs (v\d+): (.+)$", re.IGNORECASE)
+_DEMUCS_RE = re.compile(r"^Demucs (v\d+)(?::| —) (.+)$", re.IGNORECASE)
 
 #: mvsepless HyperACE rows append this parenthetical; crop it for display.
 _HYPERACE_FINETUNE_PAREN_RE = re.compile(
@@ -103,32 +103,36 @@ _TOKEN_REPLACEMENTS = (
     (re.compile(r"\bV(?=\d+(?:\.\d+)?\b)", re.IGNORECASE), "v"),
 )
 _DEMUCS_BACKEND_ALIASES = {
-    "demucs": "Demucs",
-    "demucs_extra": "Demucs Extra",
+    "demucs": "Time-Domain",
+    "demucs_extra": "Time-Domain Extra",
     "light": "Light",
     "light_extra": "Light Extra",
-    "tasnet": "TasNet",
-    "tasnet_extra": "TasNet Extra",
-    "demucs48_hq": "Demucs 48 kHz HQ",
-    "demucs_unittest": "Demucs Unit Test",
+    "tasnet": "Conv-TasNet",
+    "tasnet_extra": "Conv-TasNet Extra",
+    "demucs48_hq": "Time-Domain 48 kHz HQ",
+    "demucs_unittest": "Unit Test",
     "mdx": "MDX",
     "mdx_extra": "MDX Extra",
-    "mdx_extra_q": "MDX Extra Quality",
-    "mdx_q": "MDX Quality",
+    "mdx_extra_q": "MDX Extra Quantized",
+    "mdx_q": "MDX Quantized",
     "repro_mdx_a": "Repro MDX A",
     "repro_mdx_a_hybrid_only": "Repro MDX A Hybrid Only",
-    "repro_mdx_a_time_only": "Repro MDX A Time Only",
-    "uvr model": "UVR Model",
-    "hdemucs_mmi": "HDemucs MMI",
-    "htdemucs": "HTDemucs",
-    "htdemucs_6s": "HTDemucs (6 Stems)",
-    "htdemucs_ft": "HTDemucs Fine-Tuned",
+    "repro_mdx_a_time_only": "Repro MDX A Time-Domain Only",
+    "uvr model": "UVR Model (2 Stems)",
+    "hdemucs_mmi": "Hybrid Demucs MMI",
+    "htdemucs": "Hybrid Transformer",
+    "htdemucs_6s": "Hybrid Transformer (6 Stems)",
+    "htdemucs_ft": "Hybrid Transformer Fine-Tuned",
 }
 
 
 #: Category prefixes that themselves declare a family. ``Roformer Model: `` is
 #: absent on purpose: it does not say *which* Roformer, and the remainder does.
 _PREFIX_FAMILIES = {
+    "VR Arch Single Model v5: ": "VR v5",
+    "VR Arch Single Model v4: ": "VR v4",
+    "VR Arch Single Model ": "VR",
+    "VR Arch ": "VR",
     "SCnet: ": "SCNet",
     "MDX23C Model VIP: ": "MDX23C",
     "MDX23 Model VIP: ": "MDX23C",
@@ -261,7 +265,7 @@ def canonical_display_name(label: str) -> str:
 
     match = _DEMUCS_RE.match(text)
     if match:
-        return f"{match.group(1)}{TITLE_SEPARATOR}{match.group(2)}"
+        return f"Demucs {match.group(1)}{TITLE_SEPARATOR}{match.group(2)}"
 
     author = ""
     author_match = _AUTHOR_RE.search(text)
@@ -357,7 +361,7 @@ def _project_source_label(source_label: str) -> str:
         else:
             title = f"{family}{TITLE_SEPARATOR}{remainder}"
     version, demucs_separator, backend = title.partition(TITLE_SEPARATOR)
-    if demucs_separator and re.fullmatch(r"v\d+", version, re.IGNORECASE):
+    if demucs_separator and re.fullmatch(r"Demucs v\d+", version, re.IGNORECASE):
         title = (
             f"{version}{TITLE_SEPARATOR}{_DEMUCS_BACKEND_ALIASES.get(backend.casefold(), backend)}"
         )
@@ -387,7 +391,8 @@ def project_model_display(
 
     ``model_id`` is validated but never inferred from either presentation
     argument.  Precedence is trusted override, exact manifest alias, exact
-    source label, then the canonical ID's raw basename.
+    source label, then a family-labelled raw basename for VR/Demucs or the raw
+    basename for another family.
     """
     exact_id = parse_stored_model_id(model_id)
     override = str(explicit_display or "").strip()
@@ -397,4 +402,10 @@ def project_model_display(
     if alias:
         return alias
     source = _project_source_label(str(source_label or ""))
-    return source or exact_id.basename
+    if source:
+        return source
+    if exact_id.family == "vr":
+        return f"VR{TITLE_SEPARATOR}{exact_id.basename}"
+    if exact_id.family == "demucs":
+        return f"Demucs{TITLE_SEPARATOR}{exact_id.basename}"
+    return exact_id.basename

@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-24
 
-**Status:** Approved for implementation
+**Status:** Implemented
 
 **Scope:** Model presentation quality, exact catalogue evidence, and installed-model presentation backfill
 
@@ -21,9 +21,8 @@ abbreviations such as `HQ`, and makes online refresh backfill use the published,
 deduplicated catalogue entry rather than treating harmless source-label aliases
 as identity ambiguity.
 
-The current generated catalogue, display reference, and quality audit describe
-the already-implemented behavior. They are not normative for this revision and
-must not be regenerated until the implementation and its focused tests pass.
+The generated catalogue, display reference, and quality audit are regenerated
+from the runtime projector after the implementation and its focused tests pass.
 
 ## Invariants and Non-goals
 
@@ -49,7 +48,8 @@ Every model surface uses this precedence:
 3. exact current label from the published, deduplicated catalogue snapshot;
 4. exact persisted catalogue label;
 5. exact family name-mapper label; and
-6. the raw canonical basename for a genuinely unknown model.
+6. a family-labelled raw canonical basename for a genuinely unknown VR or
+   Demucs model, and the raw basename for another genuinely unknown family.
 
 An empty value falls through to the next layer. A catalogue refresh may replace
 persisted mapper evidence with exact current catalogue evidence, but it must not
@@ -57,8 +57,9 @@ replace or erase an explicit display override.
 
 Projection remains offline, deterministic, and idempotent once its exact
 evidence has been selected. Online and matching warm-offline snapshots must
-produce identical display text. A cold-offline unknown model remains at its raw
-basename rather than receiving a guessed catalogue association.
+produce identical display text. A cold-offline unknown model remains raw after
+its non-semantic family heading (`VR —` or `Demucs —`) rather than receiving a
+guessed catalogue association.
 
 ## Canonical Display Grammar
 
@@ -85,8 +86,11 @@ Rules:
   the exact output-stem term `Drum-Bass`.
 - Remove filenames, extensions, download state, backend configuration details,
   and operational notes such as `(only weights)`.
-- Do not append a family heading that is not part of the reviewed name. In
-  particular, VR models have no artificial `VR` heading.
+- Prefix reviewed VR models with the generation established by their exact
+  catalogue evidence (`VR v4 —` or `VR v5 —`). Prefix an unknown custom VR
+  basename with `VR —` without guessing a generation.
+- Prefix reviewed Demucs models with `Demucs vN —`. Prefix an unknown custom
+  Demucs basename with `Demucs —` without guessing a generation.
 - Preserve a bracketed collision suffix only for an exact reviewed model whose
   friendly title would otherwise collide.
 
@@ -101,11 +105,14 @@ Canonical family/product headings are:
 - `MDX23C`;
 - `SCNet`;
 - `Bandit`; and
-- `Apollo`.
+- `Apollo`;
+- `VR v4` and `VR v5` for reviewed VR generations; and
+- `Demucs v1` through `Demucs v4` for reviewed Demucs generations.
 
-Demucs uses a version heading such as `v4 — HTDemucs`. VR has no artificial
-family prefix; `UVR` remains only where it is part of an exact reviewed product
-or model name.
+VR and Demucs family headings intentionally remain visible in mixed selectors.
+Do not double-prefix an already projected label. `UVR` remains only when it is
+part of a reviewed product or model variant, not as a substitute family
+heading.
 
 Technical-token rules:
 
@@ -148,6 +155,14 @@ The bundled presentation manifest provides exact aliases for:
 - `MelBand Roformer — DeNoiser Children 16 kHz · Phaedrus33`;
 - `MDX-Net — UVR 9482`; and
 - `MDX23C — Phantom Centre Extraction · WesleyR36`.
+
+The Instrumental EXP Value Residual alias applies independently to the exact
+MVSep and Politrees IDs. Because those distinct artifacts otherwise collide,
+the Politrees `mdx:BS_Inst_EXP_VRL` display retains its reviewed bracketed
+backend ID. Exact aliases also place Essid's metrics before the author
+(`Instrumental (SDR 16.52/16.81) · Essid`) and render
+`mdx:mel_band_roformer_karaoke_gabox` as
+`MelBand Roformer — Karaoke Beta · Gabox`.
 
 All BandSplit `Deverb`/`Dereverb` entries render as `DeReverb`. Reviewed
 `Choirsep` entries render as `ChoirSep`; lowercase state words use their
@@ -222,18 +237,44 @@ Normalize exact stem terms including `Acoustic Guitar`, `Backing Vocals`,
 
 ### VR
 
-Add exact aliases for the remaining storage-style utility names:
+All 28 reviewed VR identities carry an authoritative generation prefix. The 24
+v5 entries cover HP, HP2, SP, BVE, and utility models; the four MGM entries use
+v4. Representative forms are:
 
-- `UVR De-Echo — Aggressive · FoxJoy`;
-- `UVR De-Echo — Normal · FoxJoy`;
-- `UVR De-Echo/DeReverb · FoxJoy`;
-- `UVR DeNoise · FoxJoy`;
-- `UVR DeNoise Lite · FoxJoy`; and
-- `UVR DeReverb · Aufr33 & Jarredou`.
+- `VR v5 — HP Vocals 3`;
+- `VR v5 — SP 4-Band 44.1 kHz 1`;
+- `VR v5 — Karaoke BVE (4 Bands, SN, 44.1 kHz) 1`;
+- `VR v5 — De-Echo Aggressive · FoxJoy`;
+- `VR v5 — De-Echo/DeReverb · FoxJoy`;
+- `VR v5 — DeNoise Lite · FoxJoy`;
+- `VR v5 — DeReverb · Aufr33 & Jarredou`; and
+- `VR v4 — MGM High-End`.
 
-Use `HP Vocals 3` and `HP Vocals 4`. Preserve reviewed HP, HP2, SP, MGM, BVE,
-band-count, sample-rate, SN, and sequence identifiers. Karaoke/BVE wording is
-presentation-only and must not change Vocal Splitter eligibility.
+Preserve reviewed HP, HP2, SP, MGM, BVE, band-count, sample-rate, SN, and
+sequence identifiers. Karaoke/BVE wording is presentation-only and must not
+change Vocal Splitter eligibility. For an exact v4/v5 source label without a
+curated alias, retain its generation and conservatively format the label. A
+custom VR basename with no generation evidence uses `VR — <raw basename>`.
+
+### Demucs
+
+All 24 reviewed Demucs identities use expanded generation-aware names:
+
+- v1: `Time-Domain`, `Time-Domain Extra`, `Light`, `Light Extra`,
+  `Conv-TasNet`, and `Conv-TasNet Extra`;
+- v2: `Time-Domain`, `Time-Domain 48 kHz HQ`, `Time-Domain Extra`,
+  `Unit Test`, `Conv-TasNet`, and `Conv-TasNet Extra`;
+- v3: `MDX`, `MDX Extra`, `MDX Quantized`, `MDX Extra Quantized`, the three
+  `Repro MDX A` variants, and `UVR Model (2 Stems)`; and
+- v4: `Hybrid Demucs MMI`, `Hybrid Transformer`,
+  `Hybrid Transformer (6 Stems)`, and
+  `Hybrid Transformer Fine-Tuned`.
+
+The complete display begins with `Demucs vN —`, for example
+`Demucs v4 — Hybrid Transformer (6 Stems)`. An exact source label may supply a
+known generation and backend spelling, but the projector never derives a
+generation from an arbitrary basename. A custom basename without generation
+evidence uses `Demucs — <raw basename>`.
 
 ### Author attribution
 
@@ -249,7 +290,7 @@ reviewed authors.
 
 ## Collision and Unknown-model Rules
 
-- Preserve the three existing reviewed bracketed backend IDs whose removal
+- Preserve the four reviewed bracketed backend IDs whose removal
   would create display collisions.
 - Do not introduce duplicate displays for the ViperX series.
 - Compare generated displays case-insensitively after Unicode normalization.
@@ -257,8 +298,9 @@ reviewed authors.
   backend-ID suffix with a reasoned waiver. Never resolve it by changing
   canonical identity.
 - Unknown custom models without exact presentation evidence retain their raw
-  basenames. Conservative formatting must not manufacture catalogue
-  membership.
+  basenames after the non-semantic `VR —` or `Demucs —` family heading where
+  applicable. Conservative formatting must not manufacture catalogue
+  membership, a generation, or a backend expansion.
 
 ## Published-catalogue Backfill Contract
 
@@ -312,10 +354,14 @@ still require the approved safe repick behavior.
 - Cover every confirmed exact correction and all four ViperX displays.
 - Assert the exact `No Drum-Bass` and `Drum-Bass` output labels remain
   unchanged.
-- Cover all stem-count placements, all Mega stem-term transformations, the six
-  VR aliases, author-component normalization, technical-token casing, and
-  version/state casing.
-- Prove that the three collision suffixes and Gonza/Gonzaluigi distinction are
+- Cover all stem-count placements, all Mega stem-term transformations, all 28
+  reviewed VR identities, all 24 reviewed Demucs identities,
+  author-component normalization, technical-token casing, and version/state
+  casing.
+- Prove that exact v4/v5 and Demucs v1-v4 source labels remain idempotent,
+  trusted overrides stay verbatim, and unknown custom models receive only the
+  family-aware raw fallback.
+- Prove that the four collision suffixes and Gonza/Gonzaluigi distinction are
   preserved.
 
 ### Catalogue and registry behavior
@@ -343,9 +389,16 @@ still require the approved safe repick behavior.
 - Run the focused naming, registry, inventory, repository-refresh, generator,
   CLI, and private headless GTK suites, followed by the complete unit suite and
   basedpyright.
+- Launch the host-Wayland application through `uvr --trace gui` with real local
+  settings, models, and cache. Diagnostic CLI flags must not reach GTK; the
+  trace must contain no unknown-option failure, CSS parser warning, uncaught
+  exception, or unexpected basename fallback.
+- Parse the source stylesheet with GTK and rebuild the bundled GResource after
+  removing unsupported CSS declarations. The Python-measured error-summary
+  height cap remains authoritative.
 
 ## Implementation Boundary
 
 This specification introduces no public projector signature or registry schema
-change. The current audit and generated reference remain descriptions of the
-implemented state until the revision is implemented and verified.
+change. The audit and generated reference describe the verified implementation
+state after regeneration.

@@ -7,30 +7,30 @@ Bandit	Bandit	mvsepless		Bandit Last Checkpoint by ZFTurbo	mdx:bandit_last	Bandi
 Bandit	Bandit	mvsepless		Bandit Plus (ep 30) by ZFTurbo	mdx:bandit_30_zfturbo	Bandit — Plus (ep 30) · ZFTurbo	bandit_30_zfturbo.ckpt			clean
 Bandit	Bandit	mvsepless		Bandit Plus (ep 57) by ZFTurbo	mdx:bandit_57_zfturbo	Bandit — Plus (ep 57) · ZFTurbo	bandit_57_zfturbo.ckpt			clean
 Bandit	Bandit	mvsepless		Bandit Plus (ep 63) by ZFTurbo	mdx:bandit_63_zfturbo	Bandit — Plus (ep 63) · ZFTurbo	bandit_63_zfturbo.ckpt			clean
-Demucs	Demucs	TRvlvr+Politrees	v1	Demucs v1: demucs	demucs:demucs	v1 — Demucs	demucs.th			clean
-Demucs	Demucs	TRvlvr+Politrees	v1	Demucs v1: demucs_extra	demucs:demucs_extra	v1 — Demucs Extra	demucs_extra.th			clean
-Demucs	Demucs	TRvlvr+Politrees	v1	Demucs v1: light	demucs:light	v1 — Light	light.th			clean
-Demucs	Demucs	TRvlvr+Politrees	v1	Demucs v1: light_extra	demucs:light_extra	v1 — Light Extra	light_extra.th			clean
-Demucs	Demucs	TRvlvr+Politrees	v1	Demucs v1: tasnet	demucs:tasnet	v1 — TasNet	tasnet.th			clean
-Demucs	Demucs	TRvlvr+Politrees	v1	Demucs v1: tasnet_extra	demucs:tasnet_extra	v1 — TasNet Extra	tasnet_extra.th			clean
-Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: demucs	demucs:demucs-e07c671f	v2 — Demucs	demucs-e07c671f.th			clean
-Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: demucs48_hq	demucs:demucs48_hq-28a1282c	v2 — Demucs 48 kHz HQ	demucs48_hq-28a1282c.th			clean
-Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: demucs_extra	demucs:demucs_extra-3646af93	v2 — Demucs Extra	demucs_extra-3646af93.th			clean
-Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: demucs_unittest	demucs:demucs_unittest-09ebc15f	v2 — Demucs Unit Test	demucs_unittest-09ebc15f.th			clean
-Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: tasnet	demucs:tasnet-beb46fac	v2 — TasNet	tasnet-beb46fac.th			clean
-Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: tasnet_extra	demucs:tasnet_extra-df3777b2	v2 — TasNet Extra	tasnet_extra-df3777b2.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: mdx	demucs:mdx	v3 — MDX	c511e2ab-fe698775.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: mdx_extra	demucs:mdx_extra	v3 — MDX Extra	e51eebcc-c1b80bdd.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: mdx_extra_q	demucs:mdx_extra_q	v3 — MDX Extra Quality	83fc094f-4a16d450.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: mdx_q	demucs:mdx_q	v3 — MDX Quality	b72baf4e-8778635e.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: repro_mdx_a	demucs:repro_mdx_a	v3 — Repro MDX A	fa0cb7f9-100d8bf4.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: repro_mdx_a_hybrid_only	demucs:repro_mdx_a_hybrid_only	v3 — Repro MDX A Hybrid Only	fa0cb7f9-100d8bf4.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: repro_mdx_a_time_only	demucs:repro_mdx_a_time_only	v3 — Repro MDX A Time Only	9a6b4851-03af0aa6.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: UVR Model	demucs:UVR_Demucs_Model_1	v3 — UVR Model	ebf34a2db.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v4	Demucs v4: hdemucs_mmi	demucs:hdemucs_mmi	v4 — HDemucs MMI	75fc33f5-1941ce65.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v4	Demucs v4: htdemucs	demucs:htdemucs	v4 — HTDemucs	955717e8-8726e21a.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v4	Demucs v4: htdemucs_6s	demucs:htdemucs_6s	v4 — HTDemucs (6 Stems)	5c90dfd2-34c22ccb.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v4	Demucs v4: htdemucs_ft	demucs:htdemucs_ft	v4 — HTDemucs Fine-Tuned	f7e0c4bc-ba3fe64a.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v1	Demucs v1: tasnet	demucs:tasnet	Demucs v1 — Conv-TasNet	tasnet.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v1	Demucs v1: tasnet_extra	demucs:tasnet_extra	Demucs v1 — Conv-TasNet Extra	tasnet_extra.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v1	Demucs v1: light	demucs:light	Demucs v1 — Light	light.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v1	Demucs v1: light_extra	demucs:light_extra	Demucs v1 — Light Extra	light_extra.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v1	Demucs v1: demucs	demucs:demucs	Demucs v1 — Time-Domain	demucs.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v1	Demucs v1: demucs_extra	demucs:demucs_extra	Demucs v1 — Time-Domain Extra	demucs_extra.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: tasnet	demucs:tasnet-beb46fac	Demucs v2 — Conv-TasNet	tasnet-beb46fac.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: tasnet_extra	demucs:tasnet_extra-df3777b2	Demucs v2 — Conv-TasNet Extra	tasnet_extra-df3777b2.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: demucs	demucs:demucs-e07c671f	Demucs v2 — Time-Domain	demucs-e07c671f.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: demucs48_hq	demucs:demucs48_hq-28a1282c	Demucs v2 — Time-Domain 48 kHz HQ	demucs48_hq-28a1282c.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: demucs_extra	demucs:demucs_extra-3646af93	Demucs v2 — Time-Domain Extra	demucs_extra-3646af93.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: demucs_unittest	demucs:demucs_unittest-09ebc15f	Demucs v2 — Unit Test	demucs_unittest-09ebc15f.th			clean
+Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: mdx	demucs:mdx	Demucs v3 — MDX	c511e2ab-fe698775.th			clean
+Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: mdx_extra	demucs:mdx_extra	Demucs v3 — MDX Extra	e51eebcc-c1b80bdd.th			clean
+Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: mdx_extra_q	demucs:mdx_extra_q	Demucs v3 — MDX Extra Quantized	83fc094f-4a16d450.th			clean
+Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: mdx_q	demucs:mdx_q	Demucs v3 — MDX Quantized	b72baf4e-8778635e.th			clean
+Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: repro_mdx_a	demucs:repro_mdx_a	Demucs v3 — Repro MDX A	fa0cb7f9-100d8bf4.th			clean
+Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: repro_mdx_a_hybrid_only	demucs:repro_mdx_a_hybrid_only	Demucs v3 — Repro MDX A Hybrid Only	fa0cb7f9-100d8bf4.th			clean
+Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: repro_mdx_a_time_only	demucs:repro_mdx_a_time_only	Demucs v3 — Repro MDX A Time-Domain Only	9a6b4851-03af0aa6.th			clean
+Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: UVR Model	demucs:UVR_Demucs_Model_1	Demucs v3 — UVR Model (2 Stems)	ebf34a2db.th			clean
+Demucs	MDX23C	TRvlvr+Politrees	v4	Demucs v4: hdemucs_mmi	demucs:hdemucs_mmi	Demucs v4 — Hybrid Demucs MMI	75fc33f5-1941ce65.th			clean
+Demucs	MDX23C	TRvlvr+Politrees	v4	Demucs v4: htdemucs	demucs:htdemucs	Demucs v4 — Hybrid Transformer	955717e8-8726e21a.th			clean
+Demucs	MDX23C	TRvlvr+Politrees	v4	Demucs v4: htdemucs_6s	demucs:htdemucs_6s	Demucs v4 — Hybrid Transformer (6 Stems)	5c90dfd2-34c22ccb.th			clean
+Demucs	MDX23C	TRvlvr+Politrees	v4	Demucs v4: htdemucs_ft	demucs:htdemucs_ft	Demucs v4 — Hybrid Transformer Fine-Tuned	f7e0c4bc-ba3fe64a.th			clean
 MDX-Net	BS Roformer	mvsepless		BS PolarFormer 4 stems 09-07-2026 by Aname	mdx:bs_pope_4stem_09072026_aname	BandSplit PolarFormer — 09-07-2026 (4 Stems) · Aname	bs_pope_4stem_09072026_aname.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS PolarFormer InstVoc Duality Lazy Bat by Aname	mdx:bs_pope_instvoc_aname	BandSplit PolarFormer — Instrumental/Vocals Duality Lazy Bat · Aname	bs_pope_instvoc_aname.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS PolarFormer Karaoke by Lambda001 (sdr lead 9.74, sdr back instrum 15.13)	mdx:bs_pope_karaoke_974_lambda	BandSplit PolarFormer — Karaoke · Lambda001	bs_pope_karaoke_974_lambda.ckpt			clean
@@ -196,6 +196,8 @@ MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Footsteps by jazzpear	mdx
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer General by jazzpear	mdx:mbr_gen_jazzpear	MelBand Roformer — General · jazzpear	mbr_gen_jazzpear.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Guitar by chenCFD	mdx:mbr_guitar_chencfd	MelBand Roformer — Guitar · chenCFD	mbr_guitar_chencfd.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Hybrid Arch by Aname	mdx:mbr_hybrid_arch_aname	MelBand Roformer — Hybrid Arch · Aname	mbr_hybrid_arch_aname.ckpt			clean
+MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental by Essid (sdr 16.52)	mdx:mbr_inst_1652_essid	MelBand Roformer — Instrumental (SDR 16.52) · Essid	mbr_inst_1652_essid.ckpt			clean
+MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental by Essid (sdr 16.81)	mdx:mbr_inst_1681_essid	MelBand Roformer — Instrumental (SDR 16.81) · Essid	mbr_inst_1681_essid.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Bv1 by GaboxR67	mdx:mbr_instbv1_gabox	MelBand Roformer — Instrumental Bv1 · GaboxR67	mbr_instbv1_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Bv2 by GaboxR67	mdx:mbr_instbv2_gabox	MelBand Roformer — Instrumental Bv2 · GaboxR67	mbr_instbv2_gabox.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental Bv3 by GaboxR67	mdx:mbr_instbv3_gabox	MelBand Roformer — Instrumental Bv3 · GaboxR67	mbr_instbv3_gabox.ckpt			clean
@@ -227,8 +229,6 @@ MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental v1e by Unwa	
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental v2 by Unwa	mdx:mbr_inst2_unwa	MelBand Roformer — Instrumental v2 · Unwa	mbr_inst2_unwa.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Inst VFX by neoculture	mdx:mbr_neo_inst_vfx	MelBand Roformer — Instrumental VFX · neoculture	mbr_neo_inst_vfx.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental by Becruily [mbr_inst_becruily]	mdx:mbr_inst_becruily	MelBand Roformer — Instrumental · Becruily [mbr_inst_becruily]	mbr_inst_becruily.ckpt	underscore, embedded-id	underscore: The underscore is part of the reviewed bracketed backend ID retained for collision safety. | embedded-id: The bracketed exact backend ID distinguishes a same-title catalogue collision.	reviewed
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental by Essid (sdr 16.52)	mdx:mbr_inst_1652_essid	MelBand Roformer — Instrumental · Essid (SDR 16.52)	mbr_inst_1652_essid.ckpt			clean
-MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Instrumental by Essid (sdr 16.81)	mdx:mbr_inst_1681_essid	MelBand Roformer — Instrumental · Essid (SDR 16.81)	mbr_inst_1681_essid.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer InstVoc Duality v1 by Unwa	mdx:mbr_instvoc_duality1_unwa	MelBand Roformer — Instrumental/Vocals Duality v1 · Unwa	mbr_instvoc_duality1_unwa.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer InstVoc Duality v2 by Unwa	mdx:mbr_instvoc_duality2_unwa	MelBand Roformer — Instrumental/Vocals Duality v2 · Unwa	mbr_instvoc_duality2_unwa.ckpt			clean
 MDX-Net	Mel-Band Roformer	mvsepless		Mel-Band Roformer Karaoke 25-02-2025 by GaboxR67	mdx:mbr_karaoke25022025_gabox	MelBand Roformer — Karaoke 25-02-2025 · GaboxR67	mbr_karaoke25022025_gabox.ckpt			clean
@@ -350,7 +350,7 @@ Roformer	BS Roformer	Politrees		Roformer Model: BandSplit Roformer | FNO by Unwa
 Roformer	BS Roformer	extras		Roformer Model: BandSplit Roformer | HyperACE Instrumental by Unwa	mdx:bs_hyperace	BandSplit Roformer — HyperACE Instrumental · Unwa	bs_hyperace.ckpt			clean
 Roformer	BS Roformer	extras		Roformer Model: BandSplit Roformer | HyperACE v2 Instrumental by Unwa	mdx:bs_roformer_inst_hyperacev2	BandSplit Roformer — HyperACE v2 Instrumental · Unwa	bs_roformer_inst_hyperacev2.ckpt			clean
 Roformer	BS Roformer	extras		Roformer Model: BandSplit Roformer | HyperACE v2 Vocals by Unwa	mdx:bs_roformer_voc_hyperacev2	BandSplit Roformer — HyperACE v2 Vocals · Unwa	bs_roformer_voc_hyperacev2.ckpt			clean
-Roformer	BS Roformer	Politrees		Roformer Model: BandSplit Roformer | Inst-EXP-Value-Residual by Unwa	mdx:BS_Inst_EXP_VRL	BandSplit Roformer — Instrumental-EXP-Value-Residual · Unwa	BS_Inst_EXP_VRL.ckpt			clean
+Roformer	BS Roformer	Politrees		Roformer Model: BandSplit Roformer | Inst-EXP-Value-Residual by Unwa	mdx:BS_Inst_EXP_VRL	BandSplit Roformer — Instrumental EXP Value Residual · Unwa [BS_Inst_EXP_VRL]	BS_Inst_EXP_VRL.ckpt	underscore, embedded-id	underscore: The underscore is part of the reviewed bracketed backend ID retained for collision safety. | embedded-id: The bracketed exact backend ID distinguishes the Politrees artifact from the same-title MVSep model.	reviewed
 Roformer	BS Roformer	Politrees		Roformer Model: BandSplit Roformer | Karaoke Frazer by becruily	mdx:model_BandSplit-Roformer_Karaoke_Frazer_by-becruily	BandSplit Roformer — Karaoke Frazer · Becruily	model_BandSplit-Roformer_Karaoke_Frazer_by-becruily.ckpt			clean
 Roformer	BS Roformer	Politrees		Roformer Model: BandSplit Roformer | Male-Female by aufr33	mdx:bs_roformer_male_female_by_aufr33_sdr_7.2889	BandSplit Roformer — Male/Female · Aufr33	bs_roformer_male_female_by_aufr33_sdr_7.2889.ckpt			clean
 Roformer	BS Roformer	Politrees		Roformer Model: BandSplit Roformer | Resurrection Instrumental by Unwa	mdx:model_BandSplit-Roformer_Resurrection_Instrumental_by-Unwa	BandSplit Roformer — Resurrection Instrumental · Unwa	model_BandSplit-Roformer_Resurrection_Instrumental_by-Unwa.ckpt			clean
@@ -401,6 +401,7 @@ Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Instrum
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Instrumental v3 by Gabox	mdx:mel_band_roformer_inst_v3_gabox	MelBand Roformer — Instrumental v3 · Gabox	mel_band_roformer_inst_v3_gabox.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Instrumental by becruily	mdx:mel_band_roformer_instrumental_becruily	MelBand Roformer — Instrumental · Becruily	mel_band_roformer_instrumental_becruily.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Instrumental by Gabox	mdx:mel_band_roformer_instrumental_gabox	MelBand Roformer — Instrumental · Gabox	mel_band_roformer_instrumental_gabox.ckpt			clean
+Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Karaoke by Gabox (beta)	mdx:mel_band_roformer_karaoke_gabox	MelBand Roformer — Karaoke Beta · Gabox	mel_band_roformer_karaoke_gabox.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | BVE by Gonza	mdx:model_MelBand-Roformer_BVE_by-Gonza	MelBand Roformer — Karaoke BVE · Gonza	model_MelBand-Roformer_BVE_by-Gonza.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Karaoke Fusion Aggressive v2 by Gonza	mdx:model_MelBand-Roformer_Karaoke_Fusion_Aggressive_v2_by-Gonza	MelBand Roformer — Karaoke Fusion Aggressive v2 · Gonza	model_MelBand-Roformer_Karaoke_Fusion_Aggressive_v2_by-Gonza.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Karaoke Fusion Aggressive by Gonza	mdx:model_MelBand-Roformer_Karaoke_Fusion_Aggressive_by-Gonza	MelBand Roformer — Karaoke Fusion Aggressive · Gonza	model_MelBand-Roformer_Karaoke_Fusion_Aggressive_by-Gonza.ckpt			clean
@@ -409,7 +410,6 @@ Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Karaoke
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Karaoke by Aufr33 & Viperx	mdx:mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956	MelBand Roformer — Karaoke · Aufr33 & ViperX	mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Karaoke by becruily	mdx:melband_roformer_karaoke_becruily	MelBand Roformer — Karaoke · Becruily	melband_roformer_karaoke_becruily.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Karaoke by Gabox	mdx:model_MelBand-Roformer_Karaoke_by-Gabox	MelBand Roformer — Karaoke · Gabox	model_MelBand-Roformer_Karaoke_by-Gabox.ckpt			clean
-Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer | Karaoke by Gabox (beta)	mdx:mel_band_roformer_karaoke_gabox	MelBand Roformer — Karaoke · Gabox (beta)	mel_band_roformer_karaoke_gabox.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer Kim | Big Beta v4 FT by Unwa	mdx:melband_roformer_big_beta4	MelBand Roformer — Kim Big Beta v4 Fine-Tuned · Unwa	melband_roformer_big_beta4.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer Kim | Big Beta v5e FT by Unwa	mdx:melband_roformer_big_beta5e	MelBand Roformer — Kim Big Beta v5e Fine-Tuned · Unwa	melband_roformer_big_beta5e.ckpt			clean
 Roformer	Mel-Band Roformer	Politrees		Roformer Model: MelBand Roformer Kim | Big Beta v6 FT by Unwa	mdx:melband_roformer_big_beta6	MelBand Roformer — Kim Big Beta v6 Fine-Tuned · Unwa	melband_roformer_big_beta6.ckpt			clean
@@ -455,31 +455,31 @@ SCNet	SCNet	Politrees		SCnet: 4-stems SCNet Large	mdx:model_scnet_sdr_9.3244	SCN
 SCNet	SCNet	Politrees		SCnet: 4-stems SCNet Large by starrytong	mdx:SCNet-large_starrytong_fixed	SCNet — Large (4 Stems) · StarryTong	SCNet-large_starrytong_fixed.ckpt			clean
 SCNet	SCNet	Politrees		SCnet: 4-stems SCNet MUSDB18 by starrytong	mdx:scnet_checkpoint_musdb18	SCNet — MUSDB18 (4 Stems) · StarryTong	scnet_checkpoint_musdb18.ckpt			clean
 SCNet	SCNet	Politrees		SCnet: 4-stems SCNet XL	mdx:model_scnet_ep_54_sdr_9.8051	SCNet — XL (4 Stems)	model_scnet_ep_54_sdr_9.8051.ckpt			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 1_HP-UVR	vr:1_HP-UVR	HP 1	1_HP-UVR.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 2_HP-UVR	vr:2_HP-UVR	HP 2	2_HP-UVR.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 5_HP-Karaoke-UVR	vr:5_HP-Karaoke-UVR	HP Karaoke 5	5_HP-Karaoke-UVR.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 6_HP-Karaoke-UVR	vr:6_HP-Karaoke-UVR	HP Karaoke 6	6_HP-Karaoke-UVR.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 3_HP-Vocal-UVR	vr:3_HP-Vocal-UVR	HP Vocals 3	3_HP-Vocal-UVR.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 4_HP-Vocal-UVR	vr:4_HP-Vocal-UVR	HP Vocals 4	4_HP-Vocal-UVR.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 17_HP-Wind_Inst-UVR	vr:17_HP-Wind_Inst-UVR	HP Wind Instrumental 17	17_HP-Wind_Inst-UVR.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 7_HP2-UVR	vr:7_HP2-UVR	HP2 7	7_HP2-UVR.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 8_HP2-UVR	vr:8_HP2-UVR	HP2 8	8_HP2-UVR.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 9_HP2-UVR	vr:9_HP2-UVR	HP2 9	9_HP2-UVR.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: UVR-BVE-4B_SN-44100-1	vr:UVR-BVE-4B_SN-44100-1	Karaoke BVE (4 Bands, SN, 44.1 kHz) 1	UVR-BVE-4B_SN-44100-1.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v4	VR Arch Single Model v4: MGM_HIGHEND_v4	vr:MGM_HIGHEND_v4	MGM High-End	MGM_HIGHEND_v4.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v4	VR Arch Single Model v4: MGM_LOWEND_A_v4	vr:MGM_LOWEND_A_v4	MGM Low-End A	MGM_LOWEND_A_v4.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v4	VR Arch Single Model v4: MGM_LOWEND_B_v4	vr:MGM_LOWEND_B_v4	MGM Low-End B	MGM_LOWEND_B_v4.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v4	VR Arch Single Model v4: MGM_MAIN_v4	vr:MGM_MAIN_v4	MGM Main	MGM_MAIN_v4.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 10_SP-UVR-2B-32000-1	vr:10_SP-UVR-2B-32000-1	SP 2-Band 32 kHz 1	10_SP-UVR-2B-32000-1.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 11_SP-UVR-2B-32000-2	vr:11_SP-UVR-2B-32000-2	SP 2-Band 32 kHz 2	11_SP-UVR-2B-32000-2.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 12_SP-UVR-3B-44100	vr:12_SP-UVR-3B-44100	SP 3-Band 44.1 kHz	12_SP-UVR-3B-44100.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 13_SP-UVR-4B-44100-1	vr:13_SP-UVR-4B-44100-1	SP 4-Band 44.1 kHz 1	13_SP-UVR-4B-44100-1.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 14_SP-UVR-4B-44100-2	vr:14_SP-UVR-4B-44100-2	SP 4-Band 44.1 kHz 2	14_SP-UVR-4B-44100-2.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 15_SP-UVR-MID-44100-1	vr:15_SP-UVR-MID-44100-1	SP Mid 44.1 kHz 1	15_SP-UVR-MID-44100-1.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 16_SP-UVR-MID-44100-2	vr:16_SP-UVR-MID-44100-2	SP Mid 44.1 kHz 2	16_SP-UVR-MID-44100-2.pth			clean
-VR Architecture	VR Architecture	TRvlvr	v5	VR Arch Single Model v5: UVR-De-Echo-Aggressive by FoxJoy	vr:UVR-De-Echo-Aggressive	UVR De-Echo — Aggressive · FoxJoy	UVR-De-Echo-Aggressive.pth			clean
-VR Architecture	VR Architecture	TRvlvr	v5	VR Arch Single Model v5: UVR-De-Echo-Normal by FoxJoy	vr:UVR-De-Echo-Normal	UVR De-Echo — Normal · FoxJoy	UVR-De-Echo-Normal.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: UVR-DeEcho-DeReverb by FoxJoy	vr:UVR-DeEcho-DeReverb	UVR De-Echo/DeReverb · FoxJoy	UVR-DeEcho-DeReverb.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: UVR-DeNoise-Lite by FoxJoy	vr:UVR-DeNoise-Lite	UVR DeNoise Lite · FoxJoy	UVR-DeNoise-Lite.pth			clean
-VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: UVR-DeNoise by FoxJoy	vr:UVR-DeNoise	UVR DeNoise · FoxJoy	UVR-DeNoise.pth			clean
-VR Architecture	VR Architecture	Politrees	v5	VR Arch Single Model v5: UVR-DeReverb by aufr33 & jarredou	vr:UVR-De-Reverb-aufr33-jarredou	UVR DeReverb · Aufr33 & Jarredou	UVR-De-Reverb-aufr33-jarredou.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v4	VR Arch Single Model v4: MGM_HIGHEND_v4	vr:MGM_HIGHEND_v4	VR v4 — MGM High-End	MGM_HIGHEND_v4.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v4	VR Arch Single Model v4: MGM_LOWEND_A_v4	vr:MGM_LOWEND_A_v4	VR v4 — MGM Low-End A	MGM_LOWEND_A_v4.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v4	VR Arch Single Model v4: MGM_LOWEND_B_v4	vr:MGM_LOWEND_B_v4	VR v4 — MGM Low-End B	MGM_LOWEND_B_v4.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v4	VR Arch Single Model v4: MGM_MAIN_v4	vr:MGM_MAIN_v4	VR v4 — MGM Main	MGM_MAIN_v4.pth			clean
+VR Architecture	VR Architecture	TRvlvr	v5	VR Arch Single Model v5: UVR-De-Echo-Aggressive by FoxJoy	vr:UVR-De-Echo-Aggressive	VR v5 — De-Echo Aggressive · FoxJoy	UVR-De-Echo-Aggressive.pth			clean
+VR Architecture	VR Architecture	TRvlvr	v5	VR Arch Single Model v5: UVR-De-Echo-Normal by FoxJoy	vr:UVR-De-Echo-Normal	VR v5 — De-Echo Normal · FoxJoy	UVR-De-Echo-Normal.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: UVR-DeEcho-DeReverb by FoxJoy	vr:UVR-DeEcho-DeReverb	VR v5 — De-Echo/DeReverb · FoxJoy	UVR-DeEcho-DeReverb.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: UVR-DeNoise-Lite by FoxJoy	vr:UVR-DeNoise-Lite	VR v5 — DeNoise Lite · FoxJoy	UVR-DeNoise-Lite.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: UVR-DeNoise by FoxJoy	vr:UVR-DeNoise	VR v5 — DeNoise · FoxJoy	UVR-DeNoise.pth			clean
+VR Architecture	VR Architecture	Politrees	v5	VR Arch Single Model v5: UVR-DeReverb by aufr33 & jarredou	vr:UVR-De-Reverb-aufr33-jarredou	VR v5 — DeReverb · Aufr33 & Jarredou	UVR-De-Reverb-aufr33-jarredou.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 1_HP-UVR	vr:1_HP-UVR	VR v5 — HP 1	1_HP-UVR.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 2_HP-UVR	vr:2_HP-UVR	VR v5 — HP 2	2_HP-UVR.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 5_HP-Karaoke-UVR	vr:5_HP-Karaoke-UVR	VR v5 — HP Karaoke 5	5_HP-Karaoke-UVR.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 6_HP-Karaoke-UVR	vr:6_HP-Karaoke-UVR	VR v5 — HP Karaoke 6	6_HP-Karaoke-UVR.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 3_HP-Vocal-UVR	vr:3_HP-Vocal-UVR	VR v5 — HP Vocals 3	3_HP-Vocal-UVR.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 4_HP-Vocal-UVR	vr:4_HP-Vocal-UVR	VR v5 — HP Vocals 4	4_HP-Vocal-UVR.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 17_HP-Wind_Inst-UVR	vr:17_HP-Wind_Inst-UVR	VR v5 — HP Wind Instrumental 17	17_HP-Wind_Inst-UVR.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 7_HP2-UVR	vr:7_HP2-UVR	VR v5 — HP2 7	7_HP2-UVR.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 8_HP2-UVR	vr:8_HP2-UVR	VR v5 — HP2 8	8_HP2-UVR.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 9_HP2-UVR	vr:9_HP2-UVR	VR v5 — HP2 9	9_HP2-UVR.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: UVR-BVE-4B_SN-44100-1	vr:UVR-BVE-4B_SN-44100-1	VR v5 — Karaoke BVE (4 Bands, SN, 44.1 kHz) 1	UVR-BVE-4B_SN-44100-1.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 10_SP-UVR-2B-32000-1	vr:10_SP-UVR-2B-32000-1	VR v5 — SP 2-Band 32 kHz 1	10_SP-UVR-2B-32000-1.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 11_SP-UVR-2B-32000-2	vr:11_SP-UVR-2B-32000-2	VR v5 — SP 2-Band 32 kHz 2	11_SP-UVR-2B-32000-2.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 12_SP-UVR-3B-44100	vr:12_SP-UVR-3B-44100	VR v5 — SP 3-Band 44.1 kHz	12_SP-UVR-3B-44100.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 13_SP-UVR-4B-44100-1	vr:13_SP-UVR-4B-44100-1	VR v5 — SP 4-Band 44.1 kHz 1	13_SP-UVR-4B-44100-1.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 14_SP-UVR-4B-44100-2	vr:14_SP-UVR-4B-44100-2	VR v5 — SP 4-Band 44.1 kHz 2	14_SP-UVR-4B-44100-2.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 15_SP-UVR-MID-44100-1	vr:15_SP-UVR-MID-44100-1	VR v5 — SP Mid 44.1 kHz 1	15_SP-UVR-MID-44100-1.pth			clean
+VR Architecture	VR Architecture	TRvlvr+Politrees	v5	VR Arch Single Model v5: 16_SP-UVR-MID-44100-2	vr:16_SP-UVR-MID-44100-2	VR v5 — SP Mid 44.1 kHz 2	16_SP-UVR-MID-44100-2.pth			clean

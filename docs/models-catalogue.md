@@ -1,6 +1,6 @@
 # UVR Model Catalogue (TRvlvr + Politrees + extras + mvsepless)
 
-Generated: 2026-08-24 11:07 UTC by `scripts/generate_models_catalogue.py`.
+Generated: 2026-08-24 12:02 UTC by `scripts/generate_models_catalogue.py`.
 
 Regenerate after catalogue updates:
 
@@ -44,34 +44,34 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 
 | Family | Model | Intent | Best result | Backend | Target | Flags |
 | --- | --- | --- | --- | --- | --- | --- |
-| VR Architecture | MGM High-End | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | MGM Low-End A | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | MGM Low-End B | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | MGM Main | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | SP 2-Band 32 kHz 1 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | SP 2-Band 32 kHz 2 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | SP 3-Band 44.1 kHz | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | SP 4-Band 44.1 kHz 1 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | SP 4-Band 44.1 kHz 2 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | SP Mid 44.1 kHz 1 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | SP Mid 44.1 kHz 2 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | HP Wind Instrumental 17 | special_fx | no woodwinds (mix minus woodwinds) | two_stem | no woodwinds | — |
-| VR Architecture | HP 1 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | HP 2 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | HP Vocals 3 | vocals | Vocals (+ Instrumental complement) | two_stem | Vocals | NAME says vocals but backend is not vocal-focused |
-| VR Architecture | HP Vocals 4 | vocals | Vocals (+ Instrumental complement) | two_stem | Vocals | NAME says vocals but backend is not vocal-focused |
-| VR Architecture | HP Karaoke 5 | karaoke | Karaoke backing (Instrumental primary; complement … | karaoke_instrumental_primary | Instrumental | — |
-| VR Architecture | HP Karaoke 6 | karaoke | Karaoke backing (Instrumental primary; complement … | karaoke_instrumental_primary | Instrumental | — |
-| VR Architecture | HP2 7 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | HP2 8 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | HP2 9 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
-| VR Architecture | Karaoke BVE (4 Bands, SN, 44.1 kHz) 1 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
-| VR Architecture | UVR De-Echo — Aggressive · FoxJoy | special_fx | no echo (mix minus echo) | two_stem | no echo | — |
-| VR Architecture | UVR De-Echo — Normal · FoxJoy | special_fx | no echo (mix minus echo) | two_stem | no echo | — |
-| VR Architecture | UVR De-Echo/DeReverb · FoxJoy | special_fx | no reverb (mix minus reverb) | two_stem | no reverb | — |
-| VR Architecture | UVR DeNoise · FoxJoy | special_fx | Noise (isolated noise stem) | two_stem | noise | — |
-| VR Architecture | UVR DeNoise Lite · FoxJoy | special_fx | Noise (isolated noise stem) | two_stem | noise | — |
-| VR Architecture | UVR DeReverb · Aufr33 & Jarredou | special_fx | Dry (dereverbbed signal) | two_stem | dry | — |
+| VR Architecture | VR v4 — MGM High-End | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v4 — MGM Low-End A | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v4 — MGM Low-End B | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v4 — MGM Main | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v5 — SP 2-Band 32 kHz 1 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v5 — SP 2-Band 32 kHz 2 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v5 — SP 3-Band 44.1 kHz | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v5 — SP 4-Band 44.1 kHz 1 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v5 — SP 4-Band 44.1 kHz 2 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v5 — SP Mid 44.1 kHz 1 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v5 — SP Mid 44.1 kHz 2 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v5 — HP Wind Instrumental 17 | special_fx | no woodwinds (mix minus woodwinds) | two_stem | no woodwinds | — |
+| VR Architecture | VR v5 — HP 1 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v5 — HP 2 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v5 — HP Vocals 3 | vocals | Vocals (+ Instrumental complement) | two_stem | Vocals | NAME says vocals but backend is not vocal-focused |
+| VR Architecture | VR v5 — HP Vocals 4 | vocals | Vocals (+ Instrumental complement) | two_stem | Vocals | NAME says vocals but backend is not vocal-focused |
+| VR Architecture | VR v5 — HP Karaoke 5 | karaoke | Karaoke backing (Instrumental primary; complement … | karaoke_instrumental_primary | Instrumental | — |
+| VR Architecture | VR v5 — HP Karaoke 6 | karaoke | Karaoke backing (Instrumental primary; complement … | karaoke_instrumental_primary | Instrumental | — |
+| VR Architecture | VR v5 — HP2 7 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v5 — HP2 8 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v5 — HP2 9 | instrumental | Instrumental (+ Vocals complement) | two_stem | Instrumental | — |
+| VR Architecture | VR v5 — Karaoke BVE (4 Bands, SN, 44.1 kHz) 1 | vocals | Vocals (+ Instrumental complement) | vocal_primary | Vocals | — |
+| VR Architecture | VR v5 — De-Echo Aggressive · FoxJoy | special_fx | no echo (mix minus echo) | two_stem | no echo | — |
+| VR Architecture | VR v5 — De-Echo Normal · FoxJoy | special_fx | no echo (mix minus echo) | two_stem | no echo | — |
+| VR Architecture | VR v5 — De-Echo/DeReverb · FoxJoy | special_fx | no reverb (mix minus reverb) | two_stem | no reverb | — |
+| VR Architecture | VR v5 — DeNoise · FoxJoy | special_fx | Noise (isolated noise stem) | two_stem | noise | — |
+| VR Architecture | VR v5 — DeNoise Lite · FoxJoy | special_fx | Noise (isolated noise stem) | two_stem | noise | — |
+| VR Architecture | VR v5 — DeReverb · Aufr33 & Jarredou | special_fx | Dry (dereverbbed signal) | two_stem | dry | — |
 | MDX-Net | BandSplit Roformer — Guitar · Kimberley Xlance | specialty_stem | guitar, other | specialty_target:guitar | guitar | — |
 | MDX-Net | BandSplit PolarFormer — 09-07-2026 (4 Stems) · Aname | multi_stem | Multi-stem: vocals, other, drums, bass | multi_stem | vocals | — |
 | MDX-Net | BandSplit PolarFormer — Lazy Bat (4 Stems) · Aname | multi_stem | Multi-stem: vocals, other, drums, bass | multi_stem | vocals | — |
@@ -320,8 +320,8 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | MDX-Net | MelBand Roformer — Instrumental Fv9 · GaboxR67 [mbr_instfv9_gabox] | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Instrumental FvX · GaboxR67 | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Instrumental · Becruily [mbr_inst_becruily] | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
-| MDX-Net | MelBand Roformer — Instrumental · Essid (SDR 16.52) | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
-| MDX-Net | MelBand Roformer — Instrumental · Essid (SDR 16.81) | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
+| MDX-Net | MelBand Roformer — Instrumental (SDR 16.52) · Essid | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
+| MDX-Net | MelBand Roformer — Instrumental (SDR 16.81) · Essid | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | MDX-Net | MelBand Roformer — Instrumental v1 · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
 | MDX-Net | MelBand Roformer — Instrumental v1+ · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
 | MDX-Net | MelBand Roformer — Instrumental v1e Plus · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
@@ -385,7 +385,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Roformer | BandSplit Roformer — HyperACE Instrumental · Unwa | instrumental | instrument (single native output) | single_target:instrument | instrument | — |
 | Roformer | BandSplit Roformer — HyperACE v2 Instrumental · Unwa | instrumental | instrument (single native output) | single_target:instrument | instrument | — |
 | Roformer | BandSplit Roformer — HyperACE v2 Vocals · Unwa | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
-| Roformer | BandSplit Roformer — Instrumental-EXP-Value-Residual · Unwa | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
+| Roformer | BandSplit Roformer — Instrumental EXP Value Residual · Unwa [BS_Inst_EXP_VRL] | instrumental | Instrumental (complement = Vocals) | instrumental_target | Instrumental | — |
 | Roformer | BandSplit Roformer — Karaoke Frazer · Becruily | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | Roformer | BandSplit Roformer — Male/Female · Aufr33 | specialty_stem | male, female | specialty_two_stem | male | — |
 | Roformer | BandSplit Roformer — Resurrection Instrumental · Unwa | instrumental | Instrumental (yaml `other`; complement = vocals) | instrumental_target_other_yaml | other | — |
@@ -466,7 +466,7 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | Roformer | MelBand Roformer — Karaoke Fusion Total · Gonza | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | Roformer | MelBand Roformer — Karaoke · Aufr33 & ViperX | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | Roformer | MelBand Roformer — Karaoke · Gabox | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
-| Roformer | MelBand Roformer — Karaoke · Gabox (beta) | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
+| Roformer | MelBand Roformer — Karaoke Beta · Gabox | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | Roformer | MelBand Roformer — Karaoke · Becruily | karaoke | Karaoke vocals (Vocals primary; complement = instr… | karaoke_vocal_primary | Vocals | — |
 | Roformer | MelBand Roformer — Small · Aname | vocals | Instrumental (+ Vocals complement) | two_stem | Instrumental | NAME says vocals but backend is not vocal-focused |
 | Roformer | MelBand Roformer — Vocals Fullness · Aname | vocals | Vocals (complement = Instrumental) | vocal_target | vocals | — |
@@ -502,30 +502,30 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 | SCNet | SCNet — Large (4 Stems) · StarryTong | multi_stem | Multi-stem: Drums, Bass, Other, Vocals | multi_stem | Drums | — |
 | SCNet | SCNet — MUSDB18 (4 Stems) · StarryTong | multi_stem | Multi-stem: Drums, Bass, Other, Vocals | multi_stem | Drums | — |
 | SCNet | SCNet — XL (4 Stems) | multi_stem | Multi-stem: Drums, Bass, Other, Vocals | multi_stem | Drums | — |
-| Demucs | v1 — Demucs | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v1 — Demucs Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v1 — Light | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v1 — Light Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v1 — TasNet | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v1 — TasNet Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v2 — Demucs | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v2 — Demucs 48 kHz HQ | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v2 — Demucs Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v2 — Demucs Unit Test | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v2 — TasNet | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v2 — TasNet Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v3 — UVR Model | dual_voc_inst | 2-stem: instrumental + vocals (user picks focus) | two_stem |  | — |
-| Demucs | v3 — MDX | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v3 — MDX Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v3 — MDX Extra Quality | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v3 — MDX Quality | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v3 — Repro MDX A | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v3 — Repro MDX A Hybrid Only | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v3 — Repro MDX A Time Only | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v4 — HDemucs MMI | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v4 — HTDemucs | multi_stem | 4-stem Demucs | multi_stem |  | — |
-| Demucs | v4 — HTDemucs (6 Stems) | multi_stem | 6-stem Demucs | multi_stem |  | — |
-| Demucs | v4 — HTDemucs Fine-Tuned | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v1 — Time-Domain | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v1 — Time-Domain Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v1 — Light | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v1 — Light Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v1 — Conv-TasNet | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v1 — Conv-TasNet Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v2 — Time-Domain | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v2 — Time-Domain 48 kHz HQ | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v2 — Time-Domain Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v2 — Unit Test | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v2 — Conv-TasNet | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v2 — Conv-TasNet Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v3 — UVR Model (2 Stems) | dual_voc_inst | 2-stem: instrumental + vocals (user picks focus) | two_stem |  | — |
+| Demucs | Demucs v3 — MDX | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v3 — MDX Extra | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v3 — MDX Extra Quantized | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v3 — MDX Quantized | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v3 — Repro MDX A | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v3 — Repro MDX A Hybrid Only | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v3 — Repro MDX A Time-Domain Only | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v4 — Hybrid Demucs MMI | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v4 — Hybrid Transformer | multi_stem | 4-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v4 — Hybrid Transformer (6 Stems) | multi_stem | 6-stem Demucs | multi_stem |  | — |
+| Demucs | Demucs v4 — Hybrid Transformer Fine-Tuned | multi_stem | 4-stem Demucs | multi_stem |  | — |
 | Apollo | Apollo — EDM Restoration Big · Essid | unknown | unknown | unknown |  | — |
 | Apollo | Apollo — EDM Restoration · Essid | unknown | unknown | unknown |  | — |
 
@@ -537,8 +537,8 @@ Roformer karaoke yamls typically target **vocals** (lead) with instrumental comp
 
 | Model | Primary | Karaoke flag | Best result |
 | --- | --- | --- | --- |
-| HP Karaoke 5 | Instrumental | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
-| HP Karaoke 6 | Instrumental | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
+| VR v5 — HP Karaoke 5 | Instrumental | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
+| VR v5 — HP Karaoke 6 | Instrumental | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
 | BandSplit PolarFormer — Karaoke · Lambda001 | lead | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | BandSplit Roformer — Karaoke Inverted · GaboxR67 | other | yes | Karaoke backing (Instrumental primary; complement = lead vocals) |
 | BandSplit Roformer — Karaoke · Anvuew | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
@@ -563,7 +563,7 @@ Roformer karaoke yamls typically target **vocals** (lead) with instrumental comp
 | MelBand Roformer — Karaoke Fusion Total · Gonza | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | MelBand Roformer — Karaoke · Aufr33 & ViperX | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | MelBand Roformer — Karaoke · Gabox | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
-| MelBand Roformer — Karaoke · Gabox (beta) | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
+| MelBand Roformer — Karaoke Beta · Gabox | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 | MelBand Roformer — Karaoke · Becruily | Vocals | yes | Karaoke vocals (Vocals primary; complement = instrumental backing) |
 
 ## Instrumental models with yaml stem `other`
@@ -601,15 +601,15 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 
 | Label | Intent | Backend | Target/Primary | Best result | Flags |
 | --- | --- | --- | --- | --- | --- |
-| HP Vocals 3 | vocals | two_stem | Vocals | Vocals (+ Instrumental complement) | NAME says vocals but backend is not vocal-focused |
-| HP Vocals 4 | vocals | two_stem | Vocals | Vocals (+ Instrumental complement) | NAME says vocals but backend is not vocal-focused |
+| VR v5 — HP Vocals 3 | vocals | two_stem | Vocals | Vocals (+ Instrumental complement) | NAME says vocals but backend is not vocal-focused |
+| VR v5 — HP Vocals 4 | vocals | two_stem | Vocals | Vocals (+ Instrumental complement) | NAME says vocals but backend is not vocal-focused |
 | MDX23C — D1581 | vocals | two_stem | Vocals | Vocals (+ Instrumental complement) | NAME says vocals but backend is not vocal-focused |
 | MelBand Roformer — Duet · Dry Paint Dealer Undr | vocals | two_stem | singer_1 | singer_1, singer_2 | NAME says vocals but backend is not vocal-focused; NAME says vocals but backend is specialty 2-stem |
 | MelBand Roformer — Small · Aname | vocals | two_stem | Instrumental | Instrumental (+ Vocals complement) | NAME says vocals but backend is not vocal-focused |
 
 ## VR Architecture (detail)
 
-### MGM High-End
+### VR v4 — MGM High-End
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `MGM_HIGHEND_v4.pth`
@@ -622,7 +622,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (12.3), vocals (6.9)
 
-### MGM Low-End A
+### VR v4 — MGM Low-End A
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `MGM_LOWEND_A_v4.pth`
@@ -635,7 +635,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.0), vocals (7.0)
 
-### MGM Low-End B
+### VR v4 — MGM Low-End B
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `MGM_LOWEND_B_v4.pth`
@@ -648,7 +648,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.1), vocals (7.5)
 
-### MGM Main
+### VR v4 — MGM Main
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `MGM_MAIN_v4.pth`
@@ -661,7 +661,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (12.4), vocals (6.2)
 
-### SP 2-Band 32 kHz 1
+### VR v5 — SP 2-Band 32 kHz 1
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `10_SP-UVR-2B-32000-1.pth`
@@ -674,7 +674,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.3), vocals (7.5)
 
-### SP 2-Band 32 kHz 2
+### VR v5 — SP 2-Band 32 kHz 2
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `11_SP-UVR-2B-32000-2.pth`
@@ -687,7 +687,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.8), vocals (7.3)
 
-### SP 3-Band 44.1 kHz
+### VR v5 — SP 3-Band 44.1 kHz
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `12_SP-UVR-3B-44100.pth`
@@ -700,7 +700,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.1), vocals (7.5)
 
-### SP 4-Band 44.1 kHz 1
+### VR v5 — SP 4-Band 44.1 kHz 1
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `13_SP-UVR-4B-44100-1.pth`
@@ -713,7 +713,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.3), vocals (7.8)
 
-### SP 4-Band 44.1 kHz 2
+### VR v5 — SP 4-Band 44.1 kHz 2
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `14_SP-UVR-4B-44100-2.pth`
@@ -726,7 +726,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.5), vocals (8.0)
 
-### SP Mid 44.1 kHz 1
+### VR v5 — SP Mid 44.1 kHz 1
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `15_SP-UVR-MID-44100-1.pth`
@@ -739,7 +739,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.1), vocals (7.5)
 
-### SP Mid 44.1 kHz 2
+### VR v5 — SP Mid 44.1 kHz 2
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `16_SP-UVR-MID-44100-2.pth`
@@ -752,7 +752,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.3), vocals (7.4)
 
-### HP Wind Instrumental 17
+### VR v5 — HP Wind Instrumental 17
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `17_HP-Wind_Inst-UVR.pth`
@@ -765,7 +765,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: no woodwinds*, woodwinds
 
-### HP 1
+### VR v5 — HP 1
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `1_HP-UVR.pth`
@@ -778,7 +778,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.7), vocals (7.9)
 
-### HP 2
+### VR v5 — HP 2
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `2_HP-UVR.pth`
@@ -791,7 +791,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.5), vocals (8.2)
 
-### HP Vocals 3
+### VR v5 — HP Vocals 3
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `3_HP-Vocal-UVR.pth`
@@ -805,7 +805,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Note:** Community ref: vocals* (8.2), instrumental (14.0)
 - **⚠ Flags:** NAME says vocals but backend is not vocal-focused
 
-### HP Vocals 4
+### VR v5 — HP Vocals 4
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `4_HP-Vocal-UVR.pth`
@@ -819,7 +819,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Note:** Community ref: vocals* (8.3), instrumental (13.6)
 - **⚠ Flags:** NAME says vocals but backend is not vocal-focused
 
-### HP Karaoke 5
+### VR v5 — HP Karaoke 5
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `5_HP-Karaoke-UVR.pth`
@@ -833,7 +833,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (12.2), vocals (5.2)
 
-### HP Karaoke 6
+### VR v5 — HP Karaoke 6
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `6_HP-Karaoke-UVR.pth`
@@ -847,7 +847,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.0), vocals (4.6)
 
-### HP2 7
+### VR v5 — HP2 7
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `7_HP2-UVR.pth`
@@ -860,7 +860,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.5), vocals (8.3)
 
-### HP2 8
+### VR v5 — HP2 8
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `8_HP2-UVR.pth`
@@ -873,7 +873,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.5), vocals (8.2)
 
-### HP2 9
+### VR v5 — HP2 9
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `9_HP2-UVR.pth`
@@ -886,7 +886,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: instrumental* (13.7), vocals (8.0)
 
-### Karaoke BVE (4 Bands, SN, 44.1 kHz) 1
+### VR v5 — Karaoke BVE (4 Bands, SN, 44.1 kHz) 1
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-BVE-4B_SN-44100-1.pth`
@@ -898,7 +898,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: vocals* (0.0), instrumental (7.7)
 
-### UVR De-Echo — Aggressive · FoxJoy
+### VR v5 — De-Echo Aggressive · FoxJoy
 
 - **Source:** TRvlvr
 - **Weight:** `UVR-De-Echo-Aggressive.pth`
@@ -911,7 +911,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: no echo*, echo
 
-### UVR De-Echo — Normal · FoxJoy
+### VR v5 — De-Echo Normal · FoxJoy
 
 - **Source:** TRvlvr
 - **Weight:** `UVR-De-Echo-Normal.pth`
@@ -924,7 +924,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: no echo*, echo
 
-### UVR De-Echo/DeReverb · FoxJoy
+### VR v5 — De-Echo/DeReverb · FoxJoy
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-DeEcho-DeReverb.pth`
@@ -937,7 +937,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: no reverb*, reverb
 
-### UVR DeNoise · FoxJoy
+### VR v5 — DeNoise · FoxJoy
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-DeNoise.pth`
@@ -950,7 +950,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** community_models.txt
 - **Note:** Community ref: noise*, no noise
 
-### UVR DeNoise Lite · FoxJoy
+### VR v5 — DeNoise Lite · FoxJoy
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `UVR-DeNoise-Lite.pth`
@@ -963,7 +963,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Metadata:** politrees_vr_hash
 - **Note:** Community ref: noise*, no noise
 
-### UVR DeReverb · Aufr33 & Jarredou
+### VR v5 — DeReverb · Aufr33 & Jarredou
 
 - **Source:** Politrees
 - **Weight:** `UVR-De-Reverb-aufr33-jarredou.pth`
@@ -4585,7 +4585,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** bundled_yaml:mbr_inst_becruily_config.yaml
 
-### MelBand Roformer — Instrumental · Essid (SDR 16.52)
+### MelBand Roformer — Instrumental (SDR 16.52) · Essid
 
 - **Source:** mvsepless
 - **Weight:** `mbr_inst_1652_essid.ckpt`
@@ -4600,7 +4600,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)
 - **Metadata:** bundled_yaml:mbr_inst_1652_essid_config.yaml
 
-### MelBand Roformer — Instrumental · Essid (SDR 16.81)
+### MelBand Roformer — Instrumental (SDR 16.81) · Essid
 
 - **Source:** mvsepless
 - **Weight:** `mbr_inst_1681_essid.ckpt`
@@ -5562,7 +5562,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** bundled_yaml:config_bs_hyperace_v2_voc.yaml
 
-### BandSplit Roformer — Instrumental-EXP-Value-Residual · Unwa
+### BandSplit Roformer — Instrumental EXP Value Residual · Unwa [BS_Inst_EXP_VRL]
 
 - **Source:** Politrees
 - **Weight:** `BS_Inst_EXP_VRL.ckpt`
@@ -6784,7 +6784,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental
 - **Metadata:** bundled_yaml:config_MelBand-Roformer_Karaoke_by-Gabox.yaml
 
-### MelBand Roformer — Karaoke · Gabox (beta)
+### MelBand Roformer — Karaoke Beta · Gabox
 
 - **Source:** Politrees
 - **Weight:** `mel_band_roformer_karaoke_gabox.ckpt`
@@ -7310,7 +7310,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 
 ## Demucs (detail)
 
-### v1 — Demucs
+### Demucs v1 — Time-Domain
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `demucs.th`
@@ -7321,7 +7321,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v1 — Demucs Extra
+### Demucs v1 — Time-Domain Extra
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `demucs_extra.th`
@@ -7332,7 +7332,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v1 — Light
+### Demucs v1 — Light
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `light.th`
@@ -7343,7 +7343,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v1 — Light Extra
+### Demucs v1 — Light Extra
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `light_extra.th`
@@ -7354,7 +7354,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v1 — TasNet
+### Demucs v1 — Conv-TasNet
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `tasnet.th`
@@ -7365,7 +7365,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v1 — TasNet Extra
+### Demucs v1 — Conv-TasNet Extra
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `tasnet_extra.th`
@@ -7376,7 +7376,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v2 — Demucs
+### Demucs v2 — Time-Domain
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `demucs-e07c671f.th`
@@ -7387,7 +7387,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v2 — Demucs 48 kHz HQ
+### Demucs v2 — Time-Domain 48 kHz HQ
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `demucs48_hq-28a1282c.th`
@@ -7398,7 +7398,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v2 — Demucs Extra
+### Demucs v2 — Time-Domain Extra
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `demucs_extra-3646af93.th`
@@ -7409,7 +7409,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v2 — Demucs Unit Test
+### Demucs v2 — Unit Test
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `demucs_unittest-09ebc15f.th`
@@ -7420,7 +7420,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v2 — TasNet
+### Demucs v2 — Conv-TasNet
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `tasnet-beb46fac.th`
@@ -7431,7 +7431,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v2 — TasNet Extra
+### Demucs v2 — Conv-TasNet Extra
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `tasnet_extra-df3777b2.th`
@@ -7442,7 +7442,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v3 — UVR Model
+### Demucs v3 — UVR Model (2 Stems)
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `ebf34a2db.th`
@@ -7455,7 +7455,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: Vocals / Instrumental (either stem is a valid primary export)
 - **Metadata:** demucs_heuristic
 
-### v3 — MDX
+### Demucs v3 — MDX
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `c511e2ab-fe698775.th`
@@ -7468,7 +7468,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v3 — MDX Extra
+### Demucs v3 — MDX Extra
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `e51eebcc-c1b80bdd.th`
@@ -7481,7 +7481,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v3 — MDX Extra Quality
+### Demucs v3 — MDX Extra Quantized
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `83fc094f-4a16d450.th`
@@ -7494,7 +7494,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v3 — MDX Quality
+### Demucs v3 — MDX Quantized
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `b72baf4e-8778635e.th`
@@ -7507,7 +7507,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v3 — Repro MDX A
+### Demucs v3 — Repro MDX A
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `fa0cb7f9-100d8bf4.th`
@@ -7520,7 +7520,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v3 — Repro MDX A Hybrid Only
+### Demucs v3 — Repro MDX A Hybrid Only
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `fa0cb7f9-100d8bf4.th`
@@ -7533,7 +7533,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v3 — Repro MDX A Time Only
+### Demucs v3 — Repro MDX A Time-Domain Only
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `9a6b4851-03af0aa6.th`
@@ -7546,7 +7546,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v4 — HDemucs MMI
+### Demucs v4 — Hybrid Demucs MMI
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `75fc33f5-1941ce65.th`
@@ -7559,7 +7559,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v4 — HTDemucs
+### Demucs v4 — Hybrid Transformer
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `955717e8-8726e21a.th`
@@ -7572,7 +7572,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v4 — HTDemucs (6 Stems)
+### Demucs v4 — Hybrid Transformer (6 Stems)
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `5c90dfd2-34c22ccb.th`
@@ -7585,7 +7585,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Save stems UI:** UI: per-stem subset or focus row
 - **Metadata:** demucs_heuristic
 
-### v4 — HTDemucs Fine-Tuned
+### Demucs v4 — Hybrid Transformer Fine-Tuned
 
 - **Source:** TRvlvr+Politrees
 - **Weight:** `f7e0c4bc-ba3fe64a.th`

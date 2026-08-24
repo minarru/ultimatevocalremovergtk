@@ -10,8 +10,8 @@ from typing import NoReturn, Optional, Sequence
 
 from __version__ import VERSION
 
-from .bench import add_bench_args, cmd_bench
 from .audio import add_audio_parser, add_audio_validation_parser
+from .bench import add_bench_args, cmd_bench
 from .discovery import (
     add_completion_parser,
     add_devices_parser,
@@ -23,8 +23,8 @@ from .ensemble import add_ensemble_args, cmd_ensemble
 from .replay import add_run_args, cmd_run
 from .reporting import REPORT_CHOICES, ensure_job_id, fail
 from .separate import add_separate_args, cmd_separate
-from .validate import add_validation_level, cmd_validate
 from .update import add_update_parser
+from .validate import add_validation_level, cmd_validate
 
 
 class UsageError(ValueError):
@@ -42,7 +42,7 @@ def cmd_gui(_args: argparse.Namespace) -> int:
     normalize_g_messages_debug_env()
     from ui.application import main as gui_main
 
-    return int(gui_main(configure_diagnostics=False))
+    return int(gui_main(argv=sys.argv[:1], configure_diagnostics=False))
 
 
 def build_parser() -> argparse.ArgumentParser:

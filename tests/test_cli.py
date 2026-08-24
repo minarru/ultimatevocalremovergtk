@@ -4,6 +4,7 @@ import argparse
 import io
 import json
 import os
+import sys
 import tempfile
 import unittest
 import warnings
@@ -42,10 +43,14 @@ class ParserSurfaceTests(unittest.TestCase):
     def test_gui_command_preserves_cli_diagnostic_overrides(self) -> None:
         from cli.main import cmd_gui
 
-        with patch("ui.application.main", return_value=0) as gui_main:
+        with patch.object(
+            sys,
+            "argv",
+            ["uvr", "--trace", "--debug-sensitive", "gui"],
+        ), patch("ui.application.main", return_value=0) as gui_main:
             self.assertEqual(cmd_gui(argparse.Namespace()), 0)
 
-        gui_main.assert_called_once_with(configure_diagnostics=False)
+        gui_main.assert_called_once_with(argv=["uvr"], configure_diagnostics=False)
 
     def test_diagnostic_flags_parse_globally_and_after_processing_command(self) -> None:
         parser = build_parser()
@@ -556,8 +561,9 @@ class ValidationAndBenchmarkTests(unittest.TestCase):
         self.assertFalse(json.loads(out.getvalue())["ok"])
 
     def test_fail_exit_130_sets_stopped(self) -> None:
-        from cli.reporting import fail
         from types import SimpleNamespace
+
+        from cli.reporting import fail
 
         args = SimpleNamespace(report="json", quiet=False, verbose=False)
         out, err = io.StringIO(), io.StringIO()

@@ -16,7 +16,7 @@ explicit trusted registry override
   -> exact current published catalogue label
   -> exact persisted catalogue label
   -> exact family name-mapper label
-  -> raw canonical basename
+  -> family-labelled raw basename for VR/Demucs, otherwise raw basename
 ```
 
 The runtime ID remains `family:basename`. Display text is never inverted into
@@ -67,12 +67,12 @@ Current strict result:
 | Syntactic catalogue presentation IDs | 484 |
 | Runtime inventory projections | 483 |
 | Unique presentation IDs | 484 |
-| Clean rows | 481 |
-| Reviewed rows | 3 |
+| Clean rows | 480 |
+| Reviewed rows | 4 |
 | Unreviewed rows | 0 |
 | Accidental case-insensitive display collisions | 0 |
 
-The three reviewed rows retain bracketed backend IDs because removing them
+The four reviewed rows retain bracketed backend IDs because removing them
 would collapse same-title catalogue entries. Each has two visible mechanical
 flags, `embedded-id` and `underscore`; both flags have an exact ID-scoped,
 reasoned waiver. No flag is globally suppressed.
@@ -81,9 +81,9 @@ reasoned waiver. No flag is globally suppressed.
 
 The projector applies these approved rules only to presentation:
 
-- VR has no artificial family prefix. Exact aliases cover all 28 reviewed
-  legacy and utility names while retaining meaningful HP/SP/HP2, band,
-  sample-rate, SN, and sequence tokens.
+- All 28 reviewed VR identities carry their authoritative `VR v4` or `VR v5`
+  heading while retaining meaningful HP/SP/HP2, band, sample-rate, SN, and
+  sequence tokens.
 - Mel-Band variants render as `MelBand Roformer`; BS variants render as
   `BandSplit Roformer`; the five PolarFormer entries use exact
   `BandSplit PolarFormer` aliases.
@@ -102,8 +102,9 @@ The projector applies these approved rules only to presentation:
 - The eight KUIELAB ONNX storage-style names, the reviewed classic ONNX batch,
   all remaining VR utility names, and the exact correction batches use
   canonical-ID aliases; this does not create a general filename parser.
-- Demucs retains its meaningful `v1`-`v4` generation and uses curated backend
-  spellings such as `HTDemucs Fine-Tuned`.
+- All 24 reviewed Demucs identities retain their meaningful `Demucs v1`-
+  `Demucs v4` generation and use expanded backend names such as
+  `Hybrid Transformer Fine-Tuned`.
 - The classic ONNX batch retains the `MDX-Net` engine heading and renders its
   descriptive `UVR` body without storage punctuation.
 - BVE-to-Karaoke wording is presentation-only. Karaoke/BV eligibility still
@@ -111,8 +112,9 @@ The projector applies these approved rules only to presentation:
 - Exact author aliases normalize each component of a reviewed `A & B`
   attribution without title-casing unknown handles. Gonza and Gonzaluigi
   remain distinct reviewed attributions.
-- A genuinely unknown custom model with no exact evidence stays at its raw
-  canonical basename.
+- A genuinely unknown custom model with no exact evidence keeps its raw
+  canonical basename after a non-semantic `VR —` or `Demucs —` heading where
+  applicable.
 
 ## Mechanical audit and waivers
 
@@ -169,7 +171,8 @@ only after that evidence is stored. Refresh backfill matches exact primary
 artifacts against the post-deduplication public snapshot, so harmless source
 label aliases do not create false ambiguity. A genuine published ambiguity is
 non-mutating and emits an actionable warning. Cold-offline unknowns do not
-receive a guessed remote association; they retain their raw basename.
+receive a guessed remote association; VR and Demucs entries retain only their
+family-labelled raw basename fallback.
 
 The existing degraded-publication guard applies before either checked-in
 document is written or judged. A cold-cache subset therefore exits 2 instead

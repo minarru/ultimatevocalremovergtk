@@ -124,7 +124,10 @@ class CatalogueActionRowResolveTests(unittest.TestCase):
         with patch("core.model_scores.load_model_scores", return_value={}):
             win._add_model_row(VR_ARCH_TYPE, selection)
 
-        self.assertEqual(win._row_actions[(VR_ARCH_TYPE, selection)].get_title(), "HP 1")
+        self.assertEqual(
+            win._row_actions[(VR_ARCH_TYPE, selection)].get_title(),
+            "VR v5 — HP 1",
+        )
 
     def test_live_filter_matches_the_exact_id_aware_display(self) -> None:
         from types import SimpleNamespace
