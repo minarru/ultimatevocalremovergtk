@@ -28,6 +28,7 @@ from core.stems import (
     StemLiteral,
     StemRoute,
     StemRouteKind,
+    StemSelectionStatus,
     bucket_for_model_stem,
     coerce_ensemble_pair,
     ensemble_pair_choices,
@@ -35,6 +36,7 @@ from core.stems import (
     exports_named_stem,
     filename_tag,
     model_stem_routes,
+    persisted_stem_focus,
     routes_matching_stems,
     run_export_routes,
     select_stem_routes,
@@ -146,6 +148,67 @@ class StemRouteTests(unittest.TestCase):
             [StemRoleId("mix.instrumental")],
         )
         self.assertEqual(select_stem_routes(routes, "").routes, routes)
+
+    def test_reviewed_routes_present_logical_primary_before_manifest_order(self) -> None:
+        class Model(self._ReviewedReversePrimaryModel):
+            canonical_id = "mdx:MDX23C_D1581"
+            demucs_source_list: list[str] = []
+            mdx_model_stems = ["Instrumental", "Vocals"]
+            mdx_stem_count = 2
+            demucs_stem_count = 0
+
+        routes = model_stem_routes(Model())
+        self.assertEqual(
+            [route.concept for route in routes],
+            ["vocal.vocals", "mix.instrumental"],
+        )
+        self.assertEqual(
+            [route.native.raw if route.native is not None else "" for route in routes],
+            ["Vocals", "Instrumental"],
+        )
+        self.assertEqual(select_stem_routes(routes, "").routes, routes)
+        self.assertEqual(
+            select_stem_routes(routes, "primary").status,
+            StemSelectionStatus.UNMATCHED,
+        )
+
+    def test_raw_focus_is_scoped_and_legacy_names_cannot_select_semantic_routes(self) -> None:
+        class First(self._ReviewedReversePrimaryModel):
+            canonical_id = "mdx:unreviewed-first"
+
+        class Second(self._ReviewedReversePrimaryModel):
+            canonical_id = "mdx:unreviewed-second"
+
+        class DifferentSignature(First):
+            demucs_source_list = ["VoCaLs", "INSTRUMENTAL", "Residual"]
+
+        raw_routes = model_stem_routes(First())
+        other_raw_routes = model_stem_routes(Second())
+        raw_focus = persisted_stem_focus(raw_routes[0])
+
+        self.assertEqual(select_stem_routes(raw_routes, raw_focus).routes, raw_routes[:1])
+        self.assertEqual(
+            select_stem_routes(other_raw_routes, raw_focus).status,
+            StemSelectionStatus.UNMATCHED,
+        )
+        self.assertEqual(
+            select_stem_routes(model_stem_routes(DifferentSignature()), raw_focus).status,
+            StemSelectionStatus.UNMATCHED,
+        )
+        self.assertEqual(
+            select_stem_routes(raw_routes, raw_routes[0].concept).status,
+            StemSelectionStatus.UNMATCHED,
+        )
+        self.assertEqual(
+            select_stem_routes(raw_routes, "Vocals").status,
+            StemSelectionStatus.UNMATCHED,
+        )
+        self.assertEqual(
+            select_stem_routes(
+                model_stem_routes(self._ReviewedReversePrimaryModel()), "Vocals"
+            ).status,
+            StemSelectionStatus.UNMATCHED,
+        )
 
     class _MultiModel:
         primary_stem = "vocals"

@@ -16,10 +16,11 @@ from bundled.constants import (
 )
 from core.model_stem_semantics import confident_stem_bucket
 from core.settings.model import Settings
+from core.stem_roles import StemRoleId
 from core.stems import (
-    EnsemblePair,
     FOCUS_PRIMARY,
     FOCUS_SECONDARY,
+    EnsemblePair,
     StemBucket,
     StemRoute,
     StemSelectionStatus,
@@ -27,6 +28,7 @@ from core.stems import (
     derived_stem_route,
     exclusive_flags_for_pair,
     model_stem_routes,
+    persisted_stem_focus,
     positional_stem_focus,
     select_stem_routes,
 )
@@ -53,6 +55,21 @@ _STEM_ALIASES = {
     "drum": "drums",
     "other": "other",
 }
+
+_LEGACY_ROUTE_ROLES = {
+    StemBucket.VOCALS.value: "vocal.vocals",
+    StemBucket.INSTRUMENTAL.value: "mix.instrumental",
+    StemBucket.BASS.value: "instrument.bass",
+    StemBucket.DRUMS.value: "instrument.drums",
+    StemBucket.OTHER.value: "residual.other",
+}
+
+
+def _persist_route_focus(route: StemRoute) -> str:
+    """Persist semantic roles, never an unscoped raw/display compatibility tag."""
+    if isinstance(route.role, StemRoleId):
+        return persisted_stem_focus(route)
+    return _LEGACY_ROUTE_ROLES.get(route.concept, "")
 
 
 def _stem_focus_tag(
@@ -168,20 +185,20 @@ def _route_for_native(
 
 def _cli_concept_inventory() -> tuple[StemRoute, ...]:
     return (
-        derived_stem_route(StemBucket.VOCALS),
-        derived_stem_route(StemBucket.INSTRUMENTAL),
-        derived_stem_route(StemBucket.BASS),
-        derived_stem_route(StemBucket.DRUMS),
-        derived_stem_route(StemBucket.OTHER),
+        StemRoute(None, StemRoleId("vocal.vocals"), label="Vocals"),
+        StemRoute(None, StemRoleId("mix.instrumental"), label="Instrumental"),
+        StemRoute(None, StemRoleId("instrument.bass"), label="Bass"),
+        StemRoute(None, StemRoleId("instrument.drums"), label="Drums"),
+        StemRoute(None, StemRoleId("residual.other"), label="Other"),
     )
 
 
 _CLI_CONCEPTS = {
-    "vocals": StemBucket.VOCALS.value,
-    "instrumental": StemBucket.INSTRUMENTAL.value,
-    "bass": BASS_STEM,
-    "drums": DRUM_STEM,
-    "other": OTHER_STEM,
+    "vocals": "vocal.vocals",
+    "instrumental": "mix.instrumental",
+    "bass": "instrument.bass",
+    "drums": "instrument.drums",
+    "other": "residual.other",
 }
 
 
@@ -490,7 +507,7 @@ class StemSelectionState:
             selection.status is StemSelectionStatus.MATCHED
             and selection.routes
         ):
-            return selection.routes[0].concept
+            return _persist_route_focus(selection.routes[0])
         return requested
 
     def _subset_concepts(self) -> Set[str]:
@@ -685,15 +702,19 @@ class StemSelectionState:
         ):
             raise ValueError(f"invalid stem selection {concept!r}")
         route = selection.routes[0]
-        settings.process.stem_focus = route.concept
+        settings.process.stem_focus = _persist_route_focus(route)
         if route.concept in (
-            StemBucket.VOCALS.value,
-            StemBucket.INSTRUMENTAL.value,
+            "vocal.vocals",
+            "mix.instrumental",
         ):
             settings.demucs.stems = settings.mdx.stems = VOCAL_STEM
             settings.mdx.stems_selected = [VOCAL_STEM]
             return
-        settings.demucs.stems = route.concept
+        settings.demucs.stems = {
+            "instrument.bass": BASS_STEM,
+            "instrument.drums": DRUM_STEM,
+            "residual.other": OTHER_STEM,
+        }[route.concept]
         settings.mdx.stems = ALL_STEMS
         settings.mdx.stems_selected = []
 
@@ -726,7 +747,7 @@ class StemSelectionState:
                 f"reason=exclusive-unmatched status={selection.status.value} "
                 f"routes={len(selection.routes)}"
             )
-        settings.process.stem_focus = selection.routes[0].concept
+        settings.process.stem_focus = _persist_route_focus(selection.routes[0])
         return "reason=exclusive-matched"
 
     def _write_subset(self, settings: Any, view: SubsetView) -> None:
@@ -759,8 +780,9 @@ class StemSelectionState:
             settings.mdx.stems_selected = natives
             settings.mdx.stems = natives[0] if len(natives) == 1 else ALL_STEMS
             if len(natives) == 1:
-                settings.process.stem_focus = self._concept_for_subset_token(
-                    natives[0]
+                route = _route_for_native(self.routes, natives[0])
+                settings.process.stem_focus = (
+                    _persist_route_focus(route) if route is not None else ""
                 )
             else:
                 settings.process.stem_focus = ""
@@ -803,9 +825,10 @@ class StemSelectionState:
             ):
                 settings.process.stem_focus = ""
                 return
-            settings.process.stem_focus = selection.routes[0].concept
+            settings.process.stem_focus = _persist_route_focus(selection.routes[0])
             return
-        settings.process.stem_focus = self._concept_for_subset_token(persist)
+        route = _route_for_native(self.routes, persist)
+        settings.process.stem_focus = _persist_route_focus(route) if route else ""
 
     def ensure_demucs_export_defaults(
         self, settings: Any, native: Optional[str] = None
@@ -819,7 +842,7 @@ class StemSelectionState:
             return
         inventory = self.demucs_export_routes(native)
         if inventory:
-            settings.process.stem_focus = inventory[0].concept
+            settings.process.stem_focus = _persist_route_focus(inventory[0])
 
     def expected_output_count(
         self,

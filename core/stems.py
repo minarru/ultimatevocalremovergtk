@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from hashlib import sha256
 from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
 from bundled.constants import (
@@ -120,6 +121,7 @@ class StemRoute:
     conditional: bool
     selected_by_default: bool
     logical_primary: bool
+    selection_scope: str
 
     def __init__(
         self,
@@ -131,6 +133,7 @@ class StemRoute:
         conditional: bool = False,
         selected_by_default: bool = True,
         logical_primary: bool = False,
+        selection_scope: str = "",
         *,
         concept: str | None = None,
     ) -> None:
@@ -147,11 +150,31 @@ class StemRoute:
         object.__setattr__(self, "conditional", conditional)
         object.__setattr__(self, "selected_by_default", selected_by_default)
         object.__setattr__(self, "logical_primary", logical_primary)
+        object.__setattr__(self, "selection_scope", selection_scope)
 
     @property
     def concept(self) -> str:
         """Compatibility projection; new code should consume ``role``."""
         return stem_role_key(self.role)
+
+
+_RAW_SCOPE_MARKER = "#scope="
+
+
+def persisted_stem_focus(route: StemRoute) -> str:
+    """Return the Settings-safe focus identity for exactly one route.
+
+    Reviewed roles are portable namespaced identifiers.  Raw literals are
+    deliberately not: their native spelling is meaningful only for the exact
+    reviewed-resolution input (model, signature, and processing context) that
+    produced it, so persist that opaque scope with the raw tag.
+    """
+    concept = route.concept
+    if isinstance(route.role, StemLiteral) and not route.role.tag.startswith("legacy:"):
+        if not route.selection_scope:
+            return ""
+        return f"{concept}{_RAW_SCOPE_MARKER}{route.selection_scope}"
+    return concept
 
 
 @dataclass(frozen=True)
@@ -565,6 +588,9 @@ def focus_matches_stem(
     stem_bucket = bucket_for_model_stem(token, **ctx)
     if stem_bucket is StemBucket.UNKNOWN:
         return False
+    reviewed_bucket = focus_bucket(want) if "." in want else StemBucket.UNKNOWN
+    if reviewed_bucket is not StemBucket.UNKNOWN:
+        return _plain_family(stem_bucket) is _plain_family(reviewed_bucket)
     if stem_bucket.value == want or ui_label(stem_bucket) == want:
         return True
     # CLI ``--stems vocals`` stores the plain Vocals bucket; karaoke remaps
@@ -683,6 +709,15 @@ def focus_bucket(token: str) -> StemBucket:
     still happens later, in :func:`focus_matches_stem`.
     """
     folded = token.casefold()
+    reviewed = {
+        "vocal.vocals": StemBucket.VOCALS,
+        "mix.instrumental": StemBucket.INSTRUMENTAL,
+        "instrument.bass": StemBucket.BASS,
+        "instrument.drums": StemBucket.DRUMS,
+        "residual.other": StemBucket.OTHER,
+    }.get(folded)
+    if reviewed is not None:
+        return reviewed
     identity = _IDENTITY_BUCKETS.get(folded)
     if identity is not None:
         return identity
@@ -741,8 +776,15 @@ def normalize_stem_focus(value: Any, *, strict: bool = False) -> str:
     if positional:
         return positional
     if token.startswith("raw:"):
-        rest = token[4:].strip()
+        raw_token, marker, scope = token.partition(_RAW_SCOPE_MARKER)
+        rest = raw_token[4:].strip()
         if rest:
+            if marker:
+                if scope and _RAW_SCOPE_MARKER not in scope:
+                    return f"raw:{rest.casefold()}{_RAW_SCOPE_MARKER}{scope}"
+                if strict:
+                    raise ValueError("raw stem focus has an invalid scope")
+                return ""
             return f"raw:{rest.casefold()}"
         if strict:
             raise ValueError("stem focus 'raw:' needs a stem name after the prefix")
@@ -989,9 +1031,7 @@ def _model_native_stems(model: Any) -> tuple[str, ...]:
     return native_stems
 
 
-def _model_semantics(
-    model: Any, native_stems: Sequence[str]
-) -> ModelStemSemantics | None:
+def _model_semantics(model: Any, native_stems: Sequence[str]) -> ModelStemSemantics | None:
     """Resolve and cache one immutable projection on an assembled model only."""
     model_id = str(getattr(model, "canonical_id", "") or "")
     if not model_id:
@@ -1008,9 +1048,7 @@ def _model_semantics(
         model_id,
         native_stems=native_stems,
         backend_primary=str(
-            getattr(model, "primary_stem_native", None)
-            or getattr(model, "primary_stem", "")
-            or ""
+            getattr(model, "primary_stem_native", None) or getattr(model, "primary_stem", "") or ""
         ),
         backend_target=str(getattr(model, "target_instrument", "") or ""),
         context=context,
@@ -1024,10 +1062,21 @@ def _model_semantics(
     return semantics
 
 
+def _raw_selection_scope(semantics: ModelStemSemantics) -> str:
+    """Opaque identity binding a raw focus to one resolved model signature."""
+    signature = "\x1f".join(
+        output.native.casefold() if output.native is not None else "<derived>"
+        for output in semantics.outputs
+    )
+    identity = "\x1f".join((semantics.model_id, semantics.context.value, signature))
+    return sha256(identity.encode("utf-8")).hexdigest()
+
+
 def _semantic_routes(semantics: ModelStemSemantics) -> tuple[StemRoute, ...]:
     registry = load_bundled_stem_semantics()
     routes: list[StemRoute] = []
-    for output in semantics.outputs:
+    raw_scope = _raw_selection_scope(semantics)
+    for output in sorted(semantics.outputs, key=lambda output: not output.logical_primary):
         if isinstance(output.role, StemRoleId):
             definition = registry.roles.get(output.role)
             if definition is None:
@@ -1055,6 +1104,12 @@ def _semantic_routes(semantics: ModelStemSemantics) -> tuple[StemRoute, ...]:
                 ),
                 selected_by_default=True,
                 logical_primary=output.logical_primary,
+                selection_scope=(
+                    raw_scope
+                    if isinstance(output.role, StemLiteral)
+                    and not output.role.tag.startswith("legacy:")
+                    else ""
+                ),
             )
         )
     return tuple(routes)
@@ -1074,16 +1129,12 @@ def model_stem_routes(model: Any) -> Tuple[StemRoute, ...]:
     if semantics is not None:
         return _dedupe_routes(_semantic_routes(semantics))
 
-    mdx_stems = tuple(
-        str(item) for item in getattr(model, "mdx_model_stems", ()) or () if item
-    )
+    mdx_stems = tuple(str(item) for item in getattr(model, "mdx_model_stems", ()) or () if item)
 
     routes: list[StemRoute] = [native_stem_route(model, stem) for stem in native_stems]
     secondary = str(getattr(model, "secondary_stem", "") or "")
     selected_mdx = tuple(
-        str(item)
-        for item in getattr(model, "mdxnet_stems_selected", ()) or ()
-        if item
+        str(item) for item in getattr(model, "mdxnet_stems_selected", ()) or () if item
     )
     include_selected_complement = bool(
         len(mdx_stems) > 2
@@ -1125,17 +1176,23 @@ def model_stem_routes(model: Any) -> Tuple[StemRoute, ...]:
 
 
 def _route_matches_focus(route: StemRoute, requested: str) -> bool:
-    if route.concept.casefold() == requested.casefold():
-        return True
-    if route.label.casefold() == requested.strip().casefold():
-        return True
-    if route.native is not None and route.native.matches(requested):
-        return True
-    wanted = focus_bucket(requested)
-    actual = focus_bucket(route.concept)
-    if wanted is StemBucket.UNKNOWN or actual is StemBucket.UNKNOWN:
-        return False
-    return actual is wanted or _plain_family(actual) is _plain_family(wanted)
+    if isinstance(route.role, StemRoleId):
+        return route.role.value == requested
+    if route.role.tag.startswith("legacy:"):
+        if route.concept.casefold() == requested.casefold():
+            return True
+        if route.label.casefold() == requested.strip().casefold():
+            return True
+        if route.native is not None and route.native.matches(requested):
+            return True
+        wanted = focus_bucket(requested)
+        actual = focus_bucket(route.concept)
+        return (
+            wanted is not StemBucket.UNKNOWN
+            and actual is not StemBucket.UNKNOWN
+            and (actual is wanted or _plain_family(actual) is _plain_family(wanted))
+        )
+    return persisted_stem_focus(route) == requested
 
 
 def select_stem_routes(routes: Sequence[StemRoute], focus: str) -> StemSelection:

@@ -5,17 +5,17 @@ from __future__ import annotations
 import unittest
 
 from bundled.constants import ALL_STEMS, BASS_STEM, INST_STEM, VOCAL_STEM
+from cli.job import _resolved_settings
 from core.settings import Settings
 from core.stem_selection import apply_stem_selection
 from core.stems import StemBucket, exclusive_flags_for_focus
-from cli.job import _resolved_settings
 
 
 class ApplyStemSelectionTests(unittest.TestCase):
-    def test_vocals_writes_vocals_bucket_not_primary_only(self) -> None:
+    def test_vocals_writes_namespaced_role_not_primary_only(self) -> None:
         settings = Settings.defaults()
         self.assertEqual(apply_stem_selection(settings, "vocals"), "vocals")
-        self.assertEqual(settings.process.stem_focus, StemBucket.VOCALS.value)
+        self.assertEqual(settings.process.stem_focus, "vocal.vocals")
         flags = exclusive_flags_for_focus(
             settings.process.stem_focus,
             primary_stem="other",
@@ -24,10 +24,10 @@ class ApplyStemSelectionTests(unittest.TestCase):
         )
         self.assertEqual(flags, (False, True))
 
-    def test_instrumental_writes_instrumental_bucket(self) -> None:
+    def test_instrumental_writes_namespaced_role(self) -> None:
         settings = Settings.defaults()
         apply_stem_selection(settings, "instrumental")
-        self.assertEqual(settings.process.stem_focus, StemBucket.INSTRUMENTAL.value)
+        self.assertEqual(settings.process.stem_focus, "mix.instrumental")
 
     def test_primary_writes_positional_sentinel(self) -> None:
         from core.stems import FOCUS_PRIMARY
@@ -47,7 +47,7 @@ class ApplyStemSelectionTests(unittest.TestCase):
     def test_bass_writes_focus(self) -> None:
         settings = Settings.defaults()
         apply_stem_selection(settings, "bass")
-        self.assertEqual(settings.process.stem_focus, BASS_STEM)
+        self.assertEqual(settings.process.stem_focus, "instrument.bass")
         self.assertEqual(settings.demucs.stems, BASS_STEM)
 
     def test_inherited_lowercase_mdx_stems_match_vocals_concept(self) -> None:
@@ -157,7 +157,7 @@ class StemSelectionProvenanceTests(unittest.TestCase):
             method="mdx",
             stems="vocals",
         )
-        self.assertEqual(settings.process.stem_focus, StemBucket.VOCALS.value)
+        self.assertEqual(settings.process.stem_focus, "vocal.vocals")
         self.assertEqual(sources["process.stem_focus"], "cli")
 
     def test_one_settings_object_keeps_its_bytes_while_two_configs_resolve_roles(self) -> None:
@@ -195,3 +195,32 @@ class StemSelectionProvenanceTests(unittest.TestCase):
         self.assertEqual(reverse.selected_stem_routes[0].concept, "mix.instrumental")
         self.assertEqual(ordinary.selected_stem_routes[0].concept, "vocal.vocals")
         self.assertEqual(settings.to_json_dict(), before)
+
+    def test_explicit_role_focus_honors_ordinary_model_without_reordering_native_keys(self) -> None:
+        from core.model_config.config import ModelConfig
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = "mix.instrumental"
+        model = ModelConfig.__new__(ModelConfig)
+        model.settings = settings
+        model.canonical_id = "mdx:MDX23C_D1581"
+        model.stem_semantics = None
+        model.primary_stem = model.primary_stem_native = "Vocals"
+        model.secondary_stem = "Instrumental"
+        model.mdx_model_stems = ["Instrumental", "Vocals"]
+        model.demucs_source_list = []
+        model.mdx_stem_count = 2
+        model.demucs_stem_count = 0
+        model.is_vocal_split_model = model.is_ensemble_mode = False
+        model.is_karaoke = model.is_bv_model = False
+
+        ModelConfig._apply_stem_focus(model)
+
+        self.assertEqual(
+            [
+                route.native.raw if route.native is not None else ""
+                for route in model.available_stem_routes
+            ],
+            ["Vocals", "Instrumental"],
+        )
+        self.assertEqual(model.selected_stem_routes[0].concept, "mix.instrumental")
