@@ -129,6 +129,114 @@ class StemRoleValueTests(unittest.TestCase):
 
 
 class ManifestValidationTests(unittest.TestCase):
+    def test_reviewed_two_output_pairs_and_multistem_residuals_remain_distinct(self) -> None:
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+        for model_id, declaration in registry.models.items():
+            outputs = declaration.contexts[StemProcessingContext.FULL_MIX].outputs
+            roles = {str(output.role) for output in outputs}
+            native_stems = [
+                output.native.raw.casefold() if output.native else "" for output in outputs
+            ]
+            if len(declaration.native_signature) == 2:
+                self.assertNotIn("residual.other", roles, model_id)
+            elif "other" in {native.casefold() for native in declaration.native_signature}:
+                self.assertIn("residual.other", roles, model_id)
+            if "denoise" in model_id and native_stems == ["dry", "other"]:
+                self.assertEqual(
+                    [str(output.role) for output in outputs],
+                    ["effect.noise.removed", "effect.noise"],
+                )
+                self.assertEqual(
+                    declaration.contexts[StemProcessingContext.FULL_MIX].logical_primary.value,
+                    "effect.noise.removed",
+                )
+            if (
+                "dereverb" in model_id
+                or "debigreverb" in model_id
+                or "desuperbigreverb" in model_id
+            ) and native_stems == ["dry", "other"]:
+                self.assertEqual(
+                    [str(output.role) for output in outputs],
+                    ["effect.reverb.removed", "effect.reverb"],
+                )
+                self.assertEqual(
+                    declaration.contexts[StemProcessingContext.FULL_MIX].logical_primary.value,
+                    "effect.reverb.removed",
+                )
+
+    def test_melband_bve_ids_use_ordinary_karaoke_roles_in_both_contexts(self) -> None:
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+        for model_id in (
+            "mdx:mbr_bve_gonzaluigi",
+            "mdx:model_MelBand-Roformer_BVE_by-Gonza",
+        ):
+            declaration = registry.models[model_id]
+            full = declaration.contexts[StemProcessingContext.FULL_MIX]
+            split = declaration.contexts[StemProcessingContext.VOCAL_SPLIT]
+            self.assertEqual(full.logical_primary, StemRoleId("vocal.lead"))
+            self.assertEqual(
+                [output.role for output in full.outputs],
+                [StemRoleId("vocal.lead"), StemRoleId("mix.instrumental_with_backing_vocals")],
+            )
+            self.assertEqual(
+                [output.role for output in split.outputs],
+                [StemRoleId("vocal.lead"), StemRoleId("vocal.backing")],
+            )
+
+    def test_p3_exact_specialty_exceptions_have_reviewed_removal_roles(self) -> None:
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+        expected = {
+            "mdx:aspiration_mel_band_roformer_less_aggr_sdr_18.1201": (
+                ["vocal.aspiration", "vocal.aspiration.removed"],
+                "vocal.aspiration",
+            ),
+            "mdx:aspiration_mel_band_roformer_sdr_18.9845": (
+                ["vocal.aspiration", "vocal.aspiration.removed"],
+                "vocal.aspiration",
+            ),
+            "mdx:bs_bowed_str_gilliaaan": (
+                ["instrument.bowed_strings", "instrument.bowed_strings.removed"],
+                "instrument.bowed_strings",
+            ),
+            "mdx:bs_drums_gilliaaan": (
+                ["instrument.drums", "instrument.drums.removed"],
+                "instrument.drums",
+            ),
+            "mdx:mbr_denoise_yuluoye": (
+                ["effect.noise.removed", "effect.noise"],
+                "effect.noise.removed",
+            ),
+        }
+        for model_id, (roles, primary) in expected.items():
+            with self.subTest(model_id=model_id):
+                context = registry.models[model_id].contexts[StemProcessingContext.FULL_MIX]
+                self.assertEqual([str(output.role) for output in context.outputs], roles)
+                self.assertEqual(str(context.logical_primary), primary)
+
+    def test_bundled_declarations_have_exact_non_placeholder_provenance(self) -> None:
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+        for model_id, declaration in registry.models.items():
+            with self.subTest(model_id=model_id):
+                self.assertNotEqual(declaration.intent, "reviewed catalogue semantics")
+                self.assertIn(f"catalogue_id={model_id}", declaration.evidence)
+                self.assertIn("native_signature=", declaration.evidence)
+                self.assertIn("metadata_source=", declaration.evidence)
+        for model_id, reason in registry.waivers.items():
+            with self.subTest(waiver=model_id):
+                self.assertIn(f"catalogue_id={model_id}", reason)
+                self.assertIn("no native inventory", reason)
+
+    def test_exact_two_output_target_complements_never_use_residual_other(self) -> None:
+        """A declared target/complement pair keeps the target semantic identity."""
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+        for model_id, declaration in registry.models.items():
+            outputs = declaration.contexts[StemProcessingContext.FULL_MIX].outputs
+            if len(declaration.native_signature) != 2:
+                continue
+            roles = {str(output.role) for output in outputs}
+            with self.subTest(model_id=model_id):
+                self.assertNotIn("residual.other", roles)
+
     def test_bundled_catalogue_covers_every_current_exact_identity(self) -> None:
         """The checked-in review is exhaustive, never inferred at runtime."""
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)

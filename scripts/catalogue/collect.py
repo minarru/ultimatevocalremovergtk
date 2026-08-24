@@ -63,12 +63,8 @@ from core.model_stem_semantics import (  # noqa: E402
 
 OUTPUT_PATH = os.path.join(ROOT, "docs", "models-catalogue.md")
 REFERENCE_TSV_PATH = os.path.join(ROOT, "docs", "model_intent_reference.tsv")
-DISPLAY_REFERENCE_TSV_PATH = os.path.join(
-    ROOT, "docs", "model_display_reference.tsv"
-)
-STEM_SEMANTICS_REFERENCE_TSV_PATH = os.path.join(
-    ROOT, "docs", "model_stem_semantics_reference.tsv"
-)
+DISPLAY_REFERENCE_TSV_PATH = os.path.join(ROOT, "docs", "model_display_reference.tsv")
+STEM_SEMANTICS_REFERENCE_TSV_PATH = os.path.join(ROOT, "docs", "model_stem_semantics_reference.tsv")
 
 #: Ephemeral supplements live under CACHE_DIR, not in the documentation tree:
 #: docs/ holds deliberate, reviewable output only.
@@ -81,15 +77,9 @@ COMMUNITY_CACHE_DIR = os.path.join(_CACHE_ROOT, "community")
 #: after catalogue updates" silently reused whatever was fetched first.
 CACHE_MAX_AGE_SECONDS = 24 * 60 * 60
 
-_POLITREES_VR_DATA_URL = (
-    "https://raw.githubusercontent.com/Politrees/UVR_resources/main/UVR_resources/model_data/vr_model_data.json"
-)
-_POLITREES_MDX_DATA_URL = (
-    "https://raw.githubusercontent.com/Politrees/UVR_resources/main/UVR_resources/model_data/mdx_model_data.json"
-)
-_COMMUNITY_MODELS_URL = (
-    "https://raw.githubusercontent.com/upseem/uvr5-cli-no-ui/main/models.txt"
-)
+_POLITREES_VR_DATA_URL = "https://raw.githubusercontent.com/Politrees/UVR_resources/main/UVR_resources/model_data/vr_model_data.json"
+_POLITREES_MDX_DATA_URL = "https://raw.githubusercontent.com/Politrees/UVR_resources/main/UVR_resources/model_data/mdx_model_data.json"
+_COMMUNITY_MODELS_URL = "https://raw.githubusercontent.com/upseem/uvr5-cli-no-ui/main/models.txt"
 
 _POLITREES_KEYS = (
     *UPSTREAM_VR_KEYS,
@@ -195,13 +185,9 @@ def _snapshot_and_payloads(
             allow_cache_writes=source_policy.allow_cache_writes,
         ):
             if refresh and allow_network:
-                snapshot = coordinator.snapshot(
-                    mode=RefreshMode.FORCE, policy=source_policy
-                )
+                snapshot = coordinator.snapshot(mode=RefreshMode.FORCE, policy=source_policy)
             else:
-                snapshot = coordinator.ensure(
-                    allow_network=allow_network, policy=source_policy
-                )
+                snapshot = coordinator.ensure(allow_network=allow_network, policy=source_policy)
         payloads = _source_payloads(coordinator)
         return snapshot, payloads
     finally:
@@ -477,7 +463,6 @@ def _parse_community_models_bytes(data: bytes) -> Dict[str, CommunityRef]:
         return {}
 
 
-
 def _build_catalogue_context(
     *,
     policy: FetchPolicy = DEFAULT_FETCH_POLICY,
@@ -608,7 +593,11 @@ def _ui_note(entry: ModelEntry) -> str:
         return "UI: Vocals / Instrumental (either stem is a valid primary export)"
     if entry.target_instrument and entry.target_instrument.lower() in ("vocals", "vocal"):
         return "UI: Vocals / Instrumental"
-    if entry.target_instrument and entry.target_instrument.lower() in ("instrumental", "inst", "other"):
+    if entry.target_instrument and entry.target_instrument.lower() in (
+        "instrumental",
+        "inst",
+        "other",
+    ):
         return "UI: Instrumental / Vocals (yaml `other` relabeled as Instrumental)"
     if entry.primary_stem in (VOCAL_STEM, INST_STEM):
         return f"UI: {entry.primary_stem} / complement"
@@ -668,7 +657,11 @@ def _flag_mismatches(entry: ModelEntry) -> List[str]:
             flags.append("NAME says vocals but backend is not vocal-focused")
         elif intent == "specialty_stem" and not focus.startswith(("specialty_", "single_target:")):
             flags.append("NAME says specialty stem but backend focus differs")
-    if intent == "vocals" and focus == "two_stem" and not _is_vocals_instrumental_pair(entry.instruments):
+    if (
+        intent == "vocals"
+        and focus == "two_stem"
+        and not _is_vocals_instrumental_pair(entry.instruments)
+    ):
         flags.append("NAME says vocals but backend is specialty 2-stem")
     if intent == "vocals" and focus.startswith("single_target:"):
         stem = focus.split(":", 1)[-1]
@@ -677,7 +670,11 @@ def _flag_mismatches(entry: ModelEntry) -> List[str]:
     if intent == "instrumental" and entry.target_instrument.lower() in ("vocals", "vocal"):
         flags.append("target_instrument=Vocals on instrumental-named model")
     if intent == "vocals" and entry.target_instrument.lower() in ("other", "instrumental", "inst"):
-        if not (intent == "vocals" and entry.target_instrument.lower() == "other" and "inst" in entry.catalogue_label.lower()):
+        if not (
+            intent == "vocals"
+            and entry.target_instrument.lower() == "other"
+            and "inst" in entry.catalogue_label.lower()
+        ):
             flags.append("target_instrument is non-vocal on vocal-named model")
     return flags
 
@@ -779,9 +776,7 @@ def _load_yaml_meta(
         if not config_path:
             # Not gated on allow_network: _fetch_cached honours the policy
             # itself, and offline it is the only thing that reads the cache.
-            config_data, fetched_path = _fetch_yaml_bytes(
-                yaml_url, yaml_name, policy=policy
-            )
+            config_data, fetched_path = _fetch_yaml_bytes(yaml_url, yaml_name, policy=policy)
             if fetched_path:
                 config_path = fetched_path
             if config_data is not None:
@@ -823,7 +818,20 @@ def _infer_from_yaml_name(yaml_name: str) -> Tuple[List[str], str, str]:
         return ["instrumental", "vocals"], "", arch
     if any(k in low for k in ("inst", "instrumental", "fno", "crowd", "guitar", "metal")):
         return ["other", "vocals"], "other", arch
-    if any(k in low for k in ("voc", "karaoke", "aspiration", "bve", "revive", "chorus", "male_female", "big_beta", "kim_ft")):
+    if any(
+        k in low
+        for k in (
+            "voc",
+            "karaoke",
+            "aspiration",
+            "bve",
+            "revive",
+            "chorus",
+            "male_female",
+            "big_beta",
+            "kim_ft",
+        )
+    ):
         return ["other", "vocals"], "vocals", arch
     if any(k in low for k in ("dereverb", "deverb", "denoise", "echo", "bleed")):
         return ["no_reverb"], "no_reverb", arch
@@ -874,7 +882,19 @@ def _infer_onnx_meta(filename: str, label: str) -> Tuple[str, bool, str]:
         return INST_STEM, True, "onnx_name_heuristic"
     if "kara" in low:
         return VOCAL_STEM, True, "onnx_name_heuristic"
-    if any(k in low for k in ("kim_vocal", "voc_ft", "vocals", "_voc", "mdxnet_1", "mdxnet_2", "mdxnet_3", "9482")):
+    if any(
+        k in low
+        for k in (
+            "kim_vocal",
+            "voc_ft",
+            "vocals",
+            "_voc",
+            "mdxnet_1",
+            "mdxnet_2",
+            "mdxnet_3",
+            "9482",
+        )
+    ):
         return VOCAL_STEM, False, "onnx_name_heuristic"
     if any(k in low for k in ("kim_inst", "inst_", "_inst", "inst main", "crowd", "reverb")):
         if "reverb" in low:
@@ -893,7 +913,10 @@ def _infer_vr_meta(filename: str, label: str) -> Tuple[str, bool, str]:
         return INST_STEM, True, "vr_name_heuristic"
     if any(k in low for k in ("hp-vocal", "hp_vocal", "bve", "vocal")):
         return VOCAL_STEM, False, "vr_name_heuristic"
-    if any(k in low for k in ("hp-uvr", "hp2-uvr", "hp_uvr", "hp2_uvr", "wind_inst", "mgm", "sp-uvr", "sp_uvr")):
+    if any(
+        k in low
+        for k in ("hp-uvr", "hp2-uvr", "hp_uvr", "hp2_uvr", "wind_inst", "mgm", "sp-uvr", "sp_uvr")
+    ):
         return INST_STEM, False, "vr_name_heuristic"
     if any(k in low for k in ("deecho", "de-echo", "dereverb", "denoise", "deverb")):
         return "No Reverb", False, "vr_name_heuristic"
@@ -1025,9 +1048,7 @@ def _parse_catalogue_entry(
     meta.name_intent = _infer_name_intent(label)
 
     if yaml_name:
-        instruments, target, arch, yaml_source = _load_yaml_meta(
-            yaml_name, yaml_url, policy=policy
-        )
+        instruments, target, arch, yaml_source = _load_yaml_meta(yaml_name, yaml_url, policy=policy)
         meta.instruments = instruments
         meta.target_instrument = target
         meta.arch = arch

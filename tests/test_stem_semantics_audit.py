@@ -23,7 +23,9 @@ sys.modules["stem_semantics_audit"] = stem_semantics_audit
 _SPEC.loader.exec_module(stem_semantics_audit)
 
 
-def _entry(entry_id: str, *, curated: bool, karaoke: bool = True) -> "stem_semantics_audit.StemSemanticsEntry":
+def _entry(
+    entry_id: str, *, curated: bool, karaoke: bool = True
+) -> "stem_semantics_audit.StemSemanticsEntry":
     return stem_semantics_audit.StemSemanticsEntry(
         entry_id=entry_id,
         label=entry_id,
@@ -52,6 +54,23 @@ class RenderTableTests(unittest.TestCase):
 
 
 class CatalogueEvidenceCountTests(unittest.TestCase):
+    def test_checked_in_reference_has_fixed_schema_and_all_reviewed_or_waived_ids(self) -> None:
+        import csv
+
+        from core.model_stem_manifest import BUNDLED_MANIFEST_PATH, load_stem_manifest
+
+        with open(
+            "docs/model_stem_semantics_reference.tsv", encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle, delimiter="\t"))
+        self.assertEqual(len(rows[0]), 17)
+        self.assertTrue(all(len(row) == 17 for row in rows[1:]))
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+        ids = {row[0] for row in rows[1:]}
+        self.assertEqual(ids, set(registry.models) | set(registry.waivers))
+        waived = {row[0] for row in rows[1:] if row[15] == "waived" and row[16]}
+        self.assertEqual(waived, set(registry.waivers))
+
     def test_exact_member_community_tokens_extend_only_the_audit_vocabulary(self) -> None:
         from types import SimpleNamespace
 
@@ -76,6 +95,115 @@ class CatalogueEvidenceCountTests(unittest.TestCase):
         self.assertEqual(counts.community_tokens, ("bleed", "echo", "Vocals"))
 
 
+class StrictAuditMutationTests(unittest.TestCase):
+    def test_context_gate_counts_duplicate_primary_and_signature_failures(self) -> None:
+        duplicate = stem_semantics_audit._context_audit_errors(
+            roles=("vocal.lead", "vocal.lead"),
+            logical_primary="vocal.lead",
+            reviewed=True,
+            signature_matches=True,
+        )
+        absent_primary = stem_semantics_audit._context_audit_errors(
+            roles=("vocal.lead", "mix.instrumental"),
+            logical_primary="vocal.backing",
+            reviewed=True,
+            signature_matches=False,
+        )
+        self.assertIn("duplicate-role", duplicate)
+        self.assertIn("logical-primary", absent_primary)
+        self.assertIn("signature", absent_primary)
+
+    def test_role_collision_gate_uses_unicode_casefold(self) -> None:
+        from types import SimpleNamespace
+
+        definitions = (
+            SimpleNamespace(display="Noise", filename_tag="Noise"),
+            SimpleNamespace(display="ＮＯＩＳＥ", filename_tag="noise"),
+        )
+        self.assertEqual(stem_semantics_audit._role_collision_count(definitions), 2)
+
+    def test_pair_gate_rejects_dangling_and_absent_pair_roles(self) -> None:
+        from types import SimpleNamespace
+
+        pairs = {
+            "pair.vocal": SimpleNamespace(roles=("vocal.lead", "vocal.backing")),
+            "pair.dangling": SimpleNamespace(roles=("vocal.lead", "missing.role")),
+        }
+        self.assertEqual(
+            stem_semantics_audit._pair_audit_errors(
+                pairs,
+                {"vocal.lead": object(), "vocal.backing": object()},
+                {("model", "full_mix", "pair.vocal"): {"vocal.lead"}},
+            ),
+            2,
+        )
+
+    def test_vocal_split_gate_requires_structured_or_reviewed_bve_eligibility(self) -> None:
+        from core.stem_roles import StemProcessingContext
+
+        self.assertEqual(
+            stem_semantics_audit._vocal_split_audit_errors(
+                model_id="mdx:plain",
+                is_karaoke=True,
+                declared_contexts={},
+            ),
+            ("missing-vocal-split",),
+        )
+        self.assertEqual(
+            stem_semantics_audit._vocal_split_audit_errors(
+                model_id="mdx:mbr_bve_gonzaluigi",
+                is_karaoke=False,
+                declared_contexts={StemProcessingContext.VOCAL_SPLIT: object()},
+            ),
+            (),
+        )
+        self.assertEqual(
+            stem_semantics_audit._vocal_split_audit_errors(
+                model_id="mdx:plain",
+                is_karaoke=False,
+                declared_contexts={StemProcessingContext.VOCAL_SPLIT: object()},
+            ),
+            ("unexpected-vocal-split",),
+        )
+
+    def test_reference_gate_rejects_each_per_output_field_drift(self) -> None:
+        header = "\t".join(stem_semantics_audit._REFERENCE_HEADERS)
+        row = [
+            "model",
+            "display",
+            "vocals|other",
+            "full_mix",
+            "vocals",
+            "native",
+            "vocals",
+            "vocals",
+            "true",
+            "vocal.main",
+            "Vocals",
+            "Vocals",
+            "",
+            "vocal_pair",
+            "reviewed_manifest",
+            "reviewed",
+            "catalogue_id=model",
+        ]
+        expected = f"{header}\n{'\t'.join(row)}\n"
+        for index, original in enumerate(row):
+            with self.subTest(column=stem_semantics_audit._REFERENCE_HEADERS[index]):
+                changed = list(row)
+                changed[index] = f"changed-{index}" if original != f"changed-{index}" else "other"
+                actual = f"{header}\n{'\t'.join(changed)}\n"
+                self.assertGreater(
+                    stem_semantics_audit._reference_parity_errors(
+                        actual,
+                        expected,
+                        expected_ids={"model"},
+                        waiver_ids=set(),
+                    ),
+                    0,
+                )
+
+
 class IterEntriesProgressTests(unittest.TestCase):
     def test_reports_each_target_to_stderr(self) -> None:
         from types import SimpleNamespace
@@ -84,15 +212,16 @@ class IterEntriesProgressTests(unittest.TestCase):
             SimpleNamespace(entry_id="first", label="First Model"),
             SimpleNamespace(entry_id="second", label="Second Model"),
         ]
-        with patch(
-            "scripts.model_tool_support.iter_catalogue_targets", return_value=iter(targets)
-        ), patch.object(
-            stem_semantics_audit, "_curated_hash_table", return_value={}
-        ), patch.object(
-            stem_semantics_audit,
-            "_entry_for_target",
-            side_effect=[_entry("first", curated=False), _entry("second", curated=True)],
-        ), redirect_stderr(io.StringIO()) as stderr:
+        with (
+            patch("scripts.model_tool_support.iter_catalogue_targets", return_value=iter(targets)),
+            patch.object(stem_semantics_audit, "_curated_hash_table", return_value={}),
+            patch.object(
+                stem_semantics_audit,
+                "_entry_for_target",
+                side_effect=[_entry("first", curated=False), _entry("second", curated=True)],
+            ),
+            redirect_stderr(io.StringIO()) as stderr,
+        ):
             entries = list(stem_semantics_audit._iter_entries(show_progress=True))
 
         self.assertEqual([entry.entry_id for entry in entries], ["first", "second"])
@@ -126,28 +255,27 @@ class MainCliTests(unittest.TestCase):
                 self.assertEqual(data[1]["entry_id"], "curated")
 
     def test_progress_is_enabled_by_default_and_quiet_can_disable_it(self) -> None:
-        with patch.object(
-            stem_semantics_audit, "_iter_entries", return_value=iter([])
-        ) as mocked:
+        with patch.object(stem_semantics_audit, "_iter_entries", return_value=iter([])) as mocked:
             stem_semantics_audit.main([])
             # Assert the flag under test, not the whole signature: pinning every
             # kwarg makes this fail whenever an unrelated option is added.
             self.assertTrue(mocked.call_args.kwargs["show_progress"])
 
-        with patch.object(
-            stem_semantics_audit, "_iter_entries", return_value=iter([])
-        ) as mocked:
+        with patch.object(stem_semantics_audit, "_iter_entries", return_value=iter([])) as mocked:
             stem_semantics_audit.main(["--quiet"])
             self.assertFalse(mocked.call_args.kwargs["show_progress"])
 
     def test_keyboard_interrupt_exits_130_without_writing_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             json_path = os.path.join(tmp, "out.json")
-            with patch.object(
-                stem_semantics_audit,
-                "_iter_entries",
-                side_effect=KeyboardInterrupt,
-            ), redirect_stderr(io.StringIO()) as stderr:
+            with (
+                patch.object(
+                    stem_semantics_audit,
+                    "_iter_entries",
+                    side_effect=KeyboardInterrupt,
+                ),
+                redirect_stderr(io.StringIO()) as stderr,
+            ):
                 exit_code = stem_semantics_audit.main(["--json", json_path])
             self.assertEqual(exit_code, 130)
             self.assertFalse(os.path.exists(json_path))
@@ -158,9 +286,7 @@ class MainCliTests(unittest.TestCase):
             json_path = os.path.join(tmp, "out.json")
             with open(json_path, "w") as handle:
                 handle.write("old")
-            stem_semantics_audit._write_json(
-                json_path, [_entry("new", curated=True)]
-            )
+            stem_semantics_audit._write_json(json_path, [_entry("new", curated=True)])
             with open(json_path) as handle:
                 data = json.load(handle)
             self.assertEqual(data[0]["entry_id"], "new")
@@ -175,9 +301,12 @@ class RemoteCheckpointHashTests(unittest.TestCase):
         import hashlib
 
         tail = b"x" * (10000 * 1024)
-        with patch("scripts.model_tool_support.remote_size", return_value=len(tail)), patch(
-            "scripts.model_tool_support.http_range_reader",
-            return_value=lambda start, end: tail[start:end],
+        with (
+            patch("scripts.model_tool_support.remote_size", return_value=len(tail)),
+            patch(
+                "scripts.model_tool_support.http_range_reader",
+                return_value=lambda start, end: tail[start:end],
+            ),
         ):
             result = stem_semantics_audit._remote_checkpoint_hash("https://example.test/model.ckpt")
         self.assertEqual(result.digest, hashlib.md5(tail).hexdigest())
@@ -187,9 +316,12 @@ class RemoteCheckpointHashTests(unittest.TestCase):
         import hashlib
 
         whole = b"y" * 512
-        with patch("scripts.model_tool_support.remote_size", return_value=len(whole)), patch(
-            "scripts.model_tool_support.http_range_reader",
-            return_value=lambda start, end: whole[start:end],
+        with (
+            patch("scripts.model_tool_support.remote_size", return_value=len(whole)),
+            patch(
+                "scripts.model_tool_support.http_range_reader",
+                return_value=lambda start, end: whole[start:end],
+            ),
         ):
             result = stem_semantics_audit._remote_checkpoint_hash("https://example.test/small.ckpt")
         self.assertEqual(result.digest, hashlib.md5(whole).hexdigest())
@@ -219,17 +351,16 @@ class HashStatusTests(unittest.TestCase):
         is_bv_model = False
 
     def _entry(self, lookup: Any, curated_table: Optional[dict] = None):
-        with patch.object(
-            stem_semantics_audit, "_remote_checkpoint_hash", return_value=lookup
-        ), patch("scripts.model_tool_support.fetch_config", return_value="/tmp/c.yaml"), patch(
-            "scripts.model_tool_support.cache_dir", return_value="/tmp"
-        ), patch(
-            "core.model_data.load_mdx_c_config",
-            return_value={"training": {"instruments": ["vocals", "other"]}},
+        with (
+            patch.object(stem_semantics_audit, "_remote_checkpoint_hash", return_value=lookup),
+            patch("scripts.model_tool_support.fetch_config", return_value="/tmp/c.yaml"),
+            patch("scripts.model_tool_support.cache_dir", return_value="/tmp"),
+            patch(
+                "core.model_data.load_mdx_c_config",
+                return_value={"training": {"instruments": ["vocals", "other"]}},
+            ),
         ):
-            return stem_semantics_audit._entry_for_target(
-                self._Target(), curated_table or {}
-            )
+            return stem_semantics_audit._entry_for_target(self._Target(), curated_table or {})
 
     def test_fetched_hash_absent_from_curated_metadata_is_unmatched(self) -> None:
         entry = self._entry(stem_semantics_audit.HashLookup(digest="abc", status="ok"))
@@ -335,9 +466,7 @@ class HashCacheTests(unittest.TestCase):
         from unittest import mock
 
         cache = stem_semantics_audit.HashCache(self.path)
-        with mock.patch(
-            "scripts.model_tool_support.checkpoint_tail_hash", return_value="def"
-        ):
+        with mock.patch("scripts.model_tool_support.checkpoint_tail_hash", return_value="def"):
             result = stem_semantics_audit._remote_checkpoint_hash("https://y/m.ckpt", cache=cache)
         self.assertEqual(result.digest, "def")
         hit = cache.get("https://y/m.ckpt")
@@ -406,9 +535,7 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(len(picked), 2)
 
     def test_only_and_limit_compose(self) -> None:
-        picked = stem_semantics_audit.select_targets(
-            self._targets(), only="e", limit=1
-        )
+        picked = stem_semantics_audit.select_targets(self._targets(), only="e", limit=1)
         self.assertEqual(len(picked), 1)
 
     def test_no_selection_returns_everything(self) -> None:
@@ -461,15 +588,17 @@ class EntryForTargetCuratedLookupTests(unittest.TestCase):
 
     def test_matched_checkpoint_hash_reports_curated(self) -> None:
         target = self._target(label="Some Model")
-        with patch(
-            "scripts.model_tool_support.fetch_config", return_value="/tmp/fake.yaml"
-        ), patch(
-            "core.model_data.load_mdx_c_config",
-            return_value={"training": {"instruments": ["vocals", "other"]}},
-        ), patch.object(
-            stem_semantics_audit,
-            "_remote_checkpoint_hash",
-            return_value=stem_semantics_audit.HashLookup(digest="curatedhash", status="ok"),
+        with (
+            patch("scripts.model_tool_support.fetch_config", return_value="/tmp/fake.yaml"),
+            patch(
+                "core.model_data.load_mdx_c_config",
+                return_value={"training": {"instruments": ["vocals", "other"]}},
+            ),
+            patch.object(
+                stem_semantics_audit,
+                "_remote_checkpoint_hash",
+                return_value=stem_semantics_audit.HashLookup(digest="curatedhash", status="ok"),
+            ),
         ):
             entry = stem_semantics_audit._entry_for_target(
                 target, curated_table={"curatedhash": {"is_karaoke": True}}
@@ -479,15 +608,17 @@ class EntryForTargetCuratedLookupTests(unittest.TestCase):
 
     def test_unmatched_checkpoint_hash_falls_back_to_name_guess(self) -> None:
         target = self._target(label="Karaoke Extractor")
-        with patch(
-            "scripts.model_tool_support.fetch_config", return_value="/tmp/fake.yaml"
-        ), patch(
-            "core.model_data.load_mdx_c_config",
-            return_value={"training": {"instruments": ["vocals", "other"]}},
-        ), patch.object(
-            stem_semantics_audit,
-            "_remote_checkpoint_hash",
-            return_value=stem_semantics_audit.HashLookup(digest="unknownhash", status="ok"),
+        with (
+            patch("scripts.model_tool_support.fetch_config", return_value="/tmp/fake.yaml"),
+            patch(
+                "core.model_data.load_mdx_c_config",
+                return_value={"training": {"instruments": ["vocals", "other"]}},
+            ),
+            patch.object(
+                stem_semantics_audit,
+                "_remote_checkpoint_hash",
+                return_value=stem_semantics_audit.HashLookup(digest="unknownhash", status="ok"),
+            ),
         ):
             entry = stem_semantics_audit._entry_for_target(target, curated_table={})
         self.assertTrue(entry.is_karaoke)

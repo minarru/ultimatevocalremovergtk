@@ -147,9 +147,7 @@ def _catalogue_projection(entry: ModelEntry) -> Tuple[str, str]:
             f"{entry.catalogue_label!r}; accepted families: {accepted}"
         ) from exc
     if not entry.weight_file:
-        raise ValueError(
-            f"catalogue row has no primary artifact: {entry.catalogue_label!r}"
-        )
+        raise ValueError(f"catalogue row has no primary artifact: {entry.catalogue_label!r}")
     files = {entry.weight_file: ""}
     if entry.config_yaml:
         files[entry.config_yaml] = ""
@@ -168,8 +166,7 @@ def _catalogue_projection(entry: ModelEntry) -> Tuple[str, str]:
     )
     if model_id is None:
         raise ValueError(
-            f"catalogue row has no unambiguous presentation primary: "
-            f"{entry.catalogue_label!r}"
+            f"catalogue row has no unambiguous presentation primary: {entry.catalogue_label!r}"
         )
     return (
         model_id,
@@ -281,9 +278,10 @@ def stem_semantics_reference_tsv(entries: List[ModelEntry]) -> str:
 
     registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
     lines = [
-        "model_id\tcontext\tnative\trole\tdisplay\tfilename_tag\tproduction\t"
-        "logical_primary\tbackend_primary\tbackend_target\tguessed_intent\t"
-        "review_status\tevidence\twarning"
+        "model_id\tmodel_display\tnative_signature\tprocessing_context\tnative_stem\t"
+        "production\tbackend_primary\tbackend_target\tlogical_primary\trole_id\t"
+        "canonical_name\tfilename_tag\tpair_id\tintent\tintent_source\treview_status\t"
+        "evidence_or_waiver"
     ]
     for entry in sorted(entries, key=_canonical_model_id):
         model_id = _canonical_model_id(entry)
@@ -300,22 +298,78 @@ def stem_semantics_reference_tsv(entries: List[ModelEntry]) -> str:
                 context=context,
                 registry=registry,
             )
+            context_roles = {output.role for output in semantics.outputs}
             for output in semantics.outputs:
                 role = output.role.value if isinstance(output.role, StemRoleId) else output.role.tag
-                definition = registry.roles.get(output.role) if isinstance(output.role, StemRoleId) else None
+                definition = (
+                    registry.roles.get(output.role) if isinstance(output.role, StemRoleId) else None
+                )
+                pair_id = next(
+                    (
+                        pair.id
+                        for pair in registry.pairs.values()
+                        if output.role in pair.roles and set(pair.roles).issubset(context_roles)
+                    ),
+                    "",
+                )
                 lines.append(
                     "\t".join(
                         _tsv_cell(value)
                         for value in (
-                            model_id, context.value, output.native.raw if output.native else "", role,
-                            definition.display if definition else output.native.raw if output.native else role,
-                            definition.filename_tag if definition else output.native.raw if output.native else role,
-                            output.production.value, str(output.logical_primary).lower(),
-                            entry.primary_stem, entry.target_instrument, entry.name_intent,
-                            semantics.status.value, semantics.evidence, semantics.warning,
+                            model_id,
+                            _display_label(entry),
+                            "|".join(entry.instruments),
+                            context.value,
+                            output.native.raw if output.native else "",
+                            output.production.value,
+                            entry.primary_stem,
+                            entry.target_instrument,
+                            str(output.logical_primary).lower(),
+                            role,
+                            definition.display
+                            if definition
+                            else output.native.raw
+                            if output.native
+                            else role,
+                            definition.filename_tag
+                            if definition
+                            else output.native.raw
+                            if output.native
+                            else role,
+                            pair_id,
+                            semantics.intent,
+                            "reviewed_manifest",
+                            semantics.status.value,
+                            semantics.evidence or semantics.warning,
                         )
-                    ).rstrip()
+                    )
                 )
+    seen = {_canonical_model_id(entry) for entry in entries}
+    for model_id, reason in sorted(registry.waivers.items()):
+        if model_id in seen:
+            lines.append(
+                "\t".join(
+                    (
+                        model_id,
+                        "",
+                        "",
+                        "full_mix",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "reviewed_waiver",
+                        "waived",
+                        reason,
+                    )
+                )
+            )
     return "\n".join(lines) + "\n"
 
 
@@ -352,8 +406,9 @@ def render_summary_report(
     if flagged:
         lines += ["## Flagged mismatches", ""]
         for entry in flagged:
-            lines.append(f"- **{_display_label(entry)}** ({entry.family}) — "
-                         + "; ".join(entry.flags))
+            lines.append(
+                f"- **{_display_label(entry)}** ({entry.family}) — " + "; ".join(entry.flags)
+            )
         lines.append("")
     if unknown:
         lines += ["## Unknown intent", ""]
@@ -399,9 +454,7 @@ def _md_table(headers: List[str], rows: List[List[str]]) -> str:
     return "\n".join(lines)
 
 
-def _render(
-    entries: List[ModelEntry], *, unsupported_count: int = 0, report: Any = None
-) -> str:
+def _render(entries: List[ModelEntry], *, unsupported_count: int = 0, report: Any = None) -> str:
     flagged = [e for e in entries if e.flags]
     unknown = [e for e in entries if e.name_intent == "unknown"]
     with_meta = [e for e in entries if e.metadata_source not in ("unavailable", "")]
@@ -519,8 +572,7 @@ def _render(
     other_yaml_inst = [
         e
         for e in entries
-        if e.name_intent == "instrumental"
-        and e.target_instrument.lower() == "other"
+        if e.name_intent == "instrumental" and e.target_instrument.lower() == "other"
     ]
     if other_yaml_inst:
         lines.extend(
@@ -616,11 +668,7 @@ _VOLATILE_PREFIXES = ("Generated: ", "- Snapshot ", "- Source ", "- Cache ")
 
 def _canonical_for_diff(text: str) -> str:
     """``text`` with the volatile header lines removed, for drift comparison."""
-    return "\n".join(
-        line
-        for line in text.splitlines()
-        if not line.startswith(_VOLATILE_PREFIXES)
-    )
+    return "\n".join(line for line in text.splitlines() if not line.startswith(_VOLATILE_PREFIXES))
 
 
 def _text_matches(path: str, text: str) -> bool:
@@ -644,9 +692,7 @@ def _provenance_lines(report: Any) -> List[str]:
         return []
 
     def names(items: Any) -> str:
-        collected: List[str] = [
-            str(getattr(item, "value", item)) for item in (tuple(items or ()))
-        ]
+        collected: List[str] = [str(getattr(item, "value", item)) for item in (tuple(items or ()))]
         return ", ".join(collected) if collected else "none"
 
     lines = [
@@ -658,9 +704,7 @@ def _provenance_lines(report: Any) -> List[str]:
     ]
     failed: Tuple[Any, ...] = tuple(getattr(report, "failed", ()) or ())
     if failed:
-        detail = "; ".join(
-            f"{getattr(item[0], 'value', item[0])} ({item[1]})" for item in failed
-        )
+        detail = "; ".join(f"{getattr(item[0], 'value', item[0])} ({item[1]})" for item in failed)
         lines.append(f"- Source failed: {detail}")
     else:
         lines.append("- Source failed: none")
@@ -679,10 +723,7 @@ def _provenance_lines(report: Any) -> List[str]:
 def _cache_age_text(cache_dir: str) -> str:
     """Newest entry age in a supplemental cache directory, in human terms."""
     try:
-        stamps = [
-            os.path.getmtime(os.path.join(cache_dir, name))
-            for name in os.listdir(cache_dir)
-        ]
+        stamps = [os.path.getmtime(os.path.join(cache_dir, name)) for name in os.listdir(cache_dir)]
     except OSError:
         return "absent"
     if not stamps:

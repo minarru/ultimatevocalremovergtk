@@ -97,9 +97,7 @@ class SourceForTests(unittest.TestCase):
     def test_mdx23c_in_both_is_combined(self) -> None:
         politrees = {"mdx23c_download_list": {"Some Model": "some_model.ckpt"}}
         trvlvr = {"mdx23c_download_list": {"Some Model": "some_model.ckpt"}}
-        self.assertEqual(
-            catalogue._source_for("Some Model", politrees, trvlvr), "TRvlvr+Politrees"
-        )
+        self.assertEqual(catalogue._source_for("Some Model", politrees, trvlvr), "TRvlvr+Politrees")
 
     def test_unattributed_label_is_unknown_not_trvlvr(self) -> None:
         """No membership anywhere is 'not proven', not positive provenance."""
@@ -155,9 +153,7 @@ class SourceForTests(unittest.TestCase):
 
     def test_mvsepless_only_is_mvsepless(self) -> None:
         mvsepless = {
-            "mdx_download_list": {
-                "MelBand Roformer Karaoke": {"kara.ckpt": "https://u/kara.ckpt"}
-            }
+            "mdx_download_list": {"MelBand Roformer Karaoke": {"kara.ckpt": "https://u/kara.ckpt"}}
         }
         self.assertEqual(
             catalogue._source_for("MelBand Roformer Karaoke", mvsepless=mvsepless),
@@ -207,9 +203,7 @@ class CollectEntriesTests(unittest.TestCase):
             },
         }
         mvsepless = {
-            "mdx_download_list": {
-                "MelBand Roformer Karaoke": {"kara.ckpt": "https://u/kara.ckpt"}
-            }
+            "mdx_download_list": {"MelBand Roformer Karaoke": {"kara.ckpt": "https://u/kara.ckpt"}}
         }
         coordinator = CatalogueCoordinator(
             sources={
@@ -401,8 +395,10 @@ class DemucsFinalizationTests(unittest.TestCase):
     def _entry(self, label: str, weight: str):
         snapshot = self._Snapshot({label: weight})
         entries = catalogue._entries_from_snapshot(
-            snapshot, ({}, {}, {}, {}), catalogue.CatalogueContext(),
-            policy=catalogue.OFFLINE_FETCH_POLICY
+            snapshot,
+            ({}, {}, {}, {}),
+            catalogue.CatalogueContext(),
+            policy=catalogue.OFFLINE_FETCH_POLICY,
         )
         self.assertEqual(len(entries), 1)
         return entries[0]
@@ -556,9 +552,7 @@ class CoordinatorRefreshTests(unittest.TestCase):
         from core.catalogue_types import RefreshMode
 
         coordinator = self._coordinator()
-        catalogue._snapshot_and_payloads(
-            allow_network=True, refresh=True, coordinator=coordinator
-        )
+        catalogue._snapshot_and_payloads(allow_network=True, refresh=True, coordinator=coordinator)
         coordinator.snapshot.assert_called_once_with(
             mode=RefreshMode.FORCE,
             policy=AccessPolicy(allow_network=True, allow_metadata_writes=True),
@@ -570,9 +564,7 @@ class CoordinatorRefreshTests(unittest.TestCase):
         from core.access_policy import AccessPolicy
 
         coordinator = self._coordinator()
-        catalogue._snapshot_and_payloads(
-            allow_network=True, refresh=False, coordinator=coordinator
-        )
+        catalogue._snapshot_and_payloads(allow_network=True, refresh=False, coordinator=coordinator)
         coordinator.refresh.assert_not_called()
         coordinator.snapshot.assert_not_called()
         coordinator.ensure.assert_called_once_with(
@@ -584,9 +576,7 @@ class CoordinatorRefreshTests(unittest.TestCase):
         from core.access_policy import AccessPolicy
 
         coordinator = self._coordinator()
-        catalogue._snapshot_and_payloads(
-            allow_network=False, refresh=True, coordinator=coordinator
-        )
+        catalogue._snapshot_and_payloads(allow_network=False, refresh=True, coordinator=coordinator)
         coordinator.refresh.assert_not_called()
         coordinator.snapshot.assert_not_called()
         coordinator.ensure.assert_called_once_with(
@@ -611,8 +601,9 @@ class CoordinatorRefreshTests(unittest.TestCase):
             seen["policy"] = policy
             return MagicMock(), ({}, {}, {}, {})
 
-        with patch.object(catalogue, "_snapshot_and_payloads", spy), patch.object(
-            catalogue, "_entries_from_snapshot", return_value=[]
+        with (
+            patch.object(catalogue, "_snapshot_and_payloads", spy),
+            patch.object(catalogue, "_entries_from_snapshot", return_value=[]),
         ):
             catalogue.collect_entries(
                 catalogue.CatalogueContext(),
@@ -642,17 +633,21 @@ class CoordinatorRefreshTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "out.md")
-            with mock.patch.object(cli, "OUTPUT_PATH", out), mock.patch.object(
-                catalogue,
-                "_build_catalogue_context",
-                lambda **k: catalogue.CatalogueContext(),
-            ), mock.patch.object(
-                catalogue, "_snapshot_and_payloads", spy
-            ), mock.patch.object(
-                cli,
-                "_publication_verdict",
-                return_value=cli.PublicationVerdict(ok=True),
-            ), contextlib.redirect_stdout(mock.MagicMock()):
+            with (
+                mock.patch.object(cli, "OUTPUT_PATH", out),
+                mock.patch.object(
+                    catalogue,
+                    "_build_catalogue_context",
+                    lambda **k: catalogue.CatalogueContext(),
+                ),
+                mock.patch.object(catalogue, "_snapshot_and_payloads", spy),
+                mock.patch.object(
+                    cli,
+                    "_publication_verdict",
+                    return_value=cli.PublicationVerdict(ok=True),
+                ),
+                contextlib.redirect_stdout(mock.MagicMock()),
+            ):
                 cli.main(["--refresh"])
         self.assertTrue(seen.get("refresh"))
         self.assertTrue(seen["policy"].allow_cache_writes)
@@ -730,7 +725,9 @@ class PublicationGuardTests(unittest.TestCase):
 
     def test_allow_degraded_overrides_a_refusal(self) -> None:
         verdict = cli._publication_verdict(
-            entries=[], report=self._report(usable=False), previous_count=400,
+            entries=[],
+            report=self._report(usable=False),
+            previous_count=400,
             allow_degraded=True,
         )
         self.assertTrue(verdict.ok, verdict.reason)
@@ -775,9 +772,7 @@ class OfflineYamlCacheTests(unittest.TestCase):
 
     def test_yaml_paths_includes_the_url_keyed_cache_entry(self) -> None:
         candidates = catalogue._yaml_paths("model_test.yaml", self._URL)
-        expected = catalogue._cache_path(
-            catalogue.YAML_CACHE_DIR, self._URL, "model_test.yaml"
-        )
+        expected = catalogue._cache_path(catalogue.YAML_CACHE_DIR, self._URL, "model_test.yaml")
         self.assertIn(expected, candidates)
 
     def test_offline_reads_a_previously_cached_yaml(self) -> None:
@@ -964,7 +959,8 @@ class ReferenceTsvOptInTests(unittest.TestCase):
             )
             stack.enter_context(
                 mock.patch.object(
-                    catalogue, "_snapshot_and_payloads",
+                    catalogue,
+                    "_snapshot_and_payloads",
                     lambda **k: (_Snapshot(), ({}, {}, {}, {})),
                 )
             )
@@ -1098,10 +1094,7 @@ class DisplayReferenceRenderTests(unittest.TestCase):
         entry = catalogue.ModelEntry(
             source="mvsepless",
             family="MDX-Net",
-            catalogue_label=(
-                "Mel-Band Roformer Instrumental by Becruily "
-                "[mbr_inst_becruily]"
-            ),
+            catalogue_label=("Mel-Band Roformer Instrumental by Becruily [mbr_inst_becruily]"),
             weight_file="mbr_inst_becruily.ckpt",
         )
 
@@ -1221,9 +1214,7 @@ class DisplayReferenceCliTests(unittest.TestCase):
         class _Snapshot:
             def __init__(self) -> None:
                 self.vr: dict[str, object] = dict(
-                    {"VR Arch Single Model v5: 1_HP-UVR": "1_HP-UVR.pth"}
-                    if vr is None
-                    else vr
+                    {"VR Arch Single Model v5: 1_HP-UVR": "1_HP-UVR.pth"} if vr is None else vr
                 )
                 self.mdx: dict[str, object] = dict({} if mdx is None else mdx)
                 self.demucs: dict[str, object] = {}
@@ -1237,9 +1228,7 @@ class DisplayReferenceCliTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", self.out))
             stack.enter_context(
-                mock.patch.object(
-                    cli, "DISPLAY_REFERENCE_TSV_PATH", self.reference
-                )
+                mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", self.reference)
             )
             stack.enter_context(
                 mock.patch.object(
@@ -1271,9 +1260,7 @@ class DisplayReferenceCliTests(unittest.TestCase):
         with open(self.reference, "rb") as handle:
             before = handle.read()
 
-        self.assertEqual(
-            self._run(["--check", "--write-display-reference"]), 1
-        )
+        self.assertEqual(self._run(["--check", "--write-display-reference"]), 1)
         with open(self.reference, "rb") as handle:
             self.assertEqual(handle.read(), before)
 
@@ -1291,9 +1278,7 @@ class DisplayReferenceCliTests(unittest.TestCase):
         stderr = io.StringIO()
 
         with contextlib.redirect_stderr(stderr):
-            result = self._run(
-                ["--check", "--write-display-reference"], vr={}, mdx=mdx
-            )
+            result = self._run(["--check", "--write-display-reference"], vr={}, mdx=mdx)
 
         self.assertEqual(result, 1)
         self.assertIn("unreviewed presentation flag", stderr.getvalue().lower())
@@ -1317,9 +1302,7 @@ class DisplayReferenceCliTests(unittest.TestCase):
         stderr = io.StringIO()
 
         with contextlib.redirect_stderr(stderr):
-            result = self._run(
-                ["--check", "--write-display-reference"], vr={}, mdx=mdx
-            )
+            result = self._run(["--check", "--write-display-reference"], vr={}, mdx=mdx)
 
         self.assertEqual(result, 1)
         self.assertIn("case-insensitive display collision", stderr.getvalue().lower())
@@ -1335,9 +1318,7 @@ class DisplayReferenceCliTests(unittest.TestCase):
         import io
 
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(
-                self._run(["--summary", "--write-display-reference"]), 0
-            )
+            self.assertEqual(self._run(["--summary", "--write-display-reference"]), 0)
         self.assertFalse(os.path.exists(self.reference))
 
     def test_refused_run_does_not_write_the_reference(self) -> None:
@@ -1348,15 +1329,12 @@ class DisplayReferenceCliTests(unittest.TestCase):
         self.assertFalse(os.path.exists(self.reference))
 
     def test_flag_is_opt_in(self) -> None:
-        self.assertTrue(
-            cli._parse_args(["--write-display-reference"]).write_display_reference
-        )
+        self.assertTrue(cli._parse_args(["--write-display-reference"]).write_display_reference)
         self.assertFalse(cli._parse_args([]).write_display_reference)
 
     def test_stem_semantics_reference_flag_is_opt_in(self) -> None:
         self.assertTrue(
-            cli._parse_args(["--write-stem-semantics-reference"])
-            .write_stem_semantics_reference
+            cli._parse_args(["--write-stem-semantics-reference"]).write_stem_semantics_reference
         )
         self.assertFalse(cli._parse_args([]).write_stem_semantics_reference)
 
@@ -1408,7 +1386,8 @@ class CheckModeTests(unittest.TestCase):
             )
             stack.enter_context(
                 mock.patch.object(
-                    catalogue, "_snapshot_and_payloads",
+                    catalogue,
+                    "_snapshot_and_payloads",
                     lambda **k: (_Snapshot(), ({}, {}, {}, {})),
                 )
             )
@@ -1458,9 +1437,7 @@ class VolatileHeaderTests(unittest.TestCase):
 
     def test_a_changed_generation_timestamp_is_not_drift(self) -> None:
         rendered = render._render([], unsupported_count=0)
-        aged = rendered.replace(
-            "Generated: ", "Generated: 1999-01-01 00:00 UTC ignored ", 1
-        )
+        aged = rendered.replace("Generated: ", "Generated: 1999-01-01 00:00 UTC ignored ", 1)
         self.assertNotEqual(rendered, aged)
         self.assertEqual(
             render._canonical_for_diff(rendered),
@@ -1524,9 +1501,7 @@ class ProvenanceBlockTests(unittest.TestCase):
             report=self._report(failed=((SourceId.POLITREES, "timeout"),)),
         )
         self.assertNotEqual(a, b)
-        self.assertEqual(
-            render._canonical_for_diff(a), render._canonical_for_diff(b)
-        )
+        self.assertEqual(render._canonical_for_diff(a), render._canonical_for_diff(b))
 
     def test_renders_without_a_report(self) -> None:
         text = render._render([], unsupported_count=0, report=None)
@@ -1540,8 +1515,11 @@ class FabricatedFlagTests(unittest.TestCase):
         from core.catalog_sources import EntryMeta
 
         entry = catalogue.ModelEntry(
-            source="mvsepless", family="Roformer",
-            catalogue_label="Some Model", weight_file="m.ckpt", name_intent="unknown",
+            source="mvsepless",
+            family="Roformer",
+            catalogue_label="Some Model",
+            weight_file="m.ckpt",
+            name_intent="unknown",
         )
         entry.metadata_source = "unavailable"
         catalogue._apply_entry_meta(
@@ -1553,8 +1531,10 @@ class FabricatedFlagTests(unittest.TestCase):
         from core.catalog_sources import EntryMeta
 
         entry = catalogue.ModelEntry(
-            source="mvsepless", family="Roformer",
-            catalogue_label="Some Model", weight_file="m.ckpt",
+            source="mvsepless",
+            family="Roformer",
+            catalogue_label="Some Model",
+            weight_file="m.ckpt",
         )
         entry.metadata_source = "unavailable"
         catalogue._apply_entry_meta(
@@ -1566,8 +1546,11 @@ class FabricatedFlagTests(unittest.TestCase):
     def test_unknown_backend_focus_produces_no_mismatch_flags(self) -> None:
         """You cannot detect a mismatch against a backend you could not determine."""
         entry = catalogue.ModelEntry(
-            source="mvsepless", family="Roformer",
-            catalogue_label="Some Model", weight_file="m.ckpt", name_intent="vocals",
+            source="mvsepless",
+            family="Roformer",
+            catalogue_label="Some Model",
+            weight_file="m.ckpt",
+            name_intent="vocals",
         )
         entry.metadata_source = "catalogue_meta"
         entry.backend_focus = "unknown"
@@ -1577,8 +1560,11 @@ class FabricatedFlagTests(unittest.TestCase):
         from core.catalog_sources import EntryMeta
 
         entry = catalogue.ModelEntry(
-            source="mvsepless", family="Roformer",
-            catalogue_label="Some Model", weight_file="m.ckpt", name_intent="unknown",
+            source="mvsepless",
+            family="Roformer",
+            catalogue_label="Some Model",
+            weight_file="m.ckpt",
+            name_intent="unknown",
         )
         entry.metadata_source = "unavailable"
         catalogue._apply_entry_meta(
@@ -1606,8 +1592,9 @@ class YamlProvenanceStabilityTests(unittest.TestCase):
                 handle.write(body)
             return True
 
-        with mock.patch("core.paths.MDX_C_CONFIG_PATH", store), mock.patch(
-            "core.mdx_config_fetch.fetch_mdx_config_url", fake_fetch
+        with (
+            mock.patch("core.paths.MDX_C_CONFIG_PATH", store),
+            mock.patch("core.mdx_config_fetch.fetch_mdx_config_url", fake_fetch),
         ):
             first = catalogue._load_yaml_meta("m.yaml", url)[3]
             second = catalogue._load_yaml_meta("m.yaml", url)[3]
@@ -1658,18 +1645,14 @@ class CheckContractTests(unittest.TestCase):
         old_payload = {
             "vr_download_list": {},
             "mdx_download_list": {
-                "MDX23C Model: Old": {
-                    "old.ckpt": "https://example.invalid/old.ckpt"
-                }
+                "MDX23C Model: Old": {"old.ckpt": "https://example.invalid/old.ckpt"}
             },
             "demucs_download_list": {},
         }
         source_bytes: bytes | None = None
         if stale_source:
             os.makedirs(os.path.dirname(source_cache))
-            source_bytes = json.dumps(
-                {"fetched_at": 1.0, "data": old_payload}
-            ).encode("utf-8")
+            source_bytes = json.dumps({"fetched_at": 1.0, "data": old_payload}).encode("utf-8")
             with open(source_cache, "wb") as handle:
                 handle.write(source_bytes)
 
@@ -1765,9 +1748,7 @@ class CheckContractTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", out))
             stack.enter_context(mock.patch.object(cli, "REFERENCE_TSV_PATH", intent_ref))
-            stack.enter_context(
-                mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", display_ref)
-            )
+            stack.enter_context(mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", display_ref))
             stack.enter_context(
                 mock.patch.object(catalogue, "CatalogueCoordinator", lambda: coordinator)
             )
@@ -1781,22 +1762,14 @@ class CheckContractTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(paths, "DATA_DIR", legacy_data))
             stack.enter_context(mock.patch.object(paths, "BASE_PATH", legacy_base))
             stack.enter_context(mock.patch.object(paths, "MDX_C_CONFIG_PATH", model_store))
-            stack.enter_context(
-                mock.patch.object(paths, "CATALOGUE_STEM_CACHE_FILE", stem_cache)
-            )
-            stack.enter_context(
-                mock.patch.object(paths, "DOWNLOAD_SIZE_CACHE_FILE", size_cache)
-            )
+            stack.enter_context(mock.patch.object(paths, "CATALOGUE_STEM_CACHE_FILE", stem_cache))
+            stack.enter_context(mock.patch.object(paths, "DOWNLOAD_SIZE_CACHE_FILE", size_cache))
             stack.enter_context(mock.patch.object(catalogue_stem_cache, "_memory_entries", None))
             stack.enter_context(mock.patch.object(download_sizes, "_memory_payload", None))
             stack.enter_context(mock.patch.object(download_sizes, "_memory_path", None))
-            stack.enter_context(
-                mock.patch.dict(os.environ, {"UVR_DISABLE_CATALOGUE_STEMS": ""})
-            )
+            stack.enter_context(mock.patch.dict(os.environ, {"UVR_DISABLE_CATALOGUE_STEMS": ""}))
             stack.enter_context(mock.patch.object(catalogue, "_scan_weight_hashes", lambda *a: {}))
-            stack.enter_context(
-                mock.patch("core.mdx_config_fetch._urlopen", supplemental_open)
-            )
+            stack.enter_context(mock.patch("core.mdx_config_fetch._urlopen", supplemental_open))
             stack.enter_context(contextlib.redirect_stdout(stdout))
             stack.enter_context(contextlib.redirect_stderr(stderr))
             rc = cli.main(argv)
@@ -1838,9 +1811,7 @@ class CheckContractTests(unittest.TestCase):
     def test_default_online_summary_swr_publish_keeps_every_cache_and_artifact_read_only(
         self,
     ) -> None:
-        self._assert_default_online_swr_is_read_only(
-            argv=["--summary"], stale_source=False
-        )
+        self._assert_default_online_swr_is_read_only(argv=["--summary"], stale_source=False)
 
     def test_online_check_fetches_in_memory_without_mutating_any_cache_or_artifact(
         self,
@@ -1906,9 +1877,7 @@ class CheckContractTests(unittest.TestCase):
                 return None
 
         upstream_payload = {
-            "vr_download_list": {
-                "VR Arch Single Model v5: 1_HP-UVR": "1_HP-UVR.pth"
-            },
+            "vr_download_list": {"VR Arch Single Model v5: 1_HP-UVR": "1_HP-UVR.pth"},
             "mdx_download_list": {
                 "MDX23C Model: Fresh": {
                     "fresh.ckpt": "https://example.invalid/fresh.ckpt",
@@ -1936,9 +1905,7 @@ class CheckContractTests(unittest.TestCase):
                 return _Response(b"")
             if url == "https://example.invalid/fresh.yaml":
                 return _Response(
-                    b"training:\n"
-                    b"  instruments: [vocals, other]\n"
-                    b"  target_instrument: other\n"
+                    b"training:\n  instruments: [vocals, other]\n  target_instrument: other\n"
                 )
             raise AssertionError(f"unexpected fetch: {url}")
 
@@ -1963,9 +1930,7 @@ class CheckContractTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", out))
             stack.enter_context(mock.patch.object(cli, "REFERENCE_TSV_PATH", intent_ref))
-            stack.enter_context(
-                mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", display_ref)
-            )
+            stack.enter_context(mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", display_ref))
             stack.enter_context(
                 mock.patch.object(catalogue, "CatalogueCoordinator", lambda: coordinator)
             )
@@ -1980,9 +1945,7 @@ class CheckContractTests(unittest.TestCase):
                 mock.patch.object(catalogue.paths, "MDX_C_CONFIG_PATH", model_store)
             )
             stack.enter_context(
-                mock.patch.object(
-                    catalogue.paths, "CATALOGUE_STEM_CACHE_FILE", stem_cache
-                )
+                mock.patch.object(catalogue.paths, "CATALOGUE_STEM_CACHE_FILE", stem_cache)
             )
             stack.enter_context(
                 mock.patch.object(catalogue.paths, "DOWNLOAD_SIZE_CACHE_FILE", size_cache)
@@ -1990,13 +1953,9 @@ class CheckContractTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(catalogue_stem_cache, "_memory_entries", None))
             stack.enter_context(mock.patch.object(download_sizes, "_memory_payload", None))
             stack.enter_context(mock.patch.object(download_sizes, "_memory_path", None))
-            stack.enter_context(
-                mock.patch.dict(os.environ, {"UVR_DISABLE_CATALOGUE_STEMS": ""})
-            )
+            stack.enter_context(mock.patch.dict(os.environ, {"UVR_DISABLE_CATALOGUE_STEMS": ""}))
             stack.enter_context(mock.patch.object(catalogue, "_scan_weight_hashes", lambda *a: {}))
-            stack.enter_context(
-                mock.patch("core.mdx_config_fetch._urlopen", supplemental_open)
-            )
+            stack.enter_context(mock.patch("core.mdx_config_fetch._urlopen", supplemental_open))
             stack.enter_context(contextlib.redirect_stderr(stderr))
             rc = cli.main(["--check", "--refresh", "--write-display-reference"])
 
@@ -2028,9 +1987,7 @@ class CheckContractTests(unittest.TestCase):
 
     def test_check_forbids_metadata_writes(self) -> None:
         """fetch_mdx_config_url writes yaml into the repo in the dev layout."""
-        policy = cli._policy_for(
-            cli._parse_args(["--check"])
-        )
+        policy = cli._policy_for(cli._parse_args(["--check"]))
         self.assertFalse(policy.allow_metadata_writes)
         self.assertFalse(policy.allow_cache_writes)
 
@@ -2049,9 +2006,12 @@ class CheckContractTests(unittest.TestCase):
             return False
 
         policy = catalogue.FetchPolicy(allow_network=True, allow_metadata_writes=False)
-        with mock.patch("core.mdx_config_fetch.fetch_mdx_config_url", spy), mock.patch(
-            "core.mdx_config_fetch._urlopen",
-            side_effect=urllib.error.URLError("blocked"),
+        with (
+            mock.patch("core.mdx_config_fetch.fetch_mdx_config_url", spy),
+            mock.patch(
+                "core.mdx_config_fetch._urlopen",
+                side_effect=urllib.error.URLError("blocked"),
+            ),
         ):
             catalogue._load_yaml_meta(
                 "nope.yaml", "https://example.invalid/nope.yaml", policy=policy
@@ -2090,12 +2050,15 @@ class CheckContractTests(unittest.TestCase):
             allow_metadata_writes=False,
             allow_cache_writes=False,
         )
-        with mock.patch.object(catalogue, "YAML_CACHE_DIR", cache_dir), mock.patch.object(
-            catalogue.paths, "MDX_C_CONFIG_PATH", model_store
-        ), mock.patch(
-            "core.mdx_config_fetch.fetch_mdx_config_url",
-            side_effect=AssertionError("model-store write path used"),
-        ), mock.patch("core.mdx_config_fetch._urlopen", return_value=_Response()):
+        with (
+            mock.patch.object(catalogue, "YAML_CACHE_DIR", cache_dir),
+            mock.patch.object(catalogue.paths, "MDX_C_CONFIG_PATH", model_store),
+            mock.patch(
+                "core.mdx_config_fetch.fetch_mdx_config_url",
+                side_effect=AssertionError("model-store write path used"),
+            ),
+            mock.patch("core.mdx_config_fetch._urlopen", return_value=_Response()),
+        ):
             instruments, target, arch, source = catalogue._load_yaml_meta(
                 "fresh.yaml",
                 "https://example.invalid/fresh.yaml",
@@ -2134,12 +2097,14 @@ class CheckContractTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", out))
             stack.enter_context(
-                mock.patch.object(catalogue, "_build_catalogue_context",
-                                  lambda **k: catalogue.CatalogueContext())
+                mock.patch.object(
+                    catalogue, "_build_catalogue_context", lambda **k: catalogue.CatalogueContext()
+                )
             )
             stack.enter_context(
-                mock.patch.object(catalogue, "_snapshot_and_payloads",
-                                  lambda **k: (_Snapshot(), ({}, {}, {}, {})))
+                mock.patch.object(
+                    catalogue, "_snapshot_and_payloads", lambda **k: (_Snapshot(), ({}, {}, {}, {}))
+                )
             )
             stack.enter_context(contextlib.redirect_stderr(stderr))
             rc = cli.main(["--check"])
@@ -2167,19 +2132,19 @@ class CheckContractTests(unittest.TestCase):
         tmp = tempfile.mkdtemp(prefix="uvr-tsvwarn-")
         stderr = io.StringIO()
         with contextlib.ExitStack() as stack:
-            stack.enter_context(
-                mock.patch.object(cli, "OUTPUT_PATH", os.path.join(tmp, "c.md"))
-            )
+            stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", os.path.join(tmp, "c.md")))
             stack.enter_context(
                 mock.patch.object(cli, "REFERENCE_TSV_PATH", os.path.join(tmp, "r.tsv"))
             )
             stack.enter_context(
-                mock.patch.object(catalogue, "_build_catalogue_context",
-                                  lambda **k: catalogue.CatalogueContext())
+                mock.patch.object(
+                    catalogue, "_build_catalogue_context", lambda **k: catalogue.CatalogueContext()
+                )
             )
             stack.enter_context(
-                mock.patch.object(catalogue, "_snapshot_and_payloads",
-                                  lambda **k: (_Snapshot(), ({}, {}, {}, {})))
+                mock.patch.object(
+                    catalogue, "_snapshot_and_payloads", lambda **k: (_Snapshot(), ({}, {}, {}, {}))
+                )
             )
             stack.enter_context(contextlib.redirect_stderr(stderr))
             rc = cli.main(["--write-tsv"])
@@ -2193,9 +2158,14 @@ class IntermediateRepresentationTests(unittest.TestCase):
 
     def _entry(self, label: str = "Some Model"):
         return catalogue.ModelEntry(
-            source="mvsepless", family="Roformer", catalogue_label=label,
-            weight_file="m.ckpt", instruments=["vocals", "other"], stem_count=2,
-            name_intent="vocals", metadata_source="catalogue_meta",
+            source="mvsepless",
+            family="Roformer",
+            catalogue_label=label,
+            weight_file="m.ckpt",
+            instruments=["vocals", "other"],
+            stem_count=2,
+            name_intent="vocals",
+            metadata_source="catalogue_meta",
         )
 
     def test_carries_a_schema_version(self) -> None:
@@ -2210,7 +2180,9 @@ class IntermediateRepresentationTests(unittest.TestCase):
         self.assertEqual(restored["entries"][0]["instruments"], ["vocals", "other"])
 
     def test_entry_count_is_recorded_for_the_publication_guard(self) -> None:
-        ir = catalogue.build_ir([self._entry("a"), self._entry("b")], report=None, unsupported_count=0)
+        ir = catalogue.build_ir(
+            [self._entry("a"), self._entry("b")], report=None, unsupported_count=0
+        )
         self.assertEqual(ir["entry_count"], 2)
 
     def test_provenance_is_included_when_a_report_exists(self) -> None:
@@ -2275,18 +2247,27 @@ class SummaryModeTests(unittest.TestCase):
 
     def _entries(self):
         flagged = catalogue.ModelEntry(
-            source="TRvlvr", family="Roformer", catalogue_label="Bad Model",
-            weight_file="bad.ckpt", name_intent="vocals",
+            source="TRvlvr",
+            family="Roformer",
+            catalogue_label="Bad Model",
+            weight_file="bad.ckpt",
+            name_intent="vocals",
             metadata_source="bundled_yaml:x.yaml",
         )
         flagged.flags = ["NAME says vocal but backend is instrumental-focused"]
         unknown = catalogue.ModelEntry(
-            source="extras", family="MDX23C", catalogue_label="Mystery",
-            weight_file="m.ckpt", name_intent="unknown",
+            source="extras",
+            family="MDX23C",
+            catalogue_label="Mystery",
+            weight_file="m.ckpt",
+            name_intent="unknown",
         )
         fine = catalogue.ModelEntry(
-            source="TRvlvr", family="VR Architecture", catalogue_label="Good Model",
-            weight_file="g.pth", name_intent="vocals",
+            source="TRvlvr",
+            family="VR Architecture",
+            catalogue_label="Good Model",
+            weight_file="g.pth",
+            name_intent="vocals",
             metadata_source="bundled_yaml:y.yaml",
         )
         return [flagged, unknown, fine]
@@ -2337,16 +2318,16 @@ class SummaryModeTests(unittest.TestCase):
             with open(out, "w", encoding="utf-8") as handle:
                 handle.write("THE REAL CATALOGUE\n- Total catalogue entries: **400**\n")
             stdout = io.StringIO()
-            with mock.patch.object(cli, "OUTPUT_PATH", out), \
-                 mock.patch.object(
-                     catalogue, "_build_catalogue_context",
-                     lambda **k: catalogue.CatalogueContext()
-                 ), \
-                 mock.patch.object(
-                     catalogue, "_snapshot_and_payloads",
-                     lambda **k: (_Snapshot(), ({}, {}, {}, {}))
-                 ), \
-                 contextlib.redirect_stdout(stdout):
+            with (
+                mock.patch.object(cli, "OUTPUT_PATH", out),
+                mock.patch.object(
+                    catalogue, "_build_catalogue_context", lambda **k: catalogue.CatalogueContext()
+                ),
+                mock.patch.object(
+                    catalogue, "_snapshot_and_payloads", lambda **k: (_Snapshot(), ({}, {}, {}, {}))
+                ),
+                contextlib.redirect_stdout(stdout),
+            ):
                 rc = cli.main(["--summary"])
 
             self.assertEqual(rc, 0)
@@ -2378,18 +2359,18 @@ class CollectEntriesIsTheRealPathTests(unittest.TestCase):
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch.object(cli, "OUTPUT_PATH", os.path.join(tmp, "c.md")), \
-                 mock.patch.object(
-                     catalogue, "_build_catalogue_context",
-                     lambda **k: catalogue.CatalogueContext()
-                 ), \
-                 mock.patch.object(
-                     catalogue, "_snapshot_and_payloads",
-                     lambda **k: (_Snapshot(), ({}, {}, {}, {}))
-                 ), \
-                 mock.patch.object(
-                     catalogue, "collect_entries", wraps=catalogue.collect_entries
-                 ) as collect:
+            with (
+                mock.patch.object(cli, "OUTPUT_PATH", os.path.join(tmp, "c.md")),
+                mock.patch.object(
+                    catalogue, "_build_catalogue_context", lambda **k: catalogue.CatalogueContext()
+                ),
+                mock.patch.object(
+                    catalogue, "_snapshot_and_payloads", lambda **k: (_Snapshot(), ({}, {}, {}, {}))
+                ),
+                mock.patch.object(
+                    catalogue, "collect_entries", wraps=catalogue.collect_entries
+                ) as collect,
+            ):
                 cli.main([])
         self.assertEqual(collect.call_count, 1, "main did not go through collect_entries")
 
@@ -2455,12 +2436,14 @@ class SidecarTrustTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", self.doc))
             stack.enter_context(
-                mock.patch.object(catalogue, "_build_catalogue_context",
-                                  lambda **k: catalogue.CatalogueContext())
+                mock.patch.object(
+                    catalogue, "_build_catalogue_context", lambda **k: catalogue.CatalogueContext()
+                )
             )
             stack.enter_context(
-                mock.patch.object(catalogue, "_snapshot_and_payloads",
-                                  lambda **k: (_Snapshot(), ({}, {}, {}, {})))
+                mock.patch.object(
+                    catalogue, "_snapshot_and_payloads", lambda **k: (_Snapshot(), ({}, {}, {}, {}))
+                )
             )
             self.assertEqual(cli.main([]), 0)
 
@@ -2489,8 +2472,11 @@ class SummaryHonestyTests(unittest.TestCase):
 
     def test_a_healthy_empty_of_problems_run_still_reads_clean(self) -> None:
         entry = catalogue.ModelEntry(
-            source="TRvlvr", family="VR Architecture", catalogue_label="Good",
-            weight_file="g.pth", name_intent="vocals",
+            source="TRvlvr",
+            family="VR Architecture",
+            catalogue_label="Good",
+            weight_file="g.pth",
+            name_intent="vocals",
             metadata_source="bundled_yaml:y.yaml",
         )
         text = render.render_summary_report([entry], unsupported_count=0)
@@ -2640,8 +2626,9 @@ class FetchHelperTests(unittest.TestCase):
             def __exit__(self, *args: object) -> None:
                 return None
 
-        with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.mdx_config_fetch._urlopen", return_value=_Resp()
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("core.mdx_config_fetch._urlopen", return_value=_Resp()),
         ):
             path = catalogue._fetch_cached("https://example.invalid/x.json", tmp, "x.json")
             if path is None:
@@ -2663,10 +2650,10 @@ class FetchHelperTests(unittest.TestCase):
                 handle.write(body)
             return True
 
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            catalogue.paths, "MDX_C_CONFIG_PATH", tmp
-        ), patch(
-            "core.mdx_config_fetch.fetch_mdx_config_url", side_effect=fake_fetch
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(catalogue.paths, "MDX_C_CONFIG_PATH", tmp),
+            patch("core.mdx_config_fetch.fetch_mdx_config_url", side_effect=fake_fetch),
         ):
             instruments, target, _arch, source = catalogue._load_yaml_meta(
                 yaml_name, "https://example.invalid/x.yaml"

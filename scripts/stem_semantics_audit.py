@@ -32,10 +32,12 @@ requested JSON report, keeping any hashes already paid for.
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 import sys
 import time
+import unicodedata
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Iterator, List, Optional
 
@@ -72,6 +74,126 @@ class CatalogueEvidenceCounts:
 
 
 _COMPLEMENT_ONLY_NAMES = frozenset({"drum-bass", "no bass", "no drums", "no other"})
+_REVIEWED_VOCAL_SPLIT_IDS = frozenset(
+    {"mdx:mbr_bve_gonzaluigi", "mdx:model_MelBand-Roformer_BVE_by-Gonza"}
+)
+_REFERENCE_HEADERS = (
+    "model_id",
+    "model_display",
+    "native_signature",
+    "processing_context",
+    "native_stem",
+    "production",
+    "backend_primary",
+    "backend_target",
+    "logical_primary",
+    "role_id",
+    "canonical_name",
+    "filename_tag",
+    "pair_id",
+    "intent",
+    "intent_source",
+    "review_status",
+    "evidence_or_waiver",
+)
+
+
+def _audit_key(value: str) -> str:
+    """Use the manifest's Unicode/case-insensitive identity rules."""
+    return unicodedata.normalize("NFKC", value).strip().casefold()
+
+
+def _signature_matches(expected: tuple[str, ...], actual: tuple[str, ...]) -> bool:
+    """Match the resolver's exact, order-independent native signature gate."""
+    expected_keys = tuple(_audit_key(value) for value in expected)
+    actual_keys = tuple(_audit_key(value) for value in actual)
+    return len(expected_keys) == len(actual_keys) and set(expected_keys) == set(actual_keys)
+
+
+def _context_audit_errors(
+    *, roles: tuple[Any, ...], logical_primary: Any, reviewed: bool, signature_matches: bool
+) -> tuple[str, ...]:
+    """Return independently countable declaration/context failures."""
+    errors = []
+    if not signature_matches:
+        errors.append("signature")
+    if not reviewed:
+        errors.append("unreviewed")
+    if len(set(roles)) != len(roles):
+        errors.append("duplicate-role")
+    primary_count = sum(role == logical_primary for role in roles)
+    if primary_count != 1:
+        errors.append("logical-primary")
+    return tuple(errors)
+
+
+def _role_collision_count(definitions: Any) -> int:
+    """Count display and filename-tag collisions after Unicode normalization."""
+    displays = [_audit_key(definition.display) for definition in definitions]
+    tags = [_audit_key(definition.filename_tag) for definition in definitions]
+    return (len(displays) - len(set(displays))) + (len(tags) - len(set(tags)))
+
+
+def _pair_audit_errors(pairs: Any, roles: Any, context_roles: Any) -> int:
+    """Count dangling definitions and emitted pairs missing either required role."""
+    errors = sum(any(role not in roles for role in pair.roles) for pair in pairs.values())
+    for context_key, present_roles in context_roles.items():
+        pair_id = context_key[-1] if isinstance(context_key, tuple) else context_key
+        pair = pairs.get(pair_id)
+        normalized_present = {str(role) for role in present_roles}
+        if pair is None or not {str(role) for role in pair.roles}.issubset(normalized_present):
+            errors += 1
+    return errors
+
+
+def _vocal_split_audit_errors(
+    *, model_id: str, is_karaoke: bool, declared_contexts: Any
+) -> tuple[str, ...]:
+    """Enforce structured karaoke coverage, with only reviewed BVE exceptions."""
+    from core.stem_roles import StemProcessingContext
+
+    eligible = is_karaoke or model_id in _REVIEWED_VOCAL_SPLIT_IDS
+    has_vocal_split = StemProcessingContext.VOCAL_SPLIT in declared_contexts
+    if eligible and not has_vocal_split:
+        return ("missing-vocal-split",)
+    if has_vocal_split and not eligible:
+        return ("unexpected-vocal-split",)
+    return ()
+
+
+def _reference_parity_errors(
+    actual_text: str,
+    expected_text: str,
+    *,
+    expected_ids: set[str],
+    waiver_ids: set[str],
+) -> int:
+    """Validate fixed TSV schema and every generated per-output field."""
+    rows = list(csv.reader(actual_text.splitlines(), delimiter="\t"))
+    if not rows:
+        return 1
+    header, data = rows[0], rows[1:]
+    errors = 0
+    if tuple(header) != _REFERENCE_HEADERS or any(
+        len(row) != len(_REFERENCE_HEADERS) for row in data
+    ):
+        errors += 1
+    if {row[0] for row in data if row} != expected_ids:
+        errors += 1
+    for model_id in waiver_ids:
+        if not any(
+            len(row) == len(_REFERENCE_HEADERS)
+            and row[0] == model_id
+            and row[15] == "waived"
+            and row[16]
+            for row in data
+        ):
+            errors += 1
+    # This deliberately compares every field (not merely columns selected by
+    # a validator); a changed role, pair, provenance, or any output cell fails.
+    if actual_text != expected_text:
+        errors += 1
+    return errors
 
 
 def _community_stem_tokens(stems_text: str) -> tuple[str, ...]:
@@ -85,7 +207,9 @@ def _community_stem_tokens(stems_text: str) -> tuple[str, ...]:
     return tuple(tokens)
 
 
-def catalogue_evidence_counts(entries: Any, community_by_file: Dict[str, Any]) -> CatalogueEvidenceCounts:
+def catalogue_evidence_counts(
+    entries: Any, community_by_file: Dict[str, Any]
+) -> CatalogueEvidenceCounts:
     """Count the approved evidence universe without changing runtime semantics."""
     current_files = {str(entry.weight_file).casefold() for entry in entries}
     literals = set(_COMPLEMENT_ONLY_NAMES)
@@ -252,10 +376,7 @@ def _entry_for_target(
         hash_status = lookup.status
     else:
         hash_status = "matched" if curated_data else "unmatched"
-    is_bv = bool(
-        (curated_data or {}).get("is_bv_model")
-        or getattr(target, "is_bv_model", False)
-    )
+    is_bv = bool((curated_data or {}).get("is_bv_model") or getattr(target, "is_bv_model", False))
     is_karaoke, is_curated = resolve_karaoke_confidence(
         model_data=curated_data,
         model_name=target.label,
@@ -285,9 +406,7 @@ def _entry_for_target(
     )
 
 
-def select_targets(
-    targets: List[Any], *, only: str = "", limit: Optional[int] = None
-) -> List[Any]:
+def select_targets(targets: List[Any], *, only: str = "", limit: Optional[int] = None) -> List[Any]:
     """Narrow the catalogue for a targeted review.
 
     ``only`` matches a substring of either the entry id or the label, so a
@@ -399,8 +518,7 @@ def build_parser():
         default=None,
         metavar="PATH",
         help=(
-            "Write the full per-entry report JSON here. The human table is "
-            "still printed to stdout."
+            "Write the full per-entry report JSON here. The human table is still printed to stdout."
         ),
     )
     parser.add_argument(
@@ -456,36 +574,96 @@ def strict_catalogue_check() -> tuple[bool, str]:
         load_stem_manifest,
         resolve_model_stem_semantics,
     )
-    from core.stem_roles import StemProcessingContext, StemReviewStatus
+    from core.stem_roles import StemReviewStatus
 
-    policy = collect.FetchPolicy(allow_network=False, allow_cache_writes=False,
-                                 allow_metadata_writes=False)
+    policy = collect.FetchPolicy(
+        allow_network=False,
+        allow_cache_writes=False,
+        allow_metadata_writes=False,
+    )
     context = collect._build_catalogue_context(policy=policy)
     _snapshot, entries = collect.collect_entries(context, policy=policy)
     registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
     counts = catalogue_evidence_counts(entries, context.community_by_file)
     missing = []
     mismatches = []
+    invalid_contexts = []
     for entry in entries:
         model_id = render._canonical_model_id(entry)
         if model_id in registry.waivers:
             continue
-        resolved = resolve_model_stem_semantics(
-            model_id, native_stems=entry.instruments, backend_primary=entry.primary_stem,
-            backend_target=entry.target_instrument, context=StemProcessingContext.FULL_MIX,
-            registry=registry,
-        )
-        if resolved.status is not StemReviewStatus.REVIEWED:
-            mismatches.append(model_id)
-        if model_id not in registry.models:
+        declaration = registry.models.get(model_id)
+        if declaration is None:
             missing.append(model_id)
+            continue
+        signature_matches = _signature_matches(
+            declaration.native_signature, tuple(str(native) for native in entry.instruments)
+        )
+        for processing_context, declared_context in declaration.contexts.items():
+            resolved = resolve_model_stem_semantics(
+                model_id,
+                native_stems=entry.instruments,
+                backend_primary=entry.primary_stem,
+                backend_target=entry.target_instrument,
+                context=processing_context,
+                registry=registry,
+            )
+            roles = [output.role for output in declared_context.outputs]
+            errors = _context_audit_errors(
+                roles=tuple(roles),
+                logical_primary=declared_context.logical_primary,
+                reviewed=resolved.status is StemReviewStatus.REVIEWED,
+                signature_matches=signature_matches,
+            )
+            if errors:
+                invalid_contexts.append(f"{model_id}:{processing_context.value}")
+        invalid_contexts.extend(
+            f"{model_id}:{error}"
+            for error in _vocal_split_audit_errors(
+                model_id=model_id,
+                is_karaoke=entry.is_karaoke,
+                declared_contexts=declaration.contexts,
+            )
+        )
+    collisions = _role_collision_count(registry.roles.values())
+    pair_errors = _pair_audit_errors(registry.pairs, registry.roles, {})
+    reference_errors = 0
+    try:
+        reference_path = "docs/model_stem_semantics_reference.tsv"
+        with open(reference_path, encoding="utf-8", newline="") as handle:
+            actual_reference = handle.read()
+        expected_reference = render.stem_semantics_reference_tsv(entries)
+        expected_ids = {render._canonical_model_id(entry) for entry in entries}
+        reference_errors += _reference_parity_errors(
+            actual_reference,
+            expected_reference,
+            expected_ids=expected_ids,
+            waiver_ids=set(registry.waivers),
+        )
+        rows = list(csv.reader(actual_reference.splitlines(), delimiter="\t"))[1:]
+        paired_roles = {}
+        for row in rows:
+            if len(row) == len(_REFERENCE_HEADERS) and row[12]:
+                paired_roles.setdefault((row[0], row[3], row[12]), set()).add(row[9])
+        pair_errors += _pair_audit_errors(registry.pairs, registry.roles, paired_roles)
+    except (OSError, IndexError):
+        reference_errors += 1
     summary = (
         f"models={len(entries)} literal_names={counts.literal_names} "
         f"normalized_names={counts.normalized_names} primary_names={counts.primary_names}\n"
         f"complement_only={len(_COMPLEMENT_ONLY_NAMES)} unreviewed={len(missing)} "
-        f"signature_mismatches={len(mismatches)} collisions=0"
+        f"signature_mismatches={len(mismatches) + len(invalid_contexts)} collisions={collisions} "
+        f"pair_errors={pair_errors} reference_errors={reference_errors}"
     )
-    return not missing and not mismatches, summary
+    return (
+        not missing
+        and not mismatches
+        and not invalid_contexts
+        and not collisions
+        and not pair_errors
+        and not reference_errors,
+        summary,
+    )
 
 
 def main(argv: Optional[List[str]] = None) -> int:
