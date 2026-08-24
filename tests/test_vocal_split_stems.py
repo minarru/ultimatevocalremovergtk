@@ -23,7 +23,7 @@ from core.model_stem_semantics import (
     vocal_inst_from_sources,
     vocal_split_source_roles,
 )
-from core.stems import StemBucket, bucket_for_model_stem
+from core.stems import StemBucket, bucket_for_model_stem, model_stem_routes
 from engines.base import SeperateAttributes
 from engines.mdx_c import mdx_vocal_split_chain_sources
 from engines.mdx_c_engine import SeperateMDXC
@@ -39,6 +39,112 @@ def _split_bucket(stem: str | None, *, is_bv: bool = False) -> StemBucket:
     return bucket_for_model_stem(
         stem or "", stem_count=2, is_bv=is_bv, is_vocal_split=True
     )
+
+
+def _semantic_model(
+    canonical_id: str,
+    native_stems: list[str],
+    *,
+    backend_primary: str,
+    vocal_split: bool,
+) -> Any:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        canonical_id=canonical_id,
+        mdx_model_stems=native_stems,
+        demucs_source_list=[],
+        primary_stem_native=backend_primary,
+        primary_stem=backend_primary,
+        secondary_stem=native_stems[1],
+        target_instrument="",
+        is_vocal_split_model=vocal_split,
+        is_karaoke=True,
+        is_bv_model="BVE" in canonical_id,
+        mdx_stem_count=len(native_stems),
+        mdxnet_stems_selected=[],
+    )
+
+
+class ReviewedVocalSplitContextTests(unittest.TestCase):
+    def _labels(
+        self,
+        canonical_id: str,
+        native_stems: list[str],
+        backend_primary: str,
+        *,
+        vocal_split: bool,
+    ) -> list[str]:
+        return [
+            route.label
+            for route in model_stem_routes(
+                _semantic_model(
+                    canonical_id,
+                    native_stems,
+                    backend_primary=backend_primary,
+                    vocal_split=vocal_split,
+                )
+            )
+        ]
+
+    def test_ordinary_karaoke_changes_only_accompaniment_meaning(self) -> None:
+        model_id = "mdx:bs_karaoke_becruily"
+        self.assertEqual(
+            self._labels(model_id, ["Vocals", "Instrumental"], "Vocals", vocal_split=False),
+            ["Lead Vocals", "Instrumental with Backing Vocals"],
+        )
+        self.assertEqual(
+            self._labels(model_id, ["Vocals", "Instrumental"], "Vocals", vocal_split=True),
+            ["Lead Vocals", "Backing Vocals"],
+        )
+
+    def test_vr_bve_reverses_context_semantics_without_flipping_native(self) -> None:
+        model_id = "vr:UVR-BVE-4B_SN-44100-1"
+        self.assertEqual(
+            self._labels(model_id, ["Vocals", "Instrumental"], "Vocals", vocal_split=False),
+            ["Backing Vocals", "Instrumental with Lead Vocals"],
+        )
+        self.assertEqual(
+            self._labels(model_id, ["Vocals", "Instrumental"], "Vocals", vocal_split=True),
+            ["Backing Vocals", "Lead Vocals"],
+        )
+
+    def test_both_melband_bve_models_keep_ordinary_karaoke_semantics(self) -> None:
+        for model_id in (
+            "mdx:mbr_bve_gonzaluigi",
+            "mdx:model_MelBand-Roformer_BVE_by-Gonza",
+        ):
+            with self.subTest(model_id=model_id, context="full_mix"):
+                self.assertEqual(
+                    self._labels(model_id, ["Lead", "Back"], "Lead", vocal_split=False),
+                    ["Lead Vocals", "Instrumental with Backing Vocals"],
+                )
+            with self.subTest(model_id=model_id, context="vocal_split"):
+                self.assertEqual(
+                    self._labels(model_id, ["Lead", "Back"], "Lead", vocal_split=True),
+                    ["Lead Vocals", "Backing Vocals"],
+                )
+
+    def test_giantailab_third_route_stays_distinct_from_karaoke_pair(self) -> None:
+        model_id = "mdx:bs_karaoke_3stem_giantailab"
+        self.assertEqual(
+            self._labels(
+                model_id,
+                ["vocals", "backing_vocal", "instrumental"],
+                "vocals",
+                vocal_split=False,
+            ),
+            ["Lead Vocals", "Backing Vocal", "Instrumental with Backing Vocals"],
+        )
+        self.assertEqual(
+            self._labels(
+                model_id,
+                ["vocals", "backing_vocal", "instrumental"],
+                "vocals",
+                vocal_split=True,
+            ),
+            ["Lead Vocals", "Backing Vocal", "Backing Vocals"],
+        )
 
 
 class VocalSplitRoleBucketTests(unittest.TestCase):
@@ -189,6 +295,31 @@ class WriteAudioGuardTests(unittest.TestCase):
         sep = self._secondary_writer()
         path = "/tmp/song_(Vocals).wav"
         sep.write_audio(path, _arr(1.0).T, 44100, stem_name=VOCAL_STEM)
+        self.assertEqual(sep.master_vocal_path, path)
+
+    def test_raw_route_preserves_vocal_chain_handoff_without_role_promotion(self) -> None:
+        from core.stem_roles import StemId, StemLiteral
+        from core.stems import StemRoute, StemRouteKind
+
+        sep = self._secondary_writer()
+        route = StemRoute(
+            native=StemId("VoCaLs"),
+            role=StemLiteral("vocals"),
+            label="VoCaLs",
+            filename_tag="VoCaLs",
+            kind=StemRouteKind.NATIVE,
+        )
+        path = "/tmp/song_(VoCaLs).wav"
+
+        sep.write_audio(
+            path,
+            _arr(1.0).T,
+            44100,
+            stem_name=route.label,
+            route=route,
+        )
+
+        self.assertIsInstance(route.role, StemLiteral)
         self.assertEqual(sep.master_vocal_path, path)
 
     def test_instrumental_does_not_record_master_vocal_path(self) -> None:
@@ -431,9 +562,15 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
         )
         captured: dict[str, Any] = {}
 
-        def build_pair(sources: dict[str, Any], mix: Any) -> dict[str, Any]:
+        def build_pair(
+            sources: dict[str, Any],
+            mix: Any,
+            *,
+            routes: Any = None,
+        ) -> dict[str, Any]:
             captured["source_length"] = sources["Vocals"].shape[1]
             captured["mix_length"] = mix.shape[1]
+            captured["routes"] = routes
             return {}
 
         fake._vocal_split_pair_sources = build_pair
@@ -453,11 +590,60 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
         self.assertEqual(captured, {
             "source_length": 441,
             "mix_length": 441,
+            "routes": (),
         })
         self.assertIsInstance(plan, ExportPlan)
         self.assertEqual(plan.sources, {})
         self.assertEqual(plan.samplerate, 44100)
         self.assertEqual(plan.split_sources, {})
+
+    def test_reviewed_splitter_plan_preserves_native_source_keys(self) -> None:
+        from types import MethodType, SimpleNamespace
+
+        mix = _arr(3.0)
+        lead = _arr(1.0)
+        backing = _arr(2.0)
+        semantic_model = _semantic_model(
+            "mdx:bs_karaoke_becruily",
+            ["Vocals", "Instrumental"],
+            backend_primary="Vocals",
+            vocal_split=True,
+        )
+        routes = model_stem_routes(semantic_model)
+        fake = SimpleNamespace(
+            mdx_c_configs=SimpleNamespace(
+                audio=SimpleNamespace(sample_rate=44100),
+                training=SimpleNamespace(
+                    target_instrument="Vocals",
+                    instruments=["Vocals", "Instrumental"],
+                ),
+            ),
+            is_roformer=True,
+            primary_model_name="splitter",
+            model_basename="splitter",
+            model_cache_key="splitter",
+            model_display_label="splitter",
+            primary_sources=(mix, {"vocals": lead, "INSTRUMENTAL": backing}),
+            load_cached_sources=lambda: None,
+            is_vocal_split_model=True,
+            is_secondary_model=True,
+            is_pre_proc_model=False,
+            primary_stem_native="Vocals",
+            is_bv_model=False,
+            available_stem_routes=routes,
+            selected_stem_routes=routes,
+            is_ensemble_mode=False,
+        )
+        fake._vocal_split_pair_sources = MethodType(
+            SeperateMDXC._vocal_split_pair_sources,
+            fake,
+        )
+
+        plan = SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
+
+        self.assertEqual(list(plan.sources), ["Vocals", "Instrumental"])
+        np.testing.assert_array_equal(plan.sources["Vocals"], lead.T)
+        np.testing.assert_array_equal(plan.sources["Instrumental"], backing.T)
 
     def test_three_stem_karaoke_skips_splitter_instrumental(self) -> None:
         self.assertEqual(

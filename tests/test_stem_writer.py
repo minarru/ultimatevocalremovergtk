@@ -147,15 +147,28 @@ class _FakeSep:
         self.is_bv_model = False
         self.mdx_stem_count = 2
         self.settings = None
+        self.capture_stems_only = False
+        self.is_save_all_outputs_ensemble = False
+        self.is_save_inst_vocal_splitter = False
+        self.is_bv_model_rebalenced = False
+        self.is_save_vocal_only = False
+        self.is_deverb_vocals = False
+        self.deverb_vocal_opt = "ALL"
+        self.master_vocal_path: str | None = None
+        self._ensemble_stem_buffers: dict[str, object] = {}
+        self._ensemble_stem_paths: dict[str, str] = {}
+        self.console_messages: list[str] = []
         self.writes: list[tuple[str, object, int, str | None]] = []
+        self.route_writes: list[object | None] = []
         self.split_calls: list[dict[str, object]] = []
         self.save_phase_total: int | None = None
 
     def begin_save_phase(self, total: int) -> None:
         self.save_phase_total = total
 
-    def stem_export_wav_path(self, stem: str) -> str:
-        return f"/tmp/{stem}.wav"
+    def stem_export_wav_path(self, stem: str, *, route: object | None = None) -> str:
+        label = getattr(route, "label", stem)
+        return f"/tmp/{label}.wav"
 
     def write_audio(
         self,
@@ -163,8 +176,17 @@ class _FakeSep:
         source: object,
         samplerate: int,
         stem_name: str | None = None,
+        *,
+        route: object | None = None,
     ) -> None:
         self.writes.append((path, source, samplerate, stem_name))
+        self.route_writes.append(route)
+
+    def _report_save_progress(self) -> None:
+        pass
+
+    def write_to_console(self, message: object, **_kwargs: object) -> None:
+        self.console_messages.append(str(message))
 
 
 class FinishExportTests(unittest.TestCase):
@@ -233,7 +255,7 @@ class FinishExportTests(unittest.TestCase):
         self.assertEqual(
             sep.writes,
             [
-                ("/tmp/vocals.wav", vocals, 44100, "vocals"),
+                ("/tmp/Vocals.wav", vocals, 44100, "Vocals"),
                 ("/tmp/Instrumental.wav", inst, 44100, "Instrumental"),
             ],
         )
@@ -265,6 +287,170 @@ class FinishExportTests(unittest.TestCase):
 
 
 class ExportSourceMapTests(unittest.TestCase):
+    def test_native_lookup_uses_raw_key_but_writes_canonical_route_label(self) -> None:
+        from core.stem_roles import StemRoleId
+        from core.stems import StemId, StemRoute, StemRouteKind
+        from engines.stem_writer import export_source_map
+
+        native = object()
+        decoy = object()
+        route = StemRoute(
+            native=StemId("DrY"),
+            role=StemRoleId("effect.reverb.removed"),
+            label="Reverb Removed",
+            filename_tag="Reverb_Removed",
+            kind=StemRouteKind.NATIVE,
+            logical_primary=True,
+        )
+        sep = _FakeSep((route,))
+
+        export_source_map(
+            sep,
+            {"dry": native, "Reverb Removed": decoy},
+            samplerate=44100,
+        )
+
+        self.assertEqual(
+            sep.writes,
+            [("/tmp/Reverb Removed.wav", native, 44100, "Reverb Removed")],
+        )
+        self.assertEqual(sep.route_writes, [route])
+
+    def test_native_route_never_falls_back_to_label_or_filename_tag(self) -> None:
+        from core.stem_roles import StemRoleId
+        from core.stems import StemId, StemRoute, StemRouteKind
+        from engines.stem_writer import export_source_map
+
+        route = StemRoute(
+            native=StemId("dry"),
+            role=StemRoleId("effect.reverb.removed"),
+            label="Reverb Removed",
+            filename_tag="Reverb_Removed",
+            kind=StemRouteKind.NATIVE,
+        )
+        sep = _FakeSep((route,))
+
+        with self.assertRaisesRegex(RuntimeError, "No audio writes"):
+            export_source_map(
+                sep,
+                {"Reverb Removed": object(), "Reverb_Removed": object()},
+                samplerate=44100,
+            )
+
+        self.assertEqual(sep.writes, [])
+
+    def test_reviewed_multistem_writes_components_and_residual_only(self) -> None:
+        from types import SimpleNamespace
+
+        from core.stems import model_stem_routes
+        from engines.stem_writer import export_source_map
+
+        model = SimpleNamespace(
+            canonical_id="demucs:demucs",
+            demucs_source_list=["drums", "bass", "other", "vocals"],
+            mdx_model_stems=[],
+            primary_stem_native="vocals",
+            primary_stem="vocals",
+            secondary_stem="instrumental",
+            target_instrument="",
+            is_vocal_split_model=False,
+            is_karaoke=False,
+            is_bv_model=False,
+            demucs_stem_count=4,
+            mdx_stem_count=0,
+            mdxnet_stems_selected=[],
+        )
+        routes = model_stem_routes(model)
+        sep = _FakeSep(routes)
+        values = {name.upper(): object() for name in model.demucs_source_list}
+
+        export_source_map(sep, values, samplerate=44100)
+
+        self.assertEqual(
+            [write[3] for write in sep.writes],
+            ["Drums", "Bass", "Residual", "Vocals"],
+        )
+        self.assertNotIn("Drums Removed", [write[3] for write in sep.writes])
+        self.assertNotIn("Bass Removed", [write[3] for write in sep.writes])
+
+    def test_reviewed_target_removal_direction_uses_exact_route_names(self) -> None:
+        from types import SimpleNamespace
+
+        from core.stems import model_stem_routes
+        from engines.stem_writer import export_source_map
+
+        model = SimpleNamespace(
+            canonical_id="mdx:mbr_debigreverb_sucial",
+            mdx_model_stems=["dry", "other"],
+            demucs_source_list=[],
+            primary_stem_native="dry",
+            primary_stem="dry",
+            secondary_stem="other",
+            target_instrument="dry",
+            is_vocal_split_model=False,
+            is_karaoke=False,
+            is_bv_model=False,
+            mdx_stem_count=2,
+            mdxnet_stems_selected=[],
+        )
+        routes = model_stem_routes(model)
+        sep = _FakeSep(routes)
+
+        export_source_map(
+            sep,
+            {"DRY": object(), "Other": object()},
+            samplerate=44100,
+        )
+
+        self.assertEqual(
+            [write[3] for write in sep.writes],
+            ["Reverb Removed", "Reverb"],
+        )
+
+    def test_internal_capture_uses_stable_filename_tag_not_display_label(self) -> None:
+        import numpy as np
+
+        from core.stem_roles import StemRoleId
+        from core.stems import StemId, StemRoute, StemRouteKind
+        from engines.stem_writer import write_audio
+
+        route = StemRoute(
+            native=StemId("drum-bass"),
+            role=StemRoleId("instrument.drum_bass"),
+            label="Drum/Bass",
+            filename_tag="Drum_Bass",
+            kind=StemRouteKind.NATIVE,
+        )
+        sep = _FakeSep((route,))
+        sep.capture_stems_only = True
+        sep.is_ensemble_mode = True
+        sep.is_save_all_outputs_ensemble = False
+        sep.is_save_inst_vocal_splitter = False
+        sep.is_bv_model_rebalenced = False
+        sep.is_save_vocal_only = False
+        sep.is_deverb_vocals = False
+        sep.deverb_vocal_opt = "ALL"
+        sep.master_vocal_path = None
+        sep._ensemble_stem_buffers = {}
+        sep._ensemble_stem_paths = {}
+        source = np.ones((4, 2), dtype=np.float32)
+
+        write_audio(
+            sep,
+            "/tmp/song (Drum-Bass).wav",
+            source,
+            44100,
+            stem_name=route.label,
+            route=route,
+        )
+
+        self.assertEqual(list(sep._ensemble_stem_buffers), ["Drum_Bass"])
+        self.assertEqual(
+            sep._ensemble_stem_paths,
+            {"Drum_Bass": "/tmp/song (Drum-Bass).wav"},
+        )
+        self.assertTrue(any("Drum/Bass" in message for message in sep.console_messages))
+
     def test_writes_selected_routes_and_skips_missing(self) -> None:
         from core.stems import StemId, StemRoute, StemRouteKind
         from engines.stem_writer import export_source_map
@@ -291,7 +477,7 @@ class ExportSourceMapTests(unittest.TestCase):
         self.assertEqual(sep.save_phase_total, 2)
         self.assertEqual(
             sep.writes,
-            [("/tmp/vocals.wav", vocals, 44100, "vocals")],
+            [("/tmp/Vocals.wav", vocals, 44100, "Vocals")],
         )
 
     def test_derived_route_looks_up_label(self) -> None:
@@ -450,7 +636,7 @@ class ExportSourceMapTests(unittest.TestCase):
         self.assertEqual(
             sep.writes,
             [
-                ("/tmp/vocals.wav", vocals, 44100, "vocals"),
+                ("/tmp/Vocals.wav", vocals, 44100, "Vocals"),
                 ("/tmp/Instrumental.wav", inst, 44100, "Instrumental"),
             ],
         )

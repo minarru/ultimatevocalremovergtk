@@ -1,6 +1,5 @@
 """MDX export routing and complement helpers."""
 import typing
-
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -228,8 +227,77 @@ class TargetOtherNdarrayExportTests(unittest.TestCase):
 
         self.assertIsInstance(plan, ExportPlan)
         self.assertEqual(plan.samplerate, 44100)
-        self.assertIn(INST_STEM, plan.sources)
+        self.assertIn("other", plan.sources)
         self.assertIn(VOCAL_STEM, plan.sources)
+
+    def test_logical_primary_does_not_flip_backend_target_polarity(self) -> None:
+        """Backend target ``other`` remains the direct model array.
+
+        The reviewed logical primary orders Instrumental first, but must not
+        turn the derived vocals complement into the model output.
+        """
+        from core.stem_roles import StemRoleId
+
+        mix = np.full((2, 8), 1.0, dtype=np.float32)
+        backend_target = np.full((2, 8), 0.25, dtype=np.float32)
+        instrumental_route = StemRoute(
+            native=StemId("other"),
+            role=StemRoleId("mix.instrumental"),
+            label="Instrumental",
+            filename_tag="Instrumental",
+            kind=StemRouteKind.NATIVE,
+            logical_primary=True,
+        )
+        vocal_route = StemRoute(
+            native=StemId("vocals"),
+            role=StemRoleId("vocal.vocals"),
+            label="Vocals",
+            filename_tag="Vocals",
+            kind=StemRouteKind.NATIVE,
+        )
+        fake = SimpleNamespace(
+            mdx_c_configs=SimpleNamespace(
+                training=SimpleNamespace(
+                    target_instrument="other",
+                    instruments=["vocals", "other"],
+                ),
+            ),
+            is_roformer=True,
+            primary_model_name="bs_leap_xe_inst_unwa",
+            model_basename="bs_leap_xe_inst_unwa",
+            model_cache_key="bs_leap_xe_inst_unwa",
+            primary_sources=(mix, backend_target),
+            load_cached_sources=lambda: None,
+            is_vocal_split_model=False,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_4_stem_ensemble=False,
+            is_mdx_include_stem_complement=False,
+            is_secondary_model_activated=False,
+            secondary_model=None,
+            mdxnet_stem_select="other",
+            primary_stem=INST_STEM,
+            primary_stem_native="other",
+            secondary_stem=VOCAL_STEM,
+            primary_source=None,
+            secondary_source=None,
+            secondary_source_primary=None,
+            secondary_source_secondary=None,
+            is_invert_spec=False,
+            is_mdx_combine_stems=False,
+            match_frequency_pitch=lambda audio: audio,
+            process_secondary_stem=lambda stem, secondary=None: stem,
+            process_data=SimpleNamespace(is_ensemble_master=False),
+            selected_stem_routes=(instrumental_route, vocal_route),
+            available_stem_routes=(instrumental_route, vocal_route),
+            is_ensemble_mode=False,
+            is_multi_stem_ensemble=False,
+        )
+
+        plan = SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
+
+        np.testing.assert_array_equal(plan.sources["other"], backend_target.T)
+        np.testing.assert_array_equal(plan.sources["vocals"], (mix - backend_target).T)
 
 
 class MdxSelectedStemsTests(unittest.TestCase):

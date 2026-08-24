@@ -26,13 +26,11 @@ from bundled.constants import (
 )
 from core.audio_io import save_format
 from core.debug_log import log_event
-from core.model_stem_semantics import is_vocal_target
+from core.stem_roles import StemRoleId
 from core.stems import (
     StemBucket,
     StemLiteral,
-    export_stem_key,
-    filename_tag,
-    resolve_in_sources,
+    StemRoute,
     route_matches_stem,
     run_export_routes,
     stem_concept,
@@ -62,17 +60,9 @@ def _save_audio_file(
     )
     if capture_only or ensemble_buffer:
         if buffer_stem_name:
-            # Ensemble combine keys must match disk export tags
-            # (export_stem_key / filename_tag), not raw yaml ids.
-            if ensemble_buffer:
-                key = export_stem_key(sep, buffer_stem_name, for_ensemble=True)
-                buffer_key = (
-                    filename_tag(key)
-                    if isinstance(key, (StemBucket, StemLiteral))
-                    else str(key)
-                )
-            else:
-                buffer_key = buffer_stem_name
+            # Route callers pass the stable filename tag. Legacy/non-route
+            # sidecars pass their own already-presented capture name.
+            buffer_key = buffer_stem_name
             buffers = getattr(sep, "_ensemble_stem_buffers", None)
             if buffers is None:
                 buffers = {}
@@ -222,11 +212,12 @@ def _save_voc_split_instrumental(
     buffer_stem_name: str | None,
     is_not_ensemble: bool,
     is_inst_invert: bool = False,
+    is_lead: bool | None = None,
 ) -> None:
-    local = stem_concept(sep, stem_name)
+    local = stem_concept(sep, stem_name) if is_lead is None else None
     inst_stem_name = (
         INST_WITH_LEAD_VOCALS_STEM
-        if local is StemBucket.LEAD_VOCALS
+        if (is_lead if is_lead is not None else local is StemBucket.LEAD_VOCALS)
         else INST_WITH_BACKING_VOCALS_STEM
     )
     inst_stem_path = sep.audio_file_base_voc_split(inst_stem_name)
@@ -253,13 +244,17 @@ def _save_voc_split_vocal(
     samplerate: int,
     buffer_stem_name: str | None,
     is_not_ensemble: bool,
+    output_label: str | None = None,
 ) -> None:
-    local = stem_concept(sep, stem_name)
-    voc_split_stem_name = (
-        LEAD_VOCAL_STEM_LABEL
-        if local is StemBucket.LEAD_VOCALS
-        else BV_VOCAL_STEM_LABEL
-    )
+    if output_label is None:
+        local = stem_concept(sep, stem_name)
+        voc_split_stem_name = (
+            LEAD_VOCAL_STEM_LABEL
+            if local is StemBucket.LEAD_VOCALS
+            else BV_VOCAL_STEM_LABEL
+        )
+    else:
+        voc_split_stem_name = output_label
     voc_split_stem_path = sep.audio_file_base_voc_split(voc_split_stem_name)
     _save_with_message(
         sep,
@@ -278,8 +273,32 @@ def write_audio(
     stem_source: Any,
     samplerate: int,
     stem_name: str | None = None,
+    *,
+    route: StemRoute | None = None,
 ) -> None:
-    bucket = stem_concept(sep, stem_name)
+    role_value = route.role.value if route is not None and isinstance(route.role, StemRoleId) else ""
+    reviewed_buckets = {
+        "vocal.vocals": StemBucket.VOCALS,
+        "vocal.lead": StemBucket.LEAD_VOCALS,
+        "vocal.backing": StemBucket.BACKING_VOCALS,
+        "mix.instrumental": StemBucket.INSTRUMENTAL,
+        "mix.instrumental_with_backing_vocals": StemBucket.INST_WITH_BV,
+        "mix.instrumental_with_lead_vocals": StemBucket.INST_WITH_LEAD,
+    }
+    bucket = reviewed_buckets.get(role_value, StemBucket.UNKNOWN)
+    if route is None:
+        bucket = stem_concept(sep, stem_name)
+    elif isinstance(route.role, StemLiteral):
+        # Raw routes stay raw for identity/ensemble purposes, but legacy
+        # operational controls (vocal-chain handoff, deverb/save-only flags)
+        # still need the backend-native side. This does not mutate/promote the
+        # route role and is never used for source lookup or grouping.
+        bucket = stem_concept(
+            sep,
+            route.native.raw if route.native is not None else route.label,
+        )
+    display_name = route.label if route is not None else stem_name
+    buffer_tag = route.filename_tag if route is not None else stem_name
     if sep.is_vocal_split_model:
         if bucket is StemBucket.UNKNOWN:
             return
@@ -324,11 +343,12 @@ def write_audio(
             if sep.is_vocal_split_model and not sep.is_inst_only_voc_splitter:
                 _save_voc_split_vocal(
                     sep,
-                    stem_name,
+                    display_name,
                     stem_source,
                     samplerate=samplerate,
-                    buffer_stem_name=stem_name,
+                    buffer_stem_name=buffer_tag,
                     is_not_ensemble=is_not_ensemble,
+                    output_label=display_name if route is not None else None,
                 )
                 if is_bv_rebalance_lead:
                     _save_voc_split_vocal(
@@ -336,29 +356,31 @@ def write_audio(
                         LEAD_VOCAL_STEM,
                         bv_rebalance_lead_source,
                         samplerate=samplerate,
-                        buffer_stem_name=stem_name,
+                        buffer_stem_name=buffer_tag,
                         is_not_ensemble=is_not_ensemble,
+                        output_label=LEAD_VOCAL_STEM_LABEL,
                     )
             else:
                 if not is_no_vocal_save:
                     _save_with_message(
                         sep,
                         stem_path,
-                        stem_name,
+                        display_name,
                         stem_source,
                         samplerate=samplerate,
-                        buffer_stem_name=stem_name,
+                        buffer_stem_name=buffer_tag,
                         is_not_ensemble=is_not_ensemble,
                     )
 
             if sep.is_save_inst_vocal_splitter and not sep.is_save_vocal_only:
                 _save_voc_split_instrumental(
                     sep,
-                    stem_name,
+                    display_name,
                     stem_source,
                     samplerate=samplerate,
-                    buffer_stem_name=stem_name,
+                    buffer_stem_name=buffer_tag,
                     is_not_ensemble=is_not_ensemble,
+                    is_lead=is_lead,
                 )
                 if is_bv_rebalance_lead:
                     _save_voc_split_instrumental(
@@ -366,16 +388,28 @@ def write_audio(
                         LEAD_VOCAL_STEM,
                         bv_rebalance_lead_source,
                         samplerate=samplerate,
-                        buffer_stem_name=stem_name,
+                        buffer_stem_name=buffer_tag,
                         is_not_ensemble=is_not_ensemble,
                         is_inst_invert=True,
+                        is_lead=True,
                     )
 
             sep._report_save_progress()
 
     # Yaml instruments are often ``vocals``, not canonical ``Vocals``.
-    if stem_name and is_vocal_target(stem_name):
+    if display_name and bucket is StemBucket.VOCALS:
         sep.master_vocal_path = stem_path
+
+
+def _exact_source_key(sources: Mapping[str, Any], value: str) -> str | None:
+    """Exact/case-tolerant source key resolution without semantic aliases."""
+    if value in sources:
+        return value
+    wanted = value.casefold()
+    for key in sources:
+        if str(key).casefold() == wanted:
+            return str(key)
+    return None
 
 
 def export_source_map(
@@ -407,36 +441,41 @@ def export_source_map(
     sep.begin_save_phase(len(routes) + len(extra_sources))
     write_calls = 0
     for route in routes:
-        lookup: Any = route.native if route.native is not None else route.label
-        key = resolve_in_sources(sources, lookup)
-        if key is None and route.label:
-            key = resolve_in_sources(sources, route.label)
-        if key is None and route.native is None:
-            semantic_matches = [
-                source_key
-                for source_key in sources
-                if route_matches_stem(route, source_key, sep)
-            ]
-            if len(semantic_matches) > 1:
-                log_event(
-                    "audio",
-                    "export_source_ambiguous",
-                    level="error",
-                    route=route.concept,
-                    matches=semantic_matches,
-                )
-                raise RuntimeError(
-                    "Ambiguous export source for "
-                    f"{route.concept!r}: matched {semantic_matches!r}"
-                )
-            if semantic_matches:
-                key = semantic_matches[0]
+        if route.native is not None:
+            key = _exact_source_key(sources, route.native.raw)
+        else:
+            key = _exact_source_key(sources, route.concept)
+        if (
+            key is None
+            and route.native is None
+            and isinstance(route.role, StemLiteral)
+            and route.role.tag.startswith("legacy:")
+        ):
+            key = _exact_source_key(sources, route.label)
+            if key is None:
+                semantic_matches = [
+                    source_key
+                    for source_key in sources
+                    if route_matches_stem(route, source_key, sep)
+                ]
+                if len(semantic_matches) > 1:
+                    log_event(
+                        "audio",
+                        "export_source_ambiguous",
+                        level="error",
+                        route=route.concept,
+                        matches=semantic_matches,
+                    )
+                    raise RuntimeError(
+                        "Ambiguous export source for "
+                        f"{route.concept!r}: matched {semantic_matches!r}"
+                    )
+                if semantic_matches:
+                    key = semantic_matches[0]
         if key is None:
             continue
-        stem_name = (
-            route.native.raw if route.native is not None else str(route.label)
-        )
-        path = sep.stem_export_wav_path(stem_name)
+        stem_name = route.label
+        path = sep.stem_export_wav_path(stem_name, route=route)
         log_event(
             "audio",
             "write_scheduled",
@@ -444,7 +483,13 @@ def export_source_map(
             stem=stem_name,
             output_path=path,
         )
-        sep.write_audio(path, sources[key], samplerate, stem_name=stem_name)
+        sep.write_audio(
+            path,
+            sources[key],
+            samplerate,
+            stem_name=stem_name,
+            route=route,
+        )
         write_calls += 1
 
     for stem_name, stem_source in extra_sources.items():

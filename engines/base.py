@@ -1,7 +1,7 @@
 from __future__ import annotations
-from typing import Any, Sequence, TYPE_CHECKING
 
 import os
+from typing import TYPE_CHECKING, Any, Sequence
 
 import numpy as np
 import torch
@@ -11,10 +11,10 @@ from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
 from core.export_naming import stem_wav_path
 from core.gpu_backend import resolve_inference_backend
-from core.stems import StemBucket, StemLiteral, export_stem_key, filename_tag
 from core.model_stem_semantics import vocal_inst_from_sources
 from core.progress_ticks import InferenceProgress
 from core.run_estimate import save_progress_local_step
+from core.stems import StemBucket, StemLiteral, StemRoute, export_stem_key, filename_tag
 from ml import spec_utils
 
 from .orchestration import process_chain_model
@@ -478,15 +478,23 @@ class SeperateAttributes:
   
         return stem_source
     
-    def stem_export_wav_path(self, stem: str) -> str:
-        """``.wav`` path using karaoke/BV export labels (native stems in ensemble)."""
+    def stem_export_wav_path(
+        self,
+        stem: str,
+        *,
+        route: StemRoute | None = None,
+    ) -> str:
+        """Return a route-aware output path without changing route identity."""
         for_ensemble = self.is_ensemble_mode and not self.is_vocal_split_model
-        key = export_stem_key(self, stem, for_ensemble=for_ensemble)
-        label = (
-            filename_tag(key)
-            if isinstance(key, (StemBucket, StemLiteral))
-            else str(key)
-        )
+        if route is not None:
+            label = route.filename_tag if for_ensemble else route.label
+        else:
+            key = export_stem_key(self, stem, for_ensemble=for_ensemble)
+            label = (
+                filename_tag(key)
+                if isinstance(key, (StemBucket, StemLiteral))
+                else str(key)
+            )
         return stem_wav_path(self.export_path, self.audio_file_base, label)
 
     def apply_export_stem_levels(
@@ -531,10 +539,19 @@ class SeperateAttributes:
         stem_source: Any,
         samplerate: int,
         stem_name: str | None = None,
+        *,
+        route: StemRoute | None = None,
     ) -> None:
         from .stem_writer import write_audio as _write_audio
 
-        _write_audio(self, stem_path, stem_source, samplerate, stem_name)
+        _write_audio(
+            self,
+            stem_path,
+            stem_source,
+            samplerate,
+            stem_name,
+            route=route,
+        )
 
     def pitch_fix(self, source: Any, sr_pitched: float, org_mix: Any) -> Any:
         semitone_shift = self.semitone_shift

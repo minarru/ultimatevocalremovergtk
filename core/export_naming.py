@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from bundled.constants import WAV
+
 from .settings import Settings
 
 # Characters unsafe in a single path component on common platforms.
@@ -118,6 +119,19 @@ def sanitize_filename_component(text: str | None) -> str:
     return cleaned
 
 
+def portable_stem_filename_label(text: str | None) -> str:
+    """One-way presentation of a stem label as a portable path component.
+
+    A slash is meaningful in reviewed display text (``Drum/Bass``), but is a
+    path separator. Present it as a hyphen before the ordinary component
+    sanitizer. This helper is output-only and must never participate in stem
+    identity or source lookup.
+    """
+    if text is None:
+        return ""
+    return sanitize_filename_component(str(text).replace("/", "-"))
+
+
 def ensemble_name_for_export(chosen: str | None) -> str:
     """Map ``chosen_ensemble`` to the export label used by planning and Ensembler.
 
@@ -165,7 +179,7 @@ def format_track_base(
 def format_stem_basename(track_base: str, stem: str) -> str:
     """``{track_base} ({stem})`` with a sanitized human-readable stem label."""
     base = (track_base or "").rstrip()
-    stem_part = sanitize_filename_component(stem) or "Stem"
+    stem_part = portable_stem_filename_label(stem) or "Stem"
     if not base:
         return f"({stem_part})"
     return f"{base} ({stem_part})"

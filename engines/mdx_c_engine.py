@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import typing
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import librosa
 import numpy as np
@@ -13,16 +13,22 @@ from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import trace_phase
 from core.model_stem_semantics import is_vocal_target, vocal_split_source_roles
-from core.stems import StemId, exports_named_stem, resolve_in_sources, run_export_routes
+from core.stems import (
+    StemId,
+    exports_named_stem,
+    resolve_in_sources,
+    route_matches_stem,
+    run_export_routes,
+)
 from ml import spec_utils
 
 from .base import SeperateAttributes
 from .mdx_c import (
-    build_mdx_c_model,
     _channel_last_for_write,
     _load_torch_checkpoint,
     _mdx_c_hop_length,
     _mdx_pitch_reference_sr,
+    build_mdx_c_model,
     derive_mdx_complement,
     derive_mdx_multi_complement,
     mdx_combined_secondary_key,
@@ -99,7 +105,11 @@ class SeperateMDXC(SeperateAttributes):
                     or VOCAL_STEM
                 )
                 working_split = {native: sources}
-            export_sources = self._vocal_split_pair_sources(working_split, mix)
+            export_sources = self._vocal_split_pair_sources(
+                working_split,
+                mix,
+                routes=run_export_routes(self),
+            )
             return ExportPlan(
                 sources=export_sources,
                 samplerate=samplerate,
@@ -115,6 +125,15 @@ class SeperateMDXC(SeperateAttributes):
             self.secondary_stem = secondary_stem(str(self.mdxnet_stem_select or ""))
 
         export_routes = run_export_routes(self)
+
+        def _export_source_key(stem: str) -> str:
+            route = next(
+                (route for route in export_routes if route_matches_stem(route, stem, self)),
+                None,
+            )
+            if route is None:
+                return stem
+            return route.native.raw if route.native is not None else route.concept
         selected_stems = mdx_selected_stems(
             stem_list,
             [
@@ -234,7 +253,7 @@ class SeperateMDXC(SeperateAttributes):
                             self.secondary_source = spec_utils.invert_stem(raw_mix, self.secondary_source)
                         else:
                             self.secondary_source = (-self.secondary_source.T+raw_mix.T)
-                export_sources[self.secondary_stem] = self.process_secondary_stem(
+                export_sources[_export_source_key(self.secondary_stem)] = self.process_secondary_stem(
                     self.secondary_source, self.secondary_source_secondary
                 )
 
@@ -242,7 +261,7 @@ class SeperateMDXC(SeperateAttributes):
                 if not isinstance(self.primary_source, np.ndarray):
                     self.primary_source = source_primary.T
 
-                export_sources[self.primary_stem] = self.process_secondary_stem(
+                export_sources[_export_source_key(self.primary_stem)] = self.process_secondary_stem(
                     self.primary_source, self.secondary_source_primary
                 )
 
@@ -260,9 +279,49 @@ class SeperateMDXC(SeperateAttributes):
         return plan
 
     def _vocal_split_pair_sources(
-        self, sources: dict[str, Any], mix: Any
+        self,
+        sources: dict[str, Any],
+        mix: Any,
+        *,
+        routes: typing.Sequence[Any] | None = None,
     ) -> dict[str, Any]:
         """Build lead/backing from yaml-keyed demix output for export."""
+        if routes:
+            route_sources: dict[str, Any] = {}
+            missing: list[Any] = []
+            for route in routes:
+                if route.native is None:
+                    continue
+                wanted = route.native.raw.casefold()
+                source_key = next(
+                    (
+                        key
+                        for key in sources
+                        if str(key).casefold() == wanted
+                    ),
+                    None,
+                )
+                if source_key is None:
+                    missing.append(route)
+                    continue
+                route_sources[route.native.raw] = _channel_last_for_write(
+                    sources[source_key]
+                )
+
+            # Single-target splitters can return only one side. The missing
+            # native side is still identified by its reviewed route; only its
+            # audio recipe is derived from the input mix.
+            native_routes = tuple(route for route in routes if route.native is not None)
+            if len(native_routes) == 2 and len(missing) == 1 and len(route_sources) == 1:
+                existing = next(iter(route_sources.values()))
+                mix_arr = np.asarray(mix) if mix is not None else None
+                if mix_arr is not None:
+                    missing_route = missing[0]
+                    route_sources[missing_route.native.raw] = _channel_last_for_write(
+                        mix_arr - spec_utils.to_shape(np.asarray(existing).T, mix_arr.shape)
+                    )
+            return route_sources
+
         lead_key, backing_key = vocal_split_source_roles(
             sources, is_bv_model=bool(self.is_bv_model)
         )
