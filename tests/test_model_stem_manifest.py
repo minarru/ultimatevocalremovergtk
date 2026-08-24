@@ -129,19 +129,28 @@ class StemRoleValueTests(unittest.TestCase):
 
 
 class ManifestValidationTests(unittest.TestCase):
-    def test_p4_live_guitar_identity_replaces_the_stale_instrument_id(self) -> None:
+    def test_p5_retains_both_exact_becruily_artifacts(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
 
-        self.assertNotIn("mdx:mbr_inst_becruily", registry.models)
-        declaration = registry.models["mdx:mbr_guitar_becruily"]
-        context = declaration.contexts[StemProcessingContext.FULL_MIX]
-        self.assertEqual(declaration.native_signature, ("Guitar", "Other"))
+        guitar = registry.models["mdx:mbr_guitar_becruily"]
+        guitar_context = guitar.contexts[StemProcessingContext.FULL_MIX]
+        self.assertEqual(guitar.native_signature, ("Guitar", "Other"))
         self.assertEqual(
-            [str(output.role) for output in context.outputs],
+            [str(output.role) for output in guitar_context.outputs],
             ["instrument.guitar", "instrument.guitar.removed"],
         )
-        self.assertEqual(str(context.logical_primary), "instrument.guitar")
-        self.assertIn("catalogue_id=mdx:mbr_guitar_becruily", declaration.evidence)
+        self.assertEqual(str(guitar_context.logical_primary), "instrument.guitar")
+        self.assertIn("catalogue_id=mdx:mbr_guitar_becruily", guitar.evidence)
+
+        instrumental = registry.models["mdx:mbr_inst_becruily"]
+        instrumental_context = instrumental.contexts[StemProcessingContext.FULL_MIX]
+        self.assertEqual(instrumental.native_signature, ("Instrumental", "Vocals"))
+        self.assertEqual(
+            [str(output.role) for output in instrumental_context.outputs],
+            ["mix.instrumental", "vocal.vocals"],
+        )
+        self.assertEqual(str(instrumental_context.logical_primary), "mix.instrumental")
+        self.assertIn("catalogue_id=mdx:mbr_inst_becruily", instrumental.evidence)
 
     def test_reviewed_two_output_pairs_and_multistem_residuals_remain_distinct(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
@@ -255,7 +264,7 @@ class ManifestValidationTests(unittest.TestCase):
         """The checked-in review is exhaustive, never inferred at runtime."""
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
 
-        self.assertEqual(len(registry.models) + len(registry.waivers), 484)
+        self.assertEqual(len(registry.models) + len(registry.waivers), 485)
         self.assertFalse(set(registry.models) & set(registry.waivers))
 
     def test_accepts_all_supported_canonical_model_families(self) -> None:
@@ -301,7 +310,7 @@ class ManifestValidationTests(unittest.TestCase):
     def test_bundled_manifest_loads_core_roles_pairs_and_reviewed_catalogue(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
 
-        self.assertEqual(len(registry.models) + len(registry.waivers), 484)
+        self.assertEqual(len(registry.models) + len(registry.waivers), 485)
         self.assertIn(StemRoleId("vocal.vocals"), registry.roles)
         self.assertEqual(
             registry.pairs["pair.center_side"].roles,

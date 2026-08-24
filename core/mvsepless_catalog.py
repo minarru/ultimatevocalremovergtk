@@ -26,6 +26,17 @@ from . import paths
 from .catalog_dedupe import normalize_catalogue_label
 from .debug_log import debug
 from .mdx_config_fetch import _urlopen
+from .model_stem_semantics import (
+    INTENT_DRUM_BASS_SEP,
+    INTENT_DUAL_VOC_INST,
+    INTENT_INSTRUMENTAL,
+    INTENT_KARAOKE,
+    INTENT_MULTI_STEM,
+    INTENT_SPECIAL_FX,
+    INTENT_SPECIALTY_STEM,
+    INTENT_UNKNOWN,
+    INTENT_VOCALS,
+)
 from .politrees_catalog import merge_supplemental_list
 
 _MVSEPLESS_CACHE_TTL_SECONDS = 24 * 60 * 60
@@ -78,6 +89,7 @@ def _quarantine_reason(entry_id: str, entry: Mapping[str, Any]) -> str:
         return "SCNet record points at the MDX23C Mid-Side checkpoint"
     return ""
 
+
 _MODEL_TYPE_TO_LIST_KEY: Dict[str, str] = {
     "mel_band_roformer": "roformer_download_list",
     "bs_roformer": "roformer_download_list",
@@ -107,18 +119,6 @@ _MODEL_TYPE_TO_ARCH: Dict[str, str] = {
     "vr": VR_ARCH_TYPE,
     "htdemucs": DEMUCS_ARCH_TYPE,
 }
-
-from .model_stem_semantics import (
-    INTENT_DRUM_BASS_SEP,
-    INTENT_DUAL_VOC_INST,
-    INTENT_INSTRUMENTAL,
-    INTENT_KARAOKE,
-    INTENT_MULTI_STEM,
-    INTENT_SPECIAL_FX,
-    INTENT_SPECIALTY_STEM,
-    INTENT_UNKNOWN,
-    INTENT_VOCALS,
-)
 
 #: mvsepless ``category`` values are Russian. Map each to an English label and
 #: the stem-semantics intent, so the purpose filter uses real metadata instead
@@ -436,6 +436,25 @@ def convert_mvsepless_catalog(
     metadata: Dict[str, Dict[str, Any]] = {}
     claimed_supported_labels: set[str] = set()
 
+    # ``full_name`` identifies a presentation label, not a weight artifact.
+    # Group valid runnable entries before converting any of them so a duplicate
+    # never receives a privileged bare spelling based on JSON object order.
+    # The exact upstream id makes every member distinct and stable across a
+    # fresh fetch and a warm cache whose raw ordering may differ.
+    supported_name_counts: Dict[str, int] = {}
+    for raw_entry_id, raw_entry in models.items():
+        if not isinstance(raw_entry, dict):
+            continue
+        if _quarantine_reason(str(raw_entry_id), raw_entry):
+            continue
+        supported, _ = classify_entry(str(raw_entry_id), raw_entry)
+        if supported and entry_files(raw_entry) is not None:
+            identity = entry_label(str(raw_entry_id), raw_entry).casefold()
+            supported_name_counts[identity] = supported_name_counts.get(identity, 0) + 1
+    duplicate_supported_names = {
+        identity for identity, count in supported_name_counts.items() if count > 1
+    }
+
     for entry_id, entry in models.items():
         if not isinstance(entry, dict):
             continue
@@ -450,12 +469,15 @@ def convert_mvsepless_catalog(
         arch = _MODEL_TYPE_TO_ARCH.get(model_type, MDX_ARCH_TYPE)
 
         # ``full_name`` is not unique in the upstream payload. Preserve every
-        # runnable weight by giving later collisions a stable id suffix; the
-        # first spelling remains unchanged for compatibility with other
-        # catalogue sources and existing searches.
+        # runnable weight by suffixing *each* duplicate with its exact id.
+        # This deliberately avoids granting the first raw row a bare spelling.
         if supported and files is not None:
             base_label = label
-            candidate = label
+            candidate = (
+                f"{base_label} [{entry_id}]"
+                if base_label.casefold() in duplicate_supported_names
+                else base_label
+            )
             suffix = 1
             while candidate.casefold() in claimed_supported_labels:
                 discriminator = str(entry_id) if suffix == 1 else f"{entry_id}-{suffix}"
@@ -492,9 +514,7 @@ def convert_mvsepless_catalog(
 
         list_key = _MODEL_TYPE_TO_LIST_KEY.get(model_type)
         if not list_key:
-            unsupported.setdefault(arch, []).append(
-                (label, f"unmapped model_type {model_type!r}")
-            )
+            unsupported.setdefault(arch, []).append((label, f"unmapped model_type {model_type!r}"))
             unsupported_labels[label] = f"unmapped model_type {model_type!r}"
             continue
         lists[list_key][label] = files
@@ -563,10 +583,7 @@ def merge_mvsepless_catalogues(
     allow_network: bool = True,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """Merge supported mvsepless entries; never overwrite existing labels."""
-    data = (
-        load_converted_mvsepless(allow_network=allow_network)
-        if converted is None else converted
-    )
+    data = load_converted_mvsepless(allow_network=allow_network) if converted is None else converted
     if not data:
         return dict(vr), dict(mdx), dict(demucs)
 
@@ -588,19 +605,13 @@ def unsupported_mvsepless_downloads(
     omitted so upstream-supported duplicates are not shown as broken. Matching
     is exact or via :func:`normalize_catalogue_label`.
     """
-    data = (
-        load_converted_mvsepless(allow_network=allow_network)
-        if converted is None
-        else converted
-    )
+    data = load_converted_mvsepless(allow_network=allow_network) if converted is None else converted
     if not data:
         return {}
 
     taken = set(existing_labels or {})
     taken_norm = {
-        normalize_catalogue_label(label)
-        for label in taken
-        if normalize_catalogue_label(label)
+        normalize_catalogue_label(label) for label in taken if normalize_catalogue_label(label)
     }
     result: Dict[str, List[Tuple[str, str]]] = {}
     raw = data.get("unsupported") or {}
@@ -633,10 +644,7 @@ def mvsepless_metadata(
     allow_network: bool = True,
 ) -> Dict[str, Dict[str, Any]]:
     """Return ``{label: metadata}`` for every mvsepless entry."""
-    data = (
-        load_converted_mvsepless(allow_network=allow_network)
-        if converted is None else converted
-    )
+    data = load_converted_mvsepless(allow_network=allow_network) if converted is None else converted
     if not data:
         return {}
     meta = data.get("metadata") or {}
@@ -649,11 +657,7 @@ def unsupported_reason_for_label(
     *,
     allow_network: bool = True,
 ) -> Optional[str]:
-    data = (
-        load_converted_mvsepless(allow_network=allow_network)
-        if converted is None
-        else converted
-    )
+    data = load_converted_mvsepless(allow_network=allow_network) if converted is None else converted
     if not data:
         return None
     reasons = data.get("unsupported_labels") or {}

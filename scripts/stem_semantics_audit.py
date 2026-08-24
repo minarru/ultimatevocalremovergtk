@@ -74,6 +74,9 @@ class CatalogueEvidenceCounts:
 
 
 _COMPLEMENT_ONLY_NAMES = frozenset({"drum-bass", "no bass", "no drums", "no other"})
+_PINNED_LITERAL_NAME_COUNT = 148
+_PINNED_NORMALIZED_NAME_COUNT = 123
+_PINNED_PRIMARY_NAME_COUNT = 92
 _REVIEWED_VOCAL_SPLIT_IDS = frozenset(
     {"mdx:mbr_bve_gonzaluigi", "mdx:model_MelBand-Roformer_BVE_by-Gonza"}
 )
@@ -234,6 +237,25 @@ def catalogue_evidence_counts(
         len({value.casefold() for value in literals}),
         len(primary),
         tuple(sorted(community_tokens, key=str.casefold)),
+    )
+
+
+def pinned_evidence_count_errors(counts: CatalogueEvidenceCounts) -> tuple[str, ...]:
+    """Return P2 audit-evidence drift without turning evidence into semantics.
+
+    A cold or incomplete supplemental context must not silently repin the
+    vocabulary baseline. The count gate audits collector provenance only; it
+    never creates a declaration, role, or catalogue identity.
+    """
+    expected = (
+        ("literal_names", counts.literal_names, _PINNED_LITERAL_NAME_COUNT),
+        ("normalized_names", counts.normalized_names, _PINNED_NORMALIZED_NAME_COUNT),
+        ("primary_names", counts.primary_names, _PINNED_PRIMARY_NAME_COUNT),
+    )
+    return tuple(
+        f"{name}={actual} (expected {expected_value})"
+        for name, actual, expected_value in expected
+        if actual != expected_value
     )
 
 
@@ -585,6 +607,7 @@ def strict_catalogue_check() -> tuple[bool, str]:
     _snapshot, entries = collect.collect_entries(context, policy=policy)
     registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
     counts = catalogue_evidence_counts(entries, context.community_by_file)
+    evidence_errors = pinned_evidence_count_errors(counts)
     missing = []
     mismatches = []
     invalid_contexts = []
@@ -653,7 +676,8 @@ def strict_catalogue_check() -> tuple[bool, str]:
         f"normalized_names={counts.normalized_names} primary_names={counts.primary_names}\n"
         f"complement_only={len(_COMPLEMENT_ONLY_NAMES)} unreviewed={len(missing)} "
         f"signature_mismatches={len(mismatches) + len(invalid_contexts)} collisions={collisions} "
-        f"pair_errors={pair_errors} reference_errors={reference_errors}"
+        f"pair_errors={pair_errors} reference_errors={reference_errors} "
+        f"evidence_errors={len(evidence_errors)}"
     )
     return (
         not missing
@@ -661,7 +685,8 @@ def strict_catalogue_check() -> tuple[bool, str]:
         and not invalid_contexts
         and not collisions
         and not pair_errors
-        and not reference_errors,
+        and not reference_errors
+        and not evidence_errors,
         summary,
     )
 

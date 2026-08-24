@@ -65,8 +65,10 @@ class CatalogueEvidenceCountTests(unittest.TestCase):
             rows = list(csv.reader(handle, delimiter="\t"))
         self.assertEqual(len(rows[0]), 17)
         self.assertTrue(all(len(row) == 17 for row in rows[1:]))
+        self.assertEqual(len(rows) - 1, 1203)
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
         ids = {row[0] for row in rows[1:]}
+        self.assertEqual(len(ids), 485)
         self.assertEqual(ids, set(registry.models) | set(registry.waivers))
         waived = {row[0] for row in rows[1:] if row[15] == "waived" and row[16]}
         self.assertEqual(waived, set(registry.waivers))
@@ -93,6 +95,23 @@ class CatalogueEvidenceCountTests(unittest.TestCase):
         self.assertEqual(counts.normalized_names, 8)
         self.assertEqual(counts.primary_names, 1)
         self.assertEqual(counts.community_tokens, ("bleed", "echo", "Vocals"))
+
+    def test_incomplete_supplemental_context_cannot_satisfy_pinned_evidence_gate(self) -> None:
+        incomplete = stem_semantics_audit.CatalogueEvidenceCounts(
+            literal_names=138,
+            normalized_names=121,
+            primary_names=88,
+            community_tokens=(),
+        )
+
+        self.assertEqual(
+            stem_semantics_audit.pinned_evidence_count_errors(incomplete),
+            (
+                "literal_names=138 (expected 148)",
+                "normalized_names=121 (expected 123)",
+                "primary_names=88 (expected 92)",
+            ),
+        )
 
 
 class StrictAuditMutationTests(unittest.TestCase):

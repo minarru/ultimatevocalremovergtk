@@ -7599,6 +7599,29 @@
       },
       "evidence": "catalogue_id=mdx:mbr_guitar_becruily; source=mvsepless; metadata_source=bundled_yaml:mbr_guitar_becruily_config.yaml; native_signature=Guitar|Other; backend_primary=Guitar; backend_target=Guitar; reviewed_contexts=full_mix"
     },
+    "mdx:mbr_inst_becruily": {
+      "native_signature": [
+        "Instrumental",
+        "Vocals"
+      ],
+      "intent": "vocal_pair",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "mix.instrumental",
+          "outputs": [
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental"
+            },
+            {
+              "native": "Vocals",
+              "role": "vocal.vocals"
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=mdx:mbr_inst_becruily; source=mvsepless; metadata_source=bundled_yaml:mbr_inst_becruily_config.yaml; native_signature=Instrumental|Vocals; backend_primary=Instrumental; backend_target=Instrumental; reviewed_contexts=full_mix"
+    },
     "mdx:mbr_inst_metal_prev_meskvlla33": {
       "native_signature": [
         "vocals",

@@ -177,7 +177,7 @@ git commit -m "feat(stems): add semantic role manifest"
 
 - [ ] **Step 1: Add failing catalogue coverage and collision tests**
 
-Pin these observed counts from the approved audit: 484 post-deduplication model IDs, 148 literal spellings, 123 case-folded backend names, 92 backend-primary names, and four complement-only names.
+Pin these observed counts from the approved audit: 485 post-deduplication model IDs, 148 literal spellings, 123 case-folded backend names, 92 backend-primary names, and four complement-only names. The exact semantic reference has 1,203 data rows (454 reviewed declarations plus 31 waivers).
 
 Add tests that require:
 
@@ -212,7 +212,7 @@ Make the catalogue collector expose exact canonical ID, complete native signatur
 Extend `scripts/stem_semantics_audit.py` to emit deterministic candidate rows for review, but never mark a candidate trusted automatically. Its strict mode must resolve every final row through the runtime loader and report:
 
 ```text
-models=484 literal_names=148 normalized_names=123 primary_names=92
+models=485 literal_names=148 normalized_names=123 primary_names=92
 complement_only=4 unreviewed=0 signature_mismatches=0 collisions=0
 ```
 
@@ -247,7 +247,7 @@ Run an authoritative refresh, then confirm matching warm-offline parity:
 .venv/bin/python scripts/stem_semantics_audit.py --check
 ```
 
-Expected: 484 identities covered, the pinned vocabulary counts match, no strict findings remain, and warm-offline output matches the refreshed snapshot.
+Expected: 485 identities covered, the pinned vocabulary counts match, no strict findings remain, and warm-offline output matches the refreshed snapshot.
 
 - [ ] **Step 6: Verify and commit Task 2**
 
@@ -915,7 +915,7 @@ Run:
 .venv/bin/python scripts/stem_semantics_audit.py --check
 ```
 
-Expected: 484 identities, pinned vocabulary counts, zero unreviewed declarations, zero signature mismatches, zero dangling roles/pairs, zero accidental normalized display/tag collisions, and fresh-online/warm-offline semantic parity.
+Expected: 485 identities, pinned vocabulary counts, zero unreviewed declarations, zero signature mismatches, zero dangling roles/pairs, zero accidental normalized display/tag collisions, and fresh-online/warm-offline semantic parity.
 
 - [ ] **Step 2: Run all focused non-GTK suites together**
 
@@ -1006,7 +1006,7 @@ The implementation is complete only when the final report records:
 
 - the exact commit IDs created by Tasks 1-9;
 - the authoritative catalogue and warm-offline check results;
-- 484 reviewed/waived current identities and the pinned 148/123/92/4 vocabulary counts;
+- 485 reviewed/waived current identities and the pinned 148/123/92/4 vocabulary counts;
 - zero unreviewed entries, signature mismatches, dangling role/pair references, and accidental collisions;
 - focused suite totals and complete suite totals;
 - scoped Ruff and project-wide basedpyright results;

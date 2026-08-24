@@ -19,7 +19,7 @@ catalogue intent, export naming, and ensemble compatibility
 The current stem layer correctly preserves native yaml/hash keys, but its
 semantic vocabulary is too small and too dependent on global aliases. The
 public catalogue contains 148 literal spellings, 123 case-folded backend names,
-and 92 distinct backend-primary names across 484 entries. A single token such
+and 92 distinct backend-primary names across 485 entries. A single token such
 as `other`, `lead`, `inst`, or `dry` can describe different audio content in
 different models.
 
@@ -80,7 +80,7 @@ It preserves these load-bearing invariants:
 
 ## Verified Catalogue Evidence
 
-At design time, a fresh read-only catalogue collection produced the same 484
+At design time, a fresh read-only catalogue collection produced the same 485
 identities and no changes to instruments, primary stems, targets, guessed
 intents, focus, or flags compared with `docs/models-catalogue.ir.json`. The IR's
 document digest was stale because its rendered Markdown had drifted, not because
@@ -89,7 +89,7 @@ it as the final manifest input.
 
 Measured catalogue facts:
 
-- 484 post-deduplication model entries;
+- 485 post-deduplication model entries;
 - 148 literal backend spellings;
 - 123 case-folded backend names;
 - 92 names observed as a backend primary;
@@ -97,6 +97,12 @@ Measured catalogue facts:
   `no other`; and
 - 24 case/spelling variant groups, including `Vocals/vocals`,
   `Similarity/similarity`, and `No Dry/No dry/no dry`.
+
+The semantic reference has 1,203 data rows: 454 reviewed declarations, 31
+waivers, and every required processing-context/output row. When two runnable
+mvsepless entries share a `full_name`, labels are deterministically suffixed
+with their exact entry IDs before cross-source deduplication; this preserves
+both artifacts without aliasing or selecting a winner.
 
 ### Confirmed ambiguity
 
@@ -625,7 +631,7 @@ evidence_or_waiver
 
 The generator must:
 
-- cover all 484 current catalogue identities;
+- cover all 485 current catalogue identities;
 - cover all 123 normalized raw names;
 - emit both full-mix and vocal-split rows where meanings differ;
 - include derived complement-only routes;
@@ -661,7 +667,7 @@ it.
 
 ## Verification Requirements
 
-- Pin 484 catalogue models, 148 literal spellings, 123 normalized names, 92
+- Pin 485 catalogue models, 148 literal spellings, 123 normalized names, 92
   backend-primary names, and four complement-only names.
 - Exhaustively validate every role, pair, model context, and route in the
   manifest against the generated reference.
