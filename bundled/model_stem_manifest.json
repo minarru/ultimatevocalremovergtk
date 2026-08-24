@@ -7576,28 +7576,28 @@
       },
       "evidence": "catalogue_id=mdx:mbr_inst_1681_essid; source=mvsepless; metadata_source=bundled_yaml:mbr_inst_1681_essid_config.yaml; native_signature=Vocals|Instrumental; backend_primary=Instrumental; backend_target=Instrumental; reviewed_contexts=full_mix"
     },
-    "mdx:mbr_inst_becruily": {
+    "mdx:mbr_guitar_becruily": {
       "native_signature": [
-        "Instrumental",
-        "Vocals"
+        "Guitar",
+        "Other"
       ],
-      "intent": "vocal_pair",
+      "intent": "instrument_target:guitar",
       "contexts": {
         "full_mix": {
-          "logical_primary": "mix.instrumental",
+          "logical_primary": "instrument.guitar",
           "outputs": [
             {
-              "native": "Instrumental",
-              "role": "mix.instrumental"
+              "native": "Guitar",
+              "role": "instrument.guitar"
             },
             {
-              "native": "Vocals",
-              "role": "vocal.vocals"
+              "native": "Other",
+              "role": "instrument.guitar.removed"
             }
           ]
         }
       },
-      "evidence": "catalogue_id=mdx:mbr_inst_becruily; source=mvsepless; metadata_source=bundled_yaml:mbr_inst_becruily_config.yaml; native_signature=Instrumental|Vocals; backend_primary=Instrumental; backend_target=Instrumental; reviewed_contexts=full_mix"
+      "evidence": "catalogue_id=mdx:mbr_guitar_becruily; source=mvsepless; metadata_source=bundled_yaml:mbr_guitar_becruily_config.yaml; native_signature=Guitar|Other; backend_primary=Guitar; backend_target=Guitar; reviewed_contexts=full_mix"
     },
     "mdx:mbr_inst_metal_prev_meskvlla33": {
       "native_signature": [

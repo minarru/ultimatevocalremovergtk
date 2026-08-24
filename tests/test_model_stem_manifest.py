@@ -129,6 +129,20 @@ class StemRoleValueTests(unittest.TestCase):
 
 
 class ManifestValidationTests(unittest.TestCase):
+    def test_p4_live_guitar_identity_replaces_the_stale_instrument_id(self) -> None:
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+
+        self.assertNotIn("mdx:mbr_inst_becruily", registry.models)
+        declaration = registry.models["mdx:mbr_guitar_becruily"]
+        context = declaration.contexts[StemProcessingContext.FULL_MIX]
+        self.assertEqual(declaration.native_signature, ("Guitar", "Other"))
+        self.assertEqual(
+            [str(output.role) for output in context.outputs],
+            ["instrument.guitar", "instrument.guitar.removed"],
+        )
+        self.assertEqual(str(context.logical_primary), "instrument.guitar")
+        self.assertIn("catalogue_id=mdx:mbr_guitar_becruily", declaration.evidence)
+
     def test_reviewed_two_output_pairs_and_multistem_residuals_remain_distinct(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
         for model_id, declaration in registry.models.items():
