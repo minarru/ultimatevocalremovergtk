@@ -159,3 +159,39 @@ class StemSelectionProvenanceTests(unittest.TestCase):
         )
         self.assertEqual(settings.process.stem_focus, StemBucket.VOCALS.value)
         self.assertEqual(sources["process.stem_focus"], "cli")
+
+    def test_one_settings_object_keeps_its_bytes_while_two_configs_resolve_roles(self) -> None:
+        from core.model_config.config import ModelConfig
+
+        def config(model_id: str, natives: list[str], primary: str) -> ModelConfig:
+            assembled = ModelConfig.__new__(ModelConfig)
+            assembled.settings = settings
+            assembled.canonical_id = model_id
+            assembled.stem_semantics = None
+            assembled.primary_stem = primary
+            assembled.primary_stem_native = primary
+            assembled.secondary_stem = ""
+            assembled.mdx_model_stems = natives
+            assembled.demucs_source_list = []
+            assembled.mdx_stem_count = len(natives)
+            assembled.demucs_stem_count = 0
+            assembled.is_vocal_split_model = False
+            assembled.is_ensemble_mode = False
+            assembled.is_karaoke = False
+            assembled.is_bv_model = False
+            return assembled
+
+        settings = Settings.defaults()
+        settings.process.stem_focus = "primary"
+        before = settings.to_json_dict()
+        reverse = config(
+            "demucs:UVR_Demucs_Model_1", ["Vocals", "Instrumental"], "Vocals"
+        )
+        ordinary = config("mdx:MDX23C_D1581", ["Instrumental", "Vocals"], "Vocals")
+
+        ModelConfig._apply_stem_focus(reverse)
+        ModelConfig._apply_stem_focus(ordinary)
+
+        self.assertEqual(reverse.selected_stem_routes[0].concept, "mix.instrumental")
+        self.assertEqual(ordinary.selected_stem_routes[0].concept, "vocal.vocals")
+        self.assertEqual(settings.to_json_dict(), before)

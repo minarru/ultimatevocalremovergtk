@@ -41,7 +41,18 @@ from bundled.constants import (
     VOCAL_STEM,
 )
 
-from .stem_roles import StemId, StemLiteral
+from .model_stem_manifest import (
+    load_bundled_stem_semantics,
+    resolve_model_stem_semantics,
+)
+from .stem_roles import (
+    ModelStemSemantics,
+    StemId,
+    StemLiteral,
+    StemProcessingContext,
+    StemProduction,
+    StemRoleId,
+)
 
 
 class StemBucket(str, Enum):
@@ -82,23 +93,65 @@ class StemSelectionStatus(str, Enum):
     INSUFFICIENT_MEMBERS = "insufficient_members"
 
 
-@dataclass(frozen=True)
+def stem_role_key(role: StemRoleId | StemLiteral) -> str:
+    """Stable focus/persistence identity for one semantic route role."""
+    if isinstance(role, StemRoleId):
+        return role.value
+    if role.tag.startswith("legacy:"):
+        return role.tag.removeprefix("legacy:")
+    return f"raw:{role.tag.strip().casefold()}"
+
+
+@dataclass(frozen=True, slots=True, init=False)
 class StemRoute:
     """One canonical, exportable model or ensemble output.
 
     ``native`` preserves the model/yaml key used to address source arrays.
-    ``concept`` is the stable selection identity (a bucket value or
-    ``raw:<casefolded-name>``). ``label`` is the standalone filename label and
-    ``filename_tag`` is the canonical ensemble/capture tag.
+    ``role`` is a reviewed semantic ID or an isolated raw literal. ``concept``
+    remains a read-only compatibility projection for callers still awaiting
+    the role cutover.
     """
 
     native: Optional[StemId]
-    concept: str
+    role: StemRoleId | StemLiteral
     label: str
     filename_tag: str
-    kind: StemRouteKind = StemRouteKind.NATIVE
-    conditional: bool = False
-    selected_by_default: bool = True
+    kind: StemRouteKind
+    conditional: bool
+    selected_by_default: bool
+    logical_primary: bool
+
+    def __init__(
+        self,
+        native: Optional[StemId],
+        role: StemRoleId | StemLiteral | None = None,
+        label: str = "",
+        filename_tag: str = "",
+        kind: StemRouteKind = StemRouteKind.NATIVE,
+        conditional: bool = False,
+        selected_by_default: bool = True,
+        logical_primary: bool = False,
+        *,
+        concept: str | None = None,
+    ) -> None:
+        """Create a route; ``concept=`` remains constructor compatibility only."""
+        if role is None:
+            if concept is None:
+                raise TypeError("StemRoute requires role")
+            role = StemLiteral(f"legacy:{concept}")
+        object.__setattr__(self, "native", native)
+        object.__setattr__(self, "role", role)
+        object.__setattr__(self, "label", label)
+        object.__setattr__(self, "filename_tag", filename_tag)
+        object.__setattr__(self, "kind", kind)
+        object.__setattr__(self, "conditional", conditional)
+        object.__setattr__(self, "selected_by_default", selected_by_default)
+        object.__setattr__(self, "logical_primary", logical_primary)
+
+    @property
+    def concept(self) -> str:
+        """Compatibility projection; new code should consume ``role``."""
+        return stem_role_key(self.role)
 
 
 @dataclass(frozen=True)
@@ -694,6 +747,10 @@ def normalize_stem_focus(value: Any, *, strict: bool = False) -> str:
         if strict:
             raise ValueError("stem focus 'raw:' needs a stem name after the prefix")
         return ""
+    try:
+        return StemRoleId(token).value
+    except ValueError:
+        pass
     bucket = focus_bucket(token)
     if bucket is not StemBucket.UNKNOWN:
         return bucket.value
@@ -810,6 +867,20 @@ def _concept_id(key: StemKey) -> str:
     return f"raw:{key.tag.strip().casefold()}"
 
 
+def _legacy_route_role(key: StemKey | str) -> StemRoleId | StemLiteral:
+    """Adapter for callers outside the semantic-route cutover.
+
+    Reviewed model routes never call this helper.  It only keeps existing
+    UI/engine construction sites functional while they still request one of
+    the former :class:`StemBucket` concepts.
+    """
+    if isinstance(key, StemLiteral):
+        return StemLiteral(f"legacy:{_concept_id(key)}")
+    if isinstance(key, StemBucket):
+        return StemLiteral(f"legacy:{key.value}")
+    return StemLiteral(f"legacy:{key}")
+
+
 def native_stem_route(
     model: Any,
     stem: str | StemId,
@@ -824,7 +895,7 @@ def native_stem_route(
         key = StemLiteral(key)
     return StemRoute(
         native=native,
-        concept=_concept_id(key),
+        role=_legacy_route_role(key),
         label=export_stem_label(model, native.raw),
         filename_tag=filename_tag(key),
         kind=(
@@ -858,7 +929,7 @@ def derived_stem_route(
     route_label = label or (ui_label(key) if isinstance(key, StemBucket) else key.tag)
     return StemRoute(
         native=None,
-        concept=_concept_id(key),
+        role=_legacy_route_role(key),
         label=route_label,
         filename_tag=route_tag,
         kind=kind,
@@ -883,18 +954,19 @@ def _dedupe_routes(routes: Sequence[StemRoute]) -> Tuple[StemRoute, ...]:
         chosen = route if existing.native is None and route.native is not None else existing
         result[previous] = StemRoute(
             native=chosen.native,
-            concept=chosen.concept,
+            role=chosen.role,
             label=chosen.label,
             filename_tag=chosen.filename_tag,
             kind=chosen.kind,
             conditional=existing.conditional and route.conditional,
             selected_by_default=(existing.selected_by_default or route.selected_by_default),
+            logical_primary=(existing.logical_primary or route.logical_primary),
         )
     return tuple(result)
 
 
-def model_stem_routes(model: Any) -> Tuple[StemRoute, ...]:
-    """Complete canonical route inventory for an assembled model config."""
+def _model_native_stems(model: Any) -> tuple[str, ...]:
+    """Read backend-native source keys without normalizing their spelling."""
 
     def _stems(attribute: str) -> tuple[str, ...]:
         value = getattr(model, attribute, ())
@@ -914,10 +986,105 @@ def model_stem_routes(model: Any) -> Tuple[StemRoute, ...]:
             )
             if item
         )
+    return native_stems
+
+
+def _model_semantics(
+    model: Any, native_stems: Sequence[str]
+) -> ModelStemSemantics | None:
+    """Resolve and cache one immutable projection on an assembled model only."""
+    model_id = str(getattr(model, "canonical_id", "") or "")
+    if not model_id:
+        return None
+    cached = getattr(model, "stem_semantics", None)
+    if isinstance(cached, ModelStemSemantics):
+        return cached
+    context = (
+        StemProcessingContext.VOCAL_SPLIT
+        if bool(getattr(model, "is_vocal_split_model", False))
+        else StemProcessingContext.FULL_MIX
+    )
+    semantics = resolve_model_stem_semantics(
+        model_id,
+        native_stems=native_stems,
+        backend_primary=str(
+            getattr(model, "primary_stem_native", None)
+            or getattr(model, "primary_stem", "")
+            or ""
+        ),
+        backend_target=str(getattr(model, "target_instrument", "") or ""),
+        context=context,
+    )
+    # Model configuration state is per assembled model; never write the shared
+    # Settings object while retaining this exact resolution for later routes.
+    try:
+        model.stem_semantics = semantics
+    except (AttributeError, TypeError):
+        pass
+    return semantics
+
+
+def _semantic_routes(semantics: ModelStemSemantics) -> tuple[StemRoute, ...]:
+    registry = load_bundled_stem_semantics()
+    routes: list[StemRoute] = []
+    for output in semantics.outputs:
+        if isinstance(output.role, StemRoleId):
+            definition = registry.roles.get(output.role)
+            if definition is None:
+                # A corrupt/unavailable registry is already fail-closed at the
+                # resolver boundary, but preserve the output if a caller passes
+                # a hand-built projection.
+                label = output.native.raw if output.native is not None else output.role.value
+                tag = label
+            else:
+                label = definition.display
+                tag = definition.filename_tag
+        else:
+            label = output.native.raw if output.native is not None else output.role.tag
+            tag = label
+        routes.append(
+            StemRoute(
+                native=output.native,
+                role=output.role,
+                label=label,
+                filename_tag=tag,
+                kind=(
+                    StemRouteKind.DERIVED
+                    if output.production is StemProduction.DERIVED
+                    else StemRouteKind.NATIVE
+                ),
+                selected_by_default=True,
+                logical_primary=output.logical_primary,
+            )
+        )
+    return tuple(routes)
+
+
+def model_stem_routes(model: Any) -> Tuple[StemRoute, ...]:
+    """Complete exact semantic route inventory for one assembled model.
+
+    A reviewed declaration is resolved once from the canonical ID, whole
+    native signature, backend metadata, and explicit processing context.  A
+    missing/mismatched declaration returns raw literals rather than guessed
+    buckets.  The legacy branch only serves non-assembled compatibility stubs
+    that lack a canonical model identity.
+    """
+    native_stems = _model_native_stems(model)
+    semantics = _model_semantics(model, native_stems)
+    if semantics is not None:
+        return _dedupe_routes(_semantic_routes(semantics))
+
+    mdx_stems = tuple(
+        str(item) for item in getattr(model, "mdx_model_stems", ()) or () if item
+    )
 
     routes: list[StemRoute] = [native_stem_route(model, stem) for stem in native_stems]
     secondary = str(getattr(model, "secondary_stem", "") or "")
-    selected_mdx = _stems("mdxnet_stems_selected")
+    selected_mdx = tuple(
+        str(item)
+        for item in getattr(model, "mdxnet_stems_selected", ()) or ()
+        if item
+    )
     include_selected_complement = bool(
         len(mdx_stems) > 2
         and len(selected_mdx) == 1
@@ -959,6 +1126,10 @@ def model_stem_routes(model: Any) -> Tuple[StemRoute, ...]:
 
 def _route_matches_focus(route: StemRoute, requested: str) -> bool:
     if route.concept.casefold() == requested.casefold():
+        return True
+    if route.label.casefold() == requested.strip().casefold():
+        return True
+    if route.native is not None and route.native.matches(requested):
         return True
     wanted = focus_bucket(requested)
     actual = focus_bucket(route.concept)

@@ -139,6 +139,7 @@ class ModelConfig:
         self.demucs_stem_count = 0
         self.mixer_path = paths.MDX_MIXER_PATH
         self.canonical_id = identity.id if identity is not None else ""
+        self.stem_semantics = None
         self.model_display_label = (
             identity.display if identity is not None else model_name
         )
@@ -537,14 +538,20 @@ class ModelConfig:
         positional = positional_stem_focus(focus)
         selection_matched = False
         if positional:
-            target = (
-                self.primary_stem if positional == FOCUS_PRIMARY else self.secondary_stem
-            )
-            matched = tuple(
-                route
-                for route in routes
-                if route_matches_stem(route, target, self)
-            )
+            logical = tuple(route for route in routes if route.logical_primary)
+            if positional == FOCUS_PRIMARY and len(logical) == 1:
+                matched = logical
+            elif positional != FOCUS_PRIMARY and len(routes) == 2 and len(logical) == 1:
+                matched = tuple(route for route in routes if not route.logical_primary)
+            else:
+                target = (
+                    self.primary_stem if positional == FOCUS_PRIMARY else self.secondary_stem
+                )
+                matched = tuple(
+                    route
+                    for route in routes
+                    if route_matches_stem(route, target, self)
+                )
             selected = matched[:1] if matched else (
                 tuple(route for route in routes if route.selected_by_default)
                 or tuple(routes)
@@ -1031,6 +1038,7 @@ class ModelConfig:
             selected_routes=tuple(
                 getattr(self, "selected_stem_routes", ())
             ),
+            semantics=self.stem_semantics,
         )
         self.secondary_chain = SecondaryChain(
             secondary_model=self.secondary_model,

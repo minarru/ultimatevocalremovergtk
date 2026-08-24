@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, Tuple
 
 from ..model_identity import ModelArtifacts
+from ..stem_roles import ModelStemSemantics
 from ..stems import StemRoute
 
 
@@ -69,6 +70,7 @@ class StemRouting:
     demucs_source_list: Tuple[str, ...] = ()
     available_routes: Tuple[StemRoute, ...] = ()
     selected_routes: Tuple[StemRoute, ...] = ()
+    semantics: ModelStemSemantics | None = None
 
 
 @dataclass

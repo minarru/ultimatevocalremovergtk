@@ -17,7 +17,8 @@ from bundled.constants import (
 from core.job_plan import JobResolver, JobSpec, ModelDescriptor, planned_output_stems
 from core.model_identity import ModelArtifacts
 from core.settings import Settings
-from core.stems import EnsemblePair, FOCUS_SECONDARY
+from core.stem_roles import StemId, StemRoleId
+from core.stems import EnsemblePair, FOCUS_SECONDARY, StemRoute
 from core.types import ProcessMethod
 
 
@@ -26,6 +27,44 @@ def _desc(stem: str, secondary: str = "Instrumental") -> ModelDescriptor:
 
 
 class PlannedOutputStemTests(unittest.TestCase):
+    def test_positional_primary_uses_logical_primary_not_backend_primary(self) -> None:
+        settings = Settings.defaults()
+        settings.process.stem_focus = "primary"
+        descriptor = ModelDescriptor(
+            "demucs:UVR_Demucs_Model_1",
+            "demucs",
+            "UVR_Demucs_Model_1",
+            "UVR Demucs Model 1",
+            primary_stem="Vocals",
+            secondary_stem="Instrumental",
+            routes=(
+                StemRoute(
+                    native=StemId("Vocals"),
+                    role=StemRoleId("vocal.vocals"),
+                    label="Vocals",
+                    filename_tag="Vocals",
+                ),
+                StemRoute(
+                    native=StemId("Instrumental"),
+                    role=StemRoleId("mix.instrumental"),
+                    label="Instrumental",
+                    filename_tag="Instrumental",
+                    logical_primary=True,
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            planned_output_stems(settings, (descriptor,), command="separate"),
+            (("Instrumental", False),),
+        )
+
+        settings.process.stem_focus = "secondary"
+        self.assertEqual(
+            planned_output_stems(settings, (descriptor,), command="separate"),
+            (("Vocals", False),),
+        )
+
     def test_separate_uses_descriptor_stems(self) -> None:
         settings = Settings.defaults()
         stems = planned_output_stems(settings, (_desc("Vocals"),), command="separate")

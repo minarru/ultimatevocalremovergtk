@@ -20,6 +20,7 @@ from core.settings import Settings
 from core.settings.coerce import coerce_field
 from core.stem_roles import StemId as RoleStemId
 from core.stem_roles import StemLiteral as RoleStemLiteral
+from core.stem_roles import StemRoleId
 from core.stems import (
     EnsemblePair,
     StemBucket,
@@ -92,6 +93,60 @@ class StemCompatibilityExportTests(unittest.TestCase):
 
 
 class StemRouteTests(unittest.TestCase):
+    class _ReviewedReversePrimaryModel:
+        """The manifest declares Instrumental logical-primary, not Vocals."""
+
+        canonical_id = "demucs:UVR_Demucs_Model_1"
+        primary_stem = "Vocals"
+        secondary_stem = "Instrumental"
+        mdx_model_stems: list[str] = []
+        demucs_source_list = ["VoCaLs", "INSTRUMENTAL"]
+        mdx_stem_count = 0
+        demucs_stem_count = 2
+        is_karaoke = False
+        is_bv_model = False
+        is_vocal_split_model = False
+
+    def test_reviewed_routes_keep_native_spelling_and_logical_primary(self) -> None:
+        routes = model_stem_routes(self._ReviewedReversePrimaryModel())
+        by_role = {route.role: route for route in routes}
+
+        instrumental = by_role[StemRoleId("mix.instrumental")]
+        self.assertEqual(instrumental.native, StemId("INSTRUMENTAL"))
+        self.assertEqual(instrumental.concept, "mix.instrumental")
+        self.assertTrue(instrumental.logical_primary)
+        self.assertFalse(by_role[StemRoleId("vocal.vocals")].logical_primary)
+
+    def test_unknown_or_signature_mismatched_id_stays_raw_and_isolated(self) -> None:
+        class Unknown(self._ReviewedReversePrimaryModel):
+            canonical_id = "mdx:unreviewed-model"
+
+        class Mismatched(self._ReviewedReversePrimaryModel):
+            demucs_source_list = ["Vocals", "Instrumental", "Residual"]
+
+        for model in (Unknown(), Mismatched()):
+            with self.subTest(model=type(model).__name__):
+                routes = model_stem_routes(model)
+                self.assertTrue(all(isinstance(route.role, StemLiteral) for route in routes))
+                natives = tuple(route.native for route in routes)
+                self.assertTrue(all(native is not None for native in natives))
+                self.assertEqual(
+                    tuple(route.concept for route in routes),
+                    tuple(f"raw:{native.raw.casefold()}" for native in natives if native),
+                )
+                self.assertEqual(
+                    tuple(route.label for route in routes),
+                    tuple(native.raw for native in natives if native),
+                )
+
+    def test_semantic_focus_matches_a_role_and_empty_focus_keeps_all_defaults(self) -> None:
+        routes = model_stem_routes(self._ReviewedReversePrimaryModel())
+        self.assertEqual(
+            [route.role for route in select_stem_routes(routes, "mix.instrumental").routes],
+            [StemRoleId("mix.instrumental")],
+        )
+        self.assertEqual(select_stem_routes(routes, "").routes, routes)
+
     class _MultiModel:
         primary_stem = "vocals"
         secondary_stem = "Instrumental"
@@ -191,11 +246,11 @@ class BucketAndExportTests(unittest.TestCase):
 
 
 class StemsModuleBoundaryTests(unittest.TestCase):
-    def test_stems_does_not_import_model_stem_semantics(self) -> None:
+    def test_stems_routes_through_the_reviewed_manifest(self) -> None:
         source = (Path(__file__).resolve().parents[1] / "core" / "stems.py").read_text(
             encoding="utf-8"
         )
-        self.assertNotIn("model_stem_semantics", source)
+        self.assertIn("resolve_model_stem_semantics", source)
 
     def test_semantics_does_not_reexport_stem_labels(self) -> None:
         source = (

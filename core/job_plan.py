@@ -39,6 +39,7 @@ from .model_identity import (
     ModelIdentityService,
     ModelRecord,
 )
+from .stem_roles import ModelStemSemantics
 from .access_policy import access_policy
 from .settings import Settings
 from .stems import (
@@ -285,6 +286,7 @@ class ModelDescriptor:
     stem_count: int = 0
     is_karaoke: bool = False
     is_bv: bool = False
+    stem_semantics: ModelStemSemantics | None = None
     routes: tuple[StemRoute, ...] = ()
 
 
@@ -433,6 +435,7 @@ def _descriptor(record: ModelRecord, model: Any, verify: bool) -> ModelDescripto
         stem_count=model_stem_count(model),
         is_karaoke=bool(getattr(model, "is_karaoke", False)),
         is_bv=bool(getattr(model, "is_bv_model", False)),
+        stem_semantics=getattr(model, "stem_semantics", None),
         routes=tuple(routes),
     )
 
@@ -680,13 +683,19 @@ def planned_output_routes(
     if positional:
         if positional == FOCUS_PRIMARY:
             primary = descriptors[0].primary_stem if descriptors else None
-            matched = tuple(
-                route for route in routes
-                if route.native is not None and route.native.matches(primary or "")
-            )
+            logical = tuple(route for route in routes if route.logical_primary)
+            if len(logical) == 1:
+                matched = logical
+                reason = "positional-primary-logical-match"
+            else:
+                matched = tuple(
+                    route for route in routes
+                    if route.native is not None and route.native.matches(primary or "")
+                )
             if matched:
                 selected = matched
-                reason = "positional-primary-native-match"
+                if reason == "unknown":
+                    reason = "positional-primary-native-match"
             else:
                 selected = tuple(
                     route for route in routes if route.selected_by_default
@@ -697,15 +706,21 @@ def planned_output_routes(
                 )
         else:
             secondary = descriptors[0].secondary_stem if descriptors else None
-            matched = tuple(
-                route for route in routes
-                if (
-                    route.native is not None and route.native.matches(secondary or "")
-                ) or (route.native is None and route.label == secondary)
-            )
+            logical = tuple(route for route in routes if route.logical_primary)
+            if len(routes) == 2 and len(logical) == 1:
+                matched = tuple(route for route in routes if not route.logical_primary)
+                reason = "positional-secondary-logical-match"
+            else:
+                matched = tuple(
+                    route for route in routes
+                    if (
+                        route.native is not None and route.native.matches(secondary or "")
+                    ) or (route.native is None and route.label == secondary)
+                )
             if matched:
                 selected = matched
-                reason = "positional-secondary-match"
+                if reason == "unknown":
+                    reason = "positional-secondary-match"
             else:
                 selected = tuple(
                     route for route in routes if route.selected_by_default
