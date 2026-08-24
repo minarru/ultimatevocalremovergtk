@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 from bundled.constants import (
     BASS_STEM,
@@ -16,8 +16,10 @@ from bundled.constants import (
     VOCAL_PAIR,
     VOCAL_STEM,
 )
-from core.settings.coerce import coerce_field
 from core.settings import Settings
+from core.settings.coerce import coerce_field
+from core.stem_roles import StemId as RoleStemId
+from core.stem_roles import StemLiteral as RoleStemLiteral
 from core.stems import (
     EnsemblePair,
     StemBucket,
@@ -55,9 +57,7 @@ class EnsemblePairCoerceTests(unittest.TestCase):
             coerce_ensemble_pair("Lead Vocals/Instrumental (With Backing Vocals)"),
             EnsemblePair.CHOOSE,
         )
-        self.assertEqual(
-            coerce_ensemble_pair("4 Stem Ensemble"), EnsemblePair.CHOOSE
-        )
+        self.assertEqual(coerce_ensemble_pair("4 Stem Ensemble"), EnsemblePair.CHOOSE)
 
     def test_unknown_becomes_choose(self) -> None:
         self.assertEqual(coerce_ensemble_pair("nope"), EnsemblePair.CHOOSE)
@@ -80,15 +80,15 @@ class StemHalvesTests(unittest.TestCase):
             EnsemblePair.VOCALS_INSTRUMENTAL.stem_halves(),
             (VOCAL_STEM, INST_STEM),
         )
-        self.assertEqual(
-            EnsemblePair.OTHER.stem_halves(), (OTHER_STEM, NO_OTHER_STEM)
-        )
-        self.assertEqual(
-            EnsemblePair.DRUMS.stem_halves(), (DRUM_STEM, NO_DRUM_STEM)
-        )
-        self.assertEqual(
-            EnsemblePair.BASS.stem_halves(), (BASS_STEM, NO_BASS_STEM)
-        )
+        self.assertEqual(EnsemblePair.OTHER.stem_halves(), (OTHER_STEM, NO_OTHER_STEM))
+        self.assertEqual(EnsemblePair.DRUMS.stem_halves(), (DRUM_STEM, NO_DRUM_STEM))
+        self.assertEqual(EnsemblePair.BASS.stem_halves(), (BASS_STEM, NO_BASS_STEM))
+
+
+class StemCompatibilityExportTests(unittest.TestCase):
+    def test_stems_reexports_the_exact_native_identity_classes(self) -> None:
+        self.assertIs(StemId, RoleStemId)
+        self.assertIs(StemLiteral, RoleStemLiteral)
 
 
 class StemRouteTests(unittest.TestCase):
@@ -199,9 +199,7 @@ class StemsModuleBoundaryTests(unittest.TestCase):
 
     def test_semantics_does_not_reexport_stem_labels(self) -> None:
         source = (
-            Path(__file__).resolve().parents[1]
-            / "core"
-            / "model_stem_semantics.py"
+            Path(__file__).resolve().parents[1] / "core" / "model_stem_semantics.py"
         ).read_text(encoding="utf-8")
         self.assertNotIn("def export_stem_label", source)
         self.assertNotIn("def resolve_stem_dict_key", source)

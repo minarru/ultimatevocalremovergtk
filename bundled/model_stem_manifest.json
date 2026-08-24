@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "roles": {
+    "vocal.vocals": {"display": "Vocals", "filename_tag": "Vocals", "family": "vocal"},
+    "vocal.lead": {"display": "Lead Vocals", "filename_tag": "Lead_Vocals", "family": "vocal"},
+    "vocal.backing": {"display": "Backing Vocals", "filename_tag": "Backing_Vocals", "family": "vocal"},
+    "mix.instrumental": {"display": "Instrumental", "filename_tag": "Instrumental", "family": "mix"},
+    "mix.instrumental_with_backing_vocals": {"display": "Instrumental with Backing Vocals", "filename_tag": "Instrumental_with_Backing_Vocals", "family": "mix"},
+    "mix.instrumental_with_lead_vocals": {"display": "Instrumental with Lead Vocals", "filename_tag": "Instrumental_with_Lead_Vocals", "family": "mix"},
+    "residual.other": {"display": "Residual", "filename_tag": "Residual", "family": "residual"},
+    "instrument.drums": {"display": "Drums", "filename_tag": "Drums", "family": "instrument"},
+    "instrument.drums.removed": {"display": "Drums Removed", "filename_tag": "Drums_Removed", "family": "instrument", "removed_of": "instrument.drums"},
+    "instrument.bass": {"display": "Bass", "filename_tag": "Bass", "family": "instrument"},
+    "instrument.bass.removed": {"display": "Bass Removed", "filename_tag": "Bass_Removed", "family": "instrument", "removed_of": "instrument.bass"},
+    "instrument.guitar": {"display": "Guitar", "filename_tag": "Guitar", "family": "instrument"},
+    "instrument.guitar.removed": {"display": "Guitar Removed", "filename_tag": "Guitar_Removed", "family": "instrument", "removed_of": "instrument.guitar"},
+    "instrument.piano": {"display": "Piano", "filename_tag": "Piano", "family": "instrument"},
+    "instrument.piano.removed": {"display": "Piano Removed", "filename_tag": "Piano_Removed", "family": "instrument", "removed_of": "instrument.piano"},
+    "spatial.center": {"display": "Center", "filename_tag": "Center", "family": "spatial"},
+    "spatial.side": {"display": "Side", "filename_tag": "Side", "family": "spatial"}
+  },
+  "pairs": {
+    "pair.vocals_instrumental": {"display": "Vocals/Instrumental", "roles": ["vocal.vocals", "mix.instrumental"]},
+    "pair.karaoke": {"display": "Lead Vocals/Instrumental with Backing Vocals", "roles": ["vocal.lead", "mix.instrumental_with_backing_vocals"]},
+    "pair.backing_vocals": {"display": "Backing Vocals/Instrumental with Lead Vocals", "roles": ["vocal.backing", "mix.instrumental_with_lead_vocals"]},
+    "pair.center_side": {"display": "Center/Side", "roles": ["spatial.center", "spatial.side"]},
+    "pair.instrument.drums": {"display": "Drums/Drums Removed", "roles": ["instrument.drums", "instrument.drums.removed"]},
+    "pair.instrument.bass": {"display": "Bass/Bass Removed", "roles": ["instrument.bass", "instrument.bass.removed"]},
+    "pair.instrument.guitar": {"display": "Guitar/Guitar Removed", "roles": ["instrument.guitar", "instrument.guitar.removed"]},
+    "pair.instrument.piano": {"display": "Piano/Piano Removed", "roles": ["instrument.piano", "instrument.piano.removed"]}
+  },
+  "models": {},
+  "waivers": {}
+}

@@ -1,0 +1,358 @@
+"""Strict loading and exact resolution for reviewed stem semantics."""
+
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import Any
+from unittest.mock import patch
+
+from core.model_stem_manifest import (
+    BUNDLED_MANIFEST_PATH,
+    StemManifestError,
+    load_bundled_stem_semantics,
+    load_stem_manifest,
+    load_stem_manifest_document,
+    resolve_model_stem_semantics,
+)
+from core.stem_roles import (
+    ROLE_ID_RE,
+    StemLiteral,
+    StemProcessingContext,
+    StemProduction,
+    StemReviewStatus,
+    StemRoleFamily,
+    StemRoleId,
+)
+
+
+def _manifest() -> dict[str, Any]:
+    """A complete reviewed declaration with a contextual and derived route."""
+    return {
+        "schema_version": 1,
+        "roles": {
+            "vocal.vocals": {
+                "display": "Vocals",
+                "filename_tag": "Vocals",
+                "family": "vocal",
+            },
+            "vocal.lead": {
+                "display": "Lead Vocals",
+                "filename_tag": "Lead_Vocals",
+                "family": "vocal",
+            },
+            "vocal.backing": {
+                "display": "Backing Vocals",
+                "filename_tag": "Backing_Vocals",
+                "family": "vocal",
+            },
+            "mix.instrumental": {
+                "display": "Instrumental",
+                "filename_tag": "Instrumental",
+                "family": "mix",
+            },
+            "residual.other": {
+                "display": "Residual",
+                "filename_tag": "Residual",
+                "family": "residual",
+            },
+        },
+        "pairs": {
+            "pair.vocals_instrumental": {
+                "display": "Vocals/Instrumental",
+                "roles": ["vocal.vocals", "mix.instrumental"],
+            }
+        },
+        "models": {
+            "mdx:fixture": {
+                "native_signature": ["Vocals", "Other"],
+                "intent": "karaoke",
+                "contexts": {
+                    "full_mix": {
+                        "logical_primary": "vocal.vocals",
+                        "outputs": [
+                            {"native": "Vocals", "role": "vocal.vocals"},
+                            {"native": "Other", "role": "mix.instrumental"},
+                            {
+                                "native": None,
+                                "role": "residual.other",
+                                "production": "derived",
+                                "complement_of": "vocal.vocals",
+                            },
+                        ],
+                    },
+                    "vocal_split": {
+                        "logical_primary": "vocal.lead",
+                        "outputs": [
+                            {"native": "Vocals", "role": "vocal.lead"},
+                            {"native": "Other", "role": "vocal.backing"},
+                        ],
+                    },
+                },
+                "evidence": "fixture review",
+            }
+        },
+        "waivers": {"apollo:restoration": "no separation stem inventory"},
+    }
+
+
+class StemRoleValueTests(unittest.TestCase):
+    def test_namespaced_role_ids_accept_only_the_documented_grammar(self) -> None:
+        valid = ("vocal.vocals", "instrument.guitar.removed", "effect.reverb_2")
+        invalid = ("vocals", "Vocal.vocals", "vocal..vocals", "vocal.-vocals")
+
+        for value in valid:
+            with self.subTest(value=value):
+                self.assertIsNotNone(ROLE_ID_RE.fullmatch(value))
+                self.assertEqual(StemRoleId(value).value, value)
+        for value in invalid:
+            with self.subTest(value=value):
+                self.assertIsNone(ROLE_ID_RE.fullmatch(value))
+                with self.assertRaises(ValueError):
+                    StemRoleId(value)
+
+    def test_closed_behavior_enums_expose_only_approved_values(self) -> None:
+        self.assertEqual(
+            tuple(member.value for member in StemProcessingContext),
+            ("full_mix", "vocal_split"),
+        )
+        self.assertEqual(tuple(member.value for member in StemProduction), ("native", "derived"))
+        self.assertEqual(
+            tuple(member.value for member in StemReviewStatus),
+            ("reviewed", "waived", "raw"),
+        )
+        self.assertEqual(
+            tuple(member.value for member in StemRoleFamily),
+            ("vocal", "mix", "instrument", "effect", "spatial", "cinematic", "residual"),
+        )
+
+
+class ManifestValidationTests(unittest.TestCase):
+    def test_seed_manifest_loads_core_roles_pairs_and_an_empty_model_catalogue(self) -> None:
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+
+        self.assertEqual(registry.models, {})
+        self.assertIn(StemRoleId("vocal.vocals"), registry.roles)
+        self.assertEqual(
+            registry.pairs["pair.center_side"].roles,
+            (StemRoleId("spatial.center"), StemRoleId("spatial.side")),
+        )
+
+    def test_complete_document_parses_roles_pairs_contexts_outputs_and_waivers(self) -> None:
+        registry = load_stem_manifest_document(_manifest())
+
+        self.assertEqual(registry.roles[StemRoleId("vocal.vocals")].display, "Vocals")
+        self.assertEqual(
+            registry.pairs["pair.vocals_instrumental"].roles,
+            (StemRoleId("vocal.vocals"), StemRoleId("mix.instrumental")),
+        )
+        self.assertEqual(registry.waivers["apollo:restoration"], "no separation stem inventory")
+        outputs = registry.models["mdx:fixture"].contexts[StemProcessingContext.FULL_MIX].outputs
+        self.assertEqual(outputs[0].production, StemProduction.NATIVE)
+        self.assertEqual(outputs[2].production, StemProduction.DERIVED)
+        self.assertEqual(outputs[2].complement_of, StemRoleId("vocal.vocals"))
+
+    def test_rejects_invalid_declarations_with_field_paths(self) -> None:
+        cases: tuple[tuple[str, object, str], ...] = (
+            ("duplicate native", ("models", "mdx:fixture", "native_signature"), "duplicate native"),
+            ("duplicate display", ("roles", "vocal.lead", "display"), "duplicate role display"),
+            (
+                "duplicate filename tag",
+                ("roles", "vocal.lead", "filename_tag"),
+                "duplicate filename tag",
+            ),
+            (
+                "missing role",
+                ("models", "mdx:fixture", "contexts", "full_mix", "outputs", 0, "role"),
+                "missing role",
+            ),
+            (
+                "missing pair role",
+                ("pairs", "pair.vocals_instrumental", "roles", 1),
+                "missing pair role",
+            ),
+            (
+                "missing logical primary",
+                ("models", "mdx:fixture", "contexts", "full_mix", "logical_primary"),
+                "missing logical primary",
+            ),
+            (
+                "multiple logical primaries",
+                ("models", "mdx:fixture", "contexts", "full_mix", "outputs", 1, "role"),
+                "multiple logical primaries",
+            ),
+            (
+                "native dependency",
+                ("models", "mdx:fixture", "contexts", "full_mix", "outputs", 0, "derived_from"),
+                "dependency",
+            ),
+            (
+                "derived dependencies",
+                ("models", "mdx:fixture", "contexts", "full_mix", "outputs", 2),
+                "exactly one dependency",
+            ),
+            (
+                "missing native",
+                ("models", "mdx:fixture", "contexts", "full_mix", "outputs", 0, "native"),
+                "missing native key",
+            ),
+        )
+
+        for label, path, expected in cases:
+            document = _manifest()
+            if label == "duplicate native":
+                document["models"]["mdx:fixture"]["native_signature"] = [  # type: ignore[index]
+                    "Vocals",
+                    "vocals",
+                ]
+            elif label == "duplicate display":
+                document["roles"]["vocal.lead"]["display"] = "Ｖocals"
+            elif label == "duplicate filename tag":
+                document["roles"]["vocal.lead"]["filename_tag"] = "VOCALS"  # type: ignore[index]
+            elif label == "missing role":
+                document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][0]["role"] = (
+                    "vocal.missing"
+                )
+            elif label == "missing pair role":
+                document["pairs"]["pair.vocals_instrumental"]["roles"][1] = "mix.missing"
+            elif label == "missing logical primary":
+                document["models"]["mdx:fixture"]["contexts"]["full_mix"]["logical_primary"] = (
+                    "vocal.lead"
+                )
+            elif label == "multiple logical primaries":
+                document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][1]["role"] = (
+                    "vocal.vocals"
+                )
+            elif label == "native dependency":
+                document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][0][
+                    "derived_from"
+                ] = ["vocal.vocals"]
+            elif label == "missing native":
+                del document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][0][
+                    "native"
+                ]
+            else:
+                output = document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][2]
+                output["derived_from"] = ["vocal.vocals"]
+
+            with (
+                self.subTest(label=label),
+                self.assertRaisesRegex(StemManifestError, expected) as raised,
+            ):
+                load_stem_manifest_document(document)
+            self.assertIn(str(path[-1]), str(raised.exception))
+
+    def test_accepts_derived_from_as_the_other_valid_derived_dependency_form(self) -> None:
+        document = _manifest()
+        derived = document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][2]
+        del derived["complement_of"]
+        derived["derived_from"] = ["vocal.vocals", "mix.instrumental"]
+
+        registry = load_stem_manifest_document(document)
+
+        output = registry.models["mdx:fixture"].contexts[StemProcessingContext.FULL_MIX].outputs[2]
+        self.assertEqual(
+            output.derived_from,
+            (StemRoleId("vocal.vocals"), StemRoleId("mix.instrumental")),
+        )
+        self.assertIsNone(output.complement_of)
+
+
+class ExactResolutionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.registry = load_stem_manifest_document(_manifest())
+
+    def test_exact_id_and_complete_unordered_signature_preserve_runtime_native_casing(self) -> None:
+        semantics = resolve_model_stem_semantics(
+            "mdx:fixture",
+            native_stems=("OTHER", "vOcAlS"),
+            backend_primary="other",
+            registry=self.registry,
+        )
+
+        self.assertEqual(semantics.status, StemReviewStatus.REVIEWED)
+        self.assertEqual(
+            [output.native.raw if output.native else None for output in semantics.outputs],
+            ["vOcAlS", "OTHER", None],
+        )
+        self.assertEqual(
+            [output.backend_primary for output in semantics.outputs], [False, True, False]
+        )
+        self.assertEqual(
+            [output.logical_primary for output in semantics.outputs], [True, False, False]
+        )
+
+    def test_order_only_signature_change_is_reviewed(self) -> None:
+        semantics = resolve_model_stem_semantics(
+            "mdx:fixture", native_stems=("Other", "Vocals"), registry=self.registry
+        )
+        self.assertEqual(semantics.status, StemReviewStatus.REVIEWED)
+
+    def test_cardinality_mismatch_returns_raw_isolated_literals(self) -> None:
+        semantics = resolve_model_stem_semantics(
+            "mdx:fixture",
+            native_stems=("Vocals", "Other", "Extra"),
+            registry=self.registry,
+        )
+        self.assertEqual(semantics.status, StemReviewStatus.RAW)
+        self.assertIn("signature-mismatch", semantics.warning)
+        self.assertEqual(
+            [output.role for output in semantics.outputs],
+            [StemLiteral("Vocals"), StemLiteral("Other"), StemLiteral("Extra")],
+        )
+
+    def test_missing_context_and_unknown_model_return_raw_with_distinct_diagnostics(self) -> None:
+        missing_context_document = _manifest()
+        del missing_context_document["models"]["mdx:fixture"]["contexts"]["full_mix"]
+        missing_context = resolve_model_stem_semantics(
+            "mdx:fixture",
+            native_stems=("Vocals", "Other"),
+            context=StemProcessingContext("full_mix"),
+            registry=load_stem_manifest_document(missing_context_document),
+        )
+        unknown = resolve_model_stem_semantics(
+            "mdx:unknown", native_stems=("Speech",), registry=self.registry
+        )
+        self.assertIn("missing-context", missing_context.warning)
+        self.assertIn("unknown-model", unknown.warning)
+        self.assertEqual(unknown.outputs[0].role, StemLiteral("Speech"))
+
+    def test_explicit_vocal_split_context_selects_its_declared_roles(self) -> None:
+        semantics = resolve_model_stem_semantics(
+            "mdx:fixture",
+            native_stems=("Vocals", "Other"),
+            context=StemProcessingContext.VOCAL_SPLIT,
+            registry=self.registry,
+        )
+        self.assertEqual(
+            [output.role for output in semantics.outputs],
+            [StemRoleId("vocal.lead"), StemRoleId("vocal.backing")],
+        )
+
+
+class BundledFallbackTests(unittest.TestCase):
+    def test_corrupt_bundled_manifest_logs_once_and_returns_raw_but_direct_load_raises(
+        self,
+    ) -> None:
+        self.addCleanup(load_bundled_stem_semantics.cache_clear)
+        with TemporaryDirectory() as directory:
+            broken = Path(directory) / "model_stem_manifest.json"
+            broken.write_text("{invalid", encoding="utf-8")
+            with (
+                patch("core.model_stem_manifest.BUNDLED_MANIFEST_PATH", broken),
+                patch("core.model_stem_manifest.log_event") as log_event,
+            ):
+                load_bundled_stem_semantics.cache_clear()
+                first = load_bundled_stem_semantics()
+                second = load_bundled_stem_semantics()
+
+            self.assertEqual(first, second)
+            self.assertEqual(first.models, {})
+            log_event.assert_called_once()
+            with self.assertRaises(StemManifestError):
+                load_stem_manifest(broken)
+
+
+if __name__ == "__main__":
+    unittest.main()
