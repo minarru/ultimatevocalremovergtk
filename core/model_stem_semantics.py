@@ -679,10 +679,8 @@ def apply_karaoke_quick_export_default(
     vocal = vocal_stem_key(model, stems)
     settings.set(selected_key, [vocal])
     settings.set(stems_key, vocal)
-    from core.stems import StemBucket
-
     if process is not None:
-        process.stem_focus = StemBucket.INSTRUMENTAL.value
+        process.stem_focus = "mix.instrumental_with_backing_vocals"
     return True
 
 

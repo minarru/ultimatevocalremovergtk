@@ -132,7 +132,7 @@ class EnsembleFlushSettingsTests(unittest.TestCase):
 
         page._flush_run_settings()
 
-        self.assertEqual(settings.process.stem_focus, INST_STEM)
+        self.assertEqual(settings.process.stem_focus, "mix.instrumental")
         self.assertEqual(settings.process.method, ProcessMethod.ENSEMBLE)
 
 

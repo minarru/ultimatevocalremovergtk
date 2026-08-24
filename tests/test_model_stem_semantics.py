@@ -446,8 +446,6 @@ class QuickExportSemanticsTests(unittest.TestCase):
 
     def test_apply_karaoke_default_sets_instrumental_focus(self):
         from core.settings import Settings
-        from core.stems import StemBucket
-
         settings = Settings.defaults()
         model = _Model(
             is_karaoke=True,
@@ -463,7 +461,10 @@ class QuickExportSemanticsTests(unittest.TestCase):
             )
         )
         self.assertEqual(settings.mdx.stems_selected, ["Vocals"])
-        self.assertEqual(settings.process.stem_focus, StemBucket.INSTRUMENTAL.value)
+        self.assertEqual(
+            settings.process.stem_focus,
+            "mix.instrumental_with_backing_vocals",
+        )
 
 
 class PairDetectionTests(unittest.TestCase):

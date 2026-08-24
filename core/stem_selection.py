@@ -14,6 +14,7 @@ from bundled.constants import (
     VOCAL_STEM,
     secondary_stem,
 )
+from core.model_stem_manifest import load_bundled_stem_semantics
 from core.model_stem_semantics import confident_stem_bucket
 from core.settings.model import Settings
 from core.stem_roles import StemRoleId
@@ -62,14 +63,80 @@ _LEGACY_ROUTE_ROLES = {
     StemBucket.BASS.value: "instrument.bass",
     StemBucket.DRUMS.value: "instrument.drums",
     StemBucket.OTHER.value: "residual.other",
+    StemBucket.GUITAR.value: "instrument.guitar",
+    StemBucket.PIANO.value: "instrument.piano",
+    StemBucket.LEAD_VOCALS.value: "vocal.lead",
+    StemBucket.BACKING_VOCALS.value: "vocal.backing",
+    StemBucket.INST_WITH_BV.value: "mix.instrumental_with_backing_vocals",
+    StemBucket.INST_WITH_LEAD.value: "mix.instrumental_with_lead_vocals",
 }
+
+_LEGACY_REMOVAL_ROLES = {
+    "no bass": "instrument.bass.removed",
+    "no drums": "instrument.drums.removed",
+    "noreverb": "effect.reverb.removed",
+    "no reverb": "effect.reverb.removed",
+    "nodry": "effect.reverb",
+    "no dry": "effect.reverb",
+    "noecho": "effect.echo.removed",
+    "no echo": "effect.echo.removed",
+}
+
+
+def _legacy_role_for_tokens(tokens: Sequence[str]) -> str:
+    """Map only exact legacy presentation values to one reviewed role.
+
+    Save Stems does not yet receive an assembled model's exact route inventory.
+    Its compatibility values can still be promoted when they are an exact
+    reviewed role ID, display label, or filename tag.  Any collision or unknown
+    stays unrepresentable here rather than guessing a semantic role.
+    """
+    candidates: set[str] = set()
+    for token in tokens:
+        normalized = str(token or "").strip().casefold()
+        if not normalized:
+            continue
+        direct = _LEGACY_REMOVAL_ROLES.get(normalized)
+        if direct is not None:
+            candidates.add(direct)
+        for role, definition in load_bundled_stem_semantics().roles.items():
+            if normalized in {
+                role.value.casefold(),
+                definition.display.casefold(),
+                definition.filename_tag.casefold(),
+            }:
+                candidates.add(role.value)
+    return next(iter(candidates)) if len(candidates) == 1 else ""
+
+
+def _persist_legacy_value(value: str) -> str:
+    """Promote one identity-less compatibility value when it is reviewed."""
+    return _LEGACY_ROUTE_ROLES.get(value) or _legacy_role_for_tokens((value,))
 
 
 def _persist_route_focus(route: StemRoute) -> str:
     """Persist semantic roles, never an unscoped raw/display compatibility tag."""
     if isinstance(route.role, StemRoleId):
         return persisted_stem_focus(route)
-    return _LEGACY_ROUTE_ROLES.get(route.concept, "")
+    bucket_role = _LEGACY_ROUTE_ROLES.get(route.concept)
+    if bucket_role is not None:
+        return bucket_role
+    literal = route.role.tag.removeprefix("legacy:")
+    if literal.startswith("raw:"):
+        literal = literal[4:]
+    return _legacy_role_for_tokens((literal, route.label, route.filename_tag))
+
+
+def _identityless_route_for_persisted_role(
+    routes: Sequence[StemRoute], focus: str
+) -> Optional[StemRoute]:
+    """Re-select one legacy route from its exact persisted reviewed role ID."""
+    try:
+        role = StemRoleId(focus).value
+    except ValueError:
+        return None
+    matches = [route for route in routes if _persist_route_focus(route) == role]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _stem_focus_tag(
@@ -434,6 +501,9 @@ class StemSelectionState:
             and len(selection.routes) == 1
         ):
             return selection.routes[0].concept
+        route = _identityless_route_for_persisted_role(inventory, focus)
+        if route is not None:
+            return route.concept
         return _TOGGLE_ALL
 
     def _primary_route(self) -> Optional[StemRoute]:
@@ -479,6 +549,18 @@ class StemSelectionState:
             return self.secondary_key
         return _TOGGLE_ALL
 
+    def _persist_focus_for_exclusive_route(self, route: StemRoute) -> str:
+        """Use a semantic role when known, otherwise preserve a side choice."""
+        persisted = _persist_route_focus(route)
+        if persisted:
+            return persisted
+        flag = self._flag_name_for_route(route)
+        if flag == self.primary_key:
+            return FOCUS_PRIMARY
+        if flag == self.secondary_key:
+            return FOCUS_SECONDARY
+        return ""
+
     def _concept_for_native(self, stem: str) -> str:
         route = _route_for_native(self.routes, stem)
         if route is not None:
@@ -508,7 +590,7 @@ class StemSelectionState:
             and selection.routes
         ):
             return _persist_route_focus(selection.routes[0])
-        return requested
+        return _persist_legacy_value(requested) or requested
 
     def _subset_concepts(self) -> Set[str]:
         return {self._concept_for_subset_token(stem) for stem in self.subset_stems}
@@ -630,6 +712,9 @@ class StemSelectionState:
                 and len(selection.routes) == 1
             ):
                 return ExclusiveView(choice=selection.routes[0].concept)
+            route = _identityless_route_for_persisted_role(self.routes, focus)
+            if route is not None:
+                return ExclusiveView(choice=route.concept)
             return ExclusiveView(choice=_TOGGLE_ALL)
         if self.mode == "subset":
             mode, selected = self.stored_subset_selection(settings)
@@ -747,7 +832,9 @@ class StemSelectionState:
                 f"reason=exclusive-unmatched status={selection.status.value} "
                 f"routes={len(selection.routes)}"
             )
-        settings.process.stem_focus = _persist_route_focus(selection.routes[0])
+        settings.process.stem_focus = self._persist_focus_for_exclusive_route(
+            selection.routes[0]
+        )
         return "reason=exclusive-matched"
 
     def _write_subset(self, settings: Any, view: SubsetView) -> None:

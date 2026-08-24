@@ -179,7 +179,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.section.sync_from_settings()
         self.assertIn("Vocals", self.section.export_summary())
         self.section.persist_to_settings()
-        self.assertEqual(self.settings.process.stem_focus, VOCAL_STEM)
+        self.assertEqual(self.settings.process.stem_focus, "vocal.vocals")
 
     def test_stem_focus_survives_switching_to_a_model_where_it_is_secondary(self) -> None:
         """The bug this whole feature exists to fix: picking "Instrumental
@@ -196,7 +196,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.section.sync_from_settings()
         set_combo_value(self.section._exclusive_row, INST_STEM)
         self.section.persist_to_settings()
-        self.assertEqual(self.settings.process.stem_focus, INST_STEM)
+        self.assertEqual(self.settings.process.stem_focus, "mix.instrumental")
 
         # Switch to a model where Instrumental is now primary, Vocals secondary.
         self.section.configure_exclusive(
@@ -207,7 +207,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        self.assertEqual(self.settings.process.stem_focus, INST_STEM)
+        self.assertEqual(self.settings.process.stem_focus, "mix.instrumental")
         self.assertIn("Instrumental", self.section.export_summary())
 
     def test_stem_focus_falls_back_to_all_for_an_unrelated_model(self) -> None:
@@ -244,7 +244,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         )
         set_combo_value(self.section._exclusive_row, VOCAL_STEM)
         self.section.persist_to_settings()
-        self.assertEqual(self.settings.process.stem_focus, VOCAL_STEM)
+        self.assertEqual(self.settings.process.stem_focus, "vocal.vocals")
 
     def test_persist_all_clears_stem_focus(self) -> None:
         self.settings.process.stem_focus = VOCAL_STEM
@@ -277,7 +277,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertFalse(self.section._subset.is_all_active())
         self.section.persist_to_settings()
         self.assertEqual(self.settings["mdx_stems_selected"], [VOCAL_STEM])
-        self.assertEqual(self.settings.process.stem_focus, StemBucket.INSTRUMENTAL.value)
+        self.assertEqual(self.settings.process.stem_focus, "mix.instrumental")
 
     def test_subset_quick_vocals_highlights_vocal_chip(self):
         from core.stems import StemBucket
@@ -358,7 +358,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.section._on_demucs_focus_changed()
         self.section.persist_to_settings()
         self.assertEqual(self.settings["demucs_stems"], BASS_STEM)
-        self.assertEqual(self.settings.process.stem_focus, BASS_STEM)
+        self.assertEqual(self.settings.process.stem_focus, "instrument.bass")
 
     def test_subset_hides_quick_export_when_disabled(self):
         self.section.configure_subset(
@@ -437,7 +437,7 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.section.sync_from_settings()
         set_combo_value(self.section._exclusive_row, "raw:reverb")
         self.section.persist_to_settings()
-        self.assertEqual(self.settings.process.stem_focus, "raw:reverb")
+        self.assertEqual(self.settings.process.stem_focus, "effect.reverb")
 
         self.section.configure_exclusive(
             primary_stem="noreverb",
@@ -447,7 +447,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        self.assertEqual(self.settings.process.stem_focus, "raw:reverb")
+        self.assertEqual(self.settings.process.stem_focus, "effect.reverb")
         self.assertIn("reverb", self.section.export_summary().casefold())
 
     def test_two_different_unrecognized_stem_models_do_not_collide(self) -> None:
@@ -473,7 +473,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             has_model=True,
         )
         self.section.sync_from_settings()
-        self.assertEqual(self.settings.process.stem_focus, "raw:reverb")
+        self.assertEqual(self.settings.process.stem_focus, "effect.reverb")
         self.assertIn("Exporting all outputs", self.section.export_summary())
 
     def test_subset_lowercase_vocals_matches_vocals_quick(self) -> None:
@@ -564,7 +564,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             BASS_STEM,
         )
         self.section.persist_to_settings()
-        self.assertEqual(self.settings.process.stem_focus, BASS_STEM)
+        self.assertEqual(self.settings.process.stem_focus, "instrument.bass")
 
     def test_demucs_complement_pick_persists_complement_identity(self) -> None:
         self.section.configure_demucs(
@@ -580,7 +580,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             "raw:no bass",
         )
         self.section.persist_to_settings()
-        self.assertEqual(self.settings.process.stem_focus, "raw:no bass")
+        self.assertEqual(self.settings.process.stem_focus, "instrument.bass.removed")
 
     def test_demucs_all_clears_stale_focus(self) -> None:
         self.settings.process.stem_focus = VOCAL_STEM

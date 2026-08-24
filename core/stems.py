@@ -1036,14 +1036,21 @@ def _model_semantics(model: Any, native_stems: Sequence[str]) -> ModelStemSemant
     model_id = str(getattr(model, "canonical_id", "") or "")
     if not model_id:
         return None
-    cached = getattr(model, "stem_semantics", None)
-    if isinstance(cached, ModelStemSemantics):
-        return cached
     context = (
         StemProcessingContext.VOCAL_SPLIT
         if bool(getattr(model, "is_vocal_split_model", False))
         else StemProcessingContext.FULL_MIX
     )
+    cached = getattr(model, "stem_semantics", None)
+    if isinstance(cached, ModelStemSemantics) and (
+        cached.model_id == model_id
+        and cached.context is context
+        and tuple(
+            output.native.casefold() for output in cached.outputs if output.native is not None
+        )
+        == tuple(StemId(stem).casefold() for stem in native_stems)
+    ):
+        return cached
     semantics = resolve_model_stem_semantics(
         model_id,
         native_stems=native_stems,

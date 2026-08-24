@@ -210,6 +210,38 @@ class StemRouteTests(unittest.TestCase):
             StemSelectionStatus.UNMATCHED,
         )
 
+    def test_cached_semantics_are_rejected_after_model_id_signature_or_context_mutation(self) -> None:
+        class Model(self._ReviewedReversePrimaryModel):
+            canonical_id = "mdx:MDX23C_D1581"
+            demucs_source_list: list[str] = []
+            mdx_model_stems = ["Instrumental", "Vocals"]
+            mdx_stem_count = 2
+            demucs_stem_count = 0
+            stem_semantics = None
+
+        model = Model()
+        model_stem_routes(model)
+        cached = model.stem_semantics
+        self.assertIsNotNone(cached)
+
+        model.canonical_id = "mdx:not-the-cached-model"
+        self.assertTrue(
+            all(isinstance(route.role, StemLiteral) for route in model_stem_routes(model))
+        )
+        self.assertIsNot(model.stem_semantics, cached)
+
+        model.canonical_id = "mdx:MDX23C_D1581"
+        model.mdx_model_stems = ["Vocals", "Instrumental"]
+        routes_after_signature_mutation = model_stem_routes(model)
+        self.assertTrue(all(isinstance(route.role, StemRoleId) for route in routes_after_signature_mutation))
+        self.assertIsNot(model.stem_semantics, cached)
+
+        model.mdx_model_stems = ["Instrumental", "Vocals"]
+        model.is_vocal_split_model = True
+        self.assertTrue(
+            all(isinstance(route.role, StemLiteral) for route in model_stem_routes(model))
+        )
+
     class _MultiModel:
         primary_stem = "vocals"
         secondary_stem = "Instrumental"

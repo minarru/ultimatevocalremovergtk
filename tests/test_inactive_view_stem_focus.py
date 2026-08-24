@@ -53,7 +53,7 @@ class InactiveViewStemFocusTests(unittest.TestCase):
             secondary_key="is_secondary_stem_only",
         )
         mdx.write(settings, ExclusiveView(choice="Instrumental"))
-        self.assertEqual(settings.process.stem_focus, "Instrumental")
+        self.assertEqual(settings.process.stem_focus, "mix.instrumental")
 
         demucs = StemSelectionState()
         demucs.configure_demucs(
@@ -64,7 +64,7 @@ class InactiveViewStemFocusTests(unittest.TestCase):
         )
         # Inactive Demucs must not run ``write`` during flush; if it did, focus
         # would be cleared (see test_demucs_quick_all_clears_stem_focus_when_written).
-        self.assertEqual(settings.process.stem_focus, "Instrumental")
+        self.assertEqual(settings.process.stem_focus, "mix.instrumental")
 
     def test_demucs_save_options_does_not_persist_stems(self) -> None:
         from ui.views.demucs import DemucsView as DemucsMethodView
