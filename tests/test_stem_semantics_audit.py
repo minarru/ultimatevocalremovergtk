@@ -65,13 +65,15 @@ class CatalogueEvidenceCountTests(unittest.TestCase):
             rows = list(csv.reader(handle, delimiter="\t"))
         self.assertEqual(len(rows[0]), 17)
         self.assertTrue(all(len(row) == 17 for row in rows[1:]))
-        self.assertEqual(len(rows) - 1, 1203)
+        self.assertEqual(len(rows) - 1, 1206)
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
         ids = {row[0] for row in rows[1:]}
         self.assertEqual(len(ids), 485)
         self.assertEqual(ids, set(registry.models) | set(registry.waivers))
         waived = {row[0] for row in rows[1:] if row[15] == "waived" and row[16]}
         self.assertEqual(waived, set(registry.waivers))
+        self.assertEqual(len(registry.models), 455)
+        self.assertEqual(len(registry.waivers), 30)
 
     def test_exact_member_community_tokens_extend_only_the_audit_vocabulary(self) -> None:
         from types import SimpleNamespace
@@ -115,6 +117,22 @@ class CatalogueEvidenceCountTests(unittest.TestCase):
 
 
 class StrictAuditMutationTests(unittest.TestCase):
+    def test_exact_vr_bve_inventory_supplement_does_not_cover_other_missing_models(self) -> None:
+        exact_id = "vr:UVR-BVE-4B_SN-44100-1"
+
+        self.assertEqual(
+            stem_semantics_audit._strict_native_signature(exact_id, ()),
+            ("Vocals", "Instrumental"),
+        )
+        self.assertEqual(
+            stem_semantics_audit._strict_native_signature("vr:custom", ()),
+            (),
+        )
+        self.assertEqual(
+            stem_semantics_audit._strict_native_signature(exact_id, ("Wrong", "Other")),
+            ("Wrong", "Other"),
+        )
+
     def test_context_gate_counts_duplicate_primary_and_signature_failures(self) -> None:
         duplicate = stem_semantics_audit._context_audit_errors(
             roles=("vocal.lead", "vocal.lead"),
@@ -171,6 +189,14 @@ class StrictAuditMutationTests(unittest.TestCase):
         self.assertEqual(
             stem_semantics_audit._vocal_split_audit_errors(
                 model_id="mdx:mbr_bve_gonzaluigi",
+                is_karaoke=False,
+                declared_contexts={StemProcessingContext.VOCAL_SPLIT: object()},
+            ),
+            (),
+        )
+        self.assertEqual(
+            stem_semantics_audit._vocal_split_audit_errors(
+                model_id="vr:UVR-BVE-4B_SN-44100-1",
                 is_karaoke=False,
                 declared_contexts={StemProcessingContext.VOCAL_SPLIT: object()},
             ),

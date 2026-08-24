@@ -20,6 +20,7 @@ from catalogue.collect import (
     YAML_CACHE_DIR,
     CommunityRef,
     ModelEntry,
+    reviewed_stem_signature,
 )
 from core.model_catalogue import (
     catalogue_presentation_id,
@@ -285,6 +286,7 @@ def stem_semantics_reference_tsv(entries: List[ModelEntry]) -> str:
     ]
     for entry in sorted(entries, key=_canonical_model_id):
         model_id = _canonical_model_id(entry)
+        native_signature = reviewed_stem_signature(model_id, entry.instruments)
         contexts = [StemProcessingContext.FULL_MIX]
         declaration = registry.models.get(model_id)
         if declaration is not None and StemProcessingContext.VOCAL_SPLIT in declaration.contexts:
@@ -292,7 +294,7 @@ def stem_semantics_reference_tsv(entries: List[ModelEntry]) -> str:
         for context in contexts:
             semantics = resolve_model_stem_semantics(
                 model_id,
-                native_stems=entry.instruments,
+                native_stems=native_signature,
                 backend_primary=entry.primary_stem,
                 backend_target=entry.target_instrument,
                 context=context,
@@ -318,7 +320,7 @@ def stem_semantics_reference_tsv(entries: List[ModelEntry]) -> str:
                         for value in (
                             model_id,
                             _display_label(entry),
-                            "|".join(entry.instruments),
+                            "|".join(native_signature),
                             context.value,
                             output.native.raw if output.native else "",
                             output.production.value,

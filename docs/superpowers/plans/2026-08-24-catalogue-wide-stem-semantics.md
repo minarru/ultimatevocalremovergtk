@@ -177,7 +177,7 @@ git commit -m "feat(stems): add semantic role manifest"
 
 - [ ] **Step 1: Add failing catalogue coverage and collision tests**
 
-Pin these observed counts from the approved audit: 485 post-deduplication model IDs, 148 literal spellings, 123 case-folded backend names, 92 backend-primary names, and four complement-only names. The exact semantic reference has 1,203 data rows (454 reviewed declarations plus 31 waivers).
+Pin these observed counts from the approved audit: 485 post-deduplication model IDs, 148 literal spellings, 123 case-folded backend names, 92 backend-primary names, and four complement-only names. The exact semantic reference has 1,206 data rows (455 reviewed declarations plus 30 waivers).
 
 Add tests that require:
 

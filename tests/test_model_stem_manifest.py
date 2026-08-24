@@ -206,6 +206,83 @@ class ManifestValidationTests(unittest.TestCase):
                 [StemRoleId("vocal.lead"), StemRoleId("vocal.backing")],
             )
 
+    def test_vr_bve_uses_exact_context_reversal_with_reviewed_presentation(self) -> None:
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+        model_id = "vr:UVR-BVE-4B_SN-44100-1"
+
+        self.assertNotIn(model_id, registry.waivers)
+        declaration = registry.models[model_id]
+        self.assertEqual(declaration.native_signature, ("Vocals", "Instrumental"))
+        self.assertIn(f"catalogue_id={model_id}", declaration.evidence)
+        self.assertIn("source=TRvlvr+Politrees", declaration.evidence)
+        self.assertIn("backend_contract=VR two-output complement", declaration.evidence)
+        self.assertIn("backend_primary=Vocals", declaration.evidence)
+        self.assertIn("reviewed_contexts=full_mix|vocal_split", declaration.evidence)
+
+        expected = {
+            StemProcessingContext.FULL_MIX: (
+                ["Vocals", "Instrumental"],
+                ["vocal.backing", "mix.instrumental_with_lead_vocals"],
+                "vocal.backing",
+                "pair.backing_vocals",
+                ["Backing Vocals", "Instrumental with Lead Vocals"],
+                ["Backing_Vocals", "Instrumental_with_Lead_Vocals"],
+            ),
+            StemProcessingContext.VOCAL_SPLIT: (
+                ["Vocals", "Instrumental"],
+                ["vocal.backing", "vocal.lead"],
+                "vocal.backing",
+                "",
+                ["Backing Vocals", "Lead Vocals"],
+                ["Backing_Vocals", "Lead_Vocals"],
+            ),
+        }
+        for context, (
+            native_names,
+            role_ids,
+            logical_primary,
+            pair_id,
+            displays,
+            tags,
+        ) in expected.items():
+            with self.subTest(context=context.value):
+                resolved = resolve_model_stem_semantics(
+                    model_id,
+                    native_stems=("Vocals", "Instrumental"),
+                    backend_primary="Vocals",
+                    context=context,
+                    registry=registry,
+                )
+                self.assertIs(resolved.status, StemReviewStatus.REVIEWED)
+                native_outputs = [output.native for output in resolved.outputs]
+                self.assertTrue(all(native is not None for native in native_outputs))
+                self.assertEqual(
+                    [native.raw for native in native_outputs if native is not None], native_names
+                )
+                self.assertEqual([str(output.role) for output in resolved.outputs], role_ids)
+                self.assertEqual(
+                    [output.logical_primary for output in resolved.outputs], [True, False]
+                )
+                self.assertEqual(
+                    str(declaration.contexts[context].logical_primary), logical_primary
+                )
+                reviewed_roles = [
+                    output.role
+                    for output in resolved.outputs
+                    if isinstance(output.role, StemRoleId)
+                ]
+                self.assertEqual(len(reviewed_roles), len(resolved.outputs))
+                definitions = [registry.roles[role] for role in reviewed_roles]
+                self.assertEqual([definition.display for definition in definitions], displays)
+                self.assertEqual([definition.filename_tag for definition in definitions], tags)
+                context_roles = {output.role for output in resolved.outputs}
+                matching_pairs = [
+                    pair.id
+                    for pair in registry.pairs.values()
+                    if set(pair.roles).issubset(context_roles)
+                ]
+                self.assertEqual(matching_pairs, [pair_id] if pair_id else [])
+
     def test_p3_exact_specialty_exceptions_have_reviewed_removal_roles(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
         expected = {

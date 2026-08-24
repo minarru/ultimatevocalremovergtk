@@ -78,7 +78,11 @@ _PINNED_LITERAL_NAME_COUNT = 148
 _PINNED_NORMALIZED_NAME_COUNT = 123
 _PINNED_PRIMARY_NAME_COUNT = 92
 _REVIEWED_VOCAL_SPLIT_IDS = frozenset(
-    {"mdx:mbr_bve_gonzaluigi", "mdx:model_MelBand-Roformer_BVE_by-Gonza"}
+    {
+        "mdx:mbr_bve_gonzaluigi",
+        "mdx:model_MelBand-Roformer_BVE_by-Gonza",
+        "vr:UVR-BVE-4B_SN-44100-1",
+    }
 )
 _REFERENCE_HEADERS = (
     "model_id",
@@ -111,6 +115,13 @@ def _signature_matches(expected: tuple[str, ...], actual: tuple[str, ...]) -> bo
     expected_keys = tuple(_audit_key(value) for value in expected)
     actual_keys = tuple(_audit_key(value) for value in actual)
     return len(expected_keys) == len(actual_keys) and set(expected_keys) == set(actual_keys)
+
+
+def _strict_native_signature(model_id: str, instruments: Any) -> tuple[str, ...]:
+    """Apply only exact, reviewed supplements to missing audit inventory."""
+    from scripts.catalogue.collect import reviewed_stem_signature
+
+    return reviewed_stem_signature(model_id, instruments)
 
 
 def _context_audit_errors(
@@ -619,13 +630,12 @@ def strict_catalogue_check() -> tuple[bool, str]:
         if declaration is None:
             missing.append(model_id)
             continue
-        signature_matches = _signature_matches(
-            declaration.native_signature, tuple(str(native) for native in entry.instruments)
-        )
+        native_signature = _strict_native_signature(model_id, entry.instruments)
+        signature_matches = _signature_matches(declaration.native_signature, native_signature)
         for processing_context, declared_context in declaration.contexts.items():
             resolved = resolve_model_stem_semantics(
                 model_id,
-                native_stems=entry.instruments,
+                native_stems=native_signature,
                 backend_primary=entry.primary_stem,
                 backend_target=entry.target_instrument,
                 context=processing_context,

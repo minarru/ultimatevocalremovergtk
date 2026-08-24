@@ -88,6 +88,23 @@ _POLITREES_KEYS = (
 )
 _SUPPLEMENT_LIST_KEYS = (*_POLITREES_KEYS, APOLLO_LIST_KEY)
 
+# The VR backend always emits its reviewed primary plus the computed
+# complement. This exact BVE artifact has authoritative hash metadata for the
+# primary and an exact community record for the complement, but catalogue
+# sources do not carry a native inventory list. Keep the exception scoped to
+# its canonical ID so absent inventory for every other model remains absent.
+_REVIEWED_MISSING_NATIVE_SIGNATURES = {
+    "vr:UVR-BVE-4B_SN-44100-1": ("Vocals", "Instrumental"),
+}
+
+
+def reviewed_stem_signature(model_id: str, instruments: Any) -> tuple[str, ...]:
+    """Return actual inventory, or one exact reviewed missing-inventory supplement."""
+    actual = tuple(str(native) for native in instruments)
+    if actual:
+        return actual
+    return _REVIEWED_MISSING_NATIVE_SIGNATURES.get(model_id, ())
+
 
 @dataclass
 class CommunityRef:

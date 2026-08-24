@@ -12607,6 +12607,42 @@
       },
       "evidence": "catalogue_id=vr:MGM_MAIN_v4; source=TRvlvr+Politrees; metadata_source=community_models.txt; native_signature=Instrumental|Vocals; backend_primary=Instrumental; backend_target=; reviewed_contexts=full_mix"
     },
+    "vr:UVR-BVE-4B_SN-44100-1": {
+      "native_signature": [
+        "Vocals",
+        "Instrumental"
+      ],
+      "intent": "backing_vocal_separation",
+      "contexts": {
+        "full_mix": {
+          "logical_primary": "vocal.backing",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.backing"
+            },
+            {
+              "native": "Instrumental",
+              "role": "mix.instrumental_with_lead_vocals"
+            }
+          ]
+        },
+        "vocal_split": {
+          "logical_primary": "vocal.backing",
+          "outputs": [
+            {
+              "native": "Vocals",
+              "role": "vocal.backing"
+            },
+            {
+              "native": "Instrumental",
+              "role": "vocal.lead"
+            }
+          ]
+        }
+      },
+      "evidence": "catalogue_id=vr:UVR-BVE-4B_SN-44100-1; source=TRvlvr+Politrees; metadata_source=community_models.txt+politrees_vr_hash; native_signature=Vocals|Instrumental; backend_contract=VR two-output complement; backend_primary=Vocals; backend_target=; reviewed_contexts=full_mix|vocal_split"
+    },
     "vr:UVR-De-Echo-Aggressive": {
       "native_signature": [
         "Echo",
@@ -12776,7 +12812,6 @@
     "mdx:model_bs_roformer_ep_317_sdr_12.9755": "no native inventory: catalogue_id=mdx:model_bs_roformer_ep_317_sdr_12.9755; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
     "mdx:model_bs_roformer_ep_368_sdr_12.9628": "no native inventory: catalogue_id=mdx:model_bs_roformer_ep_368_sdr_12.9628; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
     "mdx:model_bs_roformer_ep_937_sdr_10.5309": "no native inventory: catalogue_id=mdx:model_bs_roformer_ep_937_sdr_10.5309; source=TRvlvr; metadata_source=community_models.txt; backend_primary=no drum-bass; backend_target=",
-    "mdx:model_mel_band_roformer_ep_3005_sdr_11.4360": "no native inventory: catalogue_id=mdx:model_mel_band_roformer_ep_3005_sdr_11.4360; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target=",
-    "vr:UVR-BVE-4B_SN-44100-1": "no native inventory: catalogue_id=vr:UVR-BVE-4B_SN-44100-1; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_primary=Vocals; backend_target="
+    "mdx:model_mel_band_roformer_ep_3005_sdr_11.4360": "no native inventory: catalogue_id=mdx:model_mel_band_roformer_ep_3005_sdr_11.4360; source=TRvlvr; metadata_source=community_models.txt; backend_primary=Vocals; backend_target="
   }
 }

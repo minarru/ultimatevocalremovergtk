@@ -98,7 +98,7 @@ Measured catalogue facts:
 - 24 case/spelling variant groups, including `Vocals/vocals`,
   `Similarity/similarity`, and `No Dry/No dry/no dry`.
 
-The semantic reference has 1,203 data rows: 454 reviewed declarations, 31
+The semantic reference has 1,206 data rows: 455 reviewed declarations, 30
 waivers, and every required processing-context/output row. When two runnable
 mvsepless entries share a `full_name`, labels are deterministically suffixed
 with their exact entry IDs before cross-source deduplication; this preserves
