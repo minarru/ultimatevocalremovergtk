@@ -305,6 +305,9 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
             diagnostic = _diagnostic(result, code)
             self.assertEqual(diagnostic.model_ids, ("mdx:target",))
             self.assertEqual(diagnostic.context, StemProcessingContext.FULL_MIX)
+        signature = _diagnostic(result, "target-runtime-signature")
+        self.assertEqual(signature.expected, ("bass", "other"))
+        self.assertEqual(signature.actual, ("bass",))
 
     def test_vocal_split_findings_name_each_exact_model(self) -> None:
         full_mix = _context(

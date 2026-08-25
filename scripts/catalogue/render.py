@@ -278,8 +278,16 @@ def stem_semantics_reference_tsv(entries: List[ModelEntry]) -> str:
     from core.stem_roles import StemProcessingContext, StemRoleId
 
     registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+    identity_headers = (
+        "runtime_family",
+        "runtime_basename",
+        "catalogue_source",
+        "catalogue_label",
+        "execution_arch",
+    )
     lines = [
-        "model_id\tmodel_display\tnative_signature\tprocessing_context\tnative_stem\t"
+        "\t".join(identity_headers)
+        + "\tmodel_id\tmodel_display\tnative_signature\tprocessing_context\tnative_stem\t"
         "production\tbackend_primary\tbackend_target\tlogical_primary\trole_id\t"
         "canonical_name\tfilename_tag\tpair_id\tintent\tintent_source\treview_status\t"
         "evidence_or_waiver"
@@ -323,6 +331,7 @@ def stem_semantics_reference_tsv(entries: List[ModelEntry]) -> str:
                     "\t".join(
                         _tsv_cell(value)
                         for value in (
+                            *_stem_semantics_identity(entry, model_id),
                             model_id,
                             _display_label(entry),
                             "|".join(native_signature),
@@ -351,14 +360,17 @@ def stem_semantics_reference_tsv(entries: List[ModelEntry]) -> str:
                         )
                     )
                 )
-    seen = {_canonical_model_id(entry) for entry in entries}
+    entries_by_id = {_canonical_model_id(entry): entry for entry in entries}
     for model_id, reason in sorted(registry.waivers.items()):
-        if model_id in seen:
+        entry = entries_by_id.get(model_id)
+        if entry is not None:
             lines.append(
                 "\t".join(
-                    (
+                    _tsv_cell(value)
+                    for value in (
+                        *_stem_semantics_identity(entry, model_id),
                         model_id,
-                        "",
+                        _display_label(entry),
                         "",
                         "full_mix",
                         "",
@@ -380,8 +392,26 @@ def stem_semantics_reference_tsv(entries: List[ModelEntry]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _stem_semantics_identity(entry: ModelEntry, model_id: str) -> Tuple[str, str, str, str, str]:
+    """Identity/provenance prefix shared by reviewed and waived TSV rows."""
+    runtime_family, separator, runtime_basename = model_id.partition(":")
+    if not separator or not runtime_family or not runtime_basename:
+        raise ValueError(f"invalid canonical model ID for stem reference: {model_id!r}")
+    return (
+        runtime_family,
+        runtime_basename,
+        entry.source,
+        entry.catalogue_label,
+        entry.arch or entry.family,
+    )
+
+
 def render_summary_report(
-    entries: List[ModelEntry], *, unsupported_count: int = 0, report: Any = None
+    entries: List[ModelEntry],
+    *,
+    unsupported_count: int = 0,
+    report: Any = None,
+    stem_audit: Any = None,
 ) -> str:
     """Just the exceptions: what a maintainer is usually looking for.
 
@@ -407,8 +437,16 @@ def render_summary_report(
         f"- Unknown intent remaining: **{len(unknown)}**",
         f"- Flagged mismatches: **{len(flagged)}**",
         f"- Unsupported mvsepless entries (omitted): **{unsupported_count}**",
-        "",
     ]
+    if stem_audit is not None:
+        lines.extend(
+            (
+                f"- Reviewed catalogue models: **{len(stem_audit.reviewed_model_ids)}**",
+                f"- Waived catalogue models: **{len(stem_audit.waived_model_ids)}**",
+                f"- Raw catalogue models: **{len(stem_audit.raw_model_ids)}**",
+            )
+        )
+    lines.append("")
 
     if flagged:
         lines += ["## Flagged mismatches", ""]
@@ -422,12 +460,77 @@ def render_summary_report(
         for entry in unknown:
             lines.append(f"- **{_display_label(entry)}** ({entry.family}, {entry.source})")
         lines.append("")
+    if stem_audit is not None:
+        lines.extend(_stem_audit_summary_lines(stem_audit))
     degraded = _summary_health_warning(entries, report)
     if degraded:
         lines += [degraded, ""]
-    elif not flagged and not unknown:
+    elif stem_audit is None and not flagged and not unknown:
         lines += ["Nothing flagged, and every entry resolved an intent.", ""]
     return "\n".join(lines)
+
+
+def _stem_audit_summary_lines(stem_audit: Any) -> List[str]:
+    """Render Task 1 diagnostics without re-deriving semantics from TSV text."""
+    section_codes = (
+        (
+            "Signature and context findings",
+            frozenset(
+                {
+                    "native-signature",
+                    "target-runtime-signature",
+                    "missing-full-mix",
+                    "context-invalid",
+                    "context-logical-primary",
+                    "context-resolution-error",
+                    "context-unreviewed",
+                    "target-native-output",
+                    "target-derived-complement",
+                    "missing-vocal-split",
+                    "unexpected-vocal-split",
+                }
+            ),
+        ),
+        ("Native-to-role ambiguities", frozenset({"context-duplicate-role"})),
+        ("Role-to-native variants", frozenset({"context-native-signature"})),
+        ("Invalid pairs", frozenset({"pair-incomplete", "pair-context-incomplete"})),
+        (
+            "Collisions",
+            frozenset({"role-display-collision", "role-tag-collision", "pair-role-collision"}),
+        ),
+        ("Reference drift", frozenset({"reference-drift"})),
+    )
+    diagnostics = tuple(stem_audit.diagnostics)
+    rendered_codes = set()
+    lines: List[str] = []
+    for heading, codes in section_codes:
+        findings = [diagnostic for diagnostic in diagnostics if diagnostic.code in codes]
+        if not findings:
+            continue
+        rendered_codes.update(codes)
+        lines.extend((f"## {heading}", ""))
+        lines.extend(_format_stem_audit_diagnostic(diagnostic) for diagnostic in findings)
+        lines.append("")
+    remaining = [diagnostic for diagnostic in diagnostics if diagnostic.code not in rendered_codes]
+    if remaining:
+        lines.extend(("## Other stem audit findings", ""))
+        lines.extend(_format_stem_audit_diagnostic(diagnostic) for diagnostic in remaining)
+        lines.append("")
+    if not diagnostics:
+        lines.extend(("No stem semantic audit findings.", ""))
+    return lines
+
+
+def _format_stem_audit_diagnostic(diagnostic: Any) -> str:
+    model_ids = ", ".join(f"`{model_id}`" for model_id in diagnostic.model_ids) or "(global)"
+    context = f" ({diagnostic.context.value})" if diagnostic.context is not None else ""
+    evidence = []
+    if diagnostic.expected:
+        evidence.append(f"expected: `{', '.join(diagnostic.expected)}`")
+    if diagnostic.actual:
+        evidence.append(f"actual: `{', '.join(diagnostic.actual)}`")
+    suffix = f" ({'; '.join(evidence)})" if evidence else ""
+    return f"- `{diagnostic.code}` — {model_ids}{context} — {diagnostic.message}{suffix}"
 
 
 def _summary_health_warning(entries: List[ModelEntry], report: Any) -> str:

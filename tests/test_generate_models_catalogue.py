@@ -12,8 +12,15 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import generate_models_catalogue as cli  # noqa: E402
 from catalogue import collect as catalogue  # noqa: E402
 from catalogue import render  # noqa: E402
+from catalogue.stem_audit import (  # noqa: E402
+    STEM_SEMANTICS_REFERENCE_HEADERS,
+    CatalogueEvidenceCounts,
+    StemAuditDiagnostic,
+    StemAuditResult,
+)
 
 from core.catalogue_types import SourceId  # noqa: E402
+from core.stem_roles import StemProcessingContext  # noqa: E402
 
 
 class DemucsBagArtifactTests(unittest.TestCase):
@@ -2345,6 +2352,54 @@ class IntermediateRepresentationTests(unittest.TestCase):
             self.assertEqual(cli._previous_entry_count(doc), 7)
 
 
+class StemSemanticsReferenceRenderTests(unittest.TestCase):
+    def test_provenance_prefix_and_waiver_projection_preserve_review_columns(self) -> None:
+        entry = catalogue.ModelEntry(
+            source="fixture-source",
+            family="Apollo",
+            catalogue_label="Restoration fixture",
+            weight_file="restoration.onnx",
+            arch="Apollo execution",
+        )
+        registry = type(
+            "Registry",
+            (),
+            {"models": {}, "waivers": {"apollo:restoration": "no stem inventory"}},
+        )()
+
+        from unittest import mock
+
+        with mock.patch("core.model_stem_manifest.load_stem_manifest", return_value=registry):
+            rendered = render.stem_semantics_reference_tsv([entry])
+
+        header, row = rendered.splitlines()
+        columns = row.split("\t")
+        self.assertEqual(
+            header.split("\t"),
+            [
+                "runtime_family",
+                "runtime_basename",
+                "catalogue_source",
+                "catalogue_label",
+                "execution_arch",
+                *STEM_SEMANTICS_REFERENCE_HEADERS,
+            ],
+        )
+        self.assertEqual(
+            columns[:5],
+            [
+                "apollo",
+                "restoration",
+                "fixture-source",
+                "Restoration fixture",
+                "Apollo execution",
+            ],
+        )
+        self.assertEqual(columns[5], "apollo:restoration")
+        self.assertNotEqual(columns[6], "")
+        self.assertEqual(columns[-3:], ["reviewed_waiver", "waived", "no stem inventory"])
+
+
 class SummaryModeTests(unittest.TestCase):
     """--summary answers the maintainer's likely question without 7,000 lines."""
 
@@ -2399,6 +2454,78 @@ class SummaryModeTests(unittest.TestCase):
         full = render._render(entries, unsupported_count=0)
         summary = render.render_summary_report(entries, unsupported_count=0)
         self.assertLess(len(summary), len(full))
+
+    def test_semantic_summary_uses_structured_audit_counts_and_sections(self) -> None:
+        audit = StemAuditResult(
+            catalogue_model_ids=("mdx:broken", "mdx:waived", "mdx:raw"),
+            reviewed_model_ids=("mdx:broken",),
+            waived_model_ids=("mdx:waived",),
+            raw_model_ids=("mdx:raw",),
+            evidence_counts=CatalogueEvidenceCounts(0, 0, 0, ()),
+            diagnostics=(
+                StemAuditDiagnostic(
+                    code="native-signature",
+                    model_ids=("mdx:broken",),
+                    message="reviewed declaration does not match runtime-native source keys",
+                    expected=("Vocals",),
+                    actual=("Instrumental",),
+                ),
+                StemAuditDiagnostic(
+                    code="context-duplicate-role",
+                    model_ids=("mdx:broken",),
+                    context=StemProcessingContext.FULL_MIX,
+                    message="processing context maps more than one output to the same role",
+                    actual=("vocal.vocals", "vocal.vocals"),
+                ),
+                StemAuditDiagnostic(
+                    code="context-native-signature",
+                    model_ids=("mdx:broken",),
+                    context=StemProcessingContext.FULL_MIX,
+                    message="context native outputs do not match the declaration signature",
+                    expected=("Vocals",),
+                    actual=("Instrumental",),
+                ),
+                StemAuditDiagnostic(
+                    code="pair-incomplete",
+                    model_ids=("mdx:broken",),
+                    message="pair is incomplete",
+                ),
+                StemAuditDiagnostic(
+                    code="role-display-collision",
+                    model_ids=("mdx:broken",),
+                    message="roles share a display",
+                ),
+                StemAuditDiagnostic(
+                    code="reference-drift",
+                    model_ids=("mdx:broken",),
+                    message="checked-in reference differs",
+                    expected=("expected-digest",),
+                    actual=("actual-digest",),
+                    structural=False,
+                ),
+            ),
+        )
+
+        text = render.render_summary_report(self._entries(), unsupported_count=0, stem_audit=audit)
+
+        self.assertIn("Reviewed catalogue models: **1**", text)
+        self.assertIn("Waived catalogue models: **1**", text)
+        self.assertIn("Raw catalogue models: **1**", text)
+        for heading in (
+            "## Signature and context findings",
+            "## Native-to-role ambiguities",
+            "## Role-to-native variants",
+            "## Invalid pairs",
+            "## Collisions",
+            "## Reference drift",
+        ):
+            self.assertIn(heading, text)
+        self.assertIn("`native-signature`", text)
+        self.assertIn("`mdx:broken`", text)
+        self.assertIn("full_mix", text)
+        self.assertIn("expected: `Vocals`", text)
+        self.assertIn("actual: `Instrumental`", text)
+        self.assertNotIn("Nothing flagged", text)
 
     def test_summary_does_not_overwrite_the_document(self) -> None:
         """A summary is an ad-hoc query, not a replacement for the catalogue."""

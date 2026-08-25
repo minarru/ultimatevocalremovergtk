@@ -352,8 +352,8 @@ def _target_projection_diagnostics(
                     model_ids=(model_id,),
                     context=context,
                     message="target-instrument declaration does not match runtime inventory",
-                    expected=runtime_signature,
-                    actual=tuple(declaration.native_signature),
+                    expected=tuple(declaration.native_signature),
+                    actual=runtime_signature,
                 )
             )
         native = _native_outputs(declared_context)
