@@ -500,7 +500,8 @@ def _intent_from_community_stems(stems_text: str) -> Tuple[str, str]:
     return intent, primary
 
 
-def _parse_community_model_lines(lines: Any) -> Dict[str, CommunityRef]:
+def _parse_community_model_lines(lines: Any) -> Tuple[Dict[str, CommunityRef], bool]:
+    """Parse the community table without mistaking malformed rows for an empty table."""
     refs: Dict[str, CommunityRef] = {}
     for line in lines:
         line = line.rstrip()
@@ -512,10 +513,12 @@ def _parse_community_model_lines(lines: Any) -> Dict[str, CommunityRef]:
             continue
         parts = re.split(r"\s{2,}", line.strip())
         if len(parts) < 4:
-            continue
+            return {}, False
         filename, arch, stems_text, friendly = parts[0], parts[1], parts[2], parts[3]
         if not filename.endswith((".pth", ".onnx", ".ckpt", ".th")):
-            continue
+            return {}, False
+        if not arch or not stems_text or not friendly:
+            return {}, False
         intent, primary = _intent_from_community_stems(stems_text)
         refs[filename.lower()] = CommunityRef(
             filename=filename,
@@ -525,14 +528,15 @@ def _parse_community_model_lines(lines: Any) -> Dict[str, CommunityRef]:
             friendly_name=friendly,
             intent=intent,
         )
-    return refs
+    return refs, True
 
 
-def _parse_community_models_bytes(data: bytes) -> Dict[str, CommunityRef]:
+def _parse_community_models_bytes(data: bytes) -> Tuple[Dict[str, CommunityRef], bool]:
+    """Return parsed community evidence and whether the payload was valid."""
     try:
         return _parse_community_model_lines(data.decode("utf-8").splitlines())
     except UnicodeDecodeError:
-        return {}
+        return {}, False
 
 
 def _build_catalogue_context(
@@ -557,13 +561,16 @@ def _build_catalogue_context(
     community_data, _community_path = _fetch_cached_bytes(
         _COMMUNITY_MODELS_URL, COMMUNITY_CACHE_DIR, "models.txt", policy=policy
     )
-    community = _parse_community_models_bytes(community_data or b"")
+    if community_data is None:
+        community, community_available = {}, False
+    else:
+        community, community_available = _parse_community_models_bytes(community_data)
     unavailable = []
     if not vr_available:
         unavailable.append("Politrees VR hash metadata")
     if not mdx_available:
         unavailable.append("Politrees MDX hash metadata")
-    if community_data is None:
+    if not community_available:
         unavailable.append("community models.txt reference")
     return CatalogueContext(
         community_by_file=community,

@@ -503,6 +503,159 @@ class OfflinePolicyTests(unittest.TestCase):
         self.assertTrue(self.calls, "online mode should still attempt fetches")
 
 
+class CommunitySupplementAvailabilityTests(unittest.TestCase):
+    """Malformed community evidence must not look like a valid empty source."""
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        self.tmp = tempfile.mkdtemp(prefix="uvr-community-evidence-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def _context_from_cached_community_bytes(self, data: bytes) -> catalogue.CatalogueContext:
+        from unittest import mock
+
+        cache_dir = os.path.join(self.tmp, "cached-community")
+        cache_path = catalogue._cache_path(
+            cache_dir,
+            catalogue._COMMUNITY_MODELS_URL,
+            "models.txt",
+        )
+        os.makedirs(cache_dir)
+        with open(cache_path, "wb") as handle:
+            handle.write(data)
+        with (
+            mock.patch.object(catalogue, "COMMUNITY_CACHE_DIR", cache_dir),
+            mock.patch.object(
+                catalogue,
+                "_load_json_cache_with_availability",
+                return_value=({}, True),
+            ),
+            mock.patch.object(catalogue, "_scan_weight_hashes", return_value={}),
+        ):
+            return catalogue._build_catalogue_context(
+                policy=catalogue.FetchPolicy(allow_network=False)
+            )
+
+    def _context_from_fetched_community_bytes(self, data: bytes) -> catalogue.CatalogueContext:
+        from unittest import mock
+
+        class _Response:
+            def __init__(self, payload: bytes) -> None:
+                self.payload = payload
+
+            def read(self) -> bytes:
+                return self.payload
+
+            def __enter__(self) -> Any:
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+        def urlopen(url: object) -> _Response:
+            if str(url) == catalogue._COMMUNITY_MODELS_URL:
+                return _Response(data)
+            return _Response(b"{}")
+
+        with (
+            mock.patch.object(
+                catalogue,
+                "POLITREES_CACHE_DIR",
+                os.path.join(self.tmp, "fetched-politrees"),
+            ),
+            mock.patch.object(
+                catalogue,
+                "COMMUNITY_CACHE_DIR",
+                os.path.join(self.tmp, "fetched-community"),
+            ),
+            mock.patch.object(catalogue, "_scan_weight_hashes", return_value={}),
+            mock.patch("core.mdx_config_fetch._urlopen", side_effect=urlopen),
+        ):
+            return catalogue._build_catalogue_context(
+                policy=catalogue.FetchPolicy(allow_cache_writes=False)
+            )
+
+    def test_valid_empty_community_bytes_remain_available_from_cache(self) -> None:
+        self.assertEqual(catalogue._parse_community_models_bytes(b""), ({}, True))
+
+        context = self._context_from_cached_community_bytes(b"")
+        self.assertEqual(context.community_by_file, {})
+        self.assertNotIn(
+            "community models.txt reference",
+            context.unavailable_supplemental_evidence,
+        )
+
+    def test_invalid_community_bytes_are_unavailable_from_cache(self) -> None:
+        self.assertEqual(catalogue._parse_community_models_bytes(b"\xff"), ({}, False))
+
+        context = self._context_from_cached_community_bytes(b"\xff")
+        self.assertIn(
+            "community models.txt reference",
+            context.unavailable_supplemental_evidence,
+        )
+
+    def test_malformed_community_text_is_unavailable_from_cache(self) -> None:
+        malformed = b"this is not a models.txt row\n"
+        self.assertEqual(catalogue._parse_community_models_bytes(malformed), ({}, False))
+
+        context = self._context_from_cached_community_bytes(malformed)
+        self.assertIn(
+            "community models.txt reference",
+            context.unavailable_supplemental_evidence,
+        )
+
+    def test_invalid_in_memory_community_bytes_degrade_publication(self) -> None:
+        import tempfile
+        from unittest import mock
+
+        context = self._context_from_fetched_community_bytes(b"\xff")
+        self.assertIn(
+            "community models.txt reference",
+            context.unavailable_supplemental_evidence,
+        )
+
+        class _Snapshot:
+            unsupported: dict[str, object] = {}
+            report = None
+
+        entry = catalogue.ModelEntry(
+            source="fixture",
+            family="MDX23C",
+            catalogue_label="Fixture",
+            weight_file="fixture.ckpt",
+            metadata_source="fixture",
+        )
+        with tempfile.TemporaryDirectory(prefix="uvr-community-degraded-") as output_dir:
+            with (
+                mock.patch.object(cli, "OUTPUT_PATH", os.path.join(output_dir, "catalogue.md")),
+                mock.patch.object(
+                    cli, "REFERENCE_TSV_PATH", os.path.join(output_dir, "intent.tsv")
+                ),
+                mock.patch.object(
+                    cli,
+                    "DISPLAY_REFERENCE_TSV_PATH",
+                    os.path.join(output_dir, "display.tsv"),
+                ),
+                mock.patch.object(
+                    cli,
+                    "STEM_SEMANTICS_REFERENCE_TSV_PATH",
+                    os.path.join(output_dir, "stem.tsv"),
+                ),
+                mock.patch.object(catalogue, "_build_catalogue_context", return_value=context),
+                mock.patch.object(
+                    catalogue, "collect_entries", return_value=(_Snapshot(), [entry])
+                ),
+                mock.patch.object(
+                    cli.stem_audit,
+                    "audit_catalogue_stems",
+                    side_effect=_clean_stem_audit,
+                ),
+            ):
+                self.assertEqual(cli.main([]), 2)
+
+
 class DemucsFinalizationTests(unittest.TestCase):
     """Demucs family facts must land before the single finalization pass.
 
