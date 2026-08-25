@@ -14,7 +14,6 @@ from typing import Any, Mapping, Sequence
 
 from bundled.constants import (
     CHOOSE_MODEL,
-    DEMUCS_4_SOURCE_LIST,
     DEMUCS_ARCH_TYPE,
     ENSEMBLE_MODE,
     INST_WITH_BACKING_VOCALS_STEM,
@@ -24,6 +23,7 @@ from bundled.constants import (
     VR_ARCH_PM,
 )
 
+from .access_policy import access_policy
 from .device import DeviceRequest
 from .export_naming import (
     OutputNamingContext,
@@ -39,11 +39,11 @@ from .model_identity import (
     ModelIdentityService,
     ModelRecord,
 )
-from .stem_roles import ModelStemSemantics
-from .access_policy import access_policy
+from .model_stem_manifest import load_bundled_stem_semantics
 from .settings import Settings
+from .stem_pairs import is_stem_mode, normalize_stem_pair_id, stem_pair_definition
+from .stem_roles import ModelStemSemantics, StemRoleId
 from .stems import (
-    EnsemblePair,
     FOCUS_PRIMARY,
     FOCUS_SECONDARY,
     StemBucket,
@@ -51,21 +51,52 @@ from .stems import (
     StemRoute,
     StemRouteKind,
     StemSelectionStatus,
-    coerce_ensemble_pair,
     derived_stem_route,
-    focus_bucket,
-    model_stem_routes,
     model_stem_count,
+    model_stem_routes,
     positional_stem_focus,
     select_ensemble_stem_routes,
     select_stem_routes,
-    ui_label,
 )
-
 
 MODEL_SENTINELS = frozenset({CHOOSE_MODEL, NO_MODEL, ""})
 _MODEL_FAMILIES = frozenset({"vr", "mdx", "demucs"})
 _SECONDARY_SLOTS = ("voc_inst", "other", "bass", "drums")
+_FOUR_STEM_ROLES = (
+    StemRoleId("instrument.bass"),
+    StemRoleId("instrument.drums"),
+    StemRoleId("residual.other"),
+    StemRoleId("vocal.vocals"),
+)
+
+
+def _ensemble_primary_label(pair_id: str) -> str:
+    """Reviewed display label for the pair's first exact role, if any."""
+    definition = stem_pair_definition(pair_id)
+    if definition is None:
+        return ""
+    role = load_bundled_stem_semantics().roles.get(definition.roles[0])
+    return role.display if role is not None else ""
+
+
+def _reviewed_route(role: StemRoleId, *, selected_by_default: bool = True) -> StemRoute:
+    """Construct a final ensemble route from registry-owned presentation data."""
+    definition = load_bundled_stem_semantics().roles[role]
+    return StemRoute(
+        native=None,
+        role=role,
+        label=definition.display,
+        filename_tag=definition.filename_tag,
+        kind=StemRouteKind.DERIVED,
+        selected_by_default=selected_by_default,
+    )
+
+
+def _ensemble_group_key(route: StemRoute, member_id: str) -> tuple[object, ...]:
+    """Combine reviewed roles only; raw literals stay scoped to one member."""
+    if isinstance(route.role, StemRoleId):
+        return ("reviewed", route.role)
+    return ("raw", member_id, route.selection_scope, route.role)
 
 
 def _identity_digest_entry(record: ModelRecord) -> dict[str, Any]:
@@ -117,7 +148,7 @@ def _selected_family_paths(settings: Settings, command: str) -> list[tuple[str, 
     }.get(method_value)
     if family is None:
         return []
-    reference = str(getattr(getattr(settings, family), "model") or "")
+    reference = str(getattr(settings, family).model or "")
     return [] if reference in MODEL_SENTINELS else [(f"{family}.model", reference)]
 
 
@@ -155,10 +186,8 @@ def active_model_paths(
         if family:
             selected_families.add(family)
 
-    ensemble_multi = (
-        command == "ensemble"
-        and coerce_ensemble_pair(settings.ensemble.main_stem).is_multi_or_four()
-    )
+    ensemble_pair_id = normalize_stem_pair_id(settings.ensemble.main_stem)
+    ensemble_multi = command == "ensemble" and is_stem_mode(ensemble_pair_id)
     demucs_layouts = {
         record.demucs.source_layout
         for record in primaries
@@ -202,20 +231,14 @@ def active_model_paths(
                     str(
                         (primary_stems or {}).get(family)
                         or (
-                            coerce_ensemble_pair(
-                                settings.ensemble.main_stem
-                            ).stem_halves()[0]
+                            _ensemble_primary_label(ensemble_pair_id)
                             if command == "ensemble" else getattr(section, "stems", "")
                         )
                         or ""
                     )
                 }
             if family == "demucs" and command == "ensemble":
-                selected_stems = {
-                    coerce_ensemble_pair(
-                        settings.ensemble.main_stem
-                    ).stem_halves()[0]
-                }
+                selected_stems = {_ensemble_primary_label(ensemble_pair_id)}
             selected_slots = {
                 secondary_slot_for_primary_stem(stem) or "voc_inst"
                 for stem in selected_stems
@@ -296,6 +319,8 @@ class PlannedOutput:
     stem: str
     conditional: bool = False
     concept: str = ""
+    role: StemRoleId | StemLiteral | None = None
+    filename_tag: str = ""
 
 
 @dataclass(frozen=True)
@@ -508,6 +533,49 @@ def _stem_focus_diagnostics(
     return result
 
 
+def _ensemble_pair_diagnostics(
+    settings: Settings,
+    descriptors: Sequence[ModelDescriptor],
+    *,
+    command: str,
+) -> list[Diagnostic]:
+    """Require an explicit, viable reviewed pair before an ensemble can run."""
+    if command != "ensemble":
+        return []
+    pair_id = normalize_stem_pair_id(settings.ensemble.main_stem)
+    pair = stem_pair_definition(pair_id)
+    if not pair_id:
+        return [Diagnostic(
+            "ensemble.pair_repick",
+            "Choose a reviewed ensemble stem pair or mode before running the ensemble",
+            path="ensemble.main_stem",
+        )]
+    if pair is None or not descriptors:
+        return []
+
+    required = frozenset(pair.roles)
+    eligible_members = {
+        descriptor.id
+        for descriptor in descriptors
+        if descriptor.id
+        and required.issubset({
+            route.role
+            for route in descriptor.routes
+            if isinstance(route.role, StemRoleId)
+        })
+    }
+    if len(eligible_members) >= 2:
+        return []
+    return [Diagnostic(
+        "ensemble.pair_repick",
+        (
+            f"The selected pair {pair.id!r} needs two distinct installed models "
+            "with complete reviewed role coverage; choose a stem pair again"
+        ),
+        path="ensemble.main_stem",
+    )]
+
+
 def _fallback_descriptor_routes(descriptor: ModelDescriptor) -> tuple[StemRoute, ...]:
     """Route inventory for older callers constructing descriptors directly."""
     if descriptor.routes:
@@ -543,69 +611,53 @@ def _ensemble_output_routes(
     settings: Settings, descriptors: Sequence[ModelDescriptor]
 ) -> tuple[tuple[StemRoute, ...], tuple[StemRoute, ...]]:
     """Return viable final routes and the union before contributor filtering."""
-    pair = coerce_ensemble_pair(settings.ensemble.main_stem)
-    if not pair.is_multi_or_four():
-        routes_list: list[StemRoute] = []
-        for bucket, label in zip(pair.buckets(), pair.stem_halves()):
-            if not label:
-                continue
-            route_concept: StemBucket | StemLiteral = (
-                bucket if bucket is not StemBucket.UNKNOWN else StemLiteral(label)
-            )
-            routes_list.append(
-                derived_stem_route(
-                    route_concept,
-                    label=label,
-                    selected_by_default=True,
-                )
-            )
-        routes = tuple(routes_list)
+    pair_id = normalize_stem_pair_id(settings.ensemble.main_stem)
+    pair = stem_pair_definition(pair_id)
+    if pair is not None:
+        routes = tuple(_reviewed_route(role) for role in pair.roles)
         return routes, routes
 
-    if pair is EnsemblePair.FOUR_STEM:
-        standard = tuple(
-            derived_stem_route(
-                focus_bucket(stem), label=stem, tag=stem, selected_by_default=True
-            )
-            for stem in DEMUCS_4_SOURCE_LIST
-        )
-        if not any(descriptor.routes for descriptor in descriptors):
-            return standard, standard
-        counts = {route.concept.casefold(): 0 for route in standard}
-        for descriptor in descriptors:
-            member_concepts = {
-                route.concept.casefold()
+    if pair_id == "mode.four_stem":
+        standard = tuple(_reviewed_route(role) for role in _FOUR_STEM_ROLES)
+        counts = {route.role: 0 for route in standard}
+        for _index, descriptor in enumerate(descriptors):
+            member_roles = {
+                route.role
                 for route in _fallback_descriptor_routes(descriptor)
-                if route.selected_by_default
+                if route.selected_by_default and isinstance(route.role, StemRoleId)
             }
-            for concept in counts:
-                counts[concept] += int(concept in member_concepts)
+            for role in counts:
+                counts[role] += int(role in member_roles)
         union = tuple(
-            route for route in standard if counts[route.concept.casefold()] >= 1
+            route for route in standard if counts[route.role] >= 1
         )
         viable = tuple(
-            route for route in standard if counts[route.concept.casefold()] >= 2
+            route for route in standard if counts[route.role] >= 2
         )
         return viable, union
 
-    contributors: dict[str, list[StemRoute]] = {}
-    order: list[str] = []
-    for descriptor in descriptors:
-        seen_member: set[str] = set()
+    contributors: dict[tuple[object, ...], list[StemRoute]] = {}
+    contributor_members: dict[tuple[object, ...], set[str]] = {}
+    order: list[tuple[object, ...]] = []
+    for index, descriptor in enumerate(descriptors):
+        member_id = descriptor.id or f"member-{index}"
+        seen_member: set[tuple[object, ...]] = set()
         for route in _fallback_descriptor_routes(descriptor):
-            key = route.concept.casefold()
+            key = _ensemble_group_key(route, member_id)
             if key in seen_member or not route.selected_by_default:
                 continue
             seen_member.add(key)
             if key not in contributors:
                 contributors[key] = []
+                contributor_members[key] = set()
                 order.append(key)
             contributors[key].append(route)
+            contributor_members[key].add(member_id)
     union = tuple(contributors[key][0] for key in order)
     viable = tuple(
         dataclasses.replace(contributors[key][0], selected_by_default=True)
         for key in order
-        if len(contributors[key]) >= 2
+        if len(contributor_members[key]) >= 2
     )
     return viable, union
 
@@ -650,7 +702,7 @@ def planned_output_routes(
         routes, _union = _ensemble_output_routes(settings, descriptors)
         if positional:
             selected = tuple(routes)
-            if not coerce_ensemble_pair(settings.ensemble.main_stem).is_multi_or_four():
+            if not is_stem_mode(normalize_stem_pair_id(settings.ensemble.main_stem)):
                 if positional == FOCUS_PRIMARY:
                     selected = selected[:1]
                     reason = "ensemble-positional-primary"
@@ -798,7 +850,7 @@ def _apply_model_native_values(
     plan time, because whenever the setting was unset the value was the
     unparseable string ``Default``.
     """
-    for record, model in zip(records, models):
+    for record, model in zip(records, models, strict=False):
         source = (
             Provenance.MODEL_LOCAL.value
             if os.path.isfile(str(getattr(model, "model_hash_dir", "") or ""))
@@ -1033,7 +1085,7 @@ class JobResolver:
                             getattr(model, "primary_stem", "") or ""
                         )
                         for (path, _record), model in zip(
-                            primary_dependencies.items(), primary_models
+                            primary_dependencies.items(), primary_models, strict=False
                         )
                     }
                 except (OSError, ValueError) as exc:
@@ -1097,7 +1149,7 @@ class JobResolver:
         descriptor_models = models or topology_models
         descriptors = tuple(
             _descriptor(record, model, verify_model)
-            for record, model in zip(records, descriptor_models)
+            for record, model in zip(records, descriptor_models, strict=False)
         ) if descriptor_models else tuple(
             ModelDescriptor(
                 record.id,
@@ -1114,6 +1166,9 @@ class JobResolver:
         provenance = dict(spec.provenance)
         if models:
             _apply_model_native_values(settings, records, models, provenance)
+        diagnostics.extend(_ensemble_pair_diagnostics(
+            settings, descriptors, command=spec.command
+        ))
         diagnostics.extend(_stem_focus_diagnostics(
             settings,
             models,
@@ -1177,8 +1232,8 @@ class JobResolver:
                 primary_dependencies=primary_dependencies,
                 primary_stems={
                     path: descriptor.primary_stem
-                    for (path, _record), descriptor in zip(
-                        primary_dependencies.items(), plan.models
+                for (path, _record), descriptor in zip(
+                    primary_dependencies.items(), plan.models, strict=False
                     )
                     if descriptor.primary_stem
                 },
@@ -1211,23 +1266,28 @@ class JobResolver:
             primary_stems={
                 path: str(getattr(model, "primary_stem", "") or "")
                 for (path, _record), model in zip(
-                    primary_dependencies.items(), models
+                    primary_dependencies.items(), models, strict=False
                 )
             },
         )
         self._validate_karaoke_dependencies(settings, dependencies)
         descriptors = tuple(
             _descriptor(record, model, level is not ValidationLevel.CONFIG)
-            for record, model in zip(records, models)
+            for record, model in zip(records, models, strict=False)
         )
         provenance = dict(spec.provenance)
         _apply_model_native_values(settings, records, models, provenance)
-        diagnostics = tuple(_stem_focus_diagnostics(
-            settings,
-            models,
-            descriptors,
-            provenance,
-            command=spec.command,
+        diagnostics = tuple((
+            *_ensemble_pair_diagnostics(
+                settings, descriptors, command=spec.command
+            ),
+            *_stem_focus_diagnostics(
+                settings,
+                models,
+                descriptors,
+                provenance,
+                command=spec.command,
+            ),
         ))
         plan = ResolvedJob(
             spec.command,
@@ -1362,7 +1422,7 @@ class JobResolver:
         }
         return any(
             family in selected_families
-            and bool(getattr(getattr(settings, family), "is_secondary_model_activate"))
+            and bool(getattr(settings, family).is_secondary_model_activate)
             for family in _MODEL_FAMILIES
         )
 
@@ -1428,7 +1488,7 @@ class JobResolver:
                     model_dependencies=model_dependencies,
                 )
             record = records[0]
-            setattr(getattr(settings, record.family), "model", record.id)
+            getattr(settings, record.family).model = record.id
             return assemble_model(
                 settings, self.repo, record.id, record.method,
                 model_dependencies=model_dependencies,
@@ -1473,6 +1533,8 @@ class JobResolver:
                     stem,
                     route.conditional,
                     route.concept,
+                    route.role,
+                    route.filename_tag,
                 )
                 for route in stem_routes
                 for stem in (
@@ -1484,6 +1546,7 @@ class JobResolver:
 
     def _load_checkpoints(self, models: Sequence[Any]) -> None:
         from pathlib import Path
+
         from .torch_checkpoint import load_torch_checkpoint
 
         for model in models:

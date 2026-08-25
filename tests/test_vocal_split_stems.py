@@ -21,7 +21,15 @@ from core.model_stem_semantics import (
     vocal_inst_from_sources,
     vocal_split_source_roles,
 )
-from core.stems import StemBucket, bucket_for_model_stem, model_stem_routes
+from core.stem_pairs import stem_pair_definition
+from core.stem_roles import StemRoleId
+from core.stems import (
+    StemBucket,
+    bucket_for_model_stem,
+    model_stem_routes,
+    routes_for_ensemble_pair,
+    run_export_routes,
+)
 from engines.base import SeperateAttributes
 from engines.mdx_c import mdx_vocal_split_chain_sources
 from engines.mdx_c_engine import SeperateMDXC
@@ -143,6 +151,34 @@ class ReviewedVocalSplitContextTests(unittest.TestCase):
             ),
             ["Lead Vocals", "Backing Vocal", "Backing Vocals"],
         )
+
+    def test_giantailab_pair_and_multi_mode_keep_exact_role_membership(self) -> None:
+        model = _semantic_model(
+            "mdx:bs_karaoke_3stem_giantailab",
+            ["vocals", "backing_vocal", "instrumental"],
+            backend_primary="vocals",
+            vocal_split=False,
+        )
+        routes = model_stem_routes(model)
+        karaoke = stem_pair_definition("pair.karaoke")
+        assert karaoke is not None
+
+        self.assertEqual(
+            [route.role for route in routes_for_ensemble_pair(routes, karaoke)],
+            [
+                StemRoleId("vocal.lead"),
+                StemRoleId("mix.instrumental_with_backing_vocals"),
+            ],
+        )
+
+        from core.settings import Settings
+
+        model.is_ensemble_mode = True
+        model.available_stem_routes = routes
+        model.selected_stem_routes = routes_for_ensemble_pair(routes, karaoke)
+        model.settings = Settings.defaults()
+        model.settings.ensemble.main_stem = "mode.multi_stem"
+        self.assertEqual(tuple(run_export_routes(model)), routes)
 
 
 class VocalSplitRoleBucketTests(unittest.TestCase):

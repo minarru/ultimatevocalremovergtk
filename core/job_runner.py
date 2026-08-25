@@ -10,10 +10,9 @@ Supports single-model separation, ensemble runs, sample mode, and secondary /
 vocal-splitter / Demucs pre-process machinery. Audio tools live in
 :mod:`core.audio_tools`.
 """
-import typing
-
 import os
 import time
+import typing
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, List, Literal, Optional, Sequence
 
@@ -25,45 +24,47 @@ from bundled.constants import (
     VR_ARCH_TYPE,
 )
 
-from .job_plan import PlannedInput, ResolvedJob
+from . import job_callbacks, run_hooks
+from .debug_log import (
+    current_operation_id,
+    debug,
+    debug_elapsed,
+    log_event,
+    new_operation_id,
+    set_operation_id,
+)
 from .ensembler import Ensembler
 from .export_naming import (
     OutputNamingContext,
     build_output_naming_context,
     rebase_output_naming,
 )
+from .inference_cleanup import (
+    clear_source_mapper,
+)
+from .inference_cleanup import (
+    release_inference_memory as _release_inference_resources,
+)
+from .job_plan import PlannedInput, ResolvedJob
 from .model_config import ModelConfig, assemble_model
 from .model_repository import ModelRepository
 from .process_data import ProcessData
-from .sample_mode import prepare_input_paths
-from .settings import Settings
-from .stems import coerce_ensemble_pair
 from .run_estimate import count_inference_passes_from_models
-from .debug_log import (
-    debug,
-    debug_elapsed,
-    current_operation_id,
-    log_event,
-    new_operation_id,
-    set_operation_id,
-)
-from . import job_callbacks
-from . import run_hooks
 from .run_loop import (
     run_models_on_files,
     with_worker_lifecycle,
 )
+from .sample_mode import prepare_input_paths
 from .separate_import import import_separate_engines
-from .types import ProcessMethod
-from .inference_cleanup import (
-    clear_source_mapper,
-    release_inference_memory as _release_inference_resources,
-)
 from .separator_run import apply_segment_override
+from .settings import Settings
+from .stem_pairs import is_stem_mode, normalize_stem_pair_id
+from .types import ProcessMethod
 
 if TYPE_CHECKING:
-    from engines.model_weight_cache import FileIdentity
     from kthread import KThread
+
+    from engines.model_weight_cache import FileIdentity
 
 
 def collect_run_model_paths(models: Sequence[ModelConfig]) -> set[str]:
@@ -547,7 +548,7 @@ class JobRunner:
             # prepared path back to the original so planned lookup still hits.
             self._run_path_map = {
                 os.path.abspath(prep): os.path.abspath(orig)
-                for orig, prep in zip(input_paths, prepared)
+                for orig, prep in zip(input_paths, prepared, strict=False)
             }
         return prepared
 
@@ -800,10 +801,10 @@ class JobRunner:
                     )
                 ensemble = Ensembler(self.settings)
                 ensemble_export_path = ensemble.ensemble_folder_name
-                is_4_stem = coerce_ensemble_pair(
-                    self.settings.ensemble.main_stem
-                ).is_multi_or_four()
-                hooks: Any = run_hooks._EnsembleRunHooks(ensemble, is_4_stem)
+                is_multi_stem = is_stem_mode(
+                    normalize_stem_pair_id(self.settings.ensemble.main_stem)
+                )
+                hooks: Any = run_hooks._EnsembleRunHooks(ensemble, is_multi_stem)
             else:
                 assert single_export_path is not None
                 try:

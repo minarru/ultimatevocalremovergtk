@@ -164,6 +164,7 @@ class ModelConfig:
         self.is_ensemble_mode = False
         self.ensemble_primary_stem = None
         self.ensemble_secondary_stem = None
+        self.ensemble_pair_roles: tuple[object, ...] = ()
         self.primary_model_primary_stem = primary_model_primary_stem
         self.is_secondary_model = True if is_vocal_split_model else is_secondary_model
         self.secondary_model = None
@@ -225,13 +226,13 @@ class ModelConfig:
             is_not_secondary_or_pre_proc = not is_secondary_model and not is_pre_proc_model
             self.is_ensemble_mode = is_not_secondary_or_pre_proc
 
-            from core.stems import EnsemblePair, coerce_ensemble_pair
+            from core.stem_pairs import normalize_stem_pair_id
 
-            ensemble_pair = coerce_ensemble_pair(ensemble.main_stem)
-            if ensemble_pair is EnsemblePair.FOUR_STEM:
+            ensemble_pair_id = normalize_stem_pair_id(ensemble.main_stem)
+            if ensemble_pair_id == "mode.four_stem":
                 self.is_4_stem_ensemble = self.is_ensemble_mode
             elif (
-                ensemble_pair is EnsemblePair.MULTI_STEM
+                ensemble_pair_id == "mode.multi_stem"
                 and process.method == ENSEMBLE_MODE
             ):
                 self.is_multi_stem_ensemble = True
@@ -523,7 +524,6 @@ class ModelConfig:
         from core.stems import (
             FOCUS_PRIMARY,
             StemSelectionStatus,
-            coerce_ensemble_pair,
             model_stem_routes,
             positional_stem_focus,
             route_matches_stem,
@@ -596,9 +596,12 @@ class ModelConfig:
             and bool(getattr(self, "is_ensemble_mode", False))
             and not selection_matched
         ):
-            pair = coerce_ensemble_pair(self.settings.ensemble.main_stem)
-            if not pair.is_multi_or_four():
-                pair_routes = routes_for_ensemble_pair(routes, pair, self)
+            from core.stem_pairs import normalize_stem_pair_id, stem_pair_definition
+
+            pair_id = normalize_stem_pair_id(self.settings.ensemble.main_stem)
+            pair = stem_pair_definition(pair_id)
+            if pair is not None:
+                pair_routes = routes_for_ensemble_pair(routes, pair)
                 if pair_routes:
                     selected = pair_routes
 
@@ -657,16 +660,27 @@ class ModelConfig:
             self.is_secondary_model_activated = False if self.secondary_model.model_basename == self.model_basename else True
 
     def return_ensemble_stems(self, is_primary: typing.Any = False):
-        """Return UI stem-half labels for the chosen :class:`~core.stems.EnsemblePair`.
+        """Return registry labels for the selected exact reviewed role pair."""
+        from core.model_stem_manifest import load_bundled_stem_semantics
+        from core.stem_pairs import normalize_stem_pair_id, stem_pair_definition
 
-        These are Save-stems / stem-only labels, not filename combine tags
-        (:meth:`~core.stems.EnsemblePair.buckets` / ``filename_tag``).
-        """
-        from core.stems import coerce_ensemble_pair
-
-        primary, secondary = coerce_ensemble_pair(
-            self.settings.ensemble.main_stem
-        ).stem_halves()
+        pair = stem_pair_definition(
+            normalize_stem_pair_id(self.settings.ensemble.main_stem)
+        )
+        if pair is None:
+            self.ensemble_pair_roles = ()
+            primary, secondary = "", ""
+        else:
+            registry = load_bundled_stem_semantics()
+            primary_definition = registry.roles.get(pair.roles[0])
+            secondary_definition = registry.roles.get(pair.roles[1])
+            if primary_definition is None or secondary_definition is None:
+                self.ensemble_pair_roles = ()
+                primary, secondary = "", ""
+            else:
+                self.ensemble_pair_roles = pair.roles
+                primary = primary_definition.display
+                secondary = secondary_definition.display
         if is_primary:
             return primary
         return primary, secondary
@@ -699,10 +713,15 @@ class ModelConfig:
         stem_secondary_bool = False
         if len(selected) == 1:
             route = selected[0]
-            stem_primary_bool = route_matches_stem(route, primary_for_label, self)
-            stem_secondary_bool = (not stem_primary_bool) and route_matches_stem(
-                route, secondary_for_label, self
-            )
+            pair_roles = tuple(getattr(self, "ensemble_pair_roles", ()) or ())
+            if chosen_method == ENSEMBLE_MODE and len(pair_roles) == 2:
+                stem_primary_bool = route.role == pair_roles[0]
+                stem_secondary_bool = route.role == pair_roles[1]
+            else:
+                stem_primary_bool = route_matches_stem(route, primary_for_label, self)
+                stem_secondary_bool = (not stem_primary_bool) and route_matches_stem(
+                    route, secondary_for_label, self
+                )
 
         is_save_inst_splitter = self.settings.process.save_inst_vocal_splitter
         has_voc_splitter = (
@@ -710,38 +729,47 @@ class ModelConfig:
             and self.settings.process.vocal_splitter != NO_MODEL
         )
 
-        from core.stems import (
-            StemBucket,
-            bucket_for_model_stem,
-            coerce_ensemble_pair,
-            stem_context,
-        )
-
-        vocal_buckets = {
-            StemBucket.VOCALS,
-            StemBucket.LEAD_VOCALS,
-            StemBucket.BACKING_VOCALS,
-        }
-        inst_buckets = {
-            StemBucket.INSTRUMENTAL,
-            StemBucket.INST_WITH_BV,
-            StemBucket.INST_WITH_LEAD,
-        }
         if chosen_method == ENSEMBLE_MODE:
-            primary_bucket, secondary_bucket = coerce_ensemble_pair(
-                self.settings.ensemble.main_stem
-            ).buckets()
+            from core.model_stem_manifest import load_bundled_stem_semantics
+
+            pair_roles = tuple(getattr(self, "ensemble_pair_roles", ()) or ())
+            registry = load_bundled_stem_semantics()
+            primary_definition = registry.roles.get(pair_roles[0]) if len(pair_roles) == 2 else None
+            secondary_definition = registry.roles.get(pair_roles[1]) if len(pair_roles) == 2 else None
+            primary_is_vocals = bool(
+                primary_definition is not None and primary_definition.family.value == "vocal"
+            )
+            secondary_is_vocals = bool(
+                secondary_definition is not None and secondary_definition.family.value == "vocal"
+            )
+            primary_is_inst = bool(
+                primary_definition is not None and primary_definition.family.value == "mix"
+            )
+            secondary_is_inst = bool(
+                secondary_definition is not None and secondary_definition.family.value == "mix"
+            )
         else:
+            from core.stems import StemBucket, bucket_for_model_stem, stem_context
+
+            vocal_buckets = {
+                StemBucket.VOCALS,
+                StemBucket.LEAD_VOCALS,
+                StemBucket.BACKING_VOCALS,
+            }
+            inst_buckets = {
+                StemBucket.INSTRUMENTAL,
+                StemBucket.INST_WITH_BV,
+                StemBucket.INST_WITH_LEAD,
+            }
             ctx = stem_context(self)
             primary_bucket = bucket_for_model_stem(str(primary_for_label or ""), **ctx)
             secondary_bucket = bucket_for_model_stem(
                 str(secondary_for_label or ""), **ctx
             )
-
-        primary_is_vocals = primary_bucket in vocal_buckets
-        secondary_is_vocals = secondary_bucket in vocal_buckets
-        primary_is_inst = primary_bucket in inst_buckets
-        secondary_is_inst = secondary_bucket in inst_buckets
+            primary_is_vocals = primary_bucket in vocal_buckets
+            secondary_is_vocals = secondary_bucket in vocal_buckets
+            primary_is_inst = primary_bucket in inst_buckets
+            secondary_is_inst = secondary_bucket in inst_buckets
 
         if checktype == VOCAL_STEM_ONLY:
             return not (

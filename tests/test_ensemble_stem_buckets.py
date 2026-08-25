@@ -4,7 +4,17 @@ import re
 import unittest
 
 from core.export_naming import format_stem_basename
-from core.stems import StemBucket, bucket_for_model_stem, concept_is, filename_tag
+from core.stem_pairs import stem_pair_definition
+from core.stem_roles import StemLiteral, StemRoleId
+from core.stems import (
+    StemBucket,
+    StemId,
+    StemRoute,
+    bucket_for_model_stem,
+    concept_is,
+    filename_tag,
+    routes_for_ensemble_pair,
+)
 
 _ALL_BUCKETS = (
     StemBucket.VOCALS, StemBucket.INSTRUMENTAL, StemBucket.OTHER, StemBucket.DRUMS,
@@ -28,6 +38,41 @@ class OtherOverloadTests(unittest.TestCase):
             bucket_for_model_stem("Instrumental", stem_count=2, is_karaoke=True),
             StemBucket.INST_WITH_BV,
         )
+
+
+class ExactReviewedPairTests(unittest.TestCase):
+    def test_pair_requires_its_complete_role_ids_not_raw_native_words(self) -> None:
+        pair = stem_pair_definition("pair.center_side")
+        assert pair is not None
+        routes = (
+            StemRoute(
+                StemId("Similarity"),
+                StemRoleId("spatial.center"),
+                "Center",
+                "Center",
+            ),
+            StemRoute(
+                StemId("Difference"),
+                StemRoleId("spatial.side"),
+                "Side",
+                "Side",
+            ),
+            StemRoute(
+                StemId("center"), StemLiteral("center"), "center", "center"
+            ),
+        )
+
+        self.assertEqual(routes_for_ensemble_pair(routes, pair), routes[:2])
+
+    def test_raw_center_side_spelling_cannot_satisfy_the_reviewed_pair(self) -> None:
+        pair = stem_pair_definition("pair.center_side")
+        assert pair is not None
+        raw_routes = (
+            StemRoute(StemId("center"), StemLiteral("center"), "center", "center"),
+            StemRoute(StemId("wide"), StemLiteral("wide"), "wide", "wide"),
+        )
+
+        self.assertEqual(routes_for_ensemble_pair(raw_routes, pair), ())
         self.assertEqual(
             bucket_for_model_stem("other", stem_count=2, is_karaoke=True),
             StemBucket.INST_WITH_BV,
@@ -360,9 +405,9 @@ class StemFocusMatchTests(unittest.TestCase):
 
     def test_exclusive_flags_for_pair_positional_sentinels(self) -> None:
         from core.stems import (
-            EnsemblePair,
             FOCUS_PRIMARY,
             FOCUS_SECONDARY,
+            EnsemblePair,
             exclusive_flags_for_focus,
             exclusive_flags_for_pair,
         )

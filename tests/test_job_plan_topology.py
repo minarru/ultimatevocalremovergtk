@@ -8,25 +8,81 @@ from unittest.mock import Mock, patch
 from bundled.constants import (
     BASS_STEM,
     DRUM_STEM,
-    NO_BASS_STEM,
-    NO_DRUM_STEM,
-    NO_OTHER_STEM,
-    OTHER_STEM,
     VOCAL_STEM,
 )
 from core.job_plan import JobResolver, JobSpec, ModelDescriptor, planned_output_stems
 from core.model_identity import ModelArtifacts
 from core.settings import Settings
 from core.stem_roles import StemId, StemRoleId
-from core.stems import EnsemblePair, FOCUS_SECONDARY, StemRoute
+from core.stems import FOCUS_SECONDARY, StemLiteral, StemRoute
 from core.types import ProcessMethod
 
 
-def _desc(stem: str, secondary: str = "Instrumental") -> ModelDescriptor:
-    return ModelDescriptor("mdx:a", "mdx", "a", "A", primary_stem=stem, secondary_stem=secondary)
+def _desc(
+    stem: str, secondary: str = "Instrumental", identifier: str = "mdx:a"
+) -> ModelDescriptor:
+    roles = {
+        "Vocals": StemRoleId("vocal.vocals"),
+        "Instrumental": StemRoleId("mix.instrumental"),
+        "Bass": StemRoleId("instrument.bass"),
+        "Drums": StemRoleId("instrument.drums"),
+        "Other": StemRoleId("residual.other"),
+    }
+    routes = tuple(
+        StemRoute(
+            native=StemId(name),
+            role=roles.get(name, StemLiteral(name)),
+            label=name,
+            filename_tag=name,
+        )
+        for name in (stem, secondary)
+    )
+    return ModelDescriptor(
+        identifier, "mdx", "a", "A", primary_stem=stem, secondary_stem=secondary,
+        routes=routes,
+    )
+
+
+def _four_desc(identifier: str) -> ModelDescriptor:
+    return ModelDescriptor(
+        identifier, "mdx", identifier.removeprefix("mdx:"), identifier,
+        routes=(
+            StemRoute(StemId("bass"), StemRoleId("instrument.bass"), "Bass", "Bass"),
+            StemRoute(StemId("drums"), StemRoleId("instrument.drums"), "Drums", "Drums"),
+            StemRoute(StemId("other"), StemRoleId("residual.other"), "Residual", "Residual"),
+            StemRoute(StemId("vocals"), StemRoleId("vocal.vocals"), "Vocals", "Vocals"),
+        ),
+    )
 
 
 class PlannedOutputStemTests(unittest.TestCase):
+    def test_pair_selection_requires_two_distinct_reviewed_members(self) -> None:
+        from core.job_plan import _ensemble_pair_diagnostics
+
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
+        only_one = (_desc("Vocals", "Instrumental", "mdx:one"),)
+        diagnostics = _ensemble_pair_diagnostics(
+            settings, only_one, command="ensemble"
+        )
+
+        self.assertEqual(diagnostics[0].code, "ensemble.pair_repick")
+        self.assertIn("two distinct", diagnostics[0].message)
+
+    def test_unknown_pair_selection_requests_an_explicit_repick(self) -> None:
+        from core.job_plan import _ensemble_pair_diagnostics
+
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "pair.nearby_but_wrong"
+        diagnostics = _ensemble_pair_diagnostics(
+            settings,
+            (_desc("Vocals", "Instrumental", "mdx:one"),),
+            command="ensemble",
+        )
+
+        self.assertEqual(diagnostics[0].code, "ensemble.pair_repick")
+        self.assertIn("Choose a reviewed", diagnostics[0].message)
+
     def test_positional_primary_uses_logical_primary_not_backend_primary(self) -> None:
         settings = Settings.defaults()
         settings.process.stem_focus = "primary"
@@ -72,7 +128,7 @@ class PlannedOutputStemTests(unittest.TestCase):
 
     def test_ensemble_pair_ignores_first_member_stems(self) -> None:
         settings = Settings.defaults()
-        settings.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
         stems = planned_output_stems(
             settings, (_desc("Drums", "Bass"), _desc("Vocals")), command="ensemble",
         )
@@ -82,29 +138,31 @@ class PlannedOutputStemTests(unittest.TestCase):
 
     def test_four_stem_ensemble_is_the_standard_four(self) -> None:
         settings = Settings.defaults()
-        settings.ensemble.main_stem = EnsemblePair.FOUR_STEM
-        stems = planned_output_stems(settings, (_desc("Vocals"),), command="ensemble")
+        settings.ensemble.main_stem = "mode.four_stem"
+        stems = planned_output_stems(
+            settings, (_four_desc("mdx:one"), _four_desc("mdx:two")), command="ensemble"
+        )
         labels = tuple(stem for stem, _conditional in stems)
-        self.assertEqual(labels, (BASS_STEM, DRUM_STEM, OTHER_STEM, VOCAL_STEM))
+        self.assertEqual(labels, (BASS_STEM, DRUM_STEM, "Residual", VOCAL_STEM))
 
     def test_four_stem_focus_filters_final_output(self) -> None:
         settings = Settings.defaults()
-        settings.ensemble.main_stem = EnsemblePair.FOUR_STEM
-        settings.process.stem_focus = BASS_STEM
+        settings.ensemble.main_stem = "mode.four_stem"
+        settings.process.stem_focus = "instrument.bass"
         stems = planned_output_stems(
-            settings, (_desc("Vocals"), _desc("Vocals")), command="ensemble"
+            settings, (_four_desc("mdx:one"), _four_desc("mdx:two")), command="ensemble"
         )
         self.assertEqual(stems, ((BASS_STEM, False),))
 
     def test_multi_stem_keeps_only_routes_with_two_contributors(self) -> None:
         settings = Settings.defaults()
-        settings.ensemble.main_stem = EnsemblePair.MULTI_STEM
+        settings.ensemble.main_stem = "mode.multi_stem"
         stems = planned_output_stems(
             settings,
             (
-                _desc("Vocals", "Bass"),
-                _desc("Vocals", "Drums"),
-                _desc("Bass", "Other"),
+                _desc("Vocals", "Bass", "mdx:one"),
+                _desc("Vocals", "Drums", "mdx:two"),
+                _desc("Bass", "Other", "mdx:three"),
             ),
             command="ensemble",
         )
@@ -112,15 +170,49 @@ class PlannedOutputStemTests(unittest.TestCase):
         self.assertEqual(labels, {"Vocals", "Bass"})
         self.assertFalse(any(conditional for _stem, conditional in stems))
 
+    def test_multi_stem_groups_reviewed_removal_roles_not_no_stem_spelling(self) -> None:
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "mode.multi_stem"
+        role = StemRoleId("instrument.bass.removed")
+        descriptors = (
+            ModelDescriptor(
+                "mdx:one",
+                "mdx",
+                "one",
+                "One",
+                routes=(
+                    StemRoute(
+                        StemId("No Bass"), role, "Bass Removed", "Bass_Removed"
+                    ),
+                ),
+            ),
+            ModelDescriptor(
+                "mdx:two",
+                "mdx",
+                "two",
+                "Two",
+                routes=(
+                    StemRoute(
+                        StemId("Bass Removed"), role, "Bass Removed", "Bass_Removed"
+                    ),
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            planned_output_stems(settings, descriptors, command="ensemble"),
+            (("Bass Removed", False),),
+        )
+
     def test_multi_stem_explicit_single_contributor_is_an_error(self) -> None:
         from core.job_plan import _stem_focus_diagnostics
 
         settings = Settings.defaults()
-        settings.ensemble.main_stem = EnsemblePair.MULTI_STEM
-        settings.process.stem_focus = DRUM_STEM
+        settings.ensemble.main_stem = "mode.multi_stem"
+        settings.process.stem_focus = "instrument.drums"
         descriptors = (
-            _desc("Vocals", "Drums"),
-            _desc("Vocals", "Bass"),
+            _desc("Vocals", "Drums", "mdx:one"),
+            _desc("Vocals", "Bass", "mdx:two"),
         )
         diagnostics = _stem_focus_diagnostics(
             settings,
@@ -134,43 +226,35 @@ class PlannedOutputStemTests(unittest.TestCase):
 
     def test_ensemble_vocals_focus_plans_only_the_vocal_half(self) -> None:
         from bundled.constants import LEAD_VOCAL_STEM_LABEL
-        from core.stems import StemBucket
 
         settings = Settings.defaults()
-        settings.process.stem_focus = StemBucket.VOCALS.value
-        settings.ensemble.main_stem = EnsemblePair.KARAOKE
+        settings.process.stem_focus = "vocal.lead"
+        settings.ensemble.main_stem = "pair.karaoke"
         stems = planned_output_stems(
-            settings, (_desc("Vocals"), _desc("Vocals")), command="ensemble",
+            settings, (_desc("Vocals", identifier="mdx:one"), _desc("Vocals", identifier="mdx:two")), command="ensemble",
         )
         self.assertEqual(stems, ((LEAD_VOCAL_STEM_LABEL, False),))
 
     def test_ensemble_instrumental_focus_does_not_pick_other_pair(self) -> None:
-        from bundled.constants import OTHER_STEM
         from core.stems import StemBucket
 
         settings = Settings.defaults()
         settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
-        settings.ensemble.main_stem = EnsemblePair.OTHER
+        settings.ensemble.main_stem = "pair.center_side"
         stems = planned_output_stems(
             settings, (_desc("Other", "No Other"),), command="ensemble",
         )
         # Unmatched inherited focus falls back to the pair's complete inventory.
-        self.assertEqual(stems, ((OTHER_STEM, False), (NO_OTHER_STEM, False)))
+        self.assertEqual(stems, (("Center", False), ("Side", False)))
 
-    def test_complement_pair_secondary_only_plans_the_derived_half(self) -> None:
-        for pair, primary, complement in (
-            (EnsemblePair.OTHER, OTHER_STEM, NO_OTHER_STEM),
-            (EnsemblePair.DRUMS, DRUM_STEM, NO_DRUM_STEM),
-            (EnsemblePair.BASS, BASS_STEM, NO_BASS_STEM),
-        ):
-            with self.subTest(pair=pair):
-                settings = Settings.defaults()
-                settings.ensemble.main_stem = pair
-                settings.process.stem_focus = FOCUS_SECONDARY
-                stems = planned_output_stems(
-                    settings, (_desc(primary, complement),), command="ensemble"
-                )
-                self.assertEqual(stems, ((complement, False),))
+    def test_pair_secondary_only_plans_the_second_reviewed_role(self) -> None:
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "pair.center_side"
+        settings.process.stem_focus = FOCUS_SECONDARY
+        stems = planned_output_stems(
+            settings, (_desc("Center", "Side"),), command="ensemble"
+        )
+        self.assertEqual(stems, (("Side", False),))
 
     def test_separate_four_stem_other_is_not_instrumental_focus(self) -> None:
         from core.stems import StemBucket
@@ -243,7 +327,7 @@ class PlannedOutputStemTests(unittest.TestCase):
     def test_resolver_plan_outputs_use_ensemble_pair(self) -> None:
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.ENSEMBLE
-        settings.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
         settings.ensemble.selected_models = ["mdx:a", "mdx:b"]
         resolver = JobResolver(Mock())
         spec = JobSpec("ensemble", settings, ("/tmp/song.wav",), "/tmp/out")
@@ -259,7 +343,7 @@ class PlannedOutputStemTests(unittest.TestCase):
     def test_karaoke_planned_filename_uses_runtime_tag(self) -> None:
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.ENSEMBLE
-        settings.ensemble.main_stem = EnsemblePair.KARAOKE
+        settings.ensemble.main_stem = "pair.karaoke"
         resolver = JobResolver(Mock())
         spec = JobSpec("ensemble", settings, ("/tmp/song.wav",), "/tmp/out")
         planned = resolver._plan_inputs(
@@ -275,7 +359,7 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings.process.method = ProcessMethod.ENSEMBLE
         settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
         settings.ensemble.append_ensemble_name = True
-        settings.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
         resolver = JobResolver(Mock())
         spec = JobSpec("ensemble", settings, ("/tmp/song.wav",), "/tmp/out")
         planned = resolver._plan_inputs(
@@ -408,10 +492,10 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         from core.stems import FOCUS_SECONDARY
 
         settings = Settings.defaults()
-        settings.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
         settings.process.stem_focus = FOCUS_SECONDARY
         stems = planned_output_stems(
-            settings, (_desc("Vocals"), _desc("Vocals")), command="ensemble"
+            settings, (_four_desc("mdx:one"), _four_desc("mdx:two")), command="ensemble"
         )
         self.assertEqual(stems, (("Instrumental", False),))
 
@@ -419,11 +503,13 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         from core.stems import FOCUS_PRIMARY
 
         settings = Settings.defaults()
-        settings.ensemble.main_stem = EnsemblePair.FOUR_STEM
+        settings.ensemble.main_stem = "mode.four_stem"
         settings.process.stem_focus = FOCUS_PRIMARY
-        stems = planned_output_stems(settings, (_desc("Vocals"),), command="ensemble")
+        stems = planned_output_stems(
+            settings, (_four_desc("mdx:one"), _four_desc("mdx:two")), command="ensemble"
+        )
         labels = tuple(stem for stem, _conditional in stems)
-        self.assertEqual(labels, (BASS_STEM, DRUM_STEM, OTHER_STEM, VOCAL_STEM))
+        self.assertEqual(labels, (BASS_STEM, DRUM_STEM, "Residual", VOCAL_STEM))
 
 
 class PlanningDiagnosticsTests(unittest.TestCase):

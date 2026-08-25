@@ -117,8 +117,9 @@ class MainStemChoiceTests(unittest.TestCase):
         from core.ensembler import Ensembler
         from core.settings import Settings
 
-        pair = coerce_ensemble_pair("pair.center_side")
-        self.assertEqual(pair.stem_halves(), ("Center", "Side"))
+        definition = stem_pair_definition("pair.center_side")
+        assert definition is not None
+        self.assertEqual(definition.display, "Center/Side")
         routes = (
             StemRoute(
                 StemId("center"),
@@ -135,7 +136,7 @@ class MainStemChoiceTests(unittest.TestCase):
                 kind=StemRouteKind.NATIVE,
             ),
         )
-        self.assertEqual(routes_for_ensemble_pair(routes, pair, object()), routes)
+        self.assertEqual(routes_for_ensemble_pair(routes, definition), routes)
 
         with tempfile.TemporaryDirectory() as export_path:
             settings = Settings.defaults()
@@ -146,6 +147,29 @@ class MainStemChoiceTests(unittest.TestCase):
 
         self.assertEqual(ensembler.ensemble_primary_stem, "Center")
         self.assertEqual(ensembler.ensemble_secondary_stem, "Side")
+
+    def test_routes_for_pair_accepts_the_reviewed_definition(self) -> None:
+        """A pair is its exact two role IDs, never its display spelling."""
+        definition = stem_pair_definition("pair.center_side")
+        assert definition is not None
+        routes = (
+            StemRoute(
+                StemId("Similarity"),
+                StemRoleId("spatial.center"),
+                label="Center",
+                filename_tag="Center",
+                kind=StemRouteKind.NATIVE,
+            ),
+            StemRoute(
+                StemId("Difference"),
+                StemRoleId("spatial.side"),
+                label="Side",
+                filename_tag="Side",
+                kind=StemRouteKind.NATIVE,
+            ),
+        )
+
+        self.assertEqual(routes_for_ensemble_pair(routes, definition), routes)
 
 
 if __name__ == "__main__":

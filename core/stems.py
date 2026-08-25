@@ -43,6 +43,7 @@ from bundled.constants import (
 )
 
 from .model_stem_manifest import (
+    StemPairDefinition,
     load_bundled_stem_semantics,
     resolve_model_stem_semantics,
 )
@@ -1313,31 +1314,33 @@ def routes_matching_stems(
     return tuple(picked)
 
 
-def _route_matches_pair(route: StemRoute, pair: EnsemblePair, model: Any) -> bool:
-    primary_bucket, secondary_bucket = pair.buckets()
-    for bucket in (primary_bucket, secondary_bucket):
-        if bucket is StemBucket.UNKNOWN:
-            continue
-        if route.concept == bucket.value:
-            return True
-        actual = focus_bucket(route.concept)
-        if actual is not StemBucket.UNKNOWN and (
-            actual is bucket or _plain_family(actual) is _plain_family(bucket)
-        ):
-            return True
-    for half in pair.stem_halves():
-        if half and route_matches_stem(route, half, model):
-            return True
-    return False
-
-
 def routes_for_ensemble_pair(
-    routes: Sequence[StemRoute], pair: EnsemblePair, model: Any
+    routes: Sequence[StemRoute], pair: StemPairDefinition | str | None
 ) -> Tuple[StemRoute, ...]:
-    """Inventory routes that belong to a dual-stem ensemble pair."""
-    if pair.is_multi_or_four() or pair is EnsemblePair.CHOOSE:
+    """Return a complete reviewed pair in the model's native route order.
+
+    An ensemble pair is meaningful only when a reviewed model projection
+    provides *both* exact role IDs from the manifest definition.  Raw
+    literals, legacy concepts, labels, and native-key spellings cannot satisfy
+    this boundary.
+    """
+    definition: StemPairDefinition | None
+    if isinstance(pair, str):
+        from .stem_pairs import stem_pair_definition
+
+        definition = stem_pair_definition(pair)
+    else:
+        definition = pair
+    if definition is None:
         return ()
-    return tuple(route for route in routes if _route_matches_pair(route, pair, model))
+    wanted = set(definition.roles)
+    matched: list[StemRoute] = []
+    found: set[StemRoleId] = set()
+    for route in routes:
+        if isinstance(route.role, StemRoleId) and route.role in wanted:
+            matched.append(route)
+            found.add(route.role)
+    return tuple(matched) if found == wanted else ()
 
 
 def run_export_routes(model: Any) -> Tuple[StemRoute, ...]:
@@ -1361,8 +1364,10 @@ def run_export_routes(model: Any) -> Tuple[StemRoute, ...]:
     if getattr(model, "is_ensemble_mode", False):
         settings = getattr(model, "settings", None)
         ensemble = getattr(settings, "ensemble", None) if settings is not None else None
-        pair = coerce_ensemble_pair(getattr(ensemble, "main_stem", None))
-        if pair.is_multi_or_four():
+        from .stem_pairs import is_stem_mode, normalize_stem_pair_id
+
+        pair_id = normalize_stem_pair_id(getattr(ensemble, "main_stem", None))
+        if is_stem_mode(pair_id):
             return available
     return selected or available
 

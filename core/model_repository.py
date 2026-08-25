@@ -7,11 +7,10 @@ hash-JSON IO live in :mod:`core.model_data`. Saved-ensemble JSON persistence
 lives in :mod:`core.ensemble_service`.
 Nothing here imports ``tkinter``.
 """
-import typing
-
 import json
 import os
 import threading
+import typing
 from typing import TYPE_CHECKING, AbstractSet, Any, Callable, Dict, List, Optional, Tuple
 
 from bundled.constants import *  # noqa: F401,F403 - mirrors UVR.py's flat constant namespace
@@ -565,52 +564,38 @@ class ModelRepository:
     def ensemble_model_list(
         self, settings: Settings, ensemble_main_stem: Any
     ) -> List[str]:
-        """Models compatible with the chosen ensemble main-stem pair.
+        """Return installed models with exact reviewed pair-role coverage.
 
-        Accepts :class:`~core.stems.EnsemblePair` or its stable id. Legacy
-        display pair strings coerce to :attr:`~core.stems.EnsemblePair.CHOOSE`
-        and yield an empty list.
+        Pair eligibility is deliberately stricter than a display or native
+        spelling comparison: a model must resolve to a reviewed full-mix
+        declaration with both role IDs from the requested definition.
         """
-        from core.stems import EnsemblePair, StemBucket, coerce_ensemble_pair
+        from core.stem_pairs import normalize_stem_pair_id, stem_pair_definition
+        from core.stem_roles import StemRoleId
 
-        pair = (
-            ensemble_main_stem
-            if isinstance(ensemble_main_stem, EnsemblePair)
-            else coerce_ensemble_pair(ensemble_main_stem)
-        )
-        if pair is EnsemblePair.CHOOSE:
-            return []
-        if pair is EnsemblePair.MULTI_STEM:
-            return [_checklist_id(model) for model in self.stem_check(settings)]
-        if pair is EnsemblePair.FOUR_STEM:
-            return self.model_list(
-                settings, PRIMARY_STEM, SECONDARY_STEM, is_4_stem_check=True
-            )
-        if pair is EnsemblePair.CENTER_SIDE:
-            # ``center`` and ``side`` have no legacy StemBucket projection.
-            # During the semantic cutover, admit this current UI choice only
-            # when an exact reviewed full-mix declaration supplies both roles.
-            # Do not infer it from backend-native labels such as ``wide``.
-            from core.stem_pairs import stem_pair_definition
-
-            definition = stem_pair_definition("pair.center_side")
-            if definition is None:
-                return []
+        pair_id = normalize_stem_pair_id(ensemble_main_stem)
+        definition = stem_pair_definition(pair_id)
+        if definition is not None:
             return [
                 _checklist_id(model)
                 for model in self.stem_check(settings)
                 if _has_reviewed_full_mix_roles(model, definition.roles)
             ]
-        primary, secondary = pair.buckets()
-        primary_ui, secondary_ui = pair.stem_halves()
-        wanted = {primary, secondary}
-        wanted.discard(StemBucket.UNKNOWN)
-        return self.model_list(
-            settings,
-            primary_ui,
-            secondary_ui,
-            wanted_buckets=wanted,
-        )
+        if pair_id == "mode.multi_stem":
+            return [_checklist_id(model) for model in self.stem_check(settings)]
+        if pair_id == "mode.four_stem":
+            roles = (
+                StemRoleId("instrument.bass"),
+                StemRoleId("instrument.drums"),
+                StemRoleId("residual.other"),
+                StemRoleId("vocal.vocals"),
+            )
+            return [
+                _checklist_id(model)
+                for model in self.stem_check(settings)
+                if _has_reviewed_full_mix_roles(model, roles)
+            ]
+        return []
 
     def resolve_model_dry(self, settings: Settings, process_method: str, model_name: str):
         """Resolve ``model_name`` to a dry-check :class:`ModelConfig` (or ``None``).
@@ -700,7 +685,9 @@ def _canonical_model_tags(
     from .model_identity import ModelId
 
     displays = map_basenames_to_display(basenames, arch, repo)
-    pairs = sorted(zip(displays, basenames), key=lambda item: str(item[0]).casefold())
+    pairs = sorted(
+        zip(displays, basenames, strict=False), key=lambda item: str(item[0]).casefold()
+    )
     return [str(ModelId(family, basename)) for _display, basename in pairs]
 
 
@@ -826,4 +813,4 @@ def _list_model_files(directory: str, extensions: typing.Any) -> List[str]:
     return sorted(names)
 
 
-from .model_config.config import ModelConfig
+from .model_config.config import ModelConfig  # noqa: E402 - avoids import cycle

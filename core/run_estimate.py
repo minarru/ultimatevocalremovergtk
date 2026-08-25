@@ -1,14 +1,13 @@
 """Pre-run workload hints and live separation ETA tracking."""
 
 from __future__ import annotations
-import typing
 
+import typing
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple
 
 from bundled.constants import (
-    ALL_STEMS,
     DEMUCS_ARCH_TYPE,
     DENOISE_M,
     DENOISE_S,
@@ -18,7 +17,7 @@ from bundled.constants import (
     VR_ARCH_PM,
     VR_ARCH_TYPE,
 )
-from core.stems import EnsemblePair, coerce_ensemble_pair
+from core.stem_pairs import normalize_stem_pair_id
 
 if TYPE_CHECKING:
     from .settings import Settings
@@ -364,10 +363,10 @@ def _multi_stem_base_outputs(settings: typing.Any, repo: typing.Any=None) -> int
 
 def ensemble_export_summary(settings: typing.Any, repo: typing.Any=None) -> str:
     """Short export line for ensemble modes without dual-stem Save stems toggles."""
-    pair = coerce_ensemble_pair(settings.ensemble.main_stem)
-    if pair is EnsemblePair.FOUR_STEM:
+    pair_id = normalize_stem_pair_id(settings.ensemble.main_stem)
+    if pair_id == "mode.four_stem":
         label = "4 stem outputs"
-    elif pair is EnsemblePair.MULTI_STEM:
+    elif pair_id == "mode.multi_stem":
         count = _multi_stem_base_outputs(settings, repo)
         label = f"{count} stem outputs"
     else:
@@ -393,10 +392,10 @@ def count_expected_outputs(
 
     base = 0
     if method_key == ENSEMBLE_MODE and settings is not None:
-        pair = coerce_ensemble_pair(settings.ensemble.main_stem)
-        if pair is EnsemblePair.FOUR_STEM:
+        pair_id = normalize_stem_pair_id(settings.ensemble.main_stem)
+        if pair_id == "mode.four_stem":
             base = 4
-        elif pair is EnsemblePair.MULTI_STEM:
+        elif pair_id == "mode.multi_stem":
             base = _multi_stem_base_outputs(settings, repo)
         elif save_stems is not None and getattr(save_stems, "mode", None) != "hidden":
             base = int(save_stems.expected_output_count())

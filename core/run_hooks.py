@@ -12,20 +12,16 @@ import os
 import time
 from typing import Any, List
 
-from bundled.constants import PRIMARY_STEM, SECONDARY_STEM
-
 from .audio_io import resolve_wav_type_set
 from .debug_log import debug_elapsed
 from .ensembler import (
     Ensembler,
-    _ensemble_stem_bucket,
-    _extract_stems,
-    _filter_final_ensemble_stems,
+    planned_ensemble_stems,
 )
 from .model_config import ModelConfig
 from .run_estimate import combine_progress_local_step
 from .run_loop import FileState, _write_captured_stems
-from .stems import coerce_ensemble_pair, exclusive_flags_for_pair
+from .stems import StemRoute, StemRouteKind, select_stem_routes
 
 
 def _model_output_label(model: ModelConfig) -> str:
@@ -119,13 +115,15 @@ class _EnsembleRunHooks:
 
     process_kind = "ensemble"
 
-    def __init__(self, ensemble: Ensembler, is_4_stem: bool) -> None:
+    def __init__(self, ensemble: Ensembler, is_multi_stem: bool) -> None:
         self.ensemble = ensemble
         self.export_path = ensemble.ensemble_folder_name
-        self.is_4_stem = is_4_stem
+        self.is_multi_stem = is_multi_stem
 
     def before_file(self, runner: Any, state: FileState) -> None:
         state.scratch["ensemble_stem_arrays"] = {}
+        state.scratch["ensemble_stems"] = {}
+        state.scratch["ensemble_contributors"] = {}
         runner._ensemble_salvage_members = []
         final_naming = runner._naming_for_file(
             state.audio_file,
@@ -164,7 +162,7 @@ class _EnsembleRunHooks:
     ) -> dict:
         return {
             "is_ensemble_master": True,
-            "is_4_stem_ensemble": self.is_4_stem,
+            "is_4_stem_ensemble": self.is_multi_stem,
             "is_save_all_outputs_ensemble": bool(
                 runner.settings.ensemble.save_all_outputs
             ),
@@ -181,18 +179,34 @@ class _EnsembleRunHooks:
     ) -> None:
         scratch = state.scratch
         scratch["last_member_stems"] = stems
+        planned = planned_ensemble_stems(model)
+        member_id = str(
+            getattr(model, "canonical_id", "")
+            or getattr(model, "model_and_process_tag", "")
+            or id(model)
+        )
+        for collected in planned.values():
+            scratch["ensemble_stems"][collected.group_key] = collected
+            scratch["ensemble_contributors"].setdefault(collected.group_key, set()).add(member_id)
+
+        def collect(tag: str, value: Any) -> None:
+            collected = planned.get(tag)
+            if collected is None:
+                return
+            scratch["ensemble_stem_arrays"].setdefault(collected.group_key, []).append(value)
+            if tag in paths:
+                scratch["member_paths"][collected.group_key] = paths[tag]
+
         if chunked:
             for stem_tag, arr in stems.items():
-                bucket = _ensemble_stem_bucket(stem_tag)
-                scratch["member_stem_parts"].setdefault(bucket, []).append(arr)
-                if stem_tag in paths:
-                    scratch["member_paths"][bucket] = paths[stem_tag]
+                collected = planned.get(stem_tag)
+                if collected is not None:
+                    scratch["member_stem_parts"].setdefault(collected, []).append(arr)
+                    if stem_tag in paths:
+                        scratch["member_paths"][collected.group_key] = paths[stem_tag]
             return
         for stem_tag, arr in stems.items():
-            bucket = _ensemble_stem_bucket(stem_tag)
-            scratch["ensemble_stem_arrays"].setdefault(bucket, []).append(arr)
-            if stem_tag in paths:
-                scratch["member_paths"][bucket] = paths[stem_tag]
+            collect(stem_tag, arr)
 
     def after_model(self, runner: Any, state: FileState, model: Any) -> None:
         from core.audio_chunking import concat_stems
@@ -200,15 +214,17 @@ class _EnsembleRunHooks:
         scratch = state.scratch
         salvage_arrays: dict = {}
         if state.chunked:
-            for stem_tag, parts in scratch["member_stem_parts"].items():
+            for collected, parts in scratch["member_stem_parts"].items():
                 concat = concat_stems(parts, overlap_samples=state.ov_samples)
                 scratch["ensemble_stem_arrays"].setdefault(
-                    _ensemble_stem_bucket(stem_tag), []
+                    collected.group_key, []
                 ).append(concat)
-                salvage_arrays[_ensemble_stem_bucket(stem_tag)] = concat
+                salvage_arrays[collected.group_key] = concat
         else:
-            for stem_tag, arr in scratch["last_member_stems"].items():
-                salvage_arrays[_ensemble_stem_bucket(stem_tag)] = arr
+            for tag, arr in scratch["last_member_stems"].items():
+                collected = planned_ensemble_stems(model).get(tag)
+                if collected is not None:
+                    salvage_arrays[collected.group_key] = arr
         runner._ensemble_salvage_members.append(
             {
                 "arrays": salvage_arrays,
@@ -227,31 +243,56 @@ class _EnsembleRunHooks:
         ensemble_final_base = state.scratch["ensemble_final_base"]
         export_path = self.export_path
         combine_steps: List[tuple] = []
-        if self.is_4_stem:
-            stem_names = [
-                name
-                for name, arrs in ensemble_stem_arrays.items()
-                if len(arrs) > 1
+        if self.is_multi_stem:
+            contributors = state.scratch["ensemble_contributors"]
+            collected_stems = state.scratch["ensemble_stems"]
+            output_stems = [
+                collected
+                for key, collected in collected_stems.items()
+                if len(contributors.get(key, ())) >= 2
             ]
-            if not stem_names:
-                stem_names = _extract_stems(ensemble_final_base, export_path)
-            stem_names = _filter_final_ensemble_stems(
-                stem_names, str(runner.settings.process.stem_focus or "")
-            )
-            combine_steps = [
-                (output_stem, {"is_4_stem": True}) for output_stem in stem_names
-            ]
+            focus = str(runner.settings.process.stem_focus or "")
+            if focus:
+                routes = tuple(
+                    StemRoute(
+                        native=None,
+                        role=collected.role,
+                        label=collected.filename_tag,
+                        filename_tag=collected.filename_tag,
+                        kind=StemRouteKind.DERIVED,
+                        selected_by_default=True,
+                    )
+                    for collected in output_stems
+                )
+                selection = select_stem_routes(routes, focus)
+                if selection.routes:
+                    allowed = {route.role for route in selection.routes}
+                    output_stems = [
+                        collected for collected in output_stems if collected.role in allowed
+                    ]
+            combine_steps = [(collected, {}) for collected in output_stems]
         else:
-            focus_flags = exclusive_flags_for_pair(
-                str(runner.settings.process.stem_focus or ""),
-                coerce_ensemble_pair(runner.settings.ensemble.main_stem),
-            )
-            primary_only, secondary_only = focus_flags or (False, False)
-            if not secondary_only:
-                combine_steps.append((PRIMARY_STEM, {}))
-            if not primary_only:
-                combine_steps.append((SECONDARY_STEM, {}))
-                combine_steps.append((SECONDARY_STEM, {"is_inst_mix": True}))
+            pair_stems = list(self.ensemble.pair_stems)
+            focus = str(runner.settings.process.stem_focus or "")
+            if focus:
+                routes = tuple(
+                    StemRoute(
+                        native=None,
+                        role=collected.role,
+                        label=collected.filename_tag,
+                        filename_tag=collected.filename_tag,
+                        kind=StemRouteKind.DERIVED,
+                        selected_by_default=True,
+                    )
+                    for collected in pair_stems
+                )
+                selection = select_stem_routes(routes, focus)
+                if selection.routes:
+                    allowed = {route.role for route in selection.routes}
+                    pair_stems = [
+                        collected for collected in pair_stems if collected.role in allowed
+                    ]
+            combine_steps = [(collected, {}) for collected in pair_stems]
 
         combine_total = max(1, len(combine_steps))
         combine_start = state.progress_sink.fraction
@@ -262,6 +303,7 @@ class _EnsembleRunHooks:
                 export_path,
                 stem_name,
                 stem_arrays=ensemble_stem_arrays,
+                is_multi_stem=self.is_multi_stem,
                 **kwargs,
             )
             span = max(combine_end - combine_start, 0.0)
