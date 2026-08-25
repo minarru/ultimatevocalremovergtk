@@ -163,8 +163,6 @@ class StemSemanticProjection:
             "stem_semantics_status": self.status,
             "stem_context": self.context,
             "stem_routes": [route.as_dict() for route in self.routes],
-            "canonical_roles": list(self.canonical_roles),
-            "stem_semantics_evidence": self.evidence,
         }
         if self.warning:
             result["stem_semantics_warning"] = self.warning

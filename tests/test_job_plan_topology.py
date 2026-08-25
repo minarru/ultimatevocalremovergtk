@@ -98,6 +98,31 @@ class PlannedOutputStemTests(unittest.TestCase):
         ).to_dict()
 
         model = plan["models"][0]
+        self.assertEqual(
+            {
+                key
+                for key in model
+                if key
+                in {
+                    "backend_primary_stem",
+                    "backend_target_stem",
+                    "logical_primary_role",
+                    "stem_semantics_status",
+                    "stem_context",
+                    "stem_routes",
+                    "canonical_roles",
+                    "stem_semantics_evidence",
+                }
+            },
+            {
+                "backend_primary_stem",
+                "backend_target_stem",
+                "logical_primary_role",
+                "stem_semantics_status",
+                "stem_context",
+                "stem_routes",
+            },
+        )
         self.assertEqual(model["backend_primary_stem"], "other")
         self.assertEqual(model["backend_target_stem"], "other")
         self.assertEqual(model["logical_primary_role"], "mix.instrumental")

@@ -366,6 +366,21 @@ class DiscoveryTests(unittest.TestCase):
         self.assertTrue(item["configured"])
         self.assertEqual(item["architectural_facts"]["demucs_stem_count"], 4)
 
+    def test_generic_model_inspection_uses_only_projection_contract_fields(self) -> None:
+        from cli.discovery import _stem_semantics_fields
+
+        self.assertEqual(
+            set(_stem_semantics_fields(None)),
+            {
+                "backend_primary_stem",
+                "backend_target_stem",
+                "logical_primary_role",
+                "stem_semantics_status",
+                "stem_context",
+                "stem_routes",
+            },
+        )
+
     def test_catalogue_cli_uses_audit_display_for_ineligible_mdx_pth_row(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE
         from core.catalog_sources import EntryMeta

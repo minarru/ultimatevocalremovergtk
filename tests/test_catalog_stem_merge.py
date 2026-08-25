@@ -186,6 +186,17 @@ class SemanticProjectionTests(unittest.TestCase):
         ).as_dict()
 
         self.assertEqual(
+            set(payload),
+            {
+                "backend_primary_stem",
+                "backend_target_stem",
+                "logical_primary_role",
+                "stem_semantics_status",
+                "stem_context",
+                "stem_routes",
+            },
+        )
+        self.assertEqual(
             {
                 key: payload[key]
                 for key in (
@@ -226,8 +237,6 @@ class SemanticProjectionTests(unittest.TestCase):
                 "logical_primary": True,
             },
         )
-        self.assertEqual(payload["canonical_roles"], ["vocal.vocals", "mix.instrumental"])
-        self.assertEqual(payload["stem_semantics_evidence"], semantics.evidence)
 
     def test_projection_covers_reviewed_waived_and_raw_statuses(self) -> None:
         from core.model_stem_semantics import (

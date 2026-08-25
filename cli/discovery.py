@@ -585,6 +585,8 @@ def cmd_models_catalog(args: argparse.Namespace) -> int:
             projection = getattr(meta, "stem_semantics", None)
             if projection is not None:
                 item.update(projection.as_dict())
+                item["canonical_roles"] = list(projection.canonical_roles)
+                item["stem_semantics_evidence"] = projection.evidence
                 item["catalogue_guessed_intent"] = getattr(meta, "guessed_intent", None)
             rows.append(item)
         return _print_rows(args, rows)
