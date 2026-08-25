@@ -587,6 +587,22 @@ class CommunitySupplementAvailabilityTests(unittest.TestCase):
             context.unavailable_supplemental_evidence,
         )
 
+    def test_supported_rows_survive_well_formed_demucs_yaml_rows(self) -> None:
+        payload = (
+            b"fixture.ckpt  MDX  vocals*, other  Fixture Model\n"
+            b"htdemucs.yaml  Demucs  vocals, drums, bass, other  htdemucs\n"
+        )
+        refs, available = catalogue._parse_community_models_bytes(payload)
+
+        self.assertTrue(available)
+        self.assertEqual(set(refs), {"fixture.ckpt"})
+        self.assertEqual(refs["fixture.ckpt"].friendly_name, "Fixture Model")
+        context = self._context_from_cached_community_bytes(payload)
+        self.assertNotIn(
+            "community models.txt reference",
+            context.unavailable_supplemental_evidence,
+        )
+
     def test_invalid_community_bytes_are_unavailable_from_cache(self) -> None:
         self.assertEqual(catalogue._parse_community_models_bytes(b"\xff"), ({}, False))
 

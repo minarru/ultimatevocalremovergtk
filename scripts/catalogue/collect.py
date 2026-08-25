@@ -515,10 +515,14 @@ def _parse_community_model_lines(lines: Any) -> Tuple[Dict[str, CommunityRef], b
         if len(parts) < 4:
             return {}, False
         filename, arch, stems_text, friendly = parts[0], parts[1], parts[2], parts[3]
-        if not filename.endswith((".pth", ".onnx", ".ckpt", ".th")):
-            return {}, False
         if not arch or not stems_text or not friendly:
             return {}, False
+        if not filename.endswith((".pth", ".onnx", ".ckpt", ".th")):
+            # Demucs configuration YAMLs share this otherwise valid table.
+            # They are not model-weight references, so preserve the legacy
+            # parser behavior: retain evidence availability but omit them from
+            # the weight-keyed community projection.
+            continue
         intent, primary = _intent_from_community_stems(stems_text)
         refs[filename.lower()] = CommunityRef(
             filename=filename,
