@@ -69,15 +69,12 @@ class ModelConfig:
         self.DENOISER_MODEL = paths.DENOISER_MODEL_PATH
         self.DEVERBER_MODEL = paths.DEVERBER_MODEL_PATH
         self.is_deverb_vocals = (
-            process.deverb_vocals
-            if os.path.isfile(paths.DEVERBER_MODEL_PATH)
-            else False
+            process.deverb_vocals if os.path.isfile(paths.DEVERBER_MODEL_PATH) else False
         )
         self.deverb_vocal_opt = DEVERB_MAPPER[enum_value(process.deverb_vocal_opt)]
         denoise_opt = enum_value(mdx.denoise_option)
         self.is_denoise_model = bool(
-            denoise_opt == DENOISE_M
-            and os.path.isfile(paths.DENOISER_MODEL_PATH)
+            denoise_opt == DENOISE_M and os.path.isfile(paths.DENOISER_MODEL_PATH)
         )
         self.is_gpu_conversion = bool(process.use_gpu)
         self.use_gpu = self.is_gpu_conversion
@@ -85,23 +82,17 @@ class ModelConfig:
         self.is_match_mix_level = bool(process.match_mix_level)
         self.is_prevent_export_clipping = bool(process.prevent_export_clipping)
         try:
-            self.amplification_threshold = float(
-                process.amplification_threshold or 0.0
-            )
+            self.amplification_threshold = float(process.amplification_threshold or 0.0)
         except (TypeError, ValueError):
             self.amplification_threshold = 0.0
         self.is_use_directml = bool(process.use_directml)
         self.is_denoise = denoise_opt != DENOISE_NONE
         self.is_mdx_c_seg_def = mdx.is_mdx_c_seg_def
-        self.mdx_batch_size = (
-            1 if mdx.batch_size is None else int(mdx.batch_size)
-        )
+        self.mdx_batch_size = 1 if mdx.batch_size is None else int(mdx.batch_size)
         self.mdxnet_stem_select = mdx.stems
         self.mdxnet_stems_selected = mdx.stems_selected or []
         self.overlap = float(demucs.overlap)
-        self.overlap_mdx = (
-            0.25 if mdx.overlap_mdx is None else float(mdx.overlap_mdx)
-        )
+        self.overlap_mdx = 0.25 if mdx.overlap_mdx is None else float(mdx.overlap_mdx)
         self.overlap_mdx23 = int(mdx.overlap_mdx23)
         self.semitone_shift = float(process.semitone_shift)
         self.is_pitch_change = False if self.semitone_shift == 0 else True
@@ -124,9 +115,7 @@ class ModelConfig:
         self.compensate: float | None = None
         self.mdx_n_fft_scale_set: int | None = None
         self.wav_type_set = resolve_wav_type_set(settings)
-        self.device_set = (
-            device_set.split(":")[-1].strip() if ":" in device_set else device_set
-        )
+        self.device_set = device_set.split(":")[-1].strip() if ":" in device_set else device_set
         self.mp3_bit_set = enum_value(process.mp3_bitrate)
         self.flac_bit_set = enum_value(process.flac_bit_depth)
         self.save_format = process.save_format.value
@@ -140,22 +129,16 @@ class ModelConfig:
         self.mixer_path = paths.MDX_MIXER_PATH
         self.canonical_id = identity.id if identity is not None else ""
         self.stem_semantics = None
-        self.model_display_label = (
-            identity.display if identity is not None else model_name
-        )
-        self.backend_name = (
-            identity.backend_name if identity is not None else model_name
-        )
-        self.model_artifacts = (
-            identity.artifacts if identity is not None else None
-        )
+        self.model_display_label = identity.display if identity is not None else model_name
+        self.backend_name = identity.backend_name if identity is not None else model_name
+        self.model_artifacts = identity.artifacts if identity is not None else None
         self.demucs = identity.demucs if identity is not None else None
         self._identity_record = identity
         self.model_name = self.model_display_label
-        self.process_method = (
-            identity.arch if identity is not None else selected_process_method
+        self.process_method = identity.arch if identity is not None else selected_process_method
+        self.model_status = (
+            False if self.model_name == CHOOSE_MODEL or self.model_name == NO_MODEL else True
         )
-        self.model_status = False if self.model_name == CHOOSE_MODEL or self.model_name == NO_MODEL else True
         # Always defined: hash / path lookup may leave this unset for missing files.
         self.model_data: Any = None
         self.primary_stem: str | None = None
@@ -231,10 +214,7 @@ class ModelConfig:
             ensemble_pair_id = normalize_stem_pair_id(ensemble.main_stem)
             if ensemble_pair_id == "mode.four_stem":
                 self.is_4_stem_ensemble = self.is_ensemble_mode
-            elif (
-                ensemble_pair_id == "mode.multi_stem"
-                and process.method == ENSEMBLE_MODE
-            ):
+            elif ensemble_pair_id == "mode.multi_stem" and process.method == ENSEMBLE_MODE:
                 self.is_multi_stem_ensemble = True
 
             is_not_vocal_stem = self.ensemble_primary_stem != VOCAL_STEM
@@ -250,13 +230,9 @@ class ModelConfig:
             self.is_tta = vr.is_tta
             self.is_post_process = vr.is_post_process
             self.window_size = int(vr.window_size)
-            self.batch_size = (
-                1 if vr.batch_size is None else int(vr.batch_size)
-            )
+            self.batch_size = 1 if vr.batch_size is None else int(vr.batch_size)
             self.crop_size = int(vr.crop_size)
-            self.is_high_end_process = (
-                "mirroring" if vr.is_high_end_process else "None"
-            )
+            self.is_high_end_process = "mirroring" if vr.is_high_end_process else "None"
             self.post_process_threshold = float(vr.post_process_threshold)
             self.model_capacity = 32, 128
             self.get_vr_model_path()
@@ -266,10 +242,17 @@ class ModelConfig:
                 if self.is_change_def:
                     self.model_data = self.change_model_data()
                 else:
-                    self.model_data = self.get_model_data(paths.VR_HASH_DIR, repo.vr_hash_MAPPER) if self.model_hash != WOOD_INST_MODEL_HASH else WOOD_INST_PARAMS
+                    self.model_data = (
+                        self.get_model_data(paths.VR_HASH_DIR, repo.vr_hash_MAPPER)
+                        if self.model_hash != WOOD_INST_MODEL_HASH
+                        else WOOD_INST_PARAMS
+                    )
                 if self.model_data:
                     from ml.vr_network.model_param_init import ModelParameters
-                    vr_model_param = os.path.join(paths.VR_PARAM_DIR, "{}.json".format(self.model_data["vr_model_param"]))
+
+                    vr_model_param = os.path.join(
+                        paths.VR_PARAM_DIR, "{}.json".format(self.model_data["vr_model_param"])
+                    )
                     self.primary_stem = self.model_data["primary_stem"]
                     self.secondary_stem = secondary_stem(str(self.primary_stem or ""))
                     self.vr_model_param = ModelParameters(vr_model_param)
@@ -354,7 +337,11 @@ class ModelConfig:
                                         self.secondary_stem = secondary_stem(
                                             str(self.primary_stem or "")
                                         )
-                                    if self.is_roformer and self.is_ensemble_mode and target in (VOCAL_STEM, INST_STEM):
+                                    if (
+                                        self.is_roformer
+                                        and self.is_ensemble_mode
+                                        and target in (VOCAL_STEM, INST_STEM)
+                                    ):
                                         self.mdxnet_stem_select = self.ensemble_primary_stem
                                 elif training is not None:
                                     instruments = getattr(training, "instruments", None) or []
@@ -418,9 +405,7 @@ class ModelConfig:
             self.shifts = int(demucs.shifts)
             self.is_split_mode = demucs.is_split_mode
             # Engine ``demucs_segments`` expects the legacy ``Default`` label.
-            self.segment = (
-                DEF_OPT if demucs.segment is None else str(demucs.segment)
-            )
+            self.segment = DEF_OPT if demucs.segment is None else str(demucs.segment)
             self.get_demucs_model_data()
             self.get_demucs_model_path()
 
@@ -430,11 +415,11 @@ class ModelConfig:
             self.model_basename = None
 
         if self.process_method == MDX_ARCH_TYPE and self.model_data:
-            self.apply_karaoke_metadata(
-                str(self.model_data.get("config_yaml") or "")
-            )
+            self.apply_karaoke_metadata(str(self.model_data.get("config_yaml") or ""))
 
-        self.pre_proc_model_activated = self.pre_proc_model_activated if not self.is_secondary_model else False
+        self.pre_proc_model_activated = (
+            self.pre_proc_model_activated if not self.is_secondary_model else False
+        )
 
         # -- Secondary model resolution (ported from UVR.py L686-L715) ----------
         is_secondary_activated_and_status = self.is_secondary_model_activated and self.model_status
@@ -445,10 +430,7 @@ class ModelConfig:
         # them on exactly that condition (``4_stem``/``6_stem`` layout), so a
         # 2-source model here would resolve slots planning never declared.
         is_valid_ensemble = (
-            not self.is_ensemble_mode
-            and is_all_stems
-            and is_demucs
-            and self.demucs_stem_count >= 4
+            not self.is_ensemble_mode and is_all_stems and is_demucs and self.demucs_stem_count >= 4
         )
         is_multi_stem_ensemble_demucs = self.is_multi_stem_ensemble and is_demucs
 
@@ -459,28 +441,35 @@ class ModelConfig:
                     self.secondary_model_4_stem.append(self.secondary_model)
                     self.secondary_model_4_stem_scale.append(self.secondary_model_scale)
                     self.secondary_model_4_stem_names.append(key)
-                self.demucs_4_stem_added_count = sum(i is not None for i in self.secondary_model_4_stem)
-                self.is_secondary_model_activated = any(i is not None for i in self.secondary_model_4_stem)
+                self.demucs_4_stem_added_count = sum(
+                    i is not None for i in self.secondary_model_4_stem
+                )
+                self.is_secondary_model_activated = any(
+                    i is not None for i in self.secondary_model_4_stem
+                )
                 self.demucs_4_stem_added_count -= 1 if self.is_secondary_model_activated else 0
                 if self.is_secondary_model_activated:
                     self.secondary_model_4_stem_model_names_list = [
-                        (
-                            getattr(i, "backend_name", None)
-                            or getattr(i, "model_basename", None)
-                        )
+                        (getattr(i, "backend_name", None) or getattr(i, "model_basename", None))
                         if i is not None
                         else None
                         for i in self.secondary_model_4_stem
                     ]
                     self.is_demucs_4_stem_secondaries = True
             else:
-                primary_stem = self.ensemble_primary_stem if self.is_ensemble_mode and is_demucs else self.primary_stem
+                primary_stem = (
+                    self.ensemble_primary_stem
+                    if self.is_ensemble_mode and is_demucs
+                    else self.primary_stem
+                )
                 self.secondary_model_data(primary_stem)
 
         if self.process_method == DEMUCS_ARCH_TYPE and not is_secondary_model:
             if self.demucs_stem_count >= 3 and self.pre_proc_model_activated:
                 self.pre_proc_model = process_determine_demucs_pre_proc_model(
-                    self.settings, self.repo, self.primary_stem,
+                    self.settings,
+                    self.repo,
+                    self.primary_stem,
                     self.model_dependencies,
                 )
                 self.pre_proc_model_activated = True if self.pre_proc_model else False
@@ -544,33 +533,30 @@ class ModelConfig:
             elif positional != FOCUS_PRIMARY and len(routes) == 2 and len(logical) == 1:
                 matched = tuple(route for route in routes if not route.logical_primary)
             else:
-                target = (
-                    self.primary_stem if positional == FOCUS_PRIMARY else self.secondary_stem
-                )
+                target = self.primary_stem if positional == FOCUS_PRIMARY else self.secondary_stem
                 matched = tuple(
-                    route
-                    for route in routes
-                    if route_matches_stem(route, target, self)
+                    route for route in routes if route_matches_stem(route, target, self)
                 )
-            selected = matched[:1] if matched else (
-                tuple(route for route in routes if route.selected_by_default)
-                or tuple(routes)
+            selected = (
+                matched[:1]
+                if matched
+                else (
+                    tuple(route for route in routes if route.selected_by_default) or tuple(routes)
+                )
             )
         else:
             selection = select_stem_routes(routes, focus)
             selection_matched = selection.status is StemSelectionStatus.MATCHED
             if selection.status is StemSelectionStatus.UNMATCHED:
-                selected = tuple(
-                    route for route in routes if route.selected_by_default
-                ) or tuple(routes)
+                selected = tuple(route for route in routes if route.selected_by_default) or tuple(
+                    routes
+                )
             else:
                 selected = selection.routes
 
             if selection.status is StemSelectionStatus.EMPTY:
                 mdx_stems = tuple(
-                    str(stem)
-                    for stem in (getattr(self, "mdx_model_stems", None) or ())
-                    if stem
+                    str(stem) for stem in (getattr(self, "mdx_model_stems", None) or ()) if stem
                 )
                 sidecar = tuple(
                     str(stem)
@@ -579,9 +565,7 @@ class ModelConfig:
                 )
                 if len(mdx_stems) > 2 and sidecar:
                     native_concepts = {
-                        route.concept
-                        for route in routes
-                        if route.native is not None
+                        route.concept for route in routes if route.native is not None
                     }
                     matched = routes_matching_stems(routes, sidecar, self)
                     matched_concepts = {route.concept for route in matched}
@@ -601,8 +585,7 @@ class ModelConfig:
                 if not pair_routes:
                     selected = ()
                 elif not (
-                    selection_matched
-                    and all(route.role in pair.roles for route in selected)
+                    selection_matched and all(route.role in pair.roles for route in selected)
                 ):
                     selected = pair_routes
 
@@ -629,7 +612,7 @@ class ModelConfig:
     # -- Secondary / vocal-split / pre-process resolution -----------------------
     # Faithful Tk-free ports of ``MainWindow.process_determine_*`` /
     # ``vocal_splitter_model_data`` / ``secondary_model_data`` reading the same
-        # flat settings keys instead of Tk variables.
+    # flat settings keys instead of Tk variables.
 
     def vocal_splitter_model_data(self):
         from .determine import process_determine_vocal_split_model
@@ -658,16 +641,16 @@ class ModelConfig:
         self.secondary_model_scale = secondary_model_scale
         self.is_secondary_model_activated = False if not secondary_model else True
         if self.secondary_model:
-            self.is_secondary_model_activated = False if self.secondary_model.model_basename == self.model_basename else True
+            self.is_secondary_model_activated = (
+                False if self.secondary_model.model_basename == self.model_basename else True
+            )
 
     def return_ensemble_stems(self, is_primary: typing.Any = False):
         """Return registry labels for the selected exact reviewed role pair."""
         from core.model_stem_manifest import load_bundled_stem_semantics
         from core.stem_pairs import normalize_stem_pair_id, stem_pair_definition
 
-        pair = stem_pair_definition(
-            normalize_stem_pair_id(self.settings.ensemble.main_stem)
-        )
+        pair = stem_pair_definition(normalize_stem_pair_id(self.settings.ensemble.main_stem))
         if pair is None:
             self.ensemble_pair_roles = ()
             primary, secondary = "", ""
@@ -736,7 +719,9 @@ class ModelConfig:
             pair_roles = tuple(getattr(self, "ensemble_pair_roles", ()) or ())
             registry = load_bundled_stem_semantics()
             primary_definition = registry.roles.get(pair_roles[0]) if len(pair_roles) == 2 else None
-            secondary_definition = registry.roles.get(pair_roles[1]) if len(pair_roles) == 2 else None
+            secondary_definition = (
+                registry.roles.get(pair_roles[1]) if len(pair_roles) == 2 else None
+            )
             primary_is_vocals = bool(
                 primary_definition is not None and primary_definition.family.value == "vocal"
             )
@@ -764,9 +749,7 @@ class ModelConfig:
             }
             ctx = stem_context(self)
             primary_bucket = bucket_for_model_stem(str(primary_for_label or ""), **ctx)
-            secondary_bucket = bucket_for_model_stem(
-                str(secondary_for_label or ""), **ctx
-            )
+            secondary_bucket = bucket_for_model_stem(str(secondary_for_label or ""), **ctx)
             primary_is_vocals = primary_bucket in vocal_buckets
             secondary_is_vocals = secondary_bucket in vocal_buckets
             primary_is_inst = primary_bucket in inst_buckets
@@ -774,23 +757,25 @@ class ModelConfig:
 
         if checktype == VOCAL_STEM_ONLY:
             return not (
-                (not primary_is_vocals and stem_primary_bool) or
-                (not secondary_is_vocals and stem_secondary_bool)
+                (not primary_is_vocals and stem_primary_bool)
+                or (not secondary_is_vocals and stem_secondary_bool)
             )
         elif checktype == INST_STEM_ONLY:
             return (
-                (primary_is_inst and stem_primary_bool and is_save_inst_splitter and has_voc_splitter) or
-                (secondary_is_inst and stem_secondary_bool and is_save_inst_splitter and has_voc_splitter)
+                primary_is_inst and stem_primary_bool and is_save_inst_splitter and has_voc_splitter
+            ) or (
+                secondary_is_inst
+                and stem_secondary_bool
+                and is_save_inst_splitter
+                and has_voc_splitter
             )
         elif checktype == IS_SAVE_VOC_ONLY:
-            return (
-                (primary_is_vocals and stem_primary_bool) or
-                (secondary_is_vocals and stem_secondary_bool)
+            return (primary_is_vocals and stem_primary_bool) or (
+                secondary_is_vocals and stem_secondary_bool
             )
         elif checktype == IS_SAVE_INST_ONLY:
-            return (
-                (primary_is_inst and stem_primary_bool) or
-                (secondary_is_inst and stem_secondary_bool)
+            return (primary_is_inst and stem_primary_bool) or (
+                secondary_is_inst and stem_secondary_bool
             )
         return False
 
@@ -879,13 +864,14 @@ class ModelConfig:
         demucs_model_dir = paths.DEMUCS_NEWER_REPO_DIR if demucs_newer else paths.DEMUCS_MODELS_DIR
         artifacts = getattr(self, "model_artifacts", None)
         if artifacts is not None:
-            self.model_path = os.path.join(
-                demucs_model_dir, artifacts.primary_filename
-            )
+            self.model_path = os.path.join(demucs_model_dir, artifacts.primary_filename)
             return
         backend_name = getattr(self, "backend_name", self.model_name)
         for file_name, display in self.repo.demucs_name_select_MAPPER.items():
-            if backend_name in {file_name, os.path.splitext(file_name)[0]} or self.model_name == display:
+            if (
+                backend_name in {file_name, os.path.splitext(file_name)[0]}
+                or self.model_name == display
+            ):
                 self.model_path = os.path.join(demucs_model_dir, file_name)
                 return
         self.model_path = resolve_demucs_model_file(backend_name, demucs_version)
@@ -893,9 +879,7 @@ class ModelConfig:
     def get_demucs_model_data(self):
         spec = self.demucs if getattr(self, "demucs", None) is not None else None
         if spec is None:
-            raise ValueError(
-                f"{self.canonical_id} is missing Demucs version/layout metadata"
-            )
+            raise ValueError(f"{self.canonical_id} is missing Demucs version/layout metadata")
         self.demucs_version = {
             "v1": DEMUCS_V1,
             "v2": DEMUCS_V2,
@@ -921,7 +905,9 @@ class ModelConfig:
                 4,
             )
         if not self.is_ensemble_mode:
-            self.primary_stem = PRIMARY_STEM if self.demucs_stems == ALL_STEMS else self.demucs_stems
+            self.primary_stem = (
+                PRIMARY_STEM if self.demucs_stems == ALL_STEMS else self.demucs_stems
+            )
             self.secondary_stem = secondary_stem(str(self.primary_stem or ""))
 
     def get_model_data(self, model_hash_dir: typing.Any, hash_mapper: dict):
@@ -946,11 +932,7 @@ class ModelConfig:
         if mapped:
             return mapped
 
-        if (
-            self.process_method == MDX_ARCH_TYPE
-            and self.is_mdx_ckpt
-            and self.model_path
-        ):
+        if self.process_method == MDX_ARCH_TYPE and self.is_mdx_ckpt and self.model_path:
             params = try_register_from_catalog(self.model_path, self.model_hash)
             if params:
                 return params
@@ -1061,12 +1043,8 @@ class ModelConfig:
             primary_model_primary_stem=self.primary_model_primary_stem,
             mdx_model_stems=tuple(self.mdx_model_stems),
             demucs_source_list=tuple(self.demucs_source_list),
-            available_routes=tuple(
-                getattr(self, "available_stem_routes", ())
-            ),
-            selected_routes=tuple(
-                getattr(self, "selected_stem_routes", ())
-            ),
+            available_routes=tuple(getattr(self, "available_stem_routes", ())),
+            selected_routes=tuple(getattr(self, "selected_stem_routes", ())),
             semantics=self.stem_semantics,
         )
         self.secondary_chain = SecondaryChain(
@@ -1078,9 +1056,7 @@ class ModelConfig:
             vocal_split_model=self.vocal_split_model,
             is_secondary_model_activated=bool(self.is_secondary_model_activated),
             pre_proc_model_activated=bool(self.pre_proc_model_activated),
-            is_vocal_split_model_activated=bool(
-                self.is_vocal_split_model_activated
-            ),
+            is_vocal_split_model_activated=bool(self.is_vocal_split_model_activated),
         )
         self.vr_options = (
             VROptions(

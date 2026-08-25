@@ -96,9 +96,7 @@ class ProgressDetailDisplayTests(unittest.TestCase):
         model = _model("raw-checkpoint")
         model.model_display_label = "MelBand Roformer — Karaoke · becruily"
 
-        with patch(
-            "core.run_loop.display_name_for_model", return_value="stale mapper label"
-        ):
+        with patch("core.run_loop.display_name_for_model", return_value="stale mapper label"):
             detail = _progress_detail(
                 file_num=1,
                 file_total=1,
@@ -193,15 +191,13 @@ class RunLoopLazyDecodeTests(unittest.TestCase):
 
 class RunLoopEngineTupleTests(unittest.TestCase):
     def test_run_models_on_files_has_no_engines_parameter(self) -> None:
-        self.assertNotIn(
-            "engines", inspect.signature(run_models_on_files).parameters
-        )
+        self.assertNotIn("engines", inspect.signature(run_models_on_files).parameters)
 
     def test_run_loop_imports_canonical_helpers(self) -> None:
         source = (_REPO / "core" / "run_loop.py").read_text(encoding="utf-8")
         self.assertNotIn("engines.separate", source)
         self.assertIn("from engines.gpu_cache import clear_gpu_cache", source)
-        self.assertIn("from core.audio_io import save_format", source)
+        self.assertRegex(source, r"from core\.audio_io import [^\n]*\bsave_format\b")
 
     @patch("engines.gpu_cache.clear_gpu_cache")
     @patch("core.run_loop.snapshot_worker_file")

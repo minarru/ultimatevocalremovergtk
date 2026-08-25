@@ -56,9 +56,7 @@ class SectionOpenTests(unittest.TestCase):
     def test_either_expander_counts_as_open(self) -> None:
         """One latch covers both, so opening one populates the other's combos."""
         self.assertTrue(MethodView._model_combo_section_open(_view(secondary=True)))
-        self.assertTrue(
-            MethodView._model_combo_section_open(_view(secondary=False, preproc=True))
-        )
+        self.assertTrue(MethodView._model_combo_section_open(_view(secondary=False, preproc=True)))
 
     def test_all_collapsed_is_closed(self) -> None:
         view = _view(secondary=False, preproc=False)
@@ -73,6 +71,10 @@ class RefreshModelsTests(unittest.TestCase):
     def _refreshable_view(self, **kwargs: Any) -> Any:
         view = _view(**kwargs)
         view._loading = False
+        view.settings = SimpleNamespace(process=SimpleNamespace(stem_focus=""))
+        view.selected_model = mock.MagicMock(return_value=CHOOSE_MODEL)
+        view.has_model = mock.MagicMock(return_value=False)
+        view.save_stems = SimpleNamespace(require_refresh_repick=mock.MagicMock())
         view.populate_models = mock.MagicMock()
         view.update_stem_labels = mock.MagicMock()
         return view
@@ -111,9 +113,7 @@ class RefreshModelsTests(unittest.TestCase):
         """Laziness pin: populating resolves model lists, which hashes
         checkpoints. A section nobody can see must not pay for it."""
         view = self._refreshable_view(secondary=False)
-        view._model_combos = [
-            {"row": object(), "key": "k", "provider": list, "ready": True}
-        ]
+        view._model_combos = [{"row": object(), "key": "k", "provider": list, "ready": True}]
 
         MethodView.refresh_models(view)
 
@@ -127,10 +127,11 @@ class RefreshModelsTests(unittest.TestCase):
         view.context = mock.MagicMock()
         view._window_root = mock.MagicMock(return_value=None)
 
-        with mock.patch(
-            "ui.dialogs.model_params.show_change_defaults_dialog"
-        ), mock.patch(
-            "ui.widgets.lazy_populate.idle_on_main", side_effect=lambda fn, *a, **k: fn()
+        with (
+            mock.patch("ui.dialogs.model_params.show_change_defaults_dialog"),
+            mock.patch(
+                "ui.widgets.lazy_populate.idle_on_main", side_effect=lambda fn, *a, **k: fn()
+            ),
         ):
             MethodView._on_change_defaults(view, object())
 
@@ -189,24 +190,28 @@ class InstalledRecordPickerTests(unittest.TestCase):
         if len(legacy_displays) < len(basenames):
             legacy_displays.extend(basenames[len(legacy_displays) :])
 
-        with mock.patch(
-            "core.model_identity.ModelIdentityService.records",
-            return_value=tuple(records),
-        ), mock.patch(
-            "ui.views.base.map_basenames_to_display",
-            return_value=legacy_displays,
-        ), mock.patch(
-            "ui.views.base.get_flat", return_value=stored
-        ), mock.patch(
-            "ui.views.base.set_combo_tag_values",
-            side_effect=lambda _row, items: values.extend(items),
-        ), mock.patch(
-            "ui.views.base.set_combo_value",
-            side_effect=lambda _row, value: selections.append(value),
-        ), mock.patch("ui.views.base.set_flat", write):
+        with (
+            mock.patch(
+                "core.model_identity.ModelIdentityService.records",
+                return_value=tuple(records),
+            ),
+            mock.patch(
+                "ui.views.base.map_basenames_to_display",
+                return_value=legacy_displays,
+            ),
+            mock.patch("ui.views.base.get_flat", return_value=stored),
+            mock.patch(
+                "ui.views.base.set_combo_tag_values",
+                side_effect=lambda _row, items: values.extend(items),
+            ),
+            mock.patch(
+                "ui.views.base.set_combo_value",
+                side_effect=lambda _row, value: selections.append(value),
+            ),
+            mock.patch("ui.views.base.set_flat", write),
+        ):
             MethodView.populate_models(view)
         return values, selections, write
-
 
     def test_relabelled_record_repaints_without_touching_the_selection(self) -> None:
         """A friendlier catalogue label must not move the user's choice.
@@ -285,17 +290,20 @@ class InstalledRecordPickerTests(unittest.TestCase):
         selections: list[object] = []
         items_seen: list[list[object]] = []
 
-        with mock.patch(
-            "core.model_identity.ModelIdentityService.records",
-            side_effect=lambda: tuple(records),
-        ), mock.patch(
-            "ui.views.base.get_flat", return_value=missing.id
-        ), mock.patch(
-            "ui.views.base.set_combo_tag_values",
-            side_effect=lambda _row, items: items_seen.append(list(items)),
-        ), mock.patch(
-            "ui.views.base.set_combo_value",
-            side_effect=lambda _row, value: selections.append(value),
+        with (
+            mock.patch(
+                "core.model_identity.ModelIdentityService.records",
+                side_effect=lambda: tuple(records),
+            ),
+            mock.patch("ui.views.base.get_flat", return_value=missing.id),
+            mock.patch(
+                "ui.views.base.set_combo_tag_values",
+                side_effect=lambda _row, items: items_seen.append(list(items)),
+            ),
+            mock.patch(
+                "ui.views.base.set_combo_value",
+                side_effect=lambda _row, value: selections.append(value),
+            ),
         ):
             MethodView.populate_models(view)
             self.assertEqual(selections[-1], CHOOSE_MODEL)
@@ -342,7 +350,7 @@ class InstalledRecordPickerTests(unittest.TestCase):
         write.assert_not_called()
 
     def test_gated_stored_value_is_explained_by_a_banner(self) -> None:
-        """"Choose Model" alone cannot be told apart from a preserved value."""
+        """ "Choose Model" alone cannot be told apart from a preserved value."""
         _values, selections, write = self._populate(
             [_record("demucs:htdemucs", "v4 — htdemucs")],
             arch=DEMUCS_ARCH_TYPE,
@@ -426,9 +434,7 @@ class InstalledRecordPickerTests(unittest.TestCase):
         view.resolution_method_key = ""
         view.list_models = mock.Mock(return_value=["unsupported-msst.ckpt"])
 
-        with mock.patch(
-            "core.model_identity.ModelIdentityService.records", return_value=()
-        ):
+        with mock.patch("core.model_identity.ModelIdentityService.records", return_value=()):
             available = MethodView.has_any_models(view)
 
         self.assertFalse(available)
@@ -456,15 +462,18 @@ class InstalledRecordPickerTests(unittest.TestCase):
         ]
         values: list[object] = []
 
-        with mock.patch(
-            "core.model_identity.ModelIdentityService.records",
-            return_value=tuple(records),
-        ), mock.patch(
-            "ui.views.base.get_flat", return_value="No Model Selected"
-        ), mock.patch(
-            "ui.views.base.set_combo_tag_values",
-            side_effect=lambda _row, items: values.extend(items),
-        ), mock.patch("ui.views.base.set_combo_value"):
+        with (
+            mock.patch(
+                "core.model_identity.ModelIdentityService.records",
+                return_value=tuple(records),
+            ),
+            mock.patch("ui.views.base.get_flat", return_value="No Model Selected"),
+            mock.patch(
+                "ui.views.base.set_combo_tag_values",
+                side_effect=lambda _row, items: values.extend(items),
+            ),
+            mock.patch("ui.views.base.set_combo_value"),
+        ):
             MethodView._populate_model_combos_now(view)
 
         self.assertEqual(
@@ -615,13 +624,12 @@ class InstalledRecordPickerGtkTests(unittest.TestCase):
         gi.require_version("Adw", "1")
         from gi.repository import Adw
 
-        cls._app = Adw.Application(
-            application_id="org.uvr.test.installed-record-picker"
-        )
+        cls._app = Adw.Application(application_id="org.uvr.test.installed-record-picker")
         cls._app.register()
 
     def _view(self) -> Any:
         from gi.repository import Adw
+
         from ui.widgets.rows import make_combo_row
 
         view: Any = MethodView.__new__(MethodView)
@@ -646,10 +654,13 @@ class InstalledRecordPickerGtkTests(unittest.TestCase):
         model_id = "mdx:bs_pope_4stem_09072026_aname"
         records = [_record(model_id, "Raw catalogue label")]
         view = self._view()
-        with mock.patch(
-            "core.model_identity.ModelIdentityService.records",
-            side_effect=lambda: tuple(records),
-        ), mock.patch("ui.views.base.get_flat", return_value=model_id):
+        with (
+            mock.patch(
+                "core.model_identity.ModelIdentityService.records",
+                side_effect=lambda: tuple(records),
+            ),
+            mock.patch("ui.views.base.get_flat", return_value=model_id),
+        ):
             view._loading = True
             try:
                 MethodView.populate_models(view)
@@ -671,12 +682,14 @@ class InstalledRecordPickerGtkTests(unittest.TestCase):
         records = [missing]
         view = self._view()
         writes = mock.Mock()
-        with mock.patch(
-            "core.model_identity.ModelIdentityService.records",
-            side_effect=lambda: tuple(records),
-        ), mock.patch(
-            "ui.views.base.get_flat", return_value=missing.id
-        ), mock.patch("ui.views.base.set_flat", writes):
+        with (
+            mock.patch(
+                "core.model_identity.ModelIdentityService.records",
+                side_effect=lambda: tuple(records),
+            ),
+            mock.patch("ui.views.base.get_flat", return_value=missing.id),
+            mock.patch("ui.views.base.set_flat", writes),
+        ):
             view._loading = True
             try:
                 MethodView.populate_models(view)

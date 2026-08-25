@@ -35,16 +35,12 @@ class DemucsSegmentEnrichmentTests(unittest.TestCase):
     def test_a_demucs_model_does_not_crash_plan_time(self) -> None:
         settings = Settings.defaults()
         settings.demucs.segment = None
-        _apply_model_native_values(
-            settings, [_record("demucs")], [self._model(DEF_OPT)], {}
-        )
+        _apply_model_native_values(settings, [_record("demucs")], [self._model(DEF_OPT)], {})
 
     def test_the_segment_setting_is_left_unset(self) -> None:
         settings = Settings.defaults()
         settings.demucs.segment = None
-        _apply_model_native_values(
-            settings, [_record("demucs")], [self._model(DEF_OPT)], {}
-        )
+        _apply_model_native_values(settings, [_record("demucs")], [self._model(DEF_OPT)], {})
         self.assertIsNone(settings.demucs.segment)
 
     def test_no_segment_provenance_is_claimed(self) -> None:
@@ -59,18 +55,14 @@ class DemucsSegmentEnrichmentTests(unittest.TestCase):
     def test_an_explicit_segment_survives(self) -> None:
         settings = Settings.defaults()
         settings.demucs.segment = 10
-        _apply_model_native_values(
-            settings, [_record("demucs")], [self._model("10")], {}
-        )
+        _apply_model_native_values(settings, [_record("demucs")], [self._model("10")], {})
         self.assertEqual(settings.demucs.segment, 10)
 
     def test_a_numeric_model_segment_is_still_not_read_back(self) -> None:
         """Even parseable, it is the setting echoed back, not metadata."""
         settings = Settings.defaults()
         settings.demucs.segment = None
-        _apply_model_native_values(
-            settings, [_record("demucs")], [self._model("15")], {}
-        )
+        _apply_model_native_values(settings, [_record("demucs")], [self._model("15")], {})
         self.assertIsNone(settings.demucs.segment)
 
 

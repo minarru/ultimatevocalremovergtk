@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import unittest
+from typing import cast
 
 from bundled.constants import ALL_STEMS, BASS_STEM, INST_STEM, VOCAL_STEM
 from cli.job import _resolved_settings
 from core.settings import Settings
 from core.stem_selection import apply_stem_selection
-from core.stems import StemBucket, exclusive_flags_for_focus
+from core.stems import StemBucket, StemRoute, exclusive_flags_for_focus
 
 
 class ApplyStemSelectionTests(unittest.TestCase):
@@ -92,10 +93,7 @@ class UnmatchedFocusDiagnosticTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.stem_focus = focus
         descriptor = ModelDescriptor("stub", "mdx", "stub", "Stub Model")
-        return [
-            item.message
-            for item in _stem_focus_diagnostics(settings, [model], [descriptor])
-        ]
+        return [item.message for item in _stem_focus_diagnostics(settings, [model], [descriptor])]
 
     def test_focus_on_a_stem_the_model_lacks_is_reported(self) -> None:
         messages = self._diagnose(BASS_STEM, _StubModel("vocals", "other"))
@@ -114,12 +112,8 @@ class UnmatchedFocusDiagnosticTests(unittest.TestCase):
     def test_positional_sentinel_is_silent(self) -> None:
         from core.stems import FOCUS_PRIMARY, FOCUS_SECONDARY
 
-        self.assertEqual(
-            self._diagnose(FOCUS_PRIMARY, _StubModel("vocals", "other")), []
-        )
-        self.assertEqual(
-            self._diagnose(FOCUS_SECONDARY, _StubModel("vocals", "other")), []
-        )
+        self.assertEqual(self._diagnose(FOCUS_PRIMARY, _StubModel("vocals", "other")), [])
+        self.assertEqual(self._diagnose(FOCUS_SECONDARY, _StubModel("vocals", "other")), [])
 
     def test_vocal_splitters_are_exempt(self) -> None:
         model = _StubModel("vocals", "other")
@@ -184,16 +178,16 @@ class StemSelectionProvenanceTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.stem_focus = "primary"
         before = settings.to_json_dict()
-        reverse = config(
-            "demucs:UVR_Demucs_Model_1", ["Vocals", "Instrumental"], "Vocals"
-        )
+        reverse = config("demucs:UVR_Demucs_Model_1", ["Vocals", "Instrumental"], "Vocals")
         ordinary = config("mdx:MDX23C_D1581", ["Instrumental", "Vocals"], "Vocals")
 
         ModelConfig._apply_stem_focus(reverse)
         ModelConfig._apply_stem_focus(ordinary)
 
-        self.assertEqual(reverse.selected_stem_routes[0].concept, "mix.instrumental")
-        self.assertEqual(ordinary.selected_stem_routes[0].concept, "vocal.vocals")
+        reverse_routes = cast("tuple[StemRoute, ...]", reverse.selected_stem_routes)
+        ordinary_routes = cast("tuple[StemRoute, ...]", ordinary.selected_stem_routes)
+        self.assertEqual(reverse_routes[0].concept, "mix.instrumental")
+        self.assertEqual(ordinary_routes[0].concept, "vocal.vocals")
         self.assertEqual(settings.to_json_dict(), before)
 
     def test_explicit_role_focus_honors_ordinary_model_without_reordering_native_keys(self) -> None:
@@ -223,4 +217,5 @@ class StemSelectionProvenanceTests(unittest.TestCase):
             ],
             ["Vocals", "Instrumental"],
         )
-        self.assertEqual(model.selected_stem_routes[0].concept, "mix.instrumental")
+        selected_routes = cast("tuple[StemRoute, ...]", model.selected_stem_routes)
+        self.assertEqual(selected_routes[0].concept, "mix.instrumental")

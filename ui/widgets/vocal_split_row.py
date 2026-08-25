@@ -299,10 +299,14 @@ class VocalSplitRow(Adw.ExpanderRow):
         if self._populator.ready and not self._splitter_write_gated:
             self._stored_splitter = get_combo_value(self.splitter_row) or NO_MODEL
         self._populator.invalidate()
-        # Inventory invalidation is the one point where eligibility must be
-        # known even while collapsed: a removed splitter cannot remain an
-        # effective hidden selection until the user next opens this section.
-        if not self._populator.ready:
+        # Inventory invalidation must resolve a currently selected splitter
+        # even while collapsed so a removed model blocks immediately.  With
+        # no selection there is nothing to validate, so preserve lazy loading.
+        if not self._populator.ready and self._stored_splitter not in (
+            NO_MODEL,
+            None,
+            "",
+        ):
             self._populator._populate_now()
 
     def _on_row_changed(self, *_args: typing.Any) -> None:

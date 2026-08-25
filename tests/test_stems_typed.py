@@ -9,20 +9,16 @@ from bundled.constants import (
     BASS_STEM,
     DRUM_STEM,
     INST_STEM,
-    NO_BASS_STEM,
-    NO_DRUM_STEM,
-    NO_OTHER_STEM,
     OTHER_STEM,
     VOCAL_PAIR,
-    VOCAL_STEM,
 )
 from core.settings import Settings
 from core.settings.coerce import coerce_field
+from core.stem_pairs import ensemble_pair_choices, stem_pair_display, stem_pair_halves
 from core.stem_roles import StemId as RoleStemId
 from core.stem_roles import StemLiteral as RoleStemLiteral
 from core.stem_roles import StemRoleId
 from core.stems import (
-    EnsemblePair,
     StemBucket,
     StemId,
     StemLiteral,
@@ -30,8 +26,6 @@ from core.stems import (
     StemRouteKind,
     StemSelectionStatus,
     bucket_for_model_stem,
-    coerce_ensemble_pair,
-    ensemble_pair_choices,
     export_stem_label,
     exports_named_stem,
     filename_tag,
@@ -40,33 +34,10 @@ from core.stems import (
     routes_matching_stems,
     run_export_routes,
     select_stem_routes,
-    ui_label,
 )
 
 
 class EnsemblePairCoerceTests(unittest.TestCase):
-    def test_accepts_stable_ids(self) -> None:
-        self.assertEqual(coerce_ensemble_pair("pair.karaoke"), EnsemblePair.KARAOKE)
-        self.assertEqual(
-            coerce_ensemble_pair("pair.vocals_instrumental"),
-            EnsemblePair.VOCALS_INSTRUMENTAL,
-        )
-        self.assertEqual(coerce_ensemble_pair("pair.backing_vocals"), EnsemblePair.BACKING_VOCALS)
-        self.assertEqual(coerce_ensemble_pair("mode.four_stem"), EnsemblePair.FOUR_STEM)
-        self.assertEqual(coerce_ensemble_pair(EnsemblePair.OTHER), EnsemblePair.CHOOSE)
-
-    def test_legacy_display_string_becomes_choose(self) -> None:
-        self.assertEqual(coerce_ensemble_pair(VOCAL_PAIR), EnsemblePair.CHOOSE)
-        self.assertEqual(
-            coerce_ensemble_pair("Lead Vocals/Instrumental (With Backing Vocals)"),
-            EnsemblePair.CHOOSE,
-        )
-        self.assertEqual(coerce_ensemble_pair("4 Stem Ensemble"), EnsemblePair.CHOOSE)
-
-    def test_unknown_becomes_choose(self) -> None:
-        self.assertEqual(coerce_ensemble_pair("nope"), EnsemblePair.CHOOSE)
-        self.assertEqual(coerce_ensemble_pair(None), EnsemblePair.CHOOSE)
-
     def test_coerce_field_settings_path(self) -> None:
         self.assertEqual(
             coerce_field("ensemble", "main_stem", "mode.multi_stem"),
@@ -76,17 +47,6 @@ class EnsemblePairCoerceTests(unittest.TestCase):
             coerce_field("ensemble", "main_stem", "Vocals/Instrumental"),
             "",
         )
-
-
-class StemHalvesTests(unittest.TestCase):
-    def test_pair_halves(self) -> None:
-        self.assertEqual(
-            EnsemblePair.VOCALS_INSTRUMENTAL.stem_halves(),
-            (VOCAL_STEM, INST_STEM),
-        )
-        self.assertEqual(EnsemblePair.OTHER.stem_halves(), (OTHER_STEM, NO_OTHER_STEM))
-        self.assertEqual(EnsemblePair.DRUMS.stem_halves(), (DRUM_STEM, NO_DRUM_STEM))
-        self.assertEqual(EnsemblePair.BASS.stem_halves(), (BASS_STEM, NO_BASS_STEM))
 
 
 class StemCompatibilityExportTests(unittest.TestCase):
@@ -324,13 +284,9 @@ class StemRouteTests(unittest.TestCase):
         self.assertTrue(derived[0].conditional)
 
     def test_non_pair_halves_empty(self) -> None:
-        for pair in (
-            EnsemblePair.CHOOSE,
-            EnsemblePair.FOUR_STEM,
-            EnsemblePair.MULTI_STEM,
-        ):
-            with self.subTest(pair=pair):
-                self.assertEqual(pair.stem_halves(), ("", ""))
+        for pair_id in ("", "mode.four_stem", "mode.multi_stem"):
+            with self.subTest(pair_id=pair_id):
+                self.assertEqual(stem_pair_halves(pair_id), ("", ""))
 
 
 class FilenameTagTests(unittest.TestCase):
@@ -349,10 +305,6 @@ class BucketAndExportTests(unittest.TestCase):
             bucket_for_model_stem("Vocals", stem_count=2, is_karaoke=True),
             StemBucket.LEAD_VOCALS,
         )
-        self.assertEqual(
-            EnsemblePair.KARAOKE.buckets(),
-            (StemBucket.LEAD_VOCALS, StemBucket.INST_WITH_BV),
-        )
 
     def test_export_label_matches_bucket_value(self) -> None:
         class M:
@@ -369,9 +321,9 @@ class BucketAndExportTests(unittest.TestCase):
         )
 
     def test_ui_label_for_pair(self) -> None:
-        self.assertEqual(ui_label(EnsemblePair.VOCALS_INSTRUMENTAL), "Vocals/Instrumental")
-        self.assertIn("Lead Vocals", ui_label(EnsemblePair.KARAOKE))
-        self.assertEqual(ui_label(EnsemblePair.FOUR_STEM), "4 Stem Ensemble")
+        self.assertEqual(stem_pair_display("pair.vocals_instrumental"), "Vocals/Instrumental")
+        self.assertIn("Lead Vocals", stem_pair_display("pair.karaoke"))
+        self.assertEqual(stem_pair_display("mode.four_stem"), "4 Stem Ensemble")
 
     def test_choices_ids_are_stable(self) -> None:
         ids = [stored for stored, _label in ensemble_pair_choices()]

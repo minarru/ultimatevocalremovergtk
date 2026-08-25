@@ -5,6 +5,7 @@ loops ``run_export_routes`` then ``write_audio``. :func:`finish_export` is the
 job-level post-pass: export, then vocal-split chain.
 This module must not import the engine attribute mixin at load time.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -44,8 +45,7 @@ def vocal_split_pair_routes(routes: tuple[StemRoute, ...]) -> tuple[StemRoute, .
     return tuple(
         route
         for route in routes
-        if isinstance(route.role, StemRoleId)
-        and route.role.value in _VOCAL_SPLIT_PAIR_ROLES
+        if isinstance(route.role, StemRoleId) and route.role.value in _VOCAL_SPLIT_PAIR_ROLES
     )
 
 
@@ -59,8 +59,7 @@ def vocal_split_export_routes(sep: Any) -> tuple[StemRoute, ...]:
         return tuple(
             route
             for route in routes
-            if isinstance(route.role, StemRoleId)
-            and route.role.value == "vocal.backing"
+            if isinstance(route.role, StemRoleId) and route.role.value == "vocal.backing"
         )
     return routes
 
@@ -128,9 +127,7 @@ def _save_audio_file(
 
     from core.stem_levels import export_format_can_clip, scale_to_peak_limit
 
-    if sep.is_prevent_export_clipping and export_format_can_clip(
-        sep.save_format, sep.wav_type_set
-    ):
+    if sep.is_prevent_export_clipping and export_format_can_clip(sep.save_format, sep.wav_type_set):
         source, _gain = scale_to_peak_limit(source)
 
     source = spec_utils.normalize(
@@ -252,9 +249,7 @@ def _save_voc_split_instrumental(
     is_lead: bool,
 ) -> None:
     output_route = _reviewed_output_route(
-        "mix.instrumental_with_lead_vocals"
-        if is_lead
-        else "mix.instrumental_with_backing_vocals"
+        "mix.instrumental_with_lead_vocals" if is_lead else "mix.instrumental_with_backing_vocals"
     )
     if output_route is None:
         return
@@ -303,7 +298,9 @@ def write_audio(
     *,
     route: StemRoute | None = None,
 ) -> None:
-    role_value = route.role.value if route is not None and isinstance(route.role, StemRoleId) else ""
+    role_value = (
+        route.role.value if route is not None and isinstance(route.role, StemRoleId) else ""
+    )
     reviewed_buckets = {
         "vocal.vocals": StemBucket.VOCALS,
         "vocal.lead": StemBucket.LEAD_VOCALS,
@@ -342,19 +339,11 @@ def write_audio(
         StemBucket.INST_WITH_BV,
         StemBucket.INST_WITH_LEAD,
     )
-    is_bv_model_lead = (
-        sep.is_bv_model_rebalenced and sep.is_vocal_split_model and is_lead
-    )
-    is_bv_rebalance_lead = (
-        sep.is_bv_model_rebalenced and sep.is_vocal_split_model and is_backing
-    )
-    is_no_vocal_save = (
-        sep.is_inst_only_voc_splitter and is_vocal_family
-    ) or is_bv_model_lead
+    is_bv_model_lead = sep.is_bv_model_rebalenced and sep.is_vocal_split_model and is_lead
+    is_bv_rebalance_lead = sep.is_bv_model_rebalenced and sep.is_vocal_split_model and is_backing
+    is_no_vocal_save = (sep.is_inst_only_voc_splitter and is_vocal_family) or is_bv_model_lead
     is_not_ensemble = not sep.is_ensemble_mode or sep.is_vocal_split_model
-    is_do_not_save_inst = (
-        sep.is_save_vocal_only and sep.is_sec_bv_rebalance and is_inst_family
-    )
+    is_do_not_save_inst = sep.is_save_vocal_only and sep.is_sec_bv_rebalance and is_inst_family
     vocal_output_route = None
     if sep.is_vocal_split_model and is_vocal_family:
         vocal_output_route = (
@@ -541,9 +530,7 @@ def export_source_map(
         source is not None for source in extra_sources.values()
     )
     if has_export_candidates and write_calls == 0:
-        requested = [
-            {"concept": route.concept, "label": route.label} for route in routes
-        ]
+        requested = [{"concept": route.concept, "label": route.label} for route in routes]
         available = list(sources)
         log_event(
             "audio",

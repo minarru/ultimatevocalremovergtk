@@ -78,8 +78,13 @@ from core.run_estimate import (
     estimate_workload,
     format_workload_line,
 )
-from core.stem_pairs import is_stem_mode, normalize_stem_pair_id, stem_pair_definition
-from core.stems import StemRoute, ensemble_pair_choices
+from core.stem_pairs import (
+    ensemble_pair_choices,
+    is_stem_mode,
+    normalize_stem_pair_id,
+    stem_pair_definition,
+)
+from core.stems import StemRoute
 from core.types import ProcessMethod
 
 from ..dialogs.utils import present_modal_dialog, set_dialog_content

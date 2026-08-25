@@ -48,9 +48,15 @@ class PortableStemFilenameTests(unittest.TestCase):
 
 
 class _FakeModel:
-    def __init__(self, *, is_karaoke: bool = False, is_bv: bool = False,
-                 stem_count: int = 2, demucs_stem_count: int = 0,
-                 demucs_source_list: typing.Sequence[str] = ()) -> None:
+    def __init__(
+        self,
+        *,
+        is_karaoke: bool = False,
+        is_bv: bool = False,
+        stem_count: int = 2,
+        demucs_stem_count: int = 0,
+        demucs_source_list: typing.Sequence[str] = (),
+    ) -> None:
         self.is_karaoke = is_karaoke
         self.is_bv_model = is_bv
         self.mdx_stem_count = stem_count
@@ -89,19 +95,26 @@ class DemucsStemCountTests(unittest.TestCase):
     """
 
     def test_four_stem_demucs_other_is_not_instrumental(self) -> None:
-        model = _FakeModel(stem_count=1, demucs_stem_count=4,
-                       demucs_source_list=["drums", "bass", "other", "vocals"])
+        model = _FakeModel(
+            stem_count=1,
+            demucs_stem_count=4,
+            demucs_source_list=["drums", "bass", "other", "vocals"],
+        )
         self.assertEqual(export_stem_label(model, "other", for_ensemble=True), StemBucket.OTHER)
 
     def test_four_stem_demucs_other_stems_unaffected(self) -> None:
-        model = _FakeModel(stem_count=1, demucs_stem_count=4,
-                       demucs_source_list=["drums", "bass", "other", "vocals"])
+        model = _FakeModel(
+            stem_count=1,
+            demucs_stem_count=4,
+            demucs_source_list=["drums", "bass", "other", "vocals"],
+        )
         self.assertEqual(export_stem_label(model, "vocals", for_ensemble=True), StemBucket.VOCALS)
         self.assertEqual(export_stem_label(model, "drums", for_ensemble=True), "Drums")
 
     def test_two_stem_demucs_other_is_still_instrumental(self) -> None:
-        model = _FakeModel(stem_count=1, demucs_stem_count=2,
-                       demucs_source_list=["instrumental", "vocals"])
+        model = _FakeModel(
+            stem_count=1, demucs_stem_count=2, demucs_source_list=["instrumental", "vocals"]
+        )
         self.assertEqual(
             export_stem_label(model, "other", for_ensemble=True), StemBucket.INSTRUMENTAL
         )
@@ -121,12 +134,8 @@ class DemucsStemCountTests(unittest.TestCase):
         model = _FakeModel(stem_count=3)
         self.assertEqual(export_stem_label(model, "Speech", for_ensemble=True), "Speech")
         self.assertEqual(export_stem_label(model, "Sfx", for_ensemble=True), "Sfx")
-        self.assertEqual(
-            export_stem_label(model, "Similarity", for_ensemble=True), "Similarity"
-        )
-        self.assertNotEqual(
-            export_stem_label(model, "Speech", for_ensemble=True), "Unknown"
-        )
+        self.assertEqual(export_stem_label(model, "Similarity", for_ensemble=True), "Similarity")
+        self.assertNotEqual(export_stem_label(model, "Speech", for_ensemble=True), "Unknown")
 
     def test_no_other_is_not_written_as_unknown(self) -> None:
         model = _FakeModel(stem_count=4)

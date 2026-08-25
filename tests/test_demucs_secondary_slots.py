@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unittest
-from typing import Any, cast
+from typing import Any
 
 from bundled.constants import (
     BASS_STEM,
@@ -33,9 +33,7 @@ class Secondary4StemSlotTests(unittest.TestCase):
         models = [_Model("bass"), _Model("drums"), _Model("other"), _Model("vocals")]
         scales = [0.5, 0.6, 0.7, 0.9]
         for index, model in enumerate(models):
-            self.assertEqual(
-                secondary_4_stem_slot(models, scales, index), (model, scales[index])
-            )
+            self.assertEqual(secondary_4_stem_slot(models, scales, index), (model, scales[index]))
 
     def test_unconfigured_slot_does_not_inherit_previous_stem(self) -> None:
         """The regression: only Bass has a secondary model.
@@ -56,9 +54,7 @@ class Secondary4StemSlotTests(unittest.TestCase):
         for stem in (DRUM_STEM, OTHER_STEM, VOCAL_STEM):
             with self.subTest(stem=stem):
                 self.assertEqual(
-                    secondary_4_stem_slot(
-                        models, scales, DEMUCS_4_SOURCE_MAPPER[stem]
-                    ),
+                    secondary_4_stem_slot(models, scales, DEMUCS_4_SOURCE_MAPPER[stem]),
                     (None, None),
                 )
 
@@ -68,9 +64,7 @@ class Secondary4StemSlotTests(unittest.TestCase):
         scales = [0.5, None, None, 0.9]
 
         resolved = [secondary_4_stem_slot(models, scales, i) for i in range(4)]
-        self.assertEqual(
-            resolved, [(bass, 0.5), (None, None), (None, None), (vocals, 0.9)]
-        )
+        self.assertEqual(resolved, [(bass, 0.5), (None, None), (None, None), (vocals, 0.9)])
 
     def test_six_stem_extra_slots_are_empty(self) -> None:
         """Guitar/piano (indices 4-5) have no secondary entries at all."""
@@ -78,9 +72,7 @@ class Secondary4StemSlotTests(unittest.TestCase):
         scales = [0.5, 0.6, 0.7, 0.9]
         for index in (4, 5):
             with self.subTest(index=index):
-                self.assertEqual(
-                    secondary_4_stem_slot(models, scales, index), (None, None)
-                )
+                self.assertEqual(secondary_4_stem_slot(models, scales, index), (None, None))
 
     def test_empty_or_missing_configuration_is_empty(self) -> None:
         self.assertEqual(secondary_4_stem_slot([], [], 0), (None, None))
@@ -110,9 +102,7 @@ class _StubSeperateDemucs:
         self.model_display_label = "demucs-test"
         self.primary_model_name = "demucs-test"
         # 4 stems x 2 channels x 8 frames, each stem a distinct constant.
-        self.primary_sources = np.stack(
-            [np.full((2, 8), float(i + 1)) for i in range(4)]
-        )
+        self.primary_sources = np.stack([np.full((2, 8), float(i + 1)) for i in range(4)])
         self.demucs_stem_count = 4
         self.pre_proc_model = None
         self.is_vocal_split_model = False
@@ -210,9 +200,7 @@ class _StubSeperateDemucs:
         # Both (2, N) and (N, 2) stub arrays start with the stem's constant.
         first = float(np.asarray(stem_source).reshape(-1)[0])
         stem_name = self._stem_by_constant.get(first, self._current_stem)
-        self.blend_calls.append(
-            (stem_name, secondary_model_source, model_scale)
-        )
+        self.blend_calls.append((stem_name, secondary_model_source, model_scale))
         return stem_source
 
     def write_audio(self, *args: Any, **kwargs: Any) -> None:
@@ -285,9 +273,7 @@ class Demucs4StemExportLoopTests(unittest.TestCase):
     def test_no_secondary_models_blends_nothing(self) -> None:
         calls, run_secondary = self._run([None] * 4, [None] * 4)
         self.assertEqual(run_secondary.call_count, 0)
-        self.assertEqual(
-            [(src, scale) for _stem, src, scale in calls], [(None, None)] * 4
-        )
+        self.assertEqual([(src, scale) for _stem, src, scale in calls], [(None, None)] * 4)
 
     def test_two_source_secondary_model_dict_uses_vocals_slot(self) -> None:
         """Regression target: a 2-source demix should use its Vocals output.
@@ -331,11 +317,7 @@ class Demucs4StemExportLoopTests(unittest.TestCase):
         # type: ignore[arg-type]
         result = SeperateDemucs.seperate(stub)  # type: ignore[arg-type]
         self.assertIsInstance(result, ExportPlan)
-        payload = (
-            result.return_sources
-            if result.return_sources is not None
-            else result.sources
-        )
+        payload = result.return_sources if result.return_sources is not None else result.sources
         self.assertIn("Instrumental", payload)
 
 

@@ -45,9 +45,7 @@ class _SingleRunHooks:
     def before_file(self, runner: Any, state: FileState) -> None:
         return
 
-    def export_and_base(
-        self, runner: Any, state: FileState, model: Any
-    ) -> tuple[str, str]:
+    def export_and_base(self, runner: Any, state: FileState, model: Any) -> tuple[str, str]:
         model_label = _model_output_label(model)
         naming = runner._naming_for_file(
             state.audio_file,
@@ -62,9 +60,7 @@ class _SingleRunHooks:
         state.scratch["stem_paths"] = {}
         return naming.track_base, naming.export_directory
 
-    def extra_process_data(
-        self, runner: Any, state: FileState, model: Any
-    ) -> dict:
+    def extra_process_data(self, runner: Any, state: FileState, model: Any) -> dict:
         return {"is_ensemble_master": False, "is_4_stem_ensemble": False}
 
     def after_chunk(
@@ -135,9 +131,7 @@ class _EnsembleRunHooks:
         )
         state.scratch["ensemble_final_base"] = final_naming.track_base
 
-    def export_and_base(
-        self, runner: Any, state: FileState, model: Any
-    ) -> tuple[str, str]:
+    def export_and_base(self, runner: Any, state: FileState, model: Any) -> tuple[str, str]:
         model_label = _model_output_label(model)
         state.callbacks.console(
             f"Ensemble Mode - {model_label} - "
@@ -157,15 +151,11 @@ class _EnsembleRunHooks:
         state.scratch["model_label"] = model_label
         return member_naming.track_base, self.export_path
 
-    def extra_process_data(
-        self, runner: Any, state: FileState, model: Any
-    ) -> dict:
+    def extra_process_data(self, runner: Any, state: FileState, model: Any) -> dict:
         return {
             "is_ensemble_master": True,
             "is_4_stem_ensemble": self.is_multi_stem,
-            "is_save_all_outputs_ensemble": bool(
-                runner.settings.ensemble.save_all_outputs
-            ),
+            "is_save_all_outputs_ensemble": bool(runner.settings.ensemble.save_all_outputs),
         }
 
     def after_chunk(
@@ -216,9 +206,7 @@ class _EnsembleRunHooks:
         if state.chunked:
             for collected, parts in scratch["member_stem_parts"].items():
                 concat = concat_stems(parts, overlap_samples=state.ov_samples)
-                scratch["ensemble_stem_arrays"].setdefault(
-                    collected.group_key, []
-                ).append(concat)
+                scratch["ensemble_stem_arrays"].setdefault(collected.group_key, []).append(concat)
                 salvage_arrays[collected.group_key] = concat
         else:
             for tag, arr in scratch["last_member_stems"].items():

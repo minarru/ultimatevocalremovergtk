@@ -1,4 +1,5 @@
 """MDX export routing and complement helpers."""
+
 import typing
 import unittest
 from types import SimpleNamespace
@@ -54,9 +55,7 @@ class MDXExportRoutingTests(unittest.TestCase):
         return values
 
     def test_complement_export_flag(self) -> None:
-        routing = mdx_export_routing_flags(
-            **self._base_kwargs(include_stem_complement=True)
-        )
+        routing = mdx_export_routing_flags(**self._base_kwargs(include_stem_complement=True))
         self.assertTrue(routing["is_complement_export"])
         self.assertFalse(routing["is_native_pick"])
         self.assertFalse(routing["multi_stem_export"])
@@ -142,7 +141,7 @@ class MDXExportRoutingTests(unittest.TestCase):
         mix = np.array([[10.0, 20.0], [30.0, 40.0]])
         with mock.patch("engines.mdx_c.spec_utils.to_shape", side_effect=lambda src, shape: src):
             complement = derive_mdx_complement(native, mix)
-        expected = (-native.T + mix.T)
+        expected = -native.T + mix.T
         np.testing.assert_array_equal(complement, expected)
 
     def test_multi_complement_recipe_follows_combine_stems(self) -> None:
@@ -153,12 +152,8 @@ class MDXExportRoutingTests(unittest.TestCase):
         }
         mix = sources["vocals"] + sources["drums"] + sources["bass"]
         with mock.patch("engines.mdx_c.spec_utils.to_shape", side_effect=lambda src, shape: src):
-            summed = derive_mdx_multi_complement(
-                sources, "Vocals", mix, combine_stems=True
-            )
-            subtracted = derive_mdx_multi_complement(
-                sources, "Vocals", mix, combine_stems=False
-            )
+            summed = derive_mdx_multi_complement(sources, "Vocals", mix, combine_stems=True)
+            subtracted = derive_mdx_multi_complement(sources, "Vocals", mix, combine_stems=False)
         expected = (sources["drums"] + sources["bass"]).T
         np.testing.assert_array_equal(summed, expected)
         np.testing.assert_array_equal(subtracted, expected)
@@ -336,9 +331,7 @@ class MdxSelectedStemsTests(unittest.TestCase):
     def test_matches_the_models_native_casing_against_a_canonical_selection(
         self,
     ) -> None:
-        selected = mdx_selected_stems(
-            ["drums", "bass", "other", "vocals"], ["Vocals"]
-        )
+        selected = mdx_selected_stems(["drums", "bass", "other", "vocals"], ["Vocals"])
         self.assertEqual(selected, ["vocals"])
 
     def test_matches_when_both_sides_already_agree(self) -> None:

@@ -7,6 +7,7 @@ hash-JSON IO live in :mod:`core.model_data`. Saved-ensemble JSON persistence
 lives in :mod:`core.ensemble_service`.
 Nothing here imports ``tkinter``.
 """
+
 import json
 import os
 import threading
@@ -47,9 +48,7 @@ class ModelRepository:
         self.demucs_name_select_MAPPER: dict = {}
         # AppContext seeds this ephemeral cache from trusted persisted entries.
         self.model_hash_table: Dict[str, str] = {}
-        self._model_hash_table_provider: Optional[
-            Callable[[], typing.Mapping[str, Any]]
-        ] = None
+        self._model_hash_table_provider: Optional[Callable[[], typing.Mapping[str, Any]]] = None
         # Phase 3 hook: later phases set this to a callable that prompts the user
         # for parameters of an unrecognized model. Returning ``None`` (the
         # default) simply marks such models as unavailable.
@@ -105,9 +104,7 @@ class ModelRepository:
         value = digest()
         return value if isinstance(value, str) else ""
 
-    def bind_model_hash_table(
-        self, provider: Callable[[], typing.Mapping[str, Any]]
-    ) -> None:
+    def bind_model_hash_table(self, provider: Callable[[], typing.Mapping[str, Any]]) -> None:
         """Bind the persisted stat-guarded hash table owned by the caller.
 
         The repository keeps only the flattened trusted projection. Retaining
@@ -194,9 +191,7 @@ class ModelRepository:
             return
         self.invalidate_model_presentation(reload_mappers=False)
 
-    def subscribe_model_presentation_changed(
-        self, callback: Callable[[], None]
-    ) -> None:
+    def subscribe_model_presentation_changed(self, callback: Callable[[], None]) -> None:
         """Call ``callback`` after :meth:`invalidate_model_presentation`.
 
         Presentation-only: labels or catalogue associations changed while the
@@ -208,9 +203,7 @@ class ModelRepository:
             if callback not in self._presentation_changed_subscribers:
                 self._presentation_changed_subscribers.append(callback)
 
-    def unsubscribe_model_presentation_changed(
-        self, callback: Callable[[], None]
-    ) -> None:
+    def unsubscribe_model_presentation_changed(self, callback: Callable[[], None]) -> None:
         with self._presentation_changed_lock:
             try:
                 self._presentation_changed_subscribers.remove(callback)
@@ -294,15 +287,12 @@ class ModelRepository:
         models: List[str] = []
         bag_sigs = demucs_yaml_bag_member_sigs(paths.DEMUCS_NEWER_REPO_DIR)
         for directory in (paths.DEMUCS_NEWER_REPO_DIR, paths.DEMUCS_MODELS_DIR):
-            for name in _list_model_files(
-                directory, (".th", ".th.gz", ".ckpt", ".yaml", ".yml")
-            ):
+            for name in _list_model_files(directory, (".th", ".th.gz", ".ckpt", ".yaml", ".yml")):
                 if directory == paths.DEMUCS_MODELS_DIR and name.lower().endswith(".ckpt"):
                     continue
                 stem = _artifact_stem(name)
-                if (
-                    directory == paths.DEMUCS_NEWER_REPO_DIR
-                    and is_demucs_bag_member_weight(stem, bag_sigs)
+                if directory == paths.DEMUCS_NEWER_REPO_DIR and is_demucs_bag_member_weight(
+                    stem, bag_sigs
                 ):
                     continue
                 models.append(stem)
@@ -318,9 +308,7 @@ class ModelRepository:
         if family == "vr":
             return _list_model_files(paths.VR_MODELS_DIR, (".pth",))
         if family == "mdx":
-            return _list_model_files(
-                paths.MDX_MODELS_DIR, (".onnx", ".ckpt", ".yaml", ".yml")
-            )
+            return _list_model_files(paths.MDX_MODELS_DIR, (".onnx", ".ckpt", ".yaml", ".yml"))
         if family == "apollo":
             return _list_model_files(paths.APOLLO_MODELS_DIR, (".ckpt", ".bin"))
         if family != "demucs":
@@ -386,12 +374,12 @@ class ModelRepository:
         return load_demucs_catalog_display_index(allow_network=allow_network)
 
     def list_demucs_model_tags(self) -> List[str]:
-        return _canonical_model_tags(
-            "demucs", self.list_demucs_models(), DEMUCS_ARCH_TYPE, self
-        )
+        return _canonical_model_tags("demucs", self.list_demucs_models(), DEMUCS_ARCH_TYPE, self)
 
     def all_model_tags(self) -> List[str]:
-        return self.list_vr_model_tags() + self.list_mdx_model_tags() + self.list_demucs_model_tags()
+        return (
+            self.list_vr_model_tags() + self.list_mdx_model_tags() + self.list_demucs_model_tags()
+        )
 
     def default_change_model_tags(self) -> List[str]:
         """VR + MDX model tags - the pool UVR exposes in change-model-defaults."""
@@ -561,9 +549,7 @@ class ModelRepository:
         self._karaoke_cache = (tags, model_list)
         return list(model_list)
 
-    def ensemble_model_list(
-        self, settings: Settings, ensemble_main_stem: Any
-    ) -> List[str]:
+    def ensemble_model_list(self, settings: Settings, ensemble_main_stem: Any) -> List[str]:
         """Return installed models with exact reviewed pair-role coverage.
 
         Pair eligibility is deliberately stricter than a display or native
@@ -615,9 +601,7 @@ class ModelRepository:
                 identity = ModelIdentityService(self).lookup(model_name)
                 model_name = identity.display
             if identity is None:
-                return ModelConfig(
-                    settings, self, model_name, process_method, is_dry_check=True
-                )
+                return ModelConfig(settings, self, model_name, process_method, is_dry_check=True)
             return ModelConfig(
                 settings,
                 self,
@@ -629,7 +613,10 @@ class ModelRepository:
         except (FileNotFoundError, ValueError, KeyError, OSError, json.JSONDecodeError) as exc:
             from .debug_log import debug
 
-            debug("model", f"resolve_model_dry failed model={model_name!r} error={type(exc).__name__}: {exc}")
+            debug(
+                "model",
+                f"resolve_model_dry failed model={model_name!r} error={type(exc).__name__}: {exc}",
+            )
             return None
 
     def stem_labels_for_model(self, settings: Settings, process_method: str, model_name: str):
@@ -685,9 +672,7 @@ def _canonical_model_tags(
     from .model_identity import ModelId
 
     displays = map_basenames_to_display(basenames, arch, repo)
-    pairs = sorted(
-        zip(displays, basenames, strict=False), key=lambda item: str(item[0]).casefold()
-    )
+    pairs = sorted(zip(displays, basenames, strict=False), key=lambda item: str(item[0]).casefold())
     return [str(ModelId(family, basename)) for _display, basename in pairs]
 
 
@@ -741,9 +726,7 @@ def _has_reviewed_vocal_split_context(model: Any) -> bool:
         model_id,
         native_stems=native_stems,
         backend_primary=str(
-            getattr(model, "primary_stem_native", None)
-            or getattr(model, "primary_stem", "")
-            or ""
+            getattr(model, "primary_stem_native", None) or getattr(model, "primary_stem", "") or ""
         ),
         backend_target=str(getattr(model, "target_instrument", "") or ""),
         context=StemProcessingContext.VOCAL_SPLIT,
@@ -779,9 +762,7 @@ def _has_reviewed_full_mix_roles(model: Any, required_roles: typing.Iterable[Any
         model_id,
         native_stems=native_stems,
         backend_primary=str(
-            getattr(model, "primary_stem_native", None)
-            or getattr(model, "primary_stem", "")
-            or ""
+            getattr(model, "primary_stem_native", None) or getattr(model, "primary_stem", "") or ""
         ),
         backend_target=str(getattr(model, "target_instrument", "") or ""),
         context=StemProcessingContext.FULL_MIX,

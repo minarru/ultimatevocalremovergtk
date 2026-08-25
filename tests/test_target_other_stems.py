@@ -8,8 +8,7 @@ from bundled.constants import INST_STEM, VOCAL_STEM
 from core import Settings
 from core.model_config import ModelConfig
 from core.model_repository import ModelRepository
-from core.stems import EnsemblePair, export_stem_label
-
+from core.stems import export_stem_label
 
 _TARGET_OTHER_TAGS = (
     "mdx:model_BandSplit-Roformer_Resurrection_Instrumental_by-Unwa",
@@ -45,24 +44,18 @@ class TargetOtherStemTests(unittest.TestCase):
                 self.assertEqual(model.primary_stem, INST_STEM)
                 self.assertEqual(model.secondary_stem, VOCAL_STEM)
                 self.assertNotEqual(str(model.secondary_stem).casefold(), "no other")
-                self.assertEqual(
-                    export_stem_label(model, "other", for_ensemble=True), INST_STEM
-                )
+                self.assertEqual(export_stem_label(model, "other", for_ensemble=True), INST_STEM)
                 self.assertEqual(
                     export_stem_label(model, VOCAL_STEM, for_ensemble=True), VOCAL_STEM
                 )
         if found == 0:
             self.skipTest("no target-other Unwa models installed")
 
-    def test_target_other_eligible_for_vocal_pair_not_other_pair(self) -> None:
+    def test_target_other_eligible_for_vocal_pair_not_removed_pseudo_pair(self) -> None:
         eligible_vocal = set(
-            self.repo.ensemble_model_list(
-                self.settings, EnsemblePair.VOCALS_INSTRUMENTAL
-            )
+            self.repo.ensemble_model_list(self.settings, "pair.vocals_instrumental")
         )
-        eligible_other = set(
-            self.repo.ensemble_model_list(self.settings, EnsemblePair.OTHER)
-        )
+        eligible_other = set(self.repo.ensemble_model_list(self.settings, "other"))
         found = 0
         for tag in _TARGET_OTHER_TAGS:
             model = self._dry(tag)

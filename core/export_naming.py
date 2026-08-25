@@ -60,9 +60,7 @@ def build_output_naming_context(
         track=track,
         model=model_label if settings.process.add_model_name or force_model_label else None,
         ensemble=(
-            ensemble_label
-            if settings.process.add_model_name or force_ensemble_label
-            else None
+            ensemble_label if settings.process.add_model_name or force_ensemble_label else None
         ),
         file_index=file_index,
         file_total=file_total,
@@ -70,9 +68,7 @@ def build_output_naming_context(
     )
     directory = export_path
     if settings.process.create_model_folder and model_label:
-        directory = os.path.join(
-            export_path, sanitize_filename_component(model_label), track
-        )
+        directory = os.path.join(export_path, sanitize_filename_component(model_label), track)
     extension = str(getattr(settings.process.save_format, "value", "wav") or "wav").lower()
     return OutputNamingContext(
         input_path=input_path,

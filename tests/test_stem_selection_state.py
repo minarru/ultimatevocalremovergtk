@@ -215,7 +215,6 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
 
     def test_karaoke_bucket_choices_persist_their_distinct_role_ids(self) -> None:
         from core.stem_selection import ExclusiveView, StemSelectionState
-        from core.stems import EnsemblePair
 
         settings = Settings.defaults()
         state = StemSelectionState()
@@ -224,7 +223,7 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
             secondary_stem="",
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
-            ensemble_pair=EnsemblePair.KARAOKE,
+            stem_pair_id="pair.karaoke",
         )
         for route, expected_role in zip(
             state.routes,

@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+from bundled.constants import FOUR_STEM_ENSEMBLE, MULTI_STEM_ENSEMBLE
+
 from .model_stem_manifest import StemPairDefinition, load_bundled_stem_semantics
 
 _STEM_MODES = frozenset({"mode.four_stem", "mode.multi_stem"})
+_STEM_MODE_DISPLAYS = {
+    "mode.four_stem": FOUR_STEM_ENSEMBLE,
+    "mode.multi_stem": MULTI_STEM_ENSEMBLE,
+}
+_CHOOSE_DISPLAY = "Choose Stem Pair"
 
 
 def stem_pair_definition(pair_id: str) -> StemPairDefinition | None:
@@ -25,3 +32,55 @@ def normalize_stem_pair_id(value: object) -> str:
     if stem_pair_definition(pair_id) is not None or is_stem_mode(pair_id):
         return pair_id
     return ""
+
+
+def stem_pair_display(pair_id: str) -> str:
+    """Return presentation text for one exact pair/mode ID."""
+    if not pair_id:
+        return _CHOOSE_DISPLAY
+    definition = stem_pair_definition(pair_id)
+    if definition is not None:
+        return definition.display
+    return _STEM_MODE_DISPLAYS.get(pair_id, "")
+
+
+def stem_pair_halves(pair_id: str) -> tuple[str, str]:
+    """Return the two reviewed role labels for an exact pair ID."""
+    definition = stem_pair_definition(pair_id)
+    if definition is None or len(definition.roles) != 2:
+        return "", ""
+    registry = load_bundled_stem_semantics()
+    primary = registry.roles.get(definition.roles[0])
+    secondary = registry.roles.get(definition.roles[1])
+    if primary is None or secondary is None:
+        return "", ""
+    return primary.display, secondary.display
+
+
+def ensemble_pair_choices() -> tuple[tuple[str, str], ...]:
+    """Return exact stored IDs and labels for the ensemble pair combo."""
+    registry = load_bundled_stem_semantics()
+    return (
+        ("", _CHOOSE_DISPLAY),
+        *((pair.id, pair.display) for pair in registry.pairs.values()),
+        ("mode.four_stem", _STEM_MODE_DISPLAYS["mode.four_stem"]),
+        ("mode.multi_stem", _STEM_MODE_DISPLAYS["mode.multi_stem"]),
+    )
+
+
+def exclusive_flags_for_stem_pair(focus: str, pair_id: str) -> tuple[bool, bool] | None:
+    """Resolve an exact role or positional focus against one reviewed pair."""
+    if not str(focus or "").strip():
+        return None
+    definition = stem_pair_definition(pair_id)
+    if definition is None or len(definition.roles) != 2:
+        return False, False
+    if focus == "primary":
+        return True, False
+    if focus == "secondary":
+        return False, True
+    if focus == definition.roles[0].value:
+        return True, False
+    if focus == definition.roles[1].value:
+        return False, True
+    return False, False

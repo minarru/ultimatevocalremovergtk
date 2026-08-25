@@ -1,11 +1,11 @@
 """Vocal splitter + deverb row (global settings, hosted on the run pages)."""
 
 from __future__ import annotations
-import typing
-from types import SimpleNamespace
 
 import os
+import typing
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -44,9 +44,9 @@ class VocalSplitRowTests(unittest.TestCase):
         return settings
 
     def _row(self):
-        from ui.widgets.vocal_split_row import VocalSplitRow
         from core.model_identity import ModelArtifacts, ModelRecord
         from core.model_repository import ModelRepository
+        from ui.widgets.vocal_split_row import VocalSplitRow
 
         repo = ModelRepository()
 
@@ -58,6 +58,7 @@ class VocalSplitRowTests(unittest.TestCase):
         def patched_karaoke(settings: typing.Any):
             self.karaoke_calls += 1
             return list(self.karaoke_models)
+
         repo.karaoke_model_list = patched_karaoke
 
         def installed_records(_service: typing.Any):
@@ -102,9 +103,7 @@ class VocalSplitRowTests(unittest.TestCase):
 
     def test_applies_stored_switches(self):
         row = self._row()
-        row.apply_from_settings(
-            self._settings(is_set_vocal_splitter=True, is_deverb_vocals=True)
-        )
+        row.apply_from_settings(self._settings(is_set_vocal_splitter=True, is_deverb_vocals=True))
         self.assertTrue(row.split_switch.get_active())
         self.assertTrue(row.deverb_switch.get_active())
 
@@ -120,17 +119,13 @@ class VocalSplitRowTests(unittest.TestCase):
 
     def test_stays_collapsed_when_both_switches_are_off(self):
         row = self._row()
-        row.apply_from_settings(
-            self._settings(is_set_vocal_splitter=False, is_deverb_vocals=False)
-        )
+        row.apply_from_settings(self._settings(is_set_vocal_splitter=False, is_deverb_vocals=False))
         self.assertFalse(row.get_expanded())
 
     def test_never_auto_collapses_a_manually_opened_section(self):
         row = self._row()
         row.set_expanded(True)
-        row.apply_from_settings(
-            self._settings(is_set_vocal_splitter=False, is_deverb_vocals=False)
-        )
+        row.apply_from_settings(self._settings(is_set_vocal_splitter=False, is_deverb_vocals=False))
         self.assertTrue(row.get_expanded())
 
     def test_subtitle_reports_off_when_both_are_off(self):
@@ -176,13 +171,8 @@ class VocalSplitRowTests(unittest.TestCase):
         row.persist_to_settings(settings)
         self.assertEqual(settings.get("set_vocal_splitter"), "VR Arc: UVR-BVE-4B")
 
-    def test_persist_clears_a_stored_tag_missing_from_the_model_list(self):
-        """A deleted/renamed model cannot become active after a later install.
-
-        Regression: expanding the row used to rebuild the combo from just the
-        fresh (non-matching) list, silently landing the selection on index 0
-        (``NO_MODEL``) and then persisting that over the user's real choice.
-        """
+    def test_persist_keeps_a_missing_stored_tag_gated_until_repick(self):
+        """A deleted model stays visible as a blocker until explicit repick."""
         settings = self._settings(set_vocal_splitter="VR Arc: 5_HP-Karaoke-UVR-DELETED")
         row = self._row()
         row.apply_from_settings(settings)
@@ -191,7 +181,11 @@ class VocalSplitRowTests(unittest.TestCase):
 
         self.assertEqual(get_combo_value(row.splitter_row), "No Model Selected")
         row.persist_to_settings(settings)
-        self.assertEqual(settings.get("set_vocal_splitter"), "No Model Selected")
+        self.assertEqual(
+            settings.get("set_vocal_splitter"),
+            "VR Arc: 5_HP-Karaoke-UVR-DELETED",
+        )
+        self.assertTrue(row.repick_required)
         self.assertFalse(settings.get("is_set_vocal_splitter"))
 
     def test_missing_stored_splitter_is_visible_until_valid_repick(self):
@@ -240,8 +234,8 @@ class VocalSplitRowTests(unittest.TestCase):
         self.assertFalse(row.splitter_warning_row.get_visible())
 
     def test_shared_settings_repick_replaces_another_rows_stale_gate(self):
-        from ui.widgets.vocal_split_row import VocalSplitRow
         from ui.widgets.rows import combo_values, get_combo_value
+        from ui.widgets.vocal_split_row import VocalSplitRow
 
         missing = "vr:later"
         replacement = "vr:UVR-BVE-4B"
@@ -268,9 +262,9 @@ class VocalSplitRowTests(unittest.TestCase):
         row_a.save_inst_switch.set_active(True)
         self.assertEqual(settings.get("set_vocal_splitter"), replacement)
 
-    def test_persist_clears_a_stored_tag_when_karaoke_model_list_raises(self):
-        from ui.widgets.vocal_split_row import VocalSplitRow
+    def test_repository_failure_keeps_the_stored_tag_gated_until_repick(self):
         from core.model_repository import ModelRepository
+        from ui.widgets.vocal_split_row import VocalSplitRow
 
         repo = ModelRepository()
 
@@ -284,14 +278,13 @@ class VocalSplitRowTests(unittest.TestCase):
         row.apply_from_settings(settings)
         row.set_expanded(True)  # triggers _populate_models, which will raise internally
         row.persist_to_settings(settings)
-        self.assertEqual(settings.get("set_vocal_splitter"), "No Model Selected")
+        self.assertEqual(settings.get("set_vocal_splitter"), "VR Arc: UVR-BVE-4B")
+        self.assertTrue(row.repick_required)
         self.assertFalse(settings.get("is_set_vocal_splitter"))
 
     def test_dependent_rows_are_dimmed_while_their_switch_is_off(self):
         row = self._row()
-        row.apply_from_settings(
-            self._settings(is_set_vocal_splitter=False, is_deverb_vocals=False)
-        )
+        row.apply_from_settings(self._settings(is_set_vocal_splitter=False, is_deverb_vocals=False))
         self.assertFalse(row.splitter_row.get_sensitive())
         self.assertFalse(row.save_inst_switch.get_sensitive())
         self.assertFalse(row.deverb_row.get_sensitive())
@@ -314,7 +307,7 @@ class VocalSplitRowTests(unittest.TestCase):
 
     def test_model_list_shows_friendly_names_but_stores_canonical_ids(self):
         """Combo displays friendly names while persisting canonical identities."""
-        from ui.widgets.rows import combo_values, get_combo_value
+        from ui.widgets.rows import combo_values
 
         row = self._row()
         row.apply_from_settings(self._settings())
@@ -383,9 +376,9 @@ class VocalSplitRowTests(unittest.TestCase):
         row.set_expanded(True)
         self.assertIn("UVR-BVE-5B", " ".join(combo_values(row.splitter_row)))
 
-    def test_refresh_flush_drops_a_selection_absent_from_the_new_list(self):
-        from ui.widgets.rows import combo_values, get_combo_value
+    def test_refresh_gates_a_selection_absent_from_the_new_list(self):
         from bundled.constants import NO_MODEL
+        from ui.widgets.rows import combo_values, get_combo_value
 
         row = self._row()
         row.apply_from_settings(self._settings())
@@ -400,7 +393,8 @@ class VocalSplitRowTests(unittest.TestCase):
         self.assertEqual(get_combo_value(row.splitter_row), NO_MODEL)
         settings = self._settings()
         row.persist_to_settings(settings)
-        self.assertEqual(settings.get("set_vocal_splitter"), NO_MODEL)
+        self.assertEqual(settings.get("set_vocal_splitter"), "vr:UVR-BVE-4B")
+        self.assertTrue(row.repick_required)
         self.assertFalse(settings.get("is_set_vocal_splitter"))
 
     def test_refresh_presents_only_karaoke_members_with_friendly_labels(self):
@@ -411,6 +405,7 @@ class VocalSplitRowTests(unittest.TestCase):
         model must never reach the combo no matter how friendly its label is.
         """
         import tempfile
+
         from core import model_repository as model_repository_mod
         from core.model_repository import ModelRepository
         from ui.widgets.rows import combo_values, get_combo_value
@@ -422,9 +417,7 @@ class VocalSplitRowTests(unittest.TestCase):
 
         repo = ModelRepository()
         repo._model_artifact_files = lambda family: (
-            ["UVR_MDXNET_KARA_2.onnx", "plain_model.onnx"]
-            if family == "mdx"
-            else []
+            ["UVR_MDXNET_KARA_2.onnx", "plain_model.onnx"] if family == "mdx" else []
         )
         repo.mdx_name_select_MAPPER = {
             "UVR_MDXNET_KARA_2.onnx": "Karaoke Friendly",
@@ -457,9 +450,7 @@ class VocalSplitRowTests(unittest.TestCase):
             )
 
         row = self._row_with_repo(repo)
-        with patch.object(
-            model_repository_mod, "_dry_check_config", side_effect=fake_dry_check
-        ):
+        with patch.object(model_repository_mod, "_dry_check_config", side_effect=fake_dry_check):
             row.apply_from_settings(self._settings())
             row.set_expanded(True)
 

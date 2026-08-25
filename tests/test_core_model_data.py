@@ -44,10 +44,13 @@ class AssembleEnsembleTests(unittest.TestCase):
         bad = MagicMock()
         bad.model_status = False
 
-        with patch(
-            "core.model_identity.ModelIdentityService._published_index",
-            return_value=IdentityIndex(records),
-        ), patch("core.model_config.config.ModelConfig", side_effect=[good, bad]):
+        with (
+            patch(
+                "core.model_identity.ModelIdentityService._published_index",
+                return_value=IdentityIndex(records),
+            ),
+            patch("core.model_config.config.ModelConfig", side_effect=[good, bad]),
+        ):
             with self.assertRaises(ValueError):
                 assemble_model(settings, repo, arch_type=ENSEMBLE_MODE)
 
@@ -65,10 +68,13 @@ class AssembleEnsembleTests(unittest.TestCase):
         second = MagicMock()
         second.model_status = True
 
-        with patch(
-            "core.model_identity.ModelIdentityService._published_index",
-            return_value=IdentityIndex(records),
-        ), patch("core.model_config.config.ModelConfig", side_effect=[first, second]):
+        with (
+            patch(
+                "core.model_identity.ModelIdentityService._published_index",
+                return_value=IdentityIndex(records),
+            ),
+            patch("core.model_config.config.ModelConfig", side_effect=[first, second]),
+        ):
             models = assemble_model(settings, repo, arch_type=ENSEMBLE_MODE)
         self.assertEqual(models, [first, second])
 
@@ -83,11 +89,14 @@ class AssembleMdxIdentityTests(unittest.TestCase):
         settings.mdx.model = record.id
         with tempfile.TemporaryDirectory() as directory:
             open(os.path.join(directory, "foo.onnx"), "wb").close()
-            with patch.object(
-                ModelIdentityService,
-                "_published_index",
-                return_value=IdentityIndex({record.id: record}),
-            ), patch("core.model_config.config.paths.MDX_MODELS_DIR", directory):
+            with (
+                patch.object(
+                    ModelIdentityService,
+                    "_published_index",
+                    return_value=IdentityIndex({record.id: record}),
+                ),
+                patch("core.model_config.config.paths.MDX_MODELS_DIR", directory),
+            ):
                 configs = assemble_model(settings, repo, record.id, MDX_ARCH_TYPE)
 
         self.assertEqual(settings.mdx.model, "mdx:foo")
@@ -103,11 +112,14 @@ class AssembleMdxIdentityTests(unittest.TestCase):
         settings.mdx.model = record.id
         with tempfile.TemporaryDirectory() as directory:
             open(os.path.join(directory, "foo.onnx"), "wb").close()
-            with patch.object(
-                ModelIdentityService,
-                "_published_index",
-                return_value=IdentityIndex({record.id: record}),
-            ), patch("core.model_config.config.paths.MDX_MODELS_DIR", directory):
+            with (
+                patch.object(
+                    ModelIdentityService,
+                    "_published_index",
+                    return_value=IdentityIndex({record.id: record}),
+                ),
+                patch("core.model_config.config.paths.MDX_MODELS_DIR", directory),
+            ):
                 configs = assemble_model(settings, repo, record.id, MDX_ARCH_TYPE)
 
         self.assertEqual(os.path.basename(configs[0].model_path or ""), "foo.onnx")
@@ -146,18 +158,19 @@ class AssembleMdxIdentityTests(unittest.TestCase):
             model.model_status = True
             return model
 
-        with patch(
-            "core.model_identity.ModelIdentityService._published_index",
-            return_value=IdentityIndex({record.id: record for record in records}),
-        ), patch("core.model_config.config.ModelConfig", side_effect=fake_config):
+        with (
+            patch(
+                "core.model_identity.ModelIdentityService._published_index",
+                return_value=IdentityIndex({record.id: record for record in records}),
+            ),
+            patch("core.model_config.config.ModelConfig", side_effect=fake_config),
+        ):
             assemble_model(settings, MagicMock(), arch_type=ENSEMBLE_MODE)
         self.assertEqual(captured, [("A", records[0]), ("B", records[1])])
 
 
 class EnsembleModeIdentityTests(unittest.TestCase):
-    def _build(
-        self, token: str, *, records: tuple[ModelRecord, ...] = ()
-    ) -> ModelConfig:
+    def _build(self, token: str, *, records: tuple[ModelRecord, ...] = ()) -> ModelConfig:
         settings = Settings.defaults()
         repo = MagicMock()
         repo.mdx_name_select_MAPPER = {}
@@ -324,13 +337,16 @@ class ListModelTagsCanonicalTests(unittest.TestCase):
 
     def test_list_mdx_model_tags_are_canonical_ids_sorted_by_display(self) -> None:
         from bundled.constants import ENSEMBLE_PARTITION
-        from core.model_repository import ModelRepository
         from core.model_identity import ModelId
+        from core.model_repository import ModelRepository
 
         repo = ModelRepository.__new__(ModelRepository)
-        with patch.object(repo, "list_mdx_models", return_value=["zzz", "aaa"]), patch(
-            "core.model_repository.map_basenames_to_display",
-            return_value=["Zebra", "Apple"],
+        with (
+            patch.object(repo, "list_mdx_models", return_value=["zzz", "aaa"]),
+            patch(
+                "core.model_repository.map_basenames_to_display",
+                return_value=["Zebra", "Apple"],
+            ),
         ):
             tags = repo.list_mdx_model_tags()
         self.assertEqual(tags, ["mdx:aaa", "mdx:zzz"])
@@ -339,19 +355,21 @@ class ListModelTagsCanonicalTests(unittest.TestCase):
             self.assertNotIn(ENSEMBLE_PARTITION, tag)
 
     def test_list_vr_and_demucs_tags_use_family_prefix(self) -> None:
-        from core.model_repository import ModelRepository
         from core.model_identity import ModelId
+        from core.model_repository import ModelRepository
 
         repo = ModelRepository.__new__(ModelRepository)
-        with patch.object(repo, "list_vr_models", return_value=["hp"]), patch(
-            "core.model_repository.map_basenames_to_display", return_value=["HP"]
+        with (
+            patch.object(repo, "list_vr_models", return_value=["hp"]),
+            patch("core.model_repository.map_basenames_to_display", return_value=["HP"]),
         ):
             vr = repo.list_vr_model_tags()
         self.assertEqual(vr, ["vr:hp"])
         ModelId.parse(vr[0])
 
-        with patch.object(repo, "list_demucs_models", return_value=["htdemucs"]), patch(
-            "core.model_repository.map_basenames_to_display", return_value=["v4 | htdemucs"]
+        with (
+            patch.object(repo, "list_demucs_models", return_value=["htdemucs"]),
+            patch("core.model_repository.map_basenames_to_display", return_value=["v4 | htdemucs"]),
         ):
             demucs = repo.list_demucs_model_tags()
         self.assertEqual(demucs, ["demucs:htdemucs"])
@@ -383,13 +401,18 @@ class NestedCanonicalModelConfigTests(unittest.TestCase):
         repo, record = _repo_with_mdx_record("KaraokeFusion")
         captured, wrapper = self._capture_config()
 
-        with patch(
-            "core.model_identity.ModelIdentityService._published_index",
-            return_value=IdentityIndex({record.id: record}),
-        ), patch("core.model_config.config.ModelConfig", side_effect=wrapper), patch(
-            "core.model_display.map_basenames_to_display",
-            side_effect=lambda names, *args, **kwargs: list(names),
-        ), patch("core.apollo.list_apollo_models", return_value=[]):
+        with (
+            patch(
+                "core.model_identity.ModelIdentityService._published_index",
+                return_value=IdentityIndex({record.id: record}),
+            ),
+            patch("core.model_config.config.ModelConfig", side_effect=wrapper),
+            patch(
+                "core.model_display.map_basenames_to_display",
+                side_effect=lambda names, *args, **kwargs: list(names),
+            ),
+            patch("core.apollo.list_apollo_models", return_value=[]),
+        ):
             process_determine_vocal_split_model(settings, repo)
 
         self.assertEqual(captured.get("process_method"), MDX_ARCH_TYPE)
@@ -404,16 +427,19 @@ class NestedCanonicalModelConfigTests(unittest.TestCase):
         repo, record = _repo_with_mdx_record("KaraokeFusion")
         captured, wrapper = self._capture_config()
 
-        with patch(
-            "core.model_identity.ModelIdentityService._published_index",
-            return_value=IdentityIndex({record.id: record}),
-        ), patch("core.model_config.config.ModelConfig", side_effect=wrapper), patch(
-            "core.model_display.map_basenames_to_display",
-            side_effect=lambda names, *args, **kwargs: list(names),
-        ), patch("core.apollo.list_apollo_models", return_value=[]):
-            process_determine_secondary_model(
-                settings, repo, MDX_ARCH_TYPE, VOCAL_STEM
-            )
+        with (
+            patch(
+                "core.model_identity.ModelIdentityService._published_index",
+                return_value=IdentityIndex({record.id: record}),
+            ),
+            patch("core.model_config.config.ModelConfig", side_effect=wrapper),
+            patch(
+                "core.model_display.map_basenames_to_display",
+                side_effect=lambda names, *args, **kwargs: list(names),
+            ),
+            patch("core.apollo.list_apollo_models", return_value=[]),
+        ):
+            process_determine_secondary_model(settings, repo, MDX_ARCH_TYPE, VOCAL_STEM)
 
         self.assertEqual(captured.get("process_method"), MDX_ARCH_TYPE)
         self.assertTrue(captured.get("has_model_path"))
@@ -742,21 +768,18 @@ class StemIdentityAssembleTests(unittest.TestCase):
         self.assertEqual(selected[0].concept, StemBucket.BASS.value)
         self.assertTrue(selected[0].native.matches("bass"))
 
-    def test_ensemble_pair_wins_over_positional_sentinel(self) -> None:
-        from core.stems import EnsemblePair, FOCUS_PRIMARY, StemBucket
+    def test_exact_pair_does_not_manufacture_roles_for_raw_routes(self) -> None:
+        from core.stems import FOCUS_PRIMARY
 
         settings = Settings.defaults()
-        settings.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
         settings.process.stem_focus = FOCUS_PRIMARY
         stub = _FocusStub(settings, "vocals", "Instrumental")
         stub.mdx_model_stems = ["drums", "bass", "other", "vocals"]
         stub.mdx_stem_count = 4
         stub.is_ensemble_mode = True
         stub.apply()
-        self.assertEqual(
-            {route.concept for route in stub.selected_stem_routes},
-            {StemBucket.VOCALS.value, StemBucket.INSTRUMENTAL.value},
-        )
+        self.assertEqual(stub.selected_stem_routes, ())
 
     def test_positional_sentinel_picks_primary_route(self) -> None:
         from core.stems import FOCUS_PRIMARY, StemBucket

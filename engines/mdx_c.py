@@ -1,12 +1,12 @@
 """MDX-C helpers: model build, export routing, and complement math."""
+
 from __future__ import annotations
-import typing
-from typing import Any
 
 import inspect
+import typing
+import warnings
 
 import numpy as np
-import warnings
 
 from bundled.constants import *
 from core.model_stem_semantics import (
@@ -21,8 +21,8 @@ from ml import spec_utils
 
 warnings.filterwarnings("ignore")
 
-from ml.mel_band_roformer import MelBandRoformer
-from ml.bs_roformer import BSRoformer
+from ml.bs_roformer import BSRoformer  # noqa: E402
+from ml.mel_band_roformer import MelBandRoformer  # noqa: E402
 
 
 def _load_torch_checkpoint(path: str):
@@ -164,14 +164,24 @@ def build_mdx_c_model(
     if 'band_specs' in model_cfg:
         from ml.bandit import MultiMaskMultiSourceBandSplitRNN
 
-        return MultiMaskMultiSourceBandSplitRNN(**filter_init_kwargs(MultiMaskMultiSourceBandSplitRNN, model_cfg))
+        return MultiMaskMultiSourceBandSplitRNN(
+            **filter_init_kwargs(MultiMaskMultiSourceBandSplitRNN, model_cfg)
+        )
     raise UnknownMDXCArchitecture('Unknown MDX-C architecture in configuration.')
+
 
 def _mdx_pitch_reference_sr() -> int:
     return 44100
 
 
-def select_roformer_ola_window(start: typing.Any, chunk_size: typing.Any, mix_length: typing.Any, window_start: typing.Any, window_middle: typing.Any, window_finish: typing.Any):
+def select_roformer_ola_window(
+    start: typing.Any,
+    chunk_size: typing.Any,
+    mix_length: typing.Any,
+    window_start: typing.Any,
+    window_middle: typing.Any,
+    window_finish: typing.Any,
+):
     """Pick the OLA fade window for one Roformer chunk.
 
     The final inference flush can contain several chunk starts; only a chunk
@@ -197,25 +207,15 @@ def mdx_export_routing_flags(
 ):
     routes = tuple(export_routes or ())
     natives = tuple(route for route in routes if route.native is not None)
-    derived = tuple(
-        route for route in routes if route.kind is StemRouteKind.DERIVED
+    derived = tuple(route for route in routes if route.kind is StemRouteKind.DERIVED)
+    native_names = [route.native.raw for route in natives if route.native is not None]
+    has_derived_inst = any(route.concept == StemBucket.INSTRUMENTAL.value for route in derived)
+    has_other_derived = any(route.concept != StemBucket.INSTRUMENTAL.value for route in derived)
+    is_full_selection = (not native_names) or set(name.casefold() for name in native_names) == set(
+        str(stem).casefold() for stem in stem_list
     )
-    native_names = [
-        route.native.raw for route in natives if route.native is not None
-    ]
-    has_derived_inst = any(
-        route.concept == StemBucket.INSTRUMENTAL.value for route in derived
-    )
-    has_other_derived = any(
-        route.concept != StemBucket.INSTRUMENTAL.value for route in derived
-    )
-    is_full_selection = (not native_names) or set(
-        name.casefold() for name in native_names
-    ) == set(str(stem).casefold() for stem in stem_list)
     is_all_stems = (
-        mdxnet_stem_select == ALL_STEMS
-        and not derived
-        and (not native_names or is_full_selection)
+        mdxnet_stem_select == ALL_STEMS and not derived and (not native_names or is_full_selection)
     )
     is_not_ensemble_master = not is_ensemble_master
     is_not_single_stem = not len(stem_list) <= 2
@@ -234,10 +234,7 @@ def mdx_export_routing_flags(
         is_not_single_stem
         and len(natives) == 1
         and not has_derived_inst
-        and (
-            bool(include_stem_complement)
-            or has_other_derived
-        )
+        and (bool(include_stem_complement) or has_other_derived)
         and not is_vocals_quick_export
     )
     is_native_pick = (
@@ -250,9 +247,12 @@ def mdx_export_routing_flags(
         and not has_derived_inst
     )
     is_stem_subset = (
-        len(natives) >= 2 and not is_full_selection
-        and is_not_ensemble_master and is_not_single_stem
-        and is_not_secondary_model and not is_pre_proc_model
+        len(natives) >= 2
+        and not is_full_selection
+        and is_not_ensemble_master
+        and is_not_single_stem
+        and is_not_secondary_model
+        and not is_pre_proc_model
     )
     multi_stem_export = (
         (is_all_stems and is_not_ensemble_master and is_not_single_stem and is_not_secondary_model)
@@ -284,14 +284,10 @@ def mdx_selected_stems(stem_list: typing.Any, stems_selected: typing.Any) -> typ
     and falling back to exporting every stem.
     """
     lookup = {str(stem): stem for stem in (stems_selected or [])}
-    return [
-        stem for stem in stem_list if _exact_mdx_source_key(lookup, str(stem)) is not None
-    ]
+    return [stem for stem in stem_list if _exact_mdx_source_key(lookup, str(stem)) is not None]
 
 
-def _exact_mdx_source_key(
-    sources: typing.Mapping[str, typing.Any], native: str
-) -> str | None:
+def _exact_mdx_source_key(sources: typing.Mapping[str, typing.Any], native: str) -> str | None:
     """Resolve an MDX-C backend key by exact spelling or casing only."""
     if native in sources:
         return native
@@ -302,7 +298,9 @@ def _exact_mdx_source_key(
     return None
 
 
-def mdx_combined_secondary_key(sources: typing.Any, stem_list: typing.Any, secondary_stem_label: typing.Any):
+def mdx_combined_secondary_key(
+    sources: typing.Any, stem_list: typing.Any, secondary_stem_label: typing.Any
+):
     """Key in ``sources`` holding the complement of a 2-stem MDX-C model.
 
     ``secondary_stem_label`` is a UVR pair name, which for a model trained on
@@ -314,9 +312,7 @@ def mdx_combined_secondary_key(sources: typing.Any, stem_list: typing.Any, secon
         key = _exact_mdx_source_key(sources, str(stem_list[1]))
     if key is None:
         available = sorted(map(str, sources.keys())) if isinstance(sources, dict) else []
-        raise KeyError(
-            f"stem {str(secondary_stem_label)!r} not in sources {available}"
-        )
+        raise KeyError(f"stem {str(secondary_stem_label)!r} not in sources {available}")
     return key
 
 
@@ -359,12 +355,18 @@ def mdx_vocal_split_chain_sources(
     return handoff
 
 
-def derive_mdx_complement(native_source: typing.Any, mix: typing.Any, *, invert_spec: typing.Any=False, match_frequency_pitch: typing.Any=None):
+def derive_mdx_complement(
+    native_source: typing.Any,
+    mix: typing.Any,
+    *,
+    invert_spec: typing.Any = False,
+    match_frequency_pitch: typing.Any = None,
+):
     raw_mix = match_frequency_pitch(mix) if match_frequency_pitch is not None else mix
     shaped = spec_utils.to_shape(native_source, raw_mix.shape)
     if invert_spec:
         return spec_utils.invert_stem(raw_mix, shaped)
-    return (-shaped.T + raw_mix.T)
+    return -shaped.T + raw_mix.T
 
 
 def derive_mdx_multi_complement(
@@ -379,9 +381,7 @@ def derive_mdx_multi_complement(
     """Derive a multi-source primary complement using the configured recipe."""
     primary_key = _exact_mdx_source_key(sources, primary_stem)
     if primary_key is None:
-        raise KeyError(
-            f"stem {primary_stem!r} not in sources {sorted(map(str, sources))}"
-        )
+        raise KeyError(f"stem {primary_stem!r} not in sources {sorted(map(str, sources))}")
     if combine_stems:
         remaining = [value for key, value in sources.items() if key != primary_key]
         if not remaining:

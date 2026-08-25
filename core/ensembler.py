@@ -81,9 +81,7 @@ def _ensemble_stem_bucket(stem_tag: str) -> str:
     return canonical_ensemble_stem_tag(stem_tag)
 
 
-def _filter_final_ensemble_stems(
-    stem_names: Sequence[str], focus: str
-) -> list[str]:
+def _filter_final_ensemble_stems(stem_names: Sequence[str], focus: str) -> list[str]:
     """Apply one focus to final four/multi-stem outputs only."""
     if not str(focus or "").strip():
         return list(stem_names)
@@ -110,10 +108,7 @@ def _filter_final_ensemble_stems(
     if not selection.routes:
         return list(stem_names)
     allowed = {route.filename_tag.casefold() for route in selection.routes}
-    return [
-        name for name in stem_names
-        if _ensemble_stem_bucket(str(name)).casefold() in allowed
-    ]
+    return [name for name in stem_names if _ensemble_stem_bucket(str(name)).casefold() in allowed]
 
 
 def _capture_separator_stem_arrays(seperator: typing.Any) -> dict:
@@ -182,9 +177,7 @@ class Ensembler:
             CollectedStem(role, registry.roles[role].filename_tag)
             for role in (pair.roles if pair is not None else ())
         )
-        self.ensemble_primary_stem = (
-            self.pair_stems[0].filename_tag if self.pair_stems else ""
-        )
+        self.ensemble_primary_stem = self.pair_stems[0].filename_tag if self.pair_stems else ""
         self.ensemble_secondary_stem = (
             self.pair_stems[1].filename_tag if len(self.pair_stems) == 2 else ""
         )
@@ -194,17 +187,21 @@ class Ensembler:
         self.append_ensemble_label = (
             chosen_ensemble_name if settings.ensemble.append_ensemble_name else None
         )
-        ensemble_folder_root = self.main_export_path if self.is_save_all_outputs_ensemble else paths.ENSEMBLE_TEMP_PATH
-        folder_label = sanitize_filename_component(chosen_ensemble_name.replace(" ", "_")) or "Ensembled"
-        self.ensemble_folder_name = os.path.join(ensemble_folder_root, f"{folder_label}_Outputs_{time_stamp}")
+        ensemble_folder_root = (
+            self.main_export_path if self.is_save_all_outputs_ensemble else paths.ENSEMBLE_TEMP_PATH
+        )
+        folder_label = (
+            sanitize_filename_component(chosen_ensemble_name.replace(" ", "_")) or "Ensembled"
+        )
+        self.ensemble_folder_name = os.path.join(
+            ensemble_folder_root, f"{folder_label}_Outputs_{time_stamp}"
+        )
         # Dual-stem: Primary/Secondary pair. 4-stem uses the full token in ensemble_outputs.
         self.primary_algorithm = primary_algorithm
         self.secondary_algorithm = secondary_algorithm
         self.is_normalization = settings.process.normalization
         try:
-            self.amplification_threshold = float(
-                settings.process.amplification_threshold or 0.0
-            )
+            self.amplification_threshold = float(settings.process.amplification_threshold or 0.0)
         except (TypeError, ValueError):
             self.amplification_threshold = 0.0
         self.is_wav_ensemble = settings.ensemble.wav_ensemble
@@ -301,7 +298,9 @@ class Ensembler:
                 except OSError:
                     pass
 
-    def get_files_to_ensemble(self, folder: typing.Any="", prefix: typing.Any="", suffix: typing.Any=""):
+    def get_files_to_ensemble(
+        self, folder: typing.Any = "", prefix: typing.Any = "", suffix: typing.Any = ""
+    ):
         """Grab all the per-member output files to be ensembled for one stem."""
         if not os.path.isdir(folder):
             return []
@@ -311,7 +310,9 @@ class Ensembler:
             if name.startswith(prefix) and name.endswith(suffix)
         ]
 
-    def get_files_to_ensemble_for_stem(self, folder: typing.Any="", prefix: typing.Any="", stem_tag: typing.Any=""):
+    def get_files_to_ensemble_for_stem(
+        self, folder: typing.Any = "", prefix: typing.Any = "", stem_tag: typing.Any = ""
+    ):
         """Read only files carrying this run's already-planned exact tag."""
         if not os.path.isdir(folder) or not stem_tag:
             return []

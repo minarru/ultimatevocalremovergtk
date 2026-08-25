@@ -60,11 +60,7 @@ class PlannedCollectionTests(unittest.TestCase):
 
         self.assertEqual(
             planned_ensemble_stems(model),
-            {
-                "Vocals": CollectedStem(
-                    StemRoleId("vocal.vocals"), "Vocals", "mdx:member"
-                )
-            },
+            {"Vocals": CollectedStem(StemRoleId("vocal.vocals"), "Vocals", "mdx:member")},
         )
 
     def test_reviewed_roles_combine_but_raw_literals_remain_member_scoped(self) -> None:
@@ -278,12 +274,8 @@ class PlannedCollectionTests(unittest.TestCase):
             StemRoleId("vocal.lead"),
             StemRoleId("mix.instrumental_with_backing_vocals"),
         ]
-        self.assertEqual(
-            [route.role for route in member.selected_stem_routes], expected_roles
-        )
-        self.assertEqual(
-            [route.role for route in run_export_routes(member)], expected_roles
-        )
+        self.assertEqual([route.role for route in member.selected_stem_routes], expected_roles)
+        self.assertEqual([route.role for route in run_export_routes(member)], expected_roles)
 
 
 if __name__ == "__main__":

@@ -80,9 +80,7 @@ class SecondaryChain:
     secondary_model: Any = None
     secondary_model_scale: Optional[float] = None
     secondary_model_4_stem: Tuple[Any, ...] = field(default_factory=tuple)
-    secondary_model_4_stem_scale: Tuple[Optional[float], ...] = field(
-        default_factory=tuple
-    )
+    secondary_model_4_stem_scale: Tuple[Optional[float], ...] = field(default_factory=tuple)
     pre_proc_model: Any = None
     vocal_split_model: Any = None
     is_secondary_model_activated: bool = False

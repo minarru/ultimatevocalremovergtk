@@ -10,6 +10,7 @@ Supports single-model separation, ensemble runs, sample mode, and secondary /
 vocal-splitter / Demucs pre-process machinery. Audio tools live in
 :mod:`core.audio_tools`.
 """
+
 import os
 import time
 import typing
@@ -117,9 +118,7 @@ class JobRunner:
         self.settings = settings
         if repo is None:
             self.repo = ModelRepository()
-            self.repo.bind_model_hash_table(
-                lambda: self.settings.process.model_hash_table
-            )
+            self.repo.bind_model_hash_table(lambda: self.settings.process.model_hash_table)
         else:
             self.repo = repo
         self._thread: Optional[KThread] = None
@@ -193,9 +192,7 @@ class JobRunner:
         if self.is_running():
             return
         mode: Literal["single", "ensemble"] = (
-            "ensemble"
-            if self.settings.process.method == ProcessMethod.ENSEMBLE
-            else "single"
+            "ensemble" if self.settings.process.method == ProcessMethod.ENSEMBLE else "single"
         )
         self._start_worker(
             input_paths,
@@ -232,14 +229,8 @@ class JobRunner:
         self._run_model_dependencies = model_dependencies
         self._run_planned = tuple(planned) if planned is not None else None
         self._run_output_root = planned_output_root
-        self._operation_id = (
-            operation_id or current_operation_id() or new_operation_id("run")
-        )
-        paths = (
-            [item.path for item in planned]
-            if planned is not None
-            else list(input_paths)
-        )
+        self._operation_id = operation_id or current_operation_id() or new_operation_id("run")
+        paths = [item.path for item in planned] if planned is not None else list(input_paths)
         self._thread = KThread(
             target=self._run_separation,
             args=(paths, callbacks, mode),
@@ -279,9 +270,7 @@ class JobRunner:
         self._reset_run_state()
         self._run_output_root = job.output
         self._resolved_command = job.command
-        self._operation_id = (
-            operation_id or current_operation_id() or new_operation_id("job")
-        )
+        self._operation_id = operation_id or current_operation_id() or new_operation_id("job")
         self._thread = KThread(
             target=self._run_resolved,
             args=(
@@ -438,9 +427,7 @@ class JobRunner:
             or self.settings.process.method == ProcessMethod.ENSEMBLE
         )
         try:
-            mode: Literal["single", "ensemble"] = (
-                "ensemble" if use_ensemble else "single"
-            )
+            mode: Literal["single", "ensemble"] = "ensemble" if use_ensemble else "single"
             self._run_separation([planned.path], item_callbacks, mode)
         except Exception as exc:  # noqa: BLE001 - convert to outcome
             return InputOutcome(
@@ -479,9 +466,7 @@ class JobRunner:
             if self._run_path_map is not None:
                 target = self._run_path_map.get(target, target)
             item = next(
-                entry
-                for entry in self._run_planned
-                if os.path.abspath(entry.path) == target
+                entry for entry in self._run_planned if os.path.abspath(entry.path) == target
             )
             return rebase_output_naming(
                 item.naming,
@@ -539,9 +524,7 @@ class JobRunner:
                 debug("model", f"sample clip fallback log failed: {exc}")
 
         prep_started = time.perf_counter()
-        prepared = prepare_input_paths(
-            self.settings, input_paths, on_fallback=on_fallback
-        )
+        prepared = prepare_input_paths(self.settings, input_paths, on_fallback=on_fallback)
         debug_elapsed("worker", "prepare_input_paths", prep_started, files=len(prepared))
         if self._run_planned is not None:
             # Sample mode (and any future rewrite) can replace paths; map the
@@ -603,13 +586,15 @@ class JobRunner:
         self._mdx_cache_source_mapper = {}
         self._demucs_cache_source_mapper = {}
 
-    def _cached_source_callback(self, process_method: typing.Any, model_name: typing.Any=None):
+    def _cached_source_callback(self, process_method: typing.Any, model_name: typing.Any = None):
         mapper = self._mapper_for(process_method)
         if model_name and model_name in mapper:
             return model_name, mapper[model_name]
         return None, None
 
-    def _cached_model_source_holder(self, process_method: typing.Any, sources: typing.Any, model_name: typing.Any=None):
+    def _cached_model_source_holder(
+        self, process_method: typing.Any, sources: typing.Any, model_name: typing.Any = None
+    ):
         mapper = self._mapper_for(process_method)
         mapper[model_name] = sources
 
@@ -676,8 +661,7 @@ class JobRunner:
             if not m.is_secondary_model_activated or m.secondary_model is None:
                 continue
             name = (
-                getattr(m.secondary_model, "backend_name", None)
-                or m.secondary_model.model_basename
+                getattr(m.secondary_model, "backend_name", None) or m.secondary_model.model_basename
             )
             if name:
                 secondary.append(name)
@@ -690,7 +674,9 @@ class JobRunner:
                     pre_proc.append(name)
         demucs_4_stem: List[str] = []
         for m in models:
-            if m.process_method == DEMUCS_ARCH_TYPE and getattr(m, "is_demucs_4_stem_secondaries", False):
+            if m.process_method == DEMUCS_ARCH_TYPE and getattr(
+                m, "is_demucs_4_stem_secondaries", False
+            ):
                 demucs_4_stem.extend(n for n in m.secondary_model_4_stem_model_names_list if n)
         self.all_models = [n for n in primary + secondary + pre_proc + demucs_4_stem if n]
 
@@ -723,13 +709,9 @@ class JobRunner:
             prefer_gpu_identity=prefer_gpu_identity,
         )
         if action in {"parked_other", "cleared_other"}:
-            callbacks.console(
-                "Low GPU memory — freed unused cached models for this run\n"
-            )
+            callbacks.console("Low GPU memory — freed unused cached models for this run\n")
         elif action in {"parked_all", "cleared_all"}:
-            callbacks.console(
-                "Low GPU memory — freed all cached models for this run\n"
-            )
+            callbacks.console("Low GPU memory — freed all cached models for this run\n")
 
     def _build_separator(
         self,
@@ -789,16 +771,12 @@ class JobRunner:
                 )
             else:
                 models = self.resolve_models(self._run_model_dependencies)
-            debug_elapsed(
-                "worker", "resolve_models", resolve_started, count=len(models)
-            )
+            debug_elapsed("worker", "resolve_models", resolve_started, count=len(models))
 
             ensemble_export_path: str | None = None
             if mode == "ensemble":
                 if len(models) <= 1:
-                    raise RuntimeError(
-                        "Select at least two models to run an ensemble"
-                    )
+                    raise RuntimeError("Select at least two models to run an ensemble")
                 ensemble = Ensembler(self.settings)
                 ensemble_export_path = ensemble.ensemble_folder_name
                 is_multi_stem = is_stem_mode(
@@ -808,14 +786,10 @@ class JobRunner:
             else:
                 assert single_export_path is not None
                 try:
-                    amp_threshold = float(
-                        self.settings.process.amplification_threshold or 0.0
-                    )
+                    amp_threshold = float(self.settings.process.amplification_threshold or 0.0)
                 except (TypeError, ValueError):
                     amp_threshold = 0.0
-                hooks = run_hooks._SingleRunHooks(
-                    single_export_path, amp_threshold
-                )
+                hooks = run_hooks._SingleRunHooks(single_export_path, amp_threshold)
 
             self.iteration = 0
             self._build_all_models(models)

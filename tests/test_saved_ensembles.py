@@ -135,7 +135,7 @@ class SavedEnsembleWarningGtkTests(unittest.TestCase):
         from bundled.constants import CHOOSE_ENSEMBLE_OPTION
         from core.ensemble_service import ResolvedEnsemblePreset
         from core.settings import Settings
-        from core.stems import ensemble_pair_choices
+        from core.stem_pairs import ensemble_pair_choices
         from ui.ensemble.window import EnsemblePage
         from ui.widgets.rows import (
             get_combo_value,

@@ -49,9 +49,7 @@ class StemWriterModuleBoundaryTests(unittest.TestCase):
                 module = node.module or ""
                 self.assertNotEqual(module, "base")
                 self.assertNotEqual(module, "engines.base")
-                self.assertNotIn(
-                    "SeperateAttributes", [alias.name for alias in node.names]
-                )
+                self.assertNotIn("SeperateAttributes", [alias.name for alias in node.names])
 
     def test_importing_stem_writer_does_not_import_engines_base(self) -> None:
         script = f"""

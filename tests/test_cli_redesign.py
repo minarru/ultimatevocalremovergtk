@@ -11,18 +11,27 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 from cli.execution import (
-    BatchOutcome, preflight_collisions, run_batch, run_runner_cli, write_manifest,
-)
-from core.export_naming import OutputNamingContext, format_stem_basename
-from core.input_discovery import discover_inputs
-from core.job_plan import (
-    PlannedInput, PlannedOutput, ResolvedJob as CoreResolvedJob, ValidationLevel,
+    BatchOutcome,
+    preflight_collisions,
+    run_batch,
+    run_runner_cli,
+    write_manifest,
 )
 from cli.job import ResolvedJob, _device_override
 from cli.profiles import LoadedProfile, load_profile, save_profile
 from cli.replay import _flat_settings
 from core.blocking_runner import RunResult
+from core.export_naming import OutputNamingContext, format_stem_basename
+from core.input_discovery import discover_inputs
 from core.job_callbacks import JobCallbacks
+from core.job_plan import (
+    PlannedInput,
+    PlannedOutput,
+    ValidationLevel,
+)
+from core.job_plan import (
+    ResolvedJob as CoreResolvedJob,
+)
 from core.job_runner import InputOutcome, JobRunner
 from core.model_identity import ModelArtifacts
 from core.settings import Settings
@@ -60,8 +69,17 @@ def _core_job(
 ) -> CoreResolvedJob:
     """A real ``core`` ResolvedJob: ``run_batch`` slices it with dataclasses.replace."""
     return CoreResolvedJob(
-        command, settings, planned, (), {}, (),
-        ValidationLevel.MODEL, 0, "fingerprint", "cpu", output,
+        command,
+        settings,
+        planned,
+        (),
+        {},
+        (),
+        ValidationLevel.MODEL,
+        0,
+        "fingerprint",
+        "cpu",
+        output,
     )
 
 
@@ -92,7 +110,9 @@ class ProfileTests(unittest.TestCase):
     def test_sparse_profile_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as root, patch("cli.profiles.PROFILE_DIR", root):
             saved = LoadedProfile(
-                "fast", "profile", model="mdx:a",
+                "fast",
+                "profile",
+                model="mdx:a",
                 settings={"process.normalization": True},
             )
             save_profile(saved)
@@ -111,10 +131,12 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(settings.mdx.stems_selected, ["Vocals", "Drums"])
 
     def test_manifest_flattening_retains_lists_but_not_internal_maps(self) -> None:
-        values = _flat_settings({
-            "mdx": {"stems_selected": ["Vocals"]},
-            "process": {"model_hash_table": {"x": "y"}},
-        })
+        values = _flat_settings(
+            {
+                "mdx": {"stems_selected": ["Vocals"]},
+                "process": {"model_hash_table": {"x": "y"}},
+            }
+        )
         self.assertEqual(values["mdx.stems_selected"], ["Vocals"])
         self.assertNotIn("process.model_hash_table", values)
 
@@ -122,6 +144,7 @@ class ProfileTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.method = settings.process.method  # keep
         from core.types import ProcessMethod
+
         settings.process.method = ProcessMethod.MDX
         settings.mdx.model = "mdx:UVR-MDX-NET-Inst_HQ_4"
         with patch("cli.profiles.Settings.load", return_value=settings):
@@ -131,6 +154,7 @@ class ProfileTests(unittest.TestCase):
     def test_gui_profile_preserves_a_noncanonical_primary_value(self) -> None:
         settings = Settings.defaults()
         from core.types import ProcessMethod
+
         settings.process.method = ProcessMethod.MDX
         settings.mdx.model = "UVR-MDX-NET-Inst_HQ_4"
         with patch("cli.profiles.Settings.load", return_value=settings):
@@ -139,6 +163,7 @@ class ProfileTests(unittest.TestCase):
 
     def test_flatten_keeps_list_settings(self) -> None:
         from cli.profiles import _flatten_settings
+
         settings = Settings.defaults()
         settings.mdx.stems_selected = ["Vocals", "Drums"]
         flat = _flatten_settings(settings)
@@ -165,9 +190,7 @@ class ProfileTests(unittest.TestCase):
             models = lookup_cls.return_value
             models.lookup.return_value = record
             _canonicalize_model_references(settings, Mock())
-        models.lookup.assert_any_call(
-            "mdx:model_a", family="mdx", allowed_families=None
-        )
+        models.lookup.assert_any_call("mdx:model_a", family="mdx", allowed_families=None)
         self.assertEqual(settings.mdx.model, "mdx:model_a")
 
     def test_canonicalize_ignores_stale_unused_family_primary(self) -> None:
@@ -295,14 +318,22 @@ class ProfileTests(unittest.TestCase):
         settings.mdx.voc_inst_secondary_model = "mdx:secondary"
         settings.mdx.drums_secondary_model = "not-a-canonical-id"
         primary = ModelRecord(
-            id="mdx:good", family="mdx", basename="good", display="Good",
-            backend_name="good", artifacts=ModelArtifacts("good.ckpt"),
+            id="mdx:good",
+            family="mdx",
+            basename="good",
+            display="Good",
+            backend_name="good",
+            artifacts=ModelArtifacts("good.ckpt"),
             installed=True,
         )
         secondary = ModelRecord(
-            id="mdx:secondary", family="mdx", basename="secondary",
-            display="Secondary", backend_name="secondary",
-            artifacts=ModelArtifacts("secondary.ckpt"), installed=True,
+            id="mdx:secondary",
+            family="mdx",
+            basename="secondary",
+            display="Secondary",
+            backend_name="secondary",
+            artifacts=ModelArtifacts("secondary.ckpt"),
+            installed=True,
         )
 
         def lookup(raw: str, **_kwargs: Any) -> ModelRecord:
@@ -314,9 +345,7 @@ class ProfileTests(unittest.TestCase):
 
         models = Mock()
         models.lookup.side_effect = lookup
-        identities = _canonicalize_model_references(
-            settings, Mock(), models=models
-        )
+        identities = _canonicalize_model_references(settings, Mock(), models=models)
 
         self.assertEqual(settings.mdx.drums_secondary_model, "not-a-canonical-id")
         self.assertNotIn("mdx.drums_secondary_model", identities)
@@ -379,27 +408,31 @@ class ProfileTests(unittest.TestCase):
         settings.demucs.pre_proc_model = "vr:preproc"
         records = {
             "demucs:good": ModelRecord(
-                id="demucs:good", family="demucs", basename="good",
-                display="Good", backend_name="good",
-                artifacts=ModelArtifacts("good.yaml"), installed=True,
+                id="demucs:good",
+                family="demucs",
+                basename="good",
+                display="Good",
+                backend_name="good",
+                artifacts=ModelArtifacts("good.yaml"),
+                installed=True,
             ),
             "vr:preproc": ModelRecord(
-                id="vr:preproc", family="vr", basename="preproc",
-                display="Preproc", backend_name="preproc",
-                artifacts=ModelArtifacts("preproc.pth"), installed=True,
+                id="vr:preproc",
+                family="vr",
+                basename="preproc",
+                display="Preproc",
+                backend_name="preproc",
+                artifacts=ModelArtifacts("preproc.pth"),
+                installed=True,
             ),
         }
         models = Mock()
         models.lookup.side_effect = lambda raw, **_kwargs: records[raw]
 
-        identities = _canonicalize_model_references(
-            settings, Mock(), models=models
-        )
+        identities = _canonicalize_model_references(settings, Mock(), models=models)
 
         self.assertEqual(settings.demucs.pre_proc_model, "vr:preproc")
-        self.assertEqual(
-            identities["demucs.pre_proc_model"]["id"], "vr:preproc"
-        )
+        self.assertEqual(identities["demucs.pre_proc_model"]["id"], "vr:preproc")
 
     def test_canonicalize_preserves_whitespace_in_inactive_secondary_id(self) -> None:
         from cli.job import _canonicalize_model_references
@@ -419,13 +452,9 @@ class ProfileTests(unittest.TestCase):
 
         models.lookup.side_effect = lookup
 
-        identities = _canonicalize_model_references(
-            settings, Mock(), models=models
-        )
+        identities = _canonicalize_model_references(settings, Mock(), models=models)
 
-        self.assertEqual(
-            settings.mdx.voc_inst_secondary_model, " mdx:secondary "
-        )
+        self.assertEqual(settings.mdx.voc_inst_secondary_model, " mdx:secondary ")
         self.assertNotIn("mdx.voc_inst_secondary_model", identities)
 
 
@@ -468,13 +497,17 @@ class PlannedSettingsReturnTests(unittest.TestCase):
         )
         models = Mock()
         models.lookup.return_value = record
-        with patch("cli.job._base_resolve", return_value=(pre_settings, profile, ["/a.wav"], "/out")), patch(
-            "cli.job.CliModelLookup", return_value=models
-        ), patch("cli.job.ModelRepository"), patch(
-            "cli.job._canonicalize_model_references", return_value={}
-        ), patch("cli.job._device_pairs", return_value=([], False)), patch(
-            "cli.job.SettingsResolver"
-        ) as resolver_cls, patch("core.job_plan.JobResolver") as job_resolver_cls:
+        with (
+            patch(
+                "cli.job._base_resolve", return_value=(pre_settings, profile, ["/a.wav"], "/out")
+            ),
+            patch("cli.job.CliModelLookup", return_value=models),
+            patch("cli.job.ModelRepository"),
+            patch("cli.job._canonicalize_model_references", return_value={}),
+            patch("cli.job._device_pairs", return_value=([], False)),
+            patch("cli.job.SettingsResolver") as resolver_cls,
+            patch("core.job_plan.JobResolver") as job_resolver_cls,
+        ):
             resolver_cls.return_value.resolve.return_value = (pre_settings, {})
             job_resolver_cls.return_value.resolve.return_value = self._planned_effective(planned)
             job = resolve_separate_job(args)
@@ -484,7 +517,6 @@ class PlannedSettingsReturnTests(unittest.TestCase):
     def test_ensemble_job_returns_resolver_settings(self) -> None:
         from cli.job import resolve_ensemble_job
         from core.model_identity import ModelRecord
-        from core.stems import EnsemblePair
 
         pre_settings = Settings.defaults()
         pre_settings.ensemble.selected_models = ["MDX-Net: A", "MDX-Net: B"]
@@ -514,7 +546,7 @@ class PlannedSettingsReturnTests(unittest.TestCase):
         args = argparse.Namespace(
             ensemble=None,
             models=["mdx:a", "mdx:b"],
-            main_stem=EnsemblePair.VOCALS_INSTRUMENTAL.value,
+            main_stem="pair.vocals_instrumental",
             stems=None,
             long_chunk_seconds=None,
             long_chunk_overlap=None,
@@ -526,13 +558,17 @@ class PlannedSettingsReturnTests(unittest.TestCase):
         )
         models = Mock()
         models.lookup.side_effect = records
-        with patch("cli.job._base_resolve", return_value=(pre_settings, profile, ["/a.wav"], "/out")), patch(
-            "cli.job.CliModelLookup", return_value=models
-        ), patch("cli.job.ModelRepository"), patch(
-            "cli.job._canonicalize_model_references", return_value={}
-        ), patch("cli.job._device_pairs", return_value=([], False)), patch(
-            "cli.job.SettingsResolver"
-        ) as resolver_cls, patch("core.job_plan.JobResolver") as job_resolver_cls:
+        with (
+            patch(
+                "cli.job._base_resolve", return_value=(pre_settings, profile, ["/a.wav"], "/out")
+            ),
+            patch("cli.job.CliModelLookup", return_value=models),
+            patch("cli.job.ModelRepository"),
+            patch("cli.job._canonicalize_model_references", return_value={}),
+            patch("cli.job._device_pairs", return_value=([], False)),
+            patch("cli.job.SettingsResolver") as resolver_cls,
+            patch("core.job_plan.JobResolver") as job_resolver_cls,
+        ):
             resolver_cls.return_value.resolve.return_value = (pre_settings, {})
             job_resolver_cls.return_value.resolve.return_value = self._planned_effective(planned)
             job = resolve_ensemble_job(args)
@@ -543,7 +579,6 @@ class PlannedSettingsReturnTests(unittest.TestCase):
         """CLI persist must match GUI persist: ids, not Arch: Display tags."""
         from cli.job import resolve_ensemble_job
         from core.model_identity import ModelRecord
-        from core.stems import EnsemblePair
 
         settings = Settings.defaults()
         planned = Settings.defaults()
@@ -572,7 +607,7 @@ class PlannedSettingsReturnTests(unittest.TestCase):
         args = argparse.Namespace(
             ensemble=None,
             models=["mdx:a", "mdx:b"],
-            main_stem=EnsemblePair.VOCALS_INSTRUMENTAL.value,
+            main_stem="pair.vocals_instrumental",
             stems=None,
             long_chunk_seconds=None,
             long_chunk_overlap=None,
@@ -590,15 +625,18 @@ class PlannedSettingsReturnTests(unittest.TestCase):
 
         models = Mock()
         models.lookup.side_effect = records
-        with patch("cli.job._base_resolve", return_value=(settings, profile, ["/a.wav"], "/out")), patch(
-            "cli.job.CliModelLookup", return_value=models
-        ), patch("cli.job.ModelRepository"), patch(
-            "cli.job._canonicalize_model_references", return_value={}
-        ), patch("cli.job._device_pairs", return_value=([], False)), patch(
-            "cli.job.SettingsResolver"
-        ) as resolver_cls, patch("core.job_plan.JobResolver") as job_resolver_cls:
-            resolver_cls.return_value.resolve.side_effect = (
-                lambda incoming, **_kwargs: (incoming, {})
+        with (
+            patch("cli.job._base_resolve", return_value=(settings, profile, ["/a.wav"], "/out")),
+            patch("cli.job.CliModelLookup", return_value=models),
+            patch("cli.job.ModelRepository"),
+            patch("cli.job._canonicalize_model_references", return_value={}),
+            patch("cli.job._device_pairs", return_value=([], False)),
+            patch("cli.job.SettingsResolver") as resolver_cls,
+            patch("core.job_plan.JobResolver") as job_resolver_cls,
+        ):
+            resolver_cls.return_value.resolve.side_effect = lambda incoming, **_kwargs: (
+                incoming,
+                {},
             )
             job_resolver_cls.return_value.resolve.side_effect = capture_spec
             resolve_ensemble_job(args)
@@ -646,15 +684,17 @@ class PlannedSettingsReturnTests(unittest.TestCase):
 
         models = Mock()
         models.lookup.side_effect = [model, splitter]
-        with patch("cli.job._base_resolve", return_value=(settings, profile, ["/a.wav"], "/out")), patch(
-            "cli.job.CliModelLookup", return_value=models
-        ), patch("cli.job.resolve_splitter_identity", return_value="mdx:split"), patch(
-            "cli.job.ModelRepository"
-        ), patch("cli.job._canonicalize_model_references", return_value={}), patch(
-            "cli.job._device_pairs", return_value=([], False)
-        ), patch("cli.job.collect_overrides", side_effect=collect), patch(
-            "cli.job.SettingsResolver"
-        ) as resolver_cls, patch("core.job_plan.JobResolver") as job_resolver_cls:
+        with (
+            patch("cli.job._base_resolve", return_value=(settings, profile, ["/a.wav"], "/out")),
+            patch("cli.job.CliModelLookup", return_value=models),
+            patch("cli.job.resolve_splitter_identity", return_value="mdx:split"),
+            patch("cli.job.ModelRepository"),
+            patch("cli.job._canonicalize_model_references", return_value={}),
+            patch("cli.job._device_pairs", return_value=([], False)),
+            patch("cli.job.collect_overrides", side_effect=collect),
+            patch("cli.job.SettingsResolver") as resolver_cls,
+            patch("core.job_plan.JobResolver") as job_resolver_cls,
+        ):
             resolver_cls.return_value.resolve.return_value = (settings, {})
             job_resolver_cls.return_value.resolve.return_value = self._planned_effective(planned)
             resolve_separate_job(args)
@@ -673,8 +713,13 @@ class DeviceResolutionTests(unittest.TestCase):
 
 def _args(**values: Any) -> argparse.Namespace:
     defaults = dict(
-        on_exists="fail", fail_fast=False, report="human", quiet=True,
-        manifest=False, manifest_out=None, job_id="job-test",
+        on_exists="fail",
+        fail_fast=False,
+        report="human",
+        quiet=True,
+        manifest=False,
+        manifest_out=None,
+        job_id="job-test",
     )
     defaults.update(values)
     return argparse.Namespace(**defaults)
@@ -695,9 +740,11 @@ class BatchExecutionTests(unittest.TestCase):
             handlers[signal.SIGINT](signal.SIGINT, None)
             return RunResult(0.1, stopped=True)
 
-        with patch("cli.execution.signal.getsignal", return_value=object()), patch(
-            "cli.execution.signal.signal", side_effect=install
-        ), patch("cli.execution.run_blocking", side_effect=blocking):
+        with (
+            patch("cli.execution.signal.getsignal", return_value=object()),
+            patch("cli.execution.signal.signal", side_effect=install),
+            patch("cli.execution.run_blocking", side_effect=blocking),
+        ):
             result = run_runner_cli(runner, lambda _callbacks: None, print_console=False)
         self.assertTrue(result.interrupted)
         self.assertEqual(
@@ -712,14 +759,14 @@ class BatchExecutionTests(unittest.TestCase):
             kwargs["on_console"]("engine line")
             return RunResult(0.1, completed=True)
 
-        with patch("cli.execution.signal.getsignal", return_value=object()), patch(
-            "cli.execution.signal.signal"
-        ), patch(
-            "cli.execution.run_blocking", side_effect=blocking
-        ), redirect_stdout(out), redirect_stderr(err):
-            result = run_runner_cli(
-                Mock(), lambda _callbacks: None, print_console=True
-            )
+        with (
+            patch("cli.execution.signal.getsignal", return_value=object()),
+            patch("cli.execution.signal.signal"),
+            patch("cli.execution.run_blocking", side_effect=blocking),
+            redirect_stdout(out),
+            redirect_stderr(err),
+        ):
+            result = run_runner_cli(Mock(), lambda _callbacks: None, print_console=True)
         self.assertTrue(result.ok)
         self.assertEqual(out.getvalue(), "")
         self.assertEqual(err.getvalue(), "engine line\n")
@@ -732,9 +779,11 @@ class BatchExecutionTests(unittest.TestCase):
             for path in inputs
         )
         return ResolvedJob(
-            command="separate", settings=settings,
+            command="separate",
+            settings=settings,
             profile=LoadedProfile("defaults", "built-in"),
-            inputs=inputs, output=root,
+            inputs=inputs,
+            output=root,
             plan={"identity": {"id": "mdx:a", "hash": "h"}},
             resolved=_core_job("separate", settings, planned, root),
         )
@@ -747,7 +796,9 @@ class BatchExecutionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             job = self.make_job(output, inputs)
 
-            def one(self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks) -> InputOutcome:
+            def one(
+                self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks
+            ) -> InputOutcome:
                 if planned.path.endswith("b.wav"):
                     return InputOutcome(planned.path, "failed", error="bad", elapsed_s=0.1)
                 name = f"{format_stem_basename(planned.naming.track_base, 'Vocals')}.wav"
@@ -757,8 +808,9 @@ class BatchExecutionTests(unittest.TestCase):
                     handle.write(b"ok")
                 return InputOutcome(planned.path, "success", outputs=(path,), elapsed_s=0.1)
 
-            with patch.object(JobRunner, "resolve_models", return_value=[]), patch.object(
-                JobRunner, "_run_one_planned", one
+            with (
+                patch.object(JobRunner, "resolve_models", return_value=[]),
+                patch.object(JobRunner, "_run_one_planned", one),
             ):
                 outcome = run_batch(_args(), job)
             self.assertEqual(outcome.exit_code, 3)
@@ -775,11 +827,14 @@ class BatchExecutionTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 # Promotion-time race enforcement.
                 from cli.execution import _promote
+
                 stage = os.path.join(root, "stage")
                 os.makedirs(stage)
                 open(os.path.join(stage, "song (Vocals).wav"), "wb").close()
                 _promote(
-                    stage, output, "fail",
+                    stage,
+                    output,
+                    "fail",
                     destinations=[os.path.join(output, "song (Vocals).wav")],
                 )
             with self.assertRaises(ValueError):
@@ -790,8 +845,11 @@ class BatchExecutionTests(unittest.TestCase):
             path = os.path.join(root, "manifest.json")
             job = self.make_job(root, ["/a.wav"])
             result = write_manifest(
-                _args(manifest_out=path), job,
-                BatchOutcome("success", 1.0, [{"input": "/a.wav", "status": "success", "outputs": []}]),
+                _args(manifest_out=path),
+                job,
+                BatchOutcome(
+                    "success", 1.0, [{"input": "/a.wav", "status": "success", "outputs": []}]
+                ),
             )
             self.assertEqual(result, path)
             with open(path, encoding="utf-8") as handle:
@@ -800,8 +858,7 @@ class BatchExecutionTests(unittest.TestCase):
             self.assertEqual(payload["model_dependencies"], {})
             self.assertEqual(
                 payload["model_identity_digest"],
-                "sha256:44136fa355b3678a1146ad16f7e8649e"
-                "94fb4fc21fe77e8310c060f61caaff8a",
+                "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
             )
             self.assertIn("settings", payload)
             self.assertEqual(payload["job_spec"]["inputs"], ["/a.wav"])
@@ -826,7 +883,9 @@ class BatchExecutionTests(unittest.TestCase):
                 output,
             )
 
-            def one(self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks) -> InputOutcome:
+            def one(
+                self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks
+            ) -> InputOutcome:
                 name = f"{format_stem_basename(planned.naming.track_base, 'Vocals')}.wav"
                 path = os.path.join(self.settings.process.export_path, name)
                 os.makedirs(self.settings.process.export_path, exist_ok=True)
@@ -834,8 +893,9 @@ class BatchExecutionTests(unittest.TestCase):
                     handle.write(b"ok")
                 return InputOutcome(planned.path, "success", outputs=(path,), elapsed_s=0.1)
 
-            with patch.object(JobRunner, "resolve_models", return_value=[]), patch.object(
-                JobRunner, "_run_one_planned", one
+            with (
+                patch.object(JobRunner, "resolve_models", return_value=[]),
+                patch.object(JobRunner, "_run_one_planned", one),
             ):
                 outcome = run_batch(_args(), job)
             self.assertEqual(outcome.exit_code, 0)
@@ -851,12 +911,15 @@ class BatchExecutionTests(unittest.TestCase):
             job = self.make_job(output, [source])
             captured: dict[str, Any] = {}
 
-            def one(self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks) -> InputOutcome:
+            def one(
+                self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks
+            ) -> InputOutcome:
                 captured["planned"] = planned
                 captured["planned_output_root"] = self._run_output_root
                 captured["stage"] = self.settings.process.export_path
                 naming = self._naming_for_file(
-                    planned.path, export_path=self.settings.process.export_path,
+                    planned.path,
+                    export_path=self.settings.process.export_path,
                 )
                 captured["rebased"] = naming
                 name = f"{format_stem_basename(naming.track_base, 'Vocals')}.wav"
@@ -866,8 +929,9 @@ class BatchExecutionTests(unittest.TestCase):
                     handle.write(b"ok")
                 return InputOutcome(planned.path, "success", outputs=(path,), elapsed_s=0.1)
 
-            with patch.object(JobRunner, "resolve_models", return_value=[]), patch.object(
-                JobRunner, "_run_one_planned", one
+            with (
+                patch.object(JobRunner, "resolve_models", return_value=[]),
+                patch.object(JobRunner, "_run_one_planned", one),
             ):
                 outcome = run_batch(_args(), job)
             self.assertEqual(outcome.exit_code, 0)
@@ -884,9 +948,7 @@ class BatchExecutionTests(unittest.TestCase):
                 os.path.abspath(captured["rebased"].export_directory),
                 os.path.abspath(captured["stage"]),
             )
-            self.assertTrue(
-                os.path.isfile(os.path.join(output, "song (Vocals).wav"))
-            )
+            self.assertTrue(os.path.isfile(os.path.join(output, "song (Vocals).wav")))
 
     def test_run_batch_uses_start_resolved_with_stage_export_paths(self) -> None:
         captured: dict[str, Any] = {}
@@ -905,8 +967,9 @@ class BatchExecutionTests(unittest.TestCase):
             open(source, "wb").close()
             output = os.path.join(root, "out")
             job = self.make_job(output, [source])
-            with patch.object(JobRunner, "resolve_models", return_value=[]), patch(
-                "core.job_runner.JobRunner.start_resolved", fake_start_resolved
+            with (
+                patch.object(JobRunner, "resolve_models", return_value=[]),
+                patch("core.job_runner.JobRunner.start_resolved", fake_start_resolved),
             ):
                 run_batch(_args(), job)
         paths = captured["export_paths"]
@@ -939,8 +1002,9 @@ class BatchExecutionTests(unittest.TestCase):
                 if callbacks.on_stopped:
                     callbacks.on_stopped()
 
-            with patch.object(JobRunner, "resolve_models", return_value=[]), patch(
-                "core.job_runner.JobRunner.start_resolved", fake_start_resolved
+            with (
+                patch.object(JobRunner, "resolve_models", return_value=[]),
+                patch("core.job_runner.JobRunner.start_resolved", fake_start_resolved),
             ):
                 outcome = run_batch(_args(), job)
 
@@ -969,8 +1033,9 @@ class BatchExecutionTests(unittest.TestCase):
                 if callbacks.on_stopped:
                     callbacks.on_stopped()
 
-            with patch.object(JobRunner, "resolve_models", return_value=[]), patch(
-                "core.job_runner.JobRunner.start_resolved", fake_start_resolved
+            with (
+                patch.object(JobRunner, "resolve_models", return_value=[]),
+                patch("core.job_runner.JobRunner.start_resolved", fake_start_resolved),
             ):
                 outcome = run_batch(_args(), job)
 
@@ -992,10 +1057,10 @@ class BatchExecutionTests(unittest.TestCase):
             job = self.make_job(output, inputs)
             seen: list[list[str]] = []
 
-            def one(self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks) -> InputOutcome:
-                seen.append(sorted(
-                    name for name in os.listdir(output) if name != ".uvr-tmp"
-                ))
+            def one(
+                self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks
+            ) -> InputOutcome:
+                seen.append(sorted(name for name in os.listdir(output) if name != ".uvr-tmp"))
                 name = f"{format_stem_basename(planned.naming.track_base, 'Vocals')}.wav"
                 os.makedirs(self.settings.process.export_path, exist_ok=True)
                 path = os.path.join(self.settings.process.export_path, name)
@@ -1003,8 +1068,9 @@ class BatchExecutionTests(unittest.TestCase):
                     handle.write(b"ok")
                 return InputOutcome(planned.path, "success", outputs=(path,), elapsed_s=0.1)
 
-            with patch.object(JobRunner, "resolve_models", return_value=[]), patch.object(
-                JobRunner, "_run_one_planned", one
+            with (
+                patch.object(JobRunner, "resolve_models", return_value=[]),
+                patch.object(JobRunner, "_run_one_planned", one),
             ):
                 outcome = run_batch(_args(), job)
 
@@ -1022,8 +1088,7 @@ class BatchExecutionTests(unittest.TestCase):
             batches.append(tuple(item.path for item in batch_job.inputs))
             stages.append(tuple(kwargs["export_paths"]))
             self.last_outcomes = tuple(
-                InputOutcome(item.path, "skipped", elapsed_s=0.0)
-                for item in batch_job.inputs
+                InputOutcome(item.path, "skipped", elapsed_s=0.0) for item in batch_job.inputs
             )
             if callbacks.on_complete:
                 callbacks.on_complete()
@@ -1034,8 +1099,9 @@ class BatchExecutionTests(unittest.TestCase):
                 open(path, "wb").close()
             output = os.path.join(root, "out")
             job = self.make_job(output, inputs)
-            with patch.object(JobRunner, "resolve_models", return_value=[]), patch(
-                "core.job_runner.JobRunner.start_resolved", fake_start_resolved
+            with (
+                patch.object(JobRunner, "resolve_models", return_value=[]),
+                patch("core.job_runner.JobRunner.start_resolved", fake_start_resolved),
             ):
                 run_batch(_args(), job)
 
@@ -1051,7 +1117,9 @@ class BatchExecutionTests(unittest.TestCase):
             output = os.path.join(root, "out")
             job = self.make_job(output, inputs)
 
-            def one(self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks) -> InputOutcome:
+            def one(
+                self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks
+            ) -> InputOutcome:
                 name = f"{format_stem_basename(planned.naming.track_base, 'Vocals')}.wav"
                 os.makedirs(self.settings.process.export_path, exist_ok=True)
                 path = os.path.join(self.settings.process.export_path, name)
@@ -1060,17 +1128,16 @@ class BatchExecutionTests(unittest.TestCase):
                 return InputOutcome(planned.path, "success", outputs=(path,), elapsed_s=0.1)
 
             out = io.StringIO()
-            with patch.object(JobRunner, "resolve_models", return_value=[]), patch.object(
-                JobRunner, "_run_one_planned", one
-            ), redirect_stdout(out):
+            with (
+                patch.object(JobRunner, "resolve_models", return_value=[]),
+                patch.object(JobRunner, "_run_one_planned", one),
+                redirect_stdout(out),
+            ):
                 run_batch(_args(report="jsonl"), job)
 
             events = [json.loads(line) for line in out.getvalue().splitlines()]
             self.assertEqual(
-                [
-                    (item["event"], item.get("phase"), item["input"])
-                    for item in events
-                ],
+                [(item["event"], item.get("phase"), item["input"]) for item in events],
                 [
                     ("progress", "input_started", inputs[0]),
                     ("input_finished", None, inputs[0]),
@@ -1108,8 +1175,9 @@ class BatchExecutionTests(unittest.TestCase):
                 if callbacks.on_complete:
                     callbacks.on_complete()
 
-            with patch.object(JobRunner, "resolve_models", return_value=[]), patch(
-                "core.job_runner.JobRunner.start_resolved", fake_start_resolved
+            with (
+                patch.object(JobRunner, "resolve_models", return_value=[]),
+                patch("core.job_runner.JobRunner.start_resolved", fake_start_resolved),
             ):
                 outcome = run_batch(_args(), job)
 
@@ -1147,7 +1215,9 @@ class BatchExecutionTests(unittest.TestCase):
             fake_models = [object(), object()]
             captured: dict[str, Any] = {}
 
-            def one(self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks) -> InputOutcome:
+            def one(
+                self: JobRunner, planned: PlannedInput, _callbacks: JobCallbacks
+            ) -> InputOutcome:
                 captured["models"] = self._run_models
                 captured["shared_runner"] = self
                 name = f"{format_stem_basename('a', 'Vocals')}.wav"
@@ -1157,16 +1227,15 @@ class BatchExecutionTests(unittest.TestCase):
                     handle.write(b"ok")
                 return InputOutcome(planned.path, "success", outputs=(path,), elapsed_s=0.1)
 
-            with patch(
-                "core.job_runner.assemble_model", return_value=fake_models
-            ) as assemble, patch.object(JobRunner, "_run_one_planned", one):
+            with (
+                patch("core.job_runner.assemble_model", return_value=fake_models) as assemble,
+                patch.object(JobRunner, "_run_one_planned", one),
+            ):
                 outcome = run_batch(_args(), job)
 
             self.assertEqual(outcome.exit_code, 0)
             assemble.assert_called_once()
-            self.assertEqual(
-                assemble.call_args.kwargs.get("arch_type"), ENSEMBLE_MODE
-            )
+            self.assertEqual(assemble.call_args.kwargs.get("arch_type"), ENSEMBLE_MODE)
             self.assertEqual(captured["models"], fake_models)
             self.assertIsInstance(captured["shared_runner"], JobRunner)
 

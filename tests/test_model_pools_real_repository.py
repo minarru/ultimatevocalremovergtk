@@ -23,7 +23,6 @@ from unittest import mock
 from core import paths
 from core.model_repository import ModelRepository
 from core.settings import Settings
-from core.stems import EnsemblePair
 
 _VR_KARAOKE = "5_HP-Karaoke-UVR"
 _VR_VOCAL = "Test-Vocal-Model"
@@ -139,20 +138,13 @@ class RealModelPoolTests(unittest.TestCase):
         from core.model_hash_cache import remember
 
         checkpoint_path = os.path.join(paths.MDX_MODELS_DIR, f"{name}.ckpt")
-        checkpoint_hash = _write_checkpoint(
-            checkpoint_path, f"{name}-weights".encode()
-        )
+        checkpoint_hash = _write_checkpoint(checkpoint_path, f"{name}-weights".encode())
         config_name = f"{name}.yaml"
         if write_config:
             config_path = os.path.join(paths.MDX_C_CONFIG_PATH, config_name)
             os.makedirs(paths.MDX_C_CONFIG_PATH, exist_ok=True)
             with open(config_path, "w", encoding="utf-8") as handle:
-                handle.write(
-                    "model:\n"
-                    "  freqs_per_bands: !!python/tuple\n"
-                    "  - 2\n"
-                    "  - 2\n"
-                )
+                handle.write("model:\n  freqs_per_bands: !!python/tuple\n  - 2\n  - 2\n")
         _write_json(
             os.path.join(paths.MDX_HASH_DIR, f"{checkpoint_hash}.json"),
             {"config_yaml": config_name},
@@ -187,18 +179,12 @@ class RealModelPoolTests(unittest.TestCase):
     def test_bound_hash_table_rehydrates_after_model_invalidation(self) -> None:
         from core.model_identity import ModelIdentityService
 
-        _config_name, persisted_hashes = self._install_configured_mdx_c(
-            "invalidated-configured"
-        )
+        _config_name, persisted_hashes = self._install_configured_mdx_c("invalidated-configured")
         self.repo.bind_model_hash_table(lambda: persisted_hashes)
-        first = ModelIdentityService(self.repo).index.lookup(
-            "mdx:invalidated-configured"
-        )
+        first = ModelIdentityService(self.repo).index.lookup("mdx:invalidated-configured")
 
         self.repo.invalidate_models()
-        second = ModelIdentityService(self.repo).index.lookup(
-            "mdx:invalidated-configured"
-        )
+        second = ModelIdentityService(self.repo).index.lookup("mdx:invalidated-configured")
 
         self.assertTrue(first.identity_complete)
         self.assertTrue(second.identity_complete)
@@ -213,9 +199,7 @@ class RealModelPoolTests(unittest.TestCase):
         from core.job_plan import ValidationLevel
         from core.job_runner import JobRunner
 
-        _config_name, persisted_hashes = self._install_configured_mdx_c(
-            "cli-configured"
-        )
+        _config_name, persisted_hashes = self._install_configured_mdx_c("cli-configured")
         base_settings = Settings.defaults()
         persisted_settings = Settings.defaults()
         persisted_settings.process.model_hash_table = persisted_hashes
@@ -223,16 +207,25 @@ class RealModelPoolTests(unittest.TestCase):
         input_path = os.path.join(self.root, "input.wav")
         with open(input_path, "wb") as handle:
             handle.write(b"RIFF")
-        args = build_parser().parse_args([
-            "separate", input_path, "-o", self.root,
-            "--model", "mdx:cli-configured", "--offline", "--dry-run",
-        ])
+        args = build_parser().parse_args(
+            [
+                "separate",
+                input_path,
+                "-o",
+                self.root,
+                "--model",
+                "mdx:cli-configured",
+                "--offline",
+                "--dry-run",
+            ]
+        )
 
-        with mock.patch(
-            "cli.job._base_resolve",
-            return_value=(base_settings, profile, [input_path], self.root),
-        ), mock.patch(
-            "cli.job.Settings.load", return_value=persisted_settings
+        with (
+            mock.patch(
+                "cli.job._base_resolve",
+                return_value=(base_settings, profile, [input_path], self.root),
+            ),
+            mock.patch("cli.job.Settings.load", return_value=persisted_settings),
         ):
             job = resolve_separate_job(args, validation_level=ValidationLevel.MODEL)
 
@@ -252,15 +245,11 @@ class RealModelPoolTests(unittest.TestCase):
         ) -> object:
             from core.model_identity import ModelIdentityService
 
-            record = ModelIdentityService(runner.repo).index.lookup(
-                "mdx:cli-configured"
-            )
+            record = ModelIdentityService(runner.repo).index.lookup("mdx:cli-configured")
             self.assertTrue(record.identity_complete, record.identity_error)
             return resolve_models(runner, model_dependencies)
 
-        with mock.patch.object(
-            JobRunner, "resolve_models", resolve_with_complete_identity
-        ):
+        with mock.patch.object(JobRunner, "resolve_models", resolve_with_complete_identity):
             outcome = run_batch(args, job)
 
         self.assertEqual(outcome.status, "success")
@@ -270,18 +259,14 @@ class RealModelPoolTests(unittest.TestCase):
         from core.model_identity import ModelIdentityService
         from core.types import ProcessMethod
 
-        _config_name, persisted_hashes = self._install_configured_mdx_c(
-            "runner-configured"
-        )
+        _config_name, persisted_hashes = self._install_configured_mdx_c("runner-configured")
         settings = Settings.defaults()
         settings.process.model_hash_table = persisted_hashes
         settings.process.method = ProcessMethod.MDX
         settings.mdx.model = "mdx:runner-configured"
 
         runner = JobRunner(settings)
-        record = ModelIdentityService(runner.repo).index.lookup(
-            "mdx:runner-configured"
-        )
+        record = ModelIdentityService(runner.repo).index.lookup("mdx:runner-configured")
 
         self.assertTrue(record.identity_complete, record.identity_error)
         models = runner.resolve_models()
@@ -322,8 +307,12 @@ class RealModelPoolTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.model_hash_table = persisted_hashes
         args = argparse.Namespace(
-            family="mdx", all_known=False, report="json",
-            quiet=True, verbose=False, job_id="offline-list",
+            family="mdx",
+            all_known=False,
+            report="json",
+            quiet=True,
+            verbose=False,
+            job_id="offline-list",
         )
         real_model_info = _model_info
 
@@ -333,14 +322,15 @@ class RealModelPoolTests(unittest.TestCase):
             self.assertFalse(policy.allow_metadata_writes)
             return real_model_info(record, repo)
 
-        with mock.patch(
-            "cli.discovery.Settings.load", return_value=settings
-        ), mock.patch(
-            "cli.discovery._model_info", side_effect=inspect_under_policy
-        ), mock.patch(
-            "core.mdx_config_fetch._fetch_url_to_file",
-            side_effect=AssertionError("models list fetched YAML"),
-        ) as fetch, redirect_stdout(io.StringIO()):
+        with (
+            mock.patch("cli.discovery.Settings.load", return_value=settings),
+            mock.patch("cli.discovery._model_info", side_effect=inspect_under_policy),
+            mock.patch(
+                "core.mdx_config_fetch._fetch_url_to_file",
+                side_effect=AssertionError("models list fetched YAML"),
+            ) as fetch,
+            redirect_stdout(io.StringIO()),
+        ):
             code = cmd_models_list(args)
 
         self.assertEqual(code, 0)
@@ -369,27 +359,22 @@ class RealModelPoolTests(unittest.TestCase):
             self.assertIn(config.process_method, {"VR Arc", "MDX-Net"})
             self.assertEqual(config.primary_stem, "Vocals")
 
-    def test_ensemble_model_list_is_populated(self) -> None:
-        members = self.repo.ensemble_model_list(
-            self.settings, EnsemblePair.VOCALS_INSTRUMENTAL
-        )
-        # The karaoke model buckets to the karaoke pair, not vocals/instrumental.
+    def test_pair_pools_require_exact_reviewed_model_semantics(self) -> None:
+        members = self.repo.ensemble_model_list(self.settings, "pair.vocals_instrumental")
+        # These fixture-only custom IDs have metadata but no exact manifest
+        # declarations, so semantic pair membership must fail closed.
+        self.assertEqual(members, [])
         self.assertEqual(
-            sorted(members), [f"mdx:{_MDX_VOCAL}", f"vr:{_VR_VOCAL}"]
-        )
-        self.assertEqual(
-            self.repo.ensemble_model_list(self.settings, EnsemblePair.KARAOKE),
+            self.repo.ensemble_model_list(self.settings, "pair.karaoke"),
             [f"vr:{_VR_KARAOKE}"],
         )
         self.assertEqual(
-            sorted(self.repo.ensemble_model_list(self.settings, EnsemblePair.MULTI_STEM)),
+            sorted(self.repo.ensemble_model_list(self.settings, "mode.multi_stem")),
             [f"mdx:{_MDX_VOCAL}", f"vr:{_VR_KARAOKE}", f"vr:{_VR_VOCAL}"],
         )
 
     def test_karaoke_model_list_is_populated(self) -> None:
-        self.assertEqual(
-            self.repo.karaoke_model_list(self.settings), [f"vr:{_VR_KARAOKE}"]
-        )
+        self.assertEqual(self.repo.karaoke_model_list(self.settings), [f"vr:{_VR_KARAOKE}"])
 
     def test_karaoke_pool_fails_closed_without_exact_reviewed_split_context(self) -> None:
         rejected_vr = (
@@ -457,12 +442,8 @@ class RealModelPoolTests(unittest.TestCase):
         rejected = plan(f"vr:{_VR_VOCAL}")
         accepted = plan(f"vr:{_VR_KARAOKE}")
 
-        self.assertIn(
-            "model.identity", [item.code for item in rejected.diagnostics]
-        )
-        self.assertNotIn(
-            "model.identity", [item.code for item in accepted.diagnostics]
-        )
+        self.assertIn("model.identity", [item.code for item in rejected.diagnostics])
+        self.assertNotIn("model.identity", [item.code for item in accepted.diagnostics])
         self.assertEqual(
             accepted.model_dependencies["process.vocal_splitter"].id,
             f"vr:{_VR_KARAOKE}",
@@ -494,9 +475,7 @@ class RealModelPoolTests(unittest.TestCase):
                 handle.write("model_type: mdx23c\n")
             return True
 
-        with mock.patch(
-            "core.mdx_config_fetch.ensure_mdx_c_config", side_effect=fetch
-        ) as ensure:
+        with mock.patch("core.mdx_config_fetch.ensure_mdx_c_config", side_effect=fetch) as ensure:
             plan = JobResolver(self.repo).resolve(
                 JobSpec("separate", settings, (source,), self.root),
                 ValidationLevel.CONFIG,
@@ -504,17 +483,11 @@ class RealModelPoolTests(unittest.TestCase):
             )
 
         ensure.assert_called_once()
-        self.assertNotIn(
-            "model.identity", [item.code for item in plan.diagnostics]
-        )
-        self.assertNotIn(
-            "model.configuration", [item.code for item in plan.diagnostics]
-        )
+        self.assertNotIn("model.identity", [item.code for item in plan.diagnostics])
+        self.assertNotIn("model.configuration", [item.code for item in plan.diagnostics])
         dependency = plan.model_dependencies["mdx.model"]
         self.assertTrue(dependency.identity_complete)
-        self.assertEqual(
-            dependency.artifacts.supporting_filenames, (config_name,)
-        )
+        self.assertEqual(dependency.artifacts.supporting_filenames, (config_name,))
 
     def test_real_planner_missing_trusted_mdx_yaml_offline_is_read_only(self) -> None:
         from core.job_plan import JobResolver, JobSpec, ValidationLevel
@@ -542,12 +515,8 @@ class RealModelPoolTests(unittest.TestCase):
             )
 
         ensure.assert_not_called()
-        self.assertFalse(
-            os.path.exists(os.path.join(paths.MDX_C_CONFIG_PATH, config_name))
-        )
-        self.assertIn(
-            "model.configuration", [item.code for item in plan.diagnostics]
-        )
+        self.assertFalse(os.path.exists(os.path.join(paths.MDX_C_CONFIG_PATH, config_name)))
+        self.assertIn("model.configuration", [item.code for item in plan.diagnostics])
 
     def test_model_list_returns_canonical_ids(self) -> None:
         """The secondary-model pickers read this pool."""
@@ -585,15 +554,9 @@ class RealModelPoolTests(unittest.TestCase):
         index = ModelIdentityService(self.repo).index
 
         pools = {
-            "multi": self.repo.ensemble_model_list(
-                self.settings, EnsemblePair.MULTI_STEM
-            ),
-            "voc_inst": self.repo.ensemble_model_list(
-                self.settings, EnsemblePair.VOCALS_INSTRUMENTAL
-            ),
-            "karaoke_pair": self.repo.ensemble_model_list(
-                self.settings, EnsemblePair.KARAOKE
-            ),
+            "multi": self.repo.ensemble_model_list(self.settings, "mode.multi_stem"),
+            "voc_inst": self.repo.ensemble_model_list(self.settings, "pair.vocals_instrumental"),
+            "karaoke_pair": self.repo.ensemble_model_list(self.settings, "pair.karaoke"),
             "splitter": self.repo.karaoke_model_list(self.settings),
         }
         self.assertIn(f"vr:{dotted}", pools["multi"])
@@ -620,16 +583,14 @@ class RealModelPoolTests(unittest.TestCase):
             [f"mdx:{_MDX_VOCAL}", f"vr:{_VR_KARAOKE}", f"vr:{_VR_VOCAL}"],
         )
         self.assertEqual(
-            sorted(
-                self.repo.ensemble_model_list(
-                    self.settings, EnsemblePair.VOCALS_INSTRUMENTAL
-                )
-            ),
-            [f"mdx:{_MDX_VOCAL}", f"vr:{_VR_VOCAL}"],
+            self.repo.ensemble_model_list(self.settings, "pair.vocals_instrumental"),
+            [],
         )
         self.assertEqual(
-            self.repo.karaoke_model_list(self.settings), [f"vr:{_VR_KARAOKE}"]
+            sorted(self.repo.ensemble_model_list(self.settings, "mode.multi_stem")),
+            [f"mdx:{_MDX_VOCAL}", f"vr:{_VR_KARAOKE}", f"vr:{_VR_VOCAL}"],
         )
+        self.assertEqual(self.repo.karaoke_model_list(self.settings), [f"vr:{_VR_KARAOKE}"])
 
     def test_unresolvable_tag_degrades_to_unavailable(self) -> None:
         """A tag with no identity record must not raise, only be unavailable."""

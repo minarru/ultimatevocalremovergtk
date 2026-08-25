@@ -17,7 +17,6 @@ from core.job_plan import (
 )
 from core.model_identity import ModelArtifacts, ModelRecord
 from core.settings import Settings
-from core.stems import EnsemblePair
 from core.types import ProcessMethod
 
 
@@ -42,9 +41,7 @@ def _resolve(
     command: str = "separate",
 ):
     with tempfile.NamedTemporaryFile(suffix=".wav") as source:
-        return _resolve_spec(
-            JobSpec(command, settings, (source.name,), "/tmp/out"), records
-        )
+        return _resolve_spec(JobSpec(command, settings, (source.name,), "/tmp/out"), records)
 
 
 def _resolve_spec(
@@ -94,9 +91,7 @@ def _flush_method_view(
 
     view: Any = MethodView.__new__(MethodView)
     view.settings = settings
-    view.model_key = (
-        "demucs_model" if primary_id.startswith("demucs:") else "mdx_net_model"
-    )
+    view.model_key = "demucs_model" if primary_id.startswith("demucs:") else "mdx_net_model"
     view._model_write_gated = False
     view.selected_model = lambda: primary_id
     view.save_options = lambda: None
@@ -165,7 +160,7 @@ class GatedSeparationPlanTests(unittest.TestCase):
         self.assertEqual(plan.settings.demucs.pre_proc_model, NO_MODEL)
         self.assertNotIn("demucs.pre_proc_model", plan.model_dependencies)
 
-    def test_ensemble_build_job_spec_flushes_gated_vocal_splitter(self) -> None:
+    def test_ensemble_job_spec_preserves_gated_splitter_for_readiness_block(self) -> None:
         from ui.ensemble.window import EnsemblePage
         from ui.widgets.vocal_split_row import VocalSplitRow
 
@@ -174,7 +169,7 @@ class GatedSeparationPlanTests(unittest.TestCase):
         gated = _record("vr:gated-splitter")
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.ENSEMBLE
-        settings.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
         settings.ensemble.selected_models = [first.id, second.id]
         settings.process.vocal_splitter_enabled = True
         settings.process.vocal_splitter = gated.id
@@ -206,9 +201,9 @@ class GatedSeparationPlanTests(unittest.TestCase):
                 {first.id: first, second.id: second, gated.id: gated},
             )
 
-        self.assertFalse(plan.settings.process.vocal_splitter_enabled)
-        self.assertEqual(plan.settings.process.vocal_splitter, NO_MODEL)
-        self.assertNotIn("process.vocal_splitter", plan.model_dependencies)
+        self.assertTrue(plan.settings.process.vocal_splitter_enabled)
+        self.assertEqual(plan.settings.process.vocal_splitter, gated.id)
+        self.assertEqual(plan.model_dependencies["process.vocal_splitter"], gated)
 
 
 class GatedEnsemblePlanTests(unittest.TestCase):
@@ -220,7 +215,7 @@ class GatedEnsemblePlanTests(unittest.TestCase):
         second = _record("vr:second")
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.ENSEMBLE
-        settings.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
         settings.ensemble.selected_models = [first.id, gated.id, second.id]
         page: Any = EnsemblePage.__new__(EnsemblePage)
         page.settings = settings
@@ -230,9 +225,7 @@ class GatedEnsemblePlanTests(unittest.TestCase):
             gated.id: SimpleNamespace(get_active=lambda: False),
             second.id: SimpleNamespace(get_active=lambda: True),
         }
-        page.vocal_split_row = SimpleNamespace(
-            persist_to_settings=lambda _settings: None
-        )
+        page.vocal_split_row = SimpleNamespace(persist_to_settings=lambda _settings: None)
         page.save_stems = SimpleNamespace(persist_to_settings=lambda: None)
 
         EnsemblePage._flush_run_settings(page)

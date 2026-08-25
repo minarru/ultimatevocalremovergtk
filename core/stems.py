@@ -5,7 +5,7 @@ Layers:
 - :class:`StemId` — model/yaml dict key (preserve author casing for lookup).
 - :class:`StemBucket` — filename-safe ensemble/eligibility identity.
 - :class:`StemLiteral` — specialty stem kept as its own combine key.
-- :class:`EnsemblePair` — persisted user request (stable machine ids only).
+Reviewed ensemble pairs and modes are exact IDs owned by :mod:`core.stem_pairs`.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from bundled.constants import (
     BV_VOCAL_STEM,
     BV_VOCAL_STEM_LABEL,
     DRUM_STEM,
-    FOUR_STEM_ENSEMBLE,
     GUITAR_STEM,
     INST_STEM,
     INST_WITH_BACKING_VOCALS_STEM,
@@ -31,7 +30,6 @@ from bundled.constants import (
     LEAD_VOCAL_STEM,
     LEAD_VOCAL_STEM_LABEL,
     LEAD_VOCALS_TAG,
-    MULTI_STEM_ENSEMBLE,
     NO_BASS_STEM,
     NO_DRUM_STEM,
     NO_GUITAR_STEM,
@@ -187,98 +185,6 @@ class StemSelection:
     status: StemSelectionStatus
     available: Tuple[str, ...]
 
-
-class EnsemblePair(str, Enum):
-    """Persisted ensemble main-stem request (stable ids, not UI labels)."""
-
-    CHOOSE = "choose"
-    VOCALS_INSTRUMENTAL = "vocals_instrumental"
-    KARAOKE = "karaoke"
-    OTHER = "other"
-    DRUMS = "drums"
-    BASS = "bass"
-    BACKING_VOCALS = "pair.backing_vocals"
-    CENTER_SIDE = "pair.center_side"
-    FOUR_STEM = "four_stem"
-    MULTI_STEM = "multi_stem"
-
-    def buckets(self) -> Tuple[StemBucket, StemBucket]:
-        """Return ``(primary, secondary)`` buckets for this pair request.
-
-        Complement pairs use :attr:`StemBucket.UNKNOWN` as secondary (discard).
-        Non-pair modes return ``(UNKNOWN, UNKNOWN)``.
-        """
-        table = {
-            EnsemblePair.VOCALS_INSTRUMENTAL: (
-                StemBucket.VOCALS,
-                StemBucket.INSTRUMENTAL,
-            ),
-            EnsemblePair.KARAOKE: (
-                StemBucket.LEAD_VOCALS,
-                StemBucket.INST_WITH_BV,
-            ),
-            EnsemblePair.OTHER: (StemBucket.OTHER, StemBucket.UNKNOWN),
-            EnsemblePair.DRUMS: (StemBucket.DRUMS, StemBucket.UNKNOWN),
-            EnsemblePair.BASS: (StemBucket.BASS, StemBucket.UNKNOWN),
-            EnsemblePair.BACKING_VOCALS: (
-                StemBucket.BACKING_VOCALS,
-                StemBucket.INST_WITH_LEAD,
-            ),
-        }
-        return table.get(self, (StemBucket.UNKNOWN, StemBucket.UNKNOWN))
-
-    def is_multi_or_four(self) -> bool:
-        return self in (EnsemblePair.FOUR_STEM, EnsemblePair.MULTI_STEM)
-
-    def stem_halves(self) -> Tuple[str, str]:
-        """UI / stem-only label halves (not filename combine tags).
-
-        Complement pairs keep the historic ``No Other`` / ``No Drums`` /
-        ``No Bass`` secondary labels. Non-pair modes return ``("", "")``.
-        """
-        if self is EnsemblePair.CENTER_SIDE:
-            registry = load_bundled_stem_semantics()
-            definition = registry.pairs.get(self.value)
-            if definition is None:
-                return "", ""
-            labels: list[str] = []
-            for role in definition.roles:
-                role_definition = registry.roles.get(role)
-                if role_definition is None:
-                    return "", ""
-                labels.append(role_definition.display)
-            if len(labels) != 2:
-                return "", ""
-            return labels[0], labels[1]
-        table = {
-            EnsemblePair.VOCALS_INSTRUMENTAL: (VOCAL_STEM, INST_STEM),
-            EnsemblePair.KARAOKE: (
-                LEAD_VOCAL_STEM_LABEL,
-                INST_WITH_BACKING_VOCALS_STEM,
-            ),
-            EnsemblePair.OTHER: (OTHER_STEM, NO_OTHER_STEM),
-            EnsemblePair.DRUMS: (DRUM_STEM, NO_DRUM_STEM),
-            EnsemblePair.BASS: (BASS_STEM, NO_BASS_STEM),
-            EnsemblePair.BACKING_VOCALS: (
-                "Backing Vocals",
-                INST_WITH_LEAD_VOCALS_STEM,
-            ),
-        }
-        return table.get(self, ("", ""))
-
-
-_PAIR_UI_LABELS = {
-    EnsemblePair.CHOOSE: "Choose Stem Pair",
-    EnsemblePair.VOCALS_INSTRUMENTAL: f"{VOCAL_STEM}/{INST_STEM}",
-    EnsemblePair.KARAOKE: f"{LEAD_VOCAL_STEM_LABEL}/{INST_WITH_BACKING_VOCALS_STEM}",
-    EnsemblePair.OTHER: f"{OTHER_STEM}/No Other",
-    EnsemblePair.DRUMS: f"{DRUM_STEM}/No Drums",
-    EnsemblePair.BASS: f"{BASS_STEM}/No Bass",
-    EnsemblePair.BACKING_VOCALS: "Backing Vocals/Instrumental with Lead Vocals",
-    EnsemblePair.CENTER_SIDE: "Center/Side",
-    EnsemblePair.FOUR_STEM: FOUR_STEM_ENSEMBLE,
-    EnsemblePair.MULTI_STEM: MULTI_STEM_ENSEMBLE,
-}
 
 _BUCKET_UI_LABELS = {
     StemBucket.LEAD_VOCALS: LEAD_VOCAL_STEM_LABEL,
@@ -452,45 +358,8 @@ def karaoke_bv_export_labels(model: Any) -> Optional[dict[str, str]]:
     }
 
 
-def coerce_ensemble_pair(value: Any) -> EnsemblePair:
-    """Deprecated runtime adapter for exact current semantic IDs only.
-
-    Persistence must use :func:`core.stem_pairs.normalize_stem_pair_id`; this
-    adapter temporarily keeps untouched runtime callers working during the
-    semantic cutover and never translates legacy ids or display text.
-    """
-    if isinstance(value, EnsemblePair):
-        value = value.value
-    from core.stem_pairs import normalize_stem_pair_id
-
-    current = normalize_stem_pair_id(value)
-    current_pairs = {
-        "pair.vocals_instrumental": EnsemblePair.VOCALS_INSTRUMENTAL,
-        "pair.karaoke": EnsemblePair.KARAOKE,
-        "pair.backing_vocals": EnsemblePair.BACKING_VOCALS,
-        "pair.center_side": EnsemblePair.CENTER_SIDE,
-        "mode.four_stem": EnsemblePair.FOUR_STEM,
-        "mode.multi_stem": EnsemblePair.MULTI_STEM,
-    }
-    if current in current_pairs:
-        return current_pairs[current]
-    if value not in (None, ""):
-        try:
-            from core.debug_log import debug
-
-            debug(
-                "settings",
-                f"ensemble.main_stem unknown value={value!r}; using choose",
-            )
-        except Exception:
-            pass
-    return EnsemblePair.CHOOSE
-
-
-def ui_label(value: EnsemblePair | StemBucket | StemLiteral | str) -> str:
+def ui_label(value: StemBucket | StemLiteral | str) -> str:
     """Human-readable label for UI; never use for filenames or settings ids."""
-    if isinstance(value, EnsemblePair):
-        return _PAIR_UI_LABELS[value]
     if isinstance(value, StemBucket):
         return _BUCKET_UI_LABELS.get(value, value.value)
     if isinstance(value, StemLiteral):
@@ -680,39 +549,6 @@ def _plain_family(bucket: StemBucket) -> StemBucket:
     if bucket in _INST_FAMILY:
         return StemBucket.INSTRUMENTAL
     return bucket
-
-
-def exclusive_flags_for_pair(focus: str, pair: EnsemblePair) -> tuple[bool, bool] | None:
-    """Like :func:`exclusive_flags_for_focus`, keyed on pair buckets.
-
-    Ensemble combine and dry-run never have a model: they have an
-    :class:`EnsemblePair`. Matching the pair's *labels* (``Lead Vocals``,
-    ``Other``) through :func:`exclusive_flags_for_focus` is wrong — those
-    strings are already concepts, and ``stem_count=2`` would turn Other
-    into Instrumental and leave ``--stems vocals`` unmatched on karaoke.
-    """
-    if not str(focus or "").strip():
-        return None
-    positional = _positional_exclusive_flags(focus)
-    if positional is not None:
-        return positional
-    wanted = focus_bucket(focus)
-    primary_b, secondary_b = pair.buckets()
-
-    def hit(bucket: StemBucket) -> bool:
-        if bucket is StemBucket.UNKNOWN or wanted is StemBucket.UNKNOWN:
-            return False
-        if bucket is wanted:
-            return True
-        return _plain_family(bucket) is _plain_family(wanted)
-
-    primary_hit = hit(primary_b)
-    secondary_hit = hit(secondary_b)
-    if primary_hit and not secondary_hit:
-        return True, False
-    if secondary_hit and not primary_hit:
-        return False, True
-    return False, False
 
 
 def exclusive_flags_for_model(model: Any, focus: str) -> tuple[bool, bool] | None:
@@ -1421,16 +1257,3 @@ def resolve_in_sources(sources: Optional[Mapping[str, Any]], stem: str | StemId)
         if canonical_ensemble_stem_tag(str(key)) == want_canon:
             return str(key)
     return None
-
-
-def ensemble_pair_choices() -> Sequence[tuple[str, str]]:
-    """``(stored_id, display_label)`` pairs for the ensemble main-stem combo."""
-    from core.model_stem_manifest import load_bundled_stem_semantics
-
-    registry = load_bundled_stem_semantics()
-    return (
-        ("", ui_label(EnsemblePair.CHOOSE)),
-        *((pair.id, pair.display) for pair in registry.pairs.values()),
-        ("mode.four_stem", FOUR_STEM_ENSEMBLE),
-        ("mode.multi_stem", MULTI_STEM_ENSEMBLE),
-    )

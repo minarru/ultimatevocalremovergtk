@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import typing
 import unittest
-from typing import Literal
-import tempfile
-import numpy as np
 from types import SimpleNamespace
+from typing import Literal
 from unittest.mock import Mock, patch
+
+import numpy as np
 
 from bundled.constants import DEMUCS_ARCH_TYPE, VR_ARCH_PM, VR_ARCH_TYPE
 from core import paths
@@ -28,7 +29,6 @@ from core.model_identity import (
 )
 from core.model_repository import ModelRepository
 from core.settings import Settings
-from core.stems import EnsemblePair
 from core.types import ProcessMethod
 
 
@@ -39,9 +39,7 @@ class DryResolutionArchitectureTests(unittest.TestCase):
         resolved = Mock()
 
         with patch("core.model_repository.ModelConfig", return_value=resolved) as config:
-            result = ModelRepository.resolve_model_dry(
-                repo, settings, VR_ARCH_PM, "VR model"
-            )
+            result = ModelRepository.resolve_model_dry(repo, settings, VR_ARCH_PM, "VR model")
 
         self.assertIs(result, resolved)
         config.assert_called_once_with(
@@ -96,9 +94,7 @@ class ActivePathTests(unittest.TestCase):
         }
         for native_stem, expected in cases.items():
             with self.subTest(native_stem=native_stem):
-                self.assertEqual(
-                    secondary_slot_for_primary_stem(native_stem), expected
-                )
+                self.assertEqual(secondary_slot_for_primary_stem(native_stem), expected)
 
     def test_native_primary_stem_overrides_stale_mdx_settings_slot(self) -> None:
         settings = Settings.defaults()
@@ -147,9 +143,7 @@ class ActivePathTests(unittest.TestCase):
         settings.demucs.other_secondary_model = "mdx:b"
         settings.demucs.bass_secondary_model = "mdx:c"
         settings.demucs.drums_secondary_model = "mdx:d"
-        paths = active_model_paths(
-            settings, command="separate", source_layout="4_stem"
-        )
+        paths = active_model_paths(settings, command="separate", source_layout="4_stem")
         self.assertIn("demucs.voc_inst_secondary_model", paths)
         self.assertIn("demucs.drums_secondary_model", paths)
 
@@ -160,9 +154,7 @@ class ActivePathTests(unittest.TestCase):
         settings.demucs.is_secondary_model_activate = True
         settings.demucs.voc_inst_secondary_model = "mdx:a"
         settings.demucs.other_secondary_model = "mdx:b"
-        paths = active_model_paths(
-            settings, command="separate", source_layout="2_stem"
-        )
+        paths = active_model_paths(settings, command="separate", source_layout="2_stem")
         self.assertEqual(
             [path for path in paths if path.endswith("_secondary_model")],
             ["demucs.voc_inst_secondary_model"],
@@ -201,9 +193,7 @@ class ActivePathTests(unittest.TestCase):
             return_value=IdentityIndex({}),
         ):
             with self.assertRaises(ValueError):
-                process_determine_secondary_model(
-                    settings, repo, MDX_ARCH_TYPE, VOCAL_STEM
-                )
+                process_determine_secondary_model(settings, repo, MDX_ARCH_TYPE, VOCAL_STEM)
 
     def test_nested_runtime_consumes_the_planned_dependency_record(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE
@@ -267,9 +257,7 @@ class ActivePathTests(unittest.TestCase):
             set(plan.model_dependencies),
             {"mdx.model", "mdx.voc_inst_secondary_model"},
         )
-        final_dependencies = resolver._assemble.call_args_list[1].kwargs[
-            "model_dependencies"
-        ]
+        final_dependencies = resolver._assemble.call_args_list[1].kwargs["model_dependencies"]
         self.assertEqual(
             final_dependencies["mdx.voc_inst_secondary_model"].id,
             "mdx:voc-inst-helper",
@@ -325,13 +313,21 @@ class ActivePathTests(unittest.TestCase):
         settings.mdx.is_secondary_model_activate = True
         settings.mdx.voc_inst_secondary_model = "mdx:helper"
         old = ModelRecord(
-            id="mdx:primary", family="mdx", basename="primary", display="Primary",
-            backend_name="old.ckpt", artifacts=ModelArtifacts("old.ckpt"),
+            id="mdx:primary",
+            family="mdx",
+            basename="primary",
+            display="Primary",
+            backend_name="old.ckpt",
+            artifacts=ModelArtifacts("old.ckpt"),
             installed=True,
         )
         new = ModelRecord(
-            id="mdx:primary", family="mdx", basename="primary", display="Primary",
-            backend_name="new.ckpt", artifacts=ModelArtifacts("new.ckpt"),
+            id="mdx:primary",
+            family="mdx",
+            basename="primary",
+            display="Primary",
+            backend_name="new.ckpt",
+            artifacts=ModelArtifacts("new.ckpt"),
             installed=True,
         )
         helper = _record("mdx:helper")
@@ -341,7 +337,9 @@ class ActivePathTests(unittest.TestCase):
         )
         probe = Mock(model_status=True, primary_stem="Vocals")
         final = Mock(
-            model_status=True, primary_stem="Vocals", compensate=None,
+            model_status=True,
+            primary_stem="Vocals",
+            compensate=None,
             model_hash_dir="",
         )
         resolver._assemble = Mock(side_effect=[[probe], [final]])
@@ -370,11 +368,9 @@ class ActivePathTests(unittest.TestCase):
         )
 
     def test_ensemble_resolver_plans_and_assembles_each_native_slot(self) -> None:
-        from core.stems import EnsemblePair
-
         settings = Settings.defaults()
         settings.process.method = ProcessMethod.ENSEMBLE
-        settings.ensemble.main_stem = EnsemblePair.VOCALS_INSTRUMENTAL
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
         settings.ensemble.selected_models = ["mdx:vocal-member", "mdx:other-member"]
         settings.mdx.is_secondary_model_activate = True
         settings.mdx.voc_inst_secondary_model = "mdx:voc-helper"
@@ -382,8 +378,10 @@ class ActivePathTests(unittest.TestCase):
         records = {
             model_id: _record(model_id)
             for model_id in (
-                "mdx:vocal-member", "mdx:other-member",
-                "mdx:voc-helper", "mdx:other-helper",
+                "mdx:vocal-member",
+                "mdx:other-member",
+                "mdx:voc-helper",
+                "mdx:other-helper",
             )
         }
         resolver = JobResolver(Mock(inventory_generation=0))
@@ -423,9 +421,7 @@ class ActivePathTests(unittest.TestCase):
                 "mdx.other_secondary_model",
             },
         )
-        final_dependencies = resolver._assemble.call_args_list[1].kwargs[
-            "model_dependencies"
-        ]
+        final_dependencies = resolver._assemble.call_args_list[1].kwargs["model_dependencies"]
         self.assertIs(
             final_dependencies["mdx.voc_inst_secondary_model"],
             records["mdx:voc-helper"],
@@ -584,21 +580,19 @@ class ResolvedPlanIdentityTests(unittest.TestCase):
         resolver.identities.resolve.side_effect = AssertionError("fuzzy resolution used")
 
         # An MDX-C spec resolves its yaml; this test is about the label only.
-        with tempfile.NamedTemporaryFile(suffix=".wav") as handle, patch(
-            "core.mdx_config_fetch.ensure_mdx_c_config", return_value=True
-        ), patch("core.downloads.ensure_mdx_c_config", return_value=True):
+        with (
+            tempfile.NamedTemporaryFile(suffix=".wav") as handle,
+            patch("core.mdx_config_fetch.ensure_mdx_c_config", return_value=True),
+            patch("core.downloads.ensure_mdx_c_config", return_value=True),
+        ):
             plan = resolver.resolve(
                 JobSpec("separate", settings, (handle.name,), "/tmp/out"),
                 ValidationLevel.CONFIG,
             )
 
         self.assertEqual(plan.models[0].id, "mdx:melband_roformer_karaoke_becruily")
-        self.assertEqual(
-            plan.models[0].backend_name, "melband_roformer_karaoke_becruily"
-        )
-        self.assertEqual(
-            plan.models[0].display, "MelBand Roformer — Karaoke · becruily"
-        )
+        self.assertEqual(plan.models[0].backend_name, "melband_roformer_karaoke_becruily")
+        self.assertEqual(plan.models[0].display, "MelBand Roformer — Karaoke · becruily")
         self.assertEqual(
             plan.inputs[0].naming.model_label,
             "MelBand Roformer — Karaoke · becruily",
@@ -671,8 +665,8 @@ class ResolvedPlanIdentityTests(unittest.TestCase):
 class ApolloSettingsStayCanonicalTests(unittest.TestCase):
     def test_resolver_does_not_write_filename_into_settings(self) -> None:
         from core.audio_plan import AudioJobResolver
-        from core.settings import Settings
         from core.job_plan import ValidationLevel
+        from core.settings import Settings
 
         settings = Settings.defaults()
         settings.audio_tools.apollo_model = "apollo:restorer"
@@ -703,8 +697,8 @@ class ApolloSettingsStayCanonicalTests(unittest.TestCase):
         self.assertNotIn("apollo:", tool.apollo_model_location)
 
     def test_apollo_inference_observes_explicit_checkpoint_path(self) -> None:
-        from core.audio_tools import AudioTools
         import ml.apollo_inference
+        from core.audio_tools import AudioTools
 
         with tempfile.TemporaryDirectory() as output:
             settings = Settings.defaults()
@@ -741,33 +735,35 @@ class ApolloSettingsStayCanonicalTests(unittest.TestCase):
 
 class SplitterExactIdTests(unittest.TestCase):
     def test_substring_no_longer_matches(self) -> None:
-        from core.settings.job_resolution import resolve_splitter_identity
         from core.settings import Settings
+        from core.settings.job_resolution import resolve_splitter_identity
 
         settings = Settings.defaults()
         repo, index = _repo_with_karaoke("vr:UVR-De-Echo-Normal")
-        with patch.object(
-            ModelIdentityService, "_published_index", return_value=index
-        ), patch.object(
-            ModelIdentityService,
-            "canonical_id_from_member_tag",
-            return_value="vr:UVR-De-Echo-Normal",
+        with (
+            patch.object(ModelIdentityService, "_published_index", return_value=index),
+            patch.object(
+                ModelIdentityService,
+                "canonical_id_from_member_tag",
+                return_value="vr:UVR-De-Echo-Normal",
+            ),
         ):
             with self.assertRaises(ValueError):
                 resolve_splitter_identity("Echo", settings, repo)
 
     def test_canonical_splitter_id_still_resolves(self) -> None:
-        from core.settings.job_resolution import resolve_splitter_identity
         from core.settings import Settings
+        from core.settings.job_resolution import resolve_splitter_identity
 
         settings = Settings.defaults()
         repo, index = _repo_with_karaoke("vr:UVR-De-Echo-Normal")
-        with patch.object(
-            ModelIdentityService, "_published_index", return_value=index
-        ), patch.object(
-            ModelIdentityService,
-            "canonical_id_from_member_tag",
-            return_value="vr:UVR-De-Echo-Normal",
+        with (
+            patch.object(ModelIdentityService, "_published_index", return_value=index),
+            patch.object(
+                ModelIdentityService,
+                "canonical_id_from_member_tag",
+                return_value="vr:UVR-De-Echo-Normal",
+            ),
         ):
             self.assertEqual(
                 resolve_splitter_identity("vr:UVR-De-Echo-Normal", settings, repo),
@@ -815,12 +811,12 @@ class MdxYamlFetchPolicyTests(unittest.TestCase):
         resolver = JobResolver(_repo_with_mdx_c_missing_yaml())
         resolver.identities = Mock()
         resolver.identities.lookup.return_value = record
-        with patch("core.mdx_config_fetch.ensure_mdx_c_config", side_effect=AssertionError("fetch")):
+        with patch(
+            "core.mdx_config_fetch.ensure_mdx_c_config", side_effect=AssertionError("fetch")
+        ):
             plan = resolver.resolve(_separate_spec(), allow_network=False)
         # No fetch, and the miss lands in the plan rather than escaping it.
-        self.assertIn(
-            "model.configuration", [item.code for item in plan.diagnostics]
-        )
+        self.assertIn("model.configuration", [item.code for item in plan.diagnostics])
 
     def test_plan_online_fetches_once_then_relooks_up(self) -> None:
         from core.job_plan import JobResolver
@@ -835,8 +831,9 @@ class MdxYamlFetchPolicyTests(unittest.TestCase):
         resolver = JobResolver(_repo_with_mdx_c_missing_yaml())
         resolver.identities = Mock()
         resolver.identities.lookup.return_value = record
-        with patch("core.mdx_config_fetch.ensure_mdx_c_config", side_effect=fake_ensure), patch.object(
-            resolver, "_assemble", return_value=[Mock(model_status=True)]
+        with (
+            patch("core.mdx_config_fetch.ensure_mdx_c_config", side_effect=fake_ensure),
+            patch.object(resolver, "_assemble", return_value=[Mock(model_status=True)]),
         ):
             resolver.resolve(_separate_spec(), ValidationLevel.CONFIG, allow_network=True)
         self.assertEqual(len(fetches), 1)
@@ -850,9 +847,7 @@ class MdxYamlFetchPolicyTests(unittest.TestCase):
             basename="TestModel",
             display="Test",
             backend_name="TestModel.ckpt",
-            artifacts=ModelArtifacts(
-                "TestModel.ckpt", ("still-unknown.yaml",)
-            ),
+            artifacts=ModelArtifacts("TestModel.ckpt", ("still-unknown.yaml",)),
             installed=True,
             identity_complete=False,
             identity_error="unknown MDX YAML architecture for TestModel.ckpt",
@@ -860,18 +855,14 @@ class MdxYamlFetchPolicyTests(unittest.TestCase):
         resolver = JobResolver(_repo_with_mdx_c_missing_yaml())
         resolver.identities = Mock()
         resolver.identities.lookup.return_value = incomplete
-        with tempfile.TemporaryDirectory() as directory, patch.object(
-            paths, "MDX_C_CONFIG_PATH", directory
-        ), patch(
-            "core.mdx_config_fetch.ensure_mdx_c_config", return_value=True
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(paths, "MDX_C_CONFIG_PATH", directory),
+            patch("core.mdx_config_fetch.ensure_mdx_c_config", return_value=True),
         ):
-            plan = resolver.resolve(
-                _separate_spec(), ValidationLevel.CONFIG, allow_network=True
-            )
+            plan = resolver.resolve(_separate_spec(), ValidationLevel.CONFIG, allow_network=True)
 
-        self.assertIn(
-            "model.configuration", [item.code for item in plan.diagnostics]
-        )
+        self.assertIn("model.configuration", [item.code for item in plan.diagnostics])
 
     def test_unrelated_incomplete_identity_does_not_enter_yaml_recovery(self) -> None:
         from core.job_plan import JobResolver
@@ -894,9 +885,7 @@ class MdxYamlFetchPolicyTests(unittest.TestCase):
             "core.mdx_config_fetch.ensure_mdx_c_config",
             side_effect=AssertionError("unrelated identity entered recovery"),
         ) as ensure:
-            plan = resolver.resolve(
-                _separate_spec(), ValidationLevel.CONFIG, allow_network=True
-            )
+            plan = resolver.resolve(_separate_spec(), ValidationLevel.CONFIG, allow_network=True)
 
         ensure.assert_not_called()
         self.assertIn("model.identity", [item.code for item in plan.diagnostics])
@@ -939,9 +928,7 @@ class KaraokeSplitterPlanningTests(unittest.TestCase):
         plan = self._plan("vr:eligible", ["vr:eligible"])
 
         self.assertNotIn("model.identity", [item.code for item in plan.diagnostics])
-        self.assertEqual(
-            plan.model_dependencies["process.vocal_splitter"].id, "vr:eligible"
-        )
+        self.assertEqual(plan.model_dependencies["process.vocal_splitter"].id, "vr:eligible")
 
     def test_offline_missing_yaml_fails_before_karaoke_pool_dry_check(self) -> None:
         settings = Settings.defaults()
@@ -973,8 +960,9 @@ class KaraokeSplitterPlanningTests(unittest.TestCase):
         resolver = JobResolver(repo)
         resolver.identities.lookup = Mock(side_effect=records.__getitem__)  # type: ignore[method-assign]
 
-        with tempfile.TemporaryDirectory() as directory, patch.object(
-            paths, "MDX_C_CONFIG_PATH", directory
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(paths, "MDX_C_CONFIG_PATH", directory),
         ):
             plan = resolver.resolve(
                 JobSpec("separate", settings, (source.name,), "/tmp/out"),
@@ -983,9 +971,7 @@ class KaraokeSplitterPlanningTests(unittest.TestCase):
             )
 
         repo.karaoke_model_list.assert_not_called()
-        self.assertIn(
-            "model.configuration", [item.code for item in plan.diagnostics]
-        )
+        self.assertIn("model.configuration", [item.code for item in plan.diagnostics])
 
 
 class NestedReferenceExactnessTests(unittest.TestCase):
@@ -995,9 +981,7 @@ class NestedReferenceExactnessTests(unittest.TestCase):
         settings = Settings.defaults()
         service = Mock()
         service.lookup.side_effect = ValueError("not a canonical model ID")
-        with patch(
-            "core.model_identity.ModelIdentityService", return_value=service
-        ):
+        with patch("core.model_identity.ModelIdentityService", return_value=service):
             with self.assertRaisesRegex(ValueError, "canonical"):
                 _model_config_for_reference(
                     settings, Mock(), " mdx:splitter ", is_vocal_split_model=True
@@ -1092,15 +1076,12 @@ class OfflineMdxConfigDiagnosticTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             spec = self._spec(tmp)
             with patch.object(paths, "MDX_C_CONFIG_PATH", os.path.join(tmp, "configs")):
-                plan = resolver.resolve(
-                    spec, ValidationLevel.MODEL, allow_network=False
-                )
+                plan = resolver.resolve(spec, ValidationLevel.MODEL, allow_network=False)
 
         codes = [item.code for item in plan.diagnostics]
         self.assertIn("model.configuration", codes)
         message = next(
-            item.message for item in plan.diagnostics
-            if item.code == "model.configuration"
+            item.message for item in plan.diagnostics if item.code == "model.configuration"
         )
         self.assertIn("not available offline", message)
         # The payload is still a plan: dependencies and the identity digest are
@@ -1144,10 +1125,10 @@ class DemucsSecondarySlotAgreementTests(unittest.TestCase):
             demucs=DemucsSpec("v2" if layout == "2_stem" else "v4", layout),
         )
 
-    def _ensemble_settings(self, pair: EnsemblePair) -> Settings:
+    def _ensemble_settings(self, pair_id: str) -> Settings:
         settings = self._settings()
         settings.process.method = ProcessMethod.ENSEMBLE
-        settings.ensemble.main_stem = pair
+        settings.ensemble.main_stem = pair_id
         settings.ensemble.selected_models = ["demucs:bag", "mdx:peer"]
         return settings
 
@@ -1169,10 +1150,7 @@ class DemucsSecondarySlotAgreementTests(unittest.TestCase):
             compensate=None,
         )
 
-    def _resolved_slots(
-        self, layout: Literal["2_stem", "4_stem", "6_stem"]
-    ) -> list[str]:
-        from bundled.constants import DEMUCS_ARCH_TYPE
+    def _resolved_slots(self, layout: Literal["2_stem", "4_stem", "6_stem"]) -> list[str]:
         from core.model_config.config import ModelConfig
 
         settings = self._settings()
@@ -1193,14 +1171,16 @@ class DemucsSecondarySlotAgreementTests(unittest.TestCase):
             side_effect=fake_determine,
         ):
             ModelConfig(
-                settings, Mock(), "demucs:bag", DEMUCS_ARCH_TYPE,
-                is_dry_check=True, identity=self._record(layout),
+                settings,
+                Mock(),
+                "demucs:bag",
+                DEMUCS_ARCH_TYPE,
+                is_dry_check=True,
+                identity=self._record(layout),
             )
         return asked
 
-    def _planned_slots(
-        self, layout: Literal["2_stem", "4_stem", "6_stem"]
-    ) -> set[str]:
+    def _planned_slots(self, layout: Literal["2_stem", "4_stem", "6_stem"]) -> set[str]:
         settings = self._settings()
         return {
             path.split(".", 1)[1].removesuffix("_secondary_model")
@@ -1223,9 +1203,7 @@ class DemucsSecondarySlotAgreementTests(unittest.TestCase):
 
         for layout in ("4_stem", "6_stem"):
             with self.subTest(layout=layout):
-                self.assertEqual(
-                    self._resolved_slots(layout), list(DEMUCS_4_SOURCE_LIST)
-                )
+                self.assertEqual(self._resolved_slots(layout), list(DEMUCS_4_SOURCE_LIST))
                 self.assertEqual(
                     self._planned_slots(layout),
                     {"voc_inst", "other", "bass", "drums"},
@@ -1234,9 +1212,9 @@ class DemucsSecondarySlotAgreementTests(unittest.TestCase):
     def test_four_and_multi_stem_ensembles_still_plan_every_slot(self) -> None:
         demucs = self._record("4_stem")
         peer = _record("mdx:peer")
-        for pair in (EnsemblePair.FOUR_STEM, EnsemblePair.MULTI_STEM):
-            with self.subTest(pair=pair):
-                settings = self._ensemble_settings(pair)
+        for pair_id in ("mode.four_stem", "mode.multi_stem"):
+            with self.subTest(pair_id=pair_id):
+                settings = self._ensemble_settings(pair_id)
                 slots = {
                     path.split(".", 1)[1].removesuffix("_secondary_model")
                     for path in active_model_paths(
@@ -1244,18 +1222,14 @@ class DemucsSecondarySlotAgreementTests(unittest.TestCase):
                         command="ensemble",
                         primary=(demucs, peer),
                     )
-                    if path.startswith("demucs.")
-                    and path.endswith("_secondary_model")
+                    if path.startswith("demucs.") and path.endswith("_secondary_model")
                 }
-                self.assertEqual(
-                    slots, {"voc_inst", "other", "bass", "drums"}
-                )
+                self.assertEqual(slots, {"voc_inst", "other", "bass", "drums"})
 
     def test_four_source_member_in_two_stem_ensemble_uses_only_pair_slot(self) -> None:
-        from bundled.constants import DEMUCS_ARCH_TYPE
         from core.model_config.config import ModelConfig
 
-        settings = self._ensemble_settings(EnsemblePair.VOCALS_INSTRUMENTAL)
+        settings = self._ensemble_settings("pair.vocals_instrumental")
         demucs = self._record("4_stem")
         peer = _record("mdx:peer")
         helper = _record("mdx:helper")
@@ -1266,10 +1240,12 @@ class DemucsSecondarySlotAgreementTests(unittest.TestCase):
         }
         resolver = JobResolver(Mock(inventory_generation=0))
         resolver.identities.lookup = Mock(side_effect=records.__getitem__)
-        resolver._assemble = Mock(side_effect=[
-            [self._assembled_model("Vocals"), self._assembled_model("Vocals")],
-            [self._assembled_model("Vocals"), self._assembled_model("Vocals")],
-        ])
+        resolver._assemble = Mock(
+            side_effect=[
+                [self._assembled_model("Vocals"), self._assembled_model("Vocals")],
+                [self._assembled_model("Vocals"), self._assembled_model("Vocals")],
+            ]
+        )
 
         with tempfile.NamedTemporaryFile(suffix=".wav") as source:
             plan = resolver.resolve(

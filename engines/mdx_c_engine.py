@@ -1,4 +1,5 @@
 """MDX-C separation engine (``SeperateMDXC``)."""
+
 from __future__ import annotations
 
 import typing
@@ -47,8 +48,7 @@ if TYPE_CHECKING:
 from ml.tfc_tdf_v3 import TFC_TDF_net
 
 
-class SeperateMDXC(SeperateAttributes):        
-
+class SeperateMDXC(SeperateAttributes):
     def seperate(self) -> ExportPlan:
         # A *roformer* model whose single target_instrument is the vocal stem is
         # treated as a vocals+instrumental model: ``demix`` derives the
@@ -59,17 +59,23 @@ class SeperateMDXC(SeperateAttributes):
         samplerate = 44100
         sources = None
 
-        if self.primary_model_name == self.model_cache_key and isinstance(self.primary_sources, tuple):
+        if self.primary_model_name == self.model_cache_key and isinstance(
+            self.primary_sources, tuple
+        ):
             mix, sources = self.primary_sources
             self.load_cached_sources()
         else:
-            with trace_phase("separate", "seperate", engine="SeperateMDXC", model=self.model_display_label):
+            with trace_phase(
+                "separate", "seperate", engine="SeperateMDXC", model=self.model_display_label
+            ):
                 self.start_inference_console_write()
                 self.write_to_console(LOADING_MODEL)
                 mix = prepare_mix(self.audio_file)
                 export_mix = mix
                 export_rate = samplerate
-                model_rate = int(getattr(self.mdx_c_configs.audio, 'sample_rate', export_rate) or export_rate)
+                model_rate = int(
+                    getattr(self.mdx_c_configs.audio, 'sample_rate', export_rate) or export_rate
+                )
                 if model_rate != export_rate:
                     mix = librosa.resample(mix, orig_sr=export_rate, target_sr=model_rate, axis=1)
                 sources = self.demix(mix)
@@ -90,7 +96,11 @@ class SeperateMDXC(SeperateAttributes):
                     self.cache_source((mix, sources))
                 self.write_to_console(DONE, base_text='')
 
-        stem_list = [self.mdx_c_configs.training.target_instrument] if self.mdx_c_configs.training.target_instrument and not self.is_vocal_main_target else [i for i in self.mdx_c_configs.training.instruments]
+        stem_list = (
+            [self.mdx_c_configs.training.target_instrument]
+            if self.mdx_c_configs.training.target_instrument and not self.is_vocal_main_target
+            else [i for i in self.mdx_c_configs.training.instruments]
+        )
 
         from engines.stem_writer import ExportPlan, vocal_split_export_routes
 
@@ -119,7 +129,11 @@ class SeperateMDXC(SeperateAttributes):
             if self.is_pre_proc_model:
                 self.mdxnet_stem_select = stem_list[0]
             else:
-                self.mdxnet_stem_select = self.main_model_primary_stem_4_stem if self.main_model_primary_stem_4_stem else self.primary_model_primary_stem
+                self.mdxnet_stem_select = (
+                    self.main_model_primary_stem_4_stem
+                    if self.main_model_primary_stem_4_stem
+                    else self.primary_model_primary_stem
+                )
             self.primary_stem = str(self.mdxnet_stem_select or "")
             self.secondary_stem = secondary_stem(str(self.mdxnet_stem_select or ""))
 
@@ -133,13 +147,10 @@ class SeperateMDXC(SeperateAttributes):
             if route is None:
                 return stem
             return route.native.raw if route.native is not None else route.concept
+
         selected_stems = mdx_selected_stems(
             stem_list,
-            [
-                route.native.raw
-                for route in export_routes
-                if route.native is not None
-            ],
+            [route.native.raw for route in export_routes if route.native is not None],
         )
         if not self.is_secondary_model and len(selected_stems) == 1:
             self.mdxnet_stem_select = selected_stems[0]
@@ -185,7 +196,7 @@ class SeperateMDXC(SeperateAttributes):
         else:
             working_sources: Any = dict(sources) if isinstance(sources, dict) else sources
             if len(stem_list) == 1:
-                source_primary = working_sources  
+                source_primary = working_sources
             else:
                 select = str(self.mdxnet_stem_select or "")
                 primary = str(self.primary_stem or "")
@@ -193,9 +204,11 @@ class SeperateMDXC(SeperateAttributes):
                     stem_key = str(stem_list[0])
                 elif select == ALL_STEMS:
                     stem_key = primary
-                elif isinstance(working_sources, dict) and _exact_mdx_source_key(
-                    working_sources, _export_source_key(select)
-                ) is not None:
+                elif (
+                    isinstance(working_sources, dict)
+                    and _exact_mdx_source_key(working_sources, _export_source_key(select))
+                    is not None
+                ):
                     stem_key = _export_source_key(select)
                 else:
                     stem_key = _export_source_key(primary)
@@ -210,14 +223,17 @@ class SeperateMDXC(SeperateAttributes):
                 else:
                     source_primary = working_sources[stem_key]
             if self.is_secondary_model_activated and self.secondary_model:
-                self.secondary_source_primary, self.secondary_source_secondary = process_secondary_model(self.secondary_model, 
-                                                                                                         self.process_data, 
-                                                                                                         main_process_method=self.process_method, 
-                                                                                                         main_model_primary=self.primary_stem)
+                self.secondary_source_primary, self.secondary_source_secondary = (
+                    process_secondary_model(
+                        self.secondary_model,
+                        self.process_data,
+                        main_process_method=self.process_method,
+                        main_model_primary=self.primary_stem,
+                    )
+                )
 
             if exports_named_stem(self, self.secondary_stem):
                 if not isinstance(self.secondary_source, np.ndarray):
-                    
                     if isinstance(working_sources, dict) and len(stem_list) > 2:
                         self.secondary_source = derive_mdx_multi_complement(
                             working_sources,
@@ -236,7 +252,7 @@ class SeperateMDXC(SeperateAttributes):
                         else:
                             secondary_source = working_sources
 
-                        self.secondary_source = secondary_source.T 
+                        self.secondary_source = secondary_source.T
                     elif isinstance(working_sources, dict) and _exact_mdx_source_key(
                         working_sources, _export_source_key(self.secondary_stem)
                     ):
@@ -246,15 +262,24 @@ class SeperateMDXC(SeperateAttributes):
                         assert sec_key is not None
                         self.secondary_source = working_sources[sec_key].T
                     else:
-                        self.secondary_source, raw_mix = source_primary, self.match_frequency_pitch(mix)
-                        self.secondary_source = spec_utils.to_shape(self.secondary_source, raw_mix.shape)
-                    
+                        self.secondary_source, raw_mix = (
+                            source_primary,
+                            self.match_frequency_pitch(mix),
+                        )
+                        self.secondary_source = spec_utils.to_shape(
+                            self.secondary_source, raw_mix.shape
+                        )
+
                         if self.is_invert_spec:
-                            self.secondary_source = spec_utils.invert_stem(raw_mix, self.secondary_source)
+                            self.secondary_source = spec_utils.invert_stem(
+                                raw_mix, self.secondary_source
+                            )
                         else:
-                            self.secondary_source = (-self.secondary_source.T+raw_mix.T)
-                export_sources[_export_source_key(self.secondary_stem)] = self.process_secondary_stem(
-                    self.secondary_source, self.secondary_source_secondary
+                            self.secondary_source = -self.secondary_source.T + raw_mix.T
+                export_sources[_export_source_key(self.secondary_stem)] = (
+                    self.process_secondary_stem(
+                        self.secondary_source, self.secondary_source_secondary
+                    )
                 )
 
             if exports_named_stem(self, self.primary_stem):
@@ -298,19 +323,13 @@ class SeperateMDXC(SeperateAttributes):
                     continue
                 wanted = route.native.raw.casefold()
                 source_key = next(
-                    (
-                        key
-                        for key in sources
-                        if str(key).casefold() == wanted
-                    ),
+                    (key for key in sources if str(key).casefold() == wanted),
                     None,
                 )
                 if source_key is None:
                     missing.append(route)
                     continue
-                route_sources[route.native.raw] = _channel_last_for_write(
-                    sources[source_key]
-                )
+                route_sources[route.native.raw] = _channel_last_for_write(sources[source_key])
 
             # Single-target splitters can return only one side. The missing
             # native side is still identified by its reviewed route; only its
@@ -326,12 +345,18 @@ class SeperateMDXC(SeperateAttributes):
                     )
             return route_sources
 
-        return {
-            str(key): _channel_last_for_write(source)
-            for key, source in sources.items()
-        }
+        return {str(key): _channel_last_for_write(source) for key, source in sources.items()}
 
-    def overlap_add(self, result: typing.Any, counter: typing.Any, x: typing.Any, l: typing.Any, j: typing.Any, start: typing.Any, window: typing.Any):
+    def overlap_add(
+        self,
+        result: typing.Any,
+        counter: typing.Any,
+        x: typing.Any,
+        l: typing.Any,  # noqa: E741 - checkpoint code uses l for chunk length
+        j: typing.Any,
+        start: typing.Any,
+        window: typing.Any,
+    ):
         if x.device != result.device:
             x = x.to(result.device)
         end = min(start + l, result.shape[-1])
@@ -358,7 +383,9 @@ class SeperateMDXC(SeperateAttributes):
             sr_pitched = _mdx_pitch_reference_sr()
             org_mix = mix
             if self.is_pitch_change:
-                mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
+                mix, sr_pitched = spec_utils.change_pitch_semitones(
+                    mix, 44100, semitone_shift=-self.semitone_shift
+                )
 
             from engines.model_weight_cache import (
                 get_weight_cache,
@@ -389,8 +416,12 @@ class SeperateMDXC(SeperateAttributes):
                 except Exception:
                     S = model.module.num_target_instruments
 
-                mdx_segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size
-                
+                mdx_segment_size = (
+                    self.mdx_c_configs.inference.dim_t
+                    if self.is_mdx_c_seg_def
+                    else self.mdx_segment_size
+                )
+
                 batch_size = max(1, int(self.mdx_batch_size or 1))
                 chunk_size = self.mdx_c_configs.audio.hop_length * (mdx_segment_size - 1)
                 overlap = self.overlap_mdx23
@@ -409,7 +440,11 @@ class SeperateMDXC(SeperateAttributes):
 
                 n_chunks = 1 + (mix.shape[1] - chunk_size) // hop_size
 
-                X = torch.zeros(S, *mix.shape, device=self.device) if S > 1 else torch.zeros_like(mix)
+                X = (
+                    torch.zeros(S, *mix.shape, device=self.device)
+                    if S > 1
+                    else torch.zeros_like(mix)
+                )
 
                 self.running_inference_console_write()
 
@@ -451,12 +486,23 @@ class SeperateMDXC(SeperateAttributes):
                             X[..., cnt * hop_size : cnt * hop_size + chunk_size] += w
                             cnt += 1
 
-                estimated_sources = X[..., chunk_size - hop_size:-(pad_size + chunk_size - hop_size)] / overlap
+                estimated_sources = (
+                    X[..., chunk_size - hop_size : -(pad_size + chunk_size - hop_size)] / overlap
+                )
                 del X
-                pitch_fix = lambda s:self.pitch_fix(s, sr_pitched, org_mix)
+                pitch_fix = lambda s: self.pitch_fix(  # noqa: E731 - scoped callback
+                    s, sr_pitched, org_mix
+                )
 
                 if S > 1:
-                    sources = {k: pitch_fix(v) if self.is_pitch_change else v for k, v in zip(self.mdx_c_configs.training.instruments, estimated_sources.cpu().detach().numpy())}
+                    sources = {
+                        k: pitch_fix(v) if self.is_pitch_change else v
+                        for k, v in zip(
+                            self.mdx_c_configs.training.instruments,
+                            estimated_sources.cpu().detach().numpy(),
+                            strict=False,
+                        )
+                    }
                     del estimated_sources
                     if self.is_denoise_model:
                         if VOCAL_STEM in sources.keys() and INST_STEM in sources.keys():
@@ -469,9 +515,11 @@ class SeperateMDXC(SeperateAttributes):
                                 check_run_control=self.check_run_control,
                             )
                             if sources[VOCAL_STEM].shape[1] != org_mix.shape[1]:
-                                sources[VOCAL_STEM] = spec_utils.match_array_shapes(sources[VOCAL_STEM], org_mix)
+                                sources[VOCAL_STEM] = spec_utils.match_array_shapes(
+                                    sources[VOCAL_STEM], org_mix
+                                )
                             sources[INST_STEM] = org_mix - sources[VOCAL_STEM]
-                                    
+
                     return sources
                 else:
                     est_s = estimated_sources.cpu().detach().numpy()
@@ -492,7 +540,9 @@ class SeperateMDXC(SeperateAttributes):
             sr_pitched = _mdx_pitch_reference_sr()
             org_mix = mix
             if self.is_pitch_change:
-                mix, sr_pitched = spec_utils.change_pitch_semitones(mix, 44100, semitone_shift=-self.semitone_shift)
+                mix, sr_pitched = spec_utils.change_pitch_semitones(
+                    mix, 44100, semitone_shift=-self.semitone_shift
+                )
 
             device = self.device
 
@@ -529,8 +579,16 @@ class SeperateMDXC(SeperateAttributes):
 
             result = counter = estimated_sources = None
             try:
-                segment_size = self.mdx_c_configs.inference.dim_t if self.is_mdx_c_seg_def else self.mdx_segment_size
-                S = 1 if self.roformer_config.training.target_instrument else len(self.roformer_config.training.instruments)
+                segment_size = (
+                    self.mdx_c_configs.inference.dim_t
+                    if self.is_mdx_c_seg_def
+                    else self.mdx_segment_size
+                )
+                S = (
+                    1
+                    if self.roformer_config.training.target_instrument
+                    else len(self.roformer_config.training.instruments)
+                )
                 C = _mdx_c_hop_length(self.roformer_config) * (segment_size - 1)
                 N = self.overlap_mdx23
                 step = int(C // N)
@@ -558,7 +616,7 @@ class SeperateMDXC(SeperateAttributes):
                 self.running_inference_console_write()
 
                 with torch.inference_mode():
-                    req_shape = (S, ) + tuple(mix.shape)
+                    req_shape = (S,) + tuple(mix.shape)
                     result = torch.zeros(req_shape, dtype=torch.float32, device=device)
                     counter = torch.zeros(req_shape, dtype=torch.float32, device=device)
                     batch_data = []
@@ -568,13 +626,15 @@ class SeperateMDXC(SeperateAttributes):
 
                     while i < mix.shape[1]:
                         self.check_run_control()
-                        part = mix[:, i:i + C]
+                        part = mix[:, i : i + C]
                         length = part.shape[-1]
                         if length < C:
                             if length > C // 2 + 1:
                                 part = nn.functional.pad(part, (0, C - length), mode='reflect')
                             else:
-                                part = nn.functional.pad(part, (0, C - length, 0, 0), mode='constant', value=0)
+                                part = nn.functional.pad(
+                                    part, (0, C - length, 0, 0), mode='constant', value=0
+                                )
 
                         batch_data.append(part)
                         batch_locations.append((i, length))
@@ -612,7 +672,9 @@ class SeperateMDXC(SeperateAttributes):
                                 if torch.is_tensor(x) and x.dtype != torch.float32:
                                     x = x.float()
 
-                                for j, (start, l) in enumerate(chunk_locations):
+                                for j, (start, l) in enumerate(  # noqa: E741 - chunk length
+                                    chunk_locations
+                                ):
                                     self.running_inference_progress_bar(batch_len)
                                     window = select_roformer_ola_window(
                                         start,
@@ -622,7 +684,9 @@ class SeperateMDXC(SeperateAttributes):
                                         window_middle,
                                         window_finish,
                                     )
-                                    result = self.overlap_add(result, counter, x, l, j, start, window)
+                                    result = self.overlap_add(
+                                        result, counter, x, l, j, start, window
+                                    )
                                 idx += take
 
                             batch_data = []
@@ -632,12 +696,21 @@ class SeperateMDXC(SeperateAttributes):
                     estimated_sources = result / counter.clamp(min=1e-10)
 
                     if length_init > 2 * (C - step) and (C - step > 0):
-                        estimated_sources = estimated_sources[..., (C - step):-(C - step)]
+                        estimated_sources = estimated_sources[..., (C - step) : -(C - step)]
 
-                pitch_fix = lambda s:self.pitch_fix(s, sr_pitched, org_mix)
+                pitch_fix = lambda s: self.pitch_fix(  # noqa: E731 - scoped callback
+                    s, sr_pitched, org_mix
+                )
 
                 if S > 1 or self.is_vocal_main_target:
-                    sources = {k: pitch_fix(v) if self.is_pitch_change else v for k, v in zip(self.mdx_c_configs.training.instruments, estimated_sources.cpu().detach().numpy())}
+                    sources = {
+                        k: pitch_fix(v) if self.is_pitch_change else v
+                        for k, v in zip(
+                            self.mdx_c_configs.training.instruments,
+                            estimated_sources.cpu().detach().numpy(),
+                            strict=False,
+                        )
+                    }
                     if self.is_vocal_main_target:
                         vocal_key = next(
                             (key for key in sources if is_vocal_target(key)),
@@ -652,7 +725,14 @@ class SeperateMDXC(SeperateAttributes):
 
                     return sources
                 else:
-                    sources = {k: v.cpu().detach().numpy() for k, v in zip([self.mdx_c_configs.training.target_instrument], estimated_sources)}
+                    sources = {
+                        k: v.cpu().detach().numpy()
+                        for k, v in zip(
+                            [self.mdx_c_configs.training.target_instrument],
+                            estimated_sources,
+                            strict=False,
+                        )
+                    }
                     est_s = sources[self.mdx_c_configs.training.target_instrument]
 
                     return pitch_fix(est_s) if self.is_pitch_change else est_s

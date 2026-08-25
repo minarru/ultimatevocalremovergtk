@@ -65,24 +65,30 @@ class EnsembleErrorContextSnapshotTests(unittest.TestCase):
         settings.ensemble.selected_models = ["mdx:first", "vr:second"]
         records = {
             "mdx:first": ModelRecord(
-                "mdx:first", "mdx", "first", "Friendly First", "first",
-                ModelArtifacts("first.onnx"), True,
+                "mdx:first",
+                "mdx",
+                "first",
+                "Friendly First",
+                "first",
+                ModelArtifacts("first.onnx"),
+                True,
             ),
             "vr:second": ModelRecord(
-                "vr:second", "vr", "second", "Friendly Second", "second",
-                ModelArtifacts("second.pth"), True,
+                "vr:second",
+                "vr",
+                "second",
+                "Friendly Second",
+                "second",
+                ModelArtifacts("second.pth"),
+                True,
             ),
         }
         repo = object()
         window = SimpleNamespace(
             settings=settings,
             context=SimpleNamespace(repo=repo),
-            content_stack=SimpleNamespace(
-                get_visible_child_name=lambda: "ensemble"
-            ),
-            _ensemble_page=SimpleNamespace(
-                input_row=SimpleNamespace(paths=["/tmp/song.wav"])
-            ),
+            content_stack=SimpleNamespace(get_visible_child_name=lambda: "ensemble"),
+            _ensemble_page=SimpleNamespace(input_row=SimpleNamespace(paths=["/tmp/song.wav"])),
         )
         controller = cast(Any, RunController.__new__(RunController))
         controller._window = window
@@ -268,8 +274,16 @@ class AudioPreflightTests(unittest.TestCase):
 
         settings = Settings.defaults()
         plan = ResolvedAudioJob(
-            TIME_STRETCH, settings, "/tmp/out", (), {}, (),
-            ValidationLevel.RUNTIME, 0, "fingerprint", "cpu",
+            TIME_STRETCH,
+            settings,
+            "/tmp/out",
+            (),
+            {},
+            (),
+            ValidationLevel.RUNTIME,
+            0,
+            "fingerprint",
+            "cpu",
         )
         window = mock.Mock()
         controller = RunController.__new__(RunController)
@@ -400,8 +414,16 @@ class StartTargetSettingsCopyTests(unittest.TestCase):
 
         settings = Settings.defaults()
         plan = ResolvedAudioJob(
-            TIME_STRETCH, settings, "/tmp/out", (), {}, (),
-            ValidationLevel.RUNTIME, 0, "fingerprint", "cpu",
+            TIME_STRETCH,
+            settings,
+            "/tmp/out",
+            (),
+            {},
+            (),
+            ValidationLevel.RUNTIME,
+            0,
+            "fingerprint",
+            "cpu",
         )
         runner = mock.Mock()
         runner.settings = Settings.defaults()
@@ -474,9 +496,7 @@ class PlanRecheckTests(unittest.TestCase):
         controller._begin_preflight = mock.Mock()
         plan = object()
 
-        controller._finish_plan_recheck(
-            target, settings_fingerprint(settings), plan, True, None
-        )
+        controller._finish_plan_recheck(target, settings_fingerprint(settings), plan, True, None)
 
         controller._set_preflight_busy.assert_called_once_with(False)
         controller._start_target.assert_called_once_with(target, plan)
@@ -510,9 +530,7 @@ class PlanRecheckTests(unittest.TestCase):
         settings = Settings.defaults()
         plan = _resolved_job(path="/in/old.wav", output="/out", settings=settings)
         target = mock.Mock()
-        target.build_job_spec.return_value = JobSpec(
-            "separate", settings, ("/in/new.wav",), "/out"
-        )
+        target.build_job_spec.return_value = JobSpec("separate", settings, ("/in/new.wav",), "/out")
         window = mock.Mock()
         controller = RunController.__new__(RunController)
         controller._window = window
@@ -554,9 +572,7 @@ class PlanRecheckTests(unittest.TestCase):
         settings = Settings.defaults()
         plan = _resolved_job(path="/in/old.wav", output="/out", settings=settings)
         target = mock.Mock()
-        target.build_job_spec.return_value = JobSpec(
-            "separate", settings, ("/in/new.wav",), "/out"
-        )
+        target.build_job_spec.return_value = JobSpec("separate", settings, ("/in/new.wav",), "/out")
         window = mock.Mock()
         controller = RunController.__new__(RunController)
         controller._window = window
@@ -564,9 +580,7 @@ class PlanRecheckTests(unittest.TestCase):
         controller._start_target = mock.Mock()
         controller._begin_preflight = mock.Mock()
 
-        controller._finish_plan_recheck(
-            target, settings_fingerprint(settings), plan, True, None
-        )
+        controller._finish_plan_recheck(target, settings_fingerprint(settings), plan, True, None)
 
         controller._start_target.assert_not_called()
         controller._begin_preflight.assert_called_once_with(target)
@@ -587,9 +601,7 @@ class BeginRunOutputTests(unittest.TestCase):
         controller._running_target = None
         controller._callbacks = mock.Mock(return_value=mock.Mock())
 
-        with mock.patch(
-            "ui.run_control.new_operation_id", return_value="ui-run-aborted"
-        ):
+        with mock.patch("ui.run_control.new_operation_id", return_value="ui-run-aborted"):
             controller._start_target(target)
 
         self.assertIsNone(controller._operation_id)
@@ -615,9 +627,7 @@ class BeginRunOutputTests(unittest.TestCase):
             )
         )
 
-        with mock.patch(
-            "ui.run_control.new_operation_id", return_value="ui-run-failed"
-        ):
+        with mock.patch("ui.run_control.new_operation_id", return_value="ui-run-failed"):
             controller._start_target(target)
 
         controller.fail_to_start.assert_called_once()
@@ -645,11 +655,13 @@ class BeginRunOutputTests(unittest.TestCase):
         debug_log.set_operation_id("ui-run-preflight")
         self.addCleanup(debug_log.set_operation_id, None)
 
-        with mock.patch("ui.run_control.mark_run_start"), \
-             mock.patch("ui.run_control.reset_progress_log"), \
-             mock.patch("ui.run_control.new_operation_id") as new_operation_id, \
-             mock.patch("core.error_context.clear_run_error_context"), \
-             mock.patch("core.error_context.set_run_error_context"):
+        with (
+            mock.patch("ui.run_control.mark_run_start"),
+            mock.patch("ui.run_control.reset_progress_log"),
+            mock.patch("ui.run_control.new_operation_id") as new_operation_id,
+            mock.patch("core.error_context.clear_run_error_context"),
+            mock.patch("core.error_context.set_run_error_context"),
+        ):
             controller.begin_run(object())
 
         new_operation_id.assert_not_called()
@@ -700,11 +712,15 @@ class BeginRunOutputTests(unittest.TestCase):
             log_path = Path(tmp) / "uvr.log"
             debug_log.configure(level="debug", log_file=str(log_path))
             self.addCleanup(debug_log.configure, level="errors", log_file="")
-            with mock.patch("ui.run_control.target_blocked_reason", return_value=None), \
-                 mock.patch("ui.run_control.new_operation_id", return_value="ui-run-preflight"), \
-                 mock.patch("ui.run_control.threading.Thread", ImmediateThread), \
-                 mock.patch("core.job_plan.JobResolver", return_value=resolver), \
-                 mock.patch("ui.run_control.idle_on_main", side_effect=lambda func, *args: func(*args)):
+            with (
+                mock.patch("ui.run_control.target_blocked_reason", return_value=None),
+                mock.patch("ui.run_control.new_operation_id", return_value="ui-run-preflight"),
+                mock.patch("ui.run_control.threading.Thread", ImmediateThread),
+                mock.patch("core.job_plan.JobResolver", return_value=resolver),
+                mock.patch(
+                    "ui.run_control.idle_on_main", side_effect=lambda func, *args: func(*args)
+                ),
+            ):
                 controller.handle_start(target)
 
             debug_log.log_event("worker", "worker_started")
@@ -726,9 +742,7 @@ class BeginRunOutputTests(unittest.TestCase):
 
         self.assertEqual(observed, ["ui-run-preflight"])
         self.assertEqual(len(correlated), 4)
-        self.assertTrue(
-            all("operation=ui-run-preflight" in line for line in correlated)
-        )
+        self.assertTrue(all("operation=ui-run-preflight" in line for line in correlated))
         self.assertIsNone(controller._operation_id)
         self.assertIsNone(debug_log.current_operation_id())
 
@@ -756,10 +770,12 @@ class BeginRunOutputTests(unittest.TestCase):
         controller._run_label_for = mock.Mock(return_value="Separation")
         controller._set_running = mock.Mock()
 
-        with mock.patch("ui.run_control.mark_run_start"), \
-             mock.patch("ui.run_control.reset_progress_log"), \
-             mock.patch("core.error_context.clear_run_error_context"), \
-             mock.patch("core.error_context.set_run_error_context"):
+        with (
+            mock.patch("ui.run_control.mark_run_start"),
+            mock.patch("ui.run_control.reset_progress_log"),
+            mock.patch("core.error_context.clear_run_error_context"),
+            mock.patch("core.error_context.set_run_error_context"),
+        ):
             controller.begin_run(object())
 
         self.assertEqual(controller._run_output_dir, "/plan/out")
@@ -785,11 +801,13 @@ class BeginRunOutputTests(unittest.TestCase):
         controller._send_completion_notification = mock.Mock()
         controller._schedule_release_inference_memory = mock.Mock()
 
-        with mock.patch("ui.run_control.mark_run_start"), \
-             mock.patch("ui.run_control.reset_progress_log"), \
-             mock.patch("ui.run_control.new_operation_id", return_value="ui-run-7"), \
-             mock.patch("core.error_context.clear_run_error_context"), \
-             mock.patch("core.error_context.set_run_error_context"):
+        with (
+            mock.patch("ui.run_control.mark_run_start"),
+            mock.patch("ui.run_control.reset_progress_log"),
+            mock.patch("ui.run_control.new_operation_id", return_value="ui-run-7"),
+            mock.patch("core.error_context.clear_run_error_context"),
+            mock.patch("core.error_context.set_run_error_context"),
+        ):
             controller.begin_run(object())
             self.assertEqual(debug_log.current_operation_id(), "ui-run-7")
             controller._on_complete()
@@ -867,5 +885,8 @@ class ActiveModelLabelTests(unittest.TestCase):
         from core.model_config import config as config_mod
 
         source = inspect.getsource(config_mod)
-        self.assertIn("self.model_display_label = (", source)
-        self.assertIn("identity.display if identity is not None else model_name", source)
+        self.assertRegex(
+            source,
+            r"self\.model_display_label\s*=\s*(?:\(\s*)?"
+            r"identity\.display\s+if\s+identity\s+is\s+not\s+None\s+else\s+model_name",
+        )

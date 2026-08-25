@@ -1,77 +1,22 @@
-"""Mapping an EnsemblePair id to its two buckets / combo choices."""
+"""Exact reviewed pair IDs drive combo choices, halves, and routes."""
 
 import tempfile
 import unittest
 
-from core.stem_pairs import is_stem_mode, stem_pair_definition
+from core.stem_pairs import (
+    ensemble_pair_choices,
+    is_stem_mode,
+    stem_pair_definition,
+    stem_pair_display,
+    stem_pair_halves,
+)
 from core.stems import (
-    EnsemblePair,
-    StemBucket,
     StemId,
     StemRoleId,
     StemRoute,
     StemRouteKind,
-    coerce_ensemble_pair,
-    ensemble_pair_choices,
     routes_for_ensemble_pair,
-    ui_label,
 )
-
-
-class PairBucketTests(unittest.TestCase):
-    def test_vocal_pair(self) -> None:
-        self.assertEqual(
-            coerce_ensemble_pair("pair.vocals_instrumental").buckets(),
-            (StemBucket.VOCALS, StemBucket.INSTRUMENTAL),
-        )
-        self.assertEqual(
-            coerce_ensemble_pair("vocals_instrumental"),
-            EnsemblePair.CHOOSE,
-        )
-
-    def test_karaoke_pair(self) -> None:
-        self.assertEqual(
-            coerce_ensemble_pair("pair.karaoke").buckets(),
-            (StemBucket.LEAD_VOCALS, StemBucket.INST_WITH_BV),
-        )
-        self.assertEqual(
-            coerce_ensemble_pair("karaoke"),
-            EnsemblePair.CHOOSE,
-        )
-
-    def test_other_pair_keeps_other_as_a_real_stem(self) -> None:
-        # Regression: resolving this through bucket_for_model_stem would give
-        # StemBucket.INSTRUMENTAL, because a 1-stem 'other' is the instrumental
-        # complement. A pair is a request, not a model description.
-        self.assertEqual(
-            EnsemblePair.OTHER.buckets(),
-            (StemBucket.OTHER, StemBucket.UNKNOWN),
-        )
-
-    def test_bass_pair(self) -> None:
-        primary, _secondary = EnsemblePair.BASS.buckets()
-        self.assertEqual(primary, StemBucket.BASS)
-
-    def test_complement_half_is_unknown_not_a_bucket(self) -> None:
-        # 'No Other' / 'No Bass' are derived by inversion, never trained, so
-        # they are not a bucket any model can match. Callers discard UNKNOWN.
-        for pair in (EnsemblePair.OTHER, EnsemblePair.BASS, EnsemblePair.DRUMS):
-            with self.subTest(pair=pair):
-                self.assertEqual(pair.buckets()[1], StemBucket.UNKNOWN)
-
-    def test_non_pair_values_are_unknown(self) -> None:
-        for value in (
-            EnsemblePair.CHOOSE,
-            EnsemblePair.FOUR_STEM,
-            EnsemblePair.MULTI_STEM,
-            "",
-            "Vocals/Instrumental",
-        ):
-            with self.subTest(value=value):
-                self.assertEqual(
-                    coerce_ensemble_pair(value).buckets(),
-                    (StemBucket.UNKNOWN, StemBucket.UNKNOWN),
-                )
 
 
 class MainStemChoiceTests(unittest.TestCase):
@@ -92,13 +37,11 @@ class MainStemChoiceTests(unittest.TestCase):
         )
         for stored, label in choices:
             with self.subTest(stored=stored):
-                pair = coerce_ensemble_pair(stored)
-                self.assertIsInstance(pair, EnsemblePair)
                 definition = stem_pair_definition(stored)
                 if definition is not None:
                     self.assertEqual(label, definition.display)
                 elif is_stem_mode(stored) or not stored:
-                    self.assertEqual(label, ui_label(pair))
+                    self.assertEqual(label, stem_pair_display(stored))
                 else:
                     self.fail(f"unexpected ensemble choice {stored!r}")
 
@@ -107,11 +50,15 @@ class MainStemChoiceTests(unittest.TestCase):
         self.assertIn("pair.karaoke", ids)
 
     def test_stem_halves_are_slash_free_labels(self) -> None:
-        primary, secondary = EnsemblePair.KARAOKE.stem_halves()
+        primary, secondary = stem_pair_halves("pair.karaoke")
         self.assertTrue(primary)
         self.assertTrue(secondary)
         self.assertNotIn("/", primary)
         self.assertNotIn("/", secondary)
+
+    def test_unknown_or_mode_ids_have_no_pair_halves(self) -> None:
+        self.assertEqual(stem_pair_halves("mode.four_stem"), ("", ""))
+        self.assertEqual(stem_pair_halves("Vocals/Instrumental"), ("", ""))
 
     def test_center_side_uses_the_reviewed_pair_role_labels(self) -> None:
         from core.ensembler import Ensembler
