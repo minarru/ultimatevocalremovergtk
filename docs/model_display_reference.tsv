@@ -1,6 +1,6 @@
 family	execution_arch	source	catalogue_generation	catalogue_label	canonical_id	current_display	weight_file	presentation_flags	waiver_reasons	review_status
-Apollo	MDX23C	extras		Apollo Model: EDM Restoration Big by essid	apollo:apollo_edm_big_by_essid	Apollo — EDM Restoration Big · Essid	apollo_edm_big_by_essid.ckpt			clean
-Apollo	MDX23C	extras		Apollo Model: EDM Restoration by essid	apollo:apollo_edm_by_essid	Apollo — EDM Restoration · Essid	apollo_edm_by_essid.ckpt			clean
+Apollo	Apollo	extras		Apollo Model: EDM Restoration Big by essid	apollo:apollo_edm_big_by_essid	Apollo — EDM Restoration Big · Essid	apollo_edm_big_by_essid.ckpt			clean
+Apollo	Apollo	extras		Apollo Model: EDM Restoration by essid	apollo:apollo_edm_by_essid	Apollo — EDM Restoration · Essid	apollo_edm_by_essid.ckpt			clean
 Bandit	Bandit	Politrees		Bandit Plus: Cinematic Bandit Plus by kwatcharasupat	mdx:model_bandit_plus_dnr_sdr_11.47	Bandit — Cinematic Bandit Plus · kwatcharasupat	model_bandit_plus_dnr_sdr_11.47.ckpt			clean
 Bandit	Bandit	Politrees		Bandit v2: Cinematic Bandit v2 Multilang by kwatcharasupat	mdx:checkpoint-multi_fixed	Bandit — Cinematic Bandit v2 Multilang · kwatcharasupat	checkpoint-multi_fixed.ckpt			clean
 Bandit	Bandit	mvsepless		Bandit Last Checkpoint by ZFTurbo	mdx:bandit_last	Bandit — Last Checkpoint · ZFTurbo	bandit_last.ckpt			clean

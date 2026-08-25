@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr
@@ -12,7 +13,10 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
-from catalogue import collect, stem_audit
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+
+from catalogue import collect, stem_audit  # noqa: E402
 
 
 def _entry(entry_id: str, *, curated: bool = False) -> stem_audit.StemConfidenceEntry:

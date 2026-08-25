@@ -98,7 +98,6 @@ scripts/*
 !scripts/model_sweep.py
 !scripts/model_probe.py
 !scripts/model_tool_support.py
-!scripts/stem_semantics_audit.py
 
 # Machine-readable sidecar for docs/models-catalogue.md. Regenerated with the
 # document and tied to it by digest, so a checked-in copy would only ever go

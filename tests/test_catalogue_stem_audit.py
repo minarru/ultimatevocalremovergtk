@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
+import os
+import sys
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from catalogue import collect
-from catalogue.stem_audit import (
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+
+from catalogue import collect  # noqa: E402
+from catalogue.stem_audit import (  # noqa: E402
     STEM_SEMANTICS_REFERENCE_HEADERS,
     StemAuditDiagnostic,
     StemAuditResult,
     audit_catalogue_stems,
 )
 
-from core.model_stem_manifest import StemPairDefinition, StemSemanticsRegistry
-from core.stem_roles import (
+from core.model_stem_manifest import StemPairDefinition, StemSemanticsRegistry  # noqa: E402
+from core.stem_roles import (  # noqa: E402
     SemanticStemOutput,
     StemId,
     StemProcessingContext,

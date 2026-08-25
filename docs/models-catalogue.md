@@ -1,6 +1,6 @@
 # UVR Model Catalogue (TRvlvr + Politrees + extras + mvsepless)
 
-Generated: 2026-08-25 10:12 UTC by `scripts/generate_models_catalogue.py`.
+Generated: 2026-08-25 15:44 UTC by `scripts/generate_models_catalogue.py`.
 
 Regenerate after catalogue updates:
 
@@ -32,14 +32,14 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 - Source stale: none
 - Source failed: none
 - Source upstream live: True
-- Cache politrees: 0m old
-- Cache community: 0m old
-- Cache yaml: absent
+- Cache politrees: 1m old
+- Cache community: 1m old
+- Cache yaml: empty
 
 ## Summary
 
 - Total catalogue entries: **485**
-- Entries with resolved metadata: **485**
+- Entries with resolved metadata: **483**
 - Unknown intent remaining: **2**
 - Flagged mismatches: **3**
 - Unsupported mvsepless entries (omitted): **0**
@@ -48,8 +48,8 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 
 | Family | Model | Metadata | Primary/Target |
 | --- | --- | --- | --- |
-| Apollo | Apollo — EDM Restoration Big · Essid | bundled_yaml:apollo_edm_big_by_essid.yaml | — |
-| Apollo | Apollo — EDM Restoration · Essid | bundled_yaml:apollo_edm_by_essid.yaml | — |
+| Apollo | Apollo — EDM Restoration Big · Essid | unavailable | — |
+| Apollo | Apollo — EDM Restoration · Essid | unavailable | — |
 
 ## Quick reference (all models)
 
@@ -969,7 +969,7 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Instruments:** No Noise, Noise
 - **Best result:** Noise (isolated noise stem)
 - **Save stems UI:** UI: noise / complement stem
-- **Metadata:** politrees_vr_hash
+- **Metadata:** community_models.txt
 - **Note:** Community ref: noise*, no noise
 
 ### VR v5 — DeReverb · Aufr33 & Jarredou
@@ -2869,7 +2869,6 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `model_bandit_plus_dnr_sdr_11.47.ckpt`
 - **Config:** `config_dnr_bandit_bsrnn_multi_mus64.yaml`
-- **Architecture:** Bandit
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `Speech`
@@ -2883,7 +2882,6 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `checkpoint-multi_fixed.ckpt`
 - **Config:** `config_dnr_bandit_v2_mus64.yaml`
-- **Architecture:** Bandit
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `Speech`
@@ -7210,7 +7208,6 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `model_scnet_sdr_9.3244.ckpt`
 - **Config:** `config_musdb18_scnet_large.yaml`
-- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `Drums`
@@ -7224,7 +7221,6 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `SCNet-large_starrytong_fixed.ckpt`
 - **Config:** `config_musdb18_scnet_large_starrytong.yaml`
-- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `Drums`
@@ -7238,7 +7234,6 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `scnet_checkpoint_musdb18.ckpt`
 - **Config:** `config_musdb18_scnet.yaml`
-- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `Drums`
@@ -7252,7 +7247,6 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** Politrees
 - **Weight:** `model_scnet_ep_54_sdr_9.8051.ckpt`
 - **Config:** `config_musdb18_scnet_xl.yaml`
-- **Architecture:** SCNet
 - **Name intent:** multi_stem
 - **Backend focus:** multi_stem
 - **Primary stem (backend):** `Drums`
@@ -7558,19 +7552,17 @@ native output `other` (not `Instrumental`). Backend `primary_stem` is therefore
 - **Source:** extras
 - **Weight:** `apollo_edm_big_by_essid.ckpt`
 - **Config:** `apollo_edm_big_by_essid.yaml`
-- **Architecture:** MDX23C
 - **Name intent:** unknown
 - **Backend focus:** unknown
 - **Best result:** unknown
-- **Metadata:** bundled_yaml:apollo_edm_big_by_essid.yaml
+- **Metadata:** unavailable
 
 ### Apollo — EDM Restoration · Essid
 
 - **Source:** extras
 - **Weight:** `apollo_edm_by_essid.ckpt`
 - **Config:** `apollo_edm_by_essid.yaml`
-- **Architecture:** MDX23C
 - **Name intent:** unknown
 - **Backend focus:** unknown
 - **Best result:** unknown
-- **Metadata:** bundled_yaml:apollo_edm_by_essid.yaml
+- **Metadata:** unavailable
