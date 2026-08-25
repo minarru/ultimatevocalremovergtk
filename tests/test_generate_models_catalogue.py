@@ -65,6 +65,39 @@ class DemucsBagArtifactTests(unittest.TestCase):
         self.assertEqual(weights, ["a.th", "a.th"])
 
 
+class RuntimeStemSignatureTests(unittest.TestCase):
+    def test_yaml_target_projects_the_model_config_native_inventory(self) -> None:
+        self.assertEqual(
+            catalogue.runtime_stem_signature(
+                "mdx:bs_bass_xlancer",
+                ("bass", "other"),
+                target_instrument="bass",
+                metadata_source="bundled_yaml:bs_bass_xlancer_config.yaml",
+            ),
+            ("bass",),
+        )
+        self.assertEqual(
+            catalogue.runtime_stem_signature(
+                "mdx:bs_karaoke_gabox",
+                ("vocals", "other"),
+                target_instrument="vocals",
+                metadata_source="remote_yaml:bs_karaoke_gabox_config.yaml",
+            ),
+            ("vocals",),
+        )
+
+    def test_community_target_hint_does_not_rewrite_runtime_inventory(self) -> None:
+        self.assertEqual(
+            catalogue.runtime_stem_signature(
+                "mdx:community-only",
+                ("Vocals", "Instrumental"),
+                target_instrument="Vocals",
+                metadata_source="community_models.txt",
+            ),
+            ("Vocals", "Instrumental"),
+        )
+
+
 class UiNoteTests(unittest.TestCase):
     def test_vocals_other_note_only_for_two_stem_models(self):
         entry = catalogue.ModelEntry(

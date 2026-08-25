@@ -39,13 +39,13 @@ class ReviewedPairEligibilityTests(unittest.TestCase):
         models = [
             _FakeModel(
                 "mdx:MelBandRoformerBigSYHFTV1",
-                ["vocals", "other"],
+                ["vocals"],
                 backend_primary="Vocals",
                 backend_target="vocals",
             ),
             _FakeModel(
                 "mdx:mbr_inst2_unwa",
-                ["other", "vocals"],
+                ["other"],
                 backend_primary="other",
                 backend_target="other",
             ),
@@ -66,7 +66,7 @@ class ReviewedPairEligibilityTests(unittest.TestCase):
             ),
             _FakeModel(
                 "mdx:mbr_karaoke2_gabox",
-                ["Vocals", "Instrumental"],
+                ["Vocals"],
                 backend_primary="Vocals",
                 backend_target="Vocals",
             ),
@@ -93,19 +93,19 @@ class ReviewedPairEligibilityTests(unittest.TestCase):
         models = [
             _FakeModel(
                 "mdx:bs_mid_side1_gilliaaan",
-                ["center", "wide"],
+                ["center"],
                 backend_primary="center",
                 backend_target="center",
             ),
             _FakeModel(
                 "mdx:mdx23c_mid_side_gilliaaan",
-                ["center", "wide"],
+                ["wide"],
                 backend_primary="wide",
                 backend_target="wide",
             ),
             _FakeModel(
                 "mdx:model_mdx23c_ep_271_l1_freq_72.2383",
-                ["Similarity", "Difference"],
+                ["Similarity"],
                 backend_primary="Similarity",
                 backend_target="Similarity",
             ),
@@ -125,7 +125,7 @@ class ReviewedPairEligibilityTests(unittest.TestCase):
             ),
             _FakeModel(
                 "mdx:bs_mid_side1_gilliaaan",
-                ["center"],
+                ["wide"],
                 backend_primary="center",
             ),
         ]

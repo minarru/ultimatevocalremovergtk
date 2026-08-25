@@ -14,6 +14,7 @@ from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import trace_phase
 from core.model_stem_semantics import is_vocal_target
+from core.stem_roles import StemRoleId
 from core.stems import (
     exports_named_stem,
     route_matches_stem,
@@ -138,6 +139,27 @@ class SeperateMDXC(SeperateAttributes):
             self.secondary_stem = secondary_stem(str(self.mdxnet_stem_select or ""))
 
         export_routes = run_export_routes(self)
+        available_routes = tuple(getattr(self, "available_stem_routes", ()) or export_routes)
+        target_native_routes = tuple(
+            route for route in available_routes if route.native is not None
+        )
+        target_route = target_native_routes[0] if len(target_native_routes) == 1 else None
+        target_native_key = (
+            target_route.native.raw
+            if target_route is not None and target_route.native is not None
+            else ""
+        )
+        dependent_routes = tuple(
+            route
+            for route in available_routes
+            if route.native is None
+            and target_route is not None
+            and (
+                route.complement_of == target_route.role
+                or route.derived_from == (target_route.role,)
+            )
+        )
+        is_reviewed_target_pair = bool(target_native_key and dependent_routes)
 
         def _export_source_key(stem: str) -> str:
             route = next(
@@ -195,7 +217,18 @@ class SeperateMDXC(SeperateAttributes):
                 export_sources[stem] = self.primary_source
         else:
             working_sources: Any = dict(sources) if isinstance(sources, dict) else sources
-            if len(stem_list) == 1:
+            if is_reviewed_target_pair and target_route is not None:
+                if isinstance(working_sources, dict):
+                    resolved = _exact_mdx_source_key(working_sources, target_native_key)
+                    if resolved is None:
+                        raise KeyError(
+                            f"stem {target_native_key!r} not in sources "
+                            f"{sorted(map(str, working_sources.keys()))}"
+                        )
+                    source_primary = working_sources[resolved]
+                else:
+                    source_primary = working_sources
+            elif len(stem_list) == 1:
                 source_primary = working_sources
             else:
                 select = str(self.mdxnet_stem_select or "")
@@ -232,7 +265,33 @@ class SeperateMDXC(SeperateAttributes):
                     )
                 )
 
-            if exports_named_stem(self, self.secondary_stem):
+            if is_reviewed_target_pair and target_route is not None:
+                if target_route in export_routes:
+                    if not isinstance(self.primary_source, np.ndarray):
+                        self.primary_source = source_primary.T
+                    export_sources[target_native_key] = self.process_secondary_stem(
+                        self.primary_source,
+                        self.secondary_source_primary,
+                    )
+
+                selected_derived = tuple(
+                    route for route in export_routes if route in dependent_routes
+                )
+                if selected_derived:
+                    if not isinstance(self.secondary_source, np.ndarray):
+                        self.secondary_source = derive_mdx_complement(
+                            source_primary,
+                            mix,
+                            invert_spec=bool(self.is_invert_spec),
+                            match_frequency_pitch=self.match_frequency_pitch,
+                        )
+                    derived_audio = self.process_secondary_stem(
+                        self.secondary_source,
+                        self.secondary_source_secondary,
+                    )
+                    for route in selected_derived:
+                        export_sources[route.concept] = derived_audio
+            elif exports_named_stem(self, self.secondary_stem):
                 if not isinstance(self.secondary_source, np.ndarray):
                     if isinstance(working_sources, dict) and len(stem_list) > 2:
                         self.secondary_source = derive_mdx_multi_complement(
@@ -282,7 +341,7 @@ class SeperateMDXC(SeperateAttributes):
                     )
                 )
 
-            if exports_named_stem(self, self.primary_stem):
+            if not is_reviewed_target_pair and exports_named_stem(self, self.primary_stem):
                 if not isinstance(self.primary_source, np.ndarray):
                     self.primary_source = source_primary.T
 
@@ -317,7 +376,7 @@ class SeperateMDXC(SeperateAttributes):
 
             routes = vocal_split_pair_routes(tuple(routes))
             route_sources: dict[str, Any] = {}
-            missing: list[Any] = []
+            sources_by_role: dict[StemRoleId, Any] = {}
             for route in routes:
                 if route.native is None:
                     continue
@@ -327,22 +386,28 @@ class SeperateMDXC(SeperateAttributes):
                     None,
                 )
                 if source_key is None:
-                    missing.append(route)
                     continue
-                route_sources[route.native.raw] = _channel_last_for_write(sources[source_key])
+                audio = _channel_last_for_write(sources[source_key])
+                route_sources[route.native.raw] = audio
+                if isinstance(route.role, StemRoleId):
+                    sources_by_role[route.role] = audio
 
-            # Single-target splitters can return only one side. The missing
-            # native side is still identified by its reviewed route; only its
-            # audio recipe is derived from the input mix.
-            native_routes = tuple(route for route in routes if route.native is not None)
-            if len(native_routes) == 2 and len(missing) == 1 and len(route_sources) == 1:
-                existing = next(iter(route_sources.values()))
-                mix_arr = np.asarray(mix) if mix is not None else None
-                if mix_arr is not None:
-                    missing_route = missing[0]
-                    route_sources[missing_route.native.raw] = _channel_last_for_write(
+            mix_arr = np.asarray(mix) if mix is not None else None
+            if mix_arr is not None:
+                for route in routes:
+                    if route.native is not None or not isinstance(route.role, StemRoleId):
+                        continue
+                    dependency = route.complement_of
+                    if dependency is None and len(route.derived_from) == 1:
+                        dependency = route.derived_from[0]
+                    existing = sources_by_role.get(dependency) if dependency is not None else None
+                    if existing is None:
+                        continue
+                    derived = _channel_last_for_write(
                         mix_arr - spec_utils.to_shape(np.asarray(existing).T, mix_arr.shape)
                     )
+                    route_sources[route.concept] = derived
+                    sources_by_role[route.role] = derived
             return route_sources
 
         return {str(key): _channel_last_for_write(source) for key, source in sources.items()}

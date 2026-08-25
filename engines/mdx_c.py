@@ -340,14 +340,17 @@ def mdx_vocal_split_chain_sources(
         "mix.instrumental": INST_STEM,
     }
     for route in routes:
-        if route.native is None or not isinstance(route.role, StemRoleId):
+        if not isinstance(route.role, StemRoleId):
             continue
         canonical_key = canonical_by_role.get(route.role.value)
         if canonical_key is None:
             continue
-        source_key = _exact_mdx_source_key(maps, route.native.raw)
+        route_source_key = route.native.raw if route.native is not None else route.concept
+        source_key = _exact_mdx_source_key(maps, route_source_key)
         if source_key is not None and isinstance(maps[source_key], np.ndarray):
             handoff[canonical_key] = maps[source_key]
+            continue
+        if route.native is None:
             continue
         source_key = _exact_mdx_source_key(demix, route.native.raw)
         if source_key is not None and isinstance(demix[source_key], np.ndarray):

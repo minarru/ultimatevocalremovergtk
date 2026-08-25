@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from core.settings import Settings
 
@@ -13,6 +14,22 @@ _JOB_RESOLUTION = _REPO / "core" / "settings" / "job_resolution.py"
 _STEM_ONLY = _REPO / "ui" / "widgets" / "stem_only.py"
 _METHOD_VIEW = _REPO / "ui" / "views" / "base.py"
 _OPTION_SUMMARIES = _REPO / "ui" / "option_summaries.py"
+
+
+def _reviewed_target_routes(model_id: str, native: str):
+    from core.stems import model_stem_routes
+
+    return model_stem_routes(
+        SimpleNamespace(
+            canonical_id=model_id,
+            mdx_model_stems=[native],
+            demucs_source_list=[],
+            primary_stem=native,
+            primary_stem_native=native,
+            target_instrument=native,
+            is_vocal_split_model=False,
+        )
+    )
 
 
 class StemSelectionModuleBoundaryTests(unittest.TestCase):
@@ -322,6 +339,7 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
         )
+        state.routes = _reviewed_target_routes("mdx:bs_dereverb_2250_anvuew", "noreverb")
         state.write(settings, ExclusiveView(choice=state.routes[1].concept))
         self.assertEqual(settings.process.stem_focus, "effect.reverb.removed")
 
@@ -338,31 +356,32 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
         cases = (
             (
                 "mdx:bs_dereverb_2250_anvuew",
-                ["noreverb", "reverb"],
+                "noreverb",
                 0,
             ),
             (
                 "mdx:MDX23C-De-Reverb-aufr33-jarredou",
-                ["dry", "No dry"],
+                "dry",
                 1,
             ),
         )
-        for model_id, stems, index in cases:
-            with self.subTest(model_id=model_id, stem=stems[index]):
+        for model_id, native, index in cases:
+            with self.subTest(model_id=model_id, native=native, index=index):
                 expected = resolve_model_stem_semantics(
                     model_id,
-                    native_stems=stems,
+                    native_stems=[native],
                 )
                 expected_role = expected.outputs[index].role
                 self.assertIsInstance(expected_role, StemRoleId)
                 assert isinstance(expected_role, StemRoleId)
                 state = StemSelectionState()
                 state.configure_exclusive(
-                    primary_stem=stems[0],
-                    secondary_stem=stems[1],
+                    primary_stem=native,
+                    secondary_stem=str(expected.outputs[1].role),
                     primary_key="is_primary_stem_only",
                     secondary_key="is_secondary_stem_only",
                 )
+                state.routes = _reviewed_target_routes(model_id, native)
                 settings = Settings.defaults()
                 state.write(settings, ExclusiveView(choice=state.routes[index].concept))
                 self.assertEqual(settings.process.stem_focus, expected_role.value)
@@ -482,6 +501,7 @@ class LegacyStateSemanticPersistenceTests(unittest.TestCase):
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
         )
+        state.routes = _reviewed_target_routes("mdx:bs_dereverb_2250_anvuew", "noreverb")
         settings = Settings.defaults()
         for invalid_focus in ("Vocals", "raw:noreverb"):
             with self.subTest(focus=invalid_focus):

@@ -80,6 +80,42 @@ class StemRouteTests(unittest.TestCase):
         self.assertTrue(instrumental.logical_primary)
         self.assertFalse(by_role[StemRoleId("vocal.vocals")].logical_primary)
 
+    def test_target_instrument_route_keeps_explicit_derived_dependency(self) -> None:
+        class Model:
+            canonical_id = "mdx:mbr_inst2_unwa"
+            primary_stem = INST_STEM
+            primary_stem_native = "other"
+            secondary_stem = "Vocals"
+            target_instrument = "other"
+            mdx_model_stems = ["other"]
+            demucs_source_list: list[str] = []
+            mdx_stem_count = 1
+            demucs_stem_count = 0
+            is_karaoke = False
+            is_bv_model = False
+            is_vocal_split_model = False
+
+        routes = model_stem_routes(Model())
+
+        self.assertEqual(
+            [route.role for route in routes],
+            [StemRoleId("mix.instrumental"), StemRoleId("vocal.vocals")],
+        )
+        self.assertEqual(routes[0].native, StemId("other"))
+        self.assertEqual(routes[0].derived_from, ())
+        self.assertIsNone(routes[0].complement_of)
+        self.assertIsNone(routes[1].native)
+        self.assertEqual(routes[1].kind, StemRouteKind.DERIVED)
+        self.assertEqual(routes[1].derived_from, ())
+        self.assertEqual(routes[1].complement_of, StemRoleId("mix.instrumental"))
+
+        # The dependency remains intact through semantic-role dedupe.
+        duplicated = routes + (routes[1],)
+        from core.stems import _dedupe_routes
+
+        deduped = _dedupe_routes(duplicated)
+        self.assertEqual(deduped[1].complement_of, StemRoleId("mix.instrumental"))
+
     def test_unknown_or_signature_mismatched_id_stays_raw_and_isolated(self) -> None:
         class Unknown(self._ReviewedReversePrimaryModel):
             canonical_id = "mdx:unreviewed-model"

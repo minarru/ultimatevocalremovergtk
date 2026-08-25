@@ -106,6 +106,43 @@ def reviewed_stem_signature(model_id: str, instruments: Any) -> tuple[str, ...]:
     return _REVIEWED_MISSING_NATIVE_SIGNATURES.get(model_id, ())
 
 
+def is_runtime_target_instrument(
+    model_id: str,
+    *,
+    target_instrument: str = "",
+    metadata_source: str = "",
+) -> bool:
+    """Whether catalogue evidence selects ModelConfig's single-target branch.
+
+    A target read from an actual MDX-C yaml changes the runtime-native source
+    inventory to exactly that target. Community tables can describe a primary
+    as a target too, but do not configure the engine and therefore must not
+    collapse an otherwise native two-output inventory.
+    """
+    return bool(
+        model_id.startswith("mdx:")
+        and str(target_instrument or "").strip()
+        and str(metadata_source or "").startswith(("bundled_yaml:", "remote_yaml:"))
+    )
+
+
+def runtime_stem_signature(
+    model_id: str,
+    instruments: Any,
+    *,
+    target_instrument: str = "",
+    metadata_source: str = "",
+) -> tuple[str, ...]:
+    """Project collected training evidence to actual engine-native source keys."""
+    if is_runtime_target_instrument(
+        model_id,
+        target_instrument=target_instrument,
+        metadata_source=metadata_source,
+    ):
+        return (str(target_instrument),)
+    return reviewed_stem_signature(model_id, instruments)
+
+
 @dataclass
 class CommunityRef:
     filename: str

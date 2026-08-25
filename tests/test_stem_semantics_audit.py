@@ -74,6 +74,33 @@ class CatalogueEvidenceCountTests(unittest.TestCase):
         self.assertEqual(waived, set(registry.waivers))
         self.assertEqual(len(registry.models), 455)
         self.assertEqual(len(registry.waivers), 30)
+        productions = [row[5] for row in rows[1:]]
+        self.assertEqual(productions.count("native"), 848)
+        self.assertEqual(productions.count("derived"), 328)
+        self.assertEqual(productions.count(""), 30)
+        self.assertTrue(all(not row[4] for row in rows[1:] if row[5] == "derived"))
+
+    def test_runtime_inventory_projection_uses_real_yaml_target_not_community_hint(self) -> None:
+        from catalogue.collect import runtime_stem_signature
+
+        self.assertEqual(
+            runtime_stem_signature(
+                "mdx:mbr_inst2_unwa",
+                ("other", "vocals"),
+                target_instrument="other",
+                metadata_source="bundled_yaml:mbr_inst2_unwa_config.yaml",
+            ),
+            ("other",),
+        )
+        self.assertEqual(
+            runtime_stem_signature(
+                "mdx:community-only",
+                ("Vocals", "Instrumental"),
+                target_instrument="Vocals",
+                metadata_source="community_models.txt",
+            ),
+            ("Vocals", "Instrumental"),
+        )
 
     def test_exact_member_community_tokens_extend_only_the_audit_vocabulary(self) -> None:
         from types import SimpleNamespace
@@ -149,6 +176,56 @@ class StrictAuditMutationTests(unittest.TestCase):
         self.assertIn("duplicate-role", duplicate)
         self.assertIn("logical-primary", absent_primary)
         self.assertIn("signature", absent_primary)
+
+    def test_target_projection_gate_requires_runtime_signature_and_derived_dependency(self) -> None:
+        from types import SimpleNamespace
+
+        native_role = "instrument.bass"
+        valid = SimpleNamespace(
+            native_signature=("bass",),
+            contexts={
+                "full_mix": SimpleNamespace(
+                    outputs=(
+                        SimpleNamespace(native=SimpleNamespace(raw="bass"), role=native_role),
+                        SimpleNamespace(
+                            native=None,
+                            role="instrument.bass.removed",
+                            complement_of=native_role,
+                            derived_from=(),
+                        ),
+                    )
+                )
+            },
+        )
+        invalid = SimpleNamespace(
+            native_signature=("bass", "other"),
+            contexts={
+                "full_mix": SimpleNamespace(
+                    outputs=(
+                        SimpleNamespace(native=SimpleNamespace(raw="bass"), role=native_role),
+                        SimpleNamespace(
+                            native=SimpleNamespace(raw="other"),
+                            role="instrument.bass.removed",
+                            complement_of=None,
+                            derived_from=(),
+                        ),
+                    )
+                )
+            },
+        )
+
+        self.assertEqual(
+            stem_semantics_audit._target_projection_audit_errors(valid, ("bass",)),
+            (),
+        )
+        self.assertIn(
+            "target-runtime-signature",
+            stem_semantics_audit._target_projection_audit_errors(invalid, ("bass",)),
+        )
+        self.assertIn(
+            "missing-derived-complement",
+            stem_semantics_audit._target_projection_audit_errors(invalid, ("bass",)),
+        )
 
     def test_role_collision_gate_uses_unicode_casefold(self) -> None:
         from types import SimpleNamespace

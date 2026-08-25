@@ -117,11 +117,22 @@ def _signature_matches(expected: tuple[str, ...], actual: tuple[str, ...]) -> bo
     return len(expected_keys) == len(actual_keys) and set(expected_keys) == set(actual_keys)
 
 
-def _strict_native_signature(model_id: str, instruments: Any) -> tuple[str, ...]:
-    """Apply only exact, reviewed supplements to missing audit inventory."""
-    from scripts.catalogue.collect import reviewed_stem_signature
+def _strict_native_signature(
+    model_id: str,
+    instruments: Any,
+    *,
+    target_instrument: str = "",
+    metadata_source: str = "",
+) -> tuple[str, ...]:
+    """Project catalogue evidence through the runtime inventory contract."""
+    from scripts.catalogue.collect import runtime_stem_signature
 
-    return reviewed_stem_signature(model_id, instruments)
+    return runtime_stem_signature(
+        model_id,
+        instruments,
+        target_instrument=target_instrument,
+        metadata_source=metadata_source,
+    )
 
 
 def _context_audit_errors(
@@ -139,6 +150,33 @@ def _context_audit_errors(
     if primary_count != 1:
         errors.append("logical-primary")
     return tuple(errors)
+
+
+def _target_projection_audit_errors(
+    declaration: Any,
+    runtime_signature: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Require one native target and one explicitly dependent complement."""
+    errors: list[str] = []
+    if not _signature_matches(declaration.native_signature, runtime_signature):
+        errors.append("target-runtime-signature")
+    for context in declaration.contexts.values():
+        native = tuple(output for output in context.outputs if output.native is not None)
+        derived = tuple(output for output in context.outputs if output.native is None)
+        if len(native) != 1 or not _signature_matches(
+            tuple(output.native.raw for output in native), runtime_signature
+        ):
+            errors.append("target-native-output")
+        native_role = str(native[0].role) if len(native) == 1 else ""
+        if len(derived) != 1:
+            errors.append("missing-derived-complement")
+            continue
+        dependency_is_valid = str(derived[0].complement_of or "") == native_role or tuple(
+            str(role) for role in derived[0].derived_from
+        ) == (native_role,)
+        if not dependency_is_valid:
+            errors.append("missing-derived-complement")
+    return tuple(dict.fromkeys(errors))
 
 
 def _role_collision_count(definitions: Any) -> int:
@@ -630,8 +668,24 @@ def strict_catalogue_check() -> tuple[bool, str]:
         if declaration is None:
             missing.append(model_id)
             continue
-        native_signature = _strict_native_signature(model_id, entry.instruments)
+        native_signature = _strict_native_signature(
+            model_id,
+            entry.instruments,
+            target_instrument=entry.target_instrument,
+            metadata_source=entry.metadata_source,
+        )
         signature_matches = _signature_matches(declaration.native_signature, native_signature)
+        if not signature_matches:
+            mismatches.append(model_id)
+        if collect.is_runtime_target_instrument(
+            model_id,
+            target_instrument=entry.target_instrument,
+            metadata_source=entry.metadata_source,
+        ):
+            invalid_contexts.extend(
+                f"{model_id}:{error}"
+                for error in _target_projection_audit_errors(declaration, native_signature)
+            )
         for processing_context, declared_context in declaration.contexts.items():
             resolved = resolve_model_stem_semantics(
                 model_id,

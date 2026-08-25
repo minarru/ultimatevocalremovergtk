@@ -197,11 +197,14 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
                 {
                     label: {
                         "bs_neo_inst_beta.ckpt": "https://example.test/model.ckpt",
+                        "bs_neo_inst_beta_config.yaml": "https://example.test/model.yaml",
                     }
                 },
                 {},
                 {
                     label: {
+                        # Training inventory retains the complement even though
+                        # target_instrument makes the runtime emit only other.
                         "stems": ["vocals", "other"],
                         "primary_stem": "other",
                         "target_instrument": "other",
@@ -218,8 +221,10 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
         self.assertEqual(meta.stem_semantics.status, "reviewed")
         self.assertEqual(meta.stem_semantics.logical_primary_role, "mix.instrumental")
         self.assertEqual(meta.stem_semantics.canonical_roles, ("vocal.vocals", "mix.instrumental"))
-        self.assertEqual(meta.stem_semantics.routes[0].native, "vocals")
+        self.assertIsNone(meta.stem_semantics.routes[0].native)
         self.assertEqual(meta.stem_semantics.routes[0].display, "Vocals")
+        self.assertEqual(meta.stem_semantics.routes[0].production, "derived")
+        self.assertEqual(meta.stem_semantics.routes[0].complement_of, "mix.instrumental")
         self.assertTrue(meta.stem_semantics.routes[1].logical_primary)
         self.assertIn("catalogue_id=mdx:bs_neo_inst_beta", meta.stem_semantics.evidence)
 

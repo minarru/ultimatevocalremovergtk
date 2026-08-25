@@ -177,7 +177,7 @@ class SemanticProjectionTests(unittest.TestCase):
 
         semantics = resolve_catalogue_stem_semantics(
             "mdx:bs_neo_inst_beta",
-            native_stems=("vocals", "other"),
+            native_stems=("other",),
             backend_primary="other",
             backend_target="other",
         )
@@ -218,12 +218,13 @@ class SemanticProjectionTests(unittest.TestCase):
         self.assertEqual(
             payload["stem_routes"][0],
             {
-                "native": "vocals",
+                "native": None,
                 "role": "vocal.vocals",
                 "display": "Vocals",
                 "filename_tag": "Vocals",
-                "production": "native",
+                "production": "derived",
                 "logical_primary": False,
+                "complement_of": "mix.instrumental",
             },
         )
         self.assertEqual(
@@ -249,7 +250,7 @@ class SemanticProjectionTests(unittest.TestCase):
             (
                 "reviewed",
                 "mdx:bs_neo_inst_beta",
-                ("vocals", "other"),
+                ("other",),
                 StemProcessingContext.FULL_MIX,
                 "reviewed",
                 "mix.instrumental",
@@ -276,7 +277,7 @@ class SemanticProjectionTests(unittest.TestCase):
             (
                 "signature mismatch",
                 "mdx:bs_neo_inst_beta",
-                ("other",),
+                ("vocals", "other"),
                 StemProcessingContext.FULL_MIX,
                 "raw",
                 None,
@@ -285,7 +286,7 @@ class SemanticProjectionTests(unittest.TestCase):
             (
                 "normal karaoke",
                 "mdx:bs_karaoke_anvuew",
-                ("Vocals", "Instrumental"),
+                ("Vocals",),
                 StemProcessingContext.FULL_MIX,
                 "reviewed",
                 "vocal.lead",
@@ -294,7 +295,7 @@ class SemanticProjectionTests(unittest.TestCase):
             (
                 "vocal splitter",
                 "mdx:bs_karaoke_anvuew",
-                ("Vocals", "Instrumental"),
+                ("Vocals",),
                 StemProcessingContext.VOCAL_SPLIT,
                 "reviewed",
                 "vocal.lead",
@@ -312,7 +313,7 @@ class SemanticProjectionTests(unittest.TestCase):
             (
                 "spatial",
                 "mdx:bs_mid_side1_gilliaaan",
-                ("center", "wide"),
+                ("center",),
                 StemProcessingContext.FULL_MIX,
                 "reviewed",
                 "spatial.center",
@@ -321,7 +322,7 @@ class SemanticProjectionTests(unittest.TestCase):
             (
                 "effect removal",
                 "mdx:MDX23C-De-Reverb-aufr33-jarredou",
-                ("dry", "No dry"),
+                ("dry",),
                 StemProcessingContext.FULL_MIX,
                 "reviewed",
                 "effect.reverb",
@@ -363,7 +364,9 @@ class SemanticProjectionTests(unittest.TestCase):
                 self.assertEqual(projection.logical_primary_role, logical_primary)
                 self.assertEqual(projection.canonical_roles, roles)
 
-        mismatch = resolve_catalogue_stem_semantics("mdx:bs_neo_inst_beta", native_stems=("other",))
+        mismatch = resolve_catalogue_stem_semantics(
+            "mdx:bs_neo_inst_beta", native_stems=("vocals", "other")
+        )
         self.assertIn("signature-mismatch", mismatch.warning)
 
 

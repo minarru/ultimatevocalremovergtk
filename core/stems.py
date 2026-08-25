@@ -121,6 +121,8 @@ class StemRoute:
     selected_by_default: bool
     logical_primary: bool
     selection_scope: str
+    derived_from: tuple[StemRoleId, ...]
+    complement_of: StemRoleId | None
 
     def __init__(
         self,
@@ -133,6 +135,8 @@ class StemRoute:
         selected_by_default: bool = True,
         logical_primary: bool = False,
         selection_scope: str = "",
+        derived_from: tuple[StemRoleId, ...] = (),
+        complement_of: StemRoleId | None = None,
         *,
         concept: str | None = None,
     ) -> None:
@@ -150,6 +154,8 @@ class StemRoute:
         object.__setattr__(self, "selected_by_default", selected_by_default)
         object.__setattr__(self, "logical_primary", logical_primary)
         object.__setattr__(self, "selection_scope", selection_scope)
+        object.__setattr__(self, "derived_from", tuple(derived_from))
+        object.__setattr__(self, "complement_of", complement_of)
 
     @property
     def concept(self) -> str:
@@ -876,6 +882,9 @@ def _dedupe_routes(routes: Sequence[StemRoute]) -> Tuple[StemRoute, ...]:
             conditional=existing.conditional and route.conditional,
             selected_by_default=(existing.selected_by_default or route.selected_by_default),
             logical_primary=(existing.logical_primary or route.logical_primary),
+            selection_scope=chosen.selection_scope,
+            derived_from=chosen.derived_from,
+            complement_of=chosen.complement_of,
         )
     return tuple(result)
 
@@ -991,6 +1000,8 @@ def _semantic_routes(semantics: ModelStemSemantics) -> tuple[StemRoute, ...]:
                     and not output.role.tag.startswith("legacy:")
                     else ""
                 ),
+                derived_from=output.derived_from,
+                complement_of=output.complement_of,
             )
         )
     return tuple(routes)

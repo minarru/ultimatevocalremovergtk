@@ -1,5 +1,6 @@
 import typing
 import unittest
+from types import SimpleNamespace
 
 from gi.repository import GLib
 
@@ -22,7 +23,7 @@ from core.stem_selection import (
     _TOGGLE_ALL,
     _stem_focus_tag,
 )
-from core.stems import StemRoute
+from core.stems import StemRoute, model_stem_routes
 from ui.widget_state import fetch
 from ui.widgets.stem_only import (
     _LEAD_VOCAL_PAIR_LABELS,
@@ -46,6 +47,20 @@ class _Settings(Settings):
 
     def __setitem__(self, key: typing.Any, value: typing.Any):
         self.set(key, value)
+
+
+def _reviewed_target_routes(model_id: str, native: str) -> tuple[StemRoute, ...]:
+    return model_stem_routes(
+        SimpleNamespace(
+            canonical_id=model_id,
+            mdx_model_stems=[native],
+            demucs_source_list=[],
+            primary_stem=native,
+            primary_stem_native=native,
+            target_instrument=native,
+            is_vocal_split_model=False,
+        )
+    )
 
 
 class StemDisplayLabelTests(unittest.TestCase):
@@ -738,15 +753,17 @@ class SaveStemsSectionTests(unittest.TestCase):
         StemBucket.UNKNOWN anchor -- picking "reverb only" and then
         re-resolving the SAME model (e.g. tab reactivation) must not
         silently flip the pick to "noreverb only"."""
+        routes = _reviewed_target_routes("mdx:bs_dereverb_2250_anvuew", "noreverb")
         self.section.configure_exclusive(
             primary_stem="noreverb",
             secondary_stem="reverb",
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
             has_model=True,
+            routes=routes,
         )
         self.section.sync_from_settings()
-        set_combo_value(self.section._exclusive_row, "raw:reverb")
+        set_combo_value(self.section._exclusive_row, "effect.reverb.removed")
         self.section.persist_to_settings()
         self.assertEqual(self.settings.process.stem_focus, "effect.reverb.removed")
 
@@ -756,6 +773,7 @@ class SaveStemsSectionTests(unittest.TestCase):
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
             has_model=True,
+            routes=routes,
         )
         self.section.sync_from_settings()
         self.assertEqual(self.settings.process.stem_focus, "effect.reverb.removed")
@@ -765,15 +783,17 @@ class SaveStemsSectionTests(unittest.TestCase):
         """Before the fix, every unrecognized stem bucketed to the same
         StemBucket.UNKNOWN, so a focus set on one DeReverb-style model
         would false-match an unrelated DeEcho-style model."""
+        routes = _reviewed_target_routes("mdx:bs_dereverb_2250_anvuew", "noreverb")
         self.section.configure_exclusive(
             primary_stem="noreverb",
             secondary_stem="reverb",
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
             has_model=True,
+            routes=routes,
         )
         self.section.sync_from_settings()
-        set_combo_value(self.section._exclusive_row, "raw:reverb")
+        set_combo_value(self.section._exclusive_row, "effect.reverb.removed")
         self.section.persist_to_settings()
 
         self.section.configure_exclusive(

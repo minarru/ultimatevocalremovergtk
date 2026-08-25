@@ -60,7 +60,7 @@ def _semantic_model(
         demucs_source_list=[],
         primary_stem_native=backend_primary,
         primary_stem=backend_primary,
-        secondary_stem=native_stems[1],
+        secondary_stem=native_stems[1] if len(native_stems) > 1 else "derived-complement",
         target_instrument="",
         is_vocal_split_model=vocal_split,
         is_karaoke=True,
@@ -94,11 +94,11 @@ class ReviewedVocalSplitContextTests(unittest.TestCase):
     def test_ordinary_karaoke_changes_only_accompaniment_meaning(self) -> None:
         model_id = "mdx:bs_karaoke_becruily"
         self.assertEqual(
-            self._labels(model_id, ["Vocals", "Instrumental"], "Vocals", vocal_split=False),
+            self._labels(model_id, ["Vocals"], "Vocals", vocal_split=False),
             ["Lead Vocals", "Instrumental with Backing Vocals"],
         )
         self.assertEqual(
-            self._labels(model_id, ["Vocals", "Instrumental"], "Vocals", vocal_split=True),
+            self._labels(model_id, ["Vocals"], "Vocals", vocal_split=True),
             ["Lead Vocals", "Backing Vocals"],
         )
 
@@ -120,12 +120,12 @@ class ReviewedVocalSplitContextTests(unittest.TestCase):
         ):
             with self.subTest(model_id=model_id, context="full_mix"):
                 self.assertEqual(
-                    self._labels(model_id, ["Lead", "Back"], "Lead", vocal_split=False),
+                    self._labels(model_id, ["Lead"], "Lead", vocal_split=False),
                     ["Lead Vocals", "Instrumental with Backing Vocals"],
                 )
             with self.subTest(model_id=model_id, context="vocal_split"):
                 self.assertEqual(
-                    self._labels(model_id, ["Lead", "Back"], "Lead", vocal_split=True),
+                    self._labels(model_id, ["Lead"], "Lead", vocal_split=True),
                     ["Lead Vocals", "Backing Vocals"],
                 )
 
@@ -273,15 +273,15 @@ class ChainSourceMergeTests(unittest.TestCase):
         routes = model_stem_routes(
             _semantic_model(
                 "mdx:mel_band_roformer_vocals_becruily",
-                ["vocals", "other"],
+                ["vocals"],
                 backend_primary="vocals",
                 vocal_split=False,
             )
         )
 
         merged = mdx_vocal_split_chain_sources(
+            {"VOCALS": voc.T, "mix.instrumental": inst.T},
             {},
-            {"VOCALS": voc, "OTHER": inst},
             routes=routes,
         )
 
@@ -289,12 +289,12 @@ class ChainSourceMergeTests(unittest.TestCase):
         np.testing.assert_array_equal(merged[INST_STEM], inst.T)
 
         mismatch = mdx_vocal_split_chain_sources(
+            {"vocal": voc.T, "Instrumental": inst.T},
             {},
-            {"vocal": voc, "other": inst},
             routes=routes,
         )
         self.assertNotIn(VOCAL_STEM, mismatch)
-        np.testing.assert_array_equal(mismatch[INST_STEM], inst.T)
+        self.assertNotIn(INST_STEM, mismatch)
 
     def test_unreviewed_routes_fail_closed_for_canonical_spelling(self) -> None:
         voc = _arr(1.0)
@@ -582,14 +582,14 @@ class VocalSplitChainHandoffTests(unittest.TestCase):
         routes = model_stem_routes(
             _semantic_model(
                 "mdx:mel_band_roformer_vocals_becruily",
-                ["vocals", "other"],
+                ["vocals"],
                 backend_primary="vocals",
                 vocal_split=False,
             )
         )
         handoff = mdx_vocal_split_chain_sources(
+            {"VOCALS": _arr(1.0).T, "mix.instrumental": _arr(2.0).T},
             {},
-            {"VOCALS": _arr(1.0), "OTHER": _arr(2.0)},
             routes=routes,
         )
 
@@ -833,7 +833,7 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
         backing = _arr(2.0)
         semantic_model = _semantic_model(
             "mdx:bs_karaoke_becruily",
-            ["Vocals", "Instrumental"],
+            ["Vocals"],
             backend_primary="Vocals",
             vocal_split=True,
         )
@@ -851,7 +851,7 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
             model_basename="splitter",
             model_cache_key="splitter",
             model_display_label="splitter",
-            primary_sources=(mix, {"vocals": lead, "INSTRUMENTAL": backing}),
+            primary_sources=(mix, {"vocals": lead}),
             load_cached_sources=lambda: None,
             is_vocal_split_model=True,
             is_secondary_model=True,
@@ -869,9 +869,9 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
 
         plan = SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
 
-        self.assertEqual(list(plan.sources), ["Vocals", "Instrumental"])
+        self.assertEqual(list(plan.sources), ["Vocals", "vocal.backing"])
         np.testing.assert_array_equal(plan.sources["Vocals"], lead.T)
-        np.testing.assert_array_equal(plan.sources["Instrumental"], backing.T)
+        np.testing.assert_array_equal(plan.sources["vocal.backing"], backing.T)
 
     def test_giantailab_reviewed_plan_discards_non_pair_native_route(self) -> None:
         from types import SimpleNamespace

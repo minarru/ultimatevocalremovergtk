@@ -299,6 +299,21 @@ def _parse_models(
                 raise _error(
                     context_path + ("outputs",), "native outputs must match native signature"
                 )
+            context_roles = {output.role for output in outputs}
+            for index, output in enumerate(outputs):
+                if output.native is not None:
+                    continue
+                if output.complement_of is not None and output.complement_of not in context_roles:
+                    raise _error(
+                        context_path + ("outputs", index, "complement_of"),
+                        "dependency role is not an output in this context",
+                    )
+                for dependency_index, dependency in enumerate(output.derived_from):
+                    if dependency not in context_roles:
+                        raise _error(
+                            context_path + ("outputs", index, "derived_from", dependency_index),
+                            "dependency role is not an output in this context",
+                        )
             primary_indexes = tuple(
                 index for index, output in enumerate(outputs) if output.role == logical_primary
             )

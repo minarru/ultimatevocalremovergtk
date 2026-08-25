@@ -129,9 +129,11 @@ class StemSemanticRoute:
     filename_tag: str
     production: str
     logical_primary: bool
+    derived_from: tuple[str, ...] = ()
+    complement_of: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "native": self.native,
             "role": self.role,
             "display": self.display,
@@ -139,6 +141,11 @@ class StemSemanticRoute:
             "production": self.production,
             "logical_primary": self.logical_primary,
         }
+        if self.derived_from:
+            result["derived_from"] = list(self.derived_from)
+        if self.complement_of is not None:
+            result["complement_of"] = self.complement_of
+        return result
 
 
 @dataclass(frozen=True)

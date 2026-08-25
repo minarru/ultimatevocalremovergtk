@@ -132,6 +132,8 @@ def stem_semantics_projection(
                 filename_tag,
                 output.production.value,
                 output.logical_primary,
+                tuple(item.value for item in output.derived_from),
+                output.complement_of.value if output.complement_of is not None else None,
             )
         )
     return StemSemanticProjection(

@@ -200,6 +200,23 @@ class TargetOtherNdarrayExportTests(unittest.TestCase):
         """
         mix = np.ones((2, 8), dtype=np.float32)
         native = np.full((2, 8), 0.25, dtype=np.float32)
+        from core.stems import model_stem_routes
+
+        semantic_model = SimpleNamespace(
+            canonical_id="mdx:mbr_inst2_unwa",
+            mdx_model_stems=["other"],
+            demucs_source_list=[],
+            primary_stem_native="other",
+            primary_stem=INST_STEM,
+            secondary_stem=VOCAL_STEM,
+            target_instrument="other",
+            is_vocal_split_model=False,
+            is_karaoke=False,
+            is_bv_model=False,
+            mdx_stem_count=1,
+            mdxnet_stems_selected=[],
+        )
+        routes = model_stem_routes(semantic_model)
         fake = SimpleNamespace(
             mdx_c_configs=SimpleNamespace(
                 training=SimpleNamespace(
@@ -234,11 +251,8 @@ class TargetOtherNdarrayExportTests(unittest.TestCase):
             process_secondary_stem=lambda stem, secondary=None: stem,
             process_vocal_split_chain=lambda sources: None,
             process_data=SimpleNamespace(is_ensemble_master=False),
-            selected_stem_routes=(
-                _native("other", StemBucket.INSTRUMENTAL.value),
-                _derived(StemBucket.VOCALS.value, VOCAL_STEM),
-            ),
-            available_stem_routes=(),
+            selected_stem_routes=routes,
+            available_stem_routes=routes,
             is_ensemble_mode=False,
             is_multi_stem_ensemble=False,
         )
@@ -249,7 +263,9 @@ class TargetOtherNdarrayExportTests(unittest.TestCase):
         self.assertIsInstance(plan, ExportPlan)
         self.assertEqual(plan.samplerate, 44100)
         self.assertIn("other", plan.sources)
-        self.assertIn(VOCAL_STEM, plan.sources)
+        self.assertIn("vocal.vocals", plan.sources)
+        np.testing.assert_array_equal(plan.sources["other"], native.T)
+        np.testing.assert_array_equal(plan.sources["vocal.vocals"], (mix - native).T)
 
     def test_logical_primary_does_not_flip_backend_target_polarity(self) -> None:
         """Backend target ``other`` remains the direct model array.
@@ -270,11 +286,12 @@ class TargetOtherNdarrayExportTests(unittest.TestCase):
             logical_primary=True,
         )
         vocal_route = StemRoute(
-            native=StemId("vocals"),
+            native=None,
             role=StemRoleId("vocal.vocals"),
             label="Vocals",
             filename_tag="Vocals",
-            kind=StemRouteKind.NATIVE,
+            kind=StemRouteKind.DERIVED,
+            complement_of=StemRoleId("mix.instrumental"),
         )
         fake = SimpleNamespace(
             mdx_c_configs=SimpleNamespace(
@@ -318,7 +335,72 @@ class TargetOtherNdarrayExportTests(unittest.TestCase):
         plan = SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
 
         np.testing.assert_array_equal(plan.sources["other"], backend_target.T)
-        np.testing.assert_array_equal(plan.sources["vocals"], (mix - backend_target).T)
+        np.testing.assert_array_equal(plan.sources["vocal.vocals"], (mix - backend_target).T)
+
+    def test_target_bass_uses_dependency_not_removed_label_to_derive_complement(self) -> None:
+        from core.stems import model_stem_routes
+
+        mix = np.full((2, 8), 1.0, dtype=np.float32)
+        bass = np.full((2, 8), 0.2, dtype=np.float32)
+        semantic_model = SimpleNamespace(
+            canonical_id="mdx:bs_bass_xlancer",
+            mdx_model_stems=["bass"],
+            demucs_source_list=[],
+            primary_stem_native="bass",
+            primary_stem="bass",
+            secondary_stem="not-a-source-key",
+            target_instrument="bass",
+            is_vocal_split_model=False,
+            is_karaoke=False,
+            is_bv_model=False,
+            mdx_stem_count=1,
+            mdxnet_stems_selected=[],
+        )
+        routes = model_stem_routes(semantic_model)
+        fake = SimpleNamespace(
+            mdx_c_configs=SimpleNamespace(
+                training=SimpleNamespace(target_instrument="bass", instruments=["bass", "other"]),
+            ),
+            is_roformer=True,
+            primary_model_name="bs_bass_xlancer",
+            model_basename="bs_bass_xlancer",
+            model_cache_key="bs_bass_xlancer",
+            primary_sources=(mix, bass),
+            load_cached_sources=lambda: None,
+            is_vocal_split_model=False,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_4_stem_ensemble=False,
+            is_mdx_include_stem_complement=False,
+            is_secondary_model_activated=False,
+            secondary_model=None,
+            mdxnet_stem_select="bass",
+            primary_stem="bass",
+            primary_stem_native="bass",
+            secondary_stem="not-a-source-key",
+            primary_source=None,
+            secondary_source=None,
+            secondary_source_primary=None,
+            secondary_source_secondary=None,
+            is_invert_spec=False,
+            is_mdx_combine_stems=False,
+            match_frequency_pitch=lambda audio: audio,
+            process_secondary_stem=lambda stem, secondary=None: stem,
+            process_data=SimpleNamespace(is_ensemble_master=False),
+            selected_stem_routes=routes,
+            available_stem_routes=routes,
+            is_ensemble_mode=False,
+            is_multi_stem_ensemble=False,
+        )
+
+        plan = SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
+
+        self.assertEqual(list(plan.sources), ["bass", "instrument.bass.removed"])
+        np.testing.assert_array_equal(plan.sources["bass"], bass.T)
+        np.testing.assert_array_equal(
+            plan.sources["instrument.bass.removed"],
+            (mix - bass).T,
+        )
 
 
 class MdxSelectedStemsTests(unittest.TestCase):

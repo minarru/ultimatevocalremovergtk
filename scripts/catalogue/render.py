@@ -20,7 +20,7 @@ from catalogue.collect import (
     YAML_CACHE_DIR,
     CommunityRef,
     ModelEntry,
-    reviewed_stem_signature,
+    runtime_stem_signature,
 )
 from core.model_catalogue import (
     catalogue_presentation_id,
@@ -286,7 +286,12 @@ def stem_semantics_reference_tsv(entries: List[ModelEntry]) -> str:
     ]
     for entry in sorted(entries, key=_canonical_model_id):
         model_id = _canonical_model_id(entry)
-        native_signature = reviewed_stem_signature(model_id, entry.instruments)
+        native_signature = runtime_stem_signature(
+            model_id,
+            entry.instruments,
+            target_instrument=entry.target_instrument,
+            metadata_source=entry.metadata_source,
+        )
         contexts = [StemProcessingContext.FULL_MIX]
         declaration = registry.models.get(model_id)
         if declaration is not None and StemProcessingContext.VOCAL_SPLIT in declaration.contexts:

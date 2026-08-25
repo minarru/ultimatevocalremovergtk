@@ -458,7 +458,7 @@ class ExportSourceMapTests(unittest.TestCase):
 
         model = SimpleNamespace(
             canonical_id="mdx:mbr_debigreverb_sucial",
-            mdx_model_stems=["dry", "other"],
+            mdx_model_stems=["dry"],
             demucs_source_list=[],
             primary_stem_native="dry",
             primary_stem="dry",
@@ -475,7 +475,7 @@ class ExportSourceMapTests(unittest.TestCase):
 
         export_source_map(
             sep,
-            {"DRY": object(), "Other": object()},
+            {"DRY": object(), "effect.reverb": object()},
             samplerate=44100,
         )
 

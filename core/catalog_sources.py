@@ -218,9 +218,15 @@ def _build_meta(
         backend_primary = str(source_meta.get("primary_stem") or "")
         backend_target = str(target or "")
         model_id = _catalogue_model_id(arch, checkpoint)
+        has_yaml_config = any(str(name).casefold().endswith((".yaml", ".yml")) for name in files)
+        runtime_stems = (
+            [backend_target]
+            if model_id.startswith("mdx:") and backend_target and has_yaml_config
+            else stems
+        )
         semantics = resolve_catalogue_stem_semantics(
             model_id,
-            native_stems=stems,
+            native_stems=runtime_stems,
             backend_primary=backend_primary,
             backend_target=backend_target,
         )

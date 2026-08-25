@@ -69,7 +69,7 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings = Settings.defaults()
         semantics = resolve_catalogue_stem_semantics(
             "mdx:bs_neo_inst_beta",
-            native_stems=("vocals", "other"),
+            native_stems=("other",),
             backend_primary="other",
             backend_target="other",
         )
@@ -128,8 +128,11 @@ class PlannedOutputStemTests(unittest.TestCase):
         self.assertEqual(model["logical_primary_role"], "mix.instrumental")
         self.assertEqual(model["stem_semantics_status"], "reviewed")
         self.assertEqual(model["stem_context"], "full_mix")
-        self.assertEqual(model["stem_routes"][0]["native"], "vocals")
+        self.assertIsNone(model["stem_routes"][0]["native"])
         self.assertEqual(model["stem_routes"][0]["display"], "Vocals")
+        self.assertEqual(model["stem_routes"][0]["production"], "derived")
+        self.assertEqual(model["stem_routes"][0]["complement_of"], "mix.instrumental")
+        self.assertEqual(model["stem_routes"][1]["native"], "other")
         self.assertTrue(model["stem_routes"][1]["logical_primary"])
 
     def test_raw_semantic_fallback_is_an_actionable_plan_warning(self) -> None:
@@ -138,7 +141,7 @@ class PlannedOutputStemTests(unittest.TestCase):
 
         settings = Settings.defaults()
         semantics = resolve_catalogue_stem_semantics(
-            "mdx:bs_neo_inst_beta", native_stems=("other",)
+            "mdx:bs_neo_inst_beta", native_stems=("vocals", "other")
         )
         plan = ResolvedJob(
             command="separate",
@@ -178,7 +181,7 @@ class PlannedOutputStemTests(unittest.TestCase):
             backend_target_stem="other",
             stem_semantics=resolve_catalogue_stem_semantics(
                 "mdx:bs_neo_inst_beta",
-                native_stems=("vocals", "other"),
+                native_stems=("other",),
                 backend_primary="other",
                 backend_target="other",
             ),
@@ -190,7 +193,7 @@ class PlannedOutputStemTests(unittest.TestCase):
             "Beta",
             primary_stem="other",
             stem_semantics=resolve_catalogue_stem_semantics(
-                "mdx:bs_neo_inst_beta", native_stems=("other",)
+                "mdx:bs_neo_inst_beta", native_stems=("vocals", "other")
             ),
         )
 

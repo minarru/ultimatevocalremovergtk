@@ -24,7 +24,7 @@ class ContinueCounterTests(unittest.TestCase):
             repo=None,
             stem_semantics=resolve_catalogue_stem_semantics(
                 "mdx:bs_neo_inst_beta",
-                native_stems=("vocals", "other"),
+                native_stems=("other",),
                 backend_primary="other",
                 backend_target="other",
             ),

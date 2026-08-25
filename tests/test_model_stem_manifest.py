@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -134,22 +135,32 @@ class ManifestValidationTests(unittest.TestCase):
 
         guitar = registry.models["mdx:mbr_guitar_becruily"]
         guitar_context = guitar.contexts[StemProcessingContext.FULL_MIX]
-        self.assertEqual(guitar.native_signature, ("Guitar", "Other"))
+        self.assertEqual(guitar.native_signature, ("Guitar",))
         self.assertEqual(
             [str(output.role) for output in guitar_context.outputs],
             ["instrument.guitar", "instrument.guitar.removed"],
+        )
+        self.assertIsNone(guitar_context.outputs[1].native)
+        self.assertEqual(
+            guitar_context.outputs[1].complement_of,
+            StemRoleId("instrument.guitar"),
         )
         self.assertEqual(str(guitar_context.logical_primary), "instrument.guitar")
         self.assertIn("catalogue_id=mdx:mbr_guitar_becruily", guitar.evidence)
 
         instrumental = registry.models["mdx:mbr_inst_becruily"]
         instrumental_context = instrumental.contexts[StemProcessingContext.FULL_MIX]
-        self.assertEqual(instrumental.native_signature, ("Instrumental", "Vocals"))
+        self.assertEqual(instrumental.native_signature, ("Instrumental",))
         self.assertEqual(
             [str(output.role) for output in instrumental_context.outputs],
             ["mix.instrumental", "vocal.vocals"],
         )
         self.assertEqual(str(instrumental_context.logical_primary), "mix.instrumental")
+        self.assertIsNone(instrumental_context.outputs[1].native)
+        self.assertEqual(
+            instrumental_context.outputs[1].complement_of,
+            StemRoleId("mix.instrumental"),
+        )
         self.assertIn("catalogue_id=mdx:mbr_inst_becruily", instrumental.evidence)
 
     def test_reviewed_two_output_pairs_and_multistem_residuals_remain_distinct(self) -> None:
@@ -160,9 +171,11 @@ class ManifestValidationTests(unittest.TestCase):
             native_stems = [
                 output.native.raw.casefold() if output.native else "" for output in outputs
             ]
-            if len(declaration.native_signature) == 2:
+            if len(outputs) == 2:
                 self.assertNotIn("residual.other", roles, model_id)
-            elif "other" in {native.casefold() for native in declaration.native_signature}:
+            elif "other" in {
+                output.native.raw.casefold() for output in outputs if output.native is not None
+            }:
                 self.assertIn("residual.other", roles, model_id)
             if "denoise" in model_id and native_stems == ["dry", "other"]:
                 self.assertEqual(
@@ -325,6 +338,106 @@ class ManifestValidationTests(unittest.TestCase):
             with self.subTest(waiver=model_id):
                 self.assertIn(f"catalogue_id={model_id}", reason)
                 self.assertIn("no native inventory", reason)
+
+    def test_yaml_target_instrument_declarations_match_single_native_runtime_inventory(
+        self,
+    ) -> None:
+        """Real target-instrument configs expose only their target as native.
+
+        The other reviewed side is an engine-derived mix-minus-target route,
+        including context-sensitive karaoke declarations. Community-only
+        target hints are deliberately outside this runtime-config contract.
+        """
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+        declarations = []
+        for model_id, declaration in registry.models.items():
+            if not re.search(
+                r"metadata_source=(?:bundled_yaml|remote_yaml):", declaration.evidence
+            ):
+                continue
+            target_match = re.search(r"(?:^|; )backend_target=([^;]+)", declaration.evidence)
+            if target_match is None:
+                continue
+            declarations.append((model_id, declaration, target_match.group(1)))
+
+        self.assertEqual(len(declarations), 304)
+        for model_id, declaration, target in declarations:
+            with self.subTest(model_id=model_id):
+                self.assertEqual(declaration.native_signature, (target,))
+                self.assertIn(f"native_signature={target};", declaration.evidence)
+                for context in declaration.contexts.values():
+                    native = tuple(
+                        output for output in context.outputs if output.native is not None
+                    )
+                    derived = tuple(output for output in context.outputs if output.native is None)
+                    self.assertEqual(len(native), 1)
+                    self.assertTrue(native[0].native and native[0].native.matches(target))
+                    self.assertEqual(len(derived), 1)
+                    self.assertEqual(derived[0].production, StemProduction.DERIVED)
+                    self.assertEqual(derived[0].complement_of, native[0].role)
+                    self.assertEqual(derived[0].derived_from, ())
+
+    def test_representative_target_declarations_preserve_exact_role_polarity(self) -> None:
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+        expected = {
+            "mdx:mbr_inst2_unwa": (
+                "other",
+                "mix.instrumental",
+                "vocal.vocals",
+                "mix.instrumental",
+            ),
+            "mdx:bs_bass_xlancer": (
+                "bass",
+                "instrument.bass",
+                "instrument.bass.removed",
+                "instrument.bass",
+            ),
+            "mdx:mbr_denoise_yuluoye": (
+                "other",
+                "effect.noise",
+                "effect.noise.removed",
+                "effect.noise.removed",
+            ),
+            "mdx:mbr_desuperbigreverb_sucial": (
+                "dry",
+                "effect.reverb.removed",
+                "effect.reverb",
+                "effect.reverb.removed",
+            ),
+            "mdx:mel_band_roformer_bleed_suppressor_v1": (
+                "Instrumental",
+                "mix.instrumental",
+                "mix.bleed",
+                "mix.instrumental",
+            ),
+        }
+        for model_id, (target, native_role, derived_role, logical_primary) in expected.items():
+            with self.subTest(model_id=model_id):
+                declaration = registry.models[model_id]
+                context = declaration.contexts[StemProcessingContext.FULL_MIX]
+                native = tuple(output for output in context.outputs if output.native is not None)
+                derived = tuple(output for output in context.outputs if output.native is None)
+                self.assertEqual(declaration.native_signature, (target,))
+                self.assertEqual([str(output.role) for output in native], [native_role])
+                self.assertEqual([str(output.role) for output in derived], [derived_role])
+                self.assertEqual(native[0].native and native[0].native.raw, target)
+                self.assertEqual(derived[0].complement_of, StemRoleId(native_role))
+                self.assertEqual(str(context.logical_primary), logical_primary)
+
+        karaoke = registry.models["mdx:bs_karaoke_gabox"]
+        self.assertEqual(karaoke.native_signature, ("vocals",))
+        expected_derived = {
+            StemProcessingContext.FULL_MIX: "mix.instrumental_with_backing_vocals",
+            StemProcessingContext.VOCAL_SPLIT: "vocal.backing",
+        }
+        for context_id, derived_role in expected_derived.items():
+            with self.subTest(context=context_id.value):
+                outputs = karaoke.contexts[context_id].outputs
+                self.assertEqual(
+                    [str(output.role) for output in outputs], ["vocal.lead", derived_role]
+                )
+                self.assertIsNone(outputs[1].native)
+                self.assertEqual(outputs[1].complement_of, StemRoleId("vocal.lead"))
 
     def test_exact_two_output_target_complements_never_use_residual_other(self) -> None:
         """A declared target/complement pair keeps the target semantic identity."""
@@ -512,6 +625,29 @@ class ManifestValidationTests(unittest.TestCase):
             (StemRoleId("vocal.vocals"), StemRoleId("mix.instrumental")),
         )
         self.assertIsNone(output.complement_of)
+
+    def test_rejects_dependency_role_absent_from_the_model_context(self) -> None:
+        document = _manifest()
+        derived = document["models"]["mdx:fixture"]["contexts"]["full_mix"]["outputs"][2]
+        derived["complement_of"] = "vocal.backing"
+
+        with self.assertRaisesRegex(
+            StemManifestError, "dependency role is not an output"
+        ) as raised:
+            load_stem_manifest_document(document)
+
+        self.assertEqual(
+            raised.exception.path,
+            (
+                "models",
+                "mdx:fixture",
+                "contexts",
+                "full_mix",
+                "outputs",
+                2,
+                "complement_of",
+            ),
+        )
 
 
 class ExactResolutionTests(unittest.TestCase):
