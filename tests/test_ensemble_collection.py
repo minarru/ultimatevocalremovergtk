@@ -6,6 +6,7 @@ import os
 import tempfile
 import unittest
 from types import SimpleNamespace
+from typing import Any
 
 from core.ensembler import CollectedStem, Ensembler, planned_ensemble_stems
 from core.export_naming import format_stem_basename
@@ -116,12 +117,16 @@ class PlannedCollectionTests(unittest.TestCase):
 
     def test_incomplete_four_stem_member_has_no_dual_pair_exports(self) -> None:
         """A partial member cannot leak one reviewed role into a dual pair."""
+        from bundled.constants import IS_SAVE_INST_ONLY, IS_SAVE_VOC_ONLY
         from core.model_config.config import ModelConfig
         from core.settings import Settings
+        from core.types import ProcessMethod
 
         settings = Settings.defaults()
+        settings.process.method = ProcessMethod.ENSEMBLE
+        settings.process.stem_focus = "vocal.vocals"
         settings.ensemble.main_stem = "pair.vocals_instrumental"
-        member = SimpleNamespace(
+        member: Any = SimpleNamespace(
             settings=settings,
             canonical_id="mdx:model_scnet_ep_54_sdr_9.8051",
             primary_stem="Drums",
@@ -142,12 +147,97 @@ class PlannedCollectionTests(unittest.TestCase):
             is_pre_proc_model=False,
             is_inst_only_voc_splitter=False,
             is_sec_bv_rebalance=False,
+            ensemble_pair_roles=(
+                StemRoleId("vocal.vocals"),
+                StemRoleId("mix.instrumental"),
+            ),
+            ensemble_primary_stem="Vocals",
+            ensemble_secondary_stem="Instrumental",
         )
 
         ModelConfig._apply_stem_focus(member)  # type: ignore[arg-type]
 
         self.assertEqual(member.selected_stem_routes, ())
         self.assertEqual(run_export_routes(member), ())
+        self.assertEqual(
+            ModelConfig._exclusive_sides_from_routes(member),  # type: ignore[arg-type]
+            (False, False),
+        )
+        self.assertFalse(
+            ModelConfig.check_only_selection_stem(  # type: ignore[arg-type]
+                member, IS_SAVE_VOC_ONLY
+            )
+        )
+        self.assertFalse(
+            ModelConfig.check_only_selection_stem(  # type: ignore[arg-type]
+                member, IS_SAVE_INST_ONLY
+            )
+        )
+
+    def test_complete_pair_member_keeps_an_explicit_role_focus(self) -> None:
+        """A matched role focus must not be widened to both pair exports."""
+        from bundled.constants import IS_SAVE_INST_ONLY, IS_SAVE_VOC_ONLY
+        from core.model_config.config import ModelConfig
+        from core.settings import Settings
+        from core.types import ProcessMethod
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.ENSEMBLE
+        settings.process.stem_focus = "vocal.vocals"
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
+        member: Any = SimpleNamespace(
+            settings=settings,
+            canonical_id="mdx:MelBandRoformerBigSYHFTV1",
+            primary_stem="Vocals",
+            primary_stem_native="Vocals",
+            secondary_stem="other",
+            target_instrument="vocals",
+            is_vocal_split_model=False,
+            is_karaoke=False,
+            is_bv_model=False,
+            mdx_stem_count=2,
+            demucs_stem_count=0,
+            mdx_model_stems=["vocals", "other"],
+            demucs_source_list=[],
+            mdxnet_stems_selected=[],
+            is_mdx_include_stem_complement=False,
+            is_ensemble_mode=True,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_inst_only_voc_splitter=False,
+            is_sec_bv_rebalance=False,
+            ensemble_pair_roles=(
+                StemRoleId("vocal.vocals"),
+                StemRoleId("mix.instrumental"),
+            ),
+            ensemble_primary_stem="Vocals",
+            ensemble_secondary_stem="Instrumental",
+        )
+
+        ModelConfig._apply_stem_focus(member)  # type: ignore[arg-type]
+
+        self.assertEqual(
+            [route.role for route in member.selected_stem_routes],
+            [StemRoleId("vocal.vocals")],
+        )
+        self.assertEqual(
+            [route.role for route in run_export_routes(member)],
+            [StemRoleId("vocal.vocals")],
+        )
+        self.assertEqual(
+            ModelConfig._exclusive_sides_from_routes(member),  # type: ignore[arg-type]
+            (True, False),
+        )
+        self.assertTrue(
+            ModelConfig.check_only_selection_stem(  # type: ignore[arg-type]
+                member, IS_SAVE_VOC_ONLY
+            )
+        )
+        self.assertFalse(
+            ModelConfig.check_only_selection_stem(  # type: ignore[arg-type]
+                member, IS_SAVE_INST_ONLY
+            )
+        )
 
 
 if __name__ == "__main__":

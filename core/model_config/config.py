@@ -536,6 +536,7 @@ class ModelConfig:
         routes = model_stem_routes(self)
         self.available_stem_routes = routes
         positional = positional_stem_focus(focus)
+        selection_matched = False
         if positional:
             logical = tuple(route for route in routes if route.logical_primary)
             if positional == FOCUS_PRIMARY and len(logical) == 1:
@@ -557,6 +558,7 @@ class ModelConfig:
             )
         else:
             selection = select_stem_routes(routes, focus)
+            selection_matched = selection.status is StemSelectionStatus.MATCHED
             if selection.status is StemSelectionStatus.UNMATCHED:
                 selected = tuple(
                     route for route in routes if route.selected_by_default
@@ -595,7 +597,11 @@ class ModelConfig:
             pair_id = normalize_stem_pair_id(self.settings.ensemble.main_stem)
             pair = stem_pair_definition(pair_id)
             if pair is not None:
-                selected = routes_for_ensemble_pair(routes, pair)
+                pair_routes = routes_for_ensemble_pair(routes, pair)
+                if not pair_routes:
+                    selected = ()
+                elif not selection_matched:
+                    selected = pair_routes
 
         self.selected_stem_routes = selected
 
