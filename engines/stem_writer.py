@@ -36,7 +36,6 @@ from ml import spec_utils
 
 from .vr_utils import vr_denoiser
 
-
 _VOCAL_SPLIT_PAIR_ROLES = frozenset(("vocal.lead", "vocal.backing"))
 
 
@@ -51,11 +50,19 @@ def vocal_split_pair_routes(routes: tuple[StemRoute, ...]) -> tuple[StemRoute, .
 
 
 def vocal_split_export_routes(sep: Any) -> tuple[StemRoute, ...]:
-    """Routes scheduled by this export, applying the reviewed splitter pair."""
+    """Executable routes scheduled after applying the reviewed pair recipe."""
     routes = run_export_routes(sep)
     if not bool(getattr(sep, "is_vocal_split_model", False)):
         return routes
-    return vocal_split_pair_routes(routes)
+    routes = vocal_split_pair_routes(routes)
+    if bool(getattr(sep, "is_bv_model_rebalenced", False)):
+        return tuple(
+            route
+            for route in routes
+            if isinstance(route.role, StemRoleId)
+            and route.role.value == "vocal.backing"
+        )
+    return routes
 
 
 def _reviewed_output_route(role_value: str) -> StemRoute | None:

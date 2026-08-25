@@ -12,7 +12,7 @@ import torch.nn as nn
 from bundled.constants import *
 from bundled.error_handling import *
 from core.debug_log import trace_phase
-from core.model_stem_semantics import is_vocal_target, vocal_split_source_roles
+from core.model_stem_semantics import is_vocal_target
 from core.stems import (
     exports_named_stem,
     route_matches_stem,
@@ -268,6 +268,7 @@ class SeperateMDXC(SeperateAttributes):
         secondary_sources = mdx_vocal_split_chain_sources(
             export_sources,
             sources,
+            routes=export_routes,
         )
         plan = ExportPlan(
             sources=export_sources,
@@ -275,7 +276,7 @@ class SeperateMDXC(SeperateAttributes):
             split_sources=secondary_sources,
         )
         if self.is_secondary_model or self.is_pre_proc_model:
-            plan.return_sources = secondary_sources
+            plan.return_sources = {**export_sources, **secondary_sources}
         return plan
 
     def _vocal_split_pair_sources(
@@ -325,22 +326,10 @@ class SeperateMDXC(SeperateAttributes):
                     )
             return route_sources
 
-        lead_key, backing_key = vocal_split_source_roles(
-            sources, is_bv_model=bool(self.is_bv_model)
-        )
-        lead = sources[lead_key] if lead_key is not None else None
-        backing = sources[backing_key] if backing_key is not None else None
-        mix_arr = np.asarray(mix) if mix is not None else None
-        if lead is None and backing is not None and mix_arr is not None:
-            lead = mix_arr - spec_utils.to_shape(np.asarray(backing), mix_arr.shape)
-        if backing is None and lead is not None and mix_arr is not None:
-            backing = mix_arr - spec_utils.to_shape(np.asarray(lead), mix_arr.shape)
-        export_sources: dict[str, Any] = {}
-        if lead is not None:
-            export_sources[LEAD_VOCAL_STEM_LABEL] = _channel_last_for_write(lead)
-        if backing is not None:
-            export_sources[BV_VOCAL_STEM_LABEL] = _channel_last_for_write(backing)
-        return export_sources
+        return {
+            str(key): _channel_last_for_write(source)
+            for key, source in sources.items()
+        }
 
     def overlap_add(self, result: typing.Any, counter: typing.Any, x: typing.Any, l: typing.Any, j: typing.Any, start: typing.Any, window: typing.Any):
         if x.device != result.device:

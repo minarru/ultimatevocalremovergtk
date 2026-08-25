@@ -11,8 +11,8 @@ import warnings
 from bundled.constants import *
 from core.model_stem_semantics import (
     is_vocal_target,
-    vocal_inst_from_sources,
 )
+from core.stem_roles import StemRoleId
 from core.stems import (
     StemBucket,
     StemRouteKind,
@@ -330,18 +330,36 @@ def _channel_last_for_write(arr: typing.Any) -> typing.Any:
 def mdx_vocal_split_chain_sources(
     maps: dict[str, typing.Any],
     demix_sources: typing.Any,
+    *,
+    routes: typing.Sequence[typing.Any] | None = None,
 ) -> dict[str, typing.Any]:
-    """Prefer exported maps; fill vocals/inst from community yaml demix keys."""
+    """Build a chain handoff from exact reviewed native dependencies only."""
     merged = dict(maps)
-    mapped_vocal, mapped_inst = vocal_inst_from_sources(merged)
-    demix_vocal, demix_inst = vocal_inst_from_sources(
-        demix_sources if isinstance(demix_sources, dict) else None
-    )
-    if not isinstance(mapped_vocal, np.ndarray) and isinstance(demix_vocal, np.ndarray):
-        merged[VOCAL_STEM] = _channel_last_for_write(demix_vocal)
-    if not isinstance(mapped_inst, np.ndarray) and isinstance(demix_inst, np.ndarray):
-        merged[INST_STEM] = _channel_last_for_write(demix_inst)
-    return merged
+    demix = demix_sources if isinstance(demix_sources, dict) else {}
+    if routes is None:
+        for key, source in demix.items():
+            merged.setdefault(str(key), _channel_last_for_write(source))
+        return merged
+
+    handoff: dict[str, typing.Any] = {}
+    canonical_by_role = {
+        "vocal.vocals": VOCAL_STEM,
+        "mix.instrumental": INST_STEM,
+    }
+    for route in routes:
+        if route.native is None or not isinstance(route.role, StemRoleId):
+            continue
+        canonical_key = canonical_by_role.get(route.role.value)
+        if canonical_key is None:
+            continue
+        source_key = _exact_mdx_source_key(maps, route.native.raw)
+        if source_key is not None and isinstance(maps[source_key], np.ndarray):
+            handoff[canonical_key] = maps[source_key]
+            continue
+        source_key = _exact_mdx_source_key(demix, route.native.raw)
+        if source_key is not None and isinstance(demix[source_key], np.ndarray):
+            handoff[canonical_key] = _channel_last_for_write(demix[source_key])
+    return handoff
 
 
 def derive_mdx_complement(native_source: typing.Any, mix: typing.Any, *, invert_spec: typing.Any=False, match_frequency_pitch: typing.Any=None):

@@ -10,10 +10,8 @@ import numpy as np
 
 from bundled.constants import (
     BV_VOCAL_STEM,
-    BV_VOCAL_STEM_LABEL,
     INST_STEM,
     LEAD_VOCAL_STEM,
-    LEAD_VOCAL_STEM_LABEL,
     VOCAL_STEM,
 )
 from core.model_stem_semantics import (
@@ -225,18 +223,66 @@ class SourcePickerTests(unittest.TestCase):
 
 
 class ChainSourceMergeTests(unittest.TestCase):
-    def test_lowercase_demix_fills_empty_maps(self) -> None:
+    def test_unreviewed_aliases_remain_raw_without_canonical_promotion(self) -> None:
         voc = _arr(1.0)
         inst = _arr(2.0)
         merged = mdx_vocal_split_chain_sources(
             {},
-            {"vocals": voc, "other": inst},
+            {"vocal": voc, "other": inst},
         )
-        vocal, instrumental = vocal_inst_from_sources(merged)
-        self.assertIsInstance(vocal, np.ndarray)
-        self.assertIsInstance(instrumental, np.ndarray)
-        np.testing.assert_array_equal(vocal, voc.T)
-        np.testing.assert_array_equal(instrumental, inst.T)
+
+        self.assertEqual(list(merged), ["vocal", "other"])
+        self.assertNotIn(VOCAL_STEM, merged)
+        self.assertNotIn(INST_STEM, merged)
+
+    def test_reviewed_routes_publish_only_exact_native_dependencies(self) -> None:
+        voc = _arr(1.0)
+        inst = _arr(2.0)
+        routes = model_stem_routes(
+            _semantic_model(
+                "mdx:mel_band_roformer_vocals_becruily",
+                ["vocals", "other"],
+                backend_primary="vocals",
+                vocal_split=False,
+            )
+        )
+
+        merged = mdx_vocal_split_chain_sources(
+            {},
+            {"VOCALS": voc, "OTHER": inst},
+            routes=routes,
+        )
+
+        np.testing.assert_array_equal(merged[VOCAL_STEM], voc.T)
+        np.testing.assert_array_equal(merged[INST_STEM], inst.T)
+
+        mismatch = mdx_vocal_split_chain_sources(
+            {},
+            {"vocal": voc, "other": inst},
+            routes=routes,
+        )
+        self.assertNotIn(VOCAL_STEM, mismatch)
+        np.testing.assert_array_equal(mismatch[INST_STEM], inst.T)
+
+    def test_unreviewed_routes_fail_closed_for_canonical_spelling(self) -> None:
+        voc = _arr(1.0)
+        inst = _arr(2.0)
+        routes = model_stem_routes(
+            _semantic_model(
+                "mdx:unknown_custom_model",
+                [VOCAL_STEM, INST_STEM],
+                backend_primary=VOCAL_STEM,
+                vocal_split=False,
+            )
+        )
+
+        handoff = mdx_vocal_split_chain_sources(
+            {},
+            {VOCAL_STEM: voc, INST_STEM: inst},
+            routes=routes,
+        )
+
+        self.assertEqual(handoff, {})
 
     def test_four_stem_has_vocals_but_no_instrumental(self) -> None:
         voc = _arr(1.0)
@@ -363,12 +409,60 @@ class WriteAudioGuardTests(unittest.TestCase):
             },
         )
 
+    def test_vr_bve_rebalance_counts_one_executable_recipe_and_completes_progress(self) -> None:
+        from types import MethodType
+
+        from engines.stem_writer import export_source_map
+
+        routes = model_stem_routes(
+            _semantic_model(
+                "vr:UVR-BVE-4B_SN-44100-1",
+                ["Vocals", "Instrumental"],
+                backend_primary="Vocals",
+                vocal_split=True,
+            )
+        )
+        sep = self._vocal_split_writer()
+        sep.selected_stem_routes = routes
+        sep.available_stem_routes = routes
+        sep.is_bv_model_rebalenced = True
+        sep.is_save_inst_vocal_splitter = True
+        sep.master_vocal_source = _arr(1.0).T
+        sep.master_inst_source = _arr(4.0).T
+        sep.stem_export_wav_path = lambda stem, *, route=None: f"/tmp/{stem}.wav"
+        progress: list[float] = []
+        sep.set_progress_bar = progress.append
+        sep.begin_save_phase = MethodType(SeperateAttributes.begin_save_phase, sep)
+        sep._report_save_progress = MethodType(SeperateAttributes._report_save_progress, sep)
+
+        export_source_map(
+            sep,
+            {
+                "Vocals": _arr(3.0).T,
+                "Instrumental": _arr(2.0).T,
+            },
+            samplerate=44100,
+        )
+
+        self.assertEqual(sep._save_stem_total, 1)
+        self.assertEqual(sep._save_stem_index, 1)
+        self.assertEqual(len(progress), 1)
+        self.assertEqual(
+            set(sep._ensemble_stem_buffers),
+            {
+                "Backing_Vocals",
+                "Lead_Vocals",
+                "Instrumental_with_Backing_Vocals",
+                "Instrumental_with_Lead_Vocals",
+            },
+        )
+
     def test_instrumental_does_not_record_master_vocal_path(self) -> None:
         sep = self._secondary_writer()
         sep.write_audio("/tmp/song_(Instrumental).wav", _arr(1.0).T, 44100, stem_name=INST_STEM)
         self.assertIsNone(sep.master_vocal_path)
 
-    def _vocal_split_writer(self) -> SeperateAttributes:
+    def _vocal_split_writer(self) -> Any:
         sep = SeperateAttributes.__new__(SeperateAttributes)
         sep.is_vocal_split_model = True
         sep.is_bv_model = False
@@ -442,16 +536,29 @@ class VocalSplitChainHandoffTests(unittest.TestCase):
             setattr(sep, key, value)
         return sep
 
-    def test_lowercase_maps_invoke_chain_with_ndarrays(self) -> None:
+    def test_canonical_maps_invoke_chain_with_ndarrays(self) -> None:
         sep = self._sep()
         voc = _arr(1.0).T
         inst = _arr(2.0).T
         with patch("engines.base.process_chain_model") as chain:
-            sep._process_vocal_split_chain({"vocals": voc, "other": inst})
+            sep._process_vocal_split_chain({VOCAL_STEM: voc, INST_STEM: inst})
         chain.assert_called_once()
         kwargs = chain.call_args.kwargs
         self.assertIsInstance(kwargs["master_vocal_source"], np.ndarray)
         self.assertIsInstance(kwargs["master_inst_source"], np.ndarray)
+
+    def test_noncanonical_alias_maps_do_not_invoke_chain(self) -> None:
+        sep = self._sep()
+        aliases = (
+            {"vocals": _arr(1.0).T, "other": _arr(2.0).T},
+            {"vocal": _arr(1.0).T, "instrument": _arr(2.0).T},
+            {"voc": _arr(1.0).T, "inst": _arr(2.0).T},
+        )
+        for payload in aliases:
+            with self.subTest(payload=tuple(payload)):
+                with patch("engines.base.process_chain_model") as chain:
+                    sep._process_vocal_split_chain(payload)
+                chain.assert_not_called()
 
     def test_string_payload_does_not_invoke_chain(self) -> None:
         sep = self._sep()
@@ -561,14 +668,14 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
             _arr(3.0),
         )
 
-    def test_title_case_pair_builds_lead_then_backing(self) -> None:
+    def test_route_less_title_case_pair_preserves_raw_keys(self) -> None:
         self.assertEqual(
             list(
                 self._build(
                     {"Vocals": _arr(1.0), "Instrumental": _arr(2.0)}
                 )
             ),
-            [LEAD_VOCAL_STEM_LABEL, BV_VOCAL_STEM_LABEL],
+            ["Vocals", "Instrumental"],
         )
 
     def test_explicit_empty_reviewed_routes_do_not_fall_back_to_spelling(self) -> None:
@@ -583,10 +690,10 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
 
         self.assertEqual(built, {})
 
-    def test_lowercase_and_fusion_single_target_dict(self) -> None:
+    def test_route_less_lowercase_pair_preserves_raw_keys(self) -> None:
         self.assertEqual(
             list(self._build({"vocals": _arr(1.0), INST_STEM: _arr(2.0)})),
-            [LEAD_VOCAL_STEM_LABEL, BV_VOCAL_STEM_LABEL],
+            ["vocals", INST_STEM],
         )
 
     def test_native_rate_mix_is_restored_before_splitter_complement(self) -> None:
@@ -724,7 +831,7 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
 
         self.assertEqual(list(built), ["vocals", "instrumental"])
 
-    def test_three_stem_karaoke_skips_splitter_instrumental(self) -> None:
+    def test_route_less_three_stem_map_preserves_every_raw_key(self) -> None:
         self.assertEqual(
             list(
                 self._build(
@@ -735,15 +842,15 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
                     }
                 )
             ),
-            [LEAD_VOCAL_STEM_LABEL, BV_VOCAL_STEM_LABEL],
+            ["vocals", "backing_vocal", "instrumental"],
         )
 
     def test_pair_sources_are_channel_last_for_export(self) -> None:
         built = self._build(
             {"Vocals": _arr(1.0), "Instrumental": _arr(2.0)}
         )
-        self.assertEqual(built[LEAD_VOCAL_STEM_LABEL].shape, (4, 2))
-        self.assertEqual(built[BV_VOCAL_STEM_LABEL].shape, (4, 2))
+        self.assertEqual(built["Vocals"].shape, (4, 2))
+        self.assertEqual(built["Instrumental"].shape, (4, 2))
 
 
 if __name__ == "__main__":

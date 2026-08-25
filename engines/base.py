@@ -11,7 +11,6 @@ from bundled.error_handling import *
 from core.debug_log import debug, trace_phase
 from core.export_naming import stem_wav_path
 from core.gpu_backend import resolve_inference_backend
-from core.model_stem_semantics import vocal_inst_from_sources
 from core.progress_ticks import InferenceProgress
 from core.run_estimate import save_progress_local_step
 from core.stems import StemBucket, StemLiteral, StemRoute, export_stem_key, filename_tag
@@ -422,9 +421,11 @@ class SeperateAttributes:
             ]
             return all(conditions)
         
-        # Retrieve vocal/instrumental arrays by alias, not exact UVR labels
-        # (community MDX-C yamls commonly use lowercase ``vocals`` / ``other``).
-        master_vocal_source, master_inst_source = vocal_inst_from_sources(sources)
+        # Engine plans publish these canonical handoff keys only after exact
+        # reviewed native-route resolution. Raw backend aliases must not gain
+        # lead/instrumental meaning at this boundary.
+        master_vocal_source = sources.get(VOCAL_STEM)
+        master_inst_source = sources.get(INST_STEM)
         if not isinstance(master_vocal_source, np.ndarray):
             master_vocal_source = None
         if not isinstance(master_inst_source, np.ndarray):
