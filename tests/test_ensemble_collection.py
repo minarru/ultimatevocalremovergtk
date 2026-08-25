@@ -239,6 +239,52 @@ class PlannedCollectionTests(unittest.TestCase):
             )
         )
 
+    def test_karaoke_pair_ignores_giantailab_residual_focus(self) -> None:
+        """A matched non-pair role must not escape karaoke pair routing."""
+        from core.model_config.config import ModelConfig
+        from core.settings import Settings
+        from core.types import ProcessMethod
+
+        settings = Settings.defaults()
+        settings.process.method = ProcessMethod.ENSEMBLE
+        settings.process.stem_focus = "residual.backing_vocal"
+        settings.ensemble.main_stem = "pair.karaoke"
+        member: Any = SimpleNamespace(
+            settings=settings,
+            canonical_id="mdx:bs_karaoke_3stem_giantailab",
+            primary_stem="vocals",
+            primary_stem_native="vocals",
+            secondary_stem="instrumental",
+            target_instrument="",
+            is_vocal_split_model=False,
+            is_karaoke=False,
+            is_bv_model=False,
+            mdx_stem_count=3,
+            demucs_stem_count=0,
+            mdx_model_stems=["vocals", "backing_vocal", "instrumental"],
+            demucs_source_list=[],
+            mdxnet_stems_selected=[],
+            is_mdx_include_stem_complement=False,
+            is_ensemble_mode=True,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_inst_only_voc_splitter=False,
+            is_sec_bv_rebalance=False,
+        )
+
+        ModelConfig._apply_stem_focus(member)  # type: ignore[arg-type]
+
+        expected_roles = [
+            StemRoleId("vocal.lead"),
+            StemRoleId("mix.instrumental_with_backing_vocals"),
+        ]
+        self.assertEqual(
+            [route.role for route in member.selected_stem_routes], expected_roles
+        )
+        self.assertEqual(
+            [route.role for route in run_export_routes(member)], expected_roles
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

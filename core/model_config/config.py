@@ -600,7 +600,10 @@ class ModelConfig:
                 pair_routes = routes_for_ensemble_pair(routes, pair)
                 if not pair_routes:
                     selected = ()
-                elif not selection_matched:
+                elif not (
+                    selection_matched
+                    and all(route.role in pair.roles for route in selected)
+                ):
                     selected = pair_routes
 
         self.selected_stem_routes = selected
