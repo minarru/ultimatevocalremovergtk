@@ -15,7 +15,11 @@ from core.types import ProcessMethod
 
 
 def _resolved_job(
-    *, command: str, path: str, output: str, settings: Settings,
+    *,
+    command: str,
+    path: str,
+    output: str,
+    settings: Settings,
     model_dependencies: typing.Mapping[str, typing.Any] | None = None,
 ) -> ResolvedJob:
     planned = PlannedInput(
@@ -142,8 +146,8 @@ def _minimal_separation_window() -> typing.Any:
     window = MagicMock()
     window.input_row.paths = ["/widget/changed.wav"]
     window.context.try_save_settings = MagicMock(return_value=None)
-    window._start_separation = lambda callbacks, plan=None: (
-        window_mod.MainWindow._start_separation(window, callbacks, plan=plan)
+    window._start_separation = lambda callbacks, plan=None: window_mod.MainWindow._start_separation(
+        window, callbacks, plan=plan
     )
     return window
 
