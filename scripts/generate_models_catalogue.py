@@ -68,6 +68,7 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
             "  python scripts/generate_models_catalogue.py --refresh\n"
             "  python scripts/generate_models_catalogue.py --check\n"
             "  python scripts/generate_models_catalogue.py --summary --offline\n"
+            "  python scripts/generate_models_catalogue.py --audit-stem-confidence --guessed-only\n"
         ),
     )
     parser.add_argument(
@@ -160,7 +161,68 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
             "degraded to judge. Also read-only for yaml downloads."
         ),
     )
-    return parser.parse_args(argv)
+    mode.add_argument(
+        "--audit-stem-confidence",
+        action="store_true",
+        help=(
+            "Review mvsepless checkpoint confidence without generating or checking "
+            "publication artifacts."
+        ),
+    )
+    audit = parser.add_argument_group("stem confidence audit options")
+    audit.add_argument(
+        "--guessed-only",
+        action="store_true",
+        help="Only report entries whose karaoke confidence is not curated.",
+    )
+    audit.add_argument(
+        "--only",
+        default="",
+        metavar="SUBSTR",
+        help="Audit only entries whose id or label contains this substring.",
+    )
+    audit.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Audit at most this many entries after --only.",
+    )
+    audit.add_argument(
+        "--json",
+        dest="json_path",
+        default=None,
+        metavar="PATH",
+        help="Atomically write the full stem-confidence report JSON to PATH.",
+    )
+    audit.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress per-model stem-confidence audit progress.",
+    )
+    audit.add_argument(
+        "--no-cache",
+        "--no-hash-cache",
+        dest="no_hash_cache",
+        action="store_true",
+        help="Bypass remembered checkpoint-tail hashes for the confidence audit.",
+    )
+    args = parser.parse_args(argv)
+    audit_options_used = any(
+        (
+            args.guessed_only,
+            bool(args.only),
+            args.limit is not None,
+            args.json_path is not None,
+            args.quiet,
+            args.no_hash_cache,
+        )
+    )
+    if audit_options_used and not args.audit_stem_confidence:
+        parser.error("stem-confidence audit options require --audit-stem-confidence")
+    if args.audit_stem_confidence and args.offline and args.no_hash_cache:
+        parser.error("--offline cannot be combined with --no-cache")
+    return args
 
 
 #: A drop larger than this fraction of the previously published catalogue is
@@ -375,6 +437,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_args(argv)
     _print_deprecated_reference_flags(args)
     policy = _policy_for(args)
+    if args.audit_stem_confidence:
+        return stem_audit.run_stem_confidence_audit(
+            policy=policy,
+            guessed_only=args.guessed_only,
+            only=args.only,
+            limit=args.limit,
+            json_path=args.json_path,
+            quiet=args.quiet,
+            no_hash_cache=args.no_hash_cache,
+        )
     ctx = collect._build_catalogue_context(policy=policy)
     snapshot, entries = collect.collect_entries(ctx, policy=policy)
     unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))

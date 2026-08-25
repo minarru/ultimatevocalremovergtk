@@ -33,7 +33,7 @@ def _add_repo_to_path() -> None:
 
 _add_repo_to_path()
 
-# Checkpoint and catalogue plumbing shared with scripts/stem_semantics_audit.py.
+# Checkpoint and catalogue plumbing shared with the optional confidence audit.
 # It lives in a neutral module so neither CLI has to import the other's
 # internals; this file keeps architecture construction, forward probing,
 # verdicts and reporting.

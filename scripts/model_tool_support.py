@@ -2,7 +2,7 @@
 """Shared support for the model diagnostic scripts.
 
 Checkpoint and catalogue plumbing used by both :mod:`scripts.model_probe` and
-:mod:`scripts.stem_semantics_audit`. It lives here rather than inside one of
+:mod:`catalogue.stem_audit`. It lives here rather than inside one of
 those CLIs so neither has to import the other's private helpers: this is the
 factual, low-level layer -- remote byte ranges, checkpoint headers and tail
 hashes, catalogue target resolution and cache identity -- with no opinion

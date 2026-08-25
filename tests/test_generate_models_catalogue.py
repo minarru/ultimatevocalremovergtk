@@ -3396,5 +3396,63 @@ class FetchHelperTests(unittest.TestCase):
         self.assertEqual(source, f"bundled_yaml:{yaml_name}")
 
 
+class StemConfidenceAuditModeTests(unittest.TestCase):
+    """The remote confidence review is isolated from catalogue publication."""
+
+    def test_audit_mode_exposes_the_legacy_review_filters(self) -> None:
+        args = cli._parse_args(
+            [
+                "--audit-stem-confidence",
+                "--guessed-only",
+                "--only",
+                "karaoke",
+                "--limit",
+                "3",
+                "--json",
+                "/tmp/confidence.json",
+                "--quiet",
+                "--no-cache",
+            ]
+        )
+
+        self.assertTrue(args.audit_stem_confidence)
+        self.assertTrue(args.guessed_only)
+        self.assertEqual(args.only, "karaoke")
+        self.assertEqual(args.limit, 3)
+        self.assertEqual(args.json_path, "/tmp/confidence.json")
+        self.assertTrue(args.quiet)
+        self.assertTrue(args.no_hash_cache)
+
+    def test_audit_only_filters_are_rejected_outside_audit_mode(self) -> None:
+        with self.assertRaises(SystemExit):
+            cli._parse_args(["--guessed-only"])
+
+    def test_offline_rejects_hash_cache_bypass(self) -> None:
+        with self.assertRaises(SystemExit):
+            cli._parse_args(["--audit-stem-confidence", "--offline", "--no-cache"])
+
+    def test_audit_mode_does_not_collect_or_publish_catalogue_artifacts(self) -> None:
+        import contextlib
+        import io
+        from unittest import mock
+
+        with (
+            mock.patch.object(
+                cli.stem_audit,
+                "run_stem_confidence_audit",
+                return_value=0,
+            ) as audit,
+            mock.patch.object(
+                catalogue,
+                "_build_catalogue_context",
+                side_effect=AssertionError("publication collection must not run"),
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(cli.main(["--audit-stem-confidence", "--quiet"]), 0)
+
+        self.assertTrue(audit.called)
+
+
 if __name__ == "__main__":
     unittest.main()

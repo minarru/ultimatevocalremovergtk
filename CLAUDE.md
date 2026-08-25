@@ -86,7 +86,7 @@ python scripts/model_sweep.py --method mdx --json /tmp/sweep.json
 python scripts/model_sweep.py --list --manifest /tmp/jobs.json   # resolved job list as JSON
 python scripts/model_probe.py --config <yaml>   # can this build run a model? no weights needed
 python scripts/model_probe.py --entry <id> --check-keys   # + range-fetch the checkpoint header
-python scripts/stem_semantics_audit.py --guessed-only   # curated-vs-guessed stem confidence
+python scripts/generate_models_catalogue.py --audit-stem-confidence --guessed-only
 ```
 
 ## Architecture
@@ -148,16 +148,16 @@ Note the coupling: `Ensembler.get_files_to_ensemble` collects members by **filen
 
 ## Maintenance scripts
 
-Four command entry points under `scripts/`, plus `model_tool_support.py` and the `scripts/catalogue/` collection/rendering package. None are part of the app.
+Three command entry points under `scripts/`, plus `model_tool_support.py` and the `scripts/catalogue/` collection/rendering package. None are part of the app.
 
 - **`scripts/*` is gitignored behind an allowlist.** A new script needs its own
   `!scripts/<name>.py` line in [.gitignore](.gitignore), or `git add` refuses it and the
   file never lands.
 - **One shared low-level module.** [scripts/model_tool_support.py](scripts/model_tool_support.py)
   owns validated HTTP ranges, checkpoint headers and tail hashes, catalogue target
-  resolution and cache identity. `model_probe.py` and `stem_semantics_audit.py` both import
-  from it and neither imports the other; verdicts, reporting and architecture construction
-  stay in the CLIs. Range reads validate the 206 and `Content-Range` and raise `RangeError`
+  resolution and cache identity. `model_probe.py` and the generator's optional
+  stem-confidence audit both import from it; verdicts, reporting and architecture construction
+  stay in their owning commands. Range reads validate the 206 and `Content-Range` and raise `RangeError`
   rather than returning whatever the server sent.
 - **The catalogue generator refuses to publish a degraded run.** Exit codes are distinct:
   `0` wrote/up to date, `1` drift (`--check`), `2` this run's data is too degraded to
@@ -181,9 +181,11 @@ Four command entry points under `scripts/`, plus `model_tool_support.py` and the
   importing torch first trips it, so failures depend on test ordering.
 - **`--timeout` does not reach composite jobs.** They are their own group (`SweepJob.composite`,
   not `kind`, and not identifiable from the timeout they carry) and take `--composite-timeout`.
-- **The stem audit caches successful hashes indefinitely and failures never.** Checkpoint
-  tails are immutable once published; caching a failure would let one bad network day poison
-  every later report. `--only`/`--limit` narrow a run, `--no-cache` re-fetches.
+- **The optional stem-confidence audit caches successful hashes indefinitely and failures never.**
+  Checkpoint tails are immutable once published; caching a failure would let one bad network
+  day poison every later report. Run it through
+  `generate_models_catalogue.py --audit-stem-confidence`; `--only`/`--limit` narrow a run,
+  `--no-cache` re-fetches, and `--offline` requires the hash cache.
 - **VR architecture sizes have one definition**, `VR_ARCH_SIZES` / `VR_5_1_ARCH_SIZES` in
   [ml/vr_network/nets.py](ml/vr_network/nets.py). `model_probe.py` imports them lazily —
   that module pulls in torch, and the probe must stay importable without it.
