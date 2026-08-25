@@ -10,6 +10,8 @@ from core.export_naming import (
     sanitize_filename_component,
 )
 from core.settings import Settings
+from core.stem_roles import StemId, StemRoleId
+from core.stems import StemRoute
 
 
 class SanitizeTests(unittest.TestCase):
@@ -59,6 +61,22 @@ class FormatTrackBaseTests(unittest.TestCase):
 
 
 class FormatStemBasenameTests(unittest.TestCase):
+    def test_model_test_and_normal_export_share_the_route_filename_label(self):
+        route = StemRoute(
+            StemId("other"),
+            StemRoleId("mix.instrumental_with_backing_vocals"),
+            label="Instrumental with Backing Vocals",
+            filename_tag="Instrumental with Backing Vocals",
+        )
+        normal = format_stem_basename("song", route.filename_tag)
+        model_test = format_stem_basename("song Model Display", route.filename_tag)
+
+        self.assertEqual(normal, "song (Instrumental with Backing Vocals)")
+        self.assertEqual(
+            model_test,
+            "song Model Display (Instrumental with Backing Vocals)",
+        )
+
     def test_space_before_stem_parens(self):
         self.assertEqual(format_stem_basename("song", "Vocals"), "song (Vocals)")
 
@@ -108,16 +126,12 @@ class PreviewOutputNameTests(unittest.TestCase):
                 "save_format": "FLAC",
             }
         )
-        name = preview_output_name(
-            settings
-        )
+        name = preview_output_name(settings)
         self.assertEqual(name, "1710000000 song UVR-MDX-Net (Vocals).flac")
 
     def test_multi_file_preview(self):
         self.assertEqual(
-            preview_output_name(
-                Settings.from_flat({"save_format": "WAV"}), multi_file=True
-            ),
+            preview_output_name(Settings.from_flat({"save_format": "WAV"}), multi_file=True),
             "1-song (Vocals).wav",
         )
 
@@ -136,7 +150,6 @@ class EnrichedModelLabelNamingTests(unittest.TestCase):
     _FRIENDLY = "MelBand Roformer — Karaoke · becruily"
 
     def _naming(self, **overrides: typing.Any):
-        from core.export_naming import build_output_naming_context
 
         settings = Settings.defaults()
         settings.process.add_model_name = True
@@ -169,9 +182,7 @@ class EnrichedModelLabelNamingTests(unittest.TestCase):
 
     def test_unsafe_label_is_sanitized_only_in_path_components(self) -> None:
         unsafe = "Evil/Model\\Name: v2"
-        naming = self._naming(
-            model_label=unsafe, settings={"create_model_folder": True}
-        )
+        naming = self._naming(model_label=unsafe, settings={"create_model_folder": True})
 
         self.assertNotIn("/", os.path.basename(os.path.dirname(naming.export_directory)))
         self.assertEqual(

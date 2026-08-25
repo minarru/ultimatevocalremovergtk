@@ -83,10 +83,9 @@ class EnsembleSaveDialogTests(unittest.TestCase):
         entry = _Entry()
         dialog = _Dialog()
 
-        with mock.patch(
-            "ui.ensemble.window.Gtk.Entry", return_value=entry
-        ), mock.patch(
-            "ui.ensemble.window.Adw.AlertDialog", return_value=dialog
+        with (
+            mock.patch("ui.ensemble.window.Gtk.Entry", return_value=entry),
+            mock.patch("ui.ensemble.window.Adw.AlertDialog", return_value=dialog),
         ):
             page._present_save_dialog(["model-a", "model-b"])
 
@@ -101,9 +100,7 @@ class EnsembleSaveDialogTests(unittest.TestCase):
         self.assertNotIn("error", entry.css)
         assert dialog.response is not None
         dialog.response(dialog, "save")
-        page._do_save_ensemble.assert_called_once_with(
-            "My Mix", ["model-a", "model-b"]
-        )
+        page._do_save_ensemble.assert_called_once_with("My Mix", ["model-a", "model-b"])
 
 
 if __name__ == "__main__":

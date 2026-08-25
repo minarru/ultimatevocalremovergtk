@@ -12,8 +12,8 @@ headlessly. They live at the ``ui/`` root rather than under
 """
 
 from __future__ import annotations
-import typing
 
+import typing
 from typing import List, Tuple
 
 from bundled.constants import (
@@ -24,7 +24,7 @@ from bundled.constants import (
 )
 from core.model_display import parse_model_tag
 from core.model_identity import ModelIdentityService
-from core.stems import EnsemblePair, coerce_ensemble_pair, ui_label
+from core.stem_pairs import normalize_stem_pair_id
 
 from .settings_bind import enum_value, get_flat
 
@@ -40,10 +40,10 @@ _SEP = " · "
 #: ``ui.views.base._SECONDARY_SLOTS``. Only the first entry applies unless the
 #: run uses four sources -- see :func:`four_stem_secondaries_apply`.
 _SECONDARY_PAIRS: Tuple[Tuple[str, str], ...] = (
-    ("voc_inst", ui_label(EnsemblePair.VOCALS_INSTRUMENTAL)),
-    ("other", ui_label(EnsemblePair.OTHER)),
-    ("bass", ui_label(EnsemblePair.BASS)),
-    ("drums", ui_label(EnsemblePair.DRUMS)),
+    ("voc_inst", "Vocals/Instrumental"),
+    ("other", "Other/No Other"),
+    ("bass", "Bass/No Bass"),
+    ("drums", "Drums/No Drums"),
 )
 
 
@@ -77,10 +77,8 @@ def four_stem_secondaries_apply(settings: typing.Any, process_method: str) -> bo
     """
     is_demucs = process_method == DEMUCS_ARCH_TYPE
     if settings.process.method == ENSEMBLE_MODE:
-        pair = coerce_ensemble_pair(settings.ensemble.main_stem)
-        return pair is EnsemblePair.FOUR_STEM or (
-            pair is EnsemblePair.MULTI_STEM and is_demucs
-        )
+        pair_id = normalize_stem_pair_id(settings.ensemble.main_stem)
+        return pair_id == "mode.four_stem" or (pair_id == "mode.multi_stem" and is_demucs)
     return is_demucs and settings.demucs.stems == ALL_STEMS
 
 
@@ -103,9 +101,7 @@ def secondary_models_summary(
     pairs = _SECONDARY_PAIRS if four_stem else _SECONDARY_PAIRS[:1]
     parts: List[str] = []
     for slot, label in pairs:
-        name = _model_label(
-            get_flat(settings, f"{prefix}_{slot}_secondary_model", NO_MODEL), repo
-        )
+        name = _model_label(get_flat(settings, f"{prefix}_{slot}_secondary_model", NO_MODEL), repo)
         if not name:
             continue
         scale = get_flat(settings, f"{prefix}_{slot}_secondary_model_scale", 0.9)

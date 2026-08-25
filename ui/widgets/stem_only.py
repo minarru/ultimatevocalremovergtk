@@ -1,8 +1,8 @@
 """Save-stems controls: exclusive export, MDX subset, and Demucs focus."""
 
 from __future__ import annotations
-import typing
 
+import typing
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
@@ -27,16 +27,12 @@ from bundled.constants import (
     VOCAL_STEM,
     secondary_stem,
 )
-
 from core.model_stem_semantics import (
     VOCALS_OTHER_DISPLAY_OVERRIDES,
     stem_display_overrides,
 )
+from core.stem_roles import StemLiteral
 from core.stem_selection import (
-    DemucsView,
-    ExclusiveView,
-    StemSelectionState,
-    SubsetView,
     _FOCUS_INSTRUMENTAL,
     _FOCUS_VOCALS,
     _QUICK_ALL,
@@ -44,14 +40,18 @@ from core.stem_selection import (
     _QUICK_VOCALS,
     _SUBSET_CUSTOM,
     _TOGGLE_ALL,
+    DemucsView,
+    ExclusiveView,
+    StemSelectionState,
+    SubsetView,
 )
 from core.stems import (
-    EnsemblePair,
     StemBucket,
     StemRoute,
     bucket_for_model_stem,
     canonical_stem_alias,
     concept_is,
+    persisted_stem_focus,
 )
 
 from ..dialogs.utils import present_modal_dialog, set_form_dialog_content
@@ -72,6 +72,8 @@ from .rows import get_combo_value, make_combo_row, set_combo_tag_values, set_com
 
 # Stable display order for "<stem> Only" entries.
 _STEM_ONLY_ORDER = (INST_STEM, VOCAL_STEM, BASS_STEM, DRUM_STEM, OTHER_STEM)
+_CHOOSE_STEM = "choose"
+_CHOOSE_STEM_LABEL = "Choose Stem"
 
 STEM_ONLY_ICON_FALLBACK = "audio-x-generic-symbolic"
 
@@ -167,7 +169,9 @@ def stem_display_label(stem: Optional[str], *, overrides: Optional[Dict[str, str
 
 
 def stem_only_tooltip(stem: str, *, overrides: Optional[Dict[str, str]] = None) -> str:
-    return f"Export only {stem_display_label(stem, overrides=overrides)}; skip the other output file"
+    return (
+        f"Export only {stem_display_label(stem, overrides=overrides)}; skip the other output file"
+    )
 
 
 _QUICK_EXPORT_LABELS = {
@@ -220,6 +224,27 @@ def build_stem_only_options(
     options = [
         StemOnlyOption(_TOGGLE_ALL, STEM_ONLY_ALL_HINT, ALL_STEMS, ALL_STEMS_ICON, None),
     ]
+    if routes and any(
+        not isinstance(route.role, StemLiteral) or not route.role.tag.startswith("legacy:")
+        for route in routes
+    ):
+        ordered_routes = sorted(routes, key=lambda route: not route.logical_primary)
+        for index, route in enumerate(ordered_routes):
+            stored_id = persisted_stem_focus(route)
+            if not stored_id:
+                continue
+            settings_key = primary_key if index == 0 else secondary_key
+            options.append(
+                StemOnlyOption(
+                    stored_id,
+                    f"Export only {route.label}; skip the other output file",
+                    route.label,
+                    stem_only_icon(route.label),
+                    settings_key,
+                )
+            )
+        if len(options) > 1:
+            return options
     if primary_stem and secondary_stem:
         entries = [
             (primary_stem, primary_key),
@@ -242,9 +267,7 @@ def build_stem_only_options(
                         StemBucket.BACKING_VOCALS,
                     )
                     else 1,
-                    _stem_only_rank(
-                        stem_display_label(entry[0], overrides=stem_label_overrides)
-                    ),
+                    _stem_only_rank(stem_display_label(entry[0], overrides=stem_label_overrides)),
                 )
             )
         else:
@@ -295,11 +318,7 @@ def _exclusive_option_ids(
     unused = list(routes)
     for stem in (primary_stem, secondary_stem):
         match = next(
-            (
-                route
-                for route in unused
-                if route.native is not None and route.native.matches(stem)
-            ),
+            (route for route in unused if route.native is not None and route.native.matches(stem)),
             None,
         )
         if match is not None:
@@ -321,11 +340,7 @@ def _subset_option_ids(
     unused = [route for route in routes if route.native is not None]
     for stem in stems:
         match = next(
-            (
-                route
-                for route in unused
-                if route.native is not None and route.native.matches(stem)
-            ),
+            (route for route in unused if route.native is not None and route.native.matches(stem)),
             None,
         )
         if match is not None:
@@ -334,7 +349,9 @@ def _subset_option_ids(
     return ids
 
 
-def _fill_export_combo(row: Adw.ComboRow, options: List[StemOnlyOption]) -> Dict[str, StemOnlyOption]:
+def _fill_export_combo(
+    row: Adw.ComboRow, options: List[StemOnlyOption]
+) -> Dict[str, StemOnlyOption]:
     set_combo_tag_values(row, [(opt.name, opt.display_label) for opt in options])
     return {opt.name: opt for opt in options}
 
@@ -366,6 +383,7 @@ class SaveStemsSection:
         self._custom_checks: Dict[str, Gtk.CheckButton] = {}
         self._host: Optional[Adw.PreferencesGroup] = None
         self._section_visible = False
+        self._repick_required = False
 
         self._exclusive_row = make_combo_row("Export", [])
         self._exclusive_row.connect("notify::selected", self._on_exclusive_changed)
@@ -387,12 +405,19 @@ class SaveStemsSection:
         self._demucs_export_row = make_combo_row("Export", [])
         self._demucs_export_row.connect("notify::selected", self._on_demucs_export_changed)
 
+        self.selection_warning_row = Adw.ActionRow(
+            title="Stem selection needs review",
+            subtitle=("Available stem roles changed. Choose a stem again before starting."),
+            visible=False,
+        )
+
         self._rows = (
             self._exclusive_row,
             self._quick_row,
             self._custom_row,
             self._demucs_focus_row,
             self._demucs_export_row,
+            self.selection_warning_row,
         )
         # Holder until attach_to() reparents rows into the outer Save stems group.
         self._holder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -503,14 +528,6 @@ class SaveStemsSection:
         self._state.stem_count = value
 
     @property
-    def _exclusive_pair(self) -> Optional[EnsemblePair]:
-        return self._state.ensemble_pair
-
-    @_exclusive_pair.setter
-    def _exclusive_pair(self, value: Optional[EnsemblePair]) -> None:
-        self._state.ensemble_pair = value
-
-    @property
     def _demucs_export_primary(self) -> Optional[str]:
         return self._state.demucs_export_primary
 
@@ -617,6 +634,7 @@ class SaveStemsSection:
         self._stem_label_overrides = None
         self._export_semantics_note = ""
         self._section_visible = False
+        self._clear_refresh_repick()
         self._hide_all_rows()
 
     def configure_exclusive(
@@ -633,8 +651,9 @@ class SaveStemsSection:
         is_karaoke_curated: bool = False,
         is_bv: bool = False,
         stem_count: int = 2,
-        ensemble_pair: Optional[EnsemblePair] = None,
+        routes: Optional[Sequence[StemRoute]] = None,
     ) -> None:
+        self._clear_refresh_repick()
         self._state.configure_exclusive(
             primary_stem=primary_stem,
             secondary_stem=secondary_stem,
@@ -645,8 +664,9 @@ class SaveStemsSection:
             is_karaoke_curated=is_karaoke_curated,
             is_bv=is_bv,
             stem_count=stem_count,
-            ensemble_pair=ensemble_pair,
         )
+        if routes is not None:
+            self._state.routes = tuple(routes)
         self._stem_label_overrides = stem_label_overrides
         self._export_semantics_note = export_semantics_note or ""
         self._hide_all_rows()
@@ -681,13 +701,17 @@ class SaveStemsSection:
         has_model: bool = True,
         stem_label_overrides: Optional[Dict[str, str]] = None,
         export_semantics_note: str = "",
+        routes: Optional[Sequence[StemRoute]] = None,
     ) -> None:
+        self._clear_refresh_repick()
         self._state.configure_subset(
             stems=stems,
             primary_key=primary_key,
             secondary_key=secondary_key,
             has_model=has_model,
         )
+        if routes is not None:
+            self._state.routes = tuple(routes)
         self._stem_label_overrides = stem_label_overrides
         self._export_semantics_note = export_semantics_note or ""
         self._hide_all_rows()
@@ -725,7 +749,9 @@ class SaveStemsSection:
         has_model: bool = True,
         demucs_stem_count: int = 4,
         export_semantics_note: str = "",
+        routes: Optional[Sequence[StemRoute]] = None,
     ) -> None:
+        self._clear_refresh_repick()
         self._state.configure_demucs(
             focus_stems=focus_stems,
             primary_key=primary_key,
@@ -733,6 +759,15 @@ class SaveStemsSection:
             has_model=has_model,
             demucs_stem_count=demucs_stem_count,
         )
+        if routes is not None:
+            self._state.routes = tuple(routes)
+            self._state.demucs_focus_map = {
+                **self._state.demucs_focus_map,
+                **{
+                    route.concept: (route.native.raw if route.native is not None else route.concept)
+                    for route in routes
+                },
+            }
         self._stem_label_overrides = None
         self._export_semantics_note = export_semantics_note or ""
         self._hide_all_rows()
@@ -741,10 +776,11 @@ class SaveStemsSection:
             return
         self._section_visible = True
         items: List[Tuple[str, str]] = []
-        ids = _subset_option_ids(
-            [entry for entry in focus_stems if entry not in (ALL_STEMS, _FOCUS_INSTRUMENTAL, _FOCUS_VOCALS)],
-            self._state.routes,
-        )
+        route_by_native = {
+            route.native.casefold(): route
+            for route in self._state.routes
+            if route.native is not None
+        }
         for entry in focus_stems:
             if entry == ALL_STEMS:
                 name, label = _QUICK_ALL, ALL_STEMS
@@ -755,8 +791,18 @@ class SaveStemsSection:
                 name = _FOCUS_VOCALS
                 label = _QUICK_EXPORT_LABELS[_QUICK_VOCALS]
             else:
-                name = ids.get(entry, entry)
-                label = stem_display_label(entry)
+                route = route_by_native.get(str(entry).strip().casefold())
+                if route is None:
+                    route = next(
+                        (
+                            candidate
+                            for candidate in self._state.routes
+                            if candidate.concept == entry
+                        ),
+                        None,
+                    )
+                name = route.concept if route is not None else entry
+                label = route.label if route is not None else stem_display_label(entry)
             items.append((name, label))
         was_loading = self._loading
         self._loading = True
@@ -789,6 +835,8 @@ class SaveStemsSection:
         self._refresh_primary_semantics()
 
     def persist_to_settings(self) -> None:
+        if self._repick_required:
+            return
         if self.mode == "exclusive":
             self._state.write(
                 self.settings,
@@ -831,6 +879,8 @@ class SaveStemsSection:
         return [self.export_summary()]
 
     def expected_output_count(self) -> int:
+        if self._repick_required:
+            return 0
         return self._state.expected_output_count(
             exclusive_choice=get_combo_value(self._exclusive_row) or _TOGGLE_ALL,
             demucs_active=self._demucs_active_name(),
@@ -847,11 +897,50 @@ class SaveStemsSection:
             return DEMUCS_STEMS_SAVE_HELP
         return SAVE_STEM_ONLY_HELP
 
+    @property
+    def repick_required(self) -> bool:
+        return self._repick_required
+
+    def require_refresh_repick(self, previous_focus: str) -> bool:
+        """Require an explicit pick when a stored exact role disappeared."""
+        focus = str(previous_focus or "")
+        if not focus or focus in {"primary", "secondary"}:
+            self._clear_refresh_repick()
+            return False
+        valid = any(persisted_stem_focus(route) == focus for route in self._state.routes)
+        if valid:
+            self._clear_refresh_repick()
+            return False
+        self._repick_required = True
+        self.selection_warning_row.set_visible(True)
+        if self.mode == "exclusive":
+            options = [
+                StemOnlyOption(
+                    _CHOOSE_STEM, "Choose an available stem", _CHOOSE_STEM_LABEL, None, None
+                ),
+                *self._exclusive_options.values(),
+            ]
+            was_loading = self._loading
+            self._loading = True
+            try:
+                self._exclusive_options = _fill_export_combo(self._exclusive_row, options)
+                set_combo_value(self._exclusive_row, _CHOOSE_STEM)
+            finally:
+                self._loading = was_loading
+        return True
+
+    def _clear_refresh_repick(self) -> None:
+        self._repick_required = False
+        warning = getattr(self, "selection_warning_row", None)
+        if warning is not None:
+            warning.set_visible(False)
+
     # -- Exclusive -------------------------------------------------------------
 
     def _on_exclusive_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
+        self._clear_refresh_repick()
         self._notify()
 
     # -- Subset / custom stems -------------------------------------------------
@@ -891,6 +980,22 @@ class SaveStemsSection:
     def _subset_token_id(self, stem: str) -> str:
         return self._subset_ids().get(stem, stem)
 
+    def _subset_route(self, stem: str) -> Optional[StemRoute]:
+        return next(
+            (
+                route
+                for route in self._state.routes
+                if route.native is not None and route.native.matches(stem)
+            ),
+            None,
+        )
+
+    def _subset_label(self, stem: str) -> str:
+        route = self._subset_route(stem)
+        if route is not None:
+            return route.label
+        return stem_display_label(stem, overrides=self._stem_label_overrides)
+
     def _natives_in_selection(self, selected: Set[str]) -> List[str]:
         ids = self._subset_ids()
         return [
@@ -924,13 +1029,13 @@ class SaveStemsSection:
         selected = self._natives_in_selection(self._custom_selected)
         if not selected:
             return "Exporting all stems"
-        if len(selected) == 1 and concept_is(
-            selected[0], StemBucket.OTHER, stem_count=len(self._subset_stems)
+        if (
+            len(selected) == 1
+            and self._subset_route(selected[0]) is None
+            and concept_is(selected[0], StemBucket.OTHER, stem_count=len(self._subset_stems))
         ):
             return "Exporting Other stem"
-        return "Exporting " + ", ".join(
-            stem_display_label(stem, overrides=self._stem_label_overrides) for stem in selected
-        )
+        return "Exporting " + ", ".join(self._subset_label(stem) for stem in selected)
 
     def _refresh_custom_subtitle(self) -> None:
         if self._subset_mode != "custom":
@@ -940,8 +1045,7 @@ class SaveStemsSection:
             set_row_subtitle(self._custom_row, ALL_STEMS)
             return
         labels = [
-            stem_display_label(stem, overrides=self._stem_label_overrides)
-            for stem in self._natives_in_selection(self._custom_selected)
+            self._subset_label(stem) for stem in self._natives_in_selection(self._custom_selected)
         ]
         set_row_subtitle(self._custom_row, ", ".join(labels) if labels else ALL_STEMS)
 
@@ -963,7 +1067,7 @@ class SaveStemsSection:
 
         ids = self._subset_ids()
         for stem in self._subset_stems:
-            label = stem_display_label(stem, overrides=self._stem_label_overrides)
+            label = self._subset_label(stem)
             row = Adw.ActionRow(title=label)
             check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
             check.connect("toggled", self._on_draft_stem_toggled)
@@ -985,8 +1089,7 @@ class SaveStemsSection:
                 check = self._custom_checks.get(concept)
                 if check is not None:
                     check.set_active(
-                        (not self._draft_custom_all)
-                        and concept in self._draft_custom_selected
+                        (not self._draft_custom_all) and concept in self._draft_custom_selected
                     )
         finally:
             self._loading = was_loading
@@ -1001,7 +1104,9 @@ class SaveStemsSection:
         self._rebuild_custom_checklist()
         self._sync_draft_checks()
         parent = self.widget.get_root()
-        present_modal_dialog(self._custom_dialog, parent if isinstance(parent, Gtk.Window) else None)
+        present_modal_dialog(
+            self._custom_dialog, parent if isinstance(parent, Gtk.Window) else None
+        )
 
     def _on_draft_all_toggled(self, button: Gtk.CheckButton) -> None:
         if self._loading or not button.get_active():
@@ -1070,6 +1175,7 @@ class SaveStemsSection:
         self._apply_subset_dimming()
         tip = self._export_semantics_note or _QUICK_EXPORT_HINTS.get(mode) or MDX_STEMS_HINT
         self._quick_row.set_tooltip_text(tip)
+        self._clear_refresh_repick()
         self._notify()
 
     # -- Demucs ----------------------------------------------------------------
@@ -1110,9 +1216,7 @@ class SaveStemsSection:
             try:
                 self._demucs_export_options = _fill_export_combo(self._demucs_export_row, options)
                 if not from_settings:
-                    self._state.ensure_demucs_export_defaults(
-                        self.settings, native=primary
-                    )
+                    self._state.ensure_demucs_export_defaults(self.settings, native=primary)
                 focus = str(getattr(self.settings.process, "stem_focus", "") or "")
                 set_combo_value(
                     self._demucs_export_row,
@@ -1143,11 +1247,13 @@ class SaveStemsSection:
         if self._loading:
             return
         self._update_demucs_export_visibility(from_settings=False)
+        self._clear_refresh_repick()
         self._notify()
 
     def _on_demucs_export_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
+        self._clear_refresh_repick()
         self._notify()
 
     # -- Semantics / notify ----------------------------------------------------
@@ -1206,7 +1312,7 @@ class SaveStemsSection:
                 chips.setdefault(concept, proxy)
             return chips
 
-        def rebuild(self, stems: List[str], *, stem_label_overrides: typing.Any=None) -> None:
+        def rebuild(self, stems: List[str], *, stem_label_overrides: typing.Any = None) -> None:
             self._section._subset_stems = list(stems)
             if stem_label_overrides is not None:
                 self._section._stem_label_overrides = stem_label_overrides

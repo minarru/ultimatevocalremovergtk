@@ -42,9 +42,7 @@ def _arr(fill: float) -> np.ndarray:
 
 def _split_bucket(stem: str | None, *, is_bv: bool = False) -> StemBucket:
     """The splitter-role concept for a native stem (the old remap's job)."""
-    return bucket_for_model_stem(
-        stem or "", stem_count=2, is_bv=is_bv, is_vocal_split=True
-    )
+    return bucket_for_model_stem(stem or "", stem_count=2, is_bv=is_bv, is_vocal_split=True)
 
 
 def _semantic_model(
@@ -557,7 +555,9 @@ class WriteAudioGuardTests(unittest.TestCase):
         sep.deverb_progress_callback = MagicMock(return_value=None)
         sep.check_run_control = MagicMock()
         with (
-            patch("engines.stem_writer.vr_denoiser", return_value=(_arr(0.5).T, _arr(0.5).T)) as deverb,
+            patch(
+                "engines.stem_writer.vr_denoiser", return_value=(_arr(0.5).T, _arr(0.5).T)
+            ) as deverb,
             patch("engines.stem_writer.sf.write"),
         ):
             sep.write_audio("/tmp/x.wav", _arr(1.0).T, 44100, stem_name="vocals")
@@ -727,9 +727,7 @@ class _SplitPairFake:
 
 
 class MdxcVocalSplitSourceTests(unittest.TestCase):
-    def _build(
-        self, sources: dict[str, np.ndarray], *, is_bv: bool = False
-    ) -> dict[str, Any]:
+    def _build(self, sources: dict[str, np.ndarray], *, is_bv: bool = False) -> dict[str, Any]:
         fake = _SplitPairFake(is_bv=is_bv)
         return SeperateMDXC._vocal_split_pair_sources(
             fake,  # type: ignore[arg-type]
@@ -739,11 +737,7 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
 
     def test_route_less_title_case_pair_preserves_raw_keys(self) -> None:
         self.assertEqual(
-            list(
-                self._build(
-                    {"Vocals": _arr(1.0), "Instrumental": _arr(2.0)}
-                )
-            ),
+            list(self._build({"Vocals": _arr(1.0), "Instrumental": _arr(2.0)})),
             ["Vocals", "Instrumental"],
         )
 
@@ -806,7 +800,9 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
         from engines.stem_writer import ExportPlan
 
         with (
-            patch("engines.mdx_c_engine.prepare_mix", return_value=np.ones((2, 441), dtype=np.float32)),
+            patch(
+                "engines.mdx_c_engine.prepare_mix", return_value=np.ones((2, 441), dtype=np.float32)
+            ),
             patch(
                 "engines.mdx_c_engine.librosa.resample",
                 side_effect=lambda audio, *, orig_sr, target_sr, axis: np.ones(
@@ -816,11 +812,14 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
         ):
             plan = SeperateMDXC.seperate(fake)  # type: ignore[arg-type]
 
-        self.assertEqual(captured, {
-            "source_length": 441,
-            "mix_length": 441,
-            "routes": (),
-        })
+        self.assertEqual(
+            captured,
+            {
+                "source_length": 441,
+                "mix_length": 441,
+                "routes": (),
+            },
+        )
         self.assertIsInstance(plan, ExportPlan)
         self.assertEqual(plan.sources, {})
         self.assertEqual(plan.samplerate, 44100)
@@ -915,9 +914,7 @@ class MdxcVocalSplitSourceTests(unittest.TestCase):
         )
 
     def test_pair_sources_are_channel_last_for_export(self) -> None:
-        built = self._build(
-            {"Vocals": _arr(1.0), "Instrumental": _arr(2.0)}
-        )
+        built = self._build({"Vocals": _arr(1.0), "Instrumental": _arr(2.0)})
         self.assertEqual(built["Vocals"].shape, (4, 2))
         self.assertEqual(built["Instrumental"].shape, (4, 2))
 

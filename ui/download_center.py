@@ -1,10 +1,10 @@
 """Download Center window — catalogue browser and download queue."""
 
 from __future__ import annotations
-import typing
 
 import os
 import threading
+import typing
 
 from gi.repository import Adw, Gio, Gtk
 
@@ -16,9 +16,18 @@ from bundled.constants import (
     NO_NEW_MODELS,
     VR_ARCH_TYPE,
 )
+from core import paths
 from core.debug_log import debug
 from core.download_queue import DownloadQueue
 from core.downloads import DownloadManager
+from core.model_catalogue import (
+    catalogue_entry_meta,
+    catalogue_label_matches,
+    filter_catalogue_labels,
+    project_catalogue_display,
+)
+from core.model_identity import FAMILY_BY_ARCH
+from core.model_naming import canonical_display_name
 from core.model_scores import (
     PURPOSE_ALL,
     PURPOSE_FILTER_OPTIONS,
@@ -27,28 +36,18 @@ from core.model_scores import (
     SORT_SDR,
     format_sdr_subtitle,
     parse_sdr_score,
+    primary_sdr,
     purpose_for_label,
-    sort_labels_by_sdr,
+    sdr_for_files,
 )
-from core import paths
 
 from .dialogs.utils import close_on_escape
 from .dispatch import idle_on_main
 from .hints import set_icon_button_a11y
-from core.model_naming import canonical_display_name
-from core.model_catalogue import (
-    catalogue_entry_meta,
-    catalogue_label_matches,
-    filter_catalogue_labels,
-    project_catalogue_display,
-)
-from core.model_identity import FAMILY_BY_ARCH
-from core.model_scores import primary_sdr, sdr_for_files
-
 from .markup import set_row_subtitle, set_row_title
 from .spacing import set_inset
-from .widgets.rows import get_combo_value, make_combo_row, set_combo_value
 from .widget_state import drop, fetch, stash
+from .widgets.rows import get_combo_value, make_combo_row, set_combo_value
 
 _NETWORKS = [
     ("VR Arch", VR_ARCH_TYPE),
@@ -60,6 +59,23 @@ _NETWORKS = [
 ]
 
 _CLAMP_MAX_WIDTH = 800
+
+
+def catalogue_semantics_subtitle(meta: typing.Any) -> str:
+    """Render reviewed route labels, or an explicit raw-output fallback."""
+    projection = getattr(meta, "stem_semantics", None)
+    routes = tuple(getattr(projection, "routes", ()) or ())
+    if getattr(projection, "status", "raw") == "reviewed" and routes:
+        ordered = sorted(routes, key=lambda route: not route.logical_primary)
+        stems = ", ".join(route.display for route in ordered)
+        intent = str(getattr(meta, "intent", "") or "")
+        purpose = next(
+            (label for value, label in PURPOSE_FILTER_OPTIONS if value == intent),
+            "Reviewed",
+        )
+        return f"{purpose} · {stems}"
+    stems = ", ".join(str(stem) for stem in (getattr(meta, "stems", ()) or ()))
+    return f"Raw outputs · {stems}" if stems else "Raw outputs"
 
 
 def catalogue_matches(
@@ -75,7 +91,10 @@ def catalogue_matches(
     so a user typing what the row *shows* finds it.
     """
     return filter_catalogue_labels(
-        names, query, purpose=purpose, intents=dict(intents or {}),
+        names,
+        query,
+        purpose=purpose,
+        intents=dict(intents or {}),
         sentinels=(NO_NEW_MODELS, NO_CONNECTION),
     )
 
@@ -227,9 +246,7 @@ class DownloadCenterWindow:
             subtitle="Hide catalogue models this build cannot run yet",
         )
         self.hide_unsupported_row.set_active(False)
-        self.hide_unsupported_row.connect(
-            "notify::active", self._on_hide_unsupported_changed
-        )
+        self.hide_unsupported_row.connect("notify::active", self._on_hide_unsupported_changed)
         filter_group.add(self.hide_unsupported_row)
 
         self.refresh_button = Gtk.Button(icon_name="view-refresh-symbolic")
@@ -339,9 +356,7 @@ class DownloadCenterWindow:
         query = search.get_text().strip().casefold()
         reason = fetch(action, "_uvr_unsupported_reason", "")
         display = fetch(action, "_uvr_display_name", "")
-        return catalogue_label_matches(
-            str(label), query, extra=f"{display} {reason}".strip()
-        )
+        return catalogue_label_matches(str(label), query, extra=f"{display} {reason}".strip())
 
     def _row_sort_key(self, row: typing.Any) -> tuple[int, int, float, str]:
         """Order key: supported first, then the active sort mode, then name."""
@@ -416,7 +431,7 @@ class DownloadCenterWindow:
         which covers the handful of models whose SDR lives only in their name.
         """
         meta = self.manager.catalogue_meta.get(name)
-        stems_text = ", ".join(meta.stems) if meta is not None and meta.stems else ""
+        stems_text = catalogue_semantics_subtitle(meta) if meta is not None else ""
         if meta is not None:
             # stem_count disambiguates a 2-stem 'other' (meaning instrumental)
             # from a 4-stem model's real 'other' residual.
@@ -528,10 +543,9 @@ class DownloadCenterWindow:
             if isinstance(jobs_obj, (list, tuple))
             else []
         )
-        pending = [
-            url for url, path in jobs if url and not os.path.isfile(path)
-        ]
+        pending = [url for url, path in jobs if url and not os.path.isfile(path)]
         if not pending:
+
             def worker() -> None:
                 text = self.manager.describe_selection_download_size(name, arch)
                 idle_on_main(self._apply_row_size, lookup_id, key, text)
@@ -653,9 +667,7 @@ class DownloadCenterWindow:
                         f"{total} models available — check one or more, then Download"
                     )
                 else:
-                    self._set_catalogue_status(
-                        "All available models are already installed"
-                    )
+                    self._set_catalogue_status("All available models are already installed")
         self._update_tab_badges()
 
     def start_refresh(self) -> None:
@@ -886,11 +898,7 @@ class DownloadCenterWindow:
         """Return curated purpose metadata for the current catalogue rows."""
         manager = getattr(self, "manager", None)
         metadata = getattr(manager, "catalogue_meta", {})
-        return {
-            label: meta.intent
-            for label, meta in metadata.items()
-            if meta.intent
-        }
+        return {label: meta.intent for label, meta in metadata.items() if meta.intent}
 
     def _catalogue_intent(self, label: str) -> str | None:
         manager = getattr(self, "manager", None)
@@ -940,9 +948,9 @@ class DownloadCenterWindow:
         """Prioritize visible rows, then drain the rest while DC is open."""
         self._stem_fetch_armed = False
         from core.catalogue_stem_cache import (
+            catalogue_stems_enabled,
             enqueue_missing,
             ensure_worker_started,
-            catalogue_stems_enabled,
         )
 
         if not catalogue_stems_enabled():
@@ -982,7 +990,7 @@ class DownloadCenterWindow:
             if fetch(action, "_uvr_unsupported", False):
                 continue
             meta = self.manager.catalogue_meta.get(name)
-            stems_text = ", ".join(meta.stems) if meta is not None and meta.stems else ""
+            stems_text = catalogue_semantics_subtitle(meta) if meta is not None else ""
             stash(action, "_uvr_stems_text", stems_text)
             set_row_subtitle(
                 action,
@@ -1018,9 +1026,7 @@ class DownloadCenterWindow:
             )
             return
         if total and unsupported:
-            self._set_catalogue_status(
-                f"{total} downloadable · {unsupported} unsupported shown"
-            )
+            self._set_catalogue_status(f"{total} downloadable · {unsupported} unsupported shown")
         elif total:
             self._set_catalogue_status(
                 f"{total} models available — check one or more, then Download"
@@ -1080,9 +1086,7 @@ class DownloadCenterWindow:
             return
         page.set_title(title)
         page.set_description(description or None)
-        page.set_icon_name(
-            "network-offline-symbolic" if offline else "edit-find-symbolic"
-        )
+        page.set_icon_name("network-offline-symbolic" if offline else "edit-find-symbolic")
         child = page.get_child()
         if child is not None:
             child.set_visible(offline)
@@ -1129,9 +1133,8 @@ class DownloadCenterWindow:
                     "No matching models",
                     description="No models match this purpose filter.",
                 )
-        elif (
-            not catalogue_matches(names, "", purpose=PURPOSE_ALL)
-            and not (self._unsupported.get(arch) or [])
+        elif not catalogue_matches(names, "", purpose=PURPOSE_ALL) and not (
+            self._unsupported.get(arch) or []
         ):
             self._set_catalogue_page_message(
                 arch,
@@ -1149,8 +1152,7 @@ class DownloadCenterWindow:
             rows = [
                 (label, reason)
                 for label, reason in rows
-                if purpose_for_label(label, intent=self._catalogue_intent(label))
-                == self._purpose
+                if purpose_for_label(label, intent=self._catalogue_intent(label)) == self._purpose
             ]
         return [
             (label, reason)

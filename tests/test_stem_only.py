@@ -1,6 +1,5 @@
 import typing
 import unittest
-from unittest.mock import MagicMock
 
 from bundled.constants import (
     ALL_STEMS,
@@ -12,6 +11,7 @@ from bundled.constants import (
     VOCAL_STEM,
 )
 from core.settings import Settings
+from core.stem_roles import StemId, StemLiteral, StemRoleId
 from core.stem_selection import (
     _FOCUS_VOCALS,
     _QUICK_ALL,
@@ -20,11 +20,13 @@ from core.stem_selection import (
     _TOGGLE_ALL,
     _stem_focus_tag,
 )
+from core.stems import StemRoute
 from ui.widgets.stem_only import (
-    SaveStemsSection,
     _LEAD_VOCAL_PAIR_LABELS,
+    SaveStemsSection,
     build_stem_only_options,
     canonical_stem_name,
+    get_combo_value,
     roformer_lead_vocal_label_overrides,
     set_combo_value,
     stem_display_label,
@@ -32,7 +34,7 @@ from ui.widgets.stem_only import (
 
 
 class _Settings(Settings):
-    def __init__(self, data: typing.Any=None):
+    def __init__(self, data: typing.Any = None):
         super().__init__()
         self.update(data or {})
 
@@ -118,6 +120,71 @@ class StemDisplayLabelTests(unittest.TestCase):
 
 
 class BuildStemOnlyOptionsTests(unittest.TestCase):
+    def test_reviewed_routes_supply_role_ids_labels_and_logical_primary_order(self):
+        routes = (
+            StemRoute(
+                StemId("other"),
+                StemRoleId("mix.instrumental_with_backing_vocals"),
+                label="Instrumental with Backing Vocals",
+                logical_primary=False,
+            ),
+            StemRoute(
+                StemId("vocals"),
+                StemRoleId("vocal.lead"),
+                label="Lead Vocals",
+                logical_primary=True,
+            ),
+        )
+        options = build_stem_only_options(
+            primary_stem="other",
+            secondary_stem="vocals",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            routes=routes,
+        )
+
+        self.assertEqual(
+            [(option.name, option.display_label, option.settings_key) for option in options[1:]],
+            [
+                ("vocal.lead", "Lead Vocals", "is_primary_stem_only"),
+                (
+                    "mix.instrumental_with_backing_vocals",
+                    "Instrumental with Backing Vocals",
+                    "is_secondary_stem_only",
+                ),
+            ],
+        )
+
+    def test_raw_routes_keep_raw_labels_and_scoped_ids(self):
+        routes = (
+            StemRoute(
+                StemId("Mystery Lead"),
+                StemLiteral("Mystery Lead"),
+                label="Mystery Lead",
+                logical_primary=True,
+                selection_scope="fixture-scope",
+            ),
+            StemRoute(
+                StemId("Mystery Back"),
+                StemLiteral("Mystery Back"),
+                label="Mystery Back",
+                selection_scope="fixture-scope",
+            ),
+        )
+        options = build_stem_only_options(
+            primary_stem="Mystery Lead",
+            secondary_stem="Mystery Back",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            routes=routes,
+        )
+
+        self.assertEqual(
+            [option.display_label for option in options[1:]],
+            ["Mystery Lead", "Mystery Back"],
+        )
+        self.assertTrue(options[1].name.startswith("raw:mystery lead#scope="))
+
     def test_all_stems_is_first_option(self):
         options = build_stem_only_options(
             primary_stem=VOCAL_STEM,
@@ -166,6 +233,62 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertEqual(self.section.export_summary(), "Choose a model to configure stem export")
         self.assertFalse(self.section._section_visible)
         self.assertFalse(self.section._exclusive_row.get_visible())
+
+    def test_refresh_marks_a_removed_exact_role_for_explicit_repick(self):
+        self.settings.process.stem_focus = "vocal.lead"
+        self.section.configure_exclusive(
+            primary_stem="vocals",
+            secondary_stem="other",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+            routes=(
+                StemRoute(
+                    StemId("vocals"),
+                    StemRoleId("vocal.vocals"),
+                    label="Vocals",
+                    logical_primary=True,
+                ),
+                StemRoute(
+                    StemId("other"),
+                    StemRoleId("mix.instrumental"),
+                    label="Instrumental",
+                ),
+            ),
+        )
+
+        self.assertTrue(self.section.require_refresh_repick("vocal.lead"))
+        self.assertTrue(self.section.repick_required)
+        self.assertTrue(self.section.selection_warning_row.get_visible())
+        self.assertEqual(get_combo_value(self.section._exclusive_row), "choose")
+
+    def test_refresh_preserves_a_still_valid_exact_role(self) -> None:
+        self.settings.process.stem_focus = "vocal.lead"
+        self.section.configure_exclusive(
+            primary_stem="nativeLead",
+            secondary_stem="nativeBacking",
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+            routes=(
+                StemRoute(
+                    StemId("nativeLead"),
+                    StemRoleId("vocal.lead"),
+                    label="Lead Vocals",
+                    logical_primary=True,
+                ),
+                StemRoute(
+                    StemId("nativeBacking"),
+                    StemRoleId("vocal.backing"),
+                    label="Backing Vocals",
+                ),
+            ),
+        )
+        self.section.sync_from_settings()
+
+        self.assertFalse(self.section.require_refresh_repick("vocal.lead"))
+        self.assertFalse(self.section.repick_required)
+        self.assertEqual(get_combo_value(self.section._exclusive_row), "vocal.lead")
 
     def test_exclusive_sync_persist_round_trip(self):
         self.settings.process.stem_focus = "vocal.vocals"
@@ -291,6 +414,35 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertEqual(self.section._subset_mode, _QUICK_VOCALS)
         self.assertTrue(self.section._subset._chips[VOCAL_STEM].get_active())
 
+    def test_subset_rows_use_reviewed_route_ids_and_labels(self) -> None:
+        routes = (
+            StemRoute(
+                StemId("nativeLead"),
+                StemRoleId("vocal.lead"),
+                label="Lead Vocals",
+                logical_primary=True,
+            ),
+            StemRoute(
+                StemId("nativeBacking"),
+                StemRoleId("vocal.backing"),
+                label="Backing Vocals",
+            ),
+        )
+        self.section.configure_subset(
+            stems=["nativeLead", "nativeBacking"],
+            show_quick_export=False,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            has_model=True,
+            routes=routes,
+        )
+
+        self.assertEqual(self.section._subset_token_id("nativeLead"), "vocal.lead")
+        self.assertEqual(self.section._subset_label("nativeLead"), "Lead Vocals")
+        self.section._subset_mode = "custom"
+        self.section._set_custom_selection({"vocal.lead"})
+        self.assertEqual(self.section.export_summary(), "Exporting Lead Vocals")
+
     def test_subset_quick_instrumental_ui_clears_chips(self):
         self.section.configure_subset(
             stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM],
@@ -314,7 +466,9 @@ class SaveStemsSectionTests(unittest.TestCase):
         )
         self.section._subset_mode = "custom"
         self.section._subset.rebuild([VOCAL_STEM, BASS_STEM, DRUM_STEM])
-        self.section._subset.set_selection({BASS_STEM}, full_stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM])
+        self.section._subset.set_selection(
+            {BASS_STEM}, full_stems=[VOCAL_STEM, BASS_STEM, DRUM_STEM]
+        )
         self.section.persist_to_settings()
         self.assertEqual(self.settings["mdx_stems_selected"], [BASS_STEM])
         self.assertEqual(self.settings["mdx_stems"], BASS_STEM)
@@ -499,7 +653,6 @@ class SaveStemsSectionTests(unittest.TestCase):
 
     def test_ensemble_karaoke_vocals_focus_selects_lead(self) -> None:
         from bundled.constants import INST_WITH_BACKING_VOCALS_STEM, LEAD_VOCAL_STEM_LABEL
-        from core.stems import EnsemblePair
 
         self.settings.process.stem_focus = "vocal.lead"
         self.section.configure_exclusive(
@@ -508,14 +661,28 @@ class SaveStemsSectionTests(unittest.TestCase):
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
             has_model=True,
-            ensemble_pair=EnsemblePair.KARAOKE,
+            routes=(
+                StemRoute(
+                    None,
+                    StemRoleId("vocal.lead"),
+                    label=LEAD_VOCAL_STEM_LABEL,
+                    filename_tag="Lead Vocals",
+                    logical_primary=True,
+                ),
+                StemRoute(
+                    None,
+                    StemRoleId("mix.instrumental_with_backing_vocals"),
+                    label=INST_WITH_BACKING_VOCALS_STEM,
+                    filename_tag="Instrumental with Backing Vocals",
+                ),
+            ),
         )
         self.section.sync_from_settings()
         self.assertIn("Lead Vocal", self.section.export_summary())
 
     def test_ensemble_other_pair_instrumental_focus_does_not_select_other(self) -> None:
         from bundled.constants import NO_OTHER_STEM, OTHER_STEM
-        from core.stems import EnsemblePair, StemBucket
+        from core.stems import StemBucket
 
         self.settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
         self.section.configure_exclusive(
@@ -524,7 +691,6 @@ class SaveStemsSectionTests(unittest.TestCase):
             primary_key="is_primary_stem_only",
             secondary_key="is_secondary_stem_only",
             has_model=True,
-            ensemble_pair=EnsemblePair.OTHER,
         )
         self.section.sync_from_settings()
         self.assertIn("Exporting all outputs", self.section.export_summary())

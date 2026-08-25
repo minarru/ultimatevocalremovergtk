@@ -12,15 +12,34 @@ from unittest.mock import MagicMock, patch
 
 from core import Settings
 from core.stem_selection import (
+    _QUICK_ALL,
+    _TOGGLE_ALL,
     DemucsView,
     ExclusiveView,
     StemSelectionState,
-    _QUICK_ALL,
-    _TOGGLE_ALL,
 )
 
 
 class InactiveViewStemFocusTests(unittest.TestCase):
+    def test_separation_readiness_blocks_a_refresh_repick(self) -> None:
+        from ui.window import MainWindow
+
+        window = MainWindow.__new__(MainWindow)
+        window.input_row = MagicMock()
+        window.input_row.blocked_reason.return_value = None
+        window.output_row = MagicMock()
+        window.output_row.blocked_reason.return_value = None
+        window.context = MagicMock()
+        view = MagicMock()
+        view.has_model.return_value = True
+        view.save_stems.repick_required = True
+        window._active_view = lambda: view
+
+        self.assertEqual(
+            MainWindow._separation_blocked_reason(window),
+            "Choose a stem again after the model refresh",
+        )
+
     def test_demucs_quick_all_clears_stem_focus_when_written(self) -> None:
         """Documents why inactive Demucs must not persist during ``_flush_settings``."""
         settings = Settings.defaults()

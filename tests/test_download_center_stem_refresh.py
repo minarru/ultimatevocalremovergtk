@@ -10,8 +10,8 @@ from unittest import mock
 from bundled.constants import MDX_ARCH_TYPE
 from core.catalog_sources import EntryMeta
 from core.catalogue_stem_cache import StemCacheHit
+from core.catalogue_types import StemSemanticProjection, StemSemanticRoute
 from core.downloads import DownloadManager
-
 
 _YAML_URL = "https://example.test/model.yaml"
 
@@ -89,8 +89,60 @@ class ApplyCatalogueStemCacheTests(unittest.TestCase):
 
 
 class StemSubtitleDebounceTests(unittest.TestCase):
+    def test_reviewed_subtitle_uses_exact_route_labels_and_reviewed_purpose(self) -> None:
+        from ui.download_center import catalogue_semantics_subtitle
+
+        meta = EntryMeta(
+            label="K",
+            display="K",
+            arch=MDX_ARCH_TYPE,
+            files={},
+            stems=["vocals", "other"],
+            intent="karaoke",
+            stem_semantics=StemSemanticProjection(
+                "vocals",
+                "",
+                "vocal.lead",
+                "reviewed",
+                "full_mix",
+                (
+                    StemSemanticRoute(
+                        "vocals", "vocal.lead", "Lead Vocals", "Lead Vocals", "native", True
+                    ),
+                    StemSemanticRoute(
+                        "other",
+                        "mix.instrumental_with_backing_vocals",
+                        "Instrumental with Backing Vocals",
+                        "Instrumental with Backing Vocals",
+                        "native",
+                        False,
+                    ),
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            catalogue_semantics_subtitle(meta),
+            "Karaoke · Lead Vocals, Instrumental with Backing Vocals",
+        )
+
+    def test_raw_subtitle_is_explicit_and_preserves_native_names(self) -> None:
+        from ui.download_center import catalogue_semantics_subtitle
+
+        meta = EntryMeta(
+            label="Private",
+            display="Private",
+            arch=MDX_ARCH_TYPE,
+            files={},
+            stems=["mysteryLead", "mysteryBack"],
+        )
+
+        self.assertEqual(
+            catalogue_semantics_subtitle(meta),
+            "Raw outputs · mysteryLead, mysteryBack",
+        )
+
     def _bare_window(self) -> Any:
-        from core.model_scores import PURPOSE_ALL, SORT_NAME
         from ui.download_center import DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
@@ -133,9 +185,13 @@ class StemSubtitleDebounceTests(unittest.TestCase):
             )
         }
 
-        with mock.patch("ui.download_center.stash"), mock.patch(
-            "ui.download_center.fetch", side_effect=lambda _row, key, default=None: default
-        ), mock.patch("ui.download_center.set_row_subtitle") as set_subtitle:
+        with (
+            mock.patch("ui.download_center.stash"),
+            mock.patch(
+                "ui.download_center.fetch", side_effect=lambda _row, key, default=None: default
+            ),
+            mock.patch("ui.download_center.set_row_subtitle") as set_subtitle,
+        ):
             result = win._flush_stem_subtitles()
 
         self.assertFalse(result)
@@ -172,7 +228,7 @@ class StemSubtitleDebounceTests(unittest.TestCase):
         subtitle = set_subtitle.call_args[0][1]
         self.assertIn("Vocals, other", subtitle)
         self.assertIn("12 MB", subtitle)
-        self.assertEqual(fetch(action, "_uvr_stems_text"), "Vocals, other")
+        self.assertEqual(fetch(action, "_uvr_stems_text"), "Raw outputs · Vocals, other")
 
     def test_schedule_hops_to_main_via_idle_on_main(self) -> None:
         win = self._bare_window()
@@ -196,11 +252,10 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win._stem_refresh_armed = False
         win.manager = mock.MagicMock()
 
-        with mock.patch(
-            "core.catalogue_stem_cache.subscribe"
-        ) as subscribe, mock.patch(
-            "core.catalogue_stem_cache.ensure_worker_started"
-        ) as ensure:
+        with (
+            mock.patch("core.catalogue_stem_cache.subscribe") as subscribe,
+            mock.patch("core.catalogue_stem_cache.ensure_worker_started") as ensure,
+        ):
             DownloadCenterWindow._ensure_background_listeners(win)
 
         subscribe.assert_called_once_with(win._schedule_stem_subtitle_refresh)
@@ -249,8 +304,9 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         callback = timeout_add.call_args[0][1]
 
         # Once the timeout fires the next burst must arm again.
-        with mock.patch.object(win, "_visible_catalogue_labels", return_value=[]), (
-            mock.patch.object(win, "_pending_stem_yaml_urls", return_value=[])
+        with (
+            mock.patch.object(win, "_visible_catalogue_labels", return_value=[]),
+            mock.patch.object(win, "_pending_stem_yaml_urls", return_value=[]),
         ):
             self.assertFalse(callback())
         with mock.patch("gi.repository.GLib.timeout_add") as timeout_add2:
@@ -258,7 +314,7 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         self.assertEqual(timeout_add2.call_count, 1)
 
     def test_visible_labels_scoped_to_active_tab(self) -> None:
-        """"Visible" must mean the tab on screen, not every tab's filter result."""
+        """ "Visible" must mean the tab on screen, not every tab's filter result."""
         from ui.download_center import PURPOSE_ALL, DownloadCenterWindow
 
         win = object.__new__(DownloadCenterWindow)
@@ -283,9 +339,7 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win.stack = mock.MagicMock()
         win.stack.get_visible_child_name.return_value = None
 
-        self.assertEqual(
-            sorted(win._visible_catalogue_labels()), ["MDX Model", "VR Model"]
-        )
+        self.assertEqual(sorted(win._visible_catalogue_labels()), ["MDX Model", "VR Model"])
 
     def test_schedule_stem_yaml_fetches_prioritizes_visible(self) -> None:
         """Drive the real URL selection, not a scripted list of return values.
@@ -340,9 +394,7 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
         win._available = {MDX_ARCH_TYPE: list(catalogue_meta)}
         # Stands in for a Gtk.SearchEntry, which needs a display to construct;
         # _visible_catalogue_labels only ever calls get_text() on it.
-        win._search_entries = typing.cast(
-            "dict[str, Any]", {MDX_ARCH_TYPE: _Entry("kim")}
-        )
+        win._search_entries = typing.cast("dict[str, Any]", {MDX_ARCH_TYPE: _Entry("kim")})
         win._purpose = PURPOSE_ALL
         win.stack = mock.MagicMock()
         win.stack.get_visible_child_name.return_value = MDX_ARCH_TYPE
@@ -353,9 +405,10 @@ class DownloadCenterStemSubscriptionTests(unittest.TestCase):
                 with mock.patch("core.model_display.clear_display_cache"):
                     csc.clear_catalogue_stem_cache()
                     csc.remember_stems(cached_url, ["Vocals", "other"], "Vocals", ok=True)
-                    with mock.patch.object(csc, "enqueue_missing") as enqueue, (
-                        mock.patch.object(csc, "ensure_worker_started")
-                    ) as ensure:
+                    with (
+                        mock.patch.object(csc, "enqueue_missing") as enqueue,
+                        mock.patch.object(csc, "ensure_worker_started") as ensure,
+                    ):
                         DownloadCenterWindow._flush_stem_yaml_fetches(win)
                     csc.clear_catalogue_stem_cache()
 

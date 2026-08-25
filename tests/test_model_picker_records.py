@@ -52,15 +52,19 @@ class VocalSplitPickerTests(unittest.TestCase):
         row.splitter_row = object()
         values: list[object] = []
         selections: list[object] = []
-        with mock.patch(
-            "core.model_identity.ModelIdentityService.records",
-            return_value=tuple(records),
-        ), mock.patch(
-            "ui.widgets.vocal_split_row.set_combo_tag_values",
-            side_effect=lambda _combo, items: values.extend(items),
-        ), mock.patch(
-            "ui.widgets.vocal_split_row.set_combo_value",
-            side_effect=lambda _combo, value: selections.append(value),
+        with (
+            mock.patch(
+                "core.model_identity.ModelIdentityService.records",
+                return_value=tuple(records),
+            ),
+            mock.patch(
+                "ui.widgets.vocal_split_row.set_combo_tag_values",
+                side_effect=lambda _combo, items: values.extend(items),
+            ),
+            mock.patch(
+                "ui.widgets.vocal_split_row.set_combo_value",
+                side_effect=lambda _combo, value: selections.append(value),
+            ),
         ):
             VocalSplitRow._populate_models_now(row)
         return values, selections
@@ -110,6 +114,66 @@ class VocalSplitPickerTests(unittest.TestCase):
         self.assertEqual(selections, [NO_MODEL])
 
 
+class VocalSplitRefreshTests(unittest.TestCase):
+    def test_refresh_preserves_exact_id_and_never_selects_a_new_arrival(self) -> None:
+        from core.settings import Settings
+        from ui.widgets.rows import get_combo_value
+        from ui.widgets.vocal_split_row import VocalSplitRow
+
+        eligible = ["vr:kept"]
+        records = [_record("vr:kept", "Kept karaoke")]
+        repo = SimpleNamespace(karaoke_model_list=lambda _settings: list(eligible))
+        settings = Settings.defaults()
+        settings.process.vocal_splitter = "vr:kept"
+        settings.process.vocal_splitter_enabled = True
+
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records",
+            side_effect=lambda: tuple(records),
+        ):
+            row = VocalSplitRow(repo, lambda: None)
+            row.apply_from_settings(settings)
+            row._populator._populate_now()
+
+            records.append(_record("vr:new", "New karaoke"))
+            eligible.append("vr:new")
+            row.refresh_models()
+
+        self.assertEqual(get_combo_value(row.splitter_row), "vr:kept")
+        self.assertEqual(row._splitter_ids, {"vr:kept", "vr:new"})
+        self.assertFalse(row._splitter_write_gated)
+
+    def test_refresh_removed_id_requires_repick_and_disables_split(self) -> None:
+        from core.settings import Settings
+        from ui.widgets.rows import get_combo_value
+        from ui.widgets.vocal_split_row import VocalSplitRow
+
+        eligible = ["vr:removed"]
+        records = [_record("vr:removed", "Removed karaoke")]
+        repo = SimpleNamespace(karaoke_model_list=lambda _settings: list(eligible))
+        settings = Settings.defaults()
+        settings.process.vocal_splitter = "vr:removed"
+        settings.process.vocal_splitter_enabled = True
+
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records",
+            side_effect=lambda: tuple(records),
+        ):
+            row = VocalSplitRow(repo, lambda: None)
+            row.apply_from_settings(settings)
+            row._populator._populate_now()
+            eligible.clear()
+            row.refresh_models()
+            row.persist_to_settings(settings)
+
+        self.assertEqual(get_combo_value(row.splitter_row), NO_MODEL)
+        self.assertTrue(row._splitter_write_gated)
+        self.assertTrue(row.splitter_warning_row.get_visible())
+        self.assertIn("Pick a model", row.splitter_warning_row.get_subtitle() or "")
+        self.assertEqual(settings.process.vocal_splitter, NO_MODEL)
+        self.assertFalse(settings.process.vocal_splitter_enabled)
+
+
 class PickerVerboseLoggingTests(unittest.TestCase):
     def test_combo_population_logs_exact_display_and_basename_only_when_verbose(self) -> None:
         from core import debug_log, glib_log
@@ -138,15 +202,15 @@ class PickerVerboseLoggingTests(unittest.TestCase):
         try:
             debug_log._DOMAINS = None
             debug_log._GMD_NORMALIZED = False
-            glib_log.set_emit_hook(
-                lambda _domain, message, _level: emitted.append(message)
-            )
-            with mock.patch.dict(
-                os.environ,
-                {"G_MESSAGES_DEBUG": "uvr-model"},
-                clear=False,
-            ), mock.patch.object(rows.Gtk, "StringList", FakeStringList), mock.patch.object(
-                rows, "stash"
+            glib_log.set_emit_hook(lambda _domain, message, _level: emitted.append(message))
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {"G_MESSAGES_DEBUG": "uvr-model"},
+                    clear=False,
+                ),
+                mock.patch.object(rows.Gtk, "StringList", FakeStringList),
+                mock.patch.object(rows, "stash"),
             ):
                 os.environ.pop("UVR_VERBOSE", None)
                 rows.set_combo_tag_values(
@@ -186,6 +250,7 @@ class PickerVerboseLoggingTests(unittest.TestCase):
                 "basename='raw_name' display='raw_name' display_is_basename=True",
             ],
         )
+
 
 class _FakeRow:
     def __init__(self, title: str = "", subtitle: str = "", **_kwargs: object) -> None:
@@ -250,7 +315,6 @@ class _FakeListBox:
 class EnsemblePickerTests(unittest.TestCase):
     def test_rebuild_passes_current_pair_id_to_repository(self) -> None:
         """The repository boundary receives persisted semantic IDs, not UI adapters."""
-        from core.stems import EnsemblePair
         from ui.ensemble import window as ensemble_window
 
         requested: list[object] = []
@@ -264,17 +328,15 @@ class EnsemblePickerTests(unittest.TestCase):
         page.settings = SimpleNamespace(
             ensemble=SimpleNamespace(main_stem="pair.vocals_instrumental", selected_models=[])
         )
-        # The deferred display adapter remains available to the page, but must
-        # never cross into exact-role repository eligibility.
-        page._ensemble_pair = lambda: EnsemblePair.VOCALS_INSTRUMENTAL
+        page._ensemble_pair = lambda: "pair.vocals_instrumental"
         page._persist_selected_models = lambda: None
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
 
-        with mock.patch(
-            "core.model_identity.ModelIdentityService.records", return_value=()
-        ), mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow), mock.patch.object(
-            ensemble_window, "stash"
+        with (
+            mock.patch("core.model_identity.ModelIdentityService.records", return_value=()),
+            mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
+            mock.patch.object(ensemble_window, "stash"),
         ):
             page._rebuild_model_list([])
 
@@ -282,7 +344,6 @@ class EnsemblePickerTests(unittest.TestCase):
 
     def test_rows_are_installed_ids_with_family_disambiguation_and_verbose_trace(self) -> None:
         from core import debug_log, glib_log
-        from core.stems import EnsemblePair
         from ui.ensemble import window as ensemble_window
 
         records = [
@@ -301,7 +362,7 @@ class EnsemblePickerTests(unittest.TestCase):
         page.models_listbox = _FakeListBox()
         page.context = SimpleNamespace(repo=repo)
         page.settings = SimpleNamespace()
-        page._ensemble_pair = lambda: EnsemblePair.VOCALS_INSTRUMENTAL
+        page._ensemble_pair = lambda: "pair.vocals_instrumental"
         page._persist_selected_models = lambda: None
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
@@ -312,21 +373,21 @@ class EnsemblePickerTests(unittest.TestCase):
         try:
             debug_log._DOMAINS = None
             debug_log._GMD_NORMALIZED = False
-            glib_log.set_emit_hook(
-                lambda _domain, message, _level: emitted.append(message)
-            )
-            with mock.patch.dict(
-                os.environ,
-                {"G_MESSAGES_DEBUG": "uvr-model", "UVR_VERBOSE": "1"},
-                clear=False,
-            ), mock.patch(
-                "core.model_identity.ModelIdentityService.records",
-                return_value=tuple(records),
-            ), mock.patch.object(
-                ensemble_window.Adw, "ActionRow", _FakeRow
-            ), mock.patch.object(
-                ensemble_window.Gtk, "CheckButton", _FakeCheck
-            ), mock.patch.object(ensemble_window, "stash"):
+            glib_log.set_emit_hook(lambda _domain, message, _level: emitted.append(message))
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {"G_MESSAGES_DEBUG": "uvr-model", "UVR_VERBOSE": "1"},
+                    clear=False,
+                ),
+                mock.patch(
+                    "core.model_identity.ModelIdentityService.records",
+                    return_value=tuple(records),
+                ),
+                mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
+                mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
+                mock.patch.object(ensemble_window, "stash"),
+            ):
                 page._rebuild_model_list([])
         finally:
             debug_log._DOMAINS = old_domains
@@ -342,12 +403,12 @@ class EnsemblePickerTests(unittest.TestCase):
         )
         self.assertEqual(list(page._model_checks), ["mdx:shared", "vr:shared"])
         self.assertIn(
-            "picker surface='Ensemble members (vocals_instrumental)' "
+            "picker surface='Ensemble members (pair.vocals_instrumental)' "
             "entries=2 basename_displays=0",
             emitted,
         )
         self.assertIn(
-            "picker surface='Ensemble members (vocals_instrumental)' "
+            "picker surface='Ensemble members (pair.vocals_instrumental)' "
             "id='mdx:shared' basename='shared' display='Shared display' "
             "display_is_basename=False",
             emitted,
@@ -384,33 +445,31 @@ class EnsemblePickerTests(unittest.TestCase):
         )
 
     def test_rebuild_handles_an_unhashable_preserved_member(self) -> None:
-        from core.stems import EnsemblePair
         from ui.ensemble import window as ensemble_window
 
         page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
         page.models_listbox = _FakeListBox()
         page.context = SimpleNamespace(
-            repo=SimpleNamespace(
-                ensemble_model_list=lambda _settings, _pair: ["mdx:installed"]
-            )
+            repo=SimpleNamespace(ensemble_model_list=lambda _settings, _pair: ["mdx:installed"])
         )
         page.settings = SimpleNamespace(
             ensemble=SimpleNamespace(selected_models=[["invalid member"]])
         )
-        page._ensemble_pair = lambda: EnsemblePair.VOCALS_INSTRUMENTAL
+        page._ensemble_pair = lambda: "pair.vocals_instrumental"
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
         record = _record("mdx:installed", "Installed")
 
         try:
-            with mock.patch(
-                "core.model_identity.ModelIdentityService.records",
-                return_value=(record,),
-            ), mock.patch.object(
-                ensemble_window.Adw, "ActionRow", _FakeRow
-            ), mock.patch.object(
-                ensemble_window.Gtk, "CheckButton", _FakeCheck
-            ), mock.patch.object(ensemble_window, "stash"):
+            with (
+                mock.patch(
+                    "core.model_identity.ModelIdentityService.records",
+                    return_value=(record,),
+                ),
+                mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
+                mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
+                mock.patch.object(ensemble_window, "stash"),
+            ):
                 page._rebuild_model_list(page.settings.ensemble.selected_models)
         except TypeError as exc:
             self.fail(f"preserved non-string ensemble member crashed the picker: {exc}")
@@ -420,7 +479,6 @@ class EnsemblePickerTests(unittest.TestCase):
 
     def test_repeated_activation_does_not_restore_dropped_gated_members(self) -> None:
         from core.settings import Settings
-        from core.stems import EnsemblePair
         from ui.ensemble import window as ensemble_window
 
         stored = ["mdx:installed", "mdx:uninstalled"]
@@ -429,25 +487,24 @@ class EnsemblePickerTests(unittest.TestCase):
         page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
         page.models_listbox = _FakeListBox()
         page.context = SimpleNamespace(
-            repo=SimpleNamespace(
-                ensemble_model_list=lambda _settings, _pair: ["mdx:installed"]
-            )
+            repo=SimpleNamespace(ensemble_model_list=lambda _settings, _pair: ["mdx:installed"])
         )
         page.settings = settings
-        page._ensemble_pair = lambda: EnsemblePair.VOCALS_INSTRUMENTAL
+        page._ensemble_pair = lambda: "pair.vocals_instrumental"
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
         page._sync_shared_from_settings = lambda: None
         record = _record("mdx:installed", "Installed")
 
-        with mock.patch(
-            "core.model_identity.ModelIdentityService.records",
-            return_value=(record,),
-        ), mock.patch.object(
-            ensemble_window.Adw, "ActionRow", _FakeRow
-        ), mock.patch.object(
-            ensemble_window.Gtk, "CheckButton", _FakeCheck
-        ), mock.patch.object(ensemble_window, "stash"):
+        with (
+            mock.patch(
+                "core.model_identity.ModelIdentityService.records",
+                return_value=(record,),
+            ),
+            mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
+            mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
+            mock.patch.object(ensemble_window, "stash"),
+        ):
             page._rebuild_model_list(list(stored))
             page.on_activated()
             page.on_activated()
@@ -459,7 +516,6 @@ class EnsemblePickerTests(unittest.TestCase):
 
     def test_reopening_models_dialog_does_not_restore_dropped_gated_members(self) -> None:
         from core.settings import Settings
-        from core.stems import EnsemblePair
         from ui.ensemble import window as ensemble_window
 
         stored = ["mdx:installed", "MDX-Net: legacy display"]
@@ -468,27 +524,25 @@ class EnsemblePickerTests(unittest.TestCase):
         page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
         page.models_listbox = _FakeListBox()
         page.context = SimpleNamespace(
-            repo=SimpleNamespace(
-                ensemble_model_list=lambda _settings, _pair: ["mdx:installed"]
-            )
+            repo=SimpleNamespace(ensemble_model_list=lambda _settings, _pair: ["mdx:installed"])
         )
         page.settings = settings
-        page._ensemble_pair = lambda: EnsemblePair.VOCALS_INSTRUMENTAL
+        page._ensemble_pair = lambda: "pair.vocals_instrumental"
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
         page.models_dialog = object()
         page.window = object()
         record = _record("mdx:installed", "Installed")
 
-        with mock.patch(
-            "core.model_identity.ModelIdentityService.records",
-            return_value=(record,),
-        ), mock.patch.object(
-            ensemble_window.Adw, "ActionRow", _FakeRow
-        ), mock.patch.object(
-            ensemble_window.Gtk, "CheckButton", _FakeCheck
-        ), mock.patch.object(ensemble_window, "stash"), mock.patch.object(
-            ensemble_window, "present_modal_dialog"
+        with (
+            mock.patch(
+                "core.model_identity.ModelIdentityService.records",
+                return_value=(record,),
+            ),
+            mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
+            mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
+            mock.patch.object(ensemble_window, "stash"),
+            mock.patch.object(ensemble_window, "present_modal_dialog"),
         ):
             page._rebuild_model_list(list(stored))
             page._open_models_dialog()
@@ -500,7 +554,6 @@ class EnsemblePickerTests(unittest.TestCase):
 
     def test_pair_ineligible_member_is_dropped_at_persist_boundary(self) -> None:
         from core.settings import Settings
-        from core.stems import EnsemblePair
         from ui.ensemble import window as ensemble_window
 
         stored = ["mdx:first", "mdx:second", "mdx:ineligible"]
@@ -517,33 +570,31 @@ class EnsemblePickerTests(unittest.TestCase):
             )
         )
         page.settings = settings
-        page._ensemble_pair = lambda: EnsemblePair.VOCALS_INSTRUMENTAL
+        page._ensemble_pair = lambda: "pair.vocals_instrumental"
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
         records = tuple(_record(model_id, model_id) for model_id in stored)
 
-        with mock.patch(
-            "core.model_identity.ModelIdentityService.records",
-            return_value=records,
-        ), mock.patch.object(
-            ensemble_window.Adw, "ActionRow", _FakeRow
-        ), mock.patch.object(
-            ensemble_window.Gtk, "CheckButton", _FakeCheck
-        ), mock.patch.object(ensemble_window, "stash"):
+        with (
+            mock.patch(
+                "core.model_identity.ModelIdentityService.records",
+                return_value=records,
+            ),
+            mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
+            mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
+            mock.patch.object(ensemble_window, "stash"),
+        ):
             page._rebuild_model_list(list(stored))
             page._rebuild_model_list(list(settings.ensemble.selected_models))
 
         self.assertFalse(page._models_write_gated)
-        self.assertEqual(
-            settings.ensemble.selected_models, ["mdx:first", "mdx:second"]
-        )
+        self.assertEqual(settings.ensemble.selected_models, ["mdx:first", "mdx:second"])
         warnings = page._ensemble_member_warnings
         self.assertEqual(warnings, ())
 
     def test_refresh_lists_a_newly_installed_gated_member_without_selecting_it(self) -> None:
         """A repository refresh may reveal an ID, but only a click selects it."""
         from core.settings import Settings
-        from core.stems import EnsemblePair
         from ui.ensemble import window as ensemble_window
 
         missing_id = "mdx:later"
@@ -554,23 +605,22 @@ class EnsemblePickerTests(unittest.TestCase):
         page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
         page.models_listbox = _FakeListBox()
         page.context = SimpleNamespace(
-            repo=SimpleNamespace(
-                ensemble_model_list=lambda _settings, _pair: list(eligible)
-            )
+            repo=SimpleNamespace(ensemble_model_list=lambda _settings, _pair: list(eligible))
         )
         page.settings = settings
-        page._ensemble_pair = lambda: EnsemblePair.VOCALS_INSTRUMENTAL
+        page._ensemble_pair = lambda: "pair.vocals_instrumental"
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: None
 
-        with mock.patch(
-            "core.model_identity.ModelIdentityService.records",
-            side_effect=lambda: tuple(records),
-        ), mock.patch.object(
-            ensemble_window.Adw, "ActionRow", _FakeRow
-        ), mock.patch.object(
-            ensemble_window.Gtk, "CheckButton", _FakeCheck
-        ), mock.patch.object(ensemble_window, "stash"):
+        with (
+            mock.patch(
+                "core.model_identity.ModelIdentityService.records",
+                side_effect=lambda: tuple(records),
+            ),
+            mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow),
+            mock.patch.object(ensemble_window.Gtk, "CheckButton", _FakeCheck),
+            mock.patch.object(ensemble_window, "stash"),
+        ):
             page._rebuild_model_list(list(settings.ensemble.selected_models))
             self.assertTrue(page._models_write_gated)
 
@@ -635,10 +685,8 @@ class VocalSplitPickerGateTests(unittest.TestCase):
                     with mock.patch.object(
                         vocal_split_row,
                         "get_combo_value",
-                        side_effect=lambda control: (
-                            NO_MODEL
-                            if control is row.splitter_row
-                            else "Main Vocals Only"
+                        side_effect=lambda control, splitter=row.splitter_row: (
+                            NO_MODEL if control is splitter else "Main Vocals Only"
                         ),
                     ):
                         row._on_row_changed(emitter)
@@ -656,9 +704,7 @@ class VocalSplitPickerGateTests(unittest.TestCase):
             vocal_split_row,
             "get_combo_value",
             side_effect=lambda control: (
-                "vr:installed"
-                if control is row.splitter_row
-                else "Main Vocals Only"
+                "vr:installed" if control is row.splitter_row else "Main Vocals Only"
             ),
         ):
             row._on_row_changed(row.splitter_row)
@@ -834,11 +880,104 @@ class EnsembleRefreshLifecycleTests(unittest.TestCase):
         )
         page._model_checks = [object()]
         page._selected_model_tags = lambda: ["mdx:installed"]
-        page._model_members_for_rebuild = lambda: EnsemblePage._model_members_for_rebuild(
-            page
-        )
+        page._model_members_for_rebuild = lambda: EnsemblePage._model_members_for_rebuild(page)
 
         EnsemblePage.refresh_models(page)
 
         self.assertEqual(page._rebuilds, [["MDX-Net: legacy display"]])
         self.assertTrue(page._models_write_gated)
+
+
+class EnsemblePairRefreshTests(unittest.TestCase):
+    def _page(self, pair_id: str, eligible: dict[str, list[str]]) -> Any:
+        from core.settings import Settings
+        from ui.ensemble.window import EnsemblePage
+
+        page: Any = EnsemblePage.__new__(EnsemblePage)
+        page.settings = Settings.defaults()
+        page.settings.ensemble.main_stem = pair_id
+        page.context = SimpleNamespace(
+            repo=SimpleNamespace(
+                ensemble_model_list=lambda _settings, requested: eligible.get(requested, [])
+            )
+        )
+        page.main_stem_row = object()
+        page._loading = False
+        page._pair_repick_warning = ""
+        page._update_ensemble_banner = mock.Mock()
+        return page
+
+    def test_refresh_preserves_a_still_eligible_exact_pair_id(self) -> None:
+        from ui.ensemble import window as ensemble_window
+
+        eligible = {"pair.center_side": ["mdx:center", "mdx:side"]}
+        page = self._page("pair.center_side", eligible)
+        selected: list[str] = []
+
+        with (
+            mock.patch.object(ensemble_window, "set_combo_tag_values"),
+            mock.patch.object(
+                ensemble_window,
+                "set_combo_value",
+                side_effect=lambda _row, value: selected.append(value),
+            ),
+        ):
+            page._refresh_pair_choices()
+
+        self.assertEqual(page.settings.ensemble.main_stem, "pair.center_side")
+        self.assertEqual(selected, ["pair.center_side"])
+        self.assertEqual(page._pair_repick_warning, "")
+
+    def test_refresh_removed_pair_resets_to_choose_with_repick_warning(self) -> None:
+        from ui.ensemble import window as ensemble_window
+
+        page = self._page(
+            "pair.center_side",
+            {"pair.center_side": ["mdx:only-one"]},
+        )
+        selected: list[str] = []
+
+        with (
+            mock.patch.object(ensemble_window, "set_combo_tag_values"),
+            mock.patch.object(
+                ensemble_window,
+                "set_combo_value",
+                side_effect=lambda _row, value: selected.append(value),
+            ),
+        ):
+            page._refresh_pair_choices()
+
+        self.assertEqual(page.settings.ensemble.main_stem, "")
+        self.assertEqual(selected, [""])
+        self.assertIn("Choose a stem pair again", page._pair_repick_warning)
+
+    def test_newly_eligible_pair_becomes_visible_without_selection(self) -> None:
+        from ui.ensemble import window as ensemble_window
+
+        page = self._page(
+            "",
+            {"pair.karaoke": ["mdx:lead", "vr:accompaniment"]},
+        )
+        rendered: list[list[tuple[str, str]]] = []
+        selected: list[str] = []
+
+        with (
+            mock.patch.object(
+                ensemble_window,
+                "set_combo_tag_values",
+                side_effect=lambda _row, values: rendered.append(list(values)),
+            ),
+            mock.patch.object(
+                ensemble_window,
+                "set_combo_value",
+                side_effect=lambda _row, value: selected.append(value),
+            ),
+        ):
+            page._refresh_pair_choices()
+
+        self.assertIn(
+            ("pair.karaoke", "Lead Vocals/Instrumental with Backing Vocals"),
+            rendered[0],
+        )
+        self.assertEqual(page.settings.ensemble.main_stem, "")
+        self.assertEqual(selected, [""])

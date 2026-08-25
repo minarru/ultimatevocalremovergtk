@@ -83,7 +83,7 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
     def test_unmatched_focus_parks_and_clears_flags(self) -> None:
         from bundled.constants import INST_STEM
         from core.settings import Settings
-        from core.stem_selection import ExclusiveView, StemSelectionState, _TOGGLE_ALL
+        from core.stem_selection import _TOGGLE_ALL, ExclusiveView, StemSelectionState
 
         settings = Settings.defaults()
         settings.process.stem_focus = INST_STEM
@@ -102,7 +102,7 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
     def test_subset_quick_instrumental_persist(self) -> None:
         from bundled.constants import BASS_STEM, DRUM_STEM, VOCAL_STEM
         from core.settings import Settings
-        from core.stem_selection import StemSelectionState, SubsetView, _QUICK_INSTRUMENTAL
+        from core.stem_selection import _QUICK_INSTRUMENTAL, StemSelectionState, SubsetView
 
         settings = Settings.defaults()
         state = StemSelectionState()
@@ -121,7 +121,7 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
     def test_subset_quick_vocals_persist(self) -> None:
         from bundled.constants import BASS_STEM, VOCAL_STEM
         from core.settings import Settings
-        from core.stem_selection import StemSelectionState, SubsetView, _QUICK_VOCALS
+        from core.stem_selection import _QUICK_VOCALS, StemSelectionState, SubsetView
 
         settings = Settings.defaults()
         state = StemSelectionState()
@@ -140,10 +140,10 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
         from bundled.constants import ALL_STEMS, BASS_STEM, VOCAL_STEM
         from core.settings import Settings
         from core.stem_selection import (
-            DemucsView,
-            StemSelectionState,
             _QUICK_ALL,
             _TOGGLE_ALL,
+            DemucsView,
+            StemSelectionState,
         )
 
         settings = Settings.defaults()
@@ -169,10 +169,10 @@ class StemSelectionStateRoundTripTests(unittest.TestCase):
         from bundled.constants import ALL_STEMS, VOCAL_STEM
         from core.settings import Settings
         from core.stem_selection import (
-            DemucsView,
-            StemSelectionState,
             _FOCUS_INSTRUMENTAL,
             _TOGGLE_ALL,
+            DemucsView,
+            StemSelectionState,
         )
 
         settings = Settings.defaults()
@@ -532,6 +532,7 @@ class CliStemSelectionStateTests(unittest.TestCase):
         from bundled.constants import ALL_STEMS, VOCAL_STEM
         from core.settings import Settings
         from core.stem_selection import StemSelectionState, apply_stem_selection
+
         via_apply = Settings.defaults()
         via_state = Settings.defaults()
         self.assertEqual(apply_stem_selection(via_apply, "vocals"), "vocals")
@@ -545,6 +546,7 @@ class CliStemSelectionStateTests(unittest.TestCase):
     def test_vocal_alias_resolves_through_select_stem_routes(self) -> None:
         from core.settings import Settings
         from core.stem_selection import StemSelectionState, apply_stem_selection
+
         settings = Settings.defaults()
         self.assertEqual(apply_stem_selection(settings, "vocal"), "vocals")
         self.assertEqual(settings.process.stem_focus, "vocal.vocals")
@@ -574,7 +576,7 @@ class SubsetConceptSelectionTests(unittest.TestCase):
     def test_custom_bass_roundtrip_uses_concept_and_native_sidecar(self) -> None:
         from bundled.constants import BASS_STEM, DRUM_STEM, VOCAL_STEM
         from core.settings import Settings
-        from core.stem_selection import StemSelectionState, SubsetView, _SUBSET_CUSTOM
+        from core.stem_selection import _SUBSET_CUSTOM, StemSelectionState, SubsetView
         from core.stems import StemBucket
 
         settings = Settings.defaults()
@@ -603,7 +605,7 @@ class SubsetConceptSelectionTests(unittest.TestCase):
     def test_yaml_vocals_maps_through_select_stem_routes(self) -> None:
         from bundled.constants import BASS_STEM, DRUM_STEM
         from core.settings import Settings
-        from core.stem_selection import StemSelectionState, SubsetView, _SUBSET_CUSTOM
+        from core.stem_selection import _SUBSET_CUSTOM, StemSelectionState, SubsetView
         from core.stems import StemBucket
 
         settings = Settings.defaults()
@@ -631,7 +633,7 @@ class SubsetConceptSelectionTests(unittest.TestCase):
     def test_quick_vocals_keeps_gtk_flags_not_cli_concept_table(self) -> None:
         from bundled.constants import BASS_STEM, VOCAL_STEM
         from core.settings import Settings
-        from core.stem_selection import StemSelectionState, SubsetView, _QUICK_VOCALS
+        from core.stem_selection import _QUICK_VOCALS, StemSelectionState, SubsetView
 
         settings = Settings.defaults()
         state = StemSelectionState()
@@ -682,9 +684,9 @@ class DemucsConceptSelectionTests(unittest.TestCase):
         from bundled.constants import ALL_STEMS, BASS_STEM
         from core.settings import Settings
         from core.stem_selection import (
+            _FOCUS_VOCALS,
             DemucsView,
             StemSelectionState,
-            _FOCUS_VOCALS,
         )
 
         settings = Settings.defaults()
