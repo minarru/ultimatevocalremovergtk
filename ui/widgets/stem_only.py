@@ -6,7 +6,7 @@ import typing
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
-from gi.repository import Adw, Gtk
+from gi.repository import Adw, GLib, Gtk
 
 from bundled.constants import (
     ALL_STEMS,
@@ -379,6 +379,7 @@ class SaveStemsSection:
         self._export_semantics_note = ""
         self._exclusive_options: Dict[str, StemOnlyOption] = {}
         self._subset_quick_items: List[Tuple[str, str]] = []
+        self._subset_quick_supported = False
         self._demucs_focus_items: List[Tuple[str, str]] = []
         self._demucs_export_options: Dict[str, StemOnlyOption] = {}
         self._draft_custom_selected: Set[str] = set()
@@ -387,6 +388,7 @@ class SaveStemsSection:
         self._host: Optional[Adw.PreferencesGroup] = None
         self._section_visible = False
         self._repick_required = False
+        self._repick_restore_token: Optional[object] = None
 
         self._exclusive_row = make_combo_row("Export", [])
         self._exclusive_row.connect("notify::selected", self._on_exclusive_changed)
@@ -707,6 +709,8 @@ class SaveStemsSection:
         routes: Optional[Sequence[StemRoute]] = None,
     ) -> None:
         self._clear_refresh_repick()
+        self._subset_quick_supported = show_quick_export
+        self._subset_quick_items = []
         self._state.configure_subset(
             stems=stems,
             primary_key=primary_key,
@@ -725,14 +729,14 @@ class SaveStemsSection:
         was_loading = self._loading
         self._loading = True
         try:
-            self._subset_quick_items = [
-                (_QUICK_ALL, _QUICK_EXPORT_LABELS[_QUICK_ALL]),
-                (_QUICK_INSTRUMENTAL, _QUICK_EXPORT_LABELS[_QUICK_INSTRUMENTAL]),
-                (_QUICK_VOCALS, _QUICK_EXPORT_LABELS[_QUICK_VOCALS]),
-            ]
-            if show_quick_export:
-                set_combo_tag_values(self._quick_row, self._subset_quick_items)
-                self._quick_row.set_visible(True)
+            if self._subset_quick_supported:
+                self._subset_quick_items = [
+                    (_QUICK_ALL, _QUICK_EXPORT_LABELS[_QUICK_ALL]),
+                    (_QUICK_INSTRUMENTAL, _QUICK_EXPORT_LABELS[_QUICK_INSTRUMENTAL]),
+                    (_QUICK_VOCALS, _QUICK_EXPORT_LABELS[_QUICK_VOCALS]),
+                ]
+            set_combo_tag_values(self._quick_row, self._subset_quick_items)
+            self._quick_row.set_visible(self._subset_quick_supported)
             self._custom_row.set_visible(True)
         finally:
             self._loading = was_loading
@@ -915,6 +919,7 @@ class SaveStemsSection:
         if valid:
             self._clear_refresh_repick()
             return False
+        self._repick_restore_token = None
         self._repick_required = True
         self.selection_warning_row.set_visible(True)
         if self.mode == "exclusive":
@@ -957,11 +962,50 @@ class SaveStemsSection:
                 self._loading = was_loading
         return True
 
-    def _clear_refresh_repick(self) -> None:
+    def _clear_refresh_repick(self, *, keep_pending_restore: bool = False) -> None:
         self._repick_required = False
+        if not keep_pending_restore:
+            self._repick_restore_token = None
         warning = getattr(self, "selection_warning_row", None)
         if warning is not None:
             warning.set_visible(False)
+
+    def _complete_refresh_repick(self, selected: Optional[str] = None) -> None:
+        """Remove temporary review choices after one valid explicit replacement."""
+        if not self._repick_required:
+            return
+        token = object()
+        self._repick_restore_token = token
+        self._clear_refresh_repick(keep_pending_restore=True)
+        GLib.idle_add(self._restore_refresh_repick_choices, token, self.mode, selected)
+
+    def _restore_refresh_repick_choices(
+        self,
+        token: object,
+        mode: str,
+        selected: Optional[str],
+    ) -> bool:
+        """Restore a combo after its selection notification has returned to GTK."""
+        if token is not self._repick_restore_token or mode != self.mode:
+            return False
+        self._repick_restore_token = None
+        was_loading = self._loading
+        self._loading = True
+        try:
+            if mode == "subset":
+                set_combo_tag_values(self._quick_row, self._subset_quick_items)
+                self._quick_row.set_visible(self._subset_quick_supported)
+                if selected is not None:
+                    set_combo_value(self._quick_row, selected)
+                self._refresh_custom_subtitle()
+                self._apply_subset_dimming()
+            elif mode == "demucs":
+                set_combo_tag_values(self._demucs_focus_row, self._demucs_focus_items)
+                if selected is not None:
+                    set_combo_value(self._demucs_focus_row, selected)
+        finally:
+            self._loading = was_loading
+        return False
 
     # -- Exclusive -------------------------------------------------------------
 
@@ -1189,22 +1233,25 @@ class SaveStemsSection:
         self._custom_all = self._draft_custom_all
         self._custom_selected = set(self._draft_custom_selected)
         self._subset_mode = "custom"
+        self._complete_refresh_repick()
         self._refresh_custom_subtitle()
         self._apply_subset_dimming()
         self._custom_dialog.close()
-        self._clear_refresh_repick()
         self._notify()
 
     def _on_quick_export_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
-        mode = get_combo_value(self._quick_row) or _QUICK_ALL
+        mode = get_combo_value(self._quick_row)
+        valid_modes = {item_id for item_id, _label in self._subset_quick_items}
+        if not self._subset_quick_supported or mode not in valid_modes:
+            return
+        self._complete_refresh_repick(mode)
         self._subset_mode = mode
         self._apply_subset_chip_selection(mode, set())
         self._apply_subset_dimming()
         tip = self._export_semantics_note or _QUICK_EXPORT_HINTS.get(mode) or MDX_STEMS_HINT
         self._quick_row.set_tooltip_text(tip)
-        self._clear_refresh_repick()
         self._notify()
 
     # -- Demucs ----------------------------------------------------------------
@@ -1275,14 +1322,17 @@ class SaveStemsSection:
     def _on_demucs_focus_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
+        active = get_combo_value(self._demucs_focus_row)
+        valid_focuses = {item_id for item_id, _label in self._demucs_focus_items}
+        if active not in valid_focuses:
+            return
+        self._complete_refresh_repick(active)
         self._update_demucs_export_visibility(from_settings=False)
-        self._clear_refresh_repick()
         self._notify()
 
     def _on_demucs_export_changed(self, *_args: typing.Any) -> None:
-        if self._loading:
+        if self._loading or self._repick_required:
             return
-        self._clear_refresh_repick()
         self._notify()
 
     # -- Semantics / notify ----------------------------------------------------

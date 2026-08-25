@@ -1,6 +1,8 @@
 import typing
 import unittest
 
+from gi.repository import GLib
+
 from bundled.constants import (
     ALL_STEMS,
     BASS_STEM,
@@ -21,6 +23,7 @@ from core.stem_selection import (
     _stem_focus_tag,
 )
 from core.stems import StemRoute
+from ui.widget_state import fetch
 from ui.widgets.stem_only import (
     _LEAD_VOCAL_PAIR_LABELS,
     SaveStemsSection,
@@ -228,6 +231,11 @@ class SaveStemsSectionTests(unittest.TestCase):
         )
         self.section = SaveStemsSection(settings=self.settings)
 
+    def _drain_main_context(self) -> None:
+        context = GLib.MainContext.default()
+        while context.pending():
+            context.iteration(False)
+
     def test_hidden_without_model(self):
         self.section.configure_hidden(has_model=False)
         self.assertEqual(self.section.export_summary(), "Choose a model to configure stem export")
@@ -319,9 +327,70 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertTrue(self.section.require_refresh_repick("vocal.lead"))
         self.assertEqual(get_combo_value(self.section._quick_row), "choose")
         self.assertTrue(self.section.selection_warning_row.get_visible())
+        self.section._on_quick_export_changed()
+        self.assertTrue(self.section.repick_required)
+        self.assertTrue(self.section.selection_warning_row.get_visible())
         set_combo_value(self.section._quick_row, _QUICK_VOCALS)
         self.section._on_quick_export_changed()
         self.assertFalse(self.section.repick_required)
+        self._drain_main_context()
+        self.assertEqual(
+            fetch(self.section._quick_row, "_uvr_combo_ids"),
+            [_QUICK_ALL, _QUICK_INSTRUMENTAL, _QUICK_VOCALS],
+        )
+        self.assertFalse(set_combo_value(self.section._quick_row, "choose"))
+        self.section._on_quick_export_changed()
+        self.section.persist_to_settings()
+        self.assertEqual(self.section._subset_mode, _QUICK_VOCALS)
+        self.assertEqual(self.settings.process.stem_focus, "vocal.vocals")
+
+    def test_subset_removed_role_without_quick_export_offers_only_choose(self) -> None:
+        self.section.configure_subset(
+            stems=["vocals", "other", "bass"],
+            show_quick_export=False,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            routes=(
+                StemRoute(
+                    StemId("vocals"),
+                    StemRoleId("vocal.vocals"),
+                    label="Vocals",
+                    logical_primary=True,
+                ),
+                StemRoute(
+                    StemId("other"),
+                    StemRoleId("mix.instrumental"),
+                    label="Instrumental",
+                ),
+                StemRoute(
+                    StemId("bass"),
+                    StemRoleId("instrument.bass"),
+                    label="Bass",
+                ),
+            ),
+        )
+
+        self.assertTrue(self.section.require_refresh_repick("vocal.lead"))
+        self.assertEqual(fetch(self.section._quick_row, "_uvr_combo_ids"), ["choose"])
+        self.assertNotIn(
+            _QUICK_INSTRUMENTAL,
+            fetch(self.section._quick_row, "_uvr_combo_ids"),
+        )
+        self.assertNotIn(
+            _QUICK_VOCALS,
+            fetch(self.section._quick_row, "_uvr_combo_ids"),
+        )
+        self.section._on_quick_export_changed()
+        self.assertTrue(self.section.repick_required)
+        self.section._custom_dialog.present()
+        self._drain_main_context()
+        self.section._on_custom_stems_save()
+        self.assertFalse(self.section.repick_required)
+        self._drain_main_context()
+        self.assertFalse(self.section._quick_row.get_visible())
+        self.assertEqual(fetch(self.section._quick_row, "_uvr_combo_ids"), [])
+        self.section.persist_to_settings()
+        self.assertNotEqual(self.settings.process.stem_focus, "choose")
 
     def test_demucs_removed_role_selects_choose_until_explicit_repick(self) -> None:
         routes = (
@@ -347,9 +416,24 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertTrue(self.section.require_refresh_repick("vocal.lead"))
         self.assertEqual(get_combo_value(self.section._demucs_focus_row), "choose")
         self.assertTrue(self.section.selection_warning_row.get_visible())
+        self.section._on_demucs_focus_changed()
+        self.assertTrue(self.section.repick_required)
+        self.section._on_demucs_export_changed()
+        self.assertTrue(self.section.repick_required)
         set_combo_value(self.section._demucs_focus_row, "vocal.vocals")
         self.section._on_demucs_focus_changed()
         self.assertFalse(self.section.repick_required)
+        self._drain_main_context()
+        self.assertEqual(
+            fetch(self.section._demucs_focus_row, "_uvr_combo_ids"),
+            [_QUICK_ALL, "vocal.vocals", "instrument.bass"],
+        )
+        self.assertFalse(set_combo_value(self.section._demucs_focus_row, "choose"))
+        self.section._on_demucs_focus_changed()
+        self.section.persist_to_settings()
+        self.assertEqual(get_combo_value(self.section._demucs_focus_row), "vocal.vocals")
+        self.assertEqual(self.settings.demucs.stems, "vocals")
+        self.assertNotEqual(self.settings.process.stem_focus, "choose")
 
     def test_exclusive_sync_persist_round_trip(self):
         self.settings.process.stem_focus = "vocal.vocals"
