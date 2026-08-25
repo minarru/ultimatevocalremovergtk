@@ -932,7 +932,7 @@ class SaveStemsSection:
             was_loading = self._loading
             self._loading = True
             try:
-                self._exclusive_options = _fill_export_combo(self._exclusive_row, options)
+                _fill_export_combo(self._exclusive_row, options)
                 set_combo_value(self._exclusive_row, _CHOOSE_STEM)
             finally:
                 self._loading = was_loading
@@ -992,7 +992,14 @@ class SaveStemsSection:
         was_loading = self._loading
         self._loading = True
         try:
-            if mode == "subset":
+            if mode == "exclusive":
+                _fill_export_combo(
+                    self._exclusive_row,
+                    list(self._exclusive_options.values()),
+                )
+                if selected is not None:
+                    set_combo_value(self._exclusive_row, selected)
+            elif mode == "subset":
                 set_combo_tag_values(self._quick_row, self._subset_quick_items)
                 self._quick_row.set_visible(self._subset_quick_supported)
                 if selected is not None:
@@ -1012,7 +1019,10 @@ class SaveStemsSection:
     def _on_exclusive_changed(self, *_args: typing.Any) -> None:
         if self._loading:
             return
-        self._clear_refresh_repick()
+        choice = get_combo_value(self._exclusive_row)
+        if choice not in self._exclusive_options:
+            return
+        self._complete_refresh_repick(choice)
         self._notify()
 
     # -- Subset / custom stems -------------------------------------------------

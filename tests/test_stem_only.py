@@ -269,6 +269,22 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertTrue(self.section.repick_required)
         self.assertTrue(self.section.selection_warning_row.get_visible())
         self.assertEqual(get_combo_value(self.section._exclusive_row), "choose")
+        self.section._on_exclusive_changed()
+        self.assertTrue(self.section.repick_required)
+        self.assertTrue(self.section.selection_warning_row.get_visible())
+        set_combo_value(self.section._exclusive_row, "vocal.vocals")
+        self.section._on_exclusive_changed()
+        self.assertFalse(self.section.repick_required)
+        self._drain_main_context()
+        self.assertEqual(
+            fetch(self.section._exclusive_row, "_uvr_combo_ids"),
+            [_TOGGLE_ALL, "vocal.vocals", "mix.instrumental"],
+        )
+        self.assertFalse(set_combo_value(self.section._exclusive_row, "choose"))
+        self.section._on_exclusive_changed()
+        self.section.persist_to_settings()
+        self.assertEqual(get_combo_value(self.section._exclusive_row), "vocal.vocals")
+        self.assertEqual(self.settings.process.stem_focus, "vocal.vocals")
 
     def test_refresh_preserves_a_still_valid_exact_role(self) -> None:
         self.settings.process.stem_focus = "vocal.lead"
