@@ -17,6 +17,7 @@ from unittest.mock import Mock, patch
 
 from cli.discovery import (
     _print_detail,
+    _print_rows,
     cmd_devices_list,
     cmd_models_download,
     cmd_profile_list,
@@ -368,6 +369,7 @@ class DiscoveryTests(unittest.TestCase):
     def test_catalogue_cli_uses_audit_display_for_ineligible_mdx_pth_row(self) -> None:
         from bundled.constants import MDX_ARCH_TYPE
         from core.catalog_sources import EntryMeta
+        from core.catalogue_types import StemSemanticProjection, StemSemanticRoute
         from core.model_catalogue import ModelCatalogueService
 
         selection = "Roformer Model: BandSplit Roformer | 4-stems FT by SYH99999"
@@ -376,6 +378,21 @@ class DiscoveryTests(unittest.TestCase):
             checkpoint: "https://example.invalid/model.pth",
             "config.yaml": "https://example.invalid/config.yaml",
         }
+        projection = StemSemanticProjection(
+            "other",
+            "other",
+            "mix.instrumental",
+            "reviewed",
+            "full_mix",
+            (
+                StemSemanticRoute("vocals", "vocal.vocals", "Vocals", "Vocals", "native", False),
+                StemSemanticRoute(
+                    "other", "mix.instrumental", "Instrumental", "Instrumental", "native", True
+                ),
+            ),
+            ("vocal.vocals", "mix.instrumental"),
+            "catalogue_id=mdx:bs_neo_inst_beta; native_signature=vocals,other",
+        )
         manager: Any = SimpleNamespace(
             _coordinator=None,
             vr_download_list={},
@@ -390,6 +407,7 @@ class DiscoveryTests(unittest.TestCase):
                     arch=MDX_ARCH_TYPE,
                     files=files,
                     checkpoint=checkpoint,
+                    stem_semantics=projection,
                 )
             },
             resolve=lambda *_args, **_kwargs: (),
@@ -427,6 +445,13 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(
             item["display"],
             "BandSplit Roformer — Fine-Tuned (4 Stems) · SYH99999",
+        )
+        self.assertEqual(item["id"], CatalogEntryId("mdx", selection).value)
+        self.assertEqual(item["backend_primary_stem"], "other")
+        self.assertEqual(item["canonical_roles"], ["vocal.vocals", "mix.instrumental"])
+        self.assertEqual(
+            item["stem_semantics_evidence"],
+            "catalogue_id=mdx:bs_neo_inst_beta; native_signature=vocals,other",
         )
 
     def test_devices_have_auto_selection(self) -> None:
@@ -474,6 +499,56 @@ class DiscoveryTests(unittest.TestCase):
                 'facts\t{"stems":["Vocals","Other"]}',
             ],
         )
+
+    def test_human_model_stems_read_exact_projection_routes(self) -> None:
+        args = argparse.Namespace(report="human")
+        row = {
+            "primary_stem": "other",
+            "secondary_stem": "vocals",
+            "logical_primary_role": "mix.instrumental",
+            "stem_routes": [
+                {
+                    "native": "vocals",
+                    "role": "vocal.vocals",
+                    "display": "Vocals",
+                    "logical_primary": False,
+                },
+                {
+                    "native": "other",
+                    "role": "mix.instrumental",
+                    "display": "Instrumental",
+                    "logical_primary": True,
+                },
+            ],
+        }
+
+        list_out = io.StringIO()
+        with redirect_stdout(list_out):
+            self.assertEqual(_print_rows(args, [row]), 0)
+        self.assertTrue(list_out.getvalue().startswith("Instrumental\tVocals\t"))
+
+        detail_out = io.StringIO()
+        with redirect_stdout(detail_out):
+            self.assertEqual(_print_detail(args, row), 0)
+        self.assertEqual(detail_out.getvalue().splitlines()[0], "primary_stem\tInstrumental")
+        self.assertEqual(detail_out.getvalue().splitlines()[1], "secondary_stem\tVocals")
+
+    def test_human_raw_primary_uses_its_marked_projection_route(self) -> None:
+        args = argparse.Namespace(report="human")
+        row = {
+            "primary_stem": "other",
+            "logical_primary_role": None,
+            "stem_routes": [
+                {"native": "vocals", "role": None, "display": "vocals", "logical_primary": False},
+                {"native": "other", "role": None, "display": "other", "logical_primary": True},
+            ],
+        }
+        out = io.StringIO()
+
+        with redirect_stdout(out):
+            self.assertEqual(_print_detail(args, row), 0)
+
+        self.assertEqual(out.getvalue().splitlines()[0], "primary_stem\tother")
 
     def test_download_second_interrupt_keeps_failed_unit_in_report(self) -> None:
         handlers: dict[int, object] = {}

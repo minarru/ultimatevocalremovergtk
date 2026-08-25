@@ -217,9 +217,10 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
         self.assertNotEqual(meta.guessed_intent, meta.intent)
         self.assertEqual(meta.stem_semantics.status, "reviewed")
         self.assertEqual(meta.stem_semantics.logical_primary_role, "mix.instrumental")
-        self.assertEqual(meta.stem_semantics.canonical_roles, ("mix.instrumental", "vocal.vocals"))
-        self.assertEqual(meta.stem_semantics.routes[0].native, "other")
-        self.assertEqual(meta.stem_semantics.routes[0].display, "Instrumental")
+        self.assertEqual(meta.stem_semantics.canonical_roles, ("vocal.vocals", "mix.instrumental"))
+        self.assertEqual(meta.stem_semantics.routes[0].native, "vocals")
+        self.assertEqual(meta.stem_semantics.routes[0].display, "Vocals")
+        self.assertTrue(meta.stem_semantics.routes[1].logical_primary)
         self.assertIn("catalogue_id=mdx:bs_neo_inst_beta", meta.stem_semantics.evidence)
 
     def test_exact_waiver_is_visible_without_inventing_stem_membership(self) -> None:

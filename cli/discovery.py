@@ -62,7 +62,7 @@ def _stem_semantics_fields(model: Any | None) -> dict[str, Any]:
 def _print_rows(args: argparse.Namespace, rows: list[dict[str, Any]]) -> int:
     if report_mode(args) == "human":
         for row in rows:
-            print("\t".join(_human_cell(value, key=key) for key, value in row.items()))
+            print("\t".join(_human_cell(value, key=key, row=row) for key, value in row.items()))
     else:
         emit_document(args, {"ok": True, "status": "success", "items": rows})
     return 0
@@ -73,16 +73,45 @@ def _print_detail(args: argparse.Namespace, row: dict[str, Any]) -> int:
     if report_mode(args) != "human":
         return _print_rows(args, [row])
     for label, value in row.items():
-        print(f"{label}\t{_human_cell(value)}")
+        print(f"{label}\t{_human_cell(value, key=label, row=row)}")
     return 0
 
 
-def _human_cell(value: Any, *, key: str | None = None) -> str:
-    value = _jsonable(value)
-    if key in {"primary_stem", "secondary_stem"} and isinstance(value, str) and value:
-        from core.stems import canonical_stem_alias
+def _projected_stem_label(row: Mapping[str, Any] | None, key: str) -> str | None:
+    """Read a human stem label from the exact semantic route projection."""
+    if row is None:
+        return None
+    routes = row.get("stem_routes")
+    if not isinstance(routes, (list, tuple)):
+        return None
+    if key == "primary_stem":
+        role = row.get("logical_primary_role")
+        for route in routes:
+            if not isinstance(route, Mapping):
+                continue
+            if (role is not None and route.get("role") == role) or (
+                role is None and route.get("logical_primary")
+            ):
+                display = route.get("display")
+                if isinstance(display, str) and display:
+                    return display
+        return None
+    native = row.get(key)
+    for route in routes:
+        if not isinstance(route, Mapping) or route.get("native") != native:
+            continue
+        display = route.get("display")
+        if isinstance(display, str) and display:
+            return display
+    return None
 
-        return canonical_stem_alias(value) or value
+
+def _human_cell(value: Any, *, key: str | None = None, row: Mapping[str, Any] | None = None) -> str:
+    if key in {"primary_stem", "secondary_stem"}:
+        projected = _projected_stem_label(row, key)
+        if projected is not None:
+            return projected
+    value = _jsonable(value)
     if isinstance(value, (dict, list, tuple)):
         return json.dumps(value, sort_keys=True, separators=(",", ":"))
     if value is None:

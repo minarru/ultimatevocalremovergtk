@@ -103,8 +103,9 @@ class PlannedOutputStemTests(unittest.TestCase):
         self.assertEqual(model["logical_primary_role"], "mix.instrumental")
         self.assertEqual(model["stem_semantics_status"], "reviewed")
         self.assertEqual(model["stem_context"], "full_mix")
-        self.assertEqual(model["stem_routes"][0]["native"], "other")
-        self.assertEqual(model["stem_routes"][0]["display"], "Instrumental")
+        self.assertEqual(model["stem_routes"][0]["native"], "vocals")
+        self.assertEqual(model["stem_routes"][0]["display"], "Vocals")
+        self.assertTrue(model["stem_routes"][1]["logical_primary"])
 
     def test_raw_semantic_fallback_is_an_actionable_plan_warning(self) -> None:
         from core.job_plan import ResolvedJob, ValidationLevel

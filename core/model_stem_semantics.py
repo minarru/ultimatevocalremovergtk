@@ -108,7 +108,9 @@ def stem_semantics_projection(
     routes: list[StemSemanticRoute] = []
     roles: list[str] = []
     logical_primary_role: str | None = None
-    for output in sorted(semantics.outputs, key=lambda item: not item.logical_primary):
+    # ``outputs`` preserves the exact reviewed manifest/native declaration
+    # order. Logical-primary is presentation metadata, never an ordering rule.
+    for output in semantics.outputs:
         native = output.native.raw if output.native is not None else None
         if isinstance(output.role, StemRoleId):
             definition = registry.roles.get(output.role)

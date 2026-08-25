@@ -207,6 +207,17 @@ class SemanticProjectionTests(unittest.TestCase):
         self.assertEqual(
             payload["stem_routes"][0],
             {
+                "native": "vocals",
+                "role": "vocal.vocals",
+                "display": "Vocals",
+                "filename_tag": "Vocals",
+                "production": "native",
+                "logical_primary": False,
+            },
+        )
+        self.assertEqual(
+            payload["stem_routes"][1],
+            {
                 "native": "other",
                 "role": "mix.instrumental",
                 "display": "Instrumental",
@@ -215,6 +226,8 @@ class SemanticProjectionTests(unittest.TestCase):
                 "logical_primary": True,
             },
         )
+        self.assertEqual(payload["canonical_roles"], ["vocal.vocals", "mix.instrumental"])
+        self.assertEqual(payload["stem_semantics_evidence"], semantics.evidence)
 
     def test_projection_covers_reviewed_waived_and_raw_statuses(self) -> None:
         from core.model_stem_semantics import (
@@ -231,7 +244,7 @@ class SemanticProjectionTests(unittest.TestCase):
                 StemProcessingContext.FULL_MIX,
                 "reviewed",
                 "mix.instrumental",
-                ("mix.instrumental", "vocal.vocals"),
+                ("vocal.vocals", "mix.instrumental"),
             ),
             (
                 "waived",

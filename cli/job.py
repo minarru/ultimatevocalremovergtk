@@ -411,8 +411,11 @@ def resolve_ensemble_job(args: argparse.Namespace, *, validation_level: Any = No
     )
     records: list[ModelRecord] = []
     preset_paths: set[str] = set()
+    preset_validation_warnings: list[str] = []
     if preset:
-        EnsembleService(repo).apply(settings, preset)
+        resolved_preset = EnsembleService(repo).apply(settings, preset)
+        preset_validation_warnings.extend(resolved_preset.validation_warnings)
+        _log_preset_persistence_resets(preset_validation_warnings)
         preset_paths.update(
             {
                 "ensemble.chosen_ensemble",
@@ -504,6 +507,10 @@ def resolve_ensemble_job(args: argparse.Namespace, *, validation_level: Any = No
     errors = [item.message for item in effective.diagnostics if item.severity == "error"]
     if errors:
         raise ValueError(errors[0])
+    validation_warnings = stored_identity_warnings(settings, repo, profile)
+    for warning in preset_validation_warnings:
+        if warning not in validation_warnings:
+            validation_warnings.append(warning)
     return ResolvedJob(
         command="ensemble",
         settings=effective.settings,
@@ -515,9 +522,28 @@ def resolve_ensemble_job(args: argparse.Namespace, *, validation_level: Any = No
         plan=effective.to_dict(),
         identity_inherited=inherited,
         resolved=effective,
-        validation_warnings=stored_identity_warnings(settings, repo, profile),
+        validation_warnings=validation_warnings,
         repo=repo,
     )
+
+
+def _log_preset_persistence_resets(warnings: list[str]) -> None:
+    """Log a saved-preset reset without exposing its name, path, or payload."""
+    from core.debug_log import log_event
+
+    for warning in warnings:
+        if not warning.startswith("ensemble_main_stem:"):
+            continue
+        reset = (
+            "unsupported_schema" if "schema is unsupported" in warning else "invalid_semantic_pair"
+        )
+        log_event(
+            "ensemble",
+            "preset_persistence_reset",
+            level="warning",
+            field="ensemble_main_stem",
+            reset=reset,
+        )
 
 
 def format_effective_plan(plan: dict[str, Any]) -> str:
