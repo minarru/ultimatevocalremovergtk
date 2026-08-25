@@ -1,0 +1,662 @@
+"""Structured strict auditing for one already-collected catalogue snapshot.
+
+The public entry point in this module is deliberately pure with respect to
+catalogue collection and repository files.  Callers supply the exact entries,
+supplemental context, rendered reference candidate, and checked-in reference.
+That keeps every renderer and validator on one authoritative snapshot and
+lets later CLI code distinguish structural manifest failures from repairable
+generated-reference drift without parsing human-readable audit output.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import unicodedata
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Any, Iterable, Mapping, Sequence
+
+from catalogue.collect import (
+    CatalogueContext,
+    ModelEntry,
+    is_runtime_target_instrument,
+    runtime_stem_signature,
+)
+from core.model_stem_manifest import (
+    BUNDLED_MANIFEST_PATH,
+    StemSemanticsRegistry,
+    load_stem_manifest,
+    resolve_model_stem_semantics,
+)
+from core.stem_roles import (
+    StemProcessingContext,
+    StemProduction,
+    StemReviewStatus,
+)
+
+STEM_SEMANTICS_REFERENCE_HEADERS = (
+    "model_id",
+    "model_display",
+    "native_signature",
+    "processing_context",
+    "native_stem",
+    "production",
+    "backend_primary",
+    "backend_target",
+    "logical_primary",
+    "role_id",
+    "canonical_name",
+    "filename_tag",
+    "pair_id",
+    "intent",
+    "intent_source",
+    "review_status",
+    "evidence_or_waiver",
+)
+
+_COMPLEMENT_ONLY_NAMES = frozenset({"drum-bass", "no bass", "no drums", "no other"})
+_PINNED_EVIDENCE_COUNTS = (148, 123, 92)
+_REVIEWED_VOCAL_SPLIT_IDS = frozenset(
+    {
+        "mdx:mbr_bve_gonzaluigi",
+        "mdx:model_MelBand-Roformer_BVE_by-Gonza",
+        "vr:UVR-BVE-4B_SN-44100-1",
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogueEvidenceCounts:
+    """Provenanced vocabulary measurements; never semantic declarations."""
+
+    literal_names: int
+    normalized_names: int
+    primary_names: int
+    community_tokens: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class StemAuditDiagnostic:
+    """One machine-readable strict finding tied to exact catalogue identities."""
+
+    code: str
+    model_ids: tuple[str, ...]
+    message: str
+    context: StemProcessingContext | None = None
+    expected: tuple[str, ...] = ()
+    actual: tuple[str, ...] = ()
+    structural: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class StemAuditResult:
+    """Structured outcome for one supplied catalogue/manifest projection."""
+
+    catalogue_model_ids: tuple[str, ...]
+    reviewed_model_ids: tuple[str, ...]
+    waived_model_ids: tuple[str, ...]
+    raw_model_ids: tuple[str, ...]
+    evidence_counts: CatalogueEvidenceCounts
+    diagnostics: tuple[StemAuditDiagnostic, ...]
+
+    @property
+    def structurally_valid(self) -> bool:
+        return not any(diagnostic.structural for diagnostic in self.diagnostics)
+
+    @property
+    def reference_matches(self) -> bool:
+        return not any(diagnostic.code == "reference-drift" for diagnostic in self.diagnostics)
+
+    @property
+    def ok(self) -> bool:
+        return not self.diagnostics
+
+    def diagnostics_for(self, model_id: str) -> tuple[StemAuditDiagnostic, ...]:
+        """Return all findings that explicitly affect ``model_id``."""
+        return tuple(
+            diagnostic for diagnostic in self.diagnostics if model_id in diagnostic.model_ids
+        )
+
+    def diagnostics_with_code(self, code: str) -> tuple[StemAuditDiagnostic, ...]:
+        """Return findings of one stable machine-readable kind."""
+        return tuple(diagnostic for diagnostic in self.diagnostics if diagnostic.code == code)
+
+
+def _audit_key(value: object) -> str:
+    return unicodedata.normalize("NFKC", str(value or "")).strip().casefold()
+
+
+def _signature_matches(expected: Sequence[str], actual: Sequence[str]) -> bool:
+    expected_keys = tuple(_audit_key(value) for value in expected)
+    actual_keys = tuple(_audit_key(value) for value in actual)
+    return len(expected_keys) == len(actual_keys) and set(expected_keys) == set(actual_keys)
+
+
+def _sorted_model_ids(model_ids: Iterable[str]) -> tuple[str, ...]:
+    return tuple(sorted(set(model_ids), key=lambda value: (value.casefold(), value)))
+
+
+def _catalogue_model_id(entry: ModelEntry) -> str:
+    # Keep the audit importable by the renderer that will consume its result in
+    # Task 2.  The local import avoids a module cycle while still sharing the
+    # exact UI/catalogue identity projection rather than minting a second one.
+    from catalogue.render import _canonical_model_id
+
+    return _canonical_model_id(entry)
+
+
+def _community_stem_tokens(stems_text: str) -> tuple[str, ...]:
+    tokens = []
+    for raw in stems_text.split(","):
+        token = raw.replace("*", "").strip()
+        token = token.split("(", 1)[0].strip()
+        if token and token.casefold() != "unknown":
+            tokens.append(token)
+    return tuple(tokens)
+
+
+def catalogue_evidence_counts(
+    entries: Sequence[ModelEntry], community_by_file: Mapping[str, Any]
+) -> CatalogueEvidenceCounts:
+    """Measure the approved evidence universe without inventing semantics."""
+    current_files = {str(entry.weight_file).casefold() for entry in entries}
+    literals = set(_COMPLEMENT_ONLY_NAMES)
+    primary = set()
+    community_tokens = set()
+    for entry in entries:
+        literals.update(str(stem) for stem in entry.instruments if str(stem))
+        if entry.primary_stem:
+            value = str(entry.primary_stem)
+            literals.add(value)
+            primary.add(value.casefold())
+        if entry.target_instrument:
+            literals.add(str(entry.target_instrument))
+    for filename, reference in community_by_file.items():
+        if filename.casefold() not in current_files:
+            continue
+        for token in _community_stem_tokens(str(reference.stems_text)):
+            literals.add(token)
+            community_tokens.add(token)
+    return CatalogueEvidenceCounts(
+        literal_names=len(literals),
+        normalized_names=len({value.casefold() for value in literals}),
+        primary_names=len(primary),
+        community_tokens=tuple(sorted(community_tokens, key=str.casefold)),
+    )
+
+
+def _context_value(raw_context: object) -> StemProcessingContext | None:
+    try:
+        if isinstance(raw_context, StemProcessingContext):
+            return raw_context
+        return StemProcessingContext(str(raw_context))
+    except ValueError:
+        return None
+
+
+def _output_role(output: Any) -> str:
+    return str(output.role)
+
+
+def _native_outputs(context: Any) -> tuple[Any, ...]:
+    return tuple(output for output in context.outputs if output.native is not None)
+
+
+def _derived_outputs(context: Any) -> tuple[Any, ...]:
+    return tuple(output for output in context.outputs if output.native is None)
+
+
+def _diagnostic_sort_key(
+    diagnostic: StemAuditDiagnostic,
+) -> tuple[str, tuple[str, ...], str, str]:
+    context = diagnostic.context.value if diagnostic.context is not None else ""
+    return diagnostic.code, diagnostic.model_ids, context, diagnostic.message
+
+
+def _role_users(registry: StemSemanticsRegistry) -> Mapping[str, set[str]]:
+    users: dict[str, set[str]] = defaultdict(set)
+    for model_id, declaration in registry.models.items():
+        for context in declaration.contexts.values():
+            for output in context.outputs:
+                users[_output_role(output)].add(model_id)
+    return users
+
+
+def _affected_role_users(
+    roles: Iterable[object],
+    users: Mapping[str, set[str]],
+    catalogue_model_ids: tuple[str, ...],
+) -> tuple[str, ...]:
+    affected = {model_id for role in roles for model_id in users.get(str(role), set())}
+    return _sorted_model_ids(affected) or catalogue_model_ids
+
+
+def _role_collision_diagnostics(
+    registry: StemSemanticsRegistry,
+    catalogue_model_ids: tuple[str, ...],
+) -> list[StemAuditDiagnostic]:
+    users = _role_users(registry)
+    diagnostics = []
+    for field_name, code in (
+        ("display", "role-display-collision"),
+        ("filename_tag", "role-tag-collision"),
+    ):
+        grouped: dict[str, list[object]] = defaultdict(list)
+        for role_id, definition in registry.roles.items():
+            grouped[_audit_key(getattr(definition, field_name))].append(role_id)
+        for normalized_value, roles in grouped.items():
+            if len(roles) < 2:
+                continue
+            role_ids = tuple(sorted((str(role) for role in roles), key=str.casefold))
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code=code,
+                    model_ids=_affected_role_users(roles, users, catalogue_model_ids),
+                    message=(
+                        f"roles {', '.join(role_ids)} share normalized {field_name} "
+                        f"{normalized_value!r}"
+                    ),
+                    actual=role_ids,
+                )
+            )
+    return diagnostics
+
+
+def _pair_diagnostics(
+    registry: StemSemanticsRegistry,
+    catalogue_model_ids: tuple[str, ...],
+) -> list[StemAuditDiagnostic]:
+    users = _role_users(registry)
+    diagnostics = []
+    pair_ids_by_role: dict[str, list[str]] = defaultdict(list)
+    for pair_id, pair in registry.pairs.items():
+        roles = tuple(pair.roles)
+        for role in roles:
+            pair_ids_by_role[str(role)].append(pair_id)
+        present = tuple(role for role in roles if role in registry.roles)
+        if len(roles) == 2 and roles[0] != roles[1] and len(present) == 2:
+            continue
+        diagnostics.append(
+            StemAuditDiagnostic(
+                code="pair-incomplete",
+                model_ids=_affected_role_users(roles, users, catalogue_model_ids),
+                message=f"{pair_id} must define two distinct existing roles",
+                expected=tuple(str(role) for role in roles),
+                actual=tuple(str(role) for role in present),
+            )
+        )
+    for role, pair_ids in pair_ids_by_role.items():
+        if len(pair_ids) < 2:
+            continue
+        diagnostics.append(
+            StemAuditDiagnostic(
+                code="pair-role-collision",
+                model_ids=_affected_role_users((role,), users, catalogue_model_ids),
+                message=f"role {role} belongs to multiple pairs",
+                expected=("one pair",),
+                actual=tuple(sorted(pair_ids, key=str.casefold)),
+            )
+        )
+    return diagnostics
+
+
+def _target_projection_diagnostics(
+    model_id: str,
+    declaration: Any,
+    runtime_signature: tuple[str, ...],
+) -> list[StemAuditDiagnostic]:
+    diagnostics = []
+    for raw_context, declared_context in declaration.contexts.items():
+        context = _context_value(raw_context)
+        if not _signature_matches(declaration.native_signature, runtime_signature):
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="target-runtime-signature",
+                    model_ids=(model_id,),
+                    context=context,
+                    message="target-instrument declaration does not match runtime inventory",
+                    expected=runtime_signature,
+                    actual=tuple(declaration.native_signature),
+                )
+            )
+        native = _native_outputs(declared_context)
+        native_names = tuple(output.native.raw for output in native)
+        native_is_valid = (
+            len(native) == 1
+            and native[0].production is StemProduction.NATIVE
+            and _signature_matches(native_names, runtime_signature)
+        )
+        if not native_is_valid:
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="target-native-output",
+                    model_ids=(model_id,),
+                    context=context,
+                    message="target context must expose exactly one native runtime source",
+                    expected=runtime_signature,
+                    actual=native_names,
+                )
+            )
+        derived = _derived_outputs(declared_context)
+        native_role = _output_role(native[0]) if len(native) == 1 else ""
+        dependency_is_valid = len(derived) == 1 and (
+            str(derived[0].complement_of or "") == native_role
+            or tuple(str(role) for role in derived[0].derived_from) == (native_role,)
+        )
+        if (
+            len(derived) != 1
+            or derived[0].production is not StemProduction.DERIVED
+            or not dependency_is_valid
+        ):
+            actual_dependencies = tuple(
+                str(role)
+                for output in derived
+                for role in (
+                    (output.complement_of,)
+                    if output.complement_of is not None
+                    else output.derived_from
+                )
+            )
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="target-derived-complement",
+                    model_ids=(model_id,),
+                    context=context,
+                    message=(
+                        "target context must expose one derived complement with an explicit "
+                        "dependency on its native role"
+                    ),
+                    expected=(native_role,) if native_role else (),
+                    actual=actual_dependencies,
+                )
+            )
+    return diagnostics
+
+
+def _context_diagnostics(
+    model_id: str,
+    entry: ModelEntry,
+    declaration: Any,
+    runtime_signature: tuple[str, ...],
+    registry: StemSemanticsRegistry,
+) -> tuple[list[StemAuditDiagnostic], bool]:
+    diagnostics = []
+    full_mix_reviewed = False
+    if StemProcessingContext.FULL_MIX not in declaration.contexts:
+        diagnostics.append(
+            StemAuditDiagnostic(
+                code="missing-full-mix",
+                model_ids=(model_id,),
+                context=StemProcessingContext.FULL_MIX,
+                message="reviewed declaration has no full_mix context",
+            )
+        )
+    for raw_context, declared_context in declaration.contexts.items():
+        context = _context_value(raw_context)
+        if context is None:
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="context-invalid",
+                    model_ids=(model_id,),
+                    message=f"declaration contains invalid context {raw_context!r}",
+                    actual=(str(raw_context),),
+                )
+            )
+            continue
+        roles = tuple(_output_role(output) for output in declared_context.outputs)
+        if len(set(roles)) != len(roles):
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="context-duplicate-role",
+                    model_ids=(model_id,),
+                    context=context,
+                    message="processing context maps more than one output to the same role",
+                    actual=roles,
+                )
+            )
+        logical_primary = str(declared_context.logical_primary)
+        primary_count = sum(role == logical_primary for role in roles)
+        if primary_count != 1:
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="context-logical-primary",
+                    model_ids=(model_id,),
+                    context=context,
+                    message="processing context must contain its logical primary exactly once",
+                    expected=(logical_primary,),
+                    actual=tuple(role for role in roles if role == logical_primary),
+                )
+            )
+        native_names = tuple(output.native.raw for output in _native_outputs(declared_context))
+        if not _signature_matches(declaration.native_signature, native_names):
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="context-native-signature",
+                    model_ids=(model_id,),
+                    context=context,
+                    message="context native outputs do not match the declaration signature",
+                    expected=tuple(declaration.native_signature),
+                    actual=native_names,
+                )
+            )
+        try:
+            resolved = resolve_model_stem_semantics(
+                model_id,
+                native_stems=runtime_signature,
+                backend_primary=entry.primary_stem,
+                backend_target=entry.target_instrument,
+                context=context,
+                registry=registry,
+            )
+        except (AttributeError, KeyError, TypeError, ValueError) as error:
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="context-resolution-error",
+                    model_ids=(model_id,),
+                    context=context,
+                    message=f"semantic resolver rejected the declaration: {error}",
+                )
+            )
+            continue
+        if resolved.status is not StemReviewStatus.REVIEWED:
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="context-unreviewed",
+                    model_ids=(model_id,),
+                    context=context,
+                    message=resolved.warning or "processing context resolved without review",
+                )
+            )
+        elif context is StemProcessingContext.FULL_MIX:
+            full_mix_reviewed = True
+    return diagnostics, full_mix_reviewed
+
+
+def _reference_digest(text: str | None) -> str:
+    if text is None:
+        return "missing"
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def audit_catalogue_stems(
+    entries: Sequence[ModelEntry],
+    context: CatalogueContext,
+    *,
+    expected_reference_text: str,
+    actual_reference_text: str | None,
+    registry: StemSemanticsRegistry | None = None,
+) -> StemAuditResult:
+    """Audit supplied catalogue data without collecting or parsing rendered TSV.
+
+    ``expected_reference_text`` is the candidate already rendered from
+    ``entries``.  The audit compares it byte-for-byte with the supplied current
+    reference; it never reconstructs semantics by reading TSV cells.
+    """
+    selected_registry = registry or load_stem_manifest(BUNDLED_MANIFEST_PATH)
+    model_ids_by_entry = tuple((_catalogue_model_id(entry), entry) for entry in entries)
+    catalogue_model_ids = _sorted_model_ids(model_id for model_id, _entry in model_ids_by_entry)
+    diagnostics: list[StemAuditDiagnostic] = []
+
+    duplicate_ids = _sorted_model_ids(
+        model_id
+        for model_id in catalogue_model_ids
+        if sum(candidate == model_id for candidate, _entry in model_ids_by_entry) > 1
+    )
+    if duplicate_ids:
+        diagnostics.append(
+            StemAuditDiagnostic(
+                code="catalogue-duplicate-id",
+                model_ids=duplicate_ids,
+                message="multiple collected entries project to the same canonical model ID",
+            )
+        )
+
+    catalogue_id_set = set(catalogue_model_ids)
+    declaration_ids = set(selected_registry.models)
+    waiver_ids = set(selected_registry.waivers)
+    overlap = _sorted_model_ids(declaration_ids & waiver_ids)
+    if overlap:
+        diagnostics.append(
+            StemAuditDiagnostic(
+                code="manifest-review-overlap",
+                model_ids=overlap,
+                message="model IDs cannot be both declared and waived",
+            )
+        )
+    missing = _sorted_model_ids(catalogue_id_set - declaration_ids - waiver_ids)
+    if missing:
+        diagnostics.append(
+            StemAuditDiagnostic(
+                code="catalogue-unreviewed",
+                model_ids=missing,
+                message="catalogue model IDs have neither reviewed declarations nor waivers",
+            )
+        )
+    orphaned = _sorted_model_ids((declaration_ids | waiver_ids) - catalogue_id_set)
+    if orphaned:
+        diagnostics.append(
+            StemAuditDiagnostic(
+                code="manifest-orphan",
+                model_ids=orphaned,
+                message="manifest model IDs are absent from the supplied catalogue snapshot",
+            )
+        )
+
+    reviewed_ids = set()
+    raw_ids = set(missing)
+    for model_id, entry in model_ids_by_entry:
+        if model_id in waiver_ids:
+            continue
+        declaration = selected_registry.models.get(model_id)
+        if declaration is None:
+            raw_ids.add(model_id)
+            continue
+        runtime_signature = runtime_stem_signature(
+            model_id,
+            entry.instruments,
+            target_instrument=entry.target_instrument,
+            metadata_source=entry.metadata_source,
+        )
+        if not _signature_matches(declaration.native_signature, runtime_signature):
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="native-signature",
+                    model_ids=(model_id,),
+                    message="reviewed declaration does not match runtime-native source keys",
+                    expected=tuple(declaration.native_signature),
+                    actual=runtime_signature,
+                )
+            )
+        context_findings, full_mix_reviewed = _context_diagnostics(
+            model_id,
+            entry,
+            declaration,
+            runtime_signature,
+            selected_registry,
+        )
+        diagnostics.extend(context_findings)
+        if full_mix_reviewed:
+            reviewed_ids.add(model_id)
+        else:
+            raw_ids.add(model_id)
+        if is_runtime_target_instrument(
+            model_id,
+            target_instrument=entry.target_instrument,
+            metadata_source=entry.metadata_source,
+        ):
+            diagnostics.extend(
+                _target_projection_diagnostics(model_id, declaration, runtime_signature)
+            )
+        eligible_for_vocal_split = entry.is_karaoke or model_id in _REVIEWED_VOCAL_SPLIT_IDS
+        has_vocal_split = StemProcessingContext.VOCAL_SPLIT in declaration.contexts
+        if eligible_for_vocal_split and not has_vocal_split:
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="missing-vocal-split",
+                    model_ids=(model_id,),
+                    context=StemProcessingContext.VOCAL_SPLIT,
+                    message="karaoke or reviewed BVE model lacks a vocal_split declaration",
+                )
+            )
+        elif has_vocal_split and not eligible_for_vocal_split:
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="unexpected-vocal-split",
+                    model_ids=(model_id,),
+                    context=StemProcessingContext.VOCAL_SPLIT,
+                    message="non-karaoke model has an unapproved vocal_split declaration",
+                )
+            )
+
+    diagnostics.extend(_role_collision_diagnostics(selected_registry, catalogue_model_ids))
+    diagnostics.extend(_pair_diagnostics(selected_registry, catalogue_model_ids))
+
+    evidence_counts = catalogue_evidence_counts(entries, context.community_by_file)
+    actual_evidence = (
+        evidence_counts.literal_names,
+        evidence_counts.normalized_names,
+        evidence_counts.primary_names,
+    )
+    if actual_evidence != _PINNED_EVIDENCE_COUNTS:
+        diagnostics.append(
+            StemAuditDiagnostic(
+                code="evidence-count",
+                model_ids=catalogue_model_ids,
+                message="catalogue evidence vocabulary differs from the reviewed baseline",
+                expected=tuple(str(value) for value in _PINNED_EVIDENCE_COUNTS),
+                actual=tuple(str(value) for value in actual_evidence),
+            )
+        )
+
+    if actual_reference_text != expected_reference_text:
+        diagnostics.append(
+            StemAuditDiagnostic(
+                code="reference-drift",
+                model_ids=catalogue_model_ids,
+                message="checked-in stem-semantics reference differs from the rendered candidate",
+                expected=(_reference_digest(expected_reference_text),),
+                actual=(_reference_digest(actual_reference_text),),
+                structural=False,
+            )
+        )
+
+    waived_catalogue_ids = catalogue_id_set & waiver_ids
+    raw_ids.update(catalogue_id_set - reviewed_ids - waived_catalogue_ids)
+    return StemAuditResult(
+        catalogue_model_ids=catalogue_model_ids,
+        reviewed_model_ids=_sorted_model_ids(reviewed_ids),
+        waived_model_ids=_sorted_model_ids(waived_catalogue_ids),
+        raw_model_ids=_sorted_model_ids(raw_ids),
+        evidence_counts=evidence_counts,
+        diagnostics=tuple(sorted(diagnostics, key=_diagnostic_sort_key)),
+    )
+
+
+__all__ = [
+    "CatalogueEvidenceCounts",
+    "STEM_SEMANTICS_REFERENCE_HEADERS",
+    "StemAuditDiagnostic",
+    "StemAuditResult",
+    "audit_catalogue_stems",
+    "catalogue_evidence_counts",
+]
