@@ -8,8 +8,8 @@ Regenerate after catalogue updates:
 python scripts/generate_models_catalogue.py
 ```
 
-Intent sources: catalogue label, yaml/hash metadata, Politrees model_data,
-and [upseem/uvr5-cli-no-ui models.txt](https://github.com/upseem/uvr5-cli-no-ui/blob/main/models.txt)
+Intent sources: catalogue label, YAML metadata, and community
+[upseem/uvr5-cli-no-ui models.txt](https://github.com/upseem/uvr5-cli-no-ui/blob/main/models.txt)
 (cached as `docs/model_intent_reference.tsv`).
 
 ## How to read this
@@ -32,7 +32,6 @@ The GUI should show **Vocals** / **Instrumental** for 2-stem yaml pairs, not Dem
 - Source stale: none
 - Source failed: none
 - Source upstream live: True
-- Cache politrees: 1m old
 - Cache community: 1m old
 - Cache yaml: 0m old
 

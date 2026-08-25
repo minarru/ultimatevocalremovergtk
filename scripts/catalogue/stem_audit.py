@@ -27,12 +27,11 @@ from catalogue.collect import (
     runtime_stem_signature,
 )
 from core.model_stem_manifest import (
-    BUNDLED_MANIFEST_PATH,
     StemSemanticsRegistry,
-    load_stem_manifest,
     resolve_model_stem_semantics,
 )
 from core.stem_roles import (
+    StemId,
     StemProcessingContext,
     StemProduction,
     StemReviewStatus,
@@ -99,6 +98,38 @@ class StemAuditDiagnostic:
 
 
 @dataclass(frozen=True, slots=True)
+class StemRelationshipEvidence:
+    """One exact reviewed native/context/role use in a catalogue model."""
+
+    model_id: str
+    context: StemProcessingContext
+    native: str
+    role_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class NativeToRoleAmbiguity:
+    """One normalized native key carrying multiple reviewed role meanings."""
+
+    normalized_native: str
+    native_spellings: tuple[str, ...]
+    role_ids: tuple[str, ...]
+    model_ids: tuple[str, ...]
+    evidence: tuple[StemRelationshipEvidence, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RoleToNativeVariant:
+    """One reviewed role emitted under multiple normalized native keys."""
+
+    role_id: str
+    normalized_natives: tuple[str, ...]
+    native_spellings: tuple[str, ...]
+    model_ids: tuple[str, ...]
+    evidence: tuple[StemRelationshipEvidence, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class StemAuditResult:
     """Structured outcome for one supplied catalogue/manifest projection."""
 
@@ -108,6 +139,8 @@ class StemAuditResult:
     raw_model_ids: tuple[str, ...]
     evidence_counts: CatalogueEvidenceCounts
     diagnostics: tuple[StemAuditDiagnostic, ...]
+    native_to_role_ambiguities: tuple[NativeToRoleAmbiguity, ...] = ()
+    role_to_native_variants: tuple[RoleToNativeVariant, ...] = ()
 
     @property
     def structurally_valid(self) -> bool:
@@ -154,6 +187,98 @@ def _signature_matches(expected: Sequence[str], actual: Sequence[str]) -> bool:
 
 def _sorted_model_ids(model_ids: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted(set(model_ids), key=lambda value: (value.casefold(), value)))
+
+
+def _native_sort_key(value: str) -> tuple[str, str]:
+    return StemId(value).casefold(), value
+
+
+def _relationship_evidence_sort_key(
+    evidence: StemRelationshipEvidence,
+) -> tuple[str, str, str, str, str, str]:
+    return (
+        evidence.model_id.casefold(),
+        evidence.model_id,
+        evidence.context.value,
+        StemId(evidence.native).casefold(),
+        evidence.native,
+        evidence.role_id,
+    )
+
+
+def catalogue_stem_relationships(
+    registry: StemSemanticsRegistry,
+    catalogue_model_ids: Sequence[str],
+) -> tuple[tuple[NativeToRoleAmbiguity, ...], tuple[RoleToNativeVariant, ...]]:
+    """Project reviewed catalogue-native relationships without creating findings.
+
+    Membership is the intersection of exact supplied catalogue IDs and reviewed
+    declarations, excluding every waiver. Only native outputs contribute;
+    derived recipes have no runtime-native spelling to relate.
+    """
+    supplied_ids = set(catalogue_model_ids)
+    reviewed_ids = (set(registry.models) & supplied_ids) - set(registry.waivers)
+    uses: set[StemRelationshipEvidence] = set()
+    for model_id in sorted(reviewed_ids, key=lambda value: (value.casefold(), value)):
+        declaration = registry.models[model_id]
+        for context, declared_context in sorted(
+            declaration.contexts.items(),
+            key=lambda item: item[0].value,
+        ):
+            for output in declared_context.outputs:
+                if output.native is None or not isinstance(output.role, StemRoleId):
+                    continue
+                uses.add(
+                    StemRelationshipEvidence(
+                        model_id=model_id,
+                        context=context,
+                        native=output.native.raw,
+                        role_id=str(output.role),
+                    )
+                )
+
+    by_native: dict[str, set[StemRelationshipEvidence]] = defaultdict(set)
+    by_role: dict[str, set[StemRelationshipEvidence]] = defaultdict(set)
+    for evidence in uses:
+        by_native[StemId(evidence.native).casefold()].add(evidence)
+        by_role[evidence.role_id].add(evidence)
+
+    ambiguities = []
+    for normalized_native, grouped in sorted(by_native.items()):
+        role_ids = tuple(sorted({item.role_id for item in grouped}, key=str.casefold))
+        if len(role_ids) < 2:
+            continue
+        evidence = tuple(sorted(grouped, key=_relationship_evidence_sort_key))
+        ambiguities.append(
+            NativeToRoleAmbiguity(
+                normalized_native=normalized_native,
+                native_spellings=tuple(
+                    sorted({item.native for item in evidence}, key=_native_sort_key)
+                ),
+                role_ids=role_ids,
+                model_ids=_sorted_model_ids(item.model_id for item in evidence),
+                evidence=evidence,
+            )
+        )
+
+    variants = []
+    for role_id, grouped in sorted(by_role.items(), key=lambda item: item[0].casefold()):
+        normalized_natives = tuple(sorted({StemId(item.native).casefold() for item in grouped}))
+        if len(normalized_natives) < 2:
+            continue
+        evidence = tuple(sorted(grouped, key=_relationship_evidence_sort_key))
+        variants.append(
+            RoleToNativeVariant(
+                role_id=role_id,
+                normalized_natives=normalized_natives,
+                native_spellings=tuple(
+                    sorted({item.native for item in evidence}, key=_native_sort_key)
+                ),
+                model_ids=_sorted_model_ids(item.model_id for item in evidence),
+                evidence=evidence,
+            )
+        )
+    return tuple(ambiguities), tuple(variants)
 
 
 def _catalogue_model_id(entry: ModelEntry) -> str:
@@ -546,7 +671,7 @@ def audit_catalogue_stems(
     *,
     expected_reference_text: str,
     actual_reference_text: str | None,
-    registry: StemSemanticsRegistry | None = None,
+    registry: StemSemanticsRegistry,
 ) -> StemAuditResult:
     """Audit supplied catalogue data without collecting or parsing rendered TSV.
 
@@ -554,7 +679,7 @@ def audit_catalogue_stems(
     ``entries``.  The audit compares it byte-for-byte with the supplied current
     reference; it never reconstructs semantics by reading TSV cells.
     """
-    selected_registry = registry or load_stem_manifest(BUNDLED_MANIFEST_PATH)
+    selected_registry = registry
     model_ids_by_entry = tuple((_catalogue_model_id(entry), entry) for entry in entries)
     catalogue_model_ids = _sorted_model_ids(model_id for model_id, _entry in model_ids_by_entry)
     diagnostics: list[StemAuditDiagnostic] = []
@@ -708,6 +833,10 @@ def audit_catalogue_stems(
 
     waived_catalogue_ids = catalogue_id_set & waiver_ids
     raw_ids.update(catalogue_id_set - reviewed_ids - waived_catalogue_ids)
+    native_to_role_ambiguities, role_to_native_variants = catalogue_stem_relationships(
+        selected_registry,
+        catalogue_model_ids,
+    )
     return StemAuditResult(
         catalogue_model_ids=catalogue_model_ids,
         reviewed_model_ids=_sorted_model_ids(reviewed_ids),
@@ -715,6 +844,8 @@ def audit_catalogue_stems(
         raw_model_ids=_sorted_model_ids(raw_ids),
         evidence_counts=evidence_counts,
         diagnostics=tuple(sorted(diagnostics, key=_diagnostic_sort_key)),
+        native_to_role_ambiguities=native_to_role_ambiguities,
+        role_to_native_variants=role_to_native_variants,
     )
 
 
@@ -1082,14 +1213,18 @@ def run_stem_confidence_audit(
 
 __all__ = [
     "CatalogueEvidenceCounts",
+    "NativeToRoleAmbiguity",
+    "RoleToNativeVariant",
     "STEM_SEMANTICS_REFERENCE_HEADERS",
     "StemAuditDiagnostic",
     "StemAuditResult",
+    "StemRelationshipEvidence",
     "HashCache",
     "HashLookup",
     "StemConfidenceEntry",
     "audit_catalogue_stems",
     "catalogue_evidence_counts",
+    "catalogue_stem_relationships",
     "default_hash_cache_path",
     "iter_stem_confidence_entries",
     "render_stem_confidence_summary",

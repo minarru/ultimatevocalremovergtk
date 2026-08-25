@@ -40,6 +40,13 @@ from catalogue.collect import (  # noqa: E402
     build_ir,
 )
 
+from core.model_stem_manifest import (  # noqa: E402
+    BUNDLED_MANIFEST_PATH,
+    StemManifestError,
+    StemSemanticsRegistry,
+    load_stem_manifest,
+)
+
 
 def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -372,16 +379,18 @@ def _render_publication_bundle(
     report: Any,
     catalogue_text: str,
     document_sha256: str,
+    registry: StemSemanticsRegistry,
 ) -> PublicationBundle:
     """Render and validate the complete output set before publication starts."""
     intent_reference = render._reference_tsv_text(ctx.community_by_file)
     display_reference = render.presentation_reference_audit(entries)
-    stem_reference = render.stem_semantics_reference_tsv(entries)
+    stem_reference = render.stem_semantics_reference_tsv(entries, registry=registry)
     audit = stem_audit.audit_catalogue_stems(
         entries,
         ctx,
         expected_reference_text=stem_reference,
         actual_reference_text=_read_text_or_none(STEM_SEMANTICS_REFERENCE_TSV_PATH),
+        registry=registry,
     )
     ir = build_ir(
         entries,
@@ -446,7 +455,6 @@ def _print_structural_stem_diagnostics(result: stem_audit.StemAuditResult) -> No
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_args(argv)
-    _print_deprecated_reference_flags(args)
     policy = _policy_for(args)
     if args.audit_stem_confidence:
         return stem_audit.run_stem_confidence_audit(
@@ -458,6 +466,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             quiet=args.quiet,
             no_hash_cache=args.no_hash_cache,
         )
+    try:
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+    except StemManifestError as error:
+        print(f"Stem audit manifest-invalid: {error}", file=sys.stderr)
+        return 1
+    _print_deprecated_reference_flags(args)
     ctx = collect._build_catalogue_context(policy=policy)
     snapshot, entries = collect.collect_entries(ctx, policy=policy)
     unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))
@@ -504,6 +518,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         report=report,
         catalogue_text=rendered_catalogue,
         document_sha256=document_sha256,
+        registry=registry,
     )
 
     if args.summary:

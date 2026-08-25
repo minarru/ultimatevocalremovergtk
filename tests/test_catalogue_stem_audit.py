@@ -12,6 +12,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 from catalogue import collect  # noqa: E402
+from catalogue import stem_audit as stem_audit_module  # noqa: E402
 from catalogue.stem_audit import (  # noqa: E402
     STEM_SEMANTICS_REFERENCE_HEADERS,
     StemAuditDiagnostic,
@@ -495,6 +496,187 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
                 "evidence_or_waiver",
             ),
         )
+
+    def test_relationship_projections_are_model_specific_filtered_and_deterministic(self) -> None:
+        """Reordering entries cannot add waivers, orphans, or derived outputs."""
+        models: dict[str, object] = {
+            "mdx:alpha": _declaration(
+                (" Vocals ",),
+                _context(VOCALS, _native(" Vocals ", VOCALS)),
+                vocal_split=_context(VOCALS, _native(" Vocals ", VOCALS)),
+            ),
+            "mdx:beta": _declaration(
+                ("vocals",),
+                _context(INSTRUMENTAL, _native("vocals", INSTRUMENTAL)),
+            ),
+            "mdx:lead": _declaration(
+                ("Lead Vocal",),
+                _context(VOCALS, _native("Lead Vocal", VOCALS)),
+            ),
+            "mdx:case": _declaration(
+                ("VOCALS",),
+                _context(VOCALS, _native("VOCALS", VOCALS)),
+            ),
+            "mdx:derived": _declaration(
+                ("Track",),
+                _context(
+                    BASS,
+                    _native("Track", BASS),
+                    _derived(VOCALS, BASS),
+                ),
+            ),
+            "mdx:orphan": _declaration(
+                ("orphan secret",),
+                _context(VOCALS, _native("orphan secret", VOCALS)),
+            ),
+        }
+        roles = {
+            VOCALS: _role(VOCALS, "Vocals", "Vocals", StemRoleFamily.VOCAL),
+            INSTRUMENTAL: _role(
+                INSTRUMENTAL,
+                "Instrumental",
+                "Instrumental",
+                StemRoleFamily.MIX,
+            ),
+            BASS: _role(BASS, "Bass", "Bass", StemRoleFamily.INSTRUMENT),
+        }
+        registry = _registry(
+            models,
+            roles=roles,
+            pairs={},
+            waivers={"mdx:waived": "intentionally unprojected"},
+        )
+        entries = [
+            _entry("alpha", instruments=(" Vocals ",), primary=" Vocals ", karaoke=True),
+            _entry("beta", instruments=("vocals",), primary="vocals"),
+            _entry("lead", instruments=("Lead Vocal",), primary="Lead Vocal"),
+            _entry("case", instruments=("VOCALS",), primary="VOCALS"),
+            _entry("derived", instruments=("Track",), primary="Track"),
+            _entry("waived", instruments=("waiver secret",), primary="waiver secret"),
+        ]
+
+        forward = audit_catalogue_stems(
+            entries,
+            collect.CatalogueContext(),
+            expected_reference_text="same",
+            actual_reference_text="same",
+            registry=registry,
+        )
+        reverse = audit_catalogue_stems(
+            list(reversed(entries)),
+            collect.CatalogueContext(),
+            expected_reference_text="same",
+            actual_reference_text="same",
+            registry=registry,
+        )
+
+        self.assertEqual(forward.native_to_role_ambiguities, reverse.native_to_role_ambiguities)
+        self.assertEqual(forward.role_to_native_variants, reverse.role_to_native_variants)
+        self.assertEqual(len(forward.native_to_role_ambiguities), 1)
+        ambiguity = forward.native_to_role_ambiguities[0]
+        self.assertEqual(ambiguity.normalized_native, "vocals")
+        self.assertEqual(ambiguity.role_ids, (str(INSTRUMENTAL), str(VOCALS)))
+        self.assertEqual(
+            ambiguity.model_ids,
+            ("mdx:alpha", "mdx:beta", "mdx:case"),
+        )
+        self.assertEqual(
+            ambiguity.native_spellings,
+            (" Vocals ", "VOCALS", "vocals"),
+        )
+        self.assertEqual(
+            {evidence.context for evidence in ambiguity.evidence},
+            {StemProcessingContext.FULL_MIX, StemProcessingContext.VOCAL_SPLIT},
+        )
+        self.assertEqual(len(ambiguity.evidence), len(set(ambiguity.evidence)))
+
+        vocal_variants = next(
+            group for group in forward.role_to_native_variants if group.role_id == str(VOCALS)
+        )
+        self.assertEqual(vocal_variants.normalized_natives, ("lead vocal", "vocals"))
+        self.assertEqual(
+            vocal_variants.native_spellings,
+            ("Lead Vocal", " Vocals ", "VOCALS"),
+        )
+        all_evidence = tuple(
+            evidence
+            for group in (*forward.native_to_role_ambiguities, *forward.role_to_native_variants)
+            for evidence in group.evidence
+        )
+        self.assertFalse(
+            {"mdx:waived", "mdx:orphan"} & {evidence.model_id for evidence in all_evidence}
+        )
+        self.assertFalse(
+            any(
+                evidence.model_id == "mdx:derived" and evidence.role_id == str(VOCALS)
+                for evidence in all_evidence
+            )
+        )
+
+    def test_expected_relationship_diversity_is_informational_not_diagnostic(self) -> None:
+        """Deleting the informational/diagnostic boundary would make a valid audit fail."""
+        roles = {
+            VOCALS: _role(VOCALS, "Vocals", "Vocals", StemRoleFamily.VOCAL),
+            INSTRUMENTAL: _role(
+                INSTRUMENTAL,
+                "Instrumental",
+                "Instrumental",
+                StemRoleFamily.MIX,
+            ),
+        }
+        registry = _registry(
+            {
+                "mdx:first": _declaration(
+                    ("Vocals",),
+                    _context(VOCALS, _native("Vocals", VOCALS)),
+                ),
+                "mdx:second": _declaration(
+                    ("vocals",),
+                    _context(INSTRUMENTAL, _native("vocals", INSTRUMENTAL)),
+                ),
+                "mdx:third": _declaration(
+                    ("Lead Vocal",),
+                    _context(VOCALS, _native("Lead Vocal", VOCALS)),
+                ),
+            },
+            roles=roles,
+            pairs={},
+        )
+        entries = [
+            _entry("first", instruments=("Vocals",), primary="Vocals"),
+            _entry("second", instruments=("vocals",), primary="vocals"),
+            _entry("third", instruments=("Lead Vocal",), primary="Lead Vocal"),
+        ]
+        counts = stem_audit_module.catalogue_evidence_counts(entries, {})
+        pinned = (counts.literal_names, counts.normalized_names, counts.primary_names)
+
+        with patch.object(stem_audit_module, "_PINNED_EVIDENCE_COUNTS", pinned):
+            result = audit_catalogue_stems(
+                entries,
+                collect.CatalogueContext(),
+                expected_reference_text="same",
+                actual_reference_text="same",
+                registry=registry,
+            )
+
+        self.assertEqual(result.diagnostics, ())
+        self.assertTrue(result.ok)
+        self.assertTrue(result.structurally_valid)
+        self.assertEqual(len(result.native_to_role_ambiguities), 1)
+        self.assertEqual(len(result.role_to_native_variants), 1)
+
+    def test_bundled_relationship_projection_retains_reviewed_six_and_fourteen(self) -> None:
+        """A projection that admits waivers/derived rows changes the reviewed baseline."""
+        from core.model_stem_manifest import BUNDLED_MANIFEST_PATH, load_stem_manifest
+
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+        ambiguities, variants = stem_audit_module.catalogue_stem_relationships(
+            registry,
+            tuple((*registry.models, *registry.waivers)),
+        )
+
+        self.assertEqual(len(ambiguities), 6)
+        self.assertEqual(len(variants), 14)
 
 
 if __name__ == "__main__":

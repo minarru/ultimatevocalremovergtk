@@ -9,7 +9,6 @@ the one collection path.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re
 import sys
@@ -38,7 +37,6 @@ from core.model_data import (  # noqa: E402
     _mdx_c_training,
     load_mdx_c_config,
     load_mdx_c_config_data,
-    load_model_hash_data,
 )
 from core.model_naming import canonical_display_name  # noqa: E402
 from core.model_stem_semantics import (  # noqa: E402
@@ -70,7 +68,6 @@ STEM_SEMANTICS_REFERENCE_TSV_PATH = os.path.join(ROOT, "docs", "model_stem_seman
 #: docs/ holds deliberate, reviewable output only.
 _CACHE_ROOT = os.path.join(paths.CACHE_DIR, "models_catalogue")
 YAML_CACHE_DIR = os.path.join(_CACHE_ROOT, "yaml")
-POLITREES_CACHE_DIR = os.path.join(_CACHE_ROOT, "politrees")
 COMMUNITY_CACHE_DIR = os.path.join(_CACHE_ROOT, "community")
 
 # Deliberate repository seeds are part of the generator input.  Runtime model
@@ -79,17 +76,10 @@ COMMUNITY_CACHE_DIR = os.path.join(_CACHE_ROOT, "community")
 _BUNDLED_MDX_YAML_DIR = os.path.join(
     ROOT, "models", "MDX_Net_Models", "model_data", "mdx_c_configs"
 )
-_BUNDLED_VR_HASH_JSON = os.path.join(ROOT, "models", "VR_Models", "model_data", "model_data.json")
-_BUNDLED_MDX_HASH_JSON = os.path.join(
-    ROOT, "models", "MDX_Net_Models", "model_data", "model_data.json"
-)
-
 #: How long a supplemental download stays good. Without a TTL, "regenerate
 #: after catalogue updates" silently reused whatever was fetched first.
 CACHE_MAX_AGE_SECONDS = 24 * 60 * 60
 
-_POLITREES_VR_DATA_URL = "https://raw.githubusercontent.com/Politrees/UVR_resources/main/UVR_resources/model_data/vr_model_data.json"
-_POLITREES_MDX_DATA_URL = "https://raw.githubusercontent.com/Politrees/UVR_resources/main/UVR_resources/model_data/mdx_model_data.json"
 _COMMUNITY_MODELS_URL = "https://raw.githubusercontent.com/upseem/uvr5-cli-no-ui/main/models.txt"
 
 _POLITREES_KEYS = (
@@ -170,9 +160,6 @@ class CommunityRef:
 @dataclass
 class CatalogueContext:
     community_by_file: Dict[str, CommunityRef] = field(default_factory=dict)
-    vr_by_hash: Dict[str, dict] = field(default_factory=dict)
-    mdx_by_hash: Dict[str, dict] = field(default_factory=dict)
-    weight_to_hash: Dict[str, str] = field(default_factory=dict)
     #: Required supplements that could not be read at all. An empty but valid
     #: response is evidence too; callers must not confuse zero rows with an
     #: unavailable source and reject a coherent snapshot on that basis.
@@ -442,40 +429,6 @@ def _fetch_cached(
     return path if data is not None else None
 
 
-def _load_json_cache(
-    url: str, cache_dir: str, filename: str, *, policy: FetchPolicy = DEFAULT_FETCH_POLICY
-) -> dict:
-    payload, _available = _load_json_cache_with_availability(
-        url, cache_dir, filename, policy=policy
-    )
-    return payload
-
-
-def _load_json_cache_with_availability(
-    url: str, cache_dir: str, filename: str, *, policy: FetchPolicy = DEFAULT_FETCH_POLICY
-) -> Tuple[dict, bool]:
-    """Load a JSON supplement and retain whether evidence was available at all."""
-    data, _path = _fetch_cached_bytes(url, cache_dir, filename, policy=policy)
-    if data is None:
-        return {}, False
-    try:
-        payload = json.loads(data.decode("utf-8"))
-        return (payload, True) if isinstance(payload, dict) else ({}, False)
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return {}, False
-
-
-def _merge_hash_tables(local_path: str, remote: dict) -> dict:
-    merged: dict = {}
-    if os.path.isfile(local_path):
-        try:
-            merged.update(load_model_hash_data(local_path))
-        except (FileNotFoundError, ValueError, json.JSONDecodeError):
-            pass
-    merged.update(remote)
-    return merged
-
-
 def _intent_from_primary_stem(primary: str, *, is_karaoke: bool = False) -> str:
     return intent_from_primary_stem(primary, is_karaoke=is_karaoke) or ""
 
@@ -556,12 +509,6 @@ def _build_catalogue_context(
             allow_metadata_writes=policy.allow_metadata_writes,
             allow_cache_writes=policy.allow_cache_writes,
         )
-    remote_vr, vr_available = _load_json_cache_with_availability(
-        _POLITREES_VR_DATA_URL, POLITREES_CACHE_DIR, "vr_model_data.json", policy=policy
-    )
-    remote_mdx, mdx_available = _load_json_cache_with_availability(
-        _POLITREES_MDX_DATA_URL, POLITREES_CACHE_DIR, "mdx_model_data.json", policy=policy
-    )
     community_data, _community_path = _fetch_cached_bytes(
         _COMMUNITY_MODELS_URL, COMMUNITY_CACHE_DIR, "models.txt", policy=policy
     )
@@ -570,20 +517,10 @@ def _build_catalogue_context(
     else:
         community, community_available = _parse_community_models_bytes(community_data)
     unavailable = []
-    if not vr_available:
-        unavailable.append("Politrees VR hash metadata")
-    if not mdx_available:
-        unavailable.append("Politrees MDX hash metadata")
     if not community_available:
         unavailable.append("community models.txt reference")
     return CatalogueContext(
         community_by_file=community,
-        vr_by_hash=_merge_hash_tables(_BUNDLED_VR_HASH_JSON, remote_vr),
-        mdx_by_hash=_merge_hash_tables(_BUNDLED_MDX_HASH_JSON, remote_mdx),
-        # Hash tables are still retained as evidence inputs, but a filename can
-        # only be joined to a digest by hashing an installed weight. Runtime
-        # weights are deliberately excluded from strict publication.
-        weight_to_hash={},
         unavailable_supplemental_evidence=tuple(unavailable),
     )
 

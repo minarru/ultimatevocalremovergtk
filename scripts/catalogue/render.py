@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Mapping, Tuple
 
 from catalogue.collect import (
     COMMUNITY_CACHE_DIR,
-    POLITREES_CACHE_DIR,
     REFERENCE_TSV_PATH,
     ROOT,
     YAML_CACHE_DIR,
@@ -27,6 +26,7 @@ from core.model_catalogue import (
     project_catalogue_display,
 )
 from core.model_naming import load_model_display_manifest
+from core.model_stem_manifest import StemSemanticsRegistry, resolve_model_stem_semantics
 
 
 def _reference_tsv_text(refs: Dict[str, CommunityRef]) -> str:
@@ -268,16 +268,14 @@ def presentation_reference_tsv(entries: List[ModelEntry]) -> str:
     return presentation_reference_audit(entries).text
 
 
-def stem_semantics_reference_tsv(entries: List[ModelEntry]) -> str:
+def stem_semantics_reference_tsv(
+    entries: List[ModelEntry],
+    *,
+    registry: StemSemanticsRegistry,
+) -> str:
     """Render reviewed runtime semantics; guessed catalogue intent is evidence only."""
-    from core.model_stem_manifest import (
-        BUNDLED_MANIFEST_PATH,
-        load_stem_manifest,
-        resolve_model_stem_semantics,
-    )
     from core.stem_roles import StemProcessingContext, StemRoleId
 
-    registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
     identity_headers = (
         "runtime_family",
         "runtime_basename",
@@ -444,6 +442,9 @@ def render_summary_report(
                 f"- Reviewed catalogue models: **{len(stem_audit.reviewed_model_ids)}**",
                 f"- Waived catalogue models: **{len(stem_audit.waived_model_ids)}**",
                 f"- Raw catalogue models: **{len(stem_audit.raw_model_ids)}**",
+                "- Native-to-role ambiguity groups: "
+                f"**{len(stem_audit.native_to_role_ambiguities)}**",
+                f"- Role-to-native variant groups: **{len(stem_audit.role_to_native_variants)}**",
             )
         )
     lines.append("")
@@ -472,6 +473,18 @@ def render_summary_report(
 
 def _stem_audit_summary_lines(stem_audit: Any) -> List[str]:
     """Render Task 1 diagnostics without re-deriving semantics from TSV text."""
+    ambiguities = tuple(stem_audit.native_to_role_ambiguities)
+    variants = tuple(stem_audit.role_to_native_variants)
+    lines: List[str] = []
+    if ambiguities:
+        lines.extend(("## Native-to-role ambiguities", ""))
+        lines.extend(_format_native_to_role_ambiguity(group) for group in ambiguities)
+        lines.append("")
+    if variants:
+        lines.extend(("## Role-to-native variants", ""))
+        lines.extend(_format_role_to_native_variant(group) for group in variants)
+        lines.append("")
+
     section_codes = (
         (
             "Signature and context findings",
@@ -481,6 +494,8 @@ def _stem_audit_summary_lines(stem_audit: Any) -> List[str]:
                     "target-runtime-signature",
                     "missing-full-mix",
                     "context-invalid",
+                    "context-duplicate-role",
+                    "context-native-signature",
                     "context-logical-primary",
                     "context-resolution-error",
                     "context-unreviewed",
@@ -491,8 +506,6 @@ def _stem_audit_summary_lines(stem_audit: Any) -> List[str]:
                 }
             ),
         ),
-        ("Native-to-role ambiguities", frozenset({"context-duplicate-role"})),
-        ("Role-to-native variants", frozenset({"context-native-signature"})),
         ("Invalid pairs", frozenset({"pair-incomplete", "pair-context-incomplete"})),
         (
             "Collisions",
@@ -502,7 +515,6 @@ def _stem_audit_summary_lines(stem_audit: Any) -> List[str]:
     )
     diagnostics = tuple(stem_audit.diagnostics)
     rendered_codes = set()
-    lines: List[str] = []
     for heading, codes in section_codes:
         findings = [diagnostic for diagnostic in diagnostics if diagnostic.code in codes]
         if not findings:
@@ -516,9 +528,40 @@ def _stem_audit_summary_lines(stem_audit: Any) -> List[str]:
         lines.extend(("## Other stem audit findings", ""))
         lines.extend(_format_stem_audit_diagnostic(diagnostic) for diagnostic in remaining)
         lines.append("")
-    if not diagnostics:
+    if not diagnostics and not ambiguities and not variants:
         lines.extend(("No stem semantic audit findings.", ""))
     return lines
+
+
+def _format_relationship_evidence(evidence: Any) -> str:
+    return (
+        f"`{evidence.model_id}` ({evidence.context.value}) "
+        f"`{evidence.native}` -> `{evidence.role_id}`"
+    )
+
+
+def _format_native_to_role_ambiguity(group: Any) -> str:
+    roles = ", ".join(f"`{role_id}`" for role_id in group.role_ids)
+    spellings = ", ".join(f"`{native}`" for native in group.native_spellings)
+    models = ", ".join(f"`{model_id}`" for model_id in group.model_ids)
+    evidence = "; ".join(_format_relationship_evidence(item) for item in group.evidence)
+    suffix = f"; evidence: {evidence}" if evidence else ""
+    return (
+        f"- normalized native `{group.normalized_native}` — roles: {roles}; "
+        f"exact spellings: {spellings}; models: {models}{suffix}"
+    )
+
+
+def _format_role_to_native_variant(group: Any) -> str:
+    normalized = ", ".join(f"`{native}`" for native in group.normalized_natives)
+    spellings = ", ".join(f"`{native}`" for native in group.native_spellings)
+    models = ", ".join(f"`{model_id}`" for model_id in group.model_ids)
+    evidence = "; ".join(_format_relationship_evidence(item) for item in group.evidence)
+    suffix = f"; evidence: {evidence}" if evidence else ""
+    return (
+        f"- role `{group.role_id}` — normalized native keys: {normalized}; "
+        f"exact spellings: {spellings}; models: {models}{suffix}"
+    )
 
 
 def _format_stem_audit_diagnostic(diagnostic: Any) -> str:
@@ -581,8 +624,8 @@ def _render(entries: List[ModelEntry], *, unsupported_count: int = 0, report: An
         "python scripts/generate_models_catalogue.py",
         "```",
         "",
-        "Intent sources: catalogue label, yaml/hash metadata, Politrees model_data,",
-        "and [upseem/uvr5-cli-no-ui models.txt](https://github.com/upseem/uvr5-cli-no-ui/blob/main/models.txt)",
+        "Intent sources: catalogue label, YAML metadata, and community",
+        "[upseem/uvr5-cli-no-ui models.txt](https://github.com/upseem/uvr5-cli-no-ui/blob/main/models.txt)",
         f"(cached as `{os.path.relpath(REFERENCE_TSV_PATH, ROOT)}`).",
         "",
         "## How to read this",
@@ -833,7 +876,6 @@ def _provenance_lines(report: Any) -> List[str]:
     lines.append(f"- Source upstream live: {bool(getattr(report, 'upstream_live', False))}")
 
     for label, cache_dir in (
-        ("politrees", POLITREES_CACHE_DIR),
         ("community", COMMUNITY_CACHE_DIR),
         ("yaml", YAML_CACHE_DIR),
     ):

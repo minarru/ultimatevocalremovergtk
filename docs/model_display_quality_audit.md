@@ -149,10 +149,11 @@ and review it. Strict check mode exits 1 for any of:
 - one or more unreviewed presentation flags; or
 - any case-insensitive display collision.
 
-`--check --write-display-reference` never writes the catalogue, sidecar,
-reference, downloaded metadata, or cache content. An online check may still
-read the network: missing or stale coordinator, supplement, community, and
-YAML data is consumed in memory without creating or replacing cache paths.
+`--check` validates the catalogue, IR sidecar, intent reference, display
+reference, and stem-semantics reference together. It never writes those
+artifacts, downloaded metadata, or cache content. An online check may still
+read the network: missing or stale coordinator, community, and YAML data is
+consumed in memory without creating or replacing cache paths.
 
 ## Snapshot and offline behavior
 
@@ -175,9 +176,9 @@ non-mutating and emits an actionable warning. Cold-offline unknowns do not
 receive a guessed remote association; VR and Demucs entries retain only their
 family-labelled raw basename fallback.
 
-The existing degraded-publication guard applies before either checked-in
-document is written or judged. A cold-cache subset therefore exits 2 instead
-of replacing or comparing against the 485-row publication unless a maintainer
+The existing degraded-publication guard applies before the generated artifact
+bundle is written or judged. A cold-cache subset therefore exits 2 instead of
+replacing or comparing against the 485-row publication unless a maintainer
 explicitly passes `--allow-degraded`. `--summary` remains read-only and can be
 used to diagnose that subset.
 
@@ -189,7 +190,7 @@ snapshot used for this audit can be selected explicitly with `UVR_CACHE_DIR`:
 ```bash
 UVR_CACHE_DIR=/path/to/warm-cache \
   .venv/bin/python scripts/generate_models_catalogue.py \
-  --offline --write-display-reference
+  --offline
 ```
 
 Strict read-only verification:
@@ -197,14 +198,14 @@ Strict read-only verification:
 ```bash
 UVR_CACHE_DIR=/path/to/warm-cache \
   .venv/bin/python scripts/generate_models_catalogue.py \
-  --offline --check --write-display-reference
+  --offline --check
 ```
 
 Refresh from the live sources, then write the audited reference:
 
 ```bash
 .venv/bin/python scripts/generate_models_catalogue.py \
-  --refresh --write-display-reference
+  --refresh
 ```
 
 Diagnose an isolated cold cache without writing:
@@ -214,7 +215,10 @@ UVR_CACHE_DIR=/path/to/empty-cache \
   .venv/bin/python scripts/generate_models_catalogue.py --summary --offline
 ```
 
-`--write-display-reference` is opt-in. Without it, normal catalogue generation
-is unchanged. `--summary` and `--check` retain their existing read-only
-semantics, and exit 2 continues to mean the available data is too degraded to
-publish or judge.
+Normal generation synchronizes the Markdown catalogue, IR sidecar, intent TSV,
+display TSV, and stem-semantics TSV in one validated bundle. `--check` is the
+read-only validation of that same complete bundle. The legacy `--write-tsv`,
+`--write-display-reference`, and `--write-stem-semantics-reference` flags remain
+accepted as deprecated compatibility no-ops; they no longer select individual
+outputs. `--summary` remains read-only, and exit 2 continues to mean the
+available data is too degraded to publish or judge.

@@ -79,7 +79,6 @@ Other:
 ./uvr bench song.wav -o /tmp/ab --model mdx:Model --a-env UVR_AUTOCAST=0 --b-env UVR_AUTOCAST=1
 python scripts/generate_models_catalogue.py   # regenerate docs/models-catalogue.md
 python scripts/generate_models_catalogue.py --check     # read-only drift check
-python scripts/generate_models_catalogue.py --check --write-display-reference
 python scripts/generate_models_catalogue.py --summary   # counts + mismatches to stdout
 python scripts/model_sweep.py --list      # local-only: every installed model, one real run each
 python scripts/model_sweep.py --method mdx --json /tmp/sweep.json
