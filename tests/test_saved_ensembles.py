@@ -10,37 +10,59 @@ from core import ensemble_service, paths
 
 class SavedEnsemblePersistenceTests(unittest.TestCase):
     def test_names_are_canonicalized_and_round_trip(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            paths, "ENSEMBLE_CACHE_DIR", tmp
-        ):
-            path = ensemble_service.save_ensemble(" My Mix ", "Vocals", "max", ["a", "b"])
+        with tempfile.TemporaryDirectory() as tmp, patch.object(paths, "ENSEMBLE_CACHE_DIR", tmp):
+            path = ensemble_service.save_ensemble(" My Mix ", "pair.karaoke", "max", ["a", "b"])
             self.assertEqual(os.path.basename(path), "My_Mix.json")
             self.assertEqual(ensemble_service.list_saved_ensembles(), ["My_Mix"])
             loaded = ensemble_service.load_ensemble("My Mix")
             self.assertIsNotNone(loaded)
             assert loaded is not None
+            self.assertEqual(loaded["schema_version"], 2)
+            self.assertEqual(loaded["ensemble_main_stem"], "pair.karaoke")
             self.assertEqual(loaded["selected_models"], ["a", "b"])
             self.assertTrue(ensemble_service.delete_ensemble("My Mix"))
             self.assertEqual(ensemble_service.list_saved_ensembles(), [])
 
     def test_invalid_names_cannot_escape_cache(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            paths, "ENSEMBLE_CACHE_DIR", os.path.join(tmp, "ensembles")
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(paths, "ENSEMBLE_CACHE_DIR", os.path.join(tmp, "ensembles")),
         ):
             for name in ("../outside", os.path.join(tmp, "outside"), "bad.json", ""):
                 with self.assertRaises(ValueError):
-                    ensemble_service.save_ensemble(name, "Vocals", "max", [])
+                    ensemble_service.save_ensemble(name, "pair.karaoke", "max", [])
             self.assertFalse(os.path.exists(os.path.join(tmp, "outside.json")))
 
     def test_listing_ignores_unsafe_legacy_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            paths, "ENSEMBLE_CACHE_DIR", tmp
-        ):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(paths, "ENSEMBLE_CACHE_DIR", tmp):
             with open(os.path.join(tmp, "Good_Name.json"), "w", encoding="utf-8") as handle:
                 json.dump({}, handle)
             with open(os.path.join(tmp, "bad.name.json"), "w", encoding="utf-8") as handle:
                 json.dump({}, handle)
             self.assertEqual(ensemble_service.list_saved_ensembles(), ["Good_Name"])
+
+    def test_legacy_document_clears_pair_but_preserves_members_and_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(paths, "ENSEMBLE_CACHE_DIR", tmp):
+            with open(os.path.join(tmp, "Legacy.json"), "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "ensemble_main_stem": "vocals_instrumental",
+                        "ensemble_type": "Max Spec",
+                        "selected_models": ["mdx:first", "mdx:second"],
+                        "is_wav_ensemble": True,
+                        "save_all_outputs": False,
+                    },
+                    handle,
+                )
+            loaded = ensemble_service.load_ensemble("Legacy")
+            assert loaded is not None
+            self.assertEqual(loaded["ensemble_main_stem"], "")
+            self.assertEqual(loaded["selected_models"], ["mdx:first", "mdx:second"])
+            self.assertEqual(loaded["ensemble_type"], "Max Spec")
+            self.assertTrue(loaded["is_wav_ensemble"])
+            self.assertFalse(loaded["save_all_outputs"])
+            self.assertEqual(len(loaded.validation_warnings), 1)
+            self.assertIn("ensemble_main_stem", loaded.validation_warnings[0])
 
 
 @unittest.skipUnless(
@@ -65,7 +87,6 @@ class SavedEnsembleWarningGtkTests(unittest.TestCase):
         from bundled.constants import CHOOSE_ENSEMBLE_OPTION
         from core.ensemble_service import ResolvedEnsemblePreset
         from core.settings import Settings
-        from core.stems import EnsemblePair
         from ui.ensemble.window import EnsemblePage
         from ui.widgets.rows import make_combo_row, set_combo_value
 
@@ -74,7 +95,7 @@ class SavedEnsembleWarningGtkTests(unittest.TestCase):
             id="Broken",
             display="Broken",
             kind="saved",
-            main_stem=EnsemblePair.VOCALS_INSTRUMENTAL,
+            main_stem="pair.vocals_instrumental",
             algorithm="Max Spec/Min Spec",
             members=("MDX-Net: legacy",),
             validation_warnings=(warning,),
@@ -85,13 +106,9 @@ class SavedEnsembleWarningGtkTests(unittest.TestCase):
         page.settings = settings
         page.context = SimpleNamespace(repo=object())
         page.window = SimpleNamespace(_refresh_start_readiness=lambda: None)
-        page.saved_row = make_combo_row(
-            "Saved ensemble", [CHOOSE_ENSEMBLE_OPTION, "Broken"]
-        )
+        page.saved_row = make_combo_row("Saved ensemble", [CHOOSE_ENSEMBLE_OPTION, "Broken"])
         set_combo_value(page.saved_row, "Broken")
-        page.main_stem_row = make_combo_row(
-            "Main stem", [EnsemblePair.VOCALS_INSTRUMENTAL.value]
-        )
+        page.main_stem_row = make_combo_row("Main stem", ["pair.vocals_instrumental"])
         page._ensemble_banner = Adw.Banner(revealed=False)
         page._config_blocked_reason = lambda: None
         page._refresh_ensemble_type_values = lambda: None
@@ -100,9 +117,7 @@ class SavedEnsembleWarningGtkTests(unittest.TestCase):
         page._persist_selected_models = lambda: None
         page._toast = lambda message: None
 
-        with patch(
-            "core.ensemble_service.EnsembleService.apply", return_value=preset
-        ):
+        with patch("core.ensemble_service.EnsembleService.apply", return_value=preset):
             EnsemblePage._on_saved_selected(page)
 
         self.assertTrue(page._ensemble_banner.get_revealed())
@@ -131,9 +146,7 @@ class SavedEnsembleWarningGtkTests(unittest.TestCase):
         page._ensemble_banner = Adw.Banner(revealed=True)
         page._config_blocked_reason = lambda: None
         page.window = SimpleNamespace(_refresh_start_readiness=lambda: None)
-        page.saved_row = make_combo_row(
-            "Saved ensemble", [CHOOSE_ENSEMBLE_OPTION, "Broken"]
-        )
+        page.saved_row = make_combo_row("Saved ensemble", [CHOOSE_ENSEMBLE_OPTION, "Broken"])
         page._selected_model_tags = lambda: ["mdx:first", "mdx:second"]
         page._update_models_dialog_status = lambda: None
         page._update_models_summary = lambda: EnsemblePage._update_ensemble_banner(page)
@@ -141,9 +154,7 @@ class SavedEnsembleWarningGtkTests(unittest.TestCase):
 
         EnsemblePage._on_model_toggled(page, object())  # type: ignore[arg-type]
 
-        self.assertEqual(
-            settings.ensemble.selected_models, ["mdx:first", "mdx:second"]
-        )
+        self.assertEqual(settings.ensemble.selected_models, ["mdx:first", "mdx:second"])
         self.assertEqual(page._ensemble_validation_warnings, ())
         self.assertEqual(page._ensemble_member_warnings, ())
         self.assertFalse(page._ensemble_banner.get_revealed())

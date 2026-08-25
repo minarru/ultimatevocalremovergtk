@@ -15,8 +15,8 @@ from bundled.constants import (
 
 # v4: persistent diagnostic level and sensitive-detail policy.
 # v3: closed enums + Default/Auto sentinels → null; numeric strings → int/float.
-# v2: ensemble.main_stem EnsemblePair ids only.
-SETTINGS_SCHEMA_VERSION = 4
+# v5: ensemble.main_stem uses reviewed, namespaced semantic pair/mode ids.
+SETTINGS_SCHEMA_VERSION = 5
 
 
 def default_process() -> dict:
@@ -145,10 +145,8 @@ def default_demucs() -> dict:
 
 
 def default_ensemble() -> dict:
-    from core.stems import EnsemblePair
-
     return {
-        "main_stem": EnsemblePair.CHOOSE.value,
+        "main_stem": "",
         "type": MAX_MIN,
         "selected_models": [],
         "chosen_ensemble": CHOOSE_ENSEMBLE_OPTION,

@@ -15,15 +15,14 @@ from bundled.constants import (
     MAX_MIN,
     NO_MODEL,
 )
-from core.stems import EnsemblePair
 from core.types import ProcessMethod, SaveFormat
 from core.types.settings_enums import (
     AlignPhaseOption,
     AudioTool,
     ColorScheme,
     DbAnalysis,
-    DiagnosticLevel,
     DeverbVocalOpt,
+    DiagnosticLevel,
     FlacBitDepth,
     IntroAnalysis,
     ManualEnsembleOption,
@@ -60,9 +59,7 @@ _MODEL_PATH_FAMILIES: dict[str, frozenset[str]] = {
 }
 for _section_name in ("vr", "mdx", "demucs"):
     for _field_name in _SECONDARY_MODEL_FIELDS:
-        _MODEL_PATH_FAMILIES[f"{_section_name}.{_field_name}"] = frozenset(
-            {"vr", "mdx", "demucs"}
-        )
+        _MODEL_PATH_FAMILIES[f"{_section_name}.{_field_name}"] = frozenset({"vr", "mdx", "demucs"})
 
 
 def _json_value(value: Any) -> Any:
@@ -212,7 +209,7 @@ class DemucsSettings:
 
 @dataclass
 class EnsembleSettings:
-    main_stem: EnsemblePair = EnsemblePair.CHOOSE
+    main_stem: str = ""
     type: str = MAX_MIN
     selected_models: list[str] = field(default_factory=list)
     chosen_ensemble: str = CHOOSE_ENSEMBLE_OPTION
@@ -273,9 +270,7 @@ class Settings:
     ui: UiSettings = field(default_factory=UiSettings)
     diagnostics: DiagnosticsSettings = field(default_factory=DiagnosticsSettings)
     path: str = ""
-    validation_warnings: list[str] = field(
-        default_factory=list, repr=False, compare=False
-    )
+    validation_warnings: list[str] = field(default_factory=list, repr=False, compare=False)
 
     @classmethod
     def defaults(cls) -> Settings:
@@ -293,20 +288,30 @@ class Settings:
             self.process,
             model_hash_table=snapshot_table(self.process.model_hash_table),
         )
-        return _json_value({
-            "schema_version": self.schema_version,
-            "process": asdict(process),
-            "vr": asdict(self.vr),
-            "mdx": asdict(self.mdx),
-            "demucs": asdict(self.demucs),
-            "ensemble": asdict(self.ensemble),
-            "audio_tools": asdict(self.audio_tools),
-            "ui": asdict(self.ui),
-            "diagnostics": asdict(self.diagnostics),
-        })
+        return _json_value(
+            {
+                "schema_version": self.schema_version,
+                "process": asdict(process),
+                "vr": asdict(self.vr),
+                "mdx": asdict(self.mdx),
+                "demucs": asdict(self.demucs),
+                "ensemble": asdict(self.ensemble),
+                "audio_tools": asdict(self.audio_tools),
+                "ui": asdict(self.ui),
+                "diagnostics": asdict(self.diagnostics),
+            }
+        )
 
     @classmethod
     def from_json_dict(cls, data: dict[str, Any]) -> Settings:
+        raw_data = data
+        raw_schema = raw_data.get("schema_version", 1)
+        try:
+            source_schema = int(raw_schema)
+        except (TypeError, ValueError):
+            source_schema = 1
+        raw_ensemble = raw_data.get("ensemble")
+        raw_main_stem = raw_ensemble.get("main_stem") if isinstance(raw_ensemble, dict) else ""
         coerced = coerce_json_dict(data or {})
         # Stamp the current version, never the file's: ``coerce_json_dict`` has
         # already migrated the payload, so keeping the old number would leave a
@@ -330,6 +335,15 @@ class Settings:
                 coerced.get("diagnostics"),
             ),
         )
+        if source_schema < SETTINGS_SCHEMA_VERSION:
+            settings.validation_warnings.append(
+                "ensemble.main_stem: settings schema predates semantic pair IDs; choose an ensemble stem pair again"
+            )
+            settings.ensemble.main_stem = ""
+        elif raw_main_stem not in (None, "") and not settings.ensemble.main_stem:
+            settings.validation_warnings.append(
+                "ensemble.main_stem: unknown semantic pair/mode ID; choose an ensemble stem pair again"
+            )
         settings.validate_model_references()
         return settings
 
@@ -350,9 +364,7 @@ class Settings:
         )
         return references
 
-    def validate_model_references(
-        self, index: IdentityIndex | None = None
-    ) -> list[str]:
+    def validate_model_references(self, index: IdentityIndex | None = None) -> list[str]:
         """Validate stored identities without replacing the original text.
 
         With no index this performs persistence syntax validation only.  A
@@ -362,42 +374,51 @@ class Settings:
         """
         from core.model_identity import parse_stored_model_id
 
-        warnings: list[str] = []
+        warnings: list[str] = list(self.validation_warnings)
         for path, value, allowed_families in self._model_reference_values():
             if isinstance(value, str) and value in _MODEL_SENTINELS:
                 continue
             if not isinstance(value, str):
-                warnings.append(
+                warning = (
                     f"{path}: expected canonical model ID family:basename or a "
                     f"permitted sentinel; preserved {value!r}"
                 )
+                if warning not in warnings:
+                    warnings.append(warning)
                 continue
             try:
                 parsed = parse_stored_model_id(value)
             except ValueError:
-                warnings.append(
+                warning = (
                     f"{path}: expected canonical model ID family:basename or a "
                     f"permitted sentinel; preserved {value!r}"
                 )
+                if warning not in warnings:
+                    warnings.append(warning)
                 continue
             if index is None:
                 continue
             try:
                 record = index.lookup(parsed.value)
             except ValueError as exc:
-                warnings.append(f"{path}: {exc}")
+                warning = f"{path}: {exc}"
+                if warning not in warnings:
+                    warnings.append(warning)
                 continue
             if record.family not in allowed_families:
                 expected = ", ".join(sorted(allowed_families))
-                warnings.append(
-                    f"{path}: model {record.id!r} is not eligible; "
-                    f"requires family {expected}"
-                )
+                warning = f"{path}: model {record.id!r} is not eligible; requires family {expected}"
+                if warning not in warnings:
+                    warnings.append(warning)
             if not record.installed:
-                warnings.append(f"{path}: model {record.id!r} is not installed")
+                warning = f"{path}: model {record.id!r} is not installed"
+                if warning not in warnings:
+                    warnings.append(warning)
             if not record.identity_complete:
                 detail = record.identity_error or "identity metadata is incomplete"
-                warnings.append(f"{path}: model {record.id!r}: {detail}")
+                warning = f"{path}: model {record.id!r}: {detail}"
+                if warning not in warnings:
+                    warnings.append(warning)
         self.validation_warnings = warnings
         return list(warnings)
 

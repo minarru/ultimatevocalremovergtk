@@ -1,6 +1,7 @@
 {
     "description": "Maximum instrument preservation \u2014 Inst v1e Plus + Instrumental by becruily",
-    "ensemble_main_stem": "vocals_instrumental",
+    "schema_version": 2,
+    "ensemble_main_stem": "pair.vocals_instrumental",
     "ensemble_type": "Max Spec/Max Spec",
     "selected_models": [
         "mdx:melband_roformer_inst_v1e_plus",

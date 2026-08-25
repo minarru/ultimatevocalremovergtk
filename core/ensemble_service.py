@@ -12,7 +12,7 @@ from typing import Any, List, Optional
 from . import paths
 from .ensemble_presets import curated_combo_label, curated_id_from_combo_label
 from .model_identity import ModelIdentityService, parse_stored_model_id
-from .stems import EnsemblePair, coerce_ensemble_pair
+from .stem_pairs import normalize_stem_pair_id
 
 _ENSEMBLE_NAME_RE = re.compile(r"^[A-Za-z0-9 _-]{1,25}$")
 
@@ -60,17 +60,19 @@ def list_saved_ensembles() -> List[str]:
 
 
 def save_ensemble(
-    name: str, ensemble_main_stem: Any, ensemble_type: str, selected_models: Any,
-    *, wav_ensemble: bool = False, save_all_outputs: bool = True,
+    name: str,
+    ensemble_main_stem: Any,
+    ensemble_type: str,
+    selected_models: Any,
+    *,
+    wav_ensemble: bool = False,
+    save_all_outputs: bool = True,
 ) -> str:
-    """Persist an ensemble (``ensemble_main_stem`` is an :class:`~core.stems.EnsemblePair` id)."""
-    pair = (
-        ensemble_main_stem
-        if isinstance(ensemble_main_stem, EnsemblePair)
-        else coerce_ensemble_pair(ensemble_main_stem)
-    )
+    """Persist an ensemble with an exact current semantic pair/mode id."""
+    pair_id = normalize_stem_pair_id(ensemble_main_stem)
     saved_data = {
-        "ensemble_main_stem": pair.value,
+        "schema_version": 2,
+        "ensemble_main_stem": pair_id,
         "ensemble_type": ensemble_type,
         "selected_models": list(selected_models),
         "is_wav_ensemble": bool(wav_ensemble),
@@ -98,9 +100,7 @@ def save_ensemble(
 class EnsembleDocument(dict[str, Any]):
     """Saved ensemble payload with transient reader validation warnings."""
 
-    def __init__(
-        self, payload: dict[str, Any], validation_warnings: list[str]
-    ) -> None:
+    def __init__(self, payload: dict[str, Any], validation_warnings: list[str]) -> None:
         super().__init__(payload)
         self.validation_warnings = validation_warnings
 
@@ -137,7 +137,24 @@ def load_ensemble(name: str) -> Optional[EnsembleDocument]:
             payload = json.load(infile)
         if not isinstance(payload, dict):
             raise ValueError(f"saved ensemble {name!r} must contain a JSON object")
-        return EnsembleDocument(payload, _ensemble_syntax_warnings(payload))
+        warnings = _ensemble_syntax_warnings(payload)
+        if payload.get("schema_version") != 2:
+            payload["ensemble_main_stem"] = ""
+            warning = (
+                "ensemble_main_stem: saved ensemble schema is unsupported; "
+                "choose an ensemble stem pair again and resave"
+            )
+            if warning not in warnings:
+                warnings.append(warning)
+        else:
+            raw_pair = payload.get("ensemble_main_stem")
+            payload["ensemble_main_stem"] = normalize_stem_pair_id(raw_pair)
+            if raw_pair not in (None, "") and not payload["ensemble_main_stem"]:
+                warnings.append(
+                    "ensemble_main_stem: unknown semantic pair/mode ID; "
+                    "choose an ensemble stem pair again and resave"
+                )
+        return EnsembleDocument(payload, warnings)
     return None
 
 
@@ -155,7 +172,7 @@ class ResolvedEnsemblePreset:
     id: str
     display: str
     kind: str
-    main_stem: EnsemblePair
+    main_stem: str
     algorithm: str
     members: tuple[Any, ...]
     source_members: tuple[Any, ...] = ()
@@ -197,7 +214,10 @@ class EnsembleService:
                     kind, preset_id, display = "curated", candidate, curated_combo_label(candidate)
         if data is None:
             known = [
-                *(curated_combo_label(item) for item in ensemble_presets.list_curated_ensembles()[:6]),
+                *(
+                    curated_combo_label(item)
+                    for item in ensemble_presets.list_curated_ensembles()[:6]
+                ),
                 *list_saved_ensembles()[:6],
             ]
             raise ValueError(
@@ -205,9 +225,7 @@ class EnsembleService:
                 + (", ".join(repr(item) for item in known) or "(none)")
             )
         source_members = list(data.get("selected_models") or [])
-        validation_warnings: list[str] = list(
-            getattr(data, "validation_warnings", ())
-        )
+        validation_warnings: list[str] = list(getattr(data, "validation_warnings", ()))
         members: list[Any] = []
         unresolved: list[Any] = []
         for index, reference in enumerate(source_members):
@@ -233,7 +251,7 @@ class EnsembleService:
             preset_id,
             display,
             kind,
-            coerce_ensemble_pair(data.get("ensemble_main_stem")),
+            normalize_stem_pair_id(data.get("ensemble_main_stem")),
             str(data.get("ensemble_type") or ""),
             tuple(members),
             tuple(source_members),
@@ -255,9 +273,15 @@ class EnsembleService:
         return preset
 
     def create(
-        self, name: str, *, members: list[str], main_stem: str,
-        algorithm: str, wav_ensemble: bool = False,
-        save_all_outputs: bool = True, replace: bool = False,
+        self,
+        name: str,
+        *,
+        members: list[str],
+        main_stem: str,
+        algorithm: str,
+        wav_ensemble: bool = False,
+        save_all_outputs: bool = True,
+        replace: bool = False,
     ) -> ResolvedEnsemblePreset:
         if load_ensemble(name) is not None and not replace:
             raise ValueError(f"ensemble {name!r} already exists; pass --replace")
@@ -267,14 +291,18 @@ class EnsembleService:
         canonical = list(dict.fromkeys(record.id for record in records))
         if len(canonical) < 2:
             raise ValueError("an ensemble requires at least two distinct models")
-        pair = coerce_ensemble_pair(main_stem)
-        if pair is EnsemblePair.CHOOSE:
+        pair_id = normalize_stem_pair_id(main_stem)
+        if not pair_id:
             raise ValueError("choose an ensemble stem pair")
         if not str(algorithm).strip():
             raise ValueError("choose an ensemble algorithm")
         save_ensemble(
-            name, pair, algorithm, canonical,
-            wav_ensemble=wav_ensemble, save_all_outputs=save_all_outputs,
+            name,
+            pair_id,
+            algorithm,
+            canonical,
+            wav_ensemble=wav_ensemble,
+            save_all_outputs=save_all_outputs,
         )
         return self.resolve(name)
 
@@ -283,5 +311,7 @@ class EnsembleService:
         return delete_ensemble(name)
 
 
-def apply_ensemble_preset(settings: Any, name: str, *, repo: Any | None = None) -> ResolvedEnsemblePreset:
+def apply_ensemble_preset(
+    settings: Any, name: str, *, repo: Any | None = None
+) -> ResolvedEnsemblePreset:
     return EnsembleService(repo).apply(settings, name)

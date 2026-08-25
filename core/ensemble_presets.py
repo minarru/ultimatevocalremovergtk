@@ -1,10 +1,10 @@
 """Bundled curated ensemble recipes (model combos + algorithm pairs)."""
 
 from __future__ import annotations
-import typing
 
 import json
 import os
+import typing
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from bundled.constants import (
@@ -211,7 +211,8 @@ def download_entries_for_missing(
                 reference = record.catalogue_entry
                 found = (
                     (reference.selection, ARCH_BY_FAMILY[reference.family])
-                    if reference is not None else None
+                    if reference is not None
+                    else None
                 )
         if found is None:
             unresolved.append(tag)

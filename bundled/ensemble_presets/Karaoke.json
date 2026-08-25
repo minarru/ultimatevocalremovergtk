@@ -1,6 +1,7 @@
 {
     "description": "Lead vocal removal \u2014 Aufr33/Viperx + Gabox + becruily karaoke models",
-    "ensemble_main_stem": "karaoke",
+    "schema_version": 2,
+    "ensemble_main_stem": "pair.karaoke",
     "ensemble_type": "Average/Average",
     "selected_models": [
         "mdx:mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956",

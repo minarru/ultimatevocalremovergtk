@@ -11,7 +11,6 @@ from core.settings.coerce import (
     enum_value,
     setting_for_combo,
 )
-from core.stems import EnsemblePair
 from core.types import ProcessMethod, SaveFormat
 from core.types.settings_enums import (
     ColorScheme,
@@ -22,21 +21,17 @@ from core.types.settings_enums import (
 
 class SchemaVersionTests(unittest.TestCase):
     def test_defaults_use_current_schema(self) -> None:
-        self.assertEqual(SETTINGS_SCHEMA_VERSION, 4)
-        self.assertEqual(Settings.defaults().schema_version, 4)
+        self.assertEqual(SETTINGS_SCHEMA_VERSION, 5)
+        self.assertEqual(Settings.defaults().schema_version, 5)
 
     def test_older_payload_is_stamped_current(self) -> None:
         """Loading coerces to v3, so the stamp must say v3 — not the file's."""
         settings = Settings.from_json_dict({"schema_version": 1, "vr": {}})
         self.assertEqual(settings.schema_version, SETTINGS_SCHEMA_VERSION)
-        self.assertEqual(
-            settings.to_json_dict()["schema_version"], SETTINGS_SCHEMA_VERSION
-        )
+        self.assertEqual(settings.to_json_dict()["schema_version"], SETTINGS_SCHEMA_VERSION)
 
     def test_missing_version_is_stamped_current(self) -> None:
-        self.assertEqual(
-            Settings.from_json_dict({}).schema_version, SETTINGS_SCHEMA_VERSION
-        )
+        self.assertEqual(Settings.from_json_dict({}).schema_version, SETTINGS_SCHEMA_VERSION)
 
 
 class SentinelCoerceTests(unittest.TestCase):
@@ -73,20 +68,12 @@ class EnumCoerceTests(unittest.TestCase):
             coerce_field("mdx", "denoise_option", "Standard"),
             MdxDenoiseOption.STANDARD,
         )
-        self.assertEqual(
-            coerce_field("ui", "color_scheme", "dark"), ColorScheme.DARK
-        )
+        self.assertEqual(coerce_field("ui", "color_scheme", "dark"), ColorScheme.DARK)
 
     def test_unknown_fails_soft_to_default(self) -> None:
-        self.assertEqual(
-            coerce_field("process", "method", "not-a-method"), ProcessMethod.MDX
-        )
-        self.assertEqual(
-            coerce_field("process", "save_format", "AIFF"), SaveFormat.WAV
-        )
-        self.assertEqual(
-            coerce_field("process", "wav_type", "bogus"), WavType.PCM_16
-        )
+        self.assertEqual(coerce_field("process", "method", "not-a-method"), ProcessMethod.MDX)
+        self.assertEqual(coerce_field("process", "save_format", "AIFF"), SaveFormat.WAV)
+        self.assertEqual(coerce_field("process", "wav_type", "bogus"), WavType.PCM_16)
 
 
 class EnumValueTests(unittest.TestCase):
@@ -95,7 +82,7 @@ class EnumValueTests(unittest.TestCase):
     def test_unwraps_settings_enums(self) -> None:
         self.assertEqual(enum_value(WavType.PCM_24), "PCM_24")
         self.assertEqual(enum_value(ColorScheme.DARK), "dark")
-        self.assertEqual(enum_value(EnsemblePair.KARAOKE), "karaoke")
+        self.assertEqual(enum_value("pair.karaoke"), "pair.karaoke")
 
     def test_passes_through_non_enums(self) -> None:
         self.assertEqual(enum_value("Median Spec"), "Median Spec")
@@ -103,11 +90,26 @@ class EnumValueTests(unittest.TestCase):
         self.assertIsNone(enum_value(None))
 
 
+class EnsemblePairCoerceTests(unittest.TestCase):
+    def test_current_namespaced_pair_round_trips(self) -> None:
+        settings = Settings.from_json_dict(
+            {"schema_version": 5, "ensemble": {"main_stem": "pair.karaoke"}}
+        )
+        self.assertEqual(settings.ensemble.main_stem, "pair.karaoke")
+        self.assertEqual(settings.to_json_dict()["ensemble"]["main_stem"], "pair.karaoke")
+
+    def test_unknown_current_pair_is_cleared_with_warning(self) -> None:
+        settings = Settings.from_json_dict(
+            {"schema_version": 5, "ensemble": {"main_stem": "pair.not_real"}}
+        )
+        self.assertEqual(settings.ensemble.main_stem, "")
+        self.assertEqual(len(settings.validation_warnings), 1)
+        self.assertIn("ensemble.main_stem", settings.validation_warnings[0])
+
+
 class EnsembleTypeCoerceTests(unittest.TestCase):
     def test_dual_stem_pair(self) -> None:
-        self.assertEqual(
-            coerce_ensemble_type("Average/Min Spec"), "Average/Min Spec"
-        )
+        self.assertEqual(coerce_ensemble_type("Average/Min Spec"), "Average/Min Spec")
         self.assertEqual(coerce_field("ensemble", "type", "Max Spec/Min Spec"), MAX_MIN)
 
     def test_single_atom_preserved(self) -> None:

@@ -426,17 +426,25 @@ def karaoke_bv_export_labels(model: Any) -> Optional[dict[str, str]]:
 
 
 def coerce_ensemble_pair(value: Any) -> EnsemblePair:
-    """Accept only :class:`EnsemblePair` ids; unknown → ``CHOOSE``.
+    """Deprecated runtime adapter for exact current semantic IDs only.
 
-    Legacy display strings (``Vocals/Instrumental``, …) are **not** migrated.
+    Persistence must use :func:`core.stem_pairs.normalize_stem_pair_id`; this
+    adapter temporarily keeps untouched runtime callers working during the
+    semantic cutover and never translates legacy ids or display text.
     """
     if isinstance(value, EnsemblePair):
         return value
-    if isinstance(value, str):
-        try:
-            return EnsemblePair(value.strip())
-        except ValueError:
-            pass
+    from core.stem_pairs import normalize_stem_pair_id
+
+    current = normalize_stem_pair_id(value)
+    current_pairs = {
+        "pair.vocals_instrumental": EnsemblePair.VOCALS_INSTRUMENTAL,
+        "pair.karaoke": EnsemblePair.KARAOKE,
+        "mode.four_stem": EnsemblePair.FOUR_STEM,
+        "mode.multi_stem": EnsemblePair.MULTI_STEM,
+    }
+    if current in current_pairs:
+        return current_pairs[current]
     if value not in (None, ""):
         try:
             from core.debug_log import debug

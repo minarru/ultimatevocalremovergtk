@@ -5,16 +5,16 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Optional, TypeVar, Union
 
-from bundled.constants import AUTO_SELECT, DEFAULT, DEF_OPT, MAX_MIN
-from core.stems import EnsemblePair, coerce_ensemble_pair
+from bundled.constants import AUTO_SELECT, DEF_OPT, DEFAULT, MAX_MIN
+from core.stem_pairs import normalize_stem_pair_id
 from core.types import ProcessMethod, SaveFormat
 from core.types.settings_enums import (
     AlignPhaseOption,
     AudioTool,
     ColorScheme,
     DbAnalysis,
-    DiagnosticLevel,
     DeverbVocalOpt,
+    DiagnosticLevel,
     FlacBitDepth,
     IntroAnalysis,
     ManualEnsembleOption,
@@ -370,7 +370,7 @@ def coerce_field(section_name: str, field: str, value: Any) -> Any:
     if path in _DEVICE_FIELDS:
         return as_optional_device(value)
     if path in _ENSEMBLE_PAIR_FIELDS:
-        return coerce_ensemble_pair(value)
+        return normalize_stem_pair_id(value)
     if path in _ENSEMBLE_TYPE_FIELDS:
         return coerce_ensemble_type(value)
     if path in _STEM_FOCUS_FIELDS:
