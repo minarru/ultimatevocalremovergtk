@@ -163,9 +163,10 @@ Three command entry points under `scripts/`, plus `model_tool_support.py` and th
   `0` wrote/up to date, `1` drift (`--check`), `2` this run's data is too degraded to
   judge. A cold cache yields a fraction of the catalogue, so without the guard a partial
   run replaces a good 7,000-line document. `--allow-degraded` overrides.
-- **`--check` and `--summary` are read-only.** `FetchPolicy.allow_metadata_writes` gates
-  `fetch_mdx_config_url`, which writes a yaml into `paths.MDX_C_CONFIG_PATH` — inside the
-  repo in the portable dev layout. `--summary` prints to stdout and writes nothing.
+- **`--check` and `--summary` are read-only.** Publication YAML evidence comes only from
+  checked-in seed configs or the URL-keyed generator cache; `FetchPolicy.allow_cache_writes`
+  gates persistence there, and no generator path writes runtime model config storage.
+  `--summary` prints to stdout and writes nothing.
 - **Drift means the catalogue changed, not that time passed.** `--check` compares canonical
   forms with the volatile header lines (`Generated:`, provenance, cache ages) stripped.
 - **Ephemeral catalogue caches live under `CACHE_DIR`**, keyed by a URL digest rather than

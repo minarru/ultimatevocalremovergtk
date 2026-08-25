@@ -352,7 +352,16 @@ def _text_digest(text: str) -> str:
 
 def _required_supplemental_evidence(ctx: collect.CatalogueContext) -> Tuple[str, ...]:
     """Name supplements required to produce a complete reviewed publication."""
-    return tuple(ctx.unavailable_supplemental_evidence)
+    unavailable = list(ctx.unavailable_supplemental_evidence)
+    missing_yamls = sorted(ctx.unavailable_yaml_evidence, key=str.casefold)
+    if missing_yamls:
+        preview = ", ".join(missing_yamls[:5])
+        if len(missing_yamls) > 5:
+            preview += f", ... (+{len(missing_yamls) - 5} more)"
+        unavailable.append(
+            f"per-model YAML/config metadata ({len(missing_yamls)} unavailable: {preview})"
+        )
+    return tuple(unavailable)
 
 
 def _render_publication_bundle(
@@ -453,6 +462,32 @@ def main(argv: Optional[List[str]] = None) -> int:
     snapshot, entries = collect.collect_entries(ctx, policy=policy)
     unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))
     report = getattr(snapshot, "report", None)
+    missing_evidence = _required_supplemental_evidence(ctx)
+
+    # Unavailable per-model evidence is a degraded acquisition, not hundreds
+    # of guessed semantic defects. Report it before constructing any strict
+    # artifact candidate or invoking the structural audit.
+    if missing_evidence:
+        if args.summary:
+            print(
+                render.render_summary_report(
+                    entries,
+                    unsupported_count=unsupported,
+                    report=report,
+                )
+            )
+            print(
+                "Supplemental evidence unavailable: " + ", ".join(missing_evidence),
+                file=sys.stderr,
+            )
+            return 2
+        action = "judge" if args.check else "publish"
+        print(
+            f"Cannot {action} a complete catalogue: required supplemental "
+            "evidence unavailable: " + ", ".join(missing_evidence),
+            file=sys.stderr,
+        )
+        return 2
 
     # A check candidate must retain the current document's exact sidecar link
     # when Markdown differs only in volatile provenance/header lines. A write
@@ -471,13 +506,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         document_sha256=document_sha256,
     )
 
-    missing_evidence = _required_supplemental_evidence(ctx)
-
     if args.summary:
-        # Ahead of the publication guard on purpose: a summary writes nothing,
-        # so there is no artifact to protect, and a degraded run is exactly
-        # when a maintainer wants to see what the catalogue currently looks
-        # like. The provenance block reports the degradation.
         print(
             render.render_summary_report(
                 entries,
@@ -486,22 +515,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 stem_audit=bundle.stem_audit,
             )
         )
-        if missing_evidence:
-            print(
-                "Supplemental evidence unavailable: " + ", ".join(missing_evidence),
-                file=sys.stderr,
-            )
-            return 2
         return 0
-
-    if missing_evidence:
-        action = "judge" if args.check else "publish"
-        print(
-            f"Cannot {action} a complete catalogue: required supplemental "
-            "evidence unavailable: " + ", ".join(missing_evidence),
-            file=sys.stderr,
-        )
-        return 2
 
     verdict = _publication_verdict(
         entries=list(entries),

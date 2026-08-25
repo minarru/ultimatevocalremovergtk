@@ -3,30 +3,115 @@
 ## Result
 
 - Regenerated the Markdown catalogue, IR sidecar, intent TSV, display TSV, and
-  stem-semantics TSV from one authoritative `--refresh` snapshot.
-- Kept all catalogue/config/cache writes outside the repository runtime tree by
-  setting `UVR_DATA_DIR=/tmp/uvr-task5-catalogue.reJ2hv`.
-- The refreshed universe retained exactly **485 canonical IDs** and the
-  stem-semantics reference retained exactly **1,206 output/context rows**.
-- Verified the same snapshot with a warm `--offline --check`; it exited 0, all
-  five artefact hashes remained unchanged, and the isolated cache file/mtime/size
-  fingerprint remained unchanged.
-- Removed the obsolete `.gitignore` allowlist for the deleted
-  `scripts/stem_semantics_audit.py`. A live-tree search found no remaining
-  reference outside historical review/plan/SDD evidence.
-- Fixed the two new test modules so the documented no-`PYTHONPATH` unittest
-  discovery command can import them.
+  stem-semantics TSV from one authoritative `--refresh` snapshot with both
+  `UVR_DATA_DIR` and `UVR_CACHE_DIR` isolated under `/tmp`.
+- The refreshed universe remains exactly **485 canonical IDs** and **1,206
+  semantic output/context rows**.
+- Fixed the Task 5 review findings: strict publication no longer reads runtime
+  model configs, hash JSONs, or weights; remote YAML is fetched and persisted
+  only through the URL-keyed generator cache; and unavailable/unparseable YAML
+  evidence degrades with exit 2 before strict rendering or structural audit.
+- The authoritative refresh created **330 cache files**, including **324 YAML
+  files**, and created **zero files** under the isolated runtime data root.
+- Warm `--offline --check` exited 0 with unchanged artifact hashes and an
+  unchanged cache path/mtime/size fingerprint.
+- A full-membership replay with the same source/supplement cache but no YAML
+  cache exited 2 with one compact unavailable-evidence message and no structural
+  diagnostic flood.
+- The exact no-`PYTHONPATH` complete discovery suite retained only the already
+  proven clean-base/data-dependent `demucs:hdemucs_mmi` failure.
 - No runtime settings, user caches, user model data, or model weights were
-  changed. Test runtime data and Numba caches were isolated under `/tmp`.
+  changed. All network/cache/runtime/test state was isolated under `/tmp`.
+
+## Review fix and TDD evidence
+
+The previous Task 5 run set only `UVR_DATA_DIR`. That isolated runtime model
+storage, but it left `UVR_CACHE_DIR` pointing at the user cache and allowed
+downloaded YAML to land in runtime config storage. Its cache-isolation claim was
+therefore incorrect. Ordinary offline execution also consumed only the 18
+checked-in/runtime YAMLs, guessed the remainder from filenames, and produced 873
+structural diagnostics instead of classifying the missing evidence as
+unavailable.
+
+The new regressions were written first and run against the old implementation:
+
+```text
+$ env -u PYTHONPATH .venv/bin/python -m unittest -v \
+    tests.test_generate_models_catalogue.StrictCatalogueInputIsolationTests
+Ran 3 tests in 0.078s
+FAILED (failures=3)
+```
+
+The three RED failures proved independently that:
+
+1. A conflicting same-name runtime YAML/weight changed the complete publication
+   projection and stem-audit diagnostics.
+2. A full-membership cold-YAML offline run returned 1 after invoking structural
+   audit instead of returning degraded exit 2 before it.
+3. `--refresh` preferred a conflicting runtime YAML over replacing stale
+   generator-cache evidence.
+
+After the implementation change, the exact regression class was GREEN:
+
+```text
+$ env -u PYTHONPATH .venv/bin/python -m unittest -v \
+    tests.test_generate_models_catalogue.StrictCatalogueInputIsolationTests
+Ran 3 tests in 0.055s
+OK
+```
+
+The isolation regression compares rendered Markdown, intent/display/stem TSV
+projections, canonicalized IR, entry IR, and audit diagnostics across two
+runtime data trees sharing one warm generator cache. One tree contains a
+conflicting same-name YAML and checkpoint whose digest matches a conflicting
+hash row; both output bundles are identical and the runtime tree remains
+byte-identical. Additional coverage verifies that an unparseable cached YAML
+cannot supply strict instruments/target evidence and that refreshed cache bytes
+are served identically by the subsequent offline load.
+
+The expanded YAML/cache-focused set was also GREEN:
+
+```text
+$ env -u PYTHONPATH .venv/bin/python -m unittest -q \
+    tests.test_generate_models_catalogue.StrictCatalogueInputIsolationTests \
+    tests.test_generate_models_catalogue.OfflineYamlCacheTests \
+    tests.test_generate_models_catalogue.YamlProvenanceStabilityTests \
+    tests.test_generate_models_catalogue.FetchHelperTests
+Ran 10 tests in 0.065s
+OK
+```
+
+## Strict publication input boundary
+
+- Checked-in MDX-C configs are resolved explicitly from
+  `models/MDX_Net_Models/model_data/mdx_c_configs`.
+- Every remote config is read/refreshed through `_fetch_cached_bytes` in the
+  URL-keyed `CACHE_DIR/models_catalogue/yaml` cache. Publication never calls
+  `fetch_mdx_config_url` and never reads or writes `paths.MDX_C_CONFIG_PATH`.
+- Architecture is inferred from the bytes already loaded by the generator; it
+  no longer reopens a same-name config through runtime storage.
+- Missing or unparseable required YAML names are deduplicated in the catalogue
+  context. Filename-derived stems remain informational return values but are
+  not copied into strict entry instruments/targets.
+- Demucs and Apollo execution sidecars are not treated as MDX-C training
+  evidence. Their existing family-specific publication overlays remain the
+  semantic authority.
+- Politrees and checked-in hash tables remain supplemental evidence, but strict
+  publication no longer scans installed weights or performs a per-entry runtime
+  weight/hash fallback. The checked-in hash seed paths are explicit repository
+  paths, independent of `UVR_DATA_DIR`.
+- `CLAUDE.md` now documents that generator YAML persistence is controlled by
+  `allow_cache_writes` and never targets runtime model storage.
 
 ## Authoritative generation and warm-offline parity
 
-Authoritative refresh (network escalation was limited to this command):
+Authoritative refresh (the only network-escalated generator command):
 
 ```text
-$ env UVR_DATA_DIR=/tmp/uvr-task5-catalogue.reJ2hv PYTHONPATH=.:scripts \
-    /home/rudam/ultimatevocalremovergui/.venv/bin/python \
-    scripts/generate_models_catalogue.py --refresh
+$ env -u PYTHONPATH \
+    UVR_DATA_DIR=/tmp/uvr-task5-data.busp4r \
+    UVR_CACHE_DIR=/tmp/uvr-task5-cache.upCElw \
+    .venv/bin/python -B scripts/generate_models_catalogue.py --refresh
 Wrote .../docs/models-catalogue.md (485 models, 483 with metadata,
 2 unknown, 3 flagged, 0 unsupported omitted)
 Wrote .../docs/models-catalogue.ir.json
@@ -36,62 +121,100 @@ Wrote .../docs/model_stem_semantics_reference.tsv
 exit 0
 ```
 
-Warm offline comparison, run again after all tests and edits:
+Post-refresh storage counts:
 
 ```text
-$ env UVR_DATA_DIR=/tmp/uvr-task5-catalogue.reJ2hv PYTHONPATH=.:scripts \
-    .venv/bin/python scripts/generate_models_catalogue.py --offline --check
+isolated runtime data files: 0
+isolated generator cache files: 330
+URL-keyed generator YAML files: 324
+```
+
+Warm offline comparison:
+
+```text
+$ env -u PYTHONPATH \
+    UVR_DATA_DIR=/tmp/uvr-task5-data.busp4r \
+    UVR_CACHE_DIR=/tmp/uvr-task5-cache.upCElw \
+    .venv/bin/python -B scripts/generate_models_catalogue.py --offline --check
 Up to date: .../docs/models-catalogue.md
 exit 0
 ```
 
-The isolated snapshot fingerprint, calculated from every cache file's path,
-mtime, and size, was identical before and after offline checking:
+The cache fingerprint includes every cache file's relative path, mtime, and
+size. It was identical before and after warm offline checking:
 
 ```text
-625dca640db90f68ca9729e9ca114c9030c36072340ebd5b62ccb081174cb8e0
+d40d7ef56ef824aa8603bfb059dc058f29b15957a96fd398e27b8f5ec13e1b92
 ```
 
-Artefact SHA-256 values after the final offline check:
+The empty runtime-data fingerprint likewise remained the SHA-256 of empty input:
 
 ```text
-34d06cee40315515375fa45e0584554f544294fea89fed532821d8a0177860d5  docs/models-catalogue.md
-95c01254f57b57b9f03b1e0dd7c0f5e722f714379092a8be9959db15d360439c  docs/models-catalogue.ir.json
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+```
+
+Artifact SHA-256 values before and after the offline check were identical:
+
+```text
+637b959e4aae2c4660d6053f6ba50640473818812b32f55055440797438a1721  docs/models-catalogue.md
+2fdbc19c5e2d84258d112681c045d3a18c8a90ddb9d4008cb18651d0eadf3bcb  docs/models-catalogue.ir.json
 950e967a28242e50b23d92fce63cb5f15a3954ae22c38416e88c3f1a79a396a1  docs/model_intent_reference.tsv
-dcf3996944628150aaa2c24f2570fb2b85e72436877544d339a8e6755f5af078  docs/model_display_reference.tsv
-a7c5a29a2e11017e6ef11f2959e4041b86f43da249e185640fb39ce1225790d7  docs/model_stem_semantics_reference.tsv
+4ca4e1421a5cb5fb3a911332c04f23f073035408a5d27af0bf4bc6697be02e3b  docs/model_display_reference.tsv
+bb7275ace93bed5295a87edd5670e9783f9d82d327c83a9208189e15790ae157  docs/model_stem_semantics_reference.tsv
 ```
 
 The IR reports `entry_count=485`, contains 485 entries, and is tied to the
-Markdown digest `34d06cee...60d5`. The display TSV has 485 data rows and 485
+Markdown digest `637b959e...1721`. The display TSV has 485 data rows and 485
 unique canonical IDs. The stem TSV has 1,207 physical lines: one header plus
-1,206 data rows, covering 485 unique canonical IDs. Offline summary reported
-455 reviewed models, 30 waived models, 0 raw models, and no stem semantic audit
-findings.
+1,206 data rows, covering 485 unique canonical IDs.
 
-The intent TSV was already byte-identical. Tracked regeneration updated the
-Markdown catalogue, display TSV, and expanded stem-semantics TSV. The IR
-sidecar is intentionally gitignored by repository contract, so it was generated
-and verified but is not staged.
+The tracked artifact changes are intentional consequences of the corrected
+input boundary: downloaded configs now report stable `remote_yaml` provenance
+instead of being mislabeled as runtime/bundled files, and Demucs execution
+sidecars no longer mislabel Demucs execution architecture as `MDX23C`. The
+intent TSV remained byte-identical. The IR sidecar is generated and verified but
+remains intentionally gitignored by repository contract.
 
-## Artefact interpretation
+## Cold-YAML degraded replay
 
-The isolated clean-checkout output has 483 rather than 485 resolved metadata
-rows because the two Apollo execution sidecars contain no stem inventory and
-the unified collector deliberately does not fetch them as supplemental stem
-metadata. The old checked-in document had observed two untracked Apollo YAMLs
-from the primary checkout's runtime MDX config directory. The clean output now
-uses execution architecture `Apollo`, leaves those two metadata fields
-unavailable, and retains both canonical IDs. This is environment cleanup, not
-an upstream catalogue membership change.
+A second isolated cache copied the complete coordinator and global supplemental
+snapshot but deliberately omitted only the generator YAML directory:
+
+```text
+$ env -u PYTHONPATH \
+    UVR_DATA_DIR=/tmp/uvr-task5-data.busp4r \
+    UVR_CACHE_DIR=/tmp/uvr-task5-cold-yaml-cache.a5J5Yv \
+    .venv/bin/python -B scripts/generate_models_catalogue.py --offline --check
+Cannot judge a complete catalogue: required supplemental evidence unavailable:
+per-model YAML/config metadata (324 unavailable: bandit_30_zfturbo_config.yaml,
+bandit_57_zfturbo_config.yaml, bandit_63_zfturbo_config.yaml,
+bandit_last_config.yaml, bs_4stem_aname_config.yaml, ... (+319 more))
+exit 2
+```
+
+There were no `Stem audit ...` lines, no network calls, no YAML/cache directory
+creation, and no artifact writes. The ordinary no-environment-override command
+now produces the same compact exit-2 classification rather than the former 873
+structural diagnostics:
+
+```text
+$ env -u PYTHONPATH .venv/bin/python -B \
+    scripts/generate_models_catalogue.py --offline --check
+Cannot judge a complete catalogue: required supplemental evidence unavailable:
+per-model YAML/config metadata (324 unavailable: ...)
+exit 2
+```
 
 ## Focused suites
 
-Non-GTK generator, audit, manifest, source, cache, probe, and sweep coverage was
-run without a `PYTHONPATH` override:
+The non-GTK Task 5 focused suite ran with no `PYTHONPATH` override and isolated
+runtime/cache/Numba roots:
 
 ```text
-$ env -u PYTHONPATH .venv/bin/python -m unittest -q \
+$ env -u PYTHONPATH UVR_DATA_DIR=/tmp/uvr-task5-tests-data.fKe5OX \
+    UVR_CACHE_DIR=/tmp/uvr-task5-tests-cache.g8wAWh \
+    NUMBA_CACHE_DIR=/tmp/uvr-task5-numba.LCZAfi \
+    .venv/bin/python -m unittest -q \
     tests.test_generate_models_catalogue \
     tests.test_catalogue_stem_audit \
     tests.test_stem_confidence_audit \
@@ -108,38 +231,23 @@ $ env -u PYTHONPATH .venv/bin/python -m unittest -q \
     tests.test_remote_catalog_cache \
     tests.test_model_probe \
     tests.test_model_sweep
-Ran 537 tests in 12.417s
+Ran 541 tests in 12.715s
 OK (skipped=2)
 ```
 
-The GTK catalogue-preferences source test was run separately through the
-private Wayland/Mutter runner. It reported a private `codex-gtk` socket and
-returned the runner's own exit status:
+The GTK catalogue-preferences source test ran through the private Mutter/Wayland
+runner after the managed sandbox's missing named-profile configuration was
+bypassed with a narrowly escalated private runner invocation. It created only a
+private `codex-gtk` socket:
 
 ```text
-$ codex sandbox ... -P gtk-headless \
-    run-private-wayland.sh -- env UVR_DISABLE_POLITREES=1 \
-    UVR_DISABLE_MVSEPLESS=1 ... python -m unittest -v \
-    tests.test_preferences_catalogue_refresh
-Ran 5 tests in 0.443s
+Private Wayland socket: /tmp/codex-gtk.7zsI1G/codex-gtk
+Ran 5 tests in 0.425s
 OK
 exit 0
 ```
 
-The two test modules that previously depended on `PYTHONPATH=.:scripts` were
-also verified directly after adding local `scripts/` path setup:
-
-```text
-$ env -u PYTHONPATH .venv/bin/python -m unittest -v \
-    tests.test_catalogue_stem_audit tests.test_stem_confidence_audit
-Ran 23 tests in 0.011s
-OK
-```
-
 ## Static and whitespace verification
-
-Ruff was scoped to the unified generator implementation and its directly
-associated tests:
 
 ```text
 $ .venv/bin/ruff check scripts/generate_models_catalogue.py \
@@ -158,21 +266,27 @@ $ git diff --check
 exit 0
 ```
 
-`scripts/model_probe.py` and `scripts/model_tool_support.py` have comment-only
-Task 4 edits but pre-existing Ruff formatting/import debt. They were not
-mechanically reformatted in Task 5 because that would be unrelated cleanup;
-their complete focused test modules are included in the 537-test green run.
-
 ## Complete unit suite and classified limitation
 
-The exact documented discovery command was run without `PYTHONPATH`, inside
-private Wayland. The tracked model seed tree, runtime data, and Numba cache were
-copied/placed under `/tmp`:
+The first fix-round full-suite attempt used a completely empty isolated data
+root. It produced seven `FileNotFoundError`s plus one SCNet assertion because
+those tests deliberately copy the tracked seed config
+`config_musdb18_scnet.yaml` through `paths.MDX_C_CONFIG_PATH`. That was a test
+harness error, not a code regression, and no implementation/test changes were
+made in response. A fresh data root was then created with only the repository's
+tracked `models/` seed tree copied into it, matching the documented Task 5
+harness.
+
+The corrected exact CLAUDE.md discovery command (inside private Wayland, with no
+`PYTHONPATH`) produced:
 
 ```text
-$ .venv/bin/python -m unittest discover -s tests -t . -v
-Ran 2955 tests in 89.931s
-FAILED (failures=1, skipped=22)
+$ env -u PYTHONPATH UVR_DATA_DIR=/tmp/uvr-task5-full-data.WevfCa \
+    UVR_CACHE_DIR=/tmp/uvr-task5-full-cache.OdrpuQ \
+    NUMBA_CACHE_DIR=/tmp/uvr-task5-full-numba.JU4Dza \
+    .venv/bin/python -m unittest discover -s tests -t . -v
+Ran 2959 tests in 87.074s
+FAILED (failures=1, skipped=18)
 ```
 
 Sole failure:
@@ -183,40 +297,33 @@ test_models_show_configures_installed_demucs_canonical_id
 AssertionError: 2 != 0: error: unknown model 'demucs:hdemucs_mmi'
 ```
 
-Classification evidence:
-
-1. The test fails identically when run alone at Task 5 HEAD.
-2. A clean archive of base `4fbc68e6b1d08f25141e274ca900fc2a59070ef1`
-   was extracted under `/tmp`, linked only to the shared venv, and the same test
-   was run with network catalogues disabled.
-3. Base result: one test in 0.641s, same code 2 and same unknown canonical ID.
-
-The test assumes that the ignored `hdemucs_mmi` model artefact is installed,
-but a clean checkout ships no such weight. It is therefore pre-existing,
-clean-checkout/data-dependent test debt rather than a regression caused by this
-branch or the generated catalogue. Task 5 does not alter runtime model
-discovery, and no failure-masking runtime or fixture change was made.
+It was re-run alone after the complete suite and failed identically in 0.634s.
+The original Task 5 classification remains valid: the same test was previously
+run at clean base `4fbc68e6b1d08f25141e274ca900fc2a59070ef1` and returned the
+same code 2/unknown canonical ID. The test assumes the ignored
+`hdemucs_mmi` weight is installed; a clean tracked seed tree contains its YAML
+but no weight. Task 5 does not alter runtime model discovery and does not mask,
+skip, or repair this baseline/data-dependent test debt.
 
 ## Live-reference verification
 
-```text
-$ rg -n "stem_semantics_audit" . --hidden --glob '!.git/**' \
-    --glob '!docs/superpowers/**' --glob '!docs/reviews/**' \
-    --glob '!.superpowers/**'
-<no matches>
+The obsolete `.gitignore` allowlist for deleted
+`scripts/stem_semantics_audit.py` remains removed. The existing live-tree audit
+still reports no reference outside historical review/plan/SDD evidence, and the
+deleted script remains absent.
 
-$ test ! -e scripts/stem_semantics_audit.py
-exit 0
-```
+## Concerns and limitations
 
-Historical design/plan/review/SDD artefacts continue to mention the removed
-script as past evidence; those are not live commands or imports.
-
-## Concerns
-
-- The complete suite retains the one proven baseline/data-dependent Demucs
-  failure above. It is not concealed, skipped, or changed by Task 5.
-- `docs/models-catalogue.ir.json` is one of the five synchronized outputs but
-  remains intentionally ignored and uncommitted.
+- The complete suite retains the one independently proven baseline/data-dependent
+  Demucs failure above.
+- A strict offline publication now intentionally requires its URL-keyed
+  generator YAML cache. A cold cache exits 2; filename heuristics cannot publish
+  a guessed strict signature.
+- `docs/models-catalogue.ir.json` is one of the five synchronized outputs but is
+  intentionally ignored and uncommitted.
+- The configured `codex sandbox -P gtk-headless` wrapper was unavailable because
+  the active Codex config has no `[permissions]` table. The same skill-provided
+  private runner succeeded under narrowly scoped escalation and did not touch
+  the host compositor.
 - Private Wayland teardown emits expected lost-compositor/portal warnings after
   the test command exits; the runner returned the test exit status directly.

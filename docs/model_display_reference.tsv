@@ -19,18 +19,18 @@ Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: demucs	demucs:demucs-e07c671f	Demuc
 Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: demucs48_hq	demucs:demucs48_hq-28a1282c	Demucs v2 — Time-Domain 48 kHz HQ	demucs48_hq-28a1282c.th			clean
 Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: demucs_extra	demucs:demucs_extra-3646af93	Demucs v2 — Time-Domain Extra	demucs_extra-3646af93.th			clean
 Demucs	Demucs	TRvlvr+Politrees	v2	Demucs v2: demucs_unittest	demucs:demucs_unittest-09ebc15f	Demucs v2 — Unit Test	demucs_unittest-09ebc15f.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: mdx	demucs:mdx	Demucs v3 — MDX	c511e2ab-fe698775.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: mdx_extra	demucs:mdx_extra	Demucs v3 — MDX Extra	e51eebcc-c1b80bdd.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: mdx_extra_q	demucs:mdx_extra_q	Demucs v3 — MDX Extra Quantized	83fc094f-4a16d450.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: mdx_q	demucs:mdx_q	Demucs v3 — MDX Quantized	b72baf4e-8778635e.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: repro_mdx_a	demucs:repro_mdx_a	Demucs v3 — Repro MDX A	fa0cb7f9-100d8bf4.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: repro_mdx_a_hybrid_only	demucs:repro_mdx_a_hybrid_only	Demucs v3 — Repro MDX A Hybrid Only	fa0cb7f9-100d8bf4.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: repro_mdx_a_time_only	demucs:repro_mdx_a_time_only	Demucs v3 — Repro MDX A Time-Domain Only	9a6b4851-03af0aa6.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v3	Demucs v3: UVR Model	demucs:UVR_Demucs_Model_1	Demucs v3 — UVR Model (2 Stems)	ebf34a2db.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v4	Demucs v4: hdemucs_mmi	demucs:hdemucs_mmi	Demucs v4 — Hybrid Demucs MMI	75fc33f5-1941ce65.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v4	Demucs v4: htdemucs	demucs:htdemucs	Demucs v4 — Hybrid Transformer	955717e8-8726e21a.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v4	Demucs v4: htdemucs_6s	demucs:htdemucs_6s	Demucs v4 — Hybrid Transformer (6 Stems)	5c90dfd2-34c22ccb.th			clean
-Demucs	MDX23C	TRvlvr+Politrees	v4	Demucs v4: htdemucs_ft	demucs:htdemucs_ft	Demucs v4 — Hybrid Transformer Fine-Tuned	f7e0c4bc-ba3fe64a.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v3	Demucs v3: mdx	demucs:mdx	Demucs v3 — MDX	c511e2ab-fe698775.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v3	Demucs v3: mdx_extra	demucs:mdx_extra	Demucs v3 — MDX Extra	e51eebcc-c1b80bdd.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v3	Demucs v3: mdx_extra_q	demucs:mdx_extra_q	Demucs v3 — MDX Extra Quantized	83fc094f-4a16d450.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v3	Demucs v3: mdx_q	demucs:mdx_q	Demucs v3 — MDX Quantized	b72baf4e-8778635e.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v3	Demucs v3: repro_mdx_a	demucs:repro_mdx_a	Demucs v3 — Repro MDX A	fa0cb7f9-100d8bf4.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v3	Demucs v3: repro_mdx_a_hybrid_only	demucs:repro_mdx_a_hybrid_only	Demucs v3 — Repro MDX A Hybrid Only	fa0cb7f9-100d8bf4.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v3	Demucs v3: repro_mdx_a_time_only	demucs:repro_mdx_a_time_only	Demucs v3 — Repro MDX A Time-Domain Only	9a6b4851-03af0aa6.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v3	Demucs v3: UVR Model	demucs:UVR_Demucs_Model_1	Demucs v3 — UVR Model (2 Stems)	ebf34a2db.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v4	Demucs v4: hdemucs_mmi	demucs:hdemucs_mmi	Demucs v4 — Hybrid Demucs MMI	75fc33f5-1941ce65.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v4	Demucs v4: htdemucs	demucs:htdemucs	Demucs v4 — Hybrid Transformer	955717e8-8726e21a.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v4	Demucs v4: htdemucs_6s	demucs:htdemucs_6s	Demucs v4 — Hybrid Transformer (6 Stems)	5c90dfd2-34c22ccb.th			clean
+Demucs	Demucs	TRvlvr+Politrees	v4	Demucs v4: htdemucs_ft	demucs:htdemucs_ft	Demucs v4 — Hybrid Transformer Fine-Tuned	f7e0c4bc-ba3fe64a.th			clean
 MDX-Net	BS Roformer	mvsepless		BS PolarFormer 4 stems 09-07-2026 by Aname	mdx:bs_pope_4stem_09072026_aname	BandSplit PolarFormer — 09-07-2026 (4 Stems) · Aname	bs_pope_4stem_09072026_aname.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS PolarFormer InstVoc Duality Lazy Bat by Aname	mdx:bs_pope_instvoc_aname	BandSplit PolarFormer — Instrumental/Vocals Duality Lazy Bat · Aname	bs_pope_instvoc_aname.ckpt			clean
 MDX-Net	BS Roformer	mvsepless		BS PolarFormer Karaoke by Lambda001 (sdr lead 9.74, sdr back instrum 15.13)	mdx:bs_pope_karaoke_974_lambda	BandSplit PolarFormer — Karaoke · Lambda001	bs_pope_karaoke_974_lambda.ckpt			clean

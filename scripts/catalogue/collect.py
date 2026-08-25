@@ -34,7 +34,6 @@ from core.catalogue_types import (  # noqa: E402
     SourceId,
 )
 from core.extra_catalog import APOLLO_LIST_KEY  # noqa: E402
-from core.mdx_c_registry import compute_checkpoint_hash, infer_mdx_c_architecture  # noqa: E402
 from core.model_data import (  # noqa: E402
     _mdx_c_training,
     load_mdx_c_config,
@@ -73,6 +72,17 @@ _CACHE_ROOT = os.path.join(paths.CACHE_DIR, "models_catalogue")
 YAML_CACHE_DIR = os.path.join(_CACHE_ROOT, "yaml")
 POLITREES_CACHE_DIR = os.path.join(_CACHE_ROOT, "politrees")
 COMMUNITY_CACHE_DIR = os.path.join(_CACHE_ROOT, "community")
+
+# Deliberate repository seeds are part of the generator input.  Runtime model
+# storage under UVR_DATA_DIR is user state: installed configs and weights must
+# never change a strict publication candidate.
+_BUNDLED_MDX_YAML_DIR = os.path.join(
+    ROOT, "models", "MDX_Net_Models", "model_data", "mdx_c_configs"
+)
+_BUNDLED_VR_HASH_JSON = os.path.join(ROOT, "models", "VR_Models", "model_data", "model_data.json")
+_BUNDLED_MDX_HASH_JSON = os.path.join(
+    ROOT, "models", "MDX_Net_Models", "model_data", "model_data.json"
+)
 
 #: How long a supplemental download stays good. Without a TTL, "regenerate
 #: after catalogue updates" silently reused whatever was fetched first.
@@ -167,6 +177,10 @@ class CatalogueContext:
     #: response is evidence too; callers must not confuse zero rows with an
     #: unavailable source and reject a coherent snapshot on that basis.
     unavailable_supplemental_evidence: Tuple[str, ...] = ()
+    #: Per-model configs required by the collected membership but unavailable
+    #: or unparseable in the checked-in seed plus URL-keyed generator cache.
+    #: A set keeps duplicate catalogue aliases from inflating the diagnostic.
+    unavailable_yaml_evidence: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -305,9 +319,9 @@ class FetchPolicy:
     allow_network: bool = True
     refresh: bool = False
     max_age: float = CACHE_MAX_AGE_SECONDS
-    #: Whether this run may write into runtime model config storage. --check
-    #: promises to write nothing, and fetch_mdx_config_url writes a yaml into
-    #: paths.MDX_C_CONFIG_PATH -- inside the repo in the portable dev layout.
+    #: Whether coordinator/runtime metadata may be persisted. Generator YAML
+    #: evidence never uses runtime config storage; it is governed exclusively
+    #: by allow_cache_writes below.
     allow_metadata_writes: bool = True
     #: Whether network responses may be persisted in catalogue supplement or
     #: coordinator source caches. Check/summary may still fetch into memory.
@@ -462,20 +476,6 @@ def _merge_hash_tables(local_path: str, remote: dict) -> dict:
     return merged
 
 
-def _scan_weight_hashes(*weight_dirs: str) -> Dict[str, str]:
-    index: Dict[str, str] = {}
-    for weight_dir in weight_dirs:
-        if not os.path.isdir(weight_dir):
-            continue
-        for name in os.listdir(weight_dir):
-            if not name.endswith((".pth", ".onnx", ".ckpt", ".th")):
-                continue
-            digest = compute_checkpoint_hash(os.path.join(weight_dir, name))
-            if digest:
-                index[name.lower()] = digest
-    return index
-
-
 def _intent_from_primary_stem(primary: str, *, is_karaoke: bool = False) -> str:
     return intent_from_primary_stem(primary, is_karaoke=is_karaoke) or ""
 
@@ -578,9 +578,12 @@ def _build_catalogue_context(
         unavailable.append("community models.txt reference")
     return CatalogueContext(
         community_by_file=community,
-        vr_by_hash=_merge_hash_tables(paths.VR_HASH_JSON, remote_vr),
-        mdx_by_hash=_merge_hash_tables(paths.MDX_HASH_JSON, remote_mdx),
-        weight_to_hash=_scan_weight_hashes(paths.VR_MODELS_DIR, paths.MDX_MODELS_DIR),
+        vr_by_hash=_merge_hash_tables(_BUNDLED_VR_HASH_JSON, remote_vr),
+        mdx_by_hash=_merge_hash_tables(_BUNDLED_MDX_HASH_JSON, remote_mdx),
+        # Hash tables are still retained as evidence inputs, but a filename can
+        # only be joined to a digest by hashing an installed weight. Runtime
+        # weights are deliberately excluded from strict publication.
+        weight_to_hash={},
         unavailable_supplemental_evidence=tuple(unavailable),
     )
 
@@ -771,33 +774,20 @@ def _flag_mismatches(entry: ModelEntry) -> List[str]:
 
 
 def _yaml_paths(yaml_name: str, yaml_url: str = "") -> List[str]:
-    """Where a config yaml may already be on disk, most authoritative first.
+    """Strict generator-owned YAML locations, most authoritative first.
 
-    The cache entry is URL-keyed, so it can only be probed when the URL is
-    known -- looking for the bare basename there never matches and left the
-    cache write-only.
+    Checked-in configs are deliberate seeds. The optional second path is the
+    URL-keyed generator cache. Arbitrary installed configs under UVR_DATA_DIR
+    are intentionally absent.
     """
-    candidates = [
-        os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name),
-        os.path.join(ROOT, "models", "MDX_Net_Models", "model_data", "mdx_c_configs", yaml_name),
-    ]
+    candidates = [os.path.join(_BUNDLED_MDX_YAML_DIR, yaml_name)]
     if yaml_url:
         candidates.append(_cache_path(YAML_CACHE_DIR, yaml_url, yaml_name))
     return candidates
 
 
 def _yaml_source_label(yaml_name: str, config_path: str) -> str:
-    """Provenance label for a resolved config, keyed on where it now lives.
-
-    Must be a pure function of the final location: anything that depends on
-    whether *this* run downloaded it changes between runs and shows up as
-    catalogue drift.
-
-    "bundled_yaml" means "resolved from the local config store", which holds
-    both shipped configs and ones core downloaded earlier; the two are not
-    distinguishable after the fact. "remote_yaml" means this script fetched it
-    into its own cache.
-    """
+    """Stable provenance for checked-in versus generator-cache evidence."""
     where = "remote_yaml" if YAML_CACHE_DIR in config_path else "bundled_yaml"
     return f"{where}:{yaml_name}"
 
@@ -822,6 +812,50 @@ def _training_fields(training: Any) -> Tuple[List[str], str]:
     return instruments, str(target) if target else ""
 
 
+def _architecture_from_config(yaml_name: str, config: Any) -> str:
+    """Infer architecture from already-loaded bytes without reopening runtime state."""
+    if not isinstance(config, dict):
+        return ""
+    if config.get("cls") == "Bandit":
+        return "Bandit"
+    model = config.get("model") or {}
+    if not isinstance(model, dict):
+        return "MDX23C"
+    if "band_specs" in model:
+        return "Bandit"
+    if "band_SR" in model or "sources" in model:
+        if any(str(key).startswith("tran_") for key in model):
+            return "SCNet Tran"
+        if "masked" in yaml_name.lower():
+            return "SCNet Masked"
+        return "SCNet"
+    if "num_bands" in model:
+        return "Mel-Band Roformer"
+    if "freqs_per_bands" in model:
+        return "BS Roformer"
+    return "MDX23C"
+
+
+def _architecture_from_yaml_name(yaml_name: str) -> str:
+    """Deterministic informational hint used only when config evidence is absent."""
+    low = yaml_name.casefold()
+    if "bandit" in low:
+        return "Bandit"
+    if "scnet" in low:
+        if "tran" in low:
+            return "SCNet Tran"
+        if "masked" in low:
+            return "SCNet Masked"
+        return "SCNet"
+    if "melband" in low or "mel_band" in low:
+        return "Mel-Band Roformer"
+    if "roformer" in low:
+        return "Roformer"
+    if "mdx23" in low:
+        return "MDX23C"
+    return ""
+
+
 def _load_yaml_meta(
     yaml_name: str,
     yaml_url: str = "",
@@ -839,39 +873,22 @@ def _load_yaml_meta(
         )
     if not yaml_name:
         return [], "", "", ""
-    config_path = ""
-    for candidate in _yaml_paths(yaml_name, yaml_url):
-        if os.path.isfile(candidate):
-            config_path = candidate
-            break
+    bundled_path = _yaml_paths(yaml_name, yaml_url)[0]
+    config_path = bundled_path if os.path.isfile(bundled_path) else ""
 
     source = ""
     config_data: Optional[bytes] = None
     if config_path:
         source = _yaml_source_label(yaml_name, config_path)
     elif yaml_url:
-        if policy.allow_network and policy.allow_metadata_writes:
-            # fetch_mdx_config_url writes into runtime model config storage, so
-            # it must never run for a read-only offline or --check report.
-            from core.mdx_config_fetch import fetch_mdx_config_url
-
-            if fetch_mdx_config_url(yaml_name, yaml_url):
-                dest = os.path.join(paths.MDX_C_CONFIG_PATH, yaml_name)
-                if os.path.isfile(dest):
-                    config_path = dest
-                    # Same rule as the on-disk lookup above. Labelling this
-                    # "remote_yaml" made the value flip to "bundled_yaml" on the
-                    # next run, once the file was found in place -- which reads
-                    # as drift to --check.
-                    source = _yaml_source_label(yaml_name, config_path)
-        if not config_path:
-            # Not gated on allow_network: _fetch_cached honours the policy
-            # itself, and offline it is the only thing that reads the cache.
-            config_data, fetched_path = _fetch_yaml_bytes(yaml_url, yaml_name, policy=policy)
-            if fetched_path:
-                config_path = fetched_path
-            if config_data is not None:
-                source = f"remote_yaml:{yaml_name}"
+        # This boundary owns both fetch and persistence policy. In particular,
+        # refresh must revalidate an existing cache entry, and no path here may
+        # write to runtime model config storage.
+        config_data, fetched_path = _fetch_yaml_bytes(yaml_url, yaml_name, policy=policy)
+        if fetched_path:
+            config_path = fetched_path
+        if config_data is not None:
+            source = f"remote_yaml:{yaml_name}"
     if not config_path and config_data is None:
         inferred = _infer_from_yaml_name(yaml_name)
         if inferred[0] or inferred[1]:
@@ -885,24 +902,16 @@ def _load_yaml_meta(
         )
         training = _mdx_c_training(config)
         instruments, target = _training_fields(training)
-        arch, _ = infer_mdx_c_architecture(yaml_name)
-        if not arch:
-            model = config.get("model") or {}
-            if "num_bands" in model:
-                arch = "Mel-Band Roformer"
-            elif "freqs_per_bands" in model:
-                arch = "BS Roformer"
+        arch = _architecture_from_config(yaml_name, config)
         return instruments, target, arch, source
     except Exception:
         inferred = _infer_from_yaml_name(yaml_name)
-        if inferred[0] or inferred[1]:
-            return inferred[0], inferred[1], inferred[2], f"yaml_name_heuristic:{yaml_name}"
-        return [], "", "", source or "yaml_parse_failed"
+        return inferred[0], inferred[1], inferred[2], f"yaml_parse_failed:{yaml_name}"
 
 
 def _infer_from_yaml_name(yaml_name: str) -> Tuple[List[str], str, str]:
     low = yaml_name.lower()
-    arch, _ = infer_mdx_c_architecture(yaml_name)
+    arch = _architecture_from_yaml_name(yaml_name)
     if "4stem" in low or "4_stem" in low or "musdb18" in low or "dnr_bandit" in low:
         return [], "", arch
     if any(k in low for k in ("instvoc", "duality", "2_stem", "2stem")):
@@ -927,44 +936,6 @@ def _infer_from_yaml_name(yaml_name: str) -> Tuple[List[str], str, str]:
     if any(k in low for k in ("dereverb", "deverb", "denoise", "echo", "bleed")):
         return ["no_reverb"], "no_reverb", arch
     return [], "", arch
-
-
-def _hash_lookup_local(weight_path: str, hash_json_path: str) -> Optional[dict]:
-    if not os.path.isfile(weight_path) or not os.path.isfile(hash_json_path):
-        return None
-    digest = compute_checkpoint_hash(weight_path)
-    if not digest:
-        return None
-    data = load_model_hash_data(hash_json_path)
-    return data.get(digest)
-
-
-def _lookup_hash_row(
-    weight_file: str,
-    ctx: CatalogueContext,
-    *,
-    prefer_vr: bool,
-) -> Tuple[Optional[dict], str]:
-    digest = ctx.weight_to_hash.get(weight_file.lower())
-    if not digest:
-        return None, ""
-    if prefer_vr and digest in ctx.vr_by_hash:
-        return ctx.vr_by_hash[digest], "politrees_vr_hash"
-    if digest in ctx.mdx_by_hash:
-        return ctx.mdx_by_hash[digest], "politrees_mdx_hash"
-    if digest in ctx.vr_by_hash:
-        return ctx.vr_by_hash[digest], "politrees_vr_hash"
-    return None, ""
-
-
-def _apply_hash_row(meta: ModelEntry, row: dict, source: str) -> None:
-    meta.metadata_source = source
-    if row.get("primary_stem"):
-        meta.primary_stem = row["primary_stem"]
-        meta.stem_count = 2
-    meta.is_karaoke = bool(row.get("is_karaoke"))
-    if row.get("config_yaml") and not meta.config_yaml:
-        meta.config_yaml = row["config_yaml"]
 
 
 def _infer_onnx_meta(filename: str, label: str) -> Tuple[str, bool, str]:
@@ -1109,8 +1080,6 @@ def _parse_catalogue_entry(
     label: str,
     payload: Any,
     ctx: CatalogueContext,
-    hash_json: str = "",
-    weight_dir: str = "",
     entry_meta: Any = None,
     policy: FetchPolicy = DEFAULT_FETCH_POLICY,
 ) -> List[ModelEntry]:
@@ -1146,35 +1115,27 @@ def _parse_catalogue_entry(
     )
     meta.name_intent = _infer_name_intent(label)
 
-    if yaml_name and family != "Apollo":
-        # Apollo sidecars describe its restoration execution graph, not an
-        # MDX-C training inventory. Passing them through _load_yaml_meta
-        # makes otherwise read-only catalogue/report runs fetch unrelated
-        # supplemental YAML files. The Apollo route has no stem declaration to
-        # recover here, so keep the supplied access policy from reaching that
-        # non-metadata path at all.
+    if yaml_name and family not in ("Apollo", "Demucs"):
+        # Apollo and Demucs sidecars describe execution/configuration details,
+        # not the MDX-C training inventory used by this strict stem projection.
+        # Their family overlays supply the publication semantics, so those
+        # sidecars are not required supplemental evidence here.
         instruments, target, arch, yaml_source = _load_yaml_meta(yaml_name, yaml_url, policy=policy)
-        meta.instruments = instruments
-        meta.target_instrument = target
         meta.arch = arch
-        meta.stem_count = len(instruments) or (1 if target else 0)
-        if target:
-            meta.primary_stem = target
-        elif instruments:
-            meta.primary_stem = instruments[0]
+        if yaml_source.startswith(("bundled_yaml:", "remote_yaml:")):
+            meta.instruments = instruments
+            meta.target_instrument = target
+            meta.stem_count = len(instruments) or (1 if target else 0)
+            if target:
+                meta.primary_stem = target
+            elif instruments:
+                meta.primary_stem = instruments[0]
+        else:
+            # Filename guesses can still label architecture informally, but
+            # cannot become a native signature used by strict publication.
+            ctx.unavailable_yaml_evidence.add(yaml_name)
         if yaml_source:
             meta.metadata_source = yaml_source
-
-    prefer_vr = family == "VR Architecture"
-    if weight:
-        row, row_source = _lookup_hash_row(weight, ctx, prefer_vr=prefer_vr)
-        if row:
-            _apply_hash_row(meta, row, row_source)
-        elif hash_json and weight_dir:
-            full = os.path.join(weight_dir, weight)
-            row = _hash_lookup_local(full, hash_json)
-            if row:
-                _apply_hash_row(meta, row, "hash_json")
 
     if weight:
         ref = ctx.community_by_file.get(weight.lower())
@@ -1321,8 +1282,6 @@ def _entries_from_snapshot(
                 label=label,
                 payload=payload,
                 ctx=ctx,
-                hash_json=paths.VR_HASH_JSON,
-                weight_dir=paths.VR_MODELS_DIR,
                 entry_meta=meta_index.get(label),
                 policy=policy,
             )
@@ -1337,8 +1296,6 @@ def _entries_from_snapshot(
                 label=label,
                 payload=payload,
                 ctx=ctx,
-                hash_json=paths.MDX_HASH_JSON if family == "MDX-Net ONNX" else "",
-                weight_dir=paths.MDX_MODELS_DIR,
                 entry_meta=meta_index.get(label),
                 policy=policy,
             )

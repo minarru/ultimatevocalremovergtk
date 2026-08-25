@@ -413,7 +413,6 @@ class OfflinePolicyTests(unittest.TestCase):
         return [
             mock.patch("core.mdx_config_fetch._urlopen", record_urlopen),
             mock.patch("core.mdx_config_fetch.fetch_mdx_config_url", record_fetch_config),
-            mock.patch.object(catalogue, "_scan_weight_hashes", lambda *a: {}),
             mock.patch.object(catalogue, "POLITREES_CACHE_DIR", os.path.join(self.tmp, "pt")),
             mock.patch.object(catalogue, "COMMUNITY_CACHE_DIR", os.path.join(self.tmp, "cm")),
             mock.patch.object(catalogue, "YAML_CACHE_DIR", os.path.join(self.tmp, "yaml")),
@@ -532,7 +531,6 @@ class CommunitySupplementAvailabilityTests(unittest.TestCase):
                 "_load_json_cache_with_availability",
                 return_value=({}, True),
             ),
-            mock.patch.object(catalogue, "_scan_weight_hashes", return_value={}),
         ):
             return catalogue._build_catalogue_context(
                 policy=catalogue.FetchPolicy(allow_network=False)
@@ -570,7 +568,6 @@ class CommunitySupplementAvailabilityTests(unittest.TestCase):
                 "COMMUNITY_CACHE_DIR",
                 os.path.join(self.tmp, "fetched-community"),
             ),
-            mock.patch.object(catalogue, "_scan_weight_hashes", return_value={}),
             mock.patch("core.mdx_config_fetch._urlopen", side_effect=urlopen),
         ):
             return catalogue._build_catalogue_context(
@@ -1067,9 +1064,18 @@ class OfflineYamlCacheTests(unittest.TestCase):
         return path
 
     def test_yaml_paths_includes_the_url_keyed_cache_entry(self) -> None:
-        candidates = catalogue._yaml_paths("model_test.yaml", self._URL)
+        from unittest import mock
+
+        runtime_path = os.path.join(self.tmp, "runtime-configs", "model_test.yaml")
+        with mock.patch.object(
+            catalogue.paths,
+            "MDX_C_CONFIG_PATH",
+            os.path.dirname(runtime_path),
+        ):
+            candidates = catalogue._yaml_paths("model_test.yaml", self._URL)
         expected = catalogue._cache_path(catalogue.YAML_CACHE_DIR, self._URL, "model_test.yaml")
         self.assertIn(expected, candidates)
+        self.assertNotIn(runtime_path, candidates)
 
     def test_offline_reads_a_previously_cached_yaml(self) -> None:
         """The whole point of a cache-only offline mode."""
@@ -1099,6 +1105,359 @@ class OfflineYamlCacheTests(unittest.TestCase):
                 "model_test.yaml", self._URL, policy=catalogue.OFFLINE_FETCH_POLICY
             )
         self.assertEqual(self.calls, [])
+
+    def test_unparseable_cached_yaml_is_not_strict_signature_evidence(self) -> None:
+        import contextlib
+
+        path = catalogue._cache_path(self.tmp, self._URL, "model_test.yaml")
+        with open(path, "wb") as handle:
+            handle.write(b"training: [unterminated")
+        ctx = catalogue.CatalogueContext()
+
+        with contextlib.ExitStack() as stack:
+            for patch in self._patches():
+                stack.enter_context(patch)
+            entry = catalogue._parse_catalogue_entry(
+                source="fixture",
+                family="Roformer",
+                label="Roformer Model: Invalid YAML",
+                payload={
+                    "model.ckpt": "https://example.invalid/model.ckpt",
+                    "model_test.yaml": self._URL,
+                },
+                ctx=ctx,
+                policy=catalogue.OFFLINE_FETCH_POLICY,
+            )[0]
+
+        self.assertEqual(entry.instruments, [])
+        self.assertEqual(entry.target_instrument, "")
+        self.assertTrue(entry.metadata_source.startswith("yaml_parse_failed:"))
+        self.assertEqual(ctx.unavailable_yaml_evidence, {"model_test.yaml"})
+
+
+class StrictCatalogueInputIsolationTests(unittest.TestCase):
+    """Strict publication inputs must not depend on installed runtime models."""
+
+    _YAML_NAME = "zz_runtime_conflict.yaml"
+    _YAML_URL = "https://example.invalid/configs/zz_runtime_conflict.yaml"
+    _WEIGHT_NAME = "zz_runtime_conflict.ckpt"
+    _WEIGHT_URL = "https://example.invalid/models/zz_runtime_conflict.ckpt"
+    _WARM_YAML = (
+        b"training:\n"
+        b"  instruments: [vocals, other]\n"
+        b"  target_instrument: vocals\n"
+        b"model:\n"
+        b"  num_bands: 64\n"
+    )
+    _CONFLICTING_YAML = (
+        b"training:\n"
+        b"  instruments: [drums, bass]\n"
+        b"  target_instrument: drums\n"
+        b"model:\n"
+        b"  band_specs: {}\n"
+    )
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        self.tmp = tempfile.mkdtemp(prefix="uvr-strict-inputs-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.cache_root = os.path.join(self.tmp, "generator-cache")
+        self.politrees_cache = os.path.join(self.cache_root, "politrees")
+        self.community_cache = os.path.join(self.cache_root, "community")
+        self.yaml_cache = os.path.join(self.cache_root, "yaml")
+
+    @staticmethod
+    def _write(path: str, data: bytes) -> None:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as handle:
+            handle.write(data)
+
+    def _seed_cache(self, mdx_hash_rows: dict[str, object]) -> None:
+        rows = (
+            (
+                self.politrees_cache,
+                catalogue._POLITREES_VR_DATA_URL,
+                "vr_model_data.json",
+                b"{}",
+            ),
+            (
+                self.politrees_cache,
+                catalogue._POLITREES_MDX_DATA_URL,
+                "mdx_model_data.json",
+                json.dumps(mdx_hash_rows).encode("utf-8"),
+            ),
+            (
+                self.community_cache,
+                catalogue._COMMUNITY_MODELS_URL,
+                "models.txt",
+                b"",
+            ),
+            (self.yaml_cache, self._YAML_URL, self._YAML_NAME, self._WARM_YAML),
+        )
+        for cache_dir, url, filename, data in rows:
+            self._write(catalogue._cache_path(cache_dir, url, filename), data)
+
+    def _strict_projection(self, runtime_root: str) -> dict[str, object]:
+        from dataclasses import asdict
+        from unittest import mock
+
+        runtime_configs = os.path.join(runtime_root, "configs")
+        runtime_mdx_models = os.path.join(runtime_root, "mdx-models")
+        runtime_vr_models = os.path.join(runtime_root, "vr-models")
+
+        class _Snapshot:
+            vr: dict[str, object] = {}
+            mdx = {
+                "Roformer Model: Strict Input Fixture": {
+                    self._WEIGHT_NAME: self._WEIGHT_URL,
+                    self._YAML_NAME: self._YAML_URL,
+                }
+            }
+            demucs: dict[str, object] = {}
+            apollo: dict[str, object] = {}
+            meta: dict[str, object] = {}
+            unsupported: dict[str, object] = {}
+            report = None
+
+        upstream = {
+            "vr_download_list": {},
+            "mdx_download_list": _Snapshot.mdx,
+            "demucs_download_list": {},
+        }
+        with (
+            mock.patch.object(catalogue, "POLITREES_CACHE_DIR", self.politrees_cache),
+            mock.patch.object(catalogue, "COMMUNITY_CACHE_DIR", self.community_cache),
+            mock.patch.object(catalogue, "YAML_CACHE_DIR", self.yaml_cache),
+            mock.patch.object(catalogue.paths, "MDX_C_CONFIG_PATH", runtime_configs),
+            mock.patch.object(
+                catalogue.paths,
+                "MDX_HASH_JSON",
+                os.path.join(runtime_root, "mdx-model-data.json"),
+            ),
+            mock.patch.object(
+                catalogue.paths,
+                "VR_HASH_JSON",
+                os.path.join(runtime_root, "vr-model-data.json"),
+            ),
+            mock.patch.object(catalogue.paths, "MDX_MODELS_DIR", runtime_mdx_models),
+            mock.patch.object(catalogue.paths, "VR_MODELS_DIR", runtime_vr_models),
+        ):
+            ctx = catalogue._build_catalogue_context(policy=catalogue.OFFLINE_FETCH_POLICY)
+            entries = catalogue._entries_from_snapshot(
+                _Snapshot(),
+                (upstream, {}, {}, {}),
+                ctx,
+                policy=catalogue.OFFLINE_FETCH_POLICY,
+            )
+            catalogue_text = render._render(entries, unsupported_count=0, report=None)
+            bundle = cli._render_publication_bundle(
+                entries,
+                ctx=ctx,
+                unsupported=0,
+                report=None,
+                catalogue_text=catalogue_text,
+                document_sha256=cli._text_digest(catalogue_text),
+            )
+        return {
+            "entries": [asdict(entry) for entry in entries],
+            "catalogue": bundle.catalogue,
+            "intent_reference": bundle.intent_reference,
+            "display_reference": asdict(bundle.display_reference),
+            "stem_reference": bundle.stem_reference,
+            "ir": cli._canonical_ir_for_diff(bundle.ir),
+            "diagnostics": [asdict(diagnostic) for diagnostic in bundle.stem_audit.diagnostics],
+        }
+
+    def test_warm_cache_is_identical_across_conflicting_runtime_data_dirs(self) -> None:
+        """Installed same-name YAML/weights cannot alter strict output or diagnostics."""
+        from core.mdx_c_registry import compute_checkpoint_hash
+
+        clean_runtime = os.path.join(self.tmp, "runtime-clean")
+        conflicting_runtime = os.path.join(self.tmp, "runtime-conflicting")
+        conflicting_weight = os.path.join(conflicting_runtime, "mdx-models", self._WEIGHT_NAME)
+        self._write(conflicting_weight, b"runtime model bytes")
+        digest = compute_checkpoint_hash(conflicting_weight)
+        self.assertIsNotNone(digest)
+        self._seed_cache({str(digest): {"primary_stem": "Drums"}})
+        self._write(
+            os.path.join(conflicting_runtime, "configs", self._YAML_NAME),
+            self._CONFLICTING_YAML,
+        )
+        before = {}
+        for directory, _subdirs, names in os.walk(conflicting_runtime):
+            for name in names:
+                path = os.path.join(directory, name)
+                with open(path, "rb") as handle:
+                    before[os.path.relpath(path, conflicting_runtime)] = handle.read()
+
+        clean = self._strict_projection(clean_runtime)
+        conflicting = self._strict_projection(conflicting_runtime)
+
+        self.assertEqual(clean, conflicting)
+        after = {}
+        for directory, _subdirs, names in os.walk(conflicting_runtime):
+            for name in names:
+                path = os.path.join(directory, name)
+                with open(path, "rb") as handle:
+                    after[os.path.relpath(path, conflicting_runtime)] = handle.read()
+        self.assertEqual(before, after)
+
+    def test_cold_offline_yaml_evidence_degrades_before_structural_audit(self) -> None:
+        """A full membership snapshot without required YAML is unavailable, not invalid."""
+        import contextlib
+        import io
+        from unittest import mock
+
+        class _Snapshot:
+            vr: dict[str, object] = {}
+            mdx = {
+                "Roformer Model: Cold YAML Fixture": {
+                    self._WEIGHT_NAME: self._WEIGHT_URL,
+                    self._YAML_NAME: self._YAML_URL,
+                }
+            }
+            demucs: dict[str, object] = {}
+            apollo: dict[str, object] = {}
+            meta: dict[str, object] = {}
+            unsupported: dict[str, object] = {}
+            report = None
+
+        upstream = {
+            "vr_download_list": {},
+            "mdx_download_list": _Snapshot.mdx,
+            "demucs_download_list": {},
+        }
+        ctx = catalogue.CatalogueContext()
+        stderr = io.StringIO()
+        network_calls: list[str] = []
+        invalid = StemAuditResult(
+            catalogue_model_ids=("mdx:zz_runtime_conflict",),
+            reviewed_model_ids=(),
+            waived_model_ids=(),
+            raw_model_ids=("mdx:zz_runtime_conflict",),
+            evidence_counts=CatalogueEvidenceCounts(0, 0, 0, ()),
+            diagnostics=(
+                StemAuditDiagnostic(
+                    code="catalogue-unreviewed",
+                    model_ids=("mdx:zz_runtime_conflict",),
+                    message="missing guessed signature would create structural spam",
+                ),
+            ),
+        )
+
+        def record_network(target: object) -> None:
+            network_calls.append(str(target))
+            return None
+
+        with (
+            mock.patch.object(cli, "OUTPUT_PATH", os.path.join(self.tmp, "cold.md")),
+            mock.patch.object(cli, "REFERENCE_TSV_PATH", os.path.join(self.tmp, "cold.tsv")),
+            mock.patch.object(
+                cli,
+                "DISPLAY_REFERENCE_TSV_PATH",
+                os.path.join(self.tmp, "cold-display.tsv"),
+            ),
+            mock.patch.object(
+                cli,
+                "STEM_SEMANTICS_REFERENCE_TSV_PATH",
+                os.path.join(self.tmp, "cold-stems.tsv"),
+            ),
+            mock.patch.object(catalogue, "YAML_CACHE_DIR", os.path.join(self.tmp, "cold-yaml")),
+            mock.patch.object(
+                catalogue.paths,
+                "MDX_C_CONFIG_PATH",
+                os.path.join(self.tmp, "cold-runtime-configs"),
+            ),
+            mock.patch.object(catalogue, "_build_catalogue_context", return_value=ctx),
+            mock.patch.object(
+                catalogue,
+                "_snapshot_and_payloads",
+                return_value=(_Snapshot(), (upstream, {}, {}, {})),
+            ),
+            mock.patch("core.mdx_config_fetch._urlopen", side_effect=record_network),
+            mock.patch.object(
+                cli.stem_audit,
+                "audit_catalogue_stems",
+                return_value=invalid,
+            ) as audit,
+            contextlib.redirect_stderr(stderr),
+        ):
+            rc = cli.main(["--offline"])
+
+        self.assertEqual(rc, 2)
+        self.assertEqual(network_calls, [])
+        audit.assert_not_called()
+        self.assertNotIn("Stem audit", stderr.getvalue())
+        self.assertIn(self._YAML_NAME, ctx.unavailable_yaml_evidence)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "cold-yaml")))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "cold-runtime-configs")))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "cold.md")))
+
+    def test_refresh_replaces_generator_yaml_without_writing_runtime_storage(self) -> None:
+        """Refresh owns only its URL-keyed cache, never the model config store."""
+        from unittest import mock
+
+        fresh_yaml = (
+            b"training:\n"
+            b"  instruments: [vocals, other]\n"
+            b"  target_instrument: other\n"
+            b"model:\n"
+            b"  num_bands: 64\n"
+        )
+        cache_path = catalogue._cache_path(self.yaml_cache, self._YAML_URL, self._YAML_NAME)
+        self._write(cache_path, self._CONFLICTING_YAML)
+        runtime_path = os.path.join(self.tmp, "runtime-configs", self._YAML_NAME)
+        self._write(runtime_path, self._CONFLICTING_YAML)
+
+        class _Response:
+            def read(self) -> bytes:
+                return fresh_yaml
+
+            def __enter__(self) -> "_Response":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+        calls: list[object] = []
+
+        def urlopen(target: object) -> _Response:
+            calls.append(target)
+            return _Response()
+
+        policy = catalogue.FetchPolicy(allow_network=True, refresh=True)
+        with (
+            mock.patch.object(catalogue, "YAML_CACHE_DIR", self.yaml_cache),
+            mock.patch.object(
+                catalogue.paths,
+                "MDX_C_CONFIG_PATH",
+                os.path.dirname(runtime_path),
+            ),
+            mock.patch("core.mdx_config_fetch._urlopen", side_effect=urlopen),
+        ):
+            instruments, target, _arch, source = catalogue._load_yaml_meta(
+                self._YAML_NAME,
+                self._YAML_URL,
+                policy=policy,
+            )
+            offline = catalogue._load_yaml_meta(
+                self._YAML_NAME,
+                self._YAML_URL,
+                policy=catalogue.OFFLINE_FETCH_POLICY,
+            )
+
+        self.assertEqual(instruments, ["vocals", "other"])
+        self.assertEqual(target, "other")
+        self.assertEqual(source, f"remote_yaml:{self._YAML_NAME}")
+        self.assertEqual(offline[:2], (instruments, target))
+        self.assertEqual(offline[3], source)
+        self.assertEqual(len(calls), 1)
+        with open(cache_path, "rb") as handle:
+            self.assertEqual(handle.read(), fresh_yaml)
+        with open(runtime_path, "rb") as handle:
+            self.assertEqual(handle.read(), self._CONFLICTING_YAML)
 
 
 class CacheWriteAtomicityTests(unittest.TestCase):
@@ -1921,24 +2280,31 @@ class YamlProvenanceStabilityTests(unittest.TestCase):
         import tempfile
         from unittest import mock
 
-        store = tempfile.mkdtemp(prefix="uvr-cfgstore-")
-        self.addCleanup(shutil.rmtree, store, ignore_errors=True)
+        cache_dir = tempfile.mkdtemp(prefix="uvr-generator-yaml-")
+        self.addCleanup(shutil.rmtree, cache_dir, ignore_errors=True)
         url = "https://example.invalid/c/m.yaml"
-        body = "training:\n  instruments: [vocals, other]\n  target_instrument: other\n"
+        body = b"training:\n  instruments: [vocals, other]\n  target_instrument: other\n"
 
-        def fake_fetch(name: str, _url: str) -> bool:
-            with open(os.path.join(store, name), "w", encoding="utf-8") as handle:
-                handle.write(body)
-            return True
+        class _Response:
+            def read(self) -> bytes:
+                return body
+
+            def __enter__(self) -> "_Response":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
 
         with (
-            mock.patch("core.paths.MDX_C_CONFIG_PATH", store),
-            mock.patch("core.mdx_config_fetch.fetch_mdx_config_url", fake_fetch),
+            mock.patch.object(catalogue, "YAML_CACHE_DIR", cache_dir),
+            mock.patch("core.mdx_config_fetch._urlopen", return_value=_Response()) as fetch,
         ):
             first = catalogue._load_yaml_meta("m.yaml", url)[3]
             second = catalogue._load_yaml_meta("m.yaml", url)[3]
 
         self.assertEqual(first, second, "provenance label flipped between runs")
+        self.assertEqual(first, "remote_yaml:m.yaml")
+        self.assertEqual(fetch.call_count, 1)
 
 
 class CheckContractTests(unittest.TestCase):
@@ -2107,7 +2473,6 @@ class CheckContractTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(download_sizes, "_memory_payload", None))
             stack.enter_context(mock.patch.object(download_sizes, "_memory_path", None))
             stack.enter_context(mock.patch.dict(os.environ, {"UVR_DISABLE_CATALOGUE_STEMS": ""}))
-            stack.enter_context(mock.patch.object(catalogue, "_scan_weight_hashes", lambda *a: {}))
             stack.enter_context(mock.patch("core.mdx_config_fetch._urlopen", supplemental_open))
             stack.enter_context(contextlib.redirect_stdout(stdout))
             stack.enter_context(contextlib.redirect_stderr(stderr))
@@ -2293,7 +2658,6 @@ class CheckContractTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(download_sizes, "_memory_payload", None))
             stack.enter_context(mock.patch.object(download_sizes, "_memory_path", None))
             stack.enter_context(mock.patch.dict(os.environ, {"UVR_DISABLE_CATALOGUE_STEMS": ""}))
-            stack.enter_context(mock.patch.object(catalogue, "_scan_weight_hashes", lambda *a: {}))
             stack.enter_context(mock.patch("core.mdx_config_fetch._urlopen", supplemental_open))
             stack.enter_context(
                 mock.patch.object(
@@ -3366,34 +3730,52 @@ class FetchHelperTests(unittest.TestCase):
             with open(path, encoding="utf-8") as handle:
                 self.assertEqual(handle.read(), '{"ok": true}')
 
-    def test_load_yaml_meta_prefers_core_config_fetch(self) -> None:
+    def test_load_yaml_meta_uses_generator_cache_not_runtime_config_storage(self) -> None:
         import tempfile
         from unittest.mock import patch
 
         yaml_name = "zz_core_fetch_probe.yaml"
-        body = "training:\n  instruments: [vocals, other]\n  target_instrument: vocals\n"
+        body = b"training:\n  instruments: [vocals, other]\n  target_instrument: vocals\n"
 
-        def fake_fetch(name: str, url: str) -> bool:
-            dest = os.path.join(catalogue.paths.MDX_C_CONFIG_PATH, name)
-            os.makedirs(catalogue.paths.MDX_C_CONFIG_PATH, exist_ok=True)
-            with open(dest, "w", encoding="utf-8") as handle:
-                handle.write(body)
-            return True
+        class _Response:
+            def read(self) -> bytes:
+                return body
 
-        with (
-            tempfile.TemporaryDirectory() as tmp,
-            patch.object(catalogue.paths, "MDX_C_CONFIG_PATH", tmp),
-            patch("core.mdx_config_fetch.fetch_mdx_config_url", side_effect=fake_fetch),
-        ):
-            instruments, target, _arch, source = catalogue._load_yaml_meta(
-                yaml_name, "https://example.invalid/x.yaml"
+            def __enter__(self) -> "_Response":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = os.path.join(tmp, "generator-cache")
+            runtime_dir = os.path.join(tmp, "runtime-configs")
+            with (
+                patch.object(catalogue, "YAML_CACHE_DIR", cache_dir),
+                patch.object(catalogue.paths, "MDX_C_CONFIG_PATH", runtime_dir),
+                patch(
+                    "core.mdx_config_fetch.fetch_mdx_config_url",
+                    side_effect=AssertionError("runtime config fetch used"),
+                ),
+                patch("core.mdx_config_fetch._urlopen", return_value=_Response()),
+            ):
+                instruments, target, _arch, source = catalogue._load_yaml_meta(
+                    yaml_name, "https://example.invalid/x.yaml"
+                )
+
+            self.assertEqual(instruments, ["vocals", "other"])
+            self.assertEqual(target, "vocals")
+            self.assertEqual(source, f"remote_yaml:{yaml_name}")
+            self.assertTrue(
+                os.path.isfile(
+                    catalogue._cache_path(
+                        cache_dir,
+                        "https://example.invalid/x.yaml",
+                        yaml_name,
+                    )
+                )
             )
-        self.assertEqual(instruments, ["vocals", "other"])
-        self.assertEqual(target, "vocals")
-        # Labelled by where it now lives, not by whether this run fetched it:
-        # the config store label has to match what the next run will report,
-        # or the difference reads as catalogue drift.
-        self.assertEqual(source, f"bundled_yaml:{yaml_name}")
+            self.assertFalse(os.path.exists(runtime_dir))
 
 
 class StemConfidenceAuditModeTests(unittest.TestCase):
