@@ -163,6 +163,10 @@ class CatalogueContext:
     vr_by_hash: Dict[str, dict] = field(default_factory=dict)
     mdx_by_hash: Dict[str, dict] = field(default_factory=dict)
     weight_to_hash: Dict[str, str] = field(default_factory=dict)
+    #: Required supplements that could not be read at all. An empty but valid
+    #: response is evidence too; callers must not confuse zero rows with an
+    #: unavailable source and reject a coherent snapshot on that basis.
+    unavailable_supplemental_evidence: Tuple[str, ...] = ()
 
 
 @dataclass
@@ -427,14 +431,24 @@ def _fetch_cached(
 def _load_json_cache(
     url: str, cache_dir: str, filename: str, *, policy: FetchPolicy = DEFAULT_FETCH_POLICY
 ) -> dict:
+    payload, _available = _load_json_cache_with_availability(
+        url, cache_dir, filename, policy=policy
+    )
+    return payload
+
+
+def _load_json_cache_with_availability(
+    url: str, cache_dir: str, filename: str, *, policy: FetchPolicy = DEFAULT_FETCH_POLICY
+) -> Tuple[dict, bool]:
+    """Load a JSON supplement and retain whether evidence was available at all."""
     data, _path = _fetch_cached_bytes(url, cache_dir, filename, policy=policy)
     if data is None:
-        return {}
+        return {}, False
     try:
         payload = json.loads(data.decode("utf-8"))
-        return payload if isinstance(payload, dict) else {}
+        return (payload, True) if isinstance(payload, dict) else ({}, False)
     except (UnicodeDecodeError, json.JSONDecodeError):
-        return {}
+        return {}, False
 
 
 def _merge_hash_tables(local_path: str, remote: dict) -> dict:
@@ -534,21 +548,29 @@ def _build_catalogue_context(
             allow_metadata_writes=policy.allow_metadata_writes,
             allow_cache_writes=policy.allow_cache_writes,
         )
-    remote_vr = _load_json_cache(
+    remote_vr, vr_available = _load_json_cache_with_availability(
         _POLITREES_VR_DATA_URL, POLITREES_CACHE_DIR, "vr_model_data.json", policy=policy
     )
-    remote_mdx = _load_json_cache(
+    remote_mdx, mdx_available = _load_json_cache_with_availability(
         _POLITREES_MDX_DATA_URL, POLITREES_CACHE_DIR, "mdx_model_data.json", policy=policy
     )
     community_data, _community_path = _fetch_cached_bytes(
         _COMMUNITY_MODELS_URL, COMMUNITY_CACHE_DIR, "models.txt", policy=policy
     )
     community = _parse_community_models_bytes(community_data or b"")
+    unavailable = []
+    if not vr_available:
+        unavailable.append("Politrees VR hash metadata")
+    if not mdx_available:
+        unavailable.append("Politrees MDX hash metadata")
+    if community_data is None:
+        unavailable.append("community models.txt reference")
     return CatalogueContext(
         community_by_file=community,
         vr_by_hash=_merge_hash_tables(paths.VR_HASH_JSON, remote_vr),
         mdx_by_hash=_merge_hash_tables(paths.MDX_HASH_JSON, remote_mdx),
         weight_to_hash=_scan_weight_hashes(paths.VR_MODELS_DIR, paths.MDX_MODELS_DIR),
+        unavailable_supplemental_evidence=tuple(unavailable),
     )
 
 
@@ -1113,7 +1135,13 @@ def _parse_catalogue_entry(
     )
     meta.name_intent = _infer_name_intent(label)
 
-    if yaml_name:
+    if yaml_name and family != "Apollo":
+        # Apollo sidecars describe its restoration execution graph, not an
+        # MDX-C training inventory. Passing them through _load_yaml_meta
+        # makes otherwise read-only catalogue/report runs fetch unrelated
+        # supplemental YAML files. The Apollo route has no stem declaration to
+        # recover here, so keep the supplied access policy from reaching that
+        # non-metadata path at all.
         instruments, target, arch, yaml_source = _load_yaml_meta(yaml_name, yaml_url, policy=policy)
         meta.instruments = instruments
         meta.target_instrument = target

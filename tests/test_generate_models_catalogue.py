@@ -23,6 +23,18 @@ from core.catalogue_types import SourceId  # noqa: E402
 from core.stem_roles import StemProcessingContext  # noqa: E402
 
 
+def _clean_stem_audit(*_args: object, **_kwargs: object) -> StemAuditResult:
+    """Keep publication fixtures focused on artifact behavior, not manifest coverage."""
+    return StemAuditResult(
+        catalogue_model_ids=(),
+        reviewed_model_ids=(),
+        waived_model_ids=(),
+        raw_model_ids=(),
+        evidence_counts=CatalogueEvidenceCounts(148, 123, 92, ()),
+        diagnostics=(),
+    )
+
+
 class DemucsBagArtifactTests(unittest.TestCase):
     def test_representative_weight_is_stable_across_json_key_order(self) -> None:
         entries = []
@@ -407,6 +419,21 @@ class OfflinePolicyTests(unittest.TestCase):
             mock.patch.object(catalogue, "YAML_CACHE_DIR", os.path.join(self.tmp, "yaml")),
             mock.patch.object(cli, "REFERENCE_TSV_PATH", os.path.join(self.tmp, "ref.tsv")),
             mock.patch.object(cli, "OUTPUT_PATH", os.path.join(self.tmp, "out.md")),
+            mock.patch.object(
+                cli,
+                "DISPLAY_REFERENCE_TSV_PATH",
+                os.path.join(self.tmp, "display.tsv"),
+            ),
+            mock.patch.object(
+                cli,
+                "STEM_SEMANTICS_REFERENCE_TSV_PATH",
+                os.path.join(self.tmp, "stem.tsv"),
+            ),
+            mock.patch.object(
+                cli.stem_audit,
+                "audit_catalogue_stems",
+                side_effect=_clean_stem_audit,
+            ),
         ]
 
     def test_build_catalogue_context_offline_makes_no_network_calls(self) -> None:
@@ -442,7 +469,7 @@ class OfflinePolicyTests(unittest.TestCase):
         # Falls back to the name heuristic rather than fetching.
         self.assertIsInstance(result, tuple)
 
-    def test_main_offline_makes_no_network_calls(self) -> None:
+    def test_main_offline_degrades_without_supplemental_evidence(self) -> None:
         import contextlib
         from unittest import mock
 
@@ -461,7 +488,7 @@ class OfflinePolicyTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(catalogue, "_snapshot_and_payloads", spy))
             rc = cli.main(["--offline"])
 
-        self.assertEqual(rc, 0)
+        self.assertEqual(rc, 2)
         self.assertIs(seen["allow_network"], False)
         self.assertEqual(self.calls, [])
 
@@ -1024,6 +1051,8 @@ class ReferenceTsvOptInTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.tsv = os.path.join(self.tmp, "model_intent_reference.tsv")
         self.out = os.path.join(self.tmp, "models-catalogue.md")
+        self.display = os.path.join(self.tmp, "model_display_reference.tsv")
+        self.stem = os.path.join(self.tmp, "model_stem_semantics_reference.tsv")
 
     def _community(self):
         return {
@@ -1054,6 +1083,15 @@ class ReferenceTsvOptInTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(cli, "REFERENCE_TSV_PATH", self.tsv))
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", self.out))
+            stack.enter_context(mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", self.display))
+            stack.enter_context(
+                mock.patch.object(cli, "STEM_SEMANTICS_REFERENCE_TSV_PATH", self.stem)
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    cli.stem_audit, "audit_catalogue_stems", side_effect=_clean_stem_audit
+                )
+            )
             stack.enter_context(
                 mock.patch.object(catalogue, "_build_catalogue_context", lambda **k: ctx)
             )
@@ -1066,10 +1104,10 @@ class ReferenceTsvOptInTests(unittest.TestCase):
             )
             return cli.main(argv)
 
-    def test_a_default_run_does_not_write_the_tsv(self) -> None:
+    def test_a_default_run_writes_the_tsv(self) -> None:
         self.assertEqual(self._run([]), 0)
         self.assertTrue(os.path.isfile(self.out))
-        self.assertFalse(os.path.exists(self.tsv), "TSV written without being asked")
+        self.assertTrue(os.path.isfile(self.tsv))
 
     def test_write_tsv_writes_it(self) -> None:
         self.assertEqual(self._run(["--write-tsv"]), 0)
@@ -1300,6 +1338,8 @@ class DisplayReferenceCliTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.out = os.path.join(self.tmp, "models-catalogue.md")
         self.reference = os.path.join(self.tmp, "model_display_reference.tsv")
+        self.intent = os.path.join(self.tmp, "model_intent_reference.tsv")
+        self.stem = os.path.join(self.tmp, "model_stem_semantics_reference.tsv")
 
     def _run(
         self,
@@ -1329,6 +1369,15 @@ class DisplayReferenceCliTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", self.out))
             stack.enter_context(
                 mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", self.reference)
+            )
+            stack.enter_context(mock.patch.object(cli, "REFERENCE_TSV_PATH", self.intent))
+            stack.enter_context(
+                mock.patch.object(cli, "STEM_SEMANTICS_REFERENCE_TSV_PATH", self.stem)
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    cli.stem_audit, "audit_catalogue_stems", side_effect=_clean_stem_audit
+                )
             )
             stack.enter_context(
                 mock.patch.object(
@@ -1409,9 +1458,9 @@ class DisplayReferenceCliTests(unittest.TestCase):
         with open(self.reference, "rb") as handle:
             self.assertEqual(handle.read(), before)
 
-    def test_default_run_does_not_write_the_reference(self) -> None:
+    def test_default_run_writes_the_reference(self) -> None:
         self.assertEqual(self._run([]), 0)
-        self.assertFalse(os.path.exists(self.reference))
+        self.assertTrue(os.path.exists(self.reference))
 
     def test_summary_with_flag_remains_read_only(self) -> None:
         import contextlib
@@ -1452,6 +1501,8 @@ class CheckModeTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.out = os.path.join(self.tmp, "models-catalogue.md")
         self.tsv = os.path.join(self.tmp, "model_intent_reference.tsv")
+        self.display = os.path.join(self.tmp, "model_display_reference.tsv")
+        self.stem = os.path.join(self.tmp, "model_stem_semantics_reference.tsv")
 
     def _run(self, argv: list) -> int:
         import contextlib
@@ -1481,6 +1532,15 @@ class CheckModeTests(unittest.TestCase):
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", self.out))
             stack.enter_context(mock.patch.object(cli, "REFERENCE_TSV_PATH", self.tsv))
+            stack.enter_context(mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", self.display))
+            stack.enter_context(
+                mock.patch.object(cli, "STEM_SEMANTICS_REFERENCE_TSV_PATH", self.stem)
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    cli.stem_audit, "audit_catalogue_stems", side_effect=_clean_stem_audit
+                )
+            )
             stack.enter_context(
                 mock.patch.object(catalogue, "_build_catalogue_context", lambda **k: ctx)
             )
@@ -2066,6 +2126,11 @@ class CheckContractTests(unittest.TestCase):
             stack.enter_context(mock.patch.dict(os.environ, {"UVR_DISABLE_CATALOGUE_STEMS": ""}))
             stack.enter_context(mock.patch.object(catalogue, "_scan_weight_hashes", lambda *a: {}))
             stack.enter_context(mock.patch("core.mdx_config_fetch._urlopen", supplemental_open))
+            stack.enter_context(
+                mock.patch.object(
+                    cli.stem_audit, "audit_catalogue_stems", side_effect=_clean_stem_audit
+                )
+            )
             stack.enter_context(contextlib.redirect_stderr(stderr))
             rc = cli.main(["--check", "--refresh", "--write-display-reference"])
 
@@ -2224,7 +2289,7 @@ class CheckContractTests(unittest.TestCase):
         self.assertNotIn("Refusing to write", message)
         self.assertIn("cannot judge", message.lower())
 
-    def test_write_tsv_without_community_data_is_reported_not_silent(self) -> None:
+    def test_legacy_tsv_flag_writes_the_empty_but_available_reference(self) -> None:
         import contextlib
         import io
         import tempfile
@@ -2248,6 +2313,25 @@ class CheckContractTests(unittest.TestCase):
             )
             stack.enter_context(
                 mock.patch.object(
+                    cli,
+                    "DISPLAY_REFERENCE_TSV_PATH",
+                    os.path.join(tmp, "display.tsv"),
+                )
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    cli,
+                    "STEM_SEMANTICS_REFERENCE_TSV_PATH",
+                    os.path.join(tmp, "stem.tsv"),
+                )
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    cli.stem_audit, "audit_catalogue_stems", side_effect=_clean_stem_audit
+                )
+            )
+            stack.enter_context(
+                mock.patch.object(
                     catalogue, "_build_catalogue_context", lambda **k: catalogue.CatalogueContext()
                 )
             )
@@ -2260,7 +2344,7 @@ class CheckContractTests(unittest.TestCase):
             rc = cli.main(["--write-tsv"])
 
         self.assertEqual(rc, 0)
-        self.assertIn("tsv", stderr.getvalue().lower())
+        self.assertIn("deprecated", stderr.getvalue().lower())
 
 
 class IntermediateRepresentationTests(unittest.TestCase):
@@ -2591,6 +2675,18 @@ class CollectEntriesIsTheRealPathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with (
                 mock.patch.object(cli, "OUTPUT_PATH", os.path.join(tmp, "c.md")),
+                mock.patch.object(cli, "REFERENCE_TSV_PATH", os.path.join(tmp, "intent.tsv")),
+                mock.patch.object(
+                    cli, "DISPLAY_REFERENCE_TSV_PATH", os.path.join(tmp, "display.tsv")
+                ),
+                mock.patch.object(
+                    cli, "STEM_SEMANTICS_REFERENCE_TSV_PATH", os.path.join(tmp, "stem.tsv")
+                ),
+                mock.patch.object(
+                    cli.stem_audit,
+                    "audit_catalogue_stems",
+                    side_effect=_clean_stem_audit,
+                ),
                 mock.patch.object(
                     catalogue, "_build_catalogue_context", lambda **k: catalogue.CatalogueContext()
                 ),
@@ -2603,6 +2699,215 @@ class CollectEntriesIsTheRealPathTests(unittest.TestCase):
             ):
                 cli.main([])
         self.assertEqual(collect.call_count, 1, "main did not go through collect_entries")
+
+
+class UnifiedPublicationCliTests(unittest.TestCase):
+    """The generator publishes and compares one complete snapshot bundle."""
+
+    def setUp(self) -> None:
+        import shutil
+        import tempfile
+
+        self.tmp = tempfile.mkdtemp(prefix="uvr-unified-publication-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.output = os.path.join(self.tmp, "models-catalogue.md")
+        self.intent = os.path.join(self.tmp, "model_intent_reference.tsv")
+        self.display = os.path.join(self.tmp, "model_display_reference.tsv")
+        self.stem = os.path.join(self.tmp, "model_stem_semantics_reference.tsv")
+        self.ir = catalogue._ir_path_for(self.output)
+        self.context = catalogue.CatalogueContext(
+            community_by_file={
+                "model.ckpt": catalogue.CommunityRef(
+                    filename="model.ckpt",
+                    arch="Roformer",
+                    primary_stem="Vocals",
+                    stems_text="vocals, other",
+                    friendly_name="Fixture model",
+                    intent="vocals",
+                )
+            },
+            vr_by_hash={"fixture": {}},
+            mdx_by_hash={"fixture": {}},
+        )
+        self.entry = catalogue.ModelEntry(
+            source="fixture",
+            family="MDX23C",
+            catalogue_label="Fixture Model",
+            weight_file="model.ckpt",
+            instruments=["vocals", "other"],
+            primary_stem="vocals",
+            stem_count=2,
+            name_intent="vocals",
+            metadata_source="fixture",
+        )
+
+    def _audit(self, *args: object, **kwargs: object) -> StemAuditResult:
+        return StemAuditResult(
+            catalogue_model_ids=("mdx:model",),
+            reviewed_model_ids=("mdx:model",),
+            waived_model_ids=(),
+            raw_model_ids=(),
+            evidence_counts=CatalogueEvidenceCounts(148, 123, 92, ()),
+            diagnostics=(),
+        )
+
+    def _run(
+        self,
+        argv: list[str],
+        *,
+        context: catalogue.CatalogueContext | None = None,
+        audit: object | None = None,
+    ) -> int:
+        from unittest import mock
+
+        class _Snapshot:
+            unsupported: dict[str, object] = {}
+            report = None
+
+        from catalogue import stem_audit
+
+        audit_side_effect = self._audit if audit is None else audit
+        if isinstance(audit_side_effect, StemAuditResult):
+            audit_result = audit_side_effect
+
+            def return_audit(*_args: object, **_kwargs: object) -> StemAuditResult:
+                return audit_result
+
+            audit_side_effect = return_audit
+
+        with (
+            mock.patch.object(cli, "OUTPUT_PATH", self.output),
+            mock.patch.object(cli, "REFERENCE_TSV_PATH", self.intent),
+            mock.patch.object(cli, "DISPLAY_REFERENCE_TSV_PATH", self.display),
+            mock.patch.object(cli, "STEM_SEMANTICS_REFERENCE_TSV_PATH", self.stem),
+            mock.patch.object(
+                catalogue,
+                "_build_catalogue_context",
+                return_value=context or self.context,
+            ),
+            mock.patch.object(
+                catalogue,
+                "collect_entries",
+                return_value=(_Snapshot(), [self.entry]),
+            ),
+            mock.patch.object(
+                stem_audit,
+                "audit_catalogue_stems",
+                side_effect=audit_side_effect,
+            ),
+        ):
+            return cli.main(argv)
+
+    def test_default_write_synchronizes_every_generated_artifact(self) -> None:
+        """Removing a default renderer must leave a missing checked-in output."""
+        self.assertEqual(self._run([]), 0)
+
+        for path in (self.output, self.ir, self.intent, self.display, self.stem):
+            with self.subTest(path=path):
+                self.assertTrue(os.path.isfile(path))
+        with open(self.ir, encoding="utf-8") as handle:
+            self.assertEqual(json.load(handle)["entry_count"], 1)
+
+    def test_check_compares_every_generated_artifact_without_repairing_it(self) -> None:
+        """A stale reference cannot escape --check because its flag was omitted."""
+        self.assertEqual(self._run([]), 0)
+        with open(self.intent, "a", encoding="utf-8") as handle:
+            handle.write("stale\n")
+        with open(self.intent, "rb") as handle:
+            before = handle.read()
+
+        self.assertEqual(self._run(["--check"]), 1)
+        with open(self.intent, "rb") as handle:
+            self.assertEqual(handle.read(), before)
+
+    def test_structural_audit_failure_blocks_every_replacement(self) -> None:
+        """Publishing any subset after invalidating manifest structure is unsafe."""
+        invalid = StemAuditResult(
+            catalogue_model_ids=("mdx:model",),
+            reviewed_model_ids=(),
+            waived_model_ids=(),
+            raw_model_ids=("mdx:model",),
+            evidence_counts=CatalogueEvidenceCounts(0, 0, 0, ()),
+            diagnostics=(
+                StemAuditDiagnostic(
+                    code="catalogue-unreviewed",
+                    model_ids=("mdx:model",),
+                    message="fixture has no reviewed declaration",
+                ),
+            ),
+        )
+        sentinels = {
+            self.output: b"markdown sentinel\n",
+            self.intent: b"intent sentinel\n",
+            self.display: b"display sentinel\n",
+            self.stem: b"stem sentinel\n",
+            self.ir: b"ir sentinel\n",
+        }
+        for path, contents in sentinels.items():
+            with open(path, "wb") as handle:
+                handle.write(contents)
+
+        self.assertEqual(self._run([], audit=invalid), 1)
+        for path, contents in sentinels.items():
+            with self.subTest(path=path), open(path, "rb") as handle:
+                self.assertEqual(handle.read(), contents)
+
+    def test_missing_required_supplemental_evidence_is_degraded(self) -> None:
+        """Unavailable evidence cannot replace a complete reference set."""
+        incomplete = catalogue.CatalogueContext(
+            unavailable_supplemental_evidence=("community models.txt reference",)
+        )
+
+        self.assertEqual(self._run([], context=incomplete), 2)
+        self.assertFalse(os.path.exists(self.output))
+
+    def test_summary_reports_semantic_findings_without_publishing(self) -> None:
+        """A summary must consume the audit result instead of recollecting semantics."""
+        import contextlib
+        import io
+
+        finding = StemAuditResult(
+            catalogue_model_ids=("mdx:model",),
+            reviewed_model_ids=(),
+            waived_model_ids=(),
+            raw_model_ids=("mdx:model",),
+            evidence_counts=CatalogueEvidenceCounts(0, 0, 0, ()),
+            diagnostics=(
+                StemAuditDiagnostic(
+                    code="reference-drift",
+                    model_ids=("mdx:model",),
+                    message="fixture reference differs",
+                    structural=False,
+                ),
+            ),
+        )
+        stdout = io.StringIO()
+
+        with contextlib.redirect_stdout(stdout):
+            self.assertEqual(self._run(["--summary"], audit=finding), 0)
+
+        self.assertIn("## Reference drift", stdout.getvalue())
+        self.assertFalse(os.path.exists(self.output))
+
+    def test_legacy_reference_flags_are_deprecated_no_ops(self) -> None:
+        """Compatibility flags must not split the generated artifact bundle."""
+        import contextlib
+        import io
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self.assertEqual(
+                self._run(
+                    [
+                        "--write-tsv",
+                        "--write-display-reference",
+                        "--write-stem-semantics-reference",
+                    ]
+                ),
+                0,
+            )
+        self.assertEqual(stderr.getvalue().lower().count("deprecated"), 3)
+        self.assertTrue(os.path.isfile(self.stem))
 
 
 class SidecarTrustTests(unittest.TestCase):
@@ -2665,6 +2970,32 @@ class SidecarTrustTests(unittest.TestCase):
 
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(cli, "OUTPUT_PATH", self.doc))
+            stack.enter_context(
+                mock.patch.object(
+                    cli,
+                    "REFERENCE_TSV_PATH",
+                    os.path.join(self.tmp, "model_intent_reference.tsv"),
+                )
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    cli,
+                    "DISPLAY_REFERENCE_TSV_PATH",
+                    os.path.join(self.tmp, "model_display_reference.tsv"),
+                )
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    cli,
+                    "STEM_SEMANTICS_REFERENCE_TSV_PATH",
+                    os.path.join(self.tmp, "model_stem_semantics_reference.tsv"),
+                )
+            )
+            stack.enter_context(
+                mock.patch.object(
+                    cli.stem_audit, "audit_catalogue_stems", side_effect=_clean_stem_audit
+                )
+            )
             stack.enter_context(
                 mock.patch.object(
                     catalogue, "_build_catalogue_context", lambda **k: catalogue.CatalogueContext()

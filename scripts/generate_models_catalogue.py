@@ -11,6 +11,7 @@ naming intent so mislabeled vocal vs instrumental models can be spotted.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -25,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from catalogue import (
     collect,
     render,
+    stem_audit,
 )  # noqa: E402
 from catalogue.collect import (  # noqa: E402
     DISPLAY_REFERENCE_TSV_PATH,
@@ -57,7 +59,7 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
             "  document with that (exit 2) unless you pass --allow-degraded.\n"
             "\n"
             "Exit status:\n"
-            "  0  wrote, or --check found no drift, or --summary printed\n"
+            "  0  wrote, or --check found no drift, or --summary completed\n"
             "  1  --check found drift (canonical text changed; header dates ignored)\n"
             "  2  this run's data is too degraded to publish or to judge drift\n"
             "\n"
@@ -65,7 +67,6 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
             "  python scripts/generate_models_catalogue.py\n"
             "  python scripts/generate_models_catalogue.py --refresh\n"
             "  python scripts/generate_models_catalogue.py --check\n"
-            "  python scripts/generate_models_catalogue.py --write-display-reference\n"
             "  python scripts/generate_models_catalogue.py --summary --offline\n"
         ),
     )
@@ -110,26 +111,24 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--write-tsv",
         action="store_true",
         help=(
-            f"Also write {os.path.basename(REFERENCE_TSV_PATH)} from community "
-            "models.txt. Off by default; --check then compares it too."
+            f"Deprecated compatibility option. {os.path.basename(REFERENCE_TSV_PATH)} "
+            "is always generated and compared."
         ),
     )
     parser.add_argument(
         "--write-display-reference",
         action="store_true",
         help=(
-            f"Also write {os.path.basename(DISPLAY_REFERENCE_TSV_PATH)} with "
-            "the complete current display projection and mechanical quality "
-            "flags. Off by default; --check then compares it too."
+            f"Deprecated compatibility option. {os.path.basename(DISPLAY_REFERENCE_TSV_PATH)} "
+            "is always generated and compared."
         ),
     )
     parser.add_argument(
         "--write-stem-semantics-reference",
         action="store_true",
         help=(
-            f"Also write {os.path.basename(STEM_SEMANTICS_REFERENCE_TSV_PATH)} "
-            "from the local reviewed semantic manifest. Under --check it is "
-            "rendered in memory and compared without writes."
+            f"Deprecated compatibility option. {os.path.basename(STEM_SEMANTICS_REFERENCE_TSV_PATH)} "
+            "is always generated and compared."
         ),
     )
     mode = parser.add_mutually_exclusive_group()
@@ -137,7 +136,7 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--write",
         action="store_true",
         help=(
-            "Write docs/models-catalogue.md (and optional TSVs/sidecar). "
+            "Write the catalogue, IR sidecar, and all generated references. "
             "This is the default when neither --check nor --summary is passed."
         ),
     )
@@ -145,16 +144,16 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--summary",
         action="store_true",
         help=(
-            "Print entry counts, flagged mismatches and unknown intent to "
+            "Print entry counts, semantic findings, flagged mismatches and unknown intent to "
             "stdout. Writes nothing: no document, sidecar, TSV, or yaml "
-            "download into the tree. Prints even when the run is degraded."
+            "download into the tree. Prints before reporting degraded evidence."
         ),
     )
     mode.add_argument(
         "--check",
         action="store_true",
         help=(
-            "Compare the generated catalogue to the on-disk document and "
+            "Compare every generated artifact to its on-disk counterpart and "
             "write nothing. Volatile header lines (Generated, provenance, "
             "cache ages) are ignored, so drift means the catalogue changed, "
             "not that time passed. Exit 1 on drift, 2 if this run is too "
@@ -175,6 +174,18 @@ class PublicationVerdict:
 
     ok: bool
     reason: str = ""
+
+
+@dataclass(frozen=True)
+class PublicationBundle:
+    """Every candidate generated from one collected catalogue snapshot."""
+
+    catalogue: str
+    intent_reference: str
+    display_reference: render.PresentationReferenceAudit
+    stem_reference: str
+    ir: dict[str, Any]
+    stem_audit: stem_audit.StemAuditResult
 
 
 def _previous_entry_count(path: str) -> Optional[int]:
@@ -262,21 +273,161 @@ def _policy_for(args: argparse.Namespace) -> FetchPolicy:
     )
 
 
+def _read_text_or_none(path: str) -> Optional[str]:
+    """Read an existing generated text artifact without creating it."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return handle.read()
+    except OSError:
+        return None
+
+
+def _text_digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _required_supplemental_evidence(ctx: collect.CatalogueContext) -> Tuple[str, ...]:
+    """Name supplements required to produce a complete reviewed publication."""
+    return tuple(ctx.unavailable_supplemental_evidence)
+
+
+def _render_publication_bundle(
+    entries: List[Any],
+    *,
+    ctx: collect.CatalogueContext,
+    unsupported: int,
+    report: Any,
+    catalogue_text: str,
+    document_sha256: str,
+) -> PublicationBundle:
+    """Render and validate the complete output set before publication starts."""
+    intent_reference = render._reference_tsv_text(ctx.community_by_file)
+    display_reference = render.presentation_reference_audit(entries)
+    stem_reference = render.stem_semantics_reference_tsv(entries)
+    audit = stem_audit.audit_catalogue_stems(
+        entries,
+        ctx,
+        expected_reference_text=stem_reference,
+        actual_reference_text=_read_text_or_none(STEM_SEMANTICS_REFERENCE_TSV_PATH),
+    )
+    ir = build_ir(
+        entries,
+        report=report,
+        unsupported_count=unsupported,
+        document_sha256=document_sha256,
+    )
+    return PublicationBundle(
+        catalogue=catalogue_text,
+        intent_reference=intent_reference,
+        display_reference=display_reference,
+        stem_reference=stem_reference,
+        ir=ir,
+        stem_audit=audit,
+    )
+
+
+def _canonical_ir_for_diff(payload: Any) -> Any:
+    """Ignore generation/provenance fields that do not change catalogue data."""
+    if not isinstance(payload, dict):
+        return payload
+    canonical = dict(payload)
+    canonical.pop("generated_at", None)
+    canonical.pop("provenance", None)
+    return canonical
+
+
+def _ir_matches(path: str, payload: dict[str, Any]) -> bool:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            existing = json.load(handle)
+    except (OSError, ValueError):
+        return False
+    return _canonical_ir_for_diff(existing) == _canonical_ir_for_diff(payload)
+
+
+def _print_deprecated_reference_flags(args: argparse.Namespace) -> None:
+    for flag in (
+        "write_tsv",
+        "write_display_reference",
+        "write_stem_semantics_reference",
+    ):
+        if getattr(args, flag):
+            option = "--" + flag.replace("_", "-")
+            print(
+                f"Warning: {option} is deprecated and has no effect; "
+                "all generated references are always synchronized.",
+                file=sys.stderr,
+            )
+
+
+def _print_structural_stem_diagnostics(result: stem_audit.StemAuditResult) -> None:
+    for diagnostic in result.diagnostics:
+        if not diagnostic.structural:
+            continue
+        model_ids = ", ".join(diagnostic.model_ids) or "(global)"
+        print(
+            f"Stem audit {diagnostic.code}: {model_ids}: {diagnostic.message}",
+            file=sys.stderr,
+        )
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_args(argv)
+    _print_deprecated_reference_flags(args)
     policy = _policy_for(args)
     ctx = collect._build_catalogue_context(policy=policy)
     snapshot, entries = collect.collect_entries(ctx, policy=policy)
     unsupported = _unsupported_count(getattr(snapshot, "unsupported", None))
     report = getattr(snapshot, "report", None)
 
+    # A check candidate must retain the current document's exact sidecar link
+    # when Markdown differs only in volatile provenance/header lines. A write
+    # instead binds the new IR to the new document bytes before either file is
+    # replaced.
+    rendered_catalogue = render._render(entries, unsupported_count=unsupported, report=report)
+    document_sha256 = _text_digest(rendered_catalogue)
+    if args.check and render._text_matches(OUTPUT_PATH, rendered_catalogue):
+        document_sha256 = _document_digest(OUTPUT_PATH) or document_sha256
+    bundle = _render_publication_bundle(
+        entries,
+        ctx=ctx,
+        unsupported=unsupported,
+        report=report,
+        catalogue_text=rendered_catalogue,
+        document_sha256=document_sha256,
+    )
+
+    missing_evidence = _required_supplemental_evidence(ctx)
+
     if args.summary:
         # Ahead of the publication guard on purpose: a summary writes nothing,
         # so there is no artifact to protect, and a degraded run is exactly
         # when a maintainer wants to see what the catalogue currently looks
         # like. The provenance block reports the degradation.
-        print(render.render_summary_report(entries, unsupported_count=unsupported, report=report))
+        print(
+            render.render_summary_report(
+                entries,
+                unsupported_count=unsupported,
+                report=report,
+                stem_audit=bundle.stem_audit,
+            )
+        )
+        if missing_evidence:
+            print(
+                "Supplemental evidence unavailable: " + ", ".join(missing_evidence),
+                file=sys.stderr,
+            )
+            return 2
         return 0
+
+    if missing_evidence:
+        action = "judge" if args.check else "publish"
+        print(
+            f"Cannot {action} a complete catalogue: required supplemental "
+            "evidence unavailable: " + ", ".join(missing_evidence),
+            file=sys.stderr,
+        )
+        return 2
 
     verdict = _publication_verdict(
         entries=list(entries),
@@ -299,88 +450,53 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         return 2
 
-    rendered = render._render(entries, unsupported_count=unsupported, report=report)
-    tsv_text = ""
-    if args.write_tsv:
-        if ctx.community_by_file:
-            tsv_text = render._reference_tsv_text(ctx.community_by_file)
-        else:
-            print(
-                f"--write-tsv had no community data; leaving {REFERENCE_TSV_PATH} alone "
-                "(the models.txt fetch produced nothing).",
-                file=sys.stderr,
-            )
-
-    display_reference = None
-    display_reference_text = ""
-    if args.write_display_reference:
-        display_reference = render.presentation_reference_audit(entries)
-        display_reference_text = display_reference.text
-    stem_semantics_reference_text = ""
-    if args.write_stem_semantics_reference:
-        stem_semantics_reference_text = render.stem_semantics_reference_tsv(entries)
+    if not bundle.stem_audit.structurally_valid:
+        _print_structural_stem_diagnostics(bundle.stem_audit)
+        return 1
 
     if args.check:
         drift = []
-        if not render._text_matches(OUTPUT_PATH, rendered):
+        if not render._text_matches(OUTPUT_PATH, bundle.catalogue):
             drift.append(OUTPUT_PATH)
-        if tsv_text and not render._text_matches(REFERENCE_TSV_PATH, tsv_text):
+        if not args.no_ir and not _ir_matches(_ir_path_for(OUTPUT_PATH), bundle.ir):
+            drift.append(_ir_path_for(OUTPUT_PATH))
+        if not render._text_matches(REFERENCE_TSV_PATH, bundle.intent_reference):
             drift.append(REFERENCE_TSV_PATH)
-        if display_reference_text and not render._text_matches(
-            DISPLAY_REFERENCE_TSV_PATH, display_reference_text
-        ):
+        if not render._text_matches(DISPLAY_REFERENCE_TSV_PATH, bundle.display_reference.text):
             drift.append(DISPLAY_REFERENCE_TSV_PATH)
-        if stem_semantics_reference_text and not render._text_matches(
-            STEM_SEMANTICS_REFERENCE_TSV_PATH, stem_semantics_reference_text
-        ):
+        if not render._text_matches(STEM_SEMANTICS_REFERENCE_TSV_PATH, bundle.stem_reference):
             drift.append(STEM_SEMANTICS_REFERENCE_TSV_PATH)
-        if display_reference is not None:
-            for model_id, flags in display_reference.unreviewed:
-                print(
-                    f"Unreviewed presentation flag(s): {model_id}: {', '.join(flags)}",
-                    file=sys.stderr,
-                )
-            for display, model_ids in display_reference.collisions:
-                print(
-                    "Accidental case-insensitive display collision: "
-                    f"{display!r}: {', '.join(model_ids)}",
-                    file=sys.stderr,
-                )
+        for model_id, flags in bundle.display_reference.unreviewed:
+            print(
+                f"Unreviewed presentation flag(s): {model_id}: {', '.join(flags)}",
+                file=sys.stderr,
+            )
+        for display, model_ids in bundle.display_reference.collisions:
+            print(
+                "Accidental case-insensitive display collision: "
+                f"{display!r}: {', '.join(model_ids)}",
+                file=sys.stderr,
+            )
         if drift:
             for path in drift:
                 print(f"Out of date: {path}", file=sys.stderr)
-            regenerate = "python scripts/generate_models_catalogue.py"
-            if REFERENCE_TSV_PATH in drift:
-                regenerate += " --write-tsv"
-            if DISPLAY_REFERENCE_TSV_PATH in drift:
-                regenerate += " --write-display-reference"
-            if STEM_SEMANTICS_REFERENCE_TSV_PATH in drift:
-                regenerate += " --write-stem-semantics-reference"
-            print(f"Regenerate with: {regenerate}", file=sys.stderr)
-        if drift or (
-            display_reference is not None
-            and (display_reference.unreviewed or display_reference.collisions)
-        ):
+            print("Regenerate with: python scripts/generate_models_catalogue.py", file=sys.stderr)
+        if drift or bundle.display_reference.unreviewed or bundle.display_reference.collisions:
             return 1
         print(f"Up to date: {OUTPUT_PATH}")
         return 0
 
     from core.json_store import write_json_atomic, write_text_atomic
 
-    # A failed write must not truncate the checked-in catalogue document.
-    write_text_atomic(OUTPUT_PATH, rendered)
+    # Every renderer and strict validator above has completed. Each generated
+    # target is then atomically replaced, so a failed replacement cannot
+    # truncate a checked-in artifact or publish an unvalidated candidate.
+    write_text_atomic(OUTPUT_PATH, bundle.catalogue)
     if not args.no_ir:
-        # After the document, so the sidecar never describes a run whose
-        # document failed to land.
-        write_json_atomic(
-            _ir_path_for(OUTPUT_PATH),
-            build_ir(
-                entries,
-                report=report,
-                unsupported_count=unsupported,
-                document_sha256=_document_digest(OUTPUT_PATH),
-            ),
-        )
+        write_json_atomic(_ir_path_for(OUTPUT_PATH), bundle.ir)
+    write_text_atomic(REFERENCE_TSV_PATH, bundle.intent_reference)
+    write_text_atomic(DISPLAY_REFERENCE_TSV_PATH, bundle.display_reference.text)
+    write_text_atomic(STEM_SEMANTICS_REFERENCE_TSV_PATH, bundle.stem_reference)
     flagged = sum(1 for e in entries if e.flags)
     unknown = sum(1 for e in entries if e.name_intent == "unknown")
     with_meta = sum(1 for e in entries if e.metadata_source not in ("unavailable", ""))
@@ -388,16 +504,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         f"Wrote {OUTPUT_PATH} ({len(entries)} models, {with_meta} with metadata, "
         f"{unknown} unknown, {flagged} flagged, {unsupported} unsupported omitted)"
     )
-    # Only after the guard: a refused run must not mutate this artifact either.
-    if tsv_text:
-        write_text_atomic(REFERENCE_TSV_PATH, tsv_text)
-        print(f"Wrote {REFERENCE_TSV_PATH}")
-    if display_reference_text:
-        write_text_atomic(DISPLAY_REFERENCE_TSV_PATH, display_reference_text)
-        print(f"Wrote {DISPLAY_REFERENCE_TSV_PATH}")
-    if stem_semantics_reference_text:
-        write_text_atomic(STEM_SEMANTICS_REFERENCE_TSV_PATH, stem_semantics_reference_text)
-        print(f"Wrote {STEM_SEMANTICS_REFERENCE_TSV_PATH}")
+    for path in (
+        _ir_path_for(OUTPUT_PATH),
+        REFERENCE_TSV_PATH,
+        DISPLAY_REFERENCE_TSV_PATH,
+        STEM_SEMANTICS_REFERENCE_TSV_PATH,
+    ):
+        if path != _ir_path_for(OUTPUT_PATH) or not args.no_ir:
+            print(f"Wrote {path}")
     return 0
 
 
