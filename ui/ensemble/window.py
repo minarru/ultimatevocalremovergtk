@@ -77,6 +77,7 @@ from core.run_estimate import (
     estimate_workload,
     format_workload_line,
 )
+from core.stem_pairs import normalize_stem_pair_id
 from core.stems import (
     EnsemblePair,
     coerce_ensemble_pair,
@@ -481,7 +482,7 @@ class EnsemblePage:
             self._refresh_saved_list()
             set_combo_value(
                 self.main_stem_row,
-                self._ensemble_pair().value,
+                self.settings.ensemble.main_stem,
             )
             self._refresh_ensemble_type_values()
 
@@ -557,8 +558,9 @@ class EnsemblePage:
         return coerce_ensemble_pair(self.settings.ensemble.main_stem)
 
     def _set_ensemble_pair(self, value: typing.Any) -> EnsemblePair:
-        pair = coerce_ensemble_pair(value)
-        self.settings.ensemble.main_stem = pair
+        pair_id = normalize_stem_pair_id(value)
+        pair = coerce_ensemble_pair(pair_id)
+        self.settings.ensemble.main_stem = pair_id
         return pair
 
     def _ensemble_stem_pair(self) -> tuple[str | None, str | None]:
@@ -702,8 +704,8 @@ class EnsemblePage:
     def _apply_saved_ensemble(self, data: dict, *, curated_id: Optional[str] = None) -> None:
         self._loading = True
         try:
-            pair = self._set_ensemble_pair(data.get("ensemble_main_stem"))
-            set_combo_value(self.main_stem_row, pair.value)
+            self._set_ensemble_pair(data.get("ensemble_main_stem"))
+            set_combo_value(self.main_stem_row, self.settings.ensemble.main_stem)
             ensemble_type = data.get("ensemble_type", MAX_MIN)
             self.settings.ensemble.type = ensemble_type
             self._refresh_ensemble_type_values()
@@ -817,7 +819,7 @@ class EnsemblePage:
             EnsembleService(self.context.repo).create(
                 canonical_name,
                 members=selected,
-                main_stem=self._ensemble_pair().value,
+                main_stem=self.settings.ensemble.main_stem,
                 algorithm=self.settings.ensemble.type or MAX_MIN,
                 wav_ensemble=self.settings.ensemble.wav_ensemble,
                 save_all_outputs=self.settings.ensemble.save_all_outputs,
@@ -1049,7 +1051,7 @@ class EnsemblePage:
             if eligible_ids is not None and model_id not in eligible_ids:
                 return (
                     f"{path}: model {value!r} is not eligible for "
-                    f"{self._ensemble_pair().value!r}; excluding it"
+                    f"{self.settings.ensemble.main_stem!r}; excluding it"
                 )
             return None
 
@@ -1134,7 +1136,7 @@ class EnsemblePage:
             return
 
         log_model_picker_items(
-            f"Ensemble members ({pair.value})",
+            f"Ensemble members ({self.settings.ensemble.main_stem})",
             ((record.id, record.display) for record in records),
         )
 
@@ -1170,7 +1172,7 @@ class EnsemblePage:
 
             debug(
                 "settings",
-                f"ensemble preset members not eligible for {pair.value!r}, "
+                f"ensemble preset members not eligible for {self.settings.ensemble.main_stem!r}, "
                 f"skipping {sorted(dropped)}",
             )
 
@@ -1313,7 +1315,7 @@ class EnsemblePage:
         self._rebuild_stem_only_toggles()
         from core.debug_log import debug
 
-        stem = self._ensemble_pair().value
+        stem = self.settings.ensemble.main_stem
         models = len(self._selected_model_tags())
         debug("ui", f"ensemble models selected count={models} stem={stem}")
 
@@ -1463,7 +1465,7 @@ class EnsemblePage:
                 self._toast(error)
             from core.debug_log import debug
 
-            stem = self._ensemble_pair().value
+            stem = self.settings.ensemble.main_stem
             models = len(self._selected_model_tags())
             debug("ui", f"ensemble start files={len(input_paths)} models={models} stem={stem}")
             self.context.runner.start(

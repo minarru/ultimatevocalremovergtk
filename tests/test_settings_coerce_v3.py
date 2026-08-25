@@ -106,6 +106,14 @@ class EnsemblePairCoerceTests(unittest.TestCase):
         self.assertEqual(len(settings.validation_warnings), 1)
         self.assertIn("ensemble.main_stem", settings.validation_warnings[0])
 
+    def test_padded_current_pair_is_rejected_without_normalization(self) -> None:
+        settings = Settings.from_json_dict(
+            {"schema_version": 5, "ensemble": {"main_stem": " pair.karaoke "}}
+        )
+        self.assertEqual(settings.ensemble.main_stem, "")
+        self.assertEqual(len(settings.validation_warnings), 1)
+        self.assertIn("ensemble.main_stem", settings.validation_warnings[0])
+
 
 class EnsembleTypeCoerceTests(unittest.TestCase):
     def test_dual_stem_pair(self) -> None:

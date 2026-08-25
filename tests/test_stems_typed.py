@@ -46,13 +46,14 @@ from core.stems import (
 
 class EnsemblePairCoerceTests(unittest.TestCase):
     def test_accepts_stable_ids(self) -> None:
-        self.assertEqual(coerce_ensemble_pair("karaoke"), EnsemblePair.KARAOKE)
+        self.assertEqual(coerce_ensemble_pair("pair.karaoke"), EnsemblePair.KARAOKE)
         self.assertEqual(
-            coerce_ensemble_pair("vocals_instrumental"),
+            coerce_ensemble_pair("pair.vocals_instrumental"),
             EnsemblePair.VOCALS_INSTRUMENTAL,
         )
-        self.assertEqual(coerce_ensemble_pair(EnsemblePair.OTHER), EnsemblePair.OTHER)
-        self.assertEqual(coerce_ensemble_pair("four_stem"), EnsemblePair.FOUR_STEM)
+        self.assertEqual(coerce_ensemble_pair("pair.backing_vocals"), EnsemblePair.BACKING_VOCALS)
+        self.assertEqual(coerce_ensemble_pair("mode.four_stem"), EnsemblePair.FOUR_STEM)
+        self.assertEqual(coerce_ensemble_pair(EnsemblePair.OTHER), EnsemblePair.CHOOSE)
 
     def test_legacy_display_string_becomes_choose(self) -> None:
         self.assertEqual(coerce_ensemble_pair(VOCAL_PAIR), EnsemblePair.CHOOSE)
@@ -68,12 +69,12 @@ class EnsemblePairCoerceTests(unittest.TestCase):
 
     def test_coerce_field_settings_path(self) -> None:
         self.assertEqual(
-            coerce_field("ensemble", "main_stem", "multi_stem"),
-            EnsemblePair.MULTI_STEM,
+            coerce_field("ensemble", "main_stem", "mode.multi_stem"),
+            "mode.multi_stem",
         )
         self.assertEqual(
             coerce_field("ensemble", "main_stem", "Vocals/Instrumental"),
-            EnsemblePair.CHOOSE,
+            "",
         )
 
 
@@ -374,8 +375,8 @@ class BucketAndExportTests(unittest.TestCase):
 
     def test_choices_ids_are_stable(self) -> None:
         ids = [stored for stored, _label in ensemble_pair_choices()]
-        self.assertIn("vocals_instrumental", ids)
-        self.assertIn("karaoke", ids)
+        self.assertIn("pair.vocals_instrumental", ids)
+        self.assertIn("pair.karaoke", ids)
         self.assertNotIn(VOCAL_PAIR, ids)
 
 
@@ -458,7 +459,7 @@ class RunExportRoutesTests(unittest.TestCase):
 
     def test_four_stem_ensemble_member_emits_full_inventory(self) -> None:
         settings = Settings.defaults()
-        settings.ensemble.main_stem = EnsemblePair.FOUR_STEM
+        settings.ensemble.main_stem = "mode.four_stem"
         available = (
             _route("drums", StemBucket.DRUMS.value),
             _route("bass", StemBucket.BASS.value),

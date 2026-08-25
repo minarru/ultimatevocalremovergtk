@@ -64,6 +64,54 @@ class SavedEnsemblePersistenceTests(unittest.TestCase):
             self.assertEqual(len(loaded.validation_warnings), 1)
             self.assertIn("ensemble_main_stem", loaded.validation_warnings[0])
 
+    def test_legacy_document_stays_blocked_until_pair_is_repicked_and_resaved(self) -> None:
+        from core.settings import Settings
+        from ui.ensemble.window import EnsemblePage
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(paths, "ENSEMBLE_CACHE_DIR", tmp):
+            with open(os.path.join(tmp, "Legacy.json"), "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "ensemble_type": "Max Spec",
+                        "selected_models": ["mdx:first", "mdx:second"],
+                        "is_wav_ensemble": True,
+                        "save_all_outputs": False,
+                    },
+                    handle,
+                )
+            legacy = ensemble_service.load_ensemble("Legacy")
+            assert legacy is not None
+            settings = Settings.defaults()
+            settings.ensemble.main_stem = legacy["ensemble_main_stem"]
+            settings.ensemble.selected_models = list(legacy["selected_models"])
+            page = EnsemblePage.__new__(EnsemblePage)
+            page.settings = settings
+            page._effective_selected_models = lambda: settings.ensemble.selected_models
+            self.assertIsNotNone(page._config_blocked_reason())
+
+            settings.ensemble.main_stem = "pair.karaoke"
+            self.assertIsNone(page._config_blocked_reason())
+            still_legacy = ensemble_service.load_ensemble("Legacy")
+            assert still_legacy is not None
+            self.assertEqual(still_legacy["ensemble_main_stem"], "")
+
+            ensemble_service.save_ensemble(
+                "Legacy",
+                settings.ensemble.main_stem,
+                legacy["ensemble_type"],
+                legacy["selected_models"],
+                wav_ensemble=legacy["is_wav_ensemble"],
+                save_all_outputs=legacy["save_all_outputs"],
+            )
+            resaved = ensemble_service.load_ensemble("Legacy")
+            assert resaved is not None
+            self.assertEqual(resaved["schema_version"], 2)
+            self.assertEqual(resaved["ensemble_main_stem"], "pair.karaoke")
+            self.assertEqual(resaved["selected_models"], ["mdx:first", "mdx:second"])
+            self.assertEqual(resaved["ensemble_type"], "Max Spec")
+            self.assertTrue(resaved["is_wav_ensemble"])
+            self.assertFalse(resaved["save_all_outputs"])
+
 
 @unittest.skipUnless(
     os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"),
@@ -87,8 +135,14 @@ class SavedEnsembleWarningGtkTests(unittest.TestCase):
         from bundled.constants import CHOOSE_ENSEMBLE_OPTION
         from core.ensemble_service import ResolvedEnsemblePreset
         from core.settings import Settings
+        from core.stems import ensemble_pair_choices
         from ui.ensemble.window import EnsemblePage
-        from ui.widgets.rows import make_combo_row, set_combo_value
+        from ui.widgets.rows import (
+            get_combo_value,
+            make_combo_row,
+            set_combo_tag_values,
+            set_combo_value,
+        )
 
         warning = "ensemble.selected_models[0]: preserved 'MDX-Net: legacy'"
         preset = ResolvedEnsemblePreset(
@@ -108,7 +162,8 @@ class SavedEnsembleWarningGtkTests(unittest.TestCase):
         page.window = SimpleNamespace(_refresh_start_readiness=lambda: None)
         page.saved_row = make_combo_row("Saved ensemble", [CHOOSE_ENSEMBLE_OPTION, "Broken"])
         set_combo_value(page.saved_row, "Broken")
-        page.main_stem_row = make_combo_row("Main stem", ["pair.vocals_instrumental"])
+        page.main_stem_row = make_combo_row("Main stem", [])
+        set_combo_tag_values(page.main_stem_row, ensemble_pair_choices())
         page._ensemble_banner = Adw.Banner(revealed=False)
         page._config_blocked_reason = lambda: None
         page._refresh_ensemble_type_values = lambda: None
@@ -122,6 +177,7 @@ class SavedEnsembleWarningGtkTests(unittest.TestCase):
 
         self.assertTrue(page._ensemble_banner.get_revealed())
         self.assertIn("MDX-Net: legacy", page._ensemble_banner.get_title())
+        self.assertEqual(get_combo_value(page.main_stem_row), "pair.vocals_instrumental")
 
     def test_valid_member_repick_clears_gated_preset_warning(self) -> None:
         from gi.repository import Adw

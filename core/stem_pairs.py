@@ -21,7 +21,7 @@ def normalize_stem_pair_id(value: object) -> str:
     """Accept only an exact current pair/mode id; every other value is choose."""
     if not isinstance(value, str):
         return ""
-    pair_id = value.strip()
+    pair_id = value
     if stem_pair_definition(pair_id) is not None or is_stem_mode(pair_id):
         return pair_id
     return ""

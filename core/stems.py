@@ -196,6 +196,8 @@ class EnsemblePair(str, Enum):
     OTHER = "other"
     DRUMS = "drums"
     BASS = "bass"
+    BACKING_VOCALS = "pair.backing_vocals"
+    CENTER_SIDE = "pair.center_side"
     FOUR_STEM = "four_stem"
     MULTI_STEM = "multi_stem"
 
@@ -217,6 +219,10 @@ class EnsemblePair(str, Enum):
             EnsemblePair.OTHER: (StemBucket.OTHER, StemBucket.UNKNOWN),
             EnsemblePair.DRUMS: (StemBucket.DRUMS, StemBucket.UNKNOWN),
             EnsemblePair.BASS: (StemBucket.BASS, StemBucket.UNKNOWN),
+            EnsemblePair.BACKING_VOCALS: (
+                StemBucket.BACKING_VOCALS,
+                StemBucket.INST_WITH_LEAD,
+            ),
         }
         return table.get(self, (StemBucket.UNKNOWN, StemBucket.UNKNOWN))
 
@@ -238,6 +244,10 @@ class EnsemblePair(str, Enum):
             EnsemblePair.OTHER: (OTHER_STEM, NO_OTHER_STEM),
             EnsemblePair.DRUMS: (DRUM_STEM, NO_DRUM_STEM),
             EnsemblePair.BASS: (BASS_STEM, NO_BASS_STEM),
+            EnsemblePair.BACKING_VOCALS: (
+                "Backing Vocals",
+                INST_WITH_LEAD_VOCALS_STEM,
+            ),
         }
         return table.get(self, ("", ""))
 
@@ -249,6 +259,8 @@ _PAIR_UI_LABELS = {
     EnsemblePair.OTHER: f"{OTHER_STEM}/No Other",
     EnsemblePair.DRUMS: f"{DRUM_STEM}/No Drums",
     EnsemblePair.BASS: f"{BASS_STEM}/No Bass",
+    EnsemblePair.BACKING_VOCALS: "Backing Vocals/Instrumental with Lead Vocals",
+    EnsemblePair.CENTER_SIDE: "Center/Side",
     EnsemblePair.FOUR_STEM: FOUR_STEM_ENSEMBLE,
     EnsemblePair.MULTI_STEM: MULTI_STEM_ENSEMBLE,
 }
@@ -433,13 +445,15 @@ def coerce_ensemble_pair(value: Any) -> EnsemblePair:
     semantic cutover and never translates legacy ids or display text.
     """
     if isinstance(value, EnsemblePair):
-        return value
+        value = value.value
     from core.stem_pairs import normalize_stem_pair_id
 
     current = normalize_stem_pair_id(value)
     current_pairs = {
         "pair.vocals_instrumental": EnsemblePair.VOCALS_INSTRUMENTAL,
         "pair.karaoke": EnsemblePair.KARAOKE,
+        "pair.backing_vocals": EnsemblePair.BACKING_VOCALS,
+        "pair.center_side": EnsemblePair.CENTER_SIDE,
         "mode.four_stem": EnsemblePair.FOUR_STEM,
         "mode.multi_stem": EnsemblePair.MULTI_STEM,
     }
@@ -1386,4 +1400,12 @@ def resolve_in_sources(sources: Optional[Mapping[str, Any]], stem: str | StemId)
 
 def ensemble_pair_choices() -> Sequence[tuple[str, str]]:
     """``(stored_id, display_label)`` pairs for the ensemble main-stem combo."""
-    return tuple((pair.value, ui_label(pair)) for pair in EnsemblePair)
+    from core.model_stem_manifest import load_bundled_stem_semantics
+
+    registry = load_bundled_stem_semantics()
+    return (
+        ("", ui_label(EnsemblePair.CHOOSE)),
+        *((pair.id, pair.display) for pair in registry.pairs.values()),
+        ("mode.four_stem", FOUR_STEM_ENSEMBLE),
+        ("mode.multi_stem", MULTI_STEM_ENSEMBLE),
+    )

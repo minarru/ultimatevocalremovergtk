@@ -2,6 +2,7 @@
 
 import unittest
 
+from core.stem_pairs import is_stem_mode, stem_pair_definition
 from core.stems import (
     EnsemblePair,
     StemBucket,
@@ -14,22 +15,22 @@ from core.stems import (
 class PairBucketTests(unittest.TestCase):
     def test_vocal_pair(self) -> None:
         self.assertEqual(
-            coerce_ensemble_pair(EnsemblePair.VOCALS_INSTRUMENTAL).buckets(),
+            coerce_ensemble_pair("pair.vocals_instrumental").buckets(),
             (StemBucket.VOCALS, StemBucket.INSTRUMENTAL),
         )
         self.assertEqual(
-            coerce_ensemble_pair("vocals_instrumental").buckets(),
-            (StemBucket.VOCALS, StemBucket.INSTRUMENTAL),
+            coerce_ensemble_pair("vocals_instrumental"),
+            EnsemblePair.CHOOSE,
         )
 
     def test_karaoke_pair(self) -> None:
         self.assertEqual(
-            coerce_ensemble_pair(EnsemblePair.KARAOKE).buckets(),
+            coerce_ensemble_pair("pair.karaoke").buckets(),
             (StemBucket.LEAD_VOCALS, StemBucket.INST_WITH_BV),
         )
         self.assertEqual(
-            coerce_ensemble_pair("karaoke").buckets(),
-            (StemBucket.LEAD_VOCALS, StemBucket.INST_WITH_BV),
+            coerce_ensemble_pair("karaoke"),
+            EnsemblePair.CHOOSE,
         )
 
     def test_other_pair_keeps_other_as_a_real_stem(self) -> None:
@@ -37,12 +38,12 @@ class PairBucketTests(unittest.TestCase):
         # StemBucket.INSTRUMENTAL, because a 1-stem 'other' is the instrumental
         # complement. A pair is a request, not a model description.
         self.assertEqual(
-            coerce_ensemble_pair(EnsemblePair.OTHER).buckets(),
+            EnsemblePair.OTHER.buckets(),
             (StemBucket.OTHER, StemBucket.UNKNOWN),
         )
 
     def test_bass_pair(self) -> None:
-        primary, _secondary = coerce_ensemble_pair(EnsemblePair.BASS).buckets()
+        primary, _secondary = EnsemblePair.BASS.buckets()
         self.assertEqual(primary, StemBucket.BASS)
 
     def test_complement_half_is_unknown_not_a_bucket(self) -> None:
@@ -50,9 +51,7 @@ class PairBucketTests(unittest.TestCase):
         # they are not a bucket any model can match. Callers discard UNKNOWN.
         for pair in (EnsemblePair.OTHER, EnsemblePair.BASS, EnsemblePair.DRUMS):
             with self.subTest(pair=pair):
-                self.assertEqual(
-                    coerce_ensemble_pair(pair).buckets()[1], StemBucket.UNKNOWN
-                )
+                self.assertEqual(pair.buckets()[1], StemBucket.UNKNOWN)
 
     def test_non_pair_values_are_unknown(self) -> None:
         for value in (
@@ -70,19 +69,36 @@ class PairBucketTests(unittest.TestCase):
 
 
 class MainStemChoiceTests(unittest.TestCase):
-    def test_ensemble_pair_choices_cover_all_pairs(self) -> None:
+    def test_ensemble_pair_choices_use_current_namespaced_ids(self) -> None:
         choices = list(ensemble_pair_choices())
         ids = [stored for stored, _label in choices]
-        self.assertEqual(ids, [pair.value for pair in EnsemblePair])
+        self.assertEqual(
+            ids,
+            [
+                "",
+                "pair.vocals_instrumental",
+                "pair.karaoke",
+                "pair.backing_vocals",
+                "pair.center_side",
+                "mode.four_stem",
+                "mode.multi_stem",
+            ],
+        )
         for stored, label in choices:
             with self.subTest(stored=stored):
                 pair = coerce_ensemble_pair(stored)
                 self.assertIsInstance(pair, EnsemblePair)
-                self.assertEqual(label, ui_label(pair))
+                definition = stem_pair_definition(stored)
+                if definition is not None:
+                    self.assertEqual(label, definition.display)
+                elif is_stem_mode(stored) or not stored:
+                    self.assertEqual(label, ui_label(pair))
+                else:
+                    self.fail(f"unexpected ensemble choice {stored!r}")
 
     def test_karaoke_id_is_offered(self) -> None:
         ids = [stored for stored, _label in ensemble_pair_choices()]
-        self.assertIn(EnsemblePair.KARAOKE.value, ids)
+        self.assertIn("pair.karaoke", ids)
 
     def test_stem_halves_are_slash_free_labels(self) -> None:
         primary, secondary = EnsemblePair.KARAOKE.stem_halves()
