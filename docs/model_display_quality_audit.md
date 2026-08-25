@@ -33,8 +33,8 @@ alone as the final runtime display.
 ## Checked-in reference
 
 [`model_display_reference.tsv`](model_display_reference.tsv) contains exactly
-484 current public catalogue rows and their syntactic presentation IDs. Runtime
-inventory projects 483 of those rows. The remaining row,
+485 current public catalogue rows and their syntactic presentation IDs. Runtime
+inventory projects 484 of those rows. The remaining row,
 `BandSplit_Roformer_4stems_FT_by_SYH99999.pth`, is intentionally ineligible
 under the MDX `.ckpt`/`.onnx` execution contract; its exact `mdx:` presentation
 ID lets catalogue surfaces use the audited title without creating an executable
@@ -58,24 +58,25 @@ VR uses `vr:<pth basename>`, MDX/MDX-C-derived entries use
 The accepted catalogue-family mapping is explicit: `VR Architecture`,
 `Demucs`, `Apollo`, `MDX-Net`, `MDX-Net ONNX`, `MDX23C`, `Roformer`, `SCNet`,
 and `Bandit`. Any other spelling fails generation instead of silently minting
-an `mdx:` ID. All 484 checked-in IDs are unique.
+an `mdx:` ID. All 485 checked-in IDs are unique.
 
 Current strict result:
 
 | Measure | Count |
 | --- | ---: |
-| Syntactic catalogue presentation IDs | 484 |
-| Runtime inventory projections | 483 |
-| Unique presentation IDs | 484 |
-| Clean rows | 480 |
-| Reviewed rows | 4 |
+| Syntactic catalogue presentation IDs | 485 |
+| Runtime inventory projections | 484 |
+| Unique presentation IDs | 485 |
+| Clean rows | 478 |
+| Reviewed rows | 7 |
 | Unreviewed rows | 0 |
 | Accidental case-insensitive display collisions | 0 |
 
-The four reviewed rows retain bracketed backend IDs because removing them
-would collapse same-title catalogue entries. Each has two visible mechanical
-flags, `embedded-id` and `underscore`; both flags have an exact ID-scoped,
-reasoned waiver. No flag is globally suppressed.
+The seven reviewed rows retain bracketed backend IDs because removing them
+would collapse same-title catalogue entries. Six belong to three exact
+same-title pairs; the seventh remains distinct from its matching MVSep title.
+Each has two visible mechanical flags, `embedded-id` and `underscore`; both
+flags have an exact ID-scoped, reasoned waiver. No flag is globally suppressed.
 
 ## Implemented naming policy
 
@@ -160,8 +161,8 @@ on 2026-08-24:
 
 | Collection mode | Entries | Presentation result |
 | --- | ---: | --- |
-| Fresh online snapshot | 484 | Complete source evidence |
-| Matching warm offline cache | 484 | Byte-identical reference projection |
+| Fresh online snapshot | 485 | Complete source evidence |
+| Matching warm offline cache | 485 | Byte-identical reference projection |
 | Isolated cold offline cache | 97 | Bundled/local membership only |
 
 Online and warm-offline runs use the same projector, so equivalent exact
@@ -176,7 +177,7 @@ family-labelled raw basename fallback.
 
 The existing degraded-publication guard applies before either checked-in
 document is written or judged. A cold-cache subset therefore exits 2 instead
-of replacing or comparing against the 484-row publication unless a maintainer
+of replacing or comparing against the 485-row publication unless a maintainer
 explicitly passes `--allow-degraded`. `--summary` remains read-only and can be
 used to diagnose that subset.
 
