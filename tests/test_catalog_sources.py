@@ -64,8 +64,12 @@ class EntryMetaTests(unittest.TestCase):
         with _with_supplements(_NO_SUPPLEMENTS):
             merged = catalog_sources.merged_catalogues(
                 vr={},
-                mdx={"Roformer Model: Mel-Band Roformer | Inst v2 by Unwa":
-                     {"mbr_inst2_unwa.ckpt": "u", "mbr_inst2_unwa.yaml": "c"}},
+                mdx={
+                    "Roformer Model: Mel-Band Roformer | Inst v2 by Unwa": {
+                        "mbr_inst2_unwa.ckpt": "u",
+                        "mbr_inst2_unwa.yaml": "c",
+                    }
+                },
                 demucs={},
             )
         meta = merged.meta["Roformer Model: Mel-Band Roformer | Inst v2 by Unwa"]
@@ -75,10 +79,18 @@ class EntryMetaTests(unittest.TestCase):
 
     def test_mvsepless_metadata_reaches_meta(self) -> None:
         with _with_supplements(
-            ({}, {"M": {"m.ckpt": "u", "m.yaml": "c"}}, {},
-             {"M": {"stems": ["Vocals", "other"],
-                    "target_instrument": "Vocals",
-                    "intent": "vocals"}})
+            (
+                {},
+                {"M": {"m.ckpt": "u", "m.yaml": "c"}},
+                {},
+                {
+                    "M": {
+                        "stems": ["Vocals", "other"],
+                        "target_instrument": "Vocals",
+                        "intent": "vocals",
+                    }
+                },
+            )
         ):
             merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
         meta = merged.meta["M"]
@@ -176,6 +188,59 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
             merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
         self.assertEqual(merged.meta["Wind"].intent, "specialty_stem")
 
+    def test_exact_manifest_intent_overrides_guessed_catalogue_intent(self) -> None:
+        """A reviewed identity wins presentation without rewriting audit evidence."""
+        label = "Deliberately misleading catalogue label"
+        with _with_supplements(
+            (
+                {},
+                {
+                    label: {
+                        "bs_neo_inst_beta.ckpt": "https://example.test/model.ckpt",
+                    }
+                },
+                {},
+                {
+                    label: {
+                        "stems": ["vocals", "other"],
+                        "primary_stem": "other",
+                        "target_instrument": "other",
+                        "intent": "special_fx",
+                    }
+                },
+            )
+        ):
+            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        meta = merged.meta[label]
+        self.assertEqual(meta.intent, "vocal_pair")
+        self.assertNotEqual(meta.guessed_intent, meta.intent)
+        self.assertEqual(meta.stem_semantics.status, "reviewed")
+        self.assertEqual(meta.stem_semantics.logical_primary_role, "mix.instrumental")
+        self.assertEqual(meta.stem_semantics.canonical_roles, ("mix.instrumental", "vocal.vocals"))
+        self.assertEqual(meta.stem_semantics.routes[0].native, "other")
+        self.assertEqual(meta.stem_semantics.routes[0].display, "Instrumental")
+        self.assertIn("catalogue_id=mdx:bs_neo_inst_beta", meta.stem_semantics.evidence)
+
+    def test_exact_waiver_is_visible_without_inventing_stem_membership(self) -> None:
+        label = "Known waived metadata-only model"
+        with _with_supplements(
+            (
+                {},
+                {label: {"Kim_Inst.ckpt": "https://example.test/model.ckpt"}},
+                {},
+                {label: {"primary_stem": "Instrumental", "intent": "vocals"}},
+            )
+        ):
+            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        meta = merged.meta[label]
+        self.assertEqual(meta.stem_semantics.status, "waived")
+        self.assertEqual(meta.stem_semantics.logical_primary_role, None)
+        self.assertEqual(meta.stem_semantics.canonical_roles, ())
+        self.assertEqual(meta.stem_semantics.routes, ())
+        self.assertIn("no native inventory", meta.stem_semantics.evidence)
+
 
 @_STEM_CACHE_OFF
 class MergeCacheTests(unittest.TestCase):
@@ -186,7 +251,8 @@ class MergeCacheTests(unittest.TestCase):
         supplements = ({}, {"New": {"new.ckpt": "https://x/new.ckpt"}}, {}, {})
         with _with_supplements(supplements):
             with unittest.mock.patch.object(
-                catalog_sources, "dedupe_download_catalogue",
+                catalog_sources,
+                "dedupe_download_catalogue",
                 wraps=catalog_sources.dedupe_download_catalogue,
             ) as dedupe:
                 first = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
@@ -200,7 +266,8 @@ class MergeCacheTests(unittest.TestCase):
         supplements = ({}, {"New": {"new.ckpt": "https://x/new.ckpt"}}, {}, {})
         with _with_supplements(supplements):
             with unittest.mock.patch.object(
-                catalog_sources, "dedupe_download_catalogue",
+                catalog_sources,
+                "dedupe_download_catalogue",
                 wraps=catalog_sources.dedupe_download_catalogue,
             ) as dedupe:
                 catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
@@ -234,13 +301,8 @@ class MergePriorityDedupeTests(unittest.TestCase):
     def test_extras_hyperace_wins_over_mvsepless_same_etag(self) -> None:
         # Simulate post-supplement catalogue order: extras label first, then
         # mvsepless alias — content_ids make them collide.
-        extras_label = (
-            "Roformer Model: BandSplit Roformer | HyperACE v2 Instrumental by Unwa"
-        )
-        mv_label = (
-            "BS Roformer Instrumental HyperACE v2 "
-            "(finetuned anvuew vocal model) by Unwa"
-        )
+        extras_label = "Roformer Model: BandSplit Roformer | HyperACE v2 Instrumental by Unwa"
+        mv_label = "BS Roformer Instrumental HyperACE v2 (finetuned anvuew vocal model) by Unwa"
         mdx = {
             extras_label: {
                 "bs_roformer_inst_hyperacev2.ckpt": "https://pcunwa/v2_inst.ckpt",

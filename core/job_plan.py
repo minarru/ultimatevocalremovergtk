@@ -40,6 +40,7 @@ from .model_identity import (
     ModelRecord,
 )
 from .model_stem_manifest import load_bundled_stem_semantics
+from .model_stem_semantics import stem_semantics_projection
 from .settings import Settings
 from .stem_pairs import is_stem_mode, normalize_stem_pair_id, stem_pair_definition
 from .stem_roles import ModelStemSemantics, StemRoleId
@@ -114,10 +115,7 @@ def _identity_digest_entry(record: ModelRecord) -> dict[str, Any]:
 def compute_model_identity_digest(
     dependencies: Mapping[str, ModelRecord],
 ) -> str:
-    payload = {
-        path: _identity_digest_entry(dependencies[path])
-        for path in sorted(dependencies)
-    }
+    payload = {path: _identity_digest_entry(dependencies[path]) for path in sorted(dependencies)}
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
 
@@ -169,9 +167,7 @@ def active_model_paths(
         primaries = (primary,)
     else:
         primaries = tuple(primary)
-    selected_families = {
-        record.family for record in primaries
-    } or {
+    selected_families = {record.family for record in primaries} or {
         reference.partition(":")[0]
         for _path, reference in primary_paths
         if reference.partition(":")[0] in _MODEL_FAMILIES
@@ -199,9 +195,7 @@ def active_model_paths(
     for index, record in enumerate(primaries):
         primary_path = primary_paths[index][0] if index < len(primary_paths) else ""
         native_stem = str(
-            (primary_stems or {}).get(primary_path)
-            or (primary_stems or {}).get(record.id)
-            or ""
+            (primary_stems or {}).get(primary_path) or (primary_stems or {}).get(record.id) or ""
         )
         if native_stem:
             native_stems_by_family.setdefault(record.family, set()).add(native_stem)
@@ -212,15 +206,9 @@ def active_model_paths(
         section = getattr(settings, family)
         if not section.is_secondary_model_activate:
             continue
-        all_slots = (
-            family == "demucs"
-            and (
-                ensemble_multi
-                or (
-                    command != "ensemble"
-                    and bool(demucs_layouts.intersection({"4_stem", "6_stem"}))
-                )
-            )
+        all_slots = family == "demucs" and (
+            ensemble_multi
+            or (command != "ensemble" and bool(demucs_layouts.intersection({"4_stem", "6_stem"})))
         )
         if all_slots:
             slots = _SECONDARY_SLOTS
@@ -232,7 +220,8 @@ def active_model_paths(
                         (primary_stems or {}).get(family)
                         or (
                             _ensemble_primary_label(ensemble_pair_id)
-                            if command == "ensemble" else getattr(section, "stems", "")
+                            if command == "ensemble"
+                            else getattr(section, "stems", "")
                         )
                         or ""
                     )
@@ -240,12 +229,9 @@ def active_model_paths(
             if family == "demucs" and command == "ensemble":
                 selected_stems = {_ensemble_primary_label(ensemble_pair_id)}
             selected_slots = {
-                secondary_slot_for_primary_stem(stem) or "voc_inst"
-                for stem in selected_stems
+                secondary_slot_for_primary_stem(stem) or "voc_inst" for stem in selected_stems
             }
-            slots = tuple(
-                slot for slot in _SECONDARY_SLOTS if slot in selected_slots
-            )
+            slots = tuple(slot for slot in _SECONDARY_SLOTS if slot in selected_slots)
         for slot in slots:
             path = f"{family}.{slot}_secondary_model"
             if _model_reference(settings, path) not in MODEL_SENTINELS:
@@ -289,6 +275,7 @@ class Diagnostic:
     message: str
     severity: str = "error"
     path: str | None = None
+    details: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -305,12 +292,14 @@ class ModelDescriptor:
     checkpoint_hash: str | None = None
     primary_stem: str | None = None
     secondary_stem: str | None = None
+    backend_target_stem: str | None = None
     metadata_source: str | None = None
     stem_count: int = 0
     is_karaoke: bool = False
     is_bv: bool = False
     stem_semantics: ModelStemSemantics | None = None
     routes: tuple[StemRoute, ...] = ()
+    backend_primary_stem: str | None = None
 
 
 @dataclass(frozen=True)
@@ -371,10 +360,9 @@ class ResolvedJob:
             "settings_fingerprint": self.settings_fingerprint,
             "device": self.device,
             "output": self.output,
-            "models": [dataclasses.asdict(model) for model in self.models],
+            "models": [_model_descriptor_payload(model) for model in self.models],
             "model_dependencies": {
-                path: record.id
-                for path, record in sorted(self.model_dependencies.items())
+                path: record.id for path, record in sorted(self.model_dependencies.items())
             },
             "model_identity_digest": self.model_identity_digest,
             "inputs": [
@@ -390,6 +378,23 @@ class ResolvedJob:
             "settings": self.settings.to_json_dict(),
             "metadata": dict(self.metadata),
         }
+
+
+def _model_descriptor_payload(model: ModelDescriptor) -> dict[str, Any]:
+    """Serialize a model descriptor without exposing semantic value objects."""
+    payload = dataclasses.asdict(model)
+    payload.pop("stem_semantics", None)
+    # Routes are an in-memory engine/planning boundary.  The public projection
+    # below retains their native keys beside semantic identifiers and labels.
+    payload.pop("routes", None)
+    payload.update(
+        stem_semantics_projection(
+            model.stem_semantics,
+            backend_primary=(model.backend_primary_stem or model.primary_stem),
+            backend_target=model.backend_target_stem,
+        ).as_dict()
+    )
+    return payload
 
 
 def settings_fingerprint(settings: Settings) -> str:
@@ -423,22 +428,24 @@ def _descriptor(record: ModelRecord, model: Any, verify: bool) -> ModelDescripto
             for route in model_stem_routes(splitter)
         )
         if getattr(model, "is_save_inst_vocal_splitter", False):
-            routes.extend((
-                derived_stem_route(
-                    StemBucket.INST_WITH_BV,
-                    label=INST_WITH_BACKING_VOCALS_STEM,
-                    conditional=True,
-                    selected_by_default=True,
-                    kind=StemRouteKind.SPLITTER,
-                ),
-                derived_stem_route(
-                    StemBucket.INST_WITH_LEAD,
-                    label=INST_WITH_LEAD_VOCALS_STEM,
-                    conditional=True,
-                    selected_by_default=True,
-                    kind=StemRouteKind.SPLITTER,
-                ),
-            ))
+            routes.extend(
+                (
+                    derived_stem_route(
+                        StemBucket.INST_WITH_BV,
+                        label=INST_WITH_BACKING_VOCALS_STEM,
+                        conditional=True,
+                        selected_by_default=True,
+                        kind=StemRouteKind.SPLITTER,
+                    ),
+                    derived_stem_route(
+                        StemBucket.INST_WITH_LEAD,
+                        label=INST_WITH_LEAD_VOCALS_STEM,
+                        conditional=True,
+                        selected_by_default=True,
+                        kind=StemRouteKind.SPLITTER,
+                    ),
+                )
+            )
     return ModelDescriptor(
         id=record.id,
         family=record.family,
@@ -452,6 +459,7 @@ def _descriptor(record: ModelRecord, model: Any, verify: bool) -> ModelDescripto
         checkpoint_hash=digest,
         primary_stem=getattr(model, "primary_stem", None),
         secondary_stem=getattr(model, "secondary_stem", None),
+        backend_target_stem=getattr(model, "target_instrument", None),
         metadata_source=(
             "model-local"
             if os.path.isfile(str(getattr(model, "model_hash_dir", "") or ""))
@@ -462,7 +470,59 @@ def _descriptor(record: ModelRecord, model: Any, verify: bool) -> ModelDescripto
         is_bv=bool(getattr(model, "is_bv_model", False)),
         stem_semantics=getattr(model, "stem_semantics", None),
         routes=tuple(routes),
+        backend_primary_stem=(
+            getattr(model, "primary_stem_native", None) or getattr(model, "primary_stem", None)
+        ),
     )
+
+
+def _stem_semantics_diagnostics(
+    descriptors: Sequence[ModelDescriptor],
+) -> list[Diagnostic]:
+    """Emit privacy-safe routing diagnostics from immutable semantics."""
+    from .debug_log import log_event
+
+    diagnostics: list[Diagnostic] = []
+    for descriptor in descriptors:
+        semantics = descriptor.stem_semantics
+        if semantics is None:
+            continue
+        projection = stem_semantics_projection(
+            semantics,
+            backend_primary=(descriptor.backend_primary_stem or descriptor.primary_stem),
+            backend_target=descriptor.backend_target_stem,
+        )
+        primary_route = next(
+            (route for route in projection.routes if route.logical_primary),
+            None,
+        )
+        fields = {
+            "model_id": descriptor.id,
+            "label": primary_route.display if primary_route is not None else None,
+            "role": projection.logical_primary_role,
+            "native": primary_route.native if primary_route is not None else None,
+            "context": projection.context,
+            "status": projection.status,
+        }
+        if projection.status == "raw":
+            warning = semantics.warning or "raw-fallback"
+            event = "stem_semantics_fallback"
+            if warning.startswith("signature-mismatch"):
+                event = "stem_semantics_signature_mismatch"
+            elif warning.startswith("missing-context"):
+                event = "stem_semantics_missing_context"
+            log_event("model", event, level="warning", reason=warning, **fields)
+            diagnostics.append(
+                Diagnostic(
+                    f"stems.semantics_{event.removeprefix('stem_semantics_')}",
+                    f"Exact stem semantics unavailable for {descriptor.id}; using raw outputs",
+                    "warning",
+                    details=projection.as_dict(),
+                )
+            )
+        else:
+            log_event("model", "stem_semantics_routing", **fields)
+    return diagnostics
 
 
 def _stem_focus_diagnostics(
@@ -491,18 +551,18 @@ def _stem_focus_diagnostics(
             return []
         insufficient = selection.status is StemSelectionStatus.INSUFFICIENT_MEMBERS
         available = ", ".join(route.label for route in routes) or "none"
-        return [Diagnostic(
-            (
-                "stems.focus_insufficient_members"
-                if insufficient else "stems.focus_unmatched"
-            ),
-            (
-                f"stem focus {focus!r} has fewer than two ensemble contributors"
-                if insufficient
-                else f"stem focus {focus!r} matches no ensemble output"
-            ) + f" (available: {available}); exporting all stems",
-            severity,
-        )]
+        return [
+            Diagnostic(
+                ("stems.focus_insufficient_members" if insufficient else "stems.focus_unmatched"),
+                (
+                    f"stem focus {focus!r} has fewer than two ensemble contributors"
+                    if insufficient
+                    else f"stem focus {focus!r} matches no ensemble output"
+                )
+                + f" (available: {available}); exporting all stems",
+                severity,
+            )
+        ]
 
     result: list[Diagnostic] = []
     for index, model in enumerate(models):
@@ -545,11 +605,21 @@ def _ensemble_pair_diagnostics(
     pair_id = normalize_stem_pair_id(settings.ensemble.main_stem)
     pair = stem_pair_definition(pair_id)
     if not pair_id:
-        return [Diagnostic(
-            "ensemble.pair_repick",
-            "Choose a reviewed ensemble stem pair or mode before running the ensemble",
-            path="ensemble.main_stem",
-        )]
+        from .debug_log import log_event
+
+        log_event(
+            "ensemble",
+            "invalid_stem_pair",
+            level="warning",
+            pair_id=str(settings.ensemble.main_stem or "") or None,
+        )
+        return [
+            Diagnostic(
+                "ensemble.pair_repick",
+                "Choose a reviewed ensemble stem pair or mode before running the ensemble",
+                path="ensemble.main_stem",
+            )
+        ]
     if pair is None or not descriptors:
         return []
 
@@ -558,9 +628,7 @@ def _ensemble_pair_diagnostics(
     incomplete_members: list[str] = []
     for index, descriptor in enumerate(descriptors, start=1):
         member_roles = {
-            route.role
-            for route in descriptor.routes
-            if isinstance(route.role, StemRoleId)
+            route.role for route in descriptor.routes if isinstance(route.role, StemRoleId)
         }
         member_name = descriptor.id or descriptor.display or f"member {index}"
         if descriptor.id and required.issubset(member_roles):
@@ -568,25 +636,47 @@ def _ensemble_pair_diagnostics(
         else:
             incomplete_members.append(member_name)
     if incomplete_members:
-        return [Diagnostic(
-            "ensemble.pair_repick",
-            (
-                f"Every selected member needs complete reviewed role coverage for "
-                f"{pair.id!r}; incomplete: {', '.join(incomplete_members)}. "
-                "Choose a stem pair again"
-            ),
-            path="ensemble.main_stem",
-        )]
+        from .debug_log import log_event
+
+        log_event(
+            "ensemble",
+            "invalid_stem_pair",
+            level="warning",
+            pair_id=pair.id,
+            incomplete_count=len(incomplete_members),
+        )
+        return [
+            Diagnostic(
+                "ensemble.pair_repick",
+                (
+                    f"Every selected member needs complete reviewed role coverage for "
+                    f"{pair.id!r}; incomplete: {', '.join(incomplete_members)}. "
+                    "Choose a stem pair again"
+                ),
+                path="ensemble.main_stem",
+            )
+        ]
     if len(eligible_members) >= 2:
         return []
-    return [Diagnostic(
-        "ensemble.pair_repick",
-        (
-            f"The selected pair {pair.id!r} needs two distinct installed models "
-            "with complete reviewed role coverage; choose a stem pair again"
-        ),
-        path="ensemble.main_stem",
-    )]
+    from .debug_log import log_event
+
+    log_event(
+        "ensemble",
+        "invalid_stem_pair",
+        level="warning",
+        pair_id=pair.id,
+        eligible_count=len(eligible_members),
+    )
+    return [
+        Diagnostic(
+            "ensemble.pair_repick",
+            (
+                f"The selected pair {pair.id!r} needs two distinct installed models "
+                "with complete reviewed role coverage; choose a stem pair again"
+            ),
+            path="ensemble.main_stem",
+        )
+    ]
 
 
 def _fallback_descriptor_routes(descriptor: ModelDescriptor) -> tuple[StemRoute, ...]:
@@ -611,12 +701,8 @@ def _fallback_descriptor_routes(descriptor: ModelDescriptor) -> tuple[StemRoute,
     if routes:
         return routes
     return (
-        derived_stem_route(
-            StemLiteral("Primary"), label="Primary", selected_by_default=True
-        ),
-        derived_stem_route(
-            StemLiteral("Secondary"), label="Secondary", selected_by_default=True
-        ),
+        derived_stem_route(StemLiteral("Primary"), label="Primary", selected_by_default=True),
+        derived_stem_route(StemLiteral("Secondary"), label="Secondary", selected_by_default=True),
     )
 
 
@@ -641,12 +727,8 @@ def _ensemble_output_routes(
             }
             for role in counts:
                 counts[role] += int(role in member_roles)
-        union = tuple(
-            route for route in standard if counts[route.role] >= 1
-        )
-        viable = tuple(
-            route for route in standard if counts[route.role] >= 2
-        )
+        union = tuple(route for route in standard if counts[route.role] >= 1)
+        viable = tuple(route for route in standard if counts[route.role] >= 2)
         return viable, union
 
     contributors: dict[tuple[object, ...], list[StemRoute]] = {}
@@ -692,7 +774,14 @@ def _debug_planned_output_routes(
             focus=focus,
             positional=positional,
             reason=reason,
-            routes=tuple(route.label for route in routes),
+            routes=tuple(
+                {
+                    "label": route.label,
+                    "role": str(route.role),
+                    "native": route.native.raw if route.native is not None else None,
+                }
+                for route in routes
+            ),
             route_count=len(routes),
         )
     except Exception:
@@ -728,14 +817,8 @@ def planned_output_routes(
                 reason = "ensemble-positional-multi"
         else:
             selection = select_ensemble_stem_routes(routes, _union, focus)
-            selected = tuple(
-                selection.routes if selection.routes else routes
-            )
-            reason = (
-                "ensemble-focus-matched"
-                if selection.routes
-                else "ensemble-focus-fallback-all"
-            )
+            selected = tuple(selection.routes if selection.routes else routes)
+            reason = "ensemble-focus-matched" if selection.routes else "ensemble-focus-fallback-all"
         _debug_planned_output_routes(
             focus=focus,
             positional=positional,
@@ -754,7 +837,8 @@ def planned_output_routes(
                 reason = "positional-primary-logical-match"
             else:
                 matched = tuple(
-                    route for route in routes
+                    route
+                    for route in routes
                     if route.native is not None and route.native.matches(primary or "")
                 )
             if matched:
@@ -762,13 +846,10 @@ def planned_output_routes(
                 if reason == "unknown":
                     reason = "positional-primary-native-match"
             else:
-                selected = tuple(
-                    route for route in routes if route.selected_by_default
-                ) or tuple(routes)
-                reason = (
-                    f"positional-primary-fallback-defaults "
-                    f"primary_stem={primary!r}"
+                selected = tuple(route for route in routes if route.selected_by_default) or tuple(
+                    routes
                 )
+                reason = f"positional-primary-fallback-defaults primary_stem={primary!r}"
         else:
             secondary = descriptors[0].secondary_stem if descriptors else None
             logical = tuple(route for route in routes if route.logical_primary)
@@ -777,39 +858,35 @@ def planned_output_routes(
                 reason = "positional-secondary-logical-match"
             else:
                 matched = tuple(
-                    route for route in routes
-                    if (
-                        route.native is not None and route.native.matches(secondary or "")
-                    ) or (route.native is None and route.label == secondary)
+                    route
+                    for route in routes
+                    if (route.native is not None and route.native.matches(secondary or ""))
+                    or (route.native is None and route.label == secondary)
                 )
             if matched:
                 selected = matched
                 if reason == "unknown":
                     reason = "positional-secondary-match"
             else:
-                selected = tuple(
-                    route for route in routes if route.selected_by_default
-                ) or tuple(routes)
-                reason = (
-                    f"positional-secondary-fallback-defaults "
-                    f"secondary_stem={secondary!r}"
+                selected = tuple(route for route in routes if route.selected_by_default) or tuple(
+                    routes
                 )
+                reason = f"positional-secondary-fallback-defaults secondary_stem={secondary!r}"
     else:
         selection = select_stem_routes(routes, focus)
         if selection.status is StemSelectionStatus.MATCHED and selection.routes:
             selected = tuple(selection.routes)
             reason = "focus-matched"
         elif focus:
-            selected = tuple(
-                route for route in routes if route.selected_by_default
-            ) or tuple(routes)
+            selected = tuple(route for route in routes if route.selected_by_default) or tuple(
+                routes
+            )
             reason = "focus-unmatched-fallback-defaults"
         else:
             selected = tuple(
                 selection.routes
                 if selection.routes
-                else tuple(route for route in routes if route.selected_by_default)
-                or tuple(routes)
+                else tuple(route for route in routes if route.selected_by_default) or tuple(routes)
             )
             reason = "empty-focus-defaults"
         if (
@@ -818,10 +895,14 @@ def planned_output_routes(
             and settings.mdx.is_mdx_include_stem_complement
             and any(route.native is not None for route in selected)
         ):
-            selected = tuple(dict.fromkeys((
-                *selected,
-                *(route for route in routes if route.native is None and route.conditional),
-            )))
+            selected = tuple(
+                dict.fromkeys(
+                    (
+                        *selected,
+                        *(route for route in routes if route.native is None and route.conditional),
+                    )
+                )
+            )
             reason = f"{reason}+complement"
 
     _debug_planned_output_routes(
@@ -850,7 +931,9 @@ def planned_output_stems(
 
 
 def _apply_model_native_values(
-    settings: Settings, records: Sequence[ModelRecord], models: Sequence[Any],
+    settings: Settings,
+    records: Sequence[ModelRecord],
+    models: Sequence[Any],
     provenance: dict[str, str],
 ) -> None:
     """Materialize model-native values only for settings whose value is auto.
@@ -890,10 +973,12 @@ def device_runtime_diagnostics(settings: Settings) -> list[Diagnostic]:
         )
         requested = DeviceRequest.from_settings(settings.process).id.split(":", 1)[0]
         if requested not in {"auto", "cpu"} and backend.backend_name != requested:
-            return [Diagnostic(
-                "runtime.device_unavailable",
-                f"Requested device {requested} resolved to {backend.backend_name}",
-            )]
+            return [
+                Diagnostic(
+                    "runtime.device_unavailable",
+                    f"Requested device {requested} resolved to {backend.backend_name}",
+                )
+            ]
     except (ImportError, RuntimeError, ValueError) as exc:
         return [Diagnostic("runtime.device", str(exc))]
     return []
@@ -905,7 +990,8 @@ def _mdx_yaml_config_names(record: ModelRecord) -> tuple[str, ...]:
     if record.mdx is not None and record.mdx.kind == "classic_onnx":
         return ()
     names = tuple(
-        name for name in record.artifacts.supporting_filenames
+        name
+        for name in record.artifacts.supporting_filenames
         if name.casefold().endswith((".yaml", ".yml"))
     )
     if names:
@@ -929,9 +1015,7 @@ def _is_repairable_mdx_config_dependency(record: ModelRecord) -> bool:
         and record.mdx is None
         and record.artifacts.primary_filename.casefold().endswith(".ckpt")
         and len(names) == 1
-        and str(record.identity_error or "").startswith(
-            "unknown MDX YAML architecture"
-        )
+        and str(record.identity_error or "").startswith("unknown MDX YAML architecture")
     )
 
 
@@ -958,15 +1042,11 @@ class JobResolver:
                         refresh_needed = True
                     continue
                 if not allow_network:
-                    raise ValueError(
-                        f"MDX configuration {yaml_name!r} is not available offline"
-                    )
+                    raise ValueError(f"MDX configuration {yaml_name!r} is not available offline")
                 if ensure_mdx_c_config(yaml_name, allow_network=True):
                     refresh_needed = True
                 else:
-                    raise ValueError(
-                        f"MDX configuration {yaml_name!r} could not be downloaded"
-                    )
+                    raise ValueError(f"MDX configuration {yaml_name!r} could not be downloaded")
 
         resolved = dict(dependencies)
         if refresh_needed:
@@ -976,16 +1056,13 @@ class JobResolver:
 
             self.identities.invalidate()
             resolved = {
-                path: self.identities.lookup(record.id)
-                for path, record in dependencies.items()
+                path: self.identities.lookup(record.id) for path, record in dependencies.items()
             }
 
         for path, record in resolved.items():
             if not record.identity_complete:
                 detail = record.identity_error or "identity metadata is incomplete"
-                raise ValueError(
-                    f"{path} references model {record.id!r}: {detail}"
-                )
+                raise ValueError(f"{path} references model {record.id!r}: {detail}")
         return resolved
 
     def resolve(
@@ -1007,13 +1084,13 @@ class JobResolver:
             diagnostics.append(Diagnostic("inputs.empty", "Select at least one input file"))
         for path in spec.inputs:
             if not os.path.isfile(path):
-                diagnostics.append(Diagnostic("input.missing", f"Input not found: {path}", path=path))
+                diagnostics.append(
+                    Diagnostic("input.missing", f"Input not found: {path}", path=path)
+                )
         if not spec.output:
             diagnostics.append(Diagnostic("output.empty", "Choose an output folder"))
         try:
-            needs_primary_probe = self._settings_need_secondary_topology(
-                settings, spec.command
-            )
+            needs_primary_probe = self._settings_need_secondary_topology(settings, spec.command)
             if needs_primary_probe:
                 primary_dependencies = self._primary_dependency_map(
                     settings,
@@ -1029,9 +1106,7 @@ class JobResolver:
                 )
                 primary_dependencies = {
                     path: dependencies[path]
-                    for path, _reference in _selected_family_paths(
-                        settings, spec.command
-                    )
+                    for path, _reference in _selected_family_paths(settings, spec.command)
                 }
         except ValueError as exc:
             diagnostics.append(Diagnostic("model.identity", str(exc)))
@@ -1054,18 +1129,12 @@ class JobResolver:
                 else:
                     primary_dependencies = {
                         path: dependencies[path]
-                        for path, _reference in _selected_family_paths(
-                            settings, spec.command
-                        )
+                        for path, _reference in _selected_family_paths(settings, spec.command)
                     }
                     try:
-                        self._validate_karaoke_dependencies(
-                            settings, dependencies
-                        )
+                        self._validate_karaoke_dependencies(settings, dependencies)
                     except ValueError as exc:
-                        diagnostics.append(
-                            Diagnostic("model.identity", str(exc))
-                        )
+                        diagnostics.append(Diagnostic("model.identity", str(exc)))
                         configs_unavailable = True
             records = self._primary_records(dependencies, spec.command)
             if records and not configs_unavailable and needs_primary_probe:
@@ -1082,21 +1151,12 @@ class JobResolver:
                             model_dependencies={},
                         )
                     if len(primary_models) != len(records):
-                        raise ValueError(
-                            "one or more primary model configurations are unavailable"
-                        )
-                    if any(
-                        not getattr(model, "model_status", False)
-                        for model in primary_models
-                    ):
-                        raise ValueError(
-                            "one or more primary model configurations are unavailable"
-                        )
+                        raise ValueError("one or more primary model configurations are unavailable")
+                    if any(not getattr(model, "model_status", False) for model in primary_models):
+                        raise ValueError("one or more primary model configurations are unavailable")
                     topology_models = list(primary_models)
                     primary_stems = {
-                        path: str(
-                            getattr(model, "primary_stem", "") or ""
-                        )
+                        path: str(getattr(model, "primary_stem", "") or "")
                         for (path, _record), model in zip(
                             primary_dependencies.items(), primary_models, strict=False
                         )
@@ -1122,24 +1182,16 @@ class JobResolver:
                                 dependencies, allow_network=allow_network
                             )
                         except ValueError as exc:
-                            diagnostics.append(
-                                Diagnostic("model.configuration", str(exc))
-                            )
+                            diagnostics.append(Diagnostic("model.configuration", str(exc)))
                             configs_unavailable = True
                         else:
                             try:
-                                self._validate_karaoke_dependencies(
-                                    settings, dependencies
-                                )
+                                self._validate_karaoke_dependencies(settings, dependencies)
                             except ValueError as exc:
-                                diagnostics.append(
-                                    Diagnostic("model.identity", str(exc))
-                                )
+                                diagnostics.append(Diagnostic("model.identity", str(exc)))
                                 configs_unavailable = True
                             else:
-                                records = self._primary_records(
-                                    dependencies, spec.command
-                                )
+                                records = self._primary_records(dependencies, spec.command)
         # Assembling a model whose yaml is already known to be missing only
         # restates the diagnostic just recorded.
         verify_model = level is not ValidationLevel.CONFIG
@@ -1150,7 +1202,10 @@ class JobResolver:
                     allow_metadata_writes=allow_network,
                 ):
                     models = self._assemble(
-                        settings, spec.command, records, allow_network=allow_network,
+                        settings,
+                        spec.command,
+                        records,
+                        allow_network=allow_network,
                         model_dependencies=dependencies,
                     )
                 if len(models) != len(records):
@@ -1160,35 +1215,40 @@ class JobResolver:
             except (OSError, ValueError) as exc:
                 diagnostics.append(Diagnostic("model.configuration", str(exc)))
         descriptor_models = models or topology_models
-        descriptors = tuple(
-            _descriptor(record, model, verify_model)
-            for record, model in zip(records, descriptor_models, strict=False)
-        ) if descriptor_models else tuple(
-            ModelDescriptor(
-                record.id,
-                record.family,
-                record.basename,
-                record.display,
-                record.backend_name,
-                record.artifacts,
-                record.demucs,
-                record.mdx,
+        descriptors = (
+            tuple(
+                _descriptor(record, model, verify_model)
+                for record, model in zip(records, descriptor_models, strict=False)
             )
-            for record in records
+            if descriptor_models
+            else tuple(
+                ModelDescriptor(
+                    record.id,
+                    record.family,
+                    record.basename,
+                    record.display,
+                    record.backend_name,
+                    record.artifacts,
+                    record.demucs,
+                    record.mdx,
+                )
+                for record in records
+            )
         )
         provenance = dict(spec.provenance)
         if models:
             _apply_model_native_values(settings, records, models, provenance)
-        diagnostics.extend(_ensemble_pair_diagnostics(
-            settings, descriptors, command=spec.command
-        ))
-        diagnostics.extend(_stem_focus_diagnostics(
-            settings,
-            models,
-            descriptors,
-            provenance,
-            command=spec.command,
-        ))
+        diagnostics.extend(_stem_semantics_diagnostics(descriptors))
+        diagnostics.extend(_ensemble_pair_diagnostics(settings, descriptors, command=spec.command))
+        diagnostics.extend(
+            _stem_focus_diagnostics(
+                settings,
+                models,
+                descriptors,
+                provenance,
+                command=spec.command,
+            )
+        )
         if level in {ValidationLevel.RUNTIME, ValidationLevel.LOAD}:
             diagnostics.extend(self._runtime_diagnostics(settings))
         if level is ValidationLevel.LOAD and models and not diagnostics:
@@ -1245,8 +1305,8 @@ class JobResolver:
                 primary_dependencies=primary_dependencies,
                 primary_stems={
                     path: descriptor.primary_stem
-                for (path, _record), descriptor in zip(
-                    primary_dependencies.items(), plan.models, strict=False
+                    for (path, _record), descriptor in zip(
+                        primary_dependencies.items(), plan.models, strict=False
                     )
                     if descriptor.primary_stem
                 },
@@ -1266,8 +1326,12 @@ class JobResolver:
         return True
 
     def adopt(
-        self, spec: JobSpec, records: Sequence[ModelRecord], models: Sequence[Any],
-        *, level: ValidationLevel = ValidationLevel.MODEL,
+        self,
+        spec: JobSpec,
+        records: Sequence[ModelRecord],
+        models: Sequence[Any],
+        *,
+        level: ValidationLevel = ValidationLevel.MODEL,
     ) -> ResolvedJob:
         """Build the shared immutable plan from models already dry-assembled by an adapter."""
         settings = copy.deepcopy(spec.settings)
@@ -1290,18 +1354,18 @@ class JobResolver:
         )
         provenance = dict(spec.provenance)
         _apply_model_native_values(settings, records, models, provenance)
-        diagnostics = tuple((
-            *_ensemble_pair_diagnostics(
-                settings, descriptors, command=spec.command
-            ),
-            *_stem_focus_diagnostics(
-                settings,
-                models,
-                descriptors,
-                provenance,
-                command=spec.command,
-            ),
-        ))
+        diagnostics = tuple(
+            (
+                *_ensemble_pair_diagnostics(settings, descriptors, command=spec.command),
+                *_stem_focus_diagnostics(
+                    settings,
+                    models,
+                    descriptors,
+                    provenance,
+                    command=spec.command,
+                ),
+            )
+        )
         plan = ResolvedJob(
             spec.command,
             settings,
@@ -1354,9 +1418,7 @@ class JobResolver:
             )
             primary_dependencies[path] = record
 
-        method_value = str(
-            getattr(settings.process.method, "value", settings.process.method)
-        )
+        method_value = str(getattr(settings.process.method, "value", settings.process.method))
         is_ensemble = command == "ensemble" or method_value == ENSEMBLE_MODE
         if is_ensemble and len(primary_dependencies) < 2:
             raise ValueError("an ensemble requires at least two models")
@@ -1416,9 +1478,7 @@ class JobResolver:
         # may inspect unrelated installed models, but it must not fetch or
         # write metadata while deciding exact karaoke/BV membership.
         with access_policy(allow_network=False, allow_metadata_writes=False):
-            karaoke_ids = {
-                str(value) for value in self.repo.karaoke_model_list(settings)
-            }
+            karaoke_ids = {str(value) for value in self.repo.karaoke_model_list(settings)}
         if record.id not in karaoke_ids:
             raise ValueError(
                 f"process.vocal_splitter references model {record.id!r}, which "
@@ -1426,9 +1486,7 @@ class JobResolver:
             )
 
     @staticmethod
-    def _settings_need_secondary_topology(
-        settings: Settings, command: str
-    ) -> bool:
+    def _settings_need_secondary_topology(settings: Settings, command: str) -> bool:
         selected_families = {
             reference.partition(":")[0]
             for _path, reference in _selected_family_paths(settings, command)
@@ -1449,16 +1507,11 @@ class JobResolver:
     ) -> None:
         if record.family not in allowed:
             expected = ", ".join(sorted(allowed))
-            raise ValueError(
-                f"{path} references {record.id!r}, but requires family {expected}"
-            )
+            raise ValueError(f"{path} references {record.id!r}, but requires family {expected}")
         if not record.installed:
             raise ValueError(f"{path} references model {record.id!r}, which is not installed")
         if not record.identity_complete:
-            if (
-                allow_repairable_mdx_config
-                and _is_repairable_mdx_config_dependency(record)
-            ):
+            if allow_repairable_mdx_config and _is_repairable_mdx_config_dependency(record):
                 return
             detail = record.identity_error or "identity metadata is incomplete"
             raise ValueError(f"{path} references model {record.id!r}: {detail}")
@@ -1491,26 +1544,33 @@ class JobResolver:
         from .mdx_config_fetch import mdx_c_network
 
         with mdx_c_network(allow_network):
-            method_value = str(
-                getattr(settings.process.method, "value", settings.process.method)
-            )
+            method_value = str(getattr(settings.process.method, "value", settings.process.method))
             if command == "ensemble" or method_value == ENSEMBLE_MODE:
                 settings.ensemble.selected_models = [record.id for record in records]
                 return assemble_model(
-                    settings, self.repo, arch_type=ENSEMBLE_MODE,
+                    settings,
+                    self.repo,
+                    arch_type=ENSEMBLE_MODE,
                     model_dependencies=model_dependencies,
                 )
             record = records[0]
             getattr(settings, record.family).model = record.id
             return assemble_model(
-                settings, self.repo, record.id, record.method,
+                settings,
+                self.repo,
+                record.id,
+                record.method,
                 model_dependencies=model_dependencies,
             )
 
     def _runtime_diagnostics(self, settings: Settings) -> list[Diagnostic]:
-        missing = [name for name in ("kthread", "soundfile") if importlib.util.find_spec(name) is None]
+        missing = [
+            name for name in ("kthread", "soundfile") if importlib.util.find_spec(name) is None
+        ]
         if missing:
-            return [Diagnostic("runtime.dependencies", f"Missing Python packages: {', '.join(missing)}")]
+            return [
+                Diagnostic("runtime.dependencies", f"Missing Python packages: {', '.join(missing)}")
+            ]
         return device_runtime_diagnostics(settings)
 
     def _plan_inputs(
@@ -1524,17 +1584,21 @@ class JobResolver:
 
         ensemble_label = (
             ensemble_name_for_export(settings.ensemble.chosen_ensemble)
-            if spec.command == "ensemble" else None
+            if spec.command == "ensemble"
+            else None
         )
         model_label = descriptor.display if spec.command != "ensemble" else None
         for index, path in enumerate(spec.inputs, start=1):
             naming = build_output_naming_context(
-                settings, path, export_path=settings.process.export_path,
-                file_index=index, file_total=total, model_label=model_label,
+                settings,
+                path,
+                export_path=settings.process.export_path,
+                file_index=index,
+                file_total=total,
+                model_label=model_label,
                 ensemble_label=ensemble_label,
                 force_ensemble_label=(
-                    spec.command == "ensemble"
-                    and bool(settings.ensemble.append_ensemble_name)
+                    spec.command == "ensemble" and bool(settings.ensemble.append_ensemble_name)
                 ),
             )
             outputs = tuple(
@@ -1550,9 +1614,7 @@ class JobResolver:
                     route.filename_tag,
                 )
                 for route in stem_routes
-                for stem in (
-                    route.filename_tag if spec.command == "ensemble" else route.label,
-                )
+                for stem in (route.filename_tag if spec.command == "ensemble" else route.label,)
             )
             result.append(PlannedInput(path, naming, outputs))
         return tuple(result)
@@ -1567,6 +1629,7 @@ class JobResolver:
             suffix = Path(path).suffix.casefold()
             if suffix == ".onnx":
                 import onnxruntime as ort
+
                 session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
                 del session
             elif suffix in {".pth", ".pt", ".ckpt", ".th"}:
@@ -1592,9 +1655,21 @@ def format_effective_plan(plan: ResolvedJob) -> str:
 
 
 __all__ = [
-    "Diagnostic", "JobResolver", "JobSpec", "MODEL_SENTINELS", "ModelDescriptor", "PlannedInput",
-    "PlannedOutput", "Provenance", "ResolvedJob", "ValidationLevel",
-    "active_model_paths", "compute_model_identity_digest", "device_runtime_diagnostics",
-    "format_effective_plan", "planned_output_stems", "planned_output_routes",
+    "Diagnostic",
+    "JobResolver",
+    "JobSpec",
+    "MODEL_SENTINELS",
+    "ModelDescriptor",
+    "PlannedInput",
+    "PlannedOutput",
+    "Provenance",
+    "ResolvedJob",
+    "ValidationLevel",
+    "active_model_paths",
+    "compute_model_identity_digest",
+    "device_runtime_diagnostics",
+    "format_effective_plan",
+    "planned_output_stems",
+    "planned_output_routes",
     "settings_fingerprint",
 ]

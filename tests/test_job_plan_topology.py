@@ -18,9 +18,7 @@ from core.stems import FOCUS_SECONDARY, StemLiteral, StemRoute
 from core.types import ProcessMethod
 
 
-def _desc(
-    stem: str, secondary: str = "Instrumental", identifier: str = "mdx:a"
-) -> ModelDescriptor:
+def _desc(stem: str, secondary: str = "Instrumental", identifier: str = "mdx:a") -> ModelDescriptor:
     roles = {
         "Vocals": StemRoleId("vocal.vocals"),
         "Instrumental": StemRoleId("mix.instrumental"),
@@ -38,14 +36,22 @@ def _desc(
         for name in (stem, secondary)
     )
     return ModelDescriptor(
-        identifier, "mdx", "a", "A", primary_stem=stem, secondary_stem=secondary,
+        identifier,
+        "mdx",
+        "a",
+        "A",
+        primary_stem=stem,
+        secondary_stem=secondary,
         routes=routes,
     )
 
 
 def _four_desc(identifier: str) -> ModelDescriptor:
     return ModelDescriptor(
-        identifier, "mdx", identifier.removeprefix("mdx:"), identifier,
+        identifier,
+        "mdx",
+        identifier.removeprefix("mdx:"),
+        identifier,
         routes=(
             StemRoute(StemId("bass"), StemRoleId("instrument.bass"), "Bass", "Bass"),
             StemRoute(StemId("drums"), StemRoleId("instrument.drums"), "Drums", "Drums"),
@@ -56,15 +62,131 @@ def _four_desc(identifier: str) -> ModelDescriptor:
 
 
 class PlannedOutputStemTests(unittest.TestCase):
+    def test_plan_json_carries_raw_backend_and_exact_semantic_route_fields(self) -> None:
+        from core.job_plan import ResolvedJob, ValidationLevel
+        from core.model_stem_semantics import resolve_catalogue_stem_semantics
+
+        settings = Settings.defaults()
+        semantics = resolve_catalogue_stem_semantics(
+            "mdx:bs_neo_inst_beta",
+            native_stems=("vocals", "other"),
+            backend_primary="other",
+            backend_target="other",
+        )
+        plan = ResolvedJob(
+            command="separate",
+            settings=settings,
+            inputs=(),
+            models=(
+                ModelDescriptor(
+                    "mdx:bs_neo_inst_beta",
+                    "mdx",
+                    "bs_neo_inst_beta",
+                    "Beta",
+                    primary_stem="other",
+                    secondary_stem="vocals",
+                    backend_target_stem="other",
+                    stem_semantics=semantics,
+                ),
+            ),
+            provenance={},
+            diagnostics=(),
+            validation_level=ValidationLevel.MODEL,
+            inventory_generation=0,
+            settings_fingerprint="fixture",
+            device="cpu",
+        ).to_dict()
+
+        model = plan["models"][0]
+        self.assertEqual(model["backend_primary_stem"], "other")
+        self.assertEqual(model["backend_target_stem"], "other")
+        self.assertEqual(model["logical_primary_role"], "mix.instrumental")
+        self.assertEqual(model["stem_semantics_status"], "reviewed")
+        self.assertEqual(model["stem_context"], "full_mix")
+        self.assertEqual(model["stem_routes"][0]["native"], "other")
+        self.assertEqual(model["stem_routes"][0]["display"], "Instrumental")
+
+    def test_raw_semantic_fallback_is_an_actionable_plan_warning(self) -> None:
+        from core.job_plan import ResolvedJob, ValidationLevel
+        from core.model_stem_semantics import resolve_catalogue_stem_semantics
+
+        settings = Settings.defaults()
+        semantics = resolve_catalogue_stem_semantics(
+            "mdx:bs_neo_inst_beta", native_stems=("other",)
+        )
+        plan = ResolvedJob(
+            command="separate",
+            settings=settings,
+            inputs=(),
+            models=(
+                ModelDescriptor(
+                    "mdx:bs_neo_inst_beta",
+                    "mdx",
+                    "bs_neo_inst_beta",
+                    "Beta",
+                    primary_stem="other",
+                    stem_semantics=semantics,
+                ),
+            ),
+            provenance={},
+            diagnostics=(),
+            validation_level=ValidationLevel.MODEL,
+            inventory_generation=0,
+            settings_fingerprint="fixture",
+            device="cpu",
+        ).to_dict()
+
+        self.assertEqual(plan["models"][0]["stem_semantics_status"], "raw")
+        self.assertIn("signature-mismatch", plan["models"][0]["stem_semantics_warning"])
+
+    def test_stem_semantic_diagnostics_log_reviewed_and_fallback_context(self) -> None:
+        from core.job_plan import _stem_semantics_diagnostics
+        from core.model_stem_semantics import resolve_catalogue_stem_semantics
+
+        reviewed = ModelDescriptor(
+            "mdx:bs_neo_inst_beta",
+            "mdx",
+            "bs_neo_inst_beta",
+            "Beta",
+            primary_stem="other",
+            backend_target_stem="other",
+            stem_semantics=resolve_catalogue_stem_semantics(
+                "mdx:bs_neo_inst_beta",
+                native_stems=("vocals", "other"),
+                backend_primary="other",
+                backend_target="other",
+            ),
+        )
+        mismatch = ModelDescriptor(
+            "mdx:bs_neo_inst_beta",
+            "mdx",
+            "bs_neo_inst_beta",
+            "Beta",
+            primary_stem="other",
+            stem_semantics=resolve_catalogue_stem_semantics(
+                "mdx:bs_neo_inst_beta", native_stems=("other",)
+            ),
+        )
+
+        with patch("core.debug_log.log_event") as event:
+            diagnostics = _stem_semantics_diagnostics((reviewed, mismatch))
+
+        self.assertEqual(diagnostics[0].code, "stems.semantics_signature_mismatch")
+        calls = {call.args[1]: call.kwargs for call in event.call_args_list}
+        self.assertEqual(calls["stem_semantics_routing"]["label"], "Instrumental")
+        self.assertEqual(calls["stem_semantics_routing"]["role"], "mix.instrumental")
+        self.assertEqual(calls["stem_semantics_routing"]["native"], "other")
+        self.assertEqual(calls["stem_semantics_routing"]["context"], "full_mix")
+        self.assertEqual(calls["stem_semantics_routing"]["status"], "reviewed")
+        self.assertEqual(calls["stem_semantics_signature_mismatch"]["level"], "warning")
+
     def test_pair_selection_requires_two_distinct_reviewed_members(self) -> None:
         from core.job_plan import _ensemble_pair_diagnostics
 
         settings = Settings.defaults()
         settings.ensemble.main_stem = "pair.vocals_instrumental"
         only_one = (_desc("Vocals", "Instrumental", "mdx:one"),)
-        diagnostics = _ensemble_pair_diagnostics(
-            settings, only_one, command="ensemble"
-        )
+        diagnostics = _ensemble_pair_diagnostics(settings, only_one, command="ensemble")
 
         self.assertEqual(diagnostics[0].code, "ensemble.pair_repick")
         self.assertIn("two distinct", diagnostics[0].message)
@@ -148,7 +270,9 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.ensemble.main_stem = "pair.vocals_instrumental"
         stems = planned_output_stems(
-            settings, (_desc("Drums", "Bass"), _desc("Vocals")), command="ensemble",
+            settings,
+            (_desc("Drums", "Bass"), _desc("Vocals")),
+            command="ensemble",
         )
         labels = tuple(stem for stem, _conditional in stems)
         self.assertEqual(labels, (VOCAL_STEM, "Instrumental"))
@@ -198,22 +322,14 @@ class PlannedOutputStemTests(unittest.TestCase):
                 "mdx",
                 "one",
                 "One",
-                routes=(
-                    StemRoute(
-                        StemId("No Bass"), role, "Bass Removed", "Bass_Removed"
-                    ),
-                ),
+                routes=(StemRoute(StemId("No Bass"), role, "Bass Removed", "Bass_Removed"),),
             ),
             ModelDescriptor(
                 "mdx:two",
                 "mdx",
                 "two",
                 "Two",
-                routes=(
-                    StemRoute(
-                        StemId("Bass Removed"), role, "Bass Removed", "Bass_Removed"
-                    ),
-                ),
+                routes=(StemRoute(StemId("Bass Removed"), role, "Bass Removed", "Bass_Removed"),),
             ),
         )
 
@@ -249,7 +365,9 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings.process.stem_focus = "vocal.lead"
         settings.ensemble.main_stem = "pair.karaoke"
         stems = planned_output_stems(
-            settings, (_desc("Vocals", identifier="mdx:one"), _desc("Vocals", identifier="mdx:two")), command="ensemble",
+            settings,
+            (_desc("Vocals", identifier="mdx:one"), _desc("Vocals", identifier="mdx:two")),
+            command="ensemble",
         )
         self.assertEqual(stems, ((LEAD_VOCAL_STEM_LABEL, False),))
 
@@ -260,7 +378,9 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
         settings.ensemble.main_stem = "pair.center_side"
         stems = planned_output_stems(
-            settings, (_desc("Other", "No Other"),), command="ensemble",
+            settings,
+            (_desc("Other", "No Other"),),
+            command="ensemble",
         )
         # Unmatched inherited focus falls back to the pair's complete inventory.
         self.assertEqual(stems, (("Center", False), ("Side", False)))
@@ -269,9 +389,7 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.ensemble.main_stem = "pair.center_side"
         settings.process.stem_focus = FOCUS_SECONDARY
-        stems = planned_output_stems(
-            settings, (_desc("Center", "Side"),), command="ensemble"
-        )
+        stems = planned_output_stems(settings, (_desc("Center", "Side"),), command="ensemble")
         self.assertEqual(stems, (("Side", False),))
 
     def test_separate_four_stem_other_is_not_instrumental_focus(self) -> None:
@@ -280,7 +398,10 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
         desc = ModelDescriptor(
-            "mdx:a", "mdx", "a", "A",
+            "mdx:a",
+            "mdx",
+            "a",
+            "A",
             primary_stem="Vocals",
             secondary_stem="other",
             stem_count=4,
@@ -295,7 +416,10 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings = Settings.defaults()
         settings.process.stem_focus = StemBucket.INSTRUMENTAL.value
         desc = ModelDescriptor(
-            "mdx:a", "mdx", "a", "A",
+            "mdx:a",
+            "mdx",
+            "a",
+            "A",
             primary_stem="Vocals",
             secondary_stem="other",
             stem_count=2,
@@ -322,14 +446,17 @@ class PlannedOutputStemTests(unittest.TestCase):
         settings.mdx.is_mdx_include_stem_complement = True
         model = _Model()
         routes = tuple(native_stem_route(model, stem) for stem in model.mdx_model_stems) + (
-            derived_stem_route(
-                "No bass", label="No bass", conditional=True
-            ),
+            derived_stem_route("No bass", label="No bass", conditional=True),
             derived_stem_route(StemBucket.INSTRUMENTAL),
         )
         desc = ModelDescriptor(
-            "mdx:a", "mdx", "a", "A",
-            primary_stem="bass", secondary_stem="No bass", stem_count=4,
+            "mdx:a",
+            "mdx",
+            "a",
+            "A",
+            primary_stem="bass",
+            secondary_stem="No bass",
+            stem_count=4,
             routes=routes,
         )
         planned = JobResolver(Mock())._plan_inputs(
@@ -351,7 +478,9 @@ class PlannedOutputStemTests(unittest.TestCase):
         spec = JobSpec("ensemble", settings, ("/tmp/song.wav",), "/tmp/out")
         # Bypass assemble: feed descriptors through _plan_inputs.
         planned = resolver._plan_inputs(
-            settings, spec, (_desc("Drums", "Bass"), _desc("Vocals")),
+            settings,
+            spec,
+            (_desc("Drums", "Bass"), _desc("Vocals")),
         )
         self.assertEqual(
             [output.stem for output in planned[0].outputs],
@@ -365,7 +494,9 @@ class PlannedOutputStemTests(unittest.TestCase):
         resolver = JobResolver(Mock())
         spec = JobSpec("ensemble", settings, ("/tmp/song.wav",), "/tmp/out")
         planned = resolver._plan_inputs(
-            settings, spec, (_desc("Vocals"), _desc("Vocals")),
+            settings,
+            spec,
+            (_desc("Vocals"), _desc("Vocals")),
         )
         self.assertEqual(planned[0].outputs[0].stem, "Lead_Vocals")
         self.assertIn("(Lead_Vocals)", planned[0].outputs[0].path)
@@ -381,7 +512,9 @@ class PlannedOutputStemTests(unittest.TestCase):
         resolver = JobResolver(Mock())
         spec = JobSpec("ensemble", settings, ("/tmp/song.wav",), "/tmp/out")
         planned = resolver._plan_inputs(
-            settings, spec, (_desc("Vocals"), _desc("Vocals")),
+            settings,
+            spec,
+            (_desc("Vocals"), _desc("Vocals")),
         )
         self.assertEqual(planned[0].naming.ensemble_label, "Ensembled")
         self.assertNotIn("Choose Option", planned[0].naming.track_base)
@@ -392,9 +525,7 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
         from core.mdx_config_fetch import ensure_mdx_c_config
 
         with patch("core.mdx_config_fetch._fetch_url_to_file") as fetch:
-            ok = ensure_mdx_c_config(
-                "definitely-missing-uvr-test.yaml", allow_network=False
-            )
+            ok = ensure_mdx_c_config("definitely-missing-uvr-test.yaml", allow_network=False)
         self.assertFalse(ok)
         fetch.assert_not_called()
 
@@ -489,9 +620,7 @@ class MdxCOfflinePlanningTests(unittest.TestCase):
             with patch.object(resolver, "_assemble", return_value=[unavailable]):
                 resolved = resolver.resolve(spec, ValidationLevel.MODEL)
 
-        config_diags = [
-            item for item in resolved.diagnostics if item.code == "model.configuration"
-        ]
+        config_diags = [item for item in resolved.diagnostics if item.code == "model.configuration"]
         self.assertEqual(len(config_diags), 1)
         self.assertEqual(config_diags[0].severity, "error")
         self.assertFalse(resolved.ok)
@@ -539,8 +668,10 @@ class PlanningDiagnosticsTests(unittest.TestCase):
         resolver = JobResolver(Mock(inventory_generation=3))
         resolver._dependency_map = Mock(return_value={})  # type: ignore[method-assign]
         resolver._primary_dependency_map = Mock(return_value={})  # type: ignore[method-assign]
-        with tempfile.NamedTemporaryFile(suffix=".wav") as source, \
-             tempfile.TemporaryDirectory() as tmp:
+        with (
+            tempfile.NamedTemporaryFile(suffix=".wav") as source,
+            tempfile.TemporaryDirectory() as tmp,
+        ):
             log_path = Path(tmp) / "uvr.log"
             debug_log.configure(level="debug", log_file=str(log_path))
             self.addCleanup(debug_log.configure, level="errors", log_file="")

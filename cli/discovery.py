@@ -12,32 +12,51 @@ import shutil
 import sys
 from enum import Enum
 from typing import Any, Mapping
-from bundled.constants import MDX_ARCH_TYPE, VR_ARCH_TYPE
 
+from bundled.constants import MDX_ARCH_TYPE, VR_ARCH_TYPE
+from core.model_identity import (
+    FAMILIES,
+    iter_model_records,
+)
 from core.paths import (
+    APOLLO_MODELS_DIR,
     DEMUCS_MODELS_DIR,
     MDX_MODELS_DIR,
-    APOLLO_MODELS_DIR,
     VR_MODELS_DIR,
 )
 from core.settings import Settings
 from core.settings.access import parse_setting_assignment, validate_setting_path
 
-from core.model_identity import (
-    FAMILIES,
-    iter_model_records,
-)
 from .model_identity import CliModelLookup
 from .profiles import (
     IDENTITY_SETTING_PATHS,
-    LoadedProfile,
     MODEL_REFERENCE_SETTING_PATHS,
+    LoadedProfile,
     list_profiles,
     load_profile,
     profile_path,
     save_profile,
 )
 from .reporting import add_reporting_args, emit_document, emit_event, fail, report_mode
+
+
+def _stem_semantics_fields(model: Any | None) -> dict[str, Any]:
+    """Return the exact semantic projection without changing backend fields."""
+    from core.model_stem_semantics import stem_semantics_projection
+    from core.stems import model_stem_routes
+
+    if model is None:
+        return stem_semantics_projection(None).as_dict()
+    # This is the shared runtime adapter.  It resolves an exact canonical ID
+    # and native signature; it never maps a display label back to a role.
+    model_stem_routes(model)
+    return stem_semantics_projection(
+        getattr(model, "stem_semantics", None),
+        backend_primary=(
+            getattr(model, "primary_stem_native", None) or getattr(model, "primary_stem", None)
+        ),
+        backend_target=getattr(model, "target_instrument", None),
+    ).as_dict()
 
 
 def _print_rows(args: argparse.Namespace, rows: list[dict[str, Any]]) -> int:
@@ -141,33 +160,42 @@ def add_models_parser(sub: argparse._SubParsersAction) -> None:
 def _model_info(record: Any, repo: Any, *, detailed: bool = False) -> dict[str, Any]:
     if record.family == "apollo":
         from core.apollo import ApolloModelData
-        from core.paths import APOLLO_MODELS_DIR
         from core.model_registry import ModelRegistryService
+        from core.paths import APOLLO_MODELS_DIR
 
         backend_name = record.backend_name
         path = os.path.join(APOLLO_MODELS_DIR, backend_name)
         data = ApolloModelData(
-            backend_name, model_hash_table=repo.model_hash_table,
-            on_unrecognized=None, is_dry_check=True,
+            backend_name,
+            model_hash_table=repo.model_hash_table,
+            on_unrecognized=None,
+            is_dry_check=True,
         )
         local = (
             ModelRegistryService(repo).read_local(record.method, data.model_hash)
-            if data.model_hash else None
+            if data.model_hash
+            else None
         )
         info = {
-            **record.to_dict(), "installed": os.path.isfile(path),
-            "configured": bool(data.is_model_status), "path": path,
-            "hash": data.model_hash or None, "primary_stem": "Restored",
+            **record.to_dict(),
+            "installed": os.path.isfile(path),
+            "configured": bool(data.is_model_status),
+            "path": path,
+            "hash": data.model_hash or None,
+            "primary_stem": "Restored",
             "secondary_stem": None,
             "metadata_source": "model-local" if local else "model-catalog",
         }
+        info.update(_stem_semantics_fields(None))
         if detailed:
-            info.update({
-                "metadata_sources": [{"provenance": info["metadata_source"]}],
-                "architectural_facts": {"config_yaml": getattr(data, "config_yaml", None)},
-                "model_native_recommendations": {},
-                "local_overrides": local,
-            })
+            info.update(
+                {
+                    "metadata_sources": [{"provenance": info["metadata_source"]}],
+                    "architectural_facts": {"config_yaml": getattr(data, "config_yaml", None)},
+                    "model_native_recommendations": {},
+                    "local_overrides": local,
+                }
+            )
         return info
     settings = Settings.defaults()
     section = getattr(settings, record.family)
@@ -182,26 +210,37 @@ def _model_info(record: Any, repo: Any, *, detailed: bool = False) -> dict[str, 
         "installed": bool(record.installed),
         "configured": bool(model and model.model_status),
     }
+    info.update(_stem_semantics_fields(model))
     if model is not None:
         path = str(getattr(model, "model_path", "") or "")
         local_path = str(getattr(model, "model_hash_dir", "") or "")
-        info.update({
-            "path": path,
-            "hash": getattr(model, "model_hash", None),
-            "primary_stem": getattr(model, "primary_stem", None),
-            "secondary_stem": getattr(model, "secondary_stem", None),
-            "metadata_source": (
-                "model-local" if local_path and os.path.isfile(local_path)
-                else "model-catalog"
-            ),
-        })
+        info.update(
+            {
+                "path": path,
+                "hash": getattr(model, "model_hash", None),
+                "primary_stem": getattr(model, "primary_stem", None),
+                "secondary_stem": getattr(model, "secondary_stem", None),
+                "metadata_source": (
+                    "model-local" if local_path and os.path.isfile(local_path) else "model-catalog"
+                ),
+            }
+        )
+        info.update(_stem_semantics_fields(model))
         if detailed:
             facts: dict[str, Any] = {}
             for name in (
-                "model_samplerate", "primary_stem_native", "mdx_dim_f_set",
-                "mdx_dim_t_set", "mdx_n_fft_scale_set", "mdx_model_stems",
-                "demucs_version", "demucs_source_list", "demucs_stem_count",
-                "is_mdx_c", "is_roformer", "is_target_instrument",
+                "model_samplerate",
+                "primary_stem_native",
+                "mdx_dim_f_set",
+                "mdx_dim_t_set",
+                "mdx_n_fft_scale_set",
+                "mdx_model_stems",
+                "demucs_version",
+                "demucs_source_list",
+                "demucs_stem_count",
+                "is_mdx_c",
+                "is_roformer",
+                "is_target_instrument",
             ):
                 value = getattr(model, name, None)
                 if value not in (None, "", [], ()):
@@ -218,18 +257,21 @@ def _model_info(record: Any, repo: Any, *, detailed: bool = False) -> dict[str, 
                         local_overrides = json.load(handle)
                 except (OSError, json.JSONDecodeError):
                     local_overrides = {"unreadable": local_path}
-            info.update({
-                "metadata_sources": [
-                    {"provenance": "model-catalog"},
-                    *(
-                        [{"provenance": "model-local", "path": local_path}]
-                        if local_path and os.path.isfile(local_path) else []
-                    ),
-                ],
-                "architectural_facts": facts,
-                "model_native_recommendations": recommendations,
-                "local_overrides": local_overrides,
-            })
+            info.update(
+                {
+                    "metadata_sources": [
+                        {"provenance": "model-catalog"},
+                        *(
+                            [{"provenance": "model-local", "path": local_path}]
+                            if local_path and os.path.isfile(local_path)
+                            else []
+                        ),
+                    ],
+                    "architectural_facts": facts,
+                    "model_native_recommendations": recommendations,
+                    "local_overrides": local_overrides,
+                }
+            )
     return info
 
 
@@ -247,9 +289,7 @@ def cmd_models_list(args: argparse.Namespace) -> int:
                 coordinator = CatalogueCoordinator()
                 coordinator.ensure(allow_network=False)
             repo = ModelRepository(catalogue=coordinator)
-            repo.bind_model_hash_table(
-                lambda: persisted_settings.process.model_hash_table
-            )
+            repo.bind_model_hash_table(lambda: persisted_settings.process.model_hash_table)
             records = iter_model_records(repo)
             if coordinator is None:
                 records = (record for record in records if record.installed)
@@ -310,24 +350,23 @@ def cmd_models_validate(args: argparse.Namespace) -> int:
     try:
         with os.scandir(DEMUCS_MODELS_DIR) as entries:
             installed = sorted(
-                (
-                    (entry.name, entry.is_file())
-                    for entry in entries
-                ),
+                ((entry.name, entry.is_file()) for entry in entries),
                 key=lambda item: item[0].casefold(),
             )
     except FileNotFoundError:
         installed = []
     for name, is_file in installed:
         if is_file and name.casefold().endswith(".ckpt"):
-            rows.append({
-                "artifact": name,
-                "family": "demucs",
-                "identity_complete": False,
-                "identity_error": "unsupported Demucs-root .ckpt artifact",
-                "installed": True,
-                "supported": False,
-            })
+            rows.append(
+                {
+                    "artifact": name,
+                    "family": "demucs",
+                    "identity_complete": False,
+                    "identity_error": "unsupported Demucs-root .ckpt artifact",
+                    "installed": True,
+                    "supported": False,
+                }
+            )
     return _print_rows(args, rows)
 
 
@@ -336,9 +375,7 @@ def _registered_demucs_info(
 ) -> dict[str, Any]:
     """Build registration output from the entry that was durably committed."""
     entrypoint = str(entry["entrypoint"])
-    supporting = [
-        os.path.basename(str(path)) for path in entry["supporting_artifacts"]
-    ]
+    supporting = [os.path.basename(str(path)) for path in entry["supporting_artifacts"]]
     return {
         "id": model_id,
         "family": "demucs",
@@ -367,7 +404,9 @@ def cmd_models_register(args: argparse.Namespace) -> int:
     if not os.path.isfile(source):
         return fail(args, f"checkpoint not found: {args.checkpoint}", exit_code=2)
     if args.family in {"vr", "mdx", "demucs", "apollo"} and not args.config:
-        return fail(args, f"--config is required for unknown {args.family} checkpoints", exit_code=2)
+        return fail(
+            args, f"--config is required for unknown {args.family} checkpoints", exit_code=2
+        )
     config: dict[str, Any] | None = None
     if args.config:
         try:
@@ -399,9 +438,7 @@ def cmd_models_register(args: argparse.Namespace) -> int:
         entry = models[unit.model_id]
         assert isinstance(entry, Mapping)
         try:
-            info = _registered_demucs_info(
-                unit.model_id, entry, models_dir=registry.models_dir
-            )
+            info = _registered_demucs_info(unit.model_id, entry, models_dir=registry.models_dir)
         except Exception:
             # The registry install above is already durable. A presentation
             # projection must not turn that completed transaction into a
@@ -414,8 +451,10 @@ def cmd_models_register(args: argparse.Namespace) -> int:
             }
         return _print_rows(args, [info])
     destinations = {
-        "vr": VR_MODELS_DIR, "mdx": MDX_MODELS_DIR,
-        "demucs": DEMUCS_MODELS_DIR, "apollo": APOLLO_MODELS_DIR,
+        "vr": VR_MODELS_DIR,
+        "mdx": MDX_MODELS_DIR,
+        "demucs": DEMUCS_MODELS_DIR,
+        "apollo": APOLLO_MODELS_DIR,
     }
     destination = os.path.join(destinations[args.family], os.path.basename(source))
     if args.family == "apollo":
@@ -428,11 +467,18 @@ def cmd_models_register(args: argparse.Namespace) -> int:
 
     existing_id = ModelRegistryService.registered_id(model_hash)
     if existing_id:
-        return _print_rows(args, [{
-            "id": existing_id, "registered": False,
-            "already_registered": True,
-        }])
+        return _print_rows(
+            args,
+            [
+                {
+                    "id": existing_id,
+                    "registered": False,
+                    "already_registered": True,
+                }
+            ],
+        )
     from core.model_repository import ModelRepository
+
     if os.path.exists(destination):
         return fail(args, f"model destination already exists: {destination}", exit_code=2)
     hash_file = None
@@ -445,12 +491,17 @@ def cmd_models_register(args: argparse.Namespace) -> int:
             from core.model_registry import ModelRegistryService
 
             method = {
-                "vr": VR_ARCH_TYPE, "mdx": MDX_ARCH_TYPE,
+                "vr": VR_ARCH_TYPE,
+                "mdx": MDX_ARCH_TYPE,
                 "apollo": APOLLO_ARCH_TYPE,
             }[args.family]
             hash_file = ModelRegistryService().configure(
-                args.family, method, model_hash, config,
-                model_path=destination, replace=False,
+                args.family,
+                method,
+                model_hash,
+                config,
+                model_path=destination,
+                replace=False,
             )
             hash_created = True
         repo = ModelRepository()
@@ -490,13 +541,23 @@ def cmd_models_catalog(args: argparse.Namespace) -> int:
 
             prefetch_remote_sizes(service.manager.catalogue_checkpoint_urls())
             service._records = None
-        rows = [
-            dataclasses.asdict(row)
-            for row in service.filter(
-                family=args.family, query=args.query, purpose=args.purpose,
-                supported=args.supported, installed=args.installed,
-            )
-        ]
+        rows = []
+        for row in service.filter(
+            family=args.family,
+            query=args.query,
+            purpose=args.purpose,
+            supported=args.supported,
+            installed=args.installed,
+        ):
+            item = dataclasses.asdict(row)
+            from core.model_catalogue import catalogue_entry_meta
+
+            meta = catalogue_entry_meta(service.manager, row.family, row.selection)
+            projection = getattr(meta, "stem_semantics", None)
+            if projection is not None:
+                item.update(projection.as_dict())
+                item["catalogue_guessed_intent"] = getattr(meta, "guessed_intent", None)
+            rows.append(item)
         return _print_rows(args, rows)
     finally:
         coordinator.close()
@@ -610,7 +671,8 @@ def _cmd_models_download_body(args: argparse.Namespace, coordinator: Any) -> int
             except KeyboardInterrupt:
                 stop_event.set()
                 item = {
-                    "input": record.id, "status": "failed",
+                    "input": record.id,
+                    "status": "failed",
                     "error": "interrupted",
                 }
             except (OSError, ValueError) as exc:
@@ -627,21 +689,27 @@ def _cmd_models_download_body(args: argparse.Namespace, coordinator: Any) -> int
                 pass
     failures = sum(row["status"] == "failed" for row in outcomes)
     successes = sum(row["status"] == "success" for row in outcomes)
-    exit_code = 130 if stop_event.is_set() else 3 if failures and successes else 1 if failures else 0
-    emit_document(args, {
-        "ok": exit_code == 0, "status": "partial" if exit_code == 3 else "failed" if exit_code else "success",
-        "command": "models.download", "inputs": outcomes,
-        "stopped": stop_event.is_set(),
-    })
+    exit_code = (
+        130 if stop_event.is_set() else 3 if failures and successes else 1 if failures else 0
+    )
+    emit_document(
+        args,
+        {
+            "ok": exit_code == 0,
+            "status": "partial" if exit_code == 3 else "failed" if exit_code else "success",
+            "command": "models.download",
+            "inputs": outcomes,
+            "stopped": stop_event.is_set(),
+        },
+    )
     return exit_code
 
 
 def cmd_models_configure(args: argparse.Namespace) -> int:
     from bundled.constants import APOLLO_ARCH_TYPE
     from core.apollo import checkpoint_md5
-    from core.model_identity import ModelIdentityService
-    from core.model_repository import ModelRepository
     from core.model_registry import ModelRegistryService
+    from core.model_repository import ModelRepository
 
     repo = ModelRepository()
     try:
@@ -654,15 +722,23 @@ def cmd_models_configure(args: argparse.Namespace) -> int:
             )
 
             non_demucs_metadata = (
-                "primary_stem", "vr_params", "nout", "nout_lstm",
-                "dim_f", "dim_t", "n_fft", "compensation",
-                "config_yaml", "roformer", "karaoke", "backing_vocal",
+                "primary_stem",
+                "vr_params",
+                "nout",
+                "nout_lstm",
+                "dim_f",
+                "dim_t",
+                "n_fft",
+                "compensation",
+                "config_yaml",
+                "roformer",
+                "karaoke",
+                "backing_vocal",
                 "bv_rebalance",
             )
             if args.reset:
                 if args.config or any(
-                    getattr(args, name, None) is not None
-                    for name in non_demucs_metadata
+                    getattr(args, name, None) is not None for name in non_demucs_metadata
                 ):
                     raise ValueError("--reset cannot be combined with metadata values")
                 registry = DemucsRegistry()
@@ -672,13 +748,8 @@ def cmd_models_configure(args: argparse.Namespace) -> int:
                 return _print_rows(args, [{"id": record.id, "reset": removed}])
             if not args.config:
                 raise ValueError("--config is required for Demucs models")
-            if any(
-                getattr(args, name, None) is not None
-                for name in non_demucs_metadata
-            ):
-                raise ValueError(
-                    "Demucs metadata is supplied only through --config"
-                )
+            if any(getattr(args, name, None) is not None for name in non_demucs_metadata):
+                raise ValueError("Demucs metadata is supplied only through --config")
             with open(args.config, encoding="utf-8") as handle:
                 loaded = json.load(handle)
             if not isinstance(loaded, dict):
@@ -692,9 +763,7 @@ def cmd_models_configure(args: argparse.Namespace) -> int:
                 )
             else:
                 model_path = str(
-                    repo._model_artifact_path(
-                        "demucs", record.artifacts.primary_filename
-                    )
+                    repo._model_artifact_path("demucs", record.artifacts.primary_filename)
                 )
             if not os.path.isfile(model_path):
                 raise ValueError(f"installed checkpoint is unavailable for {record.id}")
@@ -702,9 +771,7 @@ def cmd_models_configure(args: argparse.Namespace) -> int:
                 model_path, loaded, models_dir=paths.DEMUCS_MODELS_DIR
             )
             if unit.model_id != record.id:
-                raise ValueError(
-                    f"Demucs entrypoint derives {unit.model_id}, not {record.id}"
-                )
+                raise ValueError(f"Demucs entrypoint derives {unit.model_id}, not {record.id}")
             actual_dir = os.path.realpath(os.path.dirname(model_path))
             expected_dir = os.path.realpath(os.path.dirname(unit.destination_paths[0]))
             if actual_dir != expected_dir:
@@ -713,11 +780,16 @@ def cmd_models_configure(args: argparse.Namespace) -> int:
                 )
             registry.configure(unit, replace=args.replace)
             repo.invalidate_models()
-            return _print_rows(args, [{
-                "id": record.id,
-                "configured": True,
-                "path": registry.path,
-            }])
+            return _print_rows(
+                args,
+                [
+                    {
+                        "id": record.id,
+                        "configured": True,
+                        "path": registry.path,
+                    }
+                ],
+            )
         if record.family == "apollo":
             from core import paths
 
@@ -748,12 +820,18 @@ def cmd_models_configure(args: argparse.Namespace) -> int:
                 raise ValueError("model config root must be an object")
             payload.update(loaded)
         mappings = {
-            "primary_stem": "primary_stem", "vr_params": "vr_model_param",
-            "nout": "nout", "nout_lstm": "nout_lstm",
-            "dim_f": "mdx_dim_f_set", "dim_t": "mdx_dim_t_set",
-            "n_fft": "mdx_n_fft_scale_set", "compensation": "compensate",
-            "config_yaml": "config_yaml", "roformer": "is_roformer",
-            "karaoke": "is_karaoke", "backing_vocal": "is_bv_model",
+            "primary_stem": "primary_stem",
+            "vr_params": "vr_model_param",
+            "nout": "nout",
+            "nout_lstm": "nout_lstm",
+            "dim_f": "mdx_dim_f_set",
+            "dim_t": "mdx_dim_t_set",
+            "n_fft": "mdx_n_fft_scale_set",
+            "compensation": "compensate",
+            "config_yaml": "config_yaml",
+            "roformer": "is_roformer",
+            "karaoke": "is_karaoke",
+            "backing_vocal": "is_bv_model",
             "bv_rebalance": "is_bv_model_rebalance",
         }
         for source, target in mappings.items():
@@ -761,8 +839,12 @@ def cmd_models_configure(args: argparse.Namespace) -> int:
             if value is not None:
                 payload[target] = value
         path = registry.configure(
-            record.family, method, model_hash, payload,
-            model_path=model_path, replace=args.replace,
+            record.family,
+            method,
+            model_hash,
+            payload,
+            model_path=model_path,
+            replace=args.replace,
         )
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         return fail(args, str(exc), exit_code=2, exc=exc)
@@ -779,6 +861,7 @@ def add_devices_parser(sub: argparse._SubParsersAction) -> None:
 
 def cmd_devices_list(args: argparse.Namespace) -> int:
     import dataclasses
+
     from core.device import list_devices
 
     return _print_rows(args, [dataclasses.asdict(item) for item in list_devices()])
@@ -811,12 +894,23 @@ def add_ensembles_parser(sub: argparse._SubParsersAction) -> None:
 
 
 def _ensemble_rows() -> list[dict[str, Any]]:
-    from core.ensemble_presets import curated_combo_label, list_curated_ensembles, load_curated_ensemble
+    from core.ensemble_presets import (
+        curated_combo_label,
+        list_curated_ensembles,
+        load_curated_ensemble,
+    )
     from core.ensemble_service import list_saved_ensembles, load_ensemble
 
     rows = []
     for preset in list_curated_ensembles():
-        rows.append({"id": preset, "display": curated_combo_label(preset), "kind": "curated", "data": load_curated_ensemble(preset)})
+        rows.append(
+            {
+                "id": preset,
+                "display": curated_combo_label(preset),
+                "kind": "curated",
+                "data": load_curated_ensemble(preset),
+            }
+        )
     for name in list_saved_ensembles():
         rows.append({"id": name, "display": name, "kind": "saved", "data": load_ensemble(name)})
     return rows
@@ -829,13 +923,18 @@ def cmd_ensembles_list(args: argparse.Namespace) -> int:
 
 def cmd_ensembles_show(args: argparse.Namespace) -> int:
     needle = args.name.lower()
-    matches = [row for row in _ensemble_rows() if row["id"].lower() == needle or row["display"].lower() == needle]
+    matches = [
+        row
+        for row in _ensemble_rows()
+        if row["id"].lower() == needle or row["display"].lower() == needle
+    ]
     if len(matches) != 1:
         return fail(args, f"unknown or ambiguous ensemble {args.name!r}", exit_code=2)
     row = matches[0]
     data = dict(row.get("data") or {})
     try:
         from core.model_repository import ModelRepository
+
         repo = ModelRepository()
         lookup = CliModelLookup(repo)
         members = [lookup.lookup(tag).id for tag in data.get("selected_models") or []]
@@ -871,11 +970,19 @@ def cmd_ensembles_create(args: argparse.Namespace) -> int:
         )
     except (OSError, TypeError, ValueError) as exc:
         return fail(args, str(exc), exit_code=2, exc=exc)
-    return _print_rows(args, [{
-        "created": True, "id": preset.id, "display": preset.display,
-        "members": list(preset.members), "stem_pair": preset.main_stem.value,
-        "algorithm": preset.algorithm,
-    }])
+    return _print_rows(
+        args,
+        [
+            {
+                "created": True,
+                "id": preset.id,
+                "display": preset.display,
+                "members": list(preset.members),
+                "stem_pair": preset.main_stem,
+                "algorithm": preset.algorithm,
+            }
+        ],
+    )
 
 
 def cmd_ensembles_delete(args: argparse.Namespace) -> int:
@@ -894,8 +1001,7 @@ def _setting_paths() -> list[str]:
     result = []
     for section in ("process", "vr", "mdx", "demucs", "ensemble", "audio_tools", "ui"):
         result.extend(
-            f"{section}.{field.name}"
-            for field in dataclasses.fields(getattr(settings, section))
+            f"{section}.{field.name}" for field in dataclasses.fields(getattr(settings, section))
         )
     return sorted(result)
 
@@ -954,9 +1060,7 @@ def cmd_settings_show(args: argparse.Namespace) -> int:
         profile_source = "gui" if profile.source == "gui" else profile.source
         settings, sources = SettingsResolver().resolve(
             settings,
-            base_provenance={
-                path: profile_source for path in profile.settings
-            },
+            base_provenance={path: profile_source for path in profile.settings},
         )
     except (OSError, ValueError) as exc:
         return fail(args, str(exc), exit_code=2, exc=exc)
@@ -979,7 +1083,11 @@ def cmd_settings_explain(args: argparse.Namespace) -> int:
     paths = _setting_paths()
     if args.path not in paths:
         matches = difflib.get_close_matches(args.path, paths, n=5)
-        return fail(args, f"unknown setting {args.path!r}; close matches: {', '.join(matches) or 'none'}", exit_code=2)
+        return fail(
+            args,
+            f"unknown setting {args.path!r}; close matches: {', '.join(matches) or 'none'}",
+            exit_code=2,
+        )
     settings, profile = load_profile(args.profile)
     from core.settings.job_resolution import SettingsResolver
 
@@ -1013,6 +1121,7 @@ def cmd_settings_validate(args: argparse.Namespace) -> int:
     try:
         settings, profile = load_profile(args.profile)
         from core.settings.access import apply_settings_overrides
+
         apply_settings_overrides(settings, [parse_setting_assignment(item) for item in args.set])
     except (OSError, ValueError) as exc:
         return fail(args, str(exc), exit_code=2, exc=exc)
@@ -1039,9 +1148,7 @@ def cmd_profile_create(args: argparse.Namespace) -> int:
         settings = Settings.defaults()
         for path in values:
             if path in IDENTITY_SETTING_PATHS:
-                raise ValueError(
-                    f"{path} is identity/state; use --model, --ensemble, or --member"
-                )
+                raise ValueError(f"{path} is identity/state; use --model, --ensemble, or --member")
             validate_setting_path(settings, path)
         if args.model and (args.ensemble or args.member):
             raise ValueError("a profile cannot combine a primary model with ensemble identity")
@@ -1052,6 +1159,7 @@ def cmd_profile_create(args: argparse.Namespace) -> int:
         reference_paths = MODEL_REFERENCE_SETTING_PATHS.intersection(values)
         if model or members or reference_paths:
             from core.model_repository import ModelRepository
+
             repo = ModelRepository()
             lookup = CliModelLookup(repo)
             model = lookup.lookup(model).id if model else None
@@ -1061,9 +1169,9 @@ def cmd_profile_create(args: argparse.Namespace) -> int:
         if args.ensemble:
             needle = args.ensemble.casefold()
             matches = [
-                row for row in _ensemble_rows()
-                if str(row["id"]).casefold() == needle
-                or str(row["display"]).casefold() == needle
+                row
+                for row in _ensemble_rows()
+                if str(row["id"]).casefold() == needle or str(row["display"]).casefold() == needle
             ]
             if len(matches) != 1:
                 raise ValueError(f"unknown or ambiguous ensemble {args.ensemble!r}")
@@ -1071,8 +1179,12 @@ def cmd_profile_create(args: argparse.Namespace) -> int:
         else:
             ensemble = None
         profile = LoadedProfile(
-            name=args.name, source="profile", model=model,
-            ensemble=ensemble, members=members, settings=values,
+            name=args.name,
+            source="profile",
+            model=model,
+            ensemble=ensemble,
+            members=members,
+            settings=values,
         )
         path = save_profile(profile, replace=args.replace)
     except (OSError, ValueError) as exc:
@@ -1102,16 +1214,17 @@ def cmd_completion(args: argparse.Namespace) -> int:
 
     root = build_parser()
     subcommands = next(
-        action for action in root._actions
-        if isinstance(action, argparse._SubParsersAction)
+        action for action in root._actions if isinstance(action, argparse._SubParsersAction)
     )
     commands = " ".join(subcommands.choices)
     dynamic: list[str] = ["defaults", "gui", *_setting_paths(), *list_profiles()]
     try:
         from core.model_repository import ModelRepository
+
         dynamic.extend(record.id for record in iter_model_records(ModelRepository()))
         dynamic.extend(str(row["id"]) for row in _ensemble_rows())
         from core.gpu import list_gpu_devices
+
         dynamic.append("cpu")
         dynamic.extend(
             ident if ident in {"mps", "directml"} else f"cuda:{ident}"

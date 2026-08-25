@@ -23,9 +23,7 @@ _YAML_URL_QS = "https://example.test/model.yaml?v=2"
 
 
 def _with_supplements(supplements: Any) -> Any:
-    return mock.patch.object(
-        catalog_sources, "_supplemental_sources", return_value=supplements
-    )
+    return mock.patch.object(catalog_sources, "_supplemental_sources", return_value=supplements)
 
 
 class YamlConfigUrlTests(unittest.TestCase):
@@ -49,9 +47,7 @@ class CatalogStemMergeTests(unittest.TestCase):
         # Positive stem-cache cases need the feature on; tearDown restores.
         os.environ.pop("UVR_DISABLE_CATALOGUE_STEMS", None)
         # Curated Apollo extras ship http YAML URLs; keep merges under test only.
-        self._apollo = mock.patch.object(
-            catalog_sources, "apollo_download_list", return_value={}
-        )
+        self._apollo = mock.patch.object(catalog_sources, "apollo_download_list", return_value={})
         self._apollo.start()
         clear_display_cache()
 
@@ -73,18 +69,10 @@ class CatalogStemMergeTests(unittest.TestCase):
             {},
         )
         with _with_supplements(supplements):
-            with mock.patch(
-                "core.catalogue_stem_cache.lookup_stems", return_value=hit
-            ) as lookup:
-                with mock.patch(
-                    "core.catalogue_stem_cache.enqueue_missing"
-                ) as enqueue:
-                    with mock.patch(
-                        "core.catalogue_stem_cache.ensure_worker_started"
-                    ) as ensure:
-                        merged = catalog_sources.merged_catalogues(
-                            vr={}, mdx={}, demucs={}
-                        )
+            with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=hit) as lookup:
+                with mock.patch("core.catalogue_stem_cache.enqueue_missing") as enqueue:
+                    with mock.patch("core.catalogue_stem_cache.ensure_worker_started") as ensure:
+                        merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
         meta = merged.meta["M"]
         self.assertEqual(meta.stems, ["Vocals", "other"])
         self.assertEqual(meta.target_instrument, "Vocals")
@@ -100,18 +88,10 @@ class CatalogStemMergeTests(unittest.TestCase):
             {},
         )
         with _with_supplements(supplements):
-            with mock.patch(
-                "core.catalogue_stem_cache.lookup_stems", return_value=None
-            ):
-                with mock.patch(
-                    "core.catalogue_stem_cache.enqueue_missing"
-                ) as enqueue:
-                    with mock.patch(
-                        "core.catalogue_stem_cache.ensure_worker_started"
-                    ) as ensure:
-                        merged = catalog_sources.merged_catalogues(
-                            vr={}, mdx={}, demucs={}
-                        )
+            with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=None):
+                with mock.patch("core.catalogue_stem_cache.enqueue_missing") as enqueue:
+                    with mock.patch("core.catalogue_stem_cache.ensure_worker_started") as ensure:
+                        merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
         self.assertEqual(merged.meta["M"].stems, [])
         enqueue.assert_not_called()
         ensure.assert_not_called()
@@ -130,18 +110,10 @@ class CatalogStemMergeTests(unittest.TestCase):
             },
         )
         with _with_supplements(supplements):
-            with mock.patch(
-                "core.catalogue_stem_cache.lookup_stems"
-            ) as lookup:
-                with mock.patch(
-                    "core.catalogue_stem_cache.enqueue_missing"
-                ) as enqueue:
-                    with mock.patch(
-                        "core.catalogue_stem_cache.ensure_worker_started"
-                    ) as ensure:
-                        merged = catalog_sources.merged_catalogues(
-                            vr={}, mdx={}, demucs={}
-                        )
+            with mock.patch("core.catalogue_stem_cache.lookup_stems") as lookup:
+                with mock.patch("core.catalogue_stem_cache.enqueue_missing") as enqueue:
+                    with mock.patch("core.catalogue_stem_cache.ensure_worker_started") as ensure:
+                        merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
         meta = merged.meta["M"]
         self.assertEqual(meta.stems, ["Drums", "Bass"])
         self.assertEqual(meta.target_instrument, "Drums")
@@ -158,18 +130,12 @@ class CatalogStemMergeTests(unittest.TestCase):
         )
         with mock.patch.dict(os.environ, {"UVR_DISABLE_CATALOGUE_STEMS": "1"}):
             with _with_supplements(supplements):
-                with mock.patch(
-                    "core.catalogue_stem_cache.lookup_stems", return_value=None
-                ):
-                    with mock.patch(
-                        "core.catalogue_stem_cache.enqueue_missing"
-                    ) as enqueue:
+                with mock.patch("core.catalogue_stem_cache.lookup_stems", return_value=None):
+                    with mock.patch("core.catalogue_stem_cache.enqueue_missing") as enqueue:
                         with mock.patch(
                             "core.catalogue_stem_cache.ensure_worker_started"
                         ) as ensure:
-                            merged = catalog_sources.merged_catalogues(
-                                vr={}, mdx={}, demucs={}
-                            )
+                            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
         self.assertEqual(merged.meta["M"].stems, [])
         enqueue.assert_not_called()
         ensure.assert_not_called()
@@ -187,21 +153,196 @@ class CatalogStemMergeTests(unittest.TestCase):
                 csc.clear_catalogue_stem_cache()
                 csc.remember_stems(_YAML_URL, [], None, ok=False)
                 with _with_supplements(supplements):
-                    with mock.patch(
-                        "core.catalogue_stem_cache.enqueue_missing"
-                    ) as enqueue:
+                    with mock.patch("core.catalogue_stem_cache.enqueue_missing") as enqueue:
                         with mock.patch(
                             "core.catalogue_stem_cache.ensure_worker_started"
                         ) as ensure:
-                            merged = catalog_sources.merged_catalogues(
-                                vr={}, mdx={}, demucs={}
-                            )
+                            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
                 csc.clear_catalogue_stem_cache()
         meta = merged.meta["M"]
         self.assertEqual(meta.stems, [])
         self.assertIsNone(meta.target_instrument)
         enqueue.assert_not_called()
         ensure.assert_not_called()
+
+
+class SemanticProjectionTests(unittest.TestCase):
+    """Consumer data comes from the exact manifest projection, never aliases."""
+
+    def test_projection_keeps_backend_values_and_canonical_route_presentation(self) -> None:
+        from core.model_stem_semantics import (
+            resolve_catalogue_stem_semantics,
+            stem_semantics_projection,
+        )
+
+        semantics = resolve_catalogue_stem_semantics(
+            "mdx:bs_neo_inst_beta",
+            native_stems=("vocals", "other"),
+            backend_primary="other",
+            backend_target="other",
+        )
+        payload = stem_semantics_projection(
+            semantics, backend_primary="other", backend_target="other"
+        ).as_dict()
+
+        self.assertEqual(
+            {
+                key: payload[key]
+                for key in (
+                    "backend_primary_stem",
+                    "backend_target_stem",
+                    "logical_primary_role",
+                    "stem_semantics_status",
+                    "stem_context",
+                )
+            },
+            {
+                "backend_primary_stem": "other",
+                "backend_target_stem": "other",
+                "logical_primary_role": "mix.instrumental",
+                "stem_semantics_status": "reviewed",
+                "stem_context": "full_mix",
+            },
+        )
+        self.assertEqual(
+            payload["stem_routes"][0],
+            {
+                "native": "other",
+                "role": "mix.instrumental",
+                "display": "Instrumental",
+                "filename_tag": "Instrumental",
+                "production": "native",
+                "logical_primary": True,
+            },
+        )
+
+    def test_projection_covers_reviewed_waived_and_raw_statuses(self) -> None:
+        from core.model_stem_semantics import (
+            resolve_catalogue_stem_semantics,
+            stem_semantics_projection,
+        )
+        from core.stem_roles import StemProcessingContext
+
+        cases = (
+            (
+                "reviewed",
+                "mdx:bs_neo_inst_beta",
+                ("vocals", "other"),
+                StemProcessingContext.FULL_MIX,
+                "reviewed",
+                "mix.instrumental",
+                ("mix.instrumental", "vocal.vocals"),
+            ),
+            (
+                "waived",
+                "mdx:Kim_Inst",
+                (),
+                StemProcessingContext.FULL_MIX,
+                "waived",
+                None,
+                (),
+            ),
+            (
+                "raw unknown",
+                "mdx:not_in_the_manifest",
+                ("other",),
+                StemProcessingContext.FULL_MIX,
+                "raw",
+                None,
+                (),
+            ),
+            (
+                "signature mismatch",
+                "mdx:bs_neo_inst_beta",
+                ("other",),
+                StemProcessingContext.FULL_MIX,
+                "raw",
+                None,
+                (),
+            ),
+            (
+                "normal karaoke",
+                "mdx:bs_karaoke_anvuew",
+                ("Vocals", "Instrumental"),
+                StemProcessingContext.FULL_MIX,
+                "reviewed",
+                "vocal.lead",
+                ("vocal.lead", "mix.instrumental_with_backing_vocals"),
+            ),
+            (
+                "vocal splitter",
+                "mdx:bs_karaoke_anvuew",
+                ("Vocals", "Instrumental"),
+                StemProcessingContext.VOCAL_SPLIT,
+                "reviewed",
+                "vocal.lead",
+                ("vocal.lead", "vocal.backing"),
+            ),
+            (
+                "BVE",
+                "vr:UVR-BVE-4B_SN-44100-1",
+                ("Vocals", "Instrumental"),
+                StemProcessingContext.VOCAL_SPLIT,
+                "reviewed",
+                "vocal.backing",
+                ("vocal.backing", "vocal.lead"),
+            ),
+            (
+                "spatial",
+                "mdx:bs_mid_side1_gilliaaan",
+                ("center", "wide"),
+                StemProcessingContext.FULL_MIX,
+                "reviewed",
+                "spatial.center",
+                ("spatial.center", "spatial.side"),
+            ),
+            (
+                "effect removal",
+                "mdx:MDX23C-De-Reverb-aufr33-jarredou",
+                ("dry", "No dry"),
+                StemProcessingContext.FULL_MIX,
+                "reviewed",
+                "effect.reverb",
+                ("effect.reverb", "effect.reverb.removed"),
+            ),
+            (
+                "multi stem",
+                "demucs:demucs",
+                ("drums", "bass", "other", "vocals"),
+                StemProcessingContext.FULL_MIX,
+                "reviewed",
+                "instrument.drums",
+                (
+                    "instrument.drums",
+                    "instrument.bass",
+                    "residual.other",
+                    "vocal.vocals",
+                ),
+            ),
+        )
+        for (
+            name,
+            model_id,
+            native_stems,
+            context,
+            status,
+            logical_primary,
+            roles,
+        ) in cases:
+            with self.subTest(name=name):
+                semantics = resolve_catalogue_stem_semantics(
+                    model_id,
+                    native_stems=native_stems,
+                    context=context,
+                )
+                projection = stem_semantics_projection(semantics)
+                self.assertEqual(projection.status, status)
+                self.assertEqual(projection.context, context.value)
+                self.assertEqual(projection.logical_primary_role, logical_primary)
+                self.assertEqual(projection.canonical_roles, roles)
+
+        mismatch = resolve_catalogue_stem_semantics("mdx:bs_neo_inst_beta", native_stems=("other",))
+        self.assertIn("signature-mismatch", mismatch.warning)
 
 
 if __name__ == "__main__":

@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import os
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
+from core.input_discovery import discover_inputs
+from core.model_identity import ModelIdentityService, ModelRecord
 from core.model_repository import ModelRepository
 from core.settings import Settings
 from core.settings.job_resolution import (
@@ -16,14 +18,12 @@ from core.settings.job_resolution import (
 )
 from core.stem_selection import apply_stem_selection
 
-from core.input_discovery import discover_inputs
-from core.model_identity import ModelIdentityService, ModelRecord
 from .model_identity import CliModelLookup
 from .process_flags import collect_overrides
 from .profiles import (
     IDENTITY_SETTING_PATHS,
-    LoadedProfile,
     MODEL_REFERENCE_SETTING_PATHS,
+    LoadedProfile,
     apply_profile_values,
     load_profile,
 )
@@ -42,7 +42,9 @@ def _resolved_settings(
     model_source: str | None = None,
 ) -> tuple[Settings, dict[str, str]]:
     settings, sources = SettingsResolver().resolve(
-        base, export_path=output, method=method,
+        base,
+        export_path=output,
+        method=method,
         base_provenance=base_provenance,
     )
     if model is not None:
@@ -52,7 +54,9 @@ def _resolved_settings(
         apply_stem_selection(settings, stems)
         for path in (
             "process.stem_focus",
-            "mdx.stems", "mdx.stems_selected", "demucs.stems",
+            "mdx.stems",
+            "mdx.stems_selected",
+            "demucs.stems",
         ):
             sources[path] = "cli"
     if long_chunk_seconds is not None:
@@ -139,9 +143,7 @@ def _device_override(value: Optional[str]) -> list[tuple[str, Any]]:
     return resolve_device_request(value)
 
 
-def _profile_provenance(
-    settings: Settings, profile: LoadedProfile
-) -> dict[str, str]:
+def _profile_provenance(settings: Settings, profile: LoadedProfile) -> dict[str, str]:
     if profile.source == "gui":
         return {
             f"{section}.{name}": "gui"
@@ -152,7 +154,9 @@ def _profile_provenance(
     return {path: profile.source for path in profile.settings}
 
 
-def _device_pairs(args: argparse.Namespace, profile: LoadedProfile) -> tuple[list[tuple[str, Any]], bool]:
+def _device_pairs(
+    args: argparse.Namespace, profile: LoadedProfile
+) -> tuple[list[tuple[str, Any]], bool]:
     device_paths = {"process.use_gpu", "process.device", "process.use_directml"}
     if args.device is None and device_paths.intersection(profile.settings):
         return [], False
@@ -232,7 +236,9 @@ def _canonicalize_model_references(
     identities: dict[str, dict[str, str]] = {}
     sentinels = {"", "none", "no model selected", "choose model"}
     family_by_path = {
-        "vr.model": "vr", "mdx.model": "mdx", "demucs.model": "demucs",
+        "vr.model": "vr",
+        "mdx.model": "mdx",
+        "demucs.model": "demucs",
         "audio_tools.apollo_model": "apollo",
     }
     allowed_by_path = {
@@ -287,15 +293,11 @@ def _canonicalize_model_references(
     return identities
 
 
-def resolve_separate_job(
-    args: argparse.Namespace, *, validation_level: Any = None
-) -> ResolvedJob:
+def resolve_separate_job(args: argparse.Namespace, *, validation_level: Any = None) -> ResolvedJob:
     base, profile, inputs, output = _base_resolve(args)
     repo = ModelRepository()
     persisted_settings = Settings.load()
-    repo.bind_model_hash_table(
-        lambda: persisted_settings.process.model_hash_table
-    )
+    repo.bind_model_hash_table(lambda: persisted_settings.process.model_hash_table)
     models = CliModelLookup(repo)
     inherited = not bool(args.model) and bool(profile.model)
     model_query = args.model or profile.model
@@ -303,8 +305,12 @@ def resolve_separate_job(
         raise ValueError("separate requires --model or a profile containing a model")
     record = models.lookup(model_query)
     settings, sources = _resolved_settings(
-        base, output=output, method=record.family, model=record,
-        stems=args.stems, long_chunk_seconds=args.long_chunk_seconds,
+        base,
+        output=output,
+        method=record.family,
+        model=record,
+        stems=args.stems,
+        long_chunk_seconds=args.long_chunk_seconds,
         long_chunk_overlap=args.long_chunk_overlap,
         base_provenance=_profile_provenance(base, profile),
         model_source="cli" if args.model else profile.source,
@@ -335,7 +341,10 @@ def resolve_separate_job(
     sources["runtime.backend"] = "derived"
     effective = JobResolver(repo).resolve(
         JobSpec(
-            "separate", settings, tuple(inputs), output,
+            "separate",
+            settings,
+            tuple(inputs),
+            output,
             sources,
             {
                 "profile": profile.to_dict(),
@@ -367,20 +376,16 @@ def resolve_separate_job(
     )
 
 
-def resolve_ensemble_job(
-    args: argparse.Namespace, *, validation_level: Any = None
-) -> ResolvedJob:
+def resolve_ensemble_job(args: argparse.Namespace, *, validation_level: Any = None) -> ResolvedJob:
     from bundled.constants import ENSEMBLE_ALGORITHMS
     from core.ensemble_algorithms import format_ensemble_type
     from core.ensemble_service import EnsembleService
-    from core.stems import EnsemblePair
+    from core.stem_pairs import normalize_stem_pair_id
 
     base, profile, inputs, output = _base_resolve(args)
     repo = ModelRepository()
     persisted_settings = Settings.load()
-    repo.bind_model_hash_table(
-        lambda: persisted_settings.process.model_hash_table
-    )
+    repo.bind_model_hash_table(lambda: persisted_settings.process.model_hash_table)
     models = CliModelLookup(repo)
     explicit_identity = bool(args.ensemble or args.models)
     member_tokens = list(args.models or []) if explicit_identity else list(profile.members)
@@ -396,7 +401,10 @@ def resolve_ensemble_job(
     ):
         raise ValueError("an ad-hoc ensemble requires --main-stem")
     settings, sources = _resolved_settings(
-        base, output=output, method="ensemble", stems=args.stems,
+        base,
+        output=output,
+        method="ensemble",
+        stems=args.stems,
         long_chunk_seconds=args.long_chunk_seconds,
         long_chunk_overlap=args.long_chunk_overlap,
         base_provenance=_profile_provenance(base, profile),
@@ -405,11 +413,16 @@ def resolve_ensemble_job(
     preset_paths: set[str] = set()
     if preset:
         EnsembleService(repo).apply(settings, preset)
-        preset_paths.update({
-            "ensemble.chosen_ensemble", "ensemble.main_stem",
-            "ensemble.type", "ensemble.selected_models",
-            "ensemble.wav_ensemble", "ensemble.save_all_outputs",
-        })
+        preset_paths.update(
+            {
+                "ensemble.chosen_ensemble",
+                "ensemble.main_stem",
+                "ensemble.type",
+                "ensemble.selected_models",
+                "ensemble.wav_ensemble",
+                "ensemble.save_all_outputs",
+            }
+        )
         sources.update({path: "preset" for path in preset_paths})
         # Presets sit below explicit profile settings in the precedence
         # chain, so restore the sparse profile layer after preset loading.
@@ -421,12 +434,13 @@ def resolve_ensemble_job(
         records = [models.lookup(token) for token in member_tokens]
         settings.ensemble.selected_models = [item.id for item in records]
         settings.ensemble.chosen_ensemble = CHOOSE_ENSEMBLE_OPTION
-        sources["ensemble.selected_models"] = (
-            "cli" if args.models else profile.source
-        )
+        sources["ensemble.selected_models"] = "cli" if args.models else profile.source
         sources["ensemble.chosen_ensemble"] = "derived"
     if args.main_stem:
-        settings.ensemble.main_stem = EnsemblePair(args.main_stem)
+        pair_id = normalize_stem_pair_id(args.main_stem)
+        if not pair_id:
+            raise ValueError("--main-stem must use a current pair.* or mode.* ID")
+        settings.ensemble.main_stem = pair_id
         sources["ensemble.main_stem"] = "cli"
     if args.algorithm:
         primary, sep, secondary = args.algorithm.partition("/")
@@ -437,9 +451,7 @@ def resolve_ensemble_job(
                 f"unknown ensemble algorithm {invalid[0]!r}; expected one of: "
                 + ", ".join(ENSEMBLE_ALGORITHMS)
             )
-        settings.ensemble.type = format_ensemble_type(
-            *atoms
-        )
+        settings.ensemble.type = format_ensemble_type(*atoms)
         sources["ensemble.type"] = "cli"
     if args.wav_ensemble is not None:
         settings.ensemble.wav_ensemble = bool(args.wav_ensemble)
@@ -473,7 +485,10 @@ def resolve_ensemble_job(
 
     effective = JobResolver(repo).resolve(
         JobSpec(
-            "ensemble", settings, tuple(inputs), output,
+            "ensemble",
+            settings,
+            tuple(inputs),
+            output,
             sources,
             {
                 "profile": profile.to_dict(),
@@ -515,13 +530,13 @@ def format_effective_plan(plan: dict[str, Any]) -> str:
             lines.append(
                 f"  checkpoint: {model['checkpoint']} ({model.get('checkpoint_hash') or 'unverified'})"
             )
+        _append_model_stem_semantics(lines, model)
     elif models:
         lines.append(
-            "  models: "
-            + ", ".join(
-                f"{item.get('display')} [{item.get('id')}]" for item in models
-            )
+            "  models: " + ", ".join(f"{item.get('display')} [{item.get('id')}]" for item in models)
         )
+        for model in models:
+            _append_model_stem_semantics(lines, model, prefix="  model stem")
     metadata = plan.get("metadata") or {}
     if metadata.get("preset"):
         lines.append(f"  ensemble: {metadata['preset']}")
@@ -532,8 +547,7 @@ def format_effective_plan(plan: dict[str, Any]) -> str:
     stem_mode = process.get("stem_focus") or "both"
     lines.append(f"  stems: {stem_mode}")
     lines.append(
-        f"  normalize: {process.get('normalization')}  "
-        f"mix-match: {process.get('match_mix_level')}"
+        f"  normalize: {process.get('normalization')}  mix-match: {process.get('match_mix_level')}"
     )
     lines.append(f"  device: {plan.get('device')}")
     lines.append(f"  autocast: {process.get('autocast')}")
@@ -558,3 +572,27 @@ def format_effective_plan(plan: dict[str, Any]) -> str:
     for diagnostic in plan.get("diagnostics") or []:
         lines.append(f"  {diagnostic.get('severity')}: {diagnostic.get('message')}")
     return "\n".join(lines)
+
+
+def _append_model_stem_semantics(
+    lines: list[str], model: Mapping[str, Any], *, prefix: str = "  logical primary"
+) -> None:
+    """Show reviewed labels while keeping native backend values visible."""
+    routes = model.get("stem_routes")
+    if not isinstance(routes, list):
+        return
+    primary = next(
+        (route for route in routes if isinstance(route, Mapping) and route.get("logical_primary")),
+        None,
+    )
+    if not isinstance(primary, Mapping):
+        return
+    role = model.get("logical_primary_role") or primary.get("role")
+    label = primary.get("display") or primary.get("native")
+    if not label or not role:
+        return
+    lines.append(
+        f"{prefix}: {label} [{role}] (native: {primary.get('native')}; "
+        f"context: {model.get('stem_context')}; "
+        f"status: {model.get('stem_semantics_status')})"
+    )

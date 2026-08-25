@@ -35,13 +35,17 @@ from .catalog_dedupe import (
     normalize_catalogue_label,
     primary_checkpoint_url,
 )
+from .catalogue_types import StemSemanticProjection
 from .debug_log import debug
 from .extra_catalog import apollo_download_list, merge_extra_catalogues
+from .model_identity import ModelId
 from .model_naming import canonical_display_name
 from .model_stem_semantics import (
     INTENT_UNKNOWN,
     resolve_catalogue_intent,
+    resolve_catalogue_stem_semantics,
     resolve_is_karaoke,
+    stem_semantics_projection,
 )
 from .mvsepless_catalog import merge_mvsepless_catalogues, mvsepless_metadata
 from .politrees_catalog import (
@@ -70,6 +74,11 @@ class EntryMeta:
     stems: List[str] = field(default_factory=list)
     target_instrument: Optional[str] = None
     intent: str = INTENT_UNKNOWN
+    #: Name/category inference retained strictly as inspectable audit evidence.
+    guessed_intent: str = INTENT_UNKNOWN
+    stem_semantics: StemSemanticProjection = field(
+        default_factory=lambda: StemSemanticProjection(None, None, None, "raw", "full_mix", ())
+    )
 
 
 @dataclass(frozen=True)
@@ -159,6 +168,23 @@ def _yaml_config_url(files: Mapping[str, str]) -> Optional[str]:
     return None
 
 
+def _catalogue_model_id(arch: str, checkpoint: str | None) -> str:
+    """Return an exact canonical ID for a listed artifact, if it has one."""
+    family = {
+        VR_ARCH_TYPE: "vr",
+        MDX_ARCH_TYPE: "mdx",
+        DEMUCS_ARCH_TYPE: "demucs",
+        APOLLO_ARCH_TYPE: "apollo",
+    }.get(arch)
+    if family is None or not checkpoint:
+        return ""
+    basename = os.path.splitext(os.path.basename(checkpoint))[0]
+    try:
+        return ModelId(family, basename).value
+    except ValueError:
+        return ""
+
+
 def _build_meta(
     catalogue: Mapping[str, Any],
     arch: str,
@@ -188,22 +214,40 @@ def _build_meta(
                     stems = list(hit.stems)
                     if not target:
                         target = hit.target_instrument
+        checkpoint = _primary_checkpoint(files)
+        backend_primary = str(source_meta.get("primary_stem") or "")
+        backend_target = str(target or "")
+        model_id = _catalogue_model_id(arch, checkpoint)
+        semantics = resolve_catalogue_stem_semantics(
+            model_id,
+            native_stems=stems,
+            backend_primary=backend_primary,
+            backend_target=backend_target,
+        )
+        projection = stem_semantics_projection(
+            semantics,
+            backend_primary=backend_primary,
+            backend_target=backend_target,
+        )
+        guessed_intent = resolve_catalogue_intent(
+            target=backend_target,
+            instruments=stems,
+            is_karaoke=resolve_is_karaoke(model_name=label),
+            weight_basename=str(checkpoint or ""),
+            catalogue_label=label,
+            category_intent=str(source_meta.get("intent") or INTENT_UNKNOWN),
+        )
         out[label] = EntryMeta(
             label=label,
             display=canonical_display_name(label),
             arch=arch,
             files=files,
-            checkpoint=_primary_checkpoint(files),
+            checkpoint=checkpoint,
             stems=stems,
             target_instrument=target,
-            intent=resolve_catalogue_intent(
-                target=str(target or ""),
-                instruments=stems,
-                is_karaoke=resolve_is_karaoke(model_name=label),
-                weight_basename=str(_primary_checkpoint(files) or ""),
-                catalogue_label=label,
-                category_intent=str(source_meta.get("intent") or INTENT_UNKNOWN),
-            ),
+            intent=(semantics.intent if semantics.status.value == "reviewed" else guessed_intent),
+            guessed_intent=guessed_intent,
+            stem_semantics=projection,
         )
     return out
 
