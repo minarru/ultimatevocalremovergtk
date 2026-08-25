@@ -16,6 +16,39 @@ from catalogue import render  # noqa: E402
 from core.catalogue_types import SourceId  # noqa: E402
 
 
+class DemucsBagArtifactTests(unittest.TestCase):
+    def test_representative_weight_is_stable_across_json_key_order(self) -> None:
+        entries = []
+        rows = (
+            {
+                "mdx.yaml": "https://example.test/mdx.yaml",
+                "c511e2ab-fe698775.th": "https://example.test/c511e2ab-fe698775.th",
+                "7d865c68-3d5dd56b.th": "https://example.test/7d865c68-3d5dd56b.th",
+            },
+            {
+                "7d865c68-3d5dd56b.th": "https://example.test/7d865c68-3d5dd56b.th",
+                "c511e2ab-fe698775.th": "https://example.test/c511e2ab-fe698775.th",
+                "mdx.yaml": "https://example.test/mdx.yaml",
+            },
+        )
+        for payload in rows:
+            entries.append(
+                catalogue._parse_catalogue_entry(
+                    source="test",
+                    family="Demucs",
+                    label="Demucs v3: mdx",
+                    payload=payload,
+                    ctx=catalogue.CatalogueContext(),
+                    policy=catalogue.FetchPolicy(allow_network=False),
+                )[0]
+            )
+
+        self.assertEqual(
+            [entry.weight_file for entry in entries],
+            ["c511e2ab-fe698775.th", "c511e2ab-fe698775.th"],
+        )
+
+
 class UiNoteTests(unittest.TestCase):
     def test_vocals_other_note_only_for_two_stem_models(self):
         entry = catalogue.ModelEntry(
@@ -1502,6 +1535,16 @@ class ProvenanceBlockTests(unittest.TestCase):
         )
         self.assertNotEqual(a, b)
         self.assertEqual(render._canonical_for_diff(a), render._canonical_for_diff(b))
+
+    def test_online_provenance_block_does_not_drift_from_warm_offline_report(self) -> None:
+        online = render._render([], unsupported_count=0, report=self._report())
+        warm_offline = render._render([], unsupported_count=0, report=None)
+
+        self.assertNotEqual(online, warm_offline)
+        self.assertEqual(
+            render._canonical_for_diff(online),
+            render._canonical_for_diff(warm_offline),
+        )
 
     def test_renders_without_a_report(self) -> None:
         text = render._render([], unsupported_count=0, report=None)

@@ -4,6 +4,7 @@ import unittest
 
 from core.model_naming import (
     canonical_display_name,
+    load_model_display_manifest,
     project_model_display,
     strip_catalogue_prefix,
 )
@@ -185,12 +186,8 @@ class ProjectModelDisplayTests(unittest.TestCase):
 
     def test_projector_normalizes_parenthetical_sdr_after_the_author(self) -> None:
         expected = {
-            "mdx:mbr_inst_1652_essid": (
-                "MelBand Roformer — Instrumental (SDR 16.52) · Essid"
-            ),
-            "mdx:mbr_inst_1681_essid": (
-                "MelBand Roformer — Instrumental (SDR 16.81) · Essid"
-            ),
+            "mdx:mbr_inst_1652_essid": ("MelBand Roformer — Instrumental (SDR 16.52) · Essid"),
+            "mdx:mbr_inst_1681_essid": ("MelBand Roformer — Instrumental (SDR 16.81) · Essid"),
         }
         for model_id, display in expected.items():
             with self.subTest(model_id=model_id):
@@ -317,23 +314,15 @@ class ProjectModelDisplayTests(unittest.TestCase):
             "mdx:MelBand_Roformer_4stems_XL_v1_by_Aname": (
                 "MelBand Roformer — XL v1 (4 Stems) · Aname"
             ),
-            "mdx:huge_scnet_4stems_bleedless": (
-                "SCNet — Huge Bleedless (4 Stems) · Aname"
-            ),
-            "mdx:huge_scnet_4stems_fullness": (
-                "SCNet — Huge Fullness (4 Stems) · Aname"
-            ),
+            "mdx:huge_scnet_4stems_bleedless": ("SCNet — Huge Bleedless (4 Stems) · Aname"),
+            "mdx:huge_scnet_4stems_fullness": ("SCNet — Huge Fullness (4 Stems) · Aname"),
             "mdx:huge_scnet_4stems_strong_fullness": (
                 "SCNet — Huge Strong Fullness (4 Stems) · Aname"
             ),
             "mdx:huge_scnet_4stems_v1.2": "SCNet — Huge v1.2 (4 Stems) · Aname",
             "mdx:model_scnet_sdr_9.3244": "SCNet — Large (4 Stems)",
-            "mdx:SCNet-large_starrytong_fixed": (
-                "SCNet — Large (4 Stems) · StarryTong"
-            ),
-            "mdx:scnet_checkpoint_musdb18": (
-                "SCNet — MUSDB18 (4 Stems) · StarryTong"
-            ),
+            "mdx:SCNet-large_starrytong_fixed": ("SCNet — Large (4 Stems) · StarryTong"),
+            "mdx:scnet_checkpoint_musdb18": ("SCNet — MUSDB18 (4 Stems) · StarryTong"),
             "mdx:model_scnet_ep_54_sdr_9.8051": "SCNet — XL (4 Stems)",
         }
         self.assertEqual(len(expected), 25)
@@ -374,8 +363,7 @@ class ProjectModelDisplayTests(unittest.TestCase):
                 "BandSplit Roformer — Instrumental EXP Value Residual · Unwa"
             ),
             "mdx:BS_Inst_EXP_VRL": (
-                "BandSplit Roformer — Instrumental EXP Value Residual · Unwa "
-                "[BS_Inst_EXP_VRL]"
+                "BandSplit Roformer — Instrumental EXP Value Residual · Unwa [BS_Inst_EXP_VRL]"
             ),
             "mdx:melband_roformer_inst_metal_prev_by_mesk": (
                 "MelBand Roformer — Instrumental Metal Preview · Mesk"
@@ -446,17 +434,13 @@ class ProjectModelDisplayTests(unittest.TestCase):
             "vr:15_SP-UVR-MID-44100-1": "VR v5 — SP Mid 44.1 kHz 1",
             "vr:16_SP-UVR-MID-44100-2": "VR v5 — SP Mid 44.1 kHz 2",
             "vr:17_HP-Wind_Inst-UVR": "VR v5 — HP Wind Instrumental 17",
-            "vr:UVR-BVE-4B_SN-44100-1": (
-                "VR v5 — Karaoke BVE (4 Bands, SN, 44.1 kHz) 1"
-            ),
+            "vr:UVR-BVE-4B_SN-44100-1": ("VR v5 — Karaoke BVE (4 Bands, SN, 44.1 kHz) 1"),
             "vr:UVR-De-Echo-Aggressive": "VR v5 — De-Echo Aggressive · FoxJoy",
             "vr:UVR-De-Echo-Normal": "VR v5 — De-Echo Normal · FoxJoy",
             "vr:UVR-DeEcho-DeReverb": "VR v5 — De-Echo/DeReverb · FoxJoy",
             "vr:UVR-DeNoise": "VR v5 — DeNoise · FoxJoy",
             "vr:UVR-DeNoise-Lite": "VR v5 — DeNoise Lite · FoxJoy",
-            "vr:UVR-De-Reverb-aufr33-jarredou": (
-                "VR v5 — DeReverb · Aufr33 & Jarredou"
-            ),
+            "vr:UVR-De-Reverb-aufr33-jarredou": ("VR v5 — DeReverb · Aufr33 & Jarredou"),
             "vr:MGM_HIGHEND_v4": "VR v4 — MGM High-End",
             "vr:MGM_LOWEND_A_v4": "VR v4 — MGM Low-End A",
             "vr:MGM_LOWEND_B_v4": "VR v4 — MGM Low-End B",
@@ -486,12 +470,8 @@ class ProjectModelDisplayTests(unittest.TestCase):
             "demucs:mdx_extra_q": "Demucs v3 — MDX Extra Quantized",
             "demucs:mdx_q": "Demucs v3 — MDX Quantized",
             "demucs:repro_mdx_a": "Demucs v3 — Repro MDX A",
-            "demucs:repro_mdx_a_hybrid_only": (
-                "Demucs v3 — Repro MDX A Hybrid Only"
-            ),
-            "demucs:repro_mdx_a_time_only": (
-                "Demucs v3 — Repro MDX A Time-Domain Only"
-            ),
+            "demucs:repro_mdx_a_hybrid_only": ("Demucs v3 — Repro MDX A Hybrid Only"),
+            "demucs:repro_mdx_a_time_only": ("Demucs v3 — Repro MDX A Time-Domain Only"),
             "demucs:UVR_Demucs_Model_1": "Demucs v3 — UVR Model (2 Stems)",
             "demucs:hdemucs_mmi": "Demucs v4 — Hybrid Demucs MMI",
             "demucs:htdemucs": "Demucs v4 — Hybrid Transformer",
@@ -513,16 +493,10 @@ class ProjectModelDisplayTests(unittest.TestCase):
                 self.assertEqual(project_model_display(model_id), expected)
 
         sourced = {
-            ("vr:private_model", "VR Arch Single Model v5: Custom Model"): (
-                "VR v5 — Custom Model"
-            ),
-            ("demucs:private_model", "Demucs v4: custom_model"): (
-                "Demucs v4 — custom_model"
-            ),
+            ("vr:private_model", "VR Arch Single Model v5: Custom Model"): ("VR v5 — Custom Model"),
+            ("demucs:private_model", "Demucs v4: custom_model"): ("Demucs v4 — custom_model"),
             ("vr:private_model", "VR v5 — Custom Model"): "VR v5 — Custom Model",
-            ("demucs:private_model", "Demucs v4 — Custom Model"): (
-                "Demucs v4 — Custom Model"
-            ),
+            ("demucs:private_model", "Demucs v4 — Custom Model"): ("Demucs v4 — Custom Model"),
         }
         for (model_id, source_label), expected in sourced.items():
             with self.subTest(model_id=model_id, source_label=source_label):
@@ -603,43 +577,60 @@ class ProjectModelDisplayTests(unittest.TestCase):
             with self.subTest(model_id=model_id):
                 self.assertEqual(project_model_display(model_id), expected)
 
-    def test_all_four_reviewed_collision_suffixes_remain_distinct(self) -> None:
+    def test_all_reviewed_collision_groups_remain_distinct(self) -> None:
         pairs = (
             (
                 "mdx:mbr_instfv9_gabox",
                 "mdx:mbr_instfv9_2_gabox",
-                "Mel-Band Roformer Instrumental Fv9 by GaboxR67",
                 "MelBand Roformer — Instrumental Fv9 · GaboxR67",
             ),
             (
                 "mdx:mbr_inst_becruily",
-                "mdx:mel_band_roformer_instrumental_becruily",
-                "Mel-Band Roformer Instrumental by becruily",
+                "mdx:mbr_guitar_becruily",
                 "MelBand Roformer — Instrumental · Becruily",
             ),
             (
                 "mdx:mbr_karaoke_fusion_aggr_gonzaluigi",
                 "mdx:mbr_karaoke_fusion2_aggr_gonzaluigi",
-                "Mel-Band Roformer Karaoke Fusion Aggressive by Gonzaluigi",
                 "MelBand Roformer — Karaoke Fusion Aggressive · Gonzaluigi",
             ),
-            (
-                "mdx:BS_Inst_EXP_VRL",
-                "mdx:bs_inst_exp_vlp_unwa",
-                "BS Roformer Instrumental EXP Value Residual by Unwa",
-                "BandSplit Roformer — Instrumental EXP Value Residual · Unwa",
-            ),
         )
-        for suffixed_id, same_title_id, source_label, expected_title in pairs:
-            with self.subTest(suffixed_id=suffixed_id):
-                suffixed = project_model_display(suffixed_id)
-                same_title = project_model_display(
-                    same_title_id,
-                    source_label=source_label,
-                )
-                self.assertEqual(same_title, expected_title)
-                self.assertTrue(suffixed.startswith(f"{expected_title} ["))
-                self.assertNotEqual(suffixed, same_title)
+        for first_id, second_id, expected_title in pairs:
+            with self.subTest(first_id=first_id):
+                first = project_model_display(first_id)
+                second = project_model_display(second_id)
+                self.assertTrue(first.startswith(f"{expected_title} ["))
+                self.assertTrue(second.startswith(f"{expected_title} ["))
+                self.assertNotEqual(first, second)
+
+        suffixed_id = "mdx:BS_Inst_EXP_VRL"
+        source_label = "BS Roformer Instrumental EXP Value Residual by Unwa"
+        expected_title = "BandSplit Roformer — Instrumental EXP Value Residual · Unwa"
+        with self.subTest(suffixed_id=suffixed_id):
+            suffixed = project_model_display(suffixed_id)
+            same_title = project_model_display(
+                "mdx:bs_inst_exp_vlp_unwa",
+                source_label=source_label,
+            )
+            self.assertEqual(same_title, expected_title)
+            self.assertTrue(suffixed.startswith(f"{expected_title} ["))
+            self.assertNotEqual(suffixed, same_title)
+
+    def test_every_retained_duplicate_artifact_has_exact_collision_waivers(self) -> None:
+        manifest = load_model_display_manifest()
+        required = {
+            "mdx:mbr_instfv9_gabox",
+            "mdx:mbr_instfv9_2_gabox",
+            "mdx:mbr_inst_becruily",
+            "mdx:mbr_guitar_becruily",
+            "mdx:mbr_karaoke_fusion_aggr_gonzaluigi",
+            "mdx:mbr_karaoke_fusion2_aggr_gonzaluigi",
+        }
+        for model_id in required:
+            with self.subTest(model_id=model_id):
+                reasons = manifest["waivers"].get(model_id, {})
+                self.assertIn("embedded-id", reasons)
+                self.assertIn("underscore", reasons)
 
     def test_gonza_and_gonzaluigi_attributions_remain_distinct(self) -> None:
         self.assertNotEqual(

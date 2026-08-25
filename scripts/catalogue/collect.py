@@ -1043,6 +1043,7 @@ def _parse_catalogue_entry(
     yaml_name = ""
     yaml_url = ""
     weight = ""
+    weight_candidates: List[str] = []
     if isinstance(payload, str):
         weight = payload
     elif isinstance(payload, dict):
@@ -1053,6 +1054,13 @@ def _parse_catalogue_entry(
                     yaml_url = ref
             elif key.endswith((".pth", ".onnx", ".ckpt", ".th")):
                 weight = key
+                weight_candidates.append(key)
+        if family == "Demucs" and weight_candidates:
+            # Remote JSON preserves server insertion order while the atomic
+            # cache sorts object keys. A bag contains every member checkpoint,
+            # so choose one deterministic representative for audit/display
+            # instead of letting fresh-online and warm-offline reports differ.
+            weight = sorted(weight_candidates, key=str.casefold)[-1]
 
     meta = ModelEntry(
         source=source,

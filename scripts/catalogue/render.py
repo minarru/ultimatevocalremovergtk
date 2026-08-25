@@ -669,8 +669,20 @@ _VOLATILE_PREFIXES = ("Generated: ", "- Snapshot ", "- Source ", "- Cache ")
 
 
 def _canonical_for_diff(text: str) -> str:
-    """``text`` with the volatile header lines removed, for drift comparison."""
-    return "\n".join(line for line in text.splitlines() if not line.startswith(_VOLATILE_PREFIXES))
+    """``text`` without volatile generation and provenance metadata."""
+    canonical: List[str] = []
+    in_provenance = False
+    for line in text.splitlines():
+        if line == "## Source provenance":
+            in_provenance = True
+            continue
+        if in_provenance:
+            if not line.startswith("## "):
+                continue
+            in_provenance = False
+        if not line.startswith(_VOLATILE_PREFIXES):
+            canonical.append(line)
+    return "\n".join(canonical)
 
 
 def _text_matches(path: str, text: str) -> bool:
