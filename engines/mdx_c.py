@@ -334,12 +334,9 @@ def mdx_vocal_split_chain_sources(
     routes: typing.Sequence[typing.Any] | None = None,
 ) -> dict[str, typing.Any]:
     """Build a chain handoff from exact reviewed native dependencies only."""
-    merged = dict(maps)
     demix = demix_sources if isinstance(demix_sources, dict) else {}
     if routes is None:
-        for key, source in demix.items():
-            merged.setdefault(str(key), _channel_last_for_write(source))
-        return merged
+        return {}
 
     handoff: dict[str, typing.Any] = {}
     canonical_by_role = {

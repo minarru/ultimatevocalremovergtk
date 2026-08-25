@@ -223,17 +223,15 @@ class SourcePickerTests(unittest.TestCase):
 
 
 class ChainSourceMergeTests(unittest.TestCase):
-    def test_unreviewed_aliases_remain_raw_without_canonical_promotion(self) -> None:
+    def test_route_less_aliases_yield_no_chain_handoff(self) -> None:
         voc = _arr(1.0)
         inst = _arr(2.0)
-        merged = mdx_vocal_split_chain_sources(
+        handoff = mdx_vocal_split_chain_sources(
             {},
             {"vocal": voc, "other": inst},
         )
 
-        self.assertEqual(list(merged), ["vocal", "other"])
-        self.assertNotIn(VOCAL_STEM, merged)
-        self.assertNotIn(INST_STEM, merged)
+        self.assertEqual(handoff, {})
 
     def test_reviewed_routes_publish_only_exact_native_dependencies(self) -> None:
         voc = _arr(1.0)
@@ -284,20 +282,27 @@ class ChainSourceMergeTests(unittest.TestCase):
 
         self.assertEqual(handoff, {})
 
-    def test_four_stem_has_vocals_but_no_instrumental(self) -> None:
-        voc = _arr(1.0)
-        merged = mdx_vocal_split_chain_sources(
+    def test_empty_routes_fail_closed_for_canonical_spelling(self) -> None:
+        handoff = mdx_vocal_split_chain_sources(
+            {},
+            {VOCAL_STEM: _arr(1.0), INST_STEM: _arr(2.0)},
+            routes=(),
+        )
+
+        self.assertEqual(handoff, {})
+
+    def test_route_less_four_stem_map_yields_no_chain_handoff(self) -> None:
+        handoff = mdx_vocal_split_chain_sources(
             {},
             {
                 "drums": _arr(0.0),
                 "bass": _arr(0.0),
                 "other": _arr(3.0),
-                "vocals": voc,
+                "vocals": _arr(1.0),
             },
         )
-        vocal, instrumental = vocal_inst_from_sources(merged)
-        self.assertIsInstance(vocal, np.ndarray)
-        self.assertIsNone(instrumental)
+
+        self.assertEqual(handoff, {})
 
     def test_string_placeholder_is_not_an_array(self) -> None:
         vocal, _inst = vocal_inst_from_sources({VOCAL_STEM: "Vocals"})
@@ -536,12 +541,25 @@ class VocalSplitChainHandoffTests(unittest.TestCase):
             setattr(sep, key, value)
         return sep
 
-    def test_canonical_maps_invoke_chain_with_ndarrays(self) -> None:
+    def test_reviewed_exact_sources_invoke_chain(self) -> None:
         sep = self._sep()
-        voc = _arr(1.0).T
-        inst = _arr(2.0).T
+        routes = model_stem_routes(
+            _semantic_model(
+                "mdx:mel_band_roformer_vocals_becruily",
+                ["vocals", "other"],
+                backend_primary="vocals",
+                vocal_split=False,
+            )
+        )
+        handoff = mdx_vocal_split_chain_sources(
+            {},
+            {"VOCALS": _arr(1.0), "OTHER": _arr(2.0)},
+            routes=routes,
+        )
+
         with patch("engines.base.process_chain_model") as chain:
-            sep._process_vocal_split_chain({VOCAL_STEM: voc, INST_STEM: inst})
+            sep._process_vocal_split_chain(handoff)
+
         chain.assert_called_once()
         kwargs = chain.call_args.kwargs
         self.assertIsInstance(kwargs["master_vocal_source"], np.ndarray)
@@ -559,6 +577,21 @@ class VocalSplitChainHandoffTests(unittest.TestCase):
                 with patch("engines.base.process_chain_model") as chain:
                     sep._process_vocal_split_chain(payload)
                 chain.assert_not_called()
+
+    def test_route_less_canonical_raw_sources_do_not_invoke_chain(self) -> None:
+        sep = self._sep()
+        handoff = mdx_vocal_split_chain_sources(
+            {},
+            {
+                VOCAL_STEM: _arr(1.0),
+                INST_STEM: _arr(2.0),
+            },
+        )
+
+        with patch("engines.base.process_chain_model") as chain:
+            sep._process_vocal_split_chain(handoff)
+
+        chain.assert_not_called()
 
     def test_string_payload_does_not_invoke_chain(self) -> None:
         sep = self._sep()
