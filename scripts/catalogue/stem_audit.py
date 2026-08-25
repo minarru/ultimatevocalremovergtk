@@ -32,6 +32,7 @@ from core.stem_roles import (
     StemProcessingContext,
     StemProduction,
     StemReviewStatus,
+    StemRoleId,
 )
 
 STEM_SEMANTICS_REFERENCE_HEADERS = (
@@ -73,6 +74,11 @@ class CatalogueEvidenceCounts:
     normalized_names: int
     primary_names: int
     community_tokens: tuple[str, ...]
+
+    @property
+    def complement_only_names(self) -> int:
+        """Number of fixed complement-only vocabulary supplements."""
+        return len(_COMPLEMENT_ONLY_NAMES)
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +126,16 @@ class StemAuditResult:
     def diagnostics_with_code(self, code: str) -> tuple[StemAuditDiagnostic, ...]:
         """Return findings of one stable machine-readable kind."""
         return tuple(diagnostic for diagnostic in self.diagnostics if diagnostic.code == code)
+
+
+@dataclass(frozen=True, slots=True)
+class _ContextRoleProjection:
+    """Declared roles and the roles that survived exact runtime resolution."""
+
+    model_id: str
+    context: StemProcessingContext
+    declared_roles: frozenset[str]
+    resolved_roles: frozenset[str]
 
 
 def _audit_key(value: object) -> str:
@@ -265,6 +281,7 @@ def _role_collision_diagnostics(
 def _pair_diagnostics(
     registry: StemSemanticsRegistry,
     catalogue_model_ids: tuple[str, ...],
+    context_projections: Sequence[_ContextRoleProjection],
 ) -> list[StemAuditDiagnostic]:
     users = _role_users(registry)
     diagnostics = []
@@ -274,17 +291,37 @@ def _pair_diagnostics(
         for role in roles:
             pair_ids_by_role[str(role)].append(pair_id)
         present = tuple(role for role in roles if role in registry.roles)
-        if len(roles) == 2 and roles[0] != roles[1] and len(present) == 2:
-            continue
-        diagnostics.append(
-            StemAuditDiagnostic(
-                code="pair-incomplete",
-                model_ids=_affected_role_users(roles, users, catalogue_model_ids),
-                message=f"{pair_id} must define two distinct existing roles",
-                expected=tuple(str(role) for role in roles),
-                actual=tuple(str(role) for role in present),
+        definition_is_complete = len(roles) == 2 and roles[0] != roles[1] and len(present) == 2
+        if not definition_is_complete:
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="pair-incomplete",
+                    model_ids=_affected_role_users(roles, users, catalogue_model_ids),
+                    message=f"{pair_id} must define two distinct existing roles",
+                    expected=tuple(str(role) for role in roles),
+                    actual=tuple(str(role) for role in present),
+                )
             )
-        )
+            continue
+        expected_roles = tuple(str(role) for role in roles)
+        expected_role_set = frozenset(expected_roles)
+        for projection in context_projections:
+            if not expected_role_set.issubset(projection.declared_roles):
+                continue
+            if expected_role_set.issubset(projection.resolved_roles):
+                continue
+            diagnostics.append(
+                StemAuditDiagnostic(
+                    code="pair-context-incomplete",
+                    model_ids=(projection.model_id,),
+                    context=projection.context,
+                    message=f"{pair_id} resolved without every declared pair role",
+                    expected=expected_roles,
+                    actual=tuple(
+                        role for role in expected_roles if role in projection.resolved_roles
+                    ),
+                )
+            )
     for role, pair_ids in pair_ids_by_role.items():
         if len(pair_ids) < 2:
             continue
@@ -379,9 +416,10 @@ def _context_diagnostics(
     declaration: Any,
     runtime_signature: tuple[str, ...],
     registry: StemSemanticsRegistry,
-) -> tuple[list[StemAuditDiagnostic], bool]:
+) -> tuple[list[StemAuditDiagnostic], bool, list[_ContextRoleProjection]]:
     diagnostics = []
     full_mix_reviewed = False
+    projections = []
     if StemProcessingContext.FULL_MIX not in declaration.contexts:
         diagnostics.append(
             StemAuditDiagnostic(
@@ -449,6 +487,14 @@ def _context_diagnostics(
                 registry=registry,
             )
         except (AttributeError, KeyError, TypeError, ValueError) as error:
+            projections.append(
+                _ContextRoleProjection(
+                    model_id,
+                    context,
+                    frozenset(roles),
+                    frozenset(),
+                )
+            )
             diagnostics.append(
                 StemAuditDiagnostic(
                     code="context-resolution-error",
@@ -458,6 +504,18 @@ def _context_diagnostics(
                 )
             )
             continue
+        projections.append(
+            _ContextRoleProjection(
+                model_id,
+                context,
+                frozenset(roles),
+                frozenset(
+                    str(output.role)
+                    for output in resolved.outputs
+                    if isinstance(output.role, StemRoleId)
+                ),
+            )
+        )
         if resolved.status is not StemReviewStatus.REVIEWED:
             diagnostics.append(
                 StemAuditDiagnostic(
@@ -469,7 +527,7 @@ def _context_diagnostics(
             )
         elif context is StemProcessingContext.FULL_MIX:
             full_mix_reviewed = True
-    return diagnostics, full_mix_reviewed
+    return diagnostics, full_mix_reviewed, projections
 
 
 def _reference_digest(text: str | None) -> str:
@@ -544,6 +602,7 @@ def audit_catalogue_stems(
 
     reviewed_ids = set()
     raw_ids = set(missing)
+    context_role_projections: list[_ContextRoleProjection] = []
     for model_id, entry in model_ids_by_entry:
         if model_id in waiver_ids:
             continue
@@ -567,7 +626,7 @@ def audit_catalogue_stems(
                     actual=runtime_signature,
                 )
             )
-        context_findings, full_mix_reviewed = _context_diagnostics(
+        context_findings, full_mix_reviewed, model_context_projections = _context_diagnostics(
             model_id,
             entry,
             declaration,
@@ -575,6 +634,7 @@ def audit_catalogue_stems(
             selected_registry,
         )
         diagnostics.extend(context_findings)
+        context_role_projections.extend(model_context_projections)
         if full_mix_reviewed:
             reviewed_ids.add(model_id)
         else:
@@ -609,7 +669,9 @@ def audit_catalogue_stems(
             )
 
     diagnostics.extend(_role_collision_diagnostics(selected_registry, catalogue_model_ids))
-    diagnostics.extend(_pair_diagnostics(selected_registry, catalogue_model_ids))
+    diagnostics.extend(
+        _pair_diagnostics(selected_registry, catalogue_model_ids, context_role_projections)
+    )
 
     evidence_counts = catalogue_evidence_counts(entries, context.community_by_file)
     actual_evidence = (

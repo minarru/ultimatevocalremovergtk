@@ -3,6 +3,7 @@ walking and config fetching are patched; only the script's own logic
 (sorting, table rendering, JSON output shape) is under test."""
 
 import importlib.util
+import inspect
 import io
 import json
 import os
@@ -11,7 +12,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr
 from typing import Any, Optional
-from unittest.mock import patch
+from unittest.mock import mock_open, patch
 
 _SPEC = importlib.util.spec_from_file_location(
     "stem_semantics_audit",
@@ -105,8 +106,14 @@ class CatalogueEvidenceCountTests(unittest.TestCase):
     def test_exact_member_community_tokens_extend_only_the_audit_vocabulary(self) -> None:
         from types import SimpleNamespace
 
+        from catalogue.collect import ModelEntry
+        from catalogue.stem_audit import catalogue_evidence_counts
+
         entries = [
-            SimpleNamespace(
+            ModelEntry(
+                source="fixture",
+                family="MDX-Net ONNX",
+                catalogue_label="Present",
                 weight_file="present.ckpt",
                 instruments=["vocals"],
                 primary_stem="Vocals",
@@ -118,226 +125,106 @@ class CatalogueEvidenceCountTests(unittest.TestCase):
             "missing.ckpt": SimpleNamespace(stems_text="invented-token"),
         }
 
-        counts = stem_semantics_audit.catalogue_evidence_counts(entries, refs)
+        counts = catalogue_evidence_counts(entries, refs)
 
         self.assertEqual(counts.literal_names, 9)
         self.assertEqual(counts.normalized_names, 8)
         self.assertEqual(counts.primary_names, 1)
         self.assertEqual(counts.community_tokens, ("bleed", "echo", "Vocals"))
 
-    def test_incomplete_supplemental_context_cannot_satisfy_pinned_evidence_gate(self) -> None:
-        incomplete = stem_semantics_audit.CatalogueEvidenceCounts(
-            literal_names=138,
-            normalized_names=121,
-            primary_names=88,
-            community_tokens=(),
-        )
-
-        self.assertEqual(
-            stem_semantics_audit.pinned_evidence_count_errors(incomplete),
-            (
-                "literal_names=138 (expected 148)",
-                "normalized_names=121 (expected 123)",
-                "primary_names=88 (expected 92)",
-            ),
-        )
-
 
 class StrictAuditMutationTests(unittest.TestCase):
-    def test_classic_karaoke_projection_rejects_stale_community_signature(self) -> None:
-        projected = stem_semantics_audit._strict_native_signature(
-            "mdx:UVR_MDXNET_KARA_2",
-            ("other", "vocals"),
-            target_instrument="other",
-            metadata_source="community_models.txt",
+    def test_strict_check_adapts_one_collection_to_the_structured_audit(self) -> None:
+        from catalogue import collect, render
+        from catalogue.stem_audit import (
+            CatalogueEvidenceCounts,
+            StemAuditDiagnostic,
+            StemAuditResult,
         )
 
-        self.assertEqual(projected, ("Instrumental", "Vocals"))
-        self.assertFalse(stem_semantics_audit._signature_matches(("other", "vocals"), projected))
-        self.assertTrue(
-            stem_semantics_audit._signature_matches(("Instrumental", "Vocals"), projected)
-        )
-
-    def test_exact_vr_bve_inventory_supplement_does_not_cover_other_missing_models(self) -> None:
-        exact_id = "vr:UVR-BVE-4B_SN-44100-1"
-
-        self.assertEqual(
-            stem_semantics_audit._strict_native_signature(exact_id, ()),
-            ("Vocals", "Instrumental"),
-        )
-        self.assertEqual(
-            stem_semantics_audit._strict_native_signature("vr:custom", ()),
-            (),
-        )
-        self.assertEqual(
-            stem_semantics_audit._strict_native_signature(exact_id, ("Wrong", "Other")),
-            ("Wrong", "Other"),
-        )
-
-    def test_context_gate_counts_duplicate_primary_and_signature_failures(self) -> None:
-        duplicate = stem_semantics_audit._context_audit_errors(
-            roles=("vocal.lead", "vocal.lead"),
-            logical_primary="vocal.lead",
-            reviewed=True,
-            signature_matches=True,
-        )
-        absent_primary = stem_semantics_audit._context_audit_errors(
-            roles=("vocal.lead", "mix.instrumental"),
-            logical_primary="vocal.backing",
-            reviewed=True,
-            signature_matches=False,
-        )
-        self.assertIn("duplicate-role", duplicate)
-        self.assertIn("logical-primary", absent_primary)
-        self.assertIn("signature", absent_primary)
-
-    def test_target_projection_gate_requires_runtime_signature_and_derived_dependency(self) -> None:
-        from types import SimpleNamespace
-
-        native_role = "instrument.bass"
-        valid = SimpleNamespace(
-            native_signature=("bass",),
-            contexts={
-                "full_mix": SimpleNamespace(
-                    outputs=(
-                        SimpleNamespace(native=SimpleNamespace(raw="bass"), role=native_role),
-                        SimpleNamespace(
-                            native=None,
-                            role="instrument.bass.removed",
-                            complement_of=native_role,
-                            derived_from=(),
-                        ),
-                    )
-                )
-            },
-        )
-        invalid = SimpleNamespace(
-            native_signature=("bass", "other"),
-            contexts={
-                "full_mix": SimpleNamespace(
-                    outputs=(
-                        SimpleNamespace(native=SimpleNamespace(raw="bass"), role=native_role),
-                        SimpleNamespace(
-                            native=SimpleNamespace(raw="other"),
-                            role="instrument.bass.removed",
-                            complement_of=None,
-                            derived_from=(),
-                        ),
-                    )
-                )
-            },
-        )
-
-        self.assertEqual(
-            stem_semantics_audit._target_projection_audit_errors(valid, ("bass",)),
-            (),
-        )
-        self.assertIn(
-            "target-runtime-signature",
-            stem_semantics_audit._target_projection_audit_errors(invalid, ("bass",)),
-        )
-        self.assertIn(
-            "missing-derived-complement",
-            stem_semantics_audit._target_projection_audit_errors(invalid, ("bass",)),
-        )
-
-    def test_role_collision_gate_uses_unicode_casefold(self) -> None:
-        from types import SimpleNamespace
-
-        definitions = (
-            SimpleNamespace(display="Noise", filename_tag="Noise"),
-            SimpleNamespace(display="ＮＯＩＳＥ", filename_tag="noise"),
-        )
-        self.assertEqual(stem_semantics_audit._role_collision_count(definitions), 2)
-
-    def test_pair_gate_rejects_dangling_and_absent_pair_roles(self) -> None:
-        from types import SimpleNamespace
-
-        pairs = {
-            "pair.vocal": SimpleNamespace(roles=("vocal.lead", "vocal.backing")),
-            "pair.dangling": SimpleNamespace(roles=("vocal.lead", "missing.role")),
-        }
-        self.assertEqual(
-            stem_semantics_audit._pair_audit_errors(
-                pairs,
-                {"vocal.lead": object(), "vocal.backing": object()},
-                {("model", "full_mix", "pair.vocal"): {"vocal.lead"}},
-            ),
-            2,
-        )
-
-    def test_vocal_split_gate_requires_structured_or_reviewed_bve_eligibility(self) -> None:
         from core.stem_roles import StemProcessingContext
 
-        self.assertEqual(
-            stem_semantics_audit._vocal_split_audit_errors(
-                model_id="mdx:plain",
-                is_karaoke=True,
-                declared_contexts={},
+        context = collect.CatalogueContext()
+        entries = [object(), object()]
+        result = StemAuditResult(
+            catalogue_model_ids=("mdx:a", "mdx:b"),
+            reviewed_model_ids=(),
+            waived_model_ids=(),
+            raw_model_ids=("mdx:a", "mdx:b"),
+            evidence_counts=CatalogueEvidenceCounts(140, 120, 90, ()),
+            diagnostics=(
+                StemAuditDiagnostic(
+                    "catalogue-unreviewed", ("mdx:a", "mdx:b"), "missing declarations"
+                ),
+                StemAuditDiagnostic("native-signature", ("mdx:a",), "bad signature"),
+                StemAuditDiagnostic(
+                    "context-unreviewed",
+                    ("mdx:a",),
+                    "raw context",
+                    context=StemProcessingContext.FULL_MIX,
+                ),
+                StemAuditDiagnostic(
+                    "role-display-collision",
+                    ("mdx:a", "mdx:b"),
+                    "three colliding roles",
+                    actual=("role.a", "role.b", "role.c"),
+                ),
+                StemAuditDiagnostic("pair-context-incomplete", ("mdx:a",), "missing pair role"),
+                StemAuditDiagnostic(
+                    "reference-drift",
+                    ("mdx:a", "mdx:b"),
+                    "reference changed",
+                    structural=False,
+                ),
+                StemAuditDiagnostic(
+                    "evidence-count",
+                    ("mdx:a", "mdx:b"),
+                    "evidence changed",
+                    expected=("148", "123", "92"),
+                    actual=("140", "120", "90"),
+                ),
             ),
-            ("missing-vocal-split",),
         )
-        self.assertEqual(
-            stem_semantics_audit._vocal_split_audit_errors(
-                model_id="mdx:mbr_bve_gonzaluigi",
-                is_karaoke=False,
-                declared_contexts={StemProcessingContext.VOCAL_SPLIT: object()},
-            ),
-            (),
-        )
-        self.assertEqual(
-            stem_semantics_audit._vocal_split_audit_errors(
-                model_id="vr:UVR-BVE-4B_SN-44100-1",
-                is_karaoke=False,
-                declared_contexts={StemProcessingContext.VOCAL_SPLIT: object()},
-            ),
-            (),
-        )
-        self.assertEqual(
-            stem_semantics_audit._vocal_split_audit_errors(
-                model_id="mdx:plain",
-                is_karaoke=False,
-                declared_contexts={StemProcessingContext.VOCAL_SPLIT: object()},
-            ),
-            ("unexpected-vocal-split",),
-        )
+        source = inspect.getsource(stem_semantics_audit.strict_catalogue_check)
+        self.assertNotIn("csv.reader", source)
+        self.assertNotIn("resolve_model_stem_semantics", source)
 
-    def test_reference_gate_rejects_each_per_output_field_drift(self) -> None:
-        header = "\t".join(stem_semantics_audit._REFERENCE_HEADERS)
-        row = [
-            "model",
-            "display",
-            "vocals|other",
-            "full_mix",
-            "vocals",
-            "native",
-            "vocals",
-            "vocals",
-            "true",
-            "vocal.main",
-            "Vocals",
-            "Vocals",
-            "",
-            "vocal_pair",
-            "reviewed_manifest",
-            "reviewed",
-            "catalogue_id=model",
-        ]
-        expected = f"{header}\n{'\t'.join(row)}\n"
-        for index, original in enumerate(row):
-            with self.subTest(column=stem_semantics_audit._REFERENCE_HEADERS[index]):
-                changed = list(row)
-                changed[index] = f"changed-{index}" if original != f"changed-{index}" else "other"
-                actual = f"{header}\n{'\t'.join(changed)}\n"
-                self.assertGreater(
-                    stem_semantics_audit._reference_parity_errors(
-                        actual,
-                        expected,
-                        expected_ids={"model"},
-                        waiver_ids=set(),
-                    ),
-                    0,
-                )
+        with (
+            patch.object(collect, "_build_catalogue_context", return_value=context) as build,
+            patch.object(
+                collect,
+                "collect_entries",
+                return_value=(object(), entries),
+            ) as collect_once,
+            patch.object(
+                render,
+                "stem_semantics_reference_tsv",
+                return_value="expected reference",
+            ) as render_reference,
+            patch("builtins.open", mock_open(read_data="actual reference")),
+            patch(
+                "catalogue.stem_audit.audit_catalogue_stems",
+                return_value=result,
+            ) as structured_audit,
+        ):
+            ok, summary = stem_semantics_audit.strict_catalogue_check()
+
+        build.assert_called_once()
+        collect_once.assert_called_once()
+        render_reference.assert_called_once_with(entries)
+        structured_audit.assert_called_once_with(
+            entries,
+            context,
+            expected_reference_text="expected reference",
+            actual_reference_text="actual reference",
+        )
+        self.assertFalse(ok)
+        self.assertEqual(
+            summary,
+            "models=2 literal_names=140 normalized_names=120 primary_names=90\n"
+            "complement_only=4 unreviewed=2 signature_mismatches=2 collisions=2 "
+            "pair_errors=1 reference_errors=1 evidence_errors=3",
+        )
 
 
 class IterEntriesProgressTests(unittest.TestCase):

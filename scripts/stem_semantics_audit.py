@@ -32,12 +32,10 @@ requested JSON report, keeping any hashes already paid for.
 
 from __future__ import annotations
 
-import csv
 import json
 import os
 import sys
 import time
-import unicodedata
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Iterator, List, Optional
 
@@ -61,251 +59,6 @@ class HashLookup:
     digest: str = ""
     status: str = "no_url"
     error: str = ""
-
-
-@dataclass(frozen=True)
-class CatalogueEvidenceCounts:
-    """Provenanced vocabulary measurements; never semantic declarations."""
-
-    literal_names: int
-    normalized_names: int
-    primary_names: int
-    community_tokens: tuple[str, ...]
-
-
-_COMPLEMENT_ONLY_NAMES = frozenset({"drum-bass", "no bass", "no drums", "no other"})
-_PINNED_LITERAL_NAME_COUNT = 148
-_PINNED_NORMALIZED_NAME_COUNT = 123
-_PINNED_PRIMARY_NAME_COUNT = 92
-_REVIEWED_VOCAL_SPLIT_IDS = frozenset(
-    {
-        "mdx:mbr_bve_gonzaluigi",
-        "mdx:model_MelBand-Roformer_BVE_by-Gonza",
-        "vr:UVR-BVE-4B_SN-44100-1",
-    }
-)
-_REFERENCE_HEADERS = (
-    "model_id",
-    "model_display",
-    "native_signature",
-    "processing_context",
-    "native_stem",
-    "production",
-    "backend_primary",
-    "backend_target",
-    "logical_primary",
-    "role_id",
-    "canonical_name",
-    "filename_tag",
-    "pair_id",
-    "intent",
-    "intent_source",
-    "review_status",
-    "evidence_or_waiver",
-)
-
-
-def _audit_key(value: str) -> str:
-    """Use the manifest's Unicode/case-insensitive identity rules."""
-    return unicodedata.normalize("NFKC", value).strip().casefold()
-
-
-def _signature_matches(expected: tuple[str, ...], actual: tuple[str, ...]) -> bool:
-    """Match the resolver's exact, order-independent native signature gate."""
-    expected_keys = tuple(_audit_key(value) for value in expected)
-    actual_keys = tuple(_audit_key(value) for value in actual)
-    return len(expected_keys) == len(actual_keys) and set(expected_keys) == set(actual_keys)
-
-
-def _strict_native_signature(
-    model_id: str,
-    instruments: Any,
-    *,
-    target_instrument: str = "",
-    metadata_source: str = "",
-) -> tuple[str, ...]:
-    """Project catalogue evidence through the runtime inventory contract."""
-    from scripts.catalogue.collect import runtime_stem_signature
-
-    return runtime_stem_signature(
-        model_id,
-        instruments,
-        target_instrument=target_instrument,
-        metadata_source=metadata_source,
-    )
-
-
-def _context_audit_errors(
-    *, roles: tuple[Any, ...], logical_primary: Any, reviewed: bool, signature_matches: bool
-) -> tuple[str, ...]:
-    """Return independently countable declaration/context failures."""
-    errors = []
-    if not signature_matches:
-        errors.append("signature")
-    if not reviewed:
-        errors.append("unreviewed")
-    if len(set(roles)) != len(roles):
-        errors.append("duplicate-role")
-    primary_count = sum(role == logical_primary for role in roles)
-    if primary_count != 1:
-        errors.append("logical-primary")
-    return tuple(errors)
-
-
-def _target_projection_audit_errors(
-    declaration: Any,
-    runtime_signature: tuple[str, ...],
-) -> tuple[str, ...]:
-    """Require one native target and one explicitly dependent complement."""
-    errors: list[str] = []
-    if not _signature_matches(declaration.native_signature, runtime_signature):
-        errors.append("target-runtime-signature")
-    for context in declaration.contexts.values():
-        native = tuple(output for output in context.outputs if output.native is not None)
-        derived = tuple(output for output in context.outputs if output.native is None)
-        if len(native) != 1 or not _signature_matches(
-            tuple(output.native.raw for output in native), runtime_signature
-        ):
-            errors.append("target-native-output")
-        native_role = str(native[0].role) if len(native) == 1 else ""
-        if len(derived) != 1:
-            errors.append("missing-derived-complement")
-            continue
-        dependency_is_valid = str(derived[0].complement_of or "") == native_role or tuple(
-            str(role) for role in derived[0].derived_from
-        ) == (native_role,)
-        if not dependency_is_valid:
-            errors.append("missing-derived-complement")
-    return tuple(dict.fromkeys(errors))
-
-
-def _role_collision_count(definitions: Any) -> int:
-    """Count display and filename-tag collisions after Unicode normalization."""
-    displays = [_audit_key(definition.display) for definition in definitions]
-    tags = [_audit_key(definition.filename_tag) for definition in definitions]
-    return (len(displays) - len(set(displays))) + (len(tags) - len(set(tags)))
-
-
-def _pair_audit_errors(pairs: Any, roles: Any, context_roles: Any) -> int:
-    """Count dangling definitions and emitted pairs missing either required role."""
-    errors = sum(any(role not in roles for role in pair.roles) for pair in pairs.values())
-    for context_key, present_roles in context_roles.items():
-        pair_id = context_key[-1] if isinstance(context_key, tuple) else context_key
-        pair = pairs.get(pair_id)
-        normalized_present = {str(role) for role in present_roles}
-        if pair is None or not {str(role) for role in pair.roles}.issubset(normalized_present):
-            errors += 1
-    return errors
-
-
-def _vocal_split_audit_errors(
-    *, model_id: str, is_karaoke: bool, declared_contexts: Any
-) -> tuple[str, ...]:
-    """Enforce structured karaoke coverage, with only reviewed BVE exceptions."""
-    from core.stem_roles import StemProcessingContext
-
-    eligible = is_karaoke or model_id in _REVIEWED_VOCAL_SPLIT_IDS
-    has_vocal_split = StemProcessingContext.VOCAL_SPLIT in declared_contexts
-    if eligible and not has_vocal_split:
-        return ("missing-vocal-split",)
-    if has_vocal_split and not eligible:
-        return ("unexpected-vocal-split",)
-    return ()
-
-
-def _reference_parity_errors(
-    actual_text: str,
-    expected_text: str,
-    *,
-    expected_ids: set[str],
-    waiver_ids: set[str],
-) -> int:
-    """Validate fixed TSV schema and every generated per-output field."""
-    rows = list(csv.reader(actual_text.splitlines(), delimiter="\t"))
-    if not rows:
-        return 1
-    header, data = rows[0], rows[1:]
-    errors = 0
-    if tuple(header) != _REFERENCE_HEADERS or any(
-        len(row) != len(_REFERENCE_HEADERS) for row in data
-    ):
-        errors += 1
-    if {row[0] for row in data if row} != expected_ids:
-        errors += 1
-    for model_id in waiver_ids:
-        if not any(
-            len(row) == len(_REFERENCE_HEADERS)
-            and row[0] == model_id
-            and row[15] == "waived"
-            and row[16]
-            for row in data
-        ):
-            errors += 1
-    # This deliberately compares every field (not merely columns selected by
-    # a validator); a changed role, pair, provenance, or any output cell fails.
-    if actual_text != expected_text:
-        errors += 1
-    return errors
-
-
-def _community_stem_tokens(stems_text: str) -> tuple[str, ...]:
-    """Parse only literal output labels from the community evidence column."""
-    tokens = []
-    for raw in stems_text.split(","):
-        token = raw.replace("*", "").strip()
-        token = token.split("(", 1)[0].strip()
-        if token and token.casefold() != "unknown":
-            tokens.append(token)
-    return tuple(tokens)
-
-
-def catalogue_evidence_counts(
-    entries: Any, community_by_file: Dict[str, Any]
-) -> CatalogueEvidenceCounts:
-    """Count the approved evidence universe without changing runtime semantics."""
-    current_files = {str(entry.weight_file).casefold() for entry in entries}
-    literals = set(_COMPLEMENT_ONLY_NAMES)
-    primary = set()
-    community_tokens = set()
-    for entry in entries:
-        literals.update(str(stem) for stem in entry.instruments if str(stem))
-        if entry.primary_stem:
-            value = str(entry.primary_stem)
-            literals.add(value)
-            primary.add(value.casefold())
-        if entry.target_instrument:
-            literals.add(str(entry.target_instrument))
-    for filename, ref in community_by_file.items():
-        if filename.casefold() not in current_files:
-            continue
-        for token in _community_stem_tokens(str(ref.stems_text)):
-            literals.add(token)
-            community_tokens.add(token)
-    return CatalogueEvidenceCounts(
-        len(literals),
-        len({value.casefold() for value in literals}),
-        len(primary),
-        tuple(sorted(community_tokens, key=str.casefold)),
-    )
-
-
-def pinned_evidence_count_errors(counts: CatalogueEvidenceCounts) -> tuple[str, ...]:
-    """Return P2 audit-evidence drift without turning evidence into semantics.
-
-    A cold or incomplete supplemental context must not silently repin the
-    vocabulary baseline. The count gate audits collector provenance only; it
-    never creates a declaration, role, or catalogue identity.
-    """
-    expected = (
-        ("literal_names", counts.literal_names, _PINNED_LITERAL_NAME_COUNT),
-        ("normalized_names", counts.normalized_names, _PINNED_NORMALIZED_NAME_COUNT),
-        ("primary_names", counts.primary_names, _PINNED_PRIMARY_NAME_COUNT),
-    )
-    return tuple(
-        f"{name}={actual} (expected {expected_value})"
-        for name, actual, expected_value in expected
-        if actual != expected_value
-    )
 
 
 class HashCache:
@@ -636,16 +389,71 @@ def build_parser():
     return parser
 
 
-def strict_catalogue_check() -> tuple[bool, str]:
-    """Audit exact evidence through the runtime resolver, never guessed intent."""
-    from catalogue import collect, render
+_STRICT_SIGNATURE_DIAGNOSTIC_CODES = frozenset(
+    {
+        "native-signature",
+        "missing-full-mix",
+        "context-invalid",
+        "context-duplicate-role",
+        "context-logical-primary",
+        "context-native-signature",
+        "context-resolution-error",
+        "context-unreviewed",
+        "target-runtime-signature",
+        "target-native-output",
+        "target-derived-complement",
+        "missing-vocal-split",
+        "unexpected-vocal-split",
+    }
+)
 
-    from core.model_stem_manifest import (
-        BUNDLED_MANIFEST_PATH,
-        load_stem_manifest,
-        resolve_model_stem_semantics,
+
+def _legacy_strict_summary(result: Any, *, model_count: int) -> str:
+    """Retain the old one-line field contract over structured diagnostics."""
+    diagnostics = result.diagnostics
+    unreviewed_ids = {
+        model_id
+        for diagnostic in diagnostics
+        if diagnostic.code == "catalogue-unreviewed"
+        for model_id in diagnostic.model_ids
+    }
+    signature_mismatches = sum(
+        diagnostic.code in _STRICT_SIGNATURE_DIAGNOSTIC_CODES for diagnostic in diagnostics
     )
-    from core.stem_roles import StemReviewStatus
+    collisions = sum(
+        max(1, len(diagnostic.actual) - 1)
+        for diagnostic in diagnostics
+        if diagnostic.code in {"role-display-collision", "role-tag-collision"}
+    )
+    pair_errors = sum(diagnostic.code.startswith("pair-") for diagnostic in diagnostics)
+    reference_errors = sum(diagnostic.code == "reference-drift" for diagnostic in diagnostics)
+    evidence_errors = sum(
+        (
+            sum(
+                expected != actual
+                for expected, actual in zip(diagnostic.expected, diagnostic.actual, strict=True)
+            )
+            if len(diagnostic.expected) == len(diagnostic.actual)
+            else 1
+        )
+        for diagnostic in diagnostics
+        if diagnostic.code == "evidence-count"
+    )
+    counts = result.evidence_counts
+    return (
+        f"models={model_count} literal_names={counts.literal_names} "
+        f"normalized_names={counts.normalized_names} primary_names={counts.primary_names}\n"
+        f"complement_only={counts.complement_only_names} unreviewed={len(unreviewed_ids)} "
+        f"signature_mismatches={signature_mismatches} collisions={collisions} "
+        f"pair_errors={pair_errors} reference_errors={reference_errors} "
+        f"evidence_errors={evidence_errors}"
+    )
+
+
+def strict_catalogue_check() -> tuple[bool, str]:
+    """Compatibility adapter over the structured single-snapshot strict audit."""
+    from catalogue import collect, render
+    from catalogue.stem_audit import audit_catalogue_stems
 
     policy = collect.FetchPolicy(
         allow_network=False,
@@ -654,105 +462,21 @@ def strict_catalogue_check() -> tuple[bool, str]:
     )
     context = collect._build_catalogue_context(policy=policy)
     _snapshot, entries = collect.collect_entries(context, policy=policy)
-    registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
-    counts = catalogue_evidence_counts(entries, context.community_by_file)
-    evidence_errors = pinned_evidence_count_errors(counts)
-    missing = []
-    mismatches = []
-    invalid_contexts = []
-    for entry in entries:
-        model_id = render._canonical_model_id(entry)
-        if model_id in registry.waivers:
-            continue
-        declaration = registry.models.get(model_id)
-        if declaration is None:
-            missing.append(model_id)
-            continue
-        native_signature = _strict_native_signature(
-            model_id,
-            entry.instruments,
-            target_instrument=entry.target_instrument,
-            metadata_source=entry.metadata_source,
-        )
-        signature_matches = _signature_matches(declaration.native_signature, native_signature)
-        if not signature_matches:
-            mismatches.append(model_id)
-        if collect.is_runtime_target_instrument(
-            model_id,
-            target_instrument=entry.target_instrument,
-            metadata_source=entry.metadata_source,
-        ):
-            invalid_contexts.extend(
-                f"{model_id}:{error}"
-                for error in _target_projection_audit_errors(declaration, native_signature)
-            )
-        for processing_context, declared_context in declaration.contexts.items():
-            resolved = resolve_model_stem_semantics(
-                model_id,
-                native_stems=native_signature,
-                backend_primary=entry.primary_stem,
-                backend_target=entry.target_instrument,
-                context=processing_context,
-                registry=registry,
-            )
-            roles = [output.role for output in declared_context.outputs]
-            errors = _context_audit_errors(
-                roles=tuple(roles),
-                logical_primary=declared_context.logical_primary,
-                reviewed=resolved.status is StemReviewStatus.REVIEWED,
-                signature_matches=signature_matches,
-            )
-            if errors:
-                invalid_contexts.append(f"{model_id}:{processing_context.value}")
-        invalid_contexts.extend(
-            f"{model_id}:{error}"
-            for error in _vocal_split_audit_errors(
-                model_id=model_id,
-                is_karaoke=entry.is_karaoke,
-                declared_contexts=declaration.contexts,
-            )
-        )
-    collisions = _role_collision_count(registry.roles.values())
-    pair_errors = _pair_audit_errors(registry.pairs, registry.roles, {})
-    reference_errors = 0
+    expected_reference = render.stem_semantics_reference_tsv(entries)
     try:
-        reference_path = "docs/model_stem_semantics_reference.tsv"
-        with open(reference_path, encoding="utf-8", newline="") as handle:
+        with open(
+            "docs/model_stem_semantics_reference.tsv", encoding="utf-8", newline=""
+        ) as handle:
             actual_reference = handle.read()
-        expected_reference = render.stem_semantics_reference_tsv(entries)
-        expected_ids = {render._canonical_model_id(entry) for entry in entries}
-        reference_errors += _reference_parity_errors(
-            actual_reference,
-            expected_reference,
-            expected_ids=expected_ids,
-            waiver_ids=set(registry.waivers),
-        )
-        rows = list(csv.reader(actual_reference.splitlines(), delimiter="\t"))[1:]
-        paired_roles = {}
-        for row in rows:
-            if len(row) == len(_REFERENCE_HEADERS) and row[12]:
-                paired_roles.setdefault((row[0], row[3], row[12]), set()).add(row[9])
-        pair_errors += _pair_audit_errors(registry.pairs, registry.roles, paired_roles)
-    except (OSError, IndexError):
-        reference_errors += 1
-    summary = (
-        f"models={len(entries)} literal_names={counts.literal_names} "
-        f"normalized_names={counts.normalized_names} primary_names={counts.primary_names}\n"
-        f"complement_only={len(_COMPLEMENT_ONLY_NAMES)} unreviewed={len(missing)} "
-        f"signature_mismatches={len(mismatches) + len(invalid_contexts)} collisions={collisions} "
-        f"pair_errors={pair_errors} reference_errors={reference_errors} "
-        f"evidence_errors={len(evidence_errors)}"
+    except OSError:
+        actual_reference = None
+    result = audit_catalogue_stems(
+        entries,
+        context,
+        expected_reference_text=expected_reference,
+        actual_reference_text=actual_reference,
     )
-    return (
-        not missing
-        and not mismatches
-        and not invalid_contexts
-        and not collisions
-        and not pair_errors
-        and not reference_errors
-        and not evidence_errors,
-        summary,
-    )
+    return result.ok, _legacy_strict_summary(result, model_count=len(entries))
 
 
 def main(argv: Optional[List[str]] = None) -> int:

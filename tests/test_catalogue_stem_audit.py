@@ -394,6 +394,42 @@ class StructuredCatalogueStemAuditTests(unittest.TestCase):
         self.assertEqual(pair.expected, (str(VOCALS), str(missing)))
         self.assertEqual(pair.actual, (str(VOCALS),))
 
+    def test_incomplete_resolved_pair_projection_reports_exact_model_and_context(self) -> None:
+        registry = _registry(
+            {
+                "mdx:pair-context": _declaration(
+                    ("Lead", "Backing"),
+                    _context(
+                        VOCALS,
+                        _native("Lead", VOCALS),
+                        _native("Backing", INSTRUMENTAL),
+                    ),
+                )
+            }
+        )
+
+        result = audit_catalogue_stems(
+            [_entry("pair-context")],
+            collect.CatalogueContext(),
+            expected_reference_text="same",
+            actual_reference_text="same",
+            registry=registry,
+        )
+
+        self.assertEqual(
+            result.diagnostics_with_code("pair-context-incomplete"),
+            (
+                StemAuditDiagnostic(
+                    code="pair-context-incomplete",
+                    model_ids=("mdx:pair-context",),
+                    context=StemProcessingContext.FULL_MIX,
+                    message=("pair.vocals_instrumental resolved without every declared pair role"),
+                    expected=(str(VOCALS), str(INSTRUMENTAL)),
+                    actual=(),
+                ),
+            ),
+        )
+
     def test_evidence_and_reference_drift_are_structured_not_rendered_text(self) -> None:
         entry = _entry("fixture")
         registry = _registry(
