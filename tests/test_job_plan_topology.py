@@ -69,6 +69,24 @@ class PlannedOutputStemTests(unittest.TestCase):
         self.assertEqual(diagnostics[0].code, "ensemble.pair_repick")
         self.assertIn("two distinct", diagnostics[0].message)
 
+    def test_pair_selection_rejects_an_incomplete_additional_member(self) -> None:
+        from core.job_plan import _ensemble_pair_diagnostics
+
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
+        diagnostics = _ensemble_pair_diagnostics(
+            settings,
+            (
+                _desc("Vocals", "Instrumental", "mdx:complete-a"),
+                _desc("Vocals", "Instrumental", "mdx:complete-b"),
+                _four_desc("demucs:partial-four-stem"),
+            ),
+            command="ensemble",
+        )
+
+        self.assertEqual(diagnostics[0].code, "ensemble.pair_repick")
+        self.assertIn("Every selected member", diagnostics[0].message)
+
     def test_unknown_pair_selection_requests_an_explicit_repick(self) -> None:
         from core.job_plan import _ensemble_pair_diagnostics
 

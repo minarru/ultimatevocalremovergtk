@@ -554,16 +554,29 @@ def _ensemble_pair_diagnostics(
         return []
 
     required = frozenset(pair.roles)
-    eligible_members = {
-        descriptor.id
-        for descriptor in descriptors
-        if descriptor.id
-        and required.issubset({
+    eligible_members: set[str] = set()
+    incomplete_members: list[str] = []
+    for index, descriptor in enumerate(descriptors, start=1):
+        member_roles = {
             route.role
             for route in descriptor.routes
             if isinstance(route.role, StemRoleId)
-        })
-    }
+        }
+        member_name = descriptor.id or descriptor.display or f"member {index}"
+        if descriptor.id and required.issubset(member_roles):
+            eligible_members.add(descriptor.id)
+        else:
+            incomplete_members.append(member_name)
+    if incomplete_members:
+        return [Diagnostic(
+            "ensemble.pair_repick",
+            (
+                f"Every selected member needs complete reviewed role coverage for "
+                f"{pair.id!r}; incomplete: {', '.join(incomplete_members)}. "
+                "Choose a stem pair again"
+            ),
+            path="ensemble.main_stem",
+        )]
     if len(eligible_members) >= 2:
         return []
     return [Diagnostic(

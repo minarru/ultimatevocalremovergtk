@@ -1086,7 +1086,10 @@ class EnsemblePage:
         try:
             if identity_error is not None:
                 raise identity_error
-            eligible_ids = set(self.context.repo.ensemble_model_list(self.settings, pair))
+            pair_id = normalize_stem_pair_id(
+                getattr(getattr(self.settings, "ensemble", None), "main_stem", "")
+            )
+            eligible_ids = set(self.context.repo.ensemble_model_list(self.settings, pair_id))
             member_warnings = collect_member_warnings(eligible_ids)
             gated_ids = {
                 value
@@ -1136,7 +1139,7 @@ class EnsemblePage:
             return
 
         log_model_picker_items(
-            f"Ensemble members ({self.settings.ensemble.main_stem})",
+            f"Ensemble members ({pair.value})",
             ((record.id, record.display) for record in records),
         )
 

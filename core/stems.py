@@ -1369,6 +1369,12 @@ def run_export_routes(model: Any) -> Tuple[StemRoute, ...]:
         pair_id = normalize_stem_pair_id(getattr(ensemble, "main_stem", None))
         if is_stem_mode(pair_id):
             return available
+        if pair_id:
+            # A dual pair has already been filtered to its complete reviewed
+            # role coverage by ``ModelConfig._apply_stem_focus``.  An empty
+            # selection is intentional: falling back to ``available`` would
+            # let an incomplete four-stem member leak a shared role.
+            return selected
     return selected or available
 
 

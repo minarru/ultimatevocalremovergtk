@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from core.ensembler import CollectedStem, Ensembler, planned_ensemble_stems
 from core.export_naming import format_stem_basename
 from core.stem_roles import StemLiteral, StemRoleId
-from core.stems import StemId, StemRoute, StemRouteKind
+from core.stems import StemId, StemRoute, StemRouteKind, run_export_routes
 
 
 def _collector() -> Ensembler:
@@ -74,6 +74,80 @@ class PlannedCollectionTests(unittest.TestCase):
 
         self.assertEqual(reviewed_a.group_key, reviewed_b.group_key)
         self.assertNotEqual(raw_a.group_key, raw_b.group_key)
+
+    def test_planned_raw_literals_without_a_scope_remain_member_scoped(self) -> None:
+        """Fail closed when a raw route reaches collection without its scope."""
+        route = StemRoute(
+            StemId("Mystery"),
+            StemLiteral("Mystery"),
+            "Mystery",
+            "Mystery",
+            selection_scope="",
+        )
+        member_a = SimpleNamespace(
+            canonical_id="mdx:unknown-a",
+            is_vocal_split_model=False,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_inst_only_voc_splitter=False,
+            is_sec_bv_rebalance=False,
+            is_ensemble_mode=False,
+            selected_stem_routes=(route,),
+            available_stem_routes=(),
+        )
+        member_b = SimpleNamespace(
+            canonical_id="demucs:unknown-b",
+            is_vocal_split_model=False,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_inst_only_voc_splitter=False,
+            is_sec_bv_rebalance=False,
+            is_ensemble_mode=False,
+            selected_stem_routes=(route,),
+            available_stem_routes=(),
+        )
+
+        planned_a = planned_ensemble_stems(member_a)["Mystery"]
+        planned_b = planned_ensemble_stems(member_b)["Mystery"]
+
+        self.assertNotEqual(planned_a.group_key, planned_b.group_key)
+        self.assertEqual(planned_a.raw_scope, "mdx:unknown-a")
+        self.assertEqual(planned_b.raw_scope, "demucs:unknown-b")
+
+    def test_incomplete_four_stem_member_has_no_dual_pair_exports(self) -> None:
+        """A partial member cannot leak one reviewed role into a dual pair."""
+        from core.model_config.config import ModelConfig
+        from core.settings import Settings
+
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "pair.vocals_instrumental"
+        member = SimpleNamespace(
+            settings=settings,
+            canonical_id="mdx:model_scnet_ep_54_sdr_9.8051",
+            primary_stem="Drums",
+            primary_stem_native="Drums",
+            secondary_stem="",
+            target_instrument="",
+            is_vocal_split_model=False,
+            is_karaoke=False,
+            is_bv_model=False,
+            mdx_stem_count=4,
+            demucs_stem_count=0,
+            mdx_model_stems=["Drums", "Bass", "Other", "Vocals"],
+            demucs_source_list=[],
+            mdxnet_stems_selected=[],
+            is_mdx_include_stem_complement=False,
+            is_ensemble_mode=True,
+            is_secondary_model=False,
+            is_pre_proc_model=False,
+            is_inst_only_voc_splitter=False,
+            is_sec_bv_rebalance=False,
+        )
+
+        ModelConfig._apply_stem_focus(member)  # type: ignore[arg-type]
+
+        self.assertEqual(member.selected_stem_routes, ())
+        self.assertEqual(run_export_routes(member), ())
 
 
 if __name__ == "__main__":

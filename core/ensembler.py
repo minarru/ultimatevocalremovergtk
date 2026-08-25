@@ -63,7 +63,11 @@ def planned_ensemble_stems(model: object) -> dict[str, CollectedStem]:
         planned[tag] = CollectedStem(
             route.role,
             tag,
-            route.selection_scope if isinstance(route.role, StemLiteral) else source_id,
+            (
+                route.selection_scope or source_id
+                if isinstance(route.role, StemLiteral)
+                else source_id
+            ),
         )
     return planned
 

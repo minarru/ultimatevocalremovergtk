@@ -248,6 +248,38 @@ class _FakeListBox:
 
 
 class EnsemblePickerTests(unittest.TestCase):
+    def test_rebuild_passes_current_pair_id_to_repository(self) -> None:
+        """The repository boundary receives persisted semantic IDs, not UI adapters."""
+        from core.stems import EnsemblePair
+        from ui.ensemble import window as ensemble_window
+
+        requested: list[object] = []
+        page: Any = ensemble_window.EnsemblePage.__new__(ensemble_window.EnsemblePage)
+        page.models_listbox = _FakeListBox()
+        page.context = SimpleNamespace(
+            repo=SimpleNamespace(
+                ensemble_model_list=lambda _settings, pair: requested.append(pair) or []
+            )
+        )
+        page.settings = SimpleNamespace(
+            ensemble=SimpleNamespace(main_stem="pair.vocals_instrumental", selected_models=[])
+        )
+        # The deferred display adapter remains available to the page, but must
+        # never cross into exact-role repository eligibility.
+        page._ensemble_pair = lambda: EnsemblePair.VOCALS_INSTRUMENTAL
+        page._persist_selected_models = lambda: None
+        page._update_models_dialog_status = lambda: None
+        page._update_models_summary = lambda: None
+
+        with mock.patch(
+            "core.model_identity.ModelIdentityService.records", return_value=()
+        ), mock.patch.object(ensemble_window.Adw, "ActionRow", _FakeRow), mock.patch.object(
+            ensemble_window, "stash"
+        ):
+            page._rebuild_model_list([])
+
+        self.assertEqual(requested, ["pair.vocals_instrumental"])
+
     def test_rows_are_installed_ids_with_family_disambiguation_and_verbose_trace(self) -> None:
         from core import debug_log, glib_log
         from core.stems import EnsemblePair

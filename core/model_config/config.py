@@ -536,7 +536,6 @@ class ModelConfig:
         routes = model_stem_routes(self)
         self.available_stem_routes = routes
         positional = positional_stem_focus(focus)
-        selection_matched = False
         if positional:
             logical = tuple(route for route in routes if route.logical_primary)
             if positional == FOCUS_PRIMARY and len(logical) == 1:
@@ -558,7 +557,6 @@ class ModelConfig:
             )
         else:
             selection = select_stem_routes(routes, focus)
-            selection_matched = selection.status is StemSelectionStatus.MATCHED
             if selection.status is StemSelectionStatus.UNMATCHED:
                 selected = tuple(
                     route for route in routes if route.selected_by_default
@@ -591,19 +589,13 @@ class ModelConfig:
         # Dual-stem ensemble members default to the pair, not a 4-stem model's
         # full native inventory. Four/multi-stem members keep the selection for
         # final combine; ``run_export_routes`` emits the full inventory.
-        if (
-            not self.is_vocal_split_model
-            and bool(getattr(self, "is_ensemble_mode", False))
-            and not selection_matched
-        ):
+        if not self.is_vocal_split_model and bool(getattr(self, "is_ensemble_mode", False)):
             from core.stem_pairs import normalize_stem_pair_id, stem_pair_definition
 
             pair_id = normalize_stem_pair_id(self.settings.ensemble.main_stem)
             pair = stem_pair_definition(pair_id)
             if pair is not None:
-                pair_routes = routes_for_ensemble_pair(routes, pair)
-                if pair_routes:
-                    selected = pair_routes
+                selected = routes_for_ensemble_pair(routes, pair)
 
         self.selected_stem_routes = selected
 
