@@ -1,13 +1,19 @@
 """Mapping an EnsemblePair id to its two buckets / combo choices."""
 
+import tempfile
 import unittest
 
 from core.stem_pairs import is_stem_mode, stem_pair_definition
 from core.stems import (
     EnsemblePair,
     StemBucket,
+    StemId,
+    StemRoleId,
+    StemRoute,
+    StemRouteKind,
     coerce_ensemble_pair,
     ensemble_pair_choices,
+    routes_for_ensemble_pair,
     ui_label,
 )
 
@@ -106,6 +112,40 @@ class MainStemChoiceTests(unittest.TestCase):
         self.assertTrue(secondary)
         self.assertNotIn("/", primary)
         self.assertNotIn("/", secondary)
+
+    def test_center_side_uses_the_reviewed_pair_role_labels(self) -> None:
+        from core.ensembler import Ensembler
+        from core.settings import Settings
+
+        pair = coerce_ensemble_pair("pair.center_side")
+        self.assertEqual(pair.stem_halves(), ("Center", "Side"))
+        routes = (
+            StemRoute(
+                StemId("center"),
+                StemRoleId("spatial.center"),
+                label="Center",
+                filename_tag="Center",
+                kind=StemRouteKind.NATIVE,
+            ),
+            StemRoute(
+                StemId("wide"),
+                StemRoleId("spatial.side"),
+                label="Side",
+                filename_tag="Side",
+                kind=StemRouteKind.NATIVE,
+            ),
+        )
+        self.assertEqual(routes_for_ensemble_pair(routes, pair, object()), routes)
+
+        with tempfile.TemporaryDirectory() as export_path:
+            settings = Settings.defaults()
+            settings.ensemble.main_stem = "pair.center_side"
+            settings.ensemble.save_all_outputs = True
+            settings.process.export_path = export_path
+            ensembler = Ensembler(settings)
+
+        self.assertEqual(ensembler.ensemble_primary_stem, "Center")
+        self.assertEqual(ensembler.ensemble_secondary_stem, "Side")
 
 
 if __name__ == "__main__":

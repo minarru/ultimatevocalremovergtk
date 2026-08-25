@@ -235,6 +235,20 @@ class EnsemblePair(str, Enum):
         Complement pairs keep the historic ``No Other`` / ``No Drums`` /
         ``No Bass`` secondary labels. Non-pair modes return ``("", "")``.
         """
+        if self is EnsemblePair.CENTER_SIDE:
+            registry = load_bundled_stem_semantics()
+            definition = registry.pairs.get(self.value)
+            if definition is None:
+                return "", ""
+            labels: list[str] = []
+            for role in definition.roles:
+                role_definition = registry.roles.get(role)
+                if role_definition is None:
+                    return "", ""
+                labels.append(role_definition.display)
+            if len(labels) != 2:
+                return "", ""
+            return labels[0], labels[1]
         table = {
             EnsemblePair.VOCALS_INSTRUMENTAL: (VOCAL_STEM, INST_STEM),
             EnsemblePair.KARAOKE: (

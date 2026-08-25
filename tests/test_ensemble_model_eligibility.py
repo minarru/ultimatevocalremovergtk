@@ -19,7 +19,7 @@ class _FakeModel:
     def __init__(self, tag: str, primary: str, stems: typing.Sequence[str], *,
                  is_karaoke: bool = False, is_bv: bool = False,
                  demucs_sources: typing.Sequence[str] = (),
-                 demucs_stem_count: int = 0) -> None:
+                 demucs_stem_count: int = 0, canonical_id: str = "") -> None:
         self.model_and_process_tag = tag
         arch, _, name = tag.partition(ENSEMBLE_PARTITION)
         self.process_method = arch
@@ -31,6 +31,7 @@ class _FakeModel:
         self.is_bv_model = is_bv
         self.demucs_source_list = list(demucs_sources)
         self.demucs_stem_count = demucs_stem_count
+        self.canonical_id = canonical_id
 
 
 def _eligible(models: typing.Sequence[typing.Any], main_stem: typing.Any) -> typing.List[str]:
@@ -59,7 +60,7 @@ class PreviouslyExcludedModelTests(unittest.TestCase):
         # mbr_inst2_unwa, melband_roformer_inst_v1e_plus, Resurrection
         models = [_FakeModel("MDX-Net: inst2_unwa", "other", ["other"])]
         self.assertEqual(
-            _eligible(models, EnsemblePair.VOCALS_INSTRUMENTAL.value),
+            _eligible(models, "pair.vocals_instrumental"),
             ["mdx:inst2_unwa"],
         )
 
@@ -115,6 +116,32 @@ class KaraokeSeparationTests(unittest.TestCase):
     def test_bv_model_also_leaves_vocal_instrumental(self) -> None:
         models = [_FakeModel("MDX-Net: bv", "Vocals", ["Vocals"], is_bv=True)]
         self.assertEqual(_eligible(models, EnsemblePair.VOCALS_INSTRUMENTAL), [])
+
+
+class CenterSideSemanticPairTests(unittest.TestCase):
+    def test_reviewed_center_side_models_are_eligible_by_current_pair_id(self) -> None:
+        """Spatial eligibility is driven by the reviewed manifest roles.
+
+        Native ``center``/``wide`` strings alone cannot opt a model into the
+        semantic pair: the exact canonical model declaration must also match.
+        """
+        reviewed = _FakeModel(
+            "MDX-Net: mid_side1",
+            "center",
+            ["center", "wide"],
+            canonical_id="mdx:bs_mid_side1_gilliaaan",
+        )
+        unreviewed = _FakeModel(
+            "MDX-Net: unknown_spatial",
+            "center",
+            ["center", "wide"],
+            canonical_id="mdx:unknown_spatial",
+        )
+
+        self.assertEqual(
+            _eligible([reviewed, unreviewed], "pair.center_side"),
+            ["mdx:bs_mid_side1_gilliaaan"],
+        )
 
 
 class SecondaryOtherWantedBucketsTests(unittest.TestCase):

@@ -162,6 +162,26 @@ class MainStemChangedOrderTests(unittest.TestCase):
         )
 
 
+class CenterSideReadinessTests(unittest.TestCase):
+    def test_current_center_side_id_is_ready_with_two_selected_models(self) -> None:
+        """The current spatial pair reaches the normal ensemble readiness path."""
+        from core.settings import Settings
+        from ui.ensemble.window import EnsemblePage
+
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "pair.center_side"
+        settings.ensemble.selected_models = [
+            "mdx:bs_mid_side1_gilliaaan",
+            "mdx:bs_mid_side2_gilliaaan",
+        ]
+        page = object.__new__(EnsemblePage)
+        page.settings = settings
+        page._effective_selected_models = lambda: settings.ensemble.selected_models
+
+        self.assertEqual(page._ensemble_pair(), EnsemblePair.CENTER_SIDE)
+        self.assertIsNone(page._config_blocked_reason())
+
+
 class RebuildStemOnlyTogglesConfidenceTests(unittest.TestCase):
     """Regression: _rebuild_stem_only_toggles is a second configure_exclusive
     call site the stem-focus anchoring plan's spec missed (it claimed only

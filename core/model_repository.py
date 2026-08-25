@@ -586,6 +586,21 @@ class ModelRepository:
             return self.model_list(
                 settings, PRIMARY_STEM, SECONDARY_STEM, is_4_stem_check=True
             )
+        if pair is EnsemblePair.CENTER_SIDE:
+            # ``center`` and ``side`` have no legacy StemBucket projection.
+            # During the semantic cutover, admit this current UI choice only
+            # when an exact reviewed full-mix declaration supplies both roles.
+            # Do not infer it from backend-native labels such as ``wide``.
+            from core.stem_pairs import stem_pair_definition
+
+            definition = stem_pair_definition("pair.center_side")
+            if definition is None:
+                return []
+            return [
+                _checklist_id(model)
+                for model in self.stem_check(settings)
+                if _has_reviewed_full_mix_roles(model, definition.roles)
+            ]
         primary, secondary = pair.buckets()
         primary_ui, secondary_ui = pair.stem_halves()
         wanted = {primary, secondary}
@@ -747,6 +762,47 @@ def _has_reviewed_vocal_split_context(model: Any) -> bool:
         context=StemProcessingContext.VOCAL_SPLIT,
     )
     return semantics.status is StemReviewStatus.REVIEWED
+
+
+def _has_reviewed_full_mix_roles(model: Any, required_roles: typing.Iterable[Any]) -> bool:
+    """Require exact reviewed full-mix roles for a semantic ensemble pair."""
+    native_stems: tuple[str, ...] = ()
+    for attribute in ("mdx_model_stems", "demucs_source_list"):
+        value = getattr(model, attribute, ())
+        if isinstance(value, (list, tuple)) and value:
+            native_stems = tuple(str(item) for item in value if item)
+            if native_stems:
+                break
+    if not native_stems:
+        native_stems = tuple(
+            dict.fromkeys(
+                str(item)
+                for item in (
+                    getattr(model, "primary_stem_native", None)
+                    or getattr(model, "primary_stem", None),
+                    getattr(model, "secondary_stem", None),
+                )
+                if item
+            )
+        )
+    model_id = _checklist_id(model)
+    if not model_id or not native_stems:
+        return False
+    semantics = resolve_model_stem_semantics(
+        model_id,
+        native_stems=native_stems,
+        backend_primary=str(
+            getattr(model, "primary_stem_native", None)
+            or getattr(model, "primary_stem", "")
+            or ""
+        ),
+        backend_target=str(getattr(model, "target_instrument", "") or ""),
+        context=StemProcessingContext.FULL_MIX,
+    )
+    if semantics.status is not StemReviewStatus.REVIEWED:
+        return False
+    available_roles = {output.role for output in semantics.outputs}
+    return set(required_roles).issubset(available_roles)
 
 
 def _list_models(directory: str, extensions: typing.Any) -> List[str]:
