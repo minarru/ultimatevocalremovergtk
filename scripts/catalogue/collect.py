@@ -1060,7 +1060,7 @@ def _parse_catalogue_entry(
             # cache sorts object keys. A bag contains every member checkpoint,
             # so choose one deterministic representative for audit/display
             # instead of letting fresh-online and warm-offline reports differ.
-            weight = sorted(weight_candidates, key=str.casefold)[-1]
+            weight = max(weight_candidates, key=lambda item: (item.casefold(), item))
 
     meta = ModelEntry(
         source=source,

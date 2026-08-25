@@ -48,6 +48,22 @@ class DemucsBagArtifactTests(unittest.TestCase):
             ["c511e2ab-fe698775.th", "c511e2ab-fe698775.th"],
         )
 
+    def test_representative_weight_totally_orders_case_equivalent_names(self) -> None:
+        weights = []
+        for keys in (("A.th", "a.th"), ("a.th", "A.th")):
+            payload = {key: f"https://example.test/{key}" for key in keys}
+            entry = catalogue._parse_catalogue_entry(
+                source="test",
+                family="Demucs",
+                label="Demucs v3: case collision",
+                payload=payload,
+                ctx=catalogue.CatalogueContext(),
+                policy=catalogue.FetchPolicy(allow_network=False),
+            )[0]
+            weights.append(entry.weight_file)
+
+        self.assertEqual(weights, ["a.th", "a.th"])
+
 
 class UiNoteTests(unittest.TestCase):
     def test_vocals_other_note_only_for_two_stem_models(self):
