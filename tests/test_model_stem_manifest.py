@@ -296,6 +296,29 @@ class ManifestValidationTests(unittest.TestCase):
                 ]
                 self.assertEqual(matching_pairs, [pair_id] if pair_id else [])
 
+    def test_classic_karaoke_2_uses_exact_runtime_keys_in_both_contexts(self) -> None:
+        registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
+        declaration = registry.models["mdx:UVR_MDXNET_KARA_2"]
+
+        self.assertEqual(declaration.native_signature, ("Instrumental", "Vocals"))
+        expected = {
+            StemProcessingContext.FULL_MIX: (
+                ["Instrumental", "Vocals"],
+                ["mix.instrumental_with_backing_vocals", "vocal.lead"],
+            ),
+            StemProcessingContext.VOCAL_SPLIT: (
+                ["Instrumental", "Vocals"],
+                ["vocal.backing", "vocal.lead"],
+            ),
+        }
+        for context_id, (native, roles) in expected.items():
+            with self.subTest(context=context_id.value):
+                outputs = declaration.contexts[context_id].outputs
+                self.assertEqual(
+                    [output.native and output.native.raw for output in outputs], native
+                )
+                self.assertEqual([str(output.role) for output in outputs], roles)
+
     def test_p3_exact_specialty_exceptions_have_reviewed_removal_roles(self) -> None:
         registry = load_stem_manifest(BUNDLED_MANIFEST_PATH)
         expected = {

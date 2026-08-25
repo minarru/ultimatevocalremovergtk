@@ -144,6 +144,20 @@ class CatalogueEvidenceCountTests(unittest.TestCase):
 
 
 class StrictAuditMutationTests(unittest.TestCase):
+    def test_classic_karaoke_projection_rejects_stale_community_signature(self) -> None:
+        projected = stem_semantics_audit._strict_native_signature(
+            "mdx:UVR_MDXNET_KARA_2",
+            ("other", "vocals"),
+            target_instrument="other",
+            metadata_source="community_models.txt",
+        )
+
+        self.assertEqual(projected, ("Instrumental", "Vocals"))
+        self.assertFalse(stem_semantics_audit._signature_matches(("other", "vocals"), projected))
+        self.assertTrue(
+            stem_semantics_audit._signature_matches(("Instrumental", "Vocals"), projected)
+        )
+
     def test_exact_vr_bve_inventory_supplement_does_not_cover_other_missing_models(self) -> None:
         exact_id = "vr:UVR-BVE-4B_SN-44100-1"
 

@@ -66,6 +66,17 @@ class DemucsBagArtifactTests(unittest.TestCase):
 
 
 class RuntimeStemSignatureTests(unittest.TestCase):
+    def test_classic_karaoke_2_projects_exact_mdx_runtime_keys(self) -> None:
+        self.assertEqual(
+            catalogue.runtime_stem_signature(
+                "mdx:UVR_MDXNET_KARA_2",
+                ("other", "vocals"),
+                target_instrument="other",
+                metadata_source="community_models.txt",
+            ),
+            ("Instrumental", "Vocals"),
+        )
+
     def test_yaml_target_projects_the_model_config_native_inventory(self) -> None:
         self.assertEqual(
             catalogue.runtime_stem_signature(

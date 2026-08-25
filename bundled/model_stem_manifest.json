@@ -2560,8 +2560,8 @@
     },
     "mdx:UVR_MDXNET_KARA_2": {
       "native_signature": [
-        "other",
-        "vocals"
+        "Instrumental",
+        "Vocals"
       ],
       "intent": "karaoke",
       "contexts": {
@@ -2569,11 +2569,11 @@
           "logical_primary": "vocal.lead",
           "outputs": [
             {
-              "native": "other",
+              "native": "Instrumental",
               "role": "mix.instrumental_with_backing_vocals"
             },
             {
-              "native": "vocals",
+              "native": "Vocals",
               "role": "vocal.lead"
             }
           ]
@@ -2582,17 +2582,17 @@
           "logical_primary": "vocal.lead",
           "outputs": [
             {
-              "native": "other",
+              "native": "Instrumental",
               "role": "vocal.backing"
             },
             {
-              "native": "vocals",
+              "native": "Vocals",
               "role": "vocal.lead"
             }
           ]
         }
       },
-      "evidence": "catalogue_id=mdx:UVR_MDXNET_KARA_2; source=TRvlvr+Politrees; metadata_source=community_models.txt; native_signature=other|vocals; backend_primary=Instrumental; backend_target=other; reviewed_contexts=full_mix|vocal_split"
+      "evidence": "catalogue_id=mdx:UVR_MDXNET_KARA_2; source=TRvlvr+Politrees; metadata_source=community_models.txt; backend_contract=classic MDX two-output complement; native_signature=Instrumental|Vocals; backend_primary=Instrumental; backend_target=other; reviewed_contexts=full_mix|vocal_split"
     },
     "mdx:UVR_MDXNET_Main": {
       "native_signature": [

@@ -39,6 +39,21 @@ INTENT_INSTRUMENTAL = "instrumental"
 INTENT_VOCALS = "vocals"
 INTENT_UNKNOWN = "unknown"
 
+# Community catalogue metadata describes this classic ONNX model with the
+# semantic pair ``other|vocals``. The classic MDX engine does not address
+# those metadata tokens: ModelConfig's hash record selects ``Instrumental`` as
+# the primary source and the engine computes/writes its exact ``Vocals``
+# complement. Keep this correction exact-ID-only so community metadata never
+# becomes a general spelling rewrite at runtime.
+_EXACT_CLASSIC_MDX_RUNTIME_SIGNATURES = {
+    "mdx:UVR_MDXNET_KARA_2": ("Instrumental", "Vocals"),
+}
+
+
+def classic_mdx_runtime_stem_signature(model_id: str) -> tuple[str, ...]:
+    """Return an exact reviewed classic-MDX runtime signature, if known."""
+    return _EXACT_CLASSIC_MDX_RUNTIME_SIGNATURES.get(model_id, ())
+
 
 def resolve_catalogue_stem_semantics(
     model_id: str,

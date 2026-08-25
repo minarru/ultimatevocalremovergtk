@@ -42,6 +42,7 @@ from .model_identity import ModelId
 from .model_naming import canonical_display_name
 from .model_stem_semantics import (
     INTENT_UNKNOWN,
+    classic_mdx_runtime_stem_signature,
     resolve_catalogue_intent,
     resolve_catalogue_stem_semantics,
     resolve_is_karaoke,
@@ -219,11 +220,13 @@ def _build_meta(
         backend_target = str(target or "")
         model_id = _catalogue_model_id(arch, checkpoint)
         has_yaml_config = any(str(name).casefold().endswith((".yaml", ".yml")) for name in files)
-        runtime_stems = (
-            [backend_target]
-            if model_id.startswith("mdx:") and backend_target and has_yaml_config
-            else stems
-        )
+        classic_signature = classic_mdx_runtime_stem_signature(model_id)
+        if classic_signature:
+            runtime_stems = list(classic_signature)
+        elif model_id.startswith("mdx:") and backend_target and has_yaml_config:
+            runtime_stems = [backend_target]
+        else:
+            runtime_stems = stems
         semantics = resolve_catalogue_stem_semantics(
             model_id,
             native_stems=runtime_stems,

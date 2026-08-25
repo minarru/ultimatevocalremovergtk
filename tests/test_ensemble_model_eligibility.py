@@ -60,7 +60,7 @@ class ReviewedPairEligibilityTests(unittest.TestCase):
         models = [
             _FakeModel(
                 "mdx:UVR_MDXNET_KARA_2",
-                ["other", "vocals"],
+                ["Instrumental", "Vocals"],
                 backend_primary="Instrumental",
                 backend_target="other",
             ),

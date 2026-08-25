@@ -228,6 +228,36 @@ class CatalogueIntentOverlayTests(unittest.TestCase):
         self.assertTrue(meta.stem_semantics.routes[1].logical_primary)
         self.assertIn("catalogue_id=mdx:bs_neo_inst_beta", meta.stem_semantics.evidence)
 
+    def test_classic_karaoke_2_uses_exact_runtime_sources_for_semantics(self) -> None:
+        label = "MDX-Net Model: UVR-MDX-NET Karaoke 2"
+        with _with_supplements(
+            (
+                {},
+                {label: {"UVR_MDXNET_KARA_2.onnx": "https://example.test/model.onnx"}},
+                {},
+                {
+                    label: {
+                        "stems": ["other", "vocals"],
+                        "primary_stem": "Instrumental",
+                        "target_instrument": "other",
+                        "intent": "karaoke",
+                    }
+                },
+            )
+        ):
+            merged = catalog_sources.merged_catalogues(vr={}, mdx={}, demucs={})
+
+        meta = merged.meta[label]
+        self.assertEqual(meta.stems, ["other", "vocals"])
+        self.assertEqual(meta.stem_semantics.status, "reviewed")
+        self.assertEqual(
+            [(route.native, route.role) for route in meta.stem_semantics.routes],
+            [
+                ("Instrumental", "mix.instrumental_with_backing_vocals"),
+                ("Vocals", "vocal.lead"),
+            ],
+        )
+
     def test_exact_waiver_is_visible_without_inventing_stem_membership(self) -> None:
         label = "Known waived metadata-only model"
         with _with_supplements(

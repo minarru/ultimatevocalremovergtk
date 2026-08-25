@@ -47,6 +47,7 @@ from core.model_stem_semantics import (  # noqa: E402
     INTENT_SPECIALTY_STEM,
     INTENT_UNKNOWN,
     backend_focus_label,
+    classic_mdx_runtime_stem_signature,
     describe_kuielab_component,
     describe_special_fx_stem,
     export_intent_from_fields,
@@ -134,6 +135,9 @@ def runtime_stem_signature(
     metadata_source: str = "",
 ) -> tuple[str, ...]:
     """Project collected training evidence to actual engine-native source keys."""
+    classic_signature = classic_mdx_runtime_stem_signature(model_id)
+    if classic_signature:
+        return classic_signature
     if is_runtime_target_instrument(
         model_id,
         target_instrument=target_instrument,

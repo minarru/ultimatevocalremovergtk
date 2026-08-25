@@ -442,7 +442,7 @@ class VocalSplitRowTests(unittest.TestCase):
                 model_status=True,
                 is_karaoke=is_karaoke,
                 is_bv_model=False,
-                mdx_model_stems=("other", "vocals") if is_karaoke else (),
+                mdx_model_stems=("Instrumental", "Vocals") if is_karaoke else (),
                 primary_stem_native="Instrumental" if is_karaoke else "",
                 primary_stem="Instrumental" if is_karaoke else "",
                 secondary_stem="Vocals" if is_karaoke else "",

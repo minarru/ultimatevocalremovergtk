@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -68,6 +70,54 @@ def _semantic_model(
         mdx_stem_count=len(native_stems),
         mdxnet_stems_selected=[],
     )
+
+
+def _classic_karaoke_2_model(root: Path, *, vocal_split: bool) -> Any:
+    from core import Settings
+    from core.model_config import ModelConfig
+    from core.model_identity import MdxSpec, ModelArtifacts, ModelRecord
+
+    model_dir = root / "models"
+    model_dir.mkdir()
+    checkpoint = model_dir / "UVR_MDXNET_KARA_2.onnx"
+    checkpoint.write_bytes(b"fixture")
+    model_hash = "fixture-classic-karaoke-2"
+    repo = MagicMock()
+    repo.model_hash_table = {str(checkpoint): model_hash}
+    repo.mdx_hash_MAPPER = {
+        model_hash: {
+            "compensate": 1.0,
+            "mdx_dim_f_set": 3072,
+            "mdx_dim_t_set": 8,
+            "mdx_n_fft_scale_set": 7680,
+            "primary_stem": "Instrumental",
+            "is_karaoke": True,
+        }
+    }
+    repo.mdx_name_select_MAPPER = {}
+    repo.on_unrecognized_model = None
+    record = ModelRecord(
+        id="mdx:UVR_MDXNET_KARA_2",
+        family="mdx",
+        basename="UVR_MDXNET_KARA_2",
+        display="Fixture classic Karaoke 2",
+        backend_name="UVR_MDXNET_KARA_2",
+        artifacts=ModelArtifacts(checkpoint.name),
+        installed=False,
+        mdx=MdxSpec("classic_onnx"),
+    )
+
+    with patch("core.paths.MDX_MODELS_DIR", str(model_dir)):
+        return ModelConfig(
+            Settings.defaults(),
+            repo,
+            record.display,
+            selected_process_method=record.arch,
+            is_dry_check=True,
+            is_vocal_split_model=vocal_split,
+            identity=record,
+            model_dependencies={},
+        )
 
 
 class ReviewedVocalSplitContextTests(unittest.TestCase):
@@ -177,6 +227,67 @@ class ReviewedVocalSplitContextTests(unittest.TestCase):
         model.settings = Settings.defaults()
         model.settings.ensemble.main_stem = "mode.multi_stem"
         self.assertEqual(tuple(run_export_routes(model)), routes)
+
+
+class ClassicOnnxKaraokeRouteTests(unittest.TestCase):
+    def test_noninstalled_model_config_resolves_exact_roles_in_both_contexts(self) -> None:
+        from core.stem_roles import StemReviewStatus, StemRoleId
+
+        expected_roles = {
+            False: [
+                StemRoleId("vocal.lead"),
+                StemRoleId("mix.instrumental_with_backing_vocals"),
+            ],
+            True: [StemRoleId("vocal.lead"), StemRoleId("vocal.backing")],
+        }
+        for vocal_split, roles in expected_roles.items():
+            with self.subTest(vocal_split=vocal_split), TemporaryDirectory() as directory:
+                model = _classic_karaoke_2_model(Path(directory), vocal_split=vocal_split)
+
+                self.assertTrue(model.model_status)
+                self.assertEqual(model.primary_stem, "Instrumental")
+                self.assertEqual(model.secondary_stem, "Vocals")
+                self.assertIs(model.stem_semantics.status, StemReviewStatus.REVIEWED)
+                self.assertEqual(
+                    [route.native and route.native.raw for route in model.available_stem_routes],
+                    ["Vocals", "Instrumental"],
+                )
+                self.assertEqual(
+                    [route.role for route in model.available_stem_routes],
+                    roles,
+                )
+
+    def test_vocal_split_export_writes_both_exact_classic_sources(self) -> None:
+        from engines.stem_writer import export_source_map
+
+        with TemporaryDirectory() as directory:
+            model = _classic_karaoke_2_model(Path(directory), vocal_split=True)
+
+        model.begin_save_phase = MagicMock()
+        model.stem_export_wav_path = lambda stem, *, route=None: f"/tmp/{stem}.wav"
+        model.write_audio = MagicMock()
+        vocals = _arr(1.0).T
+        instrumental = _arr(2.0).T
+
+        export_source_map(
+            model,
+            {"Instrumental": instrumental, "Vocals": vocals},
+            samplerate=44100,
+        )
+
+        model.begin_save_phase.assert_called_once_with(2)
+        self.assertEqual(model.write_audio.call_count, 2)
+        calls = model.write_audio.call_args_list
+        self.assertEqual(
+            [call.kwargs["route"].native.raw for call in calls],
+            ["Vocals", "Instrumental"],
+        )
+        self.assertEqual(
+            [call.kwargs["stem_name"] for call in calls],
+            ["Lead Vocals", "Backing Vocals"],
+        )
+        self.assertIs(calls[0].args[1], vocals)
+        self.assertIs(calls[1].args[1], instrumental)
 
 
 class VocalSplitRoleBucketTests(unittest.TestCase):
