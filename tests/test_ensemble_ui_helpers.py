@@ -179,6 +179,28 @@ class CenterSideReadinessTests(unittest.TestCase):
         self.assertEqual(page._ensemble_pair(), "pair.center_side")
         self.assertIsNone(page._config_blocked_reason())
 
+    def test_splitter_refresh_repick_blocks_ensemble_readiness(self) -> None:
+        from unittest import mock
+
+        from core.settings import Settings
+        from ui.ensemble.window import EnsemblePage
+
+        settings = Settings.defaults()
+        settings.ensemble.main_stem = "pair.center_side"
+        settings.ensemble.selected_models = ["mdx:center", "mdx:side"]
+        page = object.__new__(EnsemblePage)
+        page.settings = settings
+        page._effective_selected_models = lambda: settings.ensemble.selected_models
+        page.vocal_split_row = mock.MagicMock()
+        page.vocal_split_row.blocked_reason.return_value = (
+            "Choose a vocal splitter model again after the model refresh"
+        )
+
+        self.assertEqual(
+            page._config_blocked_reason(),
+            "Choose a vocal splitter model again after the model refresh",
+        )
+
 
 class InstalledPairChoiceTests(unittest.TestCase):
     def test_only_choices_with_two_distinct_installed_contributors_are_listed(self) -> None:

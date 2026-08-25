@@ -1008,6 +1008,10 @@ class MainWindow(Adw.ApplicationWindow):
             return output_reason
         if not self._active_view().has_model():
             return _REASON_MODEL
+        splitter = getattr(self, "vocal_split_row", None)
+        splitter_reason = splitter.blocked_reason() if splitter is not None else None
+        if splitter_reason:
+            return splitter_reason
         if self._active_view().save_stems.repick_required:
             return _REASON_STEM_REPICK
         return None

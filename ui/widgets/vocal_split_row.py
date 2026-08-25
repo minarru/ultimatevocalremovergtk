@@ -43,6 +43,7 @@ from .rows import (
 )
 
 _DEFAULT_DEVERB = "Main Vocals Only"
+_SPLITTER_REPICK_REASON = "Choose a vocal splitter model again after the model refresh"
 
 
 class VocalSplitRow(Adw.ExpanderRow):
@@ -173,16 +174,16 @@ class VocalSplitRow(Adw.ExpanderRow):
     def persist_to_settings(self, settings: typing.Any) -> None:
         """Write every global vocal-split key back to ``settings``."""
         process = settings.process
-        process.vocal_splitter_enabled = (
-            self.split_switch.get_active() and not self._splitter_write_gated
-        )
+        process.vocal_splitter_enabled = self.split_switch.get_active()
         process.save_inst_vocal_splitter = self.save_inst_switch.get_active()
         process.deverb_vocals = self.deverb_switch.get_active()
         process.deverb_vocal_opt = get_combo_value(self.deverb_row) or _DEFAULT_DEVERB
         # Only trust the combo once its real list has loaded; before that it is
         # a seeded placeholder and the stored tag is authoritative.
         if self._splitter_write_gated:
-            process.vocal_splitter = NO_MODEL
+            process.vocal_splitter = (
+                getattr(self, "_splitter_gated_value", None) or self._stored_splitter
+            )
         elif self._populator.ready:
             process.vocal_splitter = get_combo_value(self.splitter_row)
         else:
@@ -194,6 +195,15 @@ class VocalSplitRow(Adw.ExpanderRow):
         self.set_subtitle(
             vocal_split_summary(settings, self._repo) if settings is not None else OFF
         )
+
+    @property
+    def repick_required(self) -> bool:
+        """Whether an unavailable exact splitter ID awaits a picker action."""
+        return bool(self._splitter_write_gated)
+
+    def blocked_reason(self) -> str | None:
+        """Return the persistent refresh blocker until the picker is changed."""
+        return _SPLITTER_REPICK_REASON if self.repick_required else None
 
     def _show_splitter_warning(self) -> None:
         row = getattr(self, "splitter_warning_row", None)

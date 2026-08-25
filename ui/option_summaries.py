@@ -14,7 +14,7 @@ headlessly. They live at the ``ui/`` root rather than under
 from __future__ import annotations
 
 import typing
-from typing import List, Tuple
+from typing import List
 
 from bundled.constants import (
     ALL_STEMS,
@@ -24,7 +24,9 @@ from bundled.constants import (
 )
 from core.model_display import parse_model_tag
 from core.model_identity import ModelIdentityService
+from core.model_stem_manifest import load_bundled_stem_semantics
 from core.stem_pairs import normalize_stem_pair_id
+from core.stem_roles import StemRoleId
 
 from .settings_bind import enum_value, get_flat
 
@@ -36,15 +38,31 @@ ON_NO_MODEL = "On — no model selected"
 #: Joins the parts of a multi-part summary.
 _SEP = " · "
 
-#: ``(slot, label)`` for the secondary-model stem pairs, matching the order of
-#: ``ui.views.base._SECONDARY_SLOTS``. Only the first entry applies unless the
-#: run uses four sources -- see :func:`four_stem_secondaries_apply`.
-_SECONDARY_PAIRS: Tuple[Tuple[str, str], ...] = (
-    ("voc_inst", "Vocals/Instrumental"),
-    ("other", "Other/No Other"),
-    ("bass", "Bass/No Bass"),
-    ("drums", "Drums/No Drums"),
-)
+_SECONDARY_SLOTS = ("voc_inst", "other", "bass", "drums")
+_SECONDARY_PRIMARY_ROLES = {
+    "other": StemRoleId("residual.other"),
+    "bass": StemRoleId("instrument.bass"),
+    "drums": StemRoleId("instrument.drums"),
+}
+
+
+def secondary_stem_pair_label(slot: str) -> str:
+    """Project one secondary-pass label from exact manifest presentation."""
+    registry = load_bundled_stem_semantics()
+    if slot == "voc_inst":
+        definition = registry.pairs.get("pair.vocals_instrumental")
+        if definition is None:
+            raise ValueError("missing pair.vocals_instrumental manifest definition")
+        return definition.display
+    primary_role = _SECONDARY_PRIMARY_ROLES.get(slot)
+    if primary_role is None:
+        raise ValueError(f"unknown secondary stem slot {slot!r}")
+    primary = registry.roles.get(primary_role)
+    if primary is None:
+        raise ValueError(f"missing manifest role {primary_role.value!r}")
+    removed = registry.roles.get(StemRoleId(f"{primary_role.value}.removed"))
+    secondary_display = removed.display if removed is not None else f"Mix minus {primary.display}"
+    return f"{primary.display}/{secondary_display}"
 
 
 def _model_label(tag: typing.Any, repo: typing.Any = None) -> str:
@@ -98,9 +116,10 @@ def secondary_models_summary(
     if not get_flat(settings, f"{prefix}_is_secondary_model_activate"):
         return OFF
 
-    pairs = _SECONDARY_PAIRS if four_stem else _SECONDARY_PAIRS[:1]
+    slots = _SECONDARY_SLOTS if four_stem else _SECONDARY_SLOTS[:1]
     parts: List[str] = []
-    for slot, label in pairs:
+    for slot in slots:
+        label = secondary_stem_pair_label(slot)
         name = _model_label(get_flat(settings, f"{prefix}_{slot}_secondary_model", NO_MODEL), repo)
         if not name:
             continue

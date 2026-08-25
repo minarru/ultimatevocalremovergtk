@@ -11,6 +11,8 @@ _REPO = Path(__file__).resolve().parents[1]
 _STATE = _REPO / "core" / "stem_selection.py"
 _JOB_RESOLUTION = _REPO / "core" / "settings" / "job_resolution.py"
 _STEM_ONLY = _REPO / "ui" / "widgets" / "stem_only.py"
+_METHOD_VIEW = _REPO / "ui" / "views" / "base.py"
+_OPTION_SUMMARIES = _REPO / "ui" / "option_summaries.py"
 
 
 class StemSelectionModuleBoundaryTests(unittest.TestCase):
@@ -25,6 +27,20 @@ class StemSelectionModuleBoundaryTests(unittest.TestCase):
     def test_job_resolution_does_not_define_apply_stem_selection(self) -> None:
         source = _JOB_RESOLUTION.read_text(encoding="utf-8")
         self.assertNotIn("def apply_stem_selection", source)
+
+    def test_secondary_slot_labels_share_the_manifest_projection_helper(self) -> None:
+        from ui.option_summaries import secondary_stem_pair_label
+
+        self.assertEqual(secondary_stem_pair_label("voc_inst"), "Vocals/Instrumental")
+        self.assertEqual(secondary_stem_pair_label("other"), "Residual/Mix minus Residual")
+        self.assertEqual(secondary_stem_pair_label("bass"), "Bass/Bass Removed")
+        self.assertEqual(secondary_stem_pair_label("drums"), "Drums/Drums Removed")
+
+        method_source = _METHOD_VIEW.read_text(encoding="utf-8")
+        summary_source = _OPTION_SUMMARIES.read_text(encoding="utf-8")
+        self.assertIn("secondary_stem_pair_label(slot)", method_source)
+        self.assertIn("secondary_stem_pair_label(slot)", summary_source)
+        self.assertNotIn('"Bass/No Bass"', method_source + summary_source)
 
     def test_stem_only_does_not_define_persist_reducers(self) -> None:
         source = _STEM_ONLY.read_text(encoding="utf-8")

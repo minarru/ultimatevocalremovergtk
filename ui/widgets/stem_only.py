@@ -74,6 +74,7 @@ from .rows import get_combo_value, make_combo_row, set_combo_tag_values, set_com
 _STEM_ONLY_ORDER = (INST_STEM, VOCAL_STEM, BASS_STEM, DRUM_STEM, OTHER_STEM)
 _CHOOSE_STEM = "choose"
 _CHOOSE_STEM_LABEL = "Choose Stem"
+_REFRESH_REPICK_SUMMARY = "Choose a stem again after the model refresh"
 
 STEM_ONLY_ICON_FALLBACK = "audio-x-generic-symbolic"
 
@@ -377,6 +378,8 @@ class SaveStemsSection:
         self._stem_label_overrides: Optional[Dict[str, str]] = None
         self._export_semantics_note = ""
         self._exclusive_options: Dict[str, StemOnlyOption] = {}
+        self._subset_quick_items: List[Tuple[str, str]] = []
+        self._demucs_focus_items: List[Tuple[str, str]] = []
         self._demucs_export_options: Dict[str, StemOnlyOption] = {}
         self._draft_custom_selected: Set[str] = set()
         self._draft_custom_all = True
@@ -722,15 +725,13 @@ class SaveStemsSection:
         was_loading = self._loading
         self._loading = True
         try:
+            self._subset_quick_items = [
+                (_QUICK_ALL, _QUICK_EXPORT_LABELS[_QUICK_ALL]),
+                (_QUICK_INSTRUMENTAL, _QUICK_EXPORT_LABELS[_QUICK_INSTRUMENTAL]),
+                (_QUICK_VOCALS, _QUICK_EXPORT_LABELS[_QUICK_VOCALS]),
+            ]
             if show_quick_export:
-                set_combo_tag_values(
-                    self._quick_row,
-                    [
-                        (_QUICK_ALL, _QUICK_EXPORT_LABELS[_QUICK_ALL]),
-                        (_QUICK_INSTRUMENTAL, _QUICK_EXPORT_LABELS[_QUICK_INSTRUMENTAL]),
-                        (_QUICK_VOCALS, _QUICK_EXPORT_LABELS[_QUICK_VOCALS]),
-                    ],
-                )
+                set_combo_tag_values(self._quick_row, self._subset_quick_items)
                 self._quick_row.set_visible(True)
             self._custom_row.set_visible(True)
         finally:
@@ -804,6 +805,7 @@ class SaveStemsSection:
                 name = route.concept if route is not None else entry
                 label = route.label if route is not None else stem_display_label(entry)
             items.append((name, label))
+        self._demucs_focus_items = list(items)
         was_loading = self._loading
         self._loading = True
         try:
@@ -865,6 +867,8 @@ class SaveStemsSection:
     def export_summary(self) -> str:
         if not self._has_model:
             return SAVE_STEMS_NO_MODEL_HELP
+        if self._repick_required:
+            return _REFRESH_REPICK_SUMMARY
         if self.mode == "exclusive":
             name = get_combo_value(self._exclusive_row) or _TOGGLE_ALL
             return _export_label_for_choice(name, self._exclusive_options)
@@ -925,6 +929,30 @@ class SaveStemsSection:
             try:
                 self._exclusive_options = _fill_export_combo(self._exclusive_row, options)
                 set_combo_value(self._exclusive_row, _CHOOSE_STEM)
+            finally:
+                self._loading = was_loading
+        elif self.mode == "subset":
+            was_loading = self._loading
+            self._loading = True
+            try:
+                set_combo_tag_values(
+                    self._quick_row,
+                    [(_CHOOSE_STEM, "Choose Stems"), *self._subset_quick_items],
+                )
+                self._quick_row.set_visible(True)
+                set_combo_value(self._quick_row, _CHOOSE_STEM)
+                set_row_subtitle(self._custom_row, "Choose stems again")
+            finally:
+                self._loading = was_loading
+        elif self.mode == "demucs":
+            was_loading = self._loading
+            self._loading = True
+            try:
+                set_combo_tag_values(
+                    self._demucs_focus_row,
+                    [(_CHOOSE_STEM, _CHOOSE_STEM_LABEL), *self._demucs_focus_items],
+                )
+                set_combo_value(self._demucs_focus_row, _CHOOSE_STEM)
             finally:
                 self._loading = was_loading
         return True
@@ -1164,6 +1192,7 @@ class SaveStemsSection:
         self._refresh_custom_subtitle()
         self._apply_subset_dimming()
         self._custom_dialog.close()
+        self._clear_refresh_repick()
         self._notify()
 
     def _on_quick_export_changed(self, *_args: typing.Any) -> None:

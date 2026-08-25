@@ -290,6 +290,67 @@ class SaveStemsSectionTests(unittest.TestCase):
         self.assertFalse(self.section.repick_required)
         self.assertEqual(get_combo_value(self.section._exclusive_row), "vocal.lead")
 
+    def test_subset_removed_role_selects_choose_until_explicit_repick(self) -> None:
+        self.section.configure_subset(
+            stems=["vocals", "other", "bass"],
+            show_quick_export=True,
+            primary_key="is_primary_stem_only",
+            secondary_key="is_secondary_stem_only",
+            routes=(
+                StemRoute(
+                    StemId("vocals"),
+                    StemRoleId("vocal.vocals"),
+                    label="Vocals",
+                    logical_primary=True,
+                ),
+                StemRoute(
+                    StemId("other"),
+                    StemRoleId("mix.instrumental"),
+                    label="Instrumental",
+                ),
+                StemRoute(
+                    StemId("bass"),
+                    StemRoleId("instrument.bass"),
+                    label="Bass",
+                ),
+            ),
+        )
+
+        self.assertTrue(self.section.require_refresh_repick("vocal.lead"))
+        self.assertEqual(get_combo_value(self.section._quick_row), "choose")
+        self.assertTrue(self.section.selection_warning_row.get_visible())
+        set_combo_value(self.section._quick_row, _QUICK_VOCALS)
+        self.section._on_quick_export_changed()
+        self.assertFalse(self.section.repick_required)
+
+    def test_demucs_removed_role_selects_choose_until_explicit_repick(self) -> None:
+        routes = (
+            StemRoute(
+                StemId("vocals"),
+                StemRoleId("vocal.vocals"),
+                label="Vocals",
+                logical_primary=True,
+            ),
+            StemRoute(
+                StemId("bass"),
+                StemRoleId("instrument.bass"),
+                label="Bass",
+            ),
+        )
+        self.section.configure_demucs(
+            focus_stems=[ALL_STEMS, "vocals", "bass"],
+            primary_key="is_primary_stem_only_Demucs",
+            secondary_key="is_secondary_stem_only_Demucs",
+            routes=routes,
+        )
+
+        self.assertTrue(self.section.require_refresh_repick("vocal.lead"))
+        self.assertEqual(get_combo_value(self.section._demucs_focus_row), "choose")
+        self.assertTrue(self.section.selection_warning_row.get_visible())
+        set_combo_value(self.section._demucs_focus_row, "vocal.vocals")
+        self.section._on_demucs_focus_changed()
+        self.assertFalse(self.section.repick_required)
+
     def test_exclusive_sync_persist_round_trip(self):
         self.settings.process.stem_focus = "vocal.vocals"
         self.section.configure_exclusive(

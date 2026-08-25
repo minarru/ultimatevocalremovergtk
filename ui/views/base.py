@@ -48,6 +48,7 @@ from ..option_summaries import (
     four_stem_secondaries_apply,
     preproc_summary,
     secondary_models_summary,
+    secondary_stem_pair_label,
 )
 from ..settings_bind import get_flat, set_flat, setting_for_combo
 from ..widget_state import fetch, stash
@@ -68,20 +69,19 @@ from ..widgets.stem_only import SaveStemsSection
 
 _DEFAULT_SETTINGS = Settings.defaults()
 
-# Per-stem secondary-model slots: settings slot, UI label, exact legacy
-# eligibility buckets, and backend stem names. These are secondary-pass slots,
-# not persisted ensemble pair identities.
+# Per-stem secondary-model slots keep only backend eligibility and native
+# arguments. Presentation comes from ``secondary_stem_pair_label``'s exact
+# manifest pair/role projection.
 _SECONDARY_SLOTS = (
     (
         "voc_inst",
-        "Vocals/Instrumental",
         frozenset({StemBucket.VOCALS, StemBucket.INSTRUMENTAL}),
         VOCAL_STEM,
         INST_STEM,
     ),
-    ("other", "Other/No Other", frozenset({StemBucket.OTHER}), OTHER_STEM, "No Other"),
-    ("bass", "Bass/No Bass", frozenset({StemBucket.BASS}), BASS_STEM, "No Bass"),
-    ("drums", "Drums/No Drums", frozenset({StemBucket.DRUMS}), DRUM_STEM, "No Drums"),
+    ("other", frozenset({StemBucket.OTHER}), OTHER_STEM, "No Other"),
+    ("bass", frozenset({StemBucket.BASS}), BASS_STEM, "No Bass"),
+    ("drums", frozenset({StemBucket.DRUMS}), DRUM_STEM, "No Drums"),
 )
 
 
@@ -1029,7 +1029,8 @@ class MethodView:
             )
             dependents = []
             self._secondary_slot_rows = {}
-            for slot, pair_label, wanted, primary, secondary in _SECONDARY_SLOTS:
+            for slot, wanted, primary, secondary in _SECONDARY_SLOTS:
+                pair_label = secondary_stem_pair_label(slot)
                 model_key = f"{prefix}_{slot}_secondary_model"
                 scale_key = f"{prefix}_{slot}_secondary_model_scale"
 

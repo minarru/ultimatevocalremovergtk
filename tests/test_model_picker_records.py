@@ -143,7 +143,7 @@ class VocalSplitRefreshTests(unittest.TestCase):
         self.assertEqual(row._splitter_ids, {"vr:kept", "vr:new"})
         self.assertFalse(row._splitter_write_gated)
 
-    def test_refresh_removed_id_requires_repick_and_disables_split(self) -> None:
+    def test_refresh_removed_id_stays_blocked_until_an_explicit_repick(self) -> None:
         from core.settings import Settings
         from ui.widgets.rows import get_combo_value
         from ui.widgets.vocal_split_row import VocalSplitRow
@@ -165,13 +165,18 @@ class VocalSplitRefreshTests(unittest.TestCase):
             eligible.clear()
             row.refresh_models()
             row.persist_to_settings(settings)
+            row.apply_from_settings(settings)
 
         self.assertEqual(get_combo_value(row.splitter_row), NO_MODEL)
-        self.assertTrue(row._splitter_write_gated)
+        self.assertTrue(row.repick_required)
+        self.assertEqual(
+            row.blocked_reason(),
+            "Choose a vocal splitter model again after the model refresh",
+        )
         self.assertTrue(row.splitter_warning_row.get_visible())
         self.assertIn("Pick a model", row.splitter_warning_row.get_subtitle() or "")
-        self.assertEqual(settings.process.vocal_splitter, NO_MODEL)
-        self.assertFalse(settings.process.vocal_splitter_enabled)
+        self.assertEqual(settings.process.vocal_splitter, "vr:removed")
+        self.assertTrue(settings.process.vocal_splitter_enabled)
 
 
 class PickerVerboseLoggingTests(unittest.TestCase):
@@ -659,7 +664,7 @@ class VocalSplitPickerGateTests(unittest.TestCase):
         row._stored_splitter = stored
         row._splitter_write_gated = True
         row._populator = SimpleNamespace(ready=True)
-        row.split_switch = _FakeControl()
+        row.split_switch = _FakeControl(active=True)
         row.splitter_row = _FakeControl()
         row.save_inst_switch = _FakeControl()
         row.deverb_switch = _FakeControl()
@@ -693,8 +698,8 @@ class VocalSplitPickerGateTests(unittest.TestCase):
 
                     self.assertTrue(row._splitter_write_gated)
                     self.assertEqual(row._stored_splitter, stored)
-                    self.assertEqual(settings.process.vocal_splitter, NO_MODEL)
-                    self.assertFalse(settings.process.vocal_splitter_enabled)
+                    self.assertEqual(settings.process.vocal_splitter, stored)
+                    self.assertTrue(settings.process.vocal_splitter_enabled)
 
     def test_picker_signal_replaces_the_gated_stored_value(self) -> None:
         from ui.widgets import vocal_split_row
@@ -950,6 +955,41 @@ class EnsemblePairRefreshTests(unittest.TestCase):
         self.assertEqual(page.settings.ensemble.main_stem, "")
         self.assertEqual(selected, [""])
         self.assertIn("Choose a stem pair again", page._pair_repick_warning)
+
+    def test_refresh_unknown_removed_pair_id_requires_explicit_repick(self) -> None:
+        from ui.ensemble import window as ensemble_window
+
+        page = self._page("pair.removed_from_registry", {})
+        selected: list[str] = []
+
+        with (
+            mock.patch.object(ensemble_window, "set_combo_tag_values"),
+            mock.patch.object(
+                ensemble_window,
+                "set_combo_value",
+                side_effect=lambda _row, value: selected.append(value),
+            ),
+        ):
+            page._refresh_pair_choices()
+
+        self.assertEqual(page.settings.ensemble.main_stem, "")
+        self.assertEqual(selected, [""])
+        self.assertIn("pair.removed_from_registry", page._pair_repick_warning)
+        self.assertIn("Choose a stem pair again", page._pair_repick_warning)
+
+        selected.clear()
+        with (
+            mock.patch.object(ensemble_window, "set_combo_tag_values"),
+            mock.patch.object(
+                ensemble_window,
+                "set_combo_value",
+                side_effect=lambda _row, value: selected.append(value),
+            ),
+        ):
+            page._refresh_pair_choices()
+
+        self.assertEqual(selected, [""])
+        self.assertIn("pair.removed_from_registry", page._pair_repick_warning)
 
     def test_newly_eligible_pair_becomes_visible_without_selection(self) -> None:
         from ui.ensemble import window as ensemble_window

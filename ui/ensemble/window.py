@@ -920,7 +920,8 @@ class EnsemblePage:
 
     def _refresh_pair_choices(self) -> None:
         """Rebuild exact pair IDs and gate a selection that lost eligibility."""
-        stored = normalize_stem_pair_id(self.settings.ensemble.main_stem)
+        stored_raw = self.settings.ensemble.main_stem
+        stored = normalize_stem_pair_id(stored_raw)
         try:
             choices = installed_ensemble_pair_choices(self.context.repo, self.settings)
         except Exception as exc:  # noqa: BLE001 - visible fail-closed state
@@ -934,15 +935,16 @@ class EnsemblePage:
         self._loading = True
         try:
             set_combo_tag_values(self.main_stem_row, choices)
-            if stored and stored not in ids:
+            if bool(stored_raw) and (not stored or stored not in ids):
                 self.settings.ensemble.main_stem = ""
                 self._pair_repick_warning = (
-                    f"Stem pair {stored!r} is no longer eligible after the model "
+                    f"Stem pair {stored_raw!r} is no longer eligible after the model "
                     "refresh. Choose a stem pair again before starting."
                 )
                 set_combo_value(self.main_stem_row, "")
             else:
-                self._pair_repick_warning = ""
+                if stored:
+                    self._pair_repick_warning = ""
                 set_combo_value(self.main_stem_row, stored)
         finally:
             self._loading = was_loading
@@ -1469,6 +1471,10 @@ class EnsemblePage:
         Excludes input/output readiness (those rows carry their own affordances);
         this is what the empty-state banner surfaces.
         """
+        splitter = getattr(self, "vocal_split_row", None)
+        splitter_reason = splitter.blocked_reason() if splitter is not None else None
+        if splitter_reason:
+            return splitter_reason
         if not self._ensemble_pair():
             return _REASON_STEM_PAIR
         if len(self._effective_selected_models()) <= 1:
